@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -385,6 +387,8 @@ func installCodexMCP(doc []byte, exe string) ([]byte, bool) {
 }
 
 // writeConfig backs up and replaces path (or prints the result when dry).
+// A path that's a symlink (settings kept in a dotfiles repo) keeps it: the
+// file it points at is what's replaced, with that file's mode.
 func writeConfig(path string, old, new []byte, changed, dry bool) error {
 	if !changed {
 		fmt.Printf("%s: already up to date\n", path)
@@ -396,7 +400,21 @@ func writeConfig(path string, old, new []byte, changed, dry bool) error {
 	}
 	if len(old) > 0 {
 		backup := fmt.Sprintf("%s.hammock-backup-%s", path, time.Now().Format("20060102-150405"))
-		if err := os.WriteFile(backup, old, 0o600); err != nil {
+		// O_EXCL: a backup name made ahead of time (a symlink) isn't
+		// followed; one already there (this same second) gets a suffix.
+		f, err := os.OpenFile(backup, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			f, err = os.CreateTemp(filepath.Dir(backup), filepath.Base(backup)+"-*")
+		}
+		if err != nil {
+			return err
+		}
+		backup = f.Name()
+		_, err = f.Write(old)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
 			return err
 		}
 		fmt.Printf("%s: backed up to %s\n", path, backup)
@@ -404,13 +422,57 @@ func writeConfig(path string, old, new []byte, changed, dry bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, new, 0o600); err != nil {
+	target, mode, err := configTarget(path)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	// A temp file of our own (a random name, made with O_EXCL) beside the
+	// target, so the rename stays on one filesystem.
+	tmp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".hammock-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // nothing left behind if it isn't renamed
+	_, err = tmp.Write(new)
+	if err == nil {
+		err = tmp.Chmod(mode)
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), target); err != nil {
 		return err
 	}
 	fmt.Printf("%s: updated\n", path)
 	return nil
+}
+
+// configTarget is the file writeConfig replaces for path: path itself, or
+// where it leads if it's a symlink; and the mode to give the new file
+// (the old one's, else 0600). A symlink to nowhere yet is followed to
+// where it points.
+func configTarget(path string) (string, os.FileMode, error) {
+	target := path
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		target = real
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", 0, err
+	} else if dest, lerr := os.Readlink(path); lerr == nil {
+		// A dangling link: write where it points.
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(filepath.Dir(path), dest)
+		}
+		target = dest
+	}
+	mode := os.FileMode(0o600)
+	if st, err := os.Stat(target); err == nil {
+		if !st.Mode().IsRegular() {
+			return "", 0, fmt.Errorf("%s isn't a regular file", target)
+		}
+		mode = st.Mode().Perm()
+	}
+	return target, mode, nil
 }
