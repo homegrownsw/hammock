@@ -98,7 +98,26 @@ function hammockPost(action, data) {
     });
 }
 
-function hmEsc(s) { return $('<div>').text(s == null ? '' : String(s)).html(); }
+// What hmk reports (computer and device names, link requests, networks)
+// comes from other machines: it goes into the page only as text, through
+// these, never into HTML or an inline handler.
+function hmText(s) { return s == null ? '' : String(s); }
+function hmEl(tag, cls, text) {
+  var e = $(document.createElement(tag));
+  if (cls) e.addClass(cls);
+  if (text != null) e.text(hmText(text));
+  return e;
+}
+function hmCell(width /*, content… */) {
+  var td = $('<td>');
+  if (width) td.css('width', width);
+  for (var i = 1; i < arguments.length; i++) td.append(arguments[i]);
+  return td;
+}
+function hmButton(label, onClick) {
+  return $('<input type="button">').val(label).on('click', onClick);
+}
+function hmNone() { return $('<tr>').append(hmEl('td', 'hm-muted', 'None yet.')); }
 
 function hmWhen(ms) {
   ms = Number(ms || 0);
@@ -111,10 +130,10 @@ function hammockRefresh() {
   hammockPost('status').done(function(st) {
     $('#hm-error').text('');
     var on = !!st.running;
-    $('#hm-status').html('<span class="hm-dot ' + (on ? 'on' : 'off') + '"></span>' +
-      (on ? 'Running as <b>' + hmEsc(st.name) + '</b>' :
-        (st.array_started || !st.config.FOLDER.startsWith('/mnt/') ? 'Stopped' : 'Stopped: it starts with the array')) +
-      ' <span class="hm-muted">(' + hmEsc(st.dir) + ')</span>');
+    $('#hm-status').empty().append(hmEl('span', 'hm-dot ' + (on ? 'on' : 'off')),
+      on ? [document.createTextNode('Running as '), hmEl('b', null, st.name)] :
+        document.createTextNode(st.array_started || !st.config.FOLDER.startsWith('/mnt/') ? 'Stopped' : 'Stopped: it starts with the array'),
+      document.createTextNode(' '), hmEl('span', 'hm-muted', '(' + hmText(st.dir) + ')'));
     $('#hm-counts').text(on ? st.groups + ' Groups, ' + st.tabs + ' tabs, ' + st.panes + ' panes, ' + st.agents + ' agents' +
       (st.needs_you ? ', ' + st.needs_you + ' need you' : '') : '–');
     $('#hm-version').text(st.version || '–');
@@ -125,29 +144,34 @@ function hammockRefresh() {
 
     $('#hm-remote').prop('checked', !!st.remote_enabled);
     var nets = (st.networks || []).map(function(n) {
-      var where = n.connected ? hmEsc((n.addresses || []).join(', ')) : '<span class="hm-muted">not on it now</span>';
-      return '<tr><td style="width:30px"><input type="checkbox" ' + (n.chosen ? 'checked' : '') +
-        ' onchange="hammockNetwork(\'' + hmEsc(n.id) + '\', this.checked)"></td><td style="width:200px">' +
-        hmEsc(n.label && n.label !== n.id ? n.label + ' (' + n.id + ')' : n.id) + '</td><td>' + where +
-        (n.public ? ' <span class="hm-error">a public address: anyone who can reach it could try to connect</span>' : '') + '</td></tr>';
+      var id = hmText(n.id);
+      var box = $('<input type="checkbox">').prop('checked', !!n.chosen)
+        .on('change', function() { hammockNetwork(id, this.checked); });
+      var where = n.connected ? hmEl('span', null, (n.addresses || []).join(', ')) : hmEl('span', 'hm-muted', 'not on it now');
+      return $('<tr>').append(hmCell('30px', box),
+        hmCell('200px', hmEl('span', null, n.label && n.label !== n.id ? n.label + ' (' + id + ')' : id)),
+        hmCell(null, where, n.public ? ' ' : '',
+          n.public ? hmEl('span', 'hm-error', 'a public address: anyone who can reach it could try to connect') : ''));
     });
-    $('#hm-networks').html(nets.join(''));
+    $('#hm-networks').empty().append(nets);
 
     var comps = (st.computers || []).filter(function(c) { return !c.this_computer; }).map(function(c) {
       var state = c.refused ? 'doesn’t link with this one any more' : c.cert_changed ? 'its certificate changed' :
         c.online ? 'online' : (Number(c.last_seen_unix_ms) ? 'last seen ' + hmWhen(c.last_seen_unix_ms) : 'offline');
-      return '<tr><td style="width:200px"><b>' + hmEsc(c.name) + '</b></td><td style="width:160px">' + hmEsc(c.model || c.os) +
-        '</td><td>' + hmEsc(state) + '</td><td style="width:90px"><input type="button" value="Unlink" onclick="hammockUnlink(\'' +
-        hmEsc(c.user_id) + '\', \'' + hmEsc(c.name).replace(/'/g, '') + '\')"></td></tr>';
+      var id = hmText(c.user_id), name = hmText(c.name);
+      return $('<tr>').append(hmCell('200px', hmEl('b', null, name)), hmCell('160px', hmEl('span', null, c.model || c.os)),
+        hmCell(null, hmEl('span', null, state)),
+        hmCell('90px', hmButton('Unlink', function() { hammockUnlink(id, name); })));
     });
-    $('#hm-computers').html(comps.length ? comps.join('') : '<tr><td class="hm-muted">None yet.</td></tr>');
+    $('#hm-computers').empty().append(comps.length ? comps : hmNone());
 
     var devs = (st.devices || []).map(function(d) {
-      return '<tr><td style="width:200px"><b>' + hmEsc(d.name) + '</b></td><td style="width:160px">' + hmEsc(d.platform) +
-        '</td><td>paired ' + hmEsc(hmWhen(d.paired_unix_ms)) + ', last seen ' + hmEsc(hmWhen(d.last_seen_unix_ms)) +
-        '</td><td style="width:90px"><input type="button" value="Revoke" onclick="hammockRevoke(\'' + hmEsc(d.id) + '\')"></td></tr>';
+      var id = hmText(d.id);
+      return $('<tr>').append(hmCell('200px', hmEl('b', null, d.name)), hmCell('160px', hmEl('span', null, d.platform)),
+        hmCell(null, hmEl('span', null, 'paired ' + hmWhen(d.paired_unix_ms) + ', last seen ' + hmWhen(d.last_seen_unix_ms))),
+        hmCell('90px', hmButton('Revoke', function() { hammockRevoke(id); })));
     });
-    $('#hm-devices').html(devs.length ? devs.join('') : '<tr><td class="hm-muted">None yet.</td></tr>');
+    $('#hm-devices').empty().append(devs.length ? devs : hmNone());
 
     hammockShowRequests(st.link_requests || [], st.name);
   });
@@ -169,7 +193,7 @@ function hammockRemote(on) { hammockPost('remote', {on: on ? 'yes' : 'no'}).alwa
 function hammockNetwork(id, chosen) { hammockPost('network', {id: id, chosen: chosen ? 'yes' : 'no'}).always(hammockRefresh); }
 
 function hammockUnlink(id, name) {
-  swal({title: 'Unlink ' + name + '?', text: 'It’s unlinked from all your computers, and can be linked again only with a code check.',
+  swal({title: 'Unlink ' + name + '?', html: false, text: 'It’s unlinked from all your computers, and can be linked again only with a code check.',
     type: 'warning', showCancelButton: true, confirmButtonText: 'Unlink'}, function(ok) {
     if (ok) hammockPost('unlink', {id: id}).always(hammockRefresh);
   });
@@ -183,8 +207,9 @@ function hammockLink() {
   hammockPost('link_invite').done(function(r) {
     hammockLinking = Date.now() + 10 * 60 * 1000;
     $('#hm-link').show().html('<p>On your Mac, open <b>Hammock ▸ Link a Computer…</b> and choose this server. ' +
-      'If it isn’t listed, paste this link there:</p><p class="hm-link">' + hmEsc(r.link) + '</p>' +
+      'If it isn’t listed, paste this link there:</p><p class="hm-link" id="hm-link-url"></p>' +
       '<p class="hm-muted" id="hm-link-wait">Waiting for your Mac to ask…</p><div id="hm-link-reqs"></div>');
+    $('#hm-link-url').text(hmText(r.link));
     hammockRefresh();
   });
 }
@@ -195,14 +220,20 @@ function hammockShowRequests(reqs, myName) {
   $('#hm-link').show();
   if (!$('#hm-link-reqs').length) $('#hm-link').html('<div id="hm-link-reqs"></div>');
   $('#hm-link-wait').hide();
-  $('#hm-link-reqs').html(reqs.map(function(r) {
+  var list = $('#hm-link-reqs').empty();
+  reqs.forEach(function(r) {
+    var id = hmText(r.id);
     var from = r.tailscale_host ? 'Tailscale ' + r.tailscale_host + (r.tailscale_login ? ' (' + r.tailscale_login + ')' : '') : (r.from || '');
-    return '<p><b>' + hmEsc(r.name) + '</b> ' + hmEsc(r.model || r.os || '') + (from ? ' <span class="hm-muted">from ' + hmEsc(from) + '</span>' : '') +
-      (r.unlinked_unix_ms ? '<br><span class="hm-error">You unlinked it on ' + hmEsc(hmWhen(r.unlinked_unix_ms)) + ' (lost or stolen?). Link it again only if it’s back with you.</span>' : '') +
-      '</p><p>Does your Mac show this code?</p><p class="hm-code">' + hmEsc(r.code) + '</p>' +
-      '<p><input type="button" value="They Match" onclick="hammockAnswer(\'' + hmEsc(r.id) + '\', true)"> ' +
-      '<input type="button" value="They Don’t" onclick="hammockAnswer(\'' + hmEsc(r.id) + '\', false)"></p>';
-  }).join(''));
+    var who = $('<p>').append(hmEl('b', null, r.name), ' ', hmEl('span', null, r.model || r.os || ''));
+    if (from) who.append(' ', hmEl('span', 'hm-muted', 'from ' + from));
+    if (r.unlinked_unix_ms) {
+      who.append('<br>', hmEl('span', 'hm-error', 'You unlinked it on ' + hmWhen(r.unlinked_unix_ms) +
+        ' (lost or stolen?). Link it again only if it’s back with you.'));
+    }
+    list.append(who, '<p>Does your Mac show this code?</p>', hmEl('p', 'hm-code', r.code),
+      $('<p>').append(hmButton('They Match', function() { hammockAnswer(id, true); }), ' ',
+        hmButton('They Don’t', function() { hammockAnswer(id, false); })));
+  });
 }
 
 function hammockAnswer(id, ok) {
@@ -216,9 +247,11 @@ function hammockAnswer(id, ok) {
 function hammockPair() {
   hammockPost('pair').done(function(p) {
     $('#hm-pair').show().html('<p>In Hammock on your iPhone: <b>Devices ▸ Add Computer</b>, then scan this code. It works once, for ten minutes.</p>' +
-      '<img class="hm-qr" src="data:image/png;base64,' + p.qr_png + '" alt="Pairing code">' +
+      '<img class="hm-qr" alt="Pairing code">' +
       (p.remote_enabled ? '' : '<p class="hm-error">Remote access is off: turn it on above, or the iPhone can’t reach this server.</p>') +
-      '<p class="hm-muted">Or paste it there:</p><p class="hm-link">' + hmEsc(p.link) + '</p>');
+      '<p class="hm-muted">Or paste it there:</p><p class="hm-link" id="hm-pair-link"></p>');
+    $('#hm-pair .hm-qr').attr('src', 'data:image/png;base64,' + String(p.qr_png || '').replace(/[^A-Za-z0-9+\/=]/g, ''));
+    $('#hm-pair-link').text(hmText(p.link));
     setTimeout(function() { $('#hm-pair').hide().empty(); hammockRefresh(); }, 10 * 60 * 1000);
   });
 }
