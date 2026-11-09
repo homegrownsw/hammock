@@ -17,9 +17,10 @@ import (
 // beside them), usage cached in ~/.claude.json.
 var Claude = &Agent{
 	ID: "claude", Order: 0, Name: "Claude Code", Short: "Claude", Command: "claude",
-	Install: "curl -fsSL https://claude.ai/install.sh | bash",
-	Hooks:   true,
-	Resume:  func(id string) string { return "claude --resume " + Quote(id) },
+	ShellMode: true,
+	Install:   "curl -fsSL https://claude.ai/install.sh | bash",
+	Hooks:     true,
+	Resume:    func(id string) string { return "claude --resume " + Quote(id) },
 	Schedule: func(s *pb.Schedule) string {
 		typed := "claude " + Quote(s.Prompt)
 		if len(s.AllowedTools) > 0 {

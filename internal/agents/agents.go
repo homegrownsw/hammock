@@ -117,6 +117,9 @@ type Agent struct {
 	// Subagents: its sessions keep subagents' transcripts beside them,
 	// as Claude Code's do.
 	Subagents bool
+	// ShellMode: a message starting with "!" runs as a shell command in it,
+	// as at Claude Code's prompt: the agent view's composer says so.
+	ShellMode bool
 	// SlashCommands lists what can follow "/" in it, for the agent view's
 	// composer.
 	SlashCommands func(cwd string) []string
@@ -201,7 +204,8 @@ func (a *Agent) Kind(installed bool) *pb.AgentKind {
 		Id: a.ID, Name: a.Name, ShortName: a.Short, Installed: installed,
 		CanResume: a.Resume != nil, AgentView: a.NewParser != nil, CanSwitch: a.CanSwitch(),
 		Schedulable: a.Schedulable, Usage: a.Usage != nil || a.LiveUsage != nil, LiveUsage: a.LiveUsage != nil, Hooks: a.Hooks, Sessions: a.Sessions != nil,
-		Install: a.Install,
+		ShellMode: a.ShellMode,
+		Install:   a.Install,
 	}
 }
 

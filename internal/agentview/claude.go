@@ -64,6 +64,8 @@ type Claude struct {
 	// Background shells, and each one's place by its task id.
 	shells  []*Shell
 	shellAt map[string]int
+	// The "!" command you ran at its prompt, waiting for its output.
+	bang string
 
 	// The model of the latest reply, and the context it took (its input,
 	// cached or not); the most it has taken, to tell a 1M window.
@@ -360,6 +362,8 @@ var (
 	commandName = regexp.MustCompile(`<command-name>([^<]*)</command-name>`)
 	commandArgs = regexp.MustCompile(`<command-args>([^<]*)</command-args>`)
 	localOutput = regexp.MustCompile(`(?s)<local-command-stdout>(.*?)</local-command-stdout>`)
+	bashInput   = regexp.MustCompile(`(?s)<bash-input>(.*?)</bash-input>`)
+	bashStream  = regexp.MustCompile(`(?s)<bash-(stdout|stderr)>(.*?)</bash-(?:stdout|stderr)>`)
 	imageRef    = regexp.MustCompile(`\[Image #\d+\]`)
 )
 
@@ -389,6 +393,8 @@ func (c *Claude) userText(id, s string, imgs []*pb.AgentImage, ms int64) []*pb.A
 			return nil
 		}
 		return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_NOTE, TimeUnixMs: ms, Text: strings.TrimSpace(out)})
+	case strings.HasPrefix(t, "<bash-input>"), strings.HasPrefix(t, "<bash-stdout>"), strings.HasPrefix(t, "<bash-stderr>"):
+		return c.bangCommand(id, t, ms)
 	case strings.HasPrefix(t, "<task-notification>"):
 		// A background task (a subagent, a command) reporting back: Claude
 		// Code sends it as a user message, but you didn't write it.
@@ -412,6 +418,49 @@ var (
 	taskStatus  = regexp.MustCompile(`(?s)<status>(.*?)</status>`)
 	taskResult  = regexp.MustCompile(`(?s)<result>(.*?)</result>`)
 )
+
+// bangCommand is a "!" command you ran at Claude Code's prompt (bash
+// mode): it records the command as one user line, <bash-input>, and what it
+// printed as the next, <bash-stdout> and <bash-stderr>. Shown as the Bash
+// tool it is, "Ran `cmd`", with that output under it: not a message you
+// wrote, nor (the output) one from Claude.
+func (c *Claude) bangCommand(id, t string, ms int64) []*pb.AgentBlock {
+	var out []*pb.AgentBlock
+	if m := bashInput.FindStringSubmatch(t); m != nil {
+		cmd := strings.TrimSpace(m[1])
+		c.bang, c.turn = id, id
+		out = c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_TOOL, Tool: "Bash", TimeUnixMs: ms, Input: cmd,
+			Title: "Ran `" + firstLine(cmd) + "`", Pending: true, TurnId: id})
+	}
+	streams := bashStream.FindAllStringSubmatch(t, -1)
+	i, ok := c.byID[c.bang]
+	if len(streams) == 0 || !ok || c.bang == "" {
+		return out
+	}
+	var text []string
+	stdout, stderr := false, false
+	for _, m := range streams {
+		s := strings.TrimRight(stripANSI(m[2]), "\n")
+		if strings.TrimSpace(s) == "" || s == "(Bash completed with no output)" {
+			continue
+		}
+		text = append(text, s)
+		if m[1] == "stdout" {
+			stdout = true
+		} else {
+			stderr = true
+		}
+	}
+	b := cloneBlock(c.blocks[i])
+	b.Pending = false
+	// Claude Code doesn't record the exit status: only errors printed, and
+	// nothing else, reads as a failure.
+	b.Error = stderr && !stdout
+	b.Output = clip(strings.Join(text, "\n"), maxOutput)
+	c.bang = ""
+	// With the command in the same line, this replaces its pending block.
+	return c.add(b)
+}
 
 // taskNotification: a note saying which task finished, with what it
 // reported tucked under it.

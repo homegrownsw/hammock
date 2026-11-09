@@ -502,3 +502,37 @@ func TestPreviewQuestion(t *testing.T) {
 		t.Error("notes typed into a prompt without them")
 	}
 }
+
+// A "!" command typed at Claude Code's prompt: the command and its output
+// are user lines, shown as the Bash tool it ran, not as messages.
+func TestClaudeBangCommandIsATool(t *testing.T) {
+	c := NewClaude("/tmp")
+	feed := func(uuid, parent, content string) {
+		line, _ := json.Marshal(map[string]any{"type": "user", "uuid": uuid, "parentUuid": parent, "timestamp": "2026-11-09T12:00:00Z",
+			"message": map[string]any{"role": "user", "content": content}})
+		c.Feed(line)
+	}
+	feed("i1", "p0", "<bash-input>git status</bash-input>")
+	if bs := c.Blocks(); len(bs) != 1 || bs[0].Kind != pb.AgentBlock_KIND_TOOL || bs[0].Title != "Ran `git status`" || !bs[0].Pending {
+		t.Fatalf("input: %v", bs)
+	}
+	feed("o1", "i1", "<bash-stdout>On branch main\n\nnothing to commit</bash-stdout><bash-stderr></bash-stderr>")
+	bs := c.Blocks()
+	if len(bs) != 1 || bs[0].Pending || bs[0].Error || bs[0].Output != "On branch main\n\nnothing to commit" {
+		t.Fatalf("output: %v", bs)
+	}
+
+	feed("i2", "o1", "<bash-input>sleep</bash-input>")
+	feed("o2", "i2", "<bash-stdout></bash-stdout><bash-stderr>usage: sleep number[unit] [...]\n</bash-stderr>")
+	feed("i3", "o2", "<bash-input>true</bash-input>")
+	feed("o3", "i3", "<bash-stdout>(Bash completed with no output)</bash-stdout><bash-stderr></bash-stderr>")
+	bs = c.Blocks()
+	if len(bs) != 3 || !bs[1].Error || bs[1].Output != "usage: sleep number[unit] [...]" || bs[2].Error || bs[2].Output != "" || bs[2].Pending {
+		t.Fatalf("blocks: %v", bs)
+	}
+	for _, b := range bs {
+		if b.Kind == pb.AgentBlock_KIND_USER || b.Kind == pb.AgentBlock_KIND_TEXT {
+			t.Fatalf("a message: %v", b)
+		}
+	}
+}

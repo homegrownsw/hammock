@@ -2,6 +2,7 @@ package agentview
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -77,5 +78,25 @@ func TestCodexBlocks(t *testing.T) {
 	c2.Feed([]byte(`{"timestamp":"2026-11-01T08:00:10Z","type":"turn_context","payload":{"model":"gpt-6-luna","cwd":"/work"}}`))
 	if m, tok, win := c2.Context(); m != "gpt-6-luna" || tok != 51234 || win != 258400 {
 		t.Fatalf("context: %s %d %d", m, tok, win)
+	}
+}
+
+// A "!" command typed at Codex's prompt, recorded once it's done as a user
+// message: shown as the command it ran, not dropped as injected context.
+func TestCodexUserShellCommand(t *testing.T) {
+	c := NewCodex("/tmp")
+	rec := func(text string) []byte {
+		b, _ := json.Marshal(map[string]any{"timestamp": "2026-11-09T12:00:00Z", "type": "response_item",
+			"payload": map[string]any{"type": "message", "role": "user", "content": []map[string]any{{"type": "input_text", "text": text}}}})
+		return b
+	}
+	c.Feed(rec("<user_shell_command>\n<command>\nls -1\n</command>\n<result>\nExit code: 0\nDuration: 0.0123 seconds\nOutput:\na.txt\nb.txt\n</result>\n</user_shell_command>"))
+	c.Feed(rec("<user_shell_command>\n<command>\nfalse\n</command>\n<result>\nExit code: 1\nDuration: 0.0010 seconds\nOutput:\n\n</result>\n</user_shell_command>"))
+	bs := c.Blocks()
+	if len(bs) != 2 || bs[0].Kind != pb.AgentBlock_KIND_TOOL || bs[0].Title != "Ran `ls -1`" || bs[0].Output != "a.txt\nb.txt" || bs[0].Error || bs[0].Pending {
+		t.Fatalf("blocks %v", bs)
+	}
+	if !bs[1].Error || bs[1].Title != "Ran `false`" {
+		t.Fatalf("failed command %v", bs[1])
 	}
 }

@@ -2223,6 +2223,8 @@ struct Composer: View {
     let session: AgentSession
     /// claude or codex, for its model switcher.
     var harness = "claude"
+    /// Typed already (ComposerSample), in place of the saved draft.
+    var initialText: String?
     @State private var text = ""
     /// Where the cursor is in it, for completing the "/command" there.
     @State private var selection: TextSelection?
@@ -2288,6 +2290,12 @@ struct Composer: View {
         !awaitingClear && !session.draft.isEmpty && text != tookDraft && !text.contains(session.draft)
     }
 
+    /// A message starting with "!" runs as a shell command in agents that
+    /// have a shell mode (Claude Code's bash mode): the box says so, as
+    /// Claude Code's own prompt does, in its colour.
+    private var shellCommand: Bool { text.hasPrefix("!") && AgentCatalog.hasShellMode(harness) }
+    private static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
+
     private var canSend: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty }
     /// While the agent works and nothing's typed, the round button stops it.
     private var stops: Bool { session.working && text.isEmpty && attachments.isEmpty }
@@ -2344,9 +2352,18 @@ struct Composer: View {
             // One box, as Claude's and ChatGPT's: the message the full width,
             // and under it a row of controls (attach, what's attached, send).
             VStack(alignment: .leading, spacing: 2) {
+                if shellCommand {
+                    Label("Shell command · \(session.agentName) sees its output", systemImage: "apple.terminal")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Self.shellTint)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, -6)
+                        .transition(.opacity)
+                }
                 TextField("Message \(session.agentName)…", text: $text, selection: $selection, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(fonts.body())
+                    .font(shellCommand ? fonts.code() : fonts.body())
                     .lineLimit(1...10)
                     .focused($focused)
                     .onSubmit(send)
@@ -2426,11 +2443,11 @@ struct Composer: View {
                     .buttonBorderShape(.circle)
                     // Your messages' colour, deep enough for its white glyph;
                     // stopping too (its icon says so).
-                    .tint(bubble)
+                    .tint(shellCommand && !stops ? Self.shellTint : bubble)
                     .foregroundStyle(.white)
                     .disabled(!stops && !canSend)
                     .keyboardShortcut(.return, modifiers: .command)
-                    .help(stops ? "Interrupt (Esc)" : "Send (⌘↩)")
+                    .help(stops ? "Interrupt (Esc)" : shellCommand ? "Run (⌘↩)" : "Send (⌘↩)")
                     .animation(.snappy(duration: 0.2), value: stops)
                 }
                 .padding(.horizontal, 8)
@@ -2439,6 +2456,13 @@ struct Composer: View {
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .onTapGesture { focused = true }
             .agentGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Self.shellTint, lineWidth: 1.5)
+                    .opacity(shellCommand ? 1 : 0)
+                    .allowsHitTesting(false)
+            }
+            .animation(.snappy(duration: 0.2), value: shellCommand)
         }
         .animation(.snappy(duration: 0.25), value: suggestions)
         .animation(.snappy(duration: 0.25), value: showsTerminalDraft)
@@ -2498,7 +2522,7 @@ struct Composer: View {
             for d in items where PlatformImage(data: d) != nil { attachments.append(("dropped-\(attachments.count + 1).png", d)) }
             return true
         }
-        .onAppear { if text.isEmpty { replaceText(UserDefaults.standard.string(forKey: draftKey) ?? "") } }
+        .onAppear { if text.isEmpty { replaceText(initialText ?? UserDefaults.standard.string(forKey: draftKey) ?? "") } }
         #if os(iOS)
         // A new chat (a Claude tab just started): straight to typing, without
         // a tap on the box first. Once it's arrived, not while it loads.
@@ -2992,6 +3016,42 @@ struct AttachmentThumb: View {
 /// DebugSnapshot): a Swift block (not wrapped), a text block (wrapped), and a
 /// Markdown file in four backticks, holding a fenced block of its own, shown
 /// as source and rendered.
+/// Debug: a "!" command as the agent view shows it, run and failed, over
+/// the composer with one being typed (HMK_DEBUG_COMPOSER=<text>,
+/// DebugSnapshot), no daemon.
+public struct ComposerSample: View {
+    let session: AgentSession
+    let text: String
+
+    public init(model: AppModel, text: String) {
+        session = AgentSession(paneID: "pn_debug", model: model)
+        self.text = text
+        var v = Hammock_V1_AgentView()
+        v.replace = true
+        v.blocks = [
+            .with { $0.id = "u1"; $0.kind = .user; $0.text = "What changed on this branch?"; $0.turnID = "u1" },
+            .with { $0.id = "b1"; $0.kind = .tool; $0.tool = "Bash"; $0.title = "Ran `git status --short`"; $0.input = "git status --short"
+                $0.output = " M internal/agentview/claude.go\n M internal/agentview/codex.go\n?? notes.txt"; $0.turnID = "b1" },
+            .with { $0.id = "b2"; $0.kind = .tool; $0.tool = "Bash"; $0.title = "Ran `sleep`"; $0.input = "sleep"
+                $0.output = "usage: sleep number[unit] [...]"; $0.error = true; $0.turnID = "b2" },
+        ]
+        session.apply(v)
+        session.setOpen("b1", true)
+        session.setOpen("b2", true)
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(session.blocks, id: \.id) { b in
+                if b.kind == .tool { ToolRow(block: b, session: session) } else { UserBubble(text: b.text, images: [], session: session).frame(maxWidth: .infinity, alignment: .trailing) }
+            }
+            Spacer(minLength: 0)
+            Composer(session: session, harness: "claude", initialText: text)
+        }
+        .padding(16)
+    }
+}
+
 public struct CodeBlockSample: View {
     static let markdown = """
     # Release plan

@@ -117,6 +117,16 @@ enum DebugSnapshot {
                 render(CodeBlockSample(), size: NSSize(width: 560, height: 1300), to: "\(prefix)-code")
             }
         }
+        // HMK_DEBUG_COMPOSER=<text>: "!" commands as the agent view shows
+        // them, over the composer with <text> typed (ComposerSample: start it
+        // with "!" for a shell command), to <prefix>-composer-<light|dark>.png.
+        if let typed = env["HMK_DEBUG_COMPOSER"], let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                guard let model = AppModelRegistry.shared else { return }
+                render(ComposerSample(model: model, text: typed), size: NSSize(width: 560, height: 420), to: "\(prefix)-composer")
+            }
+        }
         // HMK_DEBUG_COMPUTER_LOOK=symbols|emoji[:search]: the icon and colour
         // picker for this computer (the first linked one, if any), on that
         // tab, rendered to <prefix>-look-<light|dark>.png.

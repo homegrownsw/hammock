@@ -34,6 +34,8 @@ public final class AgentCatalog {
     public static func hasAgentView(_ id: String) -> Bool { kind(id)?.agentView ?? false }
     /// Whether a conversation in this agent can continue in another.
     public static func canSwitch(_ id: String) -> Bool { kind(id)?.canSwitch ?? false }
+    /// Whether a message starting with "!" runs as a shell command in it.
+    public static func hasShellMode(_ id: String) -> Bool { kind(id)?.shellMode ?? false }
 
     /// Agents a conversation can continue in, as the "Continue in…" menus
     /// list them: Claude last, where those menus have always had it.
@@ -82,6 +84,7 @@ public final class AgentCatalog {
                 $0.liveUsage = id == "claude"
                 $0.hooks = true
                 $0.sessions = true
+                $0.shellMode = true
             }
         }
     }
