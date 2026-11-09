@@ -7,8 +7,8 @@
 // decrypts it. The relay sees device tokens and opaque bytes, nothing else.
 //
 // Routes (JSON in and out):
-//   POST /register   {token, sandbox}       → {id, secret} (replacing any
-//                                             earlier id for that token)
+//   POST /register   {token, sandbox, id?, secret?} → {id, secret} (the
+//                    same id, given its secret: a phone's new token)
 //   POST /unregister {id, secret}           → {}
 //   POST /send       {id, payload, thread?, collapse?, category?} → {}
 //
@@ -92,20 +92,29 @@ export function clientKey(ip) {
   return 'v6:' + groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16)).join(':') + '::/64'
 }
 
-async function register({ token, sandbox }, env, client) {
+async function register({ token, sandbox, id, secret }, env, client) {
   if (typeof token !== 'string' || !/^[0-9a-f]{64,200}$/i.test(token)) return json({ error: 'bad token' }, 400)
   // A phone registers once per token, so a few a minute from one address is
   // plenty: no one can fill the table from a script.
   if (env.REGISTERS && !(await env.REGISTERS.limit({ key: client })).success) return json({ error: 'slow down' }, 429)
-  const id = randomHex(16)
-  const secret = randomHex(24)
-  // One row per device token: registering again (a reinstalled app)
-  // replaces the earlier id instead of adding another.
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM devices WHERE token = ?').bind(token),
-    env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used) VALUES (?, ?, ?, ?, ?)').bind(id, token, sandbox ? 1 : 0, await sha256(secret), sqlTime(Date.now())),
-  ])
-  return json({ id, secret })
+  // A phone that has an id already (a new token, or reinstalled) keeps it,
+  // proving it's that phone with the id's secret.
+  if (validID(id) && typeof secret === 'string') {
+    const dev = await device(env, id)
+    if (dev && dev.secret === (await sha256(secret))) {
+      await env.DB.prepare('UPDATE devices SET token = ?, sandbox = ?, last_used = ? WHERE id = ?').bind(token, sandbox ? 1 : 0, sqlTime(Date.now()), id).run()
+      return json({ id, secret })
+    }
+  }
+  // Otherwise a new id. Any earlier one for the same token stays: only its
+  // secret could replace it (whoever learnt a phone's token mustn't be able
+  // to cut it off), and if nothing sends to it, it's forgotten in 60 days.
+  const newID = randomHex(16)
+  const newSecret = randomHex(24)
+  await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used) VALUES (?, ?, ?, ?, ?)')
+    .bind(newID, token, sandbox ? 1 : 0, await sha256(newSecret), sqlTime(Date.now()))
+    .run()
+  return json({ id: newID, secret: newSecret })
 }
 
 async function unregister({ id, secret }, env) {

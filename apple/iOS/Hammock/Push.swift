@@ -1,5 +1,6 @@
 import HammockKit
 import Foundation
+import Security
 import UIKit
 import UserNotifications
 
@@ -36,7 +37,7 @@ final class Push: NSObject {
     static func prefKey(_ event: String) -> String { "push." + event }
 
     private var token: String? { UserDefaults.standard.string(forKey: "push.token") }
-    private var relayID: String? { UserDefaults.standard.string(forKey: "push.relayID") }
+    private var relayID: String? { RelayCredentials.load()?.id }
 
     func start() {
         guard !relayURL.isEmpty else { status = "Not set up in this build"; return }
@@ -55,12 +56,21 @@ final class Push: NSObject {
     func gotToken(_ data: Data) {
         let hex = data.map { String(format: "%02x", $0) }.joined()
         Task {
-            if hex != token || relayID == nil {
+            let had = RelayCredentials.load()
+            if hex != token || had == nil {
                 do {
-                    let r: [String: String] = try await relay("register", ["token": hex, "sandbox": Self.sandbox])
+                    // With the id it has, given its secret, it keeps that id
+                    // (a new token, or the app reinstalled).
+                    var body: [String: Any] = ["token": hex, "sandbox": Self.sandbox]
+                    if let had { body["id"] = had.id; body["secret"] = had.secret }
+                    let r: [String: String] = try await relay("register", body)
+                    guard let id = r["id"], let secret = r["secret"] else { throw URLError(.badServerResponse) }
+                    RelayCredentials.save(.init(id: id, secret: secret))
                     UserDefaults.standard.set(hex, forKey: "push.token")
-                    UserDefaults.standard.set(r["id"], forKey: "push.relayID")
-                    UserDefaults.standard.set(r["secret"], forKey: "push.relaySecret")
+                    // Where they were kept before: in backups, so another
+                    // phone restored from one could take this one's id over.
+                    UserDefaults.standard.removeObject(forKey: "push.relayID")
+                    UserDefaults.standard.removeObject(forKey: "push.relaySecret")
                 } catch {
                     status = "Couldn't reach the push relay"
                     return
@@ -209,6 +219,38 @@ extension Push {
             model.denyHammockKey(r)
         }
         try? await Task.sleep(for: .milliseconds(500)) // let the answer go out
+    }
+}
+
+/// This phone's relay id and the secret that proves it, in the Keychain for
+/// this device only: kept through a reinstall (so it keeps its id), never
+/// restored onto another phone from a backup (which would take this one's
+/// id, and its notifications, over).
+private enum RelayCredentials {
+    struct Value: Codable { var id: String; var secret: String }
+
+    private static let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "com.homegrownsw.hammock.push",
+        kSecAttrAccount as String: "relay",
+    ]
+
+    static func load() -> Value? {
+        var q = query
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+        return try? JSONDecoder().decode(Value.self, from: data)
+    }
+
+    static func save(_ v: Value) {
+        guard let data = try? JSONEncoder().encode(v) else { return }
+        SecItemDelete(query as CFDictionary)
+        var q = query
+        q[kSecValueData as String] = data
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(q as CFDictionary, nil)
     }
 }
 

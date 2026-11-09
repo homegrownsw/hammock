@@ -31,9 +31,11 @@ the phone's notification extension decrypts them. See ADR-0007.
 
 ## Routes
 
-- `POST /register {token, sandbox}` → `{id, secret}`: a phone registering
-  (again: its earlier id for that token is dropped), 10 a minute per
-  client address.
+- `POST /register {token, sandbox, id?, secret?}` → `{id, secret}`: a phone
+  registering, 10 a minute per client address. With the `id` and `secret`
+  it had (a new token, or the app reinstalled), it keeps that id; without,
+  it gets a new one, and an earlier id for the same token stays (whoever
+  learnt a phone's token can't cut it off) until it goes unused.
 - `POST /unregister {id, secret}`
 - `POST /send {id, payload, thread?, collapse?, category?}`: a Mac sending
   (ciphertext in `payload`), about 60 a minute per phone at most.

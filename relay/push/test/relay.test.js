@@ -20,6 +20,7 @@ function fakeD1() {
               if (sql === 'DELETE FROM devices WHERE token = ?') for (const [id, r] of rows) if (r.token === a[0]) rows.delete(id)
               if (sql === 'DELETE FROM devices WHERE last_used < ?') for (const [id, r] of rows) if (r.last_used < a[0]) rows.delete(id)
               if (sql === 'UPDATE devices SET last_used = ? WHERE id = ?' && rows.has(a[1])) rows.get(a[1]).last_used = a[0]
+              if (sql.startsWith('UPDATE devices SET token') && rows.has(a[3])) Object.assign(rows.get(a[3]), { token: a[0], sandbox: a[1], last_used: a[2] })
             },
             first: async () => (db.queries++, rows.get(a[0]) ?? null),
           }
@@ -104,17 +105,32 @@ test('sends are rate limited', async () => {
   assert.equal(last.status, 429)
 })
 
-test('registering a token again replaces its earlier id', async () => {
+test('a phone keeps its id with its secret; nobody else can take it', async () => {
+  resetJWT()
   const { env } = await testEnv()
   const token = '12'.repeat(32)
   const first = await (await worker.fetch(post('/register', { token }), env)).json()
-  const other = await (await worker.fetch(post('/register', { token: '34'.repeat(32) }), env)).json()
-  const again = await (await worker.fetch(post('/register', { token }), env)).json()
-  assert.notEqual(again.id, first.id)
-  assert.deepEqual([...env.DB.rows.keys()].sort(), [other.id, again.id].sort())
-  globalThis.fetch = async () => new Response(null, { status: 200 })
-  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 404)
-  assert.equal((await worker.fetch(post('/send', { id: again.id, payload: 'eA==' }), env)).status, 200)
+  // Someone who learnt the token registers it: a new id, the phone's stays.
+  const other = await (await worker.fetch(post('/register', { token }), env)).json()
+  assert.notEqual(other.id, first.id)
+  assert.ok(env.DB.rows.has(first.id))
+  // Nor can they move the phone's id to their own token without its secret.
+  const stolen = await (await worker.fetch(post('/register', { token: '99'.repeat(32), id: first.id, secret: 'guess' }), env)).json()
+  assert.notEqual(stolen.id, first.id)
+  assert.equal(env.DB.rows.get(first.id).token, token)
+  // The phone, with a new token, keeps its id.
+  const token2 = '34'.repeat(32)
+  const again = await (await worker.fetch(post('/register', { token: token2, sandbox: true, id: first.id, secret: first.secret }), env)).json()
+  assert.deepEqual(again, first)
+  assert.equal(env.DB.rows.get(first.id).token, token2)
+  const sent = []
+  globalThis.fetch = async (url) => (sent.push(url), new Response(null, { status: 200 }))
+  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 200)
+  assert.equal(sent[0], 'https://api.sandbox.push.apple.com/3/device/' + token2)
+  // An id that's gone: a new one.
+  env.DB.rows.delete(first.id)
+  const fresh = await (await worker.fetch(post('/register', { token: token2, id: first.id, secret: first.secret }), env)).json()
+  assert.notEqual(fresh.id, first.id)
 })
 
 test('registrations are rate limited per address', async () => {
