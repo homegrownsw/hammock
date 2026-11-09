@@ -150,7 +150,7 @@ struct AttentionCard: View {
     private var pane: Pane? { model.panes[item.paneID] }
     /// The schedule this is a run of.
     private var schedule: Schedule? { pane.flatMap { model.schedule(for: $0) } }
-    private var tabName: String { pane.flatMap { model.tab(of: $0) }.map { model.title(of: $0) } ?? "Pane" }
+    private var tabName: String { pane.flatMap { model.tab(of: $0) }.map { model.title(of: $0) } ?? (item.paneID.isEmpty ? "Hammock" : "Pane") }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

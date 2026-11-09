@@ -138,6 +138,9 @@ func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summa
 		summary = "changed what " + detail + " can do in " + d.groupLabel(target)
 	case "member-removed":
 		summary = "removed " + detail + " from " + d.groupLabel(target)
+	case "config-loosened":
+		// A security setting loosened by an edit to the config file (configwatch.go).
+		who, summary, kind = "Config file", detail, "security"
 	case "sharing-stopped":
 		summary = "stopped sharing " + d.groupLabel(target)
 	case "left":

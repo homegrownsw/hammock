@@ -1270,6 +1270,15 @@ public final class AppModel {
         conn?.send { $0.clearAttention_p = .with { $0.id = id } }
     }
 
+    /// Tells the daemon these config keys were just written in Settings (each
+    /// with its lines' values; none: removed), so it doesn't take a security
+    /// setting you changed there for one changed behind your back.
+    public func noteConfigWritten(_ entries: [(key: String, values: [String])]) {
+        conn?.send { m in
+            m.configWritten = .with { $0.entries = entries.map { e in .with { $0.key = e.key; $0.values = e.values } } }
+        }
+    }
+
     /// Selects the tab containing pane and focuses it.
     public func reveal(paneID: String) {
         guard let p = panes[paneID] else { return }

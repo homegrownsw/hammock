@@ -571,6 +571,7 @@ func (d *Daemon) setRemoteNetworks(m *pb.SetRemoteNetworks) error {
 	if err := hammockconfig.SetRepeated("remote-network", nets); err != nil {
 		return err
 	}
+	d.cfgw.noteWritten("remote-network", nets, true) // asked for here: no warning (configwatch.go)
 	setExtra := func() error { return hammockconfig.SetRepeated("remote-address", extra) }
 	if len(extra) == 0 {
 		setExtra = func() error { return hammockconfig.Unset("remote-address") }

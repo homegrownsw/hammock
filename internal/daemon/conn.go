@@ -1310,6 +1310,18 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		defer d.mu.Unlock()
 		d.clearAttention(m.ClearAttention.Id)
 		return nil, nil
+
+	case *pb.ClientMessage_ConfigWritten:
+		// The Mac app, here (person-only: person.go); never a phone or
+		// another computer.
+		d.mu.Lock()
+		peer := c.peer
+		d.mu.Unlock()
+		if c.remote || peer != "" {
+			return nil, errors.New("only available on this Mac")
+		}
+		d.configWritten(m.ConfigWritten)
+		return nil, nil
 	}
 	return nil, errors.New("unsupported message")
 }
@@ -1490,7 +1502,7 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_ShowPairing, *pb.ClientMessage_ListDevices, *pb.ClientMessage_RevokeDevice, *pb.ClientMessage_SetRemoteAccess, *pb.ClientMessage_SetRemoteNetworks,
 		*pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_ListAudit, *pb.ClientMessage_BrowserCall, *pb.ClientMessage_BrowserLogs,
 		*pb.ClientMessage_ServerStatus, *pb.ClientMessage_EndScreenSession,
-		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup:
+		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup, *pb.ClientMessage_ConfigWritten:
 		return nil, errors.New("only available on this Mac"), true
 	case *pb.ClientMessage_CreateInvite, *pb.ClientMessage_RevokeInvite, *pb.ClientMessage_StopSharing,
 		*pb.ClientMessage_SetProfile, *pb.ClientMessage_JoinShared, *pb.ClientMessage_LeaveShared:

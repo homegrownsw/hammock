@@ -76,6 +76,7 @@ type Daemon struct {
 	closedTabs   []*closedTab    // Reopen Closed Tab (reopen.go)
 	usage        *pb.UsageLimits // agents' usage limits (usage.go)
 	theme        *pb.HostTheme   // this Mac's theme, for the iPhone (theme.go)
+	cfgw         configWatch     // security settings in the config file (configwatch.go; its own lock)
 	agentKinds   []*pb.AgentKind // the agents known, and installed here (agentkinds.go)
 	version      uint64
 	conns        map[*conn]struct{}
@@ -401,6 +402,7 @@ func (d *Daemon) Serve() error {
 	go d.watchGroupIcons()
 	go d.watchUsage()
 	go d.watchTheme()
+	go d.watchConfig()
 	go d.watchAgentKinds()
 	go d.runSchedules()
 	d.log.Info("listening", "socket", sock)

@@ -2155,6 +2155,15 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .listFiles(newValue)}
   }
 
+  /// local clients only: the Mac app wrote these settings (configwatch.go)
+  public var configWritten: Hammock_V1_ConfigWritten {
+    get {
+      if case .configWritten(let v)? = msg {return v}
+      return Hammock_V1_ConfigWritten()
+    }
+    set {msg = .configWritten(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2335,6 +2344,8 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     case editorCommand(Hammock_V1_EditorCommand)
     case readEditor(Hammock_V1_ReadEditor)
     case listFiles(Hammock_V1_ListFiles)
+    /// local clients only: the Mac app wrote these settings (configwatch.go)
+    case configWritten(Hammock_V1_ConfigWritten)
 
   }
 
@@ -8751,6 +8762,37 @@ public nonisolated struct Hammock_V1_ShowOutput: Sendable {
   public init() {}
 }
 
+/// The Mac app wrote these keys to the config file (Settings), as you asked
+/// it to: the daemon warns you about a security setting loosened in the file
+/// (screen sharing turned on, …) only when nobody here said so. Only from
+/// the app (a person-only message); no reply.
+public nonisolated struct Hammock_V1_ConfigWritten: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var entries: [Hammock_V1_ConfigEntry] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_ConfigEntry: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var key: String = String()
+
+  /// its lines' values, in order; none: removed
+  public var values: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hammock.v1"
@@ -10252,7 +10294,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -11730,6 +11772,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .listFiles(v)
         }
       }()
+      case 125: try {
+        var v: Hammock_V1_ConfigWritten?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .configWritten(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .configWritten(v)
+        }
+      }()
       default: break
       }
     }
@@ -12195,6 +12250,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .listFiles?: try {
       guard case .listFiles(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 124)
+    }()
+    case .configWritten?: try {
+      guard case .configWritten(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 125)
     }()
     case nil: break
     }
@@ -23366,6 +23425,71 @@ nonisolated extension Hammock_V1_ShowOutput: SwiftProtobuf.Message, SwiftProtobu
     if lhs.target != rhs.target {return false}
     if lhs.paneID != rhs.paneID {return false}
     if lhs.intoPaneID != rhs.intoPaneID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ConfigWritten: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ConfigWritten"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}entries\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.entries) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.entries.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.entries, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ConfigWritten, rhs: Hammock_V1_ConfigWritten) -> Bool {
+    if lhs.entries != rhs.entries {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ConfigEntry: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ConfigEntry"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}key\0\u{1}values\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.key) }()
+      case 2: try { try decoder.decodeRepeatedStringField(value: &self.values) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.key.isEmpty {
+      try visitor.visitSingularStringField(value: self.key, fieldNumber: 1)
+    }
+    if !self.values.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.values, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ConfigEntry, rhs: Hammock_V1_ConfigEntry) -> Bool {
+    if lhs.key != rhs.key {return false}
+    if lhs.values != rhs.values {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

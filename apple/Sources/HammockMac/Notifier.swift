@@ -123,7 +123,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         // The tab as the sidebar names it ("Tab 2" when unnamed), in its Group.
         let tab = pane.flatMap { model.tab(of: $0) }
-        content.title = tab.map { model.title(of: $0) } ?? "Agent"
+        content.title = tab.map { model.title(of: $0) } ?? (item.paneID.isEmpty ? "Hammock" : "Agent") // (none: Hammock's own)
         if let s = pane.flatMap({ model.schedule(for: $0) }) {
             content.subtitle = "Scheduled · \(s.name)"
         } else if let group = tab.flatMap({ model.group(of: $0) }) {

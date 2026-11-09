@@ -505,6 +505,7 @@ message ClientMessage {
     EditorCommand editor_command = 122;
     ReadEditor read_editor = 123;
     ListFiles list_files = 124;
+    ConfigWritten config_written = 125;  // local clients only: the Mac app wrote these settings (configwatch.go)
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -2331,4 +2332,16 @@ message ShowOutput {
   string target = 1;              // an absolute path or a URL
   string pane_id = 2;             // beside this pane (the CLI's: its own; empty from an agent's MCP: its pane)
   string into_pane_id = 3;        // in this browser pane instead (hmk show --pane)
+}
+
+// The Mac app wrote these keys to the config file (Settings), as you asked
+// it to: the daemon warns you about a security setting loosened in the file
+// (screen sharing turned on, …) only when nobody here said so. Only from
+// the app (a person-only message); no reply.
+message ConfigWritten {
+  repeated ConfigEntry entries = 1;
+}
+message ConfigEntry {
+  string key = 1;
+  repeated string values = 2;  // its lines' values, in order; none: removed
 }

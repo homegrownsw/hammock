@@ -643,8 +643,18 @@ final class AppConfig {
         for (key, values) in changes { Self.replace(key, values, in: &lines) }
         // Through a symlink (dotfiles), so it stays one.
         try? lines.joined(separator: "\n").write(to: fileURL.resolvingSymlinksInPath(), atomically: true, encoding: .utf8)
+        // The daemon warns about security settings loosened in the file by
+        // anything else (configwatch.go): these were you, in Settings.
+        let security = changes.filter { Self.securityKeys.contains($0.0) }
+        if !security.isEmpty { AppModelRegistry.shared?.noteConfigWritten(security.map { (key: $0.0, values: $0.1) }) }
         load()
     }
+
+    /// The keys the daemon watches for being loosened behind your back.
+    private static let securityKeys: Set<String> = [
+        "screen-sharing", "remote-network", "ssh-upstream-agent", "ssh-agent-forwarding",
+        "browser-open-schemes", "clipboard-paste-protection",
+    ]
 
     private static func replace(_ key: String, _ values: [String], in lines: inout [String]) {
         let isKey: (String) -> Bool = { line in
