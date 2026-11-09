@@ -70,12 +70,15 @@ extension Pref {
 
 /// The pane's CodeMirror page and its messages both ways.
 @MainActor
-public final class EditorBridge: NSObject, WKScriptMessageHandler {
+public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     public let webView: WKWebView
     public let session: EditorSession
     private var ready = false
     private var config: EditorConfig?
     private var info: [String: Any] = [:]
+    /// The bundled editor.html: the one page this web view may show, and
+    /// the only one whose messages (which can change the file) count.
+    private var page: URL?
     /// The page's languages (for a picker), once asked.
     public private(set) var languageNames: [String] = []
     /// The editor took focus (the app makes its pane the focused one).
@@ -90,6 +93,7 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler {
         webView = makeWebView(conf)
         super.init()
         ucc.add(WeakHandler(self), name: "hammock")
+        webView.navigationDelegate = self
         #if os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
         #else
@@ -104,6 +108,7 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler {
             #endif
         }
         if let url = Bundle.main.url(forResource: "editor", withExtension: "html") {
+            page = url
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         } else {
             session.error = "The editor is missing from this build (editor.html)"
@@ -111,6 +116,8 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler {
     }
 
     public func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
+        // Only the editor page itself, not a frame or a page it navigated to.
+        guard message.frameInfo.isMainFrame, let page, Self.isPage(message.frameInfo.request.url, page) else { return }
         guard let m = message.body as? [String: Any], let type = m["type"] as? String else { return }
         switch type {
         case "ready":
@@ -139,6 +146,36 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler {
         default:
             break
         }
+    }
+
+    // MARK: Navigation
+
+    /// The web view shows editor.html and nothing else: a web link (should
+    /// the page ever have one) opens in the browser, anything else is
+    /// cancelled. The page's messages can write the file, so no other page
+    /// may get to send them.
+    public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                        decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
+        let url = action.request.url
+        if let page, Self.isPage(url, page) || url?.absoluteString == "about:blank" {
+            decisionHandler(.allow)
+            return
+        }
+        if action.navigationType == .linkActivated, let url, ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            #if os(macOS)
+            NSWorkspace.shared.open(url)
+            #else
+            UIApplication.shared.open(url)
+            #endif
+        }
+        DevLog.editor("editor page: blocked navigating to \(url?.absoluteString ?? "nothing")")
+        decisionHandler(.cancel)
+    }
+
+    /// Whether url is the editor page (its own anchors included).
+    nonisolated static func isPage(_ url: URL?, _ page: URL) -> Bool {
+        guard let url, url.isFileURL, page.isFileURL else { return false }
+        return url.standardizedFileURL.path == page.standardizedFileURL.path
     }
 
     public func configure(_ c: EditorConfig) {
