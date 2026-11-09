@@ -195,3 +195,38 @@ test('sends keep a device; unused ones are forgotten', async () => {
   await forgetUnused(env, Date.now() + 61 * 24 * 60 * 60 * 1000)
   assert.equal(env.DB.rows.size, 0)
 })
+
+test('errors say nothing of APNs or the worker', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const reg = await (await worker.fetch(post('/register', { token: '9a'.repeat(32) }), env)).json()
+  const logged = []
+  const oldError = console.error
+  console.error = (...a) => logged.push(a.join(' '))
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ reason: 'TooManyProviderTokenUpdates' }), { status: 429 })
+    let r = await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)
+    assert.equal(r.status, 502)
+    assert.deepEqual(await r.json(), { error: 'refused' })
+    // A 400 that isn't about the token: refused, and the phone is kept.
+    globalThis.fetch = async () => new Response(JSON.stringify({ reason: 'BadCollapseId' }), { status: 400 })
+    assert.equal((await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)).status, 502)
+    assert.ok(env.DB.rows.has(reg.id))
+    globalThis.fetch = async () => new Response(JSON.stringify({ reason: 'BadDeviceToken' }), { status: 400 })
+    r = await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)
+    assert.equal(r.status, 410)
+    assert.deepEqual(await r.json(), { error: 'gone' })
+    assert.ok(!env.DB.rows.has(reg.id))
+    // An exception inside.
+    env.DB.prepare = () => {
+      throw new Error('D1_ERROR: secret table detail')
+    }
+    r = await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)
+    assert.equal(r.status, 500)
+    assert.deepEqual(await r.json(), { error: 'internal error' })
+    assert.ok(logged.some((l) => l.includes('secret table detail')))
+    assert.ok(logged.some((l) => l.includes('TooManyProviderTokenUpdates')))
+  } finally {
+    console.error = oldError
+  }
+})

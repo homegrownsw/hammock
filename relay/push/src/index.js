@@ -61,7 +61,9 @@ export default {
       }
       return json({ error: 'not found' }, 404)
     } catch (e) {
-      return json({ error: String(e.message || e) }, 500)
+      // Details in the worker's log (wrangler tail), not to whoever asked.
+      console.error('relay', url.pathname, e)
+      return json({ error: 'internal error' }, 500)
     }
   },
 
@@ -155,12 +157,19 @@ async function send({ id, payload, thread, collapse, category }, env) {
   if (collapse) headers['apns-collapse-id'] = String(collapse).slice(0, 64)
   const host = dev.sandbox ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com'
   const r = await fetch(`${host}/3/device/${dev.token}`, { method: 'POST', headers, body: JSON.stringify({ aps, e: payload }) })
-  if (r.status === 410 || r.status === 400) {
-    const reason = (await r.json().catch(() => ({}))).reason
+  if (!r.ok) {
+    // APNs' reason goes to the log, not the caller: 410 tells a Mac the
+    // phone's gone (it stops sending to it), anything else is a refusal.
+    const text = await r.text().catch(() => '')
+    let reason
+    try {
+      reason = JSON.parse(text).reason
+    } catch {}
+    console.error('apns', r.status, text.slice(0, 200))
     if (r.status === 410 || reason === 'BadDeviceToken') await forget(env, id) // the app was removed
-    return json({ error: reason || 'gone' }, 410)
+    if (r.status === 410 || reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic') return json({ error: 'gone' }, 410)
+    return json({ error: 'refused' }, 502)
   }
-  if (!r.ok) return json({ error: 'apns ' + r.status + ' ' + (await r.text()) }, 502)
   // Still in use: kept (written at most once a day).
   if (!(Date.parse(dev.lastUsed.replace(' ', 'T') + 'Z') > Date.now() - DAY)) {
     await env.DB.prepare('UPDATE devices SET last_used = ? WHERE id = ?').bind(sqlTime(Date.now()), id).run()
