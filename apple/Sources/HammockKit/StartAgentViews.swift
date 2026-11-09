@@ -69,7 +69,7 @@ public struct StartAgentView: View {
                         if model.hasLinkedComputers {
                             Picker("Computer", selection: $computerID) {
                                 ForEach(model.computers, id: \.userID) { c in
-                                    Label(c.thisComputer ? "This Mac" : c.name, systemImage: c.symbol)
+                                    Label(c.thisComputer ? thisMac : c.name, systemImage: c.symbol)
                                         .tag(c.thisComputer ? "" : c.userID)
                                         .selectionDisabled(!c.online)
                                 }
@@ -81,9 +81,14 @@ public struct StartAgentView: View {
                         }
                         Picker("Group", selection: $groupID) {
                             ForEach(usable) { g in
-                                Text(g.isRemote && !g.isOnLinkedComputer ? "\(model.title(of: g)) · \(model.hostLabel(of: g))" : model.title(of: g)).tag(g.id)
+                                Label {
+                                    Text(g.isRemote && !g.isOnLinkedComputer ? "\(model.title(of: g)) · \(model.hostLabel(of: g))" : model.title(of: g))
+                                } icon: {
+                                    model.groupMenuIcon(g)
+                                }
+                                .tag(g.id)
                             }
-                            Text(usable.isEmpty ? "A new Group" : "The folder's Group, or a new one").tag("")
+                            Label(usable.isEmpty ? "A new Group" : "The folder's Group, or a new one", systemImage: "folder.badge.plus").tag("")
                         }
                         .onChange(of: groupID) { cwdTouched = false } // its folder, as at first
                     }
@@ -175,7 +180,23 @@ public struct StartAgentView: View {
     private var hostName: String {
         if let g = group, g.isRemote { return model.hostLabel(of: g) }
         if let c = model.computer(computerID), !c.thisComputer { return c.name }
+        #if os(macOS)
         return "your Mac"
+        #else
+        return thisMac
+        #endif
+    }
+
+    /// The Mac the sheet's own daemon runs on: "This Mac" on the Mac
+    /// itself; by its name on the iPhone, which isn't that Mac.
+    private var thisMac: String {
+        #if os(macOS)
+        return "This Mac"
+        #else
+        let own = model.thisComputer?.name ?? ""
+        let name = own.isEmpty ? model.hostName.replacingOccurrences(of: ".local", with: "") : own
+        return name.isEmpty ? "your Mac" : name
+        #endif
     }
 
     private func tilde(_ p: String) -> String {
