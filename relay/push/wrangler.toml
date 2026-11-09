@@ -22,3 +22,13 @@ simple = { limit = 60, period = 60 }
 name = "REGISTERS"
 namespace_id = "1002"
 simple = { limit = 10, period = 60 }
+
+# 200 requests a minute per client address (an IPv6 /64), before anything else.
+[[ratelimits]]
+name = "REQUESTS"
+namespace_id = "1003"
+simple = { limit = 200, period = 60 }
+
+# Daily: forget devices nothing has sent to for 60 days.
+[triggers]
+crons = ["23 4 * * *"]

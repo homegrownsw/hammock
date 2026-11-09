@@ -14,12 +14,17 @@ the phone's notification extension decrypts them. See ADR-0007.
 
    ```sh
    npx wrangler d1 create hmk-push           # paste its id into wrangler.toml
-   npx wrangler d1 execute hmk-push --remote --file schema.sql
+   npx wrangler d1 migrations apply hmk-push --remote
    npx wrangler secret put APNS_KEY < AuthKey_XXXXXXXXXX.p8
    echo XXXXXXXXXX | npx wrangler secret put APNS_KEY_ID
    echo 2G974K78BH | npx wrangler secret put APNS_TEAM_ID
    npx wrangler deploy                         # prints https://hmk-push.<you>.workers.dev
    ```
+
+   The database's tables are in `migrations/`: after pulling a change that
+   adds one, run `npx wrangler d1 migrations apply hmk-push --remote` before
+   `npx wrangler deploy`. (A database set up before migrations, from the old
+   `schema.sql`, takes them too: the first only creates what's missing.)
 3. **The app.** Build the iOS app with the relay's URL:
    `HMK_PUSH_RELAY=https://hmk-push.<you>.workers.dev` as a build setting
    (`just ios-device` passes it through).
@@ -27,13 +32,41 @@ the phone's notification extension decrypts them. See ADR-0007.
 ## Routes
 
 - `POST /register {token, sandbox}` → `{id, secret}`: a phone registering
-  (again: its earlier id for that token is dropped), 10 a minute per IP.
+  (again: its earlier id for that token is dropped), 10 a minute per
+  client address.
 - `POST /unregister {id, secret}`
 - `POST /send {id, payload, thread?, collapse?, category?}`: a Mac sending
   (ciphertext in `payload`), about 60 a minute per phone at most.
 
+Any other path or method is turned away, as is a body over 4 KB. Every
+route counts towards 200 requests a minute per client address; an IPv6
+address counts by its /64, since one customer gets a whole /64.
+
+A daily cron trigger forgets devices nothing has sent to (or registered)
+for 60 days, so made-up registrations don't stay.
+
+## Costs, and abuse
+
 On Cloudflare's free plan a send costs one request and one D1 row read
-(100,000 requests and 5 million reads a day), so the relay handles about
-100,000 notifications a day; registrations are the only writes.
+(100,000 requests and 5 million reads a day), and a write at most once a
+day per device (to keep its last use), so the relay handles about 100,000
+notifications a day. The worker turns away whatever it can before touching
+the database (junk paths, big bodies, malformed ids, too many requests from
+one address or to one id), but **every request to a Worker counts**, even
+one it refuses at once, and its own limits are per address: many addresses
+together can still use up the free plan's daily requests and stop
+notifications for everyone until the next day.
+
+For production, also:
+
+- add a **Cloudflare WAF rate-limiting rule** on the relay's route (it
+  turns requests away before they reach the Worker, so they don't count),
+  for example 300 requests a minute per IP to `/send`, `/register` and
+  `/unregister`, and block every other path;
+- or move to the **Workers Paid plan**, which has no daily request cap.
+
+A stronger fix, not done yet: have the app prove itself to the relay with
+App Attest or DeviceCheck when it registers, so only genuine copies of
+Hammock can make ids.
 
 Tests: `npm test` (a fake D1, rate limiter and APNs).

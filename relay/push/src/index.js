@@ -14,28 +14,46 @@
 //
 // Secrets (wrangler secret put): APNS_KEY (the .p8 file's contents),
 // APNS_KEY_ID, APNS_TEAM_ID. Vars: APNS_TOPIC (the app's bundle id).
-// Bindings: DB (D1, schema.sql), SENDS (a rate limiter, per device),
-// REGISTERS (a rate limiter, per client IP).
+// Bindings: DB (D1, migrations/), REQUESTS (a rate limiter,
+// per client address), SENDS (per device), REGISTERS (per client address).
+// A daily cron trigger forgets devices nothing has sent to for 60 days.
 //
-// On the free plan a send is one request and one row read; only
-// registering and forgetting write.
+// On the free plan every request counts, so whatever can be turned away
+// is, before the database: other paths and methods, big bodies, too many
+// requests from one address (an IPv6 address counts by its /64, which one
+// customer holds), malformed ids and payloads, and too many sends to one
+// id. A send is then one row read (and a write at most once a day, keeping
+// the device's last use); only registering and forgetting write otherwise.
+// That doesn't stop a crowd of addresses: in production, put a Cloudflare
+// WAF rate-limiting rule in front too (README.md).
 
 const MAX_PAYLOAD = 3000 // base64 ciphertext; APNs allows 4 KB in all
+const MAX_BODY = 4096 // the payload and the rest of a send
+const ROUTES = new Set(['/register', '/unregister', '/send'])
+const DAY = 24 * 60 * 60 * 1000
+const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
+    if (!ROUTES.has(url.pathname)) return json({ error: 'not found' }, 404)
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405)
+    const client = clientKey(request.headers.get('cf-connecting-ip') || '')
+    if (env.REQUESTS && !(await env.REQUESTS.limit({ key: client })).success) return json({ error: 'slow down' }, 429)
+    if (Number(request.headers.get('content-length') || 0) > MAX_BODY) return json({ error: 'too big' }, 413)
     let body
     try {
-      body = await request.json()
+      const text = await request.text()
+      if (text.length > MAX_BODY) return json({ error: 'too big' }, 413)
+      body = JSON.parse(text)
     } catch {
       return json({ error: 'bad JSON' }, 400)
     }
+    if (!body || typeof body !== 'object') return json({ error: 'bad JSON' }, 400)
     try {
       switch (url.pathname) {
         case '/register':
-          return await register(body, env, request.headers.get('cf-connecting-ip') || '')
+          return await register(body, env, client)
         case '/unregister':
           return await unregister(body, env)
         case '/send':
@@ -46,25 +64,52 @@ export default {
       return json({ error: String(e.message || e) }, 500)
     }
   },
+
+  // The cron trigger (wrangler.toml): forget devices unused for 60 days,
+  // so made-up registrations don't pile up.
+  async scheduled(_event, env) {
+    await forgetUnused(env)
+  },
 }
 
-async function register({ token, sandbox }, env, ip) {
+export async function forgetUnused(env, now = Date.now()) {
+  await env.DB.prepare('DELETE FROM devices WHERE last_used < ?').bind(sqlTime(now - FORGET_AFTER)).run()
+}
+
+// What a client's requests are counted by: its address, or for IPv6 its
+// /64 (one customer's whole network: a single address would let anyone
+// with one go round the limit by changing it).
+export function clientKey(ip) {
+  ip = String(ip).trim().toLowerCase()
+  if (!ip.includes(':')) return 'ip:' + ip
+  const [head, tail] = ip.includes('::') ? ip.split('::', 2) : [ip, null]
+  const h = head ? head.split(':') : []
+  const t = tail ? tail.split(':') : []
+  // An IPv4 address in IPv6 form (::ffff:192.0.2.1): that address.
+  const last = (t.length ? t : h).at(-1) || ''
+  if (last.includes('.')) return 'ip:' + last
+  const groups = [...h, ...(tail === null ? [] : Array(Math.max(0, 8 - h.length - t.length)).fill('0')), ...t]
+  return 'v6:' + groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16)).join(':') + '::/64'
+}
+
+async function register({ token, sandbox }, env, client) {
   if (typeof token !== 'string' || !/^[0-9a-f]{64,200}$/i.test(token)) return json({ error: 'bad token' }, 400)
   // A phone registers once per token, so a few a minute from one address is
   // plenty: no one can fill the table from a script.
-  if (env.REGISTERS && !(await env.REGISTERS.limit({ key: 'ip:' + ip })).success) return json({ error: 'slow down' }, 429)
+  if (env.REGISTERS && !(await env.REGISTERS.limit({ key: client })).success) return json({ error: 'slow down' }, 429)
   const id = randomHex(16)
   const secret = randomHex(24)
   // One row per device token: registering again (a reinstalled app)
   // replaces the earlier id instead of adding another.
   await env.DB.batch([
     env.DB.prepare('DELETE FROM devices WHERE token = ?').bind(token),
-    env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret) VALUES (?, ?, ?, ?)').bind(id, token, sandbox ? 1 : 0, await sha256(secret)),
+    env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used) VALUES (?, ?, ?, ?, ?)').bind(id, token, sandbox ? 1 : 0, await sha256(secret), sqlTime(Date.now())),
   ])
   return json({ id, secret })
 }
 
 async function unregister({ id, secret }, env) {
+  if (!validID(id)) return json({ error: 'unknown device' }, 404)
   const dev = await device(env, id)
   if (!dev || dev.secret !== (await sha256(String(secret)))) return json({ error: 'unknown device' }, 404)
   await forget(env, id)
@@ -72,13 +117,16 @@ async function unregister({ id, secret }, env) {
 }
 
 async function send({ id, payload, thread, collapse, category }, env) {
-  const dev = await device(env, id)
-  if (!dev) return json({ error: 'unknown device' }, 404)
+  // Everything that needs no database first.
+  if (!validID(id)) return json({ error: 'unknown device' }, 404)
   if (typeof payload !== 'string' || payload.length > MAX_PAYLOAD || !/^[A-Za-z0-9+/=]+$/.test(payload)) {
     return json({ error: 'bad payload' }, 400)
   }
-  // At most 60 a minute per phone (approximate): a leaked id can't flood one.
+  // At most 60 a minute per id (approximate): a leaked id can't flood a
+  // phone, nor a made-up one cost more than that in reads.
   if (env.SENDS && !(await env.SENDS.limit({ key: id })).success) return json({ error: 'slow down' }, 429)
+  const dev = await device(env, id)
+  if (!dev) return json({ error: 'unknown device' }, 404)
   const aps = {
     // Shown only if the phone can't decrypt (the extension replaces it).
     alert: { title: 'Hammock', body: 'Something needs you' },
@@ -104,13 +152,26 @@ async function send({ id, payload, thread, collapse, category }, env) {
     return json({ error: reason || 'gone' }, 410)
   }
   if (!r.ok) return json({ error: 'apns ' + r.status + ' ' + (await r.text()) }, 502)
+  // Still in use: kept (written at most once a day).
+  if (!(Date.parse(dev.lastUsed.replace(' ', 'T') + 'Z') > Date.now() - DAY)) {
+    await env.DB.prepare('UPDATE devices SET last_used = ? WHERE id = ?').bind(sqlTime(Date.now()), id).run()
+  }
   return json({})
 }
 
+function validID(id) {
+  return typeof id === 'string' && /^[0-9a-f]{32}$/.test(id)
+}
+
 async function device(env, id) {
-  if (typeof id !== 'string' || !/^[0-9a-f]{32}$/.test(id)) return null
-  const row = await env.DB.prepare('SELECT token, sandbox, secret FROM devices WHERE id = ?').bind(id).first()
-  return row ? { token: row.token, sandbox: !!row.sandbox, secret: row.secret } : null
+  if (!validID(id)) return null
+  const row = await env.DB.prepare('SELECT token, sandbox, secret, last_used FROM devices WHERE id = ?').bind(id).first()
+  return row ? { token: row.token, sandbox: !!row.sandbox, secret: row.secret, lastUsed: String(row.last_used || '') } : null
+}
+
+// SQLite's datetime() form, in UTC: "2026-11-09 12:34:56".
+function sqlTime(ms) {
+  return new Date(ms).toISOString().slice(0, 19).replace('T', ' ')
 }
 
 async function forget(env, id) {

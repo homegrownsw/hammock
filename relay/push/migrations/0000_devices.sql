@@ -1,4 +1,6 @@
--- npx wrangler d1 execute hmk-push --remote --file schema.sql
+-- Migration number: 0000 	 2026-11-09
+-- The devices table as it first was (IF NOT EXISTS: a database set up
+-- before migrations, from the old schema.sql, already has it).
 CREATE TABLE IF NOT EXISTS devices (
   id      TEXT PRIMARY KEY,   -- what Macs send to
   token   TEXT NOT NULL,      -- the APNs device token
@@ -6,5 +8,5 @@ CREATE TABLE IF NOT EXISTS devices (
   secret  TEXT NOT NULL,      -- SHA-256 of the phone's secret, for unregistering
   created TEXT NOT NULL DEFAULT (datetime('now'))
 );
--- Registering looks up (and replaces) a phone's earlier row by token.
+-- Registering looks up a phone's earlier row by token.
 CREATE INDEX IF NOT EXISTS devices_token ON devices (token);

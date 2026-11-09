@@ -1,23 +1,27 @@
 // Runs the worker against a fake KV and a fake APNs (node --test).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import worker, { apnsJWT, resetJWT } from '../src/index.js'
+import worker, { apnsJWT, resetJWT, clientKey, forgetUnused } from '../src/index.js'
 
-// Enough of D1 for the relay's statements.
+// Enough of D1 for the relay's statements (counting the queries made).
 function fakeD1() {
   const rows = new Map()
-  return {
+  const db = {
     rows,
+    queries: 0,
     prepare(sql) {
       return {
         bind(...a) {
           return {
             run: async () => {
-              if (sql.startsWith('INSERT')) rows.set(a[0], { token: a[1], sandbox: a[2], secret: a[3] })
+              db.queries++
+              if (sql.startsWith('INSERT')) rows.set(a[0], { token: a[1], sandbox: a[2], secret: a[3], last_used: a[4] })
               if (sql === 'DELETE FROM devices WHERE id = ?') rows.delete(a[0])
               if (sql === 'DELETE FROM devices WHERE token = ?') for (const [id, r] of rows) if (r.token === a[0]) rows.delete(id)
+              if (sql === 'DELETE FROM devices WHERE last_used < ?') for (const [id, r] of rows) if (r.last_used < a[0]) rows.delete(id)
+              if (sql === 'UPDATE devices SET last_used = ? WHERE id = ?' && rows.has(a[1])) rows.get(a[1]).last_used = a[0]
             },
-            first: async () => rows.get(a[0]) ?? null,
+            first: async () => (db.queries++, rows.get(a[0]) ?? null),
           }
         },
       }
@@ -26,6 +30,7 @@ function fakeD1() {
       for (const st of stmts) await st.run()
     },
   }
+  return db
 }
 
 // Cloudflare's rate limiter, counting per key.
@@ -38,7 +43,7 @@ async function testEnv() {
   const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
   const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', kp.privateKey))
   const pem = '-----BEGIN PRIVATE KEY-----\n' + btoa(String.fromCharCode(...der)) + '\n-----END PRIVATE KEY-----'
-  return { env: { APNS_KEY: pem, APNS_KEY_ID: 'KEYID12345', APNS_TEAM_ID: 'TEAM123456', APNS_TOPIC: 'com.homegrownsw.hammock', DB: fakeD1(), SENDS: fakeLimiter(60), REGISTERS: fakeLimiter(10) }, publicKey: kp.publicKey }
+  return { env: { APNS_KEY: pem, APNS_KEY_ID: 'KEYID12345', APNS_TEAM_ID: 'TEAM123456', APNS_TOPIC: 'com.homegrownsw.hammock', DB: fakeD1(), REQUESTS: fakeLimiter(200), SENDS: fakeLimiter(60), REGISTERS: fakeLimiter(10) }, publicKey: kp.publicKey }
 }
 
 const post = (path, body, ip = '192.0.2.1') =>
@@ -120,4 +125,57 @@ test('registrations are rate limited per address', async () => {
   assert.equal(env.DB.rows.size, 10)
   // Another address still gets in.
   assert.equal((await worker.fetch(post('/register', { token: 'b'.repeat(64) }, '198.51.100.7'), env)).status, 200)
+})
+
+test('junk is turned away before the database', async () => {
+  const { env } = await testEnv()
+  assert.equal((await worker.fetch(post('/wp-login.php', {}), env)).status, 404)
+  assert.equal((await worker.fetch(new Request('https://relay.test/send'), env)).status, 405)
+  const big = { id: 'a'.repeat(32), payload: 'A'.repeat(5000) }
+  assert.equal((await worker.fetch(post('/send', big), env)).status, 413)
+  assert.equal((await worker.fetch(post('/send', { id: 'nope', payload: 'eA==' }), env)).status, 404)
+  assert.equal((await worker.fetch(post('/send', { id: 'a'.repeat(32), payload: '<x>' }), env)).status, 400)
+  assert.equal((await worker.fetch(post('/unregister', { id: 'nope', secret: 'x' }), env)).status, 404)
+  assert.equal(env.DB.queries, 0)
+  // A made-up id is limited before it's looked up.
+  for (let i = 0; i < 70; i++) await worker.fetch(post('/send', { id: 'a'.repeat(32), payload: 'eA==' }), env)
+  assert.equal(env.DB.queries, 60)
+})
+
+test('requests are limited per address, IPv6 by its /64', async () => {
+  const { env } = await testEnv()
+  let last
+  for (let i = 0; i < 201; i++) last = await worker.fetch(post('/send', { id: 'b'.repeat(32), payload: 'eA==' }, `2001:db8:1:2::${i.toString(16)}`), env)
+  assert.equal(last.status, 429)
+  assert.equal((await worker.fetch(post('/send', { id: 'c'.repeat(32), payload: 'eA==' }, '2001:db8:1:3::1'), env)).status, 404)
+
+  assert.equal(clientKey('192.0.2.1'), 'ip:192.0.2.1')
+  assert.equal(clientKey('2001:db8:1:2::1'), 'v6:2001:db8:1:2::/64')
+  assert.equal(clientKey('2001:0DB8:0001:0002:aaaa:bbbb:cccc:dddd'), 'v6:2001:db8:1:2::/64')
+  assert.equal(clientKey('2001:db8::1'), 'v6:2001:db8:0:0::/64')
+  assert.equal(clientKey('::ffff:192.0.2.9'), 'ip:192.0.2.9')
+})
+
+test('sends keep a device; unused ones are forgotten', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const kept = await (await worker.fetch(post('/register', { token: '56'.repeat(32) }), env)).json()
+  const unused = await (await worker.fetch(post('/register', { token: '78'.repeat(32) }), env)).json()
+  const old = '2000-01-01 00:00:00'
+  env.DB.rows.get(kept.id).last_used = old
+  env.DB.rows.get(unused.id).last_used = old
+  globalThis.fetch = async () => new Response(null, { status: 200 })
+  assert.equal((await worker.fetch(post('/send', { id: kept.id, payload: 'eA==' }), env)).status, 200)
+  assert.notEqual(env.DB.rows.get(kept.id).last_used, old)
+  // Used today: not written again.
+  const q = env.DB.queries
+  await worker.fetch(post('/send', { id: kept.id, payload: 'eA==' }), env)
+  assert.equal(env.DB.queries, q + 1)
+
+  await worker.scheduled({}, env)
+  assert.ok(env.DB.rows.has(kept.id))
+  assert.ok(!env.DB.rows.has(unused.id))
+  // 60 days on, the kept one goes too.
+  await forgetUnused(env, Date.now() + 61 * 24 * 60 * 60 * 1000)
+  assert.equal(env.DB.rows.size, 0)
 })
