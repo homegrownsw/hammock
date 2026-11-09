@@ -87,6 +87,7 @@ struct ShareSheet: View {
                     Menu(m.role.label) {
                         Button("Can view") { Task { await model.setRole(.viewer, of: p.userID, in: groupID) } }
                         Button("Can drive") { Task { await model.setRole(.driver, of: p.userID, in: groupID) } }
+                            .help(Role.driverMeans)
                         Divider()
                         Button("Remove", role: .destructive) { Task { await model.setRole(nil, of: p.userID, in: groupID) } }
                     }

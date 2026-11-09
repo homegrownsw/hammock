@@ -318,6 +318,7 @@ struct JoinCard: View {
                 Button("Let View") { CardExit.leave(.allowed, $exit) { model.respond(to: request, role: .viewer) } }
                 Button("Let Drive") { CardExit.leave(.allowed, $exit) { model.respond(to: request, role: .driver) } }
                     .buttonStyle(.borderedProminent)
+                    .help(Role.driverMeans)
             }
             .controlSize(.small)
         }

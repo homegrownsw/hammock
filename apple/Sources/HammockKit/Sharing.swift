@@ -28,6 +28,9 @@ extension Person {
 }
 
 extension Role {
+    /// What letting someone drive really allows, for tooltips beside the choice.
+    public static let driverMeans = "They can type into this Group's panes and open tabs in it: running any command as you on this computer."
+
     public var label: String {
         switch self {
         case .viewer: return "Can view"
