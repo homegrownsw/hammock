@@ -278,9 +278,9 @@ private struct ScreenCard: View {
 
     private var caption: String {
         if asleep, let taken {
-            return "Asleep · \(taken.formatted(.relative(presentation: .named)))"
+            return "Display Asleep · \(taken.formatted(.relative(presentation: .named)))"
         }
-        if asleep { return "Asleep" }
+        if asleep { return "Display Asleep" }
         return computer.thisComputer ? "The Mac this iPhone is connected to" : computer.status
     }
 
