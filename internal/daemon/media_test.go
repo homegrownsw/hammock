@@ -747,3 +747,51 @@ func TestRemoteInputArgsChecked(t *testing.T) {
 		t.Fatalf("refused a ⌘A: %v %+v", err, a)
 	}
 }
+
+// Only so many QUIC connections from one address may wait for their ticket
+// at once; one more is closed at once.
+func TestMediaQUICPendingCap(t *testing.T) {
+	d, _ := startHost(t)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		d.media.mu.Lock()
+		port := d.media.port
+		d.media.mu.Unlock()
+		if port > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("media listener did not start")
+		}
+	}
+	host, _, _ := net.SplitHostPort(d.RemoteAddrs()[0])
+	d.media.mu.Lock()
+	addr := net.JoinHostPort(host, strconv.Itoa(d.media.port))
+	d.media.mu.Unlock()
+	dialOne := func() *quic.Conn {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		qc, err := quic.DialAddr(ctx, addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{mediaALPN}}, &quic.Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { qc.CloseWithError(0, "") })
+		return qc
+	}
+	var waiting []*quic.Conn
+	for range maxPreAuthPerIP {
+		waiting = append(waiting, dialOne())
+	}
+	extra := dialOne()
+	select {
+	case <-extra.Context().Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("more QUIC connections waiting for a ticket than allowed")
+	}
+	for _, qc := range waiting {
+		select {
+		case <-qc.Context().Done():
+			t.Fatal("one within the limit was closed early")
+		default:
+		}
+	}
+}

@@ -145,6 +145,7 @@ type mediaHub struct {
 	screenSource func() frameSource
 	trs          []*quic.Transport
 	port         int
+	gate         authGate // connections not yet given their ticket
 }
 
 func newMediaHub(d *Daemon) *mediaHub {
@@ -443,20 +444,42 @@ func (h *mediaHub) stopAddrs(addrs []string) {
 	}
 }
 
+// accept serves a listener's connections: only from where the remote
+// listener takes them (remoteSourceOK), and only so many at once waiting
+// for their ticket (as connections waiting to sign in: authGate).
 func (h *mediaHub) accept(ln *quic.Listener) {
+	var local net.IP
+	if ua, ok := ln.Addr().(*net.UDPAddr); ok {
+		local = ua.IP
+	}
 	for {
 		qc, err := ln.Accept(context.Background())
 		if err != nil {
 			return
 		}
-		go h.serveQUIC(qc)
+		var src net.IP
+		if ua, ok := qc.RemoteAddr().(*net.UDPAddr); ok {
+			src = ua.IP
+		}
+		if !h.d.remoteSourceOK(src, local) {
+			qc.CloseWithError(1, "forbidden")
+			continue
+		}
+		release, ok := h.gate.enter(src.String())
+		if !ok {
+			qc.CloseWithError(1, "too many connections")
+			continue
+		}
+		go h.serveQUIC(qc, release)
 	}
 }
 
 // serveQUIC finds the session for a connection's ticket, then reads its
 // acks. The ticket comes on the first stream that carries one:
-// Network.framework opens an empty stream of its own first.
-func (h *mediaHub) serveQUIC(qc *quic.Conn) {
+// Network.framework opens an empty stream of its own first. Its slot at
+// the gate is released once it has its ticket, or is closed.
+func (h *mediaHub) serveQUIC(qc *quic.Conn, release func()) {
+	defer release()
 	ctx, cancel := context.WithTimeout(qc.Context(), 5*time.Second)
 	got := make(chan *quic.Stream, 1)
 	go func() {
