@@ -42,21 +42,7 @@ final class Push: NSObject {
         guard !relayURL.isEmpty else { status = "Not set up in this build"; return }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        // Driving is decided in the app, where the join card shows their key.
-        let drive = UNNotificationAction(identifier: "join.drive", title: "Let Drive…", options: .foreground)
-        let view = UNNotificationAction(identifier: "join.view", title: "Let View")
-        let decline = UNNotificationAction(identifier: "join.decline", title: "Decline", options: .destructive)
-        let allow = UNNotificationAction(identifier: "grant.allow", title: "Allow")
-        let deny = UNNotificationAction(identifier: "grant.deny", title: "Deny", options: .destructive)
-        // The Hammock Key: approving signs with this phone's approval
-        // key, behind Face ID, so it opens the app.
-        let keyApprove = UNNotificationAction(identifier: "key.approve", title: "Approve…", options: [.foreground, .authenticationRequired])
-        let keyDeny = UNNotificationAction(identifier: "key.deny", title: "Don't Allow", options: .destructive)
-        center.setNotificationCategories([
-            UNNotificationCategory(identifier: "join", actions: [drive, view, decline], intentIdentifiers: []),
-            UNNotificationCategory(identifier: "grant", actions: [allow, deny], intentIdentifiers: []),
-            UNNotificationCategory(identifier: "hammockkey", actions: [keyApprove, keyDeny], intentIdentifiers: []),
-        ])
+        setCategories()
         Task {
             let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
             status = granted ? "Registering…" : "Notifications are off for Hammock in iOS Settings"
@@ -83,6 +69,36 @@ final class Push: NSObject {
             status = "On"
             await registerWithMac()
         }
+    }
+
+    /// The answers notifications offer. Each one that answers needs the
+    /// phone unlocked (whoever holds a locked phone mustn't let someone
+    /// into a Group or allow an agent anything); with Settings ▸ Privacy ▸
+    /// Require Face ID on, they open the app too, whose lock asks first
+    /// (AppLock: set again when it's turned on or off).
+    func setCategories() {
+        let lock: UNNotificationActionOptions = UserDefaults.standard.bool(forKey: AppLock.key) ? [.authenticationRequired, .foreground] : .authenticationRequired
+        // Driving is decided in the app, where the join card shows their key.
+        let drive = UNNotificationAction(identifier: "join.drive", title: "Let Drive…", options: .foreground)
+        let view = UNNotificationAction(identifier: "join.view", title: "Let View", options: lock)
+        let decline = UNNotificationAction(identifier: "join.decline", title: "Decline", options: lock.union(.destructive))
+        let allow = UNNotificationAction(identifier: "grant.allow", title: "Allow", options: lock)
+        let deny = UNNotificationAction(identifier: "grant.deny", title: "Deny", options: lock.union(.destructive))
+        // The Hammock Key: approving signs with this phone's approval
+        // key, behind Face ID, so it opens the app.
+        let keyApprove = UNNotificationAction(identifier: "key.approve", title: "Approve…", options: [.foreground, .authenticationRequired])
+        let keyDeny = UNNotificationAction(identifier: "key.deny", title: "Don't Allow", options: lock.union(.destructive))
+        UNUserNotificationCenter.current().setNotificationCategories([
+            UNNotificationCategory(identifier: "join", actions: [drive, view, decline], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "grant", actions: [allow, deny], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "hammockkey", actions: [keyApprove, keyDeny], intentIdentifiers: []),
+        ])
+    }
+
+    /// The app's own lock (Require Face ID) would ask before showing it now:
+    /// a notification's answer waits for it, in the app.
+    private var appLocked: Bool {
+        UserDefaults.standard.bool(forKey: AppLock.key) && UIApplication.shared.applicationState != .active && AppLock.due
     }
 
     func failed(_ error: Error) { status = "iOS refused: \(error.localizedDescription)" }
@@ -171,6 +187,12 @@ extension Push {
         }
         guard t.action != UNNotificationDefaultActionIdentifier, t.action != UNNotificationDismissActionIdentifier,
               t.action != "join.drive", t.action != "key.approve" else { return }
+        // Behind the app's own lock: answered in Needs You once it's unlocked
+        // (the action opened the app, which asks).
+        if appLocked {
+            if t.grant != nil || t.join != nil { openNeedsYou = true }
+            return
+        }
         // Answer from the notification: wait (briefly) for the Mac.
         for _ in 0..<50 {
             if self.session?.model?.connected == true { break }

@@ -256,6 +256,8 @@ struct AppLockSettings: View {
             }
         }))
         .disabled(!AppLock.available && !required)
+        // Notifications' answers open the app (and its lock) while it's on.
+        .onChange(of: required) { Push.shared.setCategories() }
         if required {
             Picker("Lock After", selection: $after) {
                 ForEach(AppLock.afterChoices, id: \.0) { Text($0.1).tag($0.0) }
