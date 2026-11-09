@@ -4,7 +4,15 @@
 // secret. It gives your Mac the id (never the token) and its own encryption
 // key; the Mac sends notifications for it here as ciphertext, which this
 // relay passes to Apple untouched. The phone's notification extension
-// decrypts it. The relay sees device tokens and opaque bytes, nothing else.
+// decrypts it.
+//
+// What the relay sees: a phone's APNs device token and whether it's a
+// development build; and for each send, the phone's id, the ciphertext,
+// when it's sent and from which address, and three hints for Apple: a
+// thread and a collapse tag (keyed hashes of a pane's or a request's id,
+// not the ids: the same for the same thing, meaningless otherwise) and
+// the category ("join", "grant" or "hammockkey": what kind of
+// notification it is). Nothing of what it says.
 //
 // Routes (JSON in and out):
 //   POST /register   {token, sandbox, id?, secret?} → {id, secret} (the
@@ -30,6 +38,7 @@
 const MAX_PAYLOAD = 3000 // base64 ciphertext; APNs allows 4 KB in all
 const MAX_BODY = 4096 // the payload and the rest of a send
 const ROUTES = new Set(['/register', '/unregister', '/send'])
+const CATEGORIES = new Set(['join', 'grant', 'hammockkey'])
 const DAY = 24 * 60 * 60 * 1000
 const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
 
@@ -144,7 +153,8 @@ async function send({ id, payload, thread, collapse, category }, env) {
     'mutable-content': 1,
     sound: 'NeedsYou.caf', // Hammock's kalimba note, in the app's bundle (HammockNotify sets it too)
   }
-  if (category) aps.category = String(category).slice(0, 64)
+  // Only Hammock's own categories (the phone sets it again from the note).
+  if (CATEGORIES.has(category)) aps.category = category
   // A Hammock Key request waits on you for a couple of minutes: through Focus.
   if (category === 'hammockkey') aps['interruption-level'] = 'time-sensitive'
   if (thread) aps['thread-id'] = String(thread).slice(0, 64)

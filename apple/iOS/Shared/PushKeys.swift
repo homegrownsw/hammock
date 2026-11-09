@@ -53,6 +53,14 @@ enum PushKeys {
         return nil
     }
 
+    /// A note sent within the last hour (by the Mac's clock, which it says):
+    /// an older one is a relay replaying it. One from a Mac too old to say
+    /// counts as fresh.
+    static func fresh(_ note: [String: Any], now: Date = Date()) -> Bool {
+        guard let at = (note["at"] as? NSNumber)?.doubleValue else { return true }
+        return abs(now.timeIntervalSince1970 - at) < 60 * 60
+    }
+
     /// The decrypted note behind a delivered notification's userInfo, if any.
     static func note(_ userInfo: [AnyHashable: Any]) -> [String: Any]? {
         guard let e = userInfo["e"] as? String, let sealed = Data(base64Encoded: e) else { return nil }

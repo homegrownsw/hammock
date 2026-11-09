@@ -1,9 +1,20 @@
 # Hammock push relay
 
 A Cloudflare Worker that holds Hammock's APNs key and forwards notifications
-to phones. It only ever sees APNs device tokens and ciphertext: each Mac
-encrypts notifications with a key only the phone has (AES-256-GCM), and
-the phone's notification extension decrypts them. See ADR-0007.
+to phones. Each Mac encrypts notifications with a key only the phone has
+(AES-256-GCM), and the phone's notification extension decrypts them, so
+the relay never sees what a notification says. See ADR-0007.
+
+What it does see: each phone's APNs device token, and whether it's a
+development build; and for each notification, the phone's relay id, the
+ciphertext, when it was sent and from which address, and three hints it
+passes to Apple: a thread and a collapse tag (keyed hashes of the pane's
+or request's id, unique to the phone: they say two notifications are about
+the same thing, not what it is) and the category (`join`, `grant` or
+`hammockkey`, which says whether it's someone asking to join, an agent
+asking permission, or a Hammock Key request). The phone takes everything
+it shows, the category included, from the decrypted note, and shows
+nothing of one it can't decrypt or that was sent over an hour ago.
 
 ## Set up
 
@@ -38,7 +49,8 @@ the phone's notification extension decrypts them. See ADR-0007.
   learnt a phone's token can't cut it off) until it goes unused.
 - `POST /unregister {id, secret}`
 - `POST /send {id, payload, thread?, collapse?, category?}`: a Mac sending
-  (ciphertext in `payload`), about 60 a minute per phone at most.
+  (ciphertext in `payload`), about 60 a minute per phone at most. Any
+  category but `join`, `grant` and `hammockkey` is dropped.
 
 Any other path or method is turned away, as is a body over 4 KB. Every
 route counts towards 200 requests a minute per client address; an IPv6

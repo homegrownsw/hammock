@@ -106,7 +106,9 @@ func TestPushWhileAway(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("no push sent")
 	}
-	if got["id"] != "relay-id-1" || got["thread"] != paneID {
+	// The relay sees tags, not the pane's or the item's ids.
+	if got["id"] != "relay-id-1" || got["thread"] != pushTag(key, "thread", paneID) || got["collapse"] != pushTag(key, "collapse", "at_"+paneID) ||
+		strings.Contains(got["thread"]+got["collapse"], paneID) {
 		t.Fatalf("push %v", got)
 	}
 	sealed, _ := base64.StdEncoding.DecodeString(got["payload"])
@@ -118,7 +120,8 @@ func TestPushWhileAway(t *testing.T) {
 	}
 	var note pushNote
 	_ = json.Unmarshal(plain, &note)
-	if note.Title != "Map Judder" || note.Subtitle != "Atlas" || note.Pane != paneID || note.Host == "" {
+	if note.Title != "Map Judder" || note.Subtitle != "Atlas" || note.Pane != paneID || note.Host == "" ||
+		note.ID != "at_"+paneID || time.Since(time.Unix(note.At, 0)) > time.Minute {
 		t.Fatalf("note %+v", note)
 	}
 
@@ -172,4 +175,23 @@ func TestPushWhileAway(t *testing.T) {
 	locked.Store(true)
 	needsYou()
 	arrives("with the screen locked")
+}
+
+// A tag is the same for the same phone and id, and tells nothing of the id:
+// different for another phone, another id, or the other kind.
+func TestPushTag(t *testing.T) {
+	k1, k2 := make([]byte, 32), make([]byte, 32)
+	k2[0] = 1
+	a := pushTag(k1, "thread", "pn_abc")
+	if len(a) != 32 || a != pushTag(k1, "thread", "pn_abc") {
+		t.Fatalf("tag %q", a)
+	}
+	for _, b := range []string{pushTag(k2, "thread", "pn_abc"), pushTag(k1, "thread", "pn_abd"), pushTag(k1, "collapse", "pn_abc")} {
+		if b == a {
+			t.Fatalf("same tag %q", b)
+		}
+	}
+	if pushTag(k1, "thread", "") != "" {
+		t.Fatal("a tag for no id")
+	}
 }

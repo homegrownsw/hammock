@@ -70,6 +70,7 @@ test('register, send through APNs, unregister', async () => {
   assert.equal(body.e, 'c2VjcmV0')
   assert.equal(body.aps['mutable-content'], 1)
   assert.equal(body.aps.category, 'join')
+  assert.equal(body.aps['thread-id'], 'pn_1')
   assert.equal(sent[0].init.headers['apns-collapse-id'], 'at_pn_1')
 
   // The JWT verifies with the key's public half.
@@ -229,4 +230,17 @@ test('errors say nothing of APNs or the worker', async () => {
   } finally {
     console.error = oldError
   }
+})
+
+test('only known categories reach Apple', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const reg = await (await worker.fetch(post('/register', { token: 'bc'.repeat(32) }), env)).json()
+  const sent = []
+  globalThis.fetch = async (url, init) => (sent.push(JSON.parse(init.body)), new Response(null, { status: 200 }))
+  await worker.fetch(post('/send', { id: reg.id, payload: 'eA==', category: 'evil' }), env)
+  await worker.fetch(post('/send', { id: reg.id, payload: 'eA==', category: 'hammockkey' }), env)
+  assert.equal(sent[0].aps.category, undefined)
+  assert.equal(sent[1].aps.category, 'hammockkey')
+  assert.equal(sent[1].aps['interruption-level'], 'time-sensitive')
 })

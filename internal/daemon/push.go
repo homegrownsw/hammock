@@ -5,8 +5,11 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -27,6 +30,14 @@ import (
 // minutes. Each phone registers a relay id and its own
 // key; notifications are encrypted for it here and the relay only ever
 // forwards ciphertext. The phone's notification extension decrypts them.
+//
+// What the relay (and Apple) see of a send, besides the phone's relay id:
+// the ciphertext; a thread and a collapse tag, each a keyed hash of an id
+// (pushTag: the same pane or item gives the same tag for that phone, but
+// the ids themselves don't leave the Mac); and the category ("join",
+// "grant", "hammockkey" or none), which says what kind of notification it
+// is. The phone takes everything it shows, its category included, from
+// the decrypted note.
 
 const awayAfter = 2 * time.Minute
 
@@ -73,7 +84,28 @@ type pushNote struct {
 	Join     string `json:"join,omitempty"`
 	Grant    string `json:"grant,omitempty"`
 	Key      string `json:"key,omitempty"` // a Hammock Key request (hammockkey.go)
-	Host     string `json:"host"` // the Mac's certificate fingerprint, as the phone knows it
+	Host     string `json:"host"`          // the Mac's certificate fingerprint, as the phone knows it
+	// ID is what it replaces on the phone (the collapse id): notifications
+	// about the same thing from two Macs (a linked computer's agent) are one.
+	ID string `json:"id,omitempty"`
+	// At is when it was sent (Unix seconds): the phone drops one much older,
+	// so a relay can't replay old notifications.
+	At int64 `json:"at,omitempty"`
+}
+
+// pushTag stands in for an id in what the relay sees (a notification's
+// thread and collapse id): a hash keyed by this phone's push key, so it
+// stays the same for the same id but can't be turned back into it, nor
+// matched with another phone's. Empty for none.
+func pushTag(key []byte, kind, id string) string {
+	if id == "" {
+		return ""
+	}
+	tk := hmac.New(sha256.New, key)
+	tk.Write([]byte("hammock push tag")) // its own key, not the cipher's
+	m := hmac.New(sha256.New, tk.Sum(nil))
+	m.Write([]byte(kind + "\x00" + id))
+	return hex.EncodeToString(m.Sum(nil)[:16])
 }
 
 // registerPush records (or with no relay id, forgets) a phone's push
@@ -293,6 +325,7 @@ func (d *Daemon) push(event, collapse string, n pushNote, pending func() bool) {
 			n.Host = fp
 		}
 	}
+	n.ID = collapse
 	go d.pushWhenAway(event, collapse, n, pending)
 }
 
@@ -317,6 +350,7 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 	if !d.waitUntilAway(context.Background(), pushHold, false, pending) {
 		return
 	}
+	n.At = time.Now().Unix()
 	plain, _ := json.Marshal(n)
 	type target struct {
 		id string
@@ -356,6 +390,7 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 			n.Host = fp
 		}
 	}
+	n.ID, n.At = collapse, time.Now().Unix()
 	plain, _ := json.Marshal(n)
 	for _, id := range deviceIDs {
 		r := &pb.RegisterPush{}
@@ -387,7 +422,8 @@ func seal(key, plain []byte) ([]byte, error) {
 func (d *Daemon) sendPush(deviceID string, r *pb.RegisterPush, sealed []byte, n pushNote, collapse string) {
 	body, _ := json.Marshal(map[string]string{
 		"id": r.RelayId, "payload": base64.StdEncoding.EncodeToString(sealed),
-		"thread": cmpOr(n.Pane, n.Join, n.Grant, n.Key), "collapse": collapse, "category": n.Category,
+		"thread":   pushTag(r.Key, "thread", cmpOr(n.Pane, n.Join, n.Grant, n.Key)),
+		"collapse": pushTag(r.Key, "collapse", collapse), "category": n.Category,
 	})
 	if !knownRelay(r.RelayUrl) {
 		return // registered before relays were checked

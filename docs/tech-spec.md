@@ -308,7 +308,7 @@ Structured tailing sources (`file`, `log stream`, `simctl spawn log stream`, `ad
 - Listeners: Unix sockets (0600) and the chosen networks' addresses only (ADR-0015).
 - Mutual device authentication with per-device revocation.
 - Capability tokens for agents; least-privilege default; audit log for MCP and remote actions.
-- Push payloads end-to-end encrypted; the relay sees only device tokens and ciphertext.
+- Push payloads end-to-end encrypted; the relay sees device tokens, ciphertext, keyed-hash thread and collapse tags, and the category (join, grant, hammockkey): relay/push/README.md.
 - Untrusted-content labelling for pane output returned to agents.
 - Multiplayer: explicit invites, roles, kill switch, visible "who is typing".
 
