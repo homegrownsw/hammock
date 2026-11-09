@@ -38,7 +38,7 @@ func runAudit(args []string) error {
 		if e.Count > 1 {
 			line += fmt.Sprintf(" (×%d since %s)", e.Count, time.UnixMilli(e.FirstUnixMs).Format("15:04"))
 		}
-		fmt.Println(line)
+		printlnSafe(line)
 	}
 	return nil
 }

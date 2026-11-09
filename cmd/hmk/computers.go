@@ -98,11 +98,11 @@ func printComputers(w *world) {
 		if c.Icon != "" {
 			icon = "  icon " + c.Icon
 		}
-		fmt.Printf("%s%s  %-20s %-12s %s  %s  %s%s\n", active, c.UserId, truncate(c.Name, 20), truncate(cmp.Or(c.Model, c.Os), 12), c.Tint, c.Fingerprint, state, icon)
+		printfSafe("%s%s  %-20s %-12s %s  %s  %s%s\n", active, c.UserId, truncate(c.Name, 20), truncate(cmp.Or(c.Model, c.Os), 12), c.Tint, c.Fingerprint, state, icon)
 	}
 	fmt.Println("(* the one used last: it notifies)")
 	if w.computers.Note != "" {
-		fmt.Println(w.computers.Note)
+		printlnSafe(w.computers.Note)
 	}
 }
 
@@ -131,7 +131,7 @@ func runComputers(w *world, call func(*pb.ClientMessage) (*pb.ServerMessage, err
 		if err == nil && c.ThisComputer {
 			fmt.Println("Unlinked this computer from your others.")
 		} else if err == nil {
-			fmt.Printf("Unlinked %s from all your computers.\n", c.Name)
+			printfSafe("Unlinked %s from all your computers.\n", c.Name)
 		}
 		return err
 	case "remove", "forget":
@@ -148,7 +148,7 @@ func runComputers(w *world, call func(*pb.ClientMessage) (*pb.ServerMessage, err
 		}
 		_, err = call(&pb.ClientMessage{Msg: &pb.ClientMessage_UnlinkComputer{UnlinkComputer: &pb.UnlinkComputer{UserId: c.UserId, Forget: true}}})
 		if err == nil {
-			fmt.Printf("Removed %s here (your other computers aren't asked to unlink it).\n", c.Name)
+			printfSafe("Removed %s here (your other computers aren't asked to unlink it).\n", c.Name)
 			if c.Suspect {
 				fmt.Println("It isn't linked again by an introduction: only hmk link --again (its code checked) brings it back.")
 			}
@@ -206,11 +206,11 @@ func runLink(c *client.Client, w *world, args []string) error {
 			}
 			switch {
 			case args[0] == "refuse":
-				fmt.Printf("Refused %s.\n", r.Name)
+				printfSafe("Refused %s.\n", r.Name)
 			case r.AcceptedThere:
-				fmt.Printf("Linked with %s.\n", r.Name)
+				printfSafe("Linked with %s.\n", r.Name)
 			default:
-				fmt.Printf("Linked with %s once it says the codes match too.\n", r.Name)
+				printfSafe("Linked with %s once it says the codes match too.\n", r.Name)
 			}
 			return nil
 		}
@@ -279,7 +279,7 @@ func runLink(c *client.Client, w *world, args []string) error {
 				if d.Via == "local" {
 					via = "local network"
 				}
-				fmt.Printf("%-24s %-8s %-14s %s\n", d.Name, d.Os, via, state)
+				printfSafe("%-24s %-8s %-14s %s\n", d.Name, d.Os, via, state)
 			}
 			return nil
 		}
@@ -347,9 +347,9 @@ func answerLink(ctx context.Context, c *client.Client, shown []*pb.LinkRequest, 
 				if r.UnlinkedBy != "" {
 					by = ", as " + r.UnlinkedBy + " asked"
 				}
-				fmt.Printf("\n⚠ You unlinked %s on %s%s (lost or stolen?). Link it again only if it's back with you.", r.Name, time.UnixMilli(r.UnlinkedUnixMs).Format("2 Jan 2006"), by)
+				printfSafe("\n⚠ You unlinked %s on %s%s (lost or stolen?). Link it again only if it's back with you.", r.Name, time.UnixMilli(r.UnlinkedUnixMs).Format("2 Jan 2006"), by)
 			}
-			fmt.Printf("\n%s (%s%s, key %s) shows a code. Here it's:\n\n    %s\n\nDo they match? [y/N] ", r.Name, cmp.Or(r.Model, r.Os), ts, r.Fingerprint, r.Code)
+			printfSafe("\n%s (%s%s, key %s) shows a code. Here it's:\n\n    %s\n\nDo they match? [y/N] ", r.Name, cmp.Or(r.Model, r.Os), ts, r.Fingerprint, r.Code)
 			go func() {
 				line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 				answers <- strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
@@ -445,7 +445,7 @@ func linkPending(reqs []*pb.LinkRequest, asJSON bool) error {
 				from += " (" + r.TailscaleLogin + ")"
 			}
 		}
-		fmt.Printf("%s  %-20s code %s  %s, key %s", r.Id, r.Name, r.Code, cmp.Or(from, cmp.Or(r.Model, r.Os)), r.Fingerprint)
+		printfSafe("%s  %-20s code %s  %s, key %s", r.Id, r.Name, r.Code, cmp.Or(from, cmp.Or(r.Model, r.Os)), r.Fingerprint)
 		if r.UnlinkedUnixMs > 0 {
 			fmt.Printf("  ⚠ unlinked here %s", time.UnixMilli(r.UnlinkedUnixMs).Format("2 Jan 2006"))
 		}

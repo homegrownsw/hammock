@@ -108,10 +108,10 @@ func runAgent(args []string) error {
 
 func printView(v *pb.AgentView) {
 	if v.Error != "" {
-		fmt.Fprintln(os.Stderr, "error:", v.Error)
+		fmt.Fprintln(os.Stderr, "error:", termSafe(v.Error))
 	}
 	if v.Replace {
-		fmt.Printf("── session %s (%d blocks, more: %v)\n", v.SessionId, len(v.Blocks), v.HasMore)
+		printfSafe("── session %s (%d blocks, more: %v)\n", v.SessionId, len(v.Blocks), v.HasMore)
 	}
 	for _, b := range v.Blocks {
 		kind := strings.ToLower(strings.TrimPrefix(b.Kind.String(), "KIND_"))
@@ -133,16 +133,16 @@ func printView(v *pb.AgentView) {
 		for _, q := range b.Questions {
 			line += fmt.Sprintf(" | %s → %q", q.Header, q.Answer)
 		}
-		fmt.Printf("%-9s %s%s\n", kind, line, state)
+		printfSafe("%-9s %s%s\n", kind, line, state)
 	}
 	if p := v.Prompt; p != nil && p.Kind != pb.AgentPrompt_KIND_NONE {
-		fmt.Printf("» prompt %s %q: %q (selected %d, multi %v %v, other %d) %s\n", strings.TrimPrefix(p.Kind.String(), "KIND_"), p.Title, p.Options, p.Selected, p.MultiSelect, p.Checked, p.Other, p.Tabs)
+		printfSafe("» prompt %s %q: %q (selected %d, multi %v %v, other %d) %s\n", strings.TrimPrefix(p.Kind.String(), "KIND_"), p.Title, p.Options, p.Selected, p.MultiSelect, p.Checked, p.Other, p.Tabs)
 	}
 	if v.Working {
-		fmt.Printf("» working: %s\n", v.Status)
+		printfSafe("» working: %s\n", v.Status)
 	}
 	if v.Draft != "" {
-		fmt.Printf("» draft (typed in the terminal): %q\n", v.Draft)
+		printfSafe("» draft (typed in the terminal): %q\n", v.Draft)
 	}
 }
 

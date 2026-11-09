@@ -100,7 +100,7 @@ func runSchedule(args []string) error {
 			return err
 		}
 		got := r.GetScheduleReply().GetSchedule()
-		fmt.Printf("%s  %s, %s; next run %s\n", got.Id, got.Name, scheduleWhen(got), nextRunWords(got))
+		printfSafe("%s  %s, %s; next run %s\n", got.Id, got.Name, scheduleWhen(got), nextRunWords(got))
 		return nil
 	case "edit":
 		s, err := needOne()
@@ -116,7 +116,7 @@ func runSchedule(args []string) error {
 			return err
 		}
 		got := r.GetScheduleReply().GetSchedule()
-		fmt.Printf("%s  %s, %s; next run %s\n", got.Id, got.Name, scheduleWhen(got), nextRunWords(got))
+		printfSafe("%s  %s, %s; next run %s\n", got.Id, got.Name, scheduleWhen(got), nextRunWords(got))
 		return nil
 	case "show":
 		s, err := needOne()
@@ -433,30 +433,30 @@ func printSchedules(w *world) {
 		if c := w.scheduleComputer(s.ComputerId); c != "" {
 			where += " on " + c
 		}
-		fmt.Printf("%s  %-24s %-8s %-22s next %-16s last %s  (%s)\n", s.Id, s.Name, s.Kind, scheduleWhen(s), nextRunWords(s), last, where)
+		printfSafe("%s  %-24s %-8s %-22s next %-16s last %s  (%s)\n", s.Id, s.Name, s.Kind, scheduleWhen(s), nextRunWords(s), last, where)
 		if s.Error != "" {
-			fmt.Printf("    ! %s\n", s.Error)
+			printfSafe("    ! %s\n", s.Error)
 		}
 	}
 }
 
 func printSchedule(w *world, s *pb.Schedule) {
-	fmt.Printf("%s  %s\n", s.Id, s.Name)
-	fmt.Printf("  runs     %s in %s: %s\n", s.Kind, s.Cwd, s.Prompt)
-	fmt.Printf("  when     %s; next %s\n", scheduleWhen(s), nextRunWords(s))
-	fmt.Printf("  group    %s\n", cmpOr(s.GroupName, s.GroupId))
+	printfSafe("%s  %s\n", s.Id, s.Name)
+	printfSafe("  runs     %s in %s: %s\n", s.Kind, s.Cwd, s.Prompt)
+	printfSafe("  when     %s; next %s\n", scheduleWhen(s), nextRunWords(s))
+	printfSafe("  group    %s\n", cmpOr(s.GroupName, s.GroupId))
 	if c := w.scheduleComputer(s.ComputerId); c != "" {
-		fmt.Printf("  computer %s\n", c)
+		printfSafe("  computer %s\n", c)
 	}
 	if len(s.AllowedTools) > 0 {
-		fmt.Printf("  allowed  %s\n", strings.Join(s.AllowedTools, ", "))
+		printfSafe("  allowed  %s\n", strings.Join(s.AllowedTools, ", "))
 	}
 	if s.CodexSandbox != "" || s.CodexApproval != "" {
-		fmt.Printf("  codex    sandbox %s, approval %s\n", cmpOr(s.CodexSandbox, "(yours)"), cmpOr(s.CodexApproval, "(yours)"))
+		printfSafe("  codex    sandbox %s, approval %s\n", cmpOr(s.CodexSandbox, "(yours)"), cmpOr(s.CodexApproval, "(yours)"))
 	}
-	fmt.Printf("  made by  %s\n", s.CreatedBy)
+	printfSafe("  made by  %s\n", s.CreatedBy)
 	if s.Error != "" {
-		fmt.Printf("  error    %s\n", s.Error)
+		printfSafe("  error    %s\n", s.Error)
 	}
 	if len(s.Runs) == 0 {
 		return
@@ -480,9 +480,9 @@ func printSchedule(w *world, s *pb.Schedule) {
 		if r.Output != "" {
 			extra = append(extra, "showed "+r.Output)
 		}
-		fmt.Printf("    %-14s %-14s %s", when(t), runStatusWords[r.Status], r.Note)
+		printfSafe("    %-14s %-14s %s", when(t), runStatusWords[r.Status], r.Note)
 		if len(extra) > 0 {
-			fmt.Printf("  [%s]", strings.Join(extra, ", "))
+			printfSafe("  [%s]", strings.Join(extra, ", "))
 		}
 		fmt.Println()
 	}

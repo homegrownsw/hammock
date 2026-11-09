@@ -236,7 +236,7 @@ func main() {
 		os.Exit(int(status)) // --wait: the command's own
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "hammock:", err)
+		fmt.Fprintln(os.Stderr, "hammock:", termSafeText(err.Error()))
 		os.Exit(1)
 	}
 }
@@ -495,7 +495,7 @@ func runCommand(args []string) error {
 			if len(args) < 4 {
 				for _, g := range w.groups {
 					if g.Id == id {
-						fmt.Println(g.Folder)
+						printlnSafe(g.Folder)
 					}
 				}
 				return nil
@@ -820,7 +820,7 @@ func runCommand(args []string) error {
 			return err
 		}
 		if rep := r.GetAgentSwitched().GetReport(); rep != "" {
-			fmt.Println(rep)
+			printlnSafe(rep)
 		}
 		return nil
 
@@ -862,7 +862,7 @@ func runCommand(args []string) error {
 			// an agent in a pane).
 			r, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_ShowPairing{ShowPairing: &pb.ShowPairing{}}})
 			if err == nil {
-				fmt.Printf("Showing the pairing code on %s.\n", r.GetShowPairing().GetHostName())
+				printfSafe("Showing the pairing code on %s.\n", r.GetShowPairing().GetHostName())
 				return nil
 			}
 			if runtime.GOOS == "darwin" {
@@ -891,7 +891,7 @@ func runCommand(args []string) error {
 		if q, err := qrText(link); err == nil && stdoutIsTerminal() {
 			fmt.Print("\n" + q)
 		}
-		fmt.Printf("\nOr paste it there:\n\n  %s\n\nHost %s, addresses %s\nCertificate SHA-256 %s\n", link, p.HostName, strings.Join(p.Addresses, ", "), p.CertSha256)
+		printfSafe("\nOr paste it there:\n\n  %s\n\nHost %s, addresses %s\nCertificate SHA-256 %s\n", link, p.HostName, strings.Join(p.Addresses, ", "), p.CertSha256)
 		return nil
 
 	case "share":
@@ -900,20 +900,20 @@ func runCommand(args []string) error {
 				if len(g.Members) == 0 && !g.InviteActive {
 					continue
 				}
-				fmt.Printf("%s  %s%s\n", g.Id, client.GroupTitle(g, w.groups, w.panes), map[bool]string{true: "  (invite link on)"}[g.InviteActive])
+				printfSafe("%s  %s%s\n", g.Id, client.GroupTitle(g, w.groups, w.panes), map[bool]string{true: "  (invite link on)"}[g.InviteActive])
 				for _, m := range g.Members {
 					if m.Role == pb.Role_ROLE_HOST {
 						continue
 					}
 					p := w.people[m.UserId]
-					fmt.Printf("  %-8s %s (%s)%s\n", strings.TrimPrefix(strings.ToLower(m.Role.String()), "role_"), p.GetName(), p.GetDeviceName(), map[bool]string{true: "  here"}[m.Online])
+					printfSafe("  %-8s %s (%s)%s\n", strings.TrimPrefix(strings.ToLower(m.Role.String()), "role_"), p.GetName(), p.GetDeviceName(), map[bool]string{true: "  here"}[m.Online])
 				}
 			}
 			for _, j := range w.joins {
 				p := w.people[j.UserId]
-				fmt.Printf("asking to join %s: %s (%s)  →  hmk approve %s drive|view|decline\n", j.GroupId, p.GetName(), p.GetDeviceName(), j.Id)
+				printfSafe("asking to join %s: %s (%s)  →  hmk approve %s drive|view|decline\n", j.GroupId, p.GetName(), p.GetDeviceName(), j.Id)
 				if j.KeyFingerprint != "" {
-					fmt.Printf("  key %s%s\n", j.KeyFingerprint, joinKeyWarning(j, p.GetName()))
+					printfSafe("  key %s%s\n", j.KeyFingerprint, joinKeyWarning(j, p.GetName()))
 				}
 			}
 			return nil
@@ -969,7 +969,7 @@ func runCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Println(client.CreatedID(r))
+		printlnSafe(client.CreatedID(r))
 		return nil
 
 	case "leave":
@@ -996,7 +996,7 @@ func runCommand(args []string) error {
 			return printProtoJSON(r.GetDevices())
 		}
 		for _, d := range r.GetDevices().Devices {
-			fmt.Printf("%s  %-20s %-6s paired %s, last seen %s\n", d.Id, d.Name, d.Platform, time.UnixMilli(d.PairedUnixMs).Format("2006-01-02"), time.UnixMilli(d.LastSeenUnixMs).Format("2006-01-02 15:04"))
+			printfSafe("%s  %-20s %-6s paired %s, last seen %s\n", d.Id, d.Name, d.Platform, time.UnixMilli(d.PairedUnixMs).Format("2006-01-02"), time.UnixMilli(d.LastSeenUnixMs).Format("2006-01-02 15:04"))
 		}
 		if o := r.GetDevices().OtherTailscaleRange; len(o) > 0 {
 			fmt.Printf("note: another network uses Tailscale's address range (%s); remote access listens only on Tailscale's own\n", strings.Join(o, ", "))
@@ -1172,13 +1172,13 @@ func printWorld(w *world) {
 				title += ", offline"
 			}
 		}
-		fmt.Printf("%s  %s\n", s.Id, title)
+		printfSafe("%s  %s\n", s.Id, title)
 		for _, tid := range s.TabIds {
 			t := w.tabs[tid]
 			if t == nil {
 				continue
 			}
-			fmt.Printf("  %s  %s\n", t.Id, client.TabTitle(t, s))
+			printfSafe("  %s  %s\n", t.Id, client.TabTitle(t, s))
 			for _, pid := range tabPaneIDs(t) {
 				p := w.panes[pid]
 				if p == nil {
@@ -1205,7 +1205,7 @@ func printWorld(w *world) {
 					focus = "*"
 				}
 				if p.Kind == pb.PaneKind_PANE_KIND_BROWSER {
-					fmt.Printf("   %s%s  %-24s browser  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.Url, status)
+					printfSafe("   %s%s  %-24s browser  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.Url, status)
 					continue
 				}
 				if ed := p.GetEditor(); p.Kind == pb.PaneKind_PANE_KIND_EDITOR {
@@ -1215,30 +1215,30 @@ func printWorld(w *world) {
 					if ed.GetConflict() {
 						status += "  (changed on disk)"
 					}
-					fmt.Printf("   %s%s  %-24s editor  %s%s\n", focus, p.Id, truncate(p.Title, 24), ed.GetPath(), status)
+					printfSafe("   %s%s  %-24s editor  %s%s\n", focus, p.Id, truncate(p.Title, 24), ed.GetPath(), status)
 					continue
 				}
 				if p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {
-					fmt.Printf("   %s%s  %-24s simulator  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.DeviceUdid, status)
+					printfSafe("   %s%s  %-24s simulator  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.DeviceUdid, status)
 					continue
 				}
-				fmt.Printf("   %s%s  %-24s %dx%d  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.Cols, p.Rows, p.Cwd, status)
+				printfSafe("   %s%s  %-24s %dx%d  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.Cols, p.Rows, p.Cwd, status)
 			}
 		}
 	}
 	if len(w.grants) > 0 {
 		fmt.Println("\nPermission requests (hmk grant allow|always|deny ID):")
 		for _, g := range w.grants {
-			fmt.Printf("  %s  %s\n", g.Id, grantText(g))
+			printfSafe("  %s  %s\n", g.Id, grantText(g))
 			if g.Description != "" && g.Headline != "" {
-				fmt.Printf("      the agent says: %q\n", g.Description)
+				printfSafe("      the agent says: %q\n", g.Description)
 			}
 		}
 	}
 	if len(w.attn) > 0 {
 		fmt.Println("\nNeeds you:")
 		for _, a := range w.attn {
-			fmt.Printf("  %s  %s  %s\n", a.PaneId, stateNames[a.State], a.Summary)
+			printfSafe("  %s  %s  %s\n", a.PaneId, stateNames[a.State], a.Summary)
 		}
 	}
 }

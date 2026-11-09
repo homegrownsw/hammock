@@ -122,7 +122,7 @@ func runStatus(args []string) error {
 	if asJSON {
 		return printJSON(st)
 	}
-	fmt.Printf("hmkd %s is running as %s (%s)\n", st.Version, st.Name, st.Dir)
+	printfSafe("hmkd %s is running as %s (%s)\n", st.Version, st.Name, st.Dir)
 	fmt.Printf("  %d Groups, %d tabs, %d panes, %d agents", st.Groups, st.Tabs, st.Panes, st.Agents)
 	if st.NeedsYou > 0 {
 		fmt.Printf(", %d need you", st.NeedsYou)

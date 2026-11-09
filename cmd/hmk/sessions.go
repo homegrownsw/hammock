@@ -126,10 +126,10 @@ func runSessions(call caller, w *world, args []string, on string, onGiven bool) 
 		if s.OpenPaneId != "" {
 			open = "  [open in " + s.OpenPaneId + "]"
 		}
-		fmt.Printf("%-6s %s  %s%s\n", s.Harness, shortID(s.Id), s.Title, open)
-		fmt.Printf("       %s · %s · %s\n", homeShort(s.Cwd), ago(time.UnixMilli(s.UpdatedUnixMs)), count(int(s.Messages), "message"))
+		printfSafe("%-6s %s  %s%s\n", s.Harness, shortID(s.Id), s.Title, open)
+		printfSafe("       %s · %s · %s\n", homeShort(s.Cwd), ago(time.UnixMilli(s.UpdatedUnixMs)), count(int(s.Messages), "message"))
 		if s.Snippet != "" {
-			fmt.Printf("       %s\n", hl.Replace(s.Snippet))
+			fmt.Printf("       %s\n", hl.Replace(termSafe(s.Snippet)))
 		}
 	}
 	fmt.Println("\nResume one with: hmk resume ID [--in claude|codex]")
@@ -219,12 +219,12 @@ func runResume(call caller, w *world, args []string, on string, onGiven bool) er
 		return errors.New("no answer from the daemon")
 	}
 	if res.AlreadyOpen {
-		fmt.Printf("Already open in pane %s.\n", res.PaneId)
+		printfSafe("Already open in pane %s.\n", res.PaneId)
 		return nil
 	}
-	fmt.Printf("Resumed in a new tab (pane %s).\n", res.PaneId)
+	printfSafe("Resumed in a new tab (pane %s).\n", res.PaneId)
 	if res.Report != "" {
-		fmt.Println(res.Report)
+		fmt.Println(termSafeText(res.Report))
 	}
 	return nil
 }
@@ -314,7 +314,7 @@ func runSessionRead(call caller, args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(ex)
 	}
-	fmt.Print(formatExcerpt(ex, req.Query))
+	fmt.Print(termSafeText(formatExcerpt(ex, req.Query)))
 	return nil
 }
 

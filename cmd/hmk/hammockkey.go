@@ -145,11 +145,11 @@ func printKey(st *pb.HammockKeyStatus) {
 			for _, a := range st.Approvers {
 				names = append(names, a.Name)
 			}
-			fmt.Println("Approve with: Touch ID on this Mac, or " + strings.Join(names, ", "))
+			printlnSafe("Approve with: Touch ID on this Mac, or " + strings.Join(names, ", "))
 		}
 	}
 	for _, a := range st.CanAdd {
-		fmt.Printf("Can be allowed to approve: %s (hmk key allow %s)\n", a.Name, a.DeviceId)
+		printfSafe("Can be allowed to approve: %s (hmk key allow %s)\n", a.Name, a.DeviceId)
 	}
 }
 

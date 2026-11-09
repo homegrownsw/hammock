@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -290,23 +291,28 @@ func formatEntry(e *pb.LogEntry, color bool) string {
 	}
 	fmt.Fprintf(&b, " %-7s", lv)
 	if e.Process != "" {
-		b.WriteString(" " + e.Process)
+		b.WriteString(" " + termSafe(e.Process))
 		if e.Pid != 0 {
 			fmt.Fprintf(&b, "[%d]", e.Pid)
 		}
 	}
 	if e.Tag != "" {
-		b.WriteString(" " + e.Tag)
+		b.WriteString(" " + termSafe(e.Tag))
 		if e.Category != "" {
-			b.WriteString(":" + e.Category)
+			b.WriteString(":" + termSafe(e.Category))
 		}
 	}
 	if e.Process != "" || e.Tag != "" {
 		b.WriteString(":")
 	}
-	b.WriteString(" " + strings.ReplaceAll(e.Message, "\n", "\n    "))
+	b.WriteString(" " + strings.ReplaceAll(termSafeText(sgrRE.ReplaceAllString(e.Message, "")), "\n", "\n    "))
 	for _, k := range slices.Sorted(maps.Keys(e.Fields)) {
-		fmt.Fprintf(&b, " %s=%s", k, e.Fields[k])
+		fmt.Fprintf(&b, " %s=%s", termSafe(k), termSafe(e.Fields[k]))
 	}
 	return b.String()
 }
+
+// sgrRE matches colour and style sequences (SGR), which a command's log
+// output is often full of: dropped, rather than shown as U+FFFD[31m once
+// termSafe makes the rest of the message inert.
+var sgrRE = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
