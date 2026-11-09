@@ -183,7 +183,12 @@ func (h *sshHub) source(paneID string) string {
 func (h *sshHub) serve(c net.Conn) {
 	defer c.Close()
 	d := h.d
-	pane, isAgent := d.paneOfProcess(peerPID(c))
+	pane, isAgent, direct := d.locateProcess(peerPID(c), "")
+	if pane != "" && !direct {
+		// Found only by the terminal it kept or a multiplexer: it may be
+		// what an agent left running (person.go), so it asks as one would.
+		isAgent = true
+	}
 	if pane != "" && !isAgent {
 		// A pane an agent opened (and what it runs) acts for that agent,
 		// as caller.go's owners has it: git push in one asks too.

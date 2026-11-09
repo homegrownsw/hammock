@@ -63,6 +63,11 @@ type conn struct {
 	auditAt  map[string]time.Time // a peer's typing, audited once a minute per pane
 	focus    string               // the pane this client last focused
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
+	pid      int                  // a local client's process id (0 unknown)
+	// Whether a local client is positively you, worked out the first time
+	// it asks for something only you may do (person.go). Read loop only.
+	personOnce sync.Once
+	personOK   bool
 
 	attached map[string]*pane // only touched by the read loop
 
@@ -93,12 +98,13 @@ func (d *Daemon) handleWS(w http.ResponseWriter, r *http.Request) {
 	ws.SetReadLimit(32 << 20)
 	pid, _ := r.Context().Value(peerPIDKey{}).(int)
 	cl := d.identify(pid)
-	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller = cl })
+	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller, c.pid = cl, pid })
 }
 
 func (d *Daemon) serveFrames(nc net.Conn, r *bufio.Reader) {
-	cl := d.identify(peerPID(nc))
-	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller = cl })
+	pid := peerPID(nc)
+	cl := d.identify(pid)
+	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller, c.pid = cl, pid })
 }
 
 func (d *Daemon) serveConn(t transport) { d.serveConnWith(t, nil) }
@@ -332,6 +338,8 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	} else if err := c.agentCheck(msg); err != nil {
 		// An agent's scope is checked first, so it can't reach a shared
 		// Group's panes with your role in it.
+		return nil, err
+	} else if err := c.personCheck(msg); err != nil {
 		return nil, err
 	} else if l, err := c.d.routeFor(c, msg); l != nil || err != nil {
 		// Something in a Group shared with you: it's handled on its host.

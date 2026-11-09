@@ -32,6 +32,9 @@ import (
 type caller struct {
 	pane  string // the pane it runs in ("" outside Hammock's panes)
 	agent bool   // an agent, or run by one
+	// direct: found by its ancestors (a pane's shell among them), not by
+	// the terminal it kept or a multiplexer it runs under (person.go).
+	direct bool
 }
 
 func (cl *caller) isAgent() bool { return cl != nil && cl.pane != "" && cl.agent }
@@ -103,8 +106,15 @@ var multiplexers = map[string]bool{"tmux": true, "zellij": true, "screen": true,
 // it's in: under a multiplexer whose clients run in several panes, the
 // claim picks among those (and only those).
 func (d *Daemon) paneOfProcessClaiming(pid int, claimed string) (pane string, agent bool) {
+	pane, agent, _ = d.locateProcess(pid, claimed)
+	return pane, agent
+}
+
+// locateProcess is paneOfProcessClaiming, also saying whether the pane was
+// found by pid's ancestors (direct) rather than by terminal or multiplexer.
+func (d *Daemon) locateProcess(pid int, claimed string) (pane string, agent, direct bool) {
 	if pid <= 0 {
-		return "", false
+		return "", false, false
 	}
 	panes := d.panePIDs()
 	muxes := map[string]bool{}
@@ -114,7 +124,7 @@ func (d *Daemon) paneOfProcessClaiming(pid int, claimed string) (pane string, ag
 			agent = true
 		}
 		if id, ok := panes[cur]; ok {
-			return id, agent
+			return id, agent, true
 		}
 		if name, err := procinfo.Name(cur); err == nil && multiplexers[name] {
 			muxes[name] = true
@@ -128,12 +138,12 @@ func (d *Daemon) paneOfProcessClaiming(pid int, claimed string) (pane string, ag
 	if tty := procinfo.TTY(pid); tty >= 0 {
 		for ppid, id := range panes {
 			if procinfo.TTY(ppid) == tty {
-				return id, agent || isAgentProcess(ppid) || findAgent(ppid) != ""
+				return id, agent || isAgentProcess(ppid) || findAgent(ppid) != "", false
 			}
 		}
 	}
 	if len(muxes) == 0 {
-		return "", false
+		return "", false, false
 	}
 	// Under a multiplexer's server: the panes running one of its clients.
 	var found []string
@@ -156,11 +166,11 @@ func (d *Daemon) paneOfProcessClaiming(pid int, claimed string) (pane string, ag
 	}
 	switch {
 	case len(found) == 1:
-		return found[0], agent
+		return found[0], agent, false
 	case claimed != "" && slices.Contains(found, claimed):
-		return claimed, agent
+		return claimed, agent, false
 	}
-	return "", false
+	return "", false, false
 }
 
 // hasDescendant reports whether one of pid's descendants (a few levels
@@ -190,11 +200,11 @@ func (d *Daemon) identify(pid int) *caller {
 	if identifyHook != nil {
 		return identifyHook(pid)
 	}
-	pane, agent := d.paneOfProcess(pid)
+	pane, agent, direct := d.locateProcess(pid, "")
 	if pane == "" {
 		return nil
 	}
-	cl := &caller{pane: pane, agent: agent}
+	cl := &caller{pane: pane, agent: agent, direct: direct}
 	if !cl.agent {
 		d.mu.Lock()
 		cl.agent = d.agentMade[pane]

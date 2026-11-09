@@ -225,6 +225,7 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 	defer tr.Close()
 	args := []string{
 		"--socket", p.socket, "--dir", cwd, "--token-fd", "3",
+		"--daemon", daemonExe(),
 		"--cols", fmt.Sprint(cols), "--rows", fmt.Sprint(rows), "--",
 	}
 	args = append(args, command...)
@@ -1087,3 +1088,16 @@ func isDir(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.IsDir()
 }
+
+// daemonExe is this daemon's executable, for its holders to know it by
+// (pane-holder --daemon): they take no other program, token or not.
+var daemonExe = sync.OnceValue(func() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		return r
+	}
+	return exe
+})

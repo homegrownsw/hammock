@@ -44,6 +44,9 @@ func TestMain(m *testing.M) {
 	}
 	// Tests send hook events from outside any pane: take the pane they name.
 	hookPane = func(_ *Daemon, _ net.Conn, claimed string) string { return claimed }
+	// And are you (person.go), unless they say they're an agent: tests run
+	// under all sorts of parents (an agent, CI), none of them a login.
+	personHook = testPerson
 	holderBin = filepath.Join(dir, "pane-holder")
 	out, err := exec.Command("go", "build", "-o", holderBin, "../../cmd/pane-holder").CombinedOutput()
 	if err != nil {

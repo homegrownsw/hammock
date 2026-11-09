@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -298,4 +299,63 @@ func TestOrphanExitOnlyOnceDeletedAndAlone(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// The token alone isn't enough: the client must also be the daemon (any
+// program that read the token from the daemon's state otherwise attaches).
+func TestPeerRequired(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		daemon string
+		ok     bool
+	}{
+		{"the daemon", exe, true},
+		{"another program", "/usr/bin/true", false},
+	} {
+		sock := filepath.Join(t.TempDir(), "p.sock")
+		s, err := Start(Config{Socket: sock, Command: []string{"/bin/cat"}, Token: []byte("s3cret"),
+			Peer: DaemonPeer(tc.daemon, "/nonexistent/pane-holder")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := Dial(sock, 0, []byte("s3cret"))
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: attached %v (%v)", tc.name, err == nil, err)
+		}
+		if err == nil {
+			c.Close()
+		}
+		s.Shutdown()
+	}
+	// An hmkd beside the holder (a restarted daemon) is one too; one
+	// elsewhere isn't.
+	dir := t.TempDir()
+	hmkd := filepath.Join(dir, "hmkd")
+	if out, err := exec.Command("cp", exe, hmkd).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	cmd := exec.Command(hmkd, "-test.run=^TestSleepHelper$")
+	cmd.Env = append(os.Environ(), "HMK_HOLDER_TEST_SLEEP=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cmd.Process.Kill(); cmd.Wait() }()
+	if !DaemonPeer("/elsewhere/hmkd", filepath.Join(dir, "pane-holder"))(cmd.Process.Pid) {
+		t.Error("an hmkd beside the holder refused")
+	}
+	if DaemonPeer("/elsewhere/hmkd", "/elsewhere/pane-holder")(cmd.Process.Pid) {
+		t.Error("an hmkd elsewhere taken")
+	}
+}
+
+// TestSleepHelper is a program for TestPeerRequired to run under another name.
+func TestSleepHelper(t *testing.T) {
+	if os.Getenv("HMK_HOLDER_TEST_SLEEP") == "" {
+		t.Skip("run by TestPeerRequired")
+	}
+	time.Sleep(10 * time.Second)
 }

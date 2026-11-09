@@ -2,11 +2,13 @@
 // Unix socket. It is spawned by hmkd in its own session so it survives
 // daemon restarts. See internal/holder.
 //
-//	pane-holder --socket /path/p.sock [--dir DIR] [--cols N --rows N] [--token-fd N] -- cmd args...
+//	pane-holder --socket /path/p.sock [--dir DIR] [--cols N --rows N] [--token-fd N] [--daemon PATH] -- cmd args...
 //
 // With --token-fd, the holder reads a secret from that file descriptor (to
 // EOF) and requires it of every client; the daemon passes it on a pipe so it
 // is in neither the arguments nor the environment the pane's program sees.
+// With --daemon, only that program (or another hmkd of the same install)
+// may attach, token or not.
 package main
 
 import (
@@ -31,6 +33,7 @@ func main() {
 	tokenFD := flag.Int("token-fd", -1, "read a client secret from this file descriptor")
 	idle := flag.Duration("idle-exit", 24*time.Hour, "exit this long after the child exits with no client attached (0 = never)")
 	orphan := flag.Duration("orphan-exit", time.Hour, "once the app this runs from (or this executable) has been deleted, end the pane after this long with no client attached (0 = never)")
+	daemon := flag.String("daemon", "", "the daemon starting this holder (its executable): only it, or another hmkd of this install, may attach")
 	flag.Parse()
 	if *socket == "" || flag.NArg() == 0 {
 		fmt.Fprintln(os.Stderr, "usage: pane-holder --socket PATH [flags] -- command [args...]")
@@ -61,10 +64,14 @@ func main() {
 	}
 
 	exe, _ := os.Executable() // "" (no orphan check) if it can't be told
+	var peer func(int) bool
+	if *daemon != "" {
+		peer = holder.DaemonPeer(*daemon, installOf(exe))
+	}
 	s, err := holder.Start(holder.Config{
 		Socket: *socket, Command: flag.Args(), Dir: *dir, Token: token,
 		Cols: uint16(*cols), Rows: uint16(*rows), RingSize: *ring, IdleExit: *idle,
-		Install: installOf(exe), OrphanExit: *orphan,
+		Install: installOf(exe), OrphanExit: *orphan, Peer: peer,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

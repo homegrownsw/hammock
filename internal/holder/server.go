@@ -30,6 +30,10 @@ type Config struct {
 	// only the daemon that started the holder knows it, so nothing else
 	// that can reach the socket can type into or read the pane.
 	Token []byte
+	// Peer, when set, must also accept the process at the other end of each
+	// connection (by its pid): the token is in the daemon's state, which
+	// anything of yours can read, so it alone doesn't make one the daemon.
+	Peer func(pid int) bool
 	// IdleExit makes the holder exit once the child has exited and no client
 	// has been attached for this long. Zero means wait for FrameClose forever.
 	IdleExit time.Duration
@@ -228,6 +232,17 @@ func (s *Server) serve(conn net.Conn) {
 	if len(s.cfg.Token) > 0 && subtle.ConstantTimeCompare(first.Payload[8:], s.cfg.Token) != 1 {
 		conn.Close()
 		return
+	}
+	if s.cfg.Peer != nil {
+		pid := 0
+		if uc, ok := conn.(*net.UnixConn); ok {
+			pid = sockPeerPID(uc)
+		}
+		if pid <= 0 || !s.cfg.Peer(pid) {
+			logf("refused a client (pid %d): not the daemon", pid)
+			conn.Close()
+			return
+		}
 	}
 	c := &client{conn: conn, offset: binary.BigEndian.Uint64(first.Payload), wake: make(chan struct{}, 1), done: make(chan struct{})}
 
