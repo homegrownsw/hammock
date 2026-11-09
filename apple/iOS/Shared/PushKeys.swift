@@ -3,7 +3,9 @@ import Foundation
 
 /// The keys this phone's Macs encrypt notifications with (one per Mac, by
 /// its certificate fingerprint), shared with the notification extension
-/// through the app group.
+/// through the app group. Never in a backup: a phone restored from one
+/// makes new keys, and each Mac gets its new one when the phone next
+/// connects to it (Push.registerWithMac, on every connect).
 enum PushKeys {
     static let group = "group.com.homegrownsw.hammock"
 
@@ -12,7 +14,9 @@ enum PushKeys {
     }
 
     static func all() -> [String: Data] {
-        guard let file, let data = try? Data(contentsOf: file),
+        guard let file else { return [:] }
+        excludeFromBackupOnce(file)
+        guard let data = try? Data(contentsOf: file),
               let m = try? JSONDecoder().decode([String: Data].self, from: data) else { return [:] }
         return m
     }
@@ -37,6 +41,22 @@ enum PushKeys {
         guard let file, let data = try? JSONEncoder().encode(m) else { return }
         // Readable while locked (after the first unlock), as notifications arrive then.
         try? data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        excludeFromBackup(file) // an atomic write is a new file: again each time
+    }
+
+    private static func excludeFromBackup(_ file: URL) {
+        var url = file
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
+    }
+
+    /// A file written before it was kept out of backups: out from now on.
+    nonisolated(unsafe) private static var excluded = false
+    private static func excludeFromBackupOnce(_ file: URL) {
+        guard !excluded, FileManager.default.fileExists(atPath: file.path) else { return }
+        excluded = true
+        excludeFromBackup(file)
     }
 
     /// Decrypts a notification from any of the Macs: only if it names the
