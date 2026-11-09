@@ -53,6 +53,7 @@ type peerLink struct {
 	logs     map[string]*pb.WatchLog   // remote log pane → the watch your client last sent (one client at a time)
 	logTo    map[string]*conn
 	inputs   map[string]*conn          // remote browser pane → who last gave it input (gets its menus)
+	copyAsk  map[string]copyRequest    // remote browser pane → a copy your client asked of it, not yet answered
 	menus    map[int32]*pb.BrowserMenu // menus shown to your clients, by the host's seq (dismissed if they leave)
 	menuTo   map[int32]*conn
 	sentAt   string // the presence last sent
@@ -65,11 +66,52 @@ type peerLink struct {
 
 func linkKey(t *pb.InviteToken) string { return t.CertSha256 }
 
+// copyRequest is a client asking a host's browser pane for its selection (⌘C,
+// ⌘X, or a menu item such as Copy): the one time the host's text may go
+// to that client's clipboard.
+type copyRequest struct {
+	c  *conn
+	at time.Time
+}
+
+// copyAnswerWithin is how long after asking a host's answer is taken.
+const copyAnswerWithin = 5 * time.Second
+
+// askedCopy notes that c asked pane for a copy, if msg does. Callers hold d.mu.
+func (l *peerLink) askedCopy(c *conn, msg *pb.ClientMessage) {
+	pane := ""
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_BrowserInput:
+		if m.BrowserInput.Op == "copy" || m.BrowserInput.Op == "cut" {
+			pane = m.BrowserInput.PaneId
+		}
+	case *pb.ClientMessage_BrowserMenuChoice:
+		if m.BrowserMenuChoice.Index >= 0 {
+			pane = m.BrowserMenuChoice.PaneId
+		}
+	}
+	if pane != "" {
+		l.copyAsk[pane] = copyRequest{c, time.Now()}
+	}
+}
+
+// clipboardTo is who a host's BrowserClipboard for pane goes to: the client
+// that asked for a copy just now, once. A host can't otherwise set your
+// clipboard. Callers hold d.mu.
+func (l *peerLink) clipboardTo(pane string) *conn {
+	a, ok := l.copyAsk[pane]
+	delete(l.copyAsk, pane)
+	if !ok || time.Since(a.at) > copyAnswerWithin {
+		return nil
+	}
+	return a.c
+}
+
 func newLink(d *Daemon, tok *pb.InviteToken) *peerLink {
 	return &peerLink{d: d, tok: tok, ready: make(chan struct{}), stop: make(chan struct{}),
 		groups: map[string]*pb.Group{}, tabs: map[string]*pb.Tab{}, panes: map[string]*pb.Pane{},
 		attn: map[string]*pb.AttentionItem{}, grants: map[string]*pb.GrantRequest{}, scheds: map[string]*pb.Schedule{}, people: map[string]*pb.Person{},
-		attached: map[string]map[*conn]bool{}, watching: map[string]map[*conn]bool{}, paging: map[string]*conn{}, logs: map[string]*pb.WatchLog{}, logTo: map[string]*conn{}, inputs: map[string]*conn{}, menus: map[int32]*pb.BrowserMenu{}, menuTo: map[int32]*conn{}}
+		attached: map[string]map[*conn]bool{}, watching: map[string]map[*conn]bool{}, paging: map[string]*conn{}, logs: map[string]*pb.WatchLog{}, logTo: map[string]*conn{}, inputs: map[string]*conn{}, copyAsk: map[string]copyRequest{}, menus: map[int32]*pb.BrowserMenu{}, menuTo: map[int32]*conn{}}
 }
 
 // loadLinks restores links to hosts (with their last known state, offline
@@ -462,7 +504,8 @@ func (l *peerLink) serve(cl *client.Client) {
 		case *pb.ServerMessage_ScreenState:
 			l.d.media.relayState(l, m.ScreenState)
 		case *pb.ServerMessage_BrowserClipboard:
-			if c := l.inputs[m.BrowserClipboard.PaneId]; c != nil {
+			// Only in answer to a copy your client asked for.
+			if c := l.clipboardTo(m.BrowserClipboard.PaneId); c != nil {
 				c.send(ev)
 			}
 		case *pb.ServerMessage_LogView:
@@ -1014,6 +1057,7 @@ func (l *peerLink) call(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 func (l *peerLink) forwardThen(c *conn, msg *pb.ClientMessage, then func(*pb.ServerMessage, error) *pb.ServerMessage) (*pb.ServerMessage, error) {
 	d := l.d
 	d.mu.Lock()
+	l.askedCopy(c, msg)
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_AttachPane:
 		set(l.attached, m.AttachPane.PaneId, c, true)

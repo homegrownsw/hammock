@@ -809,3 +809,33 @@ func TestRevokeInviteEndsPendingJoins(t *testing.T) {
 		t.Fatal("join request left behind")
 	}
 }
+
+// A host's text reaches your clipboard only in answer to your own copy on
+// its page, just now, once.
+func TestHostClipboardOnlyAnswersCopy(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	l := newLink(d, &pb.InviteToken{CertSha256: "aa", HostUserId: "us_a"})
+	c := &conn{d: d}
+	l.inputs["pn_web"] = c
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("clipboard set unasked")
+	}
+	l.askedCopy(c, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: "pn_web", Op: "key"}}})
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("clipboard set after a key that isn't a copy")
+	}
+	l.askedCopy(c, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: "pn_web", Op: "copy"}}})
+	if l.clipboardTo("pn_web") != c {
+		t.Fatal("a copy's answer didn't arrive")
+	}
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("one copy answered twice")
+	}
+	l.askedCopy(c, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserMenuChoice{BrowserMenuChoice: &pb.BrowserMenuChoice{PaneId: "pn_web", Index: 2}}})
+	l.copyAsk["pn_web"] = copyRequest{c, time.Now().Add(-time.Minute)}
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("answered long after the copy")
+	}
+}
