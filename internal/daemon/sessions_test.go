@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -146,14 +147,35 @@ func TestAgentsReadTheirProjectsSessions(t *testing.T) {
 	defer d.Shutdown()
 	c := dial(t, dir)
 	gid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
-	tid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: gid, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}, Cwd: work}}}}))
+	// The agent: a stand-in harness (pane-holder copied as "claude"), started
+	// in the project, below its root. Its folder is the project, not the
+	// pane's (which a program can say is anywhere: OSC 7).
+	bin := t.TempDir()
+	claude := filepath.Join(bin, "claude")
+	if out, err := exec.Command("cp", holderBin, claude).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	tid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: gid, Pane: &pb.PaneSpec{
+		Command: []string{"/bin/sh", "-c", claude + " --idle-exit 1s --socket " + filepath.Join(shortDir(t), "h.sock") + " -- /bin/cat & wait"}, Cwd: filepath.Join(work, "web"),
+	}}}}))
 	d.mu.Lock()
 	pane := d.tabs[tid].FocusedPaneId
 	p := d.panes[pane]
 	d.mu.Unlock()
+	home, _ := os.UserHomeDir()
 	p.mu.Lock()
-	p.info.Cwd = filepath.Join(work, "web") // in the project, below its root
+	p.info.Cwd = home // as an OSC 7 says
 	p.mu.Unlock()
+	waitFor(t, "the harness", func() bool {
+		p.mu.Lock()
+		shell := p.pid
+		p.mu.Unlock()
+		if shell <= 0 {
+			return false
+		}
+		_, pid := findAgentProc(shell)
+		return pid > 0
+	})
 	agent := dialAs(t, dir, &caller{pane: pane, agent: true}, "mcp")
 	ask := func(m *pb.ClientMessage) (*pb.ServerMessage, error) { return agent.Call(context.Background(), m) }
 
@@ -267,5 +289,18 @@ func TestExcerptPicksMatchesAndNeighbours(t *testing.T) {
 	long := strings.Repeat("x", 5000) + " needle " + strings.Repeat("y", 5000)
 	if c := clipAround(long, "needle", 1500); !strings.Contains(c, "needle") || !strings.HasPrefix(c, "…") || len([]rune(c)) > 1502 {
 		t.Fatalf("clip: %d runes, has needle %v", len([]rune(c)), strings.Contains(c, "needle"))
+	}
+}
+
+// An agent's project is never so wide it's every project.
+func TestProjectNeverHome(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	for _, dir := range []string{"/", home, filepath.Dir(home), ".", "rel/ative"} {
+		if !tooWide(dir) {
+			t.Errorf("%q is a project", dir)
+		}
+	}
+	if tooWide(filepath.Join(home, "src", "x")) {
+		t.Error("a folder in home is too wide")
 	}
 }

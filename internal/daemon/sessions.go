@@ -17,6 +17,7 @@ import (
 
 	"github.com/alexjsp/hammock/internal/agents"
 	"github.com/alexjsp/hammock/internal/holder"
+	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 	"github.com/alexjsp/hammock/internal/sessions"
 	"github.com/alexjsp/hammock/internal/thread"
@@ -443,12 +444,63 @@ func (d *Daemon) sessionScope(c *conn) (project string, everywhere bool) {
 	if !cl.isAgent() {
 		return "", true
 	}
+	project = d.agentProject(cl.pane)
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if p := d.panes[cl.pane]; p != nil {
-		project = projectRoot(p.snapshotInfo().Cwd)
-	}
 	return project, d.granted(cl.pane, "sessions", cl.pane)
+}
+
+// agentProject is the project of the agent a pane runs (or, for a pane an
+// agent opened, the agent that opened it): the git root of the folder its
+// harness runs in, as the system has it. Not the pane's own folder: a
+// program prints that (OSC 7), and `cd` changes it. Never your home
+// folder or above, which would be every project: "" then (ask). Callers
+// don't hold d.mu.
+func (d *Daemon) agentProject(pane string) string {
+	d.mu.Lock()
+	var shells []int
+	ids := []string{pane} // its own first
+	for id := range d.owners(pane) {
+		if id != pane {
+			ids = append(ids, id)
+		}
+	}
+	for _, id := range ids {
+		if p := d.panes[id]; p != nil {
+			p.mu.Lock()
+			if p.pid > 0 {
+				shells = append(shells, p.pid)
+			}
+			p.mu.Unlock()
+		}
+	}
+	d.mu.Unlock()
+	for _, shell := range shells {
+		agent := shell
+		if !isAgentProcess(shell) {
+			_, agent = findAgentProc(shell)
+		}
+		if agent <= 0 {
+			continue
+		}
+		cwd, err := procinfo.Cwd(agent)
+		if err != nil {
+			continue
+		}
+		cwd = logicalDir(cwd, procinfo.Env(agent))
+		if root := projectRoot(cwd); !tooWide(root) {
+			return root
+		}
+		return ""
+	}
+	return ""
+}
+
+// tooWide: dir is /, your home folder or above it, where every project is.
+func tooWide(dir string) bool {
+	home, _ := os.UserHomeDir()
+	dir = filepath.Clean(dir)
+	return dir == "/" || dir == "." || !filepath.IsAbs(dir) || home != "" && inFolder(home, dir)
 }
 
 // sessionFolder is the folder a search looks in, as the caller may.
@@ -673,4 +725,17 @@ func (d *Daemon) sessionExcerpts(c *conn, m *pb.SessionExcerpts) (*pb.SessionExc
 		out.Messages = append(out.Messages, &pb.SessionMessage{Role: e.role, TimeUnixMs: e.at.UnixMilli(), Text: e.text, Index: int32(e.index)})
 	}
 	return out, nil
+}
+
+// logicalDir is dir as the program was started in it ($PWD, through any
+// symbolic links: as its sessions record it) when that is the same folder.
+func logicalDir(dir string, env []string) string {
+	for _, kv := range env {
+		if pwd, ok := strings.CutPrefix(kv, "PWD="); ok && filepath.IsAbs(pwd) {
+			if r, err := filepath.EvalSymlinks(pwd); err == nil && r == dir {
+				return pwd
+			}
+		}
+	}
+	return dir
 }
