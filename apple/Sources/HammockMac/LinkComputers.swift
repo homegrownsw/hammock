@@ -57,6 +57,11 @@ struct LinkComputerSheet: View {
     @State private var theirLink = ""
     /// Set when remote access has no network to listen on yet: where to listen, first.
     @State private var choosing: Hammock_V1_Devices?
+    /// A hammock://link/ link opened from elsewhere (a web page, a message),
+    /// waiting for you to say to link with it: nothing is sent until you do.
+    @State private var asking: String?
+    /// The link you said to link with.
+    @State private var confirmedLink: String?
     /// The found list's own height, so it's only as tall as it needs to be,
     /// up to listMax, then scrolls (a tailnet can have dozens of devices).
     @State private var listHeight: CGFloat = 0
@@ -67,7 +72,9 @@ struct LinkComputerSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let choosing {
+            if let asking {
+                confirmLink(asking)
+            } else if let choosing {
                 NetworkChooser(model: model, status: choosing) { ok in
                     if ok {
                         self.choosing = nil
@@ -94,18 +101,67 @@ struct LinkComputerSheet: View {
         .padding(22)
         .frame(width: 480)
         .task {
-            // Linking turns remote access on: somewhere to listen, first.
-            if let s = try? await model.deviceStatus(), s.needsNetworkChoice, !s.networks.isEmpty {
-                choosing = s
+            // A link opened from elsewhere: asked about first, before anything
+            // (remote access, connecting to it) happens.
+            if let link = LinkUI.shared.link {
+                LinkUI.shared.link = nil
+                asking = link
             } else {
-                await begin()
+                await prepare()
             }
         }
     }
 
+    private func prepare() async {
+        // Linking turns remote access on: somewhere to listen, first.
+        if let s = try? await model.deviceStatus(), s.needsNetworkChoice, !s.networks.isEmpty {
+            choosing = s
+        } else {
+            await begin()
+        }
+    }
+
+    /// "Link with …?" for a link opened from elsewhere. Its name is only what
+    /// the link says, so the addresses it would connect to are what's shown.
+    @ViewBuilder
+    private func confirmLink(_ link: String) -> some View {
+        let preview = LinkInvitePreview(link: link)
+        VStack(alignment: .leading, spacing: 14) {
+            if let preview {
+                Text("Link with \(preview.addresses.first.map(hostOnly) ?? "this computer")?").font(.title3.weight(.bold))
+                Text("A link asked Hammock to link this Mac with another computer. Link only if you opened it yourself, from a computer of yours: a linked computer sees and drives this Mac's Groups. Nothing is sent until you choose Link.")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(preview.addresses, id: \.self) { Text($0).font(.callout.monospaced()) }
+                    if !preview.name.isEmpty {
+                        Text("It calls itself “\(preview.name)”.").font(.callout)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            } else {
+                Text("Link a Computer").font(.title3.weight(.bold))
+                Text("That link is damaged; make a new one.").foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.defaultAction)
+                if preview != nil {
+                    Button("Link") {
+                        confirmedLink = link
+                        asking = nil
+                        Task { await prepare() }
+                    }
+                }
+            }
+        }
+        .onExitCommand { dismiss() }
+    }
+
     private func begin() async {
-        if let link = LinkUI.shared.link {
-            LinkUI.shared.link = nil
+        if let link = confirmedLink {
+            confirmedLink = nil
             start(link, name: "the other computer")
         } else {
             await discover()
@@ -341,10 +397,12 @@ struct CodeCheck: View {
                     Text("\(request.name) says they match.").foregroundStyle(.secondary)
                 }
                 Spacer()
+                // Neither is the default: Return mustn't say they match
+                // without you reading the code.
                 Button("They're Different") { model.respondLink(request.id, accept: false) }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(request.acceptedHere)
                 Button("They Match") { model.respondLink(request.id, accept: true) }
-                    .keyboardShortcut(.defaultAction)
                     .disabled(request.acceptedHere)
             }
         }

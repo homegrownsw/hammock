@@ -248,3 +248,22 @@ public struct ComputerBadge: View {
             .accessibilityLabel("On \(computer.name)")
     }
 }
+
+/// What a hammock://link/ link says, read here before anything is sent, so
+/// a link opened from elsewhere (a web page, a message) can be confirmed
+/// first. The name is whatever the link's maker put in it: show the
+/// addresses, which are where linking would connect.
+public struct LinkInvitePreview: Equatable, Sendable {
+    public let name: String
+    public let addresses: [String]
+
+    public init?(link: String) {
+        guard link.hasPrefix("hammock://link/") else { return nil }
+        var s = String(link.dropFirst("hammock://link/".count)).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while s.count % 4 != 0 { s += "=" }
+        guard let data = Data(base64Encoded: s), let t = try? Hammock_V1_LinkToken(serializedBytes: data),
+              !t.addresses.isEmpty, !t.certSha256.isEmpty, !t.userID.isEmpty else { return nil }
+        name = t.name
+        addresses = t.addresses
+    }
+}
