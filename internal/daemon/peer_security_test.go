@@ -310,6 +310,44 @@ func TestRemovedPeerDisconnected(t *testing.T) {
 	}
 }
 
+// A log pane moved out of a guest's Group stops sending it entries (the
+// guest, still in that Group, stays connected).
+func TestRevokedPeerStopsLogView(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	host, h, peer, _, gid, _, _ := sharedSetup(t, pb.Role_ROLE_VIEWER)
+	ltab := client.CreatedID(call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: gid,
+		Pane: &pb.PaneSpec{Log: &pb.LogSource{Kind: "command", Command: []string{`i=0; while true; do echo "INFO line $i"; i=$((i+1)); sleep 0.05; done`}}}}}}))
+	host.mu.Lock()
+	logPane := host.tabs[ltab].FocusedPaneId
+	host.mu.Unlock()
+	call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_WatchLog{WatchLog: &pb.WatchLog{PaneId: logPane, Watch: true}}})
+	waitEvent(t, peer, func(ev *pb.ServerMessage) bool {
+		v := ev.GetLogView()
+		return v.GetPaneId() == logPane && !v.Replace && len(v.Entries) > 0
+	})
+	other := client.CreatedID(call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Private"}}}))
+	call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_MoveTab{MoveTab: &pb.MoveTab{TabId: ltab, GroupId: other}}})
+	time.Sleep(200 * time.Millisecond)
+	for len(peer.Events) > 0 {
+		<-peer.Events
+	}
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case ev, ok := <-peer.Events:
+			if !ok {
+				t.Fatal("a guest still in a Group was disconnected")
+			}
+			if v := ev.GetLogView(); v.GetPaneId() == logPane && len(v.Entries) > 0 {
+				t.Fatal("still sending log entries of a pane out of reach")
+			}
+		case <-deadline:
+			return
+		}
+	}
+}
+
 // A guest reads agent files only for an agent it's watching itself.
 func TestPeerReadAgentFileNeedsWatch(t *testing.T) {
 	_, h, peer, _, _, _, paneID := sharedSetup(t, pb.Role_ROLE_VIEWER)

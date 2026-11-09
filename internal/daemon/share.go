@@ -569,8 +569,9 @@ func (d *Daemon) resendState(c *conn) {
 	d.revokeStreams(c)
 }
 
-// revokeStreams stops a peer's screens and agent views of panes no longer in
-// its Groups (it was removed, sharing stopped, or a tab or pane moved out).
+// revokeStreams stops a peer's screens, agent views and log views of panes
+// no longer in its Groups (it was removed, sharing stopped, or a tab or pane
+// moved out).
 // Callers hold d.mu.
 func (d *Daemon) revokeStreams(c *conn) {
 	if c.peer == "" {
@@ -581,9 +582,13 @@ func (d *Daemon) revokeStreams(c *conn) {
 		_, in := sc[d.groupOfPane(paneID)]
 		return !in
 	}
+	var logs []*logPane
 	for id, p := range d.panes {
 		if outside(id) {
 			p.detach(c)
+			if p.log != nil {
+				logs = append(logs, p.log)
+			}
 		}
 	}
 	// Video of panes now outside, and menus its input opened (it may have
@@ -600,6 +605,9 @@ func (d *Daemon) revokeStreams(c *conn) {
 			ms.end("you no longer have access to that pane")
 		}
 		d.browsers.closeMenusFor(c)
+		for _, lp := range logs {
+			lp.unwatch(c) // (its lock isn't taken under the daemon's)
+		}
 	}()
 	var ws []*agentWatch
 	for _, w := range d.agentWatches {
