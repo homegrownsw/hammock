@@ -547,11 +547,7 @@ func cmpOr(a, b string) string {
 	return b
 }
 
-var (
-	cxShellCommand = regexp.MustCompile(`(?s)<command>\n?(.*?)\n?</command>`)
-	cxShellExit    = regexp.MustCompile(`(?m)^Exit code: (-?\d+)`)
-	cxShellOutput  = regexp.MustCompile(`(?s)\nOutput:\n?(.*?)\n?</result>`)
-)
+var cxShellCommand = regexp.MustCompile(`(?s)<command>\n?(.*?)\n?</command>`)
 
 // userShell is a "!" command you ran at Codex's prompt: Codex records it,
 // once it's finished, as a user message of its own,
@@ -580,11 +576,14 @@ func (c *Codex) userShell(id, text string, ms int64) []*pb.AgentBlock {
 	// as Codex's own commands are.
 	b := &pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_TOOL, Tool: "Bash", TimeUnixMs: ms, Input: cmd,
 		Title: "Ran `" + firstLine(cmd) + "`", TurnId: id}
-	if e := cxShellExit.FindStringSubmatch(text); e != nil {
-		b.Error = e[1] != "0"
-	}
-	if o := cxShellOutput.FindStringSubmatch(text); o != nil {
-		b.Output = clip(stripANSI(strings.TrimRight(o[1], "\n")), maxOutput)
+	// The result, to its last end: what the command printed can hold the tag.
+	if _, res, ok := strings.Cut(text, "<result>"); ok {
+		if i := strings.LastIndex(res, "</result>"); i >= 0 {
+			res = res[:i]
+		}
+		out, failed := trimExecHeader(strings.TrimPrefix(res, "\n"))
+		b.Error = failed
+		b.Output = clip(stripANSI(strings.TrimRight(out, "\n")), maxOutput)
 	}
 	return c.add(b)
 }

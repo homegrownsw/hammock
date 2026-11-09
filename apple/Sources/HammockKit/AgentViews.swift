@@ -2293,7 +2293,12 @@ struct Composer: View {
     /// A message starting with "!" runs as a shell command in agents that
     /// have a shell mode (Claude Code's bash mode): the box says so, as
     /// Claude Code's own prompt does, in its colour.
-    private var shellCommand: Bool { text.hasPrefix("!") && AgentCatalog.hasShellMode(harness) }
+    /// As sent: leading space trimmed, and attachments' paths go first (it
+    /// isn't one then).
+    private var shellCommand: Bool {
+        attachments.isEmpty && AgentCatalog.hasShellMode(harness)
+            && text.drop(while: { $0.isWhitespace }).hasPrefix("!")
+    }
     private static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
 
     private var canSend: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty }
@@ -2353,7 +2358,7 @@ struct Composer: View {
             // and under it a row of controls (attach, what's attached, send).
             VStack(alignment: .leading, spacing: 2) {
                 if shellCommand {
-                    Label("Shell command · \(session.agentName) sees its output", systemImage: "apple.terminal")
+                    Label("Shell command", systemImage: "apple.terminal")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(Self.shellTint)
                         .padding(.horizontal, 16)
@@ -3012,13 +3017,8 @@ struct AttachmentThumb: View {
     }
 }
 
-/// Debug: code blocks with long lines, with no daemon (HMK_DEBUG_CODEBLOCKS=1,
-/// DebugSnapshot): a Swift block (not wrapped), a text block (wrapped), and a
-/// Markdown file in four backticks, holding a fenced block of its own, shown
-/// as source and rendered.
-/// Debug: a "!" command as the agent view shows it, run and failed, over
-/// the composer with one being typed (HMK_DEBUG_COMPOSER=<text>,
-/// DebugSnapshot), no daemon.
+/// Debug: "!" commands as the agent view shows them, over the composer with
+/// one being typed (HMK_DEBUG_COMPOSER=<text>, DebugSnapshot), no daemon.
 public struct ComposerSample: View {
     let session: AgentSession
     let text: String
@@ -3052,6 +3052,10 @@ public struct ComposerSample: View {
     }
 }
 
+/// Debug: code blocks with long lines, with no daemon (HMK_DEBUG_CODEBLOCKS=1,
+/// DebugSnapshot): a Swift block (not wrapped), a text block (wrapped), and a
+/// Markdown file in four backticks, holding a fenced block of its own, shown
+/// as source and rendered.
 public struct CodeBlockSample: View {
     static let markdown = """
     # Release plan

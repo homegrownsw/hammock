@@ -527,12 +527,32 @@ func TestClaudeBangCommandIsATool(t *testing.T) {
 	feed("i3", "o2", "<bash-input>true</bash-input>")
 	feed("o3", "i3", "<bash-stdout>(Bash completed with no output)</bash-stdout><bash-stderr></bash-stderr>")
 	bs = c.Blocks()
-	if len(bs) != 3 || !bs[1].Error || bs[1].Output != "usage: sleep number[unit] [...]" || bs[2].Error || bs[2].Output != "" || bs[2].Pending {
+	// No exit status recorded, and stderr alone isn't failure.
+	if len(bs) != 3 || bs[1].Error || bs[1].Output != "usage: sleep number[unit] [...]" || bs[2].Output != "" || bs[2].Pending {
 		t.Fatalf("blocks: %v", bs)
 	}
 	for _, b := range bs {
 		if b.Kind == pb.AgentBlock_KIND_USER || b.Kind == pb.AgentBlock_KIND_TEXT {
 			t.Fatalf("a message: %v", b)
 		}
+	}
+
+	// Output holding the very tags (a diff of this parser): still output.
+	diff := "+\t<bash-input>x</bash-input>\n+\t<command-name>/x</command-name><local-command-stdout>y</local-command-stdout>\n+</bash-stdout><bash-stderr>"
+	feed("i4", "o3", "<bash-input>git diff</bash-input>")
+	feed("o4", "i4", "<bash-stdout>"+diff+"</bash-stdout><bash-stderr>warn</bash-stderr>")
+	bs = c.Blocks()
+	if len(bs) != 4 || bs[3].Title != "Ran `git diff`" || bs[3].Pending || bs[3].Output != diff+"\nwarn" {
+		t.Fatalf("tags in output: %v", bs)
+	}
+
+	// The command and its output in one line.
+	feed("i5", "o4", "<bash-input>pwd</bash-input>\n\n<bash-stdout>/tmp</bash-stdout><bash-stderr></bash-stderr>")
+	// Interrupted, no output: settled once something else is typed.
+	feed("i6", "i5", "<bash-input>sleep 100</bash-input>")
+	feed("u7", "i6", "Never mind")
+	bs = c.Blocks()
+	if len(bs) != 7 || bs[4].Output != "/tmp" || bs[4].Pending || bs[5].Title != "Ran `sleep 100`" || bs[5].Pending || bs[6].Text != "Never mind" {
+		t.Fatalf("one line, interrupted: %v", bs)
 	}
 }
