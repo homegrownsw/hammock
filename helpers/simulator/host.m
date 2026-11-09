@@ -52,6 +52,7 @@
 
 #import "../media/encoder.h"
 #import <QuartzCore/QuartzCore.h>
+#import <Security/Security.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
@@ -84,11 +85,39 @@ static const uint32_t kTouchScreen = 0x32, kHardware = 0x33, kDown = 1, kUp = 2;
 
 #define MSG(obj, sel, ...) ((id(*)(id, SEL, ...))objc_msgSend)(obj, NSSelectorFromString(sel), ##__VA_ARGS__)
 
+// Where Xcode is: the one xcode-select chose (its link, read without running
+// it), else /Applications/Xcode.app. Not DEVELOPER_DIR: library validation
+// is off (it loads Xcode's private frameworks), so whoever could set this
+// process's environment could have it load their code. hmkd starts it with
+// a filtered environment that has no DEVELOPER_DIR anyway.
+static NSString *developerDir(void) {
+  static NSString *dir;
+  if (!dir) {
+    NSString *chosen = [NSFileManager.defaultManager destinationOfSymbolicLinkAtPath:@"/var/db/xcode_select_link" error:nil];
+    NSString *sk = [chosen stringByAppendingPathComponent:@"../SharedFrameworks/SimulatorKit.framework"];
+    dir = sk && [NSFileManager.defaultManager fileExistsAtPath:sk] ? chosen : @"/Applications/Xcode.app/Contents/Developer";
+  }
+  return dir;
+}
+
+// Whether the code at path (a framework or binary) is Apple's own, signed by
+// Apple, as Xcode's frameworks are: checked before loading it, since library
+// validation can't.
+static BOOL signedByApple(NSString *path) {
+  SecStaticCodeRef code = NULL;
+  SecRequirementRef req = NULL;
+  BOOL ok = SecStaticCodeCreateWithPath((__bridge CFURLRef)[NSURL fileURLWithPath:path], kSecCSDefaultFlags, &code) == errSecSuccess &&
+            SecRequirementCreateWithString(CFSTR("anchor apple"), kSecCSDefaultFlags, &req) == errSecSuccess &&
+            SecStaticCodeCheckValidity(code, kSecCSDoNotValidateResources, req) == errSecSuccess;
+  if (code) CFRelease(code);
+  if (req) CFRelease(req);
+  return ok;
+}
+
 static id serviceContext(void) {
   static id ctx;
   if (!ctx) {
-    NSString *dev = NSProcessInfo.processInfo.environment[@"DEVELOPER_DIR"] ?: @"/Applications/Xcode.app/Contents/Developer";
-    ctx = ((id(*)(id, SEL, id, id *))objc_msgSend)(objc_getClass("SimServiceContext"), NSSelectorFromString(@"sharedServiceContextForDeveloperDir:error:"), dev, nil);
+    ctx = ((id(*)(id, SEL, id, id *))objc_msgSend)(objc_getClass("SimServiceContext"), NSSelectorFromString(@"sharedServiceContextForDeveloperDir:error:"), developerDir(), nil);
   }
   return ctx;
 }
@@ -1379,16 +1408,22 @@ int main(int argc, char **argv) {
       fprintf(stderr, "usage: Hammock Simulator --socket=PATH\n");
       return 2;
     }
-    if (!dlopen("/Library/Developer/PrivateFrameworks/CoreSimulator.framework/CoreSimulator", RTLD_NOW)) {
-      fprintf(stderr, "simulator-host: CoreSimulator not found (install Xcode)\n");
+    // Only Apple's own frameworks are loaded (library validation is off).
+    NSString *cs = @"/Library/Developer/PrivateFrameworks/CoreSimulator.framework";
+    if (!signedByApple(cs) || !dlopen([cs stringByAppendingPathComponent:@"CoreSimulator"].fileSystemRepresentation, RTLD_NOW)) {
+      fprintf(stderr, "simulator-host: CoreSimulator not found, or not signed by Apple (install Xcode)\n");
       return 1;
     }
-    NSString *dev = NSProcessInfo.processInfo.environment[@"DEVELOPER_DIR"] ?: @"/Applications/Xcode.app/Contents/Developer";
-    NSString *skPath = [dev stringByAppendingPathComponent:@"../SharedFrameworks/SimulatorKit.framework/SimulatorKit"];
-    void *sk = dlopen(skPath.fileSystemRepresentation, RTLD_NOW);
-    indigoMouse = (MouseFn)dlsym(sk, "IndigoHIDMessageForMouseNSEvent");
-    indigoButton = (ButtonFn)dlsym(sk, "IndigoHIDMessageForButton");
-    indigoKey = (KeyFn)dlsym(sk, "IndigoHIDMessageForKeyboardArbitrary");
+    NSString *skDir = [developerDir() stringByAppendingPathComponent:@"../SharedFrameworks/SimulatorKit.framework"];
+    void *sk = NULL;
+    if (signedByApple(skDir)) {
+      sk = dlopen([skDir stringByAppendingPathComponent:@"SimulatorKit"].fileSystemRepresentation, RTLD_NOW);
+    } else {
+      fprintf(stderr, "simulator-host: SimulatorKit at %s isn't signed by Apple; not loading it\n", skDir.fileSystemRepresentation);
+    }
+    indigoMouse = (MouseFn)(sk ? dlsym(sk, "IndigoHIDMessageForMouseNSEvent") : NULL);
+    indigoButton = (ButtonFn)(sk ? dlsym(sk, "IndigoHIDMessageForButton") : NULL);
+    indigoKey = (KeyFn)(sk ? dlsym(sk, "IndigoHIDMessageForKeyboardArbitrary") : NULL);
     if (!indigoMouse || !indigoButton || !indigoKey) fprintf(stderr, "simulator-host: SimulatorKit input unavailable: %s\n", dlerror());
 
     NSApplication *app = NSApplication.sharedApplication;
