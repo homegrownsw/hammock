@@ -8,6 +8,7 @@ struct SettingsScreen: View {
     @AppStorage(AgentViewPrefs.fontName) private var fontName = ""
     @AppStorage(AgentViewPrefs.fontSize) private var fontSize = AgentViewPrefs.defaultSize
     @AppStorage(AgentViewPrefs.codeFontSize) private var codeFontSize = AgentViewPrefs.defaultSize - 1
+    @AppStorage(AgentViewPrefs.codeWrap) private var codeWrap = "prose"
     @AppStorage(AgentViewPrefs.lineSpacing) private var lineSpacing = AgentViewPrefs.defaultSpacing
     @AppStorage(PhoneTheme.prefKey) private var themePref = ""
     @Environment(\.phoneTheme) private var theme
@@ -74,6 +75,11 @@ struct SettingsScreen: View {
                     Stepper("Size: \(Int(fontSize))", value: $fontSize, in: 12...28)
                     Stepper("Line spacing: \(Int(lineSpacing))", value: $lineSpacing, in: 0...12)
                     Stepper("Code size: \(Int(codeFontSize))", value: $codeFontSize, in: 10...26)
+                    Picker("Wrap code", selection: $codeWrap) {
+                        Text("Markdown and Text").tag("prose")
+                        Text("Every Block").tag("always")
+                        Text("Never").tag("never")
+                    }
                 }
                 Section("Preview") {
                     VStack(alignment: .leading, spacing: 8) {

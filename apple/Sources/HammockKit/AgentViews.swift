@@ -24,6 +24,7 @@ public enum AgentViewPrefs {
     public static let fontSize = "agent.fontSize"
     public static let codeFontName = "agent.codeFontName"
     public static let codeFontSize = "agent.codeFontSize"
+    public static let codeWrap = "agent.codeWrap"
     public static let lineSpacing = "agent.lineSpacing"
     /// Which view agent panes open in on this device: "agent" or "terminal".
     public static let defaultView = "agent.defaultView"
@@ -61,13 +62,15 @@ struct AgentFonts: Equatable {
     var codeName: String
     var codeSize: Double
     var spacing: Double
+    /// Which code blocks wrap: "prose", "always" or "never" (.agentCodeWrap).
+    var codeWrap = "prose"
 
     /// This device's settings, as the conversation view reads them.
     @MainActor static var current: AgentFonts {
         let p = Prefs.shared
         return AgentFonts(name: p.string(.agentFont), size: p.double(.agentFontSize),
                           codeName: p.string(.agentCodeFont), codeSize: p.double(.agentCodeFontSize),
-                          spacing: p.double(.agentLineSpacing))
+                          spacing: p.double(.agentLineSpacing), codeWrap: p.string(.agentCodeWrap))
     }
 
     func body(_ scale: Double = 1, weight: Font.Weight = .regular) -> Font {
@@ -1071,16 +1074,57 @@ struct CodeBlock: View {
     var maxHeight: CGFloat? = nil
     @Environment(\.agentFonts) private var fonts
     @State private var copied = false
+    private var choices: CodeBlockChoices { .shared }
 
     nonisolated static func highlighted(_ code: String, _ language: String) -> AttributedString {
         RenderCache.get("hl|\(language)|" + code) { CodeHighlight.attributed(code, language: language) }
     }
 
+    /// Languages that are words rather than code, which wrap unless the
+    /// setting says otherwise. Unlabelled blocks don't: they're often trees
+    /// and diagrams, which wrapping breaks.
+    static let proseLanguages: Set<String> = ["markdown", "md", "text", "txt", "plain", "plaintext"]
+    static let markdownLanguages: Set<String> = ["markdown", "md"]
+
+    private var lang: String { language.lowercased() }
+    private var key: CodeBlockChoices.Key { .init(language: lang, code: code) }
+    private var isMarkdown: Bool { Self.markdownLanguages.contains(lang) }
+    private var rendered: Bool { isMarkdown && choices.rendered.contains(key) }
+
+    private var wraps: Bool {
+        if let w = choices.wrap[key] { return w }
+        switch fonts.codeWrap {
+        case "always": return true
+        case "never": return false
+        default: return Self.proseLanguages.contains(lang)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 12) {
                 Text(language.isEmpty ? "code" : language).font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                if isMarkdown {
+                    Button {
+                        choices.toggleRendered(key)
+                    } label: {
+                        Label(rendered ? "Source" : "Preview",
+                              systemImage: rendered ? "chevron.left.forwardslash.chevron.right" : "doc.richtext")
+                            .font(.caption)
+                    }
+                    .help(rendered ? "Show the Markdown source" : "Show the Markdown rendered")
+                }
+                if !rendered {
+                    Button {
+                        choices.wrap[key] = !wraps
+                    } label: {
+                        Label("Wrap", systemImage: "arrow.turn.down.left").font(.caption)
+                            .foregroundStyle(wraps ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    }
+                    .help(wraps ? "Don't wrap long lines" : "Wrap long lines")
+                    .accessibilityValue(wraps ? "On" : "Off")
+                }
                 Button {
                     copy(code)
                     copied = true
@@ -1088,10 +1132,32 @@ struct CodeBlock: View {
                 } label: {
                     Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption)
                 }
-                .buttonStyle(.borderless)
             }
+            .buttonStyle(.borderless)
             .padding(.horizontal, 12)
             .padding(.top, 8)
+            content.frame(maxHeight: maxHeight ?? 420)
+        }
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    @ViewBuilder private var content: some View {
+        if rendered {
+            ScrollView(.vertical, showsIndicators: true) {
+                MarkdownView(text: code).padding(12)
+            }
+            .defaultScrollAnchor(.top)
+        } else if wraps {
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(Self.highlighted(code, language))
+                    .font(fonts.code())
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .defaultScrollAnchor(.top)
+        } else {
             ScrollView([.horizontal, .vertical], showsIndicators: true) {
                 Text(Self.highlighted(code, language))
                     .font(fonts.code())
@@ -1099,9 +1165,24 @@ struct CodeBlock: View {
                     .fixedSize()
                     .padding(12)
             }
-            .frame(maxHeight: maxHeight ?? 420)
+            // Short lines start at the left, not centred, and don't take the
+            // conversation's bottom anchor (inherited through the environment).
+            .defaultScrollAnchor(.topLeading)
         }
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+/// What you've switched on a code block (wrapped or not, Markdown shown
+/// rendered), kept by what the block holds, so it lasts as the row scrolls
+/// out of view and back, until the app quits.
+@MainActor @Observable final class CodeBlockChoices {
+    static let shared = CodeBlockChoices()
+    struct Key: Hashable { var language: String; var code: String }
+    var wrap: [Key: Bool] = [:]
+    var rendered: Set<Key> = []
+
+    func toggleRendered(_ k: Key) {
+        if rendered.contains(k) { rendered.remove(k) } else { rendered.insert(k) }
     }
 }
 
@@ -2904,5 +2985,58 @@ struct AttachmentThumb: View {
             let d = data
             image = await Task.detached(priority: .userInitiated) { PlatformImage(data: d) }.value
         }
+    }
+}
+
+/// Debug: code blocks with long lines, with no daemon (HMK_DEBUG_CODEBLOCKS=1,
+/// DebugSnapshot): a Swift block (not wrapped), a text block (wrapped), and a
+/// Markdown file in four backticks, holding a fenced block of its own, shown
+/// as source and rendered.
+public struct CodeBlockSample: View {
+    static let markdown = """
+    # Release plan
+
+    Ship the **wrap toggle** first, then the preview. This line is long enough that it runs well past the edge of the block, so it has to wrap.
+
+    ```swift
+    let wraps = CodeBlock.proseLanguages.contains(lang)
+    ```
+
+    - [x] Parse nested fences
+    - [ ] Ask for a review
+    """
+    static let text = """
+    ````markdown
+    \(markdown)
+    ````
+
+    ```swift
+    let block = CodeBlock(code: source, language: "swift", maxHeight: nil) // a long line of code that doesn't wrap by default
+    ```
+
+    ```text
+    Plain text in a code block wraps by default, because it's words rather than code, and scrolling sideways to read a sentence is no fun.
+    ```
+    """
+
+    public init() {
+        let md = Markdown.parse(Self.text).compactMap { b -> String? in
+            if case .code(let l, let c) = b, l == "markdown" { return c } else { return nil }
+        }
+        if let c = md.first {
+            // The rendered copy: the same Markdown, keyed apart by a trailing newline.
+            CodeBlockChoices.shared.rendered.insert(.init(language: "markdown", code: c + "\n"))
+        }
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                MarkdownView(text: Self.text)
+                CodeBlock(code: Self.markdown + "\n", language: "markdown")
+            }
+            .padding(16)
+        }
+        .environment(\.agentFonts, AgentFonts.current)
     }
 }

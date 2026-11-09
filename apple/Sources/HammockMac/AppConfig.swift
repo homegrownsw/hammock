@@ -30,7 +30,8 @@ import SwiftUI
 ///     remote-address = HOST[:PORT]     (repeatable: extra addresses given out in pairing codes and links, a DNS name or a forwarded port; read by hmkd)
 ///     usage-live = false               (agents' usage limits asked of each agent's own service every 5 minutes, with the sign-in its CLI keeps here, not just what it saves on disk; read by hmkd)
 ///     usage-live-agents = claude, codex  (the agents usage-live asks: Settings keeps it to those whose limits the sidebar shows; unset: all; read by hmkd)
-///     menu-bar = always                (or active: the menu bar item only while a screen's shared or the server's down; read by Hammock Menu)
+///     menu-bar =terminal's; agent-code-font-size = 13; agent-code-wrap = prose, always or never.
+///                                       HammockKit's Prefs, UserDefaults on the iPhone)               (or active: the menu bar item only while a screen's shared or the server's down; read by Hammock Menu)
 ///     keep-empty-groups = true         (⌘W on a Group's last tab keeps the Group; false: closes it too)
 ///     notify-needs-input = true        (and notify-permission, notify-finished, notify-error: which agent events notify)
 ///     notify-style = auto              (or system, in-app: where notifications show)
@@ -42,7 +43,8 @@ import SwiftUI
 ///     simulator-frame = true           (the device drawn around a simulator pane)
 ///     agent-default-view = terminal    (or agent: the view agent panes open in)
 ///     agent-font-family = NAME         (agent-font-size = 14, agent-line-spacing = 3; agent-code-font-family, unset: the
-///                                       terminal's; agent-code-font-size = 13. HammockKit's Prefs, UserDefaults on the iPhone)
+///                                       terminal's; agent-code-font-size = 13; agent-code-wrap = prose, always or never.
+///                                       HammockKit's Prefs, UserDefaults on the iPhone)
 ///     usage-limits-claude = false      (usage-limits-codex: an agent's usage limits in the sidebar)
 ///     group-headings = prominent       (or subtle: Group headings in the sidebar smaller and dimmer than its tabs)
 ///     group-icons = true               (false: no icons on Group headings in the sidebar)
@@ -751,6 +753,7 @@ final class AppConfig {
         #   agent-default-view = terminal | agent   (which view agent panes open in)
         #   agent-font-family = NAME, agent-font-size = 14, agent-line-spacing = 3   (the agent view's text; unset: the system font)
         #   agent-code-font-family = NAME, agent-code-font-size = 13   (its code; unset: the terminal's font)
+        #   agent-code-wrap = prose | always | never   (which code blocks wrap long lines; prose: Markdown and text)
         #   usage-limits-claude = false, usage-limits-codex = false   (an agent's usage limits in the sidebar)
         #   browser-open-schemes = obsidian,zoommtg   (links a browser pane opens in their app without asking)
         #   browser-new-tab = external | hammock   (links a page opens in a new tab: your default browser, or a Hammock browser tab)

@@ -155,6 +155,9 @@ extension Pref {
     /// "" is the system's monospaced font; unset on the Mac, the terminal's.
     public static let agentCodeFont = Pref("agent-code-font-family", defaults: AgentViewPrefs.codeFontName, .string, "")
     public static let agentCodeFontSize = Pref("agent-code-font-size", defaults: AgentViewPrefs.codeFontSize, AgentViewPrefs.defaultSize - 1)
+    /// Which code blocks wrap their lines: "prose" (Markdown and plain text),
+    /// "always" or "never". Each block has its own toggle too.
+    public static let agentCodeWrap = Pref("agent-code-wrap", defaults: AgentViewPrefs.codeWrap, .string, "prose")
     /// Which view agent panes open in: "agent" or "terminal".
     #if os(macOS)
     public static let agentDefaultView = Pref("agent-default-view", defaults: AgentViewPrefs.defaultView, .string, "terminal")
@@ -169,7 +172,7 @@ extension Pref {
 
     /// The settings HammockKit knows (the Mac app adds its own).
     public static var shared: [Pref] {
-        [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentDefaultView]
+        [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentCodeWrap, agentDefaultView]
             + AgentCatalog.known.keys.sorted().map { usageLimits($0) }
             + editor
     }

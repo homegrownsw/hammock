@@ -216,6 +216,14 @@ struct AgentViewSettings: View {
                 }
                 .settingAnchor("agentview.codefont")
                 Stepper("Size: \(Int(codeFontSize))", value: prefs.doubleBinding(.agentCodeFontSize), in: 8...26)
+                Picker("Wrap long lines", selection: prefs.stringBinding(.agentCodeWrap)) {
+                    Text("In Markdown and text").tag("prose")
+                    Text("In every block").tag("always")
+                    Text("Never").tag("never")
+                }
+                .settingAnchor("agentview.codewrap")
+                Text("Each code block also has its own Wrap button, and Markdown blocks a Preview button to show them rendered.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preview") {
                 VStack(alignment: .leading, spacing: 8) {

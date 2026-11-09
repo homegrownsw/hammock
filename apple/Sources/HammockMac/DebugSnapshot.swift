@@ -108,6 +108,15 @@ enum DebugSnapshot {
                 render(PromptCardSample(model: model, kind: kind), size: NSSize(width: 520, height: kind == "preview" ? 640 : kind == "tasks" ? 640 : 460), to: "\(prefix)-prompt")
             }
         }
+        // HMK_DEBUG_CODEBLOCKS=1: code blocks with long lines, wrapped and
+        // not, and a Markdown one as source and rendered (CodeBlockSample),
+        // rendered to <prefix>-code-<light|dark>.png.
+        if env["HMK_DEBUG_CODEBLOCKS"] != nil, let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                render(CodeBlockSample(), size: NSSize(width: 560, height: 1300), to: "\(prefix)-code")
+            }
+        }
         // HMK_DEBUG_COMPUTER_LOOK=symbols|emoji[:search]: the icon and colour
         // picker for this computer (the first linked one, if any), on that
         // tab, rendered to <prefix>-look-<light|dark>.png.

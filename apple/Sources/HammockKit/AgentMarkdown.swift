@@ -43,13 +43,12 @@ public enum Markdown {
             let line = lines[i]
             let t = line.trimmingCharacters(in: .whitespaces)
             // Fenced code.
-            if t.hasPrefix("```") || t.hasPrefix("~~~") {
+            if let fence = openingFence(t) {
                 flushAll()
-                let fence = String(t.prefix(3))
-                let lang = String(t.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                let lang = String(t.dropFirst(fence.count)).trimmingCharacters(in: .whitespaces)
                 var code: [String] = []
                 i += 1
-                while i < lines.count, !lines[i].trimmingCharacters(in: .whitespaces).hasPrefix(fence) {
+                while i < lines.count, !closes(fence, lines[i]) {
                     code.append(lines[i])
                     i += 1
                 }
@@ -111,6 +110,27 @@ public enum Markdown {
         }
         flushAll()
         return out
+    }
+
+    /// A code fence opening a block: three or more backticks or tildes, as
+    /// many as there are (a backtick fence can't have one in its language).
+    private static func openingFence(_ t: String) -> String? {
+        guard let c = t.first, c == "`" || c == "~" else { return nil }
+        let fence = String(t.prefix { $0 == c })
+        guard fence.count >= 3 else { return nil }
+        if c == "`", t.dropFirst(fence.count).contains("`") { return nil }
+        return fence
+    }
+
+    /// Whether a line ends the block `fence` opened: the same character, at
+    /// least as many, and nothing after them. So a Markdown file shown in
+    /// four backticks keeps its own ``` blocks, and ```swift starts one
+    /// inside rather than closing this one.
+    private static func closes(_ fence: String, _ line: String) -> Bool {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        guard let c = fence.first else { return false }
+        let run = t.prefix { $0 == c }
+        return run.count >= fence.count && run.count == t.count
     }
 
     private static func heading(_ t: String) -> (Int, String)? {
