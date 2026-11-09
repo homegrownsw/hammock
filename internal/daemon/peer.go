@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -369,6 +370,12 @@ func (l *peerLink) signIn(ctx context.Context, cl *client.Client) error {
 		// Closed (unlinked, left) while signing in: show nothing of it.
 		d.mu.Unlock()
 		return errors.New("link closed")
+	}
+	if sl := d.comp.links[l.tok.HostUserId]; l.linked && sl != nil && len(sl.Record.GetKey()) > 0 &&
+		!bytes.Equal(sl.Record.Key, welcome.GetPeerWelcome().GetPublicKey()) {
+		// Its id, but not the key it was linked with.
+		d.mu.Unlock()
+		return errors.New("the host couldn't prove who it is")
 	}
 	l.online, l.onlineAt = true, time.Now()
 	l.applyLocked(r.GetState(), true)

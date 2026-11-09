@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -31,6 +32,41 @@ type identity struct {
 func userIDFor(pub ed25519.PublicKey) string {
 	sum := sha256.Sum256(pub)
 	return "us_" + hex.EncodeToString(sum[:8])
+}
+
+// A user id is only 64 bits of its key's hash, so two keys could share one
+// (made to, with enough work). Wherever an id has a key on record here (a
+// linked computer's, a person's as first seen signing in), the key itself
+// must match: the id alone isn't trusted.
+
+func personKeySetting(uid string) string { return "personkey." + uid }
+
+// knownKey is the user key uid is known by here: a linked computer's, else
+// a person's. nil: none on record (yet). Callers hold d.mu.
+func (d *Daemon) knownKey(uid string) []byte {
+	if l := d.comp.links[uid]; l != nil && len(l.GetRecord().GetKey()) == ed25519.PublicKeySize {
+		return l.Record.Key
+	}
+	if k, err := hex.DecodeString(d.store.Setting(personKeySetting(uid))); err == nil && len(k) == ed25519.PublicKeySize {
+		return k
+	}
+	return nil
+}
+
+// keyMatches: key is the one uid is known by here, or none is on record.
+// Callers hold d.mu.
+func (d *Daemon) keyMatches(uid string, key []byte) bool {
+	k := d.knownKey(uid)
+	return k == nil || bytes.Equal(k, key)
+}
+
+// rememberKey records the key a person (a guest, a linked computer) signed
+// in with, the first time: from then on only that key is them. Callers hold d.mu.
+func (d *Daemon) rememberKey(uid string, key []byte) {
+	if len(key) != ed25519.PublicKeySize || userIDFor(key) != uid || d.store.Setting(personKeySetting(uid)) != "" {
+		return
+	}
+	d.persist(d.store.SetSetting(personKeySetting(uid), hex.EncodeToString(key)))
 }
 
 // loadIdentity reads (or creates) the user key and your profile.

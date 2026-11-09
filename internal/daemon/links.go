@@ -274,7 +274,7 @@ func (d *Daemon) takeIntroductions(c *conn, m *pb.IntroduceComputers) error {
 		// waiting for its code to be checked here does.)
 		if uid == "" || uid == d.id.me.UserId || uid == c.peer || d.isLinked(uid) || d.heldForCode(uid) || d.comp.denied[uid] ||
 			d.badChain(localChain(r.Chain)) ||
-			userIDFor(r.Key) != uid || r.CertSha256 == "" || len(r.Addresses) == 0 || len(r.Addresses) > 8 {
+			userIDFor(r.Key) != uid || !d.keyMatches(uid, r.Key) || r.CertSha256 == "" || len(r.Addresses) == 0 || len(r.Addresses) > 8 {
 			continue
 		}
 		if len(r.Chain) >= maxChain {
@@ -453,7 +453,8 @@ func (d *Daemon) peerIntroLink(c *conn, m *pb.PeerIntroLink) (*pb.ServerMessage,
 		return nil, errors.New("introduced through a computer since unlinked")
 	case via == "":
 		return nil, errors.New("not introduced by a computer linked with this one (yet)")
-	case r.GetUserId() != c.peer || r.GetCertSha256() != in.rec.CertSha256 || userIDFor(in.rec.Key) != c.peer:
+	case r.GetUserId() != c.peer || r.GetCertSha256() != in.rec.CertSha256 || userIDFor(in.rec.Key) != c.peer ||
+		!bytes.Equal(in.rec.Key, c.peerKey):
 		return nil, errors.New("not the computer introduced")
 	}
 	reached := ""

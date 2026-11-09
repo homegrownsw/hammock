@@ -76,7 +76,12 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 	if uid == d.id.me.UserId {
 		return nil, errors.New("that's this Mac")
 	}
-	c.authed, c.peer, c.kind, c.name = true, uid, "peer", m.Name
+	if !d.keyMatches(uid, m.PublicKey) {
+		// Another key with the same id as someone known here.
+		d.audit("peer", "auth-failed", uid, "a different key than the one on record")
+		return nil, errors.New("authentication failed")
+	}
+	c.authed, c.peer, c.peerKey, c.kind, c.name = true, uid, m.PublicKey, "peer", m.Name
 	c.fromPane = "" // its Hello may have claimed one of this Mac's panes
 	p := &pb.Person{UserId: uid, Name: m.Name, DeviceName: m.DeviceName, Avatar: m.Avatar}
 	if len(p.Avatar) > 256<<10 {
@@ -87,7 +92,7 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 	}
 	if len(d.scope(uid)) > 0 || d.isLinked(uid) {
 		d.remoteAuthed(c)
-		d.knowPerson(p)
+		d.knowPerson(p) // (and its key, if it isn't on record yet)
 		u := &pb.StateUpdate{People: []*pb.Person{proto.CloneOf(p)}}
 		d.setOnline(uid, true, u)
 		d.publish(u)
@@ -185,6 +190,7 @@ func (d *Daemon) knowPerson(p *pb.Person) {
 	for c := range d.conns {
 		if c.remote && c.peer == p.UserId && c.authed {
 			d.remoteAuthed(c)
+			d.rememberKey(c.peer, c.peerKey)
 		}
 	}
 	delete(d.strangers, p.UserId)

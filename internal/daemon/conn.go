@@ -57,6 +57,7 @@ type conn struct {
 
 	// multiplayer (guarded by d.mu)
 	peer     string               // a guest daemon: its user id (share.go)
+	peerKey  []byte               // the user key it signed in with (identity.go)
 	seen     map[string]bool      // ids a peer has been sent, so it's told when they go
 	fromPane string               // a CLI run inside a pane (an agent, likely)
 	auditAt  map[string]time.Time // a peer's typing, audited once a minute per pane

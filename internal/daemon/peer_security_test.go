@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"io"
 	"log/slog"
 	"net"
@@ -175,6 +176,99 @@ func rawPeer(t *testing.T, host *Daemon) (*client.Client, string) {
 		t.Fatal(err)
 	}
 	return cl, userIDFor(pub)
+}
+
+// peerHelloWith signs in to host as a guest daemon with the key given,
+// returning the host's answer.
+func peerHelloWith(t *testing.T, host *Daemon, pub ed25519.PublicKey, priv ed25519.PrivateKey) (*client.Client, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	host.mu.Lock()
+	fp := host.remote.fingerprint
+	host.mu.Unlock()
+	cl, err := client.DialRemote(ctx, host.RemoteAddrs()[0], fp, "peer", "guest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cl.Close() })
+	nonce := waitEvent(t, cl, func(ev *pb.ServerMessage) bool { return ev.GetAuthChallenge() != nil }).GetAuthChallenge().Nonce
+	hostNonce := make([]byte, client.NonceSize)
+	_, _ = rand.Read(hostNonce)
+	_, err = cl.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_PeerHello{PeerHello: &pb.PeerHello{
+		PublicKey: pub, Signature: ed25519.Sign(priv, client.AuthMessage(client.PeerAuthTag, fp, nonce)),
+		Name: "Guest", DeviceName: "guest-mac", HostNonce: hostNonce,
+	}}})
+	return cl, err
+}
+
+// A user id is a short hash of its key, so it's never trusted alone: a key
+// other than the one on record for that id (a linked computer's, a
+// guest's) doesn't sign in as it. (A real collision can't be made in a
+// test: the key on record is set to another one under the same id.)
+func TestPeerKeyMustMatchRecord(t *testing.T) {
+	host, _ := startHost(t)
+	other, _, _ := ed25519.GenerateKey(rand.Reader)
+
+	// A linked computer's id.
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	uid := userIDFor(pub)
+	host.mu.Lock()
+	host.comp.links[uid] = &pb.StoredLink{Record: &pb.Computer{UserId: uid, Key: other}}
+	host.mu.Unlock()
+	if _, err := peerHelloWith(t, host, pub, priv); err == nil {
+		t.Fatal("signed in as a linked computer with a key other than its own")
+	}
+	host.mu.Lock()
+	host.comp.links[uid].Record.Key = pub
+	host.mu.Unlock()
+	if _, err := peerHelloWith(t, host, pub, priv); err != nil {
+		t.Fatalf("the linked computer's own key: %v", err)
+	}
+
+	// A guest's id.
+	pub, priv, _ = ed25519.GenerateKey(rand.Reader)
+	uid = userIDFor(pub)
+	host.mu.Lock()
+	host.persist(host.store.SetSetting(personKeySetting(uid), hex.EncodeToString(other)))
+	host.mu.Unlock()
+	if _, err := peerHelloWith(t, host, pub, priv); err == nil {
+		t.Fatal("signed in as a guest with a key other than theirs")
+	}
+}
+
+// A guest's key is on record once they're let in.
+func TestGuestKeyRemembered(t *testing.T) {
+	host, _, _, uid, _, _, _ := sharedSetup(t, pb.Role_ROLE_VIEWER)
+	host.mu.Lock()
+	k := host.knownKey(uid)
+	host.mu.Unlock()
+	if k == nil || userIDFor(k) != uid {
+		t.Fatalf("key on record: %x", k)
+	}
+}
+
+// A computer asking to link must name the key it signed in with, not
+// another that only hashes to its id; an introduced one likewise.
+func TestLinkRequestKeyIsSigners(t *testing.T) {
+	host, _ := startHost(t)
+	signed, _, _ := ed25519.GenerateKey(rand.Reader)
+	claimed, _, _ := ed25519.GenerateKey(rand.Reader)
+	c := &conn{d: host, remote: true, authed: true, peer: userIDFor(claimed), peerKey: signed}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	_, err := host.peerLinkHello(c, &pb.PeerLinkHello{Commitment: make([]byte, 32), Computer: &pb.Computer{
+		UserId: c.peer, Key: claimed, CertSha256: "ab", Addresses: []string{"100.64.0.9:7"}}}, tsSource{})
+	if err == nil || !strings.Contains(err.Error(), "isn't its own") {
+		t.Fatalf("link request naming another key: %v", err)
+	}
+	host.comp.links["us_via"] = &pb.StoredLink{Record: &pb.Computer{UserId: "us_via"}}
+	host.comp.intros[c.peer] = &intro{rec: &pb.Computer{UserId: c.peer, Key: claimed, CertSha256: "ab"},
+		vias: map[string]bool{"us_via": true}, chains: map[string][]*pb.IntroHop{}}
+	_, err = host.peerIntroLink(c, &pb.PeerIntroLink{Vias: []string{"us_via"}, Computer: &pb.Computer{UserId: c.peer, CertSha256: "ab"}})
+	if err == nil || !strings.Contains(err.Error(), "not the computer introduced") {
+		t.Fatalf("introduced link with another key: %v", err)
+	}
 }
 
 // sharedSetup makes a Group with a running pane, shares it, and lets a raw

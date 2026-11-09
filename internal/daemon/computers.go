@@ -1447,6 +1447,9 @@ func (d *Daemon) peerLinkHello(c *conn, m *pb.PeerLinkHello, src tsSource) (*pb.
 		return nil, errors.New("only for other computers")
 	case len(m.Commitment) != 32 || m.Computer.GetUserId() != c.peer || m.Computer.GetCertSha256() == "" || len(m.Computer.GetAddresses()) == 0:
 		return nil, errors.New("bad link request")
+	case !bytes.Equal(m.Computer.GetKey(), c.peerKey):
+		// The key it signed in with, not one that only hashes to its id.
+		return nil, errors.New("bad link request: its record isn't its own")
 	}
 	// One request per computer asking: a new one replaces the last.
 	for _, old := range d.comp.attempts {
@@ -1581,7 +1584,7 @@ func (d *Daemon) finishIncoming(a *linkAttempt) {
 			reached = net.JoinHostPort(a.c.srcIP, port)
 		}
 	}
-	d.addLink(a.their, a.their.Key, a.their.CertSha256, "", reached, linkIDFor(a.askNonce, a.nonce), nil)
+	d.addLink(a.their, a.c.peerKey, a.their.CertSha256, "", reached, linkIDFor(a.askNonce, a.nonce), nil)
 	d.clearNote()
 	d.knowPerson(cmpPerson(d.strangers[a.peer], d.people[a.peer], &pb.Person{UserId: a.peer, Name: a.their.Name, DeviceName: a.their.Name}))
 	a.c.send(&pb.ServerMessage{ReplyTo: a.confirmID, Msg: &pb.ServerMessage_PeerLinked{PeerLinked: &pb.PeerLinked{Computers: []*pb.Computer{d.selfRecord(true)}}}})
