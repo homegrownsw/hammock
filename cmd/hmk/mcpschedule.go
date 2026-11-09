@@ -221,7 +221,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "schedule_run",
-		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id.",
+		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id. One you didn't save yourself asks the user first (waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleIDArgs) (*mcp.CallToolResult, any, error) {
 		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID}}})
 		if err != nil {
@@ -232,7 +232,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "schedule_pause",
-		Description: "Pause (paused=true) or resume a scheduled task.",
+		Description: "Pause (paused=true) or resume a scheduled task. One you didn't save yourself asks the user first (waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a schedulePauseArgs) (*mcp.CallToolResult, any, error) {
 		if _, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: a.ID, Paused: a.Paused}}}); err != nil {
 			return nil, nil, err

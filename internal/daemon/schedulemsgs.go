@@ -59,44 +59,62 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		}
 		return nil, d.deleteSchedule(s.Id)
 
-	case *pb.ClientMessage_RunSchedule:
-		s, err := find(m.RunSchedule.ScheduleId)
-		if err != nil {
-			return nil, err
-		}
-		r, err := d.startRun(s, time.Time{}, true)
-		d.saveSchedule(s)
-		if err != nil {
-			return nil, err
-		}
-		return created(r.TabId), nil
-
-	case *pb.ClientMessage_SetSchedulePaused:
-		s, err := find(m.SetSchedulePaused.ScheduleId)
-		if err != nil {
-			return nil, err
-		}
-		s.Paused = m.SetSchedulePaused.Paused
-		d.scheduleNext(s, schedNow())
-		d.saveSchedule(s)
-		d.audit(c.auditActor(), map[bool]string{true: "schedule-pause", false: "schedule-resume"}[s.Paused], s.Id, s.Name)
-		return nil, nil
-
-	case *pb.ClientMessage_SkipScheduleRun:
-		s, err := find(m.SkipScheduleRun.ScheduleId)
-		if err != nil {
-			return nil, err
-		}
-		if m.SkipScheduleRun.Skip {
-			if s.NextRunUnixMs == 0 {
-				return nil, errors.New("it isn't due to run")
+	case *pb.ClientMessage_RunSchedule, *pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun:
+		var id, verb string
+		var do func(s *pb.Schedule) (*pb.ServerMessage, error)
+		switch m := msg.Msg.(type) {
+		case *pb.ClientMessage_RunSchedule:
+			id, verb = m.RunSchedule.ScheduleId, "run the scheduled task %s now"
+			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
+				r, err := d.startRun(s, time.Time{}, true)
+				d.saveSchedule(s)
+				if err != nil {
+					return nil, err
+				}
+				return created(r.TabId), nil
 			}
-			s.SkipUntilUnixMs = s.NextRunUnixMs + 1
-		} else {
-			s.SkipUntilUnixMs = 0
+		case *pb.ClientMessage_SetSchedulePaused:
+			paused := m.SetSchedulePaused.Paused
+			id, verb = m.SetSchedulePaused.ScheduleId, map[bool]string{true: "pause", false: "resume"}[paused]+" the scheduled task %s"
+			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
+				s.Paused = paused
+				d.scheduleNext(s, schedNow())
+				d.saveSchedule(s)
+				d.audit(c.auditActor(), map[bool]string{true: "schedule-pause", false: "schedule-resume"}[s.Paused], s.Id, s.Name)
+				return nil, nil
+			}
+		case *pb.ClientMessage_SkipScheduleRun:
+			skip := m.SkipScheduleRun.Skip
+			id, verb = m.SkipScheduleRun.ScheduleId, map[bool]string{true: "skip the next run of", false: "stop skipping the next run of"}[skip]+" the scheduled task %s"
+			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
+				if skip {
+					if s.NextRunUnixMs == 0 {
+						return nil, errors.New("it isn't due to run")
+					}
+					s.SkipUntilUnixMs = s.NextRunUnixMs + 1
+				} else {
+					s.SkipUntilUnixMs = 0
+				}
+				d.saveSchedule(s)
+				return nil, nil
+			}
 		}
-		d.saveSchedule(s)
-		return nil, nil
+		s, err := find(id)
+		if err != nil {
+			return nil, err
+		}
+		if agent && !d.agentsSchedule(c, id) {
+			// Not one it made: you say whether it may (as for saving one).
+			headline := d.agentWho(c.caller.pane) + " wants to " + fmt.Sprintf(verb, scheduleSummary(s))
+			return nil, d.askScheduleGrant(c, msg.Id, headline, "", func() (*pb.ServerMessage, error) {
+				s, err := find(id)
+				if err != nil {
+					return nil, err
+				}
+				return do(s)
+			})
+		}
+		return do(s)
 
 	}
 	return nil, errors.New("unknown schedule message")
@@ -132,6 +150,31 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 
 	}
 	in = proto.CloneOf(in)
+	return d.askScheduleGrant(c, replyTo, headline, why, func() (*pb.ServerMessage, error) {
+		if del {
+			if err := d.deleteSchedule(in.Id); err != nil {
+				return nil, err
+			}
+			return &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}, nil
+		}
+		s, err := d.putSchedule(in, cmpOr(d.agentWho(self), "An agent"))
+		if err != nil {
+			return nil, err
+		}
+		if in.Id == "" {
+			// Its own: it may run, pause and skip it without asking again.
+			d.sched.madeBy[s.Id] = self
+			d.saveScheduleMakers()
+		}
+		return scheduleReply(s), nil
+	})
+}
+
+// askScheduleGrant asks you (a grant in Needs You) whether an agent may do
+// something to a schedule, headline saying what; on Allow it's done and
+// the agent told. Callers hold d.mu.
+func (d *Daemon) askScheduleGrant(c *conn, replyTo uint64, headline, why string, do func() (*pb.ServerMessage, error)) error {
+	self := c.caller.pane
 	d.openGrant(&pendingGrant{
 		req: &pb.GrantRequest{
 			Id: newID("gr"), RequesterPaneId: self, TargetPaneId: self, Action: "schedule",
@@ -142,25 +185,26 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 				c.replyErr(replyTo, errors.New("the person said no (or didn't answer)"))
 				return
 			}
-			if del {
-				if err := d.deleteSchedule(in.Id); err != nil {
-					c.replyErr(replyTo, err)
-					return
-				}
-				c.send(&pb.ServerMessage{ReplyTo: replyTo, Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}})
-				return
-			}
-			s, err := d.putSchedule(in, cmpOr(d.agentWho(self), "An agent"))
+			r, err := do()
 			if err != nil {
 				c.replyErr(replyTo, err)
 				return
 			}
-			r := scheduleReply(s)
+			if r == nil {
+				r = &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}
+			}
 			r.ReplyTo = replyTo
 			c.send(r)
 		},
 	})
 	return errDeferred
+}
+
+// agentsSchedule reports whether the agent c is (or the agent whose pane
+// it runs in) made schedule id. Callers hold d.mu.
+func (d *Daemon) agentsSchedule(c *conn, id string) bool {
+	maker := d.sched.madeBy[id]
+	return maker != "" && d.owners(c.caller.pane)[maker]
 }
 
 // showOutputMsg is hmk show / show_output: in the browser pane named, or

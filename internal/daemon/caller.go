@@ -504,7 +504,8 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 
 	// Scheduled tasks (schedulemsgs.go): saving or deleting one asks you
 	// (the handler raises the grant, worded from the schedule), and only
-	// this computer's; running, pausing and skipping are free.
+	// this computer's; running, pausing and skipping one it made is free,
+	// anyone else's asks (the handler again).
 	case *pb.ClientMessage_SaveSchedule:
 		s := m.SaveSchedule.Schedule
 		if s != nil && s.Id != "" && d.sched.list[s.Id] == nil {

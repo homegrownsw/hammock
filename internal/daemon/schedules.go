@@ -8,6 +8,7 @@ package daemon
 // day (or within one interval, for cron).
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -54,10 +55,15 @@ type schedState struct {
 	list    map[string]*pb.Schedule // this computer's
 	sawWork map[string]bool         // run id → its agent has started working (so idle means done)
 	sawProc map[string]bool         // run id → its agent's process has been seen in its pane
+	// madeBy is the pane of the agent that made each schedule it made (with
+	// your leave): that agent may run, pause and skip it without asking
+	// again (schedulemsgs.go). Kept in the "schedule_makers" setting.
+	madeBy map[string]string
 }
 
 func (d *Daemon) loadSchedules() {
-	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}}
+	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}, madeBy: map[string]string{}}
+	_ = json.Unmarshal([]byte(d.store.Setting("schedule_makers")), &d.sched.madeBy)
 	recs, err := d.store.Records("schedule")
 	if err != nil {
 		d.log.Error("load schedules", "err", err)
@@ -842,6 +848,10 @@ func (d *Daemon) deleteSchedule(id string) error {
 		return fmt.Errorf("no such schedule %q", id)
 	}
 	delete(d.sched.list, id)
+	if _, ok := d.sched.madeBy[id]; ok {
+		delete(d.sched.madeBy, id)
+		d.saveScheduleMakers()
+	}
 	d.persist(d.store.DeleteRecord("schedule", id))
 	d.publish(&pb.StateUpdate{DeletedScheduleIds: []string{id}})
 	d.audit("schedule:"+id, "schedule-delete", id, scheduleSummary(s))
@@ -1186,4 +1196,10 @@ func shownText(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// saveScheduleMakers keeps sched.madeBy. Callers hold d.mu.
+func (d *Daemon) saveScheduleMakers() {
+	b, _ := json.Marshal(d.sched.madeBy)
+	d.persist(d.store.SetSetting("schedule_makers", string(b)))
 }

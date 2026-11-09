@@ -491,8 +491,9 @@ func TestScheduledCommand(t *testing.T) {
 }
 
 // An agent's schedule waits for your yes (a grant worded from the
-// schedule), then is saved; running one is free; guests' and phones'
-// limits are checked elsewhere (peerCheck, handleRemoteAuth).
+// schedule), then is saved; running, pausing or skipping its own is free,
+// yours asks; guests' and phones' limits are checked elsewhere
+// (peerCheck, handleRemoteAuth).
 func TestAgentSchedulesAsk(t *testing.T) {
 	t.Setenv("SHELL", "/bin/sh")
 	work := t.TempDir()
@@ -558,10 +559,52 @@ func TestAgentSchedulesAsk(t *testing.T) {
 	}}}}); err == nil || !strings.Contains(err.Error(), "scope") {
 		t.Fatalf("a schedule in another computer's Group: %v", err)
 	}
-	// Pausing is free for agents; deleting asks (denied here: not deleted).
+	// Pausing one it made is free; one you made asks (denied here: still
+	// running), as running or skipping it would.
 	if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: s.Id, Paused: true}}}); err != nil {
 		t.Fatal(err)
 	}
+	yours := call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: &pb.Schedule{
+		Name: "Backup", Kind: "command", Prompt: "true", Cwd: work, MinuteOfDay: 60,
+	}}}}).GetScheduleReply().GetSchedule()
+	for _, m := range []*pb.ClientMessage{
+		{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: yours.Id, Paused: true}}},
+		{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: yours.Id}}},
+		{Msg: &pb.ClientMessage_SkipScheduleRun{SkipScheduleRun: &pb.SkipScheduleRun{ScheduleId: yours.Id, Skip: true}}},
+	} {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			r, err := agent.Call(ctx, m)
+			done <- res{r, err}
+		}()
+		gr = nil
+		for deadline := time.Now().Add(5 * time.Second); gr == nil && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			d.mu.Lock()
+			for _, g := range d.grants {
+				gr = g.req
+			}
+			d.mu.Unlock()
+		}
+		if gr == nil || !strings.Contains(gr.Headline, "Backup") {
+			t.Fatalf("%s of your schedule didn't ask: %v", msgName(m), gr)
+		}
+		call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: gr.Id, Decision: pb.RespondGrant_DECISION_DENY}}})
+		if got := <-done; got.err == nil {
+			t.Fatalf("%s after no", msgName(m))
+		}
+	}
+	if y := schedOf(d, yours.Id); y.Paused || y.SkipUntilUnixMs != 0 || len(y.Runs) != 0 {
+		t.Fatalf("changed after no: %v", y)
+	}
+	// Another agent's pane: not its schedule either.
+	d.mu.Lock()
+	theirs := d.agentsSchedule(&conn{d: d, caller: &caller{pane: "pn_other", agent: true}}, s.Id)
+	d.mu.Unlock()
+	if theirs {
+		t.Fatal("another agent's schedule passed for its own")
+	}
+	// Deleting asks (denied here: not deleted).
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
