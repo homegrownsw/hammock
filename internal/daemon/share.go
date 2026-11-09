@@ -921,7 +921,8 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(tab(m.SetLayout.TabId))
 	case *pb.ClientMessage_FloatPane:
 		// As the layout: Drive members arrange the tab, View members watch.
-		if m.FloatPane.PaneId == "" {
+		// (Toggling every float acts on the tab, whatever pane is named.)
+		if m.FloatPane.Action == pb.FloatPane_ACTION_TOGGLE_ALL || m.FloatPane.PaneId == "" {
 			return drive(tab(m.FloatPane.TabId))
 		}
 		return drive(pane(m.FloatPane.PaneId))

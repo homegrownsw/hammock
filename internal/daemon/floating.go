@@ -117,6 +117,16 @@ func (d *Daemon) createFloating(targetID string, spec *pb.PaneSpec, frame *pb.Fr
 	return p, nil
 }
 
+// floatTarget is what a FloatPane acts on: the tab for TOGGLE_ALL (or when
+// no pane is named), else the pane. Checks and routing use it, so they look
+// at the same id floatPane does.
+func floatTarget(m *pb.FloatPane) string {
+	if m.Action == pb.FloatPane_ACTION_TOGGLE_ALL || m.PaneId == "" {
+		return m.TabId
+	}
+	return m.PaneId
+}
+
 // floatPane applies a FloatPane request. Callers hold d.mu.
 func (d *Daemon) floatPane(m *pb.FloatPane) error {
 	if m.Action == pb.FloatPane_ACTION_TOGGLE_ALL {

@@ -1421,10 +1421,7 @@ func auditTarget(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_ClearLog:
 		return m.ClearLog.PaneId
 	case *pb.ClientMessage_FloatPane:
-		if m.FloatPane.PaneId == "" {
-			return m.FloatPane.TabId
-		}
-		return m.FloatPane.PaneId
+		return floatTarget(m.FloatPane)
 	case *pb.ClientMessage_Input:
 		return m.Input.PaneId
 	case *pb.ClientMessage_CreatePane:

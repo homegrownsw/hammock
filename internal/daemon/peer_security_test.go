@@ -348,6 +348,33 @@ func TestRevokedPeerStopsLogView(t *testing.T) {
 	}
 }
 
+// Toggling every float acts on the tab named, so a guest can't do it to a
+// tab outside its Group by naming a pane inside it.
+func TestPeerFloatToggleAllChecksTab(t *testing.T) {
+	_, h, peer, _, _, tab, paneID := sharedSetup(t, pb.Role_ROLE_DRIVER)
+	other := client.CreatedID(call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Private"}}}))
+	private := client.CreatedID(call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: other,
+		Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", "exec cat"}}}}}))
+	toggle := func(paneID, tabID string) error {
+		_, err := peer.Call(context.Background(), &pb.ClientMessage{Msg: &pb.ClientMessage_FloatPane{FloatPane: &pb.FloatPane{
+			Action: pb.FloatPane_ACTION_TOGGLE_ALL, PaneId: paneID, TabId: tabID}}})
+		return err
+	}
+	if err := toggle(paneID, private); err == nil {
+		t.Fatal("toggled the floats of a tab outside the Group, naming a pane inside it")
+	}
+	if err := toggle("", private); err == nil {
+		t.Fatal("toggled the floats of a tab outside the Group")
+	}
+	if err := toggle("", tab); err != nil {
+		t.Fatalf("toggling its own tab's floats: %v", err)
+	}
+	m := &pb.ClientMessage{Msg: &pb.ClientMessage_FloatPane{FloatPane: &pb.FloatPane{Action: pb.FloatPane_ACTION_TOGGLE_ALL, PaneId: paneID, TabId: private}}}
+	if got := msgTarget(m); got != private {
+		t.Fatalf("routed by %q, not the tab", got)
+	}
+}
+
 // A guest reads agent files only for an agent it's watching itself.
 func TestPeerReadAgentFileNeedsWatch(t *testing.T) {
 	_, h, peer, _, _, _, paneID := sharedSetup(t, pb.Role_ROLE_VIEWER)
