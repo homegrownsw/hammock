@@ -578,6 +578,7 @@ func (l *peerLink) applyLocked(u *pb.StateUpdate, publish bool) {
 	if u == nil {
 		return
 	}
+	cleanHostState(u)
 	out := &pb.StateUpdate{}
 	if u.Full {
 		keep := map[string]bool{}

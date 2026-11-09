@@ -552,6 +552,7 @@ func (d *Daemon) mergeComputers(cs *pb.Computers, from string) {
 		return
 	}
 	n := proto.CloneOf(r)
+	cleanComputer(n)
 	n.ThisComputer, n.Online, n.Refused, n.IdleMs = false, false, false, 0
 	n.LinkedUnixMs, n.LastSeenUnixMs = l.Record.LinkedUnixMs, l.Record.LastSeenUnixMs
 	if n.Key = l.Record.Key; len(n.Key) == 0 && userIDFor(r.Key) == from {
@@ -610,6 +611,7 @@ func (d *Daemon) refuseLink(uid string) {
 func (d *Daemon) addLink(r *pb.Computer, key []byte, cert, via, reachedAt, linkID string, chain []*pb.IntroHop) {
 	uid := r.UserId
 	n := proto.CloneOf(r)
+	cleanComputer(n)
 	n.ThisComputer, n.Online, n.Refused, n.IdleMs, n.LastInputUnixMs = false, false, false, 0, 0
 	n.Key, n.CertSha256, n.Fingerprint = key, cert, keyFingerprint(uid)
 	n.LinkedUnixMs = time.Now().UnixMilli()
@@ -1129,6 +1131,7 @@ func (d *Daemon) runLink(addrs, lan []string, cert, want string) error {
 	}
 	// Its own record, for the certificate and key just checked.
 	their := proto.CloneOf(pn.Computer)
+	cleanComputer(their)
 	if their.CertSha256 != fp || !bytes.Equal(their.Key, theirKey) {
 		return errors.New("it answered oddly; is it running the same Hammock?")
 	}
@@ -1461,6 +1464,7 @@ func (d *Daemon) peerLinkHello(c *conn, m *pb.PeerLinkHello, src tsSource) (*pb.
 	nonce := make([]byte, 32)
 	_, _ = rand.Read(nonce)
 	their := proto.CloneOf(m.Computer)
+	cleanComputer(their)
 	if len(their.Addresses) > 8 || userIDFor(their.Key) != c.peer {
 		return nil, errors.New("bad link request: its record isn't its own")
 	}

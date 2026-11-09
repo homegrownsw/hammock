@@ -81,9 +81,10 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 		d.auditSignInFailed(c, "peer", "auth-failed", uid, "a different key than the one on record")
 		return nil, errors.New("authentication failed")
 	}
-	c.authed, c.peer, c.peerKey, c.kind, c.name = true, uid, m.PublicKey, "peer", m.Name
-	c.fromPane = "" // its Hello may have claimed one of this Mac's panes
 	p := &pb.Person{UserId: uid, Name: m.Name, DeviceName: m.DeviceName, Avatar: m.Avatar}
+	cleanPerson(p)
+	c.authed, c.peer, c.peerKey, c.kind, c.name = true, uid, m.PublicKey, "peer", p.Name
+	c.fromPane = "" // its Hello may have claimed one of this Mac's panes
 	if len(p.Avatar) > 256<<10 {
 		p.Avatar = nil
 	}
@@ -96,7 +97,7 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 		u := &pb.StateUpdate{People: []*pb.Person{proto.CloneOf(p)}}
 		d.setOnline(uid, true, u)
 		d.publish(u)
-		d.audit("peer:"+m.Name, "connected", uid, m.DeviceName)
+		d.audit("peer:"+p.Name, "connected", uid, p.DeviceName)
 	} else {
 		// Not a member anywhere: remembered (in memory) only once it asks to join.
 		if len(d.strangers) >= maxStrangers {

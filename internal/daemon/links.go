@@ -268,6 +268,7 @@ func (d *Daemon) takeIntroductions(c *conn, m *pb.IntroduceComputers) error {
 		}
 	}
 	for _, r := range m.GetComputers()[:min(len(m.GetComputers()), maxIntros)] {
+		cleanComputer(r)
 		uid := r.GetUserId()
 		// (A record of it here that says it doesn't link with this one, a
 		// reset, say, doesn't stop it: its own refusal list does, there. One
