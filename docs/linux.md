@@ -71,7 +71,9 @@ Every one of those is an `hmk` command underneath; `hmk` works in Unraid's termi
   `state/`, and `home/`, the panes' `HOME`, so dotfiles, `~/.claude`, history and Claude Code itself
   (its installer puts it in `~/.local/bin`) survive reboots. Unraid's own `/root` doesn't.
 - **Runs as root**, as everything on Unraid does. Panes run bash with Unraid's `/etc/profile` minus its
-  `HOME=/root` and `cd $HOME`, and with `IS_SANDBOX=1`, so Claude Code's skip-permissions mode works.
+  `HOME=/root` and `cd $HOME`, and with `IS_SANDBOX=1`, so Claude Code's skip-permissions mode works. That makes every pane a root shell on the
+  server: a paired phone, a linked computer or anyone you let drive a shared Group can do anything root can,
+  array included. Pair, link and share accordingly.
 - **With the array:** it starts when the array does, and when the array stops it stops and ends its panes
   (their open files would keep the array from unmounting). On the next start they come back: layout,
   folders, scrollback, shells, agents resumed. A watchdog (cron, every minute) starts it if it should be

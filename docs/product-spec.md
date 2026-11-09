@@ -151,7 +151,7 @@ Prior art: Atuin Threads (neutral record store, native-format rewrite on resume)
 - Presence: avatars with coloured rings on the Group, tab, and pane each collaborator is viewing; a glow while they type; a "Follow" mode to mirror someone's view.
 - Bandwidth: only the panes a guest is actually viewing are streamed; terminals as byte streams, visual panes as adaptive video.
 - Connection: direct/Tailscale first. Later: hosted E2EE relay and SSO (the commercial offering).
-- Every remote action is audit-logged with the actor's identity. Agent MCP tokens never grant access to another user's Groups.
+- Every remote action is audit-logged with the actor's identity. An agent's scope never extends to another user's Groups.
 
 ## 7. Platforms and distribution
 

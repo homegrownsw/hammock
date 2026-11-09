@@ -184,7 +184,7 @@ Handshake: `Hello{protocol_version, vt_engine_version, client_kind, device_id, c
 
 ### 5.6 Authentication
 
-- Local UDS: file permissions (0600, owned by the user) plus peer-credential check (`getpeereid`).
+- Local UDS: file permissions (sockets 0600 in a 0700 `run` directory the daemon checks it owns). The daemon then identifies each caller from its peer pid (`peerpid_*.go`, `caller.go`): an agent in a pane is scoped (§8); **person-only** actions (answering grants, pairing, sharing, linking, remote access, SSH setup, saving schedules without a grant) are taken only from a caller positively known to be the person: the Hammock app by its code signature, a process whose ancestors reach a pane's shell with no agent between, or one outside Hammock whose ancestors reach a login session (`person.go`). Detached, multiplexer-hosted or unplaceable callers keep ordinary actions but not those. Pane holders accept only the daemon's own executable, plus their per-pane token. Same-user processes can't be fully isolated from one another: this closes the cheap ways out, it isn't a sandbox.
 - Remote: device pairing. The Mac app shows a QR code containing the host's addresses on its chosen networks (ADR-0015), host public key, and a one-time pairing secret. The device generates an Ed25519 keypair, proves possession of the secret, and registers its public key. Every connection is mutually authenticated (pinned host key; device signs a challenge). Devices are individually revocable.
 
 ## 6. Agents
@@ -271,8 +271,8 @@ Structured tailing sources (`file`, `log stream`, `simctl spawn log stream`, `ad
 ## 8. MCP server
 
 - Transports: stdio shim (`hmk mcp`) for agents launched anywhere, connecting to the daemon socket; streamable HTTP on the local socket for clients that support it.
-- **Identity:** every pane's environment gets `HMK_PANE_ID` and `HMK_AGENT_TOKEN` (a macaroon-style capability token bound to `{host, group_id, origin_pane_id}`). `hmk mcp` presents it automatically.
-- **Default policy:** full control of panes created by this token's lineage; read access to other panes in the same Group; nothing outside the Group. Policy is configurable globally, per Group, and per harness (`mcp.policy` in settings). Out-of-scope calls create a `GrantRequest` shown in the app ("Allow once / Always for this Group / Deny").
+- **Identity:** there are no tokens. Every pane's environment gets `HMK_PANE_ID`; the daemon works out who a caller is from its process ancestry (§5.6, `caller.go`), so an agent can't claim another pane by setting the variable.
+- **Default policy** (`agentCheck`): full control of panes the agent opened; read access to every pane in your own Groups and your linked computers' panes; typing into, closing or running JavaScript in a pane it didn't open, running or pausing a schedule it didn't make, searching sessions outside its project, using a linked computer's SSH key, and anything in a Group shared with you create a `GrantRequest` shown in the app ("Allow once / Always for this Group / Deny"). Person-only actions (§5.6) are refused to agents outright. This is a guardrail for well-meaning agents, not a sandbox: an agent runs as you and can do anything you can outside Hammock; use your harness's sandbox for a real boundary.
 - **Tools (v1):** `groups.list`, `tabs.list`, `panes.list`, `pane.read{lines, scrollback}`, `pane.create{command, cwd, split}`, `pane.send{text|keys}`, `pane.wait{pattern|exit, timeout}`, `pane.close`, `group.create{template}`, `agents.list`, `agent.state`.
 - Later: browser and simulator tool families.
 - Every call is written to the audit log. Pane output returned to agents is labelled as untrusted content (prompt-injection hygiene), especially for shared Groups.
@@ -285,7 +285,8 @@ Structured tailing sources (`file`, `log stream`, `simctl spawn log stream`, `ad
 - **Presence:** clients publish `{group, tab, pane, typing}`; the host fans presence out to participants; ephemeral, not persisted.
 - **Bandwidth:** only viewed panes are streamed per guest; terminals as byte streams, remote links compressed as one zstd stream per connection flushed per message (`internal/wirezstd`); visual panes as adaptive video with simulcast layers.
 - **Relay (commercial):** a blind forwarder for E2EE peer links (Noise or MLS between user keys); the relay authenticates accounts but cannot read traffic.
-- Agent MCP tokens are host-local and never valid on a peer link.
+- Agent identity is host-local: a guest's agents reach a shared Group only through their own daemon's grants, and never with the host's agent scope.
+- **Driving is running commands as the host.** A Driver can open tabs with any command and type into shells, so a Driver (and a linked computer, which has full control both ways) can do anything the host's user can on that computer. Viewer is the only role that isn't trusted with that.
 
 ## 10. macOS integration
 
@@ -307,7 +308,9 @@ Structured tailing sources (`file`, `log stream`, `simctl spawn log stream`, `ad
 
 - Listeners: Unix sockets (0600) and the chosen networks' addresses only (ADR-0015).
 - Mutual device authentication with per-device revocation.
-- Capability tokens for agents; least-privilege default; audit log for MCP and remote actions.
+- Agents identified by process ancestry and scoped by `agentCheck` (a guardrail, not a sandbox); person-only actions need the person, positively identified; audit log for agent and remote actions, pruned to 90 days / 50,000 rows.
+- Pre-auth hardening: one sign-in attempt per connection, rate-limited failure audits, per-address and total caps on pending TLS and QUIC connections, source checks on both.
+- Peer identity: a user id is a short hash of the user's key, so every sign-in is also checked against the full key on record.
 - Push payloads end-to-end encrypted; the relay sees device tokens, ciphertext, keyed-hash thread and collapse tags, and the category (join, grant, hammockkey): relay/push/README.md.
 - Untrusted-content labelling for pane output returned to agents.
 - Multiplayer: explicit invites, roles, kill switch, visible "who is typing".

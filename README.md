@@ -39,7 +39,7 @@ too, through MCP.
 - **TUI:** `hmk tui`: a sidebar of Groups and tabs, and split panes, with a Ctrl-B prefix (`c` tab, `%`/`"` split, `o` pane, `n`/`p` tab, `x` close, `q` quit).
 - **CLI:** `hmk ls`, `hmk group new NAME`, `hmk tab new GROUP -- CMD`, `hmk split PANE`, `hmk attach PANE`, `hmk send/read PANE`, `hmk audit`. `hmk help` lists the rest.
 - **Agents:** their status is detected automatically; for precise states install hooks with `hmk hooks install` (it backs up and merges your Claude Code and Codex config).
-- **MCP:** add `hmk mcp` as an MCP server so your agents can open, watch and drive panes (scoped to their Group; anything else asks you first). The scope is a guardrail, not a sandbox: for a real boundary, use your agent harness's own sandbox.
+- **MCP:** add `hmk mcp` as an MCP server so your agents can open, watch and drive panes (they read your Groups and fully control the panes they open; typing into, closing or scripting other panes asks you first, and pairing, sharing, linking and the like are yours alone). The scope is a guardrail, not a sandbox: for a real boundary, use your agent harness's own sandbox.
 
 State lives in `~/Library/Application Support/Hammock` (override with `HMK_DIR`), and settings in
 `~/.config/hammock/config`.
