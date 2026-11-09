@@ -142,21 +142,27 @@ const headlessIdle = 1000 * time.Hour
 // (phoneAction). Callers hold d.mu.
 func (d *Daemon) phoneUsed() { d.phoneAt = time.Now() }
 
-// usingPhone: you've used Hammock on a phone since this Mac's keyboard or
-// mouse was last touched (idle ago), so that's where you are, whatever
-// the Mac's screen shows. A computer without a screen is never touched:
-// there it's since you last used any of your linked computers. Callers
-// hold d.mu.
+// usingPhone: you've used Hammock on a phone since you last used any of
+// your computers: this Mac's keyboard or mouse (touched idle ago; a
+// computer without a screen never is), or a linked computer's, as it last
+// said. So that's where you are, whatever this Mac's screen shows. Not
+// just this Mac's: at another Mac all day, this one is untouched since the
+// morning, and the phone opening Hammock once (it connects to this one)
+// would send every push there while you sit at the other. Callers hold d.mu.
 func (d *Daemon) usingPhone(idle time.Duration) bool {
 	if d.phoneAt.IsZero() {
 		return false
 	}
-	since := time.Now().Add(-idle)
-	if idle >= headlessIdle {
-		for _, l := range d.comp.links {
-			if at := time.UnixMilli(l.GetRecord().GetLastInputUnixMs()); at.After(since) {
-				since = at
-			}
+	now := time.Now()
+	since := now.Add(-idle)
+	for uid, l := range d.comp.links {
+		if !d.isLinked(uid) {
+			continue
+		}
+		// (A time ahead of now: this clock stepped back since. Ignored, or
+		// the phone wouldn't count until it caught up.)
+		if at := time.UnixMilli(l.GetRecord().GetLastInputUnixMs()); at.After(since) && !at.After(now) {
+			since = at
 		}
 	}
 	return d.phoneAt.After(since)

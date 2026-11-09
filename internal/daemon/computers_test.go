@@ -945,6 +945,73 @@ func TestInputTimesThrottled(t *testing.T) {
 	}
 }
 
+// The input time the throttle held back goes on a later tick, with no
+// input since: the last burst of typing before you stop to read reaches
+// the others, or they'd count you gone early and send pushes to your phone.
+func TestHeldInputTimeSentLater(t *testing.T) {
+	a, b := startComputer(t), startComputer(t)
+	link(t, a, b)
+	waitComputers(t, b, "linked", hasComputer(a.uid, true))
+	seenOnB := func() int64 {
+		b.d.mu.Lock()
+		defer b.d.mu.Unlock()
+		return b.d.comp.links[a.uid].GetRecord().GetLastInputUnixMs()
+	}
+	a.d.noteInput(time.Now().Add(-2 * time.Minute))
+	openApp(t, a)
+	waitComputers(t, b, "a active", func(cs *pb.Computers) bool { return cs.ActiveId == a.uid })
+	first := seenOnB()
+	last := time.Now().Add(-time.Minute)
+	a.d.noteInput(last) // held: sent a moment ago
+	time.Sleep(300 * time.Millisecond)
+	if seenOnB() != first {
+		t.Fatal("sent again at once")
+	}
+	a.d.mu.Lock()
+	a.d.comp.inputAt = time.Now().Add(-inputResend - time.Second)
+	a.d.mu.Unlock()
+	a.d.noteInput(time.Time{}) // a later tick, nobody typing since
+	deadline := time.Now().Add(5 * time.Second)
+	for seenOnB() < last.UnixMilli()-1000 {
+		if time.Now().After(deadline) {
+			t.Fatal("the held input time never reached b")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A Mac whose screen locks stops being the one that notifies, and the
+// others stop holding pushes for it, at once rather than once its idle
+// time runs out: you've left it.
+func TestLockedComputerHandsOver(t *testing.T) {
+	a, b := startComputer(t), startComputer(t)
+	link(t, a, b)
+	openApp(t, a)
+	a.d.noteInput(time.Now())
+	waitComputers(t, b, "a active", func(cs *pb.Computers) bool { return cs.ActiveId == a.uid })
+	waitFor(t, "b sees a in use", func() bool {
+		b.d.mu.Lock()
+		defer b.d.mu.Unlock()
+		return b.d.inUseElsewhere()
+	})
+	a.d.mu.Lock()
+	a.d.comp.locked = true
+	a.d.appChanged()
+	a.d.mu.Unlock()
+	waitComputers(t, b, "a locked: nobody's active", func(cs *pb.Computers) bool { return cs.ActiveId == "" })
+	b.d.mu.Lock()
+	elsewhere := b.d.inUseElsewhere()
+	b.d.mu.Unlock()
+	if elsewhere {
+		t.Fatal("a's locked, yet b still counts you there")
+	}
+	a.d.mu.Lock()
+	a.d.comp.locked = false
+	a.d.appChanged()
+	a.d.mu.Unlock()
+	waitComputers(t, b, "a unlocked: active again", func(cs *pb.Computers) bool { return cs.ActiveId == a.uid })
+}
+
 // An agent on B that's still waiting stays in A's Needs You when A's link
 // to B reconnects (after sleep): the full update doesn't clear it.
 func TestLinkedAttentionSurvivesReconnect(t *testing.T) {

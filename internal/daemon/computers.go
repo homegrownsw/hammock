@@ -104,7 +104,8 @@ type computerSet struct {
 	note         string                 // to tell you (after an upgrade: computers to link again)
 	delivering   bool                   // unlink requests are being sent (links.go)
 	kick         chan struct{}          // try sending them again now
-	appOpen      bool                   // as last told to the others (Computer.notifies)
+	appOpen      bool                   // as last told to the others (Computer.notifies: canNotify)
+	locked       bool                   // this Mac's screen is locked, as watchInput last saw
 	// the lists last published (to clients, to linked computers)
 	sentLocal, sentPeers *pb.Computers
 	sentInput            int64     // this one's input time as last sent to them
@@ -309,7 +310,7 @@ func (d *Daemon) selfRecord(forPeer bool) *pb.Computer {
 		self.UserId, self.Fingerprint = d.id.me.UserId, keyFingerprint(d.id.me.UserId)
 		self.Name, self.Model, self.Kind, self.Os = cmpOr(d.id.me.DeviceName, "This computer"), hw.model, hw.kind, hw.os
 	}
-	self.Notifies = d.appIsOpen()
+	self.Notifies = d.canNotify()
 	if forPeer {
 		self.LastInputUnixMs, self.IdleMs = 0, 0
 		if idle := time.Now().UnixMilli() - d.comp.self.LastInputUnixMs; self.Notifies && d.comp.self.LastInputUnixMs > 0 && idle >= 0 {
@@ -370,10 +371,17 @@ func (d *Daemon) appIsOpen() bool {
 	return false
 }
 
-// appChanged tells the others when the app opens or closes here (which
-// computer can notify). Callers hold d.mu.
+// canNotify: someone here would see a notification: the app is open and
+// the screen isn't locked. A locked Mac hands over at once (to the one
+// used last, else your phone), not once its idle time runs out. Callers
+// hold d.mu.
+func (d *Daemon) canNotify() bool { return d.appIsOpen() && !d.comp.locked }
+
+// appChanged tells the others when this computer starts or stops being
+// able to notify: the app opens or closes, or the screen locks or unlocks.
+// Callers hold d.mu.
 func (d *Daemon) appChanged() {
-	if open := d.appIsOpen(); open != d.comp.appOpen {
+	if open := d.canNotify(); open != d.comp.appOpen {
 		d.comp.appOpen = open
 		if d.linkedCount() > 0 {
 			d.comp.inputAt = time.Now() // its input time goes with it
@@ -394,10 +402,13 @@ func (d *Daemon) publishComputers() {
 	d.publish(&pb.StateUpdate{Computers: local})
 }
 
-// inUseElsewhere: another linked computer, reachable, with its app open,
-// was used within awayAfter (you're there, and it notifies). Callers hold d.mu.
+// inUseElsewhere: another linked computer, reachable, able to notify (its
+// app open, its screen unlocked), was used within awayAfter (you're there,
+// and it notifies). Its input time can be behind by up to inputResend and
+// a tick (noteInput), so that's allowed for: a moment's reading there
+// isn't taken for leaving. Callers hold d.mu.
 func (d *Daemon) inUseElsewhere() bool {
-	cutoff := time.Now().Add(-awayAfter).UnixMilli()
+	cutoff := time.Now().Add(-awayAfter - inputResend - inputTick).UnixMilli()
 	for uid, l := range d.comp.links {
 		r := l.Record
 		if pl := d.linkOf(uid); pl != nil && pl.online && d.isLinked(uid) && r.Notifies && r.LastInputUnixMs > cutoff {
@@ -407,10 +418,19 @@ func (d *Daemon) inUseElsewhere() bool {
 	return false
 }
 
-// watchInput keeps this computer's last-used time current for the others
-// (which one notifies), while any are linked.
+// inputTick is how often watchInput looks at this computer's input and
+// lock; inputResend how often, at most, a newer input time is sent to the
+// others while you go on using it (noteInput).
+const (
+	inputTick   = 15 * time.Second
+	inputResend = 30 * time.Second
+)
+
+// watchInput keeps this computer's last-used time and whether its screen
+// is locked current for the others (which one notifies), while any are
+// linked.
 func (d *Daemon) watchInput() {
-	t := time.NewTicker(15 * time.Second)
+	t := time.NewTicker(inputTick)
 	defer t.Stop()
 	for {
 		select {
@@ -420,44 +440,64 @@ func (d *Daemon) watchInput() {
 		}
 		d.mu.Lock()
 		linked := d.linkedCount() > 0
+		d.mu.Unlock()
+		// Off d.mu: these ask IOKit.
+		locked, at := false, time.Time{}
+		if linked {
+			locked = hardware().os == "macos" && screenLocked()
+			if !locked {
+				at = lastInputAt()
+			}
+		}
+		d.mu.Lock()
+		d.comp.locked = locked
+		// The input time first: unlocking tells them it can notify along
+		// with when it was used (just now), not the time from before the lock.
+		d.recordInput(at)
 		d.appChanged()
 		d.mu.Unlock()
-		if !linked {
-			continue
+		if linked {
+			d.noteInput(time.Time{})
 		}
-		d.noteInput(lastInputAt())
 	}
 }
 
 // lastInputAt is when a person last used this computer: the keyboard or
-// mouse on a Mac, unless its screen is locked or another user's session is
-// in front (zero then). Elsewhere nothing says, and those don't notify.
+// mouse on a Mac (zero elsewhere: nothing says, and those don't notify).
+// Not asked while the screen's locked or another user's session is in
+// front (watchInput).
 var lastInputAt = func() time.Time {
-	if hardware().os != "macos" || screenLocked() {
+	if hardware().os != "macos" {
 		return time.Time{}
 	}
 	return time.Now().Add(-idleTime())
+}
+
+// recordInput takes in this computer's last use, at (zero: none known; a
+// time ahead of now, from a clock that jumped, is ignored), without
+// telling anyone (noteInput does). Callers hold d.mu.
+func (d *Daemon) recordInput(at time.Time) {
+	s := d.comp.self
+	if !at.IsZero() && !at.After(time.Now()) && at.UnixMilli() > s.LastInputUnixMs+10_000 {
+		s.LastInputUnixMs = at.UnixMilli()
+	}
 }
 
 // noteInput records this computer's last use, telling the others when it
 // matters: it's now the one used last, or a while has passed. Only what a
 // person did at this computer counts (lastInputAt): not agents typing
 // through MCP or hmk send, nor a TUI over SSH from another computer. A
-// time ahead of now (a clock that jumped) is ignored.
+// time ahead of now (a clock that jumped) is ignored. A time held back by
+// the throttle goes on a later call, even with no input since: the last
+// burst of typing before you stop reaches them too, or they'd count you
+// gone up to a minute early.
 func (d *Daemon) noteInput(at time.Time) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if at.IsZero() || at.After(time.Now()) {
-		return
-	}
-	ms := at.UnixMilli()
-	s := d.comp.self
-	if ms <= s.LastInputUnixMs+10_000 {
-		return
-	}
-	s.LastInputUnixMs = ms
-	if !d.appIsOpen() {
-		return // it can't notify, so nobody uses this (sent when the app opens)
+	d.recordInput(at)
+	ms := d.comp.self.LastInputUnixMs
+	if !d.canNotify() || ms <= d.comp.sentInput {
+		return // can't notify, so nobody uses this (sent when it can), or sent already
 	}
 	// Tell them when it takes over in their eyes (what they were last told
 	// was behind the others that can notify, and now isn't), else now and
@@ -470,7 +510,7 @@ func (d *Daemon) noteInput(at time.Time) {
 		}
 	}
 	takesOver := d.comp.sentInput <= others && ms > others
-	if takesOver || time.Since(d.comp.inputAt) > time.Minute {
+	if takesOver || time.Since(d.comp.inputAt) > inputResend {
 		d.comp.inputAt = time.Now()
 		d.publishComputers()
 	}
@@ -1563,7 +1603,7 @@ func (d *Daemon) clearNote() {
 func (d *Daemon) publishLinked(reqID string) {
 	u := &pb.StateUpdate{Computers: d.computersState(false)}
 	d.comp.sentLocal, d.comp.sentPeers = u.Computers, d.computersState(true)
-	d.comp.sentInput = d.comp.sentPeers.List[0].LastInputUnixMs
+	d.comp.sentInput = d.comp.self.LastInputUnixMs // (as idle time: the peers' record has none)
 	d.endLink(reqID, "", u)
 	d.publish(u)
 }

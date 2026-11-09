@@ -35,6 +35,9 @@ func TestMain(m *testing.M) {
 	// Never the real ~/.ssh/config, nor the real Hammock Key.
 	sshConfigPath = func() string { return "/nonexistent/hmk-test/ssh_config" }
 	keyHelperPath = func() string { return "" }
+	// Nor this Mac's own screen: locked while the suite runs, linked
+	// computers would stop notifying (watchInput) and their tests fail.
+	screenLocked = func() bool { return false }
 	dir, err := os.MkdirTemp("", "hmk-bin")
 	if err != nil {
 		panic(err)
