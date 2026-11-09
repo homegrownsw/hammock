@@ -1453,19 +1453,31 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello:
 		return nil, nil, false
+	// A failed sign-in closes the connection (after its answer): each try
+	// costs a new connection, under the limits on those (authGate).
 	case *pb.ClientMessage_Pair:
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		r, err := d.pair(c, m.Pair)
+		if err != nil {
+			c.hangUp.Store(true)
+		}
 		return r, err, true
 	case *pb.ClientMessage_Authenticate:
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return nil, d.authenticate(c, m.Authenticate), true
+		err := d.authenticate(c, m.Authenticate)
+		if err != nil {
+			c.hangUp.Store(true)
+		}
+		return nil, err, true
 	case *pb.ClientMessage_PeerHello:
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		r, err := d.peerHello(c, m.PeerHello)
+		if err != nil {
+			c.hangUp.Store(true)
+		}
 		return r, err, true
 	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_ShowPairing, *pb.ClientMessage_ListDevices, *pb.ClientMessage_RevokeDevice, *pb.ClientMessage_SetRemoteAccess, *pb.ClientMessage_SetRemoteNetworks,
 		*pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_ListAudit, *pb.ClientMessage_BrowserCall, *pb.ClientMessage_BrowserLogs,

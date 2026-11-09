@@ -69,7 +69,7 @@ func (d *Daemon) loadPeople() {
 func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) {
 	if len(m.PublicKey) != ed25519.PublicKeySize || len(m.HostNonce) != client.NonceSize ||
 		!ed25519.Verify(m.PublicKey, client.AuthMessage(client.PeerAuthTag, d.remote.fingerprint, c.nonce), m.Signature) {
-		d.audit("peer", "auth-failed", "", "")
+		d.auditSignInFailed(c, "peer", "auth-failed", "", "")
 		return nil, errors.New("authentication failed")
 	}
 	uid := userIDFor(m.PublicKey)
@@ -78,7 +78,7 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 	}
 	if !d.keyMatches(uid, m.PublicKey) {
 		// Another key with the same id as someone known here.
-		d.audit("peer", "auth-failed", uid, "a different key than the one on record")
+		d.auditSignInFailed(c, "peer", "auth-failed", uid, "a different key than the one on record")
 		return nil, errors.New("authentication failed")
 	}
 	c.authed, c.peer, c.peerKey, c.kind, c.name = true, uid, m.PublicKey, "peer", m.Name

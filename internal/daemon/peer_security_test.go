@@ -271,6 +271,57 @@ func TestLinkRequestKeyIsSigners(t *testing.T) {
 	}
 }
 
+// A failed sign-in closes the connection, and failures from one address
+// are audited once a minute, with what they claim cut short.
+func TestFailedSignInClosesAndAuditsOnce(t *testing.T) {
+	host, _ := startHost(t)
+	host.mu.Lock()
+	fp := host.remote.fingerprint
+	host.mu.Unlock()
+	countFailed := func() int {
+		host.mu.Lock()
+		defer host.mu.Unlock()
+		evs, _ := host.store.RecentAudit(1000)
+		n := 0
+		for _, e := range evs {
+			if e.Action == "pair-rejected" || e.Action == "auth-failed" {
+				n++
+				if len([]rune(e.Actor)) > 80 || len(e.Target) > 256 {
+					t.Errorf("audited as sent: %d, %d", len(e.Actor), len(e.Target))
+				}
+			}
+		}
+		return n
+	}
+	long := strings.Repeat("x", 100000)
+	for i := range 3 {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		cl, err := client.DialRemote(ctx, host.RemoteAddrs()[0], fp, "ios", "x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var msg *pb.ClientMessage
+		if i%2 == 0 {
+			msg = &pb.ClientMessage{Msg: &pb.ClientMessage_Pair{Pair: &pb.Pair{PublicKey: make([]byte, ed25519.PublicKeySize), Secret: []byte("nope"), DeviceName: long}}}
+		} else {
+			msg = &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: long, Signature: []byte("x")}}}
+		}
+		if _, err := cl.Call(ctx, msg); err == nil {
+			t.Fatal("signed in with nothing")
+		}
+		select {
+		case <-cl.Done():
+		case <-time.After(3 * time.Second):
+			t.Fatal("connection kept after a failed sign-in")
+		}
+		cl.Close()
+		cancel()
+	}
+	if n := countFailed(); n != 1 {
+		t.Fatalf("%d failures audited, want 1", n)
+	}
+}
+
 // sharedSetup makes a Group with a running pane, shares it, and lets a raw
 // peer in with role r.
 func sharedSetup(t *testing.T, r pb.Role) (host *Daemon, h, peer *client.Client, uid, gid, tab, paneID string) {

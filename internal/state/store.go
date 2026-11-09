@@ -5,6 +5,7 @@ package state
 import (
 	"database/sql"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -15,8 +16,17 @@ import (
 
 // Store is the SQLite-backed persistence layer.
 type Store struct {
-	db *sql.DB
+	db     *sql.DB
+	audits atomic.Int64 // events appended since opening (pruned every auditPruneEvery)
 }
+
+// The audit log keeps at most auditKeepRows events and none older than
+// auditKeepAge: enough history to look back on, without growing for ever.
+const (
+	auditKeepRows   = 50000
+	auditKeepAge    = 90 * 24 * time.Hour
+	auditPruneEvery = 500
+)
 
 // PaneRuntime records how to reach a pane's holder process.
 type PaneRuntime struct {
@@ -95,6 +105,11 @@ func Open(path string) (*Store, error) {
 			db.Close()
 			return nil, fmt.Errorf("state: migrate audit: %w", err)
 		}
+	}
+	// The audit log is bounded (it wasn't before 2026-11-09).
+	if err := (&Store{db: db}).PruneAudit(auditKeepRows, auditKeepAge); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("state: prune audit: %w", err)
 	}
 	// Spaces were renamed Groups (2026-10-30); their records keep their ids.
 	if _, err := db.Exec(`UPDATE entities SET kind='group' WHERE kind='space'`); err != nil {
@@ -248,6 +263,17 @@ func (s *Store) Load() (*Snapshot, error) {
 func (s *Store) Audit(e AuditEvent) error {
 	_, err := s.db.Exec(`INSERT INTO audit(ts, actor, action, target, detail, who, summary, kind) VALUES(?,?,?,?,?,?,?,?)`,
 		time.Now().UnixMilli(), e.Actor, e.Action, e.Target, e.Detail, e.Who, e.Summary, e.Kind)
+	if err == nil && s.audits.Add(1)%auditPruneEvery == 0 {
+		err = s.PruneAudit(auditKeepRows, auditKeepAge)
+	}
+	return err
+}
+
+// PruneAudit drops audit events beyond the newest keep, and those older
+// than maxAge.
+func (s *Store) PruneAudit(keep int, maxAge time.Duration) error {
+	_, err := s.db.Exec(`DELETE FROM audit WHERE ts < ? OR id <= (SELECT id FROM audit ORDER BY id DESC LIMIT 1 OFFSET ?)`,
+		time.Now().Add(-maxAge).UnixMilli(), keep)
 	return err
 }
 

@@ -85,7 +85,37 @@ type remoteState struct {
 	failed      map[string]bool      // addresses that couldn't be listened on (logged once)
 	pairings    map[string]time.Time // hex(secret) → expiry
 	gate        authGate
-	preAuth     map[*conn]func() // unauthenticated connections → what to do once they are
+	preAuth     map[*conn]func()     // unauthenticated connections → what to do once they are
+	failedAt    map[string]time.Time // source address → when a failed sign-in from it was last audited
+}
+
+// failAuditEvery is how often a failed sign-in from one address is audited
+// (the connection closes after each; the rest aren't recorded).
+const failAuditEvery = time.Minute
+
+// auditSignInFailed audits a failed sign-in (Pair, Authenticate,
+// PeerHello) from c, at most once every failAuditEvery per source
+// address: anyone who can reach the listener can fail as often as they
+// like. Callers hold d.mu.
+func (d *Daemon) auditSignInFailed(c *conn, actor, action, target, detail string) {
+	now := time.Now()
+	if d.remote.failedAt == nil {
+		d.remote.failedAt = map[string]time.Time{}
+	}
+	if now.Sub(d.remote.failedAt[c.srcIP]) < failAuditEvery {
+		return
+	}
+	if len(d.remote.failedAt) >= 1024 {
+		for ip, at := range d.remote.failedAt {
+			if now.Sub(at) >= failAuditEvery {
+				delete(d.remote.failedAt, ip)
+			}
+		}
+	}
+	if len(d.remote.failedAt) < 1024 {
+		d.remote.failedAt[c.srcIP] = now
+	}
+	d.audit(actor, action, deviceName(target), deviceName(detail))
 }
 
 // authGate counts unauthenticated remote connections.
@@ -620,7 +650,7 @@ func (d *Daemon) pair(c *conn, m *pb.Pair) (*pb.ServerMessage, error) {
 		}
 	}
 	if match == "" {
-		d.audit("remote:"+m.DeviceName, "pair-rejected", "", "invalid or expired pairing code")
+		d.auditSignInFailed(c, "remote:"+deviceName(m.DeviceName), "pair-rejected", "", "invalid or expired pairing code")
 		return nil, errors.New("invalid or expired pairing code")
 	}
 	delete(d.remote.pairings, match)
@@ -673,7 +703,7 @@ func (d *Daemon) authenticate(c *conn, m *pb.Authenticate) error {
 			return nil
 		}
 	}
-	d.audit("remote", "auth-failed", m.DeviceId, "")
+	d.auditSignInFailed(c, "remote", "auth-failed", m.DeviceId, "")
 	return errors.New("authentication failed")
 }
 

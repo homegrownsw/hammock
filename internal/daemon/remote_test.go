@@ -66,6 +66,13 @@ func TestRemotePairingAndAuth(t *testing.T) {
 	if _, err := c1.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Pair{Pair: &pb.Pair{Secret: []byte("nope"), DeviceName: "phone", PublicKey: pub}}}); err == nil {
 		t.Fatal("bad pairing secret accepted")
 	}
+	// A failed sign-in closes the connection: pairing is tried afresh.
+	select {
+	case <-c1.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("connection kept after a bad pairing secret")
+	}
+	c1, _ = remoteDial()
 	r, err := c1.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Pair{Pair: &pb.Pair{Secret: pairing.Secret, DeviceName: "phone", Platform: "ios", PublicKey: pub}}})
 	if err != nil {
 		t.Fatal(err)
@@ -123,22 +130,28 @@ func TestRemotePairingAndAuth(t *testing.T) {
 		t.Errorf("phone answering a join: %v", err)
 	}
 
-	// The secret is single use.
+	// The secret is single use. (Each failure closes its connection: each
+	// try below is on a new one.)
 	c2, nonce := remoteDial()
 	if _, err := c2.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Pair{Pair: &pb.Pair{Secret: pairing.Secret, DeviceName: "again", PublicKey: pub}}}); err == nil {
 		t.Fatal("pairing secret reused")
 	}
-	// Signed challenge authenticates; a signature over the wrong nonce doesn't.
-	if _, err := c2.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: deviceID, Signature: ed25519.Sign(priv, []byte("other"))}}}); err == nil {
-		t.Fatal("bad signature accepted")
+	// Signed challenge authenticates; a signature over the wrong nonce
+	// doesn't, nor a bare one over the nonce (not bound to this purpose and
+	// host), nor a peer's.
+	for what, sig := range map[string]func([]byte) []byte{
+		"bad signature":       func([]byte) []byte { return ed25519.Sign(priv, []byte("other")) },
+		"raw nonce signature": func(n []byte) []byte { return ed25519.Sign(priv, n) },
+		"peer-tagged signature": func(n []byte) []byte {
+			return ed25519.Sign(priv, client.AuthMessage(client.PeerAuthTag, pairing.CertSha256, n))
+		},
+	} {
+		c2, nonce = remoteDial()
+		if _, err := c2.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: deviceID, Signature: sig(nonce)}}}); err == nil {
+			t.Fatalf("%s accepted", what)
+		}
 	}
-	// A bare signature over the nonce (not bound to this purpose and host) doesn't either.
-	if _, err := c2.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: deviceID, Signature: ed25519.Sign(priv, nonce)}}}); err == nil {
-		t.Fatal("raw nonce signature accepted")
-	}
-	if _, err := c2.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: deviceID, Signature: ed25519.Sign(priv, client.AuthMessage(client.PeerAuthTag, pairing.CertSha256, nonce))}}}); err == nil {
-		t.Fatal("peer-tagged signature accepted as a device's")
-	}
+	c2, nonce = remoteDial()
 	if _, err := c2.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: deviceID, Signature: ed25519.Sign(priv, client.AuthMessage(client.DeviceAuthTag, pairing.CertSha256, nonce))}}}); err != nil {
 		t.Fatalf("authenticate: %v", err)
 	}

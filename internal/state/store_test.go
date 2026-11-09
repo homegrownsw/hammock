@@ -3,6 +3,7 @@ package state
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -64,5 +65,29 @@ func TestRuntimeTokenMigration(t *testing.T) {
 	}
 	if r := snap.Runtimes["pa_new"]; r.Token != "tok" {
 		t.Fatalf("new: %+v", r)
+	}
+}
+
+// The audit log keeps only the newest events, and none too old.
+func TestPruneAudit(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for range 10 {
+		if err := s.Audit(AuditEvent{Actor: "a", Action: "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.Exec(`UPDATE audit SET ts = 1 WHERE id = (SELECT MAX(id) FROM audit)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PruneAudit(4, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	evs, _ := s.RecentAudit(100)
+	if len(evs) != 3 {
+		t.Fatalf("kept %d events, want the newest 4 less the old one", len(evs))
 	}
 }
