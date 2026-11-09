@@ -1,0 +1,27 @@
+.DS_Store
+/bin/
+/dist/
+*.test
+*.out
+/third_party/ghostty/src/
+# A directory here, a link to the shared build in worktrees (ghostty-deps.sh).
+/third_party/ghostty/out
+/.zig-cache/
+xcuserdata/
+DerivedData/
+.build/
+
+/apple/Frameworks/
+
+/apple/.build/
+/apple/.swiftpm/
+
+/apple/iOS/HammockIOS.xcodeproj/xcuserdata/
+/apple/iOS/HammockIOS.xcodeproj/project.xcworkspace/xcuserdata/
+/spikes/browser/out/
+/.signing-identity
+/hammock
+/.claude/worktrees/
+/scripts/program-icons/node_modules/
+/apple/Editor/node_modules/
+/.release.env

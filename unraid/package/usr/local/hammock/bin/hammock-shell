@@ -1,0 +1,30 @@
+#!/bin/bash
+# The shell Hammock's panes run on Unraid ($SHELL for hmkd): root's own
+# login shell (zsh, bash, …), started as a login shell but with Unraid's
+# /etc/profile less its HOME=/root and cd $HOME (rc.hammock setup writes
+# that copy), so a pane keeps the folder it opened in.
+#   hammock-shell -l            an interactive login shell (a pane)
+#   hammock-shell -l -c CMD     a command as a login shell would run it
+[ "${1:-}" = -l ] && shift
+# Everything runs as root on Unraid: let Claude Code skip its permission
+# prompts when you ask it to (it refuses to as root otherwise).
+export IS_SANDBOX=1
+shell="$(sed -n "s/^HAMMOCK_SHELL='\(.*\)'\$/\1/p" /var/run/hammock.env 2>/dev/null)"
+[ -x "$shell" ] || shell=/bin/bash
+. /usr/local/hammock/etc/profile
+export SHELL="$shell"
+case "${shell##*/}" in
+  zsh)
+    # Its global files (/etc/zprofile is Unraid's profile again) are
+    # skipped; your own (~/.zshenv, ~/.zprofile, ~/.zshrc) are read.
+    exec "$shell" -o no_global_rcs -l "$@" ;;
+  bash)
+    if [ $# -gt 0 ]; then
+      if [ -r "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile"
+      elif [ -r "$HOME/.profile" ]; then . "$HOME/.profile"; fi
+      exec "$shell" "$@"
+    fi
+    exec "$shell" --rcfile /usr/local/hammock/etc/login.bash -i ;;
+  *)
+    exec "$shell" -l "$@" ;;
+esac

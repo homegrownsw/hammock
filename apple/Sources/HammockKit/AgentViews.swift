@@ -1,0 +1,2908 @@
+import AVFoundation
+import PhotosUI
+import SwiftUI
+import UniformTypeIdentifiers
+
+#if canImport(AppKit)
+import AppKit
+typealias PlatformImage = NSImage
+#else
+import UIKit
+typealias PlatformImage = UIImage
+#endif
+
+// The agent view: an agent's conversation, as in Claude's apps, beside the
+// raw terminal. Shared by the Mac and iOS apps (HammockKit).
+
+// MARK: - Settings
+
+/// The agent view's fonts (Settings, per device): a prose font (the system
+/// font unless chosen) and a code font. The keys are UserDefaults' (the
+/// iPhone's; read them through Prefs, which has the Mac's in its config file).
+public enum AgentViewPrefs {
+    public static let fontName = "agent.fontName"
+    public static let fontSize = "agent.fontSize"
+    public static let codeFontName = "agent.codeFontName"
+    public static let codeFontSize = "agent.codeFontSize"
+    public static let lineSpacing = "agent.lineSpacing"
+    /// Which view agent panes open in on this device: "agent" or "terminal".
+    public static let defaultView = "agent.defaultView"
+    /// The agent view's colour on this device from before themes ("" or an
+    /// AgentColor name): only read to move it into the theme (the Mac's
+    /// config, the iPhone's theme pick), then removed.
+    public static let color = "agent.color"
+    static let paneModes = "agent.paneModes"
+
+    #if os(macOS)
+    public static let defaultSize: Double = 14
+    public static let defaultSpacing: Double = 3
+    #else
+    public static let defaultSize: Double = 18
+    public static let defaultSpacing: Double = 4
+    #endif
+
+    /// Whether a pane shows the agent view: the pane's own choice once
+    /// toggled, else this device's default.
+    @MainActor public static func showsAgent(_ paneID: String) -> Bool {
+        if let m = (UserDefaults.standard.dictionary(forKey: paneModes) as? [String: Bool])?[paneID] { return m }
+        return Prefs.shared.string(.agentDefaultView) == "agent"
+    }
+
+    public static func setShowsAgent(_ paneID: String, _ on: Bool) {
+        var d = (UserDefaults.standard.dictionary(forKey: paneModes) as? [String: Bool]) ?? [:]
+        d[paneID] = on
+        UserDefaults.standard.set(d, forKey: paneModes)
+    }
+}
+
+struct AgentFonts: Equatable {
+    var name: String
+    var size: Double
+    var codeName: String
+    var codeSize: Double
+    var spacing: Double
+
+    /// This device's settings, as the conversation view reads them.
+    @MainActor static var current: AgentFonts {
+        let p = Prefs.shared
+        return AgentFonts(name: p.string(.agentFont), size: p.double(.agentFontSize),
+                          codeName: p.string(.agentCodeFont), codeSize: p.double(.agentCodeFontSize),
+                          spacing: p.double(.agentLineSpacing))
+    }
+
+    func body(_ scale: Double = 1, weight: Font.Weight = .regular) -> Font {
+        let s = size * scale
+        #if os(iOS)
+        if name.isEmpty { return .system(size: s, weight: weight).leading(.standard) }
+        return .custom(name, size: s, relativeTo: .body).weight(weight)
+        #else
+        return name.isEmpty ? .system(size: s, weight: weight) : .custom(name, size: s).weight(weight)
+        #endif
+    }
+
+    func code(_ scale: Double = 1) -> Font {
+        let s = codeSize * scale
+        return codeName.isEmpty ? .system(size: s, design: .monospaced) : .custom(codeName, size: s)
+    }
+}
+
+private struct AgentAccentKey: EnvironmentKey { static let defaultValue = Color.accentColor }
+// The iPhone's: Hammock's forest green, as the palette has it (the app accent turns light in
+// dark mode, too light under white text).
+private struct AgentAutomaticKey: EnvironmentKey {
+    #if os(macOS)
+    static let defaultValue = Color.accentColor
+    #else
+    static let defaultValue = AgentColor.named("Hammock") ?? .accentColor
+    #endif
+}
+private struct AgentBubbleKey: EnvironmentKey { static let defaultValue = Color.accentColor }
+private struct AgentAutomaticBubbleKey: EnvironmentKey {
+    #if os(macOS)
+    static let defaultValue = Color.accentColor
+    #else
+    static let defaultValue = AgentColor.bubble("Hammock") ?? .accentColor
+    #endif
+}
+
+/// The agent view's colours to pick from (Settings), each a shade of a window
+/// theme's. On the iPhone, the whole app's tint.
+public enum AgentColor {
+    /// `color` is for buttons and the like: in the dark, a lighter shade, so
+    /// they don't look disabled (Graphite goes near white). `bubble` is for
+    /// your messages, dark enough for white text in both.
+    public static let all: [(name: String, color: Color, bubble: Color)] = [
+        ("Hammock", hammock, rgb(0x1D6046, dark: 0x1F6A4C)),
+        ("Blue", rgb(0x0A72E8, dark: 0x52A3FF), rgb(0x0A72E8)),
+        ("Ocean", rgb(0x2B6CC4, dark: 0x72A8F0), rgb(0x2B6CC4)),
+        ("Forest", rgb(0x2E8B4F, dark: 0x5EC786), rgb(0x2E8B4F)),
+        ("Rose", rgb(0xCC4A72, dark: 0xEA7398), rgb(0xCC4A72)),
+        ("Lavender", rgb(0x7352D1, dark: 0xA68EF2), rgb(0x7352D1)),
+        ("Sand", rgb(0xA87A1F, dark: 0xD9A743), rgb(0xA87A1F)),
+        ("Graphite", rgb(0x3E3E46, dark: 0xE2E2E8), rgb(0x5E5E68)),
+    ]
+
+    /// The colour for a pref ("" or unknown: automatic).
+    public static func named(_ name: String) -> Color? { all.first { $0.name == name }?.color }
+
+    /// Your messages' colour for a pref.
+    public static func bubble(_ name: String) -> Color? { all.first { $0.name == name }?.bubble }
+
+    /// Hammock's forest green for buttons and the like, lighter in the dark
+    /// (on the iPhone, the app's own; its AccentColor matches).
+    #if os(macOS)
+    private static let hammock = rgb(0x1F7A57, dark: 0x3FB88A)
+    #else
+    private static let hammock = rgb(0x1D7050, dark: 0x5CCB9C)
+    #endif
+
+    private static func rgb(_ v: Int) -> Color {
+        Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+
+    /// One colour in light mode, another in dark.
+    private static func rgb(_ light: Int, dark: Int) -> Color {
+        func c(_ v: Int) -> (CGFloat, CGFloat, CGFloat) { (CGFloat((v >> 16) & 0xFF) / 255, CGFloat((v >> 8) & 0xFF) / 255, CGFloat(v & 0xFF) / 255) }
+        let (l, d) = (c(light), c(dark))
+        #if os(macOS)
+        return Color(nsColor: NSColor(name: nil) { a in
+            let (r, g, b) = a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? d : l
+            return NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+        })
+        #else
+        return Color(uiColor: UIColor { t in
+            let (r, g, b) = t.userInterfaceStyle == .dark ? d : l
+            return UIColor(red: r, green: g, blue: b, alpha: 1)
+        })
+        #endif
+    }
+}
+
+private struct AgentFontsKey: EnvironmentKey {
+    static let defaultValue = AgentFonts(name: "", size: AgentViewPrefs.defaultSize, codeName: "", codeSize: AgentViewPrefs.defaultSize - 1, spacing: AgentViewPrefs.defaultSpacing)
+}
+
+extension EnvironmentValues {
+    var agentFonts: AgentFonts {
+        get { self[AgentFontsKey.self] }
+        set { self[AgentFontsKey.self] = newValue }
+    }
+    /// The agent view's colour: your messages, choices, the send button.
+    var agentAccent: Color {
+        get { self[AgentAccentKey.self] }
+        set { self[AgentAccentKey.self] = newValue }
+    }
+    /// Your messages' colour, and what buttons with a white label are
+    /// filled with (agentAccent, but deep enough for white in the dark).
+    public var agentBubble: Color {
+        get { self[AgentBubbleKey.self] }
+        set { self[AgentBubbleKey.self] = newValue }
+    }
+    /// The agent view's colour, from the theme (set by each app: on the Mac,
+    /// its theme's or Custom's agent colour; on the iPhone, PhoneTheme's).
+    public var agentAutomaticColor: Color {
+        get { self[AgentAutomaticKey.self] }
+        set { self[AgentAutomaticKey.self] = newValue }
+    }
+    /// The theme's colour for your messages.
+    public var agentAutomaticBubble: Color {
+        get { self[AgentAutomaticBubbleKey.self] }
+        set { self[AgentAutomaticBubbleKey.self] = newValue }
+    }
+}
+
+// MARK: - Conversation
+
+/// A pane's conversation with its agent, with the prompt it's showing and a
+/// composer. onShowTerminal flips the pane back to the terminal (offered when
+/// an answer can't be matched to what's on screen); onOpenFile opens a path
+/// the session referenced.
+public struct AgentConversationView: View {
+    let model: AppModel
+    let paneID: String
+    var onShowTerminal: () -> Void = {}
+    var onOpenFile: ((String) -> Void)?
+    /// The pane's session, held for as long as this view exists (AgentLease).
+    @State private var lease: AgentLease?
+    private var session: AgentSession? { lease?.session }
+    /// A subagent or background shell being looked at instead (read only),
+    /// and its session.
+    @State private var viewing: AgentSideView?
+    @State private var subLease: AgentLease?
+    private var subSession: AgentSession? { subLease?.session }
+    @State private var shownAt: Date?
+    /// Just loaded, while rows settle: the end stays anchored in view.
+    @State private var settling = true
+    /// The conversation has come to rest at its end since it was loaded
+    /// (or switched to): until then its rows are kept out of sight, so it
+    /// first shows where it lands, not partway up and jumping down as lazy
+    /// rows measure their real heights.
+    @State private var landed = false
+    /// Counts scroll geometry changes while landing: landed once they stop.
+    @State private var landingTick = 0
+    /// Scrolled to the end of the conversation (as the scroll view last said).
+    @State private var atBottom = true
+    /// A glide to the end (following what arrives) waiting for new rows to
+    /// measure. A reference, so setting it redraws nothing.
+    @State private var glide = GlideState()
+    private final class GlideState { var pending = false; var tick = 0; var gap: CGFloat = 0 }
+    /// The width the conversation is laid out at. While the pane changes
+    /// size (a zoom animating, a divider or the window dragged), it stays
+    /// at the old width, so the text doesn't reflow every frame (each reflow
+    /// re-estimated the lazy rows and the view scrolled about), and is laid
+    /// out once at the new width when the size has settled.
+    @State private var layoutWidth: CGFloat?
+    @State private var resize = ResizeState()
+    private final class ResizeState { var tick = 0 }
+    /// Scrolls rows you open into view.
+    @State private var revealer = RowRevealer()
+    /// Where the conversation's scrolled to (Latest goes to the end).
+    @State private var position = ScrollPosition(edge: .bottom)
+    /// A link with a scheme that could open any app, waiting for a yes.
+    @State private var askingToOpen: URL?
+    @Environment(\.openURL) private var openURL
+    /// The conversation's height, so a prompt card can take most of it.
+    @State private var height: CGFloat = 0
+    /// A picture open in the viewer, and the namespace it zooms from.
+    @State private var viewedImage: ViewedImage?
+    @Namespace private var imageZoom
+    @Environment(\.agentAutomaticColor) private var automaticColor
+    @Environment(\.agentAutomaticBubble) private var automaticBubble
+
+    public init(model: AppModel, paneID: String, onShowTerminal: @escaping () -> Void = {}, onOpenFile: ((String) -> Void)? = nil) {
+        self.model = model
+        self.paneID = paneID
+        self.onShowTerminal = onShowTerminal
+        self.onOpenFile = onOpenFile
+    }
+
+    public var body: some View {
+        // A ZStack, not a Group: a Group hands onAppear/onDisappear to its
+        // child, which changes when the session arrives, so each swap
+        // released and re-acquired it, in a loop that froze iOS.
+        ZStack {
+            if viewing != nil, let subSession {
+                content(subSession)
+            } else if let session {
+                content(session)
+            } else {
+                Color.clear
+            }
+        }
+        .environment(\.agentFonts, AgentFonts.current)
+        .environment(\.openURL, linkAction)
+        .environment(\.agentAccent, automaticColor)
+        .environment(\.agentBubble, automaticBubble)
+        .environment(\.openAgentImage, { viewedImage = $0 })
+        .environment(\.agentImageZoom, imageZoom)
+        #if os(iOS)
+        .fullScreenCover(item: $viewedImage) { v in
+            // Grows out of its picture; drag it down to shrink it back there.
+            ImageViewer(image: v.image).navigationTransition(.zoom(sourceID: v.ref, in: imageZoom))
+        }
+        #else
+        .sheet(item: $viewedImage) { v in ImageViewer(image: v.image) }
+        #endif
+        .tint(automaticColor)
+        .alert("Open this link?", isPresented: Binding(get: { askingToOpen != nil }, set: { if !$0 { askingToOpen = nil } }), presenting: askingToOpen) { url in
+            Button("Open") { openURL(url) }
+            Button("Cancel", role: .cancel) {}
+        } message: { url in
+            Text(url.absoluteString)
+        }
+        // Taken on first appearing and given back when SwiftUI drops this
+        // view's state, not on disappearing: pushed from a list, a view can
+        // hear appear, appear, disappear while it stays on screen, which
+        // left it holding no session, blank, message box and all.
+        .onAppear { if lease == nil { lease = AgentLease(model, paneID) } }
+        .onDisappear { viewing = nil }
+        .onChange(of: viewing) { _, new in
+            landed = false
+            subLease = new.map { AgentLease(model, paneID, subagent: $0.subagent, shell: $0.shell) }
+        }
+    }
+
+    /// Shown once the conversation's scroll has stopped changing at its
+    /// end (rows above it measured), faded in.
+    private func land(at gap: CGFloat) {
+        landingTick += 1
+        let tick = landingTick
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !landed, tick == landingTick, gap < 2 else { return }
+            withAnimation(.easeOut(duration: 0.15)) { landed = true }
+        }
+    }
+
+    /// However it's going, shown after a moment: rows that never settle
+    /// (or a scroll that never says so) don't stay hidden.
+    private func landAtLatest() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            if !landed { withAnimation(.easeOut(duration: 0.15)) { landed = true } }
+        }
+    }
+
+    /// The pane changed width: hold the conversation at its old width until
+    /// the size stops changing, then lay it out once at the new one. At the
+    /// end, it stays there throughout (anchored while the rows measure again).
+    private func resized(to w: CGFloat) {
+        guard let held = layoutWidth else { layoutWidth = w; return }
+        guard abs(w - held) > 0.5 else { return }
+        let atEnd = glide.gap < 60
+        if atEnd { settling = true }
+        resize.tick += 1
+        let tick = resize.tick
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard resize.tick == tick else { return }
+            layoutWidth = w
+            guard atEnd else { return }
+            await Task.yield()
+            revealer.proxy?.scrollTo("bottom", anchor: .bottom)
+            try? await Task.sleep(for: .milliseconds(400))
+            guard resize.tick == tick else { return }
+            revealer.proxy?.scrollTo("bottom", anchor: .bottom)
+            settling = false
+        }
+    }
+
+    /// To the end, at once (an animated scroll aims at an estimate of rows
+    /// not yet laid out, overshooting into blank space and bouncing back as
+    /// they measure, worse while messages arrive), then again once they have.
+    private func jumpToEnd(_ proxy: ScrollViewProxy) {
+        position.scrollTo(edge: .bottom)
+        atBottom = true
+        Task { @MainActor in
+            for ms in [80, 300] {
+                try? await Task.sleep(for: .milliseconds(ms))
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        }
+    }
+
+    private func glideToEnd() {
+        glide.pending = false
+        // To the end as laid out (the marker under the lazy rows):
+        // scrollTo(edge:) aims at their estimated height, even once they've
+        // measured, overshooting into blank space and springing back.
+        withAnimation(.smooth(duration: 0.3)) { revealer.proxy?.scrollTo("bottom", anchor: .bottom) }
+    }
+
+    /// What floats at the bottom: jump to latest (scrolled up), then the
+    /// prompt to answer, the message box, or why there's neither.
+    @ViewBuilder
+    private func bottomBar(_ s: AgentSession, _ proxy: ScrollViewProxy) -> some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            if s.subagentID.isEmpty, s.shellID.isEmpty {
+                SessionExtras(session: s)
+            }
+            Group {
+                if !s.subagentID.isEmpty || !s.shellID.isEmpty {
+                    // A subagent's transcript, a shell's output: nothing to answer or send.
+                } else if model.group(ofPane: paneID)?.canDrive == false {
+                    // Shared with you to watch: no answering or messaging.
+                    Label("View only: \(model.group(ofPane: paneID).map { model.hostLabel(of: $0) } ?? "its host") can let you drive", systemImage: "eye")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .agentGlass(in: Capsule())
+                        .frame(maxWidth: .infinity)
+                } else if s.prompt.kind != .none {
+                    PromptCard(session: s, onShowTerminal: onShowTerminal, maxHeight: max(300, height * 0.7))
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    Composer(session: s, harness: model.panes[paneID]?.agent.harness ?? "claude")
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+        .frame(maxWidth: 884)
+        .frame(maxWidth: .infinity)
+        .animation(.snappy(duration: 0.25), value: s.prompt.kind)
+        .animation(.snappy(duration: 0.25), value: s.tasks.isEmpty)
+    }
+
+    /// Links in the conversation: web and mail links open, file links go to
+    /// onOpenFile, and any other scheme (which could open any app) asks first.
+    private var linkAction: OpenURLAction {
+        OpenURLAction { url in
+            if AgentLink.opensDirectly(url) { return .systemAction }
+            if url.isFileURL, let open = onOpenFile {
+                open(url.path)
+                return .handled
+            }
+            askingToOpen = url
+            return .handled
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ s: AgentSession) -> some View {
+        if !s.shellID.isEmpty {
+            VStack(spacing: 0) {
+                ShellHeader(shell: session?.shells.first { $0.id == s.shellID }) { viewing = nil }
+                ShellOutputView(session: s)
+            }
+        } else {
+            conversation(s)
+        }
+    }
+
+    @ViewBuilder
+    private func conversation(_ s: AgentSession) -> some View {
+        VStack(spacing: 0) {
+            if !s.subagentID.isEmpty {
+                SubagentHeader(subagent: session?.subagents.first { $0.id == s.subagentID }, working: s.working) { viewing = nil }
+            } else if s.subagents.contains(where: { !$0.finished }) || s.shells.contains(where: { !$0.finished }) {
+                BackgroundStrip(subagents: s.subagents.filter { !$0.finished }, shells: s.shells.filter { !$0.finished }) { viewing = $0 }
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // The tail (what you've sent on its way, Working…) under
+                    // the lazy rows, not among them: always laid out, so never
+                    // given an estimated height. A lazy row pushed out of
+                    // view (by the row above growing) was estimated again, at
+                    // the average row's height, hundreds of points for a
+                    // one-line row, and following the end into that estimate
+                    // showed blank space, then jumped back.
+                    VStack(alignment: .leading, spacing: 14) {
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            if !s.error.isEmpty, s.blocks.isEmpty {
+                                ContentUnavailableView("No conversation yet", systemImage: "bubble.left.and.text.bubble.right", description: Text(s.error))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 60)
+                            }
+                            if s.hasMore {
+                                // On tap only: loading as it appears could chain
+                                // through the whole history whenever the list is
+                                // laid out from the top (as it is mid-push).
+                                Button(s.loadingOlder ? "Loading…" : "Show earlier messages") { s.loadOlder() }
+                                    .buttonStyle(.borderless)
+                                    .frame(maxWidth: .infinity)
+                            }
+                            ForEach(s.items) { item in
+                                // Equatable: a row only re-renders when its own
+                                // blocks change, not whenever the session does.
+                                AgentItemView(item: item, session: s)
+                                    .equatable()
+                                    .id(item.id)
+                                    // DevLog: when the newest row first shows, after it was asked for.
+                                    .onAppear {
+                                        if item.id == s.items.last?.id, !s.shownSinceAsked, let asked = s.askedAt {
+                                            s.shownSinceAsked = true
+                                            DevLog.agent("pane \(s.paneID): rows shown after \(DevLog.since(asked)) (\(s.items.count) rows)")
+                                        }
+                                    }
+                                    .jankRow(item.id)
+                            }
+                        }
+                        TranscriptTail(session: s)
+                            .jankRow("tail")
+                        // The very end, the margin under the last row included,
+                        // so scrolling to it shows all of that.
+                        Color.clear.frame(height: 1).padding(.bottom, 15).id("bottom")
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .frame(maxWidth: 860, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .coordinateSpace(.named(RowRevealer.space))
+                    .environment(\.agentRowRevealer, revealer)
+                    .opacity(landed || s.items.isEmpty ? 1 : 0)
+                }
+                // Open at the bottom, and kept there while what's loaded settles
+                // (rows measuring their real heights). Not anchored there after:
+                // what arrives while you watch glides into view (below), where
+                // keeping the end in view snapped everything up a row's height
+                // in one frame.
+                .scrollPosition($position)
+                .jankScroll()
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(settling ? .bottom : nil, for: .sizeChanges)
+                // Drag down into the keyboard to pull it away with your finger.
+                .scrollDismissesKeyboard(.interactively)
+                // Follow the conversation while you're at the bottom: a new
+                // message (or one finishing its layout, which comes after
+                // the jump to it) grows the content below the fold, and the
+                // scroll to the newest block alone landed short of it. Leave
+                // you be once you've scrolled up to read.
+                .onScrollGeometryChange(for: ScrollEdge.self) { g in
+                    ScrollEdge(content: g.contentSize.height,
+                               gap: g.contentSize.height - g.visibleRect.maxY,
+                               container: g.containerSize.height)
+                } action: { old, new in
+                    glide.gap = new.gap
+                    if !landed, !s.items.isEmpty { land(at: new.gap) }
+                    if JankProbe.enabled {
+                        JankProbe.shared.viewport = new.container
+                        JankProbe.shared.contentHeight = new.content
+                    }
+                    // Not with a picture open: it zooms back to where its picture is.
+                    let wasNear = old.gap < 60 && viewedImage == nil
+                    if settling {
+                        // Just loaded: the anchor keeps the end in view as rows
+                        // measure their real heights.
+                    } else if revealer.holdingFollow {
+                        // A row opening: it scrolls itself into view (RowRevealer).
+                    } else if new.content > old.content + 0.5, wasNear || glide.pending, new.gap > old.gap + 0.5 {
+                        // More below the end while you watch: a glide to it,
+                        // once it's measured. A row arriving below the fold is
+                        // first given an estimated height, the average of the
+                        // rows measured so far (hundreds of points while a long
+                        // first message of yours is most of them), corrected on
+                        // the next layout pass. A glide aimed at the estimate
+                        // ran on into blank space past the end, then sprang
+                        // back, or snapped further up. So it waits for the
+                        // correction (below), or a moment if none comes. Only
+                        // from near the end, so not starting again partway
+                        // through a glide (which stepped back).
+                        glide.pending = true
+                        glide.tick += 1
+                        let tick = glide.tick
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(50))
+                            if glide.pending, glide.tick == tick { glideToEnd() }
+                        }
+                    } else if new.content < old.content - 0.5, glide.pending {
+                        // The estimate corrected: to the real end, once the
+                        // scroll view has caught up (asked in this pass, it
+                        // still aimed at the estimate, and sprang back).
+                        glide.tick += 1
+                        let tick = glide.tick
+                        Task { @MainActor in
+                            await Task.yield()
+                            if glide.pending, glide.tick == tick { glideToEnd() }
+                        }
+                    } else if new.container < old.container - 0.5, wasNear {
+                        // Shorter (the keyboard came up): to the very end, with it.
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                    // Latest once well up from the end; gone again near it (a gap
+                    // between the two, so it doesn't flicker at the line).
+                    if new.gap > 350 { atBottom = false } else if new.gap < 150 { atBottom = true }
+                }
+                .onScrollGeometryChange(for: RowRevealer.Visible.self) { g in
+                    RowRevealer.Visible(top: g.visibleRect.minY + g.contentInsets.top,
+                                        bottom: g.visibleRect.maxY - g.contentInsets.bottom,
+                                        gap: g.contentSize.height - g.visibleRect.maxY)
+                } action: { _, new in revealer.visible = new }
+                // Switching to this view with the conversation already loaded:
+                // the anchor alone can land short of the end while lazy rows
+                // above measure their real heights, so land again once they have.
+                .onAppear {
+                    revealer.proxy = proxy
+                    if !s.items.isEmpty { landAtLatest() }
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                    Task { @MainActor in
+                        for ms in [60, 250] {
+                            try? await Task.sleep(for: .milliseconds(ms))
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
+                }
+                .onChange(of: s.blocks.last?.id) { old, _ in
+                    if old == nil {
+                        landed = false
+                        landAtLatest()
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                        shownAt = .now
+                        settling = true
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(1.5))
+                            settling = false
+                        }
+                    }
+                    // New rows while you're at the end are followed as the
+                    // content grows (onScrollGeometryChange): a second animated
+                    // scroll here fought that one, the picture stepping back.
+                }
+                .onChange(of: s.pendingSends.count) { old, new in
+                    // Sent while scrolled up: down to see it go.
+                    if new > old, !atBottom { jumpToEnd(proxy) }
+                }
+                .onChange(of: s.prompt.options) {
+                    // A prompt that came with the first load is already in view.
+                    guard let shownAt, Date.now.timeIntervalSince(shownAt) > 0.5 else { return }
+                    withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
+                // What you answer or send with (the model and context in it):
+                // glass floating over the conversation, which scrolls beneath.
+                .overlay(alignment: .bottom) {
+                    if !atBottom, landed {
+                        Button {
+                            jumpToEnd(proxy)
+                        } label: {
+                            Label("Latest", systemImage: "arrow.down")
+                                .font(.callout.weight(.semibold))
+                        }
+                        .agentGlassButton()
+                        .buttonBorderShape(.capsule)
+                        .help("Jump to the latest")
+                        .padding(.bottom, 10)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
+                }
+                .animation(.snappy(duration: 0.2), value: atBottom)
+                .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar(s, proxy) }
+                .agentSoftEdges()
+                // Held at its width while the pane resizes (layoutWidth), the
+                // scroll view and all: narrower meanwhile, it's clipped at the
+                // sides. (Rows wider than the scroll view they're in weren't
+                // drawn at all.) The pane's width whatever the held view's, so
+                // the pane narrowing is seen.
+                .frame(width: layoutWidth)
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .clipped()
+            }
+        }
+        // The whole height (a prompt card may take most of it).
+        .background {
+            GeometryReader { g in
+                Color.clear
+                    .onAppear { height = g.size.height; resized(to: g.size.width) }
+                    .onChange(of: g.size.height) { _, h in height = h }
+                    .onChange(of: g.size.width) { _, w in resized(to: w) }
+            }
+        }
+    }
+}
+
+// MARK: - Items
+
+/// Rendered text (parsed Markdown, highlighted code) by what it was made
+/// from, so a row scrolling back into view or re-rendering skips the work.
+enum RenderCache {
+    private final class Box { let value: Any; init(_ value: Any) { self.value = value } }
+    nonisolated(unsafe) private static let cache: NSCache<NSString, Box> = {
+        let c = NSCache<NSString, Box>()
+        c.countLimit = 3000
+        return c
+    }()
+
+    static func get<T>(_ key: String, _ make: () -> T) -> T {
+        if let v = cache.object(forKey: key as NSString)?.value as? T { return v }
+        let v = make()
+        cache.setObject(Box(v), forKey: key as NSString)
+        return v
+    }
+}
+
+/// A row of the conversation: one block, or a run of tool calls grouped.
+/// Where a scroll view's content ends, and how far down you've scrolled.
+struct ScrollEdge: Equatable {
+    var content: CGFloat
+    /// How far the end of the conversation is below what's in view (0 or
+    /// less at the end, counting what's under the floating bar).
+    var gap: CGFloat
+    var container: CGFloat = 0
+}
+
+/// Brings a row you've just opened into view: all of it if it fits, its top
+/// if it doesn't. Opened at the end of the conversation, it stays at the end
+/// if the whole row still shows from there. One per conversation, handed to
+/// rows in the environment: a reference, so what it's told as you scroll
+/// redraws nothing.
+@MainActor final class RowRevealer {
+    /// What's in view, in the content's coordinates, less what's under the
+    /// floating bar, and how far the end is below it.
+    struct Visible: Equatable { var top: CGFloat = 0, bottom: CGFloat = 0, gap: CGFloat = 0 }
+    var visible = Visible()
+    var proxy: ScrollViewProxy?
+    /// While a row opens, the conversation doesn't glide to the end as it
+    /// grows: where to go is decided here, once the row's laid out.
+    var holdingFollow: Bool { Date.now < holdUntil }
+    private var holdUntil = Date.distantPast
+    /// How far the end was below the view when the row was opened.
+    private var gapAtOpen: CGFloat = 0
+    static let space = "agentContent"
+
+    func opening() {
+        gapAtOpen = visible.gap
+        holdUntil = .now + 0.6
+    }
+
+    /// The row's frame, opened and laid out, in the content's coordinates.
+    func reveal(_ id: String, _ frame: CGRect) {
+        holdUntil = .distantPast
+        guard let proxy, frame.height > 0 else { return }
+        let height = visible.bottom - visible.top
+        // At the end when opened: back there, if the whole row shows from there.
+        let toEnd = visible.gap - gapAtOpen
+        withAnimation(.smooth(duration: 0.3)) {
+            if gapAtOpen < 60, frame.minY >= visible.top + toEnd {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            } else if frame.height > height || frame.minY < visible.top {
+                proxy.scrollTo(id, anchor: .top)
+            } else if frame.maxY > visible.bottom {
+                proxy.scrollTo(id, anchor: .bottom)
+            }
+        }
+    }
+}
+
+private struct RowRevealerKey: EnvironmentKey { static let defaultValue: RowRevealer? = nil }
+extension EnvironmentValues {
+    var agentRowRevealer: RowRevealer? {
+        get { self[RowRevealerKey.self] }
+        set { self[RowRevealerKey.self] = newValue }
+    }
+}
+
+/// A row that opens: scrolled into view when it does (RowRevealer).
+private struct RevealsWhenOpened: ViewModifier {
+    let id: String
+    let open: Bool
+    @Environment(\.agentRowRevealer) private var revealer
+    /// Where the row is, kept out of view state: it changes as it lays out.
+    @State private var frame = FrameBox()
+    private final class FrameBox { var rect = CGRect.zero }
+
+    func body(content: Content) -> some View {
+        content
+            .id("reveal:" + id)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(RowRevealer.space)) } action: { frame.rect = $0 }
+            .onChange(of: open) { _, now in
+                guard now, let revealer else { return }
+                revealer.opening()
+                // Once it's laid out open (its frame's the final one at once;
+                // what's in it, measuring, a moment later).
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(60))
+                    revealer.reveal("reveal:" + id, frame.rect)
+                }
+            }
+    }
+}
+
+extension View {
+    func revealsWhenOpened(_ id: String, _ open: Bool) -> some View { modifier(RevealsWhenOpened(id: id, open: open)) }
+}
+
+public struct AgentItem: Identifiable, Equatable {
+    public let id: String
+    var block: AgentBlock?
+    var tools: [AgentBlock] = []
+    var thoughtSeconds: Int?
+
+    static func group(_ blocks: [AgentBlock]) -> [AgentItem] {
+        var out: [AgentItem] = []
+        var run: [AgentBlock] = []
+        // A run of tool calls is one row from its first call on, whatever
+        // it grows to: its identity doesn't change when a second call joins
+        // (which swapped one row for another, fading out and in).
+        func flush() {
+            if !run.isEmpty { out.append(AgentItem(id: "g:" + run[0].id, tools: run)) }
+            run = []
+        }
+        for (i, b) in blocks.enumerated() {
+            switch b.kind {
+            case .tool where !b.diff.isEmpty || b.tool == "SendUserFile":
+                // Edits stand on their own, so you see what changed (the diff
+                // a click away) without opening a group of tool calls. With
+                // the id it had as a run's first call (an edit has no diff
+                // until it's made): the same row, laid out again where it is,
+                // not a new one given an estimated height below the fold.
+                flush()
+                out.append(AgentItem(id: "g:" + b.id, block: b))
+            case .tool:
+                run.append(b)
+            case .thinking where !b.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
+                // Thinking with words is Claude's narration ("Committing
+                // now."), shown in the terminal: it stands on its own, even
+                // between tool calls.
+                flush()
+                out.append(AgentItem(id: b.id, block: b))
+            case .thinking:
+                // Silent thinking between tool calls folds into the run.
+                if !run.isEmpty { continue }
+                var item = AgentItem(id: b.id, block: b)
+                if i + 1 < blocks.count, b.timeUnixMs > 0, blocks[i + 1].timeUnixMs > b.timeUnixMs {
+                    item.thoughtSeconds = Int((blocks[i + 1].timeUnixMs - b.timeUnixMs) / 1000)
+                }
+                out.append(item)
+            default:
+                flush()
+                out.append(AgentItem(id: b.id, block: b))
+            }
+        }
+        flush()
+        return out
+    }
+}
+
+struct AgentItemView: View, Equatable {
+    let item: AgentItem
+    let session: AgentSession
+
+    static func == (a: Self, b: Self) -> Bool { a.item == b.item && a.session === b.session }
+
+    var body: some View {
+        let _ = JankProbe.shared.body()
+        if let b = item.block {
+            switch b.kind {
+            case .user:
+                UserBubble(text: b.text, images: b.images, session: session)
+            case .text:
+                MarkdownView(text: b.text)
+            case .thinking:
+                ThinkingRow(block: b, seconds: item.thoughtSeconds, session: session)
+            case .tool where b.tool == "SendUserFile":
+                SentFiles(block: b, session: session)
+            case .tool:
+                ToolRow(block: b, session: session)
+            case .question:
+                QuestionCard(block: b)
+            case .plan:
+                PlanCard(block: b)
+            case .subagent:
+                SubagentCard(block: b, session: session)
+            case .note:
+                NoteRow(block: b, session: session)
+            default:
+                EmptyView()
+            }
+        } else if item.tools.count == 1, let only = item.tools.first {
+            ToolRow(block: only, session: session)
+        } else {
+            ToolGroup(id: item.id, tools: item.tools, session: session)
+        }
+    }
+}
+
+/// What a link in the agent view may do without asking.
+public enum AgentLink {
+    /// Web and mail links open straight away; other schemes can launch any
+    /// app that claims them, so they ask first.
+    public static func opensDirectly(_ url: URL) -> Bool {
+        ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
+    }
+
+    /// Where the links in some text go, one per line, leaving out those whose
+    /// text already shows it: shown on hover.
+    static func destinations(_ text: AttributedString) -> String {
+        var out: [String] = []
+        for run in text.runs {
+            guard let url = run.link else { continue }
+            let dest = url.isFileURL ? url.path : url.absoluteString
+            let shown = String(text[run.range].characters)
+            if shown != dest, shown != url.absoluteString, !out.contains(dest) { out.append(dest) }
+        }
+        return out.joined(separator: "\n")
+    }
+}
+
+// MARK: - Blocks
+
+struct UserBubble: View {
+    @Environment(\.agentBubble) private var accent
+    let text: String
+    let images: [Hammock_V1_AgentImage]
+    let session: AgentSession
+    var pending = false
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 60)
+            VStack(alignment: .trailing, spacing: 6) {
+                ForEach(images, id: \.ref) { img in
+                    AgentImageView(ref: img.ref, session: session, maxHeight: 220)
+                }
+                if !text.isEmpty {
+                    LinkedText(markdown: text)
+                        .font(fonts.body())
+                        .lineSpacing(fonts.spacing)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.white)
+                        .tint(.white)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 10)
+                        .background(accent.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+            }
+            .opacity(pending ? 0.7 : 1)
+        }
+    }
+}
+
+struct MarkdownView: View {
+    @Environment(\.agentAccent) private var accent
+    let text: String
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(runs.enumerated()), id: \.offset) { n, run in
+                switch run {
+                case .prose(let text, let links):
+                    // Headings, paragraphs, lists and quotes in a row are one
+                    // Text, so a selection can run across them.
+                    LinkedText(text, key: "md|\(fonts.name)|\(fonts.size)|\(n)|" + self.text)
+                        .font(fonts.body())
+                        .lineSpacing(fonts.spacing)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(links)
+                case .block(let block):
+                    blockView(block)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Prose comes with where its links go (for a tooltip).
+    enum Run { case prose(AttributedString, links: String), block(MDBlock) }
+
+    private var runs: [Run] { Self.runs(text, fonts) }
+
+    /// Parsed and styled once per text and font, not each time the row
+    /// renders (and for new messages, ahead of time: see prepare).
+    nonisolated static func runs(_ text: String, _ fonts: AgentFonts) -> [Run] {
+        RenderCache.get("md|\(fonts.name)|\(fonts.size)|" + text) {
+            var out: [Run] = []
+            var run: [MDBlock] = []
+            func flush() {
+                if !run.isEmpty {
+                    let text = prose(run, fonts)
+                    out.append(.prose(text, links: AgentLink.destinations(text)))
+                    run = []
+                }
+            }
+            for b in Markdown.parse(text) {
+                switch b {
+                case .heading, .paragraph, .list, .quote:
+                    run.append(b)
+                default:
+                    flush()
+                    out.append(.block(b))
+                }
+            }
+            flush()
+            return out
+        }
+    }
+
+    /// Renders text into the cache off the main thread, so the row doesn't
+    /// parse it as it scrolls into view.
+    nonisolated static func prepare(_ texts: [String], _ fonts: AgentFonts) {
+        guard !texts.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            for t in texts {
+                for case .block(.code(let lang, let code)) in runs(t, fonts) {
+                    _ = CodeBlock.highlighted(code, lang)
+                }
+            }
+        }
+    }
+
+    nonisolated private static func prose(_ blocks: [MDBlock], _ fonts: AgentFonts) -> AttributedString {
+        var out = AttributedString()
+        func styled(_ s: String, _ color: Color) -> AttributedString {
+            var a = AttributedString(s)
+            a.foregroundColor = color
+            return a
+        }
+        for (n, b) in blocks.enumerated() {
+            if n > 0 {
+                // A short blank line between blocks, standing in for the
+                // VStack's spacing.
+                out += AttributedString("\n")
+                var gap = AttributedString("\n")
+                gap.font = .system(size: fonts.size * 0.45)
+                out += gap
+            }
+            switch b {
+            case .heading(let level, let t):
+                var h = Markdown.inline(t)
+                h.font = fonts.body([1.45, 1.25, 1.1, 1, 1, 1][min(level - 1, 5)], weight: .semibold)
+                out += h
+            case .paragraph(let t):
+                out += Markdown.inline(t)
+            case .list(let items):
+                for (i, it) in items.enumerated() {
+                    if i > 0 { out += AttributedString("\n") }
+                    out += AttributedString(String(repeating: "    ", count: it.indent))
+                    if let checked = it.checked {
+                        out += styled(checked ? "☑︎ " : "☐ ", checked ? .primary : .secondary)
+                    } else {
+                        out += styled(it.marker + " ", .secondary)
+                    }
+                    out += Markdown.inline(it.text)
+                }
+            case .quote(let t):
+                for (i, line) in t.components(separatedBy: "\n").enumerated() {
+                    if i > 0 { out += AttributedString("\n") }
+                    out += styled("▍ ", Color.secondary.opacity(0.5))
+                    var q = Markdown.inline(line)
+                    q.foregroundColor = .secondary
+                    out += q
+                }
+            default:
+                break
+            }
+        }
+        return out
+    }
+
+    @ViewBuilder
+    private func blockView(_ b: MDBlock) -> some View {
+        switch b {
+        case .code(let lang, let code):
+            CodeBlock(code: code, language: lang)
+        case .table(let header, let rows):
+            ScrollView(.horizontal, showsIndicators: false) {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+                    GridRow {
+                        ForEach(Array(header.enumerated()), id: \.offset) { _, h in
+                            LinkedText(markdown: h).fontWeight(.semibold)
+                        }
+                    }
+                    Divider()
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        GridRow {
+                            ForEach(Array(row.enumerated()), id: \.offset) { _, c in
+                                LinkedText(markdown: c).textSelection(.enabled)
+                                    .help(AgentLink.destinations(Markdown.inline(c)))
+                            }
+                        }
+                    }
+                }
+                .font(fonts.body(0.93))
+                .padding(12)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+            }
+        case .rule:
+            Divider()
+        default:
+            EmptyView()
+        }
+    }
+}
+
+struct CodeBlock: View {
+    let code: String
+    var language = ""
+    var maxHeight: CGFloat? = nil
+    @Environment(\.agentFonts) private var fonts
+    @State private var copied = false
+
+    nonisolated static func highlighted(_ code: String, _ language: String) -> AttributedString {
+        RenderCache.get("hl|\(language)|" + code) { CodeHighlight.attributed(code, language: language) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(language.isEmpty ? "code" : language).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    copy(code)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                Text(Self.highlighted(code, language))
+                    .font(fonts.code())
+                    .textSelection(.enabled)
+                    .fixedSize()
+                    .padding(12)
+            }
+            .frame(maxHeight: maxHeight ?? 420)
+        }
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+func copy(_ s: String) {
+    #if canImport(AppKit)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(s, forType: .string)
+    #else
+    UIPasteboard.general.string = s
+    #endif
+}
+
+/// Thinking: its words as a message (Claude's narration), or, when it has
+/// none, how long it took.
+struct ThinkingRow: View {
+    let block: AgentBlock
+    let seconds: Int?
+    let session: AgentSession
+    private var open: Bool { session.isOpen(block.id) }
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        let text = block.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            // Narrated thinking reads as a message, as Claude Code and the
+            // Claude app show it.
+            MarkdownView(text: text)
+        } else {
+            silent
+        }
+    }
+
+    private var silent: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { withAnimation(.snappy) { session.setOpen(block.id, !open) } } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain").font(.caption)
+                    Text(seconds.map { $0 > 1 ? "Thought for \($0)s" : "Thought briefly" } ?? "Thinking")
+                    if !block.text.isEmpty { Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2) }
+                }
+                .foregroundStyle(.secondary)
+                .font(fonts.body(0.9))
+            }
+            .buttonStyle(.plain)
+            .disabled(block.text.isEmpty)
+            if open {
+                Text(block.text)
+                    .font(fonts.body(0.9))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(fonts.spacing)
+                    .textSelection(.enabled)
+                    .padding(.leading, 18)
+            }
+        }
+        .revealsWhenOpened(block.id, open)
+    }
+}
+
+/// A system note, centred; a compaction's summary opens under it.
+struct NoteRow: View {
+    let block: AgentBlock
+    let session: AgentSession
+    private var open: Bool { session.isOpen(block.id) }
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation(.snappy) { session.setOpen(block.id, !open) } } label: {
+                HStack(spacing: 4) {
+                    Text(block.text)
+                    if !block.output.isEmpty { Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2) }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .disabled(block.output.isEmpty)
+            if open {
+                MarkdownView(text: block.output)
+                    .font(fonts.body(0.9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .revealsWhenOpened(block.id, open)
+    }
+}
+
+/// Files the agent sent you (Claude's SendUserFile): its caption and the
+/// images themselves, not a collapsed tool call.
+struct SentFiles: View {
+    let block: AgentBlock
+    let session: AgentSession
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(block.title, systemImage: "paperclip")
+                .font(fonts.body(0.88))
+                .foregroundStyle(.secondary)
+            if !block.text.isEmpty {
+                MarkdownView(text: block.text)
+            }
+            ForEach(block.images, id: \.ref) { AgentImageView(ref: $0.ref, session: session, maxHeight: 360) }
+            let others = block.input.split(separator: "\n").filter { name in !block.images.contains { $0.ref.hasSuffix("/" + name) } }
+            if !others.isEmpty {
+                Text(others.joined(separator: ", "))
+                    .font(fonts.code(0.95))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// What follows the transcript: messages on their way, and what Claude's
+/// doing. Its own view, so the status line ticking re-renders only this.
+struct TranscriptTail: View {
+    let session: AgentSession
+
+    var body: some View {
+        Group {
+            ForEach(Array(session.pendingSends.enumerated()), id: \.offset) { _, text in
+                UserBubble(text: text, images: [], session: session, pending: true)
+                    // Sent: up from the message box, growing into place. It goes
+                    // at once when the transcript shows it (in the same place).
+                    .transition(.asymmetric(
+                        insertion: .offset(y: 80).combined(with: .scale(scale: 0.6, anchor: .bottomTrailing)).combined(with: .opacity),
+                        removal: .identity))
+            }
+            if session.working {
+                WorkingRow(status: session.status)
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.72), value: session.pendingSends.count)
+        .animation(.easeOut(duration: 0.25), value: session.working)
+    }
+}
+
+struct WorkingRow: View {
+    let status: String
+    @Environment(\.agentFonts) private var fonts
+    @State private var on = false
+
+    var body: some View {
+        // At the prose's size, and only a little dimmed: it's the live line of
+        // the conversation, not a footnote. Not quite primary, so the shimmer's
+        // light still shows over it in dark mode.
+        HStack(spacing: 8) {
+            // Turning and breathing, so it reads as at work at a glance.
+            Image(systemName: "sparkle")
+                .foregroundStyle(Color.orange)
+                .symbolEffect(.rotate.clockwise, options: .repeat(.continuous))
+                .symbolEffect(.breathe.pulse, options: .repeat(.continuous))
+            Text(status.isEmpty ? "Working…" : status)
+                .foregroundStyle(.primary.opacity(0.75))
+                .lineLimit(1)
+                .shimmering()
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.2), value: status)
+        }
+        .font(fonts.body())
+    }
+}
+
+// MARK: Tools
+
+private func toolIcon(_ b: AgentBlock) -> String {
+    switch b.tool {
+    case "Bash": return "terminal"
+    case "Read": return "doc.text"
+    case "Write": return "doc.badge.plus"
+    case "Edit", "MultiEdit", "NotebookEdit": return "pencil"
+    case "Grep", "Glob", "ToolSearch": return "magnifyingglass"
+    case "WebFetch", "WebSearch": return "globe"
+    case "TodoWrite": return "checklist"
+    case "Skill": return "wand.and.stars"
+    default: return b.tool.hasPrefix("mcp__") ? "puzzlepiece.extension" : "wrench.and.screwdriver"
+    }
+}
+
+/// How long a tool call has been running, as the terminal shows it: "12s",
+/// "1m 05s", "1h 02m". Ticks each second from the call's own time (a fixed
+/// start, so redrawing the row doesn't restart its timer).
+struct RunningTime: View {
+    let sinceUnixMs: Int64
+
+    var body: some View {
+        if sinceUnixMs > 0 {
+            let start = Date(timeIntervalSince1970: TimeInterval(sinceUnixMs) / 1000)
+            TimelineView(.periodic(from: start, by: 1)) { ctx in
+                Text(Self.format(ctx.date.timeIntervalSince(start)))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    static func format(_ seconds: TimeInterval) -> String {
+        let s = max(Int(seconds), 0)
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return String(format: "%dm %02ds", s / 60, s % 60) }
+        return String(format: "%dh %02dm", s / 3600, (s % 3600) / 60)
+    }
+}
+
+struct StatusDot: View {
+    let block: AgentBlock
+
+    var body: some View {
+        if block.pending {
+            HStack(spacing: 6) {
+                RunningTime(sinceUnixMs: block.timeUnixMs)
+                ProgressView().controlSize(.mini)
+            }
+        } else if block.error {
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+        } else {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green.opacity(0.8))
+        }
+    }
+}
+
+struct ToolRow: View {
+    let block: AgentBlock
+    let session: AgentSession
+    var compact = false
+    private var open: Bool { session.isOpen(block.id) }
+    @Environment(\.agentFonts) private var fonts
+
+    /// The command or input shown when open (a Read's path is in its title already).
+    private var showsInput: Bool { !block.input.isEmpty && (block.tool == "Bash" || !block.tool.hasPrefix("Read")) }
+    /// Opening shows something more than the row (and its pictures) does.
+    private var opens: Bool { !block.diff.isEmpty || showsInput || !block.output.isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { if opens { withAnimation(.snappy) { session.setOpen(block.id, !open) } } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: toolIcon(block)).frame(width: 18).foregroundStyle(.tertiary)
+                    Text(Markdown.inlineText(block.title.isEmpty ? block.tool : block.title))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if block.added > 0 || block.removed > 0 {
+                        Text("+\(block.added)").foregroundStyle(.green)
+                        Text("−\(block.removed)").foregroundStyle(.red)
+                    }
+                    Spacer(minLength: 4)
+                    StatusDot(block: block).font(.caption)
+                    Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                        .opacity(opens ? 1 : 0)
+                }
+                .font(fonts.body(0.88))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            // Pictures it read or made show without opening it, as in the Claude app.
+            if !block.images.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(block.images, id: \.ref) { AgentImageView(ref: $0.ref, session: session, maxHeight: 300) }
+                }
+                .padding(.leading, 26)
+            }
+            if !open, !block.diff.isEmpty {
+                // An edit shows what changed, as the terminal does: its first
+                // lines, and the rest a tap away.
+                DiffView(diff: block.diff, preview: compact ? 4 : 8)
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation(.snappy) { session.setOpen(block.id, true) } }
+                    .padding(.leading, 26)
+            }
+            if open, opens {
+                VStack(alignment: .leading, spacing: 8) {
+                    if !block.diff.isEmpty {
+                        DiffView(diff: block.diff)
+                    } else if showsInput {
+                        CodeBlock(code: block.input, language: block.tool == "Bash" ? "bash" : "", maxHeight: 200)
+                    }
+                    if !block.output.isEmpty {
+                        CodeBlock(code: block.output, language: "output", maxHeight: 260)
+                    }
+                }
+                .padding(.leading, 26)
+            }
+        }
+        .padding(.vertical, compact ? 1 : 3)
+        .revealsWhenOpened(block.id, open)
+    }
+}
+
+struct ToolGroup: View {
+    let id: String
+    let tools: [AgentBlock]
+    let session: AgentSession
+    private var open: Bool { session.isOpen(id) }
+    @Environment(\.agentFonts) private var fonts
+
+    private var summary: String {
+        "Used \(tools.count) tools"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { withAnimation(.snappy) { session.setOpen(id, !open) } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.stack.3d.up").frame(width: 18).foregroundStyle(.tertiary)
+                    Text(summary).foregroundStyle(.secondary)
+                    if let last = tools.last, last.pending {
+                        Text("· " + last.title).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+                    }
+                    Spacer(minLength: 4)
+                    if let running = tools.last(where: \.pending) {
+                        RunningTime(sinceUnixMs: running.timeUnixMs)
+                        ProgressView().controlSize(.mini)
+                    } else if tools.contains(where: \.error) {
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange).font(.caption)
+                    }
+                    Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .font(fonts.body(0.88))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if open {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(tools, id: \.id) { ToolRow(block: $0, session: session, compact: true) }
+                }
+                .padding(.leading, 26)
+            } else if tools.contains(where: { !$0.images.isEmpty }) {
+                // Closed, its tools' pictures still show (each tool shows its own open).
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(tools.flatMap(\.images), id: \.ref) { AgentImageView(ref: $0.ref, session: session, maxHeight: 300) }
+                }
+                .padding(.leading, 26)
+            }
+        }
+        .revealsWhenOpened(id, open)
+    }
+}
+
+struct DiffView: View {
+    let diff: String
+    /// Show only this many lines (and how many more there are), unscrolled.
+    var preview: Int? = nil
+    @Environment(\.agentFonts) private var fonts
+    /// The card's width: each line's tint runs all the way across it.
+    @State private var width: CGFloat = 0
+
+    private var allLines: [Substring] {
+        var l = diff.split(separator: "\n", omittingEmptySubsequences: false)
+        if l.last?.isEmpty == true { l.removeLast() }
+        return l
+    }
+
+    private func linesView(_ shown: [Substring], more: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
+                let s = String(line)
+                Text(s.isEmpty ? " " : s)
+                    .font(fonts.code(0.95))
+                    .foregroundStyle(s.hasPrefix("@@") ? Color.secondary : Color.primary)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Square rows that meet, one band per run of lines (a
+                    // plain colour here can take the card's rounded corners).
+                    .background {
+                        Rectangle().fill(s.hasPrefix("+") ? Color.green.opacity(0.14) : s.hasPrefix("-") ? Color.red.opacity(0.14) : .clear)
+                    }
+            }
+        }
+        .frame(minWidth: width, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.top, 8)
+        .padding(.bottom, more > 0 ? 4 : 8)
+    }
+
+    var body: some View {
+        let all = allLines
+        let shown = Array(all.prefix(preview ?? 600))
+        let more = preview == nil ? 0 : all.count - shown.count
+        VStack(alignment: .leading, spacing: 0) {
+            if preview != nil {
+                // A glance: no scrolling of its own (a tap shows it all).
+                ScrollView(.horizontal, showsIndicators: false) { linesView(shown, more: more) }
+                    .scrollDisabled(true)
+                if more > 0 {
+                    Text(more == 1 ? "1 more line" : "\(more) more lines")
+                        .font(fonts.body(0.8))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 8)
+                }
+            } else {
+                ScrollView([.horizontal, .vertical]) { linesView(shown, more: more).textSelection(.enabled) }
+                    .frame(maxHeight: 360)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .background(.quaternary.opacity(0.45))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+// MARK: Cards
+
+struct Card<Content: View>: View {
+    var tint: Color?
+    @ViewBuilder var content: Content
+    @Environment(\.agentAccent) private var accent
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) { content }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((tint ?? accent).opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder((tint ?? accent).opacity(0.18)))
+    }
+}
+
+struct QuestionCard: View {
+    @Environment(\.agentAccent) private var accent
+    let block: AgentBlock
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        Card {
+            Label("Claude asked", systemImage: "questionmark.bubble").font(.caption).foregroundStyle(.secondary)
+            ForEach(Array(block.questions.enumerated()), id: \.offset) { _, q in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(q.question).font(fonts.body(weight: .medium))
+                    if !q.answer.isEmpty {
+                        Label(q.answer, systemImage: "arrowshape.turn.up.left.fill")
+                            .font(fonts.body(0.93))
+                            .foregroundStyle(accent)
+                        if !q.notes.isEmpty {
+                            Label(q.notes, systemImage: "text.bubble")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if block.pending {
+                        Text("Waiting for your answer").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if !block.output.isEmpty, block.error {
+                Text(block.output).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+struct PlanCard: View {
+    let block: AgentBlock
+
+    var body: some View {
+        Card(tint: .purple) {
+            HStack {
+                Label("Plan", systemImage: "list.bullet.clipboard").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if block.pending {
+                    Text("Waiting for approval").font(.caption).foregroundStyle(.secondary)
+                } else if block.error {
+                    Label("Not approved", systemImage: "arrow.uturn.backward").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Label("Approved", systemImage: "checkmark").font(.caption).foregroundStyle(.green)
+                }
+            }
+            MarkdownView(text: block.text)
+        }
+    }
+}
+
+struct SubagentCard: View {
+    let block: AgentBlock
+    let session: AgentSession
+    private var open: Bool { session.isOpen(block.id) }
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        Card(tint: .teal) {
+            Button { withAnimation(.snappy) { session.setOpen(block.id, !open) } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.2.wave.2").foregroundStyle(.teal)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(block.title.isEmpty ? "Subagent" : block.title).font(fonts.body(weight: .medium))
+                        if !block.text.isEmpty { Text(block.text).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                    StatusDot(block: block).font(.caption)
+                    Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if open {
+                if !block.input.isEmpty {
+                    Text("Asked to").font(.caption).foregroundStyle(.secondary)
+                    MarkdownView(text: block.input)
+                }
+                if !block.output.isEmpty {
+                    Divider()
+                    Text("Reported").font(.caption).foregroundStyle(.secondary)
+                    MarkdownView(text: block.output)
+                }
+            }
+        }
+        .revealsWhenOpened(block.id, open)
+    }
+}
+
+struct AgentImageView: View {
+    let ref: String
+    let session: AgentSession
+    var maxHeight: CGFloat = 260
+    @State private var image: PlatformImage?
+
+    init(ref: String, session: AgentSession, maxHeight: CGFloat = 260) {
+        self.ref = ref
+        self.session = session
+        self.maxHeight = maxHeight
+        _image = State(initialValue: session.decodedImage(ref))
+    }
+    /// Opens it in the conversation's viewer (which outlives this row: new
+    /// messages regroup rows, and the viewer stays open through that).
+    @Environment(\.openAgentImage) private var open
+    @Environment(\.agentImageZoom) private var zoom
+
+    var body: some View {
+        Group {
+            if let image {
+                #if canImport(AppKit)
+                Image(nsImage: image).resizable().scaledToFit()
+                #else
+                Image(uiImage: image).resizable().scaledToFit()
+                #endif
+            } else {
+                RoundedRectangle(cornerRadius: 10).fill(.quaternary).frame(width: 120, height: 80)
+                    .overlay { ProgressView().controlSize(.small) }
+            }
+        }
+        .frame(maxHeight: maxHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        #if os(iOS)
+        .modifier(ZoomSource(id: ref, in: zoom))
+        #endif
+        .task(id: ref) {
+            if image == nil { image = await session.image(ref) }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { if let image { open?(ViewedImage(ref: ref, image: image)) } }
+    }
+}
+
+/// A picture open in the viewer.
+struct ViewedImage: Identifiable {
+    let ref: String
+    let image: PlatformImage
+    var id: String { ref }
+}
+
+private struct OpenAgentImageKey: EnvironmentKey { static let defaultValue: ((ViewedImage) -> Void)? = nil }
+private struct AgentImageZoomKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
+
+extension EnvironmentValues {
+    var openAgentImage: ((ViewedImage) -> Void)? {
+        get { self[OpenAgentImageKey.self] }
+        set { self[OpenAgentImageKey.self] = newValue }
+    }
+    /// The conversation's namespace for the viewer's zoom from a picture.
+    var agentImageZoom: Namespace.ID? {
+        get { self[AgentImageZoomKey.self] }
+        set { self[AgentImageZoomKey.self] = newValue }
+    }
+}
+
+#if os(iOS)
+/// Marks a picture as where the viewer zooms from and back to.
+struct ZoomSource: ViewModifier {
+    let id: String
+    let ns: Namespace.ID?
+    init(id: String, in ns: Namespace.ID?) { self.id = id; self.ns = ns }
+    func body(content: Content) -> some View {
+        if let ns {
+            content.matchedTransitionSource(id: id, in: ns) { $0.clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous)) }
+        } else {
+            content
+        }
+    }
+}
+#endif
+
+// MARK: - The prompt on screen
+
+struct PromptCard: View {
+    @Environment(\.agentAccent) private var accent
+    let session: AgentSession
+    let onShowTerminal: () -> Void
+    /// How tall it may grow before scrolling (most of the conversation's height).
+    var maxHeight: CGFloat = 460
+    /// Debug (PromptCardSample): open with the "other" option being typed.
+    var initialOther: String?
+    /// The card's own height, as laid out in full.
+    @State private var natural: CGFloat = 0
+    @State private var ticked: Set<Int> = []
+    /// The "other" option's text, typed in its own row.
+    @State private var otherText = ""
+    @State private var typing = false
+    /// A question with previews: the option picked here (shown with its
+    /// preview, answered with Answer), and the notes going with it.
+    @State private var chosen = 0
+    @State private var notes = ""
+    /// The option just answered with, for its row's spinner.
+    @State private var tapped = 0
+    @FocusState private var focus: Field?
+    @Environment(\.agentFonts) private var fonts
+
+    private enum Field: Hashable { case other, notes }
+
+    private var p: AgentPrompt { session.prompt }
+    private var pending: AgentBlock? { session.blocks.last { $0.id == p.blockID } }
+
+    var body: some View {
+        // As tall as the card is, up to most of the view; past that (full
+        // descriptions can run to several lines each) it scrolls. An exact
+        // height: left flexible, it split the space with the conversation.
+        ScrollViewReader { proxy in
+            ScrollView {
+                card.onGeometryChange(for: CGFloat.self) { $0.size.height } action: { natural = $0 }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.never)
+            .frame(height: natural > 0 ? min(natural, maxHeight) : nil)
+            // Whatever's being typed stays in view: as its field appears, as
+            // it grows a line, and as the keyboard (a shorter maxHeight)
+            // comes up.
+            .onChange(of: focus) { reveal(proxy) }
+            .onChange(of: otherText) { reveal(proxy) }
+            .onChange(of: notes) { reveal(proxy) }
+            .onChange(of: natural) { reveal(proxy) }
+            .onChange(of: maxHeight) { reveal(proxy) }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .agentGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onChange(of: p.options, initial: true) { reset() }
+        .onChange(of: session.answering) { _, on in if !on { tapped = 0 } }
+        .sensoryFeedback(.selection, trigger: chosen)
+        .disabled(session.answering)
+    }
+
+    private func reset() {
+        ticked = Set(p.checked.enumerated().filter(\.element).map { $0.offset + 1 })
+        typing = false
+        otherText = ""
+        notes = ""
+        chosen = p.selected > 0 ? Int(p.selected) : 1
+        focus = nil
+        if let initialOther {
+            typing = true
+            otherText = initialOther
+        }
+    }
+
+    private func reveal(_ proxy: ScrollViewProxy) {
+        guard let f = focus else { return }
+        // After this layout pass, so the field's new height counts.
+        DispatchQueue.main.async {
+            withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(f, anchor: .bottom) }
+        }
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).foregroundStyle(tint)
+                Text(heading).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                if let (i, n) = questionPosition { Text("· \(i) of \(n)").font(.caption).foregroundStyle(.tertiary) }
+                Spacer()
+                if let (i, _) = questionPosition {
+                    // Through the questions, as ← and → do in Claude's form
+                    // (past the last is its Submit step).
+                    HStack(spacing: 2) {
+                        Button { session.model?.send(session.paneID, Data("\u{1b}[D".utf8)) } label: { Image(systemName: "chevron.left").frame(width: 28, height: 24) }
+                            .disabled(i <= 1)
+                            .help("Previous question")
+                        Button { session.model?.send(session.paneID, Data("\u{1b}[C".utf8)) } label: { Image(systemName: "chevron.right").frame(width: 28, height: 24) }
+                            .help("Next question")
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.callout.weight(.semibold))
+                }
+            }
+            if let b = pending, p.kind == .permission, !b.input.isEmpty {
+                CodeBlock(code: b.input, language: b.tool == "Bash" ? "bash" : "", maxHeight: 140)
+            }
+            if !p.title.isEmpty {
+                Text(p.title).font(fonts.body(weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(spacing: 6) {
+                ForEach(Array(p.options.enumerated()), id: \.offset) { i, label in
+                    if i + 1 == Int(p.other), typing {
+                        otherField(i + 1)
+                    } else {
+                        optionButton(i + 1, label)
+                    }
+                }
+            }
+            if p.notes { previewAndNotes }
+            if p.multiSelect {
+                HStack {
+                    Spacer()
+                    Button("Continue") { Task { await session.answer(ticking: ticked.sorted()) } }
+                        .prominentButton()
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            if let err = session.answerError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(err).font(.caption)
+                    Spacer()
+                    Button("Answer in Terminal") { session.answerError = nil; onShowTerminal() }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var heading: String {
+        switch p.kind {
+        case .permission: return pending.map { "\(session.agentName) wants to: " + $0.title } ?? "\(session.agentName) needs permission"
+        case .plan: return "Approve the plan?"
+        default: return "\(session.agentName) is asking"
+        }
+    }
+
+    private var icon: String {
+        switch p.kind {
+        case .permission: return "lock.shield"
+        case .plan: return "list.bullet.clipboard"
+        default: return "questionmark.bubble.fill"
+        }
+    }
+
+    private var tint: Color { p.kind == .permission ? .orange : p.kind == .plan ? .purple : accent }
+
+    /// Which of several questions this is: the one shown, found among the
+    /// question call's, else guessed from the tab bar ("←  ☒ Colour  ☐ Fruits
+    /// ✔ Submit  →") as the first unanswered. Nil for a single question.
+    private var questionPosition: (Int, Int)? {
+        guard !p.tabs.isEmpty else { return nil }
+        if let qs = pending?.questions, qs.count > 1, let i = qs.firstIndex(where: { $0.question == p.title }) {
+            return (i + 1, qs.count)
+        }
+        let done = p.tabs.filter { $0 == "☒" }.count
+        let total = p.tabs.filter { $0 == "☒" || $0 == "☐" }.count
+        return total > 1 ? (min(done + 1, total), total) : nil
+    }
+
+    /// A label without Claude's "(Recommended)" at its end, and whether it had it.
+    private static func recommended(_ label: String) -> (String, Bool) {
+        for suffix in [" (Recommended)", " (recommended)"] where label.hasSuffix(suffix) {
+            return (String(label.dropLast(suffix.count)), true)
+        }
+        return (label, false)
+    }
+
+    @ViewBuilder
+    private func optionButton(_ n: Int, _ label: String) -> some View {
+        let desc = n - 1 < p.descriptions.count ? p.descriptions[n - 1] : ""
+        let isOther = n == Int(p.other)
+        let picked = p.notes && n == chosen
+        let (text, isRecommended) = Self.recommended(label)
+        Button {
+            if isOther {
+                typing = true
+                focus = .other
+            } else if p.multiSelect {
+                if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
+            } else if p.notes {
+                chosen = n // answered with Answer, under its preview
+            } else {
+                tapped = n
+                Task { await session.answer(option: n) }
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if p.multiSelect, !isOther {
+                    Image(systemName: ticked.contains(n) ? "checkmark.square.fill" : "square").foregroundStyle(accent)
+                } else if isOther {
+                    Image(systemName: "pencil").font(.caption.weight(.semibold))
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(.quaternary))
+                } else {
+                    numberBadge(n, filled: picked)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(text).font(fonts.body()).multilineTextAlignment(.leading)
+                        if isRecommended {
+                            Text("Recommended").font(.caption2.weight(.semibold)).foregroundStyle(accent)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Capsule().fill(accent.opacity(0.15)))
+                        }
+                    }
+                    if !desc.isEmpty, desc != label {
+                        Text(desc).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                    }
+                }
+                Spacer(minLength: 0)
+                if tapped == n, session.answering { ProgressView().controlSize(.small) }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+            .background(rowBackground(highlighted: picked))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func numberBadge(_ n: Int, filled: Bool) -> some View {
+        Text("\(n)").font(.caption.monospacedDigit().weight(.semibold))
+            .foregroundStyle(filled ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .frame(width: 20, height: 20)
+            .background(Circle().fill(filled ? AnyShapeStyle(accent) : AnyShapeStyle(.quaternary)))
+    }
+
+    private func rowBackground(highlighted: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(highlighted ? AnyShapeStyle(accent.opacity(0.14)) : AnyShapeStyle(.quaternary.opacity(0.6)))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(accent, lineWidth: highlighted ? 1.5 : 0))
+    }
+
+    /// The "other" option, become the field you type your answer in, where
+    /// it was: focused at once, growing a line at a time, sent with Return
+    /// or its button (the agent takes one line).
+    private func otherField(_ n: Int) -> some View {
+        let empty = otherText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return HStack(alignment: .bottom, spacing: 8) {
+            TextField(p.kind == .plan ? "What should \(session.agentName) change?" : "Your answer", text: $otherText, axis: .vertical)
+                .font(fonts.body())
+                .lineLimit(1...6)
+                .textFieldStyle(.plain)
+                .focused($focus, equals: .other)
+                .submitLabel(.send)
+                .onSubmit(sendOther)
+                .onChange(of: otherText) { _, t in
+                    // Return in a field that grows: send, not a new line.
+                    if t.contains("\n") {
+                        otherText = t.replacingOccurrences(of: "\n", with: "")
+                        sendOther()
+                    }
+                }
+                .padding(.vertical, 2)
+            Button {
+                if empty { typing = false; focus = nil } else { sendOther() }
+            } label: {
+                Image(systemName: empty ? "xmark.circle.fill" : "arrow.up.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(empty ? AnyShapeStyle(.secondary) : AnyShapeStyle(accent))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .help(empty ? "Cancel" : "Send")
+            .keyboardShortcut(empty ? .cancelAction : nil) // (Return is the field's own onSubmit)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .background(rowBackground(highlighted: true))
+        .id(Field.other)
+        .onAppear { focus = .other }
+    }
+
+    /// A question with previews: the picked option's preview (a mockup,
+    /// monospaced, as Claude shows it beside the list), notes to go with
+    /// it, and Answer.
+    @ViewBuilder
+    private var previewAndNotes: some View {
+        let preview = chosen >= 1 && chosen <= p.previews.count ? p.previews[chosen - 1] : ""
+        if !preview.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(preview)
+                    .font(.system(.footnote, design: .monospaced))
+                    .fixedSize()
+                    .textSelection(.enabled)
+                    .padding(12)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.black.opacity(0.18)))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.quaternary))
+            .animation(nil, value: chosen)
+        }
+        HStack(alignment: .bottom, spacing: 8) {
+            TextField("Notes (optional)", text: $notes, axis: .vertical)
+                .font(fonts.body())
+                .lineLimit(1...5)
+                .textFieldStyle(.plain)
+                .focused($focus, equals: .notes)
+                .submitLabel(.send)
+                .onSubmit(sendChosen)
+                .onChange(of: notes) { _, t in
+                    if t.contains("\n") {
+                        notes = t.replacingOccurrences(of: "\n", with: "")
+                        sendChosen()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary.opacity(0.6)))
+                .id(Field.notes)
+            Button {
+                sendChosen()
+            } label: {
+                HStack(spacing: 6) {
+                    if session.answering { ProgressView().controlSize(.small) }
+                    Text("Answer \(chosen)")
+                }
+            }
+            .prominentButton()
+            .keyboardShortcut(.defaultAction)
+            .disabled(chosen < 1)
+        }
+    }
+
+    private func sendChosen() {
+        guard chosen >= 1, !session.answering else { return }
+        let n = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        focus = nil
+        Task { await session.answer(option: chosen, notes: n) }
+    }
+
+    private func sendOther() {
+        let t = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !session.answering else { return }
+        tapped = Int(p.other)
+        focus = nil
+        Task { await session.answer(option: Int(p.other), text: t) }
+    }
+}
+
+/// Debug: the prompt card with a made-up question and no daemon
+/// (HMK_DEBUG_PROMPT=plain|other|preview|tasks, DebugSnapshot): plain, one
+/// with its "Type something" option being typed, one with previews, or the
+/// plain one under a task list and a session's links.
+public struct PromptCardSample: View {
+    let session: AgentSession
+    let typing: String?
+    let extras: Bool
+
+    public init(model: AppModel, kind: String) {
+        session = AgentSession(paneID: "pn_debug", model: model)
+        extras = kind == "tasks"
+        typing = kind == "other" ? "Keep the old API working for a release, behind a flag, and say so in the release notes" : nil
+        var v = Hammock_V1_AgentView()
+        v.replace = true
+        v.prompt = .with {
+            $0.kind = .question
+            $0.tabs = "←  ☐ Shortcuts  ☐ Vim  ✔ Submit  →"
+            if kind == "preview" {
+                $0.title = "Shortcuts for editor panes (each can be changed in Settings ▸ Keyboard). Which set?"
+                $0.options = ["⌘P quick-open, ⌘O open panel (Recommended)", "⌘O quick-open, ⇧⌘O panel"]
+                $0.descriptions = ["", ""]
+                $0.selected = 1
+                $0.notes = true
+                $0.previews = [
+                    "┌───────────────────────────────┐\n│ Quick Open…          ⌘P       │\n│ Open File…           ⌘O       │\n│ New Editor Tab       ⌥⌘E      │\n│ Split Right w/ Editor ⌃⌘E     │\n│ Save                 ⌘S       │\n└───────────────────────────────┘",
+                    "┌───────────────────────────────┐\n│ Quick Open…          ⌘O       │\n│ Open File…           ⇧⌘O      │\n│ Save                 ⌘S       │\n└───────────────────────────────┘",
+                ]
+            } else {
+                $0.title = "Should the old session API keep working?"
+                $0.options = ["Remove it now (Recommended)", "Deprecate it for a release", "Type something."]
+                $0.descriptions = ["Nothing outside this repo uses it.", "Log a warning when it's called, remove it next release.", ""]
+                $0.other = 3
+            }
+        }
+        if extras {
+            v.tasks = .with {
+                $0.tasks = [
+                    .with { $0.id = "1"; $0.subject = "Read the spec"; $0.status = .completed },
+                    .with { $0.id = "2"; $0.subject = "Write the parser"; $0.activeForm = "Writing the parser"; $0.status = .inProgress },
+                    .with { $0.id = "3"; $0.subject = "Add tests for the task list and the links"; $0.status = .pending },
+                ]
+            }
+            v.links = .with {
+                $0.links = [
+                    .with { $0.kind = .pullRequest; $0.url = "https://github.com/homegrownsw/hammock/pull/131"; $0.number = 131; $0.repo = "homegrownsw/hammock"; $0.title = "Agent view: task lists and links"; $0.state = "OPEN" },
+                    .with { $0.kind = .artifact; $0.url = "https://claude.ai/artifact/x"; $0.title = "Weekly Signups"; $0.icon = "chart" },
+                ]
+            }
+        }
+        session.apply(v)
+    }
+
+    public var body: some View {
+        VStack(spacing: 10) {
+            if extras { SessionExtras(session: session, initiallyExpanded: true) }
+            PromptCard(session: session, onShowTerminal: {}, initialOther: typing)
+        }
+        .padding(16)
+    }
+}
+
+// MARK: - Composer
+
+/// The "/command" being typed at the cursor, anywhere in a message (Claude
+/// Code runs one mid-line too): from a "/" at the start or after a space or
+/// line break, up to the cursor, with nothing but one of those or the end
+/// after it.
+enum SlashToken {
+    static func at(_ cursor: String.Index, in text: String) -> Range<String.Index>? {
+        guard cursor >= text.startIndex, cursor <= text.endIndex else { return nil }
+        if cursor < text.endIndex, !text[cursor].isWhitespace { return nil }
+        var start = cursor
+        while start > text.startIndex, !text[text.index(before: start)].isWhitespace { start = text.index(before: start) }
+        guard start < cursor, text[start] == "/" else { return nil }
+        return start..<cursor
+    }
+
+    /// The text with that token replaced by a command and a space, and where
+    /// the cursor goes: after the space.
+    static func complete(_ token: Range<String.Index>, with command: String, in text: String) -> (text: String, cursor: String.Index) {
+        var t = text
+        // Already a space after it: don't add another, step over it. (Not a
+        // line break: the cursor would go to the next line.)
+        let spaced = text[token.upperBound...].first.map { $0 == " " || $0 == "\t" } ?? false
+        t.replaceSubrange(token, with: spaced ? command : command + " ")
+        let offset = text.distance(from: text.startIndex, to: token.lowerBound) + command.count + 1
+        return (t, t.index(t.startIndex, offsetBy: offset))
+    }
+}
+
+struct Composer: View {
+    @Environment(\.agentBubble) private var bubble
+    @Environment(\.agentAccent) private var accent
+    let session: AgentSession
+    /// claude or codex, for its model switcher.
+    var harness = "claude"
+    @State private var text = ""
+    /// Where the cursor is in it, for completing the "/command" there.
+    @State private var selection: TextSelection?
+    @State private var attachments: [(name: String, data: Data)] = []
+    @State private var photos: [PhotosPickerItem] = []
+    @State private var importing = false
+    @State private var pickingPhotos = false
+    @State private var sendError: String?
+    /// What was last taken from the terminal's input box into this one (kept
+    /// in step while it's unedited), and whether a send is waiting for the
+    /// terminal's box to empty.
+    @State private var tookDraft = ""
+    @State private var awaitingClear = false
+    /// What was just sent, and until when anything of it coming back (the
+    /// keyboard committing an autocorrection, the terminal briefly holding
+    /// the message as it's typed there) is a ghost, not something you typed.
+    @State private var justSent: (text: String, until: Date)?
+    /// A video being made smaller to send.
+    @State private var shrinking = 0
+    @FocusState private var focused: Bool
+    @Environment(\.agentFonts) private var fonts
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// What you've typed but not sent, kept per pane: through leaving the
+    /// screen, and the app quitting or being killed.
+    private var draftKey: String { "agentDraft." + session.paneID }
+
+    /// The "/command" being typed: at the cursor, or the end before the box
+    /// has one.
+    private var slashToken: Range<String.Index>? {
+        var cursor = text.endIndex
+        if let selection {
+            guard case .selection(let r) = selection.indices, r.isEmpty else { return nil }
+            cursor = r.lowerBound
+        }
+        // An index from before the text last changed can be stale.
+        guard cursor <= text.endIndex, let cursor = String.Index(cursor, within: text) else { return nil }
+        return SlashToken.at(cursor, in: text)
+    }
+
+    private var suggestions: [String] {
+        guard let r = slashToken else { return [] }
+        let q = text[r].lowercased()
+        return Array(session.commands.filter { $0.lowercased().hasPrefix(q) }.prefix(8))
+    }
+
+    /// Sets the text from code, not typing: the cursor known for the old
+    /// text means nothing in it.
+    private func replaceText(_ t: String) {
+        text = t
+        selection = nil
+    }
+
+    private func complete(_ command: String) {
+        guard let r = slashToken else { return }
+        let done = SlashToken.complete(r, with: command, in: text)
+        text = done.text
+        selection = TextSelection(insertionPoint: done.cursor)
+    }
+
+    /// The terminal has typed text this box doesn't (you'd typed something else).
+    private var showsTerminalDraft: Bool {
+        !awaitingClear && !session.draft.isEmpty && text != tookDraft && !text.contains(session.draft)
+    }
+
+    private var canSend: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty }
+    /// While the agent works and nothing's typed, the round button stops it.
+    private var stops: Bool { session.working && text.isEmpty && attachments.isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(suggestions, id: \.self) { s in
+                        Button { complete(s) } label: {
+                            HStack {
+                                Text(s).font(fonts.code())
+                                Spacer(minLength: 8)
+                                // Tab takes the top one: shown as the command
+                                // palette shows a shortcut.
+                                if s == suggestions.first {
+                                    Text("⇥")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.06)))
+                                        .accessibilityLabel("Shortcut Tab")
+                                }
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(s == suggestions.first ? "Complete (Tab)" : "")
+                    }
+                }
+                .padding(.vertical, 6)
+                .agentGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if showsTerminalDraft {
+                HStack(spacing: 8) {
+                    Image(systemName: "apple.terminal").foregroundStyle(.secondary)
+                    Text("Typed in the terminal: \(session.draft)").lineLimit(1).truncationMode(.tail).foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button("Add") {
+                        replaceText(session.draft + (text.isEmpty ? "" : " " + text))
+                        tookDraft = ""
+                    }
+                    .agentGlassButton()
+                }
+                .font(.caption)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .agentGlass(in: Capsule())
+                .help("Sending replaces what's typed in the terminal: add it to keep it")
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // One box, as Claude's and ChatGPT's: the message the full width,
+            // and under it a row of controls (attach, what's attached, send).
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Message \(session.agentName)…", text: $text, selection: $selection, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(fonts.body())
+                    .lineLimit(1...10)
+                    .focused($focused)
+                    .onSubmit(send)
+                    // Tab completes the top suggestion (and otherwise moves
+                    // focus on, as usual).
+                    .onKeyPress(.tab) {
+                        guard let s = suggestions.first else { return .ignored }
+                        complete(s)
+                        return .handled
+                    }
+                    #if os(iOS)
+                    // Paste a photo here: it's attached, as from Photos.
+                    .background {
+                        ImagePasteProbe { images in
+                            for img in images {
+                                // PNG while it has transparency (a JPEG's would be black).
+                                let alpha = img.cgImage.map { ![.none, .noneSkipFirst, .noneSkipLast].contains($0.alphaInfo) } ?? false
+                                if alpha, let d = img.pngData() {
+                                    attachments.append(("pasted-\(attachments.count + 1).png", d))
+                                } else if let d = img.jpegData(compressionQuality: 0.85) {
+                                    attachments.append(("pasted-\(attachments.count + 1).jpg", d))
+                                }
+                            }
+                        }
+                    }
+                    #endif
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 13)
+                    .padding(.bottom, 12)
+                HStack(spacing: 8) {
+                    Menu {
+                        Button { importing = true } label: { Label("Choose File…", systemImage: "doc") }
+                        // A button, not a PhotosPicker: one inside a Menu goes
+                        // away with the menu on iOS, so it never opens.
+                        Button { pickingPhotos = true } label: { Label("Photos…", systemImage: "photo") }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.body.weight(.medium))
+                            .frame(width: 22, height: 22)
+                    }
+                    .menuIndicator(.hidden)
+                    .agentGlassButton()
+                    .buttonBorderShape(.circle)
+                    .fixedSize()
+                    .help("Attach images")
+                    if !attachments.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(Array(attachments.enumerated()), id: \.offset) { i, a in
+                                    AttachmentThumb(name: a.name, data: a.data) {
+                                        withAnimation(.snappy) { _ = attachments.remove(at: i) }
+                                    }
+                                    .transition(.scale(scale: 0.7).combined(with: .opacity))
+                                }
+                            }
+                        }
+                    }
+                    if shrinking > 0 {
+                        ProgressView().controlSize(.small)
+                        Text("Preparing video…").font(.caption).foregroundStyle(.secondary)
+                    }
+                    // The model and how full its context is, beside the attach
+                    // button; what's attached takes the room when there is some.
+                    if attachments.isEmpty, shrinking == 0, !session.agentModel.isEmpty {
+                        AgentStatusBar(session: session, canDrive: true, harness: harness, inline: true)
+                            .transition(.opacity)
+                    }
+                    Spacer(minLength: 0)
+                    Button(action: stops ? session.interrupt : send) {
+                        Image(systemName: stops ? "stop.fill" : "arrow.up")
+                            .font(.body.weight(.bold))
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(width: 22, height: 22)
+                    }
+                    .agentGlassButton(prominent: true)
+                    .buttonBorderShape(.circle)
+                    // Your messages' colour, deep enough for its white glyph;
+                    // stopping too (its icon says so).
+                    .tint(bubble)
+                    .foregroundStyle(.white)
+                    .disabled(!stops && !canSend)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help(stops ? "Interrupt (Esc)" : "Send (⌘↩)")
+                    .animation(.snappy(duration: 0.2), value: stops)
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .onTapGesture { focused = true }
+            .agentGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .animation(.snappy(duration: 0.25), value: suggestions)
+        .animation(.snappy(duration: 0.25), value: showsTerminalDraft)
+        // What's typed in the terminal comes into the box while it's empty (or
+        // still just that), so sending, which replaces it there, loses nothing.
+        .onChange(of: session.draft, initial: true) { _, d in
+            if !d.isEmpty, isGhost(d) { return }
+            if awaitingClear {
+                if d.isEmpty { awaitingClear = false }
+                return
+            }
+            if text.isEmpty || text == tookDraft {
+                replaceText(d)
+                tookDraft = d
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: attachments.count)
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.image, .movie], allowsMultipleSelection: true) { result in
+            let urls = (try? result.get()) ?? []
+            Task {
+                for url in urls {
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                    if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
+                        await attachVideo(url, name: url.deletingPathExtension().lastPathComponent + ".mp4")
+                    } else if let d = try? Data(contentsOf: url) {
+                        attachments.append((url.lastPathComponent, d))
+                    }
+                }
+            }
+        }
+        .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 4, matching: .any(of: [.images, .videos]))
+        .onChange(of: photos) {
+            let items = photos
+            photos = []
+            Task {
+                for item in items {
+                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                        if let movie = try? await item.loadTransferable(type: PickedMovie.self) {
+                            await attachVideo(movie.url, name: "video-\(attachments.count + 1).mp4")
+                            try? FileManager.default.removeItem(at: movie.url)
+                        } else {
+                            sendError = "Couldn't load that video."
+                        }
+                    } else if let d = try? await item.loadTransferable(type: Data.self) {
+                        attachments.append(("photo-\(attachments.count + 1).jpg", d))
+                    }
+                }
+            }
+        }
+        .alert("Couldn't attach it", isPresented: Binding(get: { sendError != nil }, set: { if !$0 { sendError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(sendError ?? "")
+        }
+        .dropDestination(for: Data.self) { items, _ in
+            for d in items where PlatformImage(data: d) != nil { attachments.append(("dropped-\(attachments.count + 1).png", d)) }
+            return true
+        }
+        .onAppear { if text.isEmpty { replaceText(UserDefaults.standard.string(forKey: draftKey) ?? "") } }
+        #if os(iOS)
+        // A new chat (a Claude tab just started): straight to typing, without
+        // a tap on the box first. Once it's arrived, not while it loads.
+        .task(id: session.heard) {
+            guard session.heard, session.blocks.isEmpty, session.pastSession == nil else { return }
+            // After the push into the view: focus taken mid-transition is lost.
+            try? await Task.sleep(for: .milliseconds(350))
+            if !Task.isCancelled, session.blocks.isEmpty { focused = true }
+        }
+        #endif
+        .onChange(of: session.paneID) { old, _ in
+            saveDraft(text, key: "agentDraft." + old)
+            replaceText(UserDefaults.standard.string(forKey: draftKey) ?? "")
+        }
+        .onChange(of: text) { old, t in
+            // The keyboard putting (part of) the sent message back in one go;
+            // you typing starts with one character.
+            if old.isEmpty, t.count > 1, isGhost(t) {
+                replaceText("")
+                return
+            }
+        }
+        // Saved once typing pauses, not on each key: every default written
+        // tells everything watching UserDefaults (the terminal behind this
+        // view redrew for each), and the keyboard lagged.
+        .task(id: text) {
+            try? await Task.sleep(for: .milliseconds(400))
+            if !Task.isCancelled { saveDraft(text, key: draftKey) }
+        }
+        .onDisappear { saveDraft(text, key: draftKey) }
+        .onChange(of: scenePhase) { _, phase in
+            // Before the app can be killed in the background.
+            if phase != .active { saveDraft(text, key: draftKey) }
+        }
+    }
+
+    private func saveDraft(_ t: String, key: String) {
+        let d = UserDefaults.standard
+        if t.isEmpty {
+            if d.object(forKey: key) != nil { d.removeObject(forKey: key) }
+        } else if d.string(forKey: key) != t {
+            d.set(t, forKey: key)
+        }
+    }
+
+    /// Attaches a video, made small enough to send (540p H.264): a phone's
+    /// own is usually too big for a message to the Mac.
+    private func attachVideo(_ url: URL, name: String) async {
+        shrinking += 1
+        defer { shrinking -= 1 }
+        do {
+            let data = try await shrinkVideo(url)
+            guard data.count <= 30 << 20 else {
+                sendError = "That video is too long to send (\(data.count >> 20) MB after shrinking it; 30 MB at most)."
+                return
+            }
+            attachments.append((name, data))
+        } catch {
+            sendError = "Couldn't prepare that video: \(error.localizedDescription)"
+        }
+    }
+
+    /// Text that's only (part of) the message just sent, while that's recent.
+    /// Spacing doesn't count: the terminal wraps a long message over lines
+    /// (the draft has line breaks where it had spaces), and shows a long
+    /// paste as "[Pasted text …]".
+    private func isGhost(_ s: String) -> Bool {
+        guard let j = justSent, Date.now < j.until else { return false }
+        func bare(_ t: String) -> String { String(String.UnicodeScalarView(t.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })) }
+        let a = bare(s), b = bare(j.text)
+        if a.isEmpty { return false }
+        return b.contains(a) || a.hasPrefix(b) || s.hasPrefix("[Pasted text")
+    }
+
+    private func send() {
+        let t = text, a = attachments
+        guard !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !a.isEmpty else { return }
+        replaceText("")
+        attachments = []
+        UserDefaults.standard.removeObject(forKey: draftKey)
+        // The terminal's box is emptied as this goes: don't take its old text
+        // back meanwhile.
+        if !session.draft.isEmpty { awaitingClear = true }
+        tookDraft = ""
+        justSent = (t, .now + 4)
+        Task { await session.send(t, attachments: a) }
+    }
+}
+
+// MARK: - Status bar
+
+/// The agent's model (a menu to switch it) and how full its context is.
+struct AgentStatusBar: View {
+    let session: AgentSession
+    let canDrive: Bool
+    /// claude or codex: Codex's /model is a picker of its own (shown as a
+    /// prompt), not a list of aliases.
+    var harness = "claude"
+    /// In the message box: no capsule of its own, quieter.
+    var inline = false
+    @Environment(\.agentFonts) private var fonts
+
+    /// Claude's /model aliases.
+    static let choices: [(label: String, alias: String)] = [
+        ("Opus", "opus"), ("Opus (1M context)", "opus[1m]"),
+        ("Sonnet", "sonnet"), ("Sonnet (1M context)", "sonnet[1m]"),
+        ("Haiku", "haiku"), ("Default", "default"),
+    ]
+
+    /// "claude-opus-5-5" as "Opus 5.5" (a date suffix dropped); "gpt-6-luna"
+    /// as "GPT-6 Luna".
+    static func displayName(_ id: String) -> String {
+        if id.hasPrefix("gpt-") {
+            let parts = id.dropFirst(4).split(separator: "-").map(String.init)
+            guard let version = parts.first else { return id }
+            return (["GPT-" + version] + parts.dropFirst().map { $0.capitalized }).joined(separator: " ")
+        }
+        var rest = id.replacingOccurrences(of: "[1m]", with: "")
+        if rest.hasPrefix("claude-") { rest.removeFirst(7) }
+        let parts: [String] = rest.split(separator: "-").map(String.init).filter { !($0.count == 8 && $0.allSatisfy(\.isNumber)) }
+        guard let family = parts.first(where: { $0.first?.isLetter == true }) else { return id }
+        let version = parts.filter { $0.allSatisfy(\.isNumber) }.joined(separator: ".")
+        return ([family.capitalized] + (version.isEmpty ? [] : [version])).joined(separator: " ")
+    }
+
+    private var fraction: Double {
+        session.contextWindow > 0 ? min(1, Double(session.contextTokens) / Double(session.contextWindow)) : 0
+    }
+
+    private static func tokens(_ n: Int64) -> String {
+        n >= 1_000_000 ? String(format: "%.1fM", Double(n) / 1_000_000).replacingOccurrences(of: ".0M", with: "M") : "\(n / 1000)k"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if harness == "claude" {
+                Menu {
+                    ForEach(Self.choices, id: \.alias) { c in
+                        Button(c.label) { session.switchModel(to: c.alias) }
+                    }
+                } label: {
+                    Text(Self.displayName(session.agentModel))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!canDrive)
+                .help("Switch model (/model)")
+            } else {
+                // Codex picks a model (and its reasoning) in a picker of its
+                // own: it shows here as a prompt to answer.
+                Button {
+                    Task { await session.send("/model", pending: false) }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(Self.displayName(session.agentModel))
+                        Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!canDrive)
+                .help("Switch model (/model)")
+            }
+            if session.contextWindow > 0 {
+                Divider().frame(height: 12)
+                let tint: Color = fraction > 0.9 ? .red : fraction > 0.75 ? .orange : .secondary
+                HStack(spacing: 6) {
+                    ZStack {
+                        Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 2.5)
+                        Circle().trim(from: 0, to: fraction).stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: 12, height: 12)
+                    Text("\(Int((fraction * 100).rounded()))% context")
+                        .monospacedDigit()
+                        .foregroundStyle(fraction > 0.75 ? tint : .secondary)
+                }
+                .help("\(Self.tokens(session.contextTokens)) of \(Self.tokens(session.contextWindow)) tokens")
+                .animation(.snappy, value: fraction)
+            }
+        }
+        .font(fonts.body(inline ? 0.76 : 0.82))
+        .foregroundStyle(inline ? .secondary : .primary)
+        .modifier(StatusChrome(inline: inline))
+    }
+
+    /// On its own, a glass capsule; in the message box, nothing.
+    private struct StatusChrome: ViewModifier {
+        let inline: Bool
+        func body(content: Content) -> some View {
+            if inline {
+                content.lineLimit(1).fixedSize()
+            } else {
+                content
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .agentGlass(in: Capsule())
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+// MARK: - Subagents and background shells
+
+/// What the conversation view can show instead of the agent's own: one of
+/// its subagents' transcripts, or one of its background shells' output.
+enum AgentSideView: Hashable {
+    case subagent(String)
+    case shell(String)
+
+    var subagent: String { if case .subagent(let id) = self { id } else { "" } }
+    var shell: String { if case .shell(let id) = self { id } else { "" } }
+}
+
+/// What the agent has running beside its conversation, above it: its
+/// subagents and its background shells. Tap one to watch it.
+struct BackgroundStrip: View {
+    let subagents: [AgentSubagent]
+    let shells: [AgentShell]
+    let open: (AgentSideView) -> Void
+
+    private var label: String {
+        var parts: [String] = []
+        if !subagents.isEmpty { parts.append(subagents.count == 1 ? "Subagent" : "\(subagents.count) subagents") }
+        if !shells.isEmpty { parts.append(shells.count == 1 ? "Shell" : "\(shells.count) shells") }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(subagents, id: \.id) { a in
+                    chip(a.description_p.isEmpty ? a.agentType : a.description_p) { WorkingDot(size: 9) } action: { open(.subagent(a.id)) }
+                }
+                ForEach(shells, id: \.id) { sh in
+                    chip(sh.title) { Image(systemName: "terminal").font(.caption.weight(.semibold)).foregroundStyle(.secondary) } action: { open(.shell(sh.id)) }
+                }
+            }
+            .padding(.horizontal, 18).padding(.vertical, 8)
+        }
+        .background(.bar)
+    }
+
+    private func chip(_ title: String, @ViewBuilder icon: () -> some View, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                icon()
+                Text(title).lineLimit(1)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .font(.callout)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(.quaternary.opacity(0.6), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+extension AgentShell {
+    /// What it's for, as the agent described it, else its command.
+    var title: String {
+        description_p.isEmpty ? String(command.prefix { $0 != "\n" }) : description_p
+    }
+}
+
+/// Above a background shell's output: what it runs, whether it still is
+/// (and how it ended), and the way back to the agent that started it.
+struct ShellHeader: View {
+    let shell: AgentShell?
+    let back: () -> Void
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button(action: back) {
+                Label("Back", systemImage: "chevron.left").labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            Divider().frame(height: 16)
+            Group {
+                StatusIcon(state: shell?.finished == false ? .working : shell?.failed == true ? .errored : .idle, size: 14)
+            }
+            .frame(height: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(shell?.title ?? "Shell")
+                    .font(.callout.weight(.semibold)).lineLimit(1)
+                if let shell, !shell.description_p.isEmpty {
+                    Text(shell.command).font(fonts.code(0.85)).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
+                }
+                Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 18).padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var status: String {
+        guard let shell else { return "Shell" }
+        if !shell.finished { return "Background shell · running" }
+        return shell.summary.isEmpty ? "Background shell · ended" : shell.summary
+    }
+}
+
+/// A background shell's output, following the end as it's written (unless
+/// you've scrolled up).
+struct ShellOutputView: View {
+    let session: AgentSession
+    @Environment(\.agentFonts) private var fonts
+    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var atBottom = true
+
+    private var lines: [Substring] {
+        var s = Substring(session.shellOutput)
+        if s.hasSuffix("\r") { s = s.dropLast() }
+        if s.hasSuffix("\n") { s = s.dropLast() }
+        return s.split(separator: "\n", omittingEmptySubsequences: false)
+    }
+
+    var body: some View {
+        ScrollView([.vertical]) {
+            if !session.error.isEmpty {
+                ContentUnavailableView("No output", systemImage: "terminal", description: Text(session.error))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
+            } else if session.shellOutput.isEmpty {
+                Text("No output yet")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
+            } else {
+                let ls = lines
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(ls.indices, id: \.self) { i in
+                        Text(ls[i].isEmpty ? " " : String(ls[i]))
+                            .font(fonts.code())
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .textSelection(.enabled)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+            }
+        }
+        .scrollPosition($position)
+        .defaultScrollAnchor(.bottom)
+        .onScrollGeometryChange(for: Bool.self) { g in
+            g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 24
+        } action: { _, bottom in
+            atBottom = bottom
+        }
+        .onChange(of: session.shellOutput) {
+            if atBottom { position.scrollTo(edge: .bottom) }
+        }
+    }
+}
+
+/// Above a subagent's transcript: what it was asked to do, whether it's
+/// still at it, and the way back to the agent that started it.
+struct SubagentHeader: View {
+    let subagent: AgentSubagent?
+    let working: Bool
+    let back: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: back) {
+                Label("Back", systemImage: "chevron.left").labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.borderless)
+            Divider().frame(height: 16)
+            StatusIcon(state: working ? .working : .idle, size: 14)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(subagent.map { $0.description_p.isEmpty ? $0.agentType : $0.description_p } ?? "Subagent")
+                    .font(.callout.weight(.semibold)).lineLimit(1)
+                Text(working ? "Subagent · working" : "Subagent · finished")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 18).padding(.vertical, 8)
+        .background(.bar)
+    }
+}
+
+// MARK: - Videos
+
+/// A video picked from Photos, as a file of its own (too big to load as data).
+struct PickedMovie: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { movie in
+            SentTransferredFile(movie.url)
+        } importing: { received in
+            let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + received.file.pathExtension)
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return PickedMovie(url: copy)
+        }
+    }
+}
+
+/// A video re-encoded small (540p H.264, MP4) for sending to the agent.
+func shrinkVideo(_ url: URL) async throws -> Data {
+    let asset = AVURLAsset(url: url)
+    guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset960x540) else {
+        throw CocoaError(.fileReadCorruptFile)
+    }
+    let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+    defer { try? FileManager.default.removeItem(at: out) }
+    try await export.export(to: out, as: .mp4)
+    return try Data(contentsOf: out)
+}
+
+// MARK: - Colour
+
+/// Your message as the agent view shows it, for Settings' preview.
+public struct AgentColorPreview: View {
+    let color: Color
+    public init(color: Color) { self.color = color }
+    public var body: some View {
+        HStack {
+            Spacer(minLength: 40)
+            Text("Can you speed up the test suite?")
+                .foregroundStyle(.white)
+                .padding(.horizontal, 15).padding(.vertical, 10)
+                .background(color.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+    }
+}
+
+/// An attachment waiting in the composer: a thumbnail (a film tile for a
+/// video), tap to look at it in the viewer, ✕ to take it off.
+struct AttachmentThumb: View {
+    let name: String
+    let data: Data
+    let onRemove: () -> Void
+    @Environment(\.openAgentImage) private var open
+    @Environment(\.agentImageZoom) private var zoom
+    @State private var image: PlatformImage?
+
+    private var ref: String { "attachment:\(name):\(data.count)" }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let image {
+                    #if canImport(AppKit)
+                    Image(nsImage: image).resizable().scaledToFill()
+                    #else
+                    Image(uiImage: image).resizable().scaledToFill()
+                    #endif
+                } else {
+                    Image(systemName: name.hasSuffix(".mp4") ? "film" : "photo")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.quaternary.opacity(0.7))
+                }
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            #if os(iOS)
+            .modifier(ZoomSource(id: ref, in: zoom))
+            #endif
+            .contentShape(Rectangle())
+            .onTapGesture { if let image { open?(ViewedImage(ref: ref, image: image)) } }
+            .help(name)
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.6))
+                    .font(.system(size: 18))
+            }
+            .buttonStyle(.plain)
+            .offset(x: 6, y: -6)
+            .accessibilityLabel("Remove \(name)")
+        }
+        .padding(.top, 6).padding(.trailing, 6) // room for the ✕
+        .task(id: data.count) {
+            // Decoded once, off the main thread: a photo can be large.
+            let d = data
+            image = await Task.detached(priority: .userInitiated) { PlatformImage(data: d) }.value
+        }
+    }
+}

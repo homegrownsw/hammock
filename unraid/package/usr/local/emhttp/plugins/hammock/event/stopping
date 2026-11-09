@@ -1,0 +1,4 @@
+#!/bin/bash
+# The array is stopping: stop Hammock and end its panes, whose open files
+# would keep the array from unmounting. They come back when it starts.
+/usr/local/emhttp/plugins/hammock/scripts/rc.hammock stop-array

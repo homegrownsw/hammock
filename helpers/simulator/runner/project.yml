@@ -1,0 +1,35 @@
+# The simulator runner: an XCTest UI-test bundle the simulator host starts
+# with `xcodebuild test-without-building`, for what only XCTest may do in an
+# iOS 27 simulator (testmanagerd refuses anything it didn't start):
+# rotating the device and multi-finger gestures such as pinch.
+# helpers/simulator/build.sh generates and builds this.
+name: HammockSimRunner
+options:
+  bundleIdPrefix: com.homegrownsw.hammock
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+targets:
+  HammockSimRunnerHost:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.homegrownsw.hammock.simrunner.host
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  HammockSimRunner:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: HammockSimRunnerHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.homegrownsw.hammock.simrunner
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: HammockSimRunnerHost

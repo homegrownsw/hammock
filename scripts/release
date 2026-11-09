@@ -1,0 +1,319 @@
+#!/usr/bin/env bash
+# Cuts a release (release-notes/README.md): of the Mac app (a Sparkle update), the iOS app (a TestFlight
+# build), or both at once. `just release-mac`,
+# `just release-ios` and `just release-apple` run it.
+#
+#   scripts/release <mac|ios|apple>                           prompts with gum
+#   scripts/release <mac|ios|apple> no-bump [allow-empty]     cut a release, keep the version
+#   scripts/release <mac|ios|apple> bump 0.3.0 [allow-empty]  cut the version's last release, then set 0.3.0
+#
+# For each app it freezes the pending notes into the release, files them under the version, optionally
+# bumps the version, then commits, tags and pushes:
+#
+#   mac    tag Mac-v<x.y.z>-r<n>. Before anything is pushed it builds the tagged commit with its update feed,
+#          notarizes it, and makes the appcast with the notes in it (scripts/mac-update build); a failure
+#          there takes the release commit and tag back. After the push it uploads the update to the update
+#          server (scripts/mac-update upload), where Sparkle finds it.
+#   ios    apple/iOS/TestFlight/WhatToTest.<locale>.txt (Xcode Cloud reads it from the tagged commit), tag
+#          iOS-v<x.y.z>-r<n>; the tag starts Xcode Cloud's TestFlight build.
+#   apple  both, in one release commit carrying both tags, and one bump after it.
+#
+# One version for both apps: MARKETING_VERSION in apple/iOS/Config/Version.xcconfig, which every target
+# includes and the Mac's own build reads. A bump finishes it: the release is tagged under the current
+# version, and a second commit after the tag raises it, since a build is made from exactly the tagged commit
+# and checks its version against the tag.
+#
+# n in r<n> is the release commit's number on main (scripts/commit-number), which is also the Mac build's
+# CFBundleVersion: Mac-v0.2.0-r615 is build 615, and an iOS release cut alongside it is r615 too. Each cut
+# makes a commit, so no two releases share a number. The iOS build number is still Xcode Cloud's
+# CI_BUILD_NUMBER, which App Store Connect insists on.
+#
+# With arguments, every confirmation counts as yes and the edge cases fail instead of asking. Runs from a
+# clean checkout exactly level with origin/main (require_level_with_origin_main).
+#
+# HMK_RELEASE_DRYRUN=1 prints the plan (the notes each release would carry, the notes it would move, the
+# tags, the version) and changes nothing, skipping the preflight so it runs anywhere.
+# HMK_RELEASE_MAC_UPDATE names a stand-in for scripts/mac-update (the tests use one).
+set -euo pipefail
+shopt -s nullglob
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DRYRUN="${HMK_RELEASE_DRYRUN:-}"
+MAC_UPDATE="${HMK_RELEASE_MAC_UPDATE:-$ROOT/scripts/mac-update}"
+
+# shellcheck source=lib/release-notes.sh
+. "$ROOT/scripts/lib/release-notes.sh"
+
+# ---- the apps ----------------------------------------------------------------------------------------------
+TARGET="${1:-}"
+case "$TARGET" in
+  mac) PLATFORMS="mac" ;;
+  ios) PLATFORMS="ios" ;;
+  apple) PLATFORMS="mac ios" ;;
+  *) echo "usage: scripts/release <mac|ios|apple> [no-bump | bump <x.y.z>] [allow-empty]" >&2; exit 2 ;;
+esac
+shift
+has() { [[ " $PLATFORMS " == *" $1 "* ]]; }
+
+# iOS: Xcode Cloud reads TestFlight/WhatToTest.<locale>.txt next to the project, one per TestFlight
+# language, and takes 4000 characters. Sparkle takes HTML, with no limit to speak of.
+IOS_NOTES_DIR="$ROOT/apple/iOS/TestFlight"
+IOS_NOTES_LOCALES="en-GB en-US"
+
+usage() {
+  cat >&2 <<EOF
+usage: scripts/release $TARGET [no-bump | bump <x.y.z>] [allow-empty]
+
+  (no arguments)   prompts with gum
+  no-bump          cut a release and keep the version
+  bump <x.y.z>     cut the last release of this version, then raise the version to <x.y.z>
+  allow-empty      cut a release even with no new notes for people to read
+EOF
+  exit 2
+}
+
+# ---- arguments ---------------------------------------------------------------------------------------------
+NONINTERACTIVE=0
+MODE=""
+NEXT_VER=""
+ALLOW_EMPTY=0
+if [ "$#" -gt 0 ]; then
+  NONINTERACTIVE=1
+  for a in "$@"; do
+    case "$a" in
+      bump) MODE=bump ;;
+      no-bump) MODE=no-bump ;;
+      allow-empty) ALLOW_EMPTY=1 ;;
+      [0-9]*) NEXT_VER="$a" ;;
+      *) echo "Unknown argument '$a'." >&2; usage ;;
+    esac
+  done
+  [ -n "$MODE" ] || { echo "Say 'no-bump' or 'bump <x.y.z>'." >&2; usage; }
+  if [ "$MODE" = bump ] && [ -z "$NEXT_VER" ]; then echo "'bump' needs a version, e.g. 'bump 0.3.0'." >&2; usage; fi
+  if [ "$MODE" = no-bump ] && [ -n "$NEXT_VER" ]; then echo "'no-bump' takes no version." >&2; usage; fi
+fi
+
+if [ "$NONINTERACTIVE" != 1 ] && [ -z "$DRYRUN" ] && ! command -v gum >/dev/null 2>&1; then
+  echo "Prompting needs gum: brew install gum. Or pass the arguments, e.g. just release-$TARGET no-bump" >&2
+  exit 1
+fi
+
+# ---- preflight ---------------------------------------------------------------------------------------------
+if [ -z "$DRYRUN" ]; then
+  require_level_with_origin_main "$ROOT"
+else
+  echo "[dry run] skipping the preflight (branch, clean tree, level with origin/main)"
+  git -C "$ROOT" fetch --tags --quiet 2>/dev/null || true
+fi
+
+# ---- the version and number --------------------------------------------------------------------------------
+VER=$(read_version "$ROOT")
+version_ok "$VER" || { echo "$(version_file "$ROOT") sets MARKETING_VERSION to '$VER'; it should be x.y.z." >&2; exit 1; }
+# The release commit is the next one on main.
+N=$(($("$ROOT/scripts/commit-number" "$ROOT") + 1))
+
+# ---- each app's tag and notes ------------------------------------------------------------------------------
+# Per app, in variables named after it (TAG_mac, THIS_ios, …), since macOS's bash has no maps.
+set_var() { printf -v "$1_$2" '%s' "$3"; }
+get_var() { local n="$1_$2"; printf '%s' "${!n}"; }
+
+for p in $PLATFORMS; do
+  L=$(label "$p")
+  tag="${L}-v${VER}-r${N}"
+  if git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    echo "$tag already exists: is HEAD a release commit that was never pushed? (git reset --hard origin/main)" >&2
+    exit 1
+  fi
+  set_var TAG "$p" "$tag"
+  this=$(render_dir "$ROOT/release-notes/$p/pending")
+  prev=$(render_dir "$ROOT/release-notes/$p/v${VER}")
+  set_var THIS "$p" "$this"
+  set_var PREV "$p" "$prev"
+
+  if [ -z "$this" ]; then
+    if [ "$NONINTERACTIVE" = 1 ]; then
+      if [ "$ALLOW_EMPTY" != 1 ]; then
+        echo "No new notes for people to read in this $L release." >&2
+        echo "Add some with 'just note …', or add 'allow-empty' to cut a maintenance release." >&2
+        exit 1
+      fi
+    elif [ -z "$DRYRUN" ]; then
+      gum confirm "No new notes for people to read in this $L release. Cut a maintenance release anyway?" ||
+        { echo "Stopped."; exit 1; }
+    fi
+  fi
+done
+
+# iOS: TestFlight's What to Test, as plain text: this build's notes, then the earlier builds' of the version.
+ios_notes() {
+  local this prev
+  this=$(get_var THIS ios)
+  prev=$(get_var PREV ios)
+  fit_to_limit 4000 "$(
+    printf 'This build:\n'
+    if [ -n "$this" ]; then printf '%s\n' "$this"; else printf 'Behind-the-scenes improvements.\n'; fi
+    if [ -n "$prev" ]; then printf '\nEarlier %s builds:\n%s\n' "$VER" "$prev"; fi
+  )"
+}
+# Mac: the same, as HTML for Sparkle's update window (embedded in the appcast by scripts/mac-update).
+mac_notes_html() {
+  local this prev
+  this=$(get_var THIS mac)
+  prev=$(get_var PREV mac)
+  if [ -n "$this" ]; then lines_to_html "$this"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
+  if [ -n "$prev" ]; then
+    echo "<h4>Earlier in ${VER}</h4>"
+    lines_to_html "$prev"
+  fi
+}
+
+# ---- the bump ----------------------------------------------------------------------------------------------
+DO_BUMP=0
+if [ "$NONINTERACTIVE" = 1 ]; then
+  [ "$MODE" = bump ] && DO_BUMP=1
+elif [ -z "$DRYRUN" ]; then
+  if gum confirm "Is this the last release of ${VER} (bump the version afterwards)?"; then
+    DO_BUMP=1
+    NEXT_VER=$(gum input --header "Next version" --value "$(suggest_next "$VER")")
+  fi
+fi
+if [ "$DO_BUMP" = 1 ]; then
+  version_ok "$NEXT_VER" || { echo "'$NEXT_VER' isn't a version like 1.2.3." >&2; exit 1; }
+  version_gt "$NEXT_VER" "$VER" || { echo "The next version ($NEXT_VER) must be higher than $VER." >&2; exit 1; }
+fi
+
+if [ "$TARGET" = apple ]; then
+  RELEASE_MSG="release: v${VER} (r${N}, Mac and iOS)"
+  BUMP_MSG="release: bump to v${NEXT_VER}"
+else
+  RELEASE_MSG="release(${TARGET}): v${VER} (r${N})"
+  BUMP_MSG="release(${TARGET}): bump to v${NEXT_VER}"
+fi
+TAGS=""
+for p in $PLATFORMS; do TAGS+="$(get_var TAG "$p") "; done
+TAGS="${TAGS% }"
+
+# A version's summary, for the people making the app (INTERNAL included); written by a bump.
+render_consolidated() { # render_consolidated <platform>
+  echo "# $(label "$1") ${VER}"
+  echo
+  render_consolidated_lines "$ROOT/release-notes/$1/v${VER}"
+}
+
+# ---- do it (or, in a dry run, say what would happen) -------------------------------------------------------
+UPLOAD_RESULT=""
+if [ -n "$DRYRUN" ]; then
+  for p in $PLATFORMS; do
+    echo
+    case "$p" in
+      ios) echo "[dry run] iOS's What to Test, into ${IOS_NOTES_DIR#"$ROOT"/}/WhatToTest.{en-GB,en-US}.txt:"
+           echo "────────────────────────────────────────"; ios_notes; echo
+           echo "────────────────────────────────────────" ;;
+      mac) echo "[dry run] the Mac update's notes, in Sparkle's window (HTML in the appcast):"
+           echo "────────────────────────────────────────"; mac_notes_html
+           echo "────────────────────────────────────────" ;;
+    esac
+    echo "[dry run] move the pending notes into release-notes/$p/v${VER}/:"
+    pending=("$ROOT/release-notes/$p/pending"/*.md)
+    if [ "${#pending[@]}" -eq 0 ]; then echo "  (none)"; else for f in "${pending[@]}"; do echo "  $(basename "$f")"; done; fi
+  done
+  echo "[dry run] commit '${RELEASE_MSG}' and tag it ${TAGS// / and }"
+  if has mac; then echo "[dry run] build Hammock ${VER} (${N}) from it, notarize it and make its appcast (scripts/mac-update build)"; fi
+  if [ "$DO_BUMP" = 1 ]; then
+    echo "[dry run] then commit '${BUMP_MSG}', with each app's release-notes/<app>/v${VER}.md"
+  fi
+  echo "[dry run] push main and ${TAGS// / and } together"
+  if has mac; then echo "[dry run] upload the update (scripts/mac-update upload ${N})"; fi
+else
+  if [ "$NONINTERACTIVE" != 1 ]; then
+    gum confirm "Freeze the notes, commit, tag ${TAGS// / and }$(has mac && echo ", build the Mac app") and push?" ||
+      { echo "Stopped."; exit 1; }
+  fi
+  START=$(git -C "$ROOT" rev-parse HEAD)
+  if has mac; then
+    MAC_NOTES="$(mktemp -d)/notes.html"
+    mac_notes_html >"$MAC_NOTES"
+  fi
+  for p in $PLATFORMS; do
+    mkdir -p "$ROOT/release-notes/$p/v${VER}"
+    for f in "$ROOT/release-notes/$p/pending"/*.md; do git -C "$ROOT" mv "$f" "$ROOT/release-notes/$p/v${VER}/"; done
+    git -C "$ROOT" add -A -- "$ROOT/release-notes/$p"
+    if [ "$p" = ios ]; then
+      mkdir -p "$IOS_NOTES_DIR"
+      for locale in $IOS_NOTES_LOCALES; do printf '%s\n' "$(ios_notes)" >"$IOS_NOTES_DIR/WhatToTest.$locale.txt"; done
+      git -C "$ROOT" add -A -- "$IOS_NOTES_DIR"
+    fi
+  done
+  # --allow-empty: two maintenance releases in a row change nothing, but each still needs a commit to tag.
+  git -C "$ROOT" commit --allow-empty -q -m "$RELEASE_MSG"
+  [ "$("$ROOT/scripts/commit-number" "$ROOT")" = "$N" ] ||
+    { echo "The release commit isn't number $N on main; stopping." >&2; git -C "$ROOT" reset -q --hard "$START"; exit 1; }
+  # Until the push lands, any failure takes the release back: the local tags (one left behind would block
+  # the next run) and the release commit, leaving the checkout where it started.
+  undo() {
+    local t
+    for t in $TAGS; do git -C "$ROOT" tag -d "$t" >/dev/null 2>&1 || true; done
+    git -C "$ROOT" reset -q --hard "$START"
+    if has mac; then "$MAC_UPDATE" discard "$N" || true; fi
+    echo "Nothing was published; the release commit and tags (${TAGS}) are gone." >&2
+  }
+  trap undo EXIT
+  for t in $TAGS; do git -C "$ROOT" tag "$t"; done
+  RELEASE_SHA=$(git -C "$ROOT" rev-parse HEAD)
+  # The Mac update is built from exactly the tagged commit, before the bump moves HEAD on.
+  if has mac; then "$MAC_UPDATE" build "$N" "$MAC_NOTES"; fi
+  if [ "$DO_BUMP" = 1 ]; then
+    write_version "$ROOT" "$NEXT_VER"
+    git -C "$ROOT" add -A -- "$(version_file "$ROOT")"
+    # The version is finished for both apps, so each one that had releases of it gets its summary.
+    for p in $PLATFORMS_ALL; do
+      [ -d "$ROOT/release-notes/$p/v${VER}" ] || continue
+      render_consolidated "$p" >"$ROOT/release-notes/$p/v${VER}.md"
+      git -C "$ROOT" add -A -- "$ROOT/release-notes/$p/v${VER}.md"
+    done
+    git -C "$ROOT" commit -q -m "$BUMP_MSG"
+  fi
+  # One atomic push, so main and the tags arrive together or not at all.
+  refs=()
+  for t in $TAGS; do refs+=("refs/tags/$t"); done
+  if ! git -C "$ROOT" push --atomic origin HEAD:main "${refs[@]}"; then
+    echo "The push was rejected (did main move?)." >&2
+    exit 1
+  fi
+  trap - EXIT
+
+  # Pushed, so from here nothing fails the release: an upload that doesn't go through says how to retry.
+  if has mac; then
+    if "$MAC_UPDATE" upload "$N"; then
+      UPLOAD_RESULT="uploaded; installed copies will be offered it"
+    else
+      UPLOAD_RESULT="NOT uploaded (see above); the release is cut. Retry: scripts/mac-update upload ${N}"
+    fi
+  fi
+fi
+
+# ---- summary -----------------------------------------------------------------------------------------------
+echo
+echo "── Release ──────────────────────────────"
+echo "Version:       ${VER}"
+echo "Tags:          ${TAGS// / and }"
+for p in $PLATFORMS; do echo "Notes:         release-notes/$p/v${VER}/"; done
+if [ "$DO_BUMP" = 1 ]; then
+  echo "Next version:  ${NEXT_VER} (${VER} is finished)"
+else
+  echo "Next version:  unchanged, still ${VER}"
+fi
+for p in $PLATFORMS; do
+  case "$p" in
+    mac)
+      echo "Mac build:     ${N}"
+      if [ -n "$UPLOAD_RESULT" ]; then echo "Mac update:    ${UPLOAD_RESULT}"; fi
+      ;;
+    ios)
+      echo "iOS build:     Xcode Cloud's number, when it builds"
+      if [ -z "$DRYRUN" ]; then echo "  → in App Store Connect, the build of commit $(git -C "$ROOT" rev-parse --short "$RELEASE_SHA")"; fi
+      ;;
+  esac
+done
+# `if`, not `[ ] &&`: as the last command, a false test would make every real release exit 1.
+if [ -n "$DRYRUN" ]; then echo "(dry run: nothing was changed, committed or pushed)"; fi

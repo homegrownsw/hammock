@@ -1,0 +1,24 @@
+name = "hmk-push"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+APNS_TOPIC = "com.homegrownsw.hammock"
+
+# The Homegrown Software account's (wrangler d1 create hmk-push).
+[[d1_databases]]
+binding = "DB"
+database_name = "hmk-push"
+database_id = "6dd2eddd-cf18-41d0-908a-9218051c333b"
+
+# 60 sends a minute per phone.
+[[ratelimits]]
+name = "SENDS"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }
+
+# 10 registrations a minute per client IP.
+[[ratelimits]]
+name = "REGISTERS"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Prints HEAD's number on main: its commit count in this repo, plus the commits before this repo began
+# (scripts/history-commits: Hammock's earlier history, kept private, which ended at commit 831). It's the
+# Mac build's CFBundleVersion, the r<n> in release tags and the Unraid package's version, so all of them
+# keep counting up from where the old history left off. Usage: scripts/commit-number [ROOT]
+set -euo pipefail
+root="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
+echo $(($(git -C "$root" rev-list --count HEAD) + $(cat "$root/scripts/history-commits")))

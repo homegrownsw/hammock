@@ -1,0 +1,93 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "hammock">
+<!ENTITY author    "Homegrown Software">
+<!ENTITY version   "@VERSION@">
+<!ENTITY baseURL   "@BASE_URL@">
+<!ENTITY pluginURL "&baseURL;/&name;.plg">
+<!ENTITY package   "@PACKAGE@">
+<!ENTITY sha256    "@SHA256@">
+<!ENTITY plgdir    "/boot/config/plugins/&name;">
+]>
+<!-- Made by unraid/build.sh from unraid/hammock.plg in the Hammock repo. (Entities aren't expanded
+     inside CDATA: the scripts have the values written in.) -->
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;"
+  launch="Settings/Hammock" icon="terminal" min="6.12.0"
+  support="https://hammock.jsp.scot">
+
+<CHANGES>
+<![CDATA[
+@CHANGES@
+]]>
+</CHANGES>
+
+<!-- The package: hmk, hmkd and pane-holder, and this plugin's page and scripts. -->
+<FILE Name="&plgdir;/&package;">
+<URL>&baseURL;/&package;</URL>
+<SHA256>&sha256;</SHA256>
+</FILE>
+
+<!-- Every minute: start Hammock if it should be running and isn't. -->
+<FILE Name="&plgdir;/&name;.cron">
+<INLINE>
+<![CDATA[
+# Hammock: start hmkd if it should be running and isn't
+* * * * * /usr/local/emhttp/plugins/hammock/scripts/rc.hammock watchdog >/dev/null 2>&1
+]]>
+</INLINE>
+</FILE>
+
+<!-- Install (at every boot, and on an update). -->
+<FILE Run="/bin/bash">
+<INLINE>
+<![CDATA[
+set -e
+# An update replaces the daemon: stop it (panes keep running, and the new
+# one takes them over).
+was_running=no
+if [ -x /usr/local/emhttp/plugins/hammock/scripts/rc.hammock ] && /usr/local/bin/hmk status >/dev/null 2>&1; then
+  was_running=yes
+  /usr/local/emhttp/plugins/hammock/scripts/rc.hammock stop >/dev/null 2>&1 || true
+fi
+upgradepkg --install-new --reinstall "/boot/config/plugins/hammock/@PACKAGE@"
+# Settings: the defaults, unless there are some already.
+[ -f "/boot/config/plugins/hammock/hammock.cfg" ] || printf 'FOLDER="/mnt/user/appdata/hammock"\nAUTOSTART="yes"\nPANE_HOME="folder"\n' > "/boot/config/plugins/hammock/hammock.cfg"
+# Older packages: only this version's is kept on the flash drive.
+find "/boot/config/plugins/hammock" -maxdepth 1 -name 'hammock-*.txz' ! -name "@PACKAGE@" -delete
+# The watchdog's cron line: update_cron takes only plugins already installed,
+# which this one is once this script ends.
+echo "sleep 5; /usr/local/sbin/update_cron" | at now 2>/dev/null || true
+. "/boot/config/plugins/hammock/hammock.cfg"
+array=no
+grep -qs '^mdState="STARTED"' /var/local/emhttp/var.ini && array=yes
+case "$FOLDER" in /mnt/disks/*|/mnt/remotes/*|/mnt/addons/*|/[!m]*) array=yes ;; esac
+if [ "$was_running" = yes ] || { [ "$AUTOSTART" = yes ] && [ "$array" = yes ]; }; then
+  /usr/local/emhttp/plugins/hammock/scripts/rc.hammock start || true
+fi
+echo ""
+echo "----------------------------------------------------------------"
+echo " Hammock @VERSION@ is installed. Settings > Hammock, or hmk --help."
+echo "----------------------------------------------------------------"
+echo ""
+]]>
+</INLINE>
+</FILE>
+
+<!-- Remove: stop Hammock and end its panes. The Hammock folder (state and
+     home) is left where it is. -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+/usr/local/emhttp/plugins/hammock/scripts/rc.hammock stop >/dev/null 2>&1
+/usr/local/bin/hmk stop --panes >/dev/null 2>&1
+pkill -f 'ttyd.*/var/tmp/hammock.sock' 2>/dev/null
+removepkg "@PACKAGE@" >/dev/null
+rm -rf /usr/local/emhttp/plugins/hammock /usr/local/hammock /var/run/hammock.env /var/run/hammock.stopped
+rm -f "/boot/config/plugins/hammock"/*.txz "/boot/config/plugins/hammock/hammock.cron"
+update_cron
+echo "Hammock is removed. Its folder (state, and the panes' home) is still where it was."
+]]>
+</INLINE>
+</FILE>
+
+</PLUGIN>

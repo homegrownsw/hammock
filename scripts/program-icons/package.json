@@ -1,0 +1,11 @@
+{
+  "name": "program-icons",
+  "version": "1.0.0",
+  "description": "Generates Hammock program icon tables (just program-icons)",
+  "type": "commonjs",
+  "dependencies": {
+    "simple-icons": "13.21.0",
+    "svgpath": "2.6.0"
+  },
+  "private": true
+}

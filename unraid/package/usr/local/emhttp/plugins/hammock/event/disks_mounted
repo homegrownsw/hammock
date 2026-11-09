@@ -1,0 +1,4 @@
+#!/bin/bash
+# The array's disks and pools are mounted: start Hammock if it starts on its own.
+. /boot/config/plugins/hammock/hammock.cfg 2>/dev/null
+[ "${AUTOSTART:-yes}" = yes ] && /usr/local/emhttp/plugins/hammock/scripts/rc.hammock start >/dev/null 2>&1 &

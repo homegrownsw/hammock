@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "session_id": "1794050000000_k3x9q",
+  "source": "cli",
+  "pid": 41230,
+  "started_at": "2026-11-07T09:33:20.000Z",
+  "status": "running",
+  "interactive": true,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5-5",
+  "cwd": "/work",
+  "workspace_root": "/work",
+  "enable_tools": true,
+  "enable_spawn": true,
+  "enable_teams": true,
+  "prompt": "<user_input mode=\"act\">Add a --top N flag to @tally.sh</user_input>",
+  "metadata": {
+    "source": "cli",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "interactive": true,
+    "mode": "act",
+    "checkpointEnabled": true,
+    "title": "Add a --top N flag to @tally.sh"
+  },
+  "messages_path": "/Users/example/.cline/data/sessions/1794050000000_k3x9q/1794050000000_k3x9q.messages.json"
+}

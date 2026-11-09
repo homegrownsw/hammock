@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Writes a release note into release-notes/<platform>/pending/ (release-notes/README.md): for the Mac app,
+# the iOS app, or both.
+#
+#   scripts/note <mac|ios|both> <tag> [issue] <text…>
+#                                     e.g. scripts/note mac fixed "Pane headers no longer flicker when you type."
+#                                          scripts/note both new 44 "Hammock can update itself."
+#   scripts/note [mac|ios|both]       prompts with gum
+#
+# The GitHub issue is optional. Left out, it comes from a branch named <name>/<n>-<slug>; when the branch
+# doesn't match, the note simply has no issue. `none` (or `-`) skips the guess.
+#
+# One small file per change and app: release-notes/<platform>/pending/<n>-<slug>.md, or <slug>.md without an
+# issue, holding the tag, the date and the text. Written for both apps, it has the same name in each.
+#
+# The platform comes first and isn't optional: most of Hammock's changes reach one app.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/release-notes.sh
+. "$ROOT/scripts/lib/release-notes.sh"
+
+usage() {
+  cat >&2 <<'EOF2'
+usage: scripts/note <mac|ios|both> <tag> [issue] <text…>
+  mac, ios, both  the app(s) the change reaches (the daemon, CLI and TUI ship in the Mac app)
+  tag    new | fixed | internal (any case)
+  issue  optional: a GitHub issue number (44 or #44), or `none`. Left out, it comes from a branch named
+         <name>/<n>-<slug>, and the note has no issue when the branch doesn't match.
+  text   the note, one or two sentences; new and fixed are for the people using Hammock
+
+With no tag or text it prompts with gum.
+EOF2
+  exit 2
+}
+
+# The non-empty arguments, so `just note mac fixed "" …` from a script with an empty variable is read right.
+args=()
+for a in "$@"; do [ -n "$a" ] && args+=("$a"); done
+
+platforms=""
+if [ "${#args[@]}" -gt 0 ]; then
+  case "${args[0]}" in
+    mac | ios) platforms="${args[0]}" ;;
+    both) platforms="$PLATFORMS_ALL" ;;
+    *) echo "Name the app first: mac, ios or both." >&2; usage ;;
+  esac
+  args=("${args[@]:1}")
+fi
+
+issue_arg() { [[ "$1" =~ ^#?[0-9]+$ ]]; }
+
+tag=""
+issue=""
+text=""
+if [ "${#args[@]}" -ge 2 ]; then
+  tag=$(printf '%s' "${args[0]}" | tr '[:lower:]' '[:upper:]')
+  second="${args[1]}"
+  if issue_arg "$second"; then
+    issue="${second#\#}"
+    text="${args[*]:2}"
+  elif [ "$second" = none ] || [ "$second" = - ]; then
+    text="${args[*]:2}"
+  else
+    issue=$(infer_issue "$ROOT")
+    text="${args[*]:1}"
+  fi
+elif [ "${#args[@]}" -gt 0 ]; then
+  echo "Needs a tag and the note's text." >&2
+  usage
+else
+  command -v gum >/dev/null 2>&1 ||
+    { echo "Prompting needs gum: brew install gum. Or pass the arguments." >&2; usage; }
+  if [ -z "$platforms" ]; then
+    case "$(gum choose --header "App" mac ios both)" in
+      both) platforms="$PLATFORMS_ALL" ;;
+      mac) platforms=mac ;;
+      ios) platforms=ios ;;
+    esac
+  fi
+  tag=$(gum choose --header "Tag" NEW FIXED INTERNAL)
+  issue=$(gum input --header "GitHub issue (optional)" --value "$(infer_issue "$ROOT")" --placeholder "44")
+  echo "Write the note. NEW and FIXED are for the people using Hammock; INTERNAL can be terse."
+  text=$(gum write --header "Note" --placeholder "What changed…")
+  if [ "$issue" = none ] || [ "$issue" = - ]; then
+    issue=""
+  elif [ -n "$issue" ]; then
+    issue_arg "$issue" || { echo "Issue '$issue' isn't a number." >&2; exit 2; }
+    issue="${issue#\#}"
+  fi
+fi
+
+case "$tag" in
+  NEW | FIXED | INTERNAL) ;;
+  *) echo "Unknown tag '$tag' (new, fixed or internal)." >&2; usage ;;
+esac
+[ -n "$text" ] || { echo "The note can't be empty." >&2; usage; }
+
+# The slug comes from the text's first line: lower case, with runs of anything else turned into dashes.
+slug=$(printf '%s' "$text" | head -n1 |
+  tr '[:upper:]' '[:lower:]' |
+  sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' |
+  cut -c1-40)
+slug=${slug%-}
+[ -n "$slug" ] || slug="note"
+
+# A name free in every app's pending/, so a note for both has the same name in each.
+base="${issue:+$issue-}$slug"
+name="$base.md"
+n=2
+taken() { local p; for p in $platforms; do [ -e "$ROOT/release-notes/$p/pending/$1" ] && return 0; done; return 1; }
+while taken "$name"; do
+  name="$base-$n.md"
+  n=$((n + 1))
+done
+
+for p in $platforms; do
+  dir="$ROOT/release-notes/$p/pending"
+  mkdir -p "$dir"
+  printf 'tag: %s\ndate: %s\n%s\n' "$tag" "$(date +%F)" "$text" >"$dir/$name"
+  echo "Wrote release-notes/$p/pending/$name"
+done

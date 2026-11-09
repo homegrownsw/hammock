@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hammock</title>
+<meta name="description" content="Hammock is a fast, native Mac terminal that never loses your work, with browser and simulator panes beside your shells, and it tells you on your Mac or iPhone the moment a coding agent needs you.">
+<meta name="theme-color" content="#06140e">
+<meta property="og:title" content="Hammock">
+<meta property="og:description" content="A fast, native Mac terminal that never loses your work. Agents welcome.">
+<meta property="og:image" content="banner.png">
+<link rel="icon" href="icon-256.png">
+<link rel="apple-touch-icon" href="icon-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06140e;
+    --bg-2: #0b241a;
+    --card: rgba(255, 255, 255, 0.045);
+    --card-line: rgba(255, 255, 255, 0.09);
+    --text: #eaf6ef;
+    --muted: #a3c2b2;
+    --faint: #6f8f7f;
+    --mint: #3dffa2;
+    --code-bg: #031009;
+    --green: #61d836; --yellow: #ffd60a; --orange: #ff9f0a; --red: #ff453a; --purple: #bf5af2; --blue: #0a84ff;
+    --spectrum: linear-gradient(90deg, #61d836, #ffd60a, #ff9f0a, #ff453a, #bf5af2, #0a84ff);
+    --radius: 18px;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --display: "Space Grotesk", Inter, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; background: var(--bg); }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1300px 700px at 50% -160px, rgba(46, 138, 98, 0.5), transparent 70%),
+      radial-gradient(900px 600px at 90% 30%, rgba(10, 132, 255, 0.06), transparent 70%),
+      radial-gradient(900px 600px at 5% 60%, rgba(191, 90, 242, 0.05), transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font: 16px/1.6 Inter, system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+  a { color: var(--mint); text-underline-offset: 3px; }
+  a:hover { color: #a8ffd6; }
+  strong, b { color: var(--text); font-weight: 600; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* Nav */
+  nav { display: flex; align-items: center; gap: 20px; padding: 18px 0; }
+  nav .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.02em; }
+  nav .brand img { width: 34px; height: 34px; }
+  nav .links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+  nav .links a:not(.btn) { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 15px; }
+  nav .links a:not(.btn):hover { color: var(--text); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 20px;
+    font: 600 15.5px Inter, sans-serif; text-decoration: none; border-radius: 12px;
+    color: #06140e; background: var(--mint); box-shadow: 0 0 30px rgba(61, 255, 162, 0.28);
+    transition: transform .12s ease, background .2s, box-shadow .2s;
+  }
+  .btn:hover { color: #06140e; background: #a8ffd6; box-shadow: 0 0 40px rgba(61, 255, 162, 0.4); }
+  .btn:active { transform: scale(0.97); }
+  .btn.small { min-height: 38px; padding: 0 15px; font-size: 14.5px; border-radius: 10px; }
+  .btn.ghost { color: var(--text); background: var(--card); border: 1px solid var(--card-line); box-shadow: none; }
+  .btn.ghost:hover { border-color: rgba(61, 255, 162, 0.5); background: rgba(255,255,255,.07); }
+
+  /* Hero */
+  .hero { text-align: center; padding: 56px 0 40px; }
+  .hero img.icon { width: 168px; height: 168px; display: block; margin: 0 auto 6px; filter: drop-shadow(0 22px 48px rgba(0, 0, 0, 0.6)); }
+  h1 { text-wrap: balance; font: 700 clamp(42px, 8vw, 84px)/1.0 var(--display); letter-spacing: -0.045em; margin: 18px auto 18px; max-width: 1040px; }
+  h1 .spectrum, .spectrum { background: var(--spectrum); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* The headline's turning word: each word sits on a face of a cube that turns up to the next. The
+     word shown is in the flow (it sets the baseline); the box's width eases to fit it. */
+  .turn { display: inline-block; position: relative; perspective: 800px; transition: width .55s cubic-bezier(.3,.7,.2,1); }
+  .turn .w { display: inline-block; white-space: nowrap; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    transform-origin: 50% 50% -0.42em; transition: transform .7s cubic-bezier(.3,.7,.2,1), opacity .5s ease; }
+  .turn .w:not(.on) { position: absolute; left: 0; top: 0; opacity: 0; transform: rotateX(-90deg); }
+  .turn .w.out { transform: rotateX(90deg); }
+  .lede { color: var(--muted); font-size: clamp(17px, 2.2vw, 20px); max-width: 640px; margin: 0 auto 30px; }
+  .cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .fine { color: var(--faint); font-size: 14px; margin-top: 14px; }
+
+  /* The app, drawn: dark appearance, the Hammock window theme (sidebar 0D2A20, toolbar 133528), status
+     icons as StatusIcon.swift draws them ("Orbit"). */
+  .stage { position: relative; margin: 34px auto 0; max-width: 1040px; }
+  .stage::before { content: ""; position: absolute; inset: 8% 6% -4%; background: var(--spectrum); filter: blur(90px); opacity: .16; border-radius: 50%; z-index: -1; }
+  .window {
+    position: relative; text-align: left; border-radius: 18px; overflow: hidden;
+    background: #133528; border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 40px 100px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
+    display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 540px;
+    font: 13px/1.35 -apple-system, BlinkMacSystemFont, Inter, sans-serif; color: #e9f2ed;
+  }
+  .side { background: #0d2a20; border-right: 1px solid rgba(0,0,0,.35); padding: 12px 8px 10px; display: flex; flex-direction: column; min-width: 0; }
+  .side-top { display: flex; align-items: center; gap: 8px; padding: 2px 6px 12px; }
+  .lights { display: flex; gap: 8px; margin-right: auto; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .circ { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); color: #cfe0d7; }
+  .grp { display: flex; align-items: center; gap: 9px; padding: 6px 8px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .grp .gi { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-size: 12px; flex: none; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.2); }
+  .grp .chev { color: #8fa89b; font-weight: 400; font-size: 12px; }
+  .grp .gst { margin-left: auto; }
+  .trow { display: flex; align-items: center; gap: 9px; padding: 6px 8px 6px 14px; border-radius: 9px; white-space: nowrap; color: #dbe8e1; }
+  .trow .n { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .trow .t { color: #8fa89b; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .trow.on { background: rgba(255,255,255,.12); color: #fff; }
+  .st { width: 15px; height: 15px; flex: none; }
+  .needs { margin-top: auto; border-top: 1px solid rgba(255,255,255,.08); padding: 10px 2px 0; }
+  .needs h5 { display: flex; align-items: center; gap: 6px; margin: 0 6px 6px; font: 600 11.5px -apple-system, Inter, sans-serif; color: #ff9f0a; }
+  .needs h5 span { background: rgba(255,159,10,.2); border-radius: 8px; padding: 0 6px; font-size: 11px; }
+  .card2 { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08); border-radius: 11px; padding: 9px 10px; font-size: 12px; color: #c9dbd1; }
+  .card2 b { display: block; color: #fff; font-size: 12.5px; margin-bottom: 1px; }
+  .card2 code { font: 11px var(--mono); color: #e9f2ed; }
+  .card2 .acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+  .card2 .acts span { padding: 3px 11px; border-radius: 7px; background: rgba(255,255,255,.12); font-weight: 500; color: #fff; }
+  .card2 .acts span:last-child { background: #3fb88a; color: #062016; }
+  .host { display: flex; align-items: center; gap: 9px; padding: 12px 8px 2px; font-size: 12px; color: #fff; }
+  .host small { display: block; color: #8fa89b; font-size: 11px; }
+
+  .main { display: grid; grid-template-rows: 52px minmax(0,1fr); min-width: 0; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 0 18px; background: #133528; border-bottom: 1px solid rgba(0,0,0,.3); min-width: 0; }
+  .toolbar .ti { margin-right: auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .toolbar .ti b { display: block; font-size: 13.5px; }
+  .toolbar .ti small { color: #8fa89b; font-size: 11.5px; }
+  .cap { height: 30px; padding: 0 9px; border-radius: 15px; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); color: #cfe0d7; flex: none; }
+  .panes { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1px; background: rgba(0,0,0,.45); min-height: 0; }
+  .col { display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: rgba(0,0,0,.45); min-width: 0; min-height: 0; }
+  .pane { display: grid; grid-template-rows: 30px minmax(0,1fr); background: #0a1a13; min-width: 0; min-height: 0; }
+  .ptitle { display: flex; align-items: center; gap: 7px; padding: 0 10px; background: #0f241b; border-bottom: 1px solid rgba(255,255,255,.05); color: #cfe0d7; font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .ptitle .agent { color: #fff; font-weight: 500; }
+  .ptitle .cwd { color: #8fa89b; overflow: hidden; text-overflow: ellipsis; }
+  .ptitle .state { margin-left: auto; display: flex; align-items: center; gap: 5px; color: #b9cbc1; }
+  .term { padding: 12px 14px; font: 12px/1.62 var(--mono); color: #d5e5dc; overflow: hidden; display: flex; flex-direction: column; }
+  .term .p { color: #8fa89b; } .term .dim { color: #6f8f7f; } .term .g { color: #30d158; } .term .r { color: #ff6961; }
+  .term .y { color: #ffd60a; } .term .pu { color: #d69bff; } .term .o { color: #ff9f0a; } .term .w { color: #fff; }
+  .term .bul { color: #3fb88a; }
+  .term .spin { color: #ff9f0a; margin-top: auto; }
+  .caret { display: inline-block; width: 7px; height: 14px; background: #d5e5dc; vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .web { background: #15171c; display: flex; min-height: 0; overflow: hidden; font-family: Inter, sans-serif; }
+  .web nav { all: unset; width: 31%; padding: 16px 12px; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 9px; flex: none; }
+  .web nav b { font: 700 12px var(--display); color: #fff; display: flex; align-items: center; gap: 6px; }
+  .web nav i { display: block; height: 7px; border-radius: 4px; background: rgba(255,255,255,.12); }
+  .web nav i.on { background: #3fb88a; width: 70%; }
+  .web article { padding: 18px 16px; display: flex; flex-direction: column; gap: 9px; min-width: 0; flex: 1; }
+  .web h6 { margin: 0; font: 700 17px var(--display); color: #fff; letter-spacing: -.02em; }
+  .web article i { display: block; height: 7px; border-radius: 4px; background: rgba(255,255,255,.14); }
+  .web pre { margin: 4px 0; padding: 10px; border-radius: 8px; background: #0d0f13; border: 1px solid rgba(255,255,255,.08); font: 10.5px/1.6 var(--mono); color: #c8d3ce; white-space: pre; overflow: hidden; }
+  .web pre .k { color: #ff7ab2; } .web pre .s { color: #ffd60a; }
+  .web .callout { border-left: 3px solid #3fb88a; background: rgba(63,184,138,.1); border-radius: 6px; padding: 8px 10px; display: grid; gap: 6px; }
+  /* Sections */
+  section { padding: 96px 0 0; }
+  .kicker { font: 600 12.5px/1 Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mint); margin: 0 0 14px; }
+  h2 { font: 700 clamp(32px, 5vw, 50px)/1.05 var(--display); letter-spacing: -0.035em; margin: 0 0 16px; }
+  .sub { color: var(--muted); font-size: 18px; max-width: 620px; margin: 0; }
+  .center { text-align: center; } .center .sub { margin: 0 auto; }
+
+  .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 44px; }
+  .feat { position: relative; background: var(--card); border: 1px solid var(--card-line); border-radius: var(--radius); padding: 26px 24px 24px; overflow: hidden; transition: border-color .25s, transform .25s; }
+  .feat:hover { border-color: rgba(255,255,255,.2); transform: translateY(-2px); }
+  .feat::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--c); opacity: .9; }
+  .feat .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 16px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+  .feat h3 { font: 600 18.5px/1.3 Inter, sans-serif; margin: 0 0 8px; letter-spacing: -.01em; }
+  .feat p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* Split sections */
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; align-items: center; }
+  .split.flip > :first-child { order: 2; }
+  .points { list-style: none; padding: 0; margin: 26px 0 0; display: grid; gap: 14px; }
+  .points li { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 12px; color: var(--muted); }
+  .points li svg { margin-top: 3px; color: var(--mint); }
+
+  /* Phone */
+  .phone {
+    position: relative; width: 300px; height: 610px; margin: 0 auto; border-radius: 52px; padding: 14px;
+    background: linear-gradient(160deg, #3a4a43, #1a2420); box-shadow: 0 40px 90px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.12);
+  }
+  .screen {
+    position: relative; height: 100%; border-radius: 40px; overflow: hidden; padding: 58px 12px 12px;
+    background:
+      radial-gradient(260px 300px at 20% 10%, rgba(97,216,54,.35), transparent 70%),
+      radial-gradient(260px 300px at 90% 60%, rgba(10,132,255,.35), transparent 70%),
+      radial-gradient(260px 300px at 30% 100%, rgba(191,90,242,.35), transparent 70%),
+      #0b231a;
+  }
+  .island { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 96px; height: 28px; border-radius: 20px; background: #000; }
+  .clock { text-align: center; font: 600 64px/1 var(--display); letter-spacing: -.03em; color: rgba(255,255,255,.92); }
+  .date { text-align: center; color: rgba(255,255,255,.75); font-weight: 500; font-size: 14px; margin: 6px 0 26px; }
+  .notif { background: rgba(255,255,255,.16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 18px; padding: 11px 12px; color: #fff; font-size: 12.5px; line-height: 1.4; margin-bottom: 8px; }
+  .notif .h { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: rgba(255,255,255,.75); margin-bottom: 3px; }
+  .notif .h img { width: 18px; height: 18px; border-radius: 5px; }
+  .notif .h em { margin-left: auto; font-style: normal; }
+  .notif b { display: block; font-size: 13px; }
+  .notif.big { animation: drop .7s cubic-bezier(.2,.9,.3,1.2) .3s both; }
+  .acts2 { display: grid; gap: 6px; margin-top: 4px; }
+  .acts2 span { display: block; background: rgba(255,255,255,.16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 14px; padding: 10px 14px; color: #fff; font-weight: 600; font-size: 13.5px; }
+  .acts2 span.no { color: #ff8a80; }
+
+  /* MCP */
+  .log { white-space: pre; background: var(--code-bg); border: 1px solid rgba(61, 255, 162, 0.16); border-radius: 16px; padding: 18px 20px; font: 13.5px/1.75 var(--mono); color: #cfe6da; overflow-x: auto; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
+  .log .t { color: var(--mint); }
+  .log .dim { color: var(--faint); }
+  .log .ok { color: var(--green); }
+  .log .warn { color: var(--yellow); }
+
+  /* CLI */
+  .cli { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; margin-top: 40px; text-align: left; }
+  .cmd { background: var(--card); border: 1px solid var(--card-line); border-radius: 14px; padding: 16px 18px; }
+  .cmd code { display: block; font: 500 14px var(--mono); color: #d9f7e8; margin-bottom: 4px; white-space: nowrap; overflow-x: auto; }
+  .cmd code::before { content: "$ "; color: var(--faint); }
+  .cmd span { color: var(--muted); font-size: 14.5px; }
+
+  /* More */
+  .more { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 40px; }
+  .more .feat { padding: 22px 20px; }
+  .more .feat h3 { font-size: 16.5px; }
+  .more .feat p { font-size: 14.5px; }
+
+  /* Final CTA */
+  .final { margin-top: 110px; position: relative; overflow: hidden; text-align: center; border-radius: 28px; padding: 64px 24px; background: linear-gradient(160deg, #0f3627, #071a12); border: 1px solid rgba(255,255,255,.1); }
+  .final::after { content: ""; position: absolute; inset: auto 0 0; height: 4px; background: var(--spectrum); }
+  .final img { width: 112px; height: 112px; filter: drop-shadow(0 18px 40px rgba(0,0,0,.55)); }
+  .final h2 { margin-top: 14px; }
+
+  footer { padding: 46px 0 60px; text-align: center; color: var(--faint); font-size: 14px; }
+  footer svg { display: block; margin: 0 auto 10px; }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 980px) {
+    .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 820px) {
+    .split { grid-template-columns: minmax(0, 1fr); gap: 44px; }
+    .split.flip > :first-child { order: 0; }
+    .window { grid-template-columns: 210px minmax(0,1fr); height: 500px; }
+    .panes { grid-template-columns: minmax(0, 1fr); }
+    .col + .pane { display: none; }
+    section { padding-top: 76px; }
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: 0 16px; }
+    nav .links a:not(.btn) { display: none; }
+    .hero { padding-top: 30px; }
+    .hero img.icon { width: 124px; height: 124px; }
+    .window { grid-template-columns: minmax(0,1fr); height: 440px; }
+    .cap:nth-of-type(-n+2) { display: none; }
+    .side { display: none; }
+    .features, .more { grid-template-columns: minmax(0, 1fr); }
+    .phone { width: 270px; height: 560px; }
+    .clock { font-size: 56px; }
+    .final { padding: 48px 18px; }
+    .log { font-size: 12px; padding: 14px 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav aria-label="Main">
+  <a class="brand" href="#"><img src="icon-256.png" alt="">Hammock</a>
+  <div class="links">
+    <a href="#features">Features</a>
+    <a href="#iphone">iPhone</a>
+    <a href="#agents">For agents</a>
+    <a class="btn small" href="/download">Download</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <img class="icon" src="icon-512.png" alt="Hammock’s icon: a rainbow brush-stroke tilde on forest green">
+  <h1 aria-label="Kick back. Your terminals, agents, builds and servers keep going.">Kick back.<br><span aria-hidden="true">Your <span class="turn"><span class="w on">terminals</span><span class="w">agents</span><span class="w">builds</span><span class="w">servers</span></span> <span class="spectrum" style="white-space:nowrap">keep going</span>.</span></h1>
+  <p class="lede">Hammock is a fast, native Mac terminal that never loses your work. Shells, servers, long builds and coding agents keep running whatever happens to the window, with browsers and simulators right beside them, and Hammock tells you, on your Mac or your iPhone, the moment an agent needs you.</p>
+  <div class="cta">
+    <a class="btn" href="/download"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Mac</a>
+    <a class="btn ghost" href="#features">See what it does</a>
+  </div>
+  <p class="fine">Free · macOS 26 or later · iPhone app on TestFlight</p>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="s-work" viewBox="0 0 20 20"><g transform="translate(10 10)"><circle r="7.25" fill="none" stroke="#7d7aff" stroke-opacity=".45" stroke-width="2"/><circle r="7.25" fill="none" stroke="#7d7aff" stroke-width="2" stroke-linecap="round" stroke-dasharray="12.75 40" transform="rotate(-90)"><animateTransform attributeName="transform" type="rotate" from="-90" to="270" dur="2.4s" repeatCount="indefinite"/></circle></g></symbol>
+    <symbol id="s-need" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8.75" fill="#ff9f0a"/><path d="M10 5.8V10.6M10 14V14" stroke="#fff" stroke-width="2.1" stroke-linecap="round"/></symbol>
+    <symbol id="s-done" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25" fill="none" stroke="#30d158" stroke-width="1.75"/><path d="M6.3 10.3L8.9 12.9L13.9 7.4" fill="none" stroke="#30d158" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="s-rest" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.25" fill="none" stroke="#98989f" stroke-width="1.5"/></symbol>
+  </svg>
+  <div class="stage" aria-label="An illustration of the Hammock window: Groups and their tabs in the sidebar, an agent at work in a terminal pane, and the page it's checking in a browser pane">
+    <div class="window" aria-hidden="true">
+      <aside class="side">
+        <div class="side-top">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <span class="circ"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="circ"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></span>
+        </div>
+        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#2f7ad9,#1d4f8a)">⛅️</span>Weather app<span class="chev">›</span><svg class="st gst"><use href="#s-done"/></svg></div>
+        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#3fb88a,#1f7a57)">📖</span>Docs site<span class="chev">⌄</span></div>
+        <div class="trow on"><svg class="st"><use href="#s-work"/></svg><span class="n">Dark mode</span><span class="t">4m</span></div>
+        <div class="trow"><svg class="st"><use href="#s-need"/></svg><span class="n">Broken links</span><span class="t">1m</span></div>
+        <div class="trow"><svg class="st"><use href="#s-done"/></svg><span class="n">Search index</span><span class="t">12m</span></div>
+        <div class="trow"><svg class="st"><use href="#s-rest"/></svg><span class="n">Release notes</span></div>
+        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#bf5af2,#7a3aa8)">🧩</span>API<span class="chev">›</span><svg class="st gst"><use href="#s-work"/></svg></div>
+        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#ff9f0a,#c46a00)">🏠</span>Dotfiles<span class="chev">›</span></div>
+        <div class="needs">
+          <h5>Needs You <span>1</span></h5>
+          <div class="card2"><b>Broken links</b>claude wants to run <code>npm run check-links</code><div class="acts"><span>Deny</span><span>Allow</span></div></div>
+          <div class="host"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cfe0d7" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><div>Studio<small>This Mac</small></div></div>
+        </div>
+      </aside>
+      <div class="main">
+        <div class="toolbar">
+          <div class="ti"><b>Dark mode</b><small>Docs site — ~/Developer/docs</small></div>
+          <span class="cap"><svg width="16" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="16" rx="3"/><path d="M12 2v16"/></svg><small>⌄</small></span>
+          <span class="cap"><svg width="16" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="16" rx="3"/><path d="M2 10h20"/></svg><small>⌄</small></span>
+          <span class="cap"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><small>⌄</small></span>
+          <span class="cap"><svg width="18" height="16" viewBox="0 0 26 22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="18" cy="7" r="3.2"/><path d="M18 13c3.5 0 6 2 6 6"/></svg></span>
+        </div>
+        <div class="panes">
+          <div class="col">
+          <div class="pane">
+            <div class="ptitle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="agent">zsh</span><span class="cwd">~/Developer/docs</span></div>
+            <div class="term">
+              <div><span class="g">~/Developer/docs</span> <span class="pu">main</span> <span class="p">❯</span> <span class="w">npm run dev</span></div>
+              <div>&nbsp;</div>
+              <div><span class="g">astro</span> <span class="w">v5.4</span> <span class="dim">ready in 412 ms</span></div>
+              <div><span class="dim">┃</span> Local <span class="y">http://localhost:4321/</span></div>
+              <div>&nbsp;</div>
+              <div><span class="dim">14:02:11</span> <span class="g">[watch]</span> src/styles/theme.css</div>
+              <div><span class="dim">14:02:11</span> <span class="g">[200]</span> /docs <span class="dim">18ms</span></div>
+              <div><span class="dim">14:03:40</span> <span class="g">[watch]</span> src/styles/code.css</div>
+              <div><span class="dim">14:03:40</span> <span class="g">[200]</span> /docs <span class="dim">14ms</span></div>
+            </div>
+          </div>
+          <div class="pane">
+            <div class="ptitle"><span style="color:#ff9f0a">✳</span><span class="agent">claude ⌄</span><span class="cwd">~/Developer/docs</span><span class="state"><svg class="st" style="width:13px;height:13px"><use href="#s-work"/></svg>Working</span></div>
+            <div class="term">
+              <div><span class="p">❯</span> <span class="w">add a dark mode to the docs, and check it</span></div>
+              <div>&nbsp;</div>
+              <div><span class="bul">●</span> Update <span class="pu">src/styles/theme.css</span> <span class="g">+38</span> <span class="r">−4</span></div>
+              <div><span class="bul">●</span> hammock · browser_screenshot</div>
+              <div class="dim">&nbsp;&nbsp;⎿ code blocks are too dim: raising contrast</div>
+              <div><span class="bul">●</span> Update <span class="pu">src/styles/code.css</span> <span class="g">+6</span> <span class="r">−6</span></div>
+              <div class="spin">✻ Checking the other pages… <span class="dim">(4m 12s)</span></div>
+            </div>
+          </div>
+          </div>
+          <div class="pane">
+            <div class="ptitle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg><span class="agent">Docs</span><span class="cwd">localhost:4321/docs</span><span class="state">‹ ›&nbsp;↻</span></div>
+            <div class="web">
+              <nav><b>📖 Docs</b><i class="on"></i><i style="width:80%"></i><i style="width:60%"></i><i style="width:75%"></i><i style="width:50%"></i><i style="width:68%"></i></nav>
+              <article>
+                <h6>Getting started</h6>
+                <i style="width:92%"></i><i style="width:78%"></i>
+                <pre><span class="k">npm</span> install <span class="s">@acme/widgets</span>
+<span class="k">npx</span> widgets init</pre>
+                <i style="width:85%"></i><i style="width:64%"></i>
+                <div class="callout"><i style="width:80%"></i><i style="width:55%"></i></div>
+                <i style="width:72%"></i>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features" aria-labelledby="f-h">
+  <div class="center">
+    <p class="kicker">A terminal first</p>
+    <h2 id="f-h">A great terminal,<br>agents or not.</h2>
+    <p class="sub">Before anything else, Hammock is a fast, native Mac terminal. You don’t need to run a single agent to love it.</p>
+  </div>
+  <div class="features">
+    <article class="feat" style="--c: var(--green)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg></div>
+      <h3>A proper terminal</h3>
+      <p>Drawn by libghostty, so it’s as quick and faithful as Ghostty itself: true colour, ligatures, the Kitty keyboard and graphics protocols, and links you can click.</p>
+    </article>
+    <article class="feat" style="--c: var(--yellow)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg></div>
+      <h3>Never loses your work</h3>
+      <p>Every pane runs in its own process. Close the window, quit the app, update it, even crash it: shells, servers and long builds carry on. After a restart, your Groups and tabs open where they were.</p>
+    </article>
+    <article class="feat" style="--c: var(--orange)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+      <h3>Groups, tabs and splits</h3>
+      <p>Give each project a Group of tabs, split them any way you like, or float a pane over the rest. New panes open in the folder you were last working in.</p>
+    </article>
+    <article class="feat" style="--c: var(--red)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></div>
+      <h3>More than terminals</h3>
+      <p>Real Chromium browser panes, iOS Simulators and live log viewers sit right next to your shells, in the same layout, kept running the same way.</p>
+    </article>
+    <article class="feat" style="--c: var(--purple)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></div>
+      <h3>Yours to set up</h3>
+      <p>A command palette for everything, every shortcut changeable, and your Ghostty themes and fonts work as they are. Prefer a text file? Settings live in one.</p>
+    </article>
+    <article class="feat" style="--c: var(--blue)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+      <h3>In your pocket</h3>
+      <p>Your terminals are on your iPhone too, live: check on a build, or jump into any pane and type, with Esc, Ctrl and arrows to hand.</p>
+    </article>
+  </div>
+</section>
+
+<section id="agents-intro" aria-labelledby="ag-h">
+  <div class="center">
+    <p class="kicker">And if you run coding agents</p>
+    <h2 id="ag-h">It keeps an eye on them,<br>so you don’t have to.</h2>
+    <p class="sub">Run Claude Code, Codex and friends in your panes, and Hammock knows what each one is up to.</p>
+  </div>
+  <div class="features">
+    <article class="feat" style="--c: var(--yellow)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+      <h3>An agent cockpit</h3>
+      <p>See at a glance which agent is working, which is waiting for you and which has finished, across every Group.</p>
+    </article>
+    <article class="feat" style="--c: var(--orange)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+      <h3>It finds you</h3>
+      <p>When an agent needs you, finishes or trips up, Hammock tells you where you are: on the Mac you’re using, or on your iPhone when you’ve stepped away.</p>
+    </article>
+    <article class="feat" style="--c: var(--purple)">
+      <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg></div>
+      <h3>Agents can use it too</h3>
+      <p>Agents open panes, start dev servers, check pages and tap through apps, in panes you can watch. They stay in their own Group and ask before reaching outside it.</p>
+    </article>
+  </div>
+</section>
+
+<section id="iphone" aria-labelledby="i-h">
+  <div class="split">
+    <div>
+      <p class="kicker">Hammock for iPhone</p>
+      <h2 id="i-h">Step away.<br>Stay in the loop.</h2>
+      <p class="sub">Go and make a coffee, or swing in an actual hammock. Your Mac keeps working, and your iPhone tells you the moment an agent needs a hand.</p>
+      <ul class="points">
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Answer from the notification.</strong> Allow or deny right from your lock screen.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Every agent, at a glance.</strong> What each one is doing, in every Group, on every linked Mac.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>A full terminal in your pocket.</strong> Jump into any pane and type, with Esc, Ctrl and arrows to hand.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Only one ping.</strong> If you’re at your Mac, your phone stays quiet.</span></li>
+      </ul>
+    </div>
+    <div aria-hidden="true">
+      <div class="phone">
+        <div class="screen">
+          <div class="island"></div>
+          <div class="clock">9:41</div>
+          <div class="date">Saturday 14 June</div>
+          <div class="notif big">
+            <div class="h"><img src="icon-256.png" alt="">HAMMOCK<em>now</em></div>
+            <b>Docs site needs you</b>
+            claude wants to run npm run check-links
+          </div>
+          <div class="acts2"><span>Allow</span><span class="no">Deny</span></div>
+          <div class="notif" style="margin-top:14px;opacity:.85">
+            <div class="h"><img src="icon-256.png" alt="">HAMMOCK<em>4m ago</em></div>
+            <b>api finished</b>
+            Added rate limiting to /login. All 212 tests pass.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="agents" aria-labelledby="a-h">
+  <div class="split flip">
+    <div>
+      <p class="kicker">For agents</p>
+      <h2 id="a-h">Give your agents<br>a workspace too.</h2>
+      <p class="sub">Hammock speaks MCP. An agent can run its dev server in a pane of its own, open the page in a browser to check its work, or test an app in the Simulator, and you can see all of it happen.</p>
+      <ul class="points">
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Scoped to its Group.</strong> Anything further afield asks you first, and every action goes in an audit log.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Hooks installed for you.</strong> One command sets up Claude Code and Codex, so their status is exact.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Search old sessions.</strong> Agents can look back through past conversations to find what was decided.</span></li>
+      </ul>
+    </div>
+    <div class="log" aria-label="An agent using Hammock’s tools"><span class="dim"># an agent, checking its own work</span>
+<span class="t">create_pane</span> <span class="dim">{ command: "npm run dev" }</span>
+  <span class="ok">✓</span> pane “Dev server” started
+<span class="t">wait_for_pane</span> <span class="dim">{ match: "ready in" }</span>
+  <span class="ok">✓</span> astro ready in 412 ms
+<span class="t">browser_open</span> <span class="dim">{ url: "localhost:4321/docs" }</span>
+  <span class="ok">✓</span> browser pane opened
+<span class="t">browser_click</span> <span class="dim">{ text: "Dark" }</span>
+<span class="t">browser_console</span>
+  <span class="warn">!</span> 0 errors, 1 warning
+<span class="t">browser_screenshot</span>
+  <span class="ok">✓</span> code blocks readable in dark mode</div>
+  </div>
+</section>
+
+<section aria-labelledby="c-h">
+  <div class="center">
+    <p class="kicker">From the command line</p>
+    <h2 id="c-h">At home in a shell.</h2>
+    <p class="sub">Everything in the app is in <code style="font-family:var(--mono);color:var(--text)">hmk</code> too, plus a full TUI for when you’re in over SSH.</p>
+  </div>
+  <div class="cli">
+    <div class="cmd"><code>hmk ls</code><span>Every Group, tab, pane and agent.</span></div>
+    <div class="cmd"><code>hmk tab new api -- npm run dev</code><span>A new tab, running a command.</span></div>
+    <div class="cmd"><code>hmk browser localhost:3000</code><span>A browser pane, next to your work.</span></div>
+    <div class="cmd"><code>hmk schedule list</code><span>Agents and commands that run on a schedule.</span></div>
+    <div class="cmd"><code>hmk hooks install</code><span>Precise status for Claude Code and Codex.</span></div>
+    <div class="cmd"><code>hmk tui</code><span>The whole workspace, in a terminal.</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="m-h">
+  <div class="center">
+    <p class="kicker">And there’s more</p>
+    <h2 id="m-h">Thought through.</h2>
+  </div>
+  <div class="more">
+    <article class="feat" style="--c: var(--green)"><h3>Scheduled tasks</h3><p>Run an agent every weekday morning, or a command every night, and find the results waiting.</p></article>
+    <article class="feat" style="--c: var(--yellow)"><h3>Linked Macs</h3><p>See and use the Groups on your other Macs from this one, as if they were here.</p></article>
+    <article class="feat" style="--c: var(--orange)"><h3>Share a Group</h3><p>Invite someone to watch, or to drive, a live Group. You decide, and you can take it back.</p></article>
+    <article class="feat" style="--c: var(--purple)"><h3>Hammock Key</h3><p>An SSH key kept in your Mac’s Secure Enclave, approved with Touch ID or Face ID on your iPhone.</p></article>
+  </div>
+</section>
+
+<div class="final">
+  <img src="icon-512.png" alt="">
+  <h2>Hop in.</h2>
+  <p class="sub" style="margin:0 auto 28px">Download Hammock, open your first Group, and get comfortable.</p>
+  <div class="cta">
+    <a class="btn" href="/download"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Mac</a>
+  </div>
+</div>
+
+<footer>
+  <svg width="64" height="30" viewBox="2.2 7.7 19.6 8.7" aria-hidden="true">
+    <defs><linearGradient id="g" x1="2.5" y1="0" x2="21.5" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#61d836"/><stop offset=".2" stop-color="#ffd60a"/><stop offset=".4" stop-color="#ff9f0a"/><stop offset=".6" stop-color="#ff453a"/><stop offset=".8" stop-color="#bf5af2"/><stop offset="1" stop-color="#0a84ff"/></linearGradient></defs>
+    <path d="M2.5 13.2 C5 7.8 9 8.4 12 11 C15 13.6 18.4 14 21.5 9.6 C19 16 14.8 16.2 11.6 13.6 C8.6 11.2 5.4 10.8 2.5 13.2 Z" fill="url(#g)" stroke="url(#g)" stroke-width=".6" stroke-linejoin="round"/>
+  </svg>
+  Hammock · your terminals and agents, always on · Made by Homegrown Software
+</footer>
+
+</div>
+<script>
+  // The headline cycles its word: terminals, agents, builds, servers. Not with Reduce Motion.
+  (function () {
+    var box = document.querySelector('.turn');
+    if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var words = Array.prototype.slice.call(box.querySelectorAll('.w'));
+    var i = 0;
+    function fit() { box.style.width = words[i].getBoundingClientRect().width + 'px'; }
+    fit();
+    if (document.fonts) document.fonts.ready.then(fit);
+    addEventListener('resize', fit);
+    setInterval(function () {
+      if (document.hidden) return;
+      var old = words[i];
+      i = (i + 1) % words.length;
+      var next = words[i];
+      next.classList.remove('out');
+      old.classList.remove('on'); old.classList.add('out');
+      next.classList.add('on');
+      fit();
+      setTimeout(function () { old.classList.remove('out'); }, 750);
+    }, 2400);
+  })();
+</script>
+</body>
+</html>

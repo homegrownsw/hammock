@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.319
+▝▜██████▀  Haiku 5.5 · Claude Team
+ ▝▝   ▝▝   ~/project · /rc
+
+
+❯ Call your AskUserQuestion tool exactly once with TWO questions. Q1 header "Shortcuts", question "Which shortcut
+  set?", two options each with a multi-line ASCII preview box (labels "Cmd-P quick open (Recommended)" and "Cmd-O quick
+  open"). Q2 header "Vim", question "Vim mode?", two options with short previews (labels "On" and "Off"). Do nothing
+  else.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☐ Shortcuts  ☐ Vim  ✔ Submit  →
+
+Which shortcut set?
+
+❯ 1. Cmd-P quick open             ┌──────────────────────────────────────────┐
+    (Recommended)                 │ ┌──────────────────────────────┐         │
+  2. Cmd-O quick open             │ │ ⌘P  Quick Open               │         │
+                                  │ ├──────────────────────────────┤         │
+                                  │ │ > src/app.tsx               │          │
+                                  │ │   src/components/nav.tsx    │          │
+                                  │ │   README.md                 │          │
+                                  │ └──────────────────────────────┘         │
+                                  └──────────────────────────────────────────┘
+
+                                  Notes: press n to add notes
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Chat about this
+
+Enter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

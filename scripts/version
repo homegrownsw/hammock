@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Shows Hammock's version (both apps), or sets it: `just version`, `just version 0.3.0`. It lives in
+# apple/iOS/Config/Version.xcconfig (release-notes/README.md); a release's `bump` sets it too.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/release-notes.sh
+. "$ROOT/scripts/lib/release-notes.sh"
+if [ -z "${1:-}" ]; then read_version "$ROOT"; exit 0; fi
+version_ok "$1" || { echo "'$1' isn't a version like 0.3.0." >&2; exit 2; }
+write_version "$ROOT" "$1"
+echo "Version: $1 ($(version_file "$ROOT" | sed "s|$ROOT/||"))"

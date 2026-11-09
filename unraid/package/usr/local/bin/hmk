@@ -1,0 +1,8 @@
+#!/bin/bash
+# hmk on Unraid: the Hammock plugin's daemon, wherever you run it from
+# (Unraid's terminal, SSH). Inside Hammock's own panes, their environment
+# already says where it is.
+if [ -z "${HMK_SOCKET:-}" ] && [ -r /var/run/hammock.env ]; then
+  . /var/run/hammock.env
+fi
+exec /usr/local/hammock/bin/hmk "$@"

@@ -1,0 +1,20 @@
+{
+  "name": "hammock-editor",
+  "private": true,
+  "description": "Editor panes' CodeMirror, bundled into apple/Resources/editor.html by `just editor-js`.",
+  "type": "module",
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/collab": "^6.1.1",
+    "@codemirror/commands": "^6.7.0",
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/language-data": "^6.5.1",
+    "@codemirror/merge": "^6.7.0",
+    "@codemirror/search": "^6.5.0",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/view": "^6.34.0",
+    "@lezer/highlight": "^1.2.0",
+    "@replit/codemirror-vim": "^6.2.1",
+    "esbuild": "^0.24.0"
+  }
+}

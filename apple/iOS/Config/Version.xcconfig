@@ -1,0 +1,11 @@
+// Hammock's version, one for the Mac and iOS apps (release-notes/README.md):
+// the one being developed, x.y.z. Every target includes this file, and
+// scripts/build-mac-app.sh reads it for the Mac builds made outside Xcode.
+// Set it with `just version <x.y.z>`; a release's `bump` does too.
+MARKETING_VERSION = 0.3.0
+
+// The build number is the build service's: Xcode Cloud's CI_BUILD_NUMBER,
+// written in by ci_scripts/ci_pre_xcodebuild.sh; for the Mac's Sparkle
+// builds, main's commit count (build-mac-app.sh). 0 says "not a counted
+// build", so a local Xcode build reports 0.2.0 (0).
+CURRENT_PROJECT_VERSION = 0

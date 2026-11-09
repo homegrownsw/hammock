@@ -1,0 +1,2328 @@
+// Hammock client ↔ daemon protocol, v1.
+//
+// Transport: WebSocket (Unix socket locally, TLS remotely: over Tailscale,
+// your local network or a VPN, the networks chosen in remote access).
+// Every binary WebSocket message carries exactly one ClientMessage (client →
+// daemon) or ServerMessage (daemon → client). Changes must stay additive
+// within v1.
+syntax = "proto3";
+
+package hammock.v1;
+
+option go_package = "github.com/alexjsp/hammock/internal/proto/hammockv1;hammockv1";
+
+// ---------- State model ----------
+
+message Group {
+  string id = 1;
+  string name = 2;
+  int32 order = 3;
+  repeated string tab_ids = 4;            // in display order
+  string last_focused_pane_id = 5;
+  string icon = 6;                        // an emoji, or empty for the default glyph
+  // Multiplayer (ADR-0008):
+  repeated Member members = 7;            // the people it's shared with, and where they are
+  bool invite_active = 8;                 // host: an invite link works for it
+  reserved 9; reserved "allow_guest_agents";  // was: guests' agents may work here (they now act with their person's role)
+  string host_user_id = 10;               // whose Mac it runs on (guest's copy; empty for your own)
+  Role my_role = 11;                      // guest's copy: what you may do
+  bool offline = 12;                      // guest's copy: the host can't be reached; last known state
+  // A picture from the Group's folder (.hammock/icon.png or .jpg): a hash of it
+  // as the daemon serves it (ReadGroupIcon), "" if there's none. The emoji
+  // (icon), if set, shows instead.
+  string icon_image = 13;
+  // Where the Group works: its last focused terminal's folder, kept by the
+  // daemon as you work (and settable, SetGroupFolder), so a Group whose tabs
+  // have all closed still opens new tabs there. "" until it has had one.
+  string folder = 14;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;  // as a request: remove / deny
+  ROLE_VIEWER = 1;       // watch
+  ROLE_DRIVER = 2;       // type, answer agents, open and close tabs
+  ROLE_HOST = 3;         // the Mac it runs on
+  // A linked computer of yours (linked-computers): everything a driver may,
+  // and its Groups' admin (rename, pictures, close), its sessions and its
+  // folders; not its devices, grants or remote access.
+  ROLE_OWNER = 4;
+}
+
+// Someone in a shared Group: their role, and (while connected) where they are.
+message Member {
+  string user_id = 1;
+  Role role = 2;
+  bool online = 3;
+  string tab_id = 4;
+  string pane_id = 5;
+  bool typing = 6;
+}
+
+// A person (one per Mac, ADR-0008): their name, Mac and picture.
+message Person {
+  string user_id = 1;      // "us_" + hex of SHA-256(public key)[:8]
+  string name = 2;
+  string device_name = 3;
+  bytes avatar = 4;        // PNG, small; empty for initials
+  bool me = 5;             // this daemon's own user
+}
+
+// Someone asking to join a shared Group, waiting for the host.
+message JoinRequest {
+  string id = 1;
+  string group_id = 2;
+  string user_id = 3;      // see the matching Person
+  int64 created_unix_ms = 4;
+  // The guest's user key, for the host to check before letting them in:
+  string key_fingerprint = 5;   // short, e.g. "3f2a 91c0 7be4 1d05" (the user id's hex)
+  bool new_key = 6;             // this key has never been let in before
+  bool name_has_other_key = 7;  // someone let in under this name before used a different key
+  // When this key was unlinked from your computers (0: never): a computer
+  // you unlinked (lost, stolen) asking to join.
+  int64 unlinked_unix_ms = 8;
+}
+
+message Tab {
+  string id = 1;
+  string group_id = 2;
+  string name = 3;                 // set by you (or an agent); wins over auto_name
+  Layout layout = 4;
+  string focused_pane_id = 5;
+  string auto_name = 6;            // what the tab's work looks like, for unnamed tabs (see daemon/tabnames.go)
+  string auto_key = 7;             // what auto_name came from (session or branch); a new one renames
+  // Panes floating over the layout, back to front (the last is in front).
+  // A tab always has a layout: floats are never its only panes.
+  repeated FloatingPane floating = 8;
+}
+
+// A pane floating over its tab's layout instead of being in it.
+message FloatingPane {
+  string pane_id = 1;
+  Frame frame = 2;           // fractions of the tab's area
+  bool minimised = 3;        // on the shelf at the bottom of the tab
+  bool minimised_by_all = 4; // minimised by "minimise all", which restores it
+  bool zoomed = 5;           // fills the tab (its frame kept for unzooming)
+  // Where it was lifted from, so docking puts it back: beside this pane,
+  // that way (empty for a pane that was made floating).
+  string origin_pane_id = 6;
+  Split.Direction origin_direction = 7;
+  bool origin_before = 8;
+}
+
+// A rectangle in fractions (0–1) of a tab's area, from its top left.
+message Frame {
+  float x = 1;
+  float y = 2;
+  float w = 3;
+  float h = 4;
+}
+
+// A tab's split tree. A leaf holds a pane id.
+message Layout {
+  oneof node {
+    string pane_id = 1;
+    Split split = 2;
+  }
+}
+
+message Split {
+  enum Direction {
+    DIRECTION_UNSPECIFIED = 0;
+    DIRECTION_HORIZONTAL = 1;  // children side by side (split right)
+    DIRECTION_VERTICAL = 2;    // children stacked (split down)
+  }
+  Direction direction = 1;
+  repeated Layout children = 2;
+  repeated float weights = 3;  // same length as children, sums to 1
+}
+
+enum PaneKind {
+  PANE_KIND_UNSPECIFIED = 0;
+  PANE_KIND_TERMINAL = 1;
+  PANE_KIND_BROWSER = 2;
+  PANE_KIND_SIMULATOR = 3;
+  PANE_KIND_EDITOR = 4;  // a text file (editor.go): its buffer is the daemon's
+}
+
+message Pane {
+  string id = 1;
+  string tab_id = 2;
+  PaneKind kind = 3;
+  string title = 4;                // terminal title (OSC 0/2) or command
+  string cwd = 5;                  // live working directory
+  repeated string command = 6;
+  uint32 cols = 7;
+  uint32 rows = 8;
+  bool exited = 9;
+  int32 exit_status = 10;
+  Agent agent = 11;                // unset when no agent detected
+  string created_by_pane_id = 12;  // pane whose agent created this one via MCP
+  // Browser panes:
+  string url = 13;                 // current page
+  bool loading = 14;
+  bool can_go_back = 15;
+  bool can_go_forward = 16;
+  string favicon_url = 17;
+  // Simulator panes (the title is the device's name):
+  string device_udid = 18;
+  bool device_booted = 19;
+  // Its frame artwork and screen mask, as paths on the host (standard Xcode
+  // locations: a guest whose Mac has the same artwork draws the frame).
+  string device_chrome = 21;  // a .devicechrome's Resources directory
+  string device_mask = 22;    // the screen's shape, a PDF
+  // A foldable (the iPhone Duo): its hinge in degrees, 0 closed to 180 flat,
+  // as last set (the cover screen shows when closed, the inner one open).
+  bool device_foldable = 24;
+  double device_hinge = 25;
+  // Terminal panes: what's running besides the shell (process names), for
+  // warnings before closing it.
+  repeated string processes = 20;
+  // Terminal panes: the program in the foreground, for its icon: its
+  // names from most specific to least ("vite", "npx", "node": a script
+  // under an interpreter, then the interpreter), lowercase. The shell's own
+  // name at a prompt; empty once it has exited.
+  repeated string program = 29;
+  // Log panes: the source its command reads (the log view is over it).
+  LogSource log = 23;
+  // A scheduled task's run (schedules.go): the schedule and run it belongs
+  // to. Clients use it to word notifications (the schedule's, not "finished").
+  string schedule_id = 26;
+  string schedule_run_id = 27;
+  // Browser panes hmk show (show_output) opened or reused: the pane it
+  // showed them for, so the next show from that pane reuses this one (kept
+  // with the pane: an agent or the daemon restarting doesn't lose it).
+  string shown_for_pane_id = 28;
+  // Editor panes: the file and its buffer's state (the text comes with
+  // AttachPane, as EditorUpdate).
+  EditorInfo editor = 30;
+}
+
+enum AgentState {
+  AGENT_STATE_UNSPECIFIED = 0;
+  AGENT_STATE_STARTING = 1;
+  AGENT_STATE_WORKING = 2;
+  AGENT_STATE_NEEDS_INPUT = 3;
+  AGENT_STATE_IDLE = 4;            // finished a turn
+  AGENT_STATE_ERRORED = 5;
+  AGENT_STATE_EXITED = 6;
+}
+
+message Agent {
+  string harness = 1;              // "claude", "codex", or a detected process name
+  string session_id = 2;           // vendor session id, when known
+  AgentState state = 3;
+  int64 state_since_unix_ms = 4;
+  string summary = 5;              // short description of what it's doing / asking
+  bool heuristic = 6;              // detected from process + screen, not hooks
+  string transcript_path = 7;      // native session file, when the harness reports it (Claude hooks do)
+  bool seen = 8;                   // the user has looked at the pane since this state began (clears "finished")
+  int32 shells = 9;                // shells the agent has running (its commands, ! commands, background tasks)
+  bool running_command = 10;       // one started after it went idle: a command you ran with ! (show it as at work)
+  int32 subagents = 11;            // its subagents still running (background ones go on after its turn)
+}
+
+message AttentionItem {
+  string id = 1;
+  string pane_id = 2;
+  AgentState state = 3;
+  string summary = 4;
+  int64 created_unix_ms = 5;
+  bool question = 6;               // the agent asked you something: answer it, there's nothing to allow
+}
+
+// A batch of state changes. The first update after Subscribe has full=true
+// and contains every entity; later updates contain only changed entities.
+message StateUpdate {
+  uint64 version = 1;
+  bool full = 2;
+  repeated Group groups = 3;
+  repeated Tab tabs = 4;
+  repeated Pane panes = 5;
+  repeated string deleted_group_ids = 6;
+  repeated string deleted_tab_ids = 7;
+  repeated string deleted_pane_ids = 8;
+  repeated AttentionItem attention = 9;          // upserts
+  repeated string cleared_attention_ids = 10;
+  repeated GrantRequest grants = 11;           // pending permission requests (upserts)
+  repeated string resolved_grant_ids = 12;
+  repeated Person people = 13;                 // upserts: members, requesters, and you
+  repeated JoinRequest join_requests = 14;     // upserts
+  repeated string resolved_join_ids = 15;
+  // This Mac's agents' usage limits (local clients only; guests aren't
+  // sent it). Set: replaces what was sent before.
+  UsageLimits usage = 16;
+  // Your computers: this one and those linked with it (local clients and
+  // linked computers only). Set: replaces what was sent before.
+  Computers computers = 17;
+  repeated LinkRequest link_requests = 18;     // upserts: links waiting on their code
+  repeated string resolved_link_ids = 19;
+  // Scheduled tasks (schedules.go): this computer's and linked computers'
+  // (local clients and linked computers only; never guests). Upserts.
+  repeated Schedule schedules = 20;
+  repeated string deleted_schedule_ids = 21;
+  // The Hammock Key: set, replacing what was sent before (this Mac's
+  // clients and paired phones only).
+  HammockKeyStatus hammock_key = 22;
+  repeated HammockKeyRequest hammock_key_requests = 23;  // waiting on you (upserts)
+  repeated string resolved_hammock_key_ids = 24;
+  // This Mac's theme (app-theme in its config file), for the iPhone to
+  // follow (this Mac's clients and paired phones only; never guests or
+  // linked computers). Set: replaces what was sent before.
+  HostTheme theme = 25;
+  // The agents this computer's daemon knows (ADR-0015), in the order to
+  // offer them: sent with a full update, and again when one is installed
+  // or removed. Set: replaces what was sent before. Empty from a daemon
+  // older than it: take it to know Claude Code and Codex.
+  repeated AgentKind agent_kinds = 26;
+}
+
+// The Mac's theme (theme.go). A curated theme's colours are in the apps
+// (AppTheme.swift), so its name is enough; a custom one comes with what the
+// phone needs to draw it.
+message HostTheme {
+  string name = 1;  // one of AppTheme.all's names, or "custom"
+  // custom: the terminal's light and dark Ghostty theme names, and the
+  // text of each one's theme file when one was found (Hammock's or
+  // Ghostty's themes folder), for names the apps don't have built in.
+  string light_terminal = 2;
+  string dark_terminal = 3;
+  string light_terminal_file = 4;
+  string dark_terminal_file = 5;
+  // custom: agent-color, an AgentColor name, a curated theme's name,
+  // #RRGGBB or light:#…,dark:#… ("": automatic, window_theme's colour).
+  string agent_color = 6;
+  // custom: window-theme, as the config has it (Native, a tint's name or
+  // Match Terminal; "": Native). The agent colour follows it when unset.
+  string window_theme = 7;
+}
+
+// A coding agent the daemon knows, and what Hammock can do with it here.
+message AgentKind {
+  string id = 1;          // the harness: "claude", "codex", "gemini"…
+  string name = 2;        // "Claude Code"
+  string short_name = 3;  // "Claude", for "Continue in Claude"
+  bool installed = 4;     // the login shell finds it here
+  bool can_resume = 5;    // its sessions can be resumed
+  bool agent_view = 6;    // its sessions show as a conversation
+  bool can_switch = 7;    // a conversation can continue in it
+  bool schedulable = 8;   // scheduled tasks can run it
+  bool usage = 9;         // its usage limits can be shown
+  bool hooks = 10;        // Hammock can install hooks for it
+  bool sessions = 11;     // its sessions are in the session finder
+  string install = 12;    // a command that installs it
+  bool live_usage = 13;   // its limits can be asked of its own service (usage-live)
+}
+
+// Agents' subscription usage limits, as their CLIs last reported them:
+// Claude Code's cache in ~/.claude.json, Codex's rate_limits in its
+// session files.
+message UsageLimits { repeated AgentUsage agents = 1; }
+message AgentUsage {
+  string harness = 1;                 // "claude" or "codex"
+  repeated UsageWindow windows = 2;   // shortest first
+  int64 fetched_unix_ms = 3;          // when the CLI last had them
+}
+message UsageWindow {
+  string label = 1;                   // "5h", "1w", "30d"
+  double used_percent = 2;            // 0–100
+  int64 resets_unix = 3;              // 0: not known
+  int32 window_minutes = 4;
+}
+
+// ---------- Client → daemon ----------
+
+message ClientMessage {
+  uint64 id = 1;  // request id; replies carry it in ServerMessage.reply_to
+  reserved 54; reserved "set_group_agents";
+  oneof msg {
+    Hello hello = 10;
+    Subscribe subscribe = 11;
+    CreateGroup create_group = 12;
+    RenameGroup rename_group = 13;
+    CloseGroup close_group = 14;
+    CreateTab create_tab = 15;
+    RenameTab rename_tab = 16;
+    CloseTab close_tab = 17;
+    CreatePane create_pane = 18;
+    ClosePane close_pane = 19;
+    AttachPane attach_pane = 20;
+    DetachPane detach_pane = 21;
+    Input input = 22;
+    Resize resize = 23;
+    Focus focus = 24;
+    ReadPane read_pane = 25;
+    SignalPane signal_pane = 26;
+    Presence presence = 27;
+    ClearAttention clear_attention = 28;
+    SetLayout set_layout = 29;
+    RequestGrant request_grant = 30;
+    RespondGrant respond_grant = 31;
+    MoveTab move_tab = 32;
+    SwitchAgent switch_agent = 39;
+    CreatePairing create_pairing = 33;   // local clients only
+    ListDevices list_devices = 34;       // local clients only
+    RevokeDevice revoke_device = 35;     // local clients only
+    Pair pair = 36;                      // remote: first contact with a pairing secret
+    Authenticate authenticate = 37;      // remote: signed challenge
+    SetRemoteAccess set_remote_access = 38; // local clients only
+    SetColors set_colors = 40;
+    SetGroupIcon set_group_icon = 41;
+    ShutdownDaemon shutdown_daemon = 42; // local clients only: the app replacing an outdated daemon
+    ListAudit list_audit = 43;          // local clients only
+    BrowserNavigate browser_navigate = 44;
+    WatchAgent watch_agent = 45;
+    AgentAnswer agent_answer = 46;
+    AgentSend agent_send = 47;
+    ReadAgentFile read_agent_file = 48;
+    // Multiplayer, on the host (local clients only, except that paired
+    // phones may RespondJoin and a guest's daemon may SetMember itself away):
+    CreateInvite create_invite = 49;
+    RevokeInvite revoke_invite = 50;
+    RespondJoin respond_join = 51;
+    SetMember set_member = 52;
+    StopSharing stop_sharing = 53;
+    // 54 was SetGroupAgents (guests' agents now act with their person's role).
+    SetProfile set_profile = 55;
+    // On the guest (local clients only):
+    JoinShared join_shared = 56;
+    LeaveShared leave_shared = 57;
+    // Between daemons (the guest's, connecting to the host's remote listener):
+    PeerHello peer_hello = 58;
+    PeerJoin peer_join = 59;
+    UploadFile upload_file = 60;
+    MoveGroup move_group = 61;
+    RegisterPush register_push = 62;  // paired devices
+    BrowserCall browser_call = 63;    // local clients only
+    BrowserLogs browser_logs = 64;    // local clients only
+    SimulatorCall simulator_call = 65;  // phones and guests: screenshot and input only
+    MergeTab merge_tab = 66;
+    BreakOutPane break_out_pane = 67;
+    ReplacePane replace_pane = 68;
+    ShowPairing show_pairing = 69;    // local clients only (not agents): the Mac app shows its pairing code
+    OpenMedia open_media = 70;
+    CloseMedia close_media = 71;
+    MediaAck media_ack = 72;
+    BrowserInput browser_input = 73;
+    BrowserMenuChoice browser_menu_choice = 74;
+    // The session finder (local clients only).
+    ListSessions list_sessions = 75;
+    ResumeSession resume_session = 76;
+    // Log panes.
+    WatchLog watch_log = 77;
+    ReadLog read_log = 78;
+    ClearLog clear_log = 79;
+    // Starting an agent in a new tab, and the folders to pick for it.
+    StartAgent start_agent = 80;
+    ListFolders list_folders = 81;
+    // A past session, read only (the session finder's preview). Replies AgentView.
+    ReadSession read_session = 82;
+    // A Group's picture: fetch it, or set it (written to its folder).
+    ReadGroupIcon read_group_icon = 83;
+    SetGroupIconImage set_group_icon_image = 84;
+    SessionExcerpts session_excerpts = 85;
+    // Reopen Closed: the last tab or pane you closed, agents resumed. Replies Created (its tab).
+    ReopenClosed reopen_closed = 86;
+    // Linked computers (local clients only, not agents).
+    DiscoverComputers discover_computers = 87;
+    LinkComputer link_computer = 88;
+    RespondLink respond_link = 89;
+    UnlinkComputer unlink_computer = 90;
+    SetComputerTint set_computer_tint = 91;
+    CreateLinkInvite create_link_invite = 92;
+    // Between daemons: linking (the computer asking connects to the other's
+    // remote listener, signs in with PeerHello, then these in order).
+    PeerLinkHello peer_link_hello = 93;
+    PeerLinkReveal peer_link_reveal = 94;
+    PeerLinkConfirm peer_link_confirm = 95;
+    // Linked computers, between them (ADR-0013: direct links only).
+    IntroduceComputers introduce_computers = 97;
+    PeerIntroLink peer_intro_link = 98;
+    UnlinkRequest unlink_request = 99;
+    // SSH agent forwarding: a linked computer's panes asking this one,
+    // where you are, to list or sign with its SSH keys. Linked computers only.
+    SshAgentCall ssh_agent_call = 100;
+    // Sets a Group's folder (Group.folder), where its new tabs open.
+    SetGroupFolder set_group_folder = 101;
+    // Screen sharing (ADR-0014): your paired phones and linked computers,
+    // never guests or agents. Replies Displays.
+    ListDisplays list_displays = 102;
+    ScreenInput screen_input = 103;
+    // The part of a display a viewer shows (zoomed in): the stream is then
+    // that part, at the viewer's resolution. No reply.
+    SetMediaView set_media_view = 104;
+    // The menu bar helper (this Mac's own clients, not agents): the
+    // server's state, and ending screen sessions. Replies ServerStatusReply.
+    ServerStatus server_status = 105;
+    EndScreenSession end_screen_session = 106;
+    ScreenSnapshot screen_snapshot = 107;
+    // Scheduled tasks (schedules.go). Save creates (no id) or replaces one
+    // and replies ScheduleReply; the others reply Ok, RunSchedule Created
+    // (the run's tab). Not for guests; agents need a grant to save or delete.
+    SaveSchedule save_schedule = 108;
+    DeleteSchedule delete_schedule = 109;
+    RunSchedule run_schedule = 110;
+    SetSchedulePaused set_schedule_paused = 111;
+    SkipScheduleRun skip_schedule_run = 112;
+    // Opens a file or URL in a browser pane beside the calling pane (hammock
+    // show, MCP show_output), reusing the one it showed in last, or one in
+    // its tab already on that page; or in a browser pane it names. Replies
+    // Created (the pane it's in).
+    ShowOutput show_output = 113;
+    // Floating panes: float, dock, move, minimise, raise, zoom.
+    FloatPane float_pane = 114;
+    // The Hammock Key: this Mac's own SSH key, in its Secure Enclave.
+    // Creating, deleting and choosing who approves: this Mac's own clients
+    // (and its CLI), never agents, phones, guests or other computers.
+    // Replies HammockKeyStatus.
+    HammockKeyCommand hammock_key_command = 115;
+    // Your answer to a request to sign with it: a deny from any of your
+    // clients here or your phone; an approval only from a phone, signed by
+    // its approval key (at the Mac you approve with Touch ID). No reply
+    // (the request resolves).
+    RespondHammockKey respond_hammock_key = 116;
+    // A paired phone's approval key (its Secure Enclave): kept so you can
+    // let it approve the Hammock Key (HammockKeyCommand). No reply.
+    SetApprovalKey set_approval_key = 117;
+    // How this Mac's SSH setup reaches Hammock's agent, and the fix to
+    // ~/.ssh/config (apply). This Mac's own clients only. Replies
+    // SshSetupReply.
+    SshSetup ssh_setup = 118;
+    // Which networks remote access listens on, and the extra addresses
+    // this computer gives out (replaces both; local clients only). Replies
+    // Ok, once listening on the new set.
+    SetRemoteNetworks set_remote_networks = 119;
+    // Editor panes (editor.go). Push replies EditorPushReply; Select has no
+    // reply; Command replies Ok (Error saying why not); ReadEditor replies
+    // EditorUpdate (a snapshot); ListFiles replies FileList.
+    EditorPush editor_push = 120;
+    EditorSelect editor_select = 121;
+    EditorCommand editor_command = 122;
+    ReadEditor read_editor = 123;
+    ListFiles list_files = 124;
+  }
+  reserved 96;  // ShareMembership (an earlier design)
+}
+
+message Hello {
+  uint32 protocol_version = 1;
+  string client_kind = 2;   // "mac", "ios", "tui", "cli", "mcp", "peer"
+  string client_name = 3;
+  string vt_engine = 4;     // e.g. "libghostty-vt@<commit>"
+  string from_pane_id = 5;  // a CLI run inside a pane (an agent, likely)
+}
+
+message Subscribe {}
+
+// computer_id: a linked computer to make it on ("" or this one's: here).
+message CreateGroup { string name = 1; string computer_id = 2; }
+message RenameGroup { string group_id = 1; string name = 2; }
+message SetGroupIcon { string group_id = 1; string icon = 2; }  // empty icon clears it
+message CloseGroup { string group_id = 1; }
+// folder: an absolute path to a directory on the Group's computer.
+message SetGroupFolder { string group_id = 1; string folder = 2; }
+
+message CreateTab {
+  string group_id = 1;
+  string name = 2;
+  PaneSpec pane = 3;   // the tab's first pane
+  // Chosen by the client, so it can show the tab before the reply (empty:
+  // the daemon picks one). "tb_" and 8 of abcdefghijkmnpqrstuvwxyz23456789,
+  // not already used.
+  string tab_id = 4;
+}
+message RenameTab { string tab_id = 1; string name = 2; }
+// remember (from a linked computer): a person closed it there, so it goes
+// on this one's Reopen Closed list for that computer; the reply is then
+// Created with the entry's id.
+message CloseTab { string tab_id = 1; bool remember = 2; }
+// computer_id: a linked computer, which reopens close_id there (the entry
+// its close replied with), so Reopen Closed here follows this computer's
+// order exactly.
+message ReopenClosed { string computer_id = 1; string close_id = 2; }
+
+message PaneSpec {
+  repeated string command = 1;  // empty = user's login shell
+  string cwd = 2;               // empty = cwd of the group's last focused pane
+  map<string, string> env = 3;
+  uint32 cols = 4;
+  uint32 rows = 5;
+  string created_by_pane_id = 6;  // set by the MCP server for agent-created panes
+  string url = 7;                 // set: a browser pane opening this page
+  string simulator = 8;           // set: a simulator pane showing this device (UDID)
+  LogSource log = 9;              // set: a log pane: a terminal running this source, shown as a log
+  EditorOpen editor = 10;         // set: an editor pane on this file (path empty: untitled)
+}
+
+message CreatePane {
+  // Split this existing pane. If empty, tab_id must be set and the pane
+  // becomes the tab's only pane (tab must be empty).
+  string split_pane_id = 1;
+  Split.Direction direction = 2;
+  string tab_id = 3;
+  PaneSpec spec = 4;
+  // The new pane goes before split_pane_id (left of it, or above) rather
+  // than after.
+  bool before = 5;
+  // The new pane floats over split_pane_id's tab instead (direction and
+  // before are ignored); frame is where (unset: the tab's bottom right).
+  bool floating = 6;
+  Frame frame = 7;
+}
+message ClosePane { string pane_id = 1; bool remember = 2; }  // remember: as CloseTab's
+
+// Moves every pane of tab_id, keeping their layout, next to into_pane_id in
+// another tab; tab_id then closes.
+message MergeTab { string tab_id = 1; string into_pane_id = 2; Split.Direction direction = 3; }
+// Moves a pane out of its tab into a new tab of its own, just after it.
+message BreakOutPane { string pane_id = 1; }
+// Floating panes (Tab.floating). Replies Ok.
+message FloatPane {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_FLOAT = 1;         // lift pane_id out of the layout (frame: where; unset keeps its size)
+    ACTION_DOCK = 2;          // put it in the layout: beside target_pane_id (direction, before),
+                              // or with none, back where it came from, else right of the focused pane
+    ACTION_FRAME = 3;         // move or resize it to frame
+    ACTION_MINIMISE = 4;
+    ACTION_RESTORE = 5;       // from the shelf (also raises it)
+    ACTION_RAISE = 6;         // to the front
+    ACTION_ZOOM = 7;          // fill the tab, or back to its frame if it does
+    ACTION_TOGGLE_ALL = 8;    // tab_id: minimise every float showing, or restore those this minimised
+  }
+  Action action = 1;
+  string pane_id = 2;
+  string tab_id = 3;           // ACTION_TOGGLE_ALL
+  Frame frame = 4;
+  string target_pane_id = 5;   // ACTION_DOCK
+  Split.Direction direction = 6;
+  bool before = 7;
+}
+// Turns a pane into another (a terminal into a browser, say) in its place:
+// a new pane from spec takes its spot in the layout and the old one closes.
+message ReplacePane { string pane_id = 1; PaneSpec spec = 2; }
+
+// Drives a browser pane: action is load (with url), back, forward, reload or stop.
+message BrowserNavigate { string pane_id = 1; string action = 2; string url = 3; }
+
+// Start streaming a pane. The daemon replies with PaneSnapshot, then sends
+// PaneOutput for every subsequent byte.
+message AttachPane { string pane_id = 1; }
+message DetachPane { string pane_id = 1; }
+
+message Input { string pane_id = 1; bytes data = 2; }
+
+// Size from this client. The pane resizes to the active driver's size.
+// cell_*_px: the client's cell size in device pixels (0: unknown), reported
+// to programs that ask (Kitty graphics, XTWINOPS).
+message Resize { string pane_id = 1; uint32 cols = 2; uint32 rows = 3; uint32 cell_width_px = 4; uint32 cell_height_px = 5; }
+
+// The user focused/typed into this pane on this client (makes it the active driver).
+message Focus { string pane_id = 1; }
+
+message ReadPane {
+  string pane_id = 1;
+  bool scrollback = 2;  // include scrollback, not just the visible screen
+}
+
+message SignalPane { string pane_id = 1; int32 signal = 2; }
+
+// What this client is showing, for presence-aware notifications and (in
+// shared Groups) where you are.
+message Presence {
+  repeated string visible_pane_ids = 1;
+  bool foreground = 2;
+  string focused_pane_id = 3;
+}
+
+message ClearAttention { string id = 1; }
+
+// Stops the daemon, so the app can start the one it bundles when the running
+// one is a different version, or because someone stopped the server. Pane
+// holders keep running unless end_panes: then every terminal pane's process
+// is hung up and its holder exits too (the layout stays; the next daemon
+// starts fresh shells and resumes agents, as after a restart).
+message ShutdownDaemon { bool end_panes = 1; }
+
+// The client's terminal colours, so the daemon (which answers terminal
+// queries) reports what the user sees: OSC 4/10/11 colour queries and the
+// light/dark scheme (CSI ? 996 n, and mode 2031 change reports). Colours are
+// 0xRRGGBB. The last client to send wins.
+message SetColors {
+  uint32 foreground = 1;
+  uint32 background = 2;
+  uint32 cursor = 3;
+  repeated uint32 palette = 4;  // the 16 ANSI colours
+  bool dark = 5;
+}
+
+// ---------- Permissions ----------
+
+// An agent (via MCP) asking to act outside its default scope.
+message GrantRequest {
+  string id = 1;
+  string requester_pane_id = 2;  // the agent's pane
+  string target_pane_id = 3;
+  string action = 4;             // "send" | "close" | "read" | "create" | "browse" | "simulator"
+  string description = 5;        // the agent's own words about it: show quoted, as the agent's
+  int64 created_unix_ms = 6;
+  // What it asks, in Hammock's words from the action and the panes, e.g.
+  // "Claude in Web ▸ api wants to type into Web ▸ api ▸ pane 2 (npm run dev)".
+  // Show this as the request; older daemons leave it empty.
+  string headline = 7;
+}
+
+// Sent by the MCP server; the reply (GrantDecision) arrives once a user
+// decides, a remembered grant applies, or it times out (denied).
+message RequestGrant {
+  string requester_pane_id = 1;
+  string target_pane_id = 2;
+  string action = 3;
+  string description = 4;
+}
+
+message RespondGrant {
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_ALLOW_ONCE = 1;
+    DECISION_ALLOW_GROUP = 2;  // remember for this agent pane + action within the Group
+    DECISION_DENY = 3;
+  }
+  string id = 1;
+  Decision decision = 2;
+}
+
+message GrantDecision { bool allowed = 1; string reason = 2; }
+
+// Replaces a tab's layout tree, e.g. after dragging a divider. Must contain
+// exactly the tab's current panes.
+message SetLayout { string tab_id = 1; Layout layout = 2; }
+
+// Moves a tab to position `index` in `group_id` (which may be another Group).
+message MoveTab { string tab_id = 1; string group_id = 2; int32 index = 3; }
+
+// ---------- Daemon → client ----------
+
+message ServerMessage {
+  uint64 reply_to = 1;
+  oneof msg {
+    HelloReply hello_reply = 10;
+    Error error = 11;
+    Ok ok = 12;
+    StateUpdate state = 13;
+    PaneSnapshot pane_snapshot = 14;
+    PaneOutput pane_output = 15;
+    PaneText pane_text = 16;
+    Created created = 17;
+    GrantDecision grant_decision = 18;
+    AuthChallenge auth_challenge = 19;
+    Pairing pairing = 20;
+    Devices devices = 21;
+    Paired paired = 22;
+    AuditLog audit_log = 23;
+    AgentView agent_view = 24;
+    AgentFile agent_file = 25;
+    Invite invite = 26;
+    PeerJoined peer_joined = 27;
+    BrowserResult browser_result = 28;
+    SimulatorResult simulator_result = 29;
+    PeerWelcome peer_welcome = 30;
+    ShowPairing show_pairing = 31;    // to the Mac app: show the pairing code; as a reply, which Mac shows it
+    DevicePaired device_paired = 32;  // to local clients: a device just paired
+    MediaTicket media_ticket = 33;
+    MediaFrame media_frame = 34;
+    MediaEnded media_ended = 35;
+    BrowserMenu browser_menu = 36;
+    BrowserClipboard browser_clipboard = 37;
+    AgentSwitched agent_switched = 38;    // reply to SwitchAgent
+    SessionList session_list = 39;        // reply to ListSessions
+    SessionResumed session_resumed = 40;  // reply to ResumeSession
+    LogView log_view = 41;                // to WatchLog watchers, and the reply to ReadLog
+    FolderList folder_list = 42;          // reply to ListFolders
+    GroupIcon group_icon = 43;            // reply to ReadGroupIcon
+    SessionExcerpt session_excerpt = 44;  // reply to SessionExcerpts
+    DiscoveredComputers discovered_computers = 45;  // reply to DiscoverComputers
+    PeerLinkNonce peer_link_nonce = 46;             // reply to PeerLinkHello
+    PeerLinked peer_linked = 47;                    // reply to PeerLinkConfirm
+    PeerIntroLinked peer_intro_linked = 48;         // reply to PeerIntroLink
+    UnlinkTaken unlink_taken = 49;                  // reply to UnlinkRequest
+    SshAgentReply ssh_agent_reply = 50;             // reply to SshAgentCall
+    Displays displays = 51;                         // reply to ListDisplays
+    ScreenCursor screen_cursor = 52;                // to a screen's viewer, as its pointer moves or changes
+    ScreenState screen_state = 53;                  // to a screen's viewer: locked or not
+    ServerStatusReply server_status_reply = 54;     // reply to ServerStatus
+    ScreenSnapshotReply screen_snapshot_reply = 55; // reply to ScreenSnapshot
+    ScheduleReply schedule_reply = 56;             // reply to SaveSchedule
+    HammockKeyStatus hammock_key_status = 57;             // reply to HammockKeyCommand
+    SshSetupReply ssh_setup_reply = 58;             // reply to SshSetup
+    EditorUpdate editor_update = 59;                // to an editor pane's attached clients; reply to ReadEditor
+    EditorPushReply editor_push_reply = 60;         // reply to EditorPush
+    FileList file_list = 61;                        // reply to ListFiles
+  }
+}
+
+// Remote clients get host_name and user_id only once authenticated (send
+// Hello after Pair/Authenticate/PeerHello to learn them).
+message HelloReply {
+  uint32 protocol_version = 1;
+  string daemon_version = 2;
+  string host_name = 3;
+  string vt_engine = 4;
+  bool remote_enabled = 5;  // local clients: whether remote access is on
+  string user_id = 6;       // this daemon's user (see Person)
+  // (remote clients, once signed in) where this computer can be reached
+  // now, as Pairing's: a paired phone keeps them to reach it next time.
+  repeated string addresses = 7;
+  repeated string lan_subnets = 8;
+}
+
+message Error { string message = 1; }
+message Ok {}
+message Created { string id = 1; }
+
+// Replays a pane's current state as a VT byte stream; feeding `data` into a
+// fresh terminal of size cols×rows reproduces the screen. Live PaneOutput
+// continues from `offset`.
+message PaneSnapshot {
+  string pane_id = 1;
+  bytes data = 2;
+  uint64 offset = 3;
+  uint32 cols = 4;
+  uint32 rows = 5;
+}
+
+message PaneOutput {
+  string pane_id = 1;
+  uint64 offset = 2;
+  bytes data = 3;
+}
+
+message PaneText {
+  string pane_id = 1;
+  string text = 2;
+}
+
+// ---------- Remote access & devices ----------
+//
+// Remote clients connect over WebSocket + TLS on the networks remote access
+// listens on (RemoteNetwork: Tailscale, a local network, a VPN), and only
+// from them.
+// The daemon first sends AuthChallenge; the client must answer with Pair
+// (first time, using a secret from a pairing QR code) or Authenticate
+// (Ed25519 signature with its registered key over "hmk-device-auth-v1" 0
+// cert_sha256 0 nonce: the host certificate's fingerprint as lowercase hex,
+// the pin the client dialled with). Nothing else is
+// accepted until then: unauthenticated connections may only send small
+// messages (1 MB), must sign in within 15 seconds, and only a few may wait
+// at once.
+
+message AuthChallenge { bytes nonce = 1; }
+
+message Pair {
+  bytes secret = 1;
+  string device_name = 2;
+  string platform = 3;        // "ios", "macos", …
+  bytes public_key = 4;       // Ed25519
+}
+
+message Paired { string device_id = 1; }
+
+message Authenticate {
+  string device_id = 1;
+  bytes signature = 2;        // Ed25519 over the challenge (see above)
+  // The device's name as its person set it (the iPhone's Devices ▸ Name):
+  // the one this Mac knows it by from now on. Empty keeps it.
+  string device_name = 3;
+}
+
+message CreatePairing {}
+
+// `hmk pair` asks the Mac app to show its pairing code (the secret stays
+// on screen, not in a terminal an agent or a guest may read). The daemon
+// passes it to the app and replies with this Mac's name, or an error when
+// the app isn't open.
+message ShowPairing { string host_name = 1; }
+
+// A device just paired (the Mac notifies).
+message DevicePaired { string device_id = 1; string name = 2; string platform = 3; }
+
+// Everything a new device needs, encoded into a QR code by the Mac app.
+message Pairing {
+  string host_name = 1;
+  repeated string addresses = 2;  // host:port candidates, tried at once (Tailscale, VPN, local network, extra addresses)
+  string cert_sha256 = 3;         // hex SHA-256 of the daemon's TLS certificate (pinned)
+  bytes secret = 4;               // single use, short-lived
+  int64 expires_unix_ms = 5;
+  bool remote_enabled = 6;
+  // Local networks' subnets ("192.168.1.0/24"): an address in one is tried
+  // only by a device with an address of its own in it (on that network
+  // now), so nothing is sent to whoever has that address elsewhere.
+  repeated string lan_subnets = 7;
+}
+
+message Device {
+  string id = 1;
+  string name = 2;
+  string platform = 3;
+  int64 paired_unix_ms = 4;
+  int64 last_seen_unix_ms = 5;
+}
+
+// Recent audit events (agent actions, permission decisions, remote access),
+// newest first.
+message ListAudit { int32 limit = 1; }
+// An audit log entry. Raw (actor, action, target, detail) and in words:
+// who did it, what ("typed in Web ▸ api"), and its kind (agent, device,
+// guest, you, security). A run of the same thing is one event: count of
+// them, from first_unix_ms to time_unix_ms.
+message AuditEvent {
+  int64 time_unix_ms = 1;
+  string actor = 2;
+  string action = 3;
+  string target = 4;
+  string detail = 5;
+  string who = 6;
+  string summary = 7;
+  string kind = 8;
+  int32 count = 9;
+  int64 first_unix_ms = 10;
+}
+message AuditLog { repeated AuditEvent events = 1; }
+message ListDevices {}
+message Devices {
+  repeated Device devices = 1;
+  // Remote access: other networks' addresses in Tailscale's ranges, e.g.
+  // "utun5 100.96.0.2" (a VPN such as Cloudflare WARP). Remote access
+  // listens only on Tailscale's own.
+  repeated string other_tailscale_range = 2;
+  // Tailscale couldn't be asked which addresses are its own, and several
+  // networks have addresses in its ranges: remote access listens on all.
+  bool tailscale_unknown = 3;
+  // The networks remote access may listen on: those this computer is on
+  // now, and those chosen but not here now.
+  repeated RemoteNetwork networks = 4;
+  // Extra host[:port] addresses given out (a DNS name, a VPN endpoint, a
+  // router's forwarded port): config's remote-address.
+  repeated string extra_addresses = 5;
+  bool remote_enabled = 6;
+}
+
+// A network remote access may listen on, by its subnet, so it's the same
+// network however the interface is numbered (a VPN's utun) and a café's
+// Wi-Fi on another subnet isn't it. Config: remote-network = <id>.
+message RemoteNetwork {
+  string id = 1;               // "tailscale", or a subnet: "192.168.1.0/24"
+  string label = 2;            // "Tailscale", "Wi-Fi", "Ethernet", "utun4"
+  string kind = 3;             // "tailscale", "lan" (Wi-Fi, Ethernet), "vpn"
+  repeated string addresses = 4;  // this computer's on it ("192.168.1.20"); none: not on it now
+  bool enabled = 5;            // chosen: listened on whenever this computer is on it
+  bool connected = 6;          // this computer is on it now
+  bool public = 7;             // a public range: anyone on the internet who can route to it could connect
+}
+
+// Replaces the networks remote access listens on (RemoteNetwork ids) and
+// the extra addresses given out; written to the config file
+// (remote-network, remote-address). Listening follows at once.
+message SetRemoteNetworks {
+  repeated string networks = 1;
+  repeated string extra_addresses = 2;
+}
+message RevokeDevice { string device_id = 1; }
+
+// Turns the Tailscale listener on or off (persisted).
+message SetRemoteAccess { bool enabled = 1; }
+
+// Continues a pane's agent session in another harness (e.g. Claude → Codex):
+// the session is converted when possible, otherwise the new agent starts
+// from a generated handoff brief. Replies once the new agent is launched.
+message SwitchAgent { string pane_id = 1; string target_harness = 2; }
+// What a switch carried across (the carry-over report), to show.
+message AgentSwitched { string report = 1; }
+
+// ---------- Session finder ----------
+//
+// Every Claude Code and Codex session on this Mac, from the daemon's index
+// (internal/sessions).
+
+// Lists sessions matching query (every word, as a prefix, in the title,
+// folder or conversation), best first; empty: the most recent first.
+message ListSessions {
+  string query = 1;
+  int32 limit = 2;  // 0: 50
+  // Only sessions started in this folder or inside it. An agent may search
+  // its own project's (its pane's git root, else its folder); others ask
+  // the person ("sessions" grant).
+  string folder = 3;
+  // An agent: every folder, not just its project (asks the person once).
+  // People see every folder unless they give one.
+  bool everywhere = 4;
+  string computer_id = 5;  // a linked computer's sessions ("": this one's)
+  // Only sessions in the folders open in this Group: its terminals' folders,
+  // each widened to its git root (not the home folder or /). With folder,
+  // both must hold. An agent may only with the "sessions" grant.
+  string group_id = 6;
+}
+message SessionInfo {
+  string harness = 1;        // claude, codex
+  string id = 2;             // its own ID (what its --resume takes)
+  string title = 3;          // its name or generated title, else its first prompt
+  string cwd = 4;
+  string first_prompt = 5;
+  string last_prompt = 6;
+  int64 created_unix_ms = 7;
+  int64 updated_unix_ms = 8;
+  int32 messages = 9;        // your prompts and its replies
+  string snippet = 10;       // a search: where it matched, the match in «»
+  string open_pane_id = 11;  // a pane it's running in now
+}
+message SessionList {
+  repeated SessionInfo sessions = 1;
+  bool indexing = 2;  // the first index isn't finished: there may be more
+}
+// Reads the parts of a session that matter, not the whole transcript: with a
+// query, the messages matching every word (each with the one before and
+// after); without, the most recent. Your prompts and the agent's replies
+// only (no tool calls), each clipped. Agents: as ListSessions' folder rule.
+message SessionExcerpts {
+  string harness = 1;  // empty: whichever has this ID
+  string id = 2;
+  string query = 3;
+  int32 limit = 4;     // messages; 0: 12
+  string computer_id = 5;
+  // Only your first prompt, whole (not clipped): what Schedule This starts
+  // a schedule's prompt from. query and limit are ignored.
+  bool first_prompt = 6;
+}
+message SessionExcerpt {
+  SessionInfo session = 1;
+  repeated SessionMessage messages = 2;
+  int32 matched = 3;   // messages matching the query (more than shown, perhaps)
+}
+message SessionMessage {
+  string role = 1;     // "user" or "assistant"
+  int64 time_unix_ms = 2;
+  string text = 3;
+  int32 index = 4;     // its place among the session's messages
+}
+// Resumes a session in a new tab: in the Group showing its folder (else
+// group_id, else the first), or, with target_harness another agent, as a
+// conversion. If it's already running in a pane, that pane is the answer.
+message ResumeSession {
+  string harness = 1;  // empty: whichever has this ID
+  string id = 2;
+  string target_harness = 3;  // empty: the same agent
+  string group_id = 4;
+  string computer_id = 5;  // a linked computer's session
+}
+message SessionResumed {
+  string tab_id = 1;
+  string pane_id = 2;
+  bool already_open = 3;
+  string report = 4;  // a conversion's carry-over report
+}
+
+// ---------- Agent view ----------
+//
+// A rich view of an agent's conversation (Claude Code), parsed by the daemon
+// from the agent's own session file, with live prompt state read from the
+// pane's screen. Answers are typed into the pane as the keystrokes the CLI
+// expects, after checking the screen shows the prompt they're for.
+
+message AgentBlock {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_USER = 1;      // a message you sent (text, images)
+    KIND_TEXT = 2;      // the agent's markdown
+    KIND_THINKING = 3;
+    KIND_TOOL = 4;      // a tool call and its result
+    KIND_QUESTION = 5;  // the agent's question tool
+    KIND_PLAN = 6;      // a plan presented for approval
+    KIND_SUBAGENT = 7;  // a subagent run (Agent/Task tool)
+    KIND_NOTE = 8;      // compaction markers, interruptions, system notes
+  }
+  string id = 1;                     // stable across updates
+  Kind kind = 2;
+  int64 time_unix_ms = 3;
+  string text = 4;                   // markdown, thinking text, or the plan
+  string tool = 5;                   // native tool name
+  string title = 6;                  // one line: "Ran `go test ./...`", "Edited AppModel.swift"
+  string input = 7;                  // the call's main input (command, path, pattern, prompt)
+  string output = 8;                 // result text, clipped
+  bool error = 9;
+  bool pending = 10;                 // called, no result yet
+  string diff = 11;                  // unified diff for edits and writes
+  int32 added = 12;
+  int32 removed = 13;
+  repeated AgentQuestion questions = 14;
+  repeated AgentImage images = 15;
+  string turn_id = 16;               // the user block that started this turn
+}
+
+message AgentQuestion {
+  string question = 1;
+  string header = 2;
+  repeated AgentOption options = 3;
+  bool multi_select = 4;
+  string answer = 5;                 // once answered
+  string notes = 6;                  // notes given with the answer (a question with previews)
+}
+message AgentOption {
+  string label = 1;
+  string description = 2;
+  string preview = 3;                // monospaced text shown beside the option (a mockup, a snippet)
+}
+
+// An image, fetched with ReadAgentFile.
+message AgentImage { string ref = 1; string media_type = 2; }
+
+// The prompt the agent is showing now, as read off the screen: one menu at
+// a time (the question tool shows one question per tab; answer it and the
+// next appears). The transcript adds context when it has it (the command a
+// permission is for, a plan's text).
+message AgentPrompt {
+  enum Kind { KIND_NONE = 0; KIND_QUESTION = 1; KIND_PERMISSION = 2; KIND_PLAN = 3; }
+  Kind kind = 1;
+  string block_id = 2;               // the pending call it's for, when the transcript has it
+  string title = 3;                  // the question, or e.g. "Do you want to proceed?"
+  repeated string options = 4;       // as shown, numbered from 1
+  int32 selected = 5;                // 1-based; 0 unknown
+  repeated string descriptions = 6;  // per option ("" when none)
+  bool multi_select = 7;             // options are checkboxes
+  repeated bool checked = 8;         // per option, for multi-select
+  string tabs = 9;                   // the question tool's tab bar, when several questions
+  int32 other = 10;                  // the option that takes typed text ("Type something", "Tell Claude what to change"); 0 none
+  // A question with previews (Claude Code shows each option's beside the
+  // list, and takes notes with the pick instead of typed text): per option
+  // ("" when none), from the question call.
+  repeated string previews = 11;
+  bool notes = 12;                   // notes can go with the pick (AgentAnswer.notes)
+}
+
+message AgentView {
+  string pane_id = 1;
+  bool replace = 2;                  // replace everything shown (first message, or a new session)
+  repeated AgentBlock blocks = 3;    // upserts by id, in order
+  bool older = 4;                    // these blocks page in before the ones shown
+  bool has_more = 5;                 // there are older blocks still
+  AgentPrompt prompt = 6;
+  bool working = 7;
+  string status = 8;                 // what the agent says it's doing
+  repeated string commands = 9;      // slash commands, for completion
+  string session_id = 10;
+  string error = 11;                 // e.g. no session file found
+  repeated AgentSubagent subagents = 12; // the session's subagents (sent when they change)
+  string subagent_id = 13;           // set: this is a view of that subagent
+  string model = 14;                 // the model of the latest reply (e.g. claude-opus-5-5)
+  int64 context_tokens = 15;         // the context it took
+  int64 context_window = 16;         // the window those count against
+  string draft = 17;                 // what's typed in its input box in the terminal (not its placeholder)
+  repeated AgentShell shells = 18;   // the session's background shells (sent when they change)
+  string shell_id = 19;              // set: this is a view of that shell's output
+  string shell_output = 20;          // its output, ANSI stripped: all of it kept (replace) or what's new
+  AgentTaskList tasks = 21;          // the session's task list (sent when it changes; unset: unchanged)
+  AgentLinks links = 22;             // its pull requests and artifacts (sent when they change)
+}
+
+// An agent's task list: Claude Code's (TodoWrite, or TaskCreate and
+// TaskUpdate) or Codex's plan, as it stands now.
+message AgentTaskList { repeated AgentTask tasks = 1; }
+message AgentTask {
+  string id = 1;
+  string subject = 2;                // what it is ("Run the tests")
+  string active_form = 3;            // said while it's under way ("Running the tests"); may be empty
+  Status status = 4;
+  enum Status { STATUS_PENDING = 0; STATUS_IN_PROGRESS = 1; STATUS_COMPLETED = 2; }
+}
+
+// What a session made that lives elsewhere: pull requests it opened or
+// pushed to, and artifacts it published. Oldest first.
+message AgentLinks { repeated AgentLink links = 1; }
+message AgentLink {
+  enum Kind { KIND_UNSPECIFIED = 0; KIND_PULL_REQUEST = 1; KIND_ARTIFACT = 2; }
+  Kind kind = 1;
+  string url = 2;
+  string title = 3;                  // a PR's title (when known) or an artifact's
+  int32 number = 4;                  // a PR's number
+  string repo = 5;                   // a PR's repository ("owner/name")
+  string state = 6;                  // a PR's: OPEN, DRAFT, MERGED or CLOSED ("" unknown)
+  string icon = 7;                   // an artifact's icon word ("chart")
+}
+
+// A subagent the agent started (Claude Code's Agent tool), with its own
+// transcript beside the session's.
+message AgentSubagent {
+  string id = 1;
+  string description = 2;
+  string agent_type = 3;
+  bool finished = 4;
+  int64 started_unix_ms = 5;
+}
+
+// A command the agent runs in the background (Claude Code's Bash with
+// run_in_background, or one you sent to the background), whose output it
+// writes to a file the daemon can follow.
+message AgentShell {
+  string id = 1;
+  string command = 2;
+  string description = 3;
+  bool finished = 4;                 // it reported back, or the agent that ran it is gone
+  int64 started_unix_ms = 5;
+  string summary = 6;                // how it ended ("… completed (exit code 0)")
+  bool failed = 7;
+}
+
+// Start (or with watch=false stop) receiving AgentView for a pane;
+// before_block_id pages in older history. subagent_id or shell_id: that
+// subagent's transcript, or that background shell's output, instead.
+message WatchAgent { string pane_id = 1; bool watch = 2; string before_block_id = 3; string subagent_id = 4; string shell_id = 5; }
+
+// Answers the prompt on screen (as the client last saw it: the daemon
+// checks it still shows those options before typing anything).
+message AgentAnswer {
+  string pane_id = 1;
+  repeated string options_seen = 2;  // the prompt's options as the client saw them
+  int32 option = 3;                  // the 1-based option (with text: the "other" option)
+  string text = 4;                   // typed text for the "other" option
+  repeated int32 toggles = 5;        // multi-select: the options to tick (all others unticked), then next
+  string notes = 7;                  // with option, when the prompt takes notes (AgentPrompt.notes)
+  // Needs You's Allow / Deny, for any agent and without the agent view:
+  // the first option, or Esc, typed only while the screen shows a prompt.
+  // With none on screen nothing is typed and the reply is an error.
+  Decision decision = 6;
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_ALLOW = 1;
+    DECISION_DENY = 2;
+    // Allow, and remember the tool for the pane's schedule (a scheduled
+    // run of Claude): later runs start with it allowed.
+    DECISION_ALLOW_SCHEDULE = 3;
+  }
+}
+
+// Sends a message to the agent (queued by it while it works).
+message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachment attachments = 3; }
+message AgentAttachment { string name = 1; bytes data = 2; }
+
+// Fetches an image or a file the session referenced.
+message ReadAgentFile { string pane_id = 1; string ref = 2; }
+message AgentFile { string ref = 1; string media_type = 2; bytes data = 3; }
+
+// ---------- Multiplayer (ADR-0008) ----------
+
+// The Group's invite link, made (or regenerated) for the host to send. One
+// link per Group, reusable until revoked; each person who opens it waits for
+// the host's approval.
+message CreateInvite { string group_id = 1; bool regenerate = 2; }
+message Invite { string link = 1; }
+message RevokeInvite { string group_id = 1; }
+
+// The host's answer to a join request: a role, or ROLE_UNSPECIFIED to decline.
+message RespondJoin { string id = 1; Role role = 2; }
+
+// Changes someone's role in a Group; ROLE_UNSPECIFIED removes them.
+message SetMember { string group_id = 1; string user_id = 2; Role role = 3; }
+
+// Stops sharing a Group (empty: every Group, disconnecting everyone).
+message StopSharing { string group_id = 1; }
+
+// Your name and picture, as others see you.
+// Your name and picture, and this Mac's name as others see it (absent:
+// unchanged; empty: the Mac's own, as System Settings names it).
+message SetProfile { string name = 1; bytes avatar = 2; optional string device_name = 3; }
+
+// Joins a shared Group from its link; the reply comes once the host answers.
+message JoinShared { string link = 1; }
+message LeaveShared { string group_id = 1; }
+
+// What an invite link carries (base64url in hammock://join/…).
+message InviteToken {
+  string host_name = 1;
+  repeated string addresses = 2;   // endpoints, tried in order (Tailscale now; a relay later)
+  string cert_sha256 = 3;          // the host daemon's pinned certificate
+  bytes secret = 4;
+  string group_name = 5;
+  string host_user_id = 6;
+  repeated string lan_subnets = 7;  // as Pairing's (a linked computer's, from its record)
+}
+
+// A guest daemon's first message on the host's remote listener: who it is,
+// proven by signing "hmk-peer-auth-v1" 0 cert_sha256 0 nonce (the
+// AuthChallenge nonce, bound to the host's certificate as in Authenticate)
+// with its user key.
+message PeerHello {
+  bytes public_key = 1;      // Ed25519
+  bytes signature = 2;
+  string name = 3;
+  string device_name = 4;
+  bytes avatar = 5;
+  bytes host_nonce = 6;      // 32 fresh bytes the host must sign (PeerWelcome)
+}
+
+// The host's reply to PeerHello: proof it holds the user key behind the
+// invite's host_user_id, its signature over "hmk-peer-host-v1" 0
+// cert_sha256 0 host_nonce. The guest drops the link if it doesn't verify.
+message PeerWelcome {
+  bytes public_key = 1;      // Ed25519; its user id must be the invite's host_user_id
+  bytes signature = 2;
+}
+
+// Asks to join with an invite's secret; answered once the host decides.
+message PeerJoin { bytes secret = 1; }
+message PeerJoined { string group_id = 1; Role role = 2; }
+
+// Moves a Group (yours, or one shared with you) to an index in your sidebar.
+message MoveGroup { string group_id = 1; int32 index = 2; }
+
+// A file a guest dropped onto a pane: saved on the host, its path typed in.
+message UploadFile { string pane_id = 1; string name = 2; bytes data = 3; }
+
+// ---------- Push (ADR-0007) ----------
+
+// A paired phone asking to be pushed to while you're away from the Mac:
+// the relay to send through, its id there (not the APNs token), the key
+// to encrypt for it with (AES-256-GCM), and which events it wants. An
+// empty relay_id stops pushes.
+message RegisterPush {
+  string relay_url = 1;
+  string relay_id = 2;
+  bytes key = 3;
+  repeated string events = 4;   // "join", "needs_input", "finished", "errored"
+}
+
+// A Chrome DevTools protocol call on a browser pane's page (the MCP
+// browser tools). Replies BrowserResult with the call's result.
+message BrowserCall {
+  string pane_id = 1;
+  string method = 2;       // e.g. "Runtime.evaluate"
+  string params_json = 3;  // a JSON object; empty for none
+  uint32 timeout_ms = 4;   // default 30 s
+}
+
+// A browser pane's console messages or network requests, oldest first, as
+// a JSON array. Replies BrowserResult.
+message BrowserLogs {
+  string pane_id = 1;
+  string kind = 2;  // "console" or "network"
+  bool clear = 3;   // forget them after reading
+}
+
+message BrowserResult { string json = 1; }
+
+// Simulator panes (the Hammock Simulator helper). Ops:
+//   devices                       the simulators on this Mac (no pane needed)
+//   screenshot {format, pixels}   PNG of the screen, in points (pixels: true, the device's pixels; format: "jpeg")
+//   tap {x, y}                    in points, as in a screenshot
+//   swipe {x, y, x2, y2, ms}
+//   touch {phase, x, y}           one finger, live: down, move…, up
+//   text {text}                   typed on the hardware keyboard (US layout)
+//   key {usage, shift, cmd}       one key by HID keyboard usage (arrows: 79-82)
+//   copy                          ⌘C on the device; replies {text}, its pasteboard
+//   button {name}                 home, lock, side, siri or keyboard (the software keyboard)
+//   rotate {value}                left, right, portrait, upside-down, landscape-left, landscape-right
+//   pinch {x, y, scale, ms}       two fingers around x, y; scale above 1 zooms in
+//   gesture {paths}               fingers' paths: [[{x, y, t (ms)}…]…], in points
+//   fold {value | angle, ms}      a foldable's hinge: open, closed, half, or 0 to 180 degrees
+message SimulatorCall {
+  string pane_id = 1;
+  string op = 2;
+  string args_json = 3;
+}
+
+// Remote video of a simulator (later, browser) pane: H.264 from the helper
+// that owns the pixels (ADR-0012). Replies MediaTicket.
+//
+// Over QUIC (the default): connect to the host's address (the one this
+// connection uses) at quic_port, ALPN "hmk-media/1", the same pinned
+// certificate; open a bidirectional stream and send the 32-byte ticket.
+// On that stream the client then sends records: u8 1 + u32 seq (a frame
+// received whole), or u8 2 (send a keyframe: the decoder lost its place).
+// Each frame arrives on its own server-initiated unidirectional stream: a
+// 17-byte header (u32 seq, u8 flags (1 keyframe, 2 refresh, 4 HEVC, 8
+// cropped), u64 capture time µs, u16 width, u16 height), when cropped the
+// part of the display it shows (u16 x, y, w, h, each a fraction × 65535),
+// then the frame to the end of the stream. A stream
+// reset by the server is a frame given up; the next frame shown is a
+// keyframe.
+//
+// In band (in_band): frames come as MediaFrame messages on this
+// connection and are acked with MediaAck. A guest's daemon passes frames to
+// its app this way; it's the path a relay would take.
+//
+// Data, all big-endian. Frames are AVCC (4-byte NAL lengths); keyframes lead
+// with their SPS and PPS. The session ends with this connection, CloseMedia,
+// or the pane (MediaEnded).
+message OpenMedia {
+  string pane_id = 1;
+  bool in_band = 2;
+  uint32 max_pixels = 3;  // scale the video down to at most this many pixels; 0 = full size
+  // A whole display instead of a pane (screen sharing, ADR-0014), on this
+  // computer or the linked one named: pane_id is empty.
+  bool screen = 4;
+  uint32 display_id = 5;  // 0: the main display
+  string computer_id = 6;
+  // Codecs the viewer decodes besides H.264: "hevc444" (HEVC, full colour
+  // detail: the sharp tier for a screen on a good link, ADR-0014).
+  repeated string codecs = 7;
+  // At most this many frames a second (0: as many as the host sends, 60): a
+  // screen's background layer needs few.
+  uint32 max_fps = 8;
+  // A screen's background layer (the whole display, small, under a zoomed
+  // view): it takes a small share of the viewer's link, the rest going to
+  // the viewer's other session of that display.
+  bool background = 9;
+  // Over QUIC, frames as datagrams (media transport v2, ADR-0014): each cut
+  // into shards with XOR parity, never retransmitted by QUIC (only the
+  // shards the viewer asks for, while the frame's fresh). See datagram.go.
+  bool datagrams = 10;
+}
+message MediaTicket {
+  string session_id = 1;
+  bytes ticket = 2;       // QUIC: single use, within 30 s
+  uint32 quic_port = 3;
+}
+message CloseMedia { string session_id = 1; }
+// A remote viewer's input to a browser pane it watches (your paired phone, a
+// guest with Drive), sent to the page as DevTools Input events. Positions
+// are fractions of the page (0...1), so the viewer needn't know its size.
+// Ops (args_json):
+//   mouse {type: down|move|up, x, y, button (left, right), clicks, pressed
+//         (move with the button down), mods}
+//   wheel {x, y, dx, dy (fractions of the page too), mods}
+//   key   {type: down|up, key, code, text, vk (Windows virtual key code),
+//         mods, commands (editing commands, e.g. "selectAll")}
+//   text  {text}             inserted at the caret
+//   compose {text, start, end}  IME marked text, until a text op commits it
+//   copy, cut                the selection, sent back as BrowserClipboard
+// mods: any of "alt", "ctrl", "meta", "shift". No reply on success.
+message BrowserInput {
+  string pane_id = 1;
+  string op = 2;
+  string args_json = 3;
+}
+
+// Screen sharing (ADR-0014): the displays of this computer (or the linked
+// one named) that can be shared, and whether they can be now.
+message ListDisplays {
+  string computer_id = 1;
+  // This Mac's Settings only: ask macOS for Hammock Screen Sharing's
+  // "screen" (Screen Recording) or "input" (Accessibility) permission first.
+  string request_access = 2;
+}
+// A display as a small picture (the phone's Show Screen card), for whoever
+// may watch it: from its live capture, else a screenshot; asleep, the last
+// one taken (taken_unix_ms says when; empty if none yet).
+message ScreenSnapshot {
+  string computer_id = 1;
+  uint32 display_id = 2;  // 0: the main display
+  uint32 max_width = 3;   // pixels (at most 2048)
+}
+message ScreenSnapshotReply {
+  bytes jpeg = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  int64 taken_unix_ms = 4;
+  bool asleep = 5;  // the display's asleep: this is what it last showed
+}
+
+message Displays {
+  repeated Display displays = 1;
+  bool enabled = 2;        // Screen Sharing is on in Settings ▸ Devices
+  string unavailable = 3;  // why it can't be shared now ("" when it can)
+  // What macOS lets Hammock Screen Sharing do (for Settings): see the screen
+  // (Screen Recording) and post clicks and keys (Accessibility).
+  bool screen_recording = 4;
+  bool accessibility = 5;
+}
+message Display {
+  uint32 id = 1;           // CGDirectDisplayID
+  string name = 2;
+  uint32 width = 3;        // points
+  uint32 height = 4;
+  double scale = 5;        // pixels per point
+  bool main = 6;
+}
+// Your input to a display you share (OpenMedia screen), posted as the
+// Mac's own events: whoever sent input last controls. Positions are
+// fractions of the display (0...1). Ops (args_json):
+//   mouse {type: down|move|up, x, y, button (left, right, other), clicks,
+//         pressed (move with a button down), mods}
+//   wheel {x, y, dx, dy (pixels; positive is up/left as on a Mac),
+//         phase (began, changed, ended; momentum: momentum), mods}
+//   key   {type: down|up, vk (a Mac virtual key code), mods}
+//   text  {text}  typed as is, whatever the keyboard layout
+// mods: any of "alt", "ctrl", "meta", "shift", "fn". No reply on success.
+message ScreenInput {
+  string computer_id = 1;
+  uint32 display_id = 2;
+  string op = 3;
+  string args_json = 4;
+}
+
+// A menu a page opened in answer to your BrowserInput (a <select>'s options,
+// or a right-click), to show on your screen rather than the host's. The anchor
+// is in fractions of the page. Answer with BrowserMenuChoice.
+message BrowserMenu {
+  string pane_id = 1;
+  int32 seq = 2;
+  string kind = 3;  // "select" or "context"
+  repeated BrowserMenuItem items = 4;
+  int32 selected = 5;  // select: the current option (-1: none)
+  double x = 6;
+  double y = 7;
+  double w = 8;
+  double h = 9;
+}
+message BrowserMenuItem {
+  string title = 1;
+  bool enabled = 2;
+  bool separator = 3;
+  int32 indent = 4;
+  bool checked = 5;
+}
+// Text you copied (or cut) from a page you watch as video: for your clipboard.
+message BrowserClipboard {
+  string pane_id = 1;
+  string text = 2;
+}
+
+// The item picked from a BrowserMenu (index into its items; -1: none).
+message BrowserMenuChoice {
+  string pane_id = 1;
+  int32 seq = 2;
+  string kind = 3;
+  int32 index = 4;
+}
+
+message MediaAck {
+  string session_id = 1;
+  repeated uint32 seqs = 2;  // frames received whole
+  bool keyframe = 3;         // send a keyframe
+}
+message MediaFrame {
+  string session_id = 1;
+  uint32 seq = 2;
+  bool keyframe = 3;
+  uint64 pts_us = 4;
+  uint32 width = 5;  // pixels
+  uint32 height = 6;
+  bytes data = 7;
+  bool refresh = 8;  // predicted from a frame you have: frames before it may be skipped
+  bool hevc = 9;     // HEVC (keyframes lead with VPS, SPS and PPS), else H.264
+  // The part of the display it shows (a screen zoomed into: SetMediaView),
+  // as fractions of it; crop_w 0 means all of it.
+  float crop_x = 10;
+  float crop_y = 11;
+  float crop_w = 12;
+  float crop_h = 13;
+}
+// The pointer on a display you watch (it isn't in the picture, so it
+// can be drawn at once, where your input puts it): fractions of the
+// display, and its shape, whose image (PNG) comes once per shape.
+message ScreenCursor {
+  string session_id = 1;
+  float x = 2;
+  float y = 3;
+  bool visible = 4;       // on this display
+  uint32 shape_id = 5;
+  bytes png = 6;          // the shape's image, the first time it's sent you
+  float hot_x = 7;        // its hot spot, in points from its top left
+  float hot_y = 8;
+  float width = 9;        // its size in points
+  float height = 10;
+}
+
+// The server as the menu bar shows it.
+message ServerStatus {}
+message ServerStatusReply {
+  string version = 1;
+  int64 started_unix_ms = 2;
+  uint32 panes = 3;
+  bool remote_enabled = 4;
+  repeated string remote_addresses = 5;
+  repeated Connected connected = 6;      // who's connected from elsewhere now
+  repeated ScreenViewer screen_viewers = 7;
+  repeated AttentionItem needs_you = 8;  // agents waiting for you
+  uint32 grants = 9;                     // permission requests waiting
+  bool screen_sharing = 10;              // Screen Sharing is on in Settings
+}
+message Connected {
+  string name = 1;
+  string kind = 2;  // "phone", "computer" (linked), "guest"
+}
+message ScreenViewer {
+  string session_id = 1;
+  string name = 2;
+  string kind = 3;          // as Connected's
+  uint32 display_id = 4;    // 0: the main display
+  int64 since_unix_ms = 5;
+  bool controlling = 6;     // gave input in the last few seconds
+}
+// Ends a screen session (the menu bar's End), or all of them.
+message EndScreenSession {
+  string session_id = 1;
+  bool all = 2;
+}
+
+// The Mac whose screen you watch: locked (its lock screen is up: type the
+// password at it), when it changes and when you start watching.
+message ScreenState {
+  string session_id = 1;
+  bool locked = 2;
+}
+
+// A screen viewer zoomed in: the part of the display it shows (fractions of
+// it; w 0, or all of it, for the whole display). The host sends that part,
+// cut from the display at full resolution, at the session's size: sharp
+// however far you zoom, and no bigger.
+message SetMediaView {
+  string session_id = 1;
+  float x = 2;
+  float y = 3;
+  float w = 4;
+  float h = 5;
+}
+message MediaEnded { string session_id = 1; string reason = 2; }
+
+message SimulatorResult {
+  string json = 1;
+  bytes png = 2;
+}
+
+// ---------- Log panes ----------
+// Editor panes. The daemon keeps one buffer per file, shared by every pane
+// (and every client, here or on another device) showing it. Edits follow
+// CodeMirror's collab model (@codemirror/collab): the buffer has a version,
+// the number of updates applied since it was loaded; a client pushes its
+// updates made at the version it has, and they're taken only if that's the
+// buffer's version still (else it waits for the updates it hasn't seen,
+// rebases its own over them and pushes again). Every update taken goes to
+// every attached client, the pusher too (that's how it learns they were
+// taken). Changes are CodeMirror ChangeSet JSON (ChangeSet.toJSON): an array
+// whose elements are a number (that many characters kept) or an array
+// [deleted, ...inserted lines] (that many deleted, the lines joined by "\n"
+// inserted). Positions and lengths count UTF-16 code units; lines end in
+// "\n" (a file's "\r\n" comes back when it's saved).
+
+// What an editor pane opens.
+message EditorOpen {
+  // Absolute, or relative to the pane's folder (the Group's). Empty: an
+  // untitled buffer, named when it's first saved. A file that doesn't exist
+  // yet opens empty and is created when saved.
+  string path = 1;
+  // Where to put the cursor (1-based; 0: the start, or where it last was).
+  // end_*: select up to there.
+  uint32 line = 2;
+  uint32 column = 3;
+  uint32 end_line = 4;
+  uint32 end_column = 5;
+  bool large = 6;     // open a file over 5 MB anyway (refused without it)
+  string cwd = 7;     // what a relative path is relative to (else the Group's folder)
+}
+
+message EditorInfo {
+  string path = 1;      // absolute; empty while untitled
+  string name = 2;      // what to call it: the file's name, or "Untitled"
+  bool dirty = 3;       // edits not saved
+  // The file changed on disk while the buffer had unsaved edits: clients
+  // offer Reload (take the disk's), Keep Mine (dismiss) and Diff
+  // (ReadEditor with disk). Saving while it's set needs force.
+  bool conflict = 4;
+  bool missing = 5;     // the file isn't there (new, or deleted since)
+  bool read_only = 6;   // can't be written (permissions)
+  string language = 7;  // "" detected from the name; else as chosen (EditorCommand)
+  string folder = 8;    // the Group's folder: Save As starts there, guests stay in it
+  // How the file indents (an .editorconfig, else what it already uses;
+  // 0/empty: the user's settings decide).
+  uint32 tab_width = 9;
+  string indent = 10;   // "tabs", "spaces" or ""
+}
+
+message EditorPush {
+  string pane_id = 1;
+  uint64 version = 2;              // the buffer's version these were made at
+  repeated EditorChange updates = 3;
+}
+message EditorChange {
+  string changes = 1;    // ChangeSet JSON
+  string client_id = 2;  // the pushing client's own id (it recognises its updates by it)
+}
+message EditorPushReply { bool accepted = 1; }
+
+// A pane's selection, as a client last reported it (agents read it; it's
+// where the pane opens next time). Offsets at version.
+message EditorSelect {
+  string pane_id = 1;
+  uint64 version = 2;
+  uint32 anchor = 3;
+  uint32 head = 4;
+}
+
+message EditorCommand {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_SAVE = 1;          // write the buffer to its file (path: Save As, required while untitled)
+    ACTION_RELOAD = 2;        // take the file as it is on disk, dropping unsaved edits
+    ACTION_KEEP_MINE = 3;     // dismiss the conflict, keeping the buffer
+    ACTION_SET_LANGUAGE = 4;  // language ("" back to detecting it)
+    ACTION_SELECT = 5;        // select line:column to end_line:end_column and scroll to it (agents)
+  }
+  string pane_id = 1;
+  Action action = 2;
+  string path = 3;      // ACTION_SAVE: save as (absolute, or relative to the Group's folder)
+  bool force = 4;       // ACTION_SAVE: over a conflict, or replacing another file
+  string language = 5;
+  uint32 line = 6;      // ACTION_SELECT, 1-based
+  uint32 column = 7;
+  uint32 end_line = 8;
+  uint32 end_column = 9;
+}
+
+message ReadEditor {
+  string pane_id = 1;
+  bool disk = 2;  // also the file as it is on disk (for a diff)
+}
+
+message EditorUpdate {
+  string pane_id = 1;
+  uint64 version = 2;   // the buffer's version after this
+  // snapshot: text is the whole buffer, at version (on attaching, and as
+  // ReadEditor's reply): start again from it.
+  bool snapshot = 3;
+  string text = 4;
+  repeated EditorChange updates = 5;  // otherwise: the updates that took it to version
+  // Set: select this (an agent showing you something, or where the pane
+  // was) and scroll it into view. Offsets at version.
+  EditorSelection selection = 6;
+  repeated GitMark git = 7;  // lines changed since git's HEAD (all of them; sent when they change)
+  bool git_known = 8;        // git is set (empty: no changes, or not in a repository)
+  string disk_text = 9;      // ReadEditor with disk
+  bool disk_missing = 10;
+}
+message EditorSelection { uint32 anchor = 1; uint32 head = 2; }
+message GitMark {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_ADDED = 1;
+    KIND_MODIFIED = 2;
+    KIND_DELETED = 3;  // lines removed after line (from = to)
+  }
+  Kind kind = 1;
+  uint32 from = 2;  // 1-based lines, inclusive
+  uint32 to = 3;
+}
+
+// Files in a Group's folder, for quick open: those git tracks or would (not
+// ignored) in a repository, else a walk skipping hidden folders and
+// node_modules. Ranked by query (fuzzy), best first.
+message ListFiles {
+  string group_id = 1;
+  string pane_id = 2;   // or the Group of this pane
+  string query = 3;
+  uint32 limit = 4;     // 0: 200
+}
+message FileList {
+  string folder = 1;           // what paths are relative to
+  repeated string paths = 2;
+  bool truncated = 3;          // the folder has more files than were looked at
+}
+
+// A log pane is a terminal pane whose command reads a log; the daemon parses
+// what it prints into entries (time, level, process, tag, message) and
+// serves them filtered, beside the raw terminal.
+
+// What a log pane reads. The daemon builds the command from it.
+message LogSource {
+  string kind = 1;       // "file", "macos" (log stream), "simulator", "logcat", "command"
+  string path = 2;       // file: the file to follow
+  string process = 3;    // macos, simulator: only this process (name or pid)
+  string predicate = 4;  // macos, simulator: a log predicate
+  string level = 5;      // macos, simulator: "default", "info" or "debug"
+  string device = 6;     // simulator: its UDID; logcat: the device's serial
+  string label = 7;      // the pane's title (set by the daemon if empty)
+  repeated string command = 8;  // command: what to run (in the pane's cwd)
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_DEBUG = 1;    // also trace, verbose
+  LOG_LEVEL_INFO = 2;     // lines with no level too
+  LOG_LEVEL_NOTICE = 3;   // macOS's Default
+  LOG_LEVEL_WARNING = 4;
+  LOG_LEVEL_ERROR = 5;
+  LOG_LEVEL_FAULT = 6;    // also fatal, critical, panic
+}
+
+message LogEntry {
+  uint64 seq = 1;            // increases through the pane's log
+  int64 time_unix_ms = 2;    // the line's own time, else when it arrived
+  LogLevel level = 3;
+  string process = 4;
+  int32 pid = 5;
+  string tag = 6;            // macOS subsystem, logcat tag, a logger's name
+  string category = 7;       // macOS category
+  string message = 8;        // may have several lines (a stack trace)
+  map<string, string> fields = 9;  // the rest of a structured line (JSON, logfmt)
+}
+
+// Which entries to show. Keys in only and hide are "process:NAME", "tag:NAME"
+// or "level:NAME" (debug, info, notice, warning, error, fault).
+message LogFilter {
+  string text = 1;              // case-insensitive; /…/ for a regular expression
+  repeated LogLevel levels = 2; // empty: every level
+  repeated string only = 3;     // empty: everything (several of a kind: any of them)
+  repeated string hide = 4;
+  int64 since_unix_ms = 5;
+}
+
+// How many entries have a process, tag or level, for the filter's menus.
+message LogFacet { string key = 1; int64 count = 2; }
+
+// Start (or with watch=false stop) receiving LogView for a pane with this
+// filter; a new filter replaces the view. before_seq pages in older entries.
+message WatchLog { string pane_id = 1; bool watch = 2; LogFilter filter = 3; uint64 before_seq = 4; int32 limit = 5; }
+
+// Entries now, without watching (the CLI and agents): the newest limit that
+// match, or with after_seq those after it. Replies LogView.
+message ReadLog { string pane_id = 1; LogFilter filter = 2; int32 limit = 3; uint64 after_seq = 4; }
+
+// Forgets the entries held for a pane (the terminal keeps its output).
+message ClearLog { string pane_id = 1; }
+
+message LogView {
+  string pane_id = 1;
+  bool replace = 2;               // replaces what's shown (a new watch or filter, or cleared)
+  repeated LogEntry entries = 3;  // oldest first; appended, or with older prepended
+  bool older = 4;
+  bool has_more = 5;              // older matching entries remain
+  int64 total = 6;                // entries held
+  repeated LogFacet facets = 7;   // sent when they change, at most every few seconds
+  string error = 8;
+  LogFilter filter = 9;           // the filter these entries match
+}
+
+// ---------- Starting agents ----------
+
+// Opens a new tab in a folder and starts an agent there (Claude Code or
+// Codex), with a first prompt if given, in its login shell. Replies Created
+// (the tab). group_id empty: the Group already in that folder, else the first.
+message StartAgent {
+  string harness = 1;   // "claude" or "codex"
+  string cwd = 2;       // absolute; ~ is the home folder
+  string group_id = 3;
+  string prompt = 4;
+  string tab_id = 5;    // the client's choice, as CreateTab.tab_id
+  string computer_id = 6;  // with no group_id: a linked computer to start it on
+}
+
+// The folders an agent could start in: suggestions (the Group's own folder,
+// other Groups', recent sessions'), and with path, that folder's subfolders.
+// Replies FolderList. group_id: the Group it's for (a shared Group's host
+// answers for its own Mac).
+// computer_id: with no group_id, a linked computer's folders.
+message ListFolders { string path = 1; string group_id = 2; string computer_id = 3; }
+
+message FolderList {
+  string path = 1;                      // the folder listed (cleaned), if one was asked for
+  string parent = 2;                    // its parent ("" at /)
+  repeated string folders = 3;          // its subfolders' names, hidden ones left out
+  repeated FolderSuggestion suggestions = 4;
+  string home = 5;
+  repeated string agents = 6;           // the agents installed: "claude", "codex"
+  string error = 7;                     // e.g. the folder doesn't exist
+}
+
+message FolderSuggestion {
+  string path = 1;
+  string why = 2;   // "This Group", "Web", "Recent session"
+}
+
+// A session from the session finder, as the agent view shows it (read
+// only, no pane): its newest turns, or with before_block_id the ones before.
+// Replies AgentView (session_id set, pane_id empty).
+message ReadSession { string harness = 1; string id = 2; string before_block_id = 3; string computer_id = 4; }
+
+// ---------- Group pictures ----------
+
+// A Group's picture as the daemon serves it: PNG, at most 128 px a side.
+message ReadGroupIcon { string group_id = 1; }
+message GroupIcon { string group_id = 1; string hash = 2; bytes png = 3; }
+
+// Sets a Group's picture: image (PNG or JPEG, up to 10 MB) is scaled down
+// and written to its folder as .hammock/icon.png; empty removes that file.
+message SetGroupIconImage { string group_id = 1; bytes image = 2; }
+
+// ---------- Linked computers ----------
+//
+// Your own computers, linked so each shows every other's Groups (see
+// docs/adr/0013-linked-computers.md). Each keeps its own user key, and its
+// own list of the computers it's linked with directly (StoredLink): made
+// by a person's code check, or by an introduction from one it's linked
+// with. Nothing is relayed: each decides for itself, and refuses a key it
+// unlinked whatever any other says.
+
+message Computers {
+  repeated Computer list = 1;  // this one first, then the others by name
+  string active_id = 2;        // the one you used last (keyboard or mouse): it notifies
+  reserved 3;
+  // (to a computer's link) this one doesn't link with you (any more): the
+  // only courtesy an unlinked computer gets, and all a stranger hears.
+  bool not_linked = 4;
+  // (to local clients) something to tell you about your computers, e.g.
+  // after an upgrade: the computers to link again.
+  string note = 5;
+}
+
+message Computer {
+  string user_id = 1;          // its user key's id ("us_…")
+  string name = 2;             // "Studio"
+  string model = 3;            // "Mac Studio", "MacBook Pro", "Linux"
+  string kind = 4;             // "laptop", "desktop", "studio", "mini", "tower", "server"
+  string os = 5;               // "macos", "linux"
+  string tint = 6;             // "#RRGGBB": its badge's colour; "none": neutral (the text's colour)
+  bool this_computer = 7;      // (to local clients) the one you're talking to
+  bool online = 8;             // reachable now (this one always)
+  int64 last_seen_unix_ms = 9;
+  string fingerprint = 10;     // its key's, as JoinRequest.key_fingerprint
+  int64 linked_unix_ms = 11;   // (shown only) when it was linked with this one
+  // (to local clients) when it was last used (keyboard or mouse), on this
+  // computer's clock: worked out from idle_ms when its record arrived.
+  int64 last_input_unix_ms = 12;
+  repeated string addresses = 13;  // where it listens (never a wildcard), and its extra addresses
+  string cert_sha256 = 14;     // its certificate's (pinned when it's linked)
+  reserved 15, 16, 17, 19, 20, 21, 23;
+  bool notifies = 18;          // its app (or another client that shows notifications) is open there
+  bytes key = 22;              // its public key (its user id is derived from it)
+  // (to local clients) it doesn't link with this computer any more (it
+  // unlinked this one, or was set up again): shown so, with Link Again and
+  // Remove; never as linked and online.
+  bool refused = 24;
+  // (from it) how long since a person last used it, as it sent this
+  // record (0: not known): turned into a time on the receiver's own clock.
+  int64 idle_ms = 25;
+  // (to local clients) its certificate isn't the one pinned when it was
+  // linked (it was set up again, or something else answers there): shown
+  // so, with Link Again (the code check confirms the new one).
+  bool cert_changed = 26;
+  // (to local clients) it was introduced by a computer after that one was
+  // unlinked: not linked until a person checks its code (Link Again), or
+  // removes it.
+  bool suspect = 27;
+  reserved 28, 29;
+  // (in introductions) its chain of introducers at the introducer, nearest
+  // first, back to a person's code check (none: a person linked them
+  // there). At most 8.
+  repeated IntroHop chain = 30;
+  // Its local networks' subnets, as Pairing's: an address in one is tried
+  // only from that network.
+  repeated string lan_subnets = 31;
+  // Its badge's icon, as picked: an SF Symbol's name (ASCII, e.g.
+  // "macmini") or an emoji. "": its kind's symbol (Computer.kind).
+  string icon = 32;
+}
+
+// A computer this one is linked with, as kept here (not sent).
+message StoredLink {
+  Computer record = 1;         // its own record, as it last sent it (or as introduced)
+  string cert_sha256 = 2;      // pinned when it was linked
+  string via = 3;              // "" a person linked them here; else the computer that introduced it
+  string reached_at = 4;       // the address it was reached at when linked (tried first)
+  bool refused = 5;            // it says it doesn't link with this one any more
+  // The link's id, the same on both computers (from the code check's
+  // nonces, or chosen by the computer that dialled an introduction): a
+  // "drop me" names it, so it never ends a newer link.
+  string link_id = 6;
+  bool suspect = 7;            // introduced by a computer since unlinked: needs a code check
+  bool cert_changed = 8;       // it answers with another certificate than the one pinned
+  // Introduced: its chain of introducers, nearest (via) first, back to a
+  // person's code check, each with when the next one along took it.
+  repeated IntroHop chain = 9;
+}
+
+// One introducer in a link's chain: by introduced it to the next computer
+// along, which linked it at at_unix_ms (kept, on this computer's clock),
+// or ago_ms before it was sent (in introductions: clocks differ).
+message IntroHop {
+  string by = 1;
+  int64 at_unix_ms = 2;
+  int64 ago_ms = 3;
+}
+
+// A key refused here (unlinked by a person here, or as another computer
+// asked), kept for good unless a person links it here again.
+message Refusal {
+  string user_id = 1;
+  string name = 2;
+  reserved 3 to 9;             // (earlier builds kept a Computer here: only 1 and 2)
+  string by = 10;              // the computer that asked ("" a person here)
+  string origin = 11;          // where a person asked it first (as by said)
+  int64 unix_ms = 12;          // when it was refused here (this computer's clock)
+  // When a person asked for it, as far as this computer can tell (this
+  // computer's clock: from how long ago each computer it passed through
+  // said it was).
+  int64 asked_unix_ms = 13;
+  StoredLink link = 14;        // its link here, when it had one (to tell it of a reply)
+  reserved 15, 16, 17;         // (asking back: no longer taken)
+}
+
+// A request, from this computer, that another it's linked with unlink
+// user_id (or drop this one, when it's this one's own: leaving), kept
+// until it's delivered.
+message PendingUnlink {
+  string user_id = 1;
+  string to = 2;               // the computer it goes to
+  Computer to_record = 3;      // how to reach it (its link may be gone: leaving)
+  string to_cert = 4;
+  int64 queued_unix_ms = 5;    // (this computer's clock) when it was queued
+  string link_id = 6;          // leaving: the link it ends
+  string origin = 7;           // where a person asked for it
+  // When a person asked for it (this computer's clock): sent as how long ago.
+  int64 asked_unix_ms = 8;
+  bool suspect = 9;            // a notice that user_id waits for its code, not an unlink
+}
+
+// What earlier builds of this branch kept, read once to migrate them.
+message LegacyComputer {
+  string user_id = 1; string name = 2; string model = 3; string kind = 4; string os = 5; string tint = 6;
+  int64 linked_unix_ms = 11;
+  repeated string addresses = 13; string cert_sha256 = 14;
+  bool unlinked = 15; string via = 19; bool local_stone = 20; bytes key = 22;
+}
+message LegacyLink { string id = 1; bytes a_key = 2; bytes b_key = 3; bytes a_sig = 4; bytes b_sig = 5; }
+message LegacyUnlink { string id = 1; string user_id = 2; repeated string link_ids = 3; bytes by_key = 4; bytes sig = 5; }
+
+
+// A link waiting on its code check, on both computers.
+message LinkRequest {
+  string id = 1;
+  string name = 2;             // the other computer
+  string model = 3;
+  string kind = 4;
+  string os = 5;
+  string code = 6;             // "482 913": the same on both if nobody's in between
+  string fingerprint = 7;      // the other computer's key
+  bool incoming = 8;           // the other computer asked
+  bool accepted_here = 9;      // answered here; waiting on the other computer
+  bool accepted_there = 10;    // the other computer said they match
+  int64 created_unix_ms = 11;
+  // Who Tailscale says it is (not what it calls itself): its host name and
+  // the login that owns it, when it came over Tailscale.
+  string tailscale_host = 12;
+  string tailscale_login = 13;
+  // When this computer unlinked the other one (0: never), and at which
+  // computer's request ("" a person here): it's asking to be linked again.
+  int64 unlinked_unix_ms = 14;
+  string unlinked_by = 15;
+  // Where it came from, when not over Tailscale: its address and the
+  // network ("192.168.1.30 on Wi-Fi").
+  string source = 16;
+}
+
+// The computers on your tailnet owned by your Tailscale user (as `tailscale
+// status` says), and Hammock on the local networks remote access listens on
+// (Bonjour, _hammock._tcp), and whether Hammock answers on each.
+message DiscoverComputers {}
+message DiscoveredComputers {
+  repeated DiscoveredComputer list = 1;
+  string error = 2;            // e.g. Tailscale isn't running (and none found otherwise)
+}
+message DiscoveredComputer {
+  string name = 1;             // its Tailscale host name, or the name it advertises
+  string os = 2;               // "macOS", "linux", as Tailscale says
+  repeated string addresses = 3;  // host:port to link with
+  bool online = 4;             // Tailscale reaches it
+  bool answering = 5;          // Hammock's remote listener answers
+  string linked_user_id = 6;   // already linked: which computer it is
+  string via = 7;              // "tailscale", or "local" (found by Bonjour)
+}
+
+// Starts linking with a computer: address is host:port (from
+// DiscoverComputers) or a hammock://link/ link (CreateLinkInvite on the other
+// computer). Turns remote access on here. Replies Ok once linked, or Error
+// (declined, codes differ, unreachable). While it waits, both computers
+// show a LinkRequest with the code.
+message LinkComputer { string address = 1; }
+// The person's answer to a LinkRequest: the codes match, or not.
+message RespondLink { string id = 1; bool accept = 2; }
+// Unlinks a computer here, refusing its key for good, and asks each
+// computer this one is linked with to do the same (UnlinkRequest, kept
+// until delivered). This one's own id: leaves them all (they drop it,
+// without refusing it).
+// forget: only here (Remove, for one that doesn't link with this one any
+// more): its link is dropped, its key not refused, and nobody asked.
+message UnlinkComputer { string user_id = 1; bool forget = 2; }
+// Sets a computer's badge colour and icon: this one's here, another's by
+// asking it (its record is its own). tint "": kept ("none": neutral). icon, when set: an SF
+// Symbol's name or an emoji ("": back to its kind's symbol).
+message SetComputerTint { string user_id = 1; string tint = 2; optional string icon = 3; }
+// A hammock://link/ link for linking from a computer that can't find this one
+// (replies Invite). Turns remote access on here.
+message CreateLinkInvite {}
+
+// What a hammock://link/ link carries (base64url).
+message LinkToken {
+  string name = 1;
+  repeated string addresses = 2;
+  string cert_sha256 = 3;
+  string user_id = 4;
+  repeated string lan_subnets = 5;  // as Pairing's
+}
+
+// Linking, between daemons (ZRTP-style short code: the asking computer
+// commits to its nonce before seeing the other's, so someone in between
+// can't pick keys that make the codes match).
+// 1. Hello: who's asking and a commitment, SHA-256(nonce). Replies PeerLinkNonce.
+message PeerLinkHello { bytes commitment = 1; Computer computer = 2; }
+message PeerLinkNonce { bytes nonce = 1; Computer computer = 2; }
+// 2. Reveal: the nonce committed to. Both now show the code. The reply
+// comes when the person here answers: Ok (they match) or Error.
+message PeerLinkReveal { bytes nonce = 1; }
+// 3. Confirm: the person on the asking computer answered. With accept, the
+// reply (PeerLinked) comes once both have said the codes match.
+message PeerLinkConfirm { bool accept = 1; reserved 2; }
+message PeerLinked { repeated Computer computers = 1; reserved 2, 3; }  // computers: its own record
+
+// From a computer this one is linked with: the computers it's linked with,
+// to link with directly (their keys, pinned certificates and addresses, as
+// it knows them). Sent when its link connects, and when it links another.
+message IntroduceComputers { repeated Computer computers = 1; }
+
+// Linking because of an introduction: the dialling computer (signed in with
+// its key, over the certificate the introducer gave) names the computers
+// that introduced them (vias: each still linked with it) and the link's id,
+// and sends its record; the other links it only if one of those introduced
+// it here too and is still linked with it, and it hasn't unlinked this key.
+// PeerIntroLinked: its own record, the introducer it took, and the link's
+// id (an existing link's, if they were linked already).
+message PeerIntroLink { string via = 1; Computer computer = 2; repeated string vias = 3; string link_id = 4; }
+message PeerIntroLinked { Computer computer = 1; string via = 2; string link_id = 3; }
+
+// From a computer this one is linked with: unlink user_id here, and pass
+// it on (its own id: it's leaving, so drop link link_id, without refusing
+// it). origin: where a person asked; age_ms: how long ago (each computer
+// adds the time it held it: clocks differ; never believed earlier than the
+// asker was last out of touch). Taken from a computer linked with this one,
+// a few a minute; never from a computer refused here (ADR-0013).
+// suspect: not an unlink, but that user_id was introduced by a computer
+// since unlinked: hold it for its code (passed on in the same way).
+message UnlinkRequest { string user_id = 1; string link_id = 2; string origin = 3; int64 age_ms = 4; bool suspect = 5; }
+// not_linked: taken, but this computer doesn't link with the asking one
+// (another of your computers asked it not to): link them again.
+message UnlinkTaken { bool not_linked = 1; }
+
+// ---------- SSH agent forwarding ----------
+
+// From a linked computer's daemon: a program in one of its panes wants this
+// computer's SSH keys (you're here). Only listing and signing: nothing is
+// added, removed or locked from elsewhere.
+message SshAgentCall {
+  bool list = 1;          // list the keys (else sign)
+  bytes key_blob = 2;     // sign: the public key, in SSH wire format
+  bytes data = 3;         // sign: what to sign
+  uint32 flags = 4;       // sign: SSH_AGENT_RSA_SHA2_256 and the like
+  string pane_label = 5;  // where it's asked from ("Web ▸ api"), for the audit log
+}
+
+message SshAgentReply {
+  repeated SshAgentKey keys = 1;  // list
+  string sig_format = 2;          // sign: the signature
+  bytes sig_blob = 3;
+  bytes sig_rest = 4;
+}
+
+message SshAgentKey {
+  bytes blob = 1;      // the public key, in SSH wire format
+  string comment = 2;
+}
+
+// ---------- The Hammock Key (hammockkey.go) ----------
+
+// This Mac's Hammock Key: an SSH key in its Secure Enclave, held by the Hammock
+// Key helper, which signs only once you approve (Touch ID here, or a phone
+// you let approve).
+message HammockKeyStatus {
+  bool exists = 1;
+  bool available = 2;        // this Mac can have one (helper and Secure Enclave here)
+  string public_key = 3;     // an authorized_keys line
+  string fingerprint = 4;    // SHA256:…
+  repeated HammockKeyApprover approvers = 5;  // devices that may approve it
+  string error = 6;          // why it can't be used right now
+  int64 created_unix_ms = 7;
+  string public_key_path = 8;  // the .pub file (ssh-copy-id)
+  // Paired phones that sent an approval key but can't approve yet
+  // (let them with HammockKeyCommand OP_ADD_APPROVER and Touch ID), and
+  // approvers whose approval key has changed since (allowed again the same way).
+  repeated HammockKeyApprover can_add = 9;
+}
+
+message HammockKeyApprover {
+  string device_id = 1;
+  string name = 2;
+}
+
+message HammockKeyCommand {
+  enum Op {
+    OP_UNSPECIFIED = 0;
+    OP_STATUS = 1;
+    OP_CREATE = 2;           // with Touch ID; lets every phone in can_add approve too
+    OP_DELETE = 3;           // with Touch ID
+    OP_ADD_APPROVER = 4;     // device_id, with Touch ID
+    OP_REMOVE_APPROVER = 5;  // device_id
+  }
+  Op op = 1;
+  string device_id = 2;
+}
+
+// A program wants to sign with the Hammock Key: asked on this Mac (Touch ID)
+// and on the phones that may approve, at once; the first answer wins.
+message HammockKeyRequest {
+  string id = 1;
+  string what = 2;          // "Sign a git commit", "Log in as git"
+  string headline = 3;      // the whole of it, in Hammock's words
+  string command = 4;       // the program that asked ("git push origin main")
+  string pane_id = 5;
+  string pane_label = 6;    // "hammock ▸ main"
+  bool agent = 7;           // an agent asked: approve once, never for a while
+  string data_hash = 8;     // hex SHA-256 of what's signed (an approval signs it)
+  int64 created_unix_ms = 9;
+  int64 expires_unix_ms = 10;
+  int64 window_ms = 11;     // how long "for a while" lasts (0: once only)
+  string key_id = 12;       // the key's id (hex SHA-256 of its x9.63 public key): approvals name it
+}
+
+// signature: the phone's approval key's ECDSA signature (DER) over
+// "hmk-key-approval-v2\n<key_id>\n<id>\n<data_hash>\n<once|window>\n<pane_id>\n<expires_unix_ms>".
+// Replies Ok once the Hammock Key helper has checked it (an error if not).
+message RespondHammockKey {
+  string id = 1;
+  bool allow = 2;
+  bool window = 3;              // allow for a while in this pane (not for agents)
+  bytes signature = 4;
+  int64 expires_unix_ms = 5;    // what the approval signed: when it lapses
+}
+
+message SetApprovalKey {
+  bytes public_key = 1;  // P-256, x9.63
+}
+
+message SshSetup {
+  bool apply = 1;     // add Hammock's block to ~/.ssh/config
+  bool apply_jj = 2;  // add Hammock's file to jj's config (jj_config_path)
+}
+
+message SshSetupReply {
+  string agent_name = 1;     // "1Password", "Secretive", "yubikey-agent", "ssh-agent", ""
+  string agent_socket = 2;   // the agent Hammock passes requests on to
+  bool routed = 3;           // ssh in Hammock's panes uses Hammock's agent
+  string config_path = 4;    // ~/.ssh/config
+  string change = 5;         // what apply adds (or added)
+  bool applied = 6;          // apply just did
+  string git_program = 7;    // your gpg.ssh.program, if any
+  string backup_path = 8;    // where apply kept the old file
+  // jj (Jujutsu) signs with its own signing.backends.ssh.program, not git's:
+  // Hammock's file in its conf.d points it at hmk-jj-ssh-sign, in Hammock's
+  // panes only. Empty jj_path: jj isn't installed, or doesn't sign with SSH.
+  string jj_path = 9;
+  string jj_program = 10;      // jj's own SSH signing program ("" is ssh-keygen)
+  bool jj_routed = 11;         // jj in Hammock's panes signs through hmk-jj-ssh-sign
+  string jj_config_path = 12;  // the file apply_jj writes
+  string jj_change = 13;       // what it writes
+  string jj_problem = 14;      // why it can't (jj too old), else ""
+}
+
+// ---------- Scheduled tasks (schedules.go) ----------
+
+// A task the daemon starts on a schedule: an agent (Claude Code, Codex)
+// given a prompt, or a command, each run a new tab in the schedule's Group.
+message Schedule {
+  string id = 1;
+  string name = 2;
+  // Where runs open. A Group that has been closed is made again (with
+  // group_name and group_icon) when a run starts, and this follows it.
+  string group_id = 3;
+  string group_name = 4;
+  string group_icon = 5;
+  string kind = 6;                // "claude", "codex" or "command"
+  string prompt = 7;              // an agent's first message; a command's command line (run by the login shell)
+  string cwd = 8;                 // absolute
+  // When: these weekdays (0 Sunday … 6 Saturday; none: every day) at
+  // minute_of_day (local time), unless cron (5 fields, local time) is set.
+  repeated int32 weekdays = 9;
+  int32 minute_of_day = 10;
+  string cron = 11;
+  bool paused = 12;
+  enum Overlap {
+    OVERLAP_SKIP = 0;             // the last run is still going: skip this one
+    OVERLAP_STOP_PREVIOUS = 1;    // stop the last run, start this one
+    OVERLAP_RUN_BOTH = 2;
+  }
+  Overlap overlap = 13;
+  enum Notify {
+    NOTIFY_DEFAULT = 0;           // by kind: agents when ready, commands only about problems
+    NOTIFY_READY = 1;
+    NOTIFY_PROBLEMS = 2;
+    NOTIFY_NEVER = 3;
+  }
+  Notify notify = 14;
+  int32 keep_runs = 15;           // run tabs kept (0: 7); ones you've typed into aren't counted
+  int32 give_up_minutes = 16;     // a run waiting on you this long is stopped (0: 240)
+  bool close_on_success = 17;     // commands: close the pane after a clean exit
+  // Claude: tools allowed in every run (--allowedTools rules), remembered
+  // from "Always Allow for This Schedule".
+  repeated string allowed_tools = 18;
+  // Codex: --sandbox and --ask-for-approval ("": your Codex config).
+  string codex_sandbox = 19;
+  string codex_approval = 20;
+  // Read only (the daemon's):
+  int64 next_run_unix_ms = 21;    // 0: paused, or never again
+  int64 skip_until_unix_ms = 22;  // runs due before this are skipped (Skip Next Run)
+  repeated ScheduleRun runs = 23; // newest first, the last 30
+  string computer_id = 24;        // the computer it runs on (Computer.user_id)
+  string created_by = 25;         // who made it, in words ("You", "Claude in Assistant ▸ Notes")
+  int64 created_unix_ms = 26;
+  string error = 27;              // why it can't run (e.g. its folder is gone), shown with it
+}
+
+message ScheduleRun {
+  string id = 1;
+  int64 due_unix_ms = 2;          // when it was due (0: Run Now)
+  int64 started_unix_ms = 3;
+  int64 ended_unix_ms = 4;
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_RUNNING = 1;
+    STATUS_WAITING = 2;           // asking you something
+    STATUS_READY = 3;             // finished
+    STATUS_FAILED = 4;            // errored, or exited non-zero
+    STATUS_GAVE_UP = 5;           // waited on you longer than give_up_minutes
+    STATUS_SKIPPED = 6;           // the last run was still going, or skipped by you
+    STATUS_MISSED = 7;            // the computer was asleep or off
+    STATUS_STOPPED = 8;           // stopped for a newer run, or by you
+  }
+  Status status = 5;
+  string tab_id = 6;
+  string pane_id = 7;
+  int32 exit_code = 8;            // commands
+  string note = 9;                // a line about it ("last run still going", the agent's last words)
+  bool kept = 10;                 // you typed into it: its tab isn't closed for newer runs
+  bool catch_up = 11;             // started late, after the computer woke
+  bool manual = 12;               // Run Now
+  string output = 13;             // what the run showed (hmk show)
+  string session_id = 14;         // the agent's session, to resume once its tab is gone
+  bool tab_closed = 15;
+  int64 waiting_since_unix_ms = 16;
+  string kind = 17;               // what it ran: the schedule's kind then ("claude", "codex", "command")
+}
+
+// description: an agent's reason, shown (as its words) with the request.
+message SaveSchedule { Schedule schedule = 1; string description = 2; }
+message DeleteSchedule { string schedule_id = 1; string description = 2; }
+message RunSchedule { string schedule_id = 1; }
+message SetSchedulePaused { string schedule_id = 1; bool paused = 2; }
+// Skips the next run (skip = false: undoes that).
+message SkipScheduleRun { string schedule_id = 1; bool skip = 2; }
+message ScheduleReply { Schedule schedule = 1; }
+
+message ShowOutput {
+  string target = 1;              // an absolute path or a URL
+  string pane_id = 2;             // beside this pane (the CLI's: its own; empty from an agent's MCP: its pane)
+  string into_pane_id = 3;        // in this browser pane instead (hmk show --pane)
+}

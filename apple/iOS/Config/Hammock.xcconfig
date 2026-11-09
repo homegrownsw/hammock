@@ -1,0 +1,30 @@
+// The iOS app's build settings (both configurations). Settings Xcode keeps
+// for the target in the project itself override these, so keep them here.
+
+#include "Version.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock
+// The icon is an Icon Composer bundle (Hammock/AppIcon.icon): Liquid Glass,
+// with iOS deriving the dark and tinted variants.
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+// The app's accent: Hammock's forest green (apple/Resources/Brand.xcassets,
+// shared with the Mac app).
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor
+SWIFT_VERSION = 5.0
+TARGETED_DEVICE_FAMILY = 1,2
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = Hammock
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+// All four on iPad: App Store Connect turns down an iPad app that
+// multitasks without them (ITMS-90474).
+INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+INFOPLIST_KEY_NSCameraUsageDescription = Scan the pairing code shown on your Mac.
+INFOPLIST_KEY_NSLocalNetworkUsageDescription = Connect to Hammock on your Mac over your local network or VPN.
+INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = Save simulator screenshots to your photos.
+// Settings ▸ Privacy ▸ Require Face ID (AppLock.swift) asks before opening the app.
+INFOPLIST_KEY_NSFaceIDUsageDescription = Make sure it's you before opening Hammock (Settings ▸ Privacy).
+// The push relay (relay/push), read into Info.plist's HammockPushRelay. Empty
+// builds have no push; set it on the build (HMK_PUSH_RELAY=…), as
+// `just ios-device` does.
+HMK_PUSH_RELAY =

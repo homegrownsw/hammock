@@ -1,0 +1,36 @@
+# Go tests, vet and the benchmark gate on macOS (the daemon's home platform),
+# plus a build of the Swift clients.
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tools
+        run: brew install just zig protobuf swift-protobuf
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: third_party/ghostty/out
+          key: ghostty-${{ hashFiles('third_party/ghostty/VERSION') }}
+      - name: Build libghostty-vt
+        run: '[ -d third_party/ghostty/out/lib ] || just ghostty'
+      - name: Vet and test
+        run: |
+          export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig
+          just vet
+          just test
+      - name: Benchmark gate
+        run: |
+          export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig
+          just bench-gate
+      - name: Swift build
+        run: |
+          just apple-deps
+          cd apple && swift build

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- The version and build number from the build settings, so Xcode Cloud's
+	     build numbers reach the app. -->
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<!-- hammock:// links (pairing with a Mac) open the app. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.homegrownsw.hammock.pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hammock</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- The push relay (relay/push), e.g. https://hmk-push.you.workers.dev;
+	     empty builds have no push. Set with HMK_PUSH_RELAY=… on the build. -->
+	<key>HammockPushRelay</key>
+	<string>$(HMK_PUSH_RELAY)</string>
+	<!-- Export compliance, answered here rather than per build in App Store
+	     Connect: no non-exempt encryption. -->
+	<!-- Finding the Mac on this Wi‑Fi when its address has changed
+	     (DaemonConnection's remote mode browses for it). An array, which a
+	     build setting can't give. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_hammock._tcp</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+</dict>
+</plist>

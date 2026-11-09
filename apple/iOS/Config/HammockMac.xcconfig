@@ -1,0 +1,18 @@
+// The Mac app's build settings (both configurations), for Xcode Cloud and
+// archiving in Xcode. Day to day the Mac app is built by `just mac-app` and
+// `just mac-dev` (scripts/build-mac-app.sh), which make the same bundle.
+
+#include "Version.xcconfig"
+
+PRODUCT_NAME = Hammock
+PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock
+SWIFT_VERSION = 5.0
+// CEF and the Go binaries are arm64 only.
+ARCHS = arm64
+ENABLE_HARDENED_RUNTIME = YES
+// The embed-and-sign build phase reads bin/ and writes into the app.
+ENABLE_USER_SCRIPT_SANDBOXING = NO
+GENERATE_INFOPLIST_FILE = NO
+COMBINE_HIDPI_IMAGES = YES
+// The app's accent: Hammock's forest green (apple/Resources/Brand.xcassets).
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor

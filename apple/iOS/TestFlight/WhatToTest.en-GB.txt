@@ -1,0 +1,23 @@
+This build:
+[NEW] Editor panes: open, edit and save your Mac's files on your iPhone, with syntax highlighting, find, Go to Line and a bar of the keys a phone lacks. Edits show live on your Mac, and the other way round.
+
+Earlier 0.3.0 builds:
+[NEW] Agent view: a question with previews shows the picked option's preview, and takes notes to go with your answer.
+[NEW] Agent view: pull requests the session opened and artifacts it published show as chips above the message box (a PR's title and state from GitHub); tap one to open it.
+[NEW] Agent view: recommended options are marked, the option you tapped shows it's being answered, and answered questions show the notes you gave.
+[NEW] Agent view: the agent's task list sits above the message box while it has one (how far through, what it's doing now; tap for the whole list), for Claude Code and Codex's plan.
+[NEW] Fika is now called Hammock, with a new icon and forest-green colours. The `fika` command is now `hmk`: run `hmk hooks install` to point your agents’ hooks and MCP server at it.
+[NEW] Hammock on your iPhone can now reach your Mac over your local network or a VPN like WireGuard, not just Tailscale, and finds it again when its address changes.
+[NEW] Hammock on your iPhone now follows your Mac's theme: the app's colour, your messages in the agent view and the terminal's colours all match it. To use a different one on the phone, pick it in Settings ▸ Appearance ▸ Theme. If you had chosen an agent view colour other than Hammock's green, the theme of that colour takes its place.
+[NEW] Sessions: each row puts the title first and its Group underneath, the same for every Group, with or without a picture.
+[NEW] Settings ▸ Terminal has a Line spacing setting.
+[NEW] Settings ▸ Usage Limits says how to get up-to-date Claude numbers from your Mac.
+[NEW] Tabs and pane headers show an icon for what's running in them: Neovim, Go, k9s, git, Docker, Python, revdiff and around 450 other programs. Add or change one with pane-icon in ~/.config/hammock/config.
+[NEW] The working spinner's ring is a little thicker, so it's easier to spot.
+[NEW] Your computers show the icons you picked for them on your Mac.
+[FIXED] Agent view: typing your own answer happens in place of the option, focused at once and kept in view as it grows; Return sends it.
+[FIXED] Devices and pairing say computer rather than Mac, since a Linux server can pair too, and the pairing screen mentions hmk pair for a server.
+[FIXED] Resizing or zooming a pane no longer scrolls its agent view about: the conversation holds still while the pane changes size, then settles once, staying at the latest message.
+[FIXED] The agent view no longer jumps up or flashes blank while it follows a working agent, most of all just after your first message.
+[FIXED] The Terminal button on an empty Group shows its icon clearly.
+[FIXED] Typing in an agent's message box keeps up with the keyboard again: it no longer lags a little behind.

@@ -1,0 +1,10 @@
+// The notification service extension's build settings (both
+// configurations). It decrypts notifications: the relay and Apple only see
+// ciphertext.
+
+#include "Version.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock.notify
+SWIFT_VERSION = 5.0
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = Hammock

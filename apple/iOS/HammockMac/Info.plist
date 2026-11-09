@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Hammock</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>NSAccentColorName</key>
+	<string>AccentColor</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Hammock</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- The version and build number from the build settings, so Xcode Cloud's
+	     build numbers reach the app. -->
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<!-- hammock:// links (invites: hammock://join/…) open the app. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.homegrownsw.hammock</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hammock</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- HammockAgentLabel and HammockStateDir: read by the app, hmkd and hmk to find
+	     this variant's daemon. -->
+	<key>HammockAgentLabel</key>
+	<string>com.homegrownsw.hammock.daemon</string>
+	<key>HammockStateDir</key>
+	<string>Hammock</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<!-- Remote access on a local network (Settings ▸ Devices ▸ Remote Access), and Bonjour
+	     finding Hammock on your other computers there (hmkd's _hammock._tcp). -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Hammock connects to your other computers and your iPhone over your local network, when you choose it for remote access.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_hammock._tcp</string>
+	</array>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

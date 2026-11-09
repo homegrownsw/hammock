@@ -1,0 +1,277 @@
+{
+  "default-configuration": "Debug",
+  "configurations": [
+    "Debug",
+    "Release",
+  ],
+  "localizations": {
+    "development": "en",
+    "supported": [
+      "Base",
+    ],
+  },
+  "packages": [
+    {
+      "kind": "local",
+      "path": "..",
+    },
+  ],
+  "files": [
+    { "kind": "folder", "path": "../Sources/HammockMac", "target-membership": [ "HammockMacApp" ] },
+    {
+      "kind": "group",
+      "path": "Config",
+      "children": [
+        { "path": "Hammock.xcconfig" },
+        { "path": "HammockMac.xcconfig" },
+        { "path": "HammockNotify.xcconfig" },
+        { "path": "Version.xcconfig" },
+      ],
+    }, {
+      "kind": "folder",
+      "path": "Hammock",
+      "target-membership": [
+        "Hammock",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "Hammock",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
+      "kind": "folder",
+      "path": "HammockNotify",
+      "target-membership": [
+        "HammockNotify",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "HammockNotify",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "name": "Packages",
+      "children": [
+        { "path": "<PROJECT>/.." },
+      ],
+    }, {
+      "kind": "group",
+      "path": "../Resources",
+      "children": [
+        { "path": "AppIcon.icns", "target-membership": [ "HammockMacApp/resources" ] },
+        {
+          "path": "Brand.xcassets",
+          "target-membership": [
+            "Hammock/resources",
+            "HammockMacApp/resources",
+          ],
+        },
+        {
+          "path": "NeedsYou.caf",
+          "target-membership": [
+            "Hammock/resources",
+            "HammockMacApp/resources",
+          ],
+        },
+        {
+          "path": "editor.html",
+          "target-membership": [
+            "Hammock/resources",
+            "HammockMacApp/resources",
+          ],
+        },
+      ],
+    },
+    { "kind": "folder", "path": "Shared", "target-membership": [ "Hammock", "HammockNotify" ] },
+    {
+      "kind": "group",
+      "name": "Products",
+      "children": [
+        { "path": "<PRODUCTS>/Hammock.app", "id": "71D1EED6E1BC69D449CC69C3", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/Hammock.app", "id": "AD8A7317A362A462BB2547F8", "type": "wrapper.application", "index": false },
+        { "path": "<PRODUCTS>/HammockNotify.appex", "id": "1069666240C416CF23C5C006", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "Hammock/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+      ],
+    },
+  ],
+  "targets": [
+    {
+      "name": "Hammock",
+      "id": "E86441055BC826721038F0DC",
+      "product": "id:71D1EED6E1BC69D449CC69C3",
+      "product-type": "application",
+      "legacy-team-id": "2G974K78BH",
+      "specialized-configurations": [
+        { "name": "Debug", "file": "Config/Hammock.xcconfig" },
+        { "name": "Release", "file": "Config/Hammock.xcconfig" },
+      ],
+      "dependencies": [
+        "HammockNotify",
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory",
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "HammockKit",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+      "build-settings": {
+        "CODE_SIGN_ENTITLEMENTS": "Hammock/Hammock.entitlements",
+        "CODE_SIGN_IDENTITY": "iPhone Developer",
+        "INFOPLIST_FILE": "Hammock/Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks",
+        ],
+        "SDKROOT": "iphoneos",
+      },
+    }, {
+      "name": "HammockNotify",
+      "id": "5DB120418D3D59FC5B4575E8",
+      "product": "Products/HammockNotify.appex",
+      "product-type": "app-extension",
+      "legacy-team-id": "2G974K78BH",
+      "specialized-configurations": [
+        { "name": "Debug", "file": "Config/HammockNotify.xcconfig" },
+        { "name": "Release", "file": "Config/HammockNotify.xcconfig" },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+      ],
+      "build-settings": {
+        "CODE_SIGN_ENTITLEMENTS": "HammockNotify/HammockNotify.entitlements",
+        "INFOPLIST_FILE": "HammockNotify/Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks",
+          "@executable_path/../../Frameworks",
+        ],
+        "SDKROOT": "iphoneos",
+        "TARGETED_DEVICE_FAMILY": "1,2",
+      },
+    }, {
+      "name": "HammockMacApp",
+      "id": "909B43B781750D57EE519E07",
+      "product": "id:AD8A7317A362A462BB2547F8",
+      "product-type": "application",
+      "legacy-team-id": "2G974K78BH",
+      "specialized-configurations": [
+        { "name": "Debug", "file": "Config/HammockMac.xcconfig" },
+        { "name": "Release", "file": "Config/HammockMac.xcconfig" },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+        "frameworks",
+        {
+          "kind": "script",
+          "name": "Embed and sign helpers",
+          "log-environment-variables": true,
+          "run-on-every-build": true,
+          "shell": "/bin/bash",
+          "script": "\"$SRCROOT/../../scripts/xcode-embed-mac-helpers.sh\"",
+        },
+      ],
+      "package-product-members": [
+        {
+          "product-name": "HammockKit",
+          "build-phase": { "build-phase": "frameworks" },
+        }, {
+          "product-name": "HammockUpdates",
+          "build-phase": { "build-phase": "frameworks" },
+        },
+      ],
+      "build-settings": {
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+        "INFOPLIST_FILE": "HammockMac/Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/../Frameworks",
+        ],
+        "SDKROOT": "macosx",
+      },
+    },
+  ],
+  "build-settings": {
+    "ALWAYS_SEARCH_USER_PATHS": "NO",
+    "CLANG_ANALYZER_NONNULL": "YES",
+    "CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION": "YES_AGGRESSIVE",
+    "CLANG_CXX_LANGUAGE_STANDARD": "gnu++14",
+    "CLANG_CXX_LIBRARY": "libc++",
+    "CLANG_ENABLE_MODULES": "YES",
+    "CLANG_ENABLE_OBJC_ARC": "YES",
+    "CLANG_ENABLE_OBJC_WEAK": "YES",
+    "CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING": "YES",
+    "CLANG_WARN_BOOL_CONVERSION": "YES",
+    "CLANG_WARN_COMMA": "YES",
+    "CLANG_WARN_CONSTANT_CONVERSION": "YES",
+    "CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS": "YES",
+    "CLANG_WARN_DIRECT_OBJC_ISA_USAGE": "YES_ERROR",
+    "CLANG_WARN_DOCUMENTATION_COMMENTS": "YES",
+    "CLANG_WARN_EMPTY_BODY": "YES",
+    "CLANG_WARN_ENUM_CONVERSION": "YES",
+    "CLANG_WARN_INFINITE_RECURSION": "YES",
+    "CLANG_WARN_INT_CONVERSION": "YES",
+    "CLANG_WARN_NON_LITERAL_NULL_CONVERSION": "YES",
+    "CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF": "YES",
+    "CLANG_WARN_OBJC_LITERAL_CONVERSION": "YES",
+    "CLANG_WARN_OBJC_ROOT_CLASS": "YES_ERROR",
+    "CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER": "YES",
+    "CLANG_WARN_RANGE_LOOP_ANALYSIS": "YES",
+    "CLANG_WARN_STRICT_PROTOTYPES": "YES",
+    "CLANG_WARN_SUSPICIOUS_MOVE": "YES",
+    "CLANG_WARN_UNGUARDED_AVAILABILITY": "YES_AGGRESSIVE",
+    "CLANG_WARN_UNREACHABLE_CODE": "YES",
+    "CLANG_WARN__DUPLICATE_METHOD_MATCH": "YES",
+    "COPY_PHASE_STRIP": "NO",
+    "DEBUG_INFORMATION_FORMAT[config=Debug]": "dwarf",
+    "DEBUG_INFORMATION_FORMAT[config=Release]": "dwarf-with-dsym",
+    "DEVELOPMENT_TEAM": "2G974K78BH",
+    "ENABLE_NS_ASSERTIONS[config=Release]": "NO",
+    "ENABLE_STRICT_OBJC_MSGSEND": "YES",
+    "ENABLE_TESTABILITY[config=Debug]": "YES",
+    "GCC_C_LANGUAGE_STANDARD": "gnu11",
+    "GCC_DYNAMIC_NO_PIC[config=Debug]": "NO",
+    "GCC_NO_COMMON_BLOCKS": "YES",
+    "GCC_OPTIMIZATION_LEVEL[config=Debug]": "0",
+    "GCC_PREPROCESSOR_DEFINITIONS[config=Debug]": [
+      "$(inherited)",
+      "DEBUG=1",
+    ],
+    "GCC_WARN_64_TO_32_BIT_CONVERSION": "YES",
+    "GCC_WARN_ABOUT_RETURN_TYPE": "YES_ERROR",
+    "GCC_WARN_UNDECLARED_SELECTOR": "YES",
+    "GCC_WARN_UNINITIALIZED_AUTOS": "YES_AGGRESSIVE",
+    "GCC_WARN_UNUSED_FUNCTION": "YES",
+    "GCC_WARN_UNUSED_VARIABLE": "YES",
+    "IPHONEOS_DEPLOYMENT_TARGET": "26.0",
+    "MACOSX_DEPLOYMENT_TARGET": "26.0",
+    "MTL_ENABLE_DEBUG_INFO[config=Debug]": "INCLUDE_SOURCE",
+    "MTL_ENABLE_DEBUG_INFO[config=Release]": "NO",
+    "MTL_FAST_MATH": "YES",
+    "ONLY_ACTIVE_ARCH[config=Debug]": "YES",
+    "PRODUCT_NAME": "$(TARGET_NAME)",
+    "SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Debug]": "DEBUG",
+    "SWIFT_COMPILATION_MODE[config=Release]": "wholemodule",
+    "SWIFT_OPTIMIZATION_LEVEL[config=Debug]": "-Onone",
+    "SWIFT_OPTIMIZATION_LEVEL[config=Release]": "-O",
+    "SWIFT_VERSION": "5.0",
+  },
+  "last-upgrade": "14.3",
+}

@@ -1,0 +1,7 @@
+# CEF binary distribution used by browser panes (macOS arm64).
+# Line 1: CEF version. Line 2: SHA-1 of the "minimal" distribution.
+# Line 3: SHA-1 of the prebuilt cefclient sample (spike comparisons only).
+# SHA-1s are as published in cef-builds.spotifycdn.com/index.json.
+156.0.14+g4fa4ab5+chromium-156.0.8078.48
+7359a9d293dd5c480bec3f18b762731b483b0e13
+a80906135c78d90a564e022989084d741ab1cd9d

@@ -1,0 +1,204 @@
+#!/bin/bash
+# Hammock on Unraid: starts and stops hmkd, as root, with everything it keeps
+# in the Hammock folder (state/, and home/: the panes' HOME, so dotfiles,
+# ~/.claude and history survive reboots; Unraid's own / is in RAM).
+#
+#   rc.hammock start         start hmkd (once the array is up, if the folder is on it)
+#   rc.hammock stop          stop hmkd; panes keep running
+#   rc.hammock stop-array    stop hmkd and end its panes, so the array can stop
+#                            (they come back when it starts: layout, folders,
+#                            scrollback, shells, agents resumed)
+#   rc.hammock restart       stop and start hmkd; panes keep running
+#   rc.hammock status        hmk status
+#   rc.hammock watchdog      start it if it should be running and isn't (cron)
+#   rc.hammock setup         (re)write the environment hmk and hmkd run with
+#
+# Settings: /boot/config/plugins/hammock/hammock.cfg (FOLDER, AUTOSTART, and
+# PANE_HOME: "folder" for <folder>/home, or "root" for Unraid's /root, kept
+# as you've set it up, with the agents' own files (~/.claude, ~/.codex,
+# ~/.claude.json) kept in <folder>/agents so their logins outlive reboots).
+set -u
+
+plugin=hammock
+cfg=/boot/config/plugins/$plugin/$plugin.cfg
+env_file=/var/run/hammock.env
+stopped_flag=/var/run/hammock.stopped
+bin=/usr/local/hammock/bin
+etc=/usr/local/hammock/etc
+
+FOLDER=/mnt/user/appdata/hammock
+AUTOSTART=yes
+PANE_HOME=folder
+# shellcheck disable=SC1090
+[ -r "$cfg" ] && . "$cfg"
+
+log() { logger -t hammock -- "$*"; echo "$*"; }
+
+array_started() { grep -qs '^mdState="STARTED"' /var/local/emhttp/var.ini; }
+
+# real_path resolves a user share path (/mnt/user/appdata/hammock) to the
+# disk or pool it's on (/mnt/cache/appdata/hammock): Unraid's FUSE layer
+# (shfs) is slower, and its sockets and locks aren't to be relied on.
+real_path() {
+  local p="$1" loc rest
+  case "$p" in
+    /mnt/user/*|/mnt/user0/*)
+      rest="${p#/mnt/user/}"; rest="${rest#/mnt/user0/}"
+      # The share's top folder says where it lives (cache, disk1, …).
+      loc="$(getfattr --absolute-names --only-values -n system.LOCATION "/mnt/user/${rest%%/*}" 2>/dev/null | head -1)"
+      loc="${loc%% *}"
+      if [ -n "$loc" ] && [ -d "/mnt/$loc" ]; then
+        echo "/mnt/$loc/$rest"
+        return
+      fi
+      ;;
+  esac
+  echo "$p"
+}
+
+# needs_array: the folder is on the array or a pool, which only exists while
+# the array is started.
+needs_array() { case "$FOLDER" in /mnt/*) case "$FOLDER" in /mnt/disks/*|/mnt/remotes/*|/mnt/addons/*) return 1 ;; esac; return 0 ;; esac; return 1; }
+
+setup() {
+  local dir
+  if needs_array && ! array_started; then
+    log "the array isn't started: Hammock starts with it"
+    return 1
+  fi
+  dir="$(real_path "$FOLDER")"
+  mkdir -p "$dir/state" || { log "can't make $dir"; return 1; }
+  chmod 700 "$dir" "$dir/state"
+  local home shell
+  if [ "$PANE_HOME" = root ]; then
+    home=/root
+    keep_agents "$dir/agents"
+  else
+    home="$dir/home"
+    mkdir -p "$home"
+    chmod 700 "$home"
+    # A login shell's files, if there are none yet: ~/.bashrc comes from
+    # ~/.bash_profile, and Claude Code's own install dir is on PATH.
+    [ -e "$home/.bash_profile" ] || cat > "$home/.bash_profile" <<'EOF2'
+# Hammock's panes on Unraid start here (HOME is in the Hammock folder).
+[ -d "$HOME/.local/bin" ] && PATH="$HOME/.local/bin:$PATH"
+[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
+EOF2
+  fi
+  mkdir -p "$home/.config/hammock"
+  # Panes run root's own login shell (Unraid's is bash; yours may be zsh).
+  shell="$(getent passwd root | cut -d: -f7)"
+  case "$shell" in */nologin|*/false|"") shell=/bin/bash ;; esac
+  [ -x "$shell" ] || shell=/bin/bash
+  # Unraid's /etc/profile, without its HOME=/root and cd $HOME: a pane keeps
+  # its own folder and the Hammock home.
+  mkdir -p "$etc"
+  sed -e '/^export HOME=/d' -e '/^cd \$HOME/d' /etc/profile > "$etc/profile"
+  cat > "$env_file" <<EOF
+# Written by rc.hammock setup: what hmk and hmkd run with.
+export HMK_DIR='$dir/state'
+export HMK_CONFIG_DIR='$home/.config/hammock'
+HAMMOCK_HOME='$home'
+HAMMOCK_SHELL='$shell'
+HAMMOCK_AGENTS='$([ "$PANE_HOME" = root ] && echo "$dir/agents")'
+EOF
+  chmod 600 "$env_file"
+}
+
+# keep_agents keeps Claude Code's and Codex's own files in the Hammock
+# folder when panes use /root (which Unraid empties at every reboot):
+# ~/.claude and ~/.codex as links to it, and ~/.claude.json copied back and
+# forth (Claude replaces that file when it saves, so a link wouldn't stay).
+keep_agents() {
+  local agents="$1" d
+  mkdir -p "$agents"
+  chmod 700 "$agents"
+  for d in .claude .codex; do
+    if [ -d "/root/$d" ] && [ ! -L "/root/$d" ]; then
+      # What's there already (made since boot): kept, unless the folder has its own.
+      if [ -e "$agents/$d" ]; then rm -rf "/root/$d.hammock-old"; mv "/root/$d" "/root/$d.hammock-old"
+      else mv "/root/$d" "$agents/$d"; fi
+    fi
+    mkdir -p "$agents/$d"
+    ln -sfn "$agents/$d" "/root/$d"
+  done
+  sync_claude_json "$agents"
+}
+
+# sync_claude_json: the newer of /root/.claude.json and the Hammock
+# folder's copy wins (at start, after a reboot, the folder's).
+sync_claude_json() {
+  local agents="$1"
+  [ -n "$agents" ] && [ -d "$agents" ] || return 0
+  if [ -f /root/.claude.json ] && [ ! -L /root/.claude.json ] && { [ ! -f "$agents/.claude.json" ] || [ /root/.claude.json -nt "$agents/.claude.json" ]; }; then
+    cp -p /root/.claude.json "$agents/.claude.json.tmp" && mv "$agents/.claude.json.tmp" "$agents/.claude.json"
+  elif [ -f "$agents/.claude.json" ] && { [ ! -f /root/.claude.json ] || [ "$agents/.claude.json" -nt /root/.claude.json ]; }; then
+    cp -p "$agents/.claude.json" /root/.claude.json
+  fi
+}
+
+# daemon_env runs "$@" as hmkd should: the Hammock home, and the panes'
+# shell (hammock-shell, which also lets Claude Code skip its permission
+# prompts as root: hmkd passes panes only a few variables of its own).
+daemon_env() {
+  # shellcheck disable=SC1090
+  . "$env_file"
+  env -i HOME="$HAMMOCK_HOME" USER=root LOGNAME=root SHELL="$bin/hammock-shell" \
+    PATH="$HAMMOCK_HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    LANG="${LANG:-en_US.UTF-8}" TERM=xterm-256color \
+    HMK_DIR="$HMK_DIR" HMK_CONFIG_DIR="$HMK_CONFIG_DIR" "$@"
+}
+
+running() { [ -r "$env_file" ] && daemon_env "$bin/hmk" status >/dev/null 2>&1; }
+
+start() {
+  setup || return 1
+  rm -f "$stopped_flag"
+  if running; then
+    echo "Hammock is already running"
+    return 0
+  fi
+  log "starting Hammock (folder $(real_path "$FOLDER"))"
+  daemon_env "$bin/hmk" start || return 1
+  # Claude Code and Codex report to Hammock (their settings live in the
+  # Hammock home, so this only matters the first time, or after an update).
+  daemon_env "$bin/hmk" hooks install >/dev/null 2>&1 || true
+}
+
+stop() {
+  local panes="${1:-}"
+  touch "$stopped_flag"
+  [ -r "$env_file" ] || { echo "Hammock isn't running"; return 0; }
+  if [ "$panes" = --panes ]; then
+    log "stopping Hammock and its panes"
+    daemon_env "$bin/hmk" stop --panes
+  else
+    log "stopping Hammock (panes keep running)"
+    daemon_env "$bin/hmk" stop
+  fi
+}
+
+case "${1:-}" in
+  start) start ;;
+  stop) stop ;;
+  stop-array)
+    # The array is stopping: end the panes too, or their open files keep
+    # it from unmounting. Stopped stays set (the watchdog leaves it alone
+    # while the array finishes stopping) until the array's next start
+    # starts it again and brings the panes back.
+    needs_array && stop --panes ;;
+  restart) stop; sleep 1; start ;;
+  status) [ -r "$env_file" ] || setup >/dev/null 2>&1; daemon_env "$bin/hmk" status ;;
+  watchdog)
+    if [ -r "$env_file" ]; then
+      # shellcheck disable=SC1090
+      . "$env_file"
+      sync_claude_json "${HAMMOCK_AGENTS:-}"
+    fi
+    [ "$AUTOSTART" = yes ] || exit 0
+    [ -e "$stopped_flag" ] && exit 0
+    needs_array && ! array_started && exit 0
+    running || start >/dev/null ;;
+  setup) setup ;;
+  *) echo "usage: $0 start|stop|stop-array|restart|status|watchdog|setup" >&2; exit 2 ;;
+esac

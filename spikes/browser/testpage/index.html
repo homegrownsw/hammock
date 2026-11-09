@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser pane probe</title>
+<style>
+  :root { color-scheme: light dark; font: 14px -apple-system, system-ui, sans-serif; }
+  body { margin: 0; padding: 16px; }
+  header { position: sticky; top: 0; padding: 8px 0; background: Canvas; display: flex; gap: 12px; align-items: center; }
+  input, textarea { font: inherit; padding: 6px 8px; }
+  #field { width: 320px; }
+  #hud { font: 12px ui-monospace, monospace; white-space: pre; opacity: .8; }
+  #spinner { width: 24px; height: 24px; border-radius: 4px; background: #e8833a; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .row { padding: 14px 12px; border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
+  .row:nth-child(odd) { background: color-mix(in srgb, CanvasText 4%, transparent); }
+  #hover { padding: 10px; border: 1px dashed; display: inline-block; }
+  #hover:hover { background: #3a8ee8; color: white; cursor: pointer; }
+  select { font: inherit; }
+</style>
+</head>
+<body>
+<header>
+  <div id="spinner"></div>
+  <input id="field" placeholder="Type here (try ⌥e e, IME, ⌘A ⌘C ⌘V)" autofocus>
+  <select><option>Native select popup</option><option>Second</option><option>Third</option></select>
+  <span id="hover">Hover me</span>
+  <a href="https://example.com" target="_blank">Link</a>
+</header>
+<div id="hud"></div>
+<textarea rows="3" cols="60" placeholder="Right-click for the context menu; drag-select text below"></textarea>
+<main id="rows"></main>
+<script>
+// Every probe line goes to the console with a HAMMOCK: prefix; the browser host
+// relays those lines so tests can read them without a screen.
+const now = () => performance.timeOrigin + performance.now();
+const log = (kind, data) => console.log('HAMMOCK:' + JSON.stringify({ kind, t: now(), ...data }));
+
+const rows = document.getElementById('rows');
+for (let i = 0; i < 300; i++) {
+  const d = document.createElement('div');
+  d.className = 'row';
+  d.textContent = `Row ${i + 1} — scroll with the trackpad: momentum, rubber-banding at the ends, pinch to zoom.`;
+  rows.appendChild(d);
+}
+
+for (const type of ['keydown', 'keyup']) {
+  addEventListener(type, e => log(type, { key: e.key, code: e.code, meta: e.metaKey, alt: e.altKey, ctrl: e.ctrlKey, shift: e.shiftKey, repeat: e.repeat, composing: e.isComposing }), true);
+}
+const field = document.getElementById('field');
+field.addEventListener('input', e => log('input', { data: e.data, inputType: e.inputType, value: field.value }));
+for (const type of ['compositionstart', 'compositionupdate', 'compositionend']) {
+  field.addEventListener(type, e => log(type, { data: e.data }));
+}
+addEventListener('copy', () => log('copy', { selection: String(getSelection()) || field.value.slice(field.selectionStart, field.selectionEnd) }));
+addEventListener('paste', e => log('paste', { text: e.clipboardData.getData('text/plain') }));
+addEventListener('wheel', e => log('wheel', { dx: e.deltaX, dy: e.deltaY, mode: e.deltaMode, ctrl: e.ctrlKey }), { passive: true });
+addEventListener('pointerdown', e => log('pointerdown', { x: e.clientX, y: e.clientY, button: e.button, detail: e.detail }));
+addEventListener('pointerup', e => log('pointerup', { x: e.clientX, y: e.clientY, button: e.button }));
+addEventListener('contextmenu', e => log('contextmenu', { x: e.clientX, y: e.clientY }));
+addEventListener('focus', () => log('focus', {}));
+addEventListener('blur', () => log('blur', {}));
+document.getElementById('hover').addEventListener('pointerenter', () => log('hover', {}));
+let lastScroll = 0;
+addEventListener('scroll', () => {
+  const t = now();
+  if (t - lastScroll > 50) log('scroll', { y: scrollY });
+  lastScroll = t;
+}, { passive: true });
+if (window.visualViewport) {
+  visualViewport.addEventListener('resize', () => log('zoom', { scale: visualViewport.scale }));
+}
+addEventListener('resize', () => log('resize', { w: innerWidth, h: innerHeight }));
+document.addEventListener('visibilitychange', () => log('visibility', { state: document.visibilityState }));
+
+// Frame pacing: rAF intervals, summarised every second.
+const hud = document.getElementById('hud');
+let frames = [], last = 0;
+function tick(t) {
+  if (last) frames.push(t - last);
+  last = t;
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+setInterval(() => {
+  if (!frames.length) { log('frames', { n: 0 }); hud.textContent = 'no frames'; return; }
+  const s = [...frames].sort((a, b) => a - b);
+  const p = q => s[Math.min(s.length - 1, Math.floor(q * s.length))];
+  const stats = { n: s.length, fps: Math.round(1000 / (s.reduce((a, b) => a + b, 0) / s.length)), p50: +p(0.5).toFixed(2), p99: +p(0.99).toFixed(2), max: +s[s.length - 1].toFixed(2) };
+  hud.textContent = `${stats.fps} fps · frame p50 ${stats.p50} ms · p99 ${stats.p99} ms · dpr ${devicePixelRatio}`;
+  log('frames', stats);
+  frames = [];
+}, 1000);
+log('ready', { dpr: devicePixelRatio, w: innerWidth, h: innerHeight, ua: navigator.userAgent });
+</script>
+</body>
+</html>

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Checks that a change to code that ships in the apps comes with a release note (release-notes/README.md).
+#
+#   scripts/note-check [base]      the base defaults to origin/main
+#
+# Compares the working tree, committed and uncommitted changes alike, with where this checkout left the base.
+# A change must add a note under release-notes/<platform>/pending/ for each app it reaches:
+#
+#   apple/Sources/{HammockMac,HammockMenu,HammockUpdates}/, apple/iOS/HammockMac/, apple/Resources/,
+#   cmd/, internal/, helpers/                        the Mac app (it ships the daemon, CLI, TUI and helpers)
+#   apple/iOS/{Hammock,HammockNotify,Shared}/              the iOS app
+#   apple/Sources/HammockKit/, proto/                   both
+#
+# except tests (*_test.go, testdata/, apple/Tests/) and release output (apple/iOS/TestFlight/). Scripts,
+# docs, the relay and build settings don't count. `just note <mac|ios|both> …` writes a note.
+#
+# NO_RELEASE_NOTE=1 skips the check for a refactor, a test-only change or a chore nobody using Hammock will
+# notice. When in doubt, add an `internal` note.
+set -euo pipefail
+
+if [ "${NO_RELEASE_NOTE:-}" = 1 ]; then
+  echo "note-check: skipped (NO_RELEASE_NOTE=1)"
+  exit 0
+fi
+
+base="${1:-origin/main}"
+if ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+  echo "note-check: unknown base '$base' (try: git fetch origin)" >&2
+  exit 2
+fi
+
+# "<status>\t<path>" for each changed file, compared with where this checkout left the base, so a main that
+# has moved on since doesn't count as this change. A rename shows its new path; an untracked file counts as
+# added. From the repo root, where git diff and git ls-files agree on paths.
+cd "$(git rev-parse --show-toplevel)"
+fork=$(git merge-base "$base" HEAD) ||
+  { echo "note-check: no history shared with '$base' (a shallow clone?)" >&2; exit 2; }
+files=$(
+  git diff --name-status --find-renames "$fork" | awk -F'\t' '{ print substr($1,1,1) "\t" $NF }'
+  git ls-files --others --exclude-standard | sed 's/^/A\t/'
+)
+
+MAC_RE='^(apple/Sources/(HammockMac|HammockMenu|HammockUpdates)/|apple/iOS/HammockMac/|apple/Resources/|cmd/|internal/|helpers/)'
+IOS_RE='^apple/iOS/(Hammock|HammockNotify|Shared)/'
+BOTH_RE='^(apple/Sources/HammockKit/|proto/)'
+
+shipped=$(printf '%s\n' "$files" | awk -F'\t' '{ print $2 }' |
+  grep -Ev '(_test\.go|\.md)$|/testdata/|^apple/Tests/|^apple/iOS/TestFlight/' || true)
+
+needs() { # needs <platform> → the changed files that reach it
+  local own
+  case "$1" in mac) own="$MAC_RE" ;; ios) own="$IOS_RE" ;; esac
+  printf '%s\n' "$shipped" | grep -E "$own|$BOTH_RE" || true
+}
+added() { # added <platform> → the notes this change adds for it
+  printf '%s\n' "$files" | awk -F'\t' -v p="$1" '$1=="A" && $2 ~ ("^release-notes/" p "/pending/[^/]+\\.md$") { print $2 }'
+}
+
+missing=""
+any=0
+for p in mac ios; do
+  reach=$(needs "$p")
+  [ -n "$reach" ] || continue
+  any=1
+  notes=$(added "$p")
+  if [ -n "$notes" ]; then
+    echo "note-check: $p release note added ($(printf '%s' "$notes" | tr '\n' ' '))"
+  else
+    missing+="$p "
+    echo "note-check: this change touches the $p app but adds no note under release-notes/$p/pending/:" >&2
+    printf '%s\n' "$reach" | head -n5 | sed 's/^/  /' >&2
+  fi
+done
+if [ "$any" = 0 ]; then echo "note-check: no app code changed"; exit 0; fi
+[ -n "$missing" ] || exit 0
+
+echo "  Add one with:  just note <mac|ios|both> <new|fixed|internal> \"What changed.\"" >&2
+echo "  Or, for a change nobody using Hammock will notice: NO_RELEASE_NOTE=1 just note-check" >&2
+exit 1

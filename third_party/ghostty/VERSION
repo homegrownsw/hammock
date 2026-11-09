@@ -1,0 +1,4 @@
+# Ghostty commit libghostty-vt is built from. Keep in sync with the commit
+# pinned by go.mitchellh.com/libghostty (its CMakeLists.txt GIT_TAG) and with
+# the xcframework used by the Apple clients.
+f54340ad77814fe319d136e5e915d6a48de8dd23
