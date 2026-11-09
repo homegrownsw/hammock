@@ -865,6 +865,33 @@ public enum AgentLink {
         ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "")
     }
 
+    /// What clicking a link in a terminal may do. Anything a program prints
+    /// can be a link (OSC 8 lets its text say one thing and go elsewhere),
+    /// so only web and mail links open straight away.
+    public enum Opening: Equatable, Sendable {
+        /// http(s): the browser, or a Hammock browser pane.
+        case web
+        /// mailto: opens directly.
+        case direct
+        /// A file on this Mac (the path): opened unless it would run something.
+        case file(String)
+        /// Any other scheme, or a file on another host: ask first.
+        case ask
+    }
+
+    public static func opening(_ url: URL) -> Opening {
+        switch url.scheme?.lowercased() ?? "" {
+        case "http", "https": return .web
+        case "mailto": return .direct
+        case "file":
+            // file://server/share… would reach out to another machine.
+            let host = url.host(percentEncoded: false) ?? ""
+            guard host.isEmpty || host.lowercased() == "localhost", !url.path.isEmpty else { return .ask }
+            return .file(url.path)
+        default: return .ask
+        }
+    }
+
     /// Where the links in some text go, one per line, leaving out those whose
     /// text already shows it: shown on hover.
     static func destinations(_ text: AttributedString) -> String {

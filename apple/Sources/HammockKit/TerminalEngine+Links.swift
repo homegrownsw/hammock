@@ -11,6 +11,9 @@ public struct TerminalLink: Equatable, Sendable {
 
     public var url: String
     public var spans: [Span]
+    /// Set by the program (OSC 8), so its text may say something other
+    /// than where it goes; else a URL found in the text, which shows itself.
+    public var hyperlink = false
 
     public func contains(x: Int, y: Int) -> Bool { spans.contains { $0.row == y && $0.cols.contains(x) } }
 }
@@ -26,7 +29,7 @@ extension TerminalEngine {
             var lo = x, hi = x
             while lo > 0, hyperlinkURI(x: lo - 1, y: y) == uri { lo -= 1 }
             while hi + 1 < cols, hyperlinkURI(x: hi + 1, y: y) == uri { hi += 1 }
-            return TerminalLink(url: uri, spans: [.init(row: y, cols: lo..<(hi + 1))])
+            return TerminalLink(url: uri, spans: [.init(row: y, cols: lo..<(hi + 1))], hyperlink: true)
         }
         return Self.urlLink(in: f, x: x, y: y)
     }

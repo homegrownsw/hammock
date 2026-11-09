@@ -12,6 +12,18 @@ import Testing
         }
     }
 
+    @Test func terminalLinksOnlyOpenWebAndMailDirectly() {
+        #expect(AgentLink.opening(URL(string: "https://example.com/docs")!) == .web)
+        #expect(AgentLink.opening(URL(string: "HTTP://example.com")!) == .web)
+        #expect(AgentLink.opening(URL(string: "mailto:a@b.c")!) == .direct)
+        #expect(AgentLink.opening(URL(string: "file:///tmp/evil.command")!) == .file("/tmp/evil.command"))
+        #expect(AgentLink.opening(URL(string: "file://localhost/tmp/a%20b.txt")!) == .file("/tmp/a b.txt"))
+        for s in ["file://attacker.example/share/x.command", "smb://attacker.example/share", "vscode://file/x",
+                  "x-apple.systempreferences:foo", "afp://host/vol", "javascript:alert(1)"] {
+            #expect(AgentLink.opening(URL(string: s)!) == .ask, "\(s)")
+        }
+    }
+
     @Test func destinationsLeaveOutLinksThatShowThemselves() {
         let text = Markdown.inline("See [the docs](https://example.com/docs), /tmp/notes.md and [this](vscode://open)")
         #expect(AgentLink.destinations(text) == "https://example.com/docs\nvscode://open")

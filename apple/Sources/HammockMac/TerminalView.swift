@@ -878,19 +878,48 @@ struct TerminalView: NSViewRepresentable {
         v.folded = context.environment.paneFolded
     }
 
-    /// A pane in a Group shared with you runs on another Mac: dropped files
-    /// are copied there (up to 20 MB each) and their paths typed.
     @MainActor
-    /// Opens a link from a terminal: in the default browser (or the app
-    /// for its scheme), or in a Hammock browser pane beside the terminal.
+    /// Opens a link from a terminal: in the default browser, or in a Hammock
+    /// browser pane beside the terminal. Anything a program prints can be a
+    /// link, so only web and mail links open straight away: a file that
+    /// would run something is shown in the Finder instead, and any other
+    /// scheme (which could launch any app, or mount a server) asks first.
     static func open(_ url: URL, inHammock: Bool, beside paneID: String, model: AppModel) {
-        if inHammock, url.scheme == "http" || url.scheme == "https" {
-            Task { await model.splitBrowser(paneID, direction: .horizontal, url: url.absoluteString) }
-        } else {
+        switch AgentLink.opening(url) {
+        case .web:
+            if inHammock {
+                Task { await model.splitBrowser(paneID, direction: .horizontal, url: url.absoluteString) }
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+        case .direct:
             NSWorkspace.shared.open(url)
+        case .file(let path):
+            FileLink.open(path)
+        case .ask:
+            askToOpen(url)
         }
     }
 
+    /// "Open this link?", showing where it really goes; Cancel is the default.
+    @MainActor private static func askToOpen(_ url: URL) {
+        let alert = NSAlert()
+        alert.messageText = "Open this link?"
+        alert.informativeText = "It isn’t a web page: it could open another app, or connect to a server.\n\n\(url.absoluteString)"
+        let open = alert.addButton(withTitle: "Open")
+        let cancel = alert.addButton(withTitle: "Cancel")
+        open.keyEquivalent = ""
+        cancel.keyEquivalent = "\r"
+        let opened: (NSApplication.ModalResponse) -> Void = { if $0 == .alertFirstButtonReturn { NSWorkspace.shared.open(url) } }
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window, completionHandler: opened)
+        } else {
+            opened(alert.runModal())
+        }
+    }
+
+    /// A pane in a Group shared with you runs on another Mac: dropped files
+    /// are copied there (up to 20 MB each) and their paths typed.
     static func upload(_ urls: [URL], to paneID: String, model: AppModel) -> Bool {
         guard let group = model.group(ofPane: paneID), group.isRemote else { return false }
         guard group.canDrive else { return true }
@@ -1043,6 +1072,14 @@ extension TerminalNSView {
         // On a link: what to do with it (before the program's own right-click).
         if let link = link(at: event), let url = URL(string: link.url) {
             let menu = NSMenu()
+            // Where it really goes: a program's link can say one thing and go elsewhere.
+            if link.hyperlink {
+                let dest = NSMenuItem(title: Self.shortened(link.url), action: nil, keyEquivalent: "")
+                dest.isEnabled = false
+                dest.toolTip = link.url
+                menu.addItem(dest)
+                menu.addItem(.separator())
+            }
             menu.addItem(LinkMenuItem("Open Link") { [weak self] in self?.onOpenLink?(url, false) })
             menu.addItem(LinkMenuItem("Open in Hammock Browser") { [weak self] in self?.onOpenLink?(url, true) })
             menu.addItem(LinkMenuItem("Copy Link") {
@@ -1056,6 +1093,13 @@ extension TerminalNSView {
     }
 
     // MARK: Links
+
+    /// A long link cut in the middle, for a menu.
+    static func shortened(_ url: String, to max: Int = 80) -> String {
+        guard url.count > max else { return url }
+        let half = (max - 1) / 2
+        return String(url.prefix(half)) + "…" + String(url.suffix(half))
+    }
 
     private func cell(at p: NSPoint) -> (x: Int, y: Int) {
         (Int((p.x - padding) / cellWidth), Int((p.y - padding) / cellHeight))
@@ -1076,6 +1120,8 @@ extension TerminalNSView {
         }
         guard link != hoverLink else { return }
         hoverLink = link
+        // A program's link (OSC 8) shows where it goes: its text needn't.
+        toolTip = link?.hyperlink == true ? link?.url : nil
         (link == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
         needsDisplay = true
     }
