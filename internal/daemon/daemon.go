@@ -488,6 +488,11 @@ func (d *Daemon) publish(u *pb.StateUpdate) {
 	for c := range d.conns {
 		switch {
 		case !c.subscribed:
+			// A guest that never subscribed sees no updates, but what it
+			// watches is still bound by them (a tab moving out of its Group).
+			if c.peer != "" && c.authed && movesThings(u) {
+				d.revokeStreams(c)
+			}
 		case c.peer != "":
 			// A guest sees only its Groups (share.go).
 			if f := d.filterFor(c, u); f != nil {
@@ -500,6 +505,12 @@ func (d *Daemon) publish(u *pb.StateUpdate) {
 			c.send(msg)
 		}
 	}
+}
+
+// movesThings: u could take a pane out of a guest's reach (Groups, their
+// members, tabs or panes changed or went).
+func movesThings(u *pb.StateUpdate) bool {
+	return len(u.Groups)+len(u.Tabs)+len(u.Panes)+len(u.DeletedGroupIds)+len(u.DeletedTabIds)+len(u.DeletedPaneIds) > 0
 }
 
 func (d *Daemon) fullState() *pb.StateUpdate {

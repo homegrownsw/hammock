@@ -1170,6 +1170,7 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 			if g := d.groups[m.SetMember.GroupId]; g != nil {
 				d.setMemberRole(g, c.peer, pb.Role_ROLE_UNSPECIFIED)
 				d.resendState(c)
+				d.hangUpIfOutside(c, true)
 				d.audit("peer:"+c.name, "left", g.Id, "")
 			}
 			return nil, nil

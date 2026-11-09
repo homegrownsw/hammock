@@ -136,20 +136,47 @@ func (d *Daemon) watchStranger(c *conn) {
 		if d.remote.preAuth[c] == nil {
 			return // a member or linked now: its limits lifted
 		}
-		busy := false
-		for _, a := range d.comp.attempts {
-			busy = busy || a.c == c
-		}
-		for _, j := range d.joins {
-			busy = busy || j.c == c
-		}
-		if !busy {
+		if !d.strangerBusy(c) {
 			c.cancel()
 			return
 		}
 		time.AfterFunc(strangerIdle, check)
 	}
 	time.AfterFunc(strangerIdle, check)
+}
+
+// strangerBusy: c has something under way here, a link waiting on its code
+// or a request to join. Callers hold d.mu.
+func (d *Daemon) strangerBusy(c *conn) bool {
+	for _, a := range d.comp.attempts {
+		if a.c == c {
+			return true
+		}
+	}
+	for _, j := range d.joins {
+		if j.c == c {
+			return true
+		}
+	}
+	return false
+}
+
+// hangUpIfOutside closes a guest's connection once it's in no Group here any
+// more (removed, left, or sharing stopped), after what's already queued for
+// it (the update that took its Groups away). Whatever it was watching goes
+// with the connection, whether or not it ever subscribed. A linked computer
+// stays, and so does one with a join or link waiting. self: c is the
+// connection whose message is being handled (it hangs up after the answer).
+// Callers hold d.mu.
+func (d *Daemon) hangUpIfOutside(c *conn, self bool) {
+	if c.peer == "" || d.isLinked(c.peer) || len(d.scope(c.peer)) > 0 || d.strangerBusy(c) {
+		return
+	}
+	if self {
+		c.hangUp.Store(true)
+	} else {
+		c.send(nil) // the write loop closes it there, once the rest is written
+	}
 }
 
 // knowPerson records a member's (or soon-to-be member's) profile, lifting
@@ -451,6 +478,7 @@ func (d *Daemon) setMember(m *pb.SetMember) error {
 	for c := range d.conns {
 		if c.peer == m.UserId {
 			d.resendState(c)
+			d.hangUpIfOutside(c, false)
 		}
 	}
 	return nil
@@ -493,6 +521,7 @@ func (d *Daemon) stopSharing(groupID string) error {
 			c.cancel()
 		default:
 			d.resendState(c)
+			d.hangUpIfOutside(c, false)
 		}
 	}
 	d.audit("user", "sharing-stopped", groupID, "")
@@ -526,15 +555,16 @@ func (d *Daemon) groupOfTab(id string) string {
 	return ""
 }
 
-// resendState gives a peer a fresh, full view (after its Groups changed).
+// resendState gives a peer a fresh, full view (after its Groups changed),
+// and stops what it was watching that's now out of reach: that, whether or
+// not it subscribed (one that never did still has its streams).
 // Callers hold d.mu.
 func (d *Daemon) resendState(c *conn) {
-	if !c.subscribed {
-		return
-	}
-	c.seen = map[string]bool{}
-	if u := d.filterFor(c, d.fullState()); u != nil {
-		c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_State{State: u}})
+	if c.subscribed {
+		c.seen = map[string]bool{}
+		if u := d.filterFor(c, d.fullState()); u != nil {
+			c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_State{State: u}})
+		}
 	}
 	d.revokeStreams(c)
 }

@@ -181,6 +181,13 @@ func rawPeer(t *testing.T, host *Daemon) (*client.Client, string) {
 // peer in with role r.
 func sharedSetup(t *testing.T, r pb.Role) (host *Daemon, h, peer *client.Client, uid, gid, tab, paneID string) {
 	t.Helper()
+	return sharedSetupAs(t, r, true)
+}
+
+// sharedSetupAs is sharedSetup, with a peer that subscribes or (as a
+// modified guest daemon might) never does.
+func sharedSetupAs(t *testing.T, r pb.Role, subscribe bool) (host *Daemon, h, peer *client.Client, uid, gid, tab, paneID string) {
+	t.Helper()
 	host, dir := startHost(t)
 	h = dial(t, dir)
 	call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
@@ -197,7 +204,9 @@ func sharedSetup(t *testing.T, r pb.Role) (host *Daemon, h, peer *client.Client,
 		t.Fatal(err)
 	}
 	peer, uid = rawPeer(t, host)
-	call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	if subscribe {
+		call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	}
 	done := make(chan error, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -229,11 +238,13 @@ func noOutput(t *testing.T, c *client.Client, paneID string) {
 	}
 }
 
-// Removing a guest, or moving a tab out of the shared Group, stops its streams.
+// Removing a guest, or moving a tab out of the shared Group, stops its
+// streams, whether or not its daemon ever subscribed (a modified one needn't).
 func TestRevokedPeerStopsStreaming(t *testing.T) {
-	for _, how := range []string{"remove", "move", "stop"} {
+	for _, how := range []string{"remove", "move", "stop", "remove-unsubscribed", "move-unsubscribed", "stop-unsubscribed"} {
 		t.Run(how, func(t *testing.T) {
-			host, h, peer, uid, gid, tab, paneID := sharedSetup(t, pb.Role_ROLE_DRIVER)
+			how, unsub := strings.CutSuffix(how, "-unsubscribed")
+			host, h, peer, uid, gid, tab, paneID := sharedSetupAs(t, pb.Role_ROLE_DRIVER, !unsub)
 			enc := &fakeEncoder{d: host, s: map[string]*fakeSession{}}
 			host.media.sourceFor = func(*pane) frameSource { return enc }
 			call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{PaneId: paneID, InBand: true}}})
@@ -274,6 +285,28 @@ func TestRevokedPeerStopsStreaming(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A guest in no Group here any more is disconnected (after the update that
+// says so).
+func TestRemovedPeerDisconnected(t *testing.T) {
+	for _, unsub := range []bool{false, true} {
+		_, h, peer, uid, gid, _, _ := sharedSetupAs(t, pb.Role_ROLE_VIEWER, !unsub)
+		call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMember{SetMember: &pb.SetMember{GroupId: gid, UserId: uid}}})
+		select {
+		case <-peer.Done():
+		case <-time.After(3 * time.Second):
+			t.Fatalf("removed guest (subscribed %v) still connected", !unsub)
+		}
+	}
+	// Leaving its last Group: the answer arrives, then the connection goes.
+	_, _, peer, uid, gid, _, _ := sharedSetup(t, pb.Role_ROLE_VIEWER)
+	call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMember{SetMember: &pb.SetMember{GroupId: gid, UserId: uid}}})
+	select {
+	case <-peer.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("guest that left still connected")
 	}
 }
 
