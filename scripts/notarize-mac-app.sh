@@ -11,7 +11,27 @@ app="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 team="${TEAM_ID:-2G974K78BH}"
 identity="${SIGN_IDENTITY:-Developer ID Application}"
 if [ -n "${APPLE_ID:-}" ] && [ -n "${APP_PASSWORD:-}" ]; then
-  auth=(--apple-id "$APPLE_ID" --password "$APP_PASSWORD" --team-id "$team")
+  # Not --password on notarytool's command line, where ps shows it to every
+  # process on the Mac: the password goes, on stdin, into a keychain made
+  # for this run and deleted after it, and notarytool reads it from there.
+  # notarytool asks for a password it isn't given on the terminal, if it has
+  # one: run without a controlling terminal (perl's setsid; macOS has no
+  # setsid command), it reads stdin instead. printf is bash's own, not a
+  # process.
+  scratch="$(mktemp -d)"
+  keychain="$scratch/notary.keychain-db"
+  trap 'security delete-keychain "$keychain" 2>/dev/null; rm -rf "$scratch"' EXIT
+  # The throwaway keychain's own password is random and never reused.
+  security create-keychain -p "$(uuidgen)" "$keychain"
+  security set-keychain-settings "$keychain" # no auto-lock while notarizing
+  printf '%s\n' "$APP_PASSWORD" | perl -MPOSIX -e '
+    my $pid = fork // die "fork: $!";
+    if ($pid) { waitpid($pid, 0); exit($? & 127 ? 1 : $? >> 8) }
+    POSIX::setsid() // die "setsid: $!";
+    exec @ARGV or die "exec: $!"' \
+    xcrun notarytool store-credentials hammock-notarize --apple-id "$APPLE_ID" --team-id "$team" \
+      --keychain "$keychain" --no-validate >/dev/null
+  auth=(--keychain-profile hammock-notarize --keychain "$keychain")
 elif [ -n "${NOTARY_PROFILE:-}" ]; then
   auth=(--keychain-profile "$NOTARY_PROFILE")
 else
