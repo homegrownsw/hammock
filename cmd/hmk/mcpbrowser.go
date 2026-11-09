@@ -11,6 +11,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/alexjsp/hammock/internal/browserjs"
 	"github.com/alexjsp/hammock/internal/client"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
@@ -390,7 +391,7 @@ func (s *mcpServer) registerBrowser(server *mcp.Server) {
 			Text      string `json:"text"`
 			Truncated bool   `json:"truncated"`
 		}
-		if err := s.eval(ctx, a.PaneID, "("+snapshotJS+")()", &snap); err != nil {
+		if err := s.eval(ctx, a.PaneID, browserjs.Snapshot, &snap); err != nil {
 			return nil, nil, err
 		}
 		out := fmt.Sprintf("Page: %s\nURL: %s\n\n%s", snap.Title, snap.URL, snap.Text)
@@ -500,7 +501,7 @@ func (s *mcpServer) registerBrowser(server *mcp.Server) {
 		// Returned in CSS pixels, not the Retina backing's: half the size,
 		// same detail for reading a page.
 		var dpr float64
-		if err := s.eval(ctx, a.PaneID, "window.devicePixelRatio", &dpr); err != nil || dpr <= 0 {
+		if err := s.eval(ctx, a.PaneID, browserjs.DevicePixelRatio, &dpr); err != nil || dpr <= 0 {
 			dpr = 1
 		}
 		// What's in view is copied straight off the surface the user sees,
@@ -576,8 +577,7 @@ func (s *mcpServer) registerBrowser(server *mcp.Server) {
 			timeout = 30 * time.Second
 		}
 		timeout = min(timeout, 5*time.Minute)
-		args, _ := json.Marshal([]any{a.Text, a.Selector})
-		expr := "((text, sel) => sel ? !!document.querySelector(sel) : (document.body ? document.body.innerText : '').includes(text))(..." + string(args) + ")"
+		expr := browserjs.WaitFor(a.Text, a.Selector)
 		deadline := time.Now().Add(timeout)
 		for {
 			var found bool
@@ -679,110 +679,3 @@ const clearJS = `(() => {
     document.execCommand('delete');
   }
 })()`
-
-// snapshotJS outlines the visible page: text, headings, images and the
-// controls an agent can act on, numbered for browser_click/browser_type.
-const snapshotJS = `() => {
-  const els = window.__hammockEls = [];
-  const out = [];
-  const max = 40000;
-  let size = 0;
-  const actionable = new Set(['link','button','textbox','searchbox','combobox','listbox','checkbox','radio','switch','slider',
-    'tab','menuitem','menuitemcheckbox','menuitemradio','option','treeitem','spinbutton']);
-  const controls = 'a[href],button,input,select,textarea,summary,[role],[contenteditable="true"],[onclick],iframe';
-  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
-  const visible = el => {
-    const s = getComputedStyle(el);
-    if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return false;
-    if (s.display === 'contents') return true;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 || r.height > 0;
-  };
-  const role = el => {
-    const r = el.getAttribute('role');
-    if (r) return r;
-    const t = el.tagName.toLowerCase();
-    if (t === 'a') return el.hasAttribute('href') ? 'link' : null;
-    if (t === 'button' || t === 'summary') return 'button';
-    if (t === 'select') return 'combobox';
-    if (t === 'textarea') return 'textbox';
-    if (t === 'input') {
-      const ty = (el.type || 'text').toLowerCase();
-      if (ty === 'hidden') return null;
-      if (['button', 'submit', 'reset', 'image'].includes(ty)) return 'button';
-      if (ty === 'checkbox' || ty === 'radio') return ty;
-      if (ty === 'range') return 'slider';
-      if (ty === 'search') return 'searchbox';
-      return 'textbox';
-    }
-    if (/^h[1-6]$/.test(t)) return 'heading';
-    if (t === 'img') return 'img';
-    if (el.isContentEditable && el.getAttribute('contenteditable') === 'true') return 'textbox';
-    if (el.hasAttribute('onclick')) return 'button';
-    return null;
-  };
-  const name = el => {
-    const lab = el.labels && el.labels[0] ? el.labels[0].innerText : '';
-    return clean(el.getAttribute('aria-label') || el.getAttribute('alt') || lab || el.getAttribute('title') ||
-      (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA' ? el.getAttribute('placeholder') : el.innerText) ||
-      el.getAttribute('placeholder') || '').slice(0, 120);
-  };
-  const emit = (depth, line) => {
-    if (size > max || !line) return;
-    line = '  '.repeat(Math.min(depth, 12)) + line;
-    size += line.length + 1;
-    out.push(line);
-  };
-  const walk = (node, depth) => {
-    const kids = node.shadowRoot ? [...node.shadowRoot.childNodes, ...node.childNodes] : [...node.childNodes];
-    for (const ch of kids) {
-      if (size > max) return;
-      if (ch.nodeType === 3) {
-        const t = clean(ch.textContent);
-        if (t) emit(depth, t.slice(0, 1000));
-        continue;
-      }
-      if (ch.nodeType !== 1) continue;
-      const el = ch, tag = el.tagName.toUpperCase();
-      if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'HEAD', 'META', 'LINK'].includes(tag)) continue;
-      if (!visible(el)) continue;
-      if (tag === 'IFRAME') {
-        try { if (el.contentDocument && el.contentDocument.body) walk(el.contentDocument.body, depth + 1); } catch (e) {}
-        continue;
-      }
-      const r = role(el);
-      if (r && (actionable.has(r) || r === 'heading' || r === 'img')) {
-        let line = r + (r === 'heading' && /^H[1-6]$/.test(tag) ? ' ' + tag.toLowerCase() : '') + ' "' + name(el) + '"';
-        if (actionable.has(r)) {
-          els.push(el);
-          line += ' [ref=' + els.length + ']';
-        }
-        if (r === 'textbox' || r === 'searchbox' || r === 'combobox') {
-          const v = el.tagName === 'SELECT' ? (el.selectedOptions[0] || {}).text : ('value' in el ? el.value : '');
-          if (v) line += ' value="' + clean(String(v)).slice(0, 200) + '"';
-          if (el.tagName === 'SELECT') line += ' options: ' + [...el.options].slice(0, 30).map(o => clean(o.text)).join(' | ');
-        }
-        if (el.checked || el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true') line += ' (checked)';
-        if (el.disabled || el.getAttribute('aria-disabled') === 'true') line += ' (disabled)';
-        if (el.getAttribute('aria-expanded')) line += ' (expanded=' + el.getAttribute('aria-expanded') + ')';
-        if (r === 'link') {
-          const h = el.getAttribute('href');
-          if (h && !h.startsWith('javascript:') && h !== '#') line += ' -> ' + h.slice(0, 200);
-        }
-        emit(depth, line);
-        // A control's own text is its name; look inside only containers.
-        if (['listbox', 'tab', 'menuitem', 'treeitem'].includes(r) && el.querySelector(controls)) walk(el, depth + 1);
-        continue;
-      }
-      // A block of plain text (no controls inside): one line.
-      if (!el.querySelector(controls) && !el.shadowRoot) {
-        const t = clean(el.innerText);
-        if (t) emit(depth, t.slice(0, 2000));
-        continue;
-      }
-      walk(el, depth + (r ? 1 : 0));
-    }
-  };
-  walk(document.body || document.documentElement, 0);
-  return {title: document.title, url: location.href, text: out.join('\n'), truncated: size > max};
-}`

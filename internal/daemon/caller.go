@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexjsp/hammock/internal/browserjs"
 	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
@@ -559,13 +560,15 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		return control(m.BrowserNavigate.PaneId, "browse")
 	case *pb.ClientMessage_BrowserCall:
 		// Reading a page (browser_snapshot, browser_wait_for) runs
-		// JavaScript too, so evaluate is allowed wherever reading is.
+		// JavaScript too: those scripts only (browserjs) wherever reading
+		// is allowed; any other JavaScript acts in the page (your logged-in
+		// one, maybe), so only in panes it may control.
 		// (Only this computer's browser panes: browser calls aren't routed
 		// to linked computers, nor taken from remote connections.)
-		if !browserCallMutates(m.BrowserCall.Method) || m.BrowserCall.Method == "Runtime.evaluate" {
-			if read(m.BrowserCall.PaneId) == nil {
-				return nil
-			}
+		readOnly := !browserCallMutates(m.BrowserCall.Method) ||
+			m.BrowserCall.Method == "Runtime.evaluate" && browserjs.ReadOnly(m.BrowserCall.ParamsJson)
+		if readOnly && read(m.BrowserCall.PaneId) == nil {
+			return nil
 		}
 		return control(m.BrowserCall.PaneId, "browse")
 	case *pb.ClientMessage_SimulatorCall:

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexjsp/hammock/internal/browserjs"
 	"github.com/alexjsp/hammock/internal/client"
 	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
@@ -527,5 +528,43 @@ func main() {
 	}
 	if nestedAgent(sleep, map[int]string{inner: "p"}) {
 		t.Error("one agent in the pane: nested")
+	}
+}
+
+// An agent reads browser panes in your other Groups (snapshot, wait_for),
+// but runs JavaScript of its own only in ones it may control.
+func TestAgentEvaluateNeedsControl(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	ui := dial(t, dir)
+	cat := &pb.PaneSpec{Command: []string{"/bin/cat"}}
+	g1 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
+	g2 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "b"}}}))
+	t1 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: cat}}}))
+	t2 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g2, Pane: cat}}}))
+	d.mu.Lock()
+	agentPane, page := d.tabs[t1].FocusedPaneId, d.tabs[t2].FocusedPaneId
+	d.mu.Unlock()
+	c := &conn{d: d, caller: &caller{pane: agentPane, agent: true, direct: true}}
+	eval := func(expr string) error {
+		p, _ := json.Marshal(map[string]any{"expression": expr, "returnByValue": true, "awaitPromise": true, "userGesture": true})
+		return c.agentCheck(&pb.ClientMessage{Msg: &pb.ClientMessage_BrowserCall{BrowserCall: &pb.BrowserCall{
+			PaneId: page, Method: "Runtime.evaluate", ParamsJson: string(p),
+		}}})
+	}
+	for _, expr := range []string{browserjs.Snapshot, browserjs.WaitFor("Signed in", ""), browserjs.DevicePixelRatio} {
+		if err := eval(expr); err != nil {
+			t.Errorf("reading %.30s: %v", expr, err)
+		}
+	}
+	if err := eval("fetch('/account/delete', {method: 'POST'})"); err != errAgentScope {
+		t.Fatalf("its own JavaScript in your page in another Group: %v", err)
+	}
+	d.mu.Lock()
+	d.noteOnceGrant(&pb.GrantRequest{RequesterPaneId: agentPane, Action: "browse", TargetPaneId: page})
+	d.mu.Unlock()
+	if err := eval("document.title"); err != nil {
+		t.Fatalf("allowed: %v", err)
 	}
 }
