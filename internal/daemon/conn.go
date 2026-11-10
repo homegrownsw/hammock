@@ -240,7 +240,6 @@ func (c *conn) readLoop() {
 		if err == errDeferred {
 			continue
 		}
-		c.agentMadePanes(msg, reply, err)
 		if c.audited(msg) {
 			c.d.mu.Lock()
 			switch {
@@ -523,6 +522,7 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if err != nil {
 			return nil, err
 		}
+		c.madeByAgent(tabPanes(t)...)
 		return created(t.Id), nil
 
 	case *pb.ClientMessage_RenameTab:
@@ -575,12 +575,14 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 			if err != nil {
 				return nil, err
 			}
+			c.madeByAgent(p.id)
 			return created(p.id), nil
 		}
 		p, err := d.splitPane(m.CreatePane.SplitPaneId, m.CreatePane.Direction, m.CreatePane.Spec, m.CreatePane.Before)
 		if err != nil {
 			return nil, err
 		}
+		c.madeByAgent(p.id)
 		return created(p.id), nil
 
 	case *pb.ClientMessage_ClosePane:
@@ -1156,6 +1158,7 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if err != nil {
 			return nil, err
 		}
+		c.madeByAgent(p.id)
 		return created(p.id), nil
 
 	case *pb.ClientMessage_BreakOutPane:

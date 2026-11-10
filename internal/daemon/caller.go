@@ -770,22 +770,12 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	return errAgentOnly
 }
 
-// agentMadePanes records the panes an agent's request just made. Called
-// after a message is handled.
-func (c *conn) agentMadePanes(msg *pb.ClientMessage, reply *pb.ServerMessage, err error) {
-	if err != nil || !c.caller.isAgent() || reply.GetCreated() == nil {
-		return
-	}
-	id := reply.GetCreated().Id
-	d := c.d
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	switch msg.Msg.(type) {
-	case *pb.ClientMessage_CreatePane, *pb.ClientMessage_ReplacePane:
-		d.markAgentMade(id)
-	case *pb.ClientMessage_CreateTab:
-		if t := d.tabs[id]; t != nil {
-			d.markAgentMade(tabPanes(t)...)
-		}
+// madeByAgent records that the panes an agent's request is making are an
+// agent's, in the same d.mu section that adds them: a process in one that
+// connects before the reply is sent (its shell running hmk at once) is
+// known as the agent's, never taken for a pane of yours. Callers hold d.mu.
+func (c *conn) madeByAgent(ids ...string) {
+	if c.caller.isAgent() {
+		c.d.markAgentMade(ids...)
 	}
 }
