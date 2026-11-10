@@ -170,6 +170,21 @@ release-ios *args:
 release-apple *args:
     scripts/release apple "$@"
 
+# Copy the website (marketing/) into the homegrownsw.com site repo, as site/hammock/ (HMK_SITE_REPO, default
+# ~/Developer/homegrownsw-site). Commit it there and `just deploy` it from there: this publishes nothing.
+site:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo="${HMK_SITE_REPO:-$HOME/Developer/homegrownsw-site}"
+    [ -d "$repo/site" ] || { echo "No site repo at $repo (set HMK_SITE_REPO)." >&2; exit 1; }
+    out="$repo/site/hammock"
+    mkdir -p "$out"
+    cp marketing/index.html marketing/banner.png "$out/"
+    sips -Z 512 apple/Resources/AppIcon-1024.png --out "$out/icon-512.png" >/dev/null
+    sips -Z 256 apple/Resources/AppIcon-1024.png --out "$out/icon-256.png" >/dev/null
+    chmod 644 "$out"/*
+    git -C "$repo" status --short -- site/hammock
+
 # The release scripts' tests: notes, the check, and cutting releases against a throwaway repo.
 test-release:
     scripts/tests/release

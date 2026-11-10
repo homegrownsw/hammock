@@ -1,6 +1,6 @@
 # Marketing
 
-- `index.html`: the website, https://hammock.jsp.scot. One static page, no build step; the window and
+- `index.html`: the website, https://homegrownsw.com/hammock/. One static page, no build step; the window and
   iPhone in it are drawn in HTML and CSS, so nothing personal ever ends up in a screenshot.
 - `banner.html` → `banner.png`: the banner at the top of the repo's README (also the site's link preview).
 
@@ -18,13 +18,9 @@ cd marketing && "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" -
 
 ## Publish the site
 
-It sits at the root of the update server, beside the Sparkle feed and the release zips (`/download`
-redirects to the latest). Copy only these files, and never with `--delete`: the releases live there too.
+It lives at https://homegrownsw.com/hammock/, part of the Homegrown Software site (`homegrownsw/homegrownsw-site`,
+checked out at `~/Developer/homegrownsw-site`). `just site` copies the page, the banner and the icons into that
+repo's `site/hammock/`; commit them there and run its `just deploy`.
 
-```sh
-d=$(mktemp -d) && cp marketing/{index.html,banner.png} "$d" &&
-  sips -Z 512 apple/Resources/AppIcon-1024.png --out "$d/icon-512.png" &&
-  sips -Z 256 apple/Resources/AppIcon-1024.png --out "$d/icon-256.png" &&
-  chmod 644 "$d"/* && chmod 755 "$d" &&
-  . ./.release.env && rsync -a "$d/" "$UPDATE_HOST:$UPDATE_DIR/"
-```
+Links on the page are relative, so it works under `/hammock/`. Its Download buttons go to `download`, which the
+site's nginx redirects to the latest release's `Hammock.zip` on GitHub (the site repo's `nginx/hammock.conf`).
