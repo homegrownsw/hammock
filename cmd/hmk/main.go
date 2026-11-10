@@ -495,7 +495,7 @@ func runCommand(args []string) error {
 			if len(args) < 4 {
 				for _, g := range w.groups {
 					if g.Id == id {
-						printlnSafe(g.Folder)
+						printValue(g.Folder)
 					}
 				}
 				return nil
@@ -969,7 +969,7 @@ func runCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		printlnSafe(client.CreatedID(r))
+		printValue(client.CreatedID(r))
 		return nil
 
 	case "leave":

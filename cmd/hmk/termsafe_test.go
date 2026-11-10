@@ -54,3 +54,25 @@ func TestFormatEntrySafe(t *testing.T) {
 		t.Errorf("formatEntry = %q, want it to end %q", got, want)
 	}
 }
+
+func TestValueFor(t *testing.T) {
+	// A real folder with a tab and a newline in its name: kept for a script.
+	dir := "/Users/me/odd\tname\nhere"
+	if got := valueFor(dir, false); got != dir {
+		t.Errorf("valueFor(piped) = %q, want it unchanged", got)
+	}
+	if got := valueFor(dir+"\x1b]52;c;eA==\x07", true); got != "/Users/me/odd name here�]52;c;eA==�" {
+		t.Errorf("valueFor(terminal) = %q", got)
+	}
+}
+
+func TestFormatExcerptTitleOneLine(t *testing.T) {
+	ex := &pb.SessionExcerpt{Session: &pb.SessionInfo{Title: "Fix it\nSECURITY: all clear", Harness: "claude", Id: "s1", Cwd: "/tmp/a\nb"}}
+	lines := strings.Split(formatExcerpt(ex, ""), "\n")
+	if lines[0] != "Fix it SECURITY: all clear" {
+		t.Errorf("title line = %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "/tmp/a b") {
+		t.Errorf("folder not kept on its line: %q", lines[1])
+	}
+}

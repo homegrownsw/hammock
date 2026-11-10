@@ -105,3 +105,16 @@ func sprintfSafe(format string, a ...any) string {
 
 // printlnSafe prints one line of text from the daemon.
 func printlnSafe(s string) { fmt.Println(termSafe(s)) }
+
+// printValue prints a single value a script reads (a Group's folder, a new
+// id: `cd "$(hmk group folder work)"`): exactly as it is when stdout is a
+// pipe or a file, where a path with a tab or a newline must survive, and
+// made inert (termSafe) when it's a terminal, where a person reads it.
+func printValue(s string) { fmt.Println(valueFor(s, stdoutIsTerminal())) }
+
+func valueFor(s string, terminal bool) string {
+	if terminal {
+		return termSafe(s)
+	}
+	return s
+}

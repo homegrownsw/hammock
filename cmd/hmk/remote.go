@@ -88,10 +88,10 @@ func runRemote(call func(*pb.ClientMessage) (*pb.ServerMessage, error), args []s
 			if n.Public {
 				note = "  (a public address: anyone who can reach it could try to connect)"
 			}
-			fmt.Printf("  %s %-18s %-10s %s%s\n", mark, n.Id, label, where, note)
+			printfSafe("  %s %-18s %-10s %s%s\n", mark, n.Id, label, where, note)
 		}
 		if len(d.ExtraAddresses) > 0 {
-			fmt.Printf("Extra addresses: %s\n", strings.Join(d.ExtraAddresses, ", "))
+			printfSafe("Extra addresses: %s\n", strings.Join(d.ExtraAddresses, ", "))
 		}
 		fmt.Println("Change with: hmk remote enable|disable NETWORK, hmk remote address add|remove HOST[:PORT]")
 		return nil

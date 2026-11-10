@@ -344,7 +344,9 @@ func fullSessionID(call caller, short string) (string, error) {
 func formatExcerpt(ex *pb.SessionExcerpt, query string) string {
 	var b strings.Builder
 	s := ex.GetSession()
-	fmt.Fprintf(&b, "%s\n%s session %s · %s · %s · updated %s\n", s.GetTitle(), s.GetHarness(), s.GetId(), homeShort(s.GetCwd()),
+	// The title and folder on one line each, whatever they hold (the rest
+	// is made inert as text where it's printed).
+	fmt.Fprintf(&b, "%s\n%s session %s · %s · %s · updated %s\n", termSafe(s.GetTitle()), termSafe(s.GetHarness()), s.GetId(), termSafe(homeShort(s.GetCwd())),
 		count(int(s.GetMessages()), "message"), time.UnixMilli(s.GetUpdatedUnixMs()).Format("2006-01-02 15:04"))
 	switch {
 	case query == "":

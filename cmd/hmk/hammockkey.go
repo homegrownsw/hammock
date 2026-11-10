@@ -127,7 +127,7 @@ func approverID(st *pb.HammockKeyStatus, want string, adding bool) (string, erro
 func printKey(st *pb.HammockKeyStatus) {
 	switch {
 	case st.Error != "" && !st.Exists:
-		fmt.Println("Hammock Key: " + st.Error)
+		printlnSafe("Hammock Key: " + st.Error)
 		return
 	case !st.Exists && !st.Available:
 		fmt.Println("This Mac can't have a Hammock Key (no Secure Enclave).")
@@ -176,20 +176,21 @@ func runSSH(args []string) error {
 		return errors.New("no reply")
 	}
 	if s.AgentName != "" {
-		fmt.Printf("Hammock's agent passes requests on to %s (%s).\n", s.AgentName, s.AgentSocket)
+		printfSafe("Hammock's agent passes requests on to %s (%s).\n", s.AgentName, s.AgentSocket)
 	}
 	if s.GitProgram != "" {
-		fmt.Printf("Git signs with %s; in Hammock's panes, hmk-ssh-sign goes first.\n", s.GitProgram)
+		printfSafe("Git signs with %s; in Hammock's panes, hmk-ssh-sign goes first.\n", s.GitProgram)
 	}
 	defer printJJSetup(s, applyJJ)
 	switch {
 	case s.Applied && apply:
-		fmt.Printf("Added to %s (the old file is %s):\n\n%s", s.ConfigPath, s.BackupPath, s.Change)
+		printfSafe("Added to %s (the old file is %s):\n\n", s.ConfigPath, s.BackupPath)
+		fmt.Print(termSafeText(s.Change))
 	case s.Routed:
 		fmt.Println("ssh in Hammock's panes uses Hammock's agent.")
 	default:
-		fmt.Printf("%s points ssh straight at %s, so ssh in Hammock's panes skips Hammock's agent.\n", s.ConfigPath, s.AgentName)
-		fmt.Printf("hmk ssh setup --apply adds this:\n\n%s", s.Change)
+		printfSafe("%s points ssh straight at %s, so ssh in Hammock's panes skips Hammock's agent.\n", s.ConfigPath, s.AgentName)
+		fmt.Printf("hmk ssh setup --apply adds this:\n\n%s", termSafeText(s.Change))
 	}
 	return nil
 }
@@ -200,15 +201,17 @@ func printJJSetup(s *pb.SshSetupReply, applied bool) {
 	case s.JjPath == "":
 		return // no jj, or it doesn't sign with SSH
 	case s.JjProblem != "":
-		fmt.Println(s.JjProblem)
+		printlnSafe(s.JjProblem)
 	case s.JjRouted && applied:
-		fmt.Printf("\nWrote %s:\n\n%s", s.JjConfigPath, s.JjChange)
+		printfSafe("\nWrote %s:\n\n", s.JjConfigPath)
+		fmt.Print(termSafeText(s.JjChange))
 	case s.JjRouted:
 		fmt.Println("jj in Hammock's panes signs through hmk-jj-ssh-sign.")
 	default:
-		fmt.Printf("\njj signs with %s, so in Hammock's panes it can't use keys from your other computers or the Hammock Key:\n", cmpOrStr(s.JjProgram, "ssh-keygen"))
+		printfSafe("\njj signs with %s, so in Hammock's panes it can't use keys from your other computers or the Hammock Key:\n", cmpOrStr(s.JjProgram, "ssh-keygen"))
 		fmt.Println("while you're elsewhere, it waits on a prompt here that nobody sees.")
-		fmt.Printf("hmk ssh setup --apply-jj writes %s:\n\n%s", s.JjConfigPath, s.JjChange)
+		printfSafe("hmk ssh setup --apply-jj writes %s:\n\n", s.JjConfigPath)
+		fmt.Print(termSafeText(s.JjChange))
 	}
 }
 
