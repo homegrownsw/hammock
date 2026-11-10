@@ -30,7 +30,7 @@ struct AcknowledgementsScreen: View {
                     }
                 }
             } footer: {
-                Text("Hammock is open source, under the MIT licence, and is built with this software. Each one's licence is above.")
+                Text("Hammock is open source, under the MIT licence, and is built with, or inspired by, this software. Each one's licence is above.")
             }
         }
         .navigationTitle("Acknowledgements")

@@ -72,7 +72,7 @@ struct AcknowledgementsView: View {
                         }
                     }
                 } header: {
-                    Text("Hammock is built with:")
+                    Text("Hammock is built with, or inspired by:")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .textCase(nil)
