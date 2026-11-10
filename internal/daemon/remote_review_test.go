@@ -5,11 +5,16 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/alexjsp/hammock/internal/client"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
@@ -252,5 +257,77 @@ func TestLegacyLinkLearnsOnlyProvenKey(t *testing.T) {
 	host.mu.Unlock()
 	if !bytes.Equal(got, pub) {
 		t.Fatal("the key proven signing in wasn't recorded")
+	}
+}
+
+// burstTransport delivers a burst of messages at once, as if in one write,
+// and records what's written back.
+type burstTransport struct {
+	in     chan []byte
+	closed chan struct{}
+	once   sync.Once
+	mu     sync.Mutex
+	out    [][]byte
+}
+
+func (t *burstTransport) Read(ctx context.Context) ([]byte, error) {
+	select {
+	case b := <-t.in:
+		return b, nil
+	case <-t.closed:
+		return nil, io.EOF
+	}
+}
+
+func (t *burstTransport) Write(ctx context.Context, b []byte) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.out = append(t.out, b)
+	return nil
+}
+
+func (t *burstTransport) Close() error {
+	t.once.Do(func() { close(t.closed) })
+	return nil
+}
+
+// A failed sign-in hangs up after its answer, and nothing that arrived
+// with it is handled: a burst of pairing codes is one guess, not many.
+func TestFailedSignInIgnoresTheRestOfTheBurst(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	secret := make([]byte, 16)
+	_, _ = rand.Read(secret)
+	d.mu.Lock()
+	if d.remote.pairings == nil {
+		d.remote.pairings = map[string]time.Time{}
+	}
+	d.remote.pairings[hex.EncodeToString(secret)] = time.Now().Add(time.Minute)
+	d.mu.Unlock()
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	tr := &burstTransport{in: make(chan []byte, 2), closed: make(chan struct{})}
+	for _, s := range [][]byte{make([]byte, 16), secret} {
+		b, _ := proto.Marshal(&pb.ClientMessage{Id: 1, Msg: &pb.ClientMessage_Pair{Pair: &pb.Pair{Secret: s, PublicKey: pub, DeviceName: "x"}}})
+		tr.in <- b
+	}
+	done := make(chan struct{})
+	go func() {
+		d.serveConnWith(tr, func(c *conn) { c.remote, c.srcIP = true, "10.9.9.9" })
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the connection wasn't closed after a failed sign-in")
+	}
+	d.mu.Lock()
+	_, unused := d.remote.pairings[hex.EncodeToString(secret)]
+	d.mu.Unlock()
+	if !unused {
+		t.Fatal("a pairing code sent after a failed one, in the same burst, was tried")
+	}
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if len(tr.out) != 1 {
+		t.Fatalf("%d answers written, want the failure's alone", len(tr.out))
 	}
 }

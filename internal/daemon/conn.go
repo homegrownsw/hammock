@@ -261,7 +261,12 @@ func (c *conn) readLoop() {
 			}
 		}
 		if c.hangUp.CompareAndSwap(true, false) {
-			c.send(nil) // the write loop closes it there, once the answer is written
+			// The write loop closes it there, once the answer is written.
+			// Nothing more is read or handled meanwhile: what came in the
+			// same burst (more sign-in tries) is dropped.
+			c.send(nil)
+			<-c.ctx.Done()
+			return
 		}
 	}
 }
