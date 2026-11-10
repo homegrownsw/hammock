@@ -10,7 +10,7 @@ paired device, a shared Group, code running as you) and what they get.
 
 Hammock runs as you, and so do your panes and agents. Its boundaries:
 
-- **The network.** Remote access listens only on the networks you choose (ADR-0015). Every device and
+- **The network.** Remote access listens only on the networks you choose (ADR-0016). Every device and
   computer signs in with a key pinned at pairing or linking, over TLS 1.3 pinned to the host's certificate.
   Before signing in, a connection can only say hello, pair (with a single-use, expiring secret) or sign in,
   once.

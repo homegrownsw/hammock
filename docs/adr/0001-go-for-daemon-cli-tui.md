@@ -14,3 +14,8 @@ Write `hmkd`, `hmk` (CLI + TUI), and initially `pane-holder` in Go. Embed libgho
 - cgo call overhead is negligible when PTY output is fed in batches per read; GC pauses are far below the 8 ms latency budget.
 - The per-pane holder's Go runtime footprint (~3–6 MB) may exceed budget; the holder is kept tiny so it can be rewritten in Zig/C if needed.
 - Rust would give zero-cost FFI and tighter memory control, but slower iteration for orchestration-heavy code that isn't on the hot path.
+
+## As built (2026-11-10)
+- `hmkd`, `hmk` and `pane-holder` are all Go; the holder was never rewritten.
+- No WebRTC: remote video went over QUIC instead (quic-go, [ADR-0012](0012-remote-video-over-quic.md)), so pion isn't used.
+- libghostty-vt is built with Zig from the pinned commit: for macOS in CI, and cross-compiled for Linux (amd64, arm64) at release.

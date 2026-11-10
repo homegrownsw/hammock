@@ -10,7 +10,7 @@ import (
 )
 
 // worthTrying is addrs less those on a local network this computer isn't
-// on now (lanSubnets, ADR-0015): an address on a network's subnet is tried
+// on now (lanSubnets, ADR-0016): an address on a network's subnet is tried
 // only with an address of our own in it, so nothing is sent to whoever has
 // that address on some other network (a café's). Names and other addresses
 // (Tailscale, VPNs, extra addresses) are always tried.

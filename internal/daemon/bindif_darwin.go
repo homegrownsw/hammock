@@ -11,7 +11,7 @@ import (
 // bindToInterface makes a listener take only what arrives on iface (macOS's
 // IP_BOUND_IF): an address bound alone is still reached from any network
 // this computer is on (the weak host model), so a chosen VPN's address
-// isn't reached from an unchosen café Wi-Fi (ADR-0015).
+// isn't reached from an unchosen café Wi-Fi (ADR-0016).
 func bindToInterface(iface string) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) error {
 		ifi, err := net.InterfaceByName(iface)

@@ -23,3 +23,6 @@ the Tailscale listener), not URLSession: URLSession enforces App Transport
 Security, which rejects the daemon's self-signed certificate even when a
 delegate accepts it. Network.framework's TLS verify block lets the
 certificate pin from pairing be the sole trust decision.
+
+## As built (2026-11-10)
+Remote links listen on the networks chosen for remote access, not only Tailscale ([ADR-0016](0016-remote-access-on-any-network.md)), and may negotiate zstd compression (subprotocol `hammock.v1+zstd`).

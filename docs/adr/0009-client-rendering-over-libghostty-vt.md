@@ -3,7 +3,7 @@
 Status: Accepted · 2026-10-29 · Amends ADR-0004
 
 ## Context
-ADR-0004 assumed the Apple clients could feed bytes into libghostty's own Metal renderer. Research showed the full libghostty embedding API (`ghostty.h`) is now "libghostty-internal", only spawns its own child process (no external/manual termio backend upstream; PR #10484 closed), and no longer builds for iOS. libghostty-vt (stable functionality, unstable signatures) is the supported embedding surface and ships a render-state API for custom renderers, plus an xcframework for macOS/iOS.
+ADR-0004 assumed the Apple clients could feed bytes into libghostty's own Metal renderer. Research showed the full libghostty embedding API (`ghostty.h`) is now "libghostty-internal", only spawns its own child process (no external/manual termio backend upstream; Ghostty PR #10484 closed), and no longer builds for iOS. libghostty-vt (stable functionality, unstable signatures) is the supported embedding surface and ships a render-state API for custom renderers, plus an xcframework for macOS/iOS.
 
 ## Decision
 - Clients link `ghostty-vt.xcframework` (built from the same pinned Ghostty commit as the daemon) and run a local terminal fed with the daemon's snapshot + byte stream.
@@ -15,3 +15,6 @@ ADR-0004 assumed the Apple clients could feed bytes into libghostty's own Metal 
 - We own glyph layout, font fallback, ligatures (off for now) and GPU work; Ghostty's renderer quality is not inherited for free.
 - No dependency on Ghostty internals or forks; iOS uses the same engine.
 - Snapshot format: the daemon sends VT-formatted replays (libghostty formatter, VT format with extras), not the binary snapshot format, so client and daemon only need compatible VT parsing.
+
+## As built (2026-11-10)
+The Mac and iPhone still draw with CoreText; a Metal renderer is [#18](https://github.com/homegrownsw/hammock/issues/18), if profiling shows CoreText is the bottleneck.

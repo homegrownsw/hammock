@@ -12,7 +12,7 @@ import (
 const remoteUsage = "usage: hmk remote on|off | networks | enable|disable NETWORK | address add|remove HOST[:PORT]"
 
 // runRemote is hmk remote: turning remote access on or off, and choosing
-// the networks it listens on (ADR-0015).
+// the networks it listens on (ADR-0016).
 func runRemote(call func(*pb.ClientMessage) (*pb.ServerMessage, error), args []string) error {
 	if len(args) == 0 {
 		args = []string{"networks"}

@@ -1,6 +1,8 @@
-# ADR-0015: Remote access on any network
+# ADR-0016: Remote access on any network
 
-Status: Accepted · 2026-11-08 · Amends ADR-0007 (Tailscale only) and ADR-0013 (linking only your own Tailscale user's computers)
+Status: Accepted · 2026-11-08 · Amends [ADR-0007](0007-tailscale-and-device-pairing.md) (Tailscale only) and [ADR-0013](0013-linked-computers.md) (linking only your own Tailscale user's computers)
+
+(First numbered ADR-0015, a number it shared with [ADR-0015](0015-agent-registry.md); renumbered 2026-11-10.)
 
 ## Context
 
@@ -101,3 +103,6 @@ your computers for you, and gave them addresses that never change.
   them the chosen networks too is a follow-up.
 - A computer on a public address warns that anyone who can route to it
   could try to connect.
+
+## As built (2026-11-10)
+Changing the chosen networks, or turning remote access on, from `hmk` or the TUI is a person-only action: it becomes a request you allow in the Mac app or on your phone (tech spec §5.6). A network added to remote access by editing the config file shows a warning in Needs You.

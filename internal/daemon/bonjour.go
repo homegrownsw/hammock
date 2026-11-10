@@ -15,7 +15,7 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-// Bonjour (ADR-0015): while remote access is on, this computer advertises
+// Bonjour (ADR-0016): while remote access is on, this computer advertises
 // _hammock._tcp on each chosen local network it's on (never on Tailscale or a
 // VPN, which don't carry multicast), so Link a Computer lists it on the
 // others there and a paired phone finds it when its address has changed.

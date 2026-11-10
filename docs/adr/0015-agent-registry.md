@@ -30,3 +30,7 @@ Logos stay in the apps (`AgentMark`), keyed by id, with a monogram for agents wi
 
 ### What doesn't change
 Harness ids, the proto's `harness` strings, config keys (`sidebarUsage.claude`), hook commands, schedule kinds (`claude`, `codex`, `command`), and every Claude Code and Codex behaviour. The refactor lands first, on its own, with the existing tests passing; agents are added after it, one at a time.
+
+## As built (2026-11-07)
+- Landed as decided: the refactor first, then agents one at a time. Nineteen agents are registered ([agents.md](../agents.md)).
+- `Agent` describes its sessions in fields of its own (`Roots`, `Locate`, `Newest`, `Sessions`, `Index`) rather than a `Sessions` value, and finds its codec through `internal/thread` (`Agent.Codec()`): only Claude Code and Codex have one, so only they can be switched between.

@@ -344,7 +344,7 @@ func TestLinkedComputers(t *testing.T) {
 
 // Off Tailscale (a local network, a VPN), Tailscale isn't asked: anyone
 // reaching remote access may ask, and the code check, showing where it
-// came from, decides (ADR-0015).
+// came from, decides (ADR-0016).
 func TestLinkOffTailscale(t *testing.T) {
 	old := overTailscale
 	overTailscale = isTailscaleIP

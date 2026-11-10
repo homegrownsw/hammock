@@ -12,3 +12,6 @@ Build an in-house, vendor-neutral, append-only thread store with per-harness cod
 - Full control over UX and data model; no external dependency.
 - We own ongoing maintenance as harness transcript formats drift (golden-file tests per version).
 - Documented losses: reasoning, images, oversized tool output.
+
+## As built (2026-11-10)
+Built as decided (`internal/thread`), local only. Codecs exist for Claude Code and Codex; the other agents Hammock knows ([ADR-0015](0015-agent-registry.md)) can't be switched to or from yet. Sync between hosts hasn't been started.

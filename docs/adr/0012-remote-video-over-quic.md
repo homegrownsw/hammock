@@ -1,6 +1,6 @@
 # ADR-0012: Remote video for visual panes goes over QUIC, not WebRTC
 
-Status: Accepted · 2026-10-31 · supersedes the transport in ADR-0005's remote tier
+Status: Accepted · 2026-10-31 · supersedes the transport in [ADR-0005](0005-two-tier-visual-delivery.md)'s remote tier · Amended by [ADR-0014](0014-screen-sharing-and-menu-bar.md) (datagrams, for screens)
 
 ## Context
 ADR-0005 and the tech spec (§7.1) chose VideoToolbox encode over WebRTC (pion in the daemon, "Apple's WebRTC framework" in the apps) for showing browser and simulator panes on the iPhone and to guests. That was written before remote access settled on Tailscale (ADR-0007) and peer links on WebSocket over TLS (ADR-0008), and Apple ships no public WebRTC framework: the iPhone would need Google's libwebrtc. Under Tailscale, WebRTC's NAT traversal buys nothing; its remaining strengths are loss tolerance and rate control.
@@ -21,3 +21,6 @@ Options weighed (2026-10-31): H.264 over the existing WebSocket link (no new dep
 - Network.framework quirks found in the spike are load-bearing (see the spike notes): an empty stream opened before ours, no MAX_STREAMS updates (so a huge initial stream limit), sends that close the stream unless `isComplete: false`.
 - A relay must forward UDP, or fall back to in-band frames over its WebSocket.
 - Not measured: QUIC against TCP under real loss. Revisit if phone streaming on cellular disappoints; the transport is behind one interface.
+
+## As built (2026-11-10)
+Browser and simulator video go as described here, a stream per frame. Screen sharing takes ADR-0014's media transport v2 (QUIC datagrams with parity), still with this ADR's rate control.

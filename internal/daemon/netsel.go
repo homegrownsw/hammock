@@ -18,7 +18,7 @@ import (
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
-// Remote access on any network (ADR-0015). Remote access listens on the
+// Remote access on any network (ADR-0016). Remote access listens on the
 // networks a person chose: Tailscale, a local network (Wi-Fi, Ethernet) or
 // a VPN (WireGuard and the like). Each is remembered by its subnet
 // ("192.168.1.0/24"), so a VPN whose utun is numbered afresh is still the

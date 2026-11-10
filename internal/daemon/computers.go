@@ -989,7 +989,7 @@ func (d *Daemon) ensureRemote() error {
 var expectWindow = 10 * time.Minute
 
 // expectLinks: a person here is linking, so computers off Tailscale may ask
-// to link for a while (ADR-0015). Callers hold d.mu.
+// to link for a while (ADR-0016). Callers hold d.mu.
 func (d *Daemon) expectLinks() { d.comp.expectUntil = time.Now().Add(expectWindow) }
 
 // errNotExpecting: a computer off Tailscale asked to link while nobody here
@@ -1296,7 +1296,7 @@ type tsSource struct {
 // whoIsAsking is who's at ip, for a link's code check: over Tailscale, who
 // Tailscale says (refused if it's someone else's node: on a tailnet shared
 // with others, theirs can't ask); elsewhere, its address and network, the
-// code check being what decides (ADR-0015). Off the lock.
+// code check being what decides (ADR-0016). Off the lock.
 func whoIsAsking(ctx context.Context, ip string) (tsSource, error) {
 	x := net.ParseIP(ip)
 	if x == nil || !overTailscale(x) {
@@ -1385,7 +1385,7 @@ func (d *Daemon) peerLinkHelloFrom(c *conn, id uint64, m *pb.PeerLinkHello) (*pb
 			d.mu.Lock()
 			if src.source != "" && !d.isLinked(c.peer) && time.Now().After(d.comp.expectUntil) {
 				// Off Tailscale, only while a person here is linking: a
-				// request nobody started never reaches a screen (ADR-0015).
+				// request nobody started never reaches a screen (ADR-0016).
 				err = errNotExpecting
 				d.audit("computer", "link-refused", c.peer, src.source+": nobody here is linking")
 				d.mu.Unlock()

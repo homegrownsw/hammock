@@ -37,7 +37,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/state"
 )
 
-// Remote access (ADR-0007, ADR-0015): WebSocket + TLS listeners bound only
+// Remote access (ADR-0007, ADR-0016): WebSocket + TLS listeners bound only
 // to the addresses of the networks a person chose (netsel.go): Tailscale's
 // (as Tailscale reports them, so another VPN using the same range isn't
 // listened on), a local network's, a VPN's. Off by default. Devices pair once with a

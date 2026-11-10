@@ -1,6 +1,6 @@
 # ADR-0011: Browser panes run windowed Chromium behind a hidden window
 
-Status: Proposed · 2026-10-30 (pending the at-desk feel test in [the spike notes](../internals/browser-panes.md))
+Status: Accepted · 2026-10-30 (proposed pending an at-desk feel test; built this way and in daily use since)
 
 ## Context
 ADR-0005 chose daemon-owned CEF helpers with remote CoreAnimation layers for local display. CEF's supported way to render outside its own window is offscreen rendering (OSR), and its input API has no trackpad gesture phases or pinch. That rules out rubber-banding and native-feeling scrolling, which are the top priority for "feels transparent".
@@ -17,3 +17,8 @@ ADR-0005 chose daemon-owned CEF helpers with remote CoreAnimation layers for loc
 - Depends on Chromium internals: the `RenderWidgetHostViewCocoa` responder methods, and finding its `CALayerHost`. Pin the CEF version and test on every CEF update.
 - Dialogs, file pickers and permission prompts must be routed to Hammock through CEF handlers, so the helper never comes to the front.
 - Accessibility needs remote-element bridging (not yet designed).
+
+## As built (2026-11-10)
+- Built as decided ([notes](../internals/browser-panes.md)): one host per daemon, windowed Chromium behind a hidden window, its `CALayerHost` shown in the app, input replayed into its view.
+- The OSR fallback wasn't built. The remote tier encodes Chromium's DevTools screencast instead ([ADR-0012](0012-remote-video-over-quic.md)).
+- Accessibility bridging is still not designed.

@@ -116,7 +116,7 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 		}
 		d.strangers[uid] = p
 		// Anyone can make a key, so a stranger stays under the limits of a
-		// connection that hasn't signed in (ADR-0015), and goes once it
+		// connection that hasn't signed in (ADR-0016), and goes once it
 		// has nothing under way here: no link waiting on its code, no
 		// request to join.
 		d.watchStranger(c)
@@ -296,7 +296,7 @@ func (d *Daemon) createInvite(m *pb.CreateInvite) (*pb.ServerMessage, error) {
 	host := d.macName()
 	addrs := d.remote.addrs
 	if len(d.cfg.RemoteListen) == 0 {
-		// Guests come over Tailscale only (ADR-0015): it must be listened on.
+		// Guests come over Tailscale only (ADR-0016): it must be listened on.
 		if !slices.ContainsFunc(d.remote.snap.listening(), func(n hostNet) bool { return n.id == netTailscale }) {
 			return nil, errors.New("people you share with reach this Mac over Tailscale: choose Tailscale in Settings ▸ Devices ▸ Remote Access (or hmk remote enable tailscale)")
 		}

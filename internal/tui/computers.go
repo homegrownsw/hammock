@@ -507,7 +507,7 @@ func (a *App) confirmUnlink(c *pb.Computer) {
 }
 
 // openRemoteNetworks shows the networks remote access may listen on and
-// lets you choose them, and the extra addresses it gives out (ADR-0015).
+// lets you choose them, and the extra addresses it gives out (ADR-0016).
 func (a *App) openRemoteNetworks() {
 	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_ListDevices{ListDevices: &pb.ListDevices{}}}, func(r *pb.ServerMessage) {
 		d := r.GetDevices()

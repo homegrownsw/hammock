@@ -1,6 +1,6 @@
 # ADR-0013: Linked computers
 
-Status: Accepted · 2026-11-02
+Status: Accepted · 2026-11-02 · Amended by [ADR-0016](0016-remote-access-on-any-network.md)
 
 ## Context
 
@@ -243,4 +243,8 @@ Groups as their **owner**.
 - Merged project Groups (the same repository on two computers as one
   Group) and handing an agent session to another computer are follow-ups.
 
-Amended by ADR-0015: computers may ask to link from any chosen network (over Tailscale, still only your own Tailscale user's); Link a Computer also finds them by Bonjour.
+Amended by [ADR-0016](0016-remote-access-on-any-network.md): computers may ask to link from any chosen network (over Tailscale, still only your own Tailscale user's); Link a Computer also finds them by Bonjour.
+
+## As built (2026-11-10)
+- Linking, unlinking and the code check asked for from `hmk` or the TUI are person-only actions: they become a request you allow in the Mac app (Needs You) or on your phone, except before anything is paired or linked, and on Unraid's own page (tech spec §5.6).
+- Follow-ups: handing an agent session to another computer ([#24](https://github.com/homegrownsw/hammock/issues/24)), reopening a linked computer's Group deleted from here ([#31](https://github.com/homegrownsw/hammock/issues/31)). Merged project Groups aren't planned yet.

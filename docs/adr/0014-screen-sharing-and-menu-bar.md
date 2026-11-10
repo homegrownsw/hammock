@@ -1,6 +1,6 @@
 # ADR-0014: Screen sharing on Hammock's own host stack, and a menu bar helper
 
-Status: Accepted · 2026-11-04 · supersedes ADR-0012's transport (media transport v2); UI to be mocked
+Status: Accepted · 2026-11-04 · Amends [ADR-0012](0012-remote-video-over-quic.md)'s transport (media transport v2; for screens so far)
 
 ## Context
 Away from the Mac, you sometimes need its screen: a macOS permission prompt an agent is stuck behind, a Keychain dialog, something only the GUI does. The bar is that it feels as responsive and sharp as macOS's own High Performance screen sharing, adapts to poor links, and works at the lock screen.
@@ -62,3 +62,9 @@ As built (2026-11-04), after measuring on an M4 Pro and testing on an iPhone 15 
 - Transport v2 touches working pane video; it has to land without regressing it.
 - 4:4:4 gives up low-latency rate control and LTR on the good-link tier; switching tiers must be quick when the link degrades.
 - To verify: iPhone hardware decode of HEVC 4:4:4; ScreenCaptureKit at the login window on the macOS versions Hammock supports.
+
+## As built (2026-11-10)
+- Screen sharing, the Mac and iPhone viewers and the menu bar item are built and in use. The "As built" notes above say where each part differs from the plan.
+- No root parts are installed yet, so the first consequence above hasn't happened: sharing after a reboot, before anyone logs in, is [#30](https://github.com/homegrownsw/hammock/issues/30).
+- Media transport v2 is used for screens only; browser and simulator video keep ADR-0012's streams. The GCC-style rate controller and per-stage timestamps aren't built.
+- Follow-ups: the shared Mac's clipboard back to the viewer ([#29](https://github.com/homegrownsw/hammock/issues/29)), trying Mac to Mac end to end ([#28](https://github.com/homegrownsw/hammock/issues/28)), viewers relayed through a linked Mac ([#15](https://github.com/homegrownsw/hammock/issues/15)).
