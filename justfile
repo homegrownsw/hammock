@@ -280,5 +280,5 @@ ios-device device="": deps
         device="${phones%%$'\t'*}"
         echo "Installing on ${phones#*$'\t'} ($device)"
     fi
-    xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -configuration Release -destination "id=$device" -derivedDataPath /tmp/hmk-ios-device DEVELOPMENT_TEAM="${HMK_TEAM:-2G974K78BH}" SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) HMK_DEV' HMK_PUSH_RELAY="${HMK_PUSH_RELAY:-https://hmk-push.homegrownsw.workers.dev}" -allowProvisioningUpdates build
+    xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -configuration Release -destination "id=$device" -derivedDataPath /tmp/hmk-ios-device DEVELOPMENT_TEAM="${HMK_TEAM:-2G974K78BH}" SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) HMK_DEV' HMK_PUSH_RELAY="${HMK_PUSH_RELAY:-https://push.homegrownsw.com}" -allowProvisioningUpdates build
     xcrun devicectl device install app --device "$device" /tmp/hmk-ios-device/Build/Products/Release-iphoneos/Hammock.app

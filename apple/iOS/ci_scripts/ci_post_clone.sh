@@ -45,7 +45,7 @@ case "$platform" in
   iOS)
     # just ios-device passes the relay as a build setting; Xcode Cloud can't,
     # so it's written into the Info.plist here.
-    relay="${HMK_PUSH_RELAY:-https://hmk-push.homegrownsw.workers.dev}"
+    relay="${HMK_PUSH_RELAY:-https://push.homegrownsw.com}"
     /usr/libexec/PlistBuddy -c "Set :HammockPushRelay $relay" "$repo/apple/iOS/Hammock/Info.plist"
     echo "push relay: $relay"
     ;;

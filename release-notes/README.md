@@ -142,7 +142,7 @@ simulator host via `scripts/build-mac-payloads.sh`), and `ci_post_xcodebuild.sh`
 Developer ID export lost a helper's entitlements. Packages resolve only from `apple/Package.resolved`. Day to day the
 Mac is built with `just mac-app` / `just mac-dev`.
 
-The push relay (`relay/push`, a Cloudflare Worker) is at https://hmk-push.homegrownsw.workers.dev. Phones built from
+The push relay (`relay/push`, a Cloudflare Worker) is at https://push.homegrownsw.com (and, for phones registered before that, https://hmk-push.homegrownsw.workers.dev). Phones built from
 Xcode use APNs' sandbox and TestFlight builds its production environment, so the relay's APNs key must allow both
 (Apple turns a key down for the wrong one with `BadEnvironmentKeyInToken`, which the daemon log shows).
 
