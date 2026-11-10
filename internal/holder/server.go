@@ -235,11 +235,18 @@ func (s *Server) accept() {
 		if err != nil {
 			return
 		}
-		go s.serve(conn)
+		// Who connected, before anything is read: macOS gives a socket's
+		// peer as the last process to use it, which could otherwise be one
+		// it was handed to that only wrote the first frame.
+		var at PeerProc
+		if uc, ok := conn.(*net.UnixConn); ok && (s.cfg.Peer != nil || s.cfg.State != nil) {
+			at = sockPeer(uc)
+		}
+		go s.serve(conn, at)
 	}
 }
 
-func (s *Server) serve(conn net.Conn) {
+func (s *Server) serve(conn net.Conn, at PeerProc) {
 	first, err := ReadFrame(conn)
 	if err != nil || first.Type != FrameAttach || len(first.Payload) < 8 {
 		conn.Close()
@@ -254,7 +261,12 @@ func (s *Server) serve(conn net.Conn) {
 		if uc, ok := conn.(*net.UnixConn); ok {
 			p = sockPeer(uc)
 		}
-		if p.PID <= 0 || s.cfg.Peer != nil && !s.cfg.Peer(p) {
+		if p.PID <= 0 || !sameProc(at, p) {
+			logf("refused a client (pid %d, connected as pid %d): not the process that connected", p.PID, at.PID)
+			conn.Close()
+			return
+		}
+		if s.cfg.Peer != nil && !s.cfg.Peer(p) {
 			logf("refused a client (pid %d): not the daemon", p.PID)
 			conn.Close()
 			return

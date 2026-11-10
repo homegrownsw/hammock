@@ -53,6 +53,9 @@ static int hmk_token_path(audit_token_t *tok, char *buf, int len) {
 // (audit_token_to_pid, without linking libbsm: the pid is its sixth word.)
 static int hmk_token_pid(const audit_token_t *tok) { return (int)tok->val[5]; }
 
+// (audit_token_to_pidversion: its eighth.)
+static int hmk_token_pidversion(const audit_token_t *tok) { return (int)tok->val[7]; }
+
 static void hmk_copy(CFStringRef s, char *buf, int len) {
 	buf[0] = 0;
 	if (s && CFGetTypeID(s) == CFStringGetTypeID()) CFStringGetCString(s, buf, len, kCFStringEncodingUTF8);
@@ -169,15 +172,19 @@ func Check(pid int, requirement string) (Signature, bool) {
 
 // Token is a process's audit token: its pid and pid version, which changes
 // when it execs, so a check by token is of the program that was running
-// when the token was taken (a socket's peer as it connected), never one
+// when the token was taken (a socket's peer then: see PeerToken), never one
 // exec'd in its place since or a process that took its pid.
 type Token struct {
 	t  C.audit_token_t
 	ok bool
 }
 
-// PeerToken is the audit token of the process at the other end of the Unix
-// socket fd, as it was when it connected.
+// PeerToken is the audit token macOS gives for the process at the other end
+// of the Unix socket fd: the one that connected, until another process with
+// the socket (one it was handed to, or a child that inherited it) reads or
+// writes through it, which then has it. Take it before reading and again
+// after (SameProcess), as the holders and the daemon do, to know the
+// program that connected is the one that spoke.
 func PeerToken(fd int) Token {
 	var t Token
 	t.ok = C.hmk_peer_token(C.int(fd), &t.t) == 0
@@ -193,6 +200,13 @@ func (t Token) PID() int {
 		return 0
 	}
 	return int(C.hmk_token_pid(&t.t))
+}
+
+// SameProcess reports whether t and o are both tokens of one process
+// running one program: the same pid and pid version.
+func (t Token) SameProcess(o Token) bool {
+	return t.ok && o.ok && C.hmk_token_pid(&t.t) == C.hmk_token_pid(&o.t) &&
+		C.hmk_token_pidversion(&t.t) == C.hmk_token_pidversion(&o.t)
 }
 
 // Path is the executable of the token's process, if it's still the one

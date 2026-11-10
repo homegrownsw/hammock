@@ -22,9 +22,11 @@ type PeerProc struct {
 // would let anything of yours that read the daemon's state attach; this
 // way it also has to be the daemon.
 //
-// On macOS the peer is checked by its audit token, so a program that
-// connects and then execs hmkd (or hands the connection to a child and
-// execs hmkd in its pid) isn't taken for it. And a holder with the
+// On macOS the peer is checked by its audit token, taken as it connects and
+// again once it has sent its first frame (the server refuses a client whose
+// two aren't the one process, still running), so a program that connects
+// and then execs hmkd (or hands the connection to a child, or to an hmkd)
+// isn't taken for it. And a holder with the
 // hardened runtime takes, by path, only an hmkd with it too: hmkd run with
 // DYLD_INSERT_LIBRARIES (which the runtime refuses) is anyone's code.
 // (A plain `go build`'s holder and hmkd have neither: nothing to require.)

@@ -27,6 +27,7 @@ func (Token) Valid() bool                        { return false }
 func (Token) PID() int                           { return 0 }
 func (Token) Path() (string, error)              { return "", errNoToken }
 func (Token) Live() bool                         { return false }
+func (Token) SameProcess(Token) bool             { return false }
 func CheckToken(Token, string) (Signature, bool) { return Signature{}, false }
 
 var errNoToken = errors.New("no audit tokens here")

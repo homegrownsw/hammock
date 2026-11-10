@@ -104,8 +104,7 @@ func (d *Daemon) handleWS(w http.ResponseWriter, r *http.Request) {
 	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller, c.pid, c.tok = cl, lp.pid, lp.tok })
 }
 
-func (d *Daemon) serveFrames(nc net.Conn, r *bufio.Reader) {
-	lp := localPeerOf(nc)
+func (d *Daemon) serveFrames(nc net.Conn, r *bufio.Reader, lp localPeer) {
 	cl := d.identify(lp.pid)
 	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller, c.pid, c.tok = cl, lp.pid, lp.tok })
 }

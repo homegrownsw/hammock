@@ -66,9 +66,11 @@ func peerPID(c net.Conn) int {
 }
 
 // peerToken returns the audit token (macOS) of the process at the other
-// end of a local connection, as it was when it connected: what a check of
-// who it is (person.go) holds it to, so a program that connects and then
-// execs another in its pid (the app, say) isn't taken for that program.
+// end of a local connection: what a check of who it is (person.go) holds
+// it to, so a program that connects and then execs another in its pid
+// (the app, say) isn't taken for that program. The main socket's listener
+// takes it as a client connects and again once it has spoken, and keeps
+// the client only if they're the one process (localPeerOf).
 func peerToken(c net.Conn) codesign.Token {
 	for {
 		switch v := c.(type) {
@@ -92,7 +94,24 @@ type localPeer struct {
 	tok codesign.Token
 }
 
-func localPeerOf(c net.Conn) localPeer { return localPeer{pid: peerPID(c), tok: peerToken(c)} }
+// localPeerOf is c's: as the listener found it (peekedConn), or as it is.
+func localPeerOf(c net.Conn) localPeer {
+	if pc, ok := c.(*peekedConn); ok {
+		return pc.peer
+	}
+	return localPeer{pid: peerPID(c), tok: peerToken(c)}
+}
+
+// same reports whether p and q, a connection's peer before and after it
+// was first read from, are the one process (on macOS by audit token: pid
+// and pid version). Not whether it still runs: a client may send and go,
+// and what it may do is held to its token's being live (person.go).
+func (p localPeer) same(q localPeer) bool {
+	if p.pid != q.pid || p.tok.Valid() != q.tok.Valid() {
+		return false
+	}
+	return !p.tok.Valid() || p.tok.SameProcess(q.tok)
+}
 
 // peerPIDKey carries a WebSocket connection's localPeer to its handler.
 type peerPIDKey struct{}

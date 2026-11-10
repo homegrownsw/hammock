@@ -127,13 +127,13 @@ const frameMagic = "PRC1"
 // passes everything else (HTTP/WebSocket) through Accept.
 type sniffListener struct {
 	net.Listener
-	onFrames func(net.Conn, *bufio.Reader)
+	onFrames func(net.Conn, *bufio.Reader, localPeer)
 	conns    chan net.Conn
 	errc     chan error
 	done     chan struct{} // closed when the listener stops
 }
 
-func newSniffListener(ln net.Listener, onFrames func(net.Conn, *bufio.Reader)) net.Listener {
+func newSniffListener(ln net.Listener, onFrames func(net.Conn, *bufio.Reader, localPeer)) net.Listener {
 	s := &sniffListener{Listener: ln, onFrames: onFrames, conns: make(chan net.Conn), errc: make(chan error, 1), done: make(chan struct{})}
 	go s.loop()
 	return s
@@ -147,6 +147,12 @@ func (s *sniffListener) loop() {
 			close(s.done)
 			return
 		}
+		// Who connected, before anything is read, and again after: macOS
+		// gives a socket's peer as the last process to use it, so a
+		// program that connects and hands the socket to another (an exec,
+		// a child) to speak would otherwise be taken for that one. Both
+		// must be the one process (localPeer.same).
+		at := localPeerOf(c)
 		go func() {
 			_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
 			r := bufio.NewReader(c)
@@ -156,13 +162,18 @@ func (s *sniffListener) loop() {
 				return
 			}
 			_ = c.SetReadDeadline(time.Time{})
+			lp := localPeerOf(c)
+			if !at.same(lp) {
+				c.Close()
+				return
+			}
 			if string(head) == frameMagic {
 				_, _ = r.Discard(len(frameMagic))
-				s.onFrames(c, r)
+				s.onFrames(c, r, lp)
 				return
 			}
 			select {
-			case s.conns <- &peekedConn{Conn: c, r: r}:
+			case s.conns <- &peekedConn{Conn: c, r: r, peer: lp}:
 			case <-s.done:
 				c.Close()
 			}
@@ -181,7 +192,8 @@ func (s *sniffListener) Accept() (net.Conn, error) {
 
 type peekedConn struct {
 	net.Conn
-	r *bufio.Reader
+	r    *bufio.Reader
+	peer localPeer // who connected (and spoke first)
 }
 
 func (c *peekedConn) Read(p []byte) (int, error) { return c.r.Read(p) }

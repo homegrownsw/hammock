@@ -17,3 +17,5 @@ func peerExe(PeerProc) (string, error) { return "", errors.New("unknown peer") }
 func peerSignature(PeerProc, string) (codesign.Signature, bool) { return codesign.Signature{}, false }
 
 func peerStill(PeerProc) bool { return false }
+
+func sameProc(PeerProc, PeerProc) bool { return false }

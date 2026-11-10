@@ -63,3 +63,7 @@ func peerSignature(PeerProc, string) (codesign.Signature, bool) { return codesig
 
 // peerStill: there's no audit token to ask (see peerExe).
 func peerStill(PeerProc) bool { return true }
+
+// sameProc: SO_PEERCRED is the process that connected, whoever uses the
+// socket since; only the pid to compare.
+func sameProc(a, b PeerProc) bool { return a.PID == b.PID }
