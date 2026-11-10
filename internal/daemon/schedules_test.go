@@ -564,6 +564,22 @@ func TestAgentSchedulesAsk(t *testing.T) {
 	if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: s.Id, Paused: true}}}); err != nil {
 		t.Fatal(err)
 	}
+	// Another agent later in the same pane didn't make it.
+	d.mu.Lock()
+	maker := d.sched.madeBy[s.Id]
+	sc := &conn{d: d, caller: &caller{pane: maker.Pane, agent: true}}
+	if maker.Proc == "" || !d.agentsSchedule(sc, s.Id) {
+		d.mu.Unlock()
+		t.Fatalf("its maker: %+v", maker)
+	}
+	later := maker
+	later.Proc = "1@1" // (what ran there when it was made, gone since)
+	d.sched.madeBy[s.Id] = later
+	if d.agentsSchedule(sc, s.Id) {
+		t.Error("a later agent in its pane counts as its maker")
+	}
+	d.sched.madeBy[s.Id] = maker
+	d.mu.Unlock()
 	yours := call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: &pb.Schedule{
 		Name: "Backup", Kind: "command", Prompt: "true", Cwd: work, MinuteOfDay: 60,
 	}}}}).GetScheduleReply().GetSchedule()
@@ -628,6 +644,16 @@ func TestAgentSchedulesAsk(t *testing.T) {
 	}
 	if schedOf(d, s.Id) == nil {
 		t.Fatal("gone after no")
+	}
+	// Once you've changed it, it's yours: its maker asks like anyone.
+	mine := proto.CloneOf(schedOf(d, s.Id))
+	mine.Name = "Renamed"
+	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: mine}}})
+	d.mu.Lock()
+	_, kept := d.sched.madeBy[s.Id]
+	d.mu.Unlock()
+	if kept {
+		t.Fatal("its maker kept it after you changed it")
 	}
 }
 

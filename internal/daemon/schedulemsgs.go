@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
 
@@ -46,6 +47,11 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		s, err := d.putSchedule(in, "You")
 		if err != nil {
 			return nil, err
+		}
+		if _, ok := d.sched.madeBy[s.Id]; ok {
+			// Yours now: the agent that made it asks again.
+			delete(d.sched.madeBy, s.Id)
+			d.saveScheduleMakers()
 		}
 		return scheduleReply(s), nil
 
@@ -163,7 +169,8 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 		}
 		if in.Id == "" {
 			// Its own: it may run, pause and skip it without asking again.
-			d.sched.madeBy[s.Id] = self
+			proc, session := d.agentIdentity(self)
+			d.sched.madeBy[s.Id] = schedMaker{Pane: self, Proc: proc, Session: session}
 			d.saveScheduleMakers()
 		}
 		return scheduleReply(s), nil
@@ -201,10 +208,47 @@ func (d *Daemon) askScheduleGrant(c *conn, replyTo uint64, headline, why string,
 }
 
 // agentsSchedule reports whether the agent c is (or the agent whose pane
-// it runs in) made schedule id. Callers hold d.mu.
+// it runs in) made schedule id: the one in that pane then, not a later
+// agent there. Callers hold d.mu.
 func (d *Daemon) agentsSchedule(c *conn, id string) bool {
-	maker := d.sched.madeBy[id]
-	return maker != "" && d.owners(c.caller.pane)[maker]
+	m, ok := d.sched.madeBy[id]
+	if !ok || m.Pane == "" || !d.owners(c.caller.pane)[m.Pane] {
+		return false
+	}
+	proc, session := d.agentIdentity(m.Pane)
+	if m.Session != "" && session != "" && m.Session != session {
+		return false // another conversation
+	}
+	return m.Proc != "" && m.Proc == proc
+}
+
+// agentIdentity is which agent runs in pane now: its harness's process
+// (pid and start time; the pane's own process where there's no harness
+// to be found), and its vendor session id when known. Callers hold d.mu.
+func (d *Daemon) agentIdentity(pane string) (proc, session string) {
+	p := d.panes[pane]
+	if p == nil {
+		return "", ""
+	}
+	if a := p.snapshotInfo().Agent; a != nil && a.SessionId != "" {
+		session = a.Harness + ":" + a.SessionId
+	}
+	p.mu.Lock()
+	pid := p.pid
+	p.mu.Unlock()
+	if pid <= 0 {
+		return "", session
+	}
+	if !isAgentProcess(pid) {
+		if _, a := findAgentProc(pid); a > 0 {
+			pid = a
+		}
+	}
+	t, err := procinfo.StartTime(pid)
+	if err != nil {
+		return "", session
+	}
+	return fmt.Sprintf("%d@%d", pid, t.UnixNano()), session
 }
 
 // showOutputMsg is hmk show / show_output: in the browser pane named, or

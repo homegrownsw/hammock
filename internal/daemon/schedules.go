@@ -55,15 +55,26 @@ type schedState struct {
 	list    map[string]*pb.Schedule // this computer's
 	sawWork map[string]bool         // run id → its agent has started working (so idle means done)
 	sawProc map[string]bool         // run id → its agent's process has been seen in its pane
-	// madeBy is the pane of the agent that made each schedule it made (with
-	// your leave): that agent may run, pause and skip it without asking
-	// again (schedulemsgs.go). Kept in the "schedule_makers" setting.
-	madeBy map[string]string
+	// madeBy is the agent that made each schedule it made (with your
+	// leave): that agent may run, pause and skip it without asking again
+	// (schedulemsgs.go). Kept in the "schedule_makers" setting.
+	madeBy map[string]schedMaker
+}
+
+// schedMaker is the agent that made a schedule: its pane, and which agent
+// was running there (agentIdentity), so a later one in the same pane
+// doesn't inherit it.
+type schedMaker struct {
+	Pane    string `json:"pane"`
+	Proc    string `json:"proc,omitempty"`
+	Session string `json:"session,omitempty"`
 }
 
 func (d *Daemon) loadSchedules() {
-	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}, madeBy: map[string]string{}}
-	_ = json.Unmarshal([]byte(d.store.Setting("schedule_makers")), &d.sched.madeBy)
+	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}, madeBy: map[string]schedMaker{}}
+	if json.Unmarshal([]byte(d.store.Setting("schedule_makers")), &d.sched.madeBy) != nil {
+		d.sched.madeBy = map[string]schedMaker{} // (an earlier build's, by pane alone: they ask again)
+	}
 	recs, err := d.store.Records("schedule")
 	if err != nil {
 		d.log.Error("load schedules", "err", err)
