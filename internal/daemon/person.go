@@ -27,7 +27,8 @@ import (
 //   - a program whose ancestors reach a pane's shell, with no agent between
 //     (found by its parents, not by the terminal it kept or a multiplexer);
 //   - a program outside Hammock whose ancestors reach a login session (a
-//     terminal app, login, sshd from another computer, Unraid's web UI)
+//     terminal app launched as an app, a console's login, sshd from
+//     another computer, Unraid's web UI)
 //     without passing an agent, a pane or Hammock itself.
 //
 // Anything else (detached, found only by its terminal or multiplexer, or

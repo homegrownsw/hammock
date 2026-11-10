@@ -60,27 +60,48 @@ func isHammockApp(pid int) bool {
 }
 
 // loginAnchor reports whether pid starts a login session on this Mac for
-// caller: login (Terminal, iTerm, Ghostty and others start shells through
-// it), sshd from another computer, or an app that starts shells itself
-// (kitty, WezTerm, VS Code, another copy of Hammock): one launched as an
-// app (launchd's child, its bundle's program), signed by Apple or a
-// developer Apple knows, with caller in a terminal.
+// caller: sshd from another computer, or a terminal app (Terminal, iTerm,
+// Ghostty, kitty, WezTerm, VS Code, another copy of Hammock): one launched
+// as an app (launchd's child, its bundle's program, or iTerm's session
+// server), signed by Apple or a developer Apple knows, with caller in a
+// terminal.
+//
+// Not /usr/bin/login on its own: `login -pf $USER` needs no password, so a
+// program of yours can start one from launchd (`launchctl submit`) with any
+// command, and it would look like a terminal's. The terminal app above it
+// is what counts (the walk passes login on its way there).
+//
+// Residual: a program of yours can open a terminal app on a command of its
+// choosing (`open -a Terminal x.command`, `open -na Ghostty --args -e …`):
+// that's a window you'd see, launched as an app like any. And an app whose
+// program runs scripts when told to (an Electron app's run-as-node) passes
+// for one launched as an app: those told to by their environment are
+// turned away.
 func loginAnchor(pid, child, caller int) bool {
 	exe, err := procinfo.Path(pid)
 	if err != nil {
 		return false
 	}
 	switch exe {
-	case "/usr/bin/login":
-		return true
 	case "/usr/sbin/sshd", "/usr/libexec/sshd-session":
 		return sshFromElsewhere(child)
 	}
-	if !strings.Contains(exe, ".app/Contents/MacOS/") || procinfo.TTY(caller) < 0 {
+	if procinfo.TTY(caller) < 0 {
 		return false
 	}
 	if pp, err := procinfo.Parent(pid); err != nil || pp != 1 {
 		return false
+	}
+	for _, kv := range procinfo.Env(pid) {
+		if strings.HasPrefix(kv, "ELECTRON_RUN_AS_NODE=") || strings.HasPrefix(kv, "DYLD_INSERT_LIBRARIES=") {
+			return false
+		}
+	}
+	if !strings.Contains(exe, ".app/Contents/MacOS/") {
+		// iTerm's session server, which may run from a copy outside
+		// the app: by its signature, not its name or place.
+		_, ok := codesign.Check(pid, `anchor apple generic and identifier "iTermServer" and certificate leaf[subject.OU] = "H7V7XYVQ7D"`)
+		return ok
 	}
 	_, ok := codesign.Check(pid, "anchor apple generic")
 	return ok
