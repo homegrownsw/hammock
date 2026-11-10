@@ -47,6 +47,10 @@ type pane struct {
 	closed   bool
 	hookAt   time.Time      // last hook event; heuristics stand down while fresh
 	asking   *pb.AgentBlock // a question from a PreToolUse hook, until answered (often not yet in the transcript)
+	// The agent's turn was started by a background task reporting progress
+	// (a Monitor's event), not by you or by the task ending: its finish
+	// isn't news (agents.go).
+	progressTurn bool
 	// When the pane's agent process began: background shells from before
 	// it (a resumed session's) are gone.
 	agentStart time.Time

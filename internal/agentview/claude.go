@@ -505,18 +505,39 @@ func bashStreams(t string) (stdout, stderr string) {
 // taskNotification: a note saying which task finished, with what it
 // reported tucked under it.
 func (c *Claude) taskNotification(id, t string, ms int64) []*pb.AgentBlock {
+	n, _ := ReadTaskNotice(t)
+	c.endShell(n.ID, n.Status, n.Summary)
+	text := n.Summary
+	if text == "" {
+		text = "Background task " + cmp.Or(n.Status, "finished")
+	}
+	return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_NOTE, TimeUnixMs: ms, Text: text, Output: n.Result})
+}
+
+// TaskNotice is Claude Code's report from a background task (a Monitor, a
+// command run in the background, a subagent), sent as a user message, and
+// as UserPromptSubmit's prompt when it wakes an idle agent.
+type TaskNotice struct {
+	ID, Summary, Status, Result string
+}
+
+// Ended: the task is over (its status: completed, failed, killed…). A
+// Monitor's events in between say no status ("Monitor event: …").
+func (n TaskNotice) Ended() bool { return n.Status != "" }
+
+// ReadTaskNotice reads a <task-notification> message (ok=false for anything else).
+func ReadTaskNotice(t string) (n TaskNotice, ok bool) {
+	t = strings.TrimSpace(t)
+	if !strings.HasPrefix(t, "<task-notification>") {
+		return n, false
+	}
 	field := func(re *regexp.Regexp) string {
 		if m := re.FindStringSubmatch(t); m != nil {
 			return strings.TrimSpace(m[1])
 		}
 		return ""
 	}
-	text := field(taskSummary)
-	c.endShell(field(taskID), field(taskStatus), text)
-	if text == "" {
-		text = "Background task " + cmp.Or(field(taskStatus), "finished")
-	}
-	return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_NOTE, TimeUnixMs: ms, Text: text, Output: field(taskResult)})
+	return TaskNotice{ID: field(taskID), Summary: field(taskSummary), Status: field(taskStatus), Result: field(taskResult)}, true
 }
 
 func (c *Claude) assistant(l ccLine, ms int64) []*pb.AgentBlock {

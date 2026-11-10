@@ -137,6 +137,10 @@ func classify(p agents.Hook) (state pb.AgentState, summary string, ok bool) {
 		if f := strings.Fields(p.Prompt); len(f) > 0 && (f[0] == "/rename" || f[0] == "/name") {
 			return 0, "", false
 		}
+		// A background task woke it: its words, not the tags.
+		if n, ok := agentview.ReadTaskNotice(p.Prompt); ok {
+			return pb.AgentState_AGENT_STATE_WORKING, firstLine(cmp.Or(n.Summary, "Background task")), true
+		}
 		return pb.AgentState_AGENT_STATE_WORKING, firstLine(p.Prompt), true
 	case "PreToolUse", "PostToolUse":
 		// Claude's question tool waits for you as soon as it starts.
@@ -246,6 +250,19 @@ func (h *agentHub) handle(ev HookEvent) {
 
 	p.mu.Lock()
 	p.hookAt = time.Now()
+	// A Monitor's events wake an idle agent for a turn each (its
+	// UserPromptSubmit's prompt is the <task-notification>), every few
+	// seconds if it's noisy: those turns finishing isn't news. The task
+	// ending (its notification has a status) is, and so is the agent
+	// stopping it (TaskStop), which sends no notification of its own.
+	switch {
+	case event == "UserPromptSubmit":
+		n, ok := agentview.ReadTaskNotice(payload.Prompt)
+		p.progressTurn = ok && !n.Ended()
+	case event == "SessionStart", event == "PreToolUse" && payload.ToolName == "TaskStop":
+		p.progressTurn = false
+	}
+	progress := p.progressTurn
 	switch {
 	case (event == "PreToolUse" || event == "PermissionRequest") && payload.ToolName != "" && payload.ToolName != "AskUserQuestion":
 		var in map[string]any
@@ -289,11 +306,15 @@ func (h *agentHub) handle(ev HookEvent) {
 		a.TranscriptPath = t
 	}
 	prev := a.State
+	_, waiting := h.d.attention["at_"+p.id] // an earlier finish, not yet seen
+	// Back from a progress turn: nothing new to see, unless you still haven't
+	// seen what came before it.
+	quiet := progress && state == pb.AgentState_AGENT_STATE_IDLE
 	if a.State != state {
 		a.State = state
 		a.StateSinceUnixMs = time.Now().UnixMilli()
 		// Only finishing work needs acknowledging; a fresh session at its prompt doesn't.
-		a.Seen = state == pb.AgentState_AGENT_STATE_IDLE && (prev != pb.AgentState_AGENT_STATE_WORKING || h.d.watched(p.id))
+		a.Seen = state == pb.AgentState_AGENT_STATE_IDLE && (prev != pb.AgentState_AGENT_STATE_WORKING || h.d.watched(p.id) || quiet && !waiting)
 	}
 	seen := a.Seen
 	if summary != "" {
@@ -304,9 +325,10 @@ func (h *agentHub) handle(ev HookEvent) {
 	u := &pb.StateUpdate{}
 	switch {
 	case state == pb.AgentState_AGENT_STATE_NEEDS_INPUT, state == pb.AgentState_AGENT_STATE_ERRORED,
-		state == pb.AgentState_AGENT_STATE_IDLE && prev == pb.AgentState_AGENT_STATE_WORKING && !seen:
+		state == pb.AgentState_AGENT_STATE_IDLE && prev == pb.AgentState_AGENT_STATE_WORKING && !seen && !quiet:
 		h.d.raiseAttention(p, state, summary, u)
-	case state == pb.AgentState_AGENT_STATE_WORKING || state == pb.AgentState_AGENT_STATE_STARTING:
+	case (state == pb.AgentState_AGENT_STATE_WORKING || state == pb.AgentState_AGENT_STATE_STARTING) && !progress:
+		// (A progress turn leaves an earlier finish waiting for you.)
 		h.d.clearAttentionForPane(p.id, u)
 	}
 	info := p.snapshotInfo()

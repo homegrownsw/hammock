@@ -881,3 +881,79 @@ func TestStopFailureSummary(t *testing.T) {
 		}
 	}
 }
+
+// A Monitor's events wake an idle agent for a turn each: those turns
+// finishing don't alert you (or take away a finish you haven't seen yet);
+// the task ending, the agent stopping it, and your own turns do.
+func TestBackgroundProgressDoesNotAlert(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	sid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Agents"}}}))
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: sid, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}})
+	var pane string
+	for _, p := range call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}}).GetState().Panes {
+		pane = p.Id
+	}
+	item := func() *pb.AttentionItem {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.attention["at_"+pane]
+	}
+	seen := func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.panes[pane].snapshotInfo().GetAgent().GetSeen()
+	}
+	turn := func(prompt string, tools ...string) {
+		hook(d, pane, "UserPromptSubmit", map[string]any{"prompt": prompt})
+		for _, tool := range tools {
+			hook(d, pane, "PreToolUse", map[string]any{"tool_name": tool})
+			hook(d, pane, "PostToolUse", map[string]any{"tool_name": tool})
+		}
+		hook(d, pane, "Stop", map[string]any{"last_assistant_message": "ok"})
+	}
+	event := func(text string) string {
+		return "<task-notification>\n<task-id>b1</task-id>\n<summary>Monitor event: \"build\"</summary>\n<event>" + text + "</event>\n</task-notification>"
+	}
+	const ended = "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Monitor \"build\" stream ended</summary>\n<event>built</event>\n</task-notification>"
+
+	// Progress before anything's waiting: no alert, nothing to acknowledge.
+	turn(event("step 1"), "Bash")
+	if item() != nil || !seen() {
+		t.Fatalf("progress turn alerted: %v, seen %v", item(), seen())
+	}
+	// Your turn alerts; progress after it leaves that alert waiting.
+	turn("build the release")
+	first := item()
+	if first == nil || seen() {
+		t.Fatal("your turn didn't alert")
+	}
+	turn(event("step 2"))
+	turn(event("step 3"), "Bash")
+	if item() != first || seen() {
+		t.Fatalf("progress replaced or cleared your turn's alert: %v, seen %v", item(), seen())
+	}
+	// The task ending alerts anew.
+	turn(ended)
+	if it := item(); it == nil || it == first {
+		t.Fatal("the task ending didn't alert")
+	}
+	// The agent stopping a monitor itself alerts too.
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Focus{Focus: &pb.Focus{PaneId: pane}}})
+	if item() != nil {
+		t.Fatal("focus didn't acknowledge")
+	}
+	turn(event("beat"), "TaskStop")
+	if item() == nil {
+		t.Fatal("stopping the monitor didn't alert")
+	}
+	// The pane's summary is the notification's, not its tags.
+	hook(d, pane, "UserPromptSubmit", map[string]any{"prompt": event("step 4")})
+	d.mu.Lock()
+	sum := d.panes[pane].snapshotInfo().GetAgent().GetSummary()
+	d.mu.Unlock()
+	if sum != `Monitor event: "build"` {
+		t.Fatalf("summary %q", sum)
+	}
+}
