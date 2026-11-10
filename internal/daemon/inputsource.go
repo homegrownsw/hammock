@@ -12,10 +12,10 @@ import "time"
 // since; input you haven't typed after counts however old it is.
 const inputRecent = 30 * time.Second
 
-// inputSrc is who typed: kind "" is you (the app, or the TUI), else
+// inputSrc is who typed: kind "" is you (the app), else
 // "device" (a paired phone), "peer" (a linked computer or a guest),
 // "agent" (or a caller scoped as one), "program" (a plain caller: hmk in a
-// shell, a script), or "hammock" (Hammock itself, giving an agent its
+// shell, a script, the TUI by the kind it says), or "hammock" (Hammock itself, giving an agent its
 // first prompt).
 type inputSrc struct {
 	kind, name, peer, pane string
@@ -42,10 +42,14 @@ func inputSourceOf(c *conn) inputSrc {
 		}
 		return s
 	}
-	if c.kind == "tui" {
-		return inputSrc{} // the TUI: you, typing in it
-	}
+	// Not the client's own say: a kind is whatever it sends in Hello, and a
+	// plain caller saying "tui" would otherwise reset "you typed last" as it
+	// types `hmk pair --print⏎` into your shell. The TUI, a program in a
+	// terminal like any other, is told apart from one only by its name.
 	s := inputSrc{kind: "program"}
+	if c.kind == "tui" {
+		s.name = "hmk tui"
+	}
 	if cl != nil && cl.pane != outsidePane {
 		s.pane = cl.pane
 	}
@@ -96,10 +100,14 @@ func (d *Daemon) inputOrigin(s inputSrc) string {
 		}
 		return "a program Hammock treats as an agent"
 	case "program":
-		if s.pane != "" && d.panes[s.pane] != nil {
-			return "a program in " + d.paneLabel(s.pane) + " (hmk send, or a script)"
+		how := "hmk send, or a script"
+		if s.name != "" {
+			how = s.name + ", or a program saying it's that"
 		}
-		return "a program outside the app (hmk send, or a script)"
+		if s.pane != "" && d.panes[s.pane] != nil {
+			return "a program in " + d.paneLabel(s.pane) + " (" + how + ")"
+		}
+		return "a program outside the app (" + how + ")"
 	case "hammock":
 		return "Hammock, starting an agent"
 	}

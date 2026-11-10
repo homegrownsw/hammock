@@ -628,6 +628,20 @@ func TestApprovalSaysWhoTypedIntoThePane(t *testing.T) {
 	if req := ask(); strings.Contains(req.Origin, "after typing") || !strings.HasPrefix(req.Headline, "hmk wants to get a pairing code: anyone who has it can pair a device") {
 		t.Fatalf("after you typed: %q / %q", req.Origin, req.Headline)
 	}
+	// A program saying it's the TUI typed there: not you, whatever it says.
+	tui := dialAs(t, dir, &caller{pane: other, direct: true}, "tui")
+	if _, err := try(tui, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pane, Data: []byte("hmk pair --print\n")}}}); err != nil {
+		t.Fatal(err)
+	}
+	if req := ask(); !strings.Contains(req.Origin, ", after typing from a program in") || !strings.Contains(req.Origin, "hmk tui") {
+		t.Fatalf("after a caller saying it's the TUI typed: %q", req.Origin)
+	}
+	d.mu.Lock()
+	who, _, kind := d.describeAudit("tui:hmk", "input", pane, "")
+	d.mu.Unlock()
+	if who != "hmk tui" || kind == "you" {
+		t.Fatalf("the audit says %q, as %q", who, kind)
+	}
 	// A program in another pane typed there.
 	prog := dialAs(t, dir, &caller{pane: other, direct: true}, "cli")
 	if _, err := try(prog, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pane, Data: []byte("hmk pair --print\n")}}}); err != nil {

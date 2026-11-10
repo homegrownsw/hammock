@@ -208,10 +208,14 @@ func (d *Daemon) auditWho(actor string) (who, kind string) {
 			return "Another Mac", "guest"
 		}
 		return name, "guest"
-	case "cli":
-		return "hmk (command line)", "you"
-	case "tui":
-		return "hmk tui", "you"
+	case "cli", "tui":
+		// The kind a client says it is (conn.go): any program of yours
+		// can say it, so a program's, not yours (only the app is: "mac",
+		// which nothing else may claim).
+		if k == "tui" {
+			return "hmk tui", "program"
+		}
+		return "hmk (command line)", "program"
 	case "mac":
 		return "You", "you"
 	}
