@@ -65,8 +65,9 @@ type pane struct {
 	// The --allowedTools rule for the tool its agent last asked to use
 	// (Always Allow for This Schedule, schedules.go).
 	pendingTool string
-	askedFor    string // Claude's own words for its permission prompt ("…permission to use Bash")
-	askedRule   string // pendingTool as it was when that prompt came (later tool calls don't change it)
+	askedFor    string    // Claude's own words for its permission prompt ("…permission to use Bash")
+	askedRule   string    // pendingTool as it was when that prompt came (later tool calls don't change it)
+	typedBy     paneInput // who typed into it lately (inputsource.go)
 }
 
 func newPane(d *Daemon, info *pb.Pane) *pane {
@@ -689,6 +690,7 @@ func (p *pane) input(c *conn, data []byte) (resized bool, err error) {
 		return false, errors.New("pane is not running")
 	}
 	resized = p.setDriverLocked(c)
+	p.typedBy.noteLocked(inputSourceOf(c), time.Now())
 	data = append([]byte(nil), data...)
 	if !p.postLocked(func(hc *holder.Client) { _ = hc.Input(data) }) {
 		return resized, errors.New("pane input queue is full")

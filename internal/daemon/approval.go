@@ -17,7 +17,7 @@ import (
 // but the Hammock app (hmk in a pane's shell or a terminal, the TUI, a
 // program outside Hammock), isn't refused: it asks you, like an agent's
 // request does. A GrantRequest with person set, worded by Hammock from
-// the message ("hmk wants to show a pairing code") and saying where it
+// the message ("hmk wants to get a pairing code: …") and saying where it
 // came from, shown in Needs You on the Mac and pushed to your phone. The
 // request waits (ApprovalPending tells the client so) and is handled as if
 // sent now once you allow it, or fails with errDenied. Allow once only:
@@ -50,10 +50,17 @@ func (c *conn) askPerson(msg *pb.ClientMessage) error {
 	if cl := c.caller; cl != nil && cl.pane != outsidePane && d.panes[cl.pane] != nil {
 		pane = cl.pane
 	}
+	origin := d.origin(c, proc)
+	if p := d.panes[pane]; p != nil {
+		if s := p.recentInputFrom(time.Now()); s.kind != "" {
+			// Typed there lately by something other than you in the app.
+			origin += ", after typing from " + d.inputOrigin(s)
+		}
+	}
 	g := &pendingGrant{
 		req: &pb.GrantRequest{
 			Id: newID("gr"), RequesterPaneId: pane, TargetPaneId: pane, Action: "person",
-			Headline: who + " wants to " + what, Person: true, Origin: d.origin(c, proc),
+			Headline: who + " wants to " + what, Person: true, Origin: origin,
 			CreatedUnixMs: time.Now().UnixMilli(),
 		},
 		c: c, person: true,
@@ -117,7 +124,7 @@ func (d *Daemon) personAsk(c *conn, msg *pb.ClientMessage) (string, error) {
 		}
 		return "delete the scheduled task " + scheduleSummary(s), nil
 	case *pb.ClientMessage_CreatePairing:
-		return "show a pairing code, for pairing a phone with " + d.macName(), nil
+		return "get a pairing code: anyone who has it can pair a device with " + d.macName(), nil
 	case *pb.ClientMessage_ShowPairing:
 		return "show a pairing code in the Hammock app", nil
 	case *pb.ClientMessage_RevokeDevice:
@@ -130,7 +137,7 @@ func (d *Daemon) personAsk(c *conn, msg *pb.ClientMessage) (string, error) {
 	case *pb.ClientMessage_SetRemoteNetworks:
 		return "change the networks Hammock listens on to " + cmpOr(strings.Join(append(m.SetRemoteNetworks.Networks, m.SetRemoteNetworks.ExtraAddresses...), ", "), "none"), nil
 	case *pb.ClientMessage_CreateInvite:
-		return "make a link inviting someone into " + group(m.CreateInvite.GroupId), nil
+		return "get an invite link to " + group(m.CreateInvite.GroupId) + ": anyone who has it can ask to join", nil
 	case *pb.ClientMessage_RevokeInvite:
 		return "stop the invite link to " + group(m.RevokeInvite.GroupId) + " working", nil
 	case *pb.ClientMessage_RespondJoin:
@@ -158,7 +165,7 @@ func (d *Daemon) personAsk(c *conn, msg *pb.ClientMessage) (string, error) {
 	case *pb.ClientMessage_LinkComputer:
 		return "link this computer with the one at " + cmpOr(oneLine(m.LinkComputer.Address, 100), "an address it gives"), nil
 	case *pb.ClientMessage_CreateLinkInvite:
-		return "make a link for linking another computer with this one", nil
+		return "get a link for linking a computer with this one: anyone who has it can ask to link", nil
 	case *pb.ClientMessage_RespondLink:
 		a := d.comp.attempts[m.RespondLink.Id]
 		if a == nil || a.req == nil {

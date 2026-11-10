@@ -149,7 +149,7 @@ func TestPersonOnlyAsksForUnplacedCallers(t *testing.T) {
 	viaTTY.OnApproval = func(ap *pb.ApprovalPending) { told = ap }
 	got := ask(viaTTY, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}})
 	req := personGrant(t, d, map[string]bool{grant: true})
-	if !strings.HasPrefix(req.Headline, "hmk wants to show a pairing code") || !strings.Contains(req.Origin, "not its own shell") || req.Action != "person" {
+	if !strings.HasPrefix(req.Headline, "hmk wants to get a pairing code") || !strings.Contains(req.Origin, "not its own shell") || req.Action != "person" {
 		t.Errorf("asked %q, from %q (%s)", req.Headline, req.Origin, req.Action)
 	}
 	// Neither it nor any other program that isn't the app answers it.
@@ -590,4 +590,69 @@ func TestBootstrapWarningKeptAndOnlyYoursToClear(t *testing.T) {
 func term2(t *testing.T, dir string) *client.Client {
 	asPerson(t, nobody)
 	return dialAs(t, dir, nil, "cli")
+}
+
+// A person-only request from a pane something other than you typed into
+// lately says so: a program of yours typing `hmk pair --print` into your
+// shell's pane doesn't read as you.
+func TestApprovalSaysWhoTypedIntoThePane(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	app := dialKind(t, dir, "mac") // the app (testPerson, before asPerson below)
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
+	tab := client.CreatedID(call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	tab2 := client.CreatedID(call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	pane, other := d.tabs[tab].FocusedPaneId, d.tabs[tab2].FocusedPaneId
+	p := d.panes[pane]
+	d.mu.Unlock()
+	asPerson(t, nobody)
+	asPlain(t, inPaneShell)
+	hasTTY = func(int) bool { return false }
+	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
+	pairing := &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}
+	shell := dialAs(t, dir, &caller{pane: pane, direct: true}, "cli")
+	ask := func() *pb.GrantRequest {
+		t.Helper()
+		go try(shell, pairing)
+		req := personGrant(t, d, nil)
+		d.mu.Lock()
+		d.resolveGrant(req.Id, pb.RespondGrant_DECISION_DENY, "")
+		d.mu.Unlock()
+		return req
+	}
+	// You typed there, in the app: as before.
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pane, Data: []byte("x")}}})
+	if req := ask(); strings.Contains(req.Origin, "after typing") || !strings.HasPrefix(req.Headline, "hmk wants to get a pairing code: anyone who has it can pair a device") {
+		t.Fatalf("after you typed: %q / %q", req.Origin, req.Headline)
+	}
+	// A program in another pane typed there.
+	prog := dialAs(t, dir, &caller{pane: other, direct: true}, "cli")
+	if _, err := try(prog, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pane, Data: []byte("hmk pair --print\n")}}}); err != nil {
+		t.Fatal(err)
+	}
+	req := ask()
+	if !strings.Contains(req.Origin, "From the shell in") || !strings.Contains(req.Origin, ", after typing from a program in") {
+		t.Fatalf("after a program typed: %q", req.Origin)
+	}
+	// Your keystroke since doesn't hide it while it's recent; once it's
+	// old and you've typed since, it's gone; not if you haven't.
+	now := time.Now()
+	p.mu.Lock()
+	p.typedBy.youAt = now
+	p.mu.Unlock()
+	if s := p.recentInputFrom(now); s.kind != "program" {
+		t.Fatalf("recent, you typed since: %+v", s)
+	}
+	if s := p.recentInputFrom(now.Add(time.Minute)); s.kind != "" {
+		t.Fatalf("old, you typed since: %+v", s)
+	}
+	p.mu.Lock()
+	p.typedBy.youAt = now.Add(-time.Hour)
+	p.mu.Unlock()
+	if s := p.recentInputFrom(now.Add(time.Hour)); s.kind != "program" {
+		t.Fatalf("old, you haven't typed since: %+v", s)
+	}
 }
