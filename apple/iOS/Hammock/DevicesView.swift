@@ -1,3 +1,4 @@
+import CoreImage
 import HammockKit
 import SwiftUI
 import VisionKit
@@ -153,9 +154,9 @@ struct PairingScreen: View {
                 Text("On your Mac, open Hammock ▸ Settings ▸ Devices, turn on remote access and choose **Show Pairing Code**. On a server, run **hmk pair**.")
                     .foregroundStyle(.secondary)
             }
-            if DataScannerViewController.isSupported {
+            if DataScannerViewController.isSupported || FakeScanner.code != nil {
                 Section("Scan the code") {
-                    QRScanner { pair($0) }
+                    scanner
                         .frame(height: 280)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .listRowInsets(EdgeInsets())
@@ -195,6 +196,15 @@ struct PairingScreen: View {
         .navigationTitle("Add Computer")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: session.hosts.count) { old, new in if started, new > old { done() } }
+    }
+
+    /// The camera, or (Debug, in the simulator) a pretend one.
+    @ViewBuilder private var scanner: some View {
+        if let code = FakeScanner.code {
+            FakeScanner(code: code) { pair($0) }
+        } else {
+            QRScanner { pair($0) }
+        }
     }
 
     private func pair(_ c: String) {
@@ -310,5 +320,69 @@ private struct ScreenCard: View {
             picture = img
             if r.height > 0 { aspect = CGFloat(r.width) / CGFloat(r.height) }
         }
+    }
+}
+
+/// Dev aid: HMK_DEBUG_FAKE_SCAN=<a hammock://pair/… link> shows a pretend
+/// camera pointed at the Mac's pairing code, which "scans" it after a moment
+/// (the simulator has no camera), for recording pairing. Release builds never
+/// show it.
+struct FakeScanner: View {
+    let code: String
+    let found: (String) -> Void
+    @State private var seen = false
+
+    static var code: String? {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["HMK_DEBUG_FAKE_SCAN"]
+        #else
+        nil
+        #endif
+    }
+
+    var body: some View {
+        ZStack {
+            // A dim room, a Mac's screen in it, and the pairing code on that screen.
+            LinearGradient(colors: [Color(white: 0.16), Color(white: 0.05)], startPoint: .top, endPoint: .bottom)
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(red: 0.07, green: 0.16, blue: 0.13))
+                .frame(width: 300, height: 210)
+                .overlay(alignment: .top) {
+                    Text("Scan with Hammock on your iPhone").font(.system(size: 9, weight: .medium)).foregroundStyle(.white.opacity(0.7)).padding(.top, 10)
+                }
+                .rotation3DEffect(.degrees(8), axis: (x: 1, y: -0.4, z: 0))
+            if let qr = Self.qr(code) {
+                Image(uiImage: qr)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: 128, height: 128)
+                    .padding(8)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 6))
+                    .rotation3DEffect(.degrees(8), axis: (x: 1, y: -0.4, z: 0))
+                    .overlay {
+                        // What the system scanner draws round a code it's found.
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.yellow, lineWidth: 3)
+                            .padding(-4)
+                            .opacity(seen ? 1 : 0)
+                            .scaleEffect(seen ? 1 : 1.15)
+                    }
+                    .offset(y: 8)
+            }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation(.easeOut(duration: 0.25)) { seen = true }
+            try? await Task.sleep(for: .seconds(0.7))
+            found(code)
+        }
+    }
+
+    static func qr(_ text: String) -> UIImage? {
+        guard let f = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        f.setValue(Data(text.utf8), forKey: "inputMessage")
+        f.setValue("M", forKey: "inputCorrectionLevel")
+        guard let img = f.outputImage, let cg = CIContext().createCGImage(img, from: img.extent) else { return nil }
+        return UIImage(cgImage: cg)
     }
 }
