@@ -4,7 +4,7 @@
 <!ENTITY author    "Homegrown Software">
 <!ENTITY version   "@VERSION@">
 <!ENTITY baseURL   "@BASE_URL@">
-<!ENTITY pluginURL "&baseURL;/&name;.plg">
+<!ENTITY pluginURL "@PLUGIN_URL@">
 <!ENTITY package   "@PACKAGE@">
 <!ENTITY sha256    "@SHA256@">
 <!ENTITY plgdir    "/boot/config/plugins/&name;">
@@ -13,7 +13,7 @@
      inside CDATA: the scripts have the values written in.) -->
 <PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;"
   launch="Settings/Hammock" icon="terminal" min="6.12.0"
-  support="https://hammock.jsp.scot">
+  support="https://homegrownsw.com/hammock/">
 
 <CHANGES>
 <![CDATA[

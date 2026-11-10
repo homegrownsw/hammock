@@ -72,7 +72,7 @@ short="$(sed -nE 's/^MARKETING_VERSION = ([^ ]+).*$/\1/p' "$root/apple/iOS/Confi
 # account "fika", backed up in 1Password).
 updates=""
 if [ "${UPDATES:-}" = 1 ] && { [ "$variant" = prod ] || [ -n "${FEED_URL:-}" ]; }; then
-  updates="  <key>SUFeedURL</key><string>${FEED_URL:-https://hammock.jsp.scot/appcast.xml}</string>
+  updates="  <key>SUFeedURL</key><string>${FEED_URL:-https://homegrownsw.com/hammock/appcast.xml}</string>
   <key>SUPublicEDKey</key><string>ho8jbNLzTzVnl0Zx+EmeH7ROWjPTiYNFUROU5cPOMlw=</string>
   <key>SUEnableAutomaticChecks</key><true/>"
 fi

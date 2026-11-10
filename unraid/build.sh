@@ -2,12 +2,13 @@
 # Builds the Unraid plugin from the linux-amd64 binaries (just linux amd64):
 #   dist/unraid/hammock-<version>-x86_64-1.txz   the Slackware package
 #   dist/unraid/hammock.plg                      the plugin, pointing at it
-# Upload both to BASE_URL (default https://hammock.jsp.scot/linux), where
-# Unraid's plugin manager looks for updates (the .plg's pluginURL).
+# scripts/mac-update publishes both in the release on GitHub, and Unraid's plugin manager checks
+# PLUGIN_URL for updates (the .plg's pluginURL).
 #
 #   VERSION     the plugin's version (default YYYY.MM.DD.NNNNN: today and the
 #               commit count, so it sorts as Unraid compares them)
-#   BASE_URL    where the .txz and .plg are served from
+#   BASE_URL    where the .txz is served from (the release's download URL)
+#   PLUGIN_URL  where the .plg is served from (default: BASE_URL/hammock.plg)
 #   CHANGES     the .plg's CHANGES text (default: the version and commit)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -20,7 +21,8 @@ for f in hmk hmkd pane-holder; do
 done
 count="$("$root/scripts/commit-number" "$root")"
 version="${VERSION:-$(date +%Y.%m.%d).$(printf %05d "$count")}"
-base_url="${BASE_URL:-https://hammock.jsp.scot/linux}"
+base_url="${BASE_URL:-https://homegrownsw.com/hammock/linux}"
+plugin_url="${PLUGIN_URL:-$base_url/hammock.plg}"
 package="hammock-$version-x86_64-1.txz"
 changes="${CHANGES:-### $version
 Hammock $(git -C "$root" describe --always --dirty) for Unraid.}"
@@ -51,9 +53,9 @@ sha="$(shasum -a 256 "$out/$package" | cut -d' ' -f1)"
 esc() { printf '%s' "$1" | sed -e 's/[\/&|]/\\&/g'; }
 changes_file="$stage/changes"
 printf '%s\n' "$changes" > "$changes_file"
-sed -e "s|@VERSION@|$(esc "$version")|g" -e "s|@BASE_URL@|$(esc "$base_url")|g" \
+sed -e "s|@VERSION@|$(esc "$version")|g" -e "s|@BASE_URL@|$(esc "$base_url")|g" -e "s|@PLUGIN_URL@|$(esc "$plugin_url")|g" \
     -e "s|@PACKAGE@|$(esc "$package")|g" -e "s|@SHA256@|$sha|g" \
     -e "/@CHANGES@/{r $changes_file" -e 'd;}' \
     "$here/hammock.plg" > "$out/hammock.plg"
 echo "$out/$package"
-echo "$out/hammock.plg ($version, $base_url)"
+echo "$out/hammock.plg ($version, $plugin_url, package from $base_url)"

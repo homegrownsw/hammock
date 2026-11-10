@@ -162,7 +162,7 @@ note-check *args:
 version *args:
     scripts/version "$@"
 
-# Cut a Mac release (a Sparkle update on hammock.jsp.scot): `just release-mac no-bump`, or `bump 0.3.0` for a
+# Cut a Mac release (a Sparkle update, published as a GitHub Release): `just release-mac no-bump`, or `bump 0.3.0` for a
 # version's last release (+ allow-empty). Builds, notarizes (the fika-notary keychain profile; see share) and uploads it.
 [positional-arguments]
 release-mac *args:

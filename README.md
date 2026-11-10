@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <a href="https://hammock.jsp.scot"><b>Website</b></a> ·
-  <a href="https://hammock.jsp.scot/download"><b>Download for Mac</b></a> ·
+  <a href="https://homegrownsw.com/hammock/"><b>Website</b></a> ·
+  <a href="https://homegrownsw.com/hammock/download"><b>Download for Mac</b></a> ·
   <a href="docs/product-spec.md">Product spec</a> ·
   <a href="docs/build-plan.md">Build plan</a>
 </p>
@@ -27,7 +27,7 @@ too, through MCP.
 
 ## Install
 
-- **Mac:** [download Hammock](https://hammock.jsp.scot/download) (macOS 26 or later), unzip it and move it to
+- **Mac:** [download Hammock](https://homegrownsw.com/hammock/download) (macOS 26 or later), unzip it and move it to
   Applications. It updates itself.
 - **iPhone:** in beta on TestFlight. Pair it with your Mac from Hammock ▸ Settings ▸ Devices.
 - **Linux and Unraid:** the daemon, `hmk` and the TUI, so sessions can live on a server your Mac links to. See

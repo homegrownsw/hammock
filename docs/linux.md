@@ -7,8 +7,8 @@ Linux: everything is `hmk`, so a server you reach over SSH can be set up, linked
 
 ## Install
 
-The tarballs are on the update server with each Mac release
-(`https://hammock.jsp.scot/linux/hammock-linux-amd64.tar.gz`, and `arm64`). They need glibc 2.28 or later and nothing else (libghostty-vt is linked in).
+The tarballs come with each Mac release, on GitHub
+(`https://homegrownsw.com/hammock/linux/hammock-linux-amd64.tar.gz` is the latest, and `arm64`). They need glibc 2.28 or later and nothing else (libghostty-vt is linked in).
 
 ```sh
 tar -xzf hammock-linux-amd64.tar.gz && cd hammock-*/
@@ -61,7 +61,7 @@ answered first).
 
 ## Unraid
 
-The plugin (`unraid/`) installs from `https://hammock.jsp.scot/linux/hammock.plg` (Plugins ▸ Install
+The plugin (`unraid/`) installs from `https://homegrownsw.com/hammock/linux/hammock.plg` (Plugins ▸ Install
 Plugin). Its page (Settings, under User Utilities: Hammock) then shows its status, Start/Stop/Restart,
 the Hammock folder, where panes keep their home, whether to start with the array, remote access, Link a Computer (with the code check), Pair a Device (a QR code) and Open Hammock (the TUI in a window).
 Every one of those is an `hmk` command underneath; `hmk` works in Unraid's terminal too.

@@ -124,14 +124,16 @@ HMK_RELEASE_DRYRUN=1 just release-apple no-bump   # print the plan, change nothi
 With arguments every confirmation is a yes, and the edge cases fail instead: a release with nothing for
 people to read needs `allow-empty`, and a bump must go up.
 
-### The update server
+### Where releases go
 
-For now a static nginx in a container on the update server (`UPDATE_HOST`, `UPDATE_DIR` and `UPDATE_CONTAINER`
-in `.release.env`), behind `https://hammock.jsp.scot`; moving it to public GitHub Releases is planned. The
-feed is `https://hammock.jsp.scot/appcast.xml`; each release's zip is `https://hammock.jsp.scot/Hammock-<n>.zip`,
-and `https://hammock.jsp.scot/download` redirects to the latest one: the link for someone's first install.
-Every upload rewrites the one-line `latest.conf` the server's nginx includes, then reloads nginx. Every released zip is also kept in `dist/releases/` (synced back from
-the server when missing) so deltas can be made from them.
+Each Mac release is a GitHub Release on `homegrownsw/hammock` (`scripts/mac-update upload`), marked Latest:
+the zip (also as `Hammock.zip`), its deltas, the appcast, and the Linux tarballs and Unraid plugin. The app
+and the website use `homegrownsw.com/hammock`, whose nginx (`nginx/hammock.conf` in `homegrownsw/homegrownsw-site`)
+redirects to the latest release: the feed is `https://homegrownsw.com/hammock/appcast.xml`, and
+`https://homegrownsw.com/hammock/download` is the link for someone's first install. Moving releases elsewhere
+means changing those redirects, not the app. Every released zip is also kept in `dist/releases/` (the last
+few fetched from GitHub when missing) so deltas can be made from them. Uploading needs `gh`, signed in with
+access to the repo.
 
 ### Xcode Cloud
 

@@ -12,8 +12,8 @@
 #
 #   mac    tag Mac-v<x.y.z>-r<n>. Before anything is pushed it builds the tagged commit with its update feed,
 #          notarizes it, and makes the appcast with the notes in it (scripts/mac-update build); a failure
-#          there takes the release commit and tag back. After the push it uploads the update to the update
-#          server (scripts/mac-update upload), where Sparkle finds it.
+#          there takes the release commit and tag back. After the push it publishes the update as a GitHub
+#          Release (scripts/mac-update upload), where Sparkle finds it.
 #   ios    apple/iOS/TestFlight/WhatToTest.<locale>.txt (Xcode Cloud reads it from the tagged commit), tag
 #          iOS-v<x.y.z>-r<n>; the tag starts Xcode Cloud's TestFlight build.
 #   apple  both, in one release commit carrying both tags, and one bump after it.

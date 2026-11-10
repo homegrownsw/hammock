@@ -5,23 +5,28 @@
 #                                               main) with its update feed, notarize it (just share), and
 #                                               make the appcast: the update signed, deltas from earlier
 #                                               releases, and the notes embedded for Sparkle's window
-#   scripts/mac-update upload <n>               copy release n's zip and deltas, then the appcast, to the
-#                                               update server, and point $url/download at the zip
+#   scripts/mac-update upload <n>               publish release n (its tag, Mac-v<x.y.z>-r<n>, pushed) as a
+#                                               GitHub Release with the zip, deltas, appcast and Linux builds
 #   scripts/mac-update discard <n>              forget a release n that was built but never published
 #
+# Releases are GitHub Releases on homegrownsw/hammock (HMK_RELEASE_REPO), one per Mac tag, each marked
+# Latest. The app and the website never name GitHub: they use homegrownsw.com/hammock (HMK_SITE_URL), whose
+# nginx (homegrownsw-site's nginx/hammock.conf) redirects to the latest release's assets:
+#
+#   /hammock/appcast.xml   the feed, built into the app as SUFeedURL
+#   /hammock/download      Hammock.zip, the latest zip under a fixed name, for first installs
+#   /hammock/linux/<file>  hammock-linux-<arch>.tar.gz (fixed names too) and hammock.plg
+#
+# The appcast offers only the newest build (--maximum-versions 1), so every URL in it is in that release
+# (--download-url-prefix). Only Mac tags get a GitHub Release: an iOS one would become Latest.
+#
 # Each release carries the Linux builds of the same commit (scripts/build-linux.sh: tarballs for amd64 and
-# arm64) and the Unraid plugin (unraid/build.sh), in $url/linux: hammock.plg there is what Unraid's plugin
-# manager installs and checks for updates, and hammock-linux-<arch>.tar.gz the latest tarballs.
-# HMK_SKIP_LINUX=1 leaves them out.
+# arm64) and the Unraid plugin (unraid/build.sh): hammock.plg is what Unraid's plugin manager installs and
+# checks for updates, at homegrownsw.com/hammock/linux/hammock.plg, and the package it fetches is in the
+# release that made it. HMK_SKIP_LINUX=1 leaves them out.
 #
-# The update server is, for now, a static nginx in a container (UPDATE_CONTAINER) on UPDATE_HOST, serving
-# UPDATE_DIR at https://hammock.jsp.scot; those come from .release.env (git-ignored) or the environment.
-# Moving it to GitHub Releases is planned. Every released zip is kept in dist/releases, and on the server,
-# whence build syncs them back first, so deltas can be made from them.
-#
-# Every ssh and rsync to the server shares one connection (ssh's ControlMaster): build opens it, it outlives
-# build by an hour so upload reuses it, and upload closes it. So a release asks for the SSH key once (a
-# Hammock Key approval when an agent runs it), not at every copy.
+# Every released zip is kept in dist/releases; build first fetches the last few releases' zips from GitHub
+# into it, so deltas can be made from them on any Mac.
 #
 # The Sparkle signing key is read from the keychain (account "fika"), or from SPARKLE_KEY_FILE
 # (op document get "Hammock Sparkle EdDSA private key").
@@ -29,42 +34,52 @@ set -euo pipefail
 shopt -s nullglob
 root="$(cd "$(dirname "$0")/.." && pwd)"
 [ ! -f "$root/.release.env" ] || { set -a; . "$root/.release.env"; set +a; }
-host="${UPDATE_HOST:?set UPDATE_HOST (user@host of the update server) in .release.env}"
-dir="${UPDATE_DIR:?set UPDATE_DIR (the folder it serves) in .release.env}"
-url="${UPDATE_URL:-https://hammock.jsp.scot}"
-container="${UPDATE_CONTAINER:-hmk-updates}"
+repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
+site="${HMK_SITE_URL:-https://homegrownsw.com/hammock}"
 archives="$root/dist/releases"
 sparkle_bin="$root/apple/.build/artifacts/sparkle/Sparkle/bin"
-# In ~/.ssh, not $TMPDIR: a socket's path must stay under 104 bytes, and %C is 40.
-ssh_opts=(-o ControlMaster=auto -o "ControlPath=~/.ssh/hmk-update-%C" -o ControlPersist=60m)
-export RSYNC_RSH="ssh ${ssh_opts[*]}"
-close_ssh() { ssh "${ssh_opts[@]}" -O exit "$host" 2>/dev/null || true; }
+deltas=5
 
 cmd="${1:-}"
 n="${2:-}"
 [[ "$n" =~ ^[0-9]+$ ]] || { echo "usage: scripts/mac-update build <n> <notes.html> | upload <n> | discard <n>" >&2; exit 2; }
+
+# Release n's tag, made by scripts/release before build runs.
+release_tag() {
+  local t
+  t="$(git -C "$root" tag --list "Mac-v*-r$n")"
+  [ -n "$t" ] && [ "$(wc -l <<<"$t")" -eq 1 ] || { echo "No single Mac-v*-r$n tag (found: ${t:-none})." >&2; exit 1; }
+  echo "$t"
+}
 
 case "$cmd" in
   build)
     notes="${3:?the notes, as HTML}"
     [ "$("$root/scripts/commit-number" "$root")" = "$n" ] ||
       { echo "HEAD is commit $("$root/scripts/commit-number" "$root") on main, not $n." >&2; exit 1; }
+    tag="$(release_tag)"
+    ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1 || { echo "$tag is already released." >&2; exit 1; }
     mkdir -p "$archives"
-    echo "syncing earlier releases from ${host}…"
-    rsync -a --include='Hammock-*.zip' --include='appcast.xml' --exclude='*' "$host:$dir/" "$archives/"
-    [ ! -e "$archives/Hammock-$n.zip" ] || { echo "Hammock-$n.zip is already released." >&2; exit 1; }
+    echo "fetching the last ${deltas} releases' zips from ${repo}…"
+    gh release list --repo "$repo" --exclude-drafts --limit 50 --json tagName -q '.[].tagName' |
+      grep '^Mac-v' | head -n "$deltas" | while read -r t; do
+        gh release download "$t" --repo "$repo" --pattern 'Hammock-*.zip' --dir "$archives" --skip-existing
+      done
 
-    (cd "$root" && UPDATES=1 FEED_URL="$url/appcast.xml" just share)
+    (cd "$root" && UPDATES=1 FEED_URL="$site/appcast.xml" just share)
     built=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$root/dist/share/Hammock.app/Contents/Info.plist")
     [ "$built" = "$n" ] || { echo "The build is number $built, not $n." >&2; exit 1; }
     cp "$root/dist/share/Hammock.zip" "$archives/Hammock-$n.zip"
     cp "$notes" "$archives/Hammock-$n.html"
 
+    # A fresh appcast: the last one's item pointed at its own release, and only the new build is offered.
+    rm -f "$archives/appcast.xml"
     key=(--account fika)
     if [ -n "${SPARKLE_KEY_FILE:-}" ]; then key=(--ed-key-file "$SPARKLE_KEY_FILE"); fi
     "$sparkle_bin/generate_appcast" "${key[@]}" \
-      --download-url-prefix "$url/" \
-      --embed-release-notes --maximum-versions 1 --maximum-deltas 5 \
+      --download-url-prefix "https://github.com/$repo/releases/download/$tag/" \
+      --link "$site/" \
+      --embed-release-notes --maximum-versions 1 --maximum-deltas "$deltas" \
       "$archives"
     grep -q "<sparkle:version>$n</sparkle:version>" "$archives/appcast.xml" ||
       { echo "The appcast doesn't offer build $n." >&2; exit 1; }
@@ -79,45 +94,43 @@ case "$cmd" in
       changes="### $(date +%Y.%m.%d).$(printf %05d "$n") (Hammock $ver, build $n)
 $(sed -E -e 's|<li><b>([A-Z]+)</b> |- **\1** |' -e 's|<h4>(.*)</h4>|\1:|' -e 's|<[^>]+>||g' -e '/^[[:space:]]*$/d' \
         -e 's/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g' "$notes")"
-      (cd "$root" && VERSION="$(date +%Y.%m.%d).$(printf %05d "$n")" BASE_URL="$url/linux" CHANGES="$changes" ./unraid/build.sh)
+      (cd "$root" && VERSION="$(date +%Y.%m.%d).$(printf %05d "$n")" \
+        BASE_URL="https://github.com/$repo/releases/download/$tag" PLUGIN_URL="$site/linux/hammock.plg" \
+        CHANGES="$changes" ./unraid/build.sh)
       cp "$root/dist/unraid/"hammock-*.txz "$root/dist/unraid/hammock.plg" "$linux/"
     fi
     ;;
   upload)
     [ -e "$archives/Hammock-$n.zip" ] || { echo "No $archives/Hammock-$n.zip: build it first." >&2; exit 1; }
-    # Linux first: the tarballs (and copies under fixed names for the latest), the Unraid package, then
-    # the .plg that points at it.
+    tag="$(release_tag)"
+    ver="${tag#Mac-v}" && ver="${ver%-r*}"
+    stage="$(mktemp -d)"
+    trap 'rm -rf "$stage"' EXIT
+    # Each file under the name it's published as: the zip also as Hammock.zip, for /hammock/download.
+    cp "$archives/Hammock-$n.zip" "$stage/"
+    cp "$archives/Hammock-$n.zip" "$stage/Hammock.zip"
+    cp "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml" "$stage/"
     linux="$archives/linux-$n"
     if [ -d "$linux" ]; then
-      stage="$(mktemp -d)"
-      cp "$linux"/*.tar.gz "$linux"/*.txz "$stage/"
+      cp "$linux"/*.tar.gz "$linux"/*.txz "$linux/hammock.plg" "$stage/"
       for a in amd64 arm64; do cp "$linux"/hammock-*-linux-$a.tar.gz "$stage/hammock-linux-$a.tar.gz"; done
-      chmod 644 "$stage"/*
-      ssh "${ssh_opts[@]}" "$host" mkdir -p "$dir/linux"
-      rsync -a "$stage/" "$host:$dir/linux/"
-      # Not --chmod: macOS's rsync (openrsync) doesn't have it.
-      cp "$linux/hammock.plg" "$stage/" && chmod 644 "$stage/hammock.plg"
-      rsync -a "$stage/hammock.plg" "$host:$dir/linux/"
-      rm -rf "$stage"
-      echo "Linux: $url/linux/hammock-linux-amd64.tar.gz (arm64 too); Unraid: $url/linux/hammock.plg"
     fi
-    # The zip and deltas first, then the appcast that points at them.
-    rsync -a "$archives/Hammock-$n.zip" "$archives"/Hammock"$n"-*.delta "$host:$dir/"
-    rsync -a "$archives/appcast.xml" "$host:$dir/"
-    # /download redirects to the latest zip: the server's nginx.conf includes latest.conf from the files
-    # it serves (and hides it), so it's replaced and nginx reloaded.
-    printf 'location = /download { add_header Cache-Control "no-cache" always; return 302 /Hammock-%s.zip; }\n' "$n" \
-      >"$archives/latest.conf"
-    rsync -a "$archives/latest.conf" "$host:$dir/"
-    ssh "${ssh_opts[@]}" "$host" docker exec "$container" nginx -s reload
-    close_ssh
-    echo "Hammock build $n: $url/Hammock-$n.zip (and $url/download)"
+    files=("$stage"/*)
+    # A draft until every file is up, so the appcast never points at a zip that isn't there yet. Again
+    # after a failed upload: the draft is still there, and its files are replaced.
+    if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+      gh release upload "$tag" --repo "$repo" --clobber "${files[@]}"
+    else
+      gh release create "$tag" --repo "$repo" --verify-tag --draft \
+        --title "Hammock $ver (build $n)" --notes-file "$archives/Hammock-$n.html" "${files[@]}"
+    fi
+    gh release edit "$tag" --repo "$repo" --draft=false --latest
+    echo "Hammock build $n: https://github.com/$repo/releases/tag/$tag ($site/download)"
+    [ ! -d "$linux" ] || echo "Linux: $site/linux/hammock-linux-amd64.tar.gz (arm64 too); Unraid: $site/linux/hammock.plg"
     ;;
   discard)
-    # The appcast is the server's again at the next build's sync.
     rm -f "$archives/Hammock-$n.zip" "$archives/Hammock-$n.html" "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml"
     rm -rf "$archives/linux-$n"
-    close_ssh
     ;;
   *) echo "usage: scripts/mac-update build <n> <notes.html> | upload <n> | discard <n>" >&2; exit 2 ;;
 esac

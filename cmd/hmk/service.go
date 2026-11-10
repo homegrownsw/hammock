@@ -37,7 +37,7 @@ func serviceUnit(path, dir string) string {
 	return fmt.Sprintf(`# Written by hmk service install: hmk service uninstall removes it.
 [Unit]
 Description=Hammock daemon (hmkd)
-Documentation=https://hammock.jsp.scot
+Documentation=https://homegrownsw.com/hammock/
 After=network-online.target
 Wants=network-online.target
 
