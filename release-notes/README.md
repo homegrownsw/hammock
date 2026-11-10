@@ -133,7 +133,20 @@ and `https://hammock.jsp.scot/download` redirects to the latest one: the link fo
 Every upload rewrites the one-line `latest.conf` the server's nginx includes, then reloads nginx. Every released zip is also kept in `dist/releases/` (synced back from
 the server when missing) so deltas can be made from them.
 
-### Xcode Cloud (the owner, once, in App Store Connect)
+### Xcode Cloud
+
+The project's shared schemes are `Hammock` (iOS) and `Hammock Mac` (the `HammockMacApp` target: the same bundle as
+`just mac-app`, its helpers embedded and signed by a build phase from `bin/`). `apple/iOS/ci_scripts/ci_post_clone.sh`
+builds what a clone lacks (libghostty-vt's xcframework; for the Mac, the Go binaries, the browser host and the
+simulator host via `scripts/build-mac-payloads.sh`), and `ci_post_xcodebuild.sh` fails a notarized Mac build whose
+Developer ID export lost a helper's entitlements. Packages resolve only from `apple/Package.resolved`. Day to day the
+Mac is built with `just mac-app` / `just mac-dev`.
+
+The push relay (`relay/push`, a Cloudflare Worker) is at https://hmk-push.homegrownsw.workers.dev. Phones built from
+Xcode use APNs' sandbox and TestFlight builds its production environment, so the relay's APNs key must allow both
+(Apple turns a key down for the wrong one with `BadEnvironmentKeyInToken`, which the daemon log shows).
+
+### Xcode Cloud setup (the owner, once, in App Store Connect)
 
 - [ ] In the iOS release workflow's start conditions, start on a **tag** matching `iOS-v*`, with the
       Archive action and TestFlight deployment.

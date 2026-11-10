@@ -24,11 +24,12 @@ deps:
     ./scripts/ghostty-deps.sh
 
 # A worktree in .claude/worktrees/NAME on a new branch NAME (from main),
-# ready to build. It takes the signing identity (gitignored), or its β
+# ready to build. It takes the signing identity and AGENTS.local.md (both gitignored), or its β
 # would be signed ad hoc and lose macOS privacy grants on every rebuild.
 worktree name:
     git worktree add .claude/worktrees/{{name}} -b {{name}} main
     [ ! -f .signing-identity ] || cp .signing-identity .claude/worktrees/{{name}}/
+    [ ! -f AGENTS.local.md ] || cp AGENTS.local.md .claude/worktrees/{{name}}/
     cd .claude/worktrees/{{name}} && ./scripts/ghostty-deps.sh
 
 # Build all Go binaries into bin/.
@@ -253,7 +254,7 @@ ios: deps
     xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -derivedDataPath /tmp/hmk-ios-build CODE_SIGNING_ALLOWED=NO build
 
 # Build the iOS app for a connected iPhone and install it (Release, signed
-# for the team, with DevLog's timings: HMK_DEV). HMK_PUSH_RELAY is the push relay's URL (relay/push); it defaults to ours.
+# for the team, HMK_TEAM, by default ours; with DevLog's timings: HMK_DEV). HMK_PUSH_RELAY is the push relay's URL (relay/push); it defaults to ours.
 ios-device device="00008130-00011D9900A1401C": deps
-    xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -configuration Release -destination id={{device}} -derivedDataPath /tmp/hmk-ios-device DEVELOPMENT_TEAM=2G974K78BH SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) HMK_DEV' HMK_PUSH_RELAY="${HMK_PUSH_RELAY:-https://hmk-push.homegrownsw.workers.dev}" -allowProvisioningUpdates build
+    xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -configuration Release -destination id={{device}} -derivedDataPath /tmp/hmk-ios-device DEVELOPMENT_TEAM="${HMK_TEAM:-2G974K78BH}" SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) HMK_DEV' HMK_PUSH_RELAY="${HMK_PUSH_RELAY:-https://hmk-push.homegrownsw.workers.dev}" -allowProvisioningUpdates build
     xcrun devicectl device install app --device {{device}} /tmp/hmk-ios-device/Build/Products/Release-iphoneos/Hammock.app

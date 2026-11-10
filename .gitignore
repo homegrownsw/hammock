@@ -25,3 +25,4 @@ DerivedData/
 /scripts/program-icons/node_modules/
 /apple/Editor/node_modules/
 /.release.env
+/AGENTS.local.md
