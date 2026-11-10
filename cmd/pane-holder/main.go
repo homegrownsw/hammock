@@ -71,7 +71,7 @@ func main() {
 	s, err := holder.Start(holder.Config{
 		Socket: *socket, Command: flag.Args(), Dir: *dir, Token: token,
 		Cols: uint16(*cols), Rows: uint16(*rows), RingSize: *ring, IdleExit: *idle,
-		Install: installOf(exe), OrphanExit: *orphan, Peer: peer,
+		Install: installOf(exe), OrphanExit: *orphan, Peer: peer, AdoptOrphans: true,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

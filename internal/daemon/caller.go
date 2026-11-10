@@ -36,7 +36,15 @@ type caller struct {
 	// direct: found by its ancestors (a pane's shell among them), not by
 	// the terminal it kept or a multiplexer it runs under (person.go).
 	direct bool
+	// scoped: not known to be an agent, but not positively you either
+	// (person.go), so scoped as one: in pane (outsidePane if it's in none).
+	scoped bool
 }
+
+// outsidePane is the pane, as far as agent scoping goes, of a local
+// program outside Hammock's panes that isn't positively you (person.go):
+// it controls the panes it opened, and asks for the rest, as an agent does.
+const outsidePane = "outside"
 
 func (cl *caller) isAgent() bool { return cl != nil && cl.pane != "" && cl.agent }
 
@@ -87,6 +95,27 @@ func (d *Daemon) panePIDs() map[int]string {
 	return m
 }
 
+// paneHolders maps each terminal pane's holder process to the pane.
+func (d *Daemon) paneHolders() map[int]string {
+	shells := d.panePIDs()
+	m := map[int]string{}
+	for pid, id := range shells {
+		if h, err := procinfo.Parent(pid); err == nil && h > 1 && shells[h] == "" {
+			m[h] = id
+		}
+	}
+	d.mu.Lock()
+	for id, p := range d.panes {
+		p.mu.Lock()
+		if p.holderPID > 0 {
+			m[p.holderPID] = id
+		}
+		p.mu.Unlock()
+	}
+	d.mu.Unlock()
+	return m
+}
+
 func isAgentProcess(pid int) bool { return agentName(pid) != "" }
 
 // paneOfProcess finds the pane pid runs in: the first of its ancestors that
@@ -118,6 +147,7 @@ func (d *Daemon) locateProcess(pid int, claimed string) (pane string, agent, dir
 		return "", false, false
 	}
 	panes := d.panePIDs()
+	holders := d.paneHolders()
 	muxes := map[string]bool{}
 	cur := pid
 	for i := 0; i < 64 && cur > 1; i++ {
@@ -126,6 +156,13 @@ func (d *Daemon) locateProcess(pid int, claimed string) (pane string, agent, dir
 		}
 		if id, ok := panes[cur]; ok {
 			return id, agent, true
+		}
+		if id, ok := holders[cur]; ok && cur != pid {
+			// Left its parents, and taken in by the pane's holder (on
+			// Linux holders are subreapers: reap_linux.go): it's the
+			// pane's, but not found through its shell, so not
+			// positively you (an agent's, maybe, that has since gone).
+			return id, agent, false
 		}
 		if name, err := procinfo.Name(cur); err == nil && multiplexers[name] {
 			muxes[name] = true
@@ -319,11 +356,21 @@ var (
 // an agent's own claims about who it is are replaced with what the daemon
 // worked out, and what it asks for must be in its scope or granted.
 func (c *conn) agentCheck(msg *pb.ClientMessage) error {
+	c.scope()
 	cl := c.caller
 	if cl == nil || cl.pane == "" {
 		return nil
 	}
 	d := c.d
+	if cl.scoped {
+		switch msg.Msg.(type) {
+		case *pb.ClientMessage_RespondGrant:
+			return errPersonOnly
+		case *pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_EndScreenSession, *pb.ClientMessage_ServerStatus,
+			*pb.ClientMessage_ClearAttention, *pb.ClientMessage_SetColors:
+			return nil // as personOnly has them: anything of yours could
+		}
+	}
 	// A grant is the person's answer: never an agent's, nor its pane's.
 	if m, ok := msg.Msg.(*pb.ClientMessage_RespondGrant); ok {
 		d.mu.Lock()
@@ -347,6 +394,9 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello:
 		m.Hello.FromPaneId = cl.pane
+		if cl.pane == outsidePane {
+			m.Hello.FromPaneId = ""
+		}
 		if m.Hello.ClientKind != "mcp" {
 			m.Hello.ClientKind = "cli"
 		}
@@ -669,6 +719,9 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		return read(m.MergeTab.IntoPaneId)
 	}
 	// Administration, sharing, devices and the rest are for people.
+	if cl.scoped {
+		return errPersonOnly
+	}
 	return errAgentOnly
 }
 

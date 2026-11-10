@@ -31,8 +31,8 @@ import (
 //     without passing an agent, a pane or Hammock itself.
 //
 // Anything else (detached, found only by its terminal or multiplexer, or
-// not placed at all) keeps everything else it could do, but is told to do
-// these in the app or a pane's own shell.
+// not placed at all) is scoped as an agent (scope), and told to do these
+// in the app or a pane's own shell.
 
 var errPersonOnly = errors.New("only you can do that: do it in the Hammock app, or run it in a Hammock pane's own shell or in a terminal of your own (not from a background job, launchd, or a terminal multiplexer)")
 
@@ -82,17 +82,59 @@ func agentReachable(msg *pb.ClientMessage) bool {
 }
 
 // personCheck refuses a person-only message from a local process that
-// isn't positively you. Agents' messages were checked by agentCheck.
+// isn't positively you. Agents' messages were checked by agentCheck (and
+// anything not positively you is scoped as an agent: scope).
 func (c *conn) personCheck(msg *pb.ClientMessage) error {
-	if c.remote || c.caller.isAgent() || !personOnly(msg) {
-		return nil
-	}
-	c.personOnce.Do(func() { c.personOK = c.d.positivelyPerson(c.caller, c.pid) })
-	if c.personOK {
+	c.scope()
+	if c.remote || c.caller.isAgent() || !personOnly(msg) || c.personOK {
 		return nil
 	}
 	c.d.log.Info("refused a person-only request from a process it can't tell is you", "pid", c.pid, "msg", msgName(msg))
 	return errPersonOnly
+}
+
+// scope works out, before a local connection's first message is handled,
+// whether it's positively you. Anything else not already known as an agent
+// is scoped as one (agentCheck): a program that left its pane, a launchd
+// job, an agent outside Hammock, something under a multiplexer. It may
+// still read your Groups and open panes, and controls those it opened;
+// typing into, closing or driving any other pane asks you, as an agent's
+// request does. Read loop only.
+func (c *conn) scope() {
+	c.personOnce.Do(func() {
+		if c.remote || c.caller.isAgent() {
+			return
+		}
+		if c.d.positivelyPerson(c.caller, c.pid) {
+			c.personOK = true
+			return
+		}
+		cl := c.d.scopedCaller(c.caller, c.pid)
+		c.d.mu.Lock()
+		c.caller = cl // (read by other connections under d.mu)
+		c.d.mu.Unlock()
+		c.d.log.Info("scoped a local client it can't tell is you as an agent", "pid", c.pid, "pane", cl.pane)
+	})
+}
+
+// scopedCaller is who a local process that isn't positively you is, for
+// agent scoping: an agent in the pane it was found in (by terminal,
+// multiplexer, or the holder that took it in), or, on macOS, in the pane
+// whose holder is responsible for it (however it left its parents); else
+// outsidePane.
+func (d *Daemon) scopedCaller(cl *caller, pid int) *caller {
+	if cl != nil && cl.pane != "" {
+		return &caller{pane: cl.pane, agent: true, scoped: true}
+	}
+	if r := responsibleFor(pid); r > 0 && r != pid {
+		if id := d.paneHolders()[r]; id != "" {
+			return &caller{pane: id, agent: true, scoped: true}
+		}
+		if id := d.panePIDs()[r]; id != "" {
+			return &caller{pane: id, agent: true, scoped: true}
+		}
+	}
+	return &caller{pane: outsidePane, agent: true, scoped: true}
 }
 
 // msgName is a message's kind, for the log.
@@ -118,6 +160,9 @@ func (d *Daemon) positivelyPerson(cl *caller, pid int) bool {
 	}
 	if pid <= 0 {
 		return false
+	}
+	if pid == os.Getpid() {
+		return true // hmkd's own process (a test running it): nothing else has its pid
 	}
 	if isHammockApp(pid) {
 		return true

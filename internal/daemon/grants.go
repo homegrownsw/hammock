@@ -149,6 +149,9 @@ func (d *Daemon) grantHeadline(requester, action, target string) string {
 
 // agentWho names the agent in a pane: "Claude in Web ▸ api". Callers hold d.mu.
 func (d *Daemon) agentWho(paneID string) string {
+	if paneID == outsidePane {
+		return outsideWho
+	}
 	who := d.agentName(paneID)
 	if d.panes[paneID] != nil {
 		if path := d.tabPath(paneID); path != "" {
@@ -157,6 +160,10 @@ func (d *Daemon) agentWho(paneID string) string {
 	}
 	return who
 }
+
+// outsideWho names a program outside Hammock's panes that's scoped as an
+// agent (person.go).
+const outsideWho = "A program outside Hammock"
 
 // agentName names the agent in a pane by its harness: "Claude", else "An
 // agent". Callers hold d.mu.

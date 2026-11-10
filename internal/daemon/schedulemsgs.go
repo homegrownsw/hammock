@@ -212,7 +212,7 @@ func (d *Daemon) agentsSchedule(c *conn, id string) bool {
 // don't hold d.mu (the file is read off it).
 func (d *Daemon) showOutputMsg(c *conn, m *pb.ShowOutput) (*pb.ServerMessage, error) {
 	next := m.PaneId
-	if next == "" && c.caller != nil {
+	if next == "" && c.caller != nil && c.caller.pane != outsidePane {
 		next = c.caller.pane
 	}
 	if next == "" {

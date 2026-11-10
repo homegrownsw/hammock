@@ -45,6 +45,12 @@ type Config struct {
 	// off.
 	Install    string
 	OrphanExit time.Duration
+	// AdoptOrphans (Linux) makes the holder a child subreaper: what the
+	// child's programs leave behind (a double fork, setsid, nohup) is
+	// reparented to the holder, not init, so the daemon still finds it
+	// under the pane (reap_linux.go). Only for a holder of its own process:
+	// it reaps every exited child but the command's.
+	AdoptOrphans bool
 }
 
 // maxChunk bounds a single output frame.
@@ -114,6 +120,9 @@ func Start(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
+	if cfg.AdoptOrphans {
+		becomeSubreaper() // before the child starts: nothing it leaves gets past
+	}
 	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...)
 	cmd.Dir = cfg.Dir
 	cmd.Env = cfg.Env
@@ -130,6 +139,9 @@ func Start(cfg Config) (*Server, error) {
 		cols: cfg.Cols, rows: cfg.Rows, lastDetach: time.Now(),
 	}
 	s.inCond = sync.NewCond(&s.inMu)
+	if cfg.AdoptOrphans {
+		go reapOrphans(cmd.Process.Pid, s.done)
+	}
 	go s.writePTY()
 	go s.readPTY()
 	go s.accept()

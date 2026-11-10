@@ -20,7 +20,8 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
 - **Agents.** Agents in panes are scoped (`internal/daemon/caller.go`): they read your Groups and control
   what they open, and ask you before touching anything else. Answering those requests, pairing, sharing,
   linking and remote access are taken only from you, identified by the Hammock app's code signature or a
-  shell of your own. This is a guardrail for well-meaning agents, not a sandbox: anything running as you
+  shell of your own. Any other program that talks to Hammock (one left running in the background, a
+  launchd job, an agent outside Hammock) is scoped as an agent. This is a guardrail for well-meaning agents, not a sandbox: anything running as you
   can, in the end, do what you can. For a real boundary use your agent harness's sandbox.
 - **Notifications.** Push payloads are end-to-end encrypted per phone; the relay (`relay/push`) sees
   device tokens, ciphertext, keyed-hash tags and the category.

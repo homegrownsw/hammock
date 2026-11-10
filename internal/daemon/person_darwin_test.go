@@ -23,9 +23,9 @@ func TestDetachedFromPaneIsNotPerson(t *testing.T) {
 	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	g := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
 	mark := fmt.Sprintf("%d", time.Now().UnixNano()%1000000+1000000)
-	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{
+	tab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{
 		Command: []string{"/bin/sh", "-c", "/bin/sh -c '/bin/sleep " + mark + " &'; exec /bin/cat"},
-	}}}})
+	}}}}))
 	var pid int
 	waitFor(t, "the detached sleep", func() bool {
 		out, _ := exec.Command("pgrep", "-f", "sleep "+mark).Output()
@@ -47,5 +47,12 @@ func TestDetachedFromPaneIsNotPerson(t *testing.T) {
 	defer func() { personHook = testPerson }()
 	if d.positivelyPerson(nil, pid) {
 		t.Fatal("a program detached from a pane passes for you")
+	}
+	// And it's scoped as an agent in the pane it left.
+	d.mu.Lock()
+	pane := d.tabs[tab].FocusedPaneId
+	d.mu.Unlock()
+	if cl := d.scopedCaller(nil, pid); cl.pane != pane || !cl.isAgent() {
+		t.Fatalf("scoped as %+v, want an agent in %s", cl, pane)
 	}
 }

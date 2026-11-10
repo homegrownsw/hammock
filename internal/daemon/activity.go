@@ -182,6 +182,9 @@ func (d *Daemon) auditWho(actor string) (who, kind string) {
 			}
 			return w, "agent"
 		}
+		if name == outsidePane {
+			return outsideWho, "agent"
+		}
 		return "An agent", "agent"
 	case "ios", "device", "remote":
 		switch name {
