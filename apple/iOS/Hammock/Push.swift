@@ -195,8 +195,12 @@ extension Push: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         nonisolated(unsafe) let done = completionHandler
-        // Trust only the note that decrypts with a Mac's key and names that Mac.
-        guard let info = PushKeys.note(response.notification.request.content.userInfo) else {
+        // Trust only the note that decrypts with a Mac's key and names that
+        // Mac, and was fresh when it arrived (the extension drops a replayed
+        // one's note, but iOS shows the original if the extension didn't
+        // run). By the delivery date: one tapped hours later still opens.
+        guard let info = PushKeys.note(response.notification.request.content.userInfo),
+              PushKeys.fresh(info, now: response.notification.date) else {
             DispatchQueue.main.async { done() }
             return
         }
