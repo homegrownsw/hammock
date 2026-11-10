@@ -119,8 +119,16 @@ test('a phone keeps its id with its secret; nobody else can take it', async () =
   const stolen = await (await worker.fetch(post('/register', { token: '99'.repeat(32), id: first.id, secret: 'guess' }), env)).json()
   assert.notEqual(stolen.id, first.id)
   assert.equal(env.DB.rows.get(first.id).token, token)
+  // Proving their own row's secret, for the phone's token, doesn't drop the
+  // phone's row either: rows are never deleted by token.
+  await worker.fetch(post('/register', { token, id: other.id, secret: other.secret }), env)
+  assert.ok(env.DB.rows.has(first.id))
   // The phone, with a new token, keeps its id.
   const token2 = '34'.repeat(32)
+  // Its old row (from before the Keychain) it drops itself, with that row's secret.
+  const old = await (await worker.fetch(post('/register', { token }), env)).json()
+  assert.equal((await worker.fetch(post('/unregister', old), env)).status, 200)
+  assert.ok(!env.DB.rows.has(old.id))
   const again = await (await worker.fetch(post('/register', { token: token2, sandbox: true, id: first.id, secret: first.secret }), env)).json()
   assert.deepEqual(again, first)
   assert.equal(env.DB.rows.get(first.id).token, token2)

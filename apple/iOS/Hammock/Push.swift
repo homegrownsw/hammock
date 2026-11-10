@@ -75,10 +75,6 @@ final class Push: NSObject {
                     RelayCredentials.save(.init(id: id, secret: secret))
                     UserDefaults.standard.set(hex, forKey: "push.token")
                     UserDefaults.standard.set(Date(), forKey: "push.registered")
-                    // Where they were kept before: in backups, so another
-                    // phone restored from one could take this one's id over.
-                    UserDefaults.standard.removeObject(forKey: "push.relayID")
-                    UserDefaults.standard.removeObject(forKey: "push.relaySecret")
                 } catch {
                     // Only a week's refresh: the id it has still works (or
                     // will be refreshed next launch).
@@ -89,8 +85,32 @@ final class Push: NSObject {
                 }
             }
             status = "On"
+            await forgetOldID()
             await registerWithMac()
         }
+    }
+
+    /// The id and secret this phone kept in UserDefaults before the Keychain:
+    /// in backups, so another phone restored from one could take this one's
+    /// id over. This phone registered afresh instead; the old id is
+    /// unregistered (its secret proves it's ours to drop), so a Mac still
+    /// sending to it is told it's gone and gets the new one when it next
+    /// connects, instead of the old row living on. Kept until the relay has
+    /// answered, to try again next launch if it couldn't be reached.
+    private func forgetOldID() async {
+        let d = UserDefaults.standard
+        guard let id = d.string(forKey: "push.relayID") else { return }
+        if let secret = d.string(forKey: "push.relaySecret"), id != relayID {
+            var req = URLRequest(url: URL(string: relayURL)!.appendingPathComponent("unregister"))
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "content-type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["id": id, "secret": secret])
+            // Done (200), or already gone (404); otherwise again next time.
+            guard let (_, resp) = try? await URLSession.shared.data(for: req),
+                  let code = (resp as? HTTPURLResponse)?.statusCode, code == 200 || code == 404 else { return }
+        }
+        d.removeObject(forKey: "push.relayID")
+        d.removeObject(forKey: "push.relaySecret")
     }
 
     /// The answers notifications offer. Each one that answers needs the

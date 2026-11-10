@@ -49,7 +49,14 @@ nothing of one it can't decrypt or that was sent over an hour ago.
   back with the same id and secret while no other row holds it; without,
   it gets a new one, and an earlier id for the same token stays (whoever
   learnt a phone's token can't cut it off) until it goes unused.
-- `POST /unregister {id, secret}`
+- `POST /unregister {id, secret}`: a phone dropping an id it no longer
+  uses (the one it kept before its credentials moved to the Keychain).
+
+Rows are never deleted by token, not even when a request proves another
+row's secret: that proves the row, not the token, so anyone who learnt a
+phone's token could register a row of their own for it, prove its secret,
+and cut the phone off. A phone drops its own old row with `/unregister`,
+and the rest age out unused.
 - `POST /send {id, payload, thread?, collapse?, category?}`: a Mac sending
   (ciphertext in `payload`), about 60 a minute per phone at most. Any
   category but `join`, `grant` and `hammockkey` is dropped.
