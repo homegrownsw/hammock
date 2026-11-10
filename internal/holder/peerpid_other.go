@@ -15,3 +15,5 @@ func sockPeer(*net.UnixConn) PeerProc { return PeerProc{} }
 func peerExe(PeerProc) (string, error) { return "", errors.New("unknown peer") }
 
 func peerSignature(PeerProc, string) (codesign.Signature, bool) { return codesign.Signature{}, false }
+
+func peerStill(PeerProc) bool { return false }

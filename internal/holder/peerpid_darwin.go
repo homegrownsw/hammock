@@ -33,3 +33,7 @@ func peerExe(p PeerProc) (string, error) { return p.Token.Path() }
 func peerSignature(p PeerProc, requirement string) (codesign.Signature, bool) {
 	return codesign.CheckToken(p.Token, requirement)
 }
+
+// peerStill reports whether the peer still runs the program that connected
+// (its pid wasn't taken by another process while it was checked).
+func peerStill(p PeerProc) bool { return p.Token.Live() }

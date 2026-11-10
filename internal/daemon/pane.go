@@ -227,8 +227,14 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 	args := []string{
 		"--socket", p.socket, "--dir", cwd, "--token-fd", "3",
 		"--daemon", daemonExe(),
-		"--cols", fmt.Sprint(cols), "--rows", fmt.Sprint(rows), "--",
+		"--cols", fmt.Sprint(cols), "--rows", fmt.Sprint(rows),
 	}
+	if dir, err := filepath.Abs(p.d.cfg.Dir); err == nil {
+		// Only this daemon, holding its state dir's locks, may attach: not
+		// another hmkd started on a copy of the state (holder/statelock.go).
+		args = append(args, "--state", dir)
+	}
+	args = append(args, "--")
 	args = append(args, command...)
 	logPath := filepath.Join(p.d.cfg.Dir, "logs", "holder-"+p.id+".log")
 	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -385,6 +391,19 @@ func (p *pane) snapshotMsgLocked() *pb.ServerMessage {
 	}}}
 }
 
+// dialHolder dials the pane's holder at socket again (a daemon restarted,
+// or the connection dropped), only where this daemon starts them: its own
+// run/panes, the socket itself, not a link (ownSocket). The holder decides
+// whether it takes this daemon (holder/statelock.go); a socket put there by
+// something else is still a residual: it would see this pane's input, as
+// anything of yours that changes your shell's startup files could.
+func (p *pane) dialHolder(socket string, from uint64, token []byte) (*holder.Client, error) {
+	if !p.d.ownSocket(socket, p.id) {
+		return nil, fmt.Errorf("%s: not this pane's holder socket in this state dir, or not a socket", socket)
+	}
+	return holder.Dial(socket, from, token)
+}
+
 // reconnect attaches to an already-running holder (after a daemon restart).
 // token is its secret ("" for a holder started before holders had one).
 func (p *pane) reconnect(socket, token string) error {
@@ -400,7 +419,7 @@ func (p *pane) reconnect(socket, token string) error {
 	// than it, including modes a program set long ago (bracketed paste, the
 	// kitty keyboard), which clients then get wrong.
 	snap, from, saved := p.savedSnapshot()
-	hc, err := holder.Dial(socket, from, p.token)
+	hc, err := p.dialHolder(socket, from, p.token)
 	if err != nil {
 		return err // gone: the caller starts a new process (and seeds it)
 	}
@@ -618,7 +637,7 @@ func (p *pane) holderLost(gen int) {
 	socket, from, token := p.socket, p.offset, p.token
 	p.mu.Unlock()
 	for i := 0; i < 20; i++ {
-		hc, err := holder.Dial(socket, from, token)
+		hc, err := p.dialHolder(socket, from, token)
 		if err == nil {
 			p.mu.Lock()
 			if p.closed || p.gen != gen {

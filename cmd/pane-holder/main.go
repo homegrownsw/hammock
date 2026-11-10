@@ -8,7 +8,9 @@
 // EOF) and requires it of every client; the daemon passes it on a pipe so it
 // is in neither the arguments nor the environment the pane's program sees.
 // With --daemon, only that program (or another hmkd of the same install)
-// may attach, token or not.
+// may attach, token or not. With --state, only the process holding that
+// state directory's locks (its daemon: holder.OpenStateLock) may attach,
+// and the daemon starting the holder must hold them.
 package main
 
 import (
@@ -17,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -34,6 +37,12 @@ func main() {
 	idle := flag.Duration("idle-exit", 24*time.Hour, "exit this long after the child exits with no client attached (0 = never)")
 	orphan := flag.Duration("orphan-exit", time.Hour, "once the app this runs from (or this executable) has been deleted, end the pane after this long with no client attached (0 = never)")
 	daemon := flag.String("daemon", "", "the daemon starting this holder (its executable): only it, or another hmkd of this install, may attach")
+	state := flag.String("state", "", "the daemon's state directory: only the process holding its locks, which must be the one starting this holder, may attach")
+	// From a development build's daemon that held an fcntl lock on
+	// run/daemon.owner instead: taken, and like a released daemon's holder
+	// (no --state), checked by program only. Such a daemon is a build that
+	// never shipped.
+	flag.String("owner", "", "(ignored: from earlier development builds)")
 	flag.Parse()
 	if *socket == "" || flag.NArg() == 0 {
 		fmt.Fprintln(os.Stderr, "usage: pane-holder --socket PATH [flags] -- command [args...]")
@@ -68,10 +77,27 @@ func main() {
 	if *daemon != "" {
 		peer = holder.DaemonPeer(*daemon, installOf(exe))
 	}
+	var lock *holder.StateLock
+	if *state != "" {
+		// As it starts, while the daemon that started it holds the locks:
+		// which files they are is recorded now, whatever is put at their
+		// paths later.
+		var err error
+		if lock, err = holder.OpenStateLock(*state, os.Getppid()); err != nil {
+			fmt.Fprintln(os.Stderr, "pane-holder:", err)
+			os.Exit(1)
+		}
+		// Its socket is where that daemon keeps them, by the rule the
+		// daemon reconnects by (no other folder, no link in the way).
+		if !inPanes(*socket, *state) {
+			fmt.Fprintln(os.Stderr, "pane-holder: the socket isn't in", filepath.Join(*state, "run", "panes"))
+			os.Exit(2)
+		}
+	}
 	s, err := holder.Start(holder.Config{
 		Socket: *socket, Command: flag.Args(), Dir: *dir, Token: token,
 		Cols: uint16(*cols), Rows: uint16(*rows), RingSize: *ring, IdleExit: *idle,
-		Install: installOf(exe), OrphanExit: *orphan, Peer: peer, AdoptOrphans: true,
+		Install: installOf(exe), OrphanExit: *orphan, Peer: peer, State: lock, AdoptOrphans: true,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -86,6 +112,23 @@ func main() {
 		s.Shutdown()
 	case <-s.Done():
 	}
+}
+
+// inPanes reports whether socket is a file directly in state's run/panes,
+// both made absolute as written (links unresolved), and not a link itself
+// (if it's there already).
+func inPanes(socket, state string) bool {
+	abs := func(p string) string {
+		if a, err := filepath.Abs(p); err == nil {
+			return a
+		}
+		return filepath.Clean(p)
+	}
+	if abs(filepath.Dir(socket)) != abs(filepath.Join(state, "run", "panes")) {
+		return false
+	}
+	st, err := os.Lstat(socket)
+	return err != nil || st.Mode()&os.ModeSymlink == 0
 }
 
 // installOf is the outermost app bundle exe is in (Hammock.app, not the helper

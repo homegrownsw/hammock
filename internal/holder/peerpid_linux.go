@@ -60,3 +60,6 @@ func peerExe(p PeerProc) (string, error) {
 
 // peerSignature: there are no code signatures here.
 func peerSignature(PeerProc, string) (codesign.Signature, bool) { return codesign.Signature{}, false }
+
+// peerStill: there's no audit token to ask (see peerExe).
+func peerStill(PeerProc) bool { return true }

@@ -14,10 +14,17 @@ import (
 
 	"github.com/alexjsp/hammock/internal/daemon"
 	"github.com/alexjsp/hammock/internal/hammockconfig"
+	"github.com/alexjsp/hammock/internal/holder"
 	"github.com/alexjsp/hammock/internal/vt"
 )
 
 func main() {
+	// Before anything else opens a file: a descriptor it was started with
+	// would be open in this signed hmkd as if it were its own, and pane
+	// holders take the daemon of their state dir by the lock descriptors it
+	// has (holder/statelock.go). Nothing is passed on purpose: the app,
+	// launchd, systemd and hmk start it with stdin, stdout and stderr only.
+	holder.CloseInherited()
 	dir := flag.String("dir", daemon.DefaultDir(), "state directory")
 	holderPath := flag.String("holder", "", "pane-holder binary (default: next to hmkd)")
 	verbose := flag.Bool("v", false, "debug logging")

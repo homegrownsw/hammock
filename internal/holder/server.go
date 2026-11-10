@@ -34,6 +34,10 @@ type Config struct {
 	// connection: the token is in the daemon's state, which anything of
 	// yours can read, so it alone doesn't make one the daemon.
 	Peer func(PeerProc) bool
+	// State, when set, must be locked by the process at the other end of
+	// each connection: the daemon of the holder's own state directory, not
+	// another hmkd started on a copy of it (statelock.go).
+	State *StateLock
 	// IdleExit makes the holder exit once the child has exited and no client
 	// has been attached for this long. Zero means wait for FrameClose forever.
 	IdleExit time.Duration
@@ -245,15 +249,26 @@ func (s *Server) serve(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	if s.cfg.Peer != nil {
+	if s.cfg.Peer != nil || s.cfg.State != nil {
 		var p PeerProc
 		if uc, ok := conn.(*net.UnixConn); ok {
 			p = sockPeer(uc)
 		}
-		if p.PID <= 0 || !s.cfg.Peer(p) {
+		if p.PID <= 0 || s.cfg.Peer != nil && !s.cfg.Peer(p) {
 			logf("refused a client (pid %d): not the daemon", p.PID)
 			conn.Close()
 			return
+		}
+		if s.cfg.State != nil {
+			err := s.cfg.State.HeldBy(p.PID)
+			if err == nil && !peerStill(p) {
+				err = errors.New("it went, or isn't the process that connected")
+			}
+			if err != nil {
+				logf("refused a client (pid %d): not the daemon of this pane's state: %v", p.PID, err)
+				conn.Close()
+				return
+			}
 		}
 	}
 	c := &client{conn: conn, offset: binary.BigEndian.Uint64(first.Payload), wake: make(chan struct{}, 1), done: make(chan struct{})}

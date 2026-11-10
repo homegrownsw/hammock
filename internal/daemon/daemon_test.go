@@ -21,7 +21,6 @@ import (
 
 	"github.com/alexjsp/hammock/internal/agents"
 	"github.com/alexjsp/hammock/internal/client"
-	"github.com/alexjsp/hammock/internal/holder"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
 
@@ -47,6 +46,10 @@ func TestMain(m *testing.M) {
 	// And are you (person.go), unless they say they're an agent: tests run
 	// under all sorts of parents (an agent, CI), none of them a login.
 	personHook = testPerson
+	if os.Getenv("HMK_TEST_OTHER_HMKD") != "" {
+		os.RemoveAll(dir)
+		os.Exit(otherHmkd()) // another hmkd, as an agent would start one (holderstate_test.go)
+	}
 	holderBin = filepath.Join(dir, "pane-holder")
 	out, err := exec.Command("go", "build", "-o", holderBin, "../../cmd/pane-holder").CombinedOutput()
 	if err != nil {
@@ -472,19 +475,14 @@ func TestRebootRestoresScrollback(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: pid}}})
 	waitOutput(t, c, pid, "before-reboot-marker")
 	c.Close()
-	d.mu.Lock()
-	token := d.panes[pid].token
-	d.mu.Unlock()
 	d.Shutdown() // saves scrollback
 
-	// "Reboot": the holder goes away.
-	hc, err := holder.Dial(filepath.Join(dir, "run", "panes", pid+".sock"), 0, token)
-	if err != nil {
+	// "Reboot": the holder goes away. (Ended by signal, as `hmk stop
+	// --panes` does: with no daemon holding the state dir's locks, it takes no
+	// client.)
+	if _, err := endHolderAt(filepath.Join(dir, "run", "panes", pid+".sock")); err != nil {
 		t.Fatal(err)
 	}
-	_ = hc.CloseHolder()
-	hc.Close()
-	time.Sleep(200 * time.Millisecond)
 
 	d2 := startDaemon(t, dir)
 	defer d2.Shutdown()

@@ -27,6 +27,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/alexjsp/hammock/internal/appbundle"
+	"github.com/alexjsp/hammock/internal/holder"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 	"github.com/alexjsp/hammock/internal/state"
 	"github.com/alexjsp/hammock/internal/vt"
@@ -58,7 +59,10 @@ type Daemon struct {
 	cfg   Config
 	log   *slog.Logger
 	store *state.Store
-	lock  *os.File   // exclusive flock on the state dir; one daemon per dir
+	// lock: exclusive flocks on run/daemon.lock (one daemon per dir) and the
+	// state dir itself, which its holders require of the daemon attaching
+	// (holder/statelock.go).
+	lock  *dirLock
 	icons groupIcons // Groups' pictures, from their folders (groupicons.go)
 	ln    net.Listener
 	srv   *http.Server
@@ -201,12 +205,16 @@ func New(cfg Config) (*Daemon, error) {
 	if err := secureDir(filepath.Join(cfg.Dir, "run"), false); err != nil {
 		return nil, err
 	}
+	if err := secureDir(filepath.Join(cfg.Dir, "run", "panes"), false); err != nil {
+		return nil, err // (a link to another state dir's: its holders' sockets)
+	}
 	lock, err := lockDir(cfg.Dir)
 	if err != nil {
 		return nil, err
 	}
 	st, err := state.Open(filepath.Join(cfg.Dir, "state.db"))
 	if err != nil {
+		lock.Close()
 		return nil, err
 	}
 	d := &Daemon{
@@ -299,32 +307,7 @@ func (d *Daemon) restore() error {
 			p.log = d.newLogPane(info.Id)
 		}
 		rt, ok := snap.Runtimes[info.Id]
-		if ok {
-			err := p.reconnect(rt.Socket, rt.Token)
-			if err == nil {
-				d.log.Info("reconnected holder", "pane", info.Id)
-				continue
-			}
-			// Why matters: a holder that's alive but can't be reached gets
-			// replaced, and its process with it.
-			d.log.Warn("couldn't reconnect holder", "pane", info.Id, "socket", rt.Socket, "err", err)
-		}
-		// One still listening (it wouldn't take our token, or was started
-		// just before a crash, with no runtime recorded) would otherwise run
-		// on unseen once a new holder takes its socket, and later unlink it.
-		if pid, err := endHolderAt(p.socket); err == nil {
-			d.log.Info("ended the holder this pane couldn't reconnect to", "pane", info.Id, "pid", pid)
-		}
-		// Holder gone (reboot/logout): start a fresh process in the same place.
-		p.loadScrollback()
-		resume := d.agentHub.resumeCommand(info)
-		if err := p.spawn(resume); err != nil {
-			d.log.Error("respawn pane", "pane", info.Id, "err", err)
-			info.Exited, info.ExitStatus = true, -1
-			info.StartError = err.Error()
-		} else {
-			d.log.Info("respawned pane", "pane", info.Id, "resume", resume != nil)
-		}
+		d.restoreHolder(p, info, rt, ok)
 	}
 	if editorSaved == nil {
 		editorSaved, _ = d.store.Records(editorRecord)
@@ -337,6 +320,44 @@ func (d *Daemon) restore() error {
 	}
 	d.endStrayHolders()
 	return nil
+}
+
+// restoreHolder reconnects a restored terminal pane to its holder, or
+// starts its program again if it can't be. Callers hold d.mu.
+func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok bool) {
+	if ok && !d.ownSocket(rt.Socket, info.Id) {
+		// Another state dir's (this state copied, and hmkd started on
+		// the copy), or a link to one: never reconnected to, nor ended,
+		// nor replaced (endHolderAt goes by the holder's own --socket).
+		d.log.Warn("not reconnecting: the holder's socket is gone, or a link, or not this state dir's", "pane", info.Id, "socket", rt.Socket)
+		ok = false
+	}
+	if ok {
+		err := p.reconnect(rt.Socket, rt.Token)
+		if err == nil {
+			d.log.Info("reconnected holder", "pane", info.Id)
+			return
+		}
+		// Why matters: a holder that's alive but can't be reached gets
+		// replaced, and its process with it.
+		d.log.Warn("couldn't reconnect holder", "pane", info.Id, "socket", rt.Socket, "err", err)
+	}
+	// One still listening (it wouldn't take our token, or was started
+	// just before a crash, with no runtime recorded) would otherwise run
+	// on unseen once a new holder takes its socket, and later unlink it.
+	if pid, err := endHolderAt(p.socket); err == nil {
+		d.log.Info("ended the holder this pane couldn't reconnect to", "pane", info.Id, "pid", pid)
+	}
+	// Holder gone (reboot/logout): start a fresh process in the same place.
+	p.loadScrollback()
+	resume := d.agentHub.resumeCommand(info)
+	if err := p.spawn(resume); err != nil {
+		d.log.Error("respawn pane", "pane", info.Id, "err", err)
+		info.Exited, info.ExitStatus = true, -1
+		info.StartError = err.Error()
+	} else {
+		d.log.Info("respawned pane", "pane", info.Id, "resume", resume != nil)
+	}
 }
 
 // Serve listens on the client socket and blocks until Shutdown.
@@ -1132,13 +1153,52 @@ func secureDir(dir string, followLink bool) error {
 	return nil
 }
 
+// ownSocket: socket is pane id's holder socket in this daemon's own state
+// dir (run/panes/<id>.sock), where it starts them, and a socket there
+// itself: not a link (to another state dir's holder) nor a second name of
+// one. Compared as written, links unresolved: a copy whose run/panes links
+// to the real one's (refused anyway: secureDir) isn't the real one.
+func (d *Daemon) ownSocket(socket, id string) bool {
+	abs := func(p string) string {
+		if a, err := filepath.Abs(p); err == nil {
+			return a
+		}
+		return filepath.Clean(p)
+	}
+	if socket == "" || abs(socket) != abs(filepath.Join(d.cfg.Dir, "run", "panes", id+".sock")) {
+		return false
+	}
+	st, err := os.Lstat(socket)
+	if err != nil {
+		return false
+	}
+	sys, ok := st.Sys().(*syscall.Stat_t)
+	return st.Mode()&os.ModeSocket != 0 && (!ok || sys.Nlink == 1)
+}
+
+// dirLock is a daemon's hold on its state dir: exclusive flocks on
+// run/daemon.lock and on the dir itself, for as long as it runs.
+type dirLock struct{ lock, dir *os.File }
+
+func (l *dirLock) Close() error {
+	if l.dir != nil {
+		l.dir.Close()
+	}
+	return l.lock.Close()
+}
+
 // lockDir takes an exclusive lock on dir so only one daemon serves it (the
-// app's launcher and a login item could otherwise race).
+// app's launcher and a login item could otherwise race), and so its pane
+// holders can tell it from another hmkd (holder/statelock.go): a flock on
+// run/daemon.lock, a plain file of its own with the one name (not a link
+// to another state dir's, which would lock that one's), then one on the
+// dir.
 // ErrAlreadyRunning: another hmkd has the state dir (nothing to do).
 var ErrAlreadyRunning = errors.New("another hmkd is already running")
 
-func lockDir(dir string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(dir, "run", "daemon.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+func lockDir(dir string) (*dirLock, error) {
+	path := holder.LockPath(dir)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -1146,10 +1206,27 @@ func lockDir(dir string) (*os.File, error) {
 		f.Close()
 		return nil, fmt.Errorf("%w for %s", ErrAlreadyRunning, dir)
 	}
+	if err := holder.CheckLockFile(path, f); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("refusing the state dir's lock: %w", err)
+	}
+	df, err := os.Open(dir)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if err := syscall.Flock(int(df.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		// Only this daemon takes it, once it has daemon.lock: something
+		// else of yours is holding it, and the holders wouldn't take this
+		// daemon without it.
+		df.Close()
+		f.Close()
+		return nil, fmt.Errorf("something else holds a lock on %s (not a Hammock daemon: it has %s), so pane holders wouldn't take this one; quit it and start Hammock again: %w", dir, path, err)
+	}
 	// The pid, so the app can find (and if need be stop) the daemon.
 	_ = f.Truncate(0)
 	_, _ = f.WriteAt([]byte(fmt.Sprintf("%d\n", os.Getpid())), 0)
-	return f, nil
+	return &dirLock{lock: f, dir: df}, nil
 }
 
 // setLayout replaces a tab's split tree if it contains exactly the same
