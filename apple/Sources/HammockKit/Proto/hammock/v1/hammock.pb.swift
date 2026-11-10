@@ -5914,6 +5914,9 @@ public nonisolated struct Hammock_V1_BrowserMenuItem: Sendable {
 
   public var checked: Bool = false
 
+  /// context: Copy, Cut or Copy Link Address (what it copies goes to your clipboard)
+  public var copies: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -18554,7 +18557,7 @@ nonisolated extension Hammock_V1_BrowserMenu: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_BrowserMenuItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".BrowserMenuItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}title\0\u{1}enabled\0\u{1}separator\0\u{1}indent\0\u{1}checked\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}title\0\u{1}enabled\0\u{1}separator\0\u{1}indent\0\u{1}checked\0\u{1}copies\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -18567,6 +18570,7 @@ nonisolated extension Hammock_V1_BrowserMenuItem: SwiftProtobuf.Message, SwiftPr
       case 3: try { try decoder.decodeSingularBoolField(value: &self.separator) }()
       case 4: try { try decoder.decodeSingularInt32Field(value: &self.indent) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.checked) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.copies) }()
       default: break
       }
     }
@@ -18588,6 +18592,9 @@ nonisolated extension Hammock_V1_BrowserMenuItem: SwiftProtobuf.Message, SwiftPr
     if self.checked != false {
       try visitor.visitSingularBoolField(value: self.checked, fieldNumber: 5)
     }
+    if self.copies != false {
+      try visitor.visitSingularBoolField(value: self.copies, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -18597,6 +18604,7 @@ nonisolated extension Hammock_V1_BrowserMenuItem: SwiftProtobuf.Message, SwiftPr
     if lhs.separator != rhs.separator {return false}
     if lhs.indent != rhs.indent {return false}
     if lhs.checked != rhs.checked {return false}
+    if lhs.copies != rhs.copies {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

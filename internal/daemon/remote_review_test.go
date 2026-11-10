@@ -392,3 +392,69 @@ func TestLogUnwatchRechecksReach(t *testing.T) {
 		t.Fatal("a log view back in reach was let go")
 	}
 }
+
+// Only a host menu item that copies opens the way to your clipboard; two
+// clients' copies are answered each its own, in order; a client that's
+// gone gets none.
+func TestHostClipboardMenuAndClients(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	l := newLink(d, &pb.InviteToken{CertSha256: "aa", HostUserId: "us_a"})
+	a, b := &conn{d: d}, &conn{d: d}
+	menu := func(seq int32, to *conn, items ...*pb.BrowserMenuItem) {
+		l.menus[seq] = &pb.BrowserMenu{PaneId: "pn_web", Seq: seq, Kind: "context", Items: items}
+		l.menuTo[seq] = to
+	}
+	choose := func(c *conn, seq, i int32) {
+		l.askedCopy(c, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserMenuChoice{BrowserMenuChoice: &pb.BrowserMenuChoice{PaneId: "pn_web", Seq: seq, Index: i}}})
+	}
+	menu(1, a, &pb.BrowserMenuItem{Title: "Copy", Copies: true}, &pb.BrowserMenuItem{Title: "Back"})
+	choose(a, 1, 1)
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("Back opened the clipboard")
+	}
+	choose(b, 1, 0) // not b's menu
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("another client's menu opened the clipboard")
+	}
+	// A host that titles anything Copy but marks none: that one only.
+	menu(2, a, &pb.BrowserMenuItem{Title: "Copy", Copies: false}, &pb.BrowserMenuItem{Title: "Paste", Copies: true})
+	choose(a, 2, 0)
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("a title alone counted when the host marks its items")
+	}
+	// Two clients copying: each answer its own, oldest first.
+	l.askedCopy(a, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: "pn_web", Op: "copy"}}})
+	l.askedCopy(b, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: "pn_web", Op: "copy"}}})
+	if l.clipboardTo("pn_web") != a || l.clipboardTo("pn_web") != b || l.clipboardTo("pn_web") != nil {
+		t.Fatal("copies not answered each to its own client, in order")
+	}
+	// An older host (no marks): English titles.
+	menu(3, b, &pb.BrowserMenuItem{Title: "Back"}, &pb.BrowserMenuItem{Title: "Copy Link Address"})
+	choose(b, 3, 1)
+	if l.clipboardTo("pn_web") != b {
+		t.Fatal("an older host's Copy Link Address")
+	}
+	// A client that's gone gets nothing.
+	l.askedCopy(a, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: "pn_web", Op: "cut"}}})
+	d.links["aa"] = l
+	d.localClosed(a)
+	delete(d.links, "aa")
+	if l.clipboardTo("pn_web") != nil {
+		t.Fatal("a copy answered to a client that's gone")
+	}
+}
+
+// The host marks its context menu's copying items by command, whatever
+// their titles (in the Mac's language).
+func TestHostMarksCopyingMenuItems(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	c := &conn{d: d, out: make(chan *pb.ServerMessage, 4)}
+	d.browsers.noteInput("pn_web", c)
+	d.browsers.menu(hostMsg{T: "context", ID: "pn_web", Seq: 7, Items: []hostMenuItem{{Title: "Retour", Cmd: 100}, {Title: "Copier", Cmd: 113}, {Title: "Copier l’adresse du lien", Cmd: 26501}}})
+	bm := (<-c.out).GetBrowserMenu()
+	if bm == nil || len(bm.Items) != 3 || bm.Items[0].Copies || !bm.Items[1].Copies || !bm.Items[2].Copies {
+		t.Fatalf("menu: %v", bm)
+	}
+}

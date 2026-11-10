@@ -53,7 +53,7 @@ type peerLink struct {
 	logs     map[string]*pb.WatchLog   // remote log pane → the watch your client last sent (one client at a time)
 	logTo    map[string]*conn
 	inputs   map[string]*conn          // remote browser pane → who last gave it input (gets its menus)
-	copyAsk  map[string]copyRequest    // remote browser pane → a copy your client asked of it, not yet answered
+	copyAsk  map[string][]copyRequest  // remote browser pane → copies your clients asked of it, not yet answered (oldest first)
 	menus    map[int32]*pb.BrowserMenu // menus shown to your clients, by the host's seq (dismissed if they leave)
 	menuTo   map[int32]*conn
 	sentAt   string // the presence last sent
@@ -77,7 +77,8 @@ type copyRequest struct {
 // copyAnswerWithin is how long after asking a host's answer is taken.
 const copyAnswerWithin = 5 * time.Second
 
-// askedCopy notes that c asked pane for a copy, if msg does. Callers hold d.mu.
+// askedCopy notes that c asked pane for a copy, if msg does: a copy or cut,
+// or choosing a menu item of the host's that copies. Callers hold d.mu.
 func (l *peerLink) askedCopy(c *conn, msg *pb.ClientMessage) {
 	pane := ""
 	switch m := msg.Msg.(type) {
@@ -86,32 +87,68 @@ func (l *peerLink) askedCopy(c *conn, msg *pb.ClientMessage) {
 			pane = m.BrowserInput.PaneId
 		}
 	case *pb.ClientMessage_BrowserMenuChoice:
-		if m.BrowserMenuChoice.Index >= 0 {
-			pane = m.BrowserMenuChoice.PaneId
+		ch := m.BrowserMenuChoice
+		if bm := l.menus[ch.Seq]; bm != nil && l.menuTo[ch.Seq] == c && bm.PaneId == ch.PaneId && copyItem(bm, int(ch.Index)) {
+			pane = ch.PaneId
 		}
 	}
-	if pane != "" {
-		l.copyAsk[pane] = copyRequest{c, time.Now()}
+	if pane == "" {
+		return
 	}
+	// Answers come in the order asked: each client its own.
+	q := slices.DeleteFunc(l.copyAsk[pane], func(a copyRequest) bool { return time.Since(a.at) > copyAnswerWithin })
+	if len(q) >= 8 {
+		q = q[1:]
+	}
+	l.copyAsk[pane] = append(q, copyRequest{c, time.Now()})
+}
+
+// copyItem: item i of a host's context menu copies (Copy, Cut, Copy Link
+// Address). A host from before it said so is taken at its word in English.
+func copyItem(bm *pb.BrowserMenu, i int) bool {
+	if bm.Kind != "context" || i < 0 || i >= len(bm.Items) {
+		return false
+	}
+	if slices.ContainsFunc(bm.Items, func(it *pb.BrowserMenuItem) bool { return it.Copies }) {
+		return bm.Items[i].Copies
+	}
+	switch bm.Items[i].Title {
+	case "Copy", "Cut", "Copy Link Address":
+		return true
+	}
+	return false
 }
 
 // clipboardTo is who a host's BrowserClipboard for pane goes to: the client
-// that asked for a copy just now, once. A host can't otherwise set your
-// clipboard. Callers hold d.mu.
+// that asked for a copy of it first, just now, once. A host can't
+// otherwise set your clipboard. Callers hold d.mu.
 func (l *peerLink) clipboardTo(pane string) *conn {
-	a, ok := l.copyAsk[pane]
-	delete(l.copyAsk, pane)
-	if !ok || time.Since(a.at) > copyAnswerWithin {
-		return nil
+	q := l.copyAsk[pane]
+	for len(q) > 0 {
+		a := q[0]
+		q = q[1:]
+		if time.Since(a.at) <= copyAnswerWithin {
+			l.setCopyAsk(pane, q)
+			return a.c
+		}
 	}
-	return a.c
+	l.setCopyAsk(pane, nil)
+	return nil
+}
+
+func (l *peerLink) setCopyAsk(pane string, q []copyRequest) {
+	if len(q) == 0 {
+		delete(l.copyAsk, pane)
+	} else {
+		l.copyAsk[pane] = q
+	}
 }
 
 func newLink(d *Daemon, tok *pb.InviteToken) *peerLink {
 	return &peerLink{d: d, tok: tok, ready: make(chan struct{}), stop: make(chan struct{}),
 		groups: map[string]*pb.Group{}, tabs: map[string]*pb.Tab{}, panes: map[string]*pb.Pane{},
 		attn: map[string]*pb.AttentionItem{}, grants: map[string]*pb.GrantRequest{}, scheds: map[string]*pb.Schedule{}, people: map[string]*pb.Person{},
-		attached: map[string]map[*conn]bool{}, watching: map[string]map[*conn]bool{}, paging: map[string]*conn{}, logs: map[string]*pb.WatchLog{}, logTo: map[string]*conn{}, inputs: map[string]*conn{}, copyAsk: map[string]copyRequest{}, menus: map[int32]*pb.BrowserMenu{}, menuTo: map[int32]*conn{}}
+		attached: map[string]map[*conn]bool{}, watching: map[string]map[*conn]bool{}, paging: map[string]*conn{}, logs: map[string]*pb.WatchLog{}, logTo: map[string]*conn{}, inputs: map[string]*conn{}, copyAsk: map[string][]copyRequest{}, menus: map[int32]*pb.BrowserMenu{}, menuTo: map[int32]*conn{}}
 }
 
 // loadLinks restores links to hosts (with their last known state, offline
@@ -1189,6 +1226,10 @@ func (d *Daemon) localClosed(c *conn) {
 			if ic == c {
 				delete(l.inputs, pane)
 			}
+		}
+		// Nor does a copy it asked for go to anyone else.
+		for pane, q := range l.copyAsk {
+			l.setCopyAsk(pane, slices.DeleteFunc(q, func(a copyRequest) bool { return a.c == c }))
 		}
 		var open []*pb.BrowserMenu
 		for seq, mc := range l.menuTo {

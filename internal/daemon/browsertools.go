@@ -482,6 +482,7 @@ func (a *remoteInputArgs) check() error {
 
 type hostMenuItem struct {
 	Title   string `json:"title"`
+	Cmd     int    `json:"cmd"` // context: Chromium's command id
 	Enabled bool   `json:"enabled"`
 	Sep     bool   `json:"sep"`
 	Indent  int    `json:"indent"`
@@ -528,7 +529,8 @@ func (h *browserHub) menu(m hostMsg) {
 			bm.Selected = int32(len(index))
 		}
 		index = append(index, i)
-		bm.Items = append(bm.Items, &pb.BrowserMenuItem{Title: it.Title, Enabled: it.Enabled, Separator: it.Sep, Indent: int32(it.Indent), Checked: it.Checked})
+		bm.Items = append(bm.Items, &pb.BrowserMenuItem{Title: it.Title, Enabled: it.Enabled, Separator: it.Sep, Indent: int32(it.Indent), Checked: it.Checked,
+			Copies: kind == "context" && copyCommand(it.Cmd)})
 	}
 	h.mu.Lock()
 	if h.menus == nil {
@@ -643,3 +645,9 @@ func (h *browserHub) clipboard(m hostMsg) {
 		c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_BrowserClipboard{BrowserClipboard: &pb.BrowserClipboard{PaneId: m.ID, Text: m.Text}}})
 	}
 }
+
+// copyCommand: a context menu command (Chromium's id, as the browser host
+// sends it) whose text goes to the viewer's clipboard: Cut, Copy (CEF's
+// MENU_ID_CUT and MENU_ID_COPY) and the host's own Copy Link Address
+// (MENU_ID_USER_FIRST+1, helpers/browser/host.mm).
+func copyCommand(cmd int) bool { return cmd == 112 || cmd == 113 || cmd == 26501 }

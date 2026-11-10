@@ -13981,6 +13981,7 @@ type BrowserMenuItem struct {
 	Separator     bool                   `protobuf:"varint,3,opt,name=separator,proto3" json:"separator,omitempty"`
 	Indent        int32                  `protobuf:"varint,4,opt,name=indent,proto3" json:"indent,omitempty"`
 	Checked       bool                   `protobuf:"varint,5,opt,name=checked,proto3" json:"checked,omitempty"`
+	Copies        bool                   `protobuf:"varint,6,opt,name=copies,proto3" json:"copies,omitempty"` // context: Copy, Cut or Copy Link Address (what it copies goes to your clipboard)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -14046,6 +14047,13 @@ func (x *BrowserMenuItem) GetIndent() int32 {
 func (x *BrowserMenuItem) GetChecked() bool {
 	if x != nil {
 		return x.Checked
+	}
+	return false
+}
+
+func (x *BrowserMenuItem) GetCopies() bool {
+	if x != nil {
+		return x.Copies
 	}
 	return false
 }
@@ -22330,13 +22338,14 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x01x\x18\x06 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\a \x01(\x01R\x01y\x12\f\n" +
 	"\x01w\x18\b \x01(\x01R\x01w\x12\f\n" +
-	"\x01h\x18\t \x01(\x01R\x01h\"\x91\x01\n" +
+	"\x01h\x18\t \x01(\x01R\x01h\"\xa9\x01\n" +
 	"\x0fBrowserMenuItem\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x18\n" +
 	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x1c\n" +
 	"\tseparator\x18\x03 \x01(\bR\tseparator\x12\x16\n" +
 	"\x06indent\x18\x04 \x01(\x05R\x06indent\x12\x18\n" +
-	"\achecked\x18\x05 \x01(\bR\achecked\"?\n" +
+	"\achecked\x18\x05 \x01(\bR\achecked\x12\x16\n" +
+	"\x06copies\x18\x06 \x01(\bR\x06copies\"?\n" +
 	"\x10BrowserClipboard\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\"h\n" +

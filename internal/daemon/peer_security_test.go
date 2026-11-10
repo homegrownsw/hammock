@@ -834,7 +834,7 @@ func TestHostClipboardOnlyAnswersCopy(t *testing.T) {
 		t.Fatal("one copy answered twice")
 	}
 	l.askedCopy(c, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserMenuChoice{BrowserMenuChoice: &pb.BrowserMenuChoice{PaneId: "pn_web", Index: 2}}})
-	l.copyAsk["pn_web"] = copyRequest{c, time.Now().Add(-time.Minute)}
+	l.copyAsk["pn_web"] = []copyRequest{{c, time.Now().Add(-time.Minute)}}
 	if l.clipboardTo("pn_web") != nil {
 		t.Fatal("answered long after the copy")
 	}

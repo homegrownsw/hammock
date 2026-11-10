@@ -1484,6 +1484,7 @@ message BrowserMenuItem {
   bool separator = 3;
   int32 indent = 4;
   bool checked = 5;
+  bool copies = 6;  // context: Copy, Cut or Copy Link Address (what it copies goes to your clipboard)
 }
 // Text you copied (or cut) from a page you watch as video: for your clipboard.
 message BrowserClipboard {
