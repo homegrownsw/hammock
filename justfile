@@ -189,6 +189,7 @@ release-apple *args:
 
 # Copy the website (marketing/) into the homegrownsw.com site repo, as site/hammock/ (HMK_SITE_REPO, default
 # ~/Developer/homegrownsw-site). Commit it there and `just deploy` it from there: this publishes nothing.
+# The page's comments are for the repo, so the copy drops them: each one starts its own line, `//` or `/* … */`.
 site:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -196,7 +197,8 @@ site:
     [ -d "$repo/site" ] || { echo "No site repo at $repo (set HMK_SITE_REPO)." >&2; exit 1; }
     out="$repo/site/hammock"
     mkdir -p "$out"
-    cp marketing/index.html marketing/banner.png "$out/"
+    perl -0pe 's{^[ \t]*/\*.*?\*/[ \t]*\n}{}gms; s{^[ \t]*//.*\n}{}gm' marketing/index.html > "$out/index.html"
+    cp marketing/banner.png "$out/"
     sips -Z 512 apple/Resources/AppIcon-1024.png --out "$out/icon-512.png" >/dev/null
     sips -Z 256 apple/Resources/AppIcon-1024.png --out "$out/icon-256.png" >/dev/null
     chmod 644 "$out"/*
