@@ -1,23 +1,27 @@
 This build:
-[NEW] Editor panes: open, edit and save your Mac's files on your iPhone, with syntax highlighting, find, Go to Line and a bar of the keys a phone lacks. Edits show live on your Mac, and the other way round.
+[NEW] Code blocks in the agent view can wrap long lines: Markdown and text blocks wrap by default, every block has a Wrap button, and Settings ▸ Agent View picks which blocks wrap.
+[NEW] Markdown in a code block can be shown rendered: press Preview in its header, and Source to go back.
+[NEW] No Mac to hand? The pairing screen's **See a demo** opens Hammock with a made-up Mac: agents working and waiting, their conversations, and a scheduled task to allow.
+[NEW] Settings ▸ About ▸ Acknowledgements lists the open-source software Hammock is built with, and each one's licence.
+[NEW] Settings ▸ Usage Limits lists every agent your Mac can show limits for, not just Claude and Codex. For up-to-date numbers, turn on Ask each agent's service for its usage on the Mac, and show that agent's limits in the Mac's sidebar too.
+[FIXED] Agent view: a message starting with ! now shows it will run as a shell command (Claude Code, Codex and Kimi), and the command and its output show as a command you ran, not as a message.
+[FIXED] A Markdown file shown in the agent view inside four backticks, or tildes, no longer breaks apart at its own code blocks.
+[FIXED] Agents waiting on a background job, such as a Claude Code monitor, no longer alert you every time it reports progress, only when the job finishes, the agent stops waiting or it needs you.
+[FIXED] An agent at rest with shells still running no longer shows a fainter ring than one without.
+[FIXED] Needs You and its notifications show what `hmk` on your Mac asks to do that only you may, and where it came from, with Allow and Deny (never Always).
+[FIXED] Answering from a notification (Allow, Deny, Let View, Decline) now needs your iPhone unlocked, and with Require Face ID on it opens Hammock to ask first. Notifications take everything they show, their buttons included, only from what your Mac encrypted, and old ones replayed later show nothing. The keys for them are no longer in iPhone backups: a restored iPhone makes new ones when it next connects to each Mac.
+[FIXED] Settings lists usage limits only for the agents installed on your Mac (and any you'd already switched on), not every agent Hammock knows.
+[FIXED] Start an Agent names your Mac instead of calling it “This Mac”, and the Group menu shows each Group's icon.
+[FIXED] The screen tile on Devices says “Display Asleep”, not “Asleep”, when the Mac is awake but its display is off.
 
 Earlier 0.3.0 builds:
 [NEW] Agent view: a question with previews shows the picked option's preview, and takes notes to go with your answer.
 [NEW] Agent view: pull requests the session opened and artifacts it published show as chips above the message box (a PR's title and state from GitHub); tap one to open it.
 [NEW] Agent view: recommended options are marked, the option you tapped shows it's being answered, and answered questions show the notes you gave.
 [NEW] Agent view: the agent's task list sits above the message box while it has one (how far through, what it's doing now; tap for the whole list), for Claude Code and Codex's plan.
+[NEW] Editor panes: open, edit and save your Mac's files on your iPhone, with syntax highlighting, find, Go to Line and a bar of the keys a phone lacks. Edits show live on your Mac, and the other way round.
 [NEW] Fika is now called Hammock, with a new icon and forest-green colours. The `fika` command is now `hmk`: run `hmk hooks install` to point your agents’ hooks and MCP server at it.
 [NEW] Hammock on your iPhone can now reach your Mac over your local network or a VPN like WireGuard, not just Tailscale, and finds it again when its address changes.
 [NEW] Hammock on your iPhone now follows your Mac's theme: the app's colour, your messages in the agent view and the terminal's colours all match it. To use a different one on the phone, pick it in Settings ▸ Appearance ▸ Theme. If you had chosen an agent view colour other than Hammock's green, the theme of that colour takes its place.
-[NEW] Sessions: each row puts the title first and its Group underneath, the same for every Group, with or without a picture.
-[NEW] Settings ▸ Terminal has a Line spacing setting.
-[NEW] Settings ▸ Usage Limits says how to get up-to-date Claude numbers from your Mac.
-[NEW] Tabs and pane headers show an icon for what's running in them: Neovim, Go, k9s, git, Docker, Python, revdiff and around 450 other programs. Add or change one with pane-icon in ~/.config/hammock/config.
-[NEW] The working spinner's ring is a little thicker, so it's easier to spot.
-[NEW] Your computers show the icons you picked for them on your Mac.
-[FIXED] Agent view: typing your own answer happens in place of the option, focused at once and kept in view as it grows; Return sends it.
-[FIXED] Devices and pairing say computer rather than Mac, since a Linux server can pair too, and the pairing screen mentions hmk pair for a server.
-[FIXED] Resizing or zooming a pane no longer scrolls its agent view about: the conversation holds still while the pane changes size, then settles once, staying at the latest message.
-[FIXED] The agent view no longer jumps up or flashes blank while it follows a working agent, most of all just after your first message.
-[FIXED] The Terminal button on an empty Group shows its icon clearly.
-[FIXED] Typing in an agent's message box keeps up with the keyboard again: it no longer lags a little behind.
+[NEW] Sessions: each row puts the title 
+…
