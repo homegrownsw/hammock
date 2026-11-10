@@ -10,7 +10,7 @@ import (
 
 func isHammockApp(int, codesign.Token) bool { return false }
 func responsibleFor(int) int                { return 0 }
-func loginAnchor(int, int, int) bool        { return false }
+func personPage(int) bool                   { return false }
 
 // writePersonKey: only Linux's Unraid page needs one (person_linux.go).
 func writePersonKey(string, *slog.Logger) {}

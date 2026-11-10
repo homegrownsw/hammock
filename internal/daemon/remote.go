@@ -74,6 +74,9 @@ const (
 )
 
 type remoteState struct {
+	// bootstrapBy: where a terminal did what only you may while nothing
+	// could ask you (bootstrap.go), until something is paired or linked.
+	bootstrapBy string
 	on          bool // remote access is on (it may be listening nowhere: no chosen network here now)
 	cert        tls.Certificate
 	fingerprint string
@@ -715,6 +718,7 @@ func (d *Daemon) pair(c *conn, m *pb.Pair) (*pb.ServerMessage, error) {
 	c.authed, c.deviceID, c.name = true, dev.ID, dev.Name
 	d.remoteAuthed(c)
 	d.audit("device:"+dev.Name, "paired", dev.ID, m.Platform)
+	d.afterBootstrap("Paired " + cmpOr(dev.Name, "a device"))
 	d.toLocal(&pb.ServerMessage{Msg: &pb.ServerMessage_DevicePaired{DevicePaired: &pb.DevicePaired{DeviceId: dev.ID, Name: dev.Name, Platform: dev.Platform}}})
 	return &pb.ServerMessage{Msg: &pb.ServerMessage_Paired{Paired: &pb.Paired{DeviceId: dev.ID}}}, nil
 }

@@ -655,6 +655,7 @@ func (d *Daemon) addLink(r *pb.Computer, key []byte, cert, via, reachedAt, linkI
 		how = "introduced by " + cmpOr(d.comp.links[via].GetRecord().GetName(), via)
 	}
 	d.audit("computer", "linked", uid, n.Name+" ("+how+")")
+	d.afterBootstrap("Linked " + cmpOr(n.Name, "a computer"))
 }
 
 // dropComputer lets go of a link here (no request to anyone), closing its

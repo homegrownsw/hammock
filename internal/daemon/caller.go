@@ -37,13 +37,14 @@ type caller struct {
 	// direct: found by its ancestors (a pane's shell among them), not by
 	// the terminal it kept or a multiplexer it runs under (person.go).
 	direct bool
-	// scoped: not known to be an agent, but not positively you either
-	// (person.go), so scoped as one: in pane (outsidePane if it's in none).
+	// scoped: not known to be an agent, but not placed as yours either (a
+	// pane's own shell, a terminal: person.go), so scoped as one: in pane
+	// (outsidePane if it's in none).
 	scoped bool
 }
 
 // outsidePane is the pane, as far as agent scoping goes, of a local
-// program outside Hammock's panes that isn't positively you (person.go):
+// program outside Hammock's panes that isn't placed as yours (person.go):
 // it controls the panes it opened, and asks for the rest, as an agent does.
 const outsidePane = "outside"
 

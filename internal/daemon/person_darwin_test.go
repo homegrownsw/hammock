@@ -51,6 +51,9 @@ func TestDetachedFromPaneIsNotPerson(t *testing.T) {
 	if d.positivelyPerson(nil, pid, codesign.Token{}) {
 		t.Fatal("a program detached from a pane passes for you")
 	}
+	if d.plainCaller(nil, pid, codesign.Token{}) {
+		t.Fatal("a program detached from a pane is placed as yours")
+	}
 	// And it's scoped as an agent in the pane it left.
 	d.mu.Lock()
 	pane := d.tabs[tab].FocusedPaneId

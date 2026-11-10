@@ -3,7 +3,6 @@ package daemon
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,32 +12,38 @@ import (
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
 
-// Person-only actions. Agent scoping (caller.go) limits what a process it
-// can place as an agent may do; but a process it can't place at all used to
-// be taken for you, so an agent got your rights by leaving its pane: a
-// double fork (reparented to launchd), `launchctl submit`, a tmux server, or
-// a background job left running after it exits. Same-user processes can't
-// be fenced off from each other, but the cheap ways out are closed: what
-// only you may do (answer an agent's request, pair a phone, share, link,
-// set up remote access or SSH, save a schedule without asking, …) is taken
-// only from a process positively known to be you:
+// Person-only actions. What only you may do (answer an agent's request,
+// pair a phone, share, link, set up remote access or SSH, save a schedule
+// without asking, …) is taken directly only from a process positively
+// known to be you:
 //
-//   - the Hammock app, by its code signature (or, signed ad hoc, by being
-//     the program of the app this daemon is in);
-//   - a program whose ancestors reach a pane's shell, with no agent between
-//     (found by its parents, not by the terminal it kept or a multiplexer);
-//   - a program outside Hammock whose ancestors reach a login session (a
-//     terminal app launched as an app, a console's login, sshd from
-//     another computer, Unraid's web UI)
-//     without passing an agent, a pane or Hammock itself.
+//   - the Hammock app (or its menu bar item), by its code signature (or,
+//     signed ad hoc, by being the program of the app this daemon is in);
+//   - on Unraid, its plugin page, by a key only it reads (person_linux.go;
+//     nominal: everything there runs as root).
 //
-// Anything else (detached, found only by its terminal or multiplexer, or
-// not placed at all) is scoped as an agent (scope), and told to do these
-// in the app or a pane's own shell.
+// Where a process runs (its ancestors, its terminal, an ssh session) is no
+// proof that it's you: a program of yours (an agent) chooses its own
+// ancestors, environment and terminal (`launchctl submit`, a pty of its
+// own, `setsid`, systemd-run). So from anything else, hmk in a pane's
+// shell or a terminal included, these ask you (approval.go): you allow
+// them in the app or on your phone, once.
+//
+// Until something could answer (no phone paired, no computer linked, the
+// app not open), a program with a terminal that isn't an agent's does them
+// directly (bootstrap.go), and the first phone or computer paired or
+// linked after that is told so in Needs You.
+//
+// Agents are refused them outright (agentCheck). For everything else
+// agent scoping applies (caller.go): a pane's own shell, and a program in
+// a terminal with no agent or pane above it, are taken as yours; anything
+// else (detached from its pane, found only by its terminal or
+// multiplexer, a launchd job) is scoped as an agent (scope).
 
 var (
 	errPersonOnly  = errors.New("only you can do that: do it in the Hammock app (or ask from a terminal and allow it there or on your phone)")
 	errAnswerInApp = errors.New("only you can answer that, in the Hammock app or on your paired phone")
+	errNobodyToAsk = errors.New("only you can do that, and nothing can ask you yet (the Hammock app isn't open, and no phone is paired): open the app, or run it in a terminal of your own")
 )
 
 // personOnly reports whether msg is only for a person, from this computer.
@@ -55,6 +60,38 @@ func personOnly(msg *pb.ClientMessage) bool {
 		return false
 	}
 	return !agentReachable(msg)
+}
+
+// plainAllowed reports whether msg, refused to agents, is still yours to
+// send without asking from a pane's shell or a terminal (not the app): it
+// does no more than what those may anyway (typing into a browser pane as
+// into any pane, reopening a tab, reading or resuming a session whose
+// files are yours to read, listing devices and displays, a stream's
+// acks), so asking you each time would only teach you to say yes.
+func plainAllowed(msg *pb.ClientMessage) bool {
+	switch msg.Msg.(type) {
+	case *pb.ClientMessage_BrowserInput, *pb.ClientMessage_BrowserMenuChoice, *pb.ClientMessage_ReopenClosed,
+		*pb.ClientMessage_ResumeSession, *pb.ClientMessage_ReadSession, *pb.ClientMessage_ListDevices,
+		*pb.ClientMessage_DiscoverComputers, *pb.ClientMessage_SetComputerTint, *pb.ClientMessage_ListDisplays,
+		*pb.ClientMessage_MediaAck, *pb.ClientMessage_CloseMedia, *pb.ClientMessage_SetMediaView:
+		return true
+	}
+	return false
+}
+
+// personStrict reports whether msg is an answer only you give, in the app
+// or on a paired phone: answering a request (an agent's, or one of these),
+// a Hammock Key request, the app's word that it wrote the config file,
+// clearing a security warning. Asking you about one would let whatever
+// asks answer for you.
+func personStrict(msg *pb.ClientMessage) bool {
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_RespondGrant, *pb.ClientMessage_RespondHammockKey, *pb.ClientMessage_ConfigWritten:
+		return true
+	case *pb.ClientMessage_ClearAttention:
+		return strings.HasPrefix(m.ClearAttention.Id, configAttentionPrefix) || strings.HasPrefix(m.ClearAttention.Id, bootstrapAttentionPrefix)
+	}
+	return false
 }
 
 // agentReachable reports whether agentCheck has a rule for msg: everything
@@ -86,50 +123,50 @@ func agentReachable(msg *pb.ClientMessage) bool {
 	return false
 }
 
-// personCheck asks you about a person-only message from a local process
-// that isn't positively you (approval.go): it waits for your answer
-// (errDeferred) and is handled once you allow it. Answering a request,
-// and the like (personStrict), is never asked about: refused. Agents'
-// messages were checked by agentCheck: an agent is refused these outright;
-// a caller scoped as one (not positively you) asks, as anyone does.
+// personCheck lets a person-only message through from the app, and asks
+// you about one from anything else (approval.go: it waits for your answer,
+// errDeferred, and is handled once you allow it). Answers (personStrict)
+// are never asked about: refused. Before anything could ask you, a
+// terminal of yours does them directly (bootstrap.go). Agents' messages
+// were checked by agentCheck: an agent is refused these outright; a caller
+// scoped as one (not positively you) asks, as anyone does.
 func (c *conn) personCheck(msg *pb.ClientMessage) error {
 	c.scope()
 	cl := c.caller
 	if c.remote || c.personOK.Load() || cl.isAgent() && (!cl.scoped || agentReachable(msg)) {
 		return nil
 	}
-	if personStrict(msg) {
+	if !cl.isAgent() && plainAllowed(msg) {
+		return nil
+	}
+	strict := personStrict(msg)
+	if !strict && !personOnly(msg) {
+		return nil
+	}
+	if c.bootstrap(msg) {
+		return nil
+	}
+	if strict {
 		c.d.log.Info("refused a person-only answer from a process that isn't the app", "pid", c.pid, "msg", msgName(msg))
 		return errAnswerInApp
 	}
-	if !personOnly(msg) {
-		return nil
+	c.d.mu.Lock()
+	nobody := c.d.nobodyToAsk()
+	c.d.mu.Unlock()
+	if nobody {
+		return errNobodyToAsk
 	}
 	return c.askPerson(msg)
 }
 
-// personStrict reports whether msg is an answer only you give, in the app
-// or on a paired phone: answering a request (an agent's, or one of these),
-// a Hammock Key request, the app's word that it wrote the config file,
-// clearing a security warning. Asking you about one would let whatever
-// asks answer for you.
-func personStrict(msg *pb.ClientMessage) bool {
-	switch m := msg.Msg.(type) {
-	case *pb.ClientMessage_RespondGrant, *pb.ClientMessage_RespondHammockKey, *pb.ClientMessage_ConfigWritten:
-		return true
-	case *pb.ClientMessage_ClearAttention:
-		return strings.HasPrefix(m.ClearAttention.Id, configAttentionPrefix)
-	}
-	return false
-}
-
 // scope works out, before a local connection's first message is handled,
-// whether it's positively you. Anything else not already known as an agent
-// is scoped as one (agentCheck): a program that left its pane, a launchd
-// job, an agent outside Hammock, something under a multiplexer. It may
-// still read your Groups and open panes, and controls those it opened;
-// typing into, closing or driving any other pane asks you, as an agent's
-// request does. Read loop only.
+// who it is: the app (personOK), yours as far as agent scoping goes (a
+// pane's own shell, a terminal with nothing of an agent's above it), or
+// else scoped as an agent (agentCheck): a program that left its pane, a
+// launchd job, an agent outside Hammock, something under a multiplexer. It
+// may still read your Groups and open panes, and controls those it
+// opened; typing into, closing or driving any other pane asks you, as an
+// agent's request does. Read loop only.
 func (c *conn) scope() {
 	c.personOnce.Do(func() {
 		if c.remote || c.caller.isAgent() {
@@ -139,19 +176,21 @@ func (c *conn) scope() {
 			c.personOK.Store(true)
 			return
 		}
+		if c.d.plainCaller(c.caller, c.pid, c.tok) {
+			return
+		}
 		cl := c.d.scopedCaller(c.caller, c.pid)
 		c.d.mu.Lock()
 		c.caller = cl // (read by other connections under d.mu)
 		c.d.mu.Unlock()
-		c.d.log.Info("scoped a local client it can't tell is you as an agent", "pid", c.pid, "pane", cl.pane)
+		c.d.log.Info("scoped a local client it can't place as yours as an agent", "pid", c.pid, "pane", cl.pane)
 	})
 }
 
-// scopedCaller is who a local process that isn't positively you is, for
-// agent scoping: an agent in the pane it was found in (by terminal,
-// multiplexer, or the holder that took it in), or, on macOS, in the pane
-// whose holder is responsible for it (however it left its parents); else
-// outsidePane.
+// scopedCaller is who a local process that isn't yours is, for agent
+// scoping: an agent in the pane it was found in (by terminal, multiplexer,
+// or the holder that took it in), or, on macOS, in the pane whose holder
+// is responsible for it (however it left its parents); else outsidePane.
 func (d *Daemon) scopedCaller(cl *caller, pid int) *caller {
 	if cl != nil && cl.pane != "" {
 		return &caller{pane: cl.pane, agent: true, scoped: true}
@@ -175,46 +214,59 @@ func msgName(msg *pb.ClientMessage) string {
 	return strings.TrimPrefix(fmt.Sprintf("%T", msg.Msg), "*hammockv1.ClientMessage_")
 }
 
-// personHook, when set (tests), stands in for positivelyPerson.
-var personHook func(cl *caller, pid int) bool
+// personHook, when set (tests), stands in for positivelyPerson; plainHook
+// for plainCaller.
+var (
+	personHook func(cl *caller, pid int) bool
+	plainHook  func(cl *caller, pid int) bool
+)
 
 // positivelyPerson reports whether a local connection's process (cl as
 // identify placed it, pid, and on macOS its audit token as it connected)
-// is known to be you. Checked when its first message comes, of the
-// program that connected: by token where there is one (a program that
-// execs another in its pid since has a new pid version), and a pid whose
-// process has since exec'd or gone isn't you, whatever runs in it now.
+// is the Hammock app, or Unraid's plugin page. Checked of the program that
+// connected: by token where there is one (a program that execs another in
+// its pid since has a new pid version), and a pid whose process has since
+// exec'd or gone isn't you, whatever runs in it now.
 func (d *Daemon) positivelyPerson(cl *caller, pid int, tok codesign.Token) bool {
 	if personHook != nil {
 		return personHook(cl, pid)
+	}
+	if tok.Valid() && !tok.Live() || cl != nil || pid <= 0 {
+		return false // (the app is in no pane)
+	}
+	if pid == os.Getpid() {
+		return true // hmkd's own process (a test running it): nothing else has its pid
+	}
+	if isHammockApp(pid, tok) || personPage(pid) {
+		return !tok.Valid() || tok.Live() // (still the process it checked)
+	}
+	return false
+}
+
+// plainCaller reports whether a local process that isn't the app is yours
+// as far as agent scoping goes (never for what only you may do): a pane's
+// own shell's (found by its ancestors, no agent between), or one in a
+// terminal outside Hammock with no agent, pane or Hammock process above it
+// and, on macOS, no pane's holder responsible for it. A guardrail, not a
+// proof: a program of yours can give itself a terminal.
+func (d *Daemon) plainCaller(cl *caller, pid int, tok codesign.Token) bool {
+	if plainHook != nil {
+		return plainHook(cl, pid)
 	}
 	if tok.Valid() && !tok.Live() {
 		return false
 	}
 	if cl != nil {
-		// In a pane: found by its own ancestors, and no agent's.
 		return cl.pane != "" && cl.direct && !cl.agent
 	}
-	if pid <= 0 {
+	if pid <= 0 || procinfo.TTY(pid) < 0 {
 		return false
-	}
-	if pid == os.Getpid() {
-		return true // hmkd's own process (a test running it): nothing else has its pid
-	}
-	if isHammockApp(pid, tok) {
-		return true
 	}
 	stop := d.hammockPIDs()
-	// On macOS a program started in a pane stays the responsibility of
-	// that pane's holder however it leaves its parents (a double fork,
-	// nohup, setsid): it's one of the panes', not yours.
 	if r := responsibleFor(pid); r > 0 && r != pid && stop[r] {
-		return false
+		return false // started in a pane, however it left it
 	}
-	if !walkToLogin(pid, stop, realTree) {
-		return false
-	}
-	return !tok.Valid() || tok.Live() // (still the process it walked from)
+	return noAgentAbove(pid, stop, realTree)
 }
 
 // hammockPIDs are this daemon, its panes' holders and their shells.
@@ -238,74 +290,32 @@ func (d *Daemon) hammockPIDs() map[int]bool {
 	return stop
 }
 
-// procTree is what walkToLogin reads of processes (tests fake it).
+// procTree is what noAgentAbove reads of processes (tests fake it).
 type procTree struct {
 	parent func(pid int) (int, error)
 	agent  func(pid int) bool
-	// anchor reports whether pid starts a login session for caller; child
-	// is the process below it on the way up (the one sshd started).
-	anchor func(pid, child, caller int) bool
 }
 
-var realTree = procTree{parent: procinfo.Parent, agent: isAgentProcess, anchor: loginAnchor}
+var realTree = procTree{parent: procinfo.Parent, agent: isAgentProcess}
 
-// walkToLogin reports whether pid's ancestors include a login session,
-// with no agent, pane or Hammock process anywhere among them: one above
-// the session counts too (a build tool inside an app bundle, run by an
-// agent, is no terminal).
-func walkToLogin(pid int, stop map[int]bool, t procTree) bool {
-	anchored := false
-	child, cur := 0, pid
-	for i := 0; ; i++ {
-		if i == 64 {
-			return false
-		}
+// noAgentAbove reports whether pid and its ancestors include no agent, no
+// pane and no Hammock process, all the way up.
+func noAgentAbove(pid int, stop map[int]bool, t procTree) bool {
+	cur := pid
+	for i := 0; i < 64; i++ {
 		if cur <= 1 {
-			return anchored
+			return true
 		}
 		if stop[cur] || t.agent(cur) {
 			return false
-		}
-		if !anchored && cur != pid && t.anchor(cur, child, pid) {
-			anchored = true
 		}
 		next, err := t.parent(cur)
 		if err != nil || next == cur {
 			return false
 		}
-		child, cur = cur, next
+		cur = next
 	}
-}
-
-// sshFromElsewhere reports whether the session sshd started as child came
-// from another computer: one from this one (ssh localhost) is a program of
-// yours getting a login session, not you. The address is the one sshd put
-// in child's environment when it started it, which the command can't
-// change.
-func sshFromElsewhere(child int) bool {
-	if child <= 0 {
-		return false
-	}
-	var from string
-	for _, kv := range procinfo.Env(child) {
-		if v, ok := strings.CutPrefix(kv, "SSH_CONNECTION="); ok {
-			from, _, _ = strings.Cut(v, " ")
-		}
-	}
-	ip := net.ParseIP(from)
-	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
-		return false
-	}
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return false
-	}
-	for _, a := range addrs {
-		if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 // daemonInstall is the app this daemon runs from (…/Hammock.app), or ""

@@ -1,13 +1,16 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/alexjsp/hammock/internal/client"
+	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/alexjsp/hammock/internal/state"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -15,10 +18,35 @@ import (
 // testPerson is personHook as tests have it: anyone but an agent.
 func testPerson(cl *caller, _ int) bool { return cl == nil || !cl.agent }
 
-// asPerson makes positivelyPerson answer is for the rest of the test.
+// asPerson makes positivelyPerson (the app) answer is for the rest of the test.
 func asPerson(t *testing.T, is func(cl *caller, pid int) bool) {
 	personHook = is
 	t.Cleanup(func() { personHook = testPerson })
+}
+
+// asPlain makes plainCaller answer is for the rest of the test.
+func asPlain(t *testing.T, is func(cl *caller, pid int) bool) {
+	plainHook = is
+	t.Cleanup(func() { plainHook = nil })
+}
+
+// inPaneShell is plainCaller's rule for callers in panes; nobody outside
+// one is placed (the test's own process might have a terminal).
+func inPaneShell(cl *caller, _ int) bool { return cl != nil && cl.direct && !cl.agent }
+
+func nobody(*caller, int) bool { return false }
+
+// dialKind connects a client of kind (the app's is "mac").
+func dialKind(t *testing.T, dir, kind string) *client.Client {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := client.Dial(ctx, SocketPath(dir), kind, t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c
 }
 
 // personGrant waits for a request asking you, and returns it.
@@ -47,7 +75,7 @@ func TestPersonOnlyAsksForUnplacedCallers(t *testing.T) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	defer d.Shutdown()
-	ui := dial(t, dir) // the app (testPerson, before asPerson below)
+	ui := dialKind(t, dir, "mac") // the app (testPerson, before asPerson below)
 	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	g := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
 	tab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
@@ -56,13 +84,9 @@ func TestPersonOnlyAsksForUnplacedCallers(t *testing.T) {
 	agentPane, pane := d.tabs[tab].FocusedPaneId, d.tabs[tab2].FocusedPaneId
 	d.mu.Unlock()
 
-	// The real rules for callers in panes; nobody outside one is placed.
-	asPerson(t, func(cl *caller, pid int) bool {
-		if cl != nil {
-			return cl.direct && !cl.agent
-		}
-		return false
-	})
+	// Nobody else is the app; a pane's shell is yours for scoping.
+	asPerson(t, nobody)
+	asPlain(t, inPaneShell)
 	// An agent asks for something only you may allow.
 	agent := dialAs(t, dir, &caller{pane: agentPane, agent: true}, "cli")
 	go try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_RequestGrant{RequestGrant: &pb.RequestGrant{
@@ -166,6 +190,32 @@ func TestPersonOnlyAsksForUnplacedCallers(t *testing.T) {
 		t.Fatal("remote access turned on though you said no")
 	}
 
+	// Your pane's own shell: yours for typing into panes, but what only
+	// you may do asks you all the same.
+	shell := dialAs(t, dir, &caller{pane: pane, direct: true}, "cli")
+	if _, err := try(shell, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: agentPane, Data: []byte("x")}}}); err != nil {
+		t.Errorf("your shell typing into a pane: %v", err)
+	}
+	if _, err := try(shell, &pb.ClientMessage{Msg: &pb.ClientMessage_ListDevices{ListDevices: &pb.ListDevices{}}}); err != nil {
+		t.Errorf("your shell listing devices: %v", err)
+	}
+	if _, err := try(shell, answer(grant, pb.RespondGrant_DECISION_ALLOW_ONCE)); err == nil || err.Error() != errAnswerInApp.Error() {
+		t.Errorf("your shell answering the agent: %v, want refused", err)
+	}
+	got = ask(shell, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}})
+	req3 := personGrant(t, d, map[string]bool{grant: true, req.Id: true, req2.Id: true})
+	if !strings.HasPrefix(req3.Origin, "From the shell in ") || req3.RequesterPaneId != pane {
+		t.Errorf("from %q (%s)", req3.Origin, req3.RequesterPaneId)
+	}
+	// Gone before you answer: the request goes with it.
+	shell.Close()
+	<-got
+	waitFor(t, "the request withdrawn", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.grants[req3.Id] == nil
+	})
+
 	// Unanswered: it times out, denied.
 	grantTimeout = 300 * time.Millisecond
 	defer func() { grantTimeout = 2 * time.Minute }()
@@ -203,13 +253,11 @@ func TestPersonOnlyMatchesAgentRules(t *testing.T) {
 	}
 }
 
-// What counts as a login session: a terminal's, with nothing of Hammock's
-// or an agent's anywhere above the caller.
-func TestWalkToLogin(t *testing.T) {
-	// pid → parent; names for what each is.
+// A program in a terminal outside Hammock is yours for scoping only with
+// nothing of an agent's, a pane's or Hammock's anywhere above it.
+func TestNoAgentAbove(t *testing.T) {
 	tree := map[int]int{}
 	agents := map[int]bool{}
-	anchors := map[int]bool{}
 	pt := procTree{
 		parent: func(pid int) (int, error) {
 			if p, ok := tree[pid]; ok {
@@ -217,43 +265,28 @@ func TestWalkToLogin(t *testing.T) {
 			}
 			return 0, errors.New("gone")
 		},
-		agent:  func(pid int) bool { return agents[pid] },
-		anchor: func(pid, _, _ int) bool { return anchors[pid] },
+		agent: func(pid int) bool { return agents[pid] },
 	}
 	// A terminal: hmk 10 → zsh 11 → login 12 → Terminal 13 → launchd.
 	tree[10], tree[11], tree[12], tree[13] = 11, 12, 13, 1
-	anchors[12], anchors[13] = true, true
-	if !walkToLogin(10, nil, pt) {
-		t.Error("hmk in Terminal isn't you")
-	}
-	// Detached: hmk 20 → launchd.
-	tree[20] = 1
-	if walkToLogin(20, nil, pt) {
-		t.Error("a detached process is you")
+	if !noAgentAbove(10, nil, pt) {
+		t.Error("hmk in Terminal has an agent above it")
 	}
 	// An agent in that terminal: hmk 30 → claude 31 → zsh 11 ….
 	tree[30], tree[31] = 31, 11
 	agents[31] = true
-	if walkToLogin(30, nil, pt) {
-		t.Error("an agent's command in a terminal is you")
-	}
-	// A tool inside an app bundle (an anchor by its looks), run by an
-	// agent: what's above it counts too.
-	tree[40], tree[41] = 41, 31
-	anchors[41] = true
-	if walkToLogin(40, nil, pt) {
-		t.Error("an agent's build tool is you")
+	if noAgentAbove(30, nil, pt) {
+		t.Error("an agent's command in a terminal")
 	}
 	// Under one of this daemon's panes.
 	tree[50], tree[51] = 51, 13
-	if walkToLogin(50, map[int]bool{51: true}, pt) {
-		t.Error("a pane's process is you")
+	if noAgentAbove(50, map[int]bool{51: true}, pt) {
+		t.Error("a pane's process")
 	}
-	// The caller itself is never its own login.
-	tree[60] = 1
-	anchors[60] = true
-	if walkToLogin(60, nil, pt) {
-		t.Error("an anchor-looking caller with nothing above is you")
+	// Its parent gone: not known.
+	tree[60] = 61
+	if noAgentAbove(60, nil, pt) {
+		t.Error("a process whose parent can't be read")
 	}
 }
 
@@ -272,7 +305,8 @@ func TestUnplacedCallerIsScopedAsAgent(t *testing.T) {
 	d.mu.Lock()
 	yours := d.tabs[tab].FocusedPaneId
 	d.mu.Unlock()
-	asPerson(t, func(cl *caller, pid int) bool { return cl != nil && cl.direct && !cl.agent })
+	asPerson(t, nobody)
+	asPlain(t, inPaneShell)
 
 	outside := dialAs(t, dir, nil, "cli")
 	if _, err := try(outside, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: yours, Data: []byte("x")}}}); err == nil || err.Error() != errAgentScope.Error() {
@@ -321,5 +355,103 @@ func TestUnplacedCallerIsScopedAsAgent(t *testing.T) {
 	// What anything of yours could do anyway, it still can.
 	if _, err := try(outside, &pb.ClientMessage{Msg: &pb.ClientMessage_ServerStatus{ServerStatus: &pb.ServerStatus{}}}); err != nil {
 		t.Errorf("server status: %v", err)
+	}
+}
+
+// Before anything could ask you (no phone paired, no computer linked, the
+// app not open), a program with a terminal that isn't an agent's does what
+// only you may directly; the first phone paired after is told so; and once
+// anything is paired, it asks again (unpairing it is asked about too).
+func TestPersonOnlyBootstrap(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	ui := dial(t, dir) // not the app: kind "test"
+	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
+	tab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	pane := d.tabs[tab].FocusedPaneId
+	d.mu.Unlock()
+	asPerson(t, nobody)
+	asPlain(t, inPaneShell)
+	tty := true
+	hasTTY = func(int) bool { return tty }
+	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
+	pairing := &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}
+
+	// An agent: refused, window or not.
+	agent := dialAs(t, dir, &caller{pane: pane, agent: true}, "cli")
+	if _, err := try(agent, pairing); err == nil || err.Error() != errAgentOnly.Error() {
+		t.Fatalf("an agent: %v", err)
+	}
+	// Without a terminal: nothing could ask you, so it's refused.
+	tty = false
+	shell := dialAs(t, dir, &caller{pane: pane, direct: true}, "cli")
+	if _, err := try(shell, pairing); err == nil || err.Error() != errNobodyToAsk.Error() {
+		t.Fatalf("no terminal: %v", err)
+	}
+	// One scoped as an agent (detached): refused too, terminal or not.
+	tty = true
+	detached := dialAs(t, dir, nil, "cli")
+	if _, err := try(detached, pairing); err == nil || err.Error() != errNobodyToAsk.Error() {
+		t.Fatalf("detached: %v", err)
+	}
+	// In a terminal: done at once.
+	r, err := try(shell, pairing)
+	if err != nil || r.GetPairing() == nil {
+		t.Fatalf("in a terminal, nothing paired: %v %v", r, err)
+	}
+	// The first phone paired is told.
+	d.mu.Lock()
+	if err := d.store.PutDevice(state.Device{ID: "dv_x", Name: "Phone", PublicKey: make([]byte, 32), Paired: time.Now(), LastSeen: time.Now()}); err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	d.afterBootstrap("Paired Phone")
+	item := d.attention[bootstrapAttentionPrefix+"bootstrap"]
+	d.mu.Unlock()
+	if item == nil || !strings.Contains(item.Summary, "Paired Phone from a terminal") || !strings.Contains(item.Summary, "From the shell in") {
+		t.Fatalf("told: %v", item)
+	}
+	// Only you clear that.
+	if _, err := try(shell, &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: item.Id}}}); err == nil || err.Error() != errAnswerInApp.Error() {
+		t.Fatalf("clearing it from a terminal: %v", err)
+	}
+	// Paired: it asks you now, unpairing included.
+	for _, m := range []*pb.ClientMessage{pairing, {Msg: &pb.ClientMessage_RevokeDevice{RevokeDevice: &pb.RevokeDevice{DeviceId: "dv_x"}}}} {
+		go try(shell, m)
+		req := personGrant(t, d, nil)
+		if m.GetRevokeDevice() != nil && !strings.Contains(req.Headline, "unpair Phone") {
+			t.Errorf("asked %q", req.Headline)
+		}
+		d.mu.Lock()
+		d.resolveGrant(req.Id, pb.RespondGrant_DECISION_DENY, "")
+		d.mu.Unlock()
+	}
+	if devs, _ := d.store.Devices(); len(devs) != 1 {
+		t.Fatal("unpaired without asking")
+	}
+}
+
+// With the app open, nothing paired, a terminal asks it: there's someone
+// to ask.
+func TestPersonOnlyAsksTheAppBeforeAnythingIsPaired(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	app := dialKind(t, dir, "mac")
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	asPerson(t, nobody)
+	asPlain(t, func(*caller, int) bool { return true })
+	hasTTY = func(int) bool { return true }
+	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
+	term := dialAs(t, dir, nil, "cli")
+	done := make(chan error, 1)
+	go func() { _, err := try(term, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}); done <- err }()
+	req := personGrant(t, d, nil)
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: req.Id, Decision: pb.RespondGrant_DECISION_ALLOW_ONCE}}})
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
