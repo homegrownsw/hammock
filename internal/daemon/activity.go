@@ -117,6 +117,9 @@ func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summa
 		summary = "was paired with this Mac"
 	case "auth-failed":
 		summary, kind = "failed to sign in", "security"
+		if detail != "" {
+			summary += " (" + detail + ")"
+		}
 	case "device-revoked":
 		name := detail
 		if name == "" {

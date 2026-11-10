@@ -3,6 +3,7 @@ package daemon
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -140,5 +141,47 @@ func TestClosingSharedGroupHangsUpGuests(t *testing.T) {
 		case <-time.After(3 * time.Second):
 			t.Fatalf("guest (subscribed %v) of a closed Group still connected", !unsub)
 		}
+	}
+}
+
+// Failed sign-ins are audited once a minute per IPv6 /64 (not per
+// address), and only so many a minute in all; the rest are counted in one
+// row.
+func TestFailedSignInAuditBudget(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	count := func() (n int, more string) {
+		evs, _ := d.store.RecentAudit(10000)
+		for _, e := range evs {
+			if e.Action == "auth-failed" {
+				n++
+				if e.Detail != "" {
+					more = e.Detail
+				}
+			}
+		}
+		return n, more
+	}
+	for i := range 50 {
+		d.auditSignInFailed(&conn{srcIP: fmt.Sprintf("2001:db8:1:2::%x", i+1)}, "remote", "auth-failed", "", "")
+	}
+	if n, _ := count(); n != 1 {
+		t.Fatalf("one /64: %d rows, want 1", n)
+	}
+	for i := range 200 {
+		d.auditSignInFailed(&conn{srcIP: fmt.Sprintf("2001:db8:%x::1", i+10)}, "remote", "auth-failed", "", "")
+	}
+	if n, _ := count(); n != failAuditBudget {
+		t.Fatalf("many sources: %d rows, want %d", n, failAuditBudget)
+	}
+	if d.remote.failMore != 200-(failAuditBudget-1) {
+		t.Fatalf("counted %d more, want %d", d.remote.failMore, 200-(failAuditBudget-1))
+	}
+	d.mu.Unlock()
+	d.auditMoreFailed()
+	d.mu.Lock()
+	if n, more := count(); n != failAuditBudget+1 || more != "181 more failed sign-ins, not recorded one by one" {
+		t.Fatalf("after the minute: %d rows, %q", n, more)
 	}
 }

@@ -339,7 +339,7 @@ func (d *Daemon) peerJoin(c *conn, msgID uint64, m *pb.PeerJoin) (*pb.ServerMess
 		}
 	}
 	if g == nil {
-		d.audit("peer:"+c.name, "join-rejected", "", "invalid invite")
+		d.auditSignInFailed(c, "peer:"+c.name, "join-rejected", "", "invalid invite")
 		return nil, errors.New("this invite link no longer works; ask for a new one")
 	}
 	if r := memberRole(g, c.peer); guestRole(r) {

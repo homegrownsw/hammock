@@ -83,11 +83,46 @@ func TestPruneAudit(t *testing.T) {
 	if _, err := s.db.Exec(`UPDATE audit SET ts = 1 WHERE id = (SELECT MAX(id) FROM audit)`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PruneAudit(4, time.Hour); err != nil {
+	if err := s.PruneAudit(4, 4, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	evs, _ := s.RecentAudit(100)
 	if len(evs) != 3 {
 		t.Fatalf("kept %d events, want the newest 4 less the old one", len(evs))
+	}
+}
+
+// Failed sign-ins and joins are kept to a cap of their own: however many
+// there are, they don't push the rest of the history out.
+func TestPruneAuditFailuresSeparately(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for range 3 {
+		if err := s.Audit(AuditEvent{Actor: "user", Action: "paired"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 20 {
+		if err := s.Audit(AuditEvent{Actor: "remote", Action: []string{"auth-failed", "pair-rejected", "join-rejected"}[i%3]}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.PruneAudit(5, 4, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	evs, _ := s.RecentAudit(100)
+	var real, failed int
+	for _, e := range evs {
+		if e.Action == "paired" {
+			real++
+		} else {
+			failed++
+		}
+	}
+	if real != 3 || failed != 4 {
+		t.Fatalf("kept %d others and %d failures, want 3 and 4", real, failed)
 	}
 }

@@ -24,6 +24,7 @@ type Store struct {
 // auditKeepAge: enough history to look back on, without growing for ever.
 const (
 	auditKeepRows   = 50000
+	auditKeepFailed = 5000 // failed sign-ins and joins, on top (PruneAudit)
 	auditKeepAge    = 90 * 24 * time.Hour
 	auditPruneEvery = 500
 )
@@ -107,7 +108,7 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	// The audit log is bounded (it wasn't before 2026-11-09).
-	if err := (&Store{db: db}).PruneAudit(auditKeepRows, auditKeepAge); err != nil {
+	if err := (&Store{db: db}).PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("state: prune audit: %w", err)
 	}
@@ -264,16 +265,24 @@ func (s *Store) Audit(e AuditEvent) error {
 	_, err := s.db.Exec(`INSERT INTO audit(ts, actor, action, target, detail, who, summary, kind) VALUES(?,?,?,?,?,?,?,?)`,
 		time.Now().UnixMilli(), e.Actor, e.Action, e.Target, e.Detail, e.Who, e.Summary, e.Kind)
 	if err == nil && s.audits.Add(1)%auditPruneEvery == 0 {
-		err = s.PruneAudit(auditKeepRows, auditKeepAge)
+		err = s.PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge)
 	}
 	return err
 }
 
-// PruneAudit drops audit events beyond the newest keep, and those older
-// than maxAge.
-func (s *Store) PruneAudit(keep int, maxAge time.Duration) error {
-	_, err := s.db.Exec(`DELETE FROM audit WHERE ts < ? OR id <= (SELECT id FROM audit ORDER BY id DESC LIMIT 1 OFFSET ?)`,
-		time.Now().Add(-maxAge).UnixMilli(), keep)
+// failedActions are the audit events anyone who can reach this Mac can
+// cause (failed sign-ins and joins): they're kept to a cap of their own,
+// so they can't push the rest of the history out.
+const failedActions = `('auth-failed','pair-rejected','join-rejected')`
+
+// PruneAudit drops audit events older than maxAge, failed sign-ins and
+// joins beyond the newest keepFailed of them, and the rest beyond the
+// newest keep.
+func (s *Store) PruneAudit(keep, keepFailed int, maxAge time.Duration) error {
+	_, err := s.db.Exec(`DELETE FROM audit WHERE ts < ?
+		OR (action IN `+failedActions+` AND id <= (SELECT id FROM audit WHERE action IN `+failedActions+` ORDER BY id DESC LIMIT 1 OFFSET ?))
+		OR (action NOT IN `+failedActions+` AND id <= (SELECT id FROM audit WHERE action NOT IN `+failedActions+` ORDER BY id DESC LIMIT 1 OFFSET ?))`,
+		time.Now().Add(-maxAge).UnixMilli(), keepFailed, keep)
 	return err
 }
 

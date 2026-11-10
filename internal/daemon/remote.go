@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,35 +88,86 @@ type remoteState struct {
 	gate        authGate
 	preAuth     map[*conn]func()     // unauthenticated connections → what to do once they are
 	failedAt    map[string]time.Time // source address → when a failed sign-in from it was last audited
+	failWindow  time.Time            // the minute failAudited counts in
+	failAudited int                  // failed sign-ins audited in it
+	failMore    int                  // and not, to be audited as one row
 }
 
-// failAuditEvery is how often a failed sign-in from one address is audited
-// (the connection closes after each; the rest aren't recorded).
-const failAuditEvery = time.Minute
+// failAuditEvery is how often a failed sign-in from one address (an IPv6
+// one's /64) is audited (the connection closes after each; the rest aren't
+// recorded). failAuditBudget is how many are audited a minute in all:
+// beyond it, one row a minute says how many more there were.
+const (
+	failAuditEvery  = time.Minute
+	failAuditBudget = 20
+)
+
+// failSource is the address failed sign-ins are counted against: an IPv6
+// address's /64 (one network can have any number of addresses in it), an
+// IPv4 address itself.
+func failSource(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil || a.Unmap().Is4() {
+		return ip
+	}
+	p, err := a.Prefix(64)
+	if err != nil {
+		return ip
+	}
+	return p.String()
+}
 
 // auditSignInFailed audits a failed sign-in (Pair, Authenticate,
-// PeerHello) from c, at most once every failAuditEvery per source
-// address: anyone who can reach the listener can fail as often as they
-// like. Callers hold d.mu.
+// PeerHello, or a join with a bad invite) from c, at most once every
+// failAuditEvery per source (failSource), and failAuditBudget a minute
+// in all, the rest counted in one row a minute: anyone who can reach the
+// listener can fail as often as they like, from as many addresses as
+// they have. Callers hold d.mu.
 func (d *Daemon) auditSignInFailed(c *conn, actor, action, target, detail string) {
 	now := time.Now()
-	if d.remote.failedAt == nil {
-		d.remote.failedAt = map[string]time.Time{}
+	r := &d.remote
+	if r.failedAt == nil {
+		r.failedAt = map[string]time.Time{}
 	}
-	if now.Sub(d.remote.failedAt[c.srcIP]) < failAuditEvery {
+	src := failSource(c.srcIP)
+	if now.Sub(r.failedAt[src]) < failAuditEvery {
 		return
 	}
-	if len(d.remote.failedAt) >= 1024 {
-		for ip, at := range d.remote.failedAt {
+	if len(r.failedAt) >= 1024 {
+		for ip, at := range r.failedAt {
 			if now.Sub(at) >= failAuditEvery {
-				delete(d.remote.failedAt, ip)
+				delete(r.failedAt, ip)
 			}
 		}
 	}
-	if len(d.remote.failedAt) < 1024 {
-		d.remote.failedAt[c.srcIP] = now
+	if len(r.failedAt) < 1024 {
+		r.failedAt[src] = now
 	}
+	if now.Sub(r.failWindow) >= failAuditEvery {
+		r.failWindow, r.failAudited = now, 0
+	}
+	if r.failAudited >= failAuditBudget {
+		if r.failMore++; r.failMore == 1 {
+			// One row for the rest, once this minute is up.
+			time.AfterFunc(time.Until(r.failWindow.Add(failAuditEvery)), d.auditMoreFailed)
+		}
+		return
+	}
+	r.failAudited++
 	d.audit(actor, action, deviceName(target), deviceName(detail))
+}
+
+// auditMoreFailed records how many failed sign-ins weren't audited one by
+// one (auditSignInFailed).
+func (d *Daemon) auditMoreFailed() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	n := d.remote.failMore
+	if n == 0 {
+		return
+	}
+	d.remote.failMore = 0
+	d.audit("remote", "auth-failed", "", strconv.Itoa(n)+" more failed sign-ins, not recorded one by one")
 }
 
 // authGate counts unauthenticated remote connections.
