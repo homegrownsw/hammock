@@ -11,7 +11,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   macos:
-    runs-on: macos-26
+    # The Xcode 27 image (standard arm64, free for public repos; macos-26 has no Xcode 27).
+    # Not xcode-27-xlarge: larger runners are billed even on public repos.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
