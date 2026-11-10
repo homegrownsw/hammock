@@ -608,23 +608,34 @@ func (d *Daemon) revokeStreams(c *conn) {
 	if c.peer == "" {
 		return
 	}
-	sc := d.scope(c.peer)
-	linked := d.isLinked(c.peer)
-	outside := func(paneID string) bool {
-		if strings.HasPrefix(paneID, "screen:") {
-			// A display, not a pane: in no Group, and only ever your linked
-			// computers' (screenAllowed), however Groups change.
-			return !linked
+	// reach is what's outside c's reach as things stand. What's found here
+	// is judged again, under the lock, before it's let go off it: c may
+	// have been let back in and watched it again meanwhile.
+	reach := func() func(paneID string) bool {
+		sc := d.scope(c.peer)
+		linked := d.isLinked(c.peer)
+		return func(paneID string) bool {
+			if strings.HasPrefix(paneID, "screen:") {
+				// A display, not a pane: in no Group, and only ever your
+				// linked computers' (screenAllowed), however Groups change.
+				return !linked
+			}
+			_, in := sc[d.groupOfPane(paneID)]
+			return !in
 		}
-		_, in := sc[d.groupOfPane(paneID)]
-		return !in
 	}
-	var logs []*logPane
+	outside := reach()
+	stillOutside := func(paneID string) bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return reach()(paneID)
+	}
+	logs := map[string]*logPane{}
 	for id, p := range d.panes {
 		if outside(id) {
 			p.detach(c)
 			if p.log != nil {
-				logs = append(logs, p.log)
+				logs[id] = p.log
 			}
 		}
 	}
@@ -641,13 +652,11 @@ func (d *Daemon) revokeStreams(c *conn) {
 		for _, ms := range gone {
 			ms.end("you no longer have access to that pane")
 		}
-		d.browsers.closeMenusOutside(c, func(paneID string) bool {
-			d.mu.Lock()
-			defer d.mu.Unlock()
-			return outside(paneID)
-		})
-		for _, lp := range logs {
-			lp.unwatch(c) // (its lock isn't taken under the daemon's)
+		d.browsers.closeMenusOutside(c, stillOutside)
+		for id, lp := range logs {
+			if stillOutside(id) {
+				lp.unwatch(c) // (its lock isn't taken under the daemon's)
+			}
 		}
 	}()
 	var ws []*agentWatch
@@ -668,10 +677,7 @@ func (d *Daemon) revokeStreams(c *conn) {
 			if !has {
 				continue
 			}
-			d.mu.Lock()
-			still := outside(w.p.id)
-			d.mu.Unlock()
-			if still {
+			if stillOutside(w.p.id) {
 				w.drop(c)
 			}
 		}

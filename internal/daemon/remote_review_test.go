@@ -363,3 +363,32 @@ func TestSecondPeerHelloRefused(t *testing.T) {
 		t.Fatalf("Authenticate after PeerHello: %v", err)
 	}
 }
+
+// A guest let back in (and watching again) before its log views out of
+// reach are let go keeps them: they're judged again first.
+func TestLogUnwatchRechecksReach(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	host, h, peer, uid, gid, _, _ := sharedSetup(t, pb.Role_ROLE_VIEWER)
+	ltab := client.CreatedID(call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: gid,
+		Pane: &pb.PaneSpec{Log: &pb.LogSource{Kind: "command", Command: []string{`while true; do echo "INFO x"; sleep 0.1; done`}}}}}}))
+	host.mu.Lock()
+	logPane := host.tabs[ltab].FocusedPaneId
+	host.mu.Unlock()
+	call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_WatchLog{WatchLog: &pb.WatchLog{PaneId: logPane, Watch: true}}})
+	pc := peerConn(t, host, uid)
+	host.mu.Lock()
+	lp := host.panes[logPane].log
+	// Out of reach for a moment, then back in, before the unwatch runs.
+	host.tabs[ltab].GroupId = "gr_elsewhere"
+	host.revokeStreams(pc)
+	host.tabs[ltab].GroupId = gid
+	host.mu.Unlock()
+	time.Sleep(300 * time.Millisecond)
+	lp.mu.Lock()
+	_, watching := lp.watchers[pc]
+	lp.mu.Unlock()
+	if !watching {
+		t.Fatal("a log view back in reach was let go")
+	}
+}
