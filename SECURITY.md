@@ -29,7 +29,8 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
   background, a launchd job, an agent outside Hammock) is scoped as an agent. This is a guardrail for
   well-meaning agents, not a sandbox: anything running as you can, in the end, do what you can (type
   into your shell, drive the app through accessibility, edit your shell's startup files or Hammock's
-  state). For a real boundary use your agent harness's sandbox.
+  state, or read its `identity.key` and sign in to your linked computers as this one: a linked computer
+  is trusted like an SSH key, and like `~/.ssh`, anything running as you can read it). For a real boundary use your agent harness's sandbox.
 - **Notifications.** Push payloads are end-to-end encrypted per phone; the relay (`relay/push`) sees
   device tokens, ciphertext, keyed-hash tags and the category.
 - **Untrusted output.** Terminal output, web pages and transcripts are untrusted: links that would open
