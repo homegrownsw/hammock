@@ -12,6 +12,12 @@ final class SharingUI {
     var joinLink: String?
     /// The pairing code is up (File ▸ Pair a Device…, `hmk pair`).
     var pairing = false
+
+    /// Whether to offer sharing this Group: one of your own, with group
+    /// sharing on in Settings ▸ Sharing.
+    static func canShare(_ group: WorkspaceGroup) -> Bool {
+        !group.isRemote && Prefs.shared.bool(.groupSharing)
+    }
 }
 
 /// Sharing a Group from this Mac: who's in it, the invite link, and stopping.
@@ -221,6 +227,7 @@ struct SharingSettings: View {
     @State private var name = ""
     @State private var deviceName = ""
     @State private var confirmStop = false
+    @State private var confirmTurnOff = false
 
     var body: some View {
         Form {
@@ -254,11 +261,15 @@ struct SharingSettings: View {
                 }
             }
             Section("Sharing") {
+                Toggle("Share Groups with other people", isOn: sharingBinding)
+                    .settingAnchor("sharing.groups")
+                Text("Shows Share Group in the toolbar, the Group menu and the command palette. Turning it off stops sharing every Group.")
+                    .font(.caption).foregroundStyle(.secondary)
                 let s = model.sharing
                 LabeledContent("Shared Groups", value: "\(s.groups)")
                 LabeledContent("People here now", value: "\(s.online)")
                 Button("Stop All Sharing", role: .destructive) { confirmStop = true }
-                    .disabled(s.groups == 0 && !model.groups.contains(where: \.inviteActive))
+                    .disabled(!isSharing)
             }
         }
         .formStyle(.grouped)
@@ -272,7 +283,25 @@ struct SharingSettings: View {
         } message: {
             Text("Everyone is disconnected and every invite link stops working.")
         }
+        .confirmationDialog("Turn off group sharing?", isPresented: $confirmTurnOff) {
+            Button("Stop Sharing and Turn Off", role: .destructive) {
+                Prefs.shared.set(.groupSharing, false)
+                Task { await model.stopSharing(nil) }
+            }
+        } message: {
+            Text("Every Group you share stops being shared: everyone is disconnected and every invite link stops working.")
+        }
     }
+
+    /// Turning group sharing off while anything's shared asks first, then
+    /// stops it all.
+    private var sharingBinding: Binding<Bool> {
+        Binding(get: { Prefs.shared.bool(.groupSharing) }, set: { on in
+            if !on, isSharing { confirmTurnOff = true } else { Prefs.shared.set(.groupSharing, on) }
+        })
+    }
+
+    private var isSharing: Bool { model.sharing.groups > 0 || model.groups.contains(where: \.inviteActive) }
 
     private func saveDeviceName() {
         let d = deviceName.trimmingCharacters(in: .whitespaces)

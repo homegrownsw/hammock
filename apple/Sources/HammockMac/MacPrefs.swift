@@ -13,4 +13,9 @@ extension Pref {
 
     /// Simulator panes draw the device around the screen.
     static let simulatorFrame = Pref("simulator-frame", defaults: "simulatorFrame", true)
+
+    /// Sharing Groups with other people: off, the Share Group buttons and
+    /// menu items are hidden (SharingUI.canShare). Settings stops every share
+    /// when it's turned off.
+    static let groupSharing = Pref("group-sharing", defaults: "groupSharing", false)
 }

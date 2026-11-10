@@ -167,9 +167,11 @@ struct HammockApp: App {
                 Button("Change Group Folder…") { if let g = currentGroup { GroupFolder.choose(model, g) } }
                     .keyboardShortcut(Keys.changeGroupFolder)
                     .disabled(!(currentGroup.map(GroupFolder.canChange) ?? false))
-                Button("Share Group…") { if let g = currentGroup { SharingUI.shared.shareGroup = g.id } }
-                    .keyboardShortcut(Keys.shareGroup)
-                    .disabled(currentGroup?.isRemote != false)
+                if Prefs.shared.bool(.groupSharing) {
+                    Button("Share Group…") { if let g = currentGroup { SharingUI.shared.shareGroup = g.id } }
+                        .keyboardShortcut(Keys.shareGroup)
+                        .disabled(currentGroup?.isRemote != false)
+                }
                 Divider()
                 Button("Command Palette…") { PaletteState.shared.toggle() }.keyboardShortcut(Keys.palette)
                 Button("Find Session…") { PaletteState.shared.open(.sessions) }.keyboardShortcut(Keys.findSession)

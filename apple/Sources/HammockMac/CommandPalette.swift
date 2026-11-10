@@ -253,10 +253,12 @@ struct CommandPalette: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { GroupFolder.choose(model, g) }
                 }
             }
-            if !g.isRemote {
+            if SharingUI.canShare(g) {
                 action("share-group", "Share Group…", "person.2", .blue, "invite collaborate multiplayer link people", keys: Keys.shareGroup) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { SharingUI.shared.shareGroup = g.id }
                 }
+            }
+            if !g.isRemote {
                 // Your own Groups take your tabs; a shared Group's stay with its host.
                 if let tab {
                     for other in model.groups where other.id != g.id && !other.isRemote {

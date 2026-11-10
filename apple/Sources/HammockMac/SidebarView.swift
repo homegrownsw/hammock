@@ -255,7 +255,9 @@ struct SidebarView: View {
                     Button("Leave Group", role: .destructive) { Task { await model.leave(group.id) } }
                 } else {
                     Button("Configure Group…") { TabSheets.shared.configuring = group }
-                    Button("Share…") { SharingUI.shared.shareGroup = group.id }
+                    if SharingUI.canShare(group) {
+                        Button("Share…") { SharingUI.shared.shareGroup = group.id }
+                    }
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                     Button("New Agent Tab…") { AgentLauncher.shared.open(model, groupID: group.id) }

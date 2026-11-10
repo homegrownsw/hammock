@@ -63,7 +63,7 @@ struct TabDetailView: View {
                             Button("Leave Group", role: .destructive) { Task { await model.leave(group.id) } }
                         } label: { Label("Shared Group", systemImage: "person.2.fill") }
                         .help("Shared with you")
-                    } else {
+                    } else if let group = model.group(of: tab), SharingUI.canShare(group) {
                         Button { SharingUI.shared.shareGroup = tab.groupID } label: {
                             Label("Share Group", systemImage: model.group(of: tab)?.isShared == true ? "person.2.fill" : "person.2")
                         }

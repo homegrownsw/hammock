@@ -364,6 +364,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   collapsed-group-agents = false (true: a collapsed Group still shows its tabs with an active agent)
 #   confirm-close-busy-agent = true   (ask before closing a pane or tab whose agent is at work)
 #   simulator-frame = true         (simulator panes draw the device around the screen)
+#   group-sharing = false          (true: Share Group in the toolbar, menus and palette, to share Groups with other people)
 #   agent-default-view = terminal | agent   (which view agent panes open in)
 #   agent-font-family = NAME, agent-font-size = 14, agent-line-spacing = 3   (the agent view's text; unset: the system font)
 #   agent-code-font-family = NAME, agent-code-font-size = 13   (its code; unset: the terminal's font)
