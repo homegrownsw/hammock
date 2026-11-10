@@ -63,6 +63,9 @@ const (
 func cleanHostState(u *pb.StateUpdate) {
 	for _, g := range u.Groups {
 		g.Name, g.Folder = cleanLine(g.Name, nameMax), cleanLine(g.Folder, pathMax)
+		if g.Icon = cleanLine(g.Icon, nameMax); !validIcon(g.Icon) {
+			g.Icon = "" // an emoji (or a symbol's name), nothing else
+		}
 	}
 	for _, t := range u.Tabs {
 		t.Name, t.AutoName = cleanLine(t.Name, nameMax), cleanLine(t.AutoName, nameMax)

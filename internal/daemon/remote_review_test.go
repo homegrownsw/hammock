@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -456,5 +457,44 @@ func TestHostMarksCopyingMenuItems(t *testing.T) {
 	bm := (<-c.out).GetBrowserMenu()
 	if bm == nil || len(bm.Items) != 3 || bm.Items[0].Copies || !bm.Items[1].Copies || !bm.Items[2].Copies {
 		t.Fatalf("menu: %v", bm)
+	}
+}
+
+// A host's Group icons are an emoji or a symbol's name, nothing else; a
+// pasted invite's names and a device's name arrive without controls or
+// bidi overrides.
+func TestCleanIconsInvitesAndDeviceNames(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	d.mu.Lock()
+	l := newLink(d, &pb.InviteToken{CertSha256: "aa", HostUserId: "us_a"})
+	d.links["aa"] = l
+	l.applyLocked(&pb.StateUpdate{Groups: []*pb.Group{
+		{Id: "gr_1", Icon: "🚀"}, {Id: "gr_2", Icon: "👨‍👩‍👧"}, {Id: "gr_3", Icon: "\x1b[31m"},
+		{Id: "gr_4", Icon: "a long line of text"}, {Id: "gr_5", Icon: "🚀‮"}, {Id: "gr_6", Icon: "star.fill"},
+	}}, false)
+	for id, want := range map[string]string{"gr_1": "🚀", "gr_2": "👨‍👩‍👧", "gr_3": "", "gr_4": "", "gr_5": "🚀", "gr_6": "star.fill"} {
+		if got := l.groups[id].Icon; got != want {
+			t.Errorf("%s icon %q, want %q", id, got, want)
+		}
+	}
+	delete(d.links, "aa")
+	d.mu.Unlock()
+
+	if got := deviceName(" Phone‮gnp.exe\x1b "); got != "Phonegnp.exe" {
+		t.Errorf("device name %q", got)
+	}
+
+	tok, _ := proto.Marshal(&pb.InviteToken{HostName: "Host\x1b]0;x\x07⁦", GroupName: "G‮roup\n", Addresses: []string{"127.0.0.1:1"},
+		CertSha256: "bb", HostUserId: "us_b", Secret: []byte{1}})
+	if _, err := d.joinShared(&conn{d: d, out: make(chan *pb.ServerMessage, 4)}, 0, "hammock://join/"+base64.RawURLEncoding.EncodeToString(tok)); err != errDeferred {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	jl := d.links["bb"]
+	name, group := jl.tok.HostName, jl.tok.GroupName
+	d.mu.Unlock()
+	jl.close()
+	if name != "Host]0;x" || group != "Group" {
+		t.Errorf("invite names %q %q", name, group)
 	}
 }

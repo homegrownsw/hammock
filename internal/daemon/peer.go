@@ -161,6 +161,7 @@ func (d *Daemon) loadLinks() {
 		if proto.Unmarshal(b, tok) != nil {
 			continue
 		}
+		tok.HostName, tok.GroupName = cleanLine(tok.HostName, nameMax), cleanLine(tok.GroupName, nameMax) // (kept by an earlier build)
 		l := newLink(d, tok)
 		if c, ok := caches[key]; ok {
 			u := &pb.StateUpdate{}
@@ -187,6 +188,8 @@ func (d *Daemon) joinShared(c *conn, id uint64, link string) (*pb.ServerMessage,
 	if err != nil || proto.Unmarshal(b, tok) != nil || len(tok.Addresses) == 0 || tok.CertSha256 == "" || tok.HostUserId == "" {
 		return nil, errors.New("that invite link is damaged; ask for a new one")
 	}
+	// Its names are shown, and put in errors and the audit log.
+	tok.HostName, tok.GroupName = cleanLine(strings.TrimSpace(tok.HostName), nameMax), cleanLine(strings.TrimSpace(tok.GroupName), nameMax)
 	if tok.HostUserId == d.id.me.UserId {
 		return nil, errors.New("that Group is on this Mac")
 	}

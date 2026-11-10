@@ -26,7 +26,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/coder/websocket"
 
@@ -723,18 +722,10 @@ func (d *Daemon) pair(c *conn, m *pb.Pair) (*pb.ServerMessage, error) {
 // authenticate checks a device's signature over the connection's nonce
 // (bound to this host's certificate). Callers hold d.mu.
 // deviceName is a name a device gives itself, as this Mac shows it: one
-// line, no control characters, at most 64 characters.
+// line, no control characters (bidi controls among them), at most 64
+// characters.
 func deviceName(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, strings.TrimSpace(s))
-	if r := []rune(s); len(r) > 64 {
-		s = strings.TrimSpace(string(r[:64]))
-	}
-	return s
+	return strings.TrimSpace(cleanLine(strings.TrimSpace(s), 64))
 }
 
 func (d *Daemon) authenticate(c *conn, m *pb.Authenticate) error {
