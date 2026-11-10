@@ -91,3 +91,40 @@ func TestLinkedScreenSurvivesPaneClose(t *testing.T) {
 		t.Fatal("a menu in a pane still in reach was closed")
 	}
 }
+
+// A guest's link to a host where it's in no Group any more (removed while
+// it was away, say), with no join waiting, ends once it has signed in and
+// seen so, rather than signing in again and again as a stranger.
+func TestGuestLinkEndsWhenInNoGroup(t *testing.T) {
+	host, _ := startHost(t)
+	guest := startDaemon(t, shortDir(t))
+	addrs := host.RemoteAddrs()
+	host.mu.Lock()
+	tok := &pb.InviteToken{HostName: "host", Addresses: addrs, CertSha256: host.remote.fingerprint, HostUserId: host.id.me.UserId}
+	host.mu.Unlock()
+	guest.mu.Lock()
+	l := newLink(guest, tok)
+	// What it last saw there: a Group it has since been removed from.
+	l.applyLocked(&pb.StateUpdate{Full: true, Groups: []*pb.Group{{Id: "gr_gone"}}}, false)
+	guest.links[linkKey(tok)] = l
+	guest.persist(guest.store.PutRecord("peerlink", linkKey(tok), tok))
+	guest.mu.Unlock()
+	go l.run()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		guest.mu.Lock()
+		gone := guest.links[linkKey(tok)] == nil
+		recs, _ := guest.store.Records("peerlink")
+		guest.mu.Unlock()
+		if gone && len(recs) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the link to a host it's in no Group on is still kept")
+		}
+	}
+	select {
+	case <-l.stop:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the link still redials")
+	}
+}

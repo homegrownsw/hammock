@@ -307,6 +307,10 @@ func (l *peerLink) run() {
 		cl, err := l.dial()
 		if err == nil {
 			backoff = time.Second
+			// In no Group there and no join waiting (removed, its Groups
+			// closed or unshared, or left while it was away): the link ends
+			// here, rather than signing in again and again as a stranger.
+			l.tidy()
 			l.serve(cl)
 		} else {
 			l.d.mu.Lock()
