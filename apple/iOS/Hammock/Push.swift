@@ -138,10 +138,9 @@ final class Push: NSObject {
     }
 
     /// The app's own lock (Require Face ID) would ask before showing it now:
-    /// a notification's answer waits for it, in the app.
-    private var appLocked: Bool {
-        UserDefaults.standard.bool(forKey: AppLock.key) && UIApplication.shared.applicationState != .active && AppLock.due
-    }
+    /// a notification's answer waits for it, in the app. Its own state, not
+    /// whether the app is active (AppLock.open).
+    private var appLocked: Bool { AppLock.locked }
 
     func failed(_ error: Error) { status = "iOS refused: \(error.localizedDescription)" }
 

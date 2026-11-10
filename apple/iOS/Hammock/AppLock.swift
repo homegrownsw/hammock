@@ -47,6 +47,17 @@ enum AppLock {
         return Date().timeIntervalSince1970 - at >= Double(UserDefaults.standard.integer(forKey: afterKey))
     }
 
+    /// Unlocked since the app last went to the background (by Face ID, or
+    /// back before Lock After was up), kept by the cover. What a
+    /// notification's answer checks, rather than whether the app is active:
+    /// the app can be active with its cover still up, and a warm app opened
+    /// by an action may be active before the cover has locked.
+    @MainActor static var open = false
+
+    /// The app's lock would stop you now: required, not unlocked since it
+    /// went away, and away long enough (or never seen leaving).
+    @MainActor static var locked: Bool { UserDefaults.standard.bool(forKey: key) && !open && due }
+
     /// Locked as it opens: required, and away long enough.
     static var dueOnLaunch: Bool { UserDefaults.standard.bool(forKey: key) && due }
 
@@ -93,6 +104,7 @@ private struct AppLockCover: ViewModifier {
                 switch p {
                 case .background:
                     AppLock.wentAway()
+                    AppLock.open = false
                     askOnReturn = true
                     justUnlocked = false
                     opening = false  // the next time it covers, it's shut
@@ -102,6 +114,7 @@ private struct AppLockCover: ViewModifier {
                     if !locked, askOnReturn, AppLock.due { locked = true }
                     if locked, askOnReturn { ask() }
                     askOnReturn = false
+                    if !locked { AppLock.open = true }  // back within Lock After
                 default: break
                 }
             }
@@ -111,6 +124,7 @@ private struct AppLockCover: ViewModifier {
                 locked = false
                 askOnReturn = false
                 justUnlocked = required  // and no cover while its prompt closes
+                AppLock.open = true
             }
             .onChange(of: locked) { _, now in if !now { settle() } }
     }
@@ -137,6 +151,7 @@ private struct AppLockCover: ViewModifier {
             withAnimation(.spring(duration: 0.25)) { opening = true }
             try? await Task.sleep(for: .milliseconds(200))
             justUnlocked = true
+            AppLock.open = true
             locked = false
         }
     }
