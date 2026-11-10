@@ -15,6 +15,7 @@ import "C"
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -122,3 +123,6 @@ func loginAnchor(pid, child, caller int) bool {
 func responsibleFor(pid int) int {
 	return int(C.hmk_responsible(C.int(pid)))
 }
+
+// writePersonKey: only Linux's Unraid page needs one (person_linux.go).
+func writePersonKey(string, *slog.Logger) {}

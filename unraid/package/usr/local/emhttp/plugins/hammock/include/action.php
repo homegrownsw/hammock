@@ -16,11 +16,30 @@ function reply($data, $code = 200) {
   exit;
 }
 
+// person_env is the environment commands run with from this page: with
+// the key hmkd leaves in its state folder for it (person.key), which tells
+// hmkd it's you asking, not some other program under php-fpm. Given to the
+// command alone (proc_open), never put in php-fpm's own environment, which
+// other pages' commands would inherit.
+function person_env() {
+  $env = getenv();
+  $e = @file_get_contents('/var/run/hammock.env') ?: '';
+  if (preg_match("/^export HMK_DIR='([^']*)'/m", $e, $m)) {
+    $k = @file_get_contents($m[1] . '/person.key');
+    if ($k !== false && trim($k) !== '') $env['HMK_PERSON_KEY'] = trim($k);
+  }
+  return $env;
+}
+
 // run runs a command (each argument quoted), returning its output and status.
 function run($argv) {
   $cmd = implode(' ', array_map('escapeshellarg', $argv)) . ' 2>&1';
-  exec($cmd, $out, $status);
-  return [implode("\n", $out), $status];
+  $p = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w']], $pipes, null, person_env());
+  if (!is_resource($p)) return ['', 1];
+  $out = stream_get_contents($pipes[1]);
+  fclose($pipes[1]);
+  $status = proc_close($p);
+  return [rtrim($out), $status];
 }
 
 // hmk runs hmk with args; with $json, decodes what it prints.

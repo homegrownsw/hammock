@@ -341,6 +341,7 @@ func (d *Daemon) restore() error {
 // Serve listens on the client socket and blocks until Shutdown.
 func (d *Daemon) Serve() error {
 	sock := SocketPath(d.cfg.Dir)
+	writePersonKey(d.cfg.Dir, d.log) // (Linux: Unraid's page, person.go)
 	_ = os.Remove(sock)
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
