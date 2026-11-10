@@ -22,6 +22,10 @@ final class PaneMotion {
     /// resize, not held still through a full zoom.
     nonisolated static let switchDuration = 0.14
     nonisolated static let switchAnimation = Animation.smooth(duration: switchDuration)
+    /// The sidebar sliding in or out: AppKit's split view animates it (about
+    /// 0.2s), resizing every pane in the tab as it goes; a little longer, so
+    /// the last frames don't resize terminals either.
+    nonisolated static let sidebarDuration = 0.35
 
     private var running = 0
     private var generation = 0

@@ -462,7 +462,12 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columns) {
+        // Panes hold still while the sidebar slides (PaneMotion), whichever
+        // way it's toggled: the window's button sets this binding.
+        NavigationSplitView(columnVisibility: Binding(get: { columns }, set: { c in
+            if c != columns { PaneMotion.shared.hold(for: PaneMotion.sidebarDuration) }
+            columns = c
+        })) {
             SidebarView(model: model)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 272, max: 380)
                 // New Group, beside the button that hides the sidebar.
@@ -523,7 +528,9 @@ struct ContentView: View {
         // Hide Sidebar from the menu or palette: slide, as the window's button does.
         .onChange(of: sidebarHidden) { _, hidden in
             let want: NavigationSplitViewVisibility = hidden ? .detailOnly : .all
-            if columns != want { withAnimation { columns = want } }
+            guard columns != want else { return }
+            PaneMotion.shared.hold(for: PaneMotion.sidebarDuration)
+            withAnimation { columns = want }
         }
         // The window's button: remembered, and the menu's name follows.
         .onChange(of: columns) { _, c in
