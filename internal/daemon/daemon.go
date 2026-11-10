@@ -868,10 +868,36 @@ func (d *Daemon) closeGroup(id string, remember bool) error {
 	for _, tid := range slices.Clone(s.TabIds) {
 		_ = d.closeTab(tid)
 	}
+	guests := map[string]bool{}
+	for _, m := range s.Members {
+		if guestRole(m.Role) {
+			guests[m.UserId] = true
+		}
+	}
 	delete(d.groups, id)
 	d.persist(d.store.DeleteGroup(id))
 	_ = os.Remove(d.storedPicture(id))
-	d.publish(&pb.StateUpdate{DeletedGroupIds: []string{id}})
+	u := &pb.StateUpdate{DeletedGroupIds: []string{id}}
+	// A shared Group's link stops working, and those waiting on it are
+	// turned away.
+	if d.store.Setting(inviteKey(id)) != "" {
+		d.persist(d.store.SetSetting(inviteKey(id), ""))
+	}
+	for jid, j := range d.joins {
+		if j.req.GroupId == id {
+			delete(d.joins, jid)
+			u.ResolvedJoinIds = append(u.ResolvedJoinIds, jid)
+			j.c.send(&pb.ServerMessage{ReplyTo: j.msgID, Msg: &pb.ServerMessage_Error{Error: &pb.Error{Message: "that Group was closed"}}})
+			guests[j.req.UserId] = true
+		}
+	}
+	d.publish(u)
+	// Its guests go once they're in no Group here, as when removed.
+	for c := range d.conns {
+		if guests[c.peer] {
+			d.hangUpIfOutside(c, false)
+		}
+	}
 	return nil
 }
 

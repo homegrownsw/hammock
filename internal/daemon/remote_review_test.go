@@ -128,3 +128,17 @@ func TestGuestLinkEndsWhenInNoGroup(t *testing.T) {
 		t.Fatal("the link still redials")
 	}
 }
+
+// Closing a shared Group disconnects its guests once they're in no Group
+// here, as removing them does.
+func TestClosingSharedGroupHangsUpGuests(t *testing.T) {
+	for _, unsub := range []bool{false, true} {
+		_, h, peer, _, gid, _, _ := sharedSetupAs(t, pb.Role_ROLE_VIEWER, !unsub)
+		call(t, h, &pb.ClientMessage{Msg: &pb.ClientMessage_CloseGroup{CloseGroup: &pb.CloseGroup{GroupId: gid}}})
+		select {
+		case <-peer.Done():
+		case <-time.After(3 * time.Second):
+			t.Fatalf("guest (subscribed %v) of a closed Group still connected", !unsub)
+		}
+	}
+}
