@@ -20,6 +20,12 @@ func lockedFiles(pid int) (map[fileID]bool, error) {
 	}
 	out := map[fileID]bool{}
 	for _, e := range ents {
+		// Not stdin, stdout or stderr: the daemon's locks are never
+		// there (CloseInherited keeps 0-2 open, so lockDir's descriptors
+		// come after them), and a program that starts hmkd chooses them.
+		if n, err := strconv.Atoi(e.Name()); err != nil || n <= 2 {
+			continue
+		}
 		info, err := os.ReadFile(base + "/fdinfo/" + e.Name())
 		if err != nil || !flocked(info) {
 			continue
@@ -46,9 +52,12 @@ func flocked(fdinfo []byte) bool {
 // hmkd, first thing, so nothing it was started with (a descriptor of a
 // state dir's lock, locked by whoever started it) is still open in it when
 // it attaches to holders (statelock.go). The Go runtime's own (epoll,
-// eventfd: anonymous inodes) are kept, should it have them yet. Read with
-// raw calls: os.ReadDir would set up the runtime's poller.
+// eventfd: anonymous inodes) are kept, should it have them yet. Stdin,
+// stdout and stderr stay, unless one is closed (then /dev/null, so nothing
+// hmkd opens lands there) or isn't something stdio is (sanitiseStdio).
+// Read with raw calls: os.ReadDir would set up the runtime's poller.
 func CloseInherited() {
+	sanitiseStdio(anyLock)
 	dir, err := unix.Open("/proc/self/fd", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return
@@ -77,3 +86,30 @@ func CloseInherited() {
 		unix.Close(fd)
 	}
 }
+
+// anyLock: a lock of any kind (not only a flock) through this process's
+// descriptor fd.
+func anyLock(fd int) bool {
+	return bytes.Contains(readRaw("/proc/self/fdinfo/"+strconv.Itoa(fd)), []byte("\nlock:"))
+}
+
+// readRaw reads a small file without the runtime's poller (CloseInherited).
+func readRaw(path string) []byte {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil
+	}
+	defer unix.Close(fd)
+	var out []byte
+	buf := make([]byte, 4096)
+	for len(out) < 1<<20 {
+		n, err := unix.Read(fd, buf)
+		if n <= 0 || err != nil {
+			break
+		}
+		out = append(out, buf[:n]...)
+	}
+	return out
+}
+
+func dupTo(old, fd int) error { return unix.Dup3(old, fd, 0) }

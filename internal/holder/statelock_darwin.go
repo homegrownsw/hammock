@@ -29,6 +29,8 @@ import "C"
 import (
 	"fmt"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 // fdList is pid's descriptors.
@@ -59,7 +61,10 @@ func lockedFiles(pid int) (map[fileID]bool, error) {
 	}
 	out := map[fileID]bool{}
 	for _, f := range fds {
-		if f.proc_fdtype != C.PROX_FDTYPE_VNODE {
+		// Not stdin, stdout or stderr: the daemon's locks are never
+		// there (CloseInherited keeps 0-2 open, so lockDir's descriptors
+		// come after them), and a program that starts hmkd chooses them.
+		if f.proc_fd <= 2 || f.proc_fdtype != C.PROX_FDTYPE_VNODE {
 			continue
 		}
 		var dev, ino C.ulonglong
@@ -75,8 +80,15 @@ func lockedFiles(pid int) (map[fileID]bool, error) {
 // hmkd, first thing, so nothing it was started with (a descriptor of a
 // state dir's lock, locked by whoever started it) is still open in it when
 // it attaches to holders (statelock.go). Only the Go runtime's own kqueue
-// is kept, should it have one yet.
+// is kept, should it have one yet. Stdin, stdout and stderr stay, unless
+// one is closed (then /dev/null, so nothing hmkd opens lands there) or
+// isn't something stdio is (sanitiseStdio).
 func CloseInherited() {
+	sanitiseStdio(func(fd int) bool {
+		var dev, ino C.ulonglong
+		var locked C.int
+		return C.hmk_vnode(C.int(os.Getpid()), C.int(fd), &dev, &ino, &locked) == 0 && locked != 0
+	})
 	fds, err := fdList(os.Getpid())
 	if err != nil {
 		return
@@ -87,3 +99,5 @@ func CloseInherited() {
 		}
 	}
 }
+
+func dupTo(old, fd int) error { return unix.Dup2(old, fd) }

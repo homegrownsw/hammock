@@ -21,14 +21,19 @@ import (
 // and then on the directory itself, and keeps both for as long as it runs.
 // A holder records both files (their device and inode) as it starts,
 // checks its parent, the daemon starting it, holds both, and takes only a
-// client that does: one with a descriptor on each that a flock was taken
-// through (macOS: the descriptor's FHASLOCK; Linux: the lock line in its
-// fdinfo). Merely having the file open isn't enough (a daemon reads files
-// whose paths agents choose, and a symlink could point one at the lock),
-// and nothing else can hold the locks while the daemon does. hmkd closes
-// every descriptor it inherits as it starts (CloseInherited), so a locked
-// descriptor can't be carried into it across exec by a program that took
-// the lock while no daemon ran. Unlike a POSIX record lock, a flock isn't
+// client that does: one with a descriptor on each, other than its stdin,
+// stdout or stderr, that a flock was taken through (macOS: the open file's
+// FHASLOCK, which stays once the flock is let go; Linux: the lock line in
+// its fdinfo, there while it's held), while both files are flocked now (a
+// flock of the holder's own is refused). Merely having the file open isn't
+// enough (a daemon reads files whose paths agents choose, and a symlink
+// could point one at the lock), and nothing else can hold the locks while
+// the daemon does. hmkd closes every descriptor it inherits above stderr as
+// it starts, and replaces a stdin, stdout or stderr that's a folder or a
+// file a flock was taken through (CloseInherited): a descriptor of the
+// lock, flocked and let go by a program while no daemon ran, can't be
+// carried into the real hmkd across exec and pass for its own once the
+// real daemon has the lock again. Unlike a POSIX record lock, a flock isn't
 // dropped when the process closes another descriptor of the same file.
 //
 // The directory's lock, and not only run/daemon.lock: a copy of the state
@@ -117,9 +122,13 @@ func OpenStateLock(dir string, parent int) (*StateLock, error) {
 }
 
 // HeldBy says (nil) whether the process pid holds this state directory's
-// locks, as they were when the holder started: flocks taken through
-// descriptors of its own on both, while the lock's path still names it
-// with its one link.
+// locks, as they were when the holder started: it has descriptors of its
+// own on both (not its stdin, stdout or stderr) through which a flock was
+// taken, both are flocked now, and the lock's path still names it with its
+// one link. Neither the kernel on macOS nor procfs says which process holds
+// a flock now: the two together, with hmkd taking none it didn't take itself
+// (CloseInherited) and nothing else able to take them while the daemon
+// has them, are how the holder knows.
 func (s *StateLock) HeldBy(pid int) error {
 	if s == nil {
 		return errors.New("no state lock")
@@ -147,7 +156,40 @@ func (s *StateLock) HeldBy(pid int) error {
 	if !locked[s.dirID] {
 		return fmt.Errorf("pid %d doesn't hold %s's lock", pid, s.dir)
 	}
-	return nil
+	// Having taken a flock through them isn't holding one now (macOS keeps
+	// the mark once it's unlocked): something must hold both locks still.
+	if err := heldNow(s.lock, s.lockID, unix.O_RDONLY|unix.O_NOFOLLOW); err != nil {
+		return err
+	}
+	return heldNow(s.dir, s.dirID, unix.O_RDONLY|unix.O_DIRECTORY)
+}
+
+// heldNow says (nil) whether the file at path, recorded as id, is flocked
+// now by someone: a flock of this holder's own on it would be refused. One
+// that isn't refused is let go at once (a daemon starting just then could
+// find it taken, and try again).
+func heldNow(path string, id fileID, flags int) error {
+	fd, err := unix.Open(path, flags|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	defer unix.Close(fd)
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if idOf(&st) != id {
+		return fmt.Errorf("%s isn't the file it was when this holder started", path)
+	}
+	switch err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); {
+	case err == nil:
+		_ = unix.Flock(fd, unix.LOCK_UN)
+		return fmt.Errorf("nothing holds %s's lock", path)
+	case errors.Is(err, unix.EWOULDBLOCK):
+		return nil
+	default:
+		return fmt.Errorf("%s: %w", path, err)
+	}
 }
 
 // Dir is the state directory.

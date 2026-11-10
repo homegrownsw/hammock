@@ -2,13 +2,16 @@ package holder
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -203,5 +206,146 @@ func TestCloseInherited(t *testing.T) {
 		if string(out) != want {
 			t.Errorf("closing %v: %q, want %q", close, out, want)
 		}
+	}
+}
+
+// TestHelperCarried isn't a test: run with HMK_TEST_CARRIED set, as hmkd
+// is started by a program that chose its stdin, stdout and stderr, it
+// closes what it inherited (as hmkd does first) when HMK_TEST_CLOSE is set,
+// says on stderr what its stdin and stdout are, and waits to be killed.
+func TestHelperCarried(t *testing.T) {
+	if os.Getenv("HMK_TEST_CARRIED") == "" {
+		t.Skip("a helper")
+	}
+	if os.Getenv("HMK_TEST_CLOSE") != "" {
+		CloseInherited()
+	}
+	kind := func(fd int) string {
+		var st unix.Stat_t
+		if unix.Fstat(fd, &st) != nil {
+			return "closed"
+		}
+		switch st.Mode & unix.S_IFMT {
+		case unix.S_IFDIR:
+			return "dir"
+		case unix.S_IFREG:
+			return "file"
+		case unix.S_IFCHR:
+			return "chr"
+		}
+		return "other"
+	}
+	os.Stderr.WriteString("ready " + kind(0) + " " + kind(1) + "\n")
+	select {}
+}
+
+// A program that flocked a state dir's lock and the dir while no daemon
+// ran, let go, and kept the descriptors (on macOS they're still marked as
+// ones a flock was taken through) can't hand them to the real hmkd as its
+// stdin and stdout, once the real daemon has the locks again, and have that
+// hmkd (on a copy of the state) pass for the real dir's daemon. Nor does
+// the mark alone pass once nothing holds the locks.
+func TestStateLockCarriedStdio(t *testing.T) {
+	dir := stateDir(t)
+	lockF, err := os.OpenFile(LockPath(dir), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lockF.Close()
+	dirF, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dirF.Close()
+	for _, f := range []*os.File{lockF, dirF} {
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
+			t.Fatal(err)
+		}
+	}
+	daemon, release := stateHelper(t, dir, "lock") // the real daemon, restarted
+	defer release()
+	s, err := OpenStateLock(dir, daemon)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, close := range []bool{false, true} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperCarried$")
+		cmd.Env = append(os.Environ(), "HMK_TEST_CARRIED=1")
+		if close {
+			cmd.Env = append(cmd.Env, "HMK_TEST_CLOSE=1")
+		}
+		cmd.Stdin, cmd.Stdout = lockF, dirF
+		errOut, _ := cmd.StderrPipe()
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		l, err := bufio.NewReader(errOut).ReadString('\n')
+		if err == nil {
+			// (On Linux the lock file isn't locked now, just a file: it may
+			// stay. On macOS it's marked as flocked, so goes.)
+			if want := map[bool]string{true: "ready file chr\n"}[runtime.GOOS == "linux"]; close && l != "ready chr chr\n" && l != want {
+				t.Errorf("hmkd kept its stdin and stdout: %q", l)
+			}
+			if err := s.HeldBy(cmd.Process.Pid); err == nil {
+				t.Errorf("taken a process (closing what it inherited: %v) handed the locks as its stdin and stdout", close)
+			}
+		} else {
+			t.Errorf("the helper: %v", err)
+		}
+		cmd.Process.Kill()
+		cmd.Wait()
+	}
+
+	// The descriptors are this process's too, above stderr: with the
+	// daemon gone, nothing holds the locks, and the mark isn't a lock.
+	release()
+	if err := s.HeldBy(os.Getpid()); err == nil {
+		t.Error("taken a process that once flocked the state dir, with nothing holding it now")
+	}
+}
+
+// What hmkd is started with as its stdio stays: a log file (hmk), a pipe;
+// one that's closed becomes /dev/null, so lockDir's descriptors are never
+// 0-2.
+func TestCloseInheritedKeepsStdio(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "hmkd.log")
+	logF, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer logF.Close()
+	pr, pw, _ := os.Pipe()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperCarried$")
+	cmd.Env = append(os.Environ(), "HMK_TEST_CARRIED=1", "HMK_TEST_CLOSE=1")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = pr, pw, logF
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cmd.Process.Kill(); cmd.Wait() }()
+	pr.Close()
+	pw.Close()
+	for range 100 {
+		if b, _ := os.ReadFile(logPath); len(b) > 0 {
+			if string(b) != "ready other other\n" {
+				t.Errorf("stdio after CloseInherited: %q, want the pipe kept (and the log written)", b)
+			}
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if b, _ := os.ReadFile(logPath); len(b) == 0 {
+		t.Error("nothing written to the log file kept as stderr")
+	}
+
+	// Started with stdin closed: /dev/null in its place.
+	sh := exec.Command("/bin/sh", "-c", `"$0" -test.run='^TestHelperCarried$' 0<&- 2>&1 & p=$!; sleep 1; kill $p`, os.Args[0])
+	sh.Env = append(os.Environ(), "HMK_TEST_CARRIED=1", "HMK_TEST_CLOSE=1")
+	out, _ := sh.CombinedOutput()
+	if !bytes.Contains(out, []byte("ready chr ")) {
+		t.Errorf("stdin closed at start: %q, want /dev/null", out)
 	}
 }
