@@ -205,7 +205,11 @@ const snapshotJS = `() => {
         }
         if (r === 'textbox' || r === 'searchbox' || r === 'combobox') {
           const v = el.tagName === 'SELECT' ? (el.selectedOptions[0] || {}).text : ('value' in el ? el.value : '');
-          if (v) line += ' value="' + clean(String(v)).slice(0, 200) + '"';
+          // A password, one-time code or card detail is never read out: only
+          // that there is one.
+          const secret = el.tagName === 'INPUT' && ((el.type || '').toLowerCase() === 'password' ||
+            /(^|\s)(current-password|new-password|one-time-code|cc-number|cc-csc|cc-exp(-month|-year)?)(\s|$)/i.test(el.getAttribute('autocomplete') || ''));
+          if (v) line += secret ? ' value="•••" (hidden)' : ' value="' + clean(String(v)).slice(0, 200) + '"';
           if (el.tagName === 'SELECT') line += ' options: ' + [...el.options].slice(0, 30).map(o => clean(o.text)).join(' | ');
         }
         if (el.checked || el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true') line += ' (checked)';
