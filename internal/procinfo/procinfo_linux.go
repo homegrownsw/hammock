@@ -175,9 +175,13 @@ func Args(pid int) []string {
 }
 
 // StartTime returns when pid started: its start in clock ticks after boot
-// (/proc/<pid>/stat, field 22), taken back from now by how long ago that
-// was (/proc/uptime, to a hundredth of a second). Not from /proc/stat's
-// btime: that's whole seconds, and could put a start up to a second early.
+// (/proc/<pid>/stat, field 22) after when this machine booted. Not from
+// /proc/stat's btime: that's whole seconds, and could put a start up to a
+// second early. Boot is taken once, as now less /proc/uptime (to a
+// hundredth of a second), so a process's start is the same each time it's
+// asked: worked out afresh, the moment between reading the clock and the
+// uptime moved it by a hundredth now and then, and a process checked twice
+// (a pane holder's peer, the agent that made a schedule) looked like two.
 func StartTime(pid int) (time.Time, error) {
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
@@ -197,6 +201,17 @@ func StartTime(pid int) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
+	boot, err := bootTime()
+	if err != nil {
+		return time.Time{}, err
+	}
+	const hz = 100 // USER_HZ
+	return boot.Add(time.Duration(ticks) * time.Second / hz), nil
+}
+
+// bootTime is when this machine booted, to a hundredth of a second, as
+// first asked (StartTime).
+var bootTime = sync.OnceValues(func() (time.Time, error) {
 	now := time.Now()
 	up, err := os.ReadFile("/proc/uptime")
 	if err != nil {
@@ -210,7 +225,5 @@ func StartTime(pid int) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	const hz = 100 // USER_HZ
-	since := time.Duration(secs*float64(time.Second)) - time.Duration(ticks)*time.Second/hz
-	return now.Add(-since).Round(10 * time.Millisecond), nil
-}
+	return now.Add(-time.Duration(secs * float64(time.Second))).Round(10 * time.Millisecond), nil
+})

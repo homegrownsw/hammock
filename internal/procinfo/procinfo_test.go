@@ -85,4 +85,10 @@ func TestStartTime(t *testing.T) {
 	if d := time.Since(st); d < 0 || d > 10*time.Minute {
 		t.Fatalf("this process started %v ago", d)
 	}
+	// The same each time: a process asked about twice is one process.
+	for range 200 {
+		if again, err := StartTime(os.Getpid()); err != nil || !again.Equal(st) {
+			t.Fatalf("asked again: %v (%v), first %v", again, err, st)
+		}
+	}
 }
