@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -329,5 +330,36 @@ func TestFailedSignInIgnoresTheRestOfTheBurst(t *testing.T) {
 	defer tr.mu.Unlock()
 	if len(tr.out) != 1 {
 		t.Fatalf("%d answers written, want the failure's alone", len(tr.out))
+	}
+}
+
+// A connection signs in once: a second PeerHello (as someone else, or as a
+// stranger) is refused, and it stays who it was.
+func TestSecondPeerHelloRefused(t *testing.T) {
+	host, _, peer, uid, _, _, _ := sharedSetup(t, pb.Role_ROLE_VIEWER)
+	pc := peerConn(t, host, uid)
+	host.mu.Lock()
+	fp, nonce := host.remote.fingerprint, pc.nonce
+	host.mu.Unlock()
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	hostNonce := make([]byte, client.NonceSize)
+	_, _ = rand.Read(hostNonce)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := peer.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_PeerHello{PeerHello: &pb.PeerHello{
+		PublicKey: pub, Signature: ed25519.Sign(priv, client.AuthMessage(client.PeerAuthTag, fp, nonce)),
+		Name: "Other", HostNonce: hostNonce,
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "already signed in") {
+		t.Fatalf("second PeerHello: %v", err)
+	}
+	host.mu.Lock()
+	still := pc.peer == uid
+	host.mu.Unlock()
+	if !still {
+		t.Fatal("it isn't who it was any more")
+	}
+	if _, err := peer.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_Authenticate{Authenticate: &pb.Authenticate{DeviceId: "dv_x"}}}); err == nil || !strings.Contains(err.Error(), "already signed in") {
+		t.Fatalf("Authenticate after PeerHello: %v", err)
 	}
 }

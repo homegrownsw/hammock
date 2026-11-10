@@ -1475,6 +1475,18 @@ func auditTarget(msg *pb.ClientMessage) string {
 // available remotely. done=true means the message was fully handled here.
 func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error, bool) {
 	d := c.d
+	switch msg.Msg.(type) {
+	case *pb.ClientMessage_Pair, *pb.ClientMessage_Authenticate, *pb.ClientMessage_PeerHello:
+		// Once per connection: signing in again can't switch who it is
+		// (keeping what the first one watches), nor bring back the limits
+		// of one that hasn't signed in.
+		d.mu.Lock()
+		authed := c.authed
+		d.mu.Unlock()
+		if authed {
+			return nil, errors.New("already signed in"), true
+		}
+	}
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello:
 		return nil, nil, false
