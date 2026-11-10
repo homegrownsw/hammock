@@ -15,28 +15,43 @@
 //     only this helper knows) naming the pane and when it ends, which the
 //     daemon keeps in memory and hands back.
 //
-// Only Hammock's daemon may run it: one signed by the same team as hmkd
-// (an ad-hoc development build has no team to check). So an agent in a pane
-// can't run it itself to skip the daemon's rules (agents asked every time,
-// the audit log), and the Touch ID prompt says what's signed in the
-// helper's own words, from the data. The limit: a build of this helper
-// signed with the same identity, from changed code, reads the keychain
-// item too (β's has an identifier of its own, so it can't silently).
+// Only Hammock's daemon may ask it anything. Whatever runs this helper
+// chooses its arguments, stdin and environment, so it takes none of those
+// as the request: the daemon names a Mach service on the command line, the
+// helper fetches the request from it, and takes it only if the kernel's
+// audit token for that message says a running hmkd signed by this helper's
+// own team, with the hardened runtime, sent it (rendezvous.h says why that
+// holds where the parent's pid, or a socket's, doesn't). An ad-hoc
+// development build has no team: there the sender must be the hmkd beside
+// this helper. So an agent in a pane can't run it itself to skip the
+// daemon's rules (agents asked every time, the audit log).
 //
-// The daemon runs it once per request, JSON in (stdin) and out (stdout):
-//   hmk-key [--beta] status
-//   hmk-key [--beta] create  < {"reason", "approvers": [approver]}
-//   hmk-key [--beta] delete  < {"reason"}
-//   hmk-key [--beta] add-approver < {"reason", "approver"}
-//   hmk-key [--beta] remove-approver < {"id"}
-//   hmk-key [--beta] sign < {"data", "reason", "pane", "window_ms", "context",
-//                             "prompt": {...}, "approval": {...}, "token"}
-//   hmk-key preview [--snapshot <prefix>] < {"headline", "window_ms", "prompt"}
-// ("prompt": where it's from, for the panel: keyPrompt in hammockkey.go.
-// preview shows it, or renders it, signing nothing: anyone may run it.)
-// Exit 0 with JSON, or 1 with a message on stderr; 2 when you said no (or
-// the daemon withdrew the prompt: SIGTERM). --beta keeps Hammock β's key
-// apart from the real one.
+// And the prompt says what will happen in the helper's own words: what's
+// signed, from the data; creating or deleting the key, or the device it
+// would let approve, by that device's key; that allowing opens a window,
+// and for how long the helper lets one last. The daemon's words are only
+// where a request is from (the Group, tab, agent, command), labelled so.
+// The limit: a build of this helper signed with the same identity, from
+// changed code, reads the keychain item too (β's has an identifier of its
+// own, so it can't silently).
+//
+// One request per run, from the daemon (keyHelperProtocol in hammockkey.go):
+//   {"v": 1, "command", "beta", "input": {...}}, where command and input are
+//   status          {}
+//   create          {"approvers": [approver]}
+//   delete          {}
+//   add-approver    {"approver"}
+//   remove-approver {"id"}
+//   sign            {"data", "pane", "window", "context", "prompt": {...},
+//                    "approval": {...}, "token"}
+// ("prompt": where it's from, for the panel: keyPrompt in hammockkey.go.)
+// Out on stdout: exit 0 with JSON, or 1 with a message on stderr; 2 when
+// you said no (or the daemon withdrew the prompt: SIGTERM). "beta" keeps
+// Hammock β's key apart from the real one.
+//
+//   hmk-key --daemon <service>
+//   hmk-key preview [--snapshot <prefix>] < {"command", ...} or {"headline", "window", "prompt"}
+// (preview shows a prompt, or renders it, signing nothing: anyone may run it.)
 import CryptoKit
 import Foundation
 import LocalAuthentication
@@ -58,12 +73,18 @@ struct Stored: Codable {
 struct Fail: Error { var message: String; var code: Int32 = 1 }
 
 let args = Array(CommandLine.arguments.dropFirst())
-let beta = args.contains("--beta")
-let command = args.first { !$0.hasPrefix("--") } ?? ""
-let service = beta ? "com.homegrownsw.hammock.key.beta" : "com.homegrownsw.hammock.key"
-let label = beta ? "Hammock Key (β)" : "Hammock Key"
+/// The request's version, as the daemon's keyHelperProtocol.
+let protocolVersion = 1
+/// How long a window lasts: the daemon's hammockKeyWindow, and what the
+/// prompt says.
+let keyWindowMs: Int64 = 10 * 60 * 1000
+/// β's key, not the real one: from the daemon's request.
+var beta = false
+var service: String { beta ? "com.homegrownsw.hammock.key.beta" : "com.homegrownsw.hammock.key" }
+var label: String { beta ? "Hammock Key (β)" : "Hammock Key" }
 
-func input() -> [String: Any] {
+/// JSON on stdin: only for preview, which signs nothing.
+func stdinJSON() -> [String: Any] {
     let data = FileHandle.standardInput.readDataToEndOfFile()
     guard !data.isEmpty, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
     return obj
@@ -224,31 +245,127 @@ func teamID(_ code: SecStaticCode) -> String? {
     return d[kSecCodeInfoTeamIdentifier as String] as? String
 }
 
-/// This helper is a development build, signed ad hoc (no team).
-func adHoc() -> Bool {
+func ownCode() -> SecStaticCode? {
     var me: SecCode?
     var meStatic: SecStaticCode?
-    guard SecCodeCopySelf([], &me) == errSecSuccess, let me, SecCodeCopyStaticCode(me, [], &meStatic) == errSecSuccess, let meStatic else {
-        return false
-    }
-    return teamID(meStatic) == nil
+    guard SecCodeCopySelf([], &me) == errSecSuccess, let me, SecCodeCopyStaticCode(me, [], &meStatic) == errSecSuccess else { return nil }
+    return meStatic
 }
 
-/// The process that ran this one is Hammock's daemon, signed by our team.
-func calledByHammock() -> Bool {
-    var me: SecCode?
-    var meStatic: SecStaticCode?
-    guard SecCodeCopySelf([], &me) == errSecSuccess, let me, SecCodeCopyStaticCode(me, [], &meStatic) == errSecSuccess, let meStatic else {
-        return false
+/// This helper is a development build, signed ad hoc (no team).
+func adHoc() -> Bool { ownCode().map { teamID($0) == nil } ?? false }
+
+let notFromHammock = Fail(message: "only Hammock's daemon can use the Hammock Key (hmk key, Settings ▸ SSH, or ssh in a Hammock pane)")
+
+/// The request, from the daemon's service (rendezvous.h), if Hammock's
+/// daemon sent it.
+func fetchRequest(_ name: String) throws -> [String: Any] {
+    var data: UnsafeMutableRawPointer?
+    var len = 0
+    var token = audit_token_t()
+    let kr = hmk_key_fetch(name, 10_000, &data, &len, &token)
+    guard kr == KERN_SUCCESS, let data else { throw notFromHammock }
+    let bytes = Data(bytes: data, count: len)
+    vm_deallocate(mach_task_self_, vm_address_t(UInt(bitPattern: data)), vm_size_t(len))
+    guard sentByHammock(token) else { throw notFromHammock }
+    guard let req = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any] else {
+        throw Fail(message: "the daemon's request is malformed")
     }
-    guard let team = teamID(meStatic) else { return true } // ad hoc: a development build, nothing to check against
-    var parent: SecCode?
-    guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid: getppid()] as CFDictionary, [], &parent) == errSecSuccess,
-          let parent else { return false }
+    guard (req["v"] as? NSNumber)?.intValue == protocolVersion else {
+        throw Fail(message: "this Hammock Key helper is from another build of Hammock than its daemon: reinstall Hammock")
+    }
+    return req
+}
+
+/// The message's sender, by the audit token the kernel gave it as it was
+/// sent, is Hammock's daemon: hmkd, signed by this helper's team, with the
+/// hardened runtime (nothing injected into it, no debugger attached).
+/// Ad hoc, the hmkd beside this helper.
+func sentByHammock(_ token: audit_token_t) -> Bool {
+    var t = token
+    let audit = Data(bytes: &t, count: MemoryLayout<audit_token_t>.size)
+    var guest: SecCode?
+    // Fails if the sender has exec'd since it sent it: the token's pid
+    // version is that of the program that sent it.
+    guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributeAudit: audit] as CFDictionary, [], &guest) == errSecSuccess,
+          let guest, let me = ownCode() else { return false }
+    guard let team = teamID(me) else { return besideThisHelper(guest) }
     var req: SecRequirement?
     let text = "anchor apple generic and certificate leaf[subject.OU] = \"\(team)\" and identifier \"hmkd\""
-    guard SecRequirementCreateWithString(text as CFString, [], &req) == errSecSuccess, let req else { return false }
-    return SecCodeCheckValidity(parent, [], req) == errSecSuccess
+    guard SecRequirementCreateWithString(text as CFString, [], &req) == errSecSuccess, let req,
+          SecCodeCheckValidity(guest, [], req) == errSecSuccess else { return false }
+    var st: SecStaticCode?
+    var info: CFDictionary?
+    guard SecCodeCopyStaticCode(guest, [], &st) == errSecSuccess, let st,
+          SecCodeCopySigningInformation(st, SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSDynamicInformation), &info) == errSecSuccess,
+          let d = info as? [String: Any], let flags = (d[kSecCodeInfoFlags as String] as? NSNumber)?.uint32Value
+    else { return false }
+    return flags & SecCodeSignatureFlags.runtime.rawValue != 0
+}
+
+/// A development build's check, with no team to check against: the sender
+/// runs, unchanged, the hmkd of this helper's own build (the app's
+/// Contents/MacOS/hmkd for its Contents/Helpers/Hammock Key.app, or bin/hmkd
+/// for bin/Hammock Key.app).
+func besideThisHelper(_ guest: SecCode) -> Bool {
+    var st: SecStaticCode?
+    var url: CFURL?
+    guard SecCodeCheckValidity(guest, [], nil) == errSecSuccess,
+          SecCodeCopyStaticCode(guest, [], &st) == errSecSuccess, let st,
+          SecCodeCopyPath(st, [], &url) == errSecSuccess, let url else { return false }
+    let here = Bundle.main.bundleURL.deletingLastPathComponent()
+    let hmkd = here.lastPathComponent == "Helpers"
+        ? here.deletingLastPathComponent().appendingPathComponent("MacOS/hmkd")
+        : here.appendingPathComponent("hmkd")
+    return (url as URL).resolvingSymlinksInPath().path == hmkd.resolvingSymlinksInPath().path
+}
+
+// MARK: - The prompts for changing the key, in the helper's words
+
+/// A short fingerprint of a device's approval key (base64 x9.63): the
+/// first 64 bits of its SHA-256, as four groups of hex.
+func fingerprint(_ key: String) -> String {
+    let id = keyID(Data(base64Encoded: key) ?? Data())
+    return stride(from: 0, to: 16, by: 4).map { i in
+        String(id[id.index(id.startIndex, offsetBy: i) ..< id.index(id.startIndex, offsetBy: i + 4)])
+    }.joined(separator: " ")
+}
+
+/// A device's name as the daemon has it (the name the phone gave when it
+/// paired), on one line and not too long.
+func deviceName(_ name: String) -> String {
+    let s = String(name.filter { !$0.isNewline && !($0.unicodeScalars.first?.properties.generalCategory == .control) }.prefix(60))
+    return s.isEmpty ? "A device" : s
+}
+
+/// What creating or deleting the key, or letting a device approve it,
+/// does: the panel's prompt and the system sheet's reason. Fixed words:
+/// nothing the daemon sends is in a headline, only the devices' names,
+/// each beside its key's fingerprint.
+func changePrompt(_ command: String, approvers: [Approver] = []) -> (KeyPrompt, String) {
+    var p = KeyPrompt(headline: "")
+    p.devices = approvers.map { KeyPrompt.Device(name: deviceName($0.name), fingerprint: fingerprint($0.key)) }
+    let keys = approvers.map { fingerprint($0.key) }.joined(separator: ", ")
+    switch command {
+    case "create":
+        if approvers.isEmpty {
+            p.headline = "Create your Hammock Key"
+            return (p, "create your Hammock Key")
+        }
+        let them = approvers.count == 1 ? "a device" : "\(approvers.count) devices"
+        p.headline = "Create your Hammock Key, and let \(them) approve it without Touch ID"
+        p.notes = [(approvers.count == 1 ? "This device" : "Each of these devices")
+            + " will be able to approve signatures with your Hammock Key without Touch ID on this Mac, until you remove it in Settings ▸ SSH."]
+        return (p, "create your Hammock Key, and let \(them) (key \(keys)) approve signatures with it without Touch ID on this Mac")
+    case "delete":
+        p.headline = "Delete your Hammock Key"
+        p.notes = ["Servers, GitHub and anything else that has its public key won't accept it any more. This can't be undone: a new key would be a different one."]
+        return (p, "delete your Hammock Key")
+    default: // add-approver
+        p.headline = "Let a device approve signatures without Touch ID"
+        p.notes = ["This device will be able to approve signatures with your Hammock Key without Touch ID on this Mac, until you remove it in Settings ▸ SSH. Allow only if you've just asked for this, for your own phone."]
+        return (p, "let a device (key \(keys)) approve signatures with your Hammock Key without Touch ID on this Mac")
+    }
 }
 
 // MARK: - Window tokens
@@ -294,20 +411,22 @@ func parseApprover(_ v: Any?) throws -> Approver {
 }
 
 func run() throws {
-    if command == "preview" { return preview(args) } // signs nothing
-    if command != "status", !calledByHammock() {
-        throw Fail(message: "only Hammock's daemon can use the Hammock Key (hmk key, Settings ▸ SSH, or ssh in a Hammock pane)")
-    }
+    if args.first == "preview" { return preview(args) } // signs nothing
+    guard args.count == 2, args[0] == "--daemon" else { throw notFromHammock }
+    let request = try fetchRequest(args[1])
+    beta = request["beta"] as? Bool ?? true
+    let command = request["command"] as? String ?? ""
+    let req = request["input"] as? [String: Any] ?? [:]
     switch command {
     case "status":
         output(try status(try load()))
 
     case "create":
-        let req = input()
         guard SecureEnclave.isAvailable else { throw Fail(message: "this Mac has no Secure Enclave") }
         if try load() != nil { throw Fail(message: "this Mac already has a Hammock Key") }
         let approvers = try (req["approvers"] as? [Any] ?? []).map(parseApprover)
-        try touchID(req["reason"] as? String ?? "create your Hammock Key")
+        let (prompt, reason) = changePrompt("create", approvers: approvers)
+        try touchID(reason, prompt: prompt)
         // Usable while the screen's locked (you're away: your phone
         // approves), never off this Mac.
         var acErr: Unmanaged<CFError>?
@@ -323,25 +442,27 @@ func run() throws {
         output(try status(s))
 
     case "delete":
-        let req = input()
         guard try load() != nil else { output(["exists": false]); return }
-        try touchID(req["reason"] as? String ?? "delete your Hammock Key")
+        let (prompt, reason) = changePrompt("delete")
+        try touchID(reason, prompt: prompt)
         remove()
         output(["exists": false])
 
     case "add-approver":
-        let req = input()
         guard var s = try load() else { throw Fail(message: "there's no Hammock Key") }
         let a = try parseApprover(req["approver"])
-        try touchID(req["reason"] as? String ?? "let \(a.name) approve your Hammock Key")
+        let (prompt, reason) = changePrompt("add-approver", approvers: [a])
+        try touchID(reason, prompt: prompt)
         s.approvers.removeAll { $0.id == a.id }
         s.approvers.append(a)
         try save(s)
         output(try status(s))
 
     case "remove-approver":
-        // Taking a device's say away needs no approval: it only ever narrows.
-        let req = input()
+        // Taking a device's say away needs no approval: it only ever
+        // narrows who can approve, only Hammock's daemon can ask (for you,
+        // in Settings, or as you unpair the phone, which shouldn't leave it
+        // able to approve until you say so here), and adding it back asks.
         guard var s = try load() else { throw Fail(message: "there's no Hammock Key") }
         let id = req["id"] as? String ?? ""
         s.approvers.removeAll { $0.id == id }
@@ -349,13 +470,15 @@ func run() throws {
         output(try status(s))
 
     case "sign":
-        let req = input()
         guard let s = try load() else { throw Fail(message: "there's no Hammock Key") }
         guard let dataB64 = req["data"] as? String, let data = Data(base64Encoded: dataB64) else {
             throw Fail(message: "nothing to sign")
         }
         let pane = req["pane"] as? String ?? ""
-        let windowMs = (req["window_ms"] as? NSNumber)?.int64Value ?? 0
+        // Allowing here opens a window too (a program of yours in a pane,
+        // never an agent: the daemon's rule), for as long as this helper
+        // says. A phone's approval says for itself whether it opens one.
+        let askWindow = (req["window"] as? Bool ?? false) && !pane.isEmpty
         let key = try enclaveKey(s)
         var window = false
         if let t = req["token"] as? String {
@@ -371,23 +494,23 @@ func run() throws {
             if let context = req["context"] as? String, !context.isEmpty {
                 reason += " (" + String(context.prefix(160)) + ")"
             }
-            if windowMs > 0, !pane.isEmpty {
-                reason += ", and allow that pane to sign for \(windowMs / 60000) minutes"
+            if askWindow {
+                reason += ", and let programs in that pane sign for the next \(keyWindowMs / 60000) minutes without asking"
             }
-            try touchID(reason, prompt: KeyPrompt(headline: describe(data), from: req["prompt"] as? [String: Any], windowMs: pane.isEmpty ? 0 : windowMs))
-            window = windowMs > 0
+            try touchID(reason, prompt: KeyPrompt(headline: describe(data), from: req["prompt"] as? [String: Any], window: askWindow))
+            window = askWindow
         }
         let sig = try key.signature(for: data)
         var out: [String: Any] = ["signature": sig.rawRepresentation.base64EncodedString()]
-        if window, !pane.isEmpty, windowMs > 0 {
-            let until = Int64(Date().timeIntervalSince1970 * 1000) + min(windowMs, 10 * 60 * 1000)
+        if window, !pane.isEmpty {
+            let until = Int64(Date().timeIntervalSince1970 * 1000) + keyWindowMs
             out["token"] = try token(pane: pane, until: until, stored: s)
             out["until"] = until
         }
         output(out)
 
     default:
-        throw Fail(message: "usage: hmk-key [--beta] status|create|delete|add-approver|remove-approver|sign|preview")
+        throw Fail(message: "the daemon asked for something this helper doesn't do (\(command))")
     }
 }
 

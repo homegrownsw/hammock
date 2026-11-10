@@ -3,9 +3,11 @@
 // (LAAuthenticationView), instead of the system sheet's one line of text.
 //
 // Still a real LocalAuthentication evaluation in this helper: the panel only
-// draws it. What's signed is in the helper's words (describe, from the data);
-// where it's from (Group, tab, agent, command) is the daemon's, labelled as
-// such. Without Touch ID (the lid's closed, no Magic Keyboard with it), or
+// draws it. The headline is in the helper's words (what's signed, from the
+// data; or what creating, deleting or a new approver does: changePrompt),
+// as are its notes and a window's length; where it's from (Group, tab,
+// agent, command) is the daemon's, labelled as such, and so is a device's
+// name, beside its key's fingerprint. Without Touch ID (the lid's closed, no Magic Keyboard with it), or
 // when you'd rather type your password (the default button: Return), the
 // system sheet asks instead.
 import AppKit
@@ -15,7 +17,12 @@ import SwiftUI
 
 /// What the panel shows.
 struct KeyPrompt {
-    var headline: String // what's signed, the helper's words ("Sign for git (a commit or tag)")
+    var headline: String // the helper's words ("Sign for git (a commit or tag)")
+    /// Devices a change lets approve: each one's name (the daemon's) and
+    /// its key's fingerprint (the helper's).
+    struct Device { var name: String; var fingerprint: String }
+    var devices: [Device] = []
+    var notes: [String] = [] // the helper's words: what allowing does
     var group = ""
     var groupIcon = "" // an emoji
     var groupPicture: NSImage?
@@ -25,10 +32,10 @@ struct KeyPrompt {
     var windowMinutes: Int64 = 0
 
     /// From the daemon's "prompt" (keyPrompt in hammockkey.go).
-    init(headline: String, from p: [String: Any]?, windowMs: Int64 = 0) {
+    init(headline: String, from p: [String: Any]?, window: Bool = false) {
         self.headline = headline
-        // As long as the helper lets a token last (sign in main.swift).
-        windowMinutes = min(windowMs, 10 * 60 * 1000) / 60000
+        // As long as this helper lets a token last (sign in main.swift).
+        windowMinutes = window ? keyWindowMs / 60000 : 0
         guard let p else { return }
         group = p["group"] as? String ?? ""
         groupIcon = p["group_icon"] as? String ?? ""
@@ -59,9 +66,16 @@ struct KeyPromptView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+            if !prompt.devices.isEmpty { devices }
             if !prompt.tab.isEmpty || !prompt.group.isEmpty { source }
+            ForEach(prompt.notes, id: \.self) { note in
+                Text(note)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if prompt.windowMinutes > 0 {
-                Label("Allowing also lets programs in this pane sign for \(prompt.windowMinutes) minutes without asking again.",
+                Label("Allowing also lets programs in this pane sign for the next \(prompt.windowMinutes) minutes without asking again.",
                       systemImage: "clock")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -96,6 +110,33 @@ struct KeyPromptView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    /// The devices a change lets approve: the name it gave, and its key.
+    private var devices: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(prompt.devices.enumerated()), id: \.offset) { _, d in
+                HStack(spacing: 12) {
+                    Image(systemName: "iphone")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 40)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.07)))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("“\(d.name)”")
+                            .font(.headline)
+                            .lineLimit(1)
+                        Text("Key \(d.fingerprint)")
+                            .font(.system(.callout, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
     }
 
     /// Where it's from: the Group and tab, as large as the headline.
@@ -286,20 +327,26 @@ func askInPanel(_ prompt: KeyPrompt, reason: String) -> PanelOutcome {
     return outcome ?? .unavailable
 }
 
-/// `hmk-key preview`: the panel for a made-up request (or the one on stdin,
-/// as the daemon sends it), signing nothing. With --snapshot <prefix>,
+/// `hmk-key preview`: the panel for a made-up request (or the one on stdin),
+/// signing nothing: {"command": "create"|"delete"|"add-approver", "approvers"}
+/// for the helper's own prompts for those, else {"headline", "window",
+/// "prompt"} as the daemon sends a signature's. With --snapshot <prefix>,
 /// renders it to <prefix>-light.png and -dark.png instead of showing it. A
 /// live one only from a development (ad hoc) build: a signed helper showing
 /// any words anyone gives it would make the real panel worth less.
 func preview(_ args: [String]) {
-    var req = isatty(0) == 0 ? input() : [:]
+    var req = isatty(0) == 0 ? stdinJSON() : [:]
     if req.isEmpty {
-        req = ["headline": "sign for git (a commit or tag)", "window_ms": 600_000,
+        req = ["headline": "sign for git (a commit or tag)", "window": true,
                "prompt": ["group": "Hammock", "group_icon": "🌴", "tab": "Key Prompt",
                           "command": "git commit -S -m \"Key prompt: show the tab\""]]
     }
-    let prompt = KeyPrompt(headline: req["headline"] as? String ?? "sign with your Hammock Key",
-                           from: req["prompt"] as? [String: Any], windowMs: (req["window_ms"] as? NSNumber)?.int64Value ?? 0)
+    var prompt = KeyPrompt(headline: req["headline"] as? String ?? "sign with your Hammock Key",
+                           from: req["prompt"] as? [String: Any], window: req["window"] as? Bool ?? false)
+    if let command = req["command"] as? String, ["create", "delete", "add-approver"].contains(command) {
+        let approvers = (req["approvers"] as? [Any] ?? []).compactMap { try? parseApprover($0) }
+        prompt = changePrompt(command, approvers: approvers).0
+    }
     if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
         let prefix = args[i + 1]
         NSApplication.shared.setActivationPolicy(.prohibited)

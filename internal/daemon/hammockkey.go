@@ -44,11 +44,15 @@ import (
 // window one of those opened. The daemon only routes: it lists the key in
 // panes' agent, asks here (the helper's Touch ID prompt) and on the phones
 // at once, and gives the helper whichever answer comes first. So nothing
-// that can talk to the daemon gets a signature you didn't approve.
+// that can talk to the daemon gets a signature you didn't approve. And the
+// helper takes requests only from this daemon (runKeyHelper), so nothing
+// can run it to skip the daemon's rules; what its prompt says is in its
+// own words, beside where the daemon says a request is from.
 //
 // "For a while" is 10 minutes, in the pane that asked: a rebase signing
 // many commits, a deploy script. Touch ID here opens one for your own
-// programs; agents are asked every time.
+// programs; agents are asked every time. The helper fixes how long a
+// window lasts (keyWindowMs in its main.swift), and its prompt says so.
 
 const (
 	hammockKeyTimeout = 2 * time.Minute  // how long a request waits on you
@@ -149,28 +153,48 @@ var keyHelperPath = func() string {
 // the prod app (β, a worktree's β, a daemon from bin/) uses β's.
 var keyHelperBeta = func() bool { return bundleInfo("CFBundleIdentifier") != "com.homegrownsw.hammock" }
 
+// keyHelperProtocol is the version of what runKeyHelper sends: the helper
+// takes only its own, as the two ship together in the app.
+const keyHelperProtocol = 1
+
 // runKeyHelper runs one helper command, JSON in and out. Its exit 2 (you
 // said no) is errKeyDeclined; cancelling ctx withdraws its prompt.
+//
+// The request doesn't go on the helper's command line or stdin, which
+// anything that runs the helper chooses: the helper fetches it from this
+// daemon over Mach (keyRendezvous) and takes it only if the kernel says
+// Hammock's daemon sent it (helpers/key/rendezvous.h). The answer comes
+// back on its stdout and exit code.
 func runKeyHelper(ctx context.Context, cmd string, in map[string]any) (map[string]any, error) {
 	path := keyHelperPath()
 	if path == "" {
 		return nil, errors.New("this build has no Hammock Key helper")
 	}
-	args := []string{cmd}
-	if keyHelperBeta() {
-		args = append([]string{"--beta"}, args...)
-	}
-	c := exec.CommandContext(ctx, path, args...)
-	c.Cancel = func() error { return c.Process.Signal(syscall.SIGTERM) }
-	c.WaitDelay = 2 * time.Second
 	if in == nil {
 		in = map[string]any{}
 	}
-	b, _ := json.Marshal(in)
-	c.Stdin = bytes.NewReader(b)
+	req, err := json.Marshal(map[string]any{"v": keyHelperProtocol, "command": cmd, "beta": keyHelperBeta(), "input": in})
+	if err != nil {
+		return nil, err
+	}
+	rv, err := newKeyRendezvous()
+	if err != nil {
+		return nil, err
+	}
+	defer rv.close()
+	c := exec.CommandContext(ctx, path, "--daemon", rv.name)
+	c.Cancel = func() error { return c.Process.Signal(syscall.SIGTERM) }
+	c.WaitDelay = 2 * time.Second
 	var out, stderr bytes.Buffer
 	c.Stdout, c.Stderr = &out, &stderr
-	err := c.Run()
+	if err := c.Start(); err != nil {
+		return nil, err
+	}
+	stop, served := make(chan struct{}), make(chan error, 1)
+	go func() { served <- rv.serve(c.Process.Pid, req, stop) }()
+	err = c.Wait()
+	close(stop)
+	<-served
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -356,18 +380,16 @@ func (k *hammockKeyHub) command(m *pb.HammockKeyCommand) (*pb.HammockKeyStatus, 
 			}
 		}
 		d.mu.Unlock()
-		reason := "create your Hammock Key"
-		if len(names) > 0 {
-			reason += " and let " + strings.Join(names, " and ") + " approve it"
-		}
-		_, err = runKeyHelper(ctx, "create", map[string]any{"reason": reason, "approvers": approvers})
+		// The helper words the prompt itself, naming each phone it lets
+		// approve by its key.
+		_, err = runKeyHelper(ctx, "create", map[string]any{"approvers": approvers})
 		if err == nil {
 			d.mu.Lock()
 			d.audit("user", "hmk-key-created", "", strings.Join(names, ", "))
 			d.mu.Unlock()
 		}
 	case pb.HammockKeyCommand_OP_DELETE:
-		_, err = runKeyHelper(ctx, "delete", map[string]any{"reason": "delete your Hammock Key (servers and GitHub that have it won't take it any more)"})
+		_, err = runKeyHelper(ctx, "delete", nil)
 		if err == nil {
 			d.mu.Lock()
 			d.audit("user", "hmk-key-deleted", "", "")
@@ -380,13 +402,15 @@ func (k *hammockKeyHub) command(m *pb.HammockKeyCommand) (*pb.HammockKeyStatus, 
 		if rerr != nil {
 			return nil, rerr
 		}
-		_, err = runKeyHelper(ctx, "add-approver", map[string]any{"reason": "let " + r["name"].(string) + " approve your Hammock Key", "approver": r})
+		_, err = runKeyHelper(ctx, "add-approver", map[string]any{"approver": r})
 		if err == nil {
 			d.mu.Lock()
 			d.audit("user", "hmk-key-approver", m.DeviceId, "added "+r["name"].(string))
 			d.mu.Unlock()
 		}
 	case pb.HammockKeyCommand_OP_REMOVE_APPROVER:
+		// No Touch ID: it only narrows who can approve, and unpairing a
+		// phone (forgetDevice) takes its say away without asking.
 		_, err = runKeyHelper(ctx, "remove-approver", map[string]any{"id": m.DeviceId})
 		if err == nil {
 			d.mu.Lock()
@@ -576,7 +600,9 @@ func (k *hammockKeyHub) sign(pane string, agent bool, pid int, data []byte) (*ss
 			detail = append(detail, "in "+label)
 		}
 		res, err := runKeyHelper(ctx, "sign", map[string]any{
-			"data": base64.StdEncoding.EncodeToString(data), "pane": pane, "context": strings.Join(detail, ", "), "window_ms": window,
+			// "window": allowing also opens this pane's window, as long as the
+			// helper lets one last (hammockKeyWindow), which its prompt says.
+			"data": base64.StdEncoding.EncodeToString(data), "pane": pane, "context": strings.Join(detail, ", "), "window": window > 0,
 			"prompt": prompt,
 		})
 		switch {
@@ -723,15 +749,15 @@ func (k *hammockKeyHub) respond(c *conn, m *pb.RespondHammockKey, reply func(err
 	if c.deviceID == "" || len(m.Signature) == 0 {
 		return errors.New("approve the Hammock Key with Touch ID on this Mac, or on your phone")
 	}
-	scope, window := "once", int64(0)
+	scope := "once"
 	if m.Window {
 		if r.req.Agent || r.req.WindowMs == 0 {
 			return errors.New("an agent's request can only be approved once")
 		}
-		scope, window = "window", r.req.WindowMs
+		scope = "window"
 	}
 	in := map[string]any{
-		"data": base64.StdEncoding.EncodeToString(r.data), "pane": r.req.PaneId, "window_ms": window,
+		"data": base64.StdEncoding.EncodeToString(r.data), "pane": r.req.PaneId,
 		"approval": map[string]any{
 			"request": r.req.Id, "approver": c.deviceID, "scope": scope,
 			"signature": base64.StdEncoding.EncodeToString(m.Signature), "expires": m.ExpiresUnixMs,

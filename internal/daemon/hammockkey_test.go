@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -34,20 +34,32 @@ import (
 // ID) when the test binary runs as it: the key is a P-256 key in a file,
 // Touch ID answers as HMK_TEST_TOUCH says (allow, deny, or wait to be
 // withdrawn), and a phone's approval is checked as the real helper does.
+// Like the real one, it takes its request from the daemon that ran it
+// (--daemon: keyHelperFetch), never from its arguments or stdin.
 func fakeKeyHelper() int {
 	dir := os.Getenv("HMK_TEST_KEY_HELPER")
-	cmd := ""
-	for _, a := range os.Args[1:] {
-		if !strings.HasPrefix(a, "--") {
-			cmd = a
-		}
+	fail := func(code int, msg string) int { fmt.Fprintln(os.Stderr, msg); return code }
+	if len(os.Args) != 3 || os.Args[1] != "--daemon" {
+		return fail(1, "usage: --daemon <name>")
 	}
-	var in map[string]any
-	b, _ := io.ReadAll(os.Stdin)
-	_ = json.Unmarshal(b, &in)
+	b, from, err := keyHelperFetch(os.Args[2], 5*time.Second)
+	if err != nil {
+		return fail(1, err.Error())
+	}
+	if from != os.Getppid() {
+		return fail(1, "a request from something other than the daemon")
+	}
+	var req struct {
+		V       int            `json:"v"`
+		Command string         `json:"command"`
+		Input   map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(b, &req); err != nil || req.V != keyHelperProtocol {
+		return fail(1, "a request of another version")
+	}
+	cmd, in := req.Command, req.Input
 	_ = os.WriteFile(filepath.Join(dir, "last-"+cmd), b, 0o600)
 	keyPath, apprPath := filepath.Join(dir, "key.pem"), filepath.Join(dir, "approvers.json")
-	fail := func(code int, msg string) int { fmt.Fprintln(os.Stderr, msg); return code }
 	touch := func() int {
 		switch os.Getenv("HMK_TEST_TOUCH") {
 		case "allow":
@@ -156,7 +168,7 @@ func fakeKeyHelper() int {
 			if c := touch(); c != 0 {
 				return fail(c, "not allowed")
 			}
-			window = in["window_ms"].(float64) > 0
+			window = in["window"] == true
 		}
 		h := sha256.Sum256(data)
 		r, s, _ := ecdsa.Sign(rand.Reader, k, h[:])
@@ -190,6 +202,9 @@ func TestApprovalMessageVector(t *testing.T) {
 // scratch dir, Touch ID answering as touch says.
 func useFakeKeyHelper(t *testing.T, touch string) {
 	t.Helper()
+	if runtime.GOOS != "darwin" {
+		t.Skip("the Hammock Key is the Mac's")
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
