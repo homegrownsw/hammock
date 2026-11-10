@@ -98,4 +98,40 @@ func TestConfigLoosenedIsSaid(t *testing.T) {
 	if s := said("remote-network"); !strings.Contains(s, "10.0.0.0/8") || strings.Contains(s, "192.168.7.0/24") {
 		t.Fatalf("networks: %q", s)
 	}
+
+	// An edit of the same size, its time put back: still a change.
+	fi, _ := os.Stat(path)
+	b, _ := os.ReadFile(path)
+	same := strings.Replace(string(b), "screen-sharing = false", "screen-sharing =  true", 1)
+	if len(same) != len(b) {
+		t.Fatalf("sizes %d, %d", len(same), len(b))
+	}
+	os.WriteFile(path, []byte(same), 0o600)
+	os.Chtimes(path, fi.ModTime(), fi.ModTime())
+	d.mu.Lock()
+	d.clearAttention("at_config_screen-sharing")
+	d.mu.Unlock()
+	check()
+	if s := said("screen-sharing"); s == "" {
+		t.Fatal("a same-size edit with its time put back went unseen")
+	}
+
+	// Only you clear it: not a program scoped as an agent.
+	asPerson(t, func(cl *caller, _ int) bool { return cl != nil && cl.direct && !cl.agent })
+	outside := dialAs(t, dir, nil, "cli")
+	if _, err := try(outside, &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: "at_config_screen-sharing"}}}); err == nil {
+		t.Fatal("a program that isn't you cleared the warning")
+	}
+	if said("screen-sharing") == "" {
+		t.Fatal("the warning went")
+	}
+
+	// Stopped, edited, started again: said at the start, not taken as it.
+	d.Shutdown()
+	write("screen-sharing = false\nclipboard-paste-protection = false\nremote-network = 192.168.7.0/24\nremote-network = 10.0.0.0/8\nbrowser-open-schemes = slack")
+	d = startDaemon(t, dir)
+	check()
+	if s := said("browser-open-schemes"); !strings.Contains(s, "slack:") {
+		t.Fatalf("a change made while the daemon was stopped: %q", s)
+	}
 }

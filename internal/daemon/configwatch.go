@@ -1,6 +1,9 @@
 package daemon
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -18,7 +21,10 @@ import (
 // without asking, paste protection. When one of those is loosened by a
 // change nobody here made (the Mac app says what it writes, ConfigWritten;
 // the daemon notes its own), the change stands, and you're told: an audit
-// entry, and an item in Needs You (a push, if you're away) saying what.
+// entry, and an item in Needs You (a push, if you're away) saying what,
+// which only you clear. What was last seen is kept in state.db, so a change
+// made with the daemon stopped is said when it starts. (state.db is yours
+// to write too: this is a tripwire, not a lock.)
 
 // configCheck is a security setting: its value in effect from its lines
 // (set: the key is in the file at all), and how a change from old to now
@@ -132,11 +138,22 @@ var configChecks = []configCheck{
 	}},
 }
 
+// configAttentionPrefix starts the ids of the Needs You items saying a
+// security setting was loosened: only you clear those (caller.go).
+const configAttentionPrefix = "at_config_"
+
+// configSeenSetting keeps, in state.db, the security settings as the daemon
+// last saw them: a change made while it wasn't running (stop it, edit the
+// file, start it again) is said when it starts, not taken as the start.
+const configSeenSetting = "config_security_seen"
+
 // configWatch is what the daemon last saw of the security settings, and
 // what the app (or the daemon itself) said it wrote.
 type configWatch struct {
-	mu      sync.Mutex
-	stamp   fileStamp
+	mu sync.Mutex
+	// digest is the file's contents' hash when last read (not its stamp:
+	// an edit of the same size with its time put back is a change).
+	digest  [sha256.Size]byte
 	seen    map[string][]string // key → its value in effect when last read (nil: not read yet)
 	written map[string]written  // key → what was last written here, and when
 	pending map[string]loosening
@@ -203,20 +220,30 @@ func (d *Daemon) watchConfig() {
 // ConfigWritten, sent just after it writes, isn't beaten to it.
 func (d *Daemon) checkConfig() {
 	w := &d.cfgw
-	st := stamp(hammockconfig.Path())
+	b, _ := os.ReadFile(hammockconfig.Path())
+	digest := sha256.Sum256(b)
 	w.mu.Lock()
 	first := w.seen == nil
+	var before map[string][]string // as it was when the daemon last ran
 	if first {
 		w.seen, w.pending = map[string][]string{}, map[string]loosening{}
+		w.mu.Unlock()
+		_ = json.Unmarshal([]byte(d.store.Setting(configSeenSetting)), &before)
+		w.mu.Lock()
 	}
-	if st != w.stamp || first {
-		w.stamp = st
+	changed := digest != w.digest || first
+	if changed {
+		w.digest = digest
 		for _, c := range configChecks {
 			now := c.parse(hammockconfig.Repeated(c.key))
 			old := w.seen[c.key]
 			w.seen[c.key] = now
 			if first {
-				continue // as it was when the daemon started: yours
+				prev, ok := before[c.key]
+				if !ok {
+					continue // never seen (the first run): yours
+				}
+				old = prev
 			}
 			if p, ok := w.pending[c.key]; ok {
 				old = p.old // loosened from what it was before that
@@ -227,6 +254,10 @@ func (d *Daemon) checkConfig() {
 				delete(w.pending, c.key) // put back, or done here
 			}
 		}
+	}
+	var save []byte
+	if changed {
+		save, _ = json.Marshal(w.seen)
 	}
 	var keys, tell []string
 	for _, c := range configChecks {
@@ -242,6 +273,9 @@ func (d *Daemon) checkConfig() {
 		}
 	}
 	w.mu.Unlock()
+	if save != nil {
+		d.persist(d.store.SetSetting(configSeenSetting, string(save)))
+	}
 	if len(tell) == 0 {
 		return
 	}
@@ -256,7 +290,7 @@ func (d *Daemon) checkConfig() {
 // in the config file. Callers hold d.mu.
 func (d *Daemon) configLoosened(key, what string) {
 	d.audit("config", "config-loosened", key, what)
-	item := &pb.AttentionItem{Id: "at_config_" + key, Summary: what, CreatedUnixMs: time.Now().UnixMilli()}
+	item := &pb.AttentionItem{Id: configAttentionPrefix + key, Summary: what, CreatedUnixMs: time.Now().UnixMilli()}
 	d.attention[item.Id] = item
 	d.publish(&pb.StateUpdate{Attention: []*pb.AttentionItem{item}})
 	d.push("errored", item.Id, pushNote{Title: "Hammock", Body: what}, func() bool { return d.attention[item.Id] == item })
