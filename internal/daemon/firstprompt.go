@@ -45,11 +45,7 @@ func (d *Daemon) typeFirstPrompt(p *pane, text string) {
 				continue
 			}
 			time.Sleep(700 * time.Millisecond) // its input box drawn, not just its process up
-			paste := []byte(text)
-			if p.bracketedPaste() {
-				paste = []byte("\x1b[200~" + text + "\x1b[201~")
-			}
-			if _, err := p.input(nil, paste); err != nil {
+			if _, err := p.input(nil, firstPromptPaste(text, p.bracketedPaste())); err != nil {
 				return
 			}
 			time.Sleep(150 * time.Millisecond) // a separate burst, or it's part of the paste
@@ -58,4 +54,15 @@ func (d *Daemon) typeFirstPrompt(p *pane, text string) {
 		}
 		d.log.Info("first message not typed: the agent never reached its prompt", "pane", p.id)
 	}()
+}
+
+// firstPromptPaste is text as a paste (bracketed when bracketed), cleaned
+// of control characters first: an ESC in it could end a bracketed paste
+// early (its "\x1b[201~") and type the rest as keys.
+func firstPromptPaste(text string, bracketed bool) []byte {
+	text = agents.CleanPrompt(text)
+	if bracketed {
+		return []byte("\x1b[200~" + text + "\x1b[201~")
+	}
+	return []byte(text)
 }

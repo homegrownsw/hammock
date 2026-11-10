@@ -15,6 +15,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/alexjsp/hammock/internal/agentview"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
@@ -171,6 +174,7 @@ func (a *Agent) StartCommand(prompt string) string {
 	if a.TypePrompt {
 		prompt = "" // typed in once it's up (the daemon's typeFirstPrompt)
 	}
+	prompt = CleanPrompt(prompt)
 	if a.Start != nil {
 		return a.Start(prompt)
 	}
@@ -184,7 +188,9 @@ func (a *Agent) StartCommand(prompt string) string {
 // ScheduleCommand is the command line a scheduled run types.
 func (a *Agent) ScheduleCommand(s *pb.Schedule) string {
 	if a.Schedule != nil {
-		return a.Schedule(s)
+		c := proto.CloneOf(s)
+		c.Prompt = CleanPrompt(c.Prompt)
+		return a.Schedule(c)
 	}
 	return a.StartCommand(s.Prompt)
 }
@@ -278,8 +284,40 @@ func IsName(s string) bool {
 	return false
 }
 
-// Quote quotes s for a POSIX shell.
-func Quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+// Quote quotes s as one word for a POSIX shell, and for fish: every byte
+// is inside single quotes but a quote or a backslash, each escaped outside
+// them (fish reads \' and \\ inside single quotes; a POSIX shell nothing).
+// Newlines and other controls stay literal inside the quotes. A NUL, which
+// no argument can hold, is dropped.
+func Quote(s string) string {
+	s = strings.ReplaceAll(s, "\x00", "")
+	s = strings.NewReplacer("'", `'\''`, `\`, `'\\'`).Replace(s)
+	return "'" + s + "'"
+}
+
+// CleanPrompt is a message for an agent made safe to type or pass on: tabs
+// and newlines stay (a carriage return becomes a newline), and every other
+// control character goes: C0 (ESC among them, which could end a bracketed
+// paste early or start a terminal sequence), DEL, C1, and bytes that
+// aren't UTF-8 (a lone 0x9b is CSI to some terminals).
+func CleanPrompt(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	var b strings.Builder
+	b.Grow(len(s))
+	for i, r := range s {
+		switch {
+		case r == '\t' || r == '\n':
+			b.WriteRune(r)
+		case r == '\r':
+			b.WriteByte('\n')
+		case r < 0x20 || r == 0x7f || r >= 0x80 && r <= 0x9f:
+		case r == utf8.RuneError && !strings.HasPrefix(s[i:], "\uFFFD"):
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
 
 // home is the home folder joined with parts.
 func home(parts ...string) string {

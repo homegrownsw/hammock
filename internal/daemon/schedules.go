@@ -304,12 +304,9 @@ func (d *Daemon) startRun(s *pb.Schedule, due time.Time, manual bool) (*pb.Sched
 	}
 	if typed != "" {
 		// Started as the pane's command (as a resumed agent is), not typed
-		// into its shell: a line typed before the shell is ready goes
-		// through the terminal's line buffer, which keeps 1024 bytes on
-		// macOS and drops the rest, Enter included (a long tool list). A
-		// shell stays once the agent exits.
-		shell := loginShell()
-		spec.Command = []string{shell, "-l", "-c", typed + "; exec " + shellQuote(shell) + " -l"}
+		// into its shell (agentShellCommand: a long tool list would be cut
+		// at the line buffer's 1024 bytes). A shell stays once it exits.
+		spec.Command = agentShellCommand(typed)
 	}
 	t, err := d.createTab(g.Id, runTabName(s, now), spec, "")
 	if err != nil {

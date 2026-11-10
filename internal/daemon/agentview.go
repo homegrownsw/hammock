@@ -809,12 +809,7 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 		// As pastes (bracketed when the program asked, which Claude Code
 		// does): a pasted image path becomes [Image #n], and newlines stay in
 		// the message instead of sending it line by line.
-		paste := func(s string) []byte {
-			if p.bracketedPaste() {
-				return []byte("\x1b[200~" + s + "\x1b[201~")
-			}
-			return []byte(s)
-		}
+		paste := func(s string) []byte { return firstPromptPaste(s, p.bracketedPaste()) }
 		var steps []agentview.Step
 		// Whatever was typed into its input box in the terminal goes first:
 		// the message goes in alone.

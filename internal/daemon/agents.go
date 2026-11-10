@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -422,10 +423,26 @@ func (h *agentHub) resumeCommand(info *pb.Pane) []string {
 	if ag == nil || ag.Resume == nil {
 		return nil
 	}
-	resume := ag.Resume(a.SessionId)
+	return agentShellCommand(ag.Resume(a.SessionId))
+}
+
+// agentShellCommand is a pane's command that runs typed (a command line
+// for the login shell) and then keeps a shell in the pane once it exits:
+// the agent started as the pane's command, not typed into an interactive
+// shell, where a control character in it would be a keystroke (^U, Return)
+// and a line typed before the shell is ready goes through the terminal's
+// line buffer (1024 bytes on macOS; the rest, Enter included, dropped).
+// typed is quoted for a POSIX shell or fish (agents.Quote); with another
+// login shell (csh, nu) /bin/sh runs it, then the login shell.
+func agentShellCommand(typed string) []string {
 	shell := loginShell()
-	// Keep a shell in the pane once the agent exits.
-	return []string{shell, "-l", "-c", resume + "; exec " + shellQuote(shell) + " -l"}
+	run := shell
+	switch filepath.Base(shell) {
+	case "sh", "bash", "zsh", "dash", "ksh", "mksh", "yash", "fish":
+	default:
+		run = "/bin/sh"
+	}
+	return []string{run, "-l", "-c", typed + "; exec " + shellQuote(shell) + " -l"}
 }
 
 // raiseAttention adds/replaces the pane's attention item. Callers hold d.mu.
@@ -472,7 +489,7 @@ func (d *Daemon) clearAttention(id string) {
 	}
 }
 
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+func shellQuote(s string) string { return agents.Quote(s) }
 
 func hostname() (string, error) { return os.Hostname() }
 

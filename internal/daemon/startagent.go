@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/holder"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
 
@@ -31,8 +30,13 @@ func expandHome(p string) string {
 	return p
 }
 
-// startAgent opens a tab in m.Cwd and starts the agent there.
-func (d *Daemon) startAgent(m *pb.StartAgent) (*pb.ServerMessage, error) {
+// startAgent opens a tab in m.Cwd and starts the agent there, as the
+// pane's command (agentShellCommand), its prompt cleaned of control
+// characters: nothing is typed into a shell. creator is the pane of the
+// agent (or other scoped caller) that asked, "" for you: the new pane is
+// that agent's, as one it opened with CreateTab would be, so it doesn't
+// count as yours.
+func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage, error) {
 	ag := agents.Get(m.Harness)
 	if ag == nil {
 		return nil, fmt.Errorf("Hammock doesn't know an agent %q", m.Harness)
@@ -44,6 +48,9 @@ func (d *Daemon) startAgent(m *pb.StartAgent) (*pb.ServerMessage, error) {
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("there's no folder %s", cwd)
 	}
+	// Asks the login shell, at most every few minutes: before d.mu.
+	cmd, later := startCommand(ag, m.Prompt, nil)
+	cmd = agentCommand(ag, cmd)
 	d.mu.Lock()
 	gid := m.GroupId
 	if gid == "" {
@@ -59,7 +66,8 @@ func (d *Daemon) startAgent(m *pb.StartAgent) (*pb.ServerMessage, error) {
 		// shown with its tab (createTab publishes both), or not at all.
 		gid = d.createGroupQuiet("").Id
 	}
-	t, err := d.createTab(gid, "", &pb.PaneSpec{Cwd: cwd}, m.TabId)
+	spec := &pb.PaneSpec{Cwd: cwd, Command: agentShellCommand(cmd), CreatedByPaneId: creator}
+	t, err := d.createTab(gid, "", spec, m.TabId)
 	if err != nil {
 		if made {
 			d.dropQuietGroup(gid) // the pane couldn't start: never shown
@@ -68,19 +76,17 @@ func (d *Daemon) startAgent(m *pb.StartAgent) (*pb.ServerMessage, error) {
 		return nil, err
 	}
 	p := d.panes[t.FocusedPaneId]
+	if p != nil && creator != "" {
+		d.markAgentMade(p.id) // before anyone can act on it as yours
+	}
 	d.mu.Unlock()
 	if p == nil {
 		return nil, errors.New("the new tab has no pane")
 	}
-	cmd, later := startCommand(ag, m.Prompt, nil)
 	p.mu.Lock()
 	// Known before its hooks say so.
 	p.info.Agent = &pb.Agent{Harness: m.Harness, State: pb.AgentState_AGENT_STATE_STARTING, StateSinceUnixMs: time.Now().UnixMilli(), Heuristic: true}
-	ok := p.postLocked(func(hc *holder.Client) { _ = hc.Input([]byte(cmd + "\r")) })
 	p.mu.Unlock()
-	if !ok {
-		return nil, errors.New("the new tab's shell isn't running")
-	}
 	d.typeFirstPrompt(p, later)
 	d.mu.Lock()
 	d.paneChangedIfLive(p)
@@ -208,14 +214,15 @@ func (d *Daemon) listFolders(m *pb.ListFolders) *pb.FolderList {
 // at most every few minutes), sorted.
 var agentsCache struct {
 	sync.Mutex
-	at   time.Time
-	list []string
+	at     time.Time
+	list   []string
+	onPath map[string]bool // commands the login shell finds itself
 }
 
 func installedAgents() []string {
 	agentsCache.Lock()
 	defer agentsCache.Unlock()
-	if time.Since(agentsCache.at) < 3*time.Minute {
+	if time.Since(agentsCache.at) < 3*time.Minute && agentsCache.onPath != nil {
 		return agentsCache.list
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -252,8 +259,35 @@ func installedAgents() []string {
 		// Timed out: say Claude Code and Codex, as before, and let the shell say otherwise.
 		list = []string{"claude", "codex"}
 	}
-	agentsCache.at, agentsCache.list = time.Now(), list
+	agentsCache.at, agentsCache.list, agentsCache.onPath = time.Now(), list, found
+	if err != nil && ctx.Err() != nil {
+		agentsCache.onPath = map[string]bool{} // not known: asked again next time
+		agentsCache.at = time.Time{}
+	}
 	return list
+}
+
+// agentCommand is typed (a command line starting ag) with ag's command
+// replaced by where it's installed when the login shell doesn't find it
+// itself: started with `-l -c` (agentShellCommand), an agent on a PATH or
+// alias only ~/.zshrc sets (Claude's own installer, nvm) isn't found, but
+// it was when its command line was typed into an interactive shell.
+func agentCommand(ag *agents.Agent, typed string) string {
+	rest, ok := strings.CutPrefix(typed, ag.Command)
+	if !ok || rest != "" && rest[0] != ' ' {
+		return typed
+	}
+	installedAgents()
+	agentsCache.Lock()
+	known, on := agentsCache.onPath != nil, agentsCache.onPath[ag.Command]
+	agentsCache.Unlock()
+	if !known || on {
+		return typed
+	}
+	if p := installedPath(ag.Command); p != "" {
+		return shellQuote(p) + rest
+	}
+	return typed
 }
 
 // agentInstallDirs are where claude and codex are usually installed, as
@@ -267,7 +301,10 @@ var agentInstallDirs = []string{
 }
 
 // installedAt: an executable named name is in one of agentInstallDirs.
-func installedAt(name string) bool {
+func installedAt(name string) bool { return installedPath(name) != "" }
+
+// installedPath is the first executable named name in agentInstallDirs, or "".
+func installedPath(name string) string {
 	home, _ := os.UserHomeDir()
 	for _, d := range agentInstallDirs {
 		if rest, ok := strings.CutPrefix(d, "~/"); ok {
@@ -279,9 +316,9 @@ func installedAt(name string) bool {
 		found, _ := filepath.Glob(filepath.Join(d, name))
 		for _, f := range found {
 			if st, err := os.Stat(f); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
-				return true
+				return f
 			}
 		}
 	}
-	return false
+	return ""
 }

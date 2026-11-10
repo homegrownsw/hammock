@@ -1091,11 +1091,15 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_StartAgent, *pb.ClientMessage_ListFolders:
 		// Both may ask the login shell or the disk: reply when done.
 		id := msg.Id
+		creator := "" // an agent's (or a scoped caller's) start is its own pane
+		if c.caller.isAgent() {
+			creator = c.caller.pane
+		}
 		go func() {
 			var r *pb.ServerMessage
 			var err error
 			if sa := msg.GetStartAgent(); sa != nil {
-				r, err = d.startAgent(sa)
+				r, err = d.startAgent(sa, creator)
 			} else {
 				r = &pb.ServerMessage{Msg: &pb.ServerMessage_FolderList{FolderList: d.listFolders(msg.GetListFolders())}}
 			}

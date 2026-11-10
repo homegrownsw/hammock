@@ -58,3 +58,18 @@ func TestStartCommandTypesLater(t *testing.T) {
 		t.Errorf("scheduled claude: %q, %q", sched, later)
 	}
 }
+
+// A first message can't end its own bracketed paste and type the rest as
+// keys: ESC and the other controls are gone before it's pasted.
+func TestFirstPromptPasteStaysPasted(t *testing.T) {
+	got := string(firstPromptPaste("hi\x1b[201~\x15hmk pair\r", true))
+	if got != "\x1b[200~hi[201~hmk pair\n\x1b[201~" {
+		t.Errorf("bracketed: %q", got)
+	}
+	if strings.Count(got, "\x1b") != 2 {
+		t.Errorf("an ESC of its own: %q", got)
+	}
+	if got := string(firstPromptPaste("a\x03b", false)); got != "ab" {
+		t.Errorf("plain: %q", got)
+	}
+}
