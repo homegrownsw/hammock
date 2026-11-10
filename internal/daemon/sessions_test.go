@@ -304,3 +304,51 @@ func TestProjectNeverHome(t *testing.T) {
 		t.Error("a folder in home is too wide")
 	}
 }
+
+// An agent's project is a git root only if it's a real repository made
+// before the agent started: a .git planted above its folder later doesn't
+// widen it.
+func TestAgentRootIgnoresPlantedGit(t *testing.T) {
+	base := t.TempDir()
+	repo := filepath.Join(base, "repo")
+	sub := filepath.Join(repo, "pkg")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	time.Sleep(20 * time.Millisecond)
+	started := time.Now()
+	if got := agentRoot(sub, started); got != repo {
+		t.Errorf("in a real repository: %s, want %s", got, repo)
+	}
+	if got := agentRoot(sub, started.Add(-time.Hour)); got != sub {
+		t.Errorf("a repository made after the agent started: %s, want %s", got, sub)
+	}
+	// ~/Developer/notes, then mkdir ~/Developer/.git (and its look-alikes).
+	dev := filepath.Join(base, "Developer")
+	notes := filepath.Join(dev, "notes")
+	os.MkdirAll(notes, 0o755)
+	started = time.Now()
+	time.Sleep(20 * time.Millisecond)
+	os.MkdirAll(filepath.Join(dev, ".git", "objects"), 0o755)
+	os.WriteFile(filepath.Join(dev, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644)
+	if got := agentRoot(notes, started); got != notes {
+		t.Errorf("a .git planted after the agent started: %s, want %s", got, notes)
+	}
+	// Not a repository at all, even if it was there first.
+	fake := filepath.Join(base, "fake")
+	os.MkdirAll(filepath.Join(fake, ".git"), 0o755)
+	os.MkdirAll(filepath.Join(fake, "x"), 0o755)
+	if got := agentRoot(filepath.Join(fake, "x"), time.Now().Add(time.Hour)); got != filepath.Join(fake, "x") {
+		t.Errorf("an empty .git: %s", got)
+	}
+	// A worktree's .git file pointing at a repository's.
+	wt := filepath.Join(base, "wt")
+	os.MkdirAll(filepath.Join(wt, "x"), 0o755)
+	os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+filepath.Join(repo, ".git")+"\n"), 0o644)
+	if got := agentRoot(filepath.Join(wt, "x"), time.Now().Add(time.Hour)); got != wt {
+		t.Errorf("a worktree: %s", got)
+	}
+}

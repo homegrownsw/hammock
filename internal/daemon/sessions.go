@@ -430,6 +430,55 @@ func projectRoot(dir string) string {
 	return filepath.Clean(dir)
 }
 
+// agentRoot is projectRoot for an agent's harness started at started: a
+// git root only if it's a real repository (HEAD and objects, or a
+// worktree's .git file pointing at one) made before the harness started.
+// Else an agent in a folder with no repository (~/Developer/notes) could
+// `mkdir ~/Developer/.git` and have every project in ~/Developer for its
+// own. Short of one, the harness's own folder.
+func agentRoot(dir string, started time.Time) string {
+	home, _ := os.UserHomeDir()
+	for d := filepath.Clean(dir); d != "/" && d != home && d != "."; d = filepath.Dir(d) {
+		git := filepath.Join(d, ".git")
+		if _, err := os.Lstat(git); err != nil {
+			continue
+		}
+		born, ok := fileBorn(git)
+		if gitRepo(git) && ok && !started.IsZero() && born.Before(started) {
+			return d
+		}
+		break // the nearest .git is the one git would use: no further up
+	}
+	return filepath.Clean(dir)
+}
+
+// gitRepo reports whether git (a folder's .git) is a repository: a
+// directory with HEAD and objects/, or a worktree's file naming one.
+func gitRepo(git string) bool {
+	fi, err := os.Lstat(git)
+	if err != nil {
+		return false
+	}
+	if fi.Mode().IsRegular() {
+		b, err := os.ReadFile(git)
+		target, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
+		if err != nil || !ok || fi.Size() > 4096 {
+			return false
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(filepath.Dir(git), target)
+		}
+		_, err = os.Stat(filepath.Join(target, "HEAD"))
+		return err == nil
+	}
+	if !fi.IsDir() {
+		return false
+	}
+	head, err1 := os.Stat(filepath.Join(git, "HEAD"))
+	objects, err2 := os.Stat(filepath.Join(git, "objects"))
+	return err1 == nil && err2 == nil && head.Mode().IsRegular() && objects.IsDir()
+}
+
 // inFolder: path is folder or inside it.
 func inFolder(path, folder string) bool {
 	path, folder = filepath.Clean(path), filepath.Clean(folder)
@@ -488,7 +537,8 @@ func (d *Daemon) agentProject(pane string) string {
 			continue
 		}
 		cwd = logicalDir(cwd, procinfo.Env(agent))
-		if root := projectRoot(cwd); !tooWide(root) {
+		started, _ := procinfo.StartTime(agent)
+		if root := agentRoot(cwd, started); !tooWide(root) {
 			return root
 		}
 		return ""
