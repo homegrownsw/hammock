@@ -319,6 +319,7 @@ func (d *Daemon) restore() error {
 		if err := p.spawn(resume); err != nil {
 			d.log.Error("respawn pane", "pane", info.Id, "err", err)
 			info.Exited, info.ExitStatus = true, -1
+			info.StartError = err.Error()
 		} else {
 			d.log.Info("respawned pane", "pane", info.Id, "resume", resume != nil)
 		}

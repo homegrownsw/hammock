@@ -49,6 +49,7 @@ type lsPane struct {
 	Dirty      bool     `json:"dirty,omitempty"` // an editor pane with unsaved edits
 	Exited     bool     `json:"exited,omitempty"`
 	ExitStatus int32    `json:"exit_status,omitempty"`
+	StartError string   `json:"start_error,omitempty"`
 	Agent      *lsAgent `json:"agent,omitempty"`
 	Floating   bool     `json:"floating,omitempty"`  // over the tab's splits rather than in them
 	Minimised  bool     `json:"minimised,omitempty"` // a floating pane on the tab's shelf
@@ -119,7 +120,7 @@ func printWorldJSON(w *world) error {
 				lp := lsPane{
 					ID: p.Id, Kind: kindJSON(p.Kind), Title: p.Title, Focused: t.FocusedPaneId == pid,
 					Cwd: p.Cwd, Cols: p.Cols, Rows: p.Rows, URL: p.Url, Path: p.GetEditor().GetPath(), Dirty: p.GetEditor().GetDirty(),
-					Exited: p.Exited, ExitStatus: p.ExitStatus,
+					Exited: p.Exited, ExitStatus: p.ExitStatus, StartError: p.StartError,
 				}
 				if f := floatOf(t, pid); f != nil {
 					lp.Floating, lp.Minimised = true, f.Minimised

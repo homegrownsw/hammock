@@ -1921,7 +1921,12 @@ type Pane struct {
 	ShownForPaneId string `protobuf:"bytes,28,opt,name=shown_for_pane_id,json=shownForPaneId,proto3" json:"shown_for_pane_id,omitempty"`
 	// Editor panes: the file and its buffer's state (the text comes with
 	// AttachPane, as EditorUpdate).
-	Editor        *EditorInfo `protobuf:"bytes,30,opt,name=editor,proto3" json:"editor,omitempty"`
+	Editor *EditorInfo `protobuf:"bytes,30,opt,name=editor,proto3" json:"editor,omitempty"`
+	// Terminal panes: why its terminal never started (its pane-holder didn't
+	// answer, or couldn't be restarted), set with exited. Empty for a program
+	// that ran and ended, whatever its status: exit_status alone can't tell
+	// the two apart (a program killed by a signal also ends -1).
+	StartError    string `protobuf:"bytes,31,opt,name=start_error,json=startError,proto3" json:"start_error,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2164,6 +2169,13 @@ func (x *Pane) GetEditor() *EditorInfo {
 		return x.Editor
 	}
 	return nil
+}
+
+func (x *Pane) GetStartError() string {
+	if x != nil {
+		return x.StartError
+	}
+	return ""
 }
 
 type Agent struct {
@@ -21169,7 +21181,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tDirection\x12\x19\n" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14DIRECTION_HORIZONTAL\x10\x01\x12\x16\n" +
-	"\x12DIRECTION_VERTICAL\x10\x02\"\xc0\a\n" +
+	"\x12DIRECTION_VERTICAL\x10\x02\"\xe1\a\n" +
 	"\x04Pane\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06tab_id\x18\x02 \x01(\tR\x05tabId\x12(\n" +
@@ -21206,7 +21218,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"scheduleId\x12&\n" +
 	"\x0fschedule_run_id\x18\x1b \x01(\tR\rscheduleRunId\x12)\n" +
 	"\x11shown_for_pane_id\x18\x1c \x01(\tR\x0eshownForPaneId\x12.\n" +
-	"\x06editor\x18\x1e \x01(\v2\x16.hammock.v1.EditorInfoR\x06editor\"\xf1\x02\n" +
+	"\x06editor\x18\x1e \x01(\v2\x16.hammock.v1.EditorInfoR\x06editor\x12\x1f\n" +
+	"\vstart_error\x18\x1f \x01(\tR\n" +
+	"startError\"\xf1\x02\n" +
 	"\x05Agent\x12\x18\n" +
 	"\aharness\x18\x01 \x01(\tR\aharness\x12\x1d\n" +
 	"\n" +

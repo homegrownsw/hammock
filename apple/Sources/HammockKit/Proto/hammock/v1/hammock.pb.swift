@@ -773,6 +773,15 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
   /// Clears the value of `editor`. Subsequent reads from it will return its default value.
   public mutating func clearEditor() {_uniqueStorage()._editor = nil}
 
+  /// Terminal panes: why its terminal never started (its pane-holder didn't
+  /// answer, or couldn't be restarted), set with exited. Empty for a program
+  /// that ran and ended, whatever its status: exit_status alone can't tell
+  /// the two apart (a program killed by a signal also ends -1).
+  public var startError: String {
+    get {_storage._startError}
+    set {_uniqueStorage()._startError = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -9313,7 +9322,7 @@ nonisolated extension Hammock_V1_Split.Direction: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pane"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -9346,6 +9355,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _scheduleRunID: String = String()
     var _shownForPaneID: String = String()
     var _editor: Hammock_V1_EditorInfo? = nil
+    var _startError: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -9386,6 +9396,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _scheduleRunID = source._scheduleRunID
       _shownForPaneID = source._shownForPaneID
       _editor = source._editor
+      _startError = source._startError
     }
   }
 
@@ -9434,6 +9445,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 28: try { try decoder.decodeSingularStringField(value: &_storage._shownForPaneID) }()
         case 29: try { try decoder.decodeRepeatedStringField(value: &_storage._program) }()
         case 30: try { try decoder.decodeSingularMessageField(value: &_storage._editor) }()
+        case 31: try { try decoder.decodeSingularStringField(value: &_storage._startError) }()
         default: break
         }
       }
@@ -9536,6 +9548,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       try { if let v = _storage._editor {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 30)
       } }()
+      if !_storage._startError.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._startError, fieldNumber: 31)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -9575,6 +9590,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._scheduleRunID != rhs_storage._scheduleRunID {return false}
         if _storage._shownForPaneID != rhs_storage._shownForPaneID {return false}
         if _storage._editor != rhs_storage._editor {return false}
+        if _storage._startError != rhs_storage._startError {return false}
         return true
       }
       if !storagesAreEqual {return false}

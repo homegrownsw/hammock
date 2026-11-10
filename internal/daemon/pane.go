@@ -148,11 +148,11 @@ func (p *pane) env() []string {
 // spawn starts a pane-holder for this pane and connects to it, waiting for
 // it to answer. If command is nil the pane's recorded command is used.
 func (p *pane) spawn(command []string) error {
-	proc, token, err := p.startHolder(command)
+	h, err := p.startHolder(command)
 	if err != nil {
 		return err
 	}
-	return p.connectHolder(proc, token)
+	return p.connectHolder(h)
 }
 
 // spawnAsync starts a pane-holder like spawn, but connects to it in the
@@ -161,17 +161,17 @@ func (p *pane) spawn(command []string) error {
 // resizes) queue for it and clients that attach wait for its first snapshot;
 // if it never does, the pane shows as failed.
 func (p *pane) spawnAsync(command []string) error {
-	proc, token, err := p.startHolder(command)
+	h, err := p.startHolder(command)
 	if err != nil {
 		return err
 	}
 	p.mu.Lock()
 	p.connecting = true
 	p.ops = make(chan func(*holder.Client), holderOpsQueue) // drained once linked (linkLocked)
-	p.holderPID = proc.Pid
+	p.holderPID = h.proc.Pid
 	p.mu.Unlock()
 	go func() {
-		if err := p.connectHolder(proc, token); err != nil {
+		if err := p.connectHolder(h); err != nil {
 			p.connectFailed(err)
 		}
 	}()
@@ -184,8 +184,21 @@ var holderConnectTimeout = 5 * time.Second
 // holderOpsQueue bounds the writes queued for a holder.
 const holderOpsQueue = 4096
 
+// startedHolder is a pane-holder startHolder started, for connectHolder.
+type startedHolder struct {
+	proc  *os.Process
+	token []byte
+	// exited is closed when the process ends, with its state in state: a
+	// holder that ends before it listens has failed, and needn't be waited
+	// for.
+	exited chan struct{}
+	state  *os.ProcessState
+	log    string // its log file (its stderr), to say why
+	logAt  int64  // where this holder's lines start in it (it's appended to)
+}
+
 // startHolder starts the pane-holder process and hands it its secret.
-func (p *pane) startHolder(command []string) (*os.Process, []byte, error) {
+func (p *pane) startHolder(command []string) (*startedHolder, error) {
 	p.mu.Lock()
 	info := p.info
 	if command == nil {
@@ -193,6 +206,7 @@ func (p *pane) startHolder(command []string) (*os.Process, []byte, error) {
 	}
 	cols, rows, cwd := info.Cols, info.Rows, info.Cwd
 	p.mu.Unlock()
+	command = viaLoginShell(command, loginShell())
 
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		cwd, _ = os.UserHomeDir()
@@ -201,12 +215,12 @@ func (p *pane) startHolder(command []string) (*os.Process, []byte, error) {
 	// neither its arguments nor the environment its program inherits.
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	token := []byte(hex.EncodeToString(secret))
 	tr, tw, err := os.Pipe()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer tr.Close()
 	args := []string{
@@ -214,26 +228,36 @@ func (p *pane) startHolder(command []string) (*os.Process, []byte, error) {
 		"--cols", fmt.Sprint(cols), "--rows", fmt.Sprint(rows), "--",
 	}
 	args = append(args, command...)
-	logf, err := os.OpenFile(filepath.Join(p.d.cfg.Dir, "logs", "holder-"+p.id+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	logPath := filepath.Join(p.d.cfg.Dir, "logs", "holder-"+p.id+".log")
+	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	var logAt int64
 	if err == nil {
 		defer logf.Close()
+		if st, err := logf.Stat(); err == nil {
+			logAt = st.Size() // earlier holders' lines (the pane's before a restart) aren't this one's
+		}
 	} else {
 		logf = nil
 	}
 	proc, err := spawnHolder(p.d.cfg.HolderPath, args, p.env(), cwd, logf, tr)
 	if err != nil {
 		tw.Close()
-		return nil, nil, fmt.Errorf("start holder: %w", err)
+		return nil, fmt.Errorf("start holder: %w", err)
 	}
-	go proc.Wait() // reap if the holder exits while we're its parent
+	h := &startedHolder{proc: proc, token: token, exited: make(chan struct{}), log: logPath, logAt: logAt}
+	go func() { // reap if the holder exits while we're its parent
+		h.state, _ = proc.Wait()
+		close(h.exited)
+	}()
 	_, _ = tw.Write(token)
 	tw.Close()
-	return proc, token, nil
+	return h, nil
 }
 
 // connectHolder waits for a holder started by startHolder to listen, then
 // links the pane to it.
-func (p *pane) connectHolder(proc *os.Process, token []byte) error {
+func (p *pane) connectHolder(h *startedHolder) error {
+	proc, token := h.proc, h.token
 	deadline := time.Now().Add(holderConnectTimeout)
 	for {
 		hc, err := holder.Dial(p.socket, 0, token)
@@ -259,18 +283,58 @@ func (p *pane) connectHolder(proc *os.Process, token []byte) error {
 			}
 			p.token = token
 			p.info.Exited, p.info.ExitStatus = false, 0
+			p.info.StartError = ""
 			gen := p.attachHolderLocked(hc)
 			p.mu.Unlock()
 			go p.read(hc, gen)
 			return nil
 		}
+		select {
+		case <-h.exited:
+			if h.state == nil {
+				break // couldn't wait for it: don't take that for its end
+			}
+			// Ended before we reached it (it listens, then exits if its
+			// program can't start: a command that isn't found): say how,
+			// and what it logged, rather than that its socket isn't there.
+			_ = os.Remove(p.socket)
+			why := "the pane-holder ended before the terminal started (" + h.state.String() + ")"
+			if l := lastLogLine(h.log, h.logAt); l != "" {
+				why += ": " + l
+			}
+			return errors.New(why)
+		default:
+		}
 		if time.Now().After(deadline) {
 			_ = proc.Kill() // don't leave an unreachable holder behind
 			_ = os.Remove(p.socket)
-			return fmt.Errorf("connect holder: %w", err)
+			return fmt.Errorf("the pane-holder didn't answer within %v: %w", holderConnectTimeout, err)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// lastLogLine is the last line a holder wrote to its log (its stderr) at or
+// after offset from, shortened, or "" if it wrote none.
+func lastLogLine(path string, from int64) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	buf := make([]byte, 4096)
+	st, err := f.Stat()
+	if err != nil || st.Size() <= from {
+		return ""
+	}
+	_, _ = f.Seek(max(from, st.Size()-int64(len(buf))), 0)
+	n, _ := f.Read(buf)
+	lines := strings.Split(strings.TrimSpace(string(buf[:n])), "\n")
+	l := strings.TrimSpace(lines[len(lines)-1])
+	if r := []rune(l); len(r) > 300 {
+		l = string(r[:300]) + "…"
+	}
+	return l
 }
 
 // connectFailed marks a pane whose holder never answered (spawnAsync) as
@@ -285,6 +349,7 @@ func (p *pane) connectFailed(err error) {
 	p.connecting = false
 	p.ops = nil // nothing will drain it
 	p.info.Exited, p.info.ExitStatus = true, -1
+	p.info.StartError = err.Error()
 	p.mirror = vt.New(int(p.info.Cols), int(p.info.Rows))
 	if c := p.d.colors.Load(); c != nil {
 		p.mirror.SetColors(*c)
@@ -863,6 +928,37 @@ func runningSubagents(dir string) int {
 
 // shells are the programs whose children are "what's running" in a pane.
 var shells = map[string]bool{"zsh": true, "bash": true, "fish": true, "sh": true, "dash": true, "ksh": true, "tcsh": true, "csh": true, "nu": true, "elvish": true, "xonsh": true}
+
+// viaLoginShell runs a pane's command (hmk tab new -- CMD, create_pane)
+// through the person's login shell, as its agents, scheduled tasks and log
+// panes are: a daemon started at login (launchd) has only the system's PATH
+// (/usr/bin:/bin:…), so a command from Homebrew, mise or ~/.local/bin isn't
+// found otherwise, and the pane fails to start (#43). The shell execs it, so
+// it's still the pane's process, with its arguments untouched. A command
+// that's a shell already (a pane's own, or an agent's or log's wrapper) runs
+// as it is, and so does any command under a shell that can't pass argv on
+// (csh and the like).
+func viaLoginShell(cmd []string, shell string) []string {
+	if len(cmd) == 0 || shells[strings.TrimPrefix(filepath.Base(cmd[0]), "-")] {
+		return cmd
+	}
+	var script string
+	switch filepath.Base(shell) {
+	case "zsh", "bash", "sh", "dash", "ksh":
+		script = `exec "$@"`
+	case "fish":
+		script = `exec $argv`
+	default:
+		return cmd
+	}
+	// $0 (the name it reports errors as) is the command's own; fish has no
+	// $0, so it takes every argument as $argv.
+	out := []string{shell, "-l", "-c", script}
+	if filepath.Base(shell) != "fish" {
+		out = append(out, cmd[0])
+	}
+	return append(out, cmd...)
+}
 
 // refreshProcesses records what's running in a terminal besides its shell
 // (by name), so clients can warn before closing it: the shell's children,
