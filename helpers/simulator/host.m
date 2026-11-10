@@ -761,13 +761,86 @@ static BOOL usageFor(unichar c, uint32_t *usage, BOOL *shift) {
 
 #pragma mark Runner
 
-// The built runner: Contents/Resources/runner/*.xctestrun (build.sh).
-static NSString *runnerXCTestRun(void) {
-  NSString *dir = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"runner"];
-  for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil]) {
-    if ([f.pathExtension isEqualToString:@"xctestrun"]) return [dir stringByAppendingPathComponent:f];
+// The runner's xctestrun, ready to run: made once per process by prepareRunner.
+static NSString *gRunnerXCTestRun;
+
+// Output of a command (xcode-select -p), trimmed; nil if it fails.
+static NSString *commandOutput(NSString *path, NSArray<NSString *> *args) {
+  NSTask *t = [NSTask new];
+  t.launchPath = path;
+  t.arguments = args;
+  NSPipe *out = [NSPipe pipe];
+  t.standardOutput = out;
+  t.standardError = [NSFileHandle fileHandleWithNullDevice];
+  if (![t launchAndReturnError:nil]) return nil;
+  NSData *d = [out.fileHandleForReading readDataToEndOfFile];
+  [t waitUntilExit];
+  if (t.terminationStatus != 0) return nil;
+  return [[[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding]
+      stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+}
+
+// The runner, ready to start: Contents/Resources/runner (build.sh) holds only Hammock's parts (our test bundle,
+// in its runner app's PlugIns; the host app; the xctestrun). The runner app itself is Apple's XCTRunner,
+// which isn't ours to ship, so it's made here as xcodebuild makes it, from the template in this Mac's own
+// Xcode (the one xcodebuild will run with): the app copied, its executable named after the runner app and
+// its Info.plist's placeholders filled in. Into a folder of this process's own, so two hosts (prod and β)
+// never share one.
+static NSString *prepareRunner(NSString **error) {
+  if (gRunnerXCTestRun) return gRunnerXCTestRun;
+  NSFileManager *fm = NSFileManager.defaultManager;
+  NSString *bundled = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"runner"];
+  if (![fm fileExistsAtPath:bundled]) {
+    *error = @"rotation and gestures need the simulator runner, which wasn't built (just simulator, with xcodegen installed)";
+    return nil;
   }
-  return nil;
+  NSString *developer = commandOutput(@"/usr/bin/xcode-select", @[ @"-p" ]);
+  NSString *template = [developer stringByAppendingPathComponent:
+                                      @"Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app"];
+  if (!developer || ![fm fileExistsAtPath:[template stringByAppendingPathComponent:@"XCTRunner"]]) {
+    *error = [NSString stringWithFormat:@"rotation and gestures need Xcode's XCTest runner, which isn't in %@ (is Xcode selected? xcode-select -p)",
+                                        developer ?: @"the selected developer folder"];
+    return nil;
+  }
+  NSString *dir = [NSTemporaryDirectory() stringByAppendingFormat:@"hmk-sim-runner-%d", getpid()];
+  [fm removeItemAtPath:dir error:nil];
+  NSError *e = nil;
+  if (![fm copyItemAtPath:bundled toPath:dir error:&e]) {
+    *error = [NSString stringWithFormat:@"couldn't prepare the simulator runner: %@", e.localizedDescription];
+    return nil;
+  }
+  NSString *xctestrun = nil;
+  for (NSString *f in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+    if ([f.pathExtension isEqualToString:@"xctestrun"]) xctestrun = [dir stringByAppendingPathComponent:f];
+  }
+  BOOL made = NO;
+  for (NSString *rel in [fm subpathsOfDirectoryAtPath:dir error:nil]) {
+    // <products>/HammockSimRunner-Runner.plugins (build.sh) becomes HammockSimRunner-Runner.app, named for
+    // the test target, as the xctestrun expects.
+    if (![rel.lastPathComponent hasSuffix:@"-Runner.plugins"]) continue;
+    NSString *plugins = [dir stringByAppendingPathComponent:rel];
+    NSString *name = rel.lastPathComponent.stringByDeletingPathExtension;
+    NSString *app = [[plugins stringByDeletingLastPathComponent] stringByAppendingPathComponent:[name stringByAppendingPathExtension:@"app"]];
+    NSMutableDictionary *info = [NSMutableDictionary dictionaryWithContentsOfFile:[template stringByAppendingPathComponent:@"Info.plist"]];
+    if (!info) break;
+    info[@"CFBundleExecutable"] = name;
+    info[@"CFBundleName"] = name;
+    info[@"CFBundleIdentifier"] = @"com.homegrownsw.hammock.simrunner.xctrunner";
+    made = [fm createDirectoryAtPath:app withIntermediateDirectories:NO attributes:nil error:&e] &&
+           [fm moveItemAtPath:plugins toPath:[app stringByAppendingPathComponent:@"PlugIns"] error:&e] &&
+           [fm copyItemAtPath:[template stringByAppendingPathComponent:@"XCTRunner"] toPath:[app stringByAppendingPathComponent:name] error:&e] &&
+           [info writeToURL:[NSURL fileURLWithPath:[app stringByAppendingPathComponent:@"Info.plist"]] error:&e];
+    [fm copyItemAtPath:[template stringByAppendingPathComponent:@"PkgInfo"] toPath:[app stringByAppendingPathComponent:@"PkgInfo"] error:nil];
+    break;
+  }
+  if (!xctestrun || !made) {
+    [fm removeItemAtPath:dir error:nil];
+    *error = [NSString stringWithFormat:@"couldn't prepare the simulator runner from %@%@", template,
+                                        e ? [@": " stringByAppendingString:e.localizedDescription] : @""];
+    return nil;
+  }
+  gRunnerXCTestRun = xctestrun;
+  return xctestrun;
 }
 
 // Sends one command to the device's runner, starting it if need be (the
@@ -790,11 +863,8 @@ static NSString *runnerXCTestRun(void) {
 }
 
 - (Runner *)startRunner:(NSString *)udid error:(NSString **)error {
-  NSString *xctestrun = runnerXCTestRun();
-  if (!xctestrun) {
-    *error = @"rotation and gestures need the simulator runner, which wasn't built (just simulator, with xcodegen installed)";
-    return nil;
-  }
+  NSString *xctestrun = prepareRunner(error);
+  if (!xctestrun) return nil;
   Runner *r = [Runner new];
   r.udid = udid;
   r.fd = -1;
