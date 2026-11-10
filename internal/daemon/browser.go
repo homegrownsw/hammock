@@ -66,7 +66,7 @@ func newBrowserHub(d *Daemon) *browserHub {
 // browserHostPath finds the host: $HMK_BROWSER_HOST, else the helper
 // bundled in the app (Contents/Helpers), else one next to hmkd (bin/).
 func browserHostPath() string {
-	if p := os.Getenv("HMK_BROWSER_HOST"); p != "" {
+	if p := helperEnv("HMK_BROWSER_HOST"); p != "" { // (vetted: helperpath.go)
 		return p
 	}
 	exe, err := os.Executable()

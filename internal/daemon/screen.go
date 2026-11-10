@@ -98,7 +98,7 @@ func newScreenHub(d *Daemon) *screenHub {
 // screenHostPath finds the host: $HMK_SCREEN_HOST, else the helper bundled
 // in the app (Contents/Helpers), else one next to hmkd (bin/).
 func screenHostPath() string {
-	if p := os.Getenv("HMK_SCREEN_HOST"); p != "" {
+	if p := helperEnv("HMK_SCREEN_HOST"); p != "" { // (vetted: helperpath.go)
 		return p
 	}
 	exe, err := os.Executable()

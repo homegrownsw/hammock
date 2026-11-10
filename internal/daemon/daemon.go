@@ -181,6 +181,10 @@ func New(cfg Config) (*Daemon, error) {
 	if cfg.Log == nil {
 		cfg.Log = slog.Default()
 	}
+	helperLog.Store(cfg.Log)
+	if cfg.HolderPath != "" && !helperAllowed("--holder", cfg.HolderPath) {
+		cfg.HolderPath = ""
+	}
 	if cfg.HolderPath == "" {
 		exe, err := os.Executable()
 		if err != nil {

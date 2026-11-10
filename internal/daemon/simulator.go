@@ -94,7 +94,7 @@ func newSimHub(d *Daemon) *simHub {
 // simulatorHostPath finds the host: $HMK_SIMULATOR_HOST, else the helper
 // bundled in the app (Contents/Helpers), else one next to hmkd (bin/).
 func simulatorHostPath() string {
-	if p := os.Getenv("HMK_SIMULATOR_HOST"); p != "" {
+	if p := helperEnv("HMK_SIMULATOR_HOST"); p != "" { // (vetted: helperpath.go)
 		return p
 	}
 	exe, err := os.Executable()

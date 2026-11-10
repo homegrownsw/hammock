@@ -89,3 +89,16 @@ func TestTokenNamesWhatConnected(t *testing.T) {
 		t.Error("the program exec'd in the connected process's place passed by token")
 	}
 }
+
+// A program on disk is checked against a requirement as it is there.
+func TestCheckFile(t *testing.T) {
+	if !CheckFile("/bin/sh", "anchor apple") {
+		t.Error("/bin/sh isn't Apple's")
+	}
+	if CheckFile("/bin/sh", `anchor apple generic and certificate leaf[subject.OU] = "TESTTEAM00"`) {
+		t.Error("/bin/sh taken as another team's")
+	}
+	if CheckFile("/nonexistent/x", "anchor apple") {
+		t.Error("a missing file passed")
+	}
+}

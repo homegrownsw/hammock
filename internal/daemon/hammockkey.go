@@ -126,7 +126,7 @@ func (k *hammockKeyHub) close() {
 // the app (Contents/Helpers), else one next to hmkd (bin/). Replaceable in
 // tests.
 var keyHelperPath = func() string {
-	if p := os.Getenv("HMK_KEY_HELPER"); p != "" {
+	if p := helperEnv("HMK_KEY_HELPER"); p != "" { // (vetted: helperpath.go)
 		return p
 	}
 	exe, err := os.Executable()

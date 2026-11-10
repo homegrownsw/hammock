@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alexjsp/hammock/internal/codesign"
 	"github.com/alexjsp/hammock/internal/daemon"
 	"github.com/alexjsp/hammock/internal/hammockconfig"
 	"github.com/alexjsp/hammock/internal/holder"
@@ -28,7 +29,7 @@ func main() {
 	// flocked).
 	holder.CloseInherited()
 	dir := flag.String("dir", daemon.DefaultDir(), "state directory")
-	holderPath := flag.String("holder", "", "pane-holder binary (default: next to hmkd)")
+	holderPath := flag.String("holder", "", "pane-holder binary (default: next to hmkd; a release takes only its app's or its team's)")
 	verbose := flag.Bool("v", false, "debug logging")
 	remote := flag.Bool("remote", false, "enable remote access on Tailscale addresses (also: hmk remote on)")
 	remoteListen := flag.String("remote-listen", "", "comma-separated addresses for remote access instead of the Tailscale ones (development)")
@@ -47,7 +48,13 @@ func main() {
 
 	var listen []string
 	if *remoteListen != "" {
-		listen = strings.Split(*remoteListen, ",")
+		// For development: a release (signed by a team) listens only
+		// where Remote access chooses, whoever starts it.
+		if s, _ := codesign.Self(); s.Team != "" {
+			log.Warn("ignoring --remote-listen: development builds only")
+		} else {
+			listen = strings.Split(*remoteListen, ",")
+		}
 	}
 	// Kitty images sent as a file path (t=f): image-file-medium in Hammock's
 	// config, read as each pane's terminal is made.

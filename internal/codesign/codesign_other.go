@@ -17,6 +17,9 @@ func Self() (Signature, bool) { return Signature{}, false }
 // Check is never satisfied here: there are no code signatures to check.
 func Check(int, string) (Signature, bool) { return Signature{}, false }
 
+// CheckFile is never satisfied here.
+func CheckFile(string, string) bool { return false }
+
 // Token stands for a process's audit token, which only macOS has.
 type Token struct{}
 

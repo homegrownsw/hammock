@@ -13,6 +13,7 @@ package codesign
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdlib.h>
+#include <string.h>
 
 static SecCodeRef hmk_guest(int pid) {
 	CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &pid);
@@ -123,6 +124,24 @@ static int hmk_check_code(SecCodeRef code, const char *req, char *ident, int ile
 	CFRelease(code);
 	return ok ? 0 : -1;
 }
+// hmk_check_file: 0 when the code at path (a program, or an app's) is
+// validly signed and satisfies req, as it is on disk.
+static int hmk_check_file(const char *path, const char *req) {
+	CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)path, (CFIndex)strlen(path), false);
+	if (!url) return -1;
+	SecStaticCodeRef code = NULL;
+	OSStatus st = SecStaticCodeCreateWithPath(url, kSecCSDefaultFlags, &code);
+	CFRelease(url);
+	if (st != errSecSuccess || !code) return -1;
+	SecRequirementRef r = NULL;
+	CFStringRef text = CFStringCreateWithCString(NULL, req, kCFStringEncodingUTF8);
+	int ok = text && SecRequirementCreateWithString(text, kSecCSDefaultFlags, &r) == errSecSuccess &&
+	         SecStaticCodeCheckValidity(code, kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode, r) == errSecSuccess;
+	if (r) CFRelease(r);
+	if (text) CFRelease(text);
+	CFRelease(code);
+	return ok ? 0 : -1;
+}
 */
 import "C"
 
@@ -168,6 +187,16 @@ func Check(pid int, requirement string) (Signature, bool) {
 	return info(func(ident, team *C.char, runtime *C.int) C.int {
 		return C.hmk_check(C.int(pid), req, ident, 256, team, 256, runtime)
 	})
+}
+
+// CheckFile reports whether the program (or app) at path is validly signed,
+// as it is on disk, and satisfies requirement.
+func CheckFile(path, requirement string) bool {
+	p := C.CString(path)
+	defer C.free(unsafe.Pointer(p))
+	req := C.CString(requirement)
+	defer C.free(unsafe.Pointer(req))
+	return C.hmk_check_file(p, req) == 0
 }
 
 // Token is a process's audit token: its pid and pid version, which changes
