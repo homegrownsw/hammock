@@ -1,71 +1,77 @@
-# Spike: video to remote viewers over QUIC
+# Remote video over QUIC
 
-2026-10-31. Code in `spikes/quic/` (Go server, Swift Network.framework client). Decision: [ADR-0012](../adr/0012-remote-video-over-quic.md).
+How simulator and browser panes reach a remote viewer (the iPhone, or a guest's Mac in a shared Group) as video. Decision: [ADR-0012](../adr/0012-remote-video-over-quic.md); screen sharing builds on it ([ADR-0014](../adr/0014-screen-sharing-and-menu-bar.md)). Code:
 
-## Result
+- [`internal/daemon/media.go`](../../internal/daemon/media.go): sessions, tickets, the QUIC listener, pacing and loss recovery.
+- [`internal/daemon/hostmedia.go`](../../internal/daemon/hostmedia.go): the daemon's media connection to a helper that owns pixels.
+- [`internal/daemon/datagram.go`](../../internal/daemon/datagram.go): frames as QUIC datagrams (screens only).
+- [`internal/daemon/peermedia.go`](../../internal/daemon/peermedia.go): a guest's daemon relaying a host's video to its app.
+- [`helpers/media/encoder.m`](../../helpers/media/encoder.m) (`HammockEncoder`): VideoToolbox encoding, shared by the helpers.
+- [`apple/Sources/HammockKit/MediaStream.swift`](../../apple/Sources/HammockKit/MediaStream.swift): the viewer.
 
-quic-go (v0.64) and Network.framework's QUIC interoperate with the daemon's kind of pinned self-signed certificate (TLS 1.3, verify block comparing the leaf's SHA-256), a bidirectional control stream carrying a 32-byte ticket, and one server-initiated unidirectional stream per frame. Over the Mac's Tailscale address, synthetic 12 Mbit/s 60 fps video (keyframes 8× a delta) arrives with p50 2–3 ms, p99 6–9 ms, the same as TLS over TCP.
+## The path
 
-With quic-go dropping and delaying its own outgoing packets (40 ms one way, 1% loss):
+1. The viewer sends `OpenMedia` on its control link and gets a `MediaTicket`: a session id, a 32-byte random ticket and the QUIC port. Remote access must be on. A ticket is good for 30 seconds and one use.
+2. The daemon asks the helper that owns the pane's pixels (Hammock Simulator or Hammock Browser) to encode for that session alone. It opens a second connection to the helper's socket, sends `{"t":"media"}`, then sends `encode`, `rate`, `keyframe`, `refresh`, `ltr`, `hold` and `stop` lines, and reads back binary frame records.
+3. The viewer connects over QUIC (ALPN `hmk-media/1`, TLS 1.3), pinned to the same certificate as the control link: the viewer's verify block compares the SHA-256 of the leaf with the pin. It sends the ticket on a bidirectional control stream.
+4. The daemon sends each frame on its own server-initiated unidirectional stream. The viewer acks each frame on the control stream.
 
-| Sender | Shown | Latency p50 / p90 / p99 |
-|---|---|---|
-| Fixed 7 Mbit/s; on a late frame cancel everything and send a keyframe | 12 fps | 100 / 173 / 191 ms |
-| Adaptive bitrate from queueing delay, skip frames when >100 ms in flight, abandon a frame after 400 ms and recover from the last frame shown | 55 fps | 44 / 91 / 199 ms |
+A viewer on the local socket (a guest's app, whose daemon relays the host's video) takes frames in band on its control link as `MediaFrame` messages instead. The guest's daemon is the one that connects to the host over QUIC and acks, so the host paces against the real network link.
 
-At 1% loss and ~80 ms RTT, Cubic's throughput is ≈1.4 Mbit/s (what got through): with any loss-based transport, the encoder has to follow the achievable rate.
+## Wire format
 
-Not measured: QUIC against TCP under the same loss. dummynet on this Mac didn't shape traffic to its own Tailscale address (loopback), twice; a real iPhone with Network Link Conditioner is the way to do it.
+- **Frame record** (stream, in band, or cut into datagrams): u32 sequence number, u8 flags, u64 presentation time (µs, host clock), u16 width, u16 height (17 bytes, big-endian), then four u16 crop fractions if cropped, then the picture as AVCC (4-byte big-endian NAL lengths). Flags: 1 keyframe, 2 refresh (predicted from an acknowledged long-term reference), 4 HEVC (else H.264), 8 cropped. A keyframe carries its parameter sets as NALs in front, so a viewer can start from any keyframe.
+- **Control stream, viewer to daemon:** record 1 is an ack (u32 sequence number); 2 asks for a keyframe; 3 is a NACK for datagram shards (u32 sequence number, u8 count, that many u16 shard indices). Anything else closes the connection.
 
-## Network.framework gotchas
+## Network.framework quirks
 
-- `NWConnectionGroup` over `NWMultiplexGroup` opens an empty bidirectional stream of its own (stream 0) before the first `NWConnection(from: group)`. The server must take the first stream that carries a ticket, reading candidates concurrently.
-- It never sends MAX_STREAMS: after `initialMaxStreamsUnidirectional` streams the server can open no more, even with every stream read to the end and cancelled. Set it to 2^40.
-- `send(content:completion:)` defaults to `isComplete: true`, which finishes the stream. Use `contentContext: .defaultStream, isComplete: false` on the control stream.
-- The group reports `.waiting(ENETDOWN)` briefly before `.ready`; don't treat waiting as failure.
-- In a sandboxed shell, UDP to the Tailscale address fails with ENETDOWN; run outside the sandbox.
+The viewer uses Network.framework's QUIC (`NWConnectionGroup` over `NWMultiplexGroup`). The daemon uses quic-go. Both sides rely on these:
 
-## Why frames may be abandoned
+- **The group opens an empty bidirectional stream of its own** before the first `NWConnection(from: group)`. So the daemon reads every stream the viewer opens concurrently and takes the first that carries a valid ticket. A second ticket on one connection ends that session. With no ticket in 5 seconds the connection is closed.
+- **It never sends MAX_STREAMS.** Once `initialMaxStreamsUnidirectional` streams have been opened, the server can open no more, even with every stream read and finished. The viewer sets it to 2^40.
+- **`send(content:completion:)` defaults to `isComplete: true`**, which finishes the stream. Every send on the control stream passes `contentContext: .defaultStream, isComplete: false`.
+- **The group reports `.waiting` (`ENETDOWN`) briefly before `.ready`.** Waiting isn't failure.
+- In a sandboxed shell, UDP to the Mac's Tailscale address fails with `ENETDOWN`; test outside the sandbox.
 
-With every frame referencing the previous one, frame N+1 can't be shown until frame N's lost packet is resent, on QUIC as on TCP. QUIC's advantage is that N can be given up: the next frame references a frame the viewer has (VideoToolbox long-term references: `kVTCompressionPropertyKey_EnableLTR`, `kVTEncodeFrameOptionKey_AcknowledgedLTRTokens`, low-latency rate control) or is a keyframe.
+## Pacing
 
-## Browser capture: DevTools screencast
+At about 80 ms round trip and 1% loss, a loss-based congestion controller gets well under the bitrate a fixed-rate encoder would want, so the encoder has to follow the achievable rate. (Measured once, with synthetic 60 fps video: a fixed 7 Mbit/s sender that answered every late frame with a keyframe showed 12 fps; the adaptive sender below showed 55.)
 
-Browser panes run windowed Chromium (ADR-0011), whose pixels live in its GPU process's `CAContext`: there's no IOSurface to hand the encoder, as Hammock Simulator has. Two ways to get them:
-
-- **ScreenCaptureKit** on the shadow window: zero-copy and cheap, but needs Screen Recording permission for Hammock Browser (a prompt, then macOS's periodic re-confirmation), for a background helper the user never sees. Ruled out on that alone.
-- **DevTools screencast** (`Page.startScreencast`, through CEF's in-process DevTools channel): no permission. Chromium reads back each compositor frame and JPEG-encodes it; Hammock Browser decodes it (ImageIO into an IOSurface-backed pixel buffer, off the main thread, newest frame winning) and encodes H.264 with HammockEncoder. Chosen.
-
-Measured on this Mac (M-series, 120 Hz display), a page animating every frame, 1000×700 pt at 2x:
-
-| Screencast size | Captured | Delivered | JPEG | Decode | Chromium frame → pixel buffer | Hammock Browser CPU |
-|---|---|---|---|---|---|---|
-| 2000×1400, decoding on the main thread | 61–77 fps | 33 fps | 190 KB | 9 ms | 45–60 ms | 230% |
-| 2000×1400, decoding off the main thread | 77–82 fps | 52 fps | 190 KB | 9 ms | 16–19 ms | 160% |
-| 2000×1400, acks paced to 60/s | 58 fps | 51 fps | 188 KB | 10 ms | 16 ms | 100% |
-| 1464×1025 (a phone's `maxPixels`), paced | 60 fps | 55 fps | 114 KB | 5 ms | 6 ms | 52% |
-
-That's the worst case: a still page sends no frames and costs nothing. "Delivered" includes the session's first second. Chromium keeps more than one frame unacked, so pacing gives each ack its own 1/60 s slot; the screencast is sized to the biggest viewer's `maxPixels` and restarted when that changes.
-
-Input goes the other way as DevTools `Input.*` events (`BrowserInput`), positions and scroll deltas as fractions of the page. Menus the page opens (`<select>`, right-click) go to whoever gave the latest input: Hammock Browser tracks whether that was the Mac showing the page or a remote viewer, and sends a remote one's menus through the daemon (`BrowserMenu`, answered by `BrowserMenuChoice`). Copy and cut read the selection with `Runtime.evaluate` and send it back (`BrowserClipboard`). A guest's Mac composes text with its own text input system and sends marked text as `Input.imeSetComposition`.
-
-## Two freezes, found with the video log
-
-- The daemon held the encoder when too much video was in flight and released it on the ack, from different goroutines. On a fast link the release reached the helper before the hold, leaving the encoder held with nothing in flight to give up (`frames=2, gave_up=0`). `syncHold` serializes them and always sends the current state.
-- Paced screencast acks that fired after the screencast stopped were dropped. Chromium counts unacked frames across a stop, so a quickly restarted screencast (a viewer joining at another size) stalled for seconds.
-
-The apps log to `com.homegrownsw.hammock` / `video` at notice level (kept by macOS): state changes, keyframe requests and why, decoder failures, renderer flushes, and one line per 5 s silence with what the stream was waiting for. `/usr/bin/log show --predicate 'subsystem == "com.homegrownsw.hammock"' --last 10m` on a Mac; `xcrun simctl spawn <udid> log show …` for the simulator's app. (zsh has its own `log` builtin.)
+- The bitrate follows queueing delay, measured from the viewer's acks: between 300 kbit/s and 16 Mbit/s for panes, starting at 4 Mbit/s, at up to 60 fps.
+- The encoder is held while more than about 100 ms of video is unacked, so queues stay short. A held encoder skips frames; the next is whatever the pane shows when it resumes.
+- A frame unacked after 400 ms is given up, with everything after it, and the viewer recovers (below). A recovery frame that hasn't come in 300 ms is asked for again.
+- **Holds are serialised** (`syncHold`). A hold and its release are sent from different goroutines; on a fast link the release could reach the helper before the hold, leaving the encoder held with nothing in flight to give up. Each call takes a lock and sends the current state.
 
 ## Loss recovery with long-term references
 
-`spikes/ltr/main.m` encodes 90 synthetic 1206×2622 frames at 12 Mbit/s, loses frames 40–49, recovers at frame 50, and decodes what a viewer would get with VTDecompressionSession, comparing each picture with its source (PSNR). The decoder reports no errors in any case (it conceals missing references), so pixels are the only honest check:
+Every frame references the previous one, so frame N+1 can't be shown until a lost packet of frame N is resent, on QUIC as on TCP. QUIC's advantage is that N can be given up: the next frame instead references a frame the viewer is known to have, or is a keyframe.
 
-| Recovery at frame 50 | Frame 50 | Shown after the loss |
-|---|---|---|
-| None | | 6 dB from then on: garbage, with no decode error |
-| Keyframe | 21 KB (squeezed by rate control) | 38 dB, back to 46 dB over ~10 frames |
-| LTR refresh | 32 KB | 47 dB at once, as before the loss |
+- The low-latency encoder runs with real-time mode, no frame reordering, low-latency rate control (`EnableLowLatencyRateControl`), keyframes only when asked, and `EnableLTR`.
+- Frames carrying `RequireLTRAcknowledgementToken` pass the token to the daemon with the frame.
+- The daemon reports a token back (`AcknowledgedLTRTokens`) only when the viewer has that frame and every frame before it (`readyLTRs`). QUIC delivers out of order, and a frame received after a missing one may reference it. Before giving frames up, the daemon forgets tokens received after the first missing frame (`forgetUnsure`). Tokens from before the latest keyframe, or from an encoder since restarted, are dropped too.
+- After giving frames up, the daemon asks for a refresh (`ForceLTRRefresh`) rather than a keyframe. The encoder turns a refresh into a keyframe when nothing has been acknowledged yet, and asks again if the recovery frame is dropped.
+- The viewer skips the gap on a refresh frame. A viewer that threw frames away itself (a decoder error, a gap it gave up on) asks for a keyframe instead, and the daemon then forgets every token.
+- The decoder reports no error when a reference is missing: it conceals it, and the picture is garbage from then on. Pixels are the only honest check when changing this. Measured once: a refresh frame was about half again the size of a squeezed keyframe and restored full quality at once, where the keyframe took about ten frames to.
 
-How it's used: the encoder runs with `EnableLTR`; frames carrying `RequireLTRAcknowledgementToken` pass their token to the daemon with the frame. The daemon reports a token back (`AcknowledgedLTRTokens`) only when the viewer has that frame and every frame before it (QUIC delivers out of order; a frame after a missing one may reference it), and on giving frames up forgets tokens after the first missing frame, then asks for `ForceLTRRefresh` instead of a keyframe. A refresh is flagged on the wire (flags bit 2), so the viewer skips the gap; a viewer that threw frames away itself waits for a keyframe instead. The encoder turns a refresh into a keyframe when nothing is acknowledged yet, and asks again if the refresh frame is dropped.
+## Screens: datagrams
 
-End to end (the Go probe over QUIC, losing every frame for 1 s of the animated page): one refresh, 54 frames skipped, 276 frames shown, all decoding cleanly in ffmpeg, and no keyframe after the first.
+A screen (ADR-0014) takes frames as QUIC datagrams, since a stream holds a whole frame for a round trip when one packet is lost. Each record is cut into 1080-byte shards with XOR parity (it fits a Tailscale packet, MTU 1280, with the headers). A lost shard is rebuilt from the rest of its stripe; what can't be is asked for with a NACK and resent only while the frame is fresh (one second). The datagram layout is in `datagram.go`'s header comment. Screens also have a sharp tier, HEVC 4:4:4 from VideoToolbox's normal mode, which has no long-term references and recovers with keyframes.
+
+## Simulator pixels
+
+The simulator host has the device's framebuffer as an IOSurface and hands it to the encoder directly. The framebuffer stays in the device's portrait after a rotation, so the encoder turns frames (`VTPixelRotationSession`) by the device's rotation: see [simulator-panes.md](simulator-panes.md).
+
+## Browser pixels: the DevTools screencast
+
+Browser panes run windowed Chromium ([browser-panes.md](browser-panes.md)), whose pixels live in its GPU process's `CAContext`. There's no IOSurface to hand the encoder. ScreenCaptureKit on the shadow window would be cheap, but needs Screen Recording permission (a prompt, then macOS's periodic re-confirmation) for a background helper the person never sees. So the host uses the DevTools screencast (`Page.startScreencast`, through CEF's in-process DevTools channel), which needs no permission:
+
+- Chromium reads back each compositor frame and JPEG-encodes it (quality 85). The host decodes it with ImageIO into an IOSurface-backed BGRA pixel buffer, off the main thread (every page runs on it), the newest frame winning while one is in the decoder. `HammockEncoder` then encodes it as H.264.
+- A still page sends no frames and costs nothing. The newest frame is kept, for a keyframe asked for while the page is still.
+- **Acks are paced to 60 a second**, each in its own 1/60 s slot. Chromium captures the next frame only once acked, and keeps more than one unacked, so this caps the work on a 120 Hz display. (Measured once, on a page animating every frame: pacing halved the host's CPU without losing delivered frames.)
+- **Acks are sent even after the screencast stops.** Chromium counts unacked frames across a stop, so a quickly restarted screencast (a viewer joining at another size) would otherwise stall for seconds.
+- The screencast is sized to the biggest viewer's `maxPixels` (at most 4096 a side) and restarted when that or the page's size changes.
+- **Input** goes the other way as DevTools `Input.*` events (`rinput`, from `BrowserInput`), positions as fractions of the page. Menus the page opens (`<select>`, right-click) go to whoever gave the latest input: Hammock Browser tracks whether that was the Mac showing the page or a remote viewer, and sends a remote one's through the daemon (`BrowserMenu`, answered by `BrowserMenuChoice`). Copy and cut read the selection with `Runtime.evaluate` and send it back (`BrowserClipboard`). A guest's Mac composes text with its own text input system and sends marked text as `Input.imeSetComposition`.
+
+## Diagnosing
+
+The apps log to subsystem `com.homegrownsw.hammock`, category `video`, at notice level (kept by macOS): state changes, keyframe requests and why, decoder failures, renderer flushes, and a line for each 5 seconds without frames saying what the stream was waiting for. On a Mac: `/usr/bin/log show --predicate 'subsystem == "com.homegrownsw.hammock"' --last 10m` (zsh has its own `log` builtin). For the simulator's app: `xcrun simctl spawn <udid> log show …`. The daemon logs each session's transport (`quic`, `quic datagrams` or `in band`).

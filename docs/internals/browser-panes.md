@@ -1,90 +1,56 @@
-# Spike: browser panes that feel native
+# Browser panes
 
-Status: in progress · 2026-10-30 · Code: [`spikes/browser/`](../../internals/browser) · Decision: [ADR-0011](../adr/0011-browser-panes-hidden-window-host.md) (proposed)
+How browser panes run Chromium in a separate process and still feel native. Decision: [ADR-0011](../adr/0011-browser-panes-hidden-window-host.md). Code: [`helpers/browser/host.mm`](../../helpers/browser/host.mm) (the host, Hammock Browser), [`helpers/browser/helper.cc`](../../helpers/browser/helper.cc) (Chromium's sub-processes), [`apple/Sources/HammockMac/BrowserView.swift`](../../apple/Sources/HammockMac/BrowserView.swift) (the Mac's pane) and [`RemoteBrowserView.swift`](../../apple/Sources/HammockMac/RemoteBrowserView.swift) (a remote viewer's). Remote video of a page is in [remote-media.md](remote-media.md).
 
-## Question
+## Why a hidden window, not offscreen rendering
 
-Can a browser pane in Hammock feel indistinguishable from a native browser view locally, while Chromium runs in a separate process that outlives the app? The priorities, in order, are trackpad scrolling, latency/frame rate, text input, and surviving app quit. The main use is dev previews and agent-driven checks, not signed-in general browsing.
+CEF's supported embedding is offscreen rendering (OSR): each frame handed over as an IOSurface. Hammock doesn't use it, because its input path can't carry the trackpad. `SendMouseWheelEvent` has no gesture phases (so no rubber-banding or momentum) and there is no pinch API. Text input would have to be driven through CEF's `Ime*` calls, and popups, menus and IME windows are drawn offscreen, each needing its own code.
 
-## Designs compared
+Instead each pane runs windowed (Alloy) CEF in a hidden "shadow" window, and the app shows Chromium's own GPU output directly.
 
-| | A. Offscreen (CEF OSR) | B. Hidden window (built here) |
-|---|---|---|
-| Where Chromium draws | Offscreen. Each frame is handed over as an IOSurface (`OnAcceleratedPaint`). | Its normal GPU path, into its own `CAContext`, exactly as in Chrome. |
-| How the app shows it | Our layer shows the IOSurface, then a second layer hop to the app. | The app hosts Chromium's GPU context directly with `CALayerHost`. Zero copies, and no hop through the helper. |
-| Frame pacing | Our own begin-frame clock (`external_begin_frame`). Must be driven at the display rate, otherwise it caps at 60. | Chromium's own display link. |
-| Trackpad input | CEF's `SendMouseWheelEvent` has **no gesture phases**, so no rubber-banding, and no pinch API. | The app sends raw `CGEvent` bytes, and the host rebuilds the `NSEvent` and hands it to Chromium's own `NSView`. Phases, momentum, precise deltas and magnify all arrive intact. |
-| Text input / IME | CEF's `Ime*` API, which we would have to drive ourselves. | macOS's text system runs in the app, which is the active app. The resulting calls are replayed inside Chromium's own `keyDown` (see below). |
-| Popups, menus, IME windows | Drawn offscreen; each one needs extra code. | Native, in the right place on screen, because the hidden window sits exactly behind the pane. |
-| Survives app quit | Yes (separate process) | Yes (separate process) |
+## The host
 
-Design A is what CEF supports officially. Design B is what this spike built, because A's input path can't carry trackpad gestures, and you put trackpad feel first.
+- **One host per daemon.** Chromium can't share a profile directory between processes. Every browser pane runs in it, sharing one persistent profile (cookies, logins, local storage, session cookies kept), passed as `--profile`. The daemon starts the host; it outlives the app and the daemon, so pages keep running and a new client reattaches. It quits after 10 minutes with no clients, or 5 minutes with no browsers.
+- **Protocol:** newline-delimited JSON over a Unix socket (0600), any number of clients, every per-browser message carrying the pane id. The message list is in the header comment of `host.mm`.
+- **Socket paths must be under 104 bytes** (`sun_path`); a longer one is silently truncated by the kernel, so the host refuses it.
+- **Command-line switches:** `disable-backgrounding-occluded-windows`, `disable-renderer-backgrounding` and `disable-background-timer-throttling` (shadow windows are transparent and usually covered, and Chromium must never treat the page as hidden), `use-mock-keychain` (no keychain prompt for the cookie key) and `disable-notifications`.
+- **Bundling:** inside `Hammock.app/Contents/Helpers`, Chromium would take the outer app for its own bundle and fail to start, so the host sets `main_bundle_path` and `framework_dir_path` explicitly. The four `Hammock Browser Helper*.app` bundles run `helper.cc`, which enters the macOS sandbox before loading the CEF framework, as CEF requires. `helpers/browser/build.sh` builds it all against the CEF build pinned by `scripts/fetch-cef.sh`.
+- **DevTools** calls go through CEF's in-process channel. No debugging port is opened, so only clients of the socket (the daemon) can drive pages. Console, log, network and page events are enabled from the moment a page exists, so an agent that looks later sees what already happened.
 
-## How design B works
+## Showing the page
 
-- **BrowserHost** (`spikes/browser/host/host.mm`) runs CEF in windowed (Alloy) mode inside a borderless `NSWindow`. That window:
-  - has alpha 0 and ignores the mouse;
-  - is kept exactly behind the viewer's pane;
-  - runs with `--disable-backgrounding-occluded-windows`, so Chromium never treats the page as hidden.
-- Chromium already shows its GPU output in that window through a `CALayerHost`. The host finds that layer, reads its context ID and sends the ID to the viewer. The viewer copies Chromium's layer structure (a geometry-flipped container with the `CALayerHost` at the origin). WindowServer then composites Chromium's frames straight into Hammock's window.
-- **Input:** the viewer sends each event as `CGEventCreateData` bytes plus the pane-local point.
-  - The host rebuilds the event and calls the matching responder method on Chromium's `RenderWidgetHostViewCocoa` directly, without going through `NSWindow`, which would try to activate the host app.
-  - Scroll and gesture events have no public constructor, so they go through a small `NSProxy` that supplies the window and the window-relative location and forwards everything else.
-- **Text input:** a background app can't use the macOS text system. In the first run it took 12–50 ms per key and lost dead-key state.
-  - The viewer calls `interpretKeyEvents` itself, records the resulting `NSTextInputClient` calls (insert, set marked text, unmark, command) and sends them with the key.
-  - In the host, Chromium's `inputContext` is swapped for a replay context, so Chromium gets those calls from inside its own `keyDown`, exactly as it would natively.
-  - The host sends the caret rectangle back, so IME candidate windows open next to the text.
-- **Cursors:** relayed through `OnCursorChange`.
-- **⌘ shortcuts:** go to the page first, as in Chrome. Editing commands the page doesn't use run in the host (Copy, Paste and so on). Any other unhandled shortcut bounces back to the app's menus.
+- **The shadow window** is borderless, has alpha 0, ignores the mouse and is kept exactly behind the pane. It reports itself key while its pane is focused, so Chromium draws a caret and treats the page as active. Anything Chromium positions on screen (IME candidates, drag images) lands in the right place because the window sits behind the pane.
+- **The layer.** Chromium already shows its GPU output in that window through a `CALayerHost`. The host finds it, reads its `contextId` and backing scale, and sends them to the app showing the page (`layer`). The app copies Chromium's structure: a geometry-flipped container with a `CALayerHost` at the origin, the remote tree in points. WindowServer composites Chromium's frames straight into Hammock's window: no copies, no hop through the host. The container is sized to the view by hand and clipped, so the page never covers the pane's controls.
+- **Context swaps.** Chromium moves to a new GPU context in normal use (surface recreated, GPU process restart, some navigations). The host polls for it 30 times a second. The app puts the new `CALayerHost` on top and drops the old one 250 ms later, so a swap never shows a blank frame.
+- `CAContext` and `CALayerHost` are private, but Chromium relies on them on every Mac, so they're as stable as private APIs get.
 
-## Results so far (measured without a screen: the Mac was locked)
+## Input
 
-| Check | Result |
-|---|---|
-| Chromium's GPU layer can be hosted by another process on macOS 27 | ✅ The `CAContext` ID was found and sent; the `CALayerHost` class exists. **Not yet seen on screen.** |
-| Click → page `pointerdown` | ~3 ms end to end. The viewer → host hop is 0.4–0.7 ms. |
-| Key → page `keydown` | ~1 ms per key once text input is replayed (12–50 ms before). |
-| Typing, Backspace, ⌘A, ⌘C (copy event with the right selection) | ✅ |
-| Dead key and IME (´ → é, か → 漢字) | ✅ The page gets the correct `composition*` events and value. The live ⌥e path needs the viewer to be the active app, which it can't be while the screen is locked. |
-| Trackpad scroll with phases and momentum | ✅ The page receives precise pixel wheel deltas and scrolls. Rubber-banding is only visible on screen. |
-| Pinch | ⚠️ The magnify events arrive with the correct phases, and Chromium turns them into ctrl-wheel for the page, but the page didn't zoom from my **hand-built** pinch. To check with a real trackpad. |
-| Resize | ✅ The page saw its new size 8 ms after the window changed; the layer ID stayed the same. |
-| Frame pacing | 60 fps, p99 ≈ 18.6 ms, with no viewer attached too. Locked displays run at 60 Hz, so 120 Hz is unmeasured. |
-| Survives viewer quit | ✅ The page kept rendering at 60 fps with no viewer. Relaunching reattached to the same process with form state intact. |
+- **Events** go from the app as `CGEventCreateData` bytes plus the pane-local point. The host rebuilds the `NSEvent` and calls the matching responder method on Chromium's `RenderWidgetHostViewCocoa` directly, not through `NSWindow`, which would try to activate the host on a click. Phases, momentum, precise deltas and magnify arrive intact.
+- **Scroll and gesture events** have no public constructor, and one rebuilt from CGEvent data has no window (its location is in screen space). They're wrapped in an `NSProxy` (`EventProxy`) that supplies the shadow window and a window-relative location and forwards everything else.
+- **Text input.** The host is never the active app, so the macOS text system can't run there: it stalls 10–50 ms a key and loses dead-key state. The app calls `interpretKeyEvents` itself, records the resulting `NSTextInputClient` calls (insert, set marked text, unmark, command) and sends them with the key. In the host, Chromium's `inputContext` is swapped for a replay context, so Chromium gets those calls from inside its own `keyDown`, as it would natively. The host sends the caret and composition rectangle back, so the app can answer IME queries (where the candidate window goes) without a round trip.
+- **Cursors** come back through `OnCursorChange`; the app owns the real cursor.
+- **⌘ shortcuts** go to the page first, as in Chrome. Editing and zoom commands the page doesn't consume run in the host (it has no key window for a menu to target). Anything else goes back to the app (`unhandled`), so its own menus still work while a page is focused.
 
-## Still to check at the desk
+## Native UI the host can't show
 
-Run `spikes/browser/try.sh b`, `a`, `cef` and `chrome` with the same page (or your own dev server: `try.sh b http://localhost:3000`) and compare:
+A background app can't keep a menu or a sheet open, and must never come to the front. So the app shows these, and sends the answer back:
 
-1. **Does it display at all?** The pane should show the test page with a spinning square. If it's blank or upside down, the layer setup is wrong, which is a quick fix.
-2. **Trackpad feel:**
-   - Momentum.
-   - Rubber-banding at the top and bottom.
-   - Pinch-zoom.
-   - Two-finger back/forward (not wired yet).
-   - Smart zoom (double-tap with two fingers).
-3. **Frame rate** on a 120 Hz display: the header shows fps.
-4. **Text input:** ⌥e e, a Japanese or Chinese IME (where the candidate window opens), Press-and-Hold accents, emoji picker (⌃⌘Group).
-5. **Things Chromium shows itself from the background app:**
-   - the `<select>` popup and right-click menu (do they open, take keyboard input, and leave Hammock's window active?);
-   - link hover cursors;
-   - tooltips.
-6. **Window moves and resizes:** drag the window and resize it live. Popups opened afterwards should still line up.
-7. **Groups / full screen / Mission Control:** the hidden window must never show up or pull focus.
+- **`<select>` popups.** Chromium's `WebMenuRunner` (`runMenuInView:withBounds:initialIndex:`) is swizzled: the host sends the items and the element's rectangle, pumps the run loop until the choice comes back, and applies it through the item's own action, as if it had been clicked there. If the class is missing (a CEF update), the host logs that `<select>` will misbehave.
+- **Context menus** (`CefContextMenuHandler`), **JS dialogs** (`CefJSDialogHandler`; "Leave site?" never blocks), **file pickers** (`CefDialogHandler`) and **downloads** (a save panel; with no app showing the page, the download is cancelled). Downloaded files are marked as from the web, so Gatekeeper checks them.
+- **New windows.** The host never opens a window: it would belong to the background process. `OnBeforePopup` cancels every popup. One the person asked for (a click, a key) opens in a Hammock browser tab, or for a plain new-tab link from their own click, possibly in their own browser (the daemon decides, `browser-new-tab`). One a page opens by itself is dropped, as a popup blocker would.
+- **Links for other apps** (`mailto:`, `zoommtg:` and so on): the app asks first, then opens them; one a page follows by itself is dropped.
+- **Menus from a remote viewer.** Menus the page opens go to whoever gave the latest input: the Mac showing the page, or a remote viewer through the daemon. A remote viewer's Copy, Cut and Copy Link Address go to their clipboard, and nothing reads this Mac's pasteboard for them.
 
-## Known gaps in design B (not built in the spike)
+## Drags out of the page
 
-- **File pickers, JS dialogs, permission prompts:** route them through CEF handlers (`CefDialogHandler`, `CefJSDialogHandler`, `CefPermissionHandler`) to native sheets in Hammock, so the host never has to come to the front.
-- **New windows (fixed):** `target=_blank` and `window.open` made CEF open a real window owned by the host, and closing it made the pane flash. `OnBeforePopup` now cancels them and sends the URL to the viewer (Hammock: a new browser tab; the spike follows the link in the same pane).
-- **Layer swaps (fixed):** Chromium moves to a new GPU context in normal use (twice in a few minutes of testing, e.g. on navigation). The viewer now puts the new `CALayerHost` on top and drops the old one 250 ms later, so a swap never shows a blank frame.
-- **`<select>` popups (fixed):** a menu can't stay open in a background app, so it flashed and closed. The host now hooks Chromium's `WebMenuRunner`: the viewer shows the menu natively over the element and sends the choice back, which the host applies through the menu item's own action.
-- **Context menus:** likely the same problem as `<select>`; prefer `CefContextMenuHandler` → a menu drawn by Hammock, for better integration (and fewer surprises from the background app).
-- **Drag and drop:** dropping files from Finder onto the page means forwarding `NSDraggingDestination` events. Dragging out of the page (text, links, images) runs in the app: the host overrides `WebContentsViewCocoa`'s `beginDraggingSessionWithItems:event:source:`, sends the data and image to the app, which drags from the pane, and passes back how it ended (begun in the host, macOS never ended it). Not yet: drops onto the page (so in-page HTML5 drag and drop ends with none) and dragging out as files (promises).
-- **Accessibility:** the remote layer is opaque to VoiceOver. Chromium bridges its own process boundary with remote accessibility elements; we'd need the same trick.
-- **Several panes per host:** one window per browser, all hidden behind their panes. Cost per pane needs measuring (memory, GPU).
-- **Private API:** `CAContext`/`CALayerHost` are private, but Chromium itself relies on them on every Mac, so they're as stable as private APIs get. Fallback: design A's IOSurface path.
+A drag the page starts (text, a link, an image) would be an AppKit drag session of the background host, begun from a replayed event. The real mouse-up goes to the app, so macOS never ends it, and every window is stuck in it until Esc. So the host swizzles `WebContentsViewCocoa`'s `beginDraggingSessionWithItems:event:source:`: the data and image go to the app, which runs the drag from the pane with the real mouse and reports how it ended (`dragEnd`). That is passed to Chromium's drag source as AppKit would have.
 
-## Also learned
+Chromium's drag source sets a global "drag running" flag in `draggingSession:willBeginAtPoint:` and clears it in `draggingSession:endedAtPoint:operation:`, with a CHECK that it changes: the host crashes otherwise. With no real session, the hook calls `willBegin` itself, so every end has its begin. A drag still waiting when the app goes away or the pane closes is ended, or Chromium keeps the page in its drag. File promises are left out (the app can't keep them), and drags from a remote viewer's input are refused.
 
-- CEF 156 macOS offscreen rendering does support shared IOSurface textures (`shared_texture_io_surface`), whatever the header comments say. `cefclient` runs that path at 60 fps here.
-- Unix socket paths must stay under 104 bytes (the scratchpad path was 111 and got silently truncated). The host now refuses paths that are too long.
+## Known gaps
+
+- **Drops onto the page** (files from Finder, in-page HTML5 drag and drop from outside) aren't forwarded.
+- **Permission prompts** (camera, microphone, location) have no handler; they get CEF's default.
+- **Accessibility:** the remote layer is opaque to VoiceOver. Chromium bridges its own process boundary with remote accessibility elements; Hammock would need the same.
+- Each browser has its own hidden window; the cost per pane (memory, GPU) hasn't been measured.

@@ -1,56 +1,61 @@
-# Spike: simulator display and input without Simulator.app
+# Simulator panes
 
-2026-10-31, Xcode 27.1, iOS 27.0 runtime. Code in `spikes/simulator/`.
+How simulator panes show and drive an iOS simulator with no Simulator.app window, through Xcode's private CoreSimulator and SimulatorKit frameworks plus an XCTest runner. Code:
 
-## Result
+- [`helpers/simulator/host.m`](../../helpers/simulator/host.m): the host, Hammock Simulator.
+- [`helpers/simulator/runner/`](../../helpers/simulator/runner/): the XCTest runner, for rotation and multi-finger gestures.
+- [`helpers/simulator/guest/main.m`](../../helpers/simulator/guest/main.m): the guest helper run inside a foldable, for its fold.
+- [`helpers/simulator/build.sh`](../../helpers/simulator/build.sh): builds all three.
+- [`internal/daemon/simulator.go`](../../internal/daemon/simulator.go): the daemon's side.
+- [`apple/Sources/HammockMac/SimulatorView.swift`](../../apple/Sources/HammockMac/SimulatorView.swift): the Mac's pane and device frame.
 
-Both halves work headlessly, with no Simulator.app window:
+Everything here is private API, written against Xcode 27 and iOS 27 runtimes. Expect to revisit it with each Xcode release; it's kept in this one helper so nothing else breaks when it does.
 
-- **Display.** CoreSimulator's device IO ports include `SimDisplayIOSurfaceRenderable` descriptors (one per screen; the device's main screen is the one with a non-nil surface). `framebufferSurface` returns the live IOSurface at full resolution (1206×2622 for an iPhone 18 Pro), updated in place as the device renders. `SimScreen`'s `registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:` reports new frames and surface swaps (rotation, resize).
-- **Input.** SimulatorKit's Swift class `SimDeviceLegacyHIDClient` (`initWithDevice:error:`, `sendWithMessage:freeWhenDone:completionQueue:completion:`) takes Indigo HID messages built by SimulatorKit's exported C functions. A touch is `IndigoHIDMessageForMouseNSEvent` with target `0x32` (the touch screen), sent as a down then an up.
+## The host
 
-## Gotchas
+- **One host per daemon**, like the browser host ([browser-panes.md](browser-panes.md)). Newline-delimited JSON over a Unix socket (`run/simulator-host.sock`), any number of clients; the message list is in `host.m`'s header comment. The daemon owns which panes show which device. The Mac app talks to the host directly for the picture and touches; agents' screenshots and input go through the daemon. The host outlives the app and the daemon, and the devices outlive both.
+- **Loading the frameworks.** Library validation is off, since the host loads Xcode's private frameworks. So it loads only code signed by Apple (`anchor apple`), checked before `dlopen`: CoreSimulator from `/Library/Developer/PrivateFrameworks`, SimulatorKit from the Xcode `xcode-select` chose (read from `/var/db/xcode_select_link` without running it), else `/Applications/Xcode.app`. Never from `DEVELOPER_DIR`: whoever could set the host's environment could have it load their code.
+- A device that isn't booted is booted with `xcrun simctl boot`, and the host waits for its display to come up.
 
-- The ports and descriptors are ROCK remote proxies: they don't support KVC (`valueForKey:` throws); call selectors directly.
-- `IndigoHIDMessageForMouseNSEvent` changed signature. In Xcode 27 it is `(CGPoint *point, CGPoint *point2, uint32 target, NSEventType type, uint32 edge, double width, double height)`: the point is divided by the size, so pass a 0–1 ratio with a size of 1×1. idb's older five-argument form (`…, BOOL`) sends nothing that registers.
-- Everything is private API: pin per Xcode release, keep it in one helper, and fall back to `simctl io screenshot` plus `simctl` where it breaks.
+## Display
 
-## Plan
+- A device's IO ports (`-[SimDevice io]`, `ioPorts`) include descriptors conforming to `SimDisplayIOSurfaceRenderable`, one per screen. The screens are the ones whose `framebufferSurface` isn't nil. It's the live IOSurface at full resolution, updated in place as the device renders.
+- The host puts that IOSurface in a layer of its own `CAContext`, and the app shows the context through `CALayerHost`, as browser panes do: frames are never copied. New frames call the private `-[CALayer setContentsChanged]` so the layer re-reads the surface.
+- `-[SimScreen registerScreenCallbacksWithUUID:callbackQueue:frameCallback:surfacesChangedCallback:propertiesChangedCallback:]` reports new frames, surface swaps and property changes (orientation). Older runtimes without it get `registerCallbackWithUUID:damageRectanglesCallback:` and `…ioSurfacesChangeCallback:`.
+- **The ports, descriptors and screen properties are ROCK remote proxies.** They don't support KVC (`valueForKey:` throws), so the host calls selectors directly.
+- **Device frames.** `-[SimScreen screenProperties]` (a `SimScreenProperties`) gives `screenID`, `name`, `uiOrientation`, `chromeIdentifier` and `framebufferMaskIdentifier`. The chrome identifier (falling back to the device type's, e.g. `com.apple.dt.devicekit.chrome.phone11`) names `/Library/Developer/DeviceKit/Chrome/<last part>.devicechrome`, whose `chrome.json` (nine-slice image names, `sizing`, side buttons with anchors and offsets) and PDFs the Mac draws the frame from. The screen's shape is the mask PDF: the screen's own (`<device type bundle>/Contents/Resources/<id>.pdf`), else the device type's `framebufferMaskURL`.
+- Points: a framebuffer whose short side is 1000 pixels or more is taken as 3x, else 2x.
 
-One `Hammock Simulator` helper per daemon, like the browser host (newline JSON over a Unix socket, outlives the app):
+## Orientation
 
-- shows a device's screen to the Mac app as a remote CoreAnimation layer (`CALayerHost`, the browser panes' path), the layer's contents being the framebuffer IOSurface;
-- injects touches, swipes, buttons and keyboard input sent by the app or the daemon;
-- answers screenshots and `simctl` work (boot, install, launch, logs) for the MCP tools.
+- **The framebuffer never turns.** After a rotation the IOSurface stays in the device's portrait, with the content drawn sideways. (`simctl io screenshot` returns it turned.)
+- The host reads each screen's `uiOrientation` (1 portrait, 2 upside down, 3 and 4 landscape) and turns the picture by 0°, 180°, 90° or 270° clockwise to match: the layer, screenshots (CIImage) and video (`VTPixelRotationSession` in the encoder, see [remote-media.md](remote-media.md)). Touches and gesture points are mapped back to portrait. Reading the orientation, rather than tracking rotations, keeps it right after a host restart, follows apps that don't rotate (Settings on an iPhone stays portrait), and covers a foldable's inner screen, which sits a quarter turn round.
+- After a rotation the host re-reads the screens a few times as it settles.
 
-## Later findings (Xcode 27, iOS 27)
+## Input
 
-- **Rotation.** Simulator.app is gone; DeviceHub rotates a device through the accessibility service inside it (`AXAuditRemoteDevice`, "Could not update rotation, AXAuditRemoteDevice not available" in DeviceKit). The old route, a GSEvent of type 50 (orientation) sent as mach message 0x7B to the device's `PurpleWorkspacePort` (`-[SimDevice lookup:error:]`), is delivered (`KERN_SUCCESS`, natural or packed layout) but Safari doesn't rotate.
-- **Pinch.** `IndigoHIDMessageForMouseNSEvent`'s second point builds a larger, two-finger message (0x200 bytes, three entries), but a pinch sent that way through `SimDeviceLegacyHIDClient` doesn't zoom Safari.
-- **Clipboard.** `xcrun simctl pbcopy/pbpaste UDID` plus ⌘V/⌘C (HID usages 227 + 25/6) copy and paste both ways, accents and emoji included.
-- **Device frames.** `SimDeviceType.chromeIdentifier` (e.g. `com.apple.dt.devicekit.chrome.phone11`) names `/Library/Developer/DeviceKit/Chrome/phone11.devicechrome`: `chrome.json` (nine-slice image names, `sizing` = the frame's width, side buttons with anchor and offsets) and PDFs. `framebufferMaskURL` is the screen's shape as a PDF at pixel size.
+- **Touches** go through SimulatorKit's Swift class `SimDeviceLegacyHIDClient` (`initWithDevice:error:`, `sendWithMessage:freeWhenDone:completionQueue:completion:`), which takes Indigo HID messages built by SimulatorKit's exported C functions. A touch is `IndigoHIDMessageForMouseNSEvent` with target `0x32` (the touch screen), sent as down, moves and up.
+- **`IndigoHIDMessageForMouseNSEvent`'s signature changed.** In Xcode 27 it is `(CGPoint *point, CGPoint *point2, uint32 target, NSEventType type, uint32 edge, double width, double height)`. The point is divided by the size, so the host passes a 0–1 ratio and a size of 1×1. The older five-argument form other tools use (ending in a `BOOL`) sends nothing that registers.
+- **A second point** builds a larger two-finger message, but devices ignore it through the legacy HID client. Pinches go through the runner.
+- **Buttons:** `IndigoHIDMessageForButton(source, down/up, 0x33)`. Sources: home `0x0`, lock `0x1`, side `0xbb8`, Siri `0x400002`, and `0x3f0`, which shows or hides the software keyboard (as DeviceHub's ⌘K).
+- **Keys:** `IndigoHIDMessageForKeyboardArbitrary(usage, down/up)` with HID keyboard usages (typed text is mapped to a US layout).
+- **Clipboard:** `xcrun simctl pbcopy UDID` then ⌘V (usages 227 + 25) pastes; ⌘C (227 + 6) then `simctl pbpaste` copies. Accents and emoji survive both ways.
 
-## Rotation and pinch (2026-11-01)
+## The XCTest runner: rotation and gestures
 
-What was tried, on an iOS 27.0 iPhone 18 Pro and the iOS 27.1 iPhone Duo:
+Only an XCTest session `xcodebuild` started may rotate an iOS 27 simulator or synthesise multi-finger gestures. Rotation needs DeviceHub's accessibility service (Apple-internal), `BKSHIDServicesSetDeviceOrientationForAutomation` needs an entitlement launchd won't grant an ad-hoc binary, and testmanagerd refuses `XCUIDevice` calls from a process it didn't start. So:
 
-- **A virtual HID service in the guest** (a helper run with `xcrun simctl spawn`, registering `HIDVirtualEventService` from HID.framework). A vendor-defined event, usage page 0xff61 usage 0x5b, carrying an OSSerialized `{provider, source = orientation-picker-control, type = enum, value}` (DeviceHub's own, as serve-sim's Duo helper sends it) rotates the **Duo** only: locationd's `CMDeviceStateRelayManager`, the foldable's hinge and orientation relay, consumes it. On a regular iPhone backboardd receives the event and nothing acts on it.
-- **A virtual accelerometer** (Apple vendor page 0xff00, usage 3, built in): backboardd adds the service and counts the events, but doesn't take its orientation from it ("missing accel HID service plugin").
-- **`BKSHIDServicesSetDeviceOrientationForAutomation`** and `-[SBSSystemServiceClient setDeviceOrientation:]` from the guest: silently refused without the `com.apple.backboardd.setDeviceOrientation` entitlement, and launchd won't spawn an ad-hoc binary that claims it ("Security policy issue").
-- **`XCUIDevice.orientation` from a plain spawned process**: testmanagerd answers "Not authorized for performing UI testing actions": it only serves a runner an `xcodebuild` test session started.
-- **DeviceHub** rotates through `AXAuditRemoteDevice` (AccessibilityAudit.framework) over a RemoteXPC connection to axauditd's `remoteAXService`, which requires `AppleInternal`.
+- The runner is a UI-test bundle (`HammockSimRunner`, built with xcodegen and `xcodebuild build-for-testing`). The helper bundles only Hammock's parts of it: the test bundle, its host app and the xctestrun.
+- The runner app around the test bundle is Apple's XCTRunner, from Xcode, which isn't Hammock's to redistribute. The host makes it at first use from the template in the Mac's own Xcode (`Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app`), as `xcodebuild` does: copied, its executable named after the runner app and its Info.plist's placeholders filled in (`prepareRunner`). It goes into a temporary folder of the host's own, so two hosts never share one.
+- The host starts it per device on first use with `xcodebuild test-without-building -xctestrun … -destination id=UDID`, passing a socket path as `TEST_RUNNER_HMK_SIM_RUNNER_SOCKET` (xcodebuild hands it to the test as `HMK_SIM_RUNNER_SOCKET`). The test connects back and takes one JSON command per line. Starting takes several seconds; commands then take well under a second. Closing the socket ends the test, and `xcodebuild` with it; the runner stops when the device's last pane closes.
+- **Rotation:** `XCUIDevice.sharedDevice.orientation` (public API); `left` and `right` turn a quarter turn from where the device is. Every reply carries the device's `UIDeviceOrientation`.
+- **Gestures:** XCTest's private `XCSynthesizedEventRecord` and `XCPointerEventPath`, any number of fingers, points 0–1 of the device's native portrait, interface orientation 1, display 0. This follows agent-device's approach (MIT); the code is Hammock's own.
 
-What Hammock does: an **XCTest runner** (`helpers/simulator/runner`, a UI-test bundle built with xcodegen and `xcodebuild build-for-testing`). The helper bundles only Hammock's parts of it: the test bundle, its host app and the xctestrun. The runner app around the test bundle is Apple's XCTRunner, from Xcode, which isn't Hammock's to redistribute, so the host makes it at first use from the template in the Mac's own Xcode (`Agents/XCTRunner.app`), as `xcodebuild` does: copied, its executable renamed and its Info.plist's three placeholders filled in (`prepareRunner` in `host.m`). The host starts it per device on first use with `xcodebuild test-without-building -xctestrun … -destination id=UDID`, passing a socket path as `TEST_RUNNER_HMK_SIM_RUNNER_SOCKET`; the test connects back and takes JSON lines. Startup is about 10 s; commands then take well under a second. It rotates with `XCUIDevice.sharedDevice.orientation` (left/right relative to the current orientation) and plays gestures with `XCSynthesizedEventRecord` + `XCPointerEventPath` (any number of fingers; points in the device's portrait, interface orientation 1). This is agent-device's approach (MIT); the code is our own.
+## Foldables (the iPhone Duo)
 
-- **The framebuffer doesn't turn.** After a rotation the IOSurface stays in the device's portrait with the content drawn sideways (DeviceHub turns its window). `simctl io screenshot` returns it turned. So the host keeps each device's rotation (the runner reports `UIDeviceOrientation` with every reply: landscape right = 90° clockwise) and turns the CAContext layer, screenshots (CIImage) and video (`VTPixelRotationSession` in the encoder), and maps touches and gesture points back to portrait.
-- **Software keyboard:** `IndigoHIDMessageForButton(0x3f0, down/up, 0x33)` toggles it, as DeviceHub's ⌘K does.
-- A device's rotation is learnt from its runner, so a host that restarts with a device already turned shows it in portrait until the next rotation.
-
-## Foldables (the iPhone Duo, 2026-11-01)
-
-- **The fold.** The guest helper (`helpers/simulator/guest`, spawned in the device) sends the same vendor event as rotation, with `source = hinge-slider-control`, `type = range` and the angle in degrees as an OSSerialized number: header `0x3f`/`0x84` (DeviceHub's), then a little-endian double. SpringBoard swaps screens past about 85° opening and below 20° closing ("Swap boundary 20.0° -> 85.0°").
-- **Two screens.** The Duo's display ports include two integrated screens with framebuffers: `LCD` (screen 1, the cover, 1398×2034) and `LCD-1` (screen 3, the inner one, 2007×2853). Both stay powered; the one not in use is black, so the host picks the lit one by sampling pixels, and checks again as the hinge settles.
-- **Screen properties.** `-[SimScreen screenProperties]` (a `SimScreenProperties`; ROCK proxies, so call the selectors, not KVC) gives `screenID`, `name`, `uiOrientation`, `chromeIdentifier` and `framebufferMaskIdentifier` (a PDF in the device type's bundle, `Contents/Resources/<id>.pdf`) per screen. The inner screen has its own frame (phone14) and mask.
-- **Orientation.** `uiOrientation` is the screen's interface orientation (1 portrait, 2 upside down, 3 and 4 landscape); the framebuffer never turns, and the content is drawn turned by 0°, 180°, 90° or 270° clockwise for those. The host reads it instead of tracking rotations, so it's right after a restart, follows apps that don't rotate (Settings on an iPhone stays portrait), and covers the inner screen, which sits a quarter turn round (it reports 3 when the device is portrait).
-- **Touches on another screen.** SimulatorKit's touch target for a screen is `0x40000000 | screenID` (1 for TV-out and wireless screens); `0x32`, the usual target, only reaches the main screen. Coordinates are 0–1 of that screen's framebuffer. Arbitrary targets can crash the device's SpringBoard (3 did).
-- Not yet: pinch on the inner screen (the XCTest runner's event record uses display 0).
+- **Two screens.** The Duo's display ports include two integrated screens with framebuffers: the cover (`LCD`) and the larger inner one (`LCD-1`). Both stay powered; the one not in use is black. So the host picks the lit one by sampling a grid of pixels, keeps the current one while both are dark (the device asleep), and checks again as the hinge settles.
+- **Touches on the inner screen.** SimulatorKit's touch target for a screen is `0x40000000 | screenID`; `0x32` only reaches the main screen. Coordinates are 0–1 of that screen's framebuffer. Arbitrary targets can crash the device's SpringBoard.
+- **The guest helper** (`hmk-sim-guest`, started with `xcrun simctl spawn UDID`) registers a virtual HID service (`HIDVirtualEventService`) in the device, as DeviceHub's controls do, and sends vendor-defined events (usage page `0xff61`, usage `0x5b`) carrying an OSSerialized `{provider, source, type, value}`. locationd's device state relay (`CMDeviceStateRelayManager`) reads them; regular iPhones have no such relay, which is why they rotate through the runner instead.
+  - **The fold:** `source = hinge-slider-control`, `type = range`, the angle in degrees (0 closed, 180 flat) as an OSSerialized number with DeviceHub's header (`0x3f`, `0x84`) then a little-endian double. SpringBoard swaps screens past about 85° opening and below 20° closing.
+  - **Rotation:** `source = orientation-picker-control`, `type = enum`. Quicker than the runner, and works open or closed. This technique follows serve-sim's Duo helper (Apache-2.0); the code is Hammock's own.
+- **Not supported:** pinch on the inner screen (the runner's event record uses display 0).
