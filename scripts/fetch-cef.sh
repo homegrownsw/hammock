@@ -3,7 +3,7 @@
 # its C++ wrapper library. Prints the install dir:
 #   ~/Library/Caches/hammock/cef/<version>
 # With --client, fetches the prebuilt cefclient sample instead and prints the
-# path to cefclient.app (used by spikes/browser/try.sh for comparisons).
+# path to cefclient.app, to compare Hammock's browser panes against CEF's own sample.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 pinned() { grep -v '^#' "$root/third_party/cef/VERSION" | sed -n "$1p"; }

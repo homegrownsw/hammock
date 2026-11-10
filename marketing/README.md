@@ -4,7 +4,6 @@
   iPhone in it are drawn in HTML and CSS, so nothing personal ever ends up in a screenshot.
 - `banner.html` → `banner.png`: the banner at the top of the repo's README (also the site's link preview).
 
-The migration page, hammock.jsp.scot/migration, lives in [../docs/migration-page](../docs/migration-page).
 
 ## Re-render the banner
 
