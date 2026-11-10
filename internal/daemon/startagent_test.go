@@ -146,30 +146,71 @@ func TestStartAgentPromptIsInert(t *testing.T) {
 }
 
 // Started with `-l -c`, an agent the login shell doesn't find (on a PATH
-// only ~/.zshrc sets) is started from where it's installed instead; one
-// it finds is started by name.
+// only ~/.zshrc sets) is started from where the interactive shell finds
+// it instead; one it finds is started by name; and one only in a folder
+// it's often installed in, off your PATH (planted there), never.
 func TestAgentCommandFallsBackToInstalled(t *testing.T) {
 	plainShell(t)
-	t.Setenv("ENV", "")
-	inst := t.TempDir()
+	inst, planted := t.TempDir(), t.TempDir()
 	os.WriteFile(filepath.Join(inst, "claude"), []byte("#!/bin/sh\n"), 0o755)
+	os.WriteFile(filepath.Join(planted, "claude"), []byte("#!/bin/sh\n"), 0o755)
+	rc := filepath.Join(t.TempDir(), "rc")
+	os.WriteFile(rc, []byte("echo noise from an rc file\nPATH="+inst+":$PATH\n"), 0o644)
 	oldDirs := agentInstallDirs
-	agentInstallDirs = []string{inst}
-	t.Cleanup(func() { agentInstallDirs = oldDirs; agentsCache.at = time.Time{} })
+	agentInstallDirs = []string{planted, inst}
+	reset := func() {
+		agentsCache.at = time.Time{}
+		interactiveCache.Lock()
+		interactiveCache.at = nil
+		interactiveCache.Unlock()
+	}
+	t.Cleanup(func() { agentInstallDirs = oldDirs; reset() })
 	claude := mustAgent(t, "claude")
 
+	// Only the interactive shell's rc (sh reads $ENV) puts it on PATH.
+	t.Setenv("ENV", rc)
 	t.Setenv("PATH", t.TempDir()+":/usr/bin:/bin")
-	agentsCache.at = time.Time{}
+	reset()
 	if got, want := agentCommand(claude, "claude 'go'"), shellQuote(filepath.Join(inst, "claude"))+" 'go'"; got != want {
-		t.Errorf("not on PATH: %q, want %q", got, want)
+		t.Errorf("on the interactive PATH only: %q, want %q", got, want)
 	}
 	if got := agentCommand(claude, "claudette 'go'"); got != "claudette 'go'" {
 		t.Errorf("another command: %q", got)
 	}
+	// Nowhere the shell looks: by name, never the planted one.
+	t.Setenv("ENV", "")
+	reset()
+	if got := agentCommand(claude, "claude 'go'"); got != "claude 'go'" {
+		t.Errorf("not on any PATH: %q", got)
+	}
 
 	t.Setenv("PATH", inst+":/usr/bin:/bin")
-	agentsCache.at = time.Time{}
+	reset()
 	if got := agentCommand(claude, "claude 'go'"); got != "claude 'go'" {
 		t.Errorf("on PATH: %q", got)
+	}
+}
+
+// What `command -v` says, read: a path, or an alias to one, after
+// whatever an rc file printed.
+func TestCommandPath(t *testing.T) {
+	bin := t.TempDir()
+	exe := filepath.Join(bin, "claude")
+	os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755)
+	os.WriteFile(filepath.Join(bin, "plain"), []byte("x"), 0o644)
+	for out, want := range map[string]string{
+		exe + "\n":                               exe,
+		"Welcome!\n" + exe + "\n":                exe,
+		"alias claude=" + exe + "\n":             exe,
+		"alias claude='" + exe + " --flag'\n":    exe,
+		"claude\n":                               "",
+		"":                                       "",
+		filepath.Join(bin, "plain") + "\n":       "",
+		filepath.Join(bin, "missing") + "\n":     "",
+		"alias claude='npx @anthropic/claude'\n": "",
+	} {
+		if got := commandPath("claude", out); got != want {
+			t.Errorf("%q: %q, want %q", out, got, want)
+		}
 	}
 }

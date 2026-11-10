@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alexjsp/hammock/internal/agents"
@@ -268,10 +269,14 @@ func installedAgents() []string {
 }
 
 // agentCommand is typed (a command line starting ag) with ag's command
-// replaced by where it's installed when the login shell doesn't find it
-// itself: started with `-l -c` (agentShellCommand), an agent on a PATH or
-// alias only ~/.zshrc sets (Claude's own installer, nvm) isn't found, but
-// it was when its command line was typed into an interactive shell.
+// replaced by where your interactive shell finds it when the login shell
+// doesn't find it itself: started with `-l -c` (agentShellCommand), an
+// agent on a PATH or alias only ~/.zshrc sets (Claude's own installer,
+// nvm) isn't found, but it was when its command line was typed into an
+// interactive shell. Only there: never a folder it's often installed in
+// that isn't on your PATH (~/.npm/bin, ~/.local/bin), where a program of
+// yours could plant one of that name. Not found, it's run by name, and the
+// shell says so.
 func agentCommand(ag *agents.Agent, typed string) string {
 	rest, ok := strings.CutPrefix(typed, ag.Command)
 	if !ok || rest != "" && rest[0] != ' ' {
@@ -284,10 +289,69 @@ func agentCommand(ag *agents.Agent, typed string) string {
 	if !known || on {
 		return typed
 	}
-	if p := installedPath(ag.Command); p != "" {
+	if p := interactivePath(ag.Command); p != "" {
 		return shellQuote(p) + rest
 	}
 	return typed
+}
+
+// interactiveCache is what interactive shells said of commands lately.
+var interactiveCache struct {
+	sync.Mutex
+	at   map[string]time.Time
+	path map[string]string
+}
+
+// interactivePath is where your interactive login shell finds the command
+// name (`$SHELL -l -i -c 'command -v name'`: asked at most every few
+// minutes, for at most five seconds), or "" if it doesn't, or only as
+// something that isn't a program.
+func interactivePath(name string) string {
+	interactiveCache.Lock()
+	defer interactiveCache.Unlock()
+	if at, ok := interactiveCache.at[name]; ok && time.Since(at) < 3*time.Minute {
+		return interactiveCache.path[name]
+	}
+	if interactiveCache.at == nil {
+		interactiveCache.at, interactiveCache.path = map[string]time.Time{}, map[string]string{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, loginShell(), "-l", "-i", "-c", "command -v "+shellQuote(name))
+	cmd.Stdin = nil // (/dev/null: nothing to read, no terminal to take)
+	// Its own process group, ended whole on a timeout (with whatever an
+	// rc file started), and not waited on past it for output.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = time.Second
+	out, _ := cmd.Output()
+	p := commandPath(name, string(out))
+	interactiveCache.at[name], interactiveCache.path[name] = time.Now(), p
+	return p
+}
+
+// commandPath reads what `command -v name` printed (the last line: an rc
+// file may print before it): an absolute path, or an alias to one (zsh's
+// "alias name=…", bash's "alias name='…'"), to an executable; else "".
+func commandPath(name, out string) string {
+	var last string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			last = l
+		}
+	}
+	if a, ok := strings.CutPrefix(last, "alias "+name+"="); ok {
+		a = strings.Trim(a, "'\"")
+		last, _, _ = strings.Cut(a, " ")
+		last = expandHome(last)
+	}
+	if !filepath.IsAbs(last) {
+		return ""
+	}
+	if st, err := os.Stat(last); err != nil || st.IsDir() || st.Mode()&0o111 == 0 {
+		return ""
+	}
+	return filepath.Clean(last)
 }
 
 // agentInstallDirs are where claude and codex are usually installed, as
@@ -300,7 +364,9 @@ var agentInstallDirs = []string{
 	"~/.local/share/mise/shims", "~/.asdf/shims",
 }
 
-// installedAt: an executable named name is in one of agentInstallDirs.
+// installedAt: an executable named name is in one of agentInstallDirs
+// (for listing it as installed only: never run from there unless your
+// shell finds it there, agentCommand).
 func installedAt(name string) bool { return installedPath(name) != "" }
 
 // installedPath is the first executable named name in agentInstallDirs, or "".
