@@ -846,7 +846,20 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		}
 		return 0, errors.New("no such group, tab or pane")
 	}
-	pane := func(id string) (pb.Role, error) { return roleOf(d.groupOfPane(id)) }
+	pane := func(id string) (pb.Role, error) {
+		r, err := roleOf(d.groupOfPane(id))
+		// A DevTools pane is as much as its page: a guest has of it what it
+		// has of the page (they share a Group when it opens, but a tab can
+		// be moved on).
+		if p := d.devtoolsPage(id); err == nil && p != "" && d.groupOfPane(p) != d.groupOfPane(id) {
+			rp, perr := roleOf(d.groupOfPane(p))
+			if perr != nil {
+				return 0, perr
+			}
+			r = min(r, rp)
+		}
+		return r, err
+	}
 	tab := func(id string) (pb.Role, error) { return roleOf(d.groupOfTab(id)) }
 	drive := func(r pb.Role, err error) (bool, error) {
 		if err != nil {

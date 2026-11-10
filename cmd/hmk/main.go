@@ -1334,6 +1334,22 @@ func joinKeyWarning(j *pb.JoinRequest, name string) string {
 // grantFor is what an agent's refused message asks permission for: the
 // action and the pane, as RequestGrant names them ("" if it can't ask).
 func grantFor(m *pb.ClientMessage) (action, target string) {
+	// DevTools for a page is as much as controlling the page: asked for as
+	// that, whatever else the message needs (a refusal for that asks again).
+	var spec *pb.PaneSpec
+	switch x := m.Msg.(type) {
+	case *pb.ClientMessage_CreatePane:
+		spec = x.CreatePane.Spec
+	case *pb.ClientMessage_CreateTab:
+		spec = x.CreateTab.Pane
+	case *pb.ClientMessage_ReplacePane:
+		spec = x.ReplacePane.Spec
+	}
+	if spec != nil {
+		if page, ok := daemon.DevToolsPage(spec.Url); ok {
+			return "browse", page
+		}
+	}
 	switch x := m.Msg.(type) {
 	case *pb.ClientMessage_Input:
 		return "send", x.Input.PaneId

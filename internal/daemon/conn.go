@@ -836,7 +836,7 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		switch a := m.BrowserNavigate.Action; a {
 		case "load":
 			u := BrowserURL(m.BrowserNavigate.Url)
-			if strings.HasPrefix(u, DevToolsURL) {
+			if isDevToolsAddress(u) {
 				return nil, errors.New("open DevTools from a page (Show DevTools), not by its address")
 			}
 			d.browsers.navigate(p.id, a, u)
@@ -1393,6 +1393,8 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 		return false
 	}
 	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_ReplacePane:
+		return specDevTools(m.ReplacePane.Spec) != "" // turning a pane into DevTools
 	case *pb.ClientMessage_Input, *pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab,
 		*pb.ClientMessage_ClosePane, *pb.ClientMessage_CloseTab, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_BrowserNavigate, *pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_ClearLog, *pb.ClientMessage_StartAgent, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder,
@@ -1445,6 +1447,9 @@ func (c *conn) throttleAudit(msg *pb.ClientMessage) bool {
 }
 
 func auditAction(msg *pb.ClientMessage) string {
+	if msgDevTools(msg) != "" {
+		return "devtools"
+	}
 	switch msg.Msg.(type) {
 	case *pb.ClientMessage_Input:
 		return "input"
@@ -1484,7 +1489,23 @@ func auditAction(msg *pb.ClientMessage) string {
 	return "other"
 }
 
+// msgDevTools is the page msg opens DevTools for ("" if it opens none).
+func msgDevTools(msg *pb.ClientMessage) string {
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_CreatePane:
+		return specDevTools(m.CreatePane.Spec)
+	case *pb.ClientMessage_CreateTab:
+		return specDevTools(m.CreateTab.Pane)
+	case *pb.ClientMessage_ReplacePane:
+		return specDevTools(m.ReplacePane.Spec)
+	}
+	return ""
+}
+
 func auditTarget(msg *pb.ClientMessage) string {
+	if page := msgDevTools(msg); page != "" {
+		return page
+	}
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_SetGroupIconImage:
 		return m.SetGroupIconImage.GroupId

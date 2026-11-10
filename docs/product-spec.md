@@ -111,7 +111,7 @@ The plan was a TOML file describing a Group's tabs, splits and commands (`hmk gr
 - **Log and editor panes:** open and read them filtered; open a file with lines selected, and read what you have open.
 - **Scheduled tasks and sessions:** list, save, run, pause and delete schedules; search and read past agent sessions.
 
-**Scope:** the daemon works out who's asking from the connecting process, so it can't be talked out of it. An agent may read the panes in **its own Group** and fully control the panes it opened. Typing into, closing or scripting other panes, or anything outside its Group, asks you first (once, or always for that Group). Pairing, sharing, linking and the like are yours alone. The scope is a guardrail against an agent wandering, not a sandbox: for a real boundary, use the agent harness's own. Agents' actions are in the audit log (Settings ▸ Devices ▸ Recent Activity, `hmk audit`).
+**Scope:** the daemon works out who's asking from the connecting process, so it can't be talked out of it. An agent may read the panes in **its own Group** and fully control the panes it opened. Typing into, closing or scripting other panes, or anything outside its Group, asks you first (once, or always for that Group). DevTools can do anything in its page, so an agent opening or using DevTools for a page it didn't open asks to control that page, even in a DevTools pane it opened itself. Pairing, sharing, linking and the like are yours alone. The scope is a guardrail against an agent wandering, not a sandbox: for a real boundary, use the agent harness's own. Agents' actions are in the audit log (Settings ▸ Devices ▸ Recent Activity, `hmk audit`).
 
 ### 6.7 iPhone app
 

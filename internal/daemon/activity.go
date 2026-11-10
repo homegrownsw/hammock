@@ -72,6 +72,8 @@ func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summa
 		summary = "interrupted " + pane()
 	case "browse":
 		summary = "opened a page in " + pane()
+	case "devtools":
+		summary = "opened DevTools for " + pane()
 	case "answer":
 		summary = "answered a question in " + pane()
 	case "message":

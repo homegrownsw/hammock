@@ -7,12 +7,22 @@ package daemon
 // what the page says comes back. Chromium's ShowDevTools, which would do
 // this itself, fails a check when asked to draw into a pane's window.
 //
-// The socket listens on 127.0.0.1 only, at a path with a secret per daemon
-// run, which only the frontend's address carries.
+// A DevTools pane is as powerful as its page: its frontend can run anything
+// in it. So, for agents, a DevTools pane is its page (caller.go): opening one,
+// and anything done in one (reads included), needs control of the page.
+//
+// The socket listens on 127.0.0.1 only. Each page has its own token, an
+// HMAC of its pane id under a secret per daemon run: only that page's
+// frontend address carries it, it opens only that page, and only for a
+// client that says it's the DevTools frontend (its Origin). The address is
+// kept out of the pane's URL and title; reading it otherwise (the page's
+// own location) needs control of the page.
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
@@ -23,15 +33,17 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 type devtoolsBridge struct {
 	h *browserHub
 
-	once  sync.Once
-	port  int
-	token string
-	err   error
+	once   sync.Once
+	port   int
+	secret []byte // the per-run key page tokens are made with
+	err    error
 
 	mu    sync.Mutex
 	conns map[string]*devtoolsConn // page pane → its frontend
@@ -49,13 +61,22 @@ func (b *devtoolsBridge) frontendURL(page string) string {
 	if b.err != nil {
 		return "about:blank"
 	}
-	return fmt.Sprintf("devtools://devtools/bundled/devtools_app.html?ws=127.0.0.1:%d/devtools/%s/%s", b.port, page, b.token)
+	return fmt.Sprintf("devtools://devtools/bundled/devtools_app.html?ws=127.0.0.1:%d/devtools/%s/%s", b.port, page, b.token(page))
+}
+
+// devtoolsOrigin is the Origin Chromium's DevTools frontend connects with.
+const devtoolsOrigin = "devtools://devtools"
+
+// token is page's: it opens that page's DevTools only.
+func (b *devtoolsBridge) token(page string) string {
+	m := hmac.New(sha256.New, b.secret)
+	m.Write([]byte(page))
+	return hex.EncodeToString(m.Sum(nil))
 }
 
 func (b *devtoolsBridge) listen() {
-	t := make([]byte, 16)
-	_, _ = rand.Read(t)
-	b.token = hex.EncodeToString(t)
+	b.secret = make([]byte, 32)
+	_, _ = rand.Read(b.secret)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		b.err = err
@@ -73,13 +94,20 @@ func (b *devtoolsBridge) listen() {
 
 // serve takes a frontend's connection: /devtools/<page>/<token>.
 func (b *devtoolsBridge) serve(w http.ResponseWriter, r *http.Request) {
+	d := b.h.d
+	// Only the frontend: a page in a browser sends its own origin, and a
+	// program none (coder/websocket lets a missing one through).
+	if o := r.Header.Get("Origin"); o != devtoolsOrigin {
+		d.log.Warn("devtools bridge: refused a connection", "origin", o)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-	if len(parts) != 3 || parts[0] != "devtools" || subtle.ConstantTimeCompare([]byte(parts[2]), []byte(b.token)) != 1 {
+	if len(parts) != 3 || parts[0] != "devtools" || subtle.ConstantTimeCompare([]byte(parts[2]), []byte(b.token(parts[1]))) != 1 {
 		http.NotFound(w, r)
 		return
 	}
 	page := parts[1]
-	d := b.h.d
 	d.mu.Lock()
 	p := d.panes[page]
 	d.mu.Unlock()
@@ -87,7 +115,6 @@ func (b *devtoolsBridge) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// The frontend's origin is devtools://devtools.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"devtools"}})
 	if err != nil {
 		return
@@ -153,6 +180,64 @@ func (b *devtoolsBridge) deliver(page, msg string) {
 	default:
 		dc.ws.Close(websocket.StatusPolicyViolation, "too far behind")
 	}
+}
+
+// DevToolsPage is the page a DevTools pane's address (hmk-devtools:<page>)
+// inspects, as the pane would be made from it.
+func DevToolsPage(u string) (string, bool) {
+	if u == "" {
+		return "", false
+	}
+	if page, ok := strings.CutPrefix(BrowserURL(u), DevToolsURL); ok {
+		return page, true
+	}
+	return "", false
+}
+
+// specDevTools is the page a new pane made from spec would inspect ("" if
+// it wouldn't be a DevTools pane: startPane makes a browser of any URL).
+func specDevTools(spec *pb.PaneSpec) string {
+	if spec == nil {
+		return ""
+	}
+	if page, ok := DevToolsPage(spec.Url); ok {
+		return page
+	}
+	return ""
+}
+
+// devtoolsPage is the page DevTools pane id inspects, "" if it isn't one.
+// Callers hold d.mu.
+func (d *Daemon) devtoolsPage(id string) string {
+	p := d.panes[id]
+	if p == nil {
+		return ""
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.info.Kind != pb.PaneKind_PANE_KIND_BROWSER {
+		return ""
+	}
+	if page, ok := strings.CutPrefix(p.info.Url, DevToolsURL); ok {
+		return page
+	}
+	return ""
+}
+
+// isDevToolsAddress reports whether a page's address is a DevTools pane's
+// (as Chromium writes it: schemes in lower case).
+func isDevToolsAddress(u string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(u)), DevToolsURL)
+}
+
+// devtoolsTitle is what a DevTools pane is called: the frontend's own
+// title ("DevTools - example.com"), never its address (which carries the
+// page's token: Chromium titles an untitled page by its address).
+func devtoolsTitle(title string) string {
+	if strings.HasPrefix(title, "DevTools") && !strings.Contains(title, "devtools://") && !strings.Contains(title, "/devtools/") {
+		return title
+	}
+	return "DevTools"
 }
 
 // hostURL is what the browser host loads for a pane: a DevTools pane's

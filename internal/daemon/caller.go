@@ -534,6 +534,22 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		}
 		return errAgentScope
 	}
+	// A DevTools pane is its page (devtools.go): its frontend runs anything
+	// there, and its own address carries the page's token. So opening one,
+	// and anything done in one, reading included, is controlling the page,
+	// whoever made the DevTools pane.
+	page := func(id string) string {
+		if p := d.devtoolsPage(id); p != "" {
+			return p
+		}
+		return id
+	}
+	openDevTools := func(spec *pb.PaneSpec) error {
+		if p := specDevTools(spec); p != "" {
+			return control(p, "browse")
+		}
+		return nil
+	}
 	ownTab := func(id string) bool {
 		t := d.tabs[id]
 		return t != nil && (mine(t.GroupId) || group != "" && t.GroupId == group)
@@ -554,7 +570,14 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello, *pb.ClientMessage_Subscribe, *pb.ClientMessage_DetachPane,
-		*pb.ClientMessage_Presence, *pb.ClientMessage_RequestGrant, *pb.ClientMessage_ListAudit:
+		*pb.ClientMessage_Presence, *pb.ClientMessage_ListAudit:
+		return nil
+	case *pb.ClientMessage_RequestGrant:
+		// Controlling a DevTools pane is controlling its page: that's what's
+		// asked for (and worded, and then let through: page above).
+		if r := m.RequestGrant; r.Action == "browse" {
+			r.TargetPaneId = page(r.TargetPaneId)
+		}
 		return nil
 
 	case *pb.ClientMessage_ReadPane:
@@ -568,6 +591,9 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	case *pb.ClientMessage_ReadAgentFile:
 		return read(m.ReadAgentFile.PaneId)
 	case *pb.ClientMessage_BrowserLogs:
+		if p := d.devtoolsPage(m.BrowserLogs.PaneId); p != "" {
+			return control(p, "browse") // the frontend's own log: its address, say
+		}
 		return read(m.BrowserLogs.PaneId)
 	case *pb.ClientMessage_WatchLog:
 		return read(m.WatchLog.PaneId)
@@ -598,12 +624,12 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	case *pb.ClientMessage_CreatePane:
 		t := m.CreatePane.SplitPaneId
 		if ownGroup(d.groupOfPane(t)) || d.granted(self, "create", t) {
-			return nil
+			return openDevTools(m.CreatePane.Spec)
 		}
 		return errAgentScope
 	case *pb.ClientMessage_CreateTab:
 		if ownGroup(m.CreateTab.GroupId) {
-			return nil
+			return openDevTools(m.CreateTab.Pane)
 		}
 		return errAgentScope
 	case *pb.ClientMessage_CreateGroup, *pb.ClientMessage_MoveGroup:
@@ -660,7 +686,7 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		return nil
 	case *pb.ClientMessage_ShowOutput:
 		if t := m.ShowOutput.IntoPaneId; t != "" {
-			if err := control(t, "browse"); err != nil {
+			if err := control(page(t), "browse"); err != nil {
 				return err
 			}
 		}
@@ -690,10 +716,18 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	case *pb.ClientMessage_ClosePane:
 		return control(m.ClosePane.PaneId, "close")
 	case *pb.ClientMessage_ReplacePane:
-		return control(m.ReplacePane.PaneId, "close")
+		if err := control(m.ReplacePane.PaneId, "close"); err != nil {
+			return err
+		}
+		return openDevTools(m.ReplacePane.Spec)
 	case *pb.ClientMessage_BrowserNavigate:
-		return control(m.BrowserNavigate.PaneId, "browse")
+		return control(page(m.BrowserNavigate.PaneId), "browse")
 	case *pb.ClientMessage_BrowserCall:
+		if p := d.devtoolsPage(m.BrowserCall.PaneId); p != "" {
+			// No read-only calls in DevTools: its document is the
+			// frontend, whose address carries the page's token.
+			return control(p, "browse")
+		}
 		// Reading a page (browser_snapshot, browser_wait_for) runs
 		// JavaScript too: those scripts only (browserjs) wherever reading
 		// is allowed; any other JavaScript acts in the page (your logged-in

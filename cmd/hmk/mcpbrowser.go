@@ -13,6 +13,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/browserjs"
 	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/daemon"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -20,6 +21,9 @@ import (
 // DevTools protocol, proxied by the daemon to the browser host (no
 // debugging port). Same policy as terminal panes: read any browser pane in
 // your Groups, act only in ones you opened, and ask the user for the rest.
+// A DevTools pane (hmk-devtools:<page>) counts as its page, and only as
+// controlling it: opening one, or using one at all, needs control of the
+// page.
 
 type browserOpenArgs struct {
 	URL       string `json:"url" jsonschema:"the page to open, e.g. 'localhost:3000' or 'https://example.com'"`
@@ -152,6 +156,11 @@ func (s *mcpServer) browserPane(ctx context.Context, id string, control bool, wh
 	}
 	if p.Kind != pb.PaneKind_PANE_KIND_BROWSER {
 		return fmt.Errorf("%s isn't a browser pane (open one with browser_open)", id)
+	}
+	if page, ok := strings.CutPrefix(p.Url, daemon.DevToolsURL); ok {
+		// DevTools runs anything in its page: using it at all is
+		// controlling the page, whoever opened the DevTools pane.
+		return s.ensure(ctx, s.owns(w, page), "browse", page, what+" (in its DevTools)")
 	}
 	if control {
 		return s.ensure(ctx, s.owns(w, id), "browse", id, what)
@@ -299,6 +308,12 @@ func (s *mcpServer) registerBrowser(server *mcp.Server) {
 			return nil, nil, err
 		}
 		spec := &pb.PaneSpec{Url: a.URL, CreatedByPaneId: s.self}
+		if page, ok := daemon.DevToolsPage(a.URL); ok {
+			// As much as controlling the page: asked for as that.
+			if err := s.ensure(ctx, s.owns(w, page), "browse", page, "open DevTools for it"); err != nil {
+				return nil, nil, err
+			}
+		}
 		var id string
 		if a.NewTab != "" {
 			group := w.groupOfPane(s.self)

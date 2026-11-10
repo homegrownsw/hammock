@@ -15,10 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/homegrownsw/hammock/internal/browserjs"
 	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/procinfo"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/state"
 )
 
 // dialAs connects a client the daemon takes to be cl (whatever its process).
@@ -581,5 +584,201 @@ func TestAgentEvaluateNeedsControl(t *testing.T) {
 	d.mu.Unlock()
 	if err := eval("document.title"); err != nil {
 		t.Fatalf("allowed: %v", err)
+	}
+}
+
+// A DevTools pane is as powerful as its page, so for an agent it is its
+// page: opening one needs control of the page (asked for as that), and
+// anything done in one, reading included, needs it too, whoever made the
+// DevTools pane. Its own page's DevTools is the agent's to use.
+func TestAgentDevToolsIsItsPage(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	ui := dial(t, dir)
+	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g1 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "one"}}}))
+	g2 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "two"}}}))
+	t1 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: &pb.PaneSpec{Url: "about:blank"}}}}))
+	t2 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g2, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	page, self := d.tabs[t1].FocusedPaneId, d.tabs[t2].FocusedPaneId // your page; the agent, in another Group
+	d.mu.Unlock()
+	// You open DevTools for your page, as the app does.
+	yours := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{SplitPaneId: page, Spec: &pb.PaneSpec{Url: DevToolsURL + page}}}}))
+
+	agent := dialAs(t, dir, &caller{pane: self, agent: true, direct: true}, "mcp")
+	refused := func(what string, m *pb.ClientMessage) {
+		t.Helper()
+		if _, err := try(agent, m); err == nil || !strings.HasPrefix(err.Error(), "out of scope") {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+	devtools := &pb.PaneSpec{Url: DevToolsURL + page}
+	refused("DevTools for your page, beside it", &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{SplitPaneId: page, Spec: devtools}}})
+	refused("DevTools for your page, in a tab", &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: &pb.PaneSpec{Url: " " + DevToolsURL + page}}}})
+
+	// Its own page: its DevTools too, and audited.
+	ownTab := client.CreatedID(call(t, agent, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g2, Pane: &pb.PaneSpec{Url: "about:blank"}}}}))
+	d.mu.Lock()
+	own := d.tabs[ownTab].FocusedPaneId
+	d.mu.Unlock()
+	ownDT := client.CreatedID(call(t, agent, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{SplitPaneId: own, Spec: &pb.PaneSpec{Url: DevToolsURL + own}}}}))
+	evs, err := d.store.RecentAudit(50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(evs, func(e state.AuditEvent) bool { return e.Action == "devtools" && e.Target == own }) {
+		t.Errorf("not audited: %+v", evs)
+	}
+	// Turning a pane of its own into your page's DevTools: no.
+	refused("its pane, replaced by your page's DevTools", &pb.ClientMessage{Msg: &pb.ClientMessage_ReplacePane{ReplacePane: &pb.ReplacePane{PaneId: own, Spec: devtools}}})
+
+	c := &conn{d: d, caller: &caller{pane: self, agent: true, direct: true}}
+	cdp := func(pane, method, params string) error {
+		return c.agentCheck(&pb.ClientMessage{Msg: &pb.ClientMessage_BrowserCall{BrowserCall: &pb.BrowserCall{PaneId: pane, Method: method, ParamsJson: params}}})
+	}
+	snapshot, _ := json.Marshal(map[string]any{"expression": browserjs.Snapshot, "returnByValue": true})
+	// Your page itself it reads, as before.
+	if err := cdp(page, "Runtime.evaluate", string(snapshot)); err != nil {
+		t.Errorf("snapshot of your page: %v", err)
+	}
+	// Your DevTools: nothing, not even a read (its address has the token).
+	for name, err := range map[string]error{
+		"snapshot":   cdp(yours, "Runtime.evaluate", string(snapshot)),
+		"document":   cdp(yours, "DOM.getDocument", `{}`),
+		"screenshot": cdp(yours, "Page.captureScreenshot", `{}`),
+		"evaluate":   cdp(yours, "Runtime.evaluate", `{"expression":"1"}`),
+		"keys":       cdp(yours, "Input.dispatchKeyEvent", `{"type":"keyDown"}`),
+		"console":    c.agentCheck(&pb.ClientMessage{Msg: &pb.ClientMessage_BrowserLogs{BrowserLogs: &pb.BrowserLogs{PaneId: yours, Kind: "console"}}}),
+		"navigate":   c.agentCheck(&pb.ClientMessage{Msg: &pb.ClientMessage_BrowserNavigate{BrowserNavigate: &pb.BrowserNavigate{PaneId: yours, Action: "reload"}}}),
+		"output":     c.agentCheck(&pb.ClientMessage{Msg: &pb.ClientMessage_ShowOutput{ShowOutput: &pb.ShowOutput{IntoPaneId: yours}}}),
+	} {
+		if err != errAgentScope {
+			t.Errorf("%s in your DevTools: %v", name, err)
+		}
+	}
+	// Its own page's DevTools it uses.
+	if err := cdp(ownDT, "Runtime.evaluate", `{"expression":"1"}`); err != nil {
+		t.Errorf("its own page's DevTools: %v", err)
+	}
+	// Made by it (before this rule, say), DevTools for your page is still
+	// your page's.
+	d.mu.Lock()
+	theirs, err := d.createTab(g1, "", &pb.PaneSpec{Url: DevToolsURL + page, CreatedByPaneId: self}, "")
+	if err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	made := theirs.FocusedPaneId
+	d.markAgentMade(made)
+	d.mu.Unlock()
+	if err := cdp(made, "Runtime.evaluate", `{"expression":"1"}`); err != errAgentScope {
+		t.Errorf("an agent-made DevTools for your page: %v", err)
+	}
+
+	// Asking to control your DevTools asks for your page, in its words.
+	type res struct {
+		r   *pb.ServerMessage
+		err error
+	}
+	done := make(chan res, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		r, err := agent.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RequestGrant{RequestGrant: &pb.RequestGrant{Action: "browse", TargetPaneId: yours}}})
+		done <- res{r, err}
+	}()
+	var gr *pb.GrantRequest
+	for deadline := time.Now().Add(5 * time.Second); gr == nil && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		d.mu.Lock()
+		for _, g := range d.grants {
+			gr = proto.CloneOf(g.req)
+		}
+		d.mu.Unlock()
+	}
+	if gr == nil {
+		t.Fatal("no grant asked")
+	}
+	d.mu.Lock()
+	want := d.grantHeadline(self, "browse", page)
+	d.mu.Unlock()
+	if gr.TargetPaneId != page || gr.Headline != want {
+		t.Errorf("asked for %s: %q (want %q)", gr.TargetPaneId, gr.Headline, want)
+	}
+	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: gr.Id, Decision: pb.RespondGrant_DECISION_ALLOW_ONCE}}})
+	if got := <-done; got.err != nil || !got.r.GetGrantDecision().GetAllowed() {
+		t.Fatalf("grant: %v %v", got.r, got.err)
+	}
+	// Allowed: your page, its DevTools, and opening it.
+	if err := cdp(yours, "Runtime.evaluate", `{"expression":"1"}`); err != nil {
+		t.Errorf("allowed, in your DevTools: %v", err)
+	}
+	if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{SplitPaneId: page, Spec: devtools}}}); err != nil {
+		t.Errorf("allowed, opening DevTools: %v", err)
+	}
+}
+
+// A guest has of a DevTools pane what it has of its page: a View member
+// nothing more than watching, and a Drive member of the DevTools pane's
+// Group nothing of a page in a Group it isn't in.
+func TestGuestDevToolsIsItsPage(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	ui := dial(t, dir)
+	g1 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "one"}}}))
+	g2 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "two"}}}))
+	t1 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: &pb.PaneSpec{Url: "about:blank"}}}}))
+	d.mu.Lock()
+	page := d.tabs[t1].FocusedPaneId
+	d.mu.Unlock()
+	dtTab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: &pb.PaneSpec{Url: DevToolsURL + page}}}}))
+	d.mu.Lock()
+	dt := d.tabs[dtTab].FocusedPaneId
+	d.mu.Unlock()
+	guest := &conn{d: d, peer: "us_guest"}
+	share := func(g string, r pb.Role) {
+		d.mu.Lock()
+		d.groups[g].Members = []*pb.Member{{UserId: "us_guest", Role: r}}
+		d.mu.Unlock()
+	}
+	input := &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: dt, Op: "text"}}}
+	attach := &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: dt}}}
+	call := &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserCall{BrowserCall: &pb.BrowserCall{PaneId: dt, Method: "Runtime.evaluate"}}}
+
+	share(g1, pb.Role_ROLE_VIEWER)
+	if _, err := guest.peerCheck(attach); err != nil {
+		t.Errorf("a viewer watching DevTools: %v", err)
+	}
+	for name, m := range map[string]*pb.ClientMessage{"typing": input, "a DevTools call": call} {
+		if _, err := guest.peerCheck(m); err == nil {
+			t.Errorf("a viewer, %s in DevTools: allowed", name)
+		}
+	}
+	// Moved to a Group it drives, from your page's, which it doesn't share.
+	d.mu.Lock()
+	if err := d.moveTab(dtTab, g2, 0); err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	d.groups[g1].Members = nil
+	d.groups[g2].Members = []*pb.Member{{UserId: "us_guest", Role: pb.Role_ROLE_DRIVER}}
+	d.mu.Unlock()
+	for name, m := range map[string]*pb.ClientMessage{"typing": input, "watching": attach} {
+		if _, err := guest.peerCheck(m); err == nil {
+			t.Errorf("a driver, %s in DevTools for a page it can't see: allowed", name)
+		}
+	}
+	// Its page shared to view: watching, not typing.
+	share(g1, pb.Role_ROLE_VIEWER)
+	d.mu.Lock()
+	d.groups[g2].Members = []*pb.Member{{UserId: "us_guest", Role: pb.Role_ROLE_DRIVER}}
+	d.mu.Unlock()
+	if _, err := guest.peerCheck(attach); err != nil {
+		t.Errorf("watching: %v", err)
+	}
+	if _, err := guest.peerCheck(input); err == nil {
+		t.Error("a viewer of the page typing in its DevTools: allowed")
 	}
 }

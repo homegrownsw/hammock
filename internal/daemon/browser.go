@@ -332,9 +332,13 @@ func (d *Daemon) startBrowser(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	u := BrowserURL(spec.Url)
 	if target, ok := strings.CutPrefix(u, DevToolsURL); ok {
 		// Only for a page in the same Group: DevTools reaches all of it.
+		// (Who may open it is agentCheck's: as for controlling the page.)
 		tp := d.panes[target]
 		if tp == nil || !tp.isBrowser() || d.groupOfPane(target) != t.GroupId {
 			return nil, errors.New("DevTools opens for a browser pane in the same Group")
+		}
+		if d.devtoolsPage(target) != "" {
+			return nil, errors.New("DevTools opens for a web page, not for another DevTools")
 		}
 	}
 	info := &pb.Pane{
@@ -364,12 +368,18 @@ func (d *Daemon) browserState(m hostMsg) {
 	}
 	before := proto.CloneOf(info)
 	// A DevTools pane keeps its own address (its page's DevTools), not the
-	// frontend's, so it comes back as one.
-	if m.URL != "" && !strings.HasPrefix(info.Url, DevToolsURL) {
+	// frontend's, so it comes back as one. Any other pane never takes a
+	// DevTools address from its page (one it went to, an error page for
+	// it): it would come back as DevTools for that page, opened by whoever
+	// drove the page there.
+	devtools := strings.HasPrefix(info.Url, DevToolsURL)
+	if m.URL != "" && !devtools && !isDevToolsAddress(m.URL) {
 		info.Url = m.URL
 	}
 	info.Title = m.Title
-	if info.Title == "" {
+	if devtools {
+		info.Title = devtoolsTitle(m.Title) // never the frontend's address
+	} else if info.Title == "" || isDevToolsAddress(info.Title) {
 		info.Title = info.Url
 	}
 	info.Loading, info.CanGoBack, info.CanGoForward, info.FaviconUrl = m.Loading, m.Back, m.Fwd, m.Icon
@@ -385,6 +395,13 @@ func (d *Daemon) browserState(m hostMsg) {
 // or, for a new-tab link the person clicked on this Mac (page), in their own
 // browser unless browser-new-tab = hammock.
 func (d *Daemon) browserPopup(fromID, u string, page bool) {
+	if isDevToolsAddress(u) {
+		// DevTools opens from Show DevTools (or hmk devtools), never from a
+		// page's link: a page (or an agent driving it) could open DevTools
+		// for another page in its Group.
+		d.log.Warn("ignored a page's DevTools link", "pane", fromID)
+		return
+	}
 	if page && u != "" && openNewTabsOutside(u) && d.hasBrowser(fromID) {
 		// open(1) takes a moment: not on the host's reader.
 		go func() {
