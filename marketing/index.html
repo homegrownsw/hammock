@@ -339,8 +339,6 @@
     nav .links a:not(.btn) { display: none; }
     .hero { padding-top: 30px; }
     .hero img.icon { width: 124px; height: 124px; }
-    /* The sidebar is half of Hammock, so a phone gets the app's narrowest window, sidebar and all,
-       scaled to fit: laid out at 600px and shrunk by --fit (the stage's width over 600; set below). */
     .stage { --fit: .6; height: calc(520px * var(--fit)); }
     .window { position: absolute; top: 0; left: 0; width: 600px; height: 520px; grid-template-columns: 200px minmax(0,1fr); transform: scale(var(--fit)); transform-origin: 0 0; }
     .side-in { width: 200px; }
@@ -680,7 +678,6 @@
 </script>
 <script>
   // The window in the hero, made to work: a pretend Hammock with Groups, tabs, splits and a shell or two.
-  // On a phone the window is drawn at 600px and scaled to the stage's width (the CSS's --fit).
   (() => {
     const stage = document.querySelector('.stage');
     if (!stage) return;
