@@ -2,6 +2,9 @@ import Foundation
 import Network
 import os
 import SwiftProtobuf
+#if os(macOS) && canImport(HammockAppProof)
+import HammockAppProof
+#endif
 
 public typealias ClientMessage = Hammock_V1_ClientMessage
 public typealias ServerMessage = Hammock_V1_ServerMessage
@@ -130,8 +133,13 @@ public final class DaemonConnection: @unchecked Sendable {
             case .ready:
                 // Raw-frame transport: magic, then 4-byte big-endian length + protobuf per message.
                 conn.send(content: Data("PRC1".utf8), completion: .contentProcessed { _ in })
-                self.onStateChange?(true, nil)
                 self.receiveHeader()
+                // Ready once the daemon has the app's proof (or won't): the
+                // first thing on the connection, before anything that needs it.
+                self.proveApp { [weak self] in
+                    guard let self, self.connection === conn else { return }
+                    self.onStateChange?(true, nil)
+                }
             case .failed(let err), .waiting(let err):
                 self.connection = nil // so calls fail fast instead of waiting forever
                 self.failAll(err)
@@ -146,6 +154,53 @@ public final class DaemonConnection: @unchecked Sendable {
             }
         }
         conn.start(queue: queue)
+    }
+
+    /// Proves to the daemon that this connection is the Hammock app's
+    /// (helpers/common/appproof.h; the daemon's end is appproof.go): asks for
+    /// a challenge, and sends its nonce back over Mach, whose audit token the
+    /// kernel fixes as it's sent (a socket's peer can be made to look like
+    /// the app). Without it the daemon doesn't take this for the app: nothing
+    /// only you may do, no notifications or pairing codes. Then `done`, on
+    /// the queue, whatever came of it: a daemon from before proofs refuses
+    /// the request and goes by what it knows; one that can't check this
+    /// build (another team's, or an ad hoc build in another app) says why,
+    /// which is logged. Only the Mac app proves anything: on the iPhone (a
+    /// remote client) it's straight to `done`.
+    private func proveApp(then done: @escaping () -> Void) {
+        #if os(macOS) && canImport(HammockAppProof)
+        // Once, however it ends: a daemon that doesn't answer at all (hung)
+        // is left to the caller to find out, as before proofs.
+        var finished = false
+        let finish = {
+            if finished { return }
+            finished = true
+            done()
+        }
+        queue.asyncAfter(deadline: .now() + 6) { finish() }
+        call({ $0.proveApp = .init() }) { result in
+            guard case .success(let msg) = result, case .appChallenge(let ch)? = msg.msg else {
+                if case .failure(let err) = result {
+                    Self.log.info("daemon took no proof: \(err.localizedDescription, privacy: .public)")
+                }
+                return finish()
+            }
+            // Blocking Mach calls (2 s at most a step): off the queue.
+            DispatchQueue.global(qos: .userInitiated).async {
+                var answer = [CChar](repeating: 0, count: 256)
+                let kr = ch.nonce.withUnsafeBytes { raw in
+                    hmk_app_proof_send(ch.service, ch.conn, raw.bindMemory(to: UInt8.self).baseAddress, raw.count, 2000, &answer, answer.count)
+                }
+                let said = answer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
+                if kr != 0 || said != "ok" {
+                    Self.log.error("daemon didn't take this app's proof: \(kr == 0 ? said : "mach error \(kr)", privacy: .public)")
+                }
+                self.queue.async { finish() }
+            }
+        }
+        #else
+        done()
+        #endif
     }
 
     public func disconnect() {

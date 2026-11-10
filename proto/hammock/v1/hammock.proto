@@ -506,6 +506,9 @@ message ClientMessage {
     ReadEditor read_editor = 123;
     ListFiles list_files = 124;
     ConfigWritten config_written = 125;  // local clients only: the Mac app wrote these settings (configwatch.go)
+    // The Mac app proving it's the app (appproof.go): only as a local
+    // connection's first message. Replies AppChallenge.
+    ProveApp prove_app = 126;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -774,7 +777,22 @@ message ServerMessage {
     EditorPushReply editor_push_reply = 60;         // reply to EditorPush
     FileList file_list = 61;                        // reply to ListFiles
     ApprovalPending approval_pending = 62;          // a request now waits for your answer (not its reply)
+    AppChallenge app_challenge = 63;                // reply to ProveApp
   }
+}
+
+// The Mac app, on a new connection to this Mac's daemon and before anything
+// else, asks to prove it's the app: the daemon answers AppChallenge, and the
+// app sends conn and nonce to the daemon's Mach service (service), as
+// helpers/common/appproof.h says. Until that proof is in (or a few seconds
+// have passed) the daemon reads nothing more from the connection; with it,
+// the connection is the app's (what only you may do, where notifications
+// and pairing codes go). A socket's peer can't prove it alone.
+message ProveApp {}
+message AppChallenge {
+  string service = 1;  // the daemon's Mach service (bootstrap name)
+  uint64 conn = 2;     // this connection's number
+  bytes nonce = 3;     // 32 random bytes, for this connection's proof only
 }
 
 // To a client whose request (request_id, its ClientMessage id) is only for

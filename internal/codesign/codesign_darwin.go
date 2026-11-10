@@ -201,19 +201,27 @@ func CheckFile(path, requirement string) bool {
 
 // Token is a process's audit token: its pid and pid version, which changes
 // when it execs, so a check by token is of the program that was running
-// when the token was taken (a socket's peer then: see PeerToken), never one
-// exec'd in its place since or a process that took its pid.
+// when the token was taken, never one exec'd in its place since or a
+// process that took its pid. (When a socket's peer token is taken is up to
+// the peer, though: see PeerToken.)
 type Token struct {
 	t  C.audit_token_t
 	ok bool
 }
 
 // PeerToken is the audit token macOS gives for the process at the other end
-// of the Unix socket fd: the one that connected, until another process with
-// the socket (one it was handed to, or a child that inherited it) reads or
-// writes through it, which then has it. Take it before reading and again
-// after (SameProcess), as the holders and the daemon do, to know the
-// program that connected is the one that spoke.
+// of the Unix socket fd. It isn't fixed at connect: macOS works it out when
+// asked, from the pid that last read or wrote through that end (another
+// process it was handed to, or a child that inherited it, takes it over),
+// and as that pid is then. So it names the program running in that pid now,
+// which may not be the one that connected or spoke: a process can connect,
+// write, hand the socket to a forked child and exec a suspended copy of a
+// signed program in its own pid, and the token then names that program,
+// live and validly signed, while the child goes on talking. Taking it before
+// reading and again after (SameProcess) catches a handover that happens
+// between the two, not one timed before both. A check that must know who
+// speaks needs something the socket can't forge: a Mach message's audit
+// token (TokenFromWords), fixed as it was sent.
 func PeerToken(fd int) Token {
 	var t Token
 	t.ok = C.hmk_peer_token(C.int(fd), &t.t) == 0

@@ -48,7 +48,7 @@ func TestDetachedFromPaneIsNotPerson(t *testing.T) {
 	}
 	personHook = nil
 	defer func() { personHook = testPerson }()
-	if d.positivelyPerson(nil, pid, codesign.Token{}) {
+	if d.positivelyPerson(nil, pid, false) {
 		t.Fatal("a program detached from a pane passes for you")
 	}
 	if d.plainCaller(nil, pid, codesign.Token{}) {

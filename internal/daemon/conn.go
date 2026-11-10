@@ -76,6 +76,11 @@ type conn struct {
 	// (who may answer a request), so atomic.
 	personOnce sync.Once
 	personOK   atomic.Bool
+	// The app's proof (appproof.go), read loop only: how many messages have
+	// been read, whether one asked to prove, and whether it held.
+	read       int
+	proofTried bool
+	proven     bool
 
 	attached map[string]*pane // only touched by the read loop
 
@@ -228,6 +233,7 @@ func (c *conn) readLoop() {
 		if err != nil {
 			return
 		}
+		c.read++
 		msg := &pb.ClientMessage{}
 		if err := proto.Unmarshal(b, msg); err != nil {
 			c.replyErr(0, fmt.Errorf("bad message: %w", err))
@@ -342,6 +348,11 @@ func (c *conn) paneResized(p *pane) {
 }
 
 func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
+	if _, ok := msg.Msg.(*pb.ClientMessage_ProveApp); ok {
+		// Before anything works out who this is (scope): it's how the app
+		// says (appproof.go). Refused to anything else, remote or late.
+		return c.proveApp(msg.Id)
+	}
 	if c.remote {
 		if reply, err, done := c.handleRemoteAuth(msg); done {
 			return reply, err

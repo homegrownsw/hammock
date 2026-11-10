@@ -30,14 +30,16 @@ var hammockAppIDs = []string{
 	"com.homegrownsw.hammock.menu", "com.homegrownsw.hammock.beta.menu",
 }
 
-// isHammockApp reports whether the process that connected (tok, its audit
-// token then) is the Hammock app (or its menu bar item): signed by this
-// daemon's own team with the hardened runtime, as helpers/common/peer.h
-// checks. Signed ad hoc (a development build), its program must be one of
-// the app this daemon is in, with the hardened runtime if this daemon has
-// it (no DYLD_INSERT_LIBRARIES). By token, never pid: a program that
-// connects and then execs the app in its pid (handing the connection to a
-// child) has a new pid version, and doesn't pass.
+// isHammockApp reports whether tok's process, as it was when the token was
+// taken, is the Hammock app (or its menu bar item): signed by this daemon's
+// own team with the hardened runtime, as helpers/common/peer.h checks.
+// Signed ad hoc (a development build), its program must be one of the app
+// this daemon is in, with the hardened runtime if this daemon has it (no
+// DYLD_INSERT_LIBRARIES). By token, never pid; and the token must be one
+// fixed when it was sent, the app's proof's (appproof.go): a socket's peer
+// token names whatever runs in the pid that last used it when it's asked,
+// so a program that connects and execs a suspended copy of the app in its
+// pid passes for it there.
 func isHammockApp(_ int, tok codesign.Token) bool {
 	self, _ := codesign.Self()
 	if self.Team != "" {

@@ -27,6 +27,9 @@ import (
 var holderBin string
 
 func TestMain(m *testing.M) {
+	if os.Getenv("HMK_TEST_APP_PROOF") != "" {
+		os.Exit(fakeAppProof()) // a process other than the test's proving it's the app (appproof_darwin_test.go)
+	}
 	if os.Getenv("HMK_TEST_KEY_HELPER") != "" {
 		os.Exit(fakeKeyHelper()) // the Hammock Key helper, as tests run it (hammockkey_test.go)
 	}

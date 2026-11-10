@@ -64,8 +64,11 @@ type Daemon struct {
 	// (holder/statelock.go).
 	lock  *dirLock
 	icons groupIcons // Groups' pictures, from their folders (groupicons.go)
-	ln    net.Listener
-	srv   *http.Server
+	// proofs: the Mac app's proofs that a connection is its own (appproof.go;
+	// its own lock).
+	proofs appProofs
+	ln     net.Listener
+	srv    *http.Server
 
 	mu        sync.Mutex // guards everything below; never acquired while holding a pane's mu
 	phoneAt   time.Time  // you last did something in Hammock on a paired phone (push.go)

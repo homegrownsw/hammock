@@ -497,7 +497,7 @@ func (x AgentBlock_Kind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentBlock_Kind.Descriptor instead.
 func (AgentBlock_Kind) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{92, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{94, 0}
 }
 
 type AgentPrompt_Kind int32
@@ -549,7 +549,7 @@ func (x AgentPrompt_Kind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentPrompt_Kind.Descriptor instead.
 func (AgentPrompt_Kind) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{96, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{98, 0}
 }
 
 type AgentTask_Status int32
@@ -598,7 +598,7 @@ func (x AgentTask_Status) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentTask_Status.Descriptor instead.
 func (AgentTask_Status) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{99, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{101, 0}
 }
 
 type AgentLink_Kind int32
@@ -647,7 +647,7 @@ func (x AgentLink_Kind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentLink_Kind.Descriptor instead.
 func (AgentLink_Kind) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{101, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{103, 0}
 }
 
 type AgentAnswer_Decision int32
@@ -701,7 +701,7 @@ func (x AgentAnswer_Decision) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AgentAnswer_Decision.Descriptor instead.
 func (AgentAnswer_Decision) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{105, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{107, 0}
 }
 
 type EditorCommand_Action int32
@@ -759,7 +759,7 @@ func (x EditorCommand_Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EditorCommand_Action.Descriptor instead.
 func (EditorCommand_Action) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{163, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{165, 0}
 }
 
 type GitMark_Kind int32
@@ -811,7 +811,7 @@ func (x GitMark_Kind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GitMark_Kind.Descriptor instead.
 func (GitMark_Kind) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{167, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{169, 0}
 }
 
 type HammockKeyCommand_Op int32
@@ -869,7 +869,7 @@ func (x HammockKeyCommand_Op) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use HammockKeyCommand_Op.Descriptor instead.
 func (HammockKeyCommand_Op) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{220, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{222, 0}
 }
 
 type Schedule_Overlap int32
@@ -918,7 +918,7 @@ func (x Schedule_Overlap) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Schedule_Overlap.Descriptor instead.
 func (Schedule_Overlap) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{226, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{228, 0}
 }
 
 type Schedule_Notify int32
@@ -970,7 +970,7 @@ func (x Schedule_Notify) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Schedule_Notify.Descriptor instead.
 func (Schedule_Notify) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{226, 1}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{228, 1}
 }
 
 type ScheduleRun_Status int32
@@ -1037,7 +1037,7 @@ func (x ScheduleRun_Status) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ScheduleRun_Status.Descriptor instead.
 func (ScheduleRun_Status) EnumDescriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{227, 0}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{229, 0}
 }
 
 type Group struct {
@@ -3192,6 +3192,7 @@ type ClientMessage struct {
 	//	*ClientMessage_ReadEditor
 	//	*ClientMessage_ListFiles
 	//	*ClientMessage_ConfigWritten
+	//	*ClientMessage_ProveApp
 	Msg           isClientMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4267,6 +4268,15 @@ func (x *ClientMessage) GetConfigWritten() *ConfigWritten {
 	return nil
 }
 
+func (x *ClientMessage) GetProveApp() *ProveApp {
+	if x != nil {
+		if x, ok := x.Msg.(*ClientMessage_ProveApp); ok {
+			return x.ProveApp
+		}
+	}
+	return nil
+}
+
 type isClientMessage_Msg interface {
 	isClientMessage_Msg()
 }
@@ -4778,6 +4788,12 @@ type ClientMessage_ConfigWritten struct {
 	ConfigWritten *ConfigWritten `protobuf:"bytes,125,opt,name=config_written,json=configWritten,proto3,oneof"` // local clients only: the Mac app wrote these settings (configwatch.go)
 }
 
+type ClientMessage_ProveApp struct {
+	// The Mac app proving it's the app (appproof.go): only as a local
+	// connection's first message. Replies AppChallenge.
+	ProveApp *ProveApp `protobuf:"bytes,126,opt,name=prove_app,json=proveApp,proto3,oneof"`
+}
+
 func (*ClientMessage_Hello) isClientMessage_Msg() {}
 
 func (*ClientMessage_Subscribe) isClientMessage_Msg() {}
@@ -5005,6 +5021,8 @@ func (*ClientMessage_ReadEditor) isClientMessage_Msg() {}
 func (*ClientMessage_ListFiles) isClientMessage_Msg() {}
 
 func (*ClientMessage_ConfigWritten) isClientMessage_Msg() {}
+
+func (*ClientMessage_ProveApp) isClientMessage_Msg() {}
 
 type Hello struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -7257,6 +7275,7 @@ type ServerMessage struct {
 	//	*ServerMessage_EditorPushReply
 	//	*ServerMessage_FileList
 	//	*ServerMessage_ApprovalPending
+	//	*ServerMessage_AppChallenge
 	Msg           isServerMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -7783,6 +7802,15 @@ func (x *ServerMessage) GetApprovalPending() *ApprovalPending {
 	return nil
 }
 
+func (x *ServerMessage) GetAppChallenge() *AppChallenge {
+	if x != nil {
+		if x, ok := x.Msg.(*ServerMessage_AppChallenge); ok {
+			return x.AppChallenge
+		}
+	}
+	return nil
+}
+
 type isServerMessage_Msg interface {
 	isServerMessage_Msg()
 }
@@ -7999,6 +8027,10 @@ type ServerMessage_ApprovalPending struct {
 	ApprovalPending *ApprovalPending `protobuf:"bytes,62,opt,name=approval_pending,json=approvalPending,proto3,oneof"` // a request now waits for your answer (not its reply)
 }
 
+type ServerMessage_AppChallenge struct {
+	AppChallenge *AppChallenge `protobuf:"bytes,63,opt,name=app_challenge,json=appChallenge,proto3,oneof"` // reply to ProveApp
+}
+
 func (*ServerMessage_HelloReply) isServerMessage_Msg() {}
 
 func (*ServerMessage_Error) isServerMessage_Msg() {}
@@ -8105,6 +8137,111 @@ func (*ServerMessage_FileList) isServerMessage_Msg() {}
 
 func (*ServerMessage_ApprovalPending) isServerMessage_Msg() {}
 
+func (*ServerMessage_AppChallenge) isServerMessage_Msg() {}
+
+// The Mac app, on a new connection to this Mac's daemon and before anything
+// else, asks to prove it's the app: the daemon answers AppChallenge, and the
+// app sends conn and nonce to the daemon's Mach service (service), as
+// helpers/common/appproof.h says. Until that proof is in (or a few seconds
+// have passed) the daemon reads nothing more from the connection; with it,
+// the connection is the app's (what only you may do, where notifications
+// and pairing codes go). A socket's peer can't prove it alone.
+type ProveApp struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProveApp) Reset() {
+	*x = ProveApp{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProveApp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProveApp) ProtoMessage() {}
+
+func (x *ProveApp) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProveApp.ProtoReflect.Descriptor instead.
+func (*ProveApp) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{56}
+}
+
+type AppChallenge struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Service       string                 `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"` // the daemon's Mach service (bootstrap name)
+	Conn          uint64                 `protobuf:"varint,2,opt,name=conn,proto3" json:"conn,omitempty"`      // this connection's number
+	Nonce         []byte                 `protobuf:"bytes,3,opt,name=nonce,proto3" json:"nonce,omitempty"`     // 32 random bytes, for this connection's proof only
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AppChallenge) Reset() {
+	*x = AppChallenge{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AppChallenge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AppChallenge) ProtoMessage() {}
+
+func (x *AppChallenge) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AppChallenge.ProtoReflect.Descriptor instead.
+func (*AppChallenge) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *AppChallenge) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *AppChallenge) GetConn() uint64 {
+	if x != nil {
+		return x.Conn
+	}
+	return 0
+}
+
+func (x *AppChallenge) GetNonce() []byte {
+	if x != nil {
+		return x.Nonce
+	}
+	return nil
+}
+
 // To a client whose request (request_id, its ClientMessage id) is only for
 // you and came from outside the Hammock app: it waits for you to allow it
 // in the app or on your phone (grant_id, a GrantRequest with person set),
@@ -8121,7 +8258,7 @@ type ApprovalPending struct {
 
 func (x *ApprovalPending) Reset() {
 	*x = ApprovalPending{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[56]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8133,7 +8270,7 @@ func (x *ApprovalPending) String() string {
 func (*ApprovalPending) ProtoMessage() {}
 
 func (x *ApprovalPending) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[56]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8146,7 +8283,7 @@ func (x *ApprovalPending) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApprovalPending.ProtoReflect.Descriptor instead.
 func (*ApprovalPending) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{56}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ApprovalPending) GetRequestId() uint64 {
@@ -8197,7 +8334,7 @@ type HelloReply struct {
 
 func (x *HelloReply) Reset() {
 	*x = HelloReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[57]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8209,7 +8346,7 @@ func (x *HelloReply) String() string {
 func (*HelloReply) ProtoMessage() {}
 
 func (x *HelloReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[57]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8222,7 +8359,7 @@ func (x *HelloReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HelloReply.ProtoReflect.Descriptor instead.
 func (*HelloReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{57}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *HelloReply) GetProtocolVersion() uint32 {
@@ -8290,7 +8427,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[58]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8302,7 +8439,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[58]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8315,7 +8452,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{58}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *Error) GetMessage() string {
@@ -8333,7 +8470,7 @@ type Ok struct {
 
 func (x *Ok) Reset() {
 	*x = Ok{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[59]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8345,7 +8482,7 @@ func (x *Ok) String() string {
 func (*Ok) ProtoMessage() {}
 
 func (x *Ok) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[59]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8358,7 +8495,7 @@ func (x *Ok) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ok.ProtoReflect.Descriptor instead.
 func (*Ok) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{59}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{61}
 }
 
 type Created struct {
@@ -8370,7 +8507,7 @@ type Created struct {
 
 func (x *Created) Reset() {
 	*x = Created{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[60]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8382,7 +8519,7 @@ func (x *Created) String() string {
 func (*Created) ProtoMessage() {}
 
 func (x *Created) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[60]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8395,7 +8532,7 @@ func (x *Created) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Created.ProtoReflect.Descriptor instead.
 func (*Created) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{60}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *Created) GetId() string {
@@ -8421,7 +8558,7 @@ type PaneSnapshot struct {
 
 func (x *PaneSnapshot) Reset() {
 	*x = PaneSnapshot{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[61]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8433,7 +8570,7 @@ func (x *PaneSnapshot) String() string {
 func (*PaneSnapshot) ProtoMessage() {}
 
 func (x *PaneSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[61]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8446,7 +8583,7 @@ func (x *PaneSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaneSnapshot.ProtoReflect.Descriptor instead.
 func (*PaneSnapshot) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{61}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *PaneSnapshot) GetPaneId() string {
@@ -8495,7 +8632,7 @@ type PaneOutput struct {
 
 func (x *PaneOutput) Reset() {
 	*x = PaneOutput{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[62]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8507,7 +8644,7 @@ func (x *PaneOutput) String() string {
 func (*PaneOutput) ProtoMessage() {}
 
 func (x *PaneOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[62]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8520,7 +8657,7 @@ func (x *PaneOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaneOutput.ProtoReflect.Descriptor instead.
 func (*PaneOutput) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{62}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *PaneOutput) GetPaneId() string {
@@ -8554,7 +8691,7 @@ type PaneText struct {
 
 func (x *PaneText) Reset() {
 	*x = PaneText{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[63]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8566,7 +8703,7 @@ func (x *PaneText) String() string {
 func (*PaneText) ProtoMessage() {}
 
 func (x *PaneText) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[63]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8579,7 +8716,7 @@ func (x *PaneText) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaneText.ProtoReflect.Descriptor instead.
 func (*PaneText) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{63}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *PaneText) GetPaneId() string {
@@ -8605,7 +8742,7 @@ type AuthChallenge struct {
 
 func (x *AuthChallenge) Reset() {
 	*x = AuthChallenge{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[64]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8617,7 +8754,7 @@ func (x *AuthChallenge) String() string {
 func (*AuthChallenge) ProtoMessage() {}
 
 func (x *AuthChallenge) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[64]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8630,7 +8767,7 @@ func (x *AuthChallenge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthChallenge.ProtoReflect.Descriptor instead.
 func (*AuthChallenge) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{64}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *AuthChallenge) GetNonce() []byte {
@@ -8652,7 +8789,7 @@ type Pair struct {
 
 func (x *Pair) Reset() {
 	*x = Pair{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[65]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8664,7 +8801,7 @@ func (x *Pair) String() string {
 func (*Pair) ProtoMessage() {}
 
 func (x *Pair) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[65]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8677,7 +8814,7 @@ func (x *Pair) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pair.ProtoReflect.Descriptor instead.
 func (*Pair) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{65}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *Pair) GetSecret() []byte {
@@ -8717,7 +8854,7 @@ type Paired struct {
 
 func (x *Paired) Reset() {
 	*x = Paired{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[66]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8729,7 +8866,7 @@ func (x *Paired) String() string {
 func (*Paired) ProtoMessage() {}
 
 func (x *Paired) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[66]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8742,7 +8879,7 @@ func (x *Paired) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Paired.ProtoReflect.Descriptor instead.
 func (*Paired) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{66}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *Paired) GetDeviceId() string {
@@ -8765,7 +8902,7 @@ type Authenticate struct {
 
 func (x *Authenticate) Reset() {
 	*x = Authenticate{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[67]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8777,7 +8914,7 @@ func (x *Authenticate) String() string {
 func (*Authenticate) ProtoMessage() {}
 
 func (x *Authenticate) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[67]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8790,7 +8927,7 @@ func (x *Authenticate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Authenticate.ProtoReflect.Descriptor instead.
 func (*Authenticate) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{67}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *Authenticate) GetDeviceId() string {
@@ -8822,7 +8959,7 @@ type CreatePairing struct {
 
 func (x *CreatePairing) Reset() {
 	*x = CreatePairing{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[68]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8834,7 +8971,7 @@ func (x *CreatePairing) String() string {
 func (*CreatePairing) ProtoMessage() {}
 
 func (x *CreatePairing) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[68]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8847,7 +8984,7 @@ func (x *CreatePairing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePairing.ProtoReflect.Descriptor instead.
 func (*CreatePairing) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{68}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{70}
 }
 
 // `hmk pair` asks the Mac app to show its pairing code (the secret stays
@@ -8863,7 +9000,7 @@ type ShowPairing struct {
 
 func (x *ShowPairing) Reset() {
 	*x = ShowPairing{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[69]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8875,7 +9012,7 @@ func (x *ShowPairing) String() string {
 func (*ShowPairing) ProtoMessage() {}
 
 func (x *ShowPairing) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[69]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8888,7 +9025,7 @@ func (x *ShowPairing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowPairing.ProtoReflect.Descriptor instead.
 func (*ShowPairing) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{69}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ShowPairing) GetHostName() string {
@@ -8910,7 +9047,7 @@ type DevicePaired struct {
 
 func (x *DevicePaired) Reset() {
 	*x = DevicePaired{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[70]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8922,7 +9059,7 @@ func (x *DevicePaired) String() string {
 func (*DevicePaired) ProtoMessage() {}
 
 func (x *DevicePaired) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[70]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8935,7 +9072,7 @@ func (x *DevicePaired) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DevicePaired.ProtoReflect.Descriptor instead.
 func (*DevicePaired) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{70}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *DevicePaired) GetDeviceId() string {
@@ -8978,7 +9115,7 @@ type Pairing struct {
 
 func (x *Pairing) Reset() {
 	*x = Pairing{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[71]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8990,7 +9127,7 @@ func (x *Pairing) String() string {
 func (*Pairing) ProtoMessage() {}
 
 func (x *Pairing) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[71]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9003,7 +9140,7 @@ func (x *Pairing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pairing.ProtoReflect.Descriptor instead.
 func (*Pairing) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{71}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *Pairing) GetHostName() string {
@@ -9068,7 +9205,7 @@ type Device struct {
 
 func (x *Device) Reset() {
 	*x = Device{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[72]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9080,7 +9217,7 @@ func (x *Device) String() string {
 func (*Device) ProtoMessage() {}
 
 func (x *Device) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[72]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9093,7 +9230,7 @@ func (x *Device) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Device.ProtoReflect.Descriptor instead.
 func (*Device) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{72}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *Device) GetId() string {
@@ -9142,7 +9279,7 @@ type ListAudit struct {
 
 func (x *ListAudit) Reset() {
 	*x = ListAudit{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[73]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9154,7 +9291,7 @@ func (x *ListAudit) String() string {
 func (*ListAudit) ProtoMessage() {}
 
 func (x *ListAudit) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[73]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9167,7 +9304,7 @@ func (x *ListAudit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAudit.ProtoReflect.Descriptor instead.
 func (*ListAudit) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{73}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ListAudit) GetLimit() int32 {
@@ -9199,7 +9336,7 @@ type AuditEvent struct {
 
 func (x *AuditEvent) Reset() {
 	*x = AuditEvent{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[74]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9211,7 +9348,7 @@ func (x *AuditEvent) String() string {
 func (*AuditEvent) ProtoMessage() {}
 
 func (x *AuditEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[74]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9224,7 +9361,7 @@ func (x *AuditEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEvent.ProtoReflect.Descriptor instead.
 func (*AuditEvent) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{74}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *AuditEvent) GetTimeUnixMs() int64 {
@@ -9306,7 +9443,7 @@ type AuditLog struct {
 
 func (x *AuditLog) Reset() {
 	*x = AuditLog{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[75]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9318,7 +9455,7 @@ func (x *AuditLog) String() string {
 func (*AuditLog) ProtoMessage() {}
 
 func (x *AuditLog) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[75]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9331,7 +9468,7 @@ func (x *AuditLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditLog.ProtoReflect.Descriptor instead.
 func (*AuditLog) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{75}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *AuditLog) GetEvents() []*AuditEvent {
@@ -9349,7 +9486,7 @@ type ListDevices struct {
 
 func (x *ListDevices) Reset() {
 	*x = ListDevices{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[76]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9361,7 +9498,7 @@ func (x *ListDevices) String() string {
 func (*ListDevices) ProtoMessage() {}
 
 func (x *ListDevices) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[76]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9374,7 +9511,7 @@ func (x *ListDevices) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDevices.ProtoReflect.Descriptor instead.
 func (*ListDevices) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{76}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{78}
 }
 
 type Devices struct {
@@ -9400,7 +9537,7 @@ type Devices struct {
 
 func (x *Devices) Reset() {
 	*x = Devices{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[77]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9412,7 +9549,7 @@ func (x *Devices) String() string {
 func (*Devices) ProtoMessage() {}
 
 func (x *Devices) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[77]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9425,7 +9562,7 @@ func (x *Devices) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Devices.ProtoReflect.Descriptor instead.
 func (*Devices) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{77}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *Devices) GetDevices() []*Device {
@@ -9488,7 +9625,7 @@ type RemoteNetwork struct {
 
 func (x *RemoteNetwork) Reset() {
 	*x = RemoteNetwork{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[78]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9500,7 +9637,7 @@ func (x *RemoteNetwork) String() string {
 func (*RemoteNetwork) ProtoMessage() {}
 
 func (x *RemoteNetwork) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[78]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9513,7 +9650,7 @@ func (x *RemoteNetwork) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoteNetwork.ProtoReflect.Descriptor instead.
 func (*RemoteNetwork) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{78}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *RemoteNetwork) GetId() string {
@@ -9578,7 +9715,7 @@ type SetRemoteNetworks struct {
 
 func (x *SetRemoteNetworks) Reset() {
 	*x = SetRemoteNetworks{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[79]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9590,7 +9727,7 @@ func (x *SetRemoteNetworks) String() string {
 func (*SetRemoteNetworks) ProtoMessage() {}
 
 func (x *SetRemoteNetworks) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[79]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9603,7 +9740,7 @@ func (x *SetRemoteNetworks) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRemoteNetworks.ProtoReflect.Descriptor instead.
 func (*SetRemoteNetworks) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{79}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *SetRemoteNetworks) GetNetworks() []string {
@@ -9629,7 +9766,7 @@ type RevokeDevice struct {
 
 func (x *RevokeDevice) Reset() {
 	*x = RevokeDevice{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[80]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9641,7 +9778,7 @@ func (x *RevokeDevice) String() string {
 func (*RevokeDevice) ProtoMessage() {}
 
 func (x *RevokeDevice) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[80]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9654,7 +9791,7 @@ func (x *RevokeDevice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeDevice.ProtoReflect.Descriptor instead.
 func (*RevokeDevice) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{80}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *RevokeDevice) GetDeviceId() string {
@@ -9674,7 +9811,7 @@ type SetRemoteAccess struct {
 
 func (x *SetRemoteAccess) Reset() {
 	*x = SetRemoteAccess{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[81]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9686,7 +9823,7 @@ func (x *SetRemoteAccess) String() string {
 func (*SetRemoteAccess) ProtoMessage() {}
 
 func (x *SetRemoteAccess) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[81]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9699,7 +9836,7 @@ func (x *SetRemoteAccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRemoteAccess.ProtoReflect.Descriptor instead.
 func (*SetRemoteAccess) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{81}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *SetRemoteAccess) GetEnabled() bool {
@@ -9722,7 +9859,7 @@ type SwitchAgent struct {
 
 func (x *SwitchAgent) Reset() {
 	*x = SwitchAgent{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[82]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9734,7 +9871,7 @@ func (x *SwitchAgent) String() string {
 func (*SwitchAgent) ProtoMessage() {}
 
 func (x *SwitchAgent) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[82]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9747,7 +9884,7 @@ func (x *SwitchAgent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SwitchAgent.ProtoReflect.Descriptor instead.
 func (*SwitchAgent) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{82}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *SwitchAgent) GetPaneId() string {
@@ -9774,7 +9911,7 @@ type AgentSwitched struct {
 
 func (x *AgentSwitched) Reset() {
 	*x = AgentSwitched{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[83]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9786,7 +9923,7 @@ func (x *AgentSwitched) String() string {
 func (*AgentSwitched) ProtoMessage() {}
 
 func (x *AgentSwitched) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[83]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9799,7 +9936,7 @@ func (x *AgentSwitched) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentSwitched.ProtoReflect.Descriptor instead.
 func (*AgentSwitched) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{83}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *AgentSwitched) GetReport() string {
@@ -9833,7 +9970,7 @@ type ListSessions struct {
 
 func (x *ListSessions) Reset() {
 	*x = ListSessions{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[84]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9845,7 +9982,7 @@ func (x *ListSessions) String() string {
 func (*ListSessions) ProtoMessage() {}
 
 func (x *ListSessions) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[84]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9858,7 +9995,7 @@ func (x *ListSessions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessions.ProtoReflect.Descriptor instead.
 func (*ListSessions) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{84}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ListSessions) GetQuery() string {
@@ -9922,7 +10059,7 @@ type SessionInfo struct {
 
 func (x *SessionInfo) Reset() {
 	*x = SessionInfo{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[85]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9934,7 +10071,7 @@ func (x *SessionInfo) String() string {
 func (*SessionInfo) ProtoMessage() {}
 
 func (x *SessionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[85]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9947,7 +10084,7 @@ func (x *SessionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionInfo.ProtoReflect.Descriptor instead.
 func (*SessionInfo) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{85}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *SessionInfo) GetHarness() string {
@@ -10037,7 +10174,7 @@ type SessionList struct {
 
 func (x *SessionList) Reset() {
 	*x = SessionList{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[86]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10049,7 +10186,7 @@ func (x *SessionList) String() string {
 func (*SessionList) ProtoMessage() {}
 
 func (x *SessionList) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[86]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10062,7 +10199,7 @@ func (x *SessionList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionList.ProtoReflect.Descriptor instead.
 func (*SessionList) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{86}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *SessionList) GetSessions() []*SessionInfo {
@@ -10099,7 +10236,7 @@ type SessionExcerpts struct {
 
 func (x *SessionExcerpts) Reset() {
 	*x = SessionExcerpts{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[87]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10111,7 +10248,7 @@ func (x *SessionExcerpts) String() string {
 func (*SessionExcerpts) ProtoMessage() {}
 
 func (x *SessionExcerpts) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[87]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10124,7 +10261,7 @@ func (x *SessionExcerpts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionExcerpts.ProtoReflect.Descriptor instead.
 func (*SessionExcerpts) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{87}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *SessionExcerpts) GetHarness() string {
@@ -10180,7 +10317,7 @@ type SessionExcerpt struct {
 
 func (x *SessionExcerpt) Reset() {
 	*x = SessionExcerpt{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[88]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10192,7 +10329,7 @@ func (x *SessionExcerpt) String() string {
 func (*SessionExcerpt) ProtoMessage() {}
 
 func (x *SessionExcerpt) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[88]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10205,7 +10342,7 @@ func (x *SessionExcerpt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionExcerpt.ProtoReflect.Descriptor instead.
 func (*SessionExcerpt) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{88}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *SessionExcerpt) GetSession() *SessionInfo {
@@ -10241,7 +10378,7 @@ type SessionMessage struct {
 
 func (x *SessionMessage) Reset() {
 	*x = SessionMessage{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[89]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10253,7 +10390,7 @@ func (x *SessionMessage) String() string {
 func (*SessionMessage) ProtoMessage() {}
 
 func (x *SessionMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[89]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10266,7 +10403,7 @@ func (x *SessionMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionMessage.ProtoReflect.Descriptor instead.
 func (*SessionMessage) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{89}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *SessionMessage) GetRole() string {
@@ -10313,7 +10450,7 @@ type ResumeSession struct {
 
 func (x *ResumeSession) Reset() {
 	*x = ResumeSession{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[90]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10325,7 +10462,7 @@ func (x *ResumeSession) String() string {
 func (*ResumeSession) ProtoMessage() {}
 
 func (x *ResumeSession) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[90]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10338,7 +10475,7 @@ func (x *ResumeSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeSession.ProtoReflect.Descriptor instead.
 func (*ResumeSession) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{90}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ResumeSession) GetHarness() string {
@@ -10388,7 +10525,7 @@ type SessionResumed struct {
 
 func (x *SessionResumed) Reset() {
 	*x = SessionResumed{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[91]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10400,7 +10537,7 @@ func (x *SessionResumed) String() string {
 func (*SessionResumed) ProtoMessage() {}
 
 func (x *SessionResumed) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[91]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10413,7 +10550,7 @@ func (x *SessionResumed) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionResumed.ProtoReflect.Descriptor instead.
 func (*SessionResumed) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{91}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *SessionResumed) GetTabId() string {
@@ -10468,7 +10605,7 @@ type AgentBlock struct {
 
 func (x *AgentBlock) Reset() {
 	*x = AgentBlock{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[92]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10480,7 +10617,7 @@ func (x *AgentBlock) String() string {
 func (*AgentBlock) ProtoMessage() {}
 
 func (x *AgentBlock) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[92]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10493,7 +10630,7 @@ func (x *AgentBlock) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentBlock.ProtoReflect.Descriptor instead.
 func (*AgentBlock) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{92}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *AgentBlock) GetId() string {
@@ -10622,7 +10759,7 @@ type AgentQuestion struct {
 
 func (x *AgentQuestion) Reset() {
 	*x = AgentQuestion{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[93]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10634,7 +10771,7 @@ func (x *AgentQuestion) String() string {
 func (*AgentQuestion) ProtoMessage() {}
 
 func (x *AgentQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[93]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10647,7 +10784,7 @@ func (x *AgentQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentQuestion.ProtoReflect.Descriptor instead.
 func (*AgentQuestion) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{93}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *AgentQuestion) GetQuestion() string {
@@ -10703,7 +10840,7 @@ type AgentOption struct {
 
 func (x *AgentOption) Reset() {
 	*x = AgentOption{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[94]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10715,7 +10852,7 @@ func (x *AgentOption) String() string {
 func (*AgentOption) ProtoMessage() {}
 
 func (x *AgentOption) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[94]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10728,7 +10865,7 @@ func (x *AgentOption) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentOption.ProtoReflect.Descriptor instead.
 func (*AgentOption) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{94}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *AgentOption) GetLabel() string {
@@ -10763,7 +10900,7 @@ type AgentImage struct {
 
 func (x *AgentImage) Reset() {
 	*x = AgentImage{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[95]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10775,7 +10912,7 @@ func (x *AgentImage) String() string {
 func (*AgentImage) ProtoMessage() {}
 
 func (x *AgentImage) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[95]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10788,7 +10925,7 @@ func (x *AgentImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentImage.ProtoReflect.Descriptor instead.
 func (*AgentImage) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{95}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *AgentImage) GetRef() string {
@@ -10832,7 +10969,7 @@ type AgentPrompt struct {
 
 func (x *AgentPrompt) Reset() {
 	*x = AgentPrompt{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[96]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10844,7 +10981,7 @@ func (x *AgentPrompt) String() string {
 func (*AgentPrompt) ProtoMessage() {}
 
 func (x *AgentPrompt) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[96]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10857,7 +10994,7 @@ func (x *AgentPrompt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentPrompt.ProtoReflect.Descriptor instead.
 func (*AgentPrompt) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{96}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *AgentPrompt) GetKind() AgentPrompt_Kind {
@@ -10974,7 +11111,7 @@ type AgentView struct {
 
 func (x *AgentView) Reset() {
 	*x = AgentView{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[97]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10986,7 +11123,7 @@ func (x *AgentView) String() string {
 func (*AgentView) ProtoMessage() {}
 
 func (x *AgentView) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[97]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10999,7 +11136,7 @@ func (x *AgentView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentView.ProtoReflect.Descriptor instead.
 func (*AgentView) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{97}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *AgentView) GetPaneId() string {
@@ -11167,7 +11304,7 @@ type AgentTaskList struct {
 
 func (x *AgentTaskList) Reset() {
 	*x = AgentTaskList{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[98]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11179,7 +11316,7 @@ func (x *AgentTaskList) String() string {
 func (*AgentTaskList) ProtoMessage() {}
 
 func (x *AgentTaskList) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[98]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11192,7 +11329,7 @@ func (x *AgentTaskList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentTaskList.ProtoReflect.Descriptor instead.
 func (*AgentTaskList) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{98}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *AgentTaskList) GetTasks() []*AgentTask {
@@ -11214,7 +11351,7 @@ type AgentTask struct {
 
 func (x *AgentTask) Reset() {
 	*x = AgentTask{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[99]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11226,7 +11363,7 @@ func (x *AgentTask) String() string {
 func (*AgentTask) ProtoMessage() {}
 
 func (x *AgentTask) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[99]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11239,7 +11376,7 @@ func (x *AgentTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentTask.ProtoReflect.Descriptor instead.
 func (*AgentTask) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{99}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *AgentTask) GetId() string {
@@ -11281,7 +11418,7 @@ type AgentLinks struct {
 
 func (x *AgentLinks) Reset() {
 	*x = AgentLinks{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[100]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11293,7 +11430,7 @@ func (x *AgentLinks) String() string {
 func (*AgentLinks) ProtoMessage() {}
 
 func (x *AgentLinks) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[100]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11306,7 +11443,7 @@ func (x *AgentLinks) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentLinks.ProtoReflect.Descriptor instead.
 func (*AgentLinks) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{100}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *AgentLinks) GetLinks() []*AgentLink {
@@ -11331,7 +11468,7 @@ type AgentLink struct {
 
 func (x *AgentLink) Reset() {
 	*x = AgentLink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[101]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11343,7 +11480,7 @@ func (x *AgentLink) String() string {
 func (*AgentLink) ProtoMessage() {}
 
 func (x *AgentLink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[101]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11356,7 +11493,7 @@ func (x *AgentLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentLink.ProtoReflect.Descriptor instead.
 func (*AgentLink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{101}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *AgentLink) GetKind() AgentLink_Kind {
@@ -11423,7 +11560,7 @@ type AgentSubagent struct {
 
 func (x *AgentSubagent) Reset() {
 	*x = AgentSubagent{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[102]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11435,7 +11572,7 @@ func (x *AgentSubagent) String() string {
 func (*AgentSubagent) ProtoMessage() {}
 
 func (x *AgentSubagent) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[102]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11448,7 +11585,7 @@ func (x *AgentSubagent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentSubagent.ProtoReflect.Descriptor instead.
 func (*AgentSubagent) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{102}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *AgentSubagent) GetId() string {
@@ -11504,7 +11641,7 @@ type AgentShell struct {
 
 func (x *AgentShell) Reset() {
 	*x = AgentShell{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[103]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11516,7 +11653,7 @@ func (x *AgentShell) String() string {
 func (*AgentShell) ProtoMessage() {}
 
 func (x *AgentShell) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[103]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11529,7 +11666,7 @@ func (x *AgentShell) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentShell.ProtoReflect.Descriptor instead.
 func (*AgentShell) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{103}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *AgentShell) GetId() string {
@@ -11597,7 +11734,7 @@ type WatchAgent struct {
 
 func (x *WatchAgent) Reset() {
 	*x = WatchAgent{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[104]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11609,7 +11746,7 @@ func (x *WatchAgent) String() string {
 func (*WatchAgent) ProtoMessage() {}
 
 func (x *WatchAgent) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[104]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11622,7 +11759,7 @@ func (x *WatchAgent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchAgent.ProtoReflect.Descriptor instead.
 func (*WatchAgent) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{104}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *WatchAgent) GetPaneId() string {
@@ -11680,7 +11817,7 @@ type AgentAnswer struct {
 
 func (x *AgentAnswer) Reset() {
 	*x = AgentAnswer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[105]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11692,7 +11829,7 @@ func (x *AgentAnswer) String() string {
 func (*AgentAnswer) ProtoMessage() {}
 
 func (x *AgentAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[105]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11705,7 +11842,7 @@ func (x *AgentAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentAnswer.ProtoReflect.Descriptor instead.
 func (*AgentAnswer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{105}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *AgentAnswer) GetPaneId() string {
@@ -11769,7 +11906,7 @@ type AgentSend struct {
 
 func (x *AgentSend) Reset() {
 	*x = AgentSend{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[106]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11781,7 +11918,7 @@ func (x *AgentSend) String() string {
 func (*AgentSend) ProtoMessage() {}
 
 func (x *AgentSend) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[106]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11794,7 +11931,7 @@ func (x *AgentSend) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentSend.ProtoReflect.Descriptor instead.
 func (*AgentSend) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{106}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *AgentSend) GetPaneId() string {
@@ -11828,7 +11965,7 @@ type AgentAttachment struct {
 
 func (x *AgentAttachment) Reset() {
 	*x = AgentAttachment{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[107]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11840,7 +11977,7 @@ func (x *AgentAttachment) String() string {
 func (*AgentAttachment) ProtoMessage() {}
 
 func (x *AgentAttachment) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[107]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11853,7 +11990,7 @@ func (x *AgentAttachment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentAttachment.ProtoReflect.Descriptor instead.
 func (*AgentAttachment) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{107}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *AgentAttachment) GetName() string {
@@ -11881,7 +12018,7 @@ type ReadAgentFile struct {
 
 func (x *ReadAgentFile) Reset() {
 	*x = ReadAgentFile{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[108]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11893,7 +12030,7 @@ func (x *ReadAgentFile) String() string {
 func (*ReadAgentFile) ProtoMessage() {}
 
 func (x *ReadAgentFile) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[108]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11906,7 +12043,7 @@ func (x *ReadAgentFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadAgentFile.ProtoReflect.Descriptor instead.
 func (*ReadAgentFile) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{108}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *ReadAgentFile) GetPaneId() string {
@@ -11934,7 +12071,7 @@ type AgentFile struct {
 
 func (x *AgentFile) Reset() {
 	*x = AgentFile{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[109]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11946,7 +12083,7 @@ func (x *AgentFile) String() string {
 func (*AgentFile) ProtoMessage() {}
 
 func (x *AgentFile) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[109]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11959,7 +12096,7 @@ func (x *AgentFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentFile.ProtoReflect.Descriptor instead.
 func (*AgentFile) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{109}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *AgentFile) GetRef() string {
@@ -11996,7 +12133,7 @@ type CreateInvite struct {
 
 func (x *CreateInvite) Reset() {
 	*x = CreateInvite{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[110]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12008,7 +12145,7 @@ func (x *CreateInvite) String() string {
 func (*CreateInvite) ProtoMessage() {}
 
 func (x *CreateInvite) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[110]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12021,7 +12158,7 @@ func (x *CreateInvite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateInvite.ProtoReflect.Descriptor instead.
 func (*CreateInvite) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{110}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *CreateInvite) GetGroupId() string {
@@ -12047,7 +12184,7 @@ type Invite struct {
 
 func (x *Invite) Reset() {
 	*x = Invite{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[111]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12059,7 +12196,7 @@ func (x *Invite) String() string {
 func (*Invite) ProtoMessage() {}
 
 func (x *Invite) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[111]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12072,7 +12209,7 @@ func (x *Invite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Invite.ProtoReflect.Descriptor instead.
 func (*Invite) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{111}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *Invite) GetLink() string {
@@ -12091,7 +12228,7 @@ type RevokeInvite struct {
 
 func (x *RevokeInvite) Reset() {
 	*x = RevokeInvite{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[112]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12103,7 +12240,7 @@ func (x *RevokeInvite) String() string {
 func (*RevokeInvite) ProtoMessage() {}
 
 func (x *RevokeInvite) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[112]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12116,7 +12253,7 @@ func (x *RevokeInvite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeInvite.ProtoReflect.Descriptor instead.
 func (*RevokeInvite) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{112}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *RevokeInvite) GetGroupId() string {
@@ -12137,7 +12274,7 @@ type RespondJoin struct {
 
 func (x *RespondJoin) Reset() {
 	*x = RespondJoin{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[113]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12149,7 +12286,7 @@ func (x *RespondJoin) String() string {
 func (*RespondJoin) ProtoMessage() {}
 
 func (x *RespondJoin) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[113]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12162,7 +12299,7 @@ func (x *RespondJoin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RespondJoin.ProtoReflect.Descriptor instead.
 func (*RespondJoin) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{113}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *RespondJoin) GetId() string {
@@ -12191,7 +12328,7 @@ type SetMember struct {
 
 func (x *SetMember) Reset() {
 	*x = SetMember{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[114]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12203,7 +12340,7 @@ func (x *SetMember) String() string {
 func (*SetMember) ProtoMessage() {}
 
 func (x *SetMember) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[114]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12216,7 +12353,7 @@ func (x *SetMember) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMember.ProtoReflect.Descriptor instead.
 func (*SetMember) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{114}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *SetMember) GetGroupId() string {
@@ -12250,7 +12387,7 @@ type StopSharing struct {
 
 func (x *StopSharing) Reset() {
 	*x = StopSharing{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[115]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12262,7 +12399,7 @@ func (x *StopSharing) String() string {
 func (*StopSharing) ProtoMessage() {}
 
 func (x *StopSharing) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[115]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12275,7 +12412,7 @@ func (x *StopSharing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopSharing.ProtoReflect.Descriptor instead.
 func (*StopSharing) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{115}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *StopSharing) GetGroupId() string {
@@ -12299,7 +12436,7 @@ type SetProfile struct {
 
 func (x *SetProfile) Reset() {
 	*x = SetProfile{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[116]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12311,7 +12448,7 @@ func (x *SetProfile) String() string {
 func (*SetProfile) ProtoMessage() {}
 
 func (x *SetProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[116]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12324,7 +12461,7 @@ func (x *SetProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetProfile.ProtoReflect.Descriptor instead.
 func (*SetProfile) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{116}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *SetProfile) GetName() string {
@@ -12358,7 +12495,7 @@ type JoinShared struct {
 
 func (x *JoinShared) Reset() {
 	*x = JoinShared{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[117]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12370,7 +12507,7 @@ func (x *JoinShared) String() string {
 func (*JoinShared) ProtoMessage() {}
 
 func (x *JoinShared) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[117]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12383,7 +12520,7 @@ func (x *JoinShared) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinShared.ProtoReflect.Descriptor instead.
 func (*JoinShared) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{117}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *JoinShared) GetLink() string {
@@ -12402,7 +12539,7 @@ type LeaveShared struct {
 
 func (x *LeaveShared) Reset() {
 	*x = LeaveShared{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[118]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12414,7 +12551,7 @@ func (x *LeaveShared) String() string {
 func (*LeaveShared) ProtoMessage() {}
 
 func (x *LeaveShared) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[118]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12427,7 +12564,7 @@ func (x *LeaveShared) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveShared.ProtoReflect.Descriptor instead.
 func (*LeaveShared) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{118}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *LeaveShared) GetGroupId() string {
@@ -12453,7 +12590,7 @@ type InviteToken struct {
 
 func (x *InviteToken) Reset() {
 	*x = InviteToken{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[119]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12465,7 +12602,7 @@ func (x *InviteToken) String() string {
 func (*InviteToken) ProtoMessage() {}
 
 func (x *InviteToken) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[119]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12478,7 +12615,7 @@ func (x *InviteToken) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteToken.ProtoReflect.Descriptor instead.
 func (*InviteToken) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{119}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *InviteToken) GetHostName() string {
@@ -12548,7 +12685,7 @@ type PeerHello struct {
 
 func (x *PeerHello) Reset() {
 	*x = PeerHello{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[120]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12560,7 +12697,7 @@ func (x *PeerHello) String() string {
 func (*PeerHello) ProtoMessage() {}
 
 func (x *PeerHello) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[120]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12573,7 +12710,7 @@ func (x *PeerHello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerHello.ProtoReflect.Descriptor instead.
 func (*PeerHello) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{120}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *PeerHello) GetPublicKey() []byte {
@@ -12631,7 +12768,7 @@ type PeerWelcome struct {
 
 func (x *PeerWelcome) Reset() {
 	*x = PeerWelcome{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[121]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12643,7 +12780,7 @@ func (x *PeerWelcome) String() string {
 func (*PeerWelcome) ProtoMessage() {}
 
 func (x *PeerWelcome) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[121]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12656,7 +12793,7 @@ func (x *PeerWelcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerWelcome.ProtoReflect.Descriptor instead.
 func (*PeerWelcome) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{121}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *PeerWelcome) GetPublicKey() []byte {
@@ -12683,7 +12820,7 @@ type PeerJoin struct {
 
 func (x *PeerJoin) Reset() {
 	*x = PeerJoin{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[122]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12695,7 +12832,7 @@ func (x *PeerJoin) String() string {
 func (*PeerJoin) ProtoMessage() {}
 
 func (x *PeerJoin) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[122]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12708,7 +12845,7 @@ func (x *PeerJoin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerJoin.ProtoReflect.Descriptor instead.
 func (*PeerJoin) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{122}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *PeerJoin) GetSecret() []byte {
@@ -12728,7 +12865,7 @@ type PeerJoined struct {
 
 func (x *PeerJoined) Reset() {
 	*x = PeerJoined{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[123]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12740,7 +12877,7 @@ func (x *PeerJoined) String() string {
 func (*PeerJoined) ProtoMessage() {}
 
 func (x *PeerJoined) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[123]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12753,7 +12890,7 @@ func (x *PeerJoined) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerJoined.ProtoReflect.Descriptor instead.
 func (*PeerJoined) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{123}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *PeerJoined) GetGroupId() string {
@@ -12781,7 +12918,7 @@ type MoveGroup struct {
 
 func (x *MoveGroup) Reset() {
 	*x = MoveGroup{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[124]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12793,7 +12930,7 @@ func (x *MoveGroup) String() string {
 func (*MoveGroup) ProtoMessage() {}
 
 func (x *MoveGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[124]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12806,7 +12943,7 @@ func (x *MoveGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveGroup.ProtoReflect.Descriptor instead.
 func (*MoveGroup) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{124}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *MoveGroup) GetGroupId() string {
@@ -12835,7 +12972,7 @@ type UploadFile struct {
 
 func (x *UploadFile) Reset() {
 	*x = UploadFile{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[125]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12847,7 +12984,7 @@ func (x *UploadFile) String() string {
 func (*UploadFile) ProtoMessage() {}
 
 func (x *UploadFile) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[125]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12860,7 +12997,7 @@ func (x *UploadFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadFile.ProtoReflect.Descriptor instead.
 func (*UploadFile) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{125}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *UploadFile) GetPaneId() string {
@@ -12900,7 +13037,7 @@ type RegisterPush struct {
 
 func (x *RegisterPush) Reset() {
 	*x = RegisterPush{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[126]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12912,7 +13049,7 @@ func (x *RegisterPush) String() string {
 func (*RegisterPush) ProtoMessage() {}
 
 func (x *RegisterPush) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[126]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12925,7 +13062,7 @@ func (x *RegisterPush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterPush.ProtoReflect.Descriptor instead.
 func (*RegisterPush) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{126}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *RegisterPush) GetRelayUrl() string {
@@ -12970,7 +13107,7 @@ type BrowserCall struct {
 
 func (x *BrowserCall) Reset() {
 	*x = BrowserCall{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[127]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12982,7 +13119,7 @@ func (x *BrowserCall) String() string {
 func (*BrowserCall) ProtoMessage() {}
 
 func (x *BrowserCall) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[127]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12995,7 +13132,7 @@ func (x *BrowserCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserCall.ProtoReflect.Descriptor instead.
 func (*BrowserCall) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{127}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *BrowserCall) GetPaneId() string {
@@ -13039,7 +13176,7 @@ type BrowserLogs struct {
 
 func (x *BrowserLogs) Reset() {
 	*x = BrowserLogs{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[128]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13051,7 +13188,7 @@ func (x *BrowserLogs) String() string {
 func (*BrowserLogs) ProtoMessage() {}
 
 func (x *BrowserLogs) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[128]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13064,7 +13201,7 @@ func (x *BrowserLogs) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserLogs.ProtoReflect.Descriptor instead.
 func (*BrowserLogs) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{128}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *BrowserLogs) GetPaneId() string {
@@ -13097,7 +13234,7 @@ type BrowserResult struct {
 
 func (x *BrowserResult) Reset() {
 	*x = BrowserResult{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[129]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13109,7 +13246,7 @@ func (x *BrowserResult) String() string {
 func (*BrowserResult) ProtoMessage() {}
 
 func (x *BrowserResult) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[129]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13122,7 +13259,7 @@ func (x *BrowserResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserResult.ProtoReflect.Descriptor instead.
 func (*BrowserResult) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{129}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *BrowserResult) GetJson() string {
@@ -13158,7 +13295,7 @@ type SimulatorCall struct {
 
 func (x *SimulatorCall) Reset() {
 	*x = SimulatorCall{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[130]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13170,7 +13307,7 @@ func (x *SimulatorCall) String() string {
 func (*SimulatorCall) ProtoMessage() {}
 
 func (x *SimulatorCall) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[130]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13183,7 +13320,7 @@ func (x *SimulatorCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulatorCall.ProtoReflect.Descriptor instead.
 func (*SimulatorCall) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{130}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *SimulatorCall) GetPaneId() string {
@@ -13260,7 +13397,7 @@ type OpenMedia struct {
 
 func (x *OpenMedia) Reset() {
 	*x = OpenMedia{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[131]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13272,7 +13409,7 @@ func (x *OpenMedia) String() string {
 func (*OpenMedia) ProtoMessage() {}
 
 func (x *OpenMedia) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[131]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13285,7 +13422,7 @@ func (x *OpenMedia) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenMedia.ProtoReflect.Descriptor instead.
 func (*OpenMedia) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{131}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *OpenMedia) GetPaneId() string {
@@ -13369,7 +13506,7 @@ type MediaTicket struct {
 
 func (x *MediaTicket) Reset() {
 	*x = MediaTicket{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[132]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13381,7 +13518,7 @@ func (x *MediaTicket) String() string {
 func (*MediaTicket) ProtoMessage() {}
 
 func (x *MediaTicket) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[132]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13394,7 +13531,7 @@ func (x *MediaTicket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MediaTicket.ProtoReflect.Descriptor instead.
 func (*MediaTicket) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{132}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *MediaTicket) GetSessionId() string {
@@ -13427,7 +13564,7 @@ type CloseMedia struct {
 
 func (x *CloseMedia) Reset() {
 	*x = CloseMedia{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[133]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13439,7 +13576,7 @@ func (x *CloseMedia) String() string {
 func (*CloseMedia) ProtoMessage() {}
 
 func (x *CloseMedia) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[133]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13452,7 +13589,7 @@ func (x *CloseMedia) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseMedia.ProtoReflect.Descriptor instead.
 func (*CloseMedia) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{133}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *CloseMedia) GetSessionId() string {
@@ -13488,7 +13625,7 @@ type BrowserInput struct {
 
 func (x *BrowserInput) Reset() {
 	*x = BrowserInput{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[134]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13500,7 +13637,7 @@ func (x *BrowserInput) String() string {
 func (*BrowserInput) ProtoMessage() {}
 
 func (x *BrowserInput) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[134]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13513,7 +13650,7 @@ func (x *BrowserInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserInput.ProtoReflect.Descriptor instead.
 func (*BrowserInput) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{134}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *BrowserInput) GetPaneId() string {
@@ -13551,7 +13688,7 @@ type ListDisplays struct {
 
 func (x *ListDisplays) Reset() {
 	*x = ListDisplays{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[135]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13563,7 +13700,7 @@ func (x *ListDisplays) String() string {
 func (*ListDisplays) ProtoMessage() {}
 
 func (x *ListDisplays) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[135]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13576,7 +13713,7 @@ func (x *ListDisplays) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDisplays.ProtoReflect.Descriptor instead.
 func (*ListDisplays) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{135}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *ListDisplays) GetComputerId() string {
@@ -13607,7 +13744,7 @@ type ScreenSnapshot struct {
 
 func (x *ScreenSnapshot) Reset() {
 	*x = ScreenSnapshot{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[136]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13619,7 +13756,7 @@ func (x *ScreenSnapshot) String() string {
 func (*ScreenSnapshot) ProtoMessage() {}
 
 func (x *ScreenSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[136]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13632,7 +13769,7 @@ func (x *ScreenSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenSnapshot.ProtoReflect.Descriptor instead.
 func (*ScreenSnapshot) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{136}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *ScreenSnapshot) GetComputerId() string {
@@ -13669,7 +13806,7 @@ type ScreenSnapshotReply struct {
 
 func (x *ScreenSnapshotReply) Reset() {
 	*x = ScreenSnapshotReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[137]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13681,7 +13818,7 @@ func (x *ScreenSnapshotReply) String() string {
 func (*ScreenSnapshotReply) ProtoMessage() {}
 
 func (x *ScreenSnapshotReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[137]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13694,7 +13831,7 @@ func (x *ScreenSnapshotReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenSnapshotReply.ProtoReflect.Descriptor instead.
 func (*ScreenSnapshotReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{137}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *ScreenSnapshotReply) GetJpeg() []byte {
@@ -13747,7 +13884,7 @@ type Displays struct {
 
 func (x *Displays) Reset() {
 	*x = Displays{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[138]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13759,7 +13896,7 @@ func (x *Displays) String() string {
 func (*Displays) ProtoMessage() {}
 
 func (x *Displays) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[138]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13772,7 +13909,7 @@ func (x *Displays) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Displays.ProtoReflect.Descriptor instead.
 func (*Displays) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{138}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *Displays) GetDisplays() []*Display {
@@ -13824,7 +13961,7 @@ type Display struct {
 
 func (x *Display) Reset() {
 	*x = Display{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[139]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13836,7 +13973,7 @@ func (x *Display) String() string {
 func (*Display) ProtoMessage() {}
 
 func (x *Display) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[139]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13849,7 +13986,7 @@ func (x *Display) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Display.ProtoReflect.Descriptor instead.
 func (*Display) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{139}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *Display) GetId() uint32 {
@@ -13918,7 +14055,7 @@ type ScreenInput struct {
 
 func (x *ScreenInput) Reset() {
 	*x = ScreenInput{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[140]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13930,7 +14067,7 @@ func (x *ScreenInput) String() string {
 func (*ScreenInput) ProtoMessage() {}
 
 func (x *ScreenInput) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[140]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13943,7 +14080,7 @@ func (x *ScreenInput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenInput.ProtoReflect.Descriptor instead.
 func (*ScreenInput) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{140}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *ScreenInput) GetComputerId() string {
@@ -13994,7 +14131,7 @@ type BrowserMenu struct {
 
 func (x *BrowserMenu) Reset() {
 	*x = BrowserMenu{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[141]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14006,7 +14143,7 @@ func (x *BrowserMenu) String() string {
 func (*BrowserMenu) ProtoMessage() {}
 
 func (x *BrowserMenu) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[141]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14019,7 +14156,7 @@ func (x *BrowserMenu) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserMenu.ProtoReflect.Descriptor instead.
 func (*BrowserMenu) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{141}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *BrowserMenu) GetPaneId() string {
@@ -14099,7 +14236,7 @@ type BrowserMenuItem struct {
 
 func (x *BrowserMenuItem) Reset() {
 	*x = BrowserMenuItem{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[142]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14111,7 +14248,7 @@ func (x *BrowserMenuItem) String() string {
 func (*BrowserMenuItem) ProtoMessage() {}
 
 func (x *BrowserMenuItem) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[142]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14124,7 +14261,7 @@ func (x *BrowserMenuItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserMenuItem.ProtoReflect.Descriptor instead.
 func (*BrowserMenuItem) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{142}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *BrowserMenuItem) GetTitle() string {
@@ -14180,7 +14317,7 @@ type BrowserClipboard struct {
 
 func (x *BrowserClipboard) Reset() {
 	*x = BrowserClipboard{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[143]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14192,7 +14329,7 @@ func (x *BrowserClipboard) String() string {
 func (*BrowserClipboard) ProtoMessage() {}
 
 func (x *BrowserClipboard) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[143]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14205,7 +14342,7 @@ func (x *BrowserClipboard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserClipboard.ProtoReflect.Descriptor instead.
 func (*BrowserClipboard) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{143}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *BrowserClipboard) GetPaneId() string {
@@ -14235,7 +14372,7 @@ type BrowserMenuChoice struct {
 
 func (x *BrowserMenuChoice) Reset() {
 	*x = BrowserMenuChoice{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[144]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14247,7 +14384,7 @@ func (x *BrowserMenuChoice) String() string {
 func (*BrowserMenuChoice) ProtoMessage() {}
 
 func (x *BrowserMenuChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[144]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14260,7 +14397,7 @@ func (x *BrowserMenuChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrowserMenuChoice.ProtoReflect.Descriptor instead.
 func (*BrowserMenuChoice) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{144}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *BrowserMenuChoice) GetPaneId() string {
@@ -14302,7 +14439,7 @@ type MediaAck struct {
 
 func (x *MediaAck) Reset() {
 	*x = MediaAck{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[145]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14314,7 +14451,7 @@ func (x *MediaAck) String() string {
 func (*MediaAck) ProtoMessage() {}
 
 func (x *MediaAck) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[145]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14327,7 +14464,7 @@ func (x *MediaAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MediaAck.ProtoReflect.Descriptor instead.
 func (*MediaAck) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{145}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *MediaAck) GetSessionId() string {
@@ -14374,7 +14511,7 @@ type MediaFrame struct {
 
 func (x *MediaFrame) Reset() {
 	*x = MediaFrame{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[146]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14386,7 +14523,7 @@ func (x *MediaFrame) String() string {
 func (*MediaFrame) ProtoMessage() {}
 
 func (x *MediaFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[146]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14399,7 +14536,7 @@ func (x *MediaFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MediaFrame.ProtoReflect.Descriptor instead.
 func (*MediaFrame) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{146}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *MediaFrame) GetSessionId() string {
@@ -14514,7 +14651,7 @@ type ScreenCursor struct {
 
 func (x *ScreenCursor) Reset() {
 	*x = ScreenCursor{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[147]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14526,7 +14663,7 @@ func (x *ScreenCursor) String() string {
 func (*ScreenCursor) ProtoMessage() {}
 
 func (x *ScreenCursor) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[147]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14539,7 +14676,7 @@ func (x *ScreenCursor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenCursor.ProtoReflect.Descriptor instead.
 func (*ScreenCursor) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{147}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *ScreenCursor) GetSessionId() string {
@@ -14621,7 +14758,7 @@ type ServerStatus struct {
 
 func (x *ServerStatus) Reset() {
 	*x = ServerStatus{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[148]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14633,7 +14770,7 @@ func (x *ServerStatus) String() string {
 func (*ServerStatus) ProtoMessage() {}
 
 func (x *ServerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[148]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14646,7 +14783,7 @@ func (x *ServerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerStatus.ProtoReflect.Descriptor instead.
 func (*ServerStatus) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{148}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{150}
 }
 
 type ServerStatusReply struct {
@@ -14667,7 +14804,7 @@ type ServerStatusReply struct {
 
 func (x *ServerStatusReply) Reset() {
 	*x = ServerStatusReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[149]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14679,7 +14816,7 @@ func (x *ServerStatusReply) String() string {
 func (*ServerStatusReply) ProtoMessage() {}
 
 func (x *ServerStatusReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[149]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14692,7 +14829,7 @@ func (x *ServerStatusReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerStatusReply.ProtoReflect.Descriptor instead.
 func (*ServerStatusReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{149}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *ServerStatusReply) GetVersion() string {
@@ -14775,7 +14912,7 @@ type Connected struct {
 
 func (x *Connected) Reset() {
 	*x = Connected{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[150]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14787,7 +14924,7 @@ func (x *Connected) String() string {
 func (*Connected) ProtoMessage() {}
 
 func (x *Connected) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[150]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14800,7 +14937,7 @@ func (x *Connected) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Connected.ProtoReflect.Descriptor instead.
 func (*Connected) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{150}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *Connected) GetName() string {
@@ -14831,7 +14968,7 @@ type ScreenViewer struct {
 
 func (x *ScreenViewer) Reset() {
 	*x = ScreenViewer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[151]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14843,7 +14980,7 @@ func (x *ScreenViewer) String() string {
 func (*ScreenViewer) ProtoMessage() {}
 
 func (x *ScreenViewer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[151]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14856,7 +14993,7 @@ func (x *ScreenViewer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenViewer.ProtoReflect.Descriptor instead.
 func (*ScreenViewer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{151}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *ScreenViewer) GetSessionId() string {
@@ -14912,7 +15049,7 @@ type EndScreenSession struct {
 
 func (x *EndScreenSession) Reset() {
 	*x = EndScreenSession{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[152]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14924,7 +15061,7 @@ func (x *EndScreenSession) String() string {
 func (*EndScreenSession) ProtoMessage() {}
 
 func (x *EndScreenSession) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[152]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14937,7 +15074,7 @@ func (x *EndScreenSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndScreenSession.ProtoReflect.Descriptor instead.
 func (*EndScreenSession) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{152}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *EndScreenSession) GetSessionId() string {
@@ -14966,7 +15103,7 @@ type ScreenState struct {
 
 func (x *ScreenState) Reset() {
 	*x = ScreenState{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[153]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14978,7 +15115,7 @@ func (x *ScreenState) String() string {
 func (*ScreenState) ProtoMessage() {}
 
 func (x *ScreenState) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[153]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14991,7 +15128,7 @@ func (x *ScreenState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenState.ProtoReflect.Descriptor instead.
 func (*ScreenState) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{153}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *ScreenState) GetSessionId() string {
@@ -15025,7 +15162,7 @@ type SetMediaView struct {
 
 func (x *SetMediaView) Reset() {
 	*x = SetMediaView{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[154]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15037,7 +15174,7 @@ func (x *SetMediaView) String() string {
 func (*SetMediaView) ProtoMessage() {}
 
 func (x *SetMediaView) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[154]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15050,7 +15187,7 @@ func (x *SetMediaView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetMediaView.ProtoReflect.Descriptor instead.
 func (*SetMediaView) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{154}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *SetMediaView) GetSessionId() string {
@@ -15098,7 +15235,7 @@ type MediaEnded struct {
 
 func (x *MediaEnded) Reset() {
 	*x = MediaEnded{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[155]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15110,7 +15247,7 @@ func (x *MediaEnded) String() string {
 func (*MediaEnded) ProtoMessage() {}
 
 func (x *MediaEnded) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[155]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15123,7 +15260,7 @@ func (x *MediaEnded) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MediaEnded.ProtoReflect.Descriptor instead.
 func (*MediaEnded) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{155}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *MediaEnded) GetSessionId() string {
@@ -15150,7 +15287,7 @@ type SimulatorResult struct {
 
 func (x *SimulatorResult) Reset() {
 	*x = SimulatorResult{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[156]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15162,7 +15299,7 @@ func (x *SimulatorResult) String() string {
 func (*SimulatorResult) ProtoMessage() {}
 
 func (x *SimulatorResult) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[156]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15175,7 +15312,7 @@ func (x *SimulatorResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimulatorResult.ProtoReflect.Descriptor instead.
 func (*SimulatorResult) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{156}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *SimulatorResult) GetJson() string {
@@ -15213,7 +15350,7 @@ type EditorOpen struct {
 
 func (x *EditorOpen) Reset() {
 	*x = EditorOpen{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[157]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15225,7 +15362,7 @@ func (x *EditorOpen) String() string {
 func (*EditorOpen) ProtoMessage() {}
 
 func (x *EditorOpen) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[157]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15238,7 +15375,7 @@ func (x *EditorOpen) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorOpen.ProtoReflect.Descriptor instead.
 func (*EditorOpen) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{157}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{159}
 }
 
 func (x *EditorOpen) GetPath() string {
@@ -15313,7 +15450,7 @@ type EditorInfo struct {
 
 func (x *EditorInfo) Reset() {
 	*x = EditorInfo{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[158]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15325,7 +15462,7 @@ func (x *EditorInfo) String() string {
 func (*EditorInfo) ProtoMessage() {}
 
 func (x *EditorInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[158]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15338,7 +15475,7 @@ func (x *EditorInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorInfo.ProtoReflect.Descriptor instead.
 func (*EditorInfo) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{158}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{160}
 }
 
 func (x *EditorInfo) GetPath() string {
@@ -15422,7 +15559,7 @@ type EditorPush struct {
 
 func (x *EditorPush) Reset() {
 	*x = EditorPush{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[159]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15434,7 +15571,7 @@ func (x *EditorPush) String() string {
 func (*EditorPush) ProtoMessage() {}
 
 func (x *EditorPush) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[159]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15447,7 +15584,7 @@ func (x *EditorPush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorPush.ProtoReflect.Descriptor instead.
 func (*EditorPush) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{159}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{161}
 }
 
 func (x *EditorPush) GetPaneId() string {
@@ -15481,7 +15618,7 @@ type EditorChange struct {
 
 func (x *EditorChange) Reset() {
 	*x = EditorChange{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[160]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15493,7 +15630,7 @@ func (x *EditorChange) String() string {
 func (*EditorChange) ProtoMessage() {}
 
 func (x *EditorChange) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[160]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15506,7 +15643,7 @@ func (x *EditorChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorChange.ProtoReflect.Descriptor instead.
 func (*EditorChange) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{160}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{162}
 }
 
 func (x *EditorChange) GetChanges() string {
@@ -15532,7 +15669,7 @@ type EditorPushReply struct {
 
 func (x *EditorPushReply) Reset() {
 	*x = EditorPushReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[161]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15544,7 +15681,7 @@ func (x *EditorPushReply) String() string {
 func (*EditorPushReply) ProtoMessage() {}
 
 func (x *EditorPushReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[161]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15557,7 +15694,7 @@ func (x *EditorPushReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorPushReply.ProtoReflect.Descriptor instead.
 func (*EditorPushReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{161}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{163}
 }
 
 func (x *EditorPushReply) GetAccepted() bool {
@@ -15581,7 +15718,7 @@ type EditorSelect struct {
 
 func (x *EditorSelect) Reset() {
 	*x = EditorSelect{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[162]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15593,7 +15730,7 @@ func (x *EditorSelect) String() string {
 func (*EditorSelect) ProtoMessage() {}
 
 func (x *EditorSelect) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[162]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15606,7 +15743,7 @@ func (x *EditorSelect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorSelect.ProtoReflect.Descriptor instead.
 func (*EditorSelect) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{162}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{164}
 }
 
 func (x *EditorSelect) GetPaneId() string {
@@ -15654,7 +15791,7 @@ type EditorCommand struct {
 
 func (x *EditorCommand) Reset() {
 	*x = EditorCommand{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[163]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15666,7 +15803,7 @@ func (x *EditorCommand) String() string {
 func (*EditorCommand) ProtoMessage() {}
 
 func (x *EditorCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[163]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15679,7 +15816,7 @@ func (x *EditorCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorCommand.ProtoReflect.Descriptor instead.
 func (*EditorCommand) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{163}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{165}
 }
 
 func (x *EditorCommand) GetPaneId() string {
@@ -15755,7 +15892,7 @@ type ReadEditor struct {
 
 func (x *ReadEditor) Reset() {
 	*x = ReadEditor{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[164]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15767,7 +15904,7 @@ func (x *ReadEditor) String() string {
 func (*ReadEditor) ProtoMessage() {}
 
 func (x *ReadEditor) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[164]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15780,7 +15917,7 @@ func (x *ReadEditor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadEditor.ProtoReflect.Descriptor instead.
 func (*ReadEditor) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{164}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{166}
 }
 
 func (x *ReadEditor) GetPaneId() string {
@@ -15819,7 +15956,7 @@ type EditorUpdate struct {
 
 func (x *EditorUpdate) Reset() {
 	*x = EditorUpdate{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[165]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15831,7 +15968,7 @@ func (x *EditorUpdate) String() string {
 func (*EditorUpdate) ProtoMessage() {}
 
 func (x *EditorUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[165]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15844,7 +15981,7 @@ func (x *EditorUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorUpdate.ProtoReflect.Descriptor instead.
 func (*EditorUpdate) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{165}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *EditorUpdate) GetPaneId() string {
@@ -15927,7 +16064,7 @@ type EditorSelection struct {
 
 func (x *EditorSelection) Reset() {
 	*x = EditorSelection{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[166]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15939,7 +16076,7 @@ func (x *EditorSelection) String() string {
 func (*EditorSelection) ProtoMessage() {}
 
 func (x *EditorSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[166]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15952,7 +16089,7 @@ func (x *EditorSelection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorSelection.ProtoReflect.Descriptor instead.
 func (*EditorSelection) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{166}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{168}
 }
 
 func (x *EditorSelection) GetAnchor() uint32 {
@@ -15980,7 +16117,7 @@ type GitMark struct {
 
 func (x *GitMark) Reset() {
 	*x = GitMark{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[167]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15992,7 +16129,7 @@ func (x *GitMark) String() string {
 func (*GitMark) ProtoMessage() {}
 
 func (x *GitMark) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[167]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16005,7 +16142,7 @@ func (x *GitMark) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GitMark.ProtoReflect.Descriptor instead.
 func (*GitMark) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{167}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{169}
 }
 
 func (x *GitMark) GetKind() GitMark_Kind {
@@ -16044,7 +16181,7 @@ type ListFiles struct {
 
 func (x *ListFiles) Reset() {
 	*x = ListFiles{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[168]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16056,7 +16193,7 @@ func (x *ListFiles) String() string {
 func (*ListFiles) ProtoMessage() {}
 
 func (x *ListFiles) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[168]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16069,7 +16206,7 @@ func (x *ListFiles) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFiles.ProtoReflect.Descriptor instead.
 func (*ListFiles) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{168}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *ListFiles) GetGroupId() string {
@@ -16111,7 +16248,7 @@ type FileList struct {
 
 func (x *FileList) Reset() {
 	*x = FileList{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[169]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16123,7 +16260,7 @@ func (x *FileList) String() string {
 func (*FileList) ProtoMessage() {}
 
 func (x *FileList) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[169]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16136,7 +16273,7 @@ func (x *FileList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileList.ProtoReflect.Descriptor instead.
 func (*FileList) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{169}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *FileList) GetFolder() string {
@@ -16177,7 +16314,7 @@ type LogSource struct {
 
 func (x *LogSource) Reset() {
 	*x = LogSource{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[170]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16189,7 +16326,7 @@ func (x *LogSource) String() string {
 func (*LogSource) ProtoMessage() {}
 
 func (x *LogSource) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[170]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16202,7 +16339,7 @@ func (x *LogSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogSource.ProtoReflect.Descriptor instead.
 func (*LogSource) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{170}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{172}
 }
 
 func (x *LogSource) GetKind() string {
@@ -16278,7 +16415,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[171]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16290,7 +16427,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[171]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16303,7 +16440,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{171}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *LogEntry) GetSeq() uint64 {
@@ -16384,7 +16521,7 @@ type LogFilter struct {
 
 func (x *LogFilter) Reset() {
 	*x = LogFilter{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[172]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16396,7 +16533,7 @@ func (x *LogFilter) String() string {
 func (*LogFilter) ProtoMessage() {}
 
 func (x *LogFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[172]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16409,7 +16546,7 @@ func (x *LogFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogFilter.ProtoReflect.Descriptor instead.
 func (*LogFilter) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{172}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *LogFilter) GetText() string {
@@ -16458,7 +16595,7 @@ type LogFacet struct {
 
 func (x *LogFacet) Reset() {
 	*x = LogFacet{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[173]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16470,7 +16607,7 @@ func (x *LogFacet) String() string {
 func (*LogFacet) ProtoMessage() {}
 
 func (x *LogFacet) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[173]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16483,7 +16620,7 @@ func (x *LogFacet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogFacet.ProtoReflect.Descriptor instead.
 func (*LogFacet) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{173}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *LogFacet) GetKey() string {
@@ -16515,7 +16652,7 @@ type WatchLog struct {
 
 func (x *WatchLog) Reset() {
 	*x = WatchLog{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[174]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16527,7 +16664,7 @@ func (x *WatchLog) String() string {
 func (*WatchLog) ProtoMessage() {}
 
 func (x *WatchLog) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[174]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16540,7 +16677,7 @@ func (x *WatchLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchLog.ProtoReflect.Descriptor instead.
 func (*WatchLog) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{174}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{176}
 }
 
 func (x *WatchLog) GetPaneId() string {
@@ -16592,7 +16729,7 @@ type ReadLog struct {
 
 func (x *ReadLog) Reset() {
 	*x = ReadLog{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[175]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16604,7 +16741,7 @@ func (x *ReadLog) String() string {
 func (*ReadLog) ProtoMessage() {}
 
 func (x *ReadLog) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[175]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16617,7 +16754,7 @@ func (x *ReadLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadLog.ProtoReflect.Descriptor instead.
 func (*ReadLog) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{175}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{177}
 }
 
 func (x *ReadLog) GetPaneId() string {
@@ -16658,7 +16795,7 @@ type ClearLog struct {
 
 func (x *ClearLog) Reset() {
 	*x = ClearLog{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[176]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16670,7 +16807,7 @@ func (x *ClearLog) String() string {
 func (*ClearLog) ProtoMessage() {}
 
 func (x *ClearLog) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[176]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16683,7 +16820,7 @@ func (x *ClearLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearLog.ProtoReflect.Descriptor instead.
 func (*ClearLog) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{176}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *ClearLog) GetPaneId() string {
@@ -16710,7 +16847,7 @@ type LogView struct {
 
 func (x *LogView) Reset() {
 	*x = LogView{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[177]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16722,7 +16859,7 @@ func (x *LogView) String() string {
 func (*LogView) ProtoMessage() {}
 
 func (x *LogView) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[177]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16735,7 +16872,7 @@ func (x *LogView) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogView.ProtoReflect.Descriptor instead.
 func (*LogView) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{177}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{179}
 }
 
 func (x *LogView) GetPaneId() string {
@@ -16818,7 +16955,7 @@ type StartAgent struct {
 
 func (x *StartAgent) Reset() {
 	*x = StartAgent{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[178]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16830,7 +16967,7 @@ func (x *StartAgent) String() string {
 func (*StartAgent) ProtoMessage() {}
 
 func (x *StartAgent) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[178]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16843,7 +16980,7 @@ func (x *StartAgent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartAgent.ProtoReflect.Descriptor instead.
 func (*StartAgent) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{178}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{180}
 }
 
 func (x *StartAgent) GetHarness() string {
@@ -16904,7 +17041,7 @@ type ListFolders struct {
 
 func (x *ListFolders) Reset() {
 	*x = ListFolders{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[179]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16916,7 +17053,7 @@ func (x *ListFolders) String() string {
 func (*ListFolders) ProtoMessage() {}
 
 func (x *ListFolders) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[179]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16929,7 +17066,7 @@ func (x *ListFolders) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFolders.ProtoReflect.Descriptor instead.
 func (*ListFolders) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{179}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{181}
 }
 
 func (x *ListFolders) GetPath() string {
@@ -16968,7 +17105,7 @@ type FolderList struct {
 
 func (x *FolderList) Reset() {
 	*x = FolderList{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[180]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16980,7 +17117,7 @@ func (x *FolderList) String() string {
 func (*FolderList) ProtoMessage() {}
 
 func (x *FolderList) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[180]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16993,7 +17130,7 @@ func (x *FolderList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FolderList.ProtoReflect.Descriptor instead.
 func (*FolderList) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{180}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *FolderList) GetPath() string {
@@ -17055,7 +17192,7 @@ type FolderSuggestion struct {
 
 func (x *FolderSuggestion) Reset() {
 	*x = FolderSuggestion{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[181]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17067,7 +17204,7 @@ func (x *FolderSuggestion) String() string {
 func (*FolderSuggestion) ProtoMessage() {}
 
 func (x *FolderSuggestion) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[181]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17080,7 +17217,7 @@ func (x *FolderSuggestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FolderSuggestion.ProtoReflect.Descriptor instead.
 func (*FolderSuggestion) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{181}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *FolderSuggestion) GetPath() string {
@@ -17112,7 +17249,7 @@ type ReadSession struct {
 
 func (x *ReadSession) Reset() {
 	*x = ReadSession{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[182]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17124,7 +17261,7 @@ func (x *ReadSession) String() string {
 func (*ReadSession) ProtoMessage() {}
 
 func (x *ReadSession) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[182]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17137,7 +17274,7 @@ func (x *ReadSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadSession.ProtoReflect.Descriptor instead.
 func (*ReadSession) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{182}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *ReadSession) GetHarness() string {
@@ -17178,7 +17315,7 @@ type ReadGroupIcon struct {
 
 func (x *ReadGroupIcon) Reset() {
 	*x = ReadGroupIcon{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[183]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17190,7 +17327,7 @@ func (x *ReadGroupIcon) String() string {
 func (*ReadGroupIcon) ProtoMessage() {}
 
 func (x *ReadGroupIcon) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[183]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17203,7 +17340,7 @@ func (x *ReadGroupIcon) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadGroupIcon.ProtoReflect.Descriptor instead.
 func (*ReadGroupIcon) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{183}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *ReadGroupIcon) GetGroupId() string {
@@ -17224,7 +17361,7 @@ type GroupIcon struct {
 
 func (x *GroupIcon) Reset() {
 	*x = GroupIcon{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[184]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17236,7 +17373,7 @@ func (x *GroupIcon) String() string {
 func (*GroupIcon) ProtoMessage() {}
 
 func (x *GroupIcon) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[184]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17249,7 +17386,7 @@ func (x *GroupIcon) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupIcon.ProtoReflect.Descriptor instead.
 func (*GroupIcon) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{184}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{186}
 }
 
 func (x *GroupIcon) GetGroupId() string {
@@ -17285,7 +17422,7 @@ type SetGroupIconImage struct {
 
 func (x *SetGroupIconImage) Reset() {
 	*x = SetGroupIconImage{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[185]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17297,7 +17434,7 @@ func (x *SetGroupIconImage) String() string {
 func (*SetGroupIconImage) ProtoMessage() {}
 
 func (x *SetGroupIconImage) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[185]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17310,7 +17447,7 @@ func (x *SetGroupIconImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGroupIconImage.ProtoReflect.Descriptor instead.
 func (*SetGroupIconImage) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{185}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *SetGroupIconImage) GetGroupId() string {
@@ -17343,7 +17480,7 @@ type Computers struct {
 
 func (x *Computers) Reset() {
 	*x = Computers{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[186]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17355,7 +17492,7 @@ func (x *Computers) String() string {
 func (*Computers) ProtoMessage() {}
 
 func (x *Computers) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[186]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17368,7 +17505,7 @@ func (x *Computers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Computers.ProtoReflect.Descriptor instead.
 func (*Computers) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{186}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *Computers) GetList() []*Computer {
@@ -17450,7 +17587,7 @@ type Computer struct {
 
 func (x *Computer) Reset() {
 	*x = Computer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[187]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17462,7 +17599,7 @@ func (x *Computer) String() string {
 func (*Computer) ProtoMessage() {}
 
 func (x *Computer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[187]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17475,7 +17612,7 @@ func (x *Computer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Computer.ProtoReflect.Descriptor instead.
 func (*Computer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{187}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *Computer) GetUserId() string {
@@ -17662,7 +17799,7 @@ type StoredLink struct {
 
 func (x *StoredLink) Reset() {
 	*x = StoredLink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[188]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17674,7 +17811,7 @@ func (x *StoredLink) String() string {
 func (*StoredLink) ProtoMessage() {}
 
 func (x *StoredLink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[188]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17687,7 +17824,7 @@ func (x *StoredLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoredLink.ProtoReflect.Descriptor instead.
 func (*StoredLink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{188}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{190}
 }
 
 func (x *StoredLink) GetRecord() *Computer {
@@ -17767,7 +17904,7 @@ type IntroHop struct {
 
 func (x *IntroHop) Reset() {
 	*x = IntroHop{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[189]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17779,7 +17916,7 @@ func (x *IntroHop) String() string {
 func (*IntroHop) ProtoMessage() {}
 
 func (x *IntroHop) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[189]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17792,7 +17929,7 @@ func (x *IntroHop) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IntroHop.ProtoReflect.Descriptor instead.
 func (*IntroHop) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{189}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *IntroHop) GetBy() string {
@@ -17836,7 +17973,7 @@ type Refusal struct {
 
 func (x *Refusal) Reset() {
 	*x = Refusal{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[190]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17848,7 +17985,7 @@ func (x *Refusal) String() string {
 func (*Refusal) ProtoMessage() {}
 
 func (x *Refusal) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[190]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17861,7 +17998,7 @@ func (x *Refusal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Refusal.ProtoReflect.Descriptor instead.
 func (*Refusal) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{190}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *Refusal) GetUserId() string {
@@ -17934,7 +18071,7 @@ type PendingUnlink struct {
 
 func (x *PendingUnlink) Reset() {
 	*x = PendingUnlink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[191]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -17946,7 +18083,7 @@ func (x *PendingUnlink) String() string {
 func (*PendingUnlink) ProtoMessage() {}
 
 func (x *PendingUnlink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[191]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -17959,7 +18096,7 @@ func (x *PendingUnlink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PendingUnlink.ProtoReflect.Descriptor instead.
 func (*PendingUnlink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{191}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{193}
 }
 
 func (x *PendingUnlink) GetUserId() string {
@@ -18047,7 +18184,7 @@ type LegacyComputer struct {
 
 func (x *LegacyComputer) Reset() {
 	*x = LegacyComputer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[192]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18059,7 +18196,7 @@ func (x *LegacyComputer) String() string {
 func (*LegacyComputer) ProtoMessage() {}
 
 func (x *LegacyComputer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[192]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18072,7 +18209,7 @@ func (x *LegacyComputer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LegacyComputer.ProtoReflect.Descriptor instead.
 func (*LegacyComputer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{192}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *LegacyComputer) GetUserId() string {
@@ -18179,7 +18316,7 @@ type LegacyLink struct {
 
 func (x *LegacyLink) Reset() {
 	*x = LegacyLink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[193]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18191,7 +18328,7 @@ func (x *LegacyLink) String() string {
 func (*LegacyLink) ProtoMessage() {}
 
 func (x *LegacyLink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[193]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18204,7 +18341,7 @@ func (x *LegacyLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LegacyLink.ProtoReflect.Descriptor instead.
 func (*LegacyLink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{193}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{195}
 }
 
 func (x *LegacyLink) GetId() string {
@@ -18255,7 +18392,7 @@ type LegacyUnlink struct {
 
 func (x *LegacyUnlink) Reset() {
 	*x = LegacyUnlink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[194]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18267,7 +18404,7 @@ func (x *LegacyUnlink) String() string {
 func (*LegacyUnlink) ProtoMessage() {}
 
 func (x *LegacyUnlink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[194]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18280,7 +18417,7 @@ func (x *LegacyUnlink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LegacyUnlink.ProtoReflect.Descriptor instead.
 func (*LegacyUnlink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{194}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *LegacyUnlink) GetId() string {
@@ -18349,7 +18486,7 @@ type LinkRequest struct {
 
 func (x *LinkRequest) Reset() {
 	*x = LinkRequest{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[195]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18361,7 +18498,7 @@ func (x *LinkRequest) String() string {
 func (*LinkRequest) ProtoMessage() {}
 
 func (x *LinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[195]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18374,7 +18511,7 @@ func (x *LinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkRequest.ProtoReflect.Descriptor instead.
 func (*LinkRequest) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{195}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *LinkRequest) GetId() string {
@@ -18500,7 +18637,7 @@ type DiscoverComputers struct {
 
 func (x *DiscoverComputers) Reset() {
 	*x = DiscoverComputers{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[196]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18512,7 +18649,7 @@ func (x *DiscoverComputers) String() string {
 func (*DiscoverComputers) ProtoMessage() {}
 
 func (x *DiscoverComputers) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[196]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18525,7 +18662,7 @@ func (x *DiscoverComputers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoverComputers.ProtoReflect.Descriptor instead.
 func (*DiscoverComputers) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{196}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{198}
 }
 
 type DiscoveredComputers struct {
@@ -18538,7 +18675,7 @@ type DiscoveredComputers struct {
 
 func (x *DiscoveredComputers) Reset() {
 	*x = DiscoveredComputers{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[197]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18550,7 +18687,7 @@ func (x *DiscoveredComputers) String() string {
 func (*DiscoveredComputers) ProtoMessage() {}
 
 func (x *DiscoveredComputers) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[197]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18563,7 +18700,7 @@ func (x *DiscoveredComputers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoveredComputers.ProtoReflect.Descriptor instead.
 func (*DiscoveredComputers) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{197}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{199}
 }
 
 func (x *DiscoveredComputers) GetList() []*DiscoveredComputer {
@@ -18595,7 +18732,7 @@ type DiscoveredComputer struct {
 
 func (x *DiscoveredComputer) Reset() {
 	*x = DiscoveredComputer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[198]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[200]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18607,7 +18744,7 @@ func (x *DiscoveredComputer) String() string {
 func (*DiscoveredComputer) ProtoMessage() {}
 
 func (x *DiscoveredComputer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[198]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[200]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18620,7 +18757,7 @@ func (x *DiscoveredComputer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiscoveredComputer.ProtoReflect.Descriptor instead.
 func (*DiscoveredComputer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{198}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{200}
 }
 
 func (x *DiscoveredComputer) GetName() string {
@@ -18686,7 +18823,7 @@ type LinkComputer struct {
 
 func (x *LinkComputer) Reset() {
 	*x = LinkComputer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[199]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[201]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18698,7 +18835,7 @@ func (x *LinkComputer) String() string {
 func (*LinkComputer) ProtoMessage() {}
 
 func (x *LinkComputer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[199]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[201]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18711,7 +18848,7 @@ func (x *LinkComputer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkComputer.ProtoReflect.Descriptor instead.
 func (*LinkComputer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{199}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{201}
 }
 
 func (x *LinkComputer) GetAddress() string {
@@ -18732,7 +18869,7 @@ type RespondLink struct {
 
 func (x *RespondLink) Reset() {
 	*x = RespondLink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[200]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[202]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18744,7 +18881,7 @@ func (x *RespondLink) String() string {
 func (*RespondLink) ProtoMessage() {}
 
 func (x *RespondLink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[200]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[202]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18757,7 +18894,7 @@ func (x *RespondLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RespondLink.ProtoReflect.Descriptor instead.
 func (*RespondLink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{200}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{202}
 }
 
 func (x *RespondLink) GetId() string {
@@ -18790,7 +18927,7 @@ type UnlinkComputer struct {
 
 func (x *UnlinkComputer) Reset() {
 	*x = UnlinkComputer{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[201]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[203]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18802,7 +18939,7 @@ func (x *UnlinkComputer) String() string {
 func (*UnlinkComputer) ProtoMessage() {}
 
 func (x *UnlinkComputer) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[201]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[203]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18815,7 +18952,7 @@ func (x *UnlinkComputer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnlinkComputer.ProtoReflect.Descriptor instead.
 func (*UnlinkComputer) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{201}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{203}
 }
 
 func (x *UnlinkComputer) GetUserId() string {
@@ -18846,7 +18983,7 @@ type SetComputerTint struct {
 
 func (x *SetComputerTint) Reset() {
 	*x = SetComputerTint{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[202]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[204]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18858,7 +18995,7 @@ func (x *SetComputerTint) String() string {
 func (*SetComputerTint) ProtoMessage() {}
 
 func (x *SetComputerTint) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[202]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[204]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18871,7 +19008,7 @@ func (x *SetComputerTint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetComputerTint.ProtoReflect.Descriptor instead.
 func (*SetComputerTint) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{202}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{204}
 }
 
 func (x *SetComputerTint) GetUserId() string {
@@ -18905,7 +19042,7 @@ type CreateLinkInvite struct {
 
 func (x *CreateLinkInvite) Reset() {
 	*x = CreateLinkInvite{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[203]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[205]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18917,7 +19054,7 @@ func (x *CreateLinkInvite) String() string {
 func (*CreateLinkInvite) ProtoMessage() {}
 
 func (x *CreateLinkInvite) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[203]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[205]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18930,7 +19067,7 @@ func (x *CreateLinkInvite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateLinkInvite.ProtoReflect.Descriptor instead.
 func (*CreateLinkInvite) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{203}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{205}
 }
 
 // What a hammock://link/ link carries (base64url).
@@ -18947,7 +19084,7 @@ type LinkToken struct {
 
 func (x *LinkToken) Reset() {
 	*x = LinkToken{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[204]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[206]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -18959,7 +19096,7 @@ func (x *LinkToken) String() string {
 func (*LinkToken) ProtoMessage() {}
 
 func (x *LinkToken) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[204]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[206]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -18972,7 +19109,7 @@ func (x *LinkToken) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LinkToken.ProtoReflect.Descriptor instead.
 func (*LinkToken) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{204}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{206}
 }
 
 func (x *LinkToken) GetName() string {
@@ -19024,7 +19161,7 @@ type PeerLinkHello struct {
 
 func (x *PeerLinkHello) Reset() {
 	*x = PeerLinkHello{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[205]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[207]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19036,7 +19173,7 @@ func (x *PeerLinkHello) String() string {
 func (*PeerLinkHello) ProtoMessage() {}
 
 func (x *PeerLinkHello) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[205]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[207]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19049,7 +19186,7 @@ func (x *PeerLinkHello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerLinkHello.ProtoReflect.Descriptor instead.
 func (*PeerLinkHello) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{205}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{207}
 }
 
 func (x *PeerLinkHello) GetCommitment() []byte {
@@ -19076,7 +19213,7 @@ type PeerLinkNonce struct {
 
 func (x *PeerLinkNonce) Reset() {
 	*x = PeerLinkNonce{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[206]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[208]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19088,7 +19225,7 @@ func (x *PeerLinkNonce) String() string {
 func (*PeerLinkNonce) ProtoMessage() {}
 
 func (x *PeerLinkNonce) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[206]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[208]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19101,7 +19238,7 @@ func (x *PeerLinkNonce) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerLinkNonce.ProtoReflect.Descriptor instead.
 func (*PeerLinkNonce) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{206}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{208}
 }
 
 func (x *PeerLinkNonce) GetNonce() []byte {
@@ -19129,7 +19266,7 @@ type PeerLinkReveal struct {
 
 func (x *PeerLinkReveal) Reset() {
 	*x = PeerLinkReveal{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[207]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[209]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19141,7 +19278,7 @@ func (x *PeerLinkReveal) String() string {
 func (*PeerLinkReveal) ProtoMessage() {}
 
 func (x *PeerLinkReveal) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[207]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[209]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19154,7 +19291,7 @@ func (x *PeerLinkReveal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerLinkReveal.ProtoReflect.Descriptor instead.
 func (*PeerLinkReveal) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{207}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{209}
 }
 
 func (x *PeerLinkReveal) GetNonce() []byte {
@@ -19175,7 +19312,7 @@ type PeerLinkConfirm struct {
 
 func (x *PeerLinkConfirm) Reset() {
 	*x = PeerLinkConfirm{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[208]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[210]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19187,7 +19324,7 @@ func (x *PeerLinkConfirm) String() string {
 func (*PeerLinkConfirm) ProtoMessage() {}
 
 func (x *PeerLinkConfirm) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[208]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[210]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19200,7 +19337,7 @@ func (x *PeerLinkConfirm) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerLinkConfirm.ProtoReflect.Descriptor instead.
 func (*PeerLinkConfirm) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{208}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{210}
 }
 
 func (x *PeerLinkConfirm) GetAccept() bool {
@@ -19219,7 +19356,7 @@ type PeerLinked struct {
 
 func (x *PeerLinked) Reset() {
 	*x = PeerLinked{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[209]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[211]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19231,7 +19368,7 @@ func (x *PeerLinked) String() string {
 func (*PeerLinked) ProtoMessage() {}
 
 func (x *PeerLinked) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[209]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[211]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19244,7 +19381,7 @@ func (x *PeerLinked) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerLinked.ProtoReflect.Descriptor instead.
 func (*PeerLinked) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{209}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{211}
 }
 
 func (x *PeerLinked) GetComputers() []*Computer {
@@ -19266,7 +19403,7 @@ type IntroduceComputers struct {
 
 func (x *IntroduceComputers) Reset() {
 	*x = IntroduceComputers{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[210]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[212]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19278,7 +19415,7 @@ func (x *IntroduceComputers) String() string {
 func (*IntroduceComputers) ProtoMessage() {}
 
 func (x *IntroduceComputers) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[210]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[212]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19291,7 +19428,7 @@ func (x *IntroduceComputers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IntroduceComputers.ProtoReflect.Descriptor instead.
 func (*IntroduceComputers) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{210}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{212}
 }
 
 func (x *IntroduceComputers) GetComputers() []*Computer {
@@ -19320,7 +19457,7 @@ type PeerIntroLink struct {
 
 func (x *PeerIntroLink) Reset() {
 	*x = PeerIntroLink{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[211]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[213]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19332,7 +19469,7 @@ func (x *PeerIntroLink) String() string {
 func (*PeerIntroLink) ProtoMessage() {}
 
 func (x *PeerIntroLink) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[211]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[213]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19345,7 +19482,7 @@ func (x *PeerIntroLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerIntroLink.ProtoReflect.Descriptor instead.
 func (*PeerIntroLink) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{211}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{213}
 }
 
 func (x *PeerIntroLink) GetVia() string {
@@ -19387,7 +19524,7 @@ type PeerIntroLinked struct {
 
 func (x *PeerIntroLinked) Reset() {
 	*x = PeerIntroLinked{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[212]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[214]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19399,7 +19536,7 @@ func (x *PeerIntroLinked) String() string {
 func (*PeerIntroLinked) ProtoMessage() {}
 
 func (x *PeerIntroLinked) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[212]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[214]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19412,7 +19549,7 @@ func (x *PeerIntroLinked) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerIntroLinked.ProtoReflect.Descriptor instead.
 func (*PeerIntroLinked) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{212}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{214}
 }
 
 func (x *PeerIntroLinked) GetComputer() *Computer {
@@ -19457,7 +19594,7 @@ type UnlinkRequest struct {
 
 func (x *UnlinkRequest) Reset() {
 	*x = UnlinkRequest{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[213]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[215]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19469,7 +19606,7 @@ func (x *UnlinkRequest) String() string {
 func (*UnlinkRequest) ProtoMessage() {}
 
 func (x *UnlinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[213]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[215]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19482,7 +19619,7 @@ func (x *UnlinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnlinkRequest.ProtoReflect.Descriptor instead.
 func (*UnlinkRequest) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{213}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{215}
 }
 
 func (x *UnlinkRequest) GetUserId() string {
@@ -19531,7 +19668,7 @@ type UnlinkTaken struct {
 
 func (x *UnlinkTaken) Reset() {
 	*x = UnlinkTaken{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[214]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[216]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19543,7 +19680,7 @@ func (x *UnlinkTaken) String() string {
 func (*UnlinkTaken) ProtoMessage() {}
 
 func (x *UnlinkTaken) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[214]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[216]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19556,7 +19693,7 @@ func (x *UnlinkTaken) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnlinkTaken.ProtoReflect.Descriptor instead.
 func (*UnlinkTaken) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{214}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{216}
 }
 
 func (x *UnlinkTaken) GetNotLinked() bool {
@@ -19582,7 +19719,7 @@ type SshAgentCall struct {
 
 func (x *SshAgentCall) Reset() {
 	*x = SshAgentCall{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[215]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[217]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19594,7 +19731,7 @@ func (x *SshAgentCall) String() string {
 func (*SshAgentCall) ProtoMessage() {}
 
 func (x *SshAgentCall) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[215]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[217]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19607,7 +19744,7 @@ func (x *SshAgentCall) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshAgentCall.ProtoReflect.Descriptor instead.
 func (*SshAgentCall) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{215}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{217}
 }
 
 func (x *SshAgentCall) GetList() bool {
@@ -19657,7 +19794,7 @@ type SshAgentReply struct {
 
 func (x *SshAgentReply) Reset() {
 	*x = SshAgentReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[216]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[218]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19669,7 +19806,7 @@ func (x *SshAgentReply) String() string {
 func (*SshAgentReply) ProtoMessage() {}
 
 func (x *SshAgentReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[216]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[218]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19682,7 +19819,7 @@ func (x *SshAgentReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshAgentReply.ProtoReflect.Descriptor instead.
 func (*SshAgentReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{216}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{218}
 }
 
 func (x *SshAgentReply) GetKeys() []*SshAgentKey {
@@ -19723,7 +19860,7 @@ type SshAgentKey struct {
 
 func (x *SshAgentKey) Reset() {
 	*x = SshAgentKey{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[217]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[219]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19735,7 +19872,7 @@ func (x *SshAgentKey) String() string {
 func (*SshAgentKey) ProtoMessage() {}
 
 func (x *SshAgentKey) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[217]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[219]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19748,7 +19885,7 @@ func (x *SshAgentKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshAgentKey.ProtoReflect.Descriptor instead.
 func (*SshAgentKey) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{217}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{219}
 }
 
 func (x *SshAgentKey) GetBlob() []byte {
@@ -19788,7 +19925,7 @@ type HammockKeyStatus struct {
 
 func (x *HammockKeyStatus) Reset() {
 	*x = HammockKeyStatus{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[218]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[220]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19800,7 +19937,7 @@ func (x *HammockKeyStatus) String() string {
 func (*HammockKeyStatus) ProtoMessage() {}
 
 func (x *HammockKeyStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[218]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[220]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19813,7 +19950,7 @@ func (x *HammockKeyStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HammockKeyStatus.ProtoReflect.Descriptor instead.
 func (*HammockKeyStatus) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{218}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{220}
 }
 
 func (x *HammockKeyStatus) GetExists() bool {
@@ -19889,7 +20026,7 @@ type HammockKeyApprover struct {
 
 func (x *HammockKeyApprover) Reset() {
 	*x = HammockKeyApprover{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[219]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[221]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19901,7 +20038,7 @@ func (x *HammockKeyApprover) String() string {
 func (*HammockKeyApprover) ProtoMessage() {}
 
 func (x *HammockKeyApprover) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[219]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[221]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19914,7 +20051,7 @@ func (x *HammockKeyApprover) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HammockKeyApprover.ProtoReflect.Descriptor instead.
 func (*HammockKeyApprover) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{219}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{221}
 }
 
 func (x *HammockKeyApprover) GetDeviceId() string {
@@ -19941,7 +20078,7 @@ type HammockKeyCommand struct {
 
 func (x *HammockKeyCommand) Reset() {
 	*x = HammockKeyCommand{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[220]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[222]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -19953,7 +20090,7 @@ func (x *HammockKeyCommand) String() string {
 func (*HammockKeyCommand) ProtoMessage() {}
 
 func (x *HammockKeyCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[220]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[222]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -19966,7 +20103,7 @@ func (x *HammockKeyCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HammockKeyCommand.ProtoReflect.Descriptor instead.
 func (*HammockKeyCommand) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{220}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{222}
 }
 
 func (x *HammockKeyCommand) GetOp() HammockKeyCommand_Op {
@@ -20005,7 +20142,7 @@ type HammockKeyRequest struct {
 
 func (x *HammockKeyRequest) Reset() {
 	*x = HammockKeyRequest{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[221]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[223]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20017,7 +20154,7 @@ func (x *HammockKeyRequest) String() string {
 func (*HammockKeyRequest) ProtoMessage() {}
 
 func (x *HammockKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[221]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[223]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20030,7 +20167,7 @@ func (x *HammockKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HammockKeyRequest.ProtoReflect.Descriptor instead.
 func (*HammockKeyRequest) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{221}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{223}
 }
 
 func (x *HammockKeyRequest) GetId() string {
@@ -20133,7 +20270,7 @@ type RespondHammockKey struct {
 
 func (x *RespondHammockKey) Reset() {
 	*x = RespondHammockKey{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[222]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[224]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20145,7 +20282,7 @@ func (x *RespondHammockKey) String() string {
 func (*RespondHammockKey) ProtoMessage() {}
 
 func (x *RespondHammockKey) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[222]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[224]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20158,7 +20295,7 @@ func (x *RespondHammockKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RespondHammockKey.ProtoReflect.Descriptor instead.
 func (*RespondHammockKey) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{222}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{224}
 }
 
 func (x *RespondHammockKey) GetId() string {
@@ -20205,7 +20342,7 @@ type SetApprovalKey struct {
 
 func (x *SetApprovalKey) Reset() {
 	*x = SetApprovalKey{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[223]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[225]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20217,7 +20354,7 @@ func (x *SetApprovalKey) String() string {
 func (*SetApprovalKey) ProtoMessage() {}
 
 func (x *SetApprovalKey) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[223]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[225]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20230,7 +20367,7 @@ func (x *SetApprovalKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetApprovalKey.ProtoReflect.Descriptor instead.
 func (*SetApprovalKey) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{223}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{225}
 }
 
 func (x *SetApprovalKey) GetPublicKey() []byte {
@@ -20250,7 +20387,7 @@ type SshSetup struct {
 
 func (x *SshSetup) Reset() {
 	*x = SshSetup{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[224]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[226]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20262,7 +20399,7 @@ func (x *SshSetup) String() string {
 func (*SshSetup) ProtoMessage() {}
 
 func (x *SshSetup) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[224]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[226]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20275,7 +20412,7 @@ func (x *SshSetup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshSetup.ProtoReflect.Descriptor instead.
 func (*SshSetup) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{224}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{226}
 }
 
 func (x *SshSetup) GetApply() bool {
@@ -20317,7 +20454,7 @@ type SshSetupReply struct {
 
 func (x *SshSetupReply) Reset() {
 	*x = SshSetupReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[225]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[227]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20329,7 +20466,7 @@ func (x *SshSetupReply) String() string {
 func (*SshSetupReply) ProtoMessage() {}
 
 func (x *SshSetupReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[225]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[227]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20342,7 +20479,7 @@ func (x *SshSetupReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshSetupReply.ProtoReflect.Descriptor instead.
 func (*SshSetupReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{225}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{227}
 }
 
 func (x *SshSetupReply) GetAgentName() string {
@@ -20488,7 +20625,7 @@ type Schedule struct {
 
 func (x *Schedule) Reset() {
 	*x = Schedule{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[226]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[228]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20500,7 +20637,7 @@ func (x *Schedule) String() string {
 func (*Schedule) ProtoMessage() {}
 
 func (x *Schedule) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[226]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[228]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20513,7 +20650,7 @@ func (x *Schedule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Schedule.ProtoReflect.Descriptor instead.
 func (*Schedule) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{226}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{228}
 }
 
 func (x *Schedule) GetId() string {
@@ -20730,7 +20867,7 @@ type ScheduleRun struct {
 
 func (x *ScheduleRun) Reset() {
 	*x = ScheduleRun{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[227]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[229]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20742,7 +20879,7 @@ func (x *ScheduleRun) String() string {
 func (*ScheduleRun) ProtoMessage() {}
 
 func (x *ScheduleRun) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[227]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[229]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20755,7 +20892,7 @@ func (x *ScheduleRun) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleRun.ProtoReflect.Descriptor instead.
 func (*ScheduleRun) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{227}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{229}
 }
 
 func (x *ScheduleRun) GetId() string {
@@ -20888,7 +21025,7 @@ type SaveSchedule struct {
 
 func (x *SaveSchedule) Reset() {
 	*x = SaveSchedule{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[228]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[230]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20900,7 +21037,7 @@ func (x *SaveSchedule) String() string {
 func (*SaveSchedule) ProtoMessage() {}
 
 func (x *SaveSchedule) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[228]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[230]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20913,7 +21050,7 @@ func (x *SaveSchedule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveSchedule.ProtoReflect.Descriptor instead.
 func (*SaveSchedule) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{228}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{230}
 }
 
 func (x *SaveSchedule) GetSchedule() *Schedule {
@@ -20940,7 +21077,7 @@ type DeleteSchedule struct {
 
 func (x *DeleteSchedule) Reset() {
 	*x = DeleteSchedule{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[229]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[231]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -20952,7 +21089,7 @@ func (x *DeleteSchedule) String() string {
 func (*DeleteSchedule) ProtoMessage() {}
 
 func (x *DeleteSchedule) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[229]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[231]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -20965,7 +21102,7 @@ func (x *DeleteSchedule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSchedule.ProtoReflect.Descriptor instead.
 func (*DeleteSchedule) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{229}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{231}
 }
 
 func (x *DeleteSchedule) GetScheduleId() string {
@@ -20991,7 +21128,7 @@ type RunSchedule struct {
 
 func (x *RunSchedule) Reset() {
 	*x = RunSchedule{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[230]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[232]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21003,7 +21140,7 @@ func (x *RunSchedule) String() string {
 func (*RunSchedule) ProtoMessage() {}
 
 func (x *RunSchedule) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[230]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[232]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21016,7 +21153,7 @@ func (x *RunSchedule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunSchedule.ProtoReflect.Descriptor instead.
 func (*RunSchedule) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{230}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{232}
 }
 
 func (x *RunSchedule) GetScheduleId() string {
@@ -21036,7 +21173,7 @@ type SetSchedulePaused struct {
 
 func (x *SetSchedulePaused) Reset() {
 	*x = SetSchedulePaused{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[231]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[233]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21048,7 +21185,7 @@ func (x *SetSchedulePaused) String() string {
 func (*SetSchedulePaused) ProtoMessage() {}
 
 func (x *SetSchedulePaused) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[231]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[233]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21061,7 +21198,7 @@ func (x *SetSchedulePaused) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSchedulePaused.ProtoReflect.Descriptor instead.
 func (*SetSchedulePaused) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{231}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{233}
 }
 
 func (x *SetSchedulePaused) GetScheduleId() string {
@@ -21089,7 +21226,7 @@ type SkipScheduleRun struct {
 
 func (x *SkipScheduleRun) Reset() {
 	*x = SkipScheduleRun{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[232]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[234]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21101,7 +21238,7 @@ func (x *SkipScheduleRun) String() string {
 func (*SkipScheduleRun) ProtoMessage() {}
 
 func (x *SkipScheduleRun) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[232]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[234]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21114,7 +21251,7 @@ func (x *SkipScheduleRun) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkipScheduleRun.ProtoReflect.Descriptor instead.
 func (*SkipScheduleRun) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{232}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{234}
 }
 
 func (x *SkipScheduleRun) GetScheduleId() string {
@@ -21140,7 +21277,7 @@ type ScheduleReply struct {
 
 func (x *ScheduleReply) Reset() {
 	*x = ScheduleReply{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[233]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[235]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21152,7 +21289,7 @@ func (x *ScheduleReply) String() string {
 func (*ScheduleReply) ProtoMessage() {}
 
 func (x *ScheduleReply) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[233]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[235]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21165,7 +21302,7 @@ func (x *ScheduleReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScheduleReply.ProtoReflect.Descriptor instead.
 func (*ScheduleReply) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{233}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{235}
 }
 
 func (x *ScheduleReply) GetSchedule() *Schedule {
@@ -21186,7 +21323,7 @@ type ShowOutput struct {
 
 func (x *ShowOutput) Reset() {
 	*x = ShowOutput{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[234]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[236]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21198,7 +21335,7 @@ func (x *ShowOutput) String() string {
 func (*ShowOutput) ProtoMessage() {}
 
 func (x *ShowOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[234]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[236]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21211,7 +21348,7 @@ func (x *ShowOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowOutput.ProtoReflect.Descriptor instead.
 func (*ShowOutput) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{234}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{236}
 }
 
 func (x *ShowOutput) GetTarget() string {
@@ -21248,7 +21385,7 @@ type ConfigWritten struct {
 
 func (x *ConfigWritten) Reset() {
 	*x = ConfigWritten{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[235]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[237]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21260,7 +21397,7 @@ func (x *ConfigWritten) String() string {
 func (*ConfigWritten) ProtoMessage() {}
 
 func (x *ConfigWritten) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[235]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[237]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21273,7 +21410,7 @@ func (x *ConfigWritten) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigWritten.ProtoReflect.Descriptor instead.
 func (*ConfigWritten) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{235}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{237}
 }
 
 func (x *ConfigWritten) GetEntries() []*ConfigEntry {
@@ -21293,7 +21430,7 @@ type ConfigEntry struct {
 
 func (x *ConfigEntry) Reset() {
 	*x = ConfigEntry{}
-	mi := &file_hammock_v1_hammock_proto_msgTypes[236]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[238]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -21305,7 +21442,7 @@ func (x *ConfigEntry) String() string {
 func (*ConfigEntry) ProtoMessage() {}
 
 func (x *ConfigEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_hammock_v1_hammock_proto_msgTypes[236]
+	mi := &file_hammock_v1_hammock_proto_msgTypes[238]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -21318,7 +21455,7 @@ func (x *ConfigEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigEntry.ProtoReflect.Descriptor instead.
 func (*ConfigEntry) Descriptor() ([]byte, []int) {
-	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{236}
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{238}
 }
 
 func (x *ConfigEntry) GetKey() string {
@@ -21550,7 +21687,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\fused_percent\x18\x02 \x01(\x01R\vusedPercent\x12\x1f\n" +
 	"\vresets_unix\x18\x03 \x01(\x03R\n" +
 	"resetsUnix\x12%\n" +
-	"\x0ewindow_minutes\x18\x04 \x01(\x05R\rwindowMinutes\"\xe58\n" +
+	"\x0ewindow_minutes\x18\x04 \x01(\x05R\rwindowMinutes\"\x9a9\n" +
 	"\rClientMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12)\n" +
 	"\x05hello\x18\n" +
@@ -21694,7 +21831,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"readEditor\x126\n" +
 	"\n" +
 	"list_files\x18| \x01(\v2\x15.hammock.v1.ListFilesH\x00R\tlistFiles\x12B\n" +
-	"\x0econfig_written\x18} \x01(\v2\x19.hammock.v1.ConfigWrittenH\x00R\rconfigWrittenB\x05\n" +
+	"\x0econfig_written\x18} \x01(\v2\x19.hammock.v1.ConfigWrittenH\x00R\rconfigWritten\x123\n" +
+	"\tprove_app\x18~ \x01(\v2\x14.hammock.v1.ProveAppH\x00R\bproveAppB\x05\n" +
 	"\x03msgJ\x04\b6\x107J\x04\b`\x10aR\x10set_group_agents\"\xb3\x01\n" +
 	"\x05Hello\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1f\n" +
@@ -21874,7 +22012,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\aMoveTab\x12\x15\n" +
 	"\x06tab_id\x18\x01 \x01(\tR\x05tabId\x12\x19\n" +
 	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x14\n" +
-	"\x05index\x18\x03 \x01(\x05R\x05index\"\x92\x1a\n" +
+	"\x05index\x18\x03 \x01(\x05R\x05index\"\xd3\x1a\n" +
 	"\rServerMessage\x12\x19\n" +
 	"\breply_to\x18\x01 \x01(\x04R\areplyTo\x129\n" +
 	"\vhello_reply\x18\n" +
@@ -21940,8 +22078,15 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\reditor_update\x18; \x01(\v2\x18.hammock.v1.EditorUpdateH\x00R\feditorUpdate\x12I\n" +
 	"\x11editor_push_reply\x18< \x01(\v2\x1b.hammock.v1.EditorPushReplyH\x00R\x0feditorPushReply\x123\n" +
 	"\tfile_list\x18= \x01(\v2\x14.hammock.v1.FileListH\x00R\bfileList\x12H\n" +
-	"\x10approval_pending\x18> \x01(\v2\x1b.hammock.v1.ApprovalPendingH\x00R\x0fapprovalPendingB\x05\n" +
-	"\x03msg\"\x86\x01\n" +
+	"\x10approval_pending\x18> \x01(\v2\x1b.hammock.v1.ApprovalPendingH\x00R\x0fapprovalPending\x12?\n" +
+	"\rapp_challenge\x18? \x01(\v2\x18.hammock.v1.AppChallengeH\x00R\fappChallengeB\x05\n" +
+	"\x03msg\"\n" +
+	"\n" +
+	"\bProveApp\"R\n" +
+	"\fAppChallenge\x12\x18\n" +
+	"\aservice\x18\x01 \x01(\tR\aservice\x12\x12\n" +
+	"\x04conn\x18\x02 \x01(\x04R\x04conn\x12\x14\n" +
+	"\x05nonce\x18\x03 \x01(\fR\x05nonce\"\x86\x01\n" +
 	"\x0fApprovalPending\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\x04R\trequestId\x12\x19\n" +
@@ -23174,7 +23319,7 @@ func file_hammock_v1_hammock_proto_rawDescGZIP() []byte {
 }
 
 var file_hammock_v1_hammock_proto_enumTypes = make([]protoimpl.EnumInfo, 18)
-var file_hammock_v1_hammock_proto_msgTypes = make([]protoimpl.MessageInfo, 239)
+var file_hammock_v1_hammock_proto_msgTypes = make([]protoimpl.MessageInfo, 241)
 var file_hammock_v1_hammock_proto_goTypes = []any{
 	(Role)(0),                   // 0: hammock.v1.Role
 	(PaneKind)(0),               // 1: hammock.v1.PaneKind
@@ -23250,189 +23395,191 @@ var file_hammock_v1_hammock_proto_goTypes = []any{
 	(*SetLayout)(nil),           // 71: hammock.v1.SetLayout
 	(*MoveTab)(nil),             // 72: hammock.v1.MoveTab
 	(*ServerMessage)(nil),       // 73: hammock.v1.ServerMessage
-	(*ApprovalPending)(nil),     // 74: hammock.v1.ApprovalPending
-	(*HelloReply)(nil),          // 75: hammock.v1.HelloReply
-	(*Error)(nil),               // 76: hammock.v1.Error
-	(*Ok)(nil),                  // 77: hammock.v1.Ok
-	(*Created)(nil),             // 78: hammock.v1.Created
-	(*PaneSnapshot)(nil),        // 79: hammock.v1.PaneSnapshot
-	(*PaneOutput)(nil),          // 80: hammock.v1.PaneOutput
-	(*PaneText)(nil),            // 81: hammock.v1.PaneText
-	(*AuthChallenge)(nil),       // 82: hammock.v1.AuthChallenge
-	(*Pair)(nil),                // 83: hammock.v1.Pair
-	(*Paired)(nil),              // 84: hammock.v1.Paired
-	(*Authenticate)(nil),        // 85: hammock.v1.Authenticate
-	(*CreatePairing)(nil),       // 86: hammock.v1.CreatePairing
-	(*ShowPairing)(nil),         // 87: hammock.v1.ShowPairing
-	(*DevicePaired)(nil),        // 88: hammock.v1.DevicePaired
-	(*Pairing)(nil),             // 89: hammock.v1.Pairing
-	(*Device)(nil),              // 90: hammock.v1.Device
-	(*ListAudit)(nil),           // 91: hammock.v1.ListAudit
-	(*AuditEvent)(nil),          // 92: hammock.v1.AuditEvent
-	(*AuditLog)(nil),            // 93: hammock.v1.AuditLog
-	(*ListDevices)(nil),         // 94: hammock.v1.ListDevices
-	(*Devices)(nil),             // 95: hammock.v1.Devices
-	(*RemoteNetwork)(nil),       // 96: hammock.v1.RemoteNetwork
-	(*SetRemoteNetworks)(nil),   // 97: hammock.v1.SetRemoteNetworks
-	(*RevokeDevice)(nil),        // 98: hammock.v1.RevokeDevice
-	(*SetRemoteAccess)(nil),     // 99: hammock.v1.SetRemoteAccess
-	(*SwitchAgent)(nil),         // 100: hammock.v1.SwitchAgent
-	(*AgentSwitched)(nil),       // 101: hammock.v1.AgentSwitched
-	(*ListSessions)(nil),        // 102: hammock.v1.ListSessions
-	(*SessionInfo)(nil),         // 103: hammock.v1.SessionInfo
-	(*SessionList)(nil),         // 104: hammock.v1.SessionList
-	(*SessionExcerpts)(nil),     // 105: hammock.v1.SessionExcerpts
-	(*SessionExcerpt)(nil),      // 106: hammock.v1.SessionExcerpt
-	(*SessionMessage)(nil),      // 107: hammock.v1.SessionMessage
-	(*ResumeSession)(nil),       // 108: hammock.v1.ResumeSession
-	(*SessionResumed)(nil),      // 109: hammock.v1.SessionResumed
-	(*AgentBlock)(nil),          // 110: hammock.v1.AgentBlock
-	(*AgentQuestion)(nil),       // 111: hammock.v1.AgentQuestion
-	(*AgentOption)(nil),         // 112: hammock.v1.AgentOption
-	(*AgentImage)(nil),          // 113: hammock.v1.AgentImage
-	(*AgentPrompt)(nil),         // 114: hammock.v1.AgentPrompt
-	(*AgentView)(nil),           // 115: hammock.v1.AgentView
-	(*AgentTaskList)(nil),       // 116: hammock.v1.AgentTaskList
-	(*AgentTask)(nil),           // 117: hammock.v1.AgentTask
-	(*AgentLinks)(nil),          // 118: hammock.v1.AgentLinks
-	(*AgentLink)(nil),           // 119: hammock.v1.AgentLink
-	(*AgentSubagent)(nil),       // 120: hammock.v1.AgentSubagent
-	(*AgentShell)(nil),          // 121: hammock.v1.AgentShell
-	(*WatchAgent)(nil),          // 122: hammock.v1.WatchAgent
-	(*AgentAnswer)(nil),         // 123: hammock.v1.AgentAnswer
-	(*AgentSend)(nil),           // 124: hammock.v1.AgentSend
-	(*AgentAttachment)(nil),     // 125: hammock.v1.AgentAttachment
-	(*ReadAgentFile)(nil),       // 126: hammock.v1.ReadAgentFile
-	(*AgentFile)(nil),           // 127: hammock.v1.AgentFile
-	(*CreateInvite)(nil),        // 128: hammock.v1.CreateInvite
-	(*Invite)(nil),              // 129: hammock.v1.Invite
-	(*RevokeInvite)(nil),        // 130: hammock.v1.RevokeInvite
-	(*RespondJoin)(nil),         // 131: hammock.v1.RespondJoin
-	(*SetMember)(nil),           // 132: hammock.v1.SetMember
-	(*StopSharing)(nil),         // 133: hammock.v1.StopSharing
-	(*SetProfile)(nil),          // 134: hammock.v1.SetProfile
-	(*JoinShared)(nil),          // 135: hammock.v1.JoinShared
-	(*LeaveShared)(nil),         // 136: hammock.v1.LeaveShared
-	(*InviteToken)(nil),         // 137: hammock.v1.InviteToken
-	(*PeerHello)(nil),           // 138: hammock.v1.PeerHello
-	(*PeerWelcome)(nil),         // 139: hammock.v1.PeerWelcome
-	(*PeerJoin)(nil),            // 140: hammock.v1.PeerJoin
-	(*PeerJoined)(nil),          // 141: hammock.v1.PeerJoined
-	(*MoveGroup)(nil),           // 142: hammock.v1.MoveGroup
-	(*UploadFile)(nil),          // 143: hammock.v1.UploadFile
-	(*RegisterPush)(nil),        // 144: hammock.v1.RegisterPush
-	(*BrowserCall)(nil),         // 145: hammock.v1.BrowserCall
-	(*BrowserLogs)(nil),         // 146: hammock.v1.BrowserLogs
-	(*BrowserResult)(nil),       // 147: hammock.v1.BrowserResult
-	(*SimulatorCall)(nil),       // 148: hammock.v1.SimulatorCall
-	(*OpenMedia)(nil),           // 149: hammock.v1.OpenMedia
-	(*MediaTicket)(nil),         // 150: hammock.v1.MediaTicket
-	(*CloseMedia)(nil),          // 151: hammock.v1.CloseMedia
-	(*BrowserInput)(nil),        // 152: hammock.v1.BrowserInput
-	(*ListDisplays)(nil),        // 153: hammock.v1.ListDisplays
-	(*ScreenSnapshot)(nil),      // 154: hammock.v1.ScreenSnapshot
-	(*ScreenSnapshotReply)(nil), // 155: hammock.v1.ScreenSnapshotReply
-	(*Displays)(nil),            // 156: hammock.v1.Displays
-	(*Display)(nil),             // 157: hammock.v1.Display
-	(*ScreenInput)(nil),         // 158: hammock.v1.ScreenInput
-	(*BrowserMenu)(nil),         // 159: hammock.v1.BrowserMenu
-	(*BrowserMenuItem)(nil),     // 160: hammock.v1.BrowserMenuItem
-	(*BrowserClipboard)(nil),    // 161: hammock.v1.BrowserClipboard
-	(*BrowserMenuChoice)(nil),   // 162: hammock.v1.BrowserMenuChoice
-	(*MediaAck)(nil),            // 163: hammock.v1.MediaAck
-	(*MediaFrame)(nil),          // 164: hammock.v1.MediaFrame
-	(*ScreenCursor)(nil),        // 165: hammock.v1.ScreenCursor
-	(*ServerStatus)(nil),        // 166: hammock.v1.ServerStatus
-	(*ServerStatusReply)(nil),   // 167: hammock.v1.ServerStatusReply
-	(*Connected)(nil),           // 168: hammock.v1.Connected
-	(*ScreenViewer)(nil),        // 169: hammock.v1.ScreenViewer
-	(*EndScreenSession)(nil),    // 170: hammock.v1.EndScreenSession
-	(*ScreenState)(nil),         // 171: hammock.v1.ScreenState
-	(*SetMediaView)(nil),        // 172: hammock.v1.SetMediaView
-	(*MediaEnded)(nil),          // 173: hammock.v1.MediaEnded
-	(*SimulatorResult)(nil),     // 174: hammock.v1.SimulatorResult
-	(*EditorOpen)(nil),          // 175: hammock.v1.EditorOpen
-	(*EditorInfo)(nil),          // 176: hammock.v1.EditorInfo
-	(*EditorPush)(nil),          // 177: hammock.v1.EditorPush
-	(*EditorChange)(nil),        // 178: hammock.v1.EditorChange
-	(*EditorPushReply)(nil),     // 179: hammock.v1.EditorPushReply
-	(*EditorSelect)(nil),        // 180: hammock.v1.EditorSelect
-	(*EditorCommand)(nil),       // 181: hammock.v1.EditorCommand
-	(*ReadEditor)(nil),          // 182: hammock.v1.ReadEditor
-	(*EditorUpdate)(nil),        // 183: hammock.v1.EditorUpdate
-	(*EditorSelection)(nil),     // 184: hammock.v1.EditorSelection
-	(*GitMark)(nil),             // 185: hammock.v1.GitMark
-	(*ListFiles)(nil),           // 186: hammock.v1.ListFiles
-	(*FileList)(nil),            // 187: hammock.v1.FileList
-	(*LogSource)(nil),           // 188: hammock.v1.LogSource
-	(*LogEntry)(nil),            // 189: hammock.v1.LogEntry
-	(*LogFilter)(nil),           // 190: hammock.v1.LogFilter
-	(*LogFacet)(nil),            // 191: hammock.v1.LogFacet
-	(*WatchLog)(nil),            // 192: hammock.v1.WatchLog
-	(*ReadLog)(nil),             // 193: hammock.v1.ReadLog
-	(*ClearLog)(nil),            // 194: hammock.v1.ClearLog
-	(*LogView)(nil),             // 195: hammock.v1.LogView
-	(*StartAgent)(nil),          // 196: hammock.v1.StartAgent
-	(*ListFolders)(nil),         // 197: hammock.v1.ListFolders
-	(*FolderList)(nil),          // 198: hammock.v1.FolderList
-	(*FolderSuggestion)(nil),    // 199: hammock.v1.FolderSuggestion
-	(*ReadSession)(nil),         // 200: hammock.v1.ReadSession
-	(*ReadGroupIcon)(nil),       // 201: hammock.v1.ReadGroupIcon
-	(*GroupIcon)(nil),           // 202: hammock.v1.GroupIcon
-	(*SetGroupIconImage)(nil),   // 203: hammock.v1.SetGroupIconImage
-	(*Computers)(nil),           // 204: hammock.v1.Computers
-	(*Computer)(nil),            // 205: hammock.v1.Computer
-	(*StoredLink)(nil),          // 206: hammock.v1.StoredLink
-	(*IntroHop)(nil),            // 207: hammock.v1.IntroHop
-	(*Refusal)(nil),             // 208: hammock.v1.Refusal
-	(*PendingUnlink)(nil),       // 209: hammock.v1.PendingUnlink
-	(*LegacyComputer)(nil),      // 210: hammock.v1.LegacyComputer
-	(*LegacyLink)(nil),          // 211: hammock.v1.LegacyLink
-	(*LegacyUnlink)(nil),        // 212: hammock.v1.LegacyUnlink
-	(*LinkRequest)(nil),         // 213: hammock.v1.LinkRequest
-	(*DiscoverComputers)(nil),   // 214: hammock.v1.DiscoverComputers
-	(*DiscoveredComputers)(nil), // 215: hammock.v1.DiscoveredComputers
-	(*DiscoveredComputer)(nil),  // 216: hammock.v1.DiscoveredComputer
-	(*LinkComputer)(nil),        // 217: hammock.v1.LinkComputer
-	(*RespondLink)(nil),         // 218: hammock.v1.RespondLink
-	(*UnlinkComputer)(nil),      // 219: hammock.v1.UnlinkComputer
-	(*SetComputerTint)(nil),     // 220: hammock.v1.SetComputerTint
-	(*CreateLinkInvite)(nil),    // 221: hammock.v1.CreateLinkInvite
-	(*LinkToken)(nil),           // 222: hammock.v1.LinkToken
-	(*PeerLinkHello)(nil),       // 223: hammock.v1.PeerLinkHello
-	(*PeerLinkNonce)(nil),       // 224: hammock.v1.PeerLinkNonce
-	(*PeerLinkReveal)(nil),      // 225: hammock.v1.PeerLinkReveal
-	(*PeerLinkConfirm)(nil),     // 226: hammock.v1.PeerLinkConfirm
-	(*PeerLinked)(nil),          // 227: hammock.v1.PeerLinked
-	(*IntroduceComputers)(nil),  // 228: hammock.v1.IntroduceComputers
-	(*PeerIntroLink)(nil),       // 229: hammock.v1.PeerIntroLink
-	(*PeerIntroLinked)(nil),     // 230: hammock.v1.PeerIntroLinked
-	(*UnlinkRequest)(nil),       // 231: hammock.v1.UnlinkRequest
-	(*UnlinkTaken)(nil),         // 232: hammock.v1.UnlinkTaken
-	(*SshAgentCall)(nil),        // 233: hammock.v1.SshAgentCall
-	(*SshAgentReply)(nil),       // 234: hammock.v1.SshAgentReply
-	(*SshAgentKey)(nil),         // 235: hammock.v1.SshAgentKey
-	(*HammockKeyStatus)(nil),    // 236: hammock.v1.HammockKeyStatus
-	(*HammockKeyApprover)(nil),  // 237: hammock.v1.HammockKeyApprover
-	(*HammockKeyCommand)(nil),   // 238: hammock.v1.HammockKeyCommand
-	(*HammockKeyRequest)(nil),   // 239: hammock.v1.HammockKeyRequest
-	(*RespondHammockKey)(nil),   // 240: hammock.v1.RespondHammockKey
-	(*SetApprovalKey)(nil),      // 241: hammock.v1.SetApprovalKey
-	(*SshSetup)(nil),            // 242: hammock.v1.SshSetup
-	(*SshSetupReply)(nil),       // 243: hammock.v1.SshSetupReply
-	(*Schedule)(nil),            // 244: hammock.v1.Schedule
-	(*ScheduleRun)(nil),         // 245: hammock.v1.ScheduleRun
-	(*SaveSchedule)(nil),        // 246: hammock.v1.SaveSchedule
-	(*DeleteSchedule)(nil),      // 247: hammock.v1.DeleteSchedule
-	(*RunSchedule)(nil),         // 248: hammock.v1.RunSchedule
-	(*SetSchedulePaused)(nil),   // 249: hammock.v1.SetSchedulePaused
-	(*SkipScheduleRun)(nil),     // 250: hammock.v1.SkipScheduleRun
-	(*ScheduleReply)(nil),       // 251: hammock.v1.ScheduleReply
-	(*ShowOutput)(nil),          // 252: hammock.v1.ShowOutput
-	(*ConfigWritten)(nil),       // 253: hammock.v1.ConfigWritten
-	(*ConfigEntry)(nil),         // 254: hammock.v1.ConfigEntry
-	nil,                         // 255: hammock.v1.PaneSpec.EnvEntry
-	nil,                         // 256: hammock.v1.LogEntry.FieldsEntry
+	(*ProveApp)(nil),            // 74: hammock.v1.ProveApp
+	(*AppChallenge)(nil),        // 75: hammock.v1.AppChallenge
+	(*ApprovalPending)(nil),     // 76: hammock.v1.ApprovalPending
+	(*HelloReply)(nil),          // 77: hammock.v1.HelloReply
+	(*Error)(nil),               // 78: hammock.v1.Error
+	(*Ok)(nil),                  // 79: hammock.v1.Ok
+	(*Created)(nil),             // 80: hammock.v1.Created
+	(*PaneSnapshot)(nil),        // 81: hammock.v1.PaneSnapshot
+	(*PaneOutput)(nil),          // 82: hammock.v1.PaneOutput
+	(*PaneText)(nil),            // 83: hammock.v1.PaneText
+	(*AuthChallenge)(nil),       // 84: hammock.v1.AuthChallenge
+	(*Pair)(nil),                // 85: hammock.v1.Pair
+	(*Paired)(nil),              // 86: hammock.v1.Paired
+	(*Authenticate)(nil),        // 87: hammock.v1.Authenticate
+	(*CreatePairing)(nil),       // 88: hammock.v1.CreatePairing
+	(*ShowPairing)(nil),         // 89: hammock.v1.ShowPairing
+	(*DevicePaired)(nil),        // 90: hammock.v1.DevicePaired
+	(*Pairing)(nil),             // 91: hammock.v1.Pairing
+	(*Device)(nil),              // 92: hammock.v1.Device
+	(*ListAudit)(nil),           // 93: hammock.v1.ListAudit
+	(*AuditEvent)(nil),          // 94: hammock.v1.AuditEvent
+	(*AuditLog)(nil),            // 95: hammock.v1.AuditLog
+	(*ListDevices)(nil),         // 96: hammock.v1.ListDevices
+	(*Devices)(nil),             // 97: hammock.v1.Devices
+	(*RemoteNetwork)(nil),       // 98: hammock.v1.RemoteNetwork
+	(*SetRemoteNetworks)(nil),   // 99: hammock.v1.SetRemoteNetworks
+	(*RevokeDevice)(nil),        // 100: hammock.v1.RevokeDevice
+	(*SetRemoteAccess)(nil),     // 101: hammock.v1.SetRemoteAccess
+	(*SwitchAgent)(nil),         // 102: hammock.v1.SwitchAgent
+	(*AgentSwitched)(nil),       // 103: hammock.v1.AgentSwitched
+	(*ListSessions)(nil),        // 104: hammock.v1.ListSessions
+	(*SessionInfo)(nil),         // 105: hammock.v1.SessionInfo
+	(*SessionList)(nil),         // 106: hammock.v1.SessionList
+	(*SessionExcerpts)(nil),     // 107: hammock.v1.SessionExcerpts
+	(*SessionExcerpt)(nil),      // 108: hammock.v1.SessionExcerpt
+	(*SessionMessage)(nil),      // 109: hammock.v1.SessionMessage
+	(*ResumeSession)(nil),       // 110: hammock.v1.ResumeSession
+	(*SessionResumed)(nil),      // 111: hammock.v1.SessionResumed
+	(*AgentBlock)(nil),          // 112: hammock.v1.AgentBlock
+	(*AgentQuestion)(nil),       // 113: hammock.v1.AgentQuestion
+	(*AgentOption)(nil),         // 114: hammock.v1.AgentOption
+	(*AgentImage)(nil),          // 115: hammock.v1.AgentImage
+	(*AgentPrompt)(nil),         // 116: hammock.v1.AgentPrompt
+	(*AgentView)(nil),           // 117: hammock.v1.AgentView
+	(*AgentTaskList)(nil),       // 118: hammock.v1.AgentTaskList
+	(*AgentTask)(nil),           // 119: hammock.v1.AgentTask
+	(*AgentLinks)(nil),          // 120: hammock.v1.AgentLinks
+	(*AgentLink)(nil),           // 121: hammock.v1.AgentLink
+	(*AgentSubagent)(nil),       // 122: hammock.v1.AgentSubagent
+	(*AgentShell)(nil),          // 123: hammock.v1.AgentShell
+	(*WatchAgent)(nil),          // 124: hammock.v1.WatchAgent
+	(*AgentAnswer)(nil),         // 125: hammock.v1.AgentAnswer
+	(*AgentSend)(nil),           // 126: hammock.v1.AgentSend
+	(*AgentAttachment)(nil),     // 127: hammock.v1.AgentAttachment
+	(*ReadAgentFile)(nil),       // 128: hammock.v1.ReadAgentFile
+	(*AgentFile)(nil),           // 129: hammock.v1.AgentFile
+	(*CreateInvite)(nil),        // 130: hammock.v1.CreateInvite
+	(*Invite)(nil),              // 131: hammock.v1.Invite
+	(*RevokeInvite)(nil),        // 132: hammock.v1.RevokeInvite
+	(*RespondJoin)(nil),         // 133: hammock.v1.RespondJoin
+	(*SetMember)(nil),           // 134: hammock.v1.SetMember
+	(*StopSharing)(nil),         // 135: hammock.v1.StopSharing
+	(*SetProfile)(nil),          // 136: hammock.v1.SetProfile
+	(*JoinShared)(nil),          // 137: hammock.v1.JoinShared
+	(*LeaveShared)(nil),         // 138: hammock.v1.LeaveShared
+	(*InviteToken)(nil),         // 139: hammock.v1.InviteToken
+	(*PeerHello)(nil),           // 140: hammock.v1.PeerHello
+	(*PeerWelcome)(nil),         // 141: hammock.v1.PeerWelcome
+	(*PeerJoin)(nil),            // 142: hammock.v1.PeerJoin
+	(*PeerJoined)(nil),          // 143: hammock.v1.PeerJoined
+	(*MoveGroup)(nil),           // 144: hammock.v1.MoveGroup
+	(*UploadFile)(nil),          // 145: hammock.v1.UploadFile
+	(*RegisterPush)(nil),        // 146: hammock.v1.RegisterPush
+	(*BrowserCall)(nil),         // 147: hammock.v1.BrowserCall
+	(*BrowserLogs)(nil),         // 148: hammock.v1.BrowserLogs
+	(*BrowserResult)(nil),       // 149: hammock.v1.BrowserResult
+	(*SimulatorCall)(nil),       // 150: hammock.v1.SimulatorCall
+	(*OpenMedia)(nil),           // 151: hammock.v1.OpenMedia
+	(*MediaTicket)(nil),         // 152: hammock.v1.MediaTicket
+	(*CloseMedia)(nil),          // 153: hammock.v1.CloseMedia
+	(*BrowserInput)(nil),        // 154: hammock.v1.BrowserInput
+	(*ListDisplays)(nil),        // 155: hammock.v1.ListDisplays
+	(*ScreenSnapshot)(nil),      // 156: hammock.v1.ScreenSnapshot
+	(*ScreenSnapshotReply)(nil), // 157: hammock.v1.ScreenSnapshotReply
+	(*Displays)(nil),            // 158: hammock.v1.Displays
+	(*Display)(nil),             // 159: hammock.v1.Display
+	(*ScreenInput)(nil),         // 160: hammock.v1.ScreenInput
+	(*BrowserMenu)(nil),         // 161: hammock.v1.BrowserMenu
+	(*BrowserMenuItem)(nil),     // 162: hammock.v1.BrowserMenuItem
+	(*BrowserClipboard)(nil),    // 163: hammock.v1.BrowserClipboard
+	(*BrowserMenuChoice)(nil),   // 164: hammock.v1.BrowserMenuChoice
+	(*MediaAck)(nil),            // 165: hammock.v1.MediaAck
+	(*MediaFrame)(nil),          // 166: hammock.v1.MediaFrame
+	(*ScreenCursor)(nil),        // 167: hammock.v1.ScreenCursor
+	(*ServerStatus)(nil),        // 168: hammock.v1.ServerStatus
+	(*ServerStatusReply)(nil),   // 169: hammock.v1.ServerStatusReply
+	(*Connected)(nil),           // 170: hammock.v1.Connected
+	(*ScreenViewer)(nil),        // 171: hammock.v1.ScreenViewer
+	(*EndScreenSession)(nil),    // 172: hammock.v1.EndScreenSession
+	(*ScreenState)(nil),         // 173: hammock.v1.ScreenState
+	(*SetMediaView)(nil),        // 174: hammock.v1.SetMediaView
+	(*MediaEnded)(nil),          // 175: hammock.v1.MediaEnded
+	(*SimulatorResult)(nil),     // 176: hammock.v1.SimulatorResult
+	(*EditorOpen)(nil),          // 177: hammock.v1.EditorOpen
+	(*EditorInfo)(nil),          // 178: hammock.v1.EditorInfo
+	(*EditorPush)(nil),          // 179: hammock.v1.EditorPush
+	(*EditorChange)(nil),        // 180: hammock.v1.EditorChange
+	(*EditorPushReply)(nil),     // 181: hammock.v1.EditorPushReply
+	(*EditorSelect)(nil),        // 182: hammock.v1.EditorSelect
+	(*EditorCommand)(nil),       // 183: hammock.v1.EditorCommand
+	(*ReadEditor)(nil),          // 184: hammock.v1.ReadEditor
+	(*EditorUpdate)(nil),        // 185: hammock.v1.EditorUpdate
+	(*EditorSelection)(nil),     // 186: hammock.v1.EditorSelection
+	(*GitMark)(nil),             // 187: hammock.v1.GitMark
+	(*ListFiles)(nil),           // 188: hammock.v1.ListFiles
+	(*FileList)(nil),            // 189: hammock.v1.FileList
+	(*LogSource)(nil),           // 190: hammock.v1.LogSource
+	(*LogEntry)(nil),            // 191: hammock.v1.LogEntry
+	(*LogFilter)(nil),           // 192: hammock.v1.LogFilter
+	(*LogFacet)(nil),            // 193: hammock.v1.LogFacet
+	(*WatchLog)(nil),            // 194: hammock.v1.WatchLog
+	(*ReadLog)(nil),             // 195: hammock.v1.ReadLog
+	(*ClearLog)(nil),            // 196: hammock.v1.ClearLog
+	(*LogView)(nil),             // 197: hammock.v1.LogView
+	(*StartAgent)(nil),          // 198: hammock.v1.StartAgent
+	(*ListFolders)(nil),         // 199: hammock.v1.ListFolders
+	(*FolderList)(nil),          // 200: hammock.v1.FolderList
+	(*FolderSuggestion)(nil),    // 201: hammock.v1.FolderSuggestion
+	(*ReadSession)(nil),         // 202: hammock.v1.ReadSession
+	(*ReadGroupIcon)(nil),       // 203: hammock.v1.ReadGroupIcon
+	(*GroupIcon)(nil),           // 204: hammock.v1.GroupIcon
+	(*SetGroupIconImage)(nil),   // 205: hammock.v1.SetGroupIconImage
+	(*Computers)(nil),           // 206: hammock.v1.Computers
+	(*Computer)(nil),            // 207: hammock.v1.Computer
+	(*StoredLink)(nil),          // 208: hammock.v1.StoredLink
+	(*IntroHop)(nil),            // 209: hammock.v1.IntroHop
+	(*Refusal)(nil),             // 210: hammock.v1.Refusal
+	(*PendingUnlink)(nil),       // 211: hammock.v1.PendingUnlink
+	(*LegacyComputer)(nil),      // 212: hammock.v1.LegacyComputer
+	(*LegacyLink)(nil),          // 213: hammock.v1.LegacyLink
+	(*LegacyUnlink)(nil),        // 214: hammock.v1.LegacyUnlink
+	(*LinkRequest)(nil),         // 215: hammock.v1.LinkRequest
+	(*DiscoverComputers)(nil),   // 216: hammock.v1.DiscoverComputers
+	(*DiscoveredComputers)(nil), // 217: hammock.v1.DiscoveredComputers
+	(*DiscoveredComputer)(nil),  // 218: hammock.v1.DiscoveredComputer
+	(*LinkComputer)(nil),        // 219: hammock.v1.LinkComputer
+	(*RespondLink)(nil),         // 220: hammock.v1.RespondLink
+	(*UnlinkComputer)(nil),      // 221: hammock.v1.UnlinkComputer
+	(*SetComputerTint)(nil),     // 222: hammock.v1.SetComputerTint
+	(*CreateLinkInvite)(nil),    // 223: hammock.v1.CreateLinkInvite
+	(*LinkToken)(nil),           // 224: hammock.v1.LinkToken
+	(*PeerLinkHello)(nil),       // 225: hammock.v1.PeerLinkHello
+	(*PeerLinkNonce)(nil),       // 226: hammock.v1.PeerLinkNonce
+	(*PeerLinkReveal)(nil),      // 227: hammock.v1.PeerLinkReveal
+	(*PeerLinkConfirm)(nil),     // 228: hammock.v1.PeerLinkConfirm
+	(*PeerLinked)(nil),          // 229: hammock.v1.PeerLinked
+	(*IntroduceComputers)(nil),  // 230: hammock.v1.IntroduceComputers
+	(*PeerIntroLink)(nil),       // 231: hammock.v1.PeerIntroLink
+	(*PeerIntroLinked)(nil),     // 232: hammock.v1.PeerIntroLinked
+	(*UnlinkRequest)(nil),       // 233: hammock.v1.UnlinkRequest
+	(*UnlinkTaken)(nil),         // 234: hammock.v1.UnlinkTaken
+	(*SshAgentCall)(nil),        // 235: hammock.v1.SshAgentCall
+	(*SshAgentReply)(nil),       // 236: hammock.v1.SshAgentReply
+	(*SshAgentKey)(nil),         // 237: hammock.v1.SshAgentKey
+	(*HammockKeyStatus)(nil),    // 238: hammock.v1.HammockKeyStatus
+	(*HammockKeyApprover)(nil),  // 239: hammock.v1.HammockKeyApprover
+	(*HammockKeyCommand)(nil),   // 240: hammock.v1.HammockKeyCommand
+	(*HammockKeyRequest)(nil),   // 241: hammock.v1.HammockKeyRequest
+	(*RespondHammockKey)(nil),   // 242: hammock.v1.RespondHammockKey
+	(*SetApprovalKey)(nil),      // 243: hammock.v1.SetApprovalKey
+	(*SshSetup)(nil),            // 244: hammock.v1.SshSetup
+	(*SshSetupReply)(nil),       // 245: hammock.v1.SshSetupReply
+	(*Schedule)(nil),            // 246: hammock.v1.Schedule
+	(*ScheduleRun)(nil),         // 247: hammock.v1.ScheduleRun
+	(*SaveSchedule)(nil),        // 248: hammock.v1.SaveSchedule
+	(*DeleteSchedule)(nil),      // 249: hammock.v1.DeleteSchedule
+	(*RunSchedule)(nil),         // 250: hammock.v1.RunSchedule
+	(*SetSchedulePaused)(nil),   // 251: hammock.v1.SetSchedulePaused
+	(*SkipScheduleRun)(nil),     // 252: hammock.v1.SkipScheduleRun
+	(*ScheduleReply)(nil),       // 253: hammock.v1.ScheduleReply
+	(*ShowOutput)(nil),          // 254: hammock.v1.ShowOutput
+	(*ConfigWritten)(nil),       // 255: hammock.v1.ConfigWritten
+	(*ConfigEntry)(nil),         // 256: hammock.v1.ConfigEntry
+	nil,                         // 257: hammock.v1.PaneSpec.EnvEntry
+	nil,                         // 258: hammock.v1.LogEntry.FieldsEntry
 }
 var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	19,  // 0: hammock.v1.Group.members:type_name -> hammock.v1.Member
@@ -23447,8 +23594,8 @@ var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	25,  // 9: hammock.v1.Split.children:type_name -> hammock.v1.Layout
 	1,   // 10: hammock.v1.Pane.kind:type_name -> hammock.v1.PaneKind
 	28,  // 11: hammock.v1.Pane.agent:type_name -> hammock.v1.Agent
-	188, // 12: hammock.v1.Pane.log:type_name -> hammock.v1.LogSource
-	176, // 13: hammock.v1.Pane.editor:type_name -> hammock.v1.EditorInfo
+	190, // 12: hammock.v1.Pane.log:type_name -> hammock.v1.LogSource
+	178, // 13: hammock.v1.Pane.editor:type_name -> hammock.v1.EditorInfo
 	2,   // 14: hammock.v1.Agent.state:type_name -> hammock.v1.AgentState
 	2,   // 15: hammock.v1.AttentionItem.state:type_name -> hammock.v1.AgentState
 	18,  // 16: hammock.v1.StateUpdate.groups:type_name -> hammock.v1.Group
@@ -23459,11 +23606,11 @@ var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	20,  // 21: hammock.v1.StateUpdate.people:type_name -> hammock.v1.Person
 	21,  // 22: hammock.v1.StateUpdate.join_requests:type_name -> hammock.v1.JoinRequest
 	33,  // 23: hammock.v1.StateUpdate.usage:type_name -> hammock.v1.UsageLimits
-	204, // 24: hammock.v1.StateUpdate.computers:type_name -> hammock.v1.Computers
-	213, // 25: hammock.v1.StateUpdate.link_requests:type_name -> hammock.v1.LinkRequest
-	244, // 26: hammock.v1.StateUpdate.schedules:type_name -> hammock.v1.Schedule
-	236, // 27: hammock.v1.StateUpdate.hammock_key:type_name -> hammock.v1.HammockKeyStatus
-	239, // 28: hammock.v1.StateUpdate.hammock_key_requests:type_name -> hammock.v1.HammockKeyRequest
+	206, // 24: hammock.v1.StateUpdate.computers:type_name -> hammock.v1.Computers
+	215, // 25: hammock.v1.StateUpdate.link_requests:type_name -> hammock.v1.LinkRequest
+	246, // 26: hammock.v1.StateUpdate.schedules:type_name -> hammock.v1.Schedule
+	238, // 27: hammock.v1.StateUpdate.hammock_key:type_name -> hammock.v1.HammockKeyStatus
+	241, // 28: hammock.v1.StateUpdate.hammock_key_requests:type_name -> hammock.v1.HammockKeyRequest
 	31,  // 29: hammock.v1.StateUpdate.theme:type_name -> hammock.v1.HostTheme
 	32,  // 30: hammock.v1.StateUpdate.agent_kinds:type_name -> hammock.v1.AgentKind
 	34,  // 31: hammock.v1.UsageLimits.agents:type_name -> hammock.v1.AgentUsage
@@ -23491,239 +23638,241 @@ var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	68,  // 53: hammock.v1.ClientMessage.request_grant:type_name -> hammock.v1.RequestGrant
 	69,  // 54: hammock.v1.ClientMessage.respond_grant:type_name -> hammock.v1.RespondGrant
 	72,  // 55: hammock.v1.ClientMessage.move_tab:type_name -> hammock.v1.MoveTab
-	100, // 56: hammock.v1.ClientMessage.switch_agent:type_name -> hammock.v1.SwitchAgent
-	86,  // 57: hammock.v1.ClientMessage.create_pairing:type_name -> hammock.v1.CreatePairing
-	94,  // 58: hammock.v1.ClientMessage.list_devices:type_name -> hammock.v1.ListDevices
-	98,  // 59: hammock.v1.ClientMessage.revoke_device:type_name -> hammock.v1.RevokeDevice
-	83,  // 60: hammock.v1.ClientMessage.pair:type_name -> hammock.v1.Pair
-	85,  // 61: hammock.v1.ClientMessage.authenticate:type_name -> hammock.v1.Authenticate
-	99,  // 62: hammock.v1.ClientMessage.set_remote_access:type_name -> hammock.v1.SetRemoteAccess
+	102, // 56: hammock.v1.ClientMessage.switch_agent:type_name -> hammock.v1.SwitchAgent
+	88,  // 57: hammock.v1.ClientMessage.create_pairing:type_name -> hammock.v1.CreatePairing
+	96,  // 58: hammock.v1.ClientMessage.list_devices:type_name -> hammock.v1.ListDevices
+	100, // 59: hammock.v1.ClientMessage.revoke_device:type_name -> hammock.v1.RevokeDevice
+	85,  // 60: hammock.v1.ClientMessage.pair:type_name -> hammock.v1.Pair
+	87,  // 61: hammock.v1.ClientMessage.authenticate:type_name -> hammock.v1.Authenticate
+	101, // 62: hammock.v1.ClientMessage.set_remote_access:type_name -> hammock.v1.SetRemoteAccess
 	66,  // 63: hammock.v1.ClientMessage.set_colors:type_name -> hammock.v1.SetColors
 	41,  // 64: hammock.v1.ClientMessage.set_group_icon:type_name -> hammock.v1.SetGroupIcon
 	65,  // 65: hammock.v1.ClientMessage.shutdown_daemon:type_name -> hammock.v1.ShutdownDaemon
-	91,  // 66: hammock.v1.ClientMessage.list_audit:type_name -> hammock.v1.ListAudit
+	93,  // 66: hammock.v1.ClientMessage.list_audit:type_name -> hammock.v1.ListAudit
 	55,  // 67: hammock.v1.ClientMessage.browser_navigate:type_name -> hammock.v1.BrowserNavigate
-	122, // 68: hammock.v1.ClientMessage.watch_agent:type_name -> hammock.v1.WatchAgent
-	123, // 69: hammock.v1.ClientMessage.agent_answer:type_name -> hammock.v1.AgentAnswer
-	124, // 70: hammock.v1.ClientMessage.agent_send:type_name -> hammock.v1.AgentSend
-	126, // 71: hammock.v1.ClientMessage.read_agent_file:type_name -> hammock.v1.ReadAgentFile
-	128, // 72: hammock.v1.ClientMessage.create_invite:type_name -> hammock.v1.CreateInvite
-	130, // 73: hammock.v1.ClientMessage.revoke_invite:type_name -> hammock.v1.RevokeInvite
-	131, // 74: hammock.v1.ClientMessage.respond_join:type_name -> hammock.v1.RespondJoin
-	132, // 75: hammock.v1.ClientMessage.set_member:type_name -> hammock.v1.SetMember
-	133, // 76: hammock.v1.ClientMessage.stop_sharing:type_name -> hammock.v1.StopSharing
-	134, // 77: hammock.v1.ClientMessage.set_profile:type_name -> hammock.v1.SetProfile
-	135, // 78: hammock.v1.ClientMessage.join_shared:type_name -> hammock.v1.JoinShared
-	136, // 79: hammock.v1.ClientMessage.leave_shared:type_name -> hammock.v1.LeaveShared
-	138, // 80: hammock.v1.ClientMessage.peer_hello:type_name -> hammock.v1.PeerHello
-	140, // 81: hammock.v1.ClientMessage.peer_join:type_name -> hammock.v1.PeerJoin
-	143, // 82: hammock.v1.ClientMessage.upload_file:type_name -> hammock.v1.UploadFile
-	142, // 83: hammock.v1.ClientMessage.move_group:type_name -> hammock.v1.MoveGroup
-	144, // 84: hammock.v1.ClientMessage.register_push:type_name -> hammock.v1.RegisterPush
-	145, // 85: hammock.v1.ClientMessage.browser_call:type_name -> hammock.v1.BrowserCall
-	146, // 86: hammock.v1.ClientMessage.browser_logs:type_name -> hammock.v1.BrowserLogs
-	148, // 87: hammock.v1.ClientMessage.simulator_call:type_name -> hammock.v1.SimulatorCall
+	124, // 68: hammock.v1.ClientMessage.watch_agent:type_name -> hammock.v1.WatchAgent
+	125, // 69: hammock.v1.ClientMessage.agent_answer:type_name -> hammock.v1.AgentAnswer
+	126, // 70: hammock.v1.ClientMessage.agent_send:type_name -> hammock.v1.AgentSend
+	128, // 71: hammock.v1.ClientMessage.read_agent_file:type_name -> hammock.v1.ReadAgentFile
+	130, // 72: hammock.v1.ClientMessage.create_invite:type_name -> hammock.v1.CreateInvite
+	132, // 73: hammock.v1.ClientMessage.revoke_invite:type_name -> hammock.v1.RevokeInvite
+	133, // 74: hammock.v1.ClientMessage.respond_join:type_name -> hammock.v1.RespondJoin
+	134, // 75: hammock.v1.ClientMessage.set_member:type_name -> hammock.v1.SetMember
+	135, // 76: hammock.v1.ClientMessage.stop_sharing:type_name -> hammock.v1.StopSharing
+	136, // 77: hammock.v1.ClientMessage.set_profile:type_name -> hammock.v1.SetProfile
+	137, // 78: hammock.v1.ClientMessage.join_shared:type_name -> hammock.v1.JoinShared
+	138, // 79: hammock.v1.ClientMessage.leave_shared:type_name -> hammock.v1.LeaveShared
+	140, // 80: hammock.v1.ClientMessage.peer_hello:type_name -> hammock.v1.PeerHello
+	142, // 81: hammock.v1.ClientMessage.peer_join:type_name -> hammock.v1.PeerJoin
+	145, // 82: hammock.v1.ClientMessage.upload_file:type_name -> hammock.v1.UploadFile
+	144, // 83: hammock.v1.ClientMessage.move_group:type_name -> hammock.v1.MoveGroup
+	146, // 84: hammock.v1.ClientMessage.register_push:type_name -> hammock.v1.RegisterPush
+	147, // 85: hammock.v1.ClientMessage.browser_call:type_name -> hammock.v1.BrowserCall
+	148, // 86: hammock.v1.ClientMessage.browser_logs:type_name -> hammock.v1.BrowserLogs
+	150, // 87: hammock.v1.ClientMessage.simulator_call:type_name -> hammock.v1.SimulatorCall
 	51,  // 88: hammock.v1.ClientMessage.merge_tab:type_name -> hammock.v1.MergeTab
 	52,  // 89: hammock.v1.ClientMessage.break_out_pane:type_name -> hammock.v1.BreakOutPane
 	54,  // 90: hammock.v1.ClientMessage.replace_pane:type_name -> hammock.v1.ReplacePane
-	87,  // 91: hammock.v1.ClientMessage.show_pairing:type_name -> hammock.v1.ShowPairing
-	149, // 92: hammock.v1.ClientMessage.open_media:type_name -> hammock.v1.OpenMedia
-	151, // 93: hammock.v1.ClientMessage.close_media:type_name -> hammock.v1.CloseMedia
-	163, // 94: hammock.v1.ClientMessage.media_ack:type_name -> hammock.v1.MediaAck
-	152, // 95: hammock.v1.ClientMessage.browser_input:type_name -> hammock.v1.BrowserInput
-	162, // 96: hammock.v1.ClientMessage.browser_menu_choice:type_name -> hammock.v1.BrowserMenuChoice
-	102, // 97: hammock.v1.ClientMessage.list_sessions:type_name -> hammock.v1.ListSessions
-	108, // 98: hammock.v1.ClientMessage.resume_session:type_name -> hammock.v1.ResumeSession
-	192, // 99: hammock.v1.ClientMessage.watch_log:type_name -> hammock.v1.WatchLog
-	193, // 100: hammock.v1.ClientMessage.read_log:type_name -> hammock.v1.ReadLog
-	194, // 101: hammock.v1.ClientMessage.clear_log:type_name -> hammock.v1.ClearLog
-	196, // 102: hammock.v1.ClientMessage.start_agent:type_name -> hammock.v1.StartAgent
-	197, // 103: hammock.v1.ClientMessage.list_folders:type_name -> hammock.v1.ListFolders
-	200, // 104: hammock.v1.ClientMessage.read_session:type_name -> hammock.v1.ReadSession
-	201, // 105: hammock.v1.ClientMessage.read_group_icon:type_name -> hammock.v1.ReadGroupIcon
-	203, // 106: hammock.v1.ClientMessage.set_group_icon_image:type_name -> hammock.v1.SetGroupIconImage
-	105, // 107: hammock.v1.ClientMessage.session_excerpts:type_name -> hammock.v1.SessionExcerpts
+	89,  // 91: hammock.v1.ClientMessage.show_pairing:type_name -> hammock.v1.ShowPairing
+	151, // 92: hammock.v1.ClientMessage.open_media:type_name -> hammock.v1.OpenMedia
+	153, // 93: hammock.v1.ClientMessage.close_media:type_name -> hammock.v1.CloseMedia
+	165, // 94: hammock.v1.ClientMessage.media_ack:type_name -> hammock.v1.MediaAck
+	154, // 95: hammock.v1.ClientMessage.browser_input:type_name -> hammock.v1.BrowserInput
+	164, // 96: hammock.v1.ClientMessage.browser_menu_choice:type_name -> hammock.v1.BrowserMenuChoice
+	104, // 97: hammock.v1.ClientMessage.list_sessions:type_name -> hammock.v1.ListSessions
+	110, // 98: hammock.v1.ClientMessage.resume_session:type_name -> hammock.v1.ResumeSession
+	194, // 99: hammock.v1.ClientMessage.watch_log:type_name -> hammock.v1.WatchLog
+	195, // 100: hammock.v1.ClientMessage.read_log:type_name -> hammock.v1.ReadLog
+	196, // 101: hammock.v1.ClientMessage.clear_log:type_name -> hammock.v1.ClearLog
+	198, // 102: hammock.v1.ClientMessage.start_agent:type_name -> hammock.v1.StartAgent
+	199, // 103: hammock.v1.ClientMessage.list_folders:type_name -> hammock.v1.ListFolders
+	202, // 104: hammock.v1.ClientMessage.read_session:type_name -> hammock.v1.ReadSession
+	203, // 105: hammock.v1.ClientMessage.read_group_icon:type_name -> hammock.v1.ReadGroupIcon
+	205, // 106: hammock.v1.ClientMessage.set_group_icon_image:type_name -> hammock.v1.SetGroupIconImage
+	107, // 107: hammock.v1.ClientMessage.session_excerpts:type_name -> hammock.v1.SessionExcerpts
 	47,  // 108: hammock.v1.ClientMessage.reopen_closed:type_name -> hammock.v1.ReopenClosed
-	214, // 109: hammock.v1.ClientMessage.discover_computers:type_name -> hammock.v1.DiscoverComputers
-	217, // 110: hammock.v1.ClientMessage.link_computer:type_name -> hammock.v1.LinkComputer
-	218, // 111: hammock.v1.ClientMessage.respond_link:type_name -> hammock.v1.RespondLink
-	219, // 112: hammock.v1.ClientMessage.unlink_computer:type_name -> hammock.v1.UnlinkComputer
-	220, // 113: hammock.v1.ClientMessage.set_computer_tint:type_name -> hammock.v1.SetComputerTint
-	221, // 114: hammock.v1.ClientMessage.create_link_invite:type_name -> hammock.v1.CreateLinkInvite
-	223, // 115: hammock.v1.ClientMessage.peer_link_hello:type_name -> hammock.v1.PeerLinkHello
-	225, // 116: hammock.v1.ClientMessage.peer_link_reveal:type_name -> hammock.v1.PeerLinkReveal
-	226, // 117: hammock.v1.ClientMessage.peer_link_confirm:type_name -> hammock.v1.PeerLinkConfirm
-	228, // 118: hammock.v1.ClientMessage.introduce_computers:type_name -> hammock.v1.IntroduceComputers
-	229, // 119: hammock.v1.ClientMessage.peer_intro_link:type_name -> hammock.v1.PeerIntroLink
-	231, // 120: hammock.v1.ClientMessage.unlink_request:type_name -> hammock.v1.UnlinkRequest
-	233, // 121: hammock.v1.ClientMessage.ssh_agent_call:type_name -> hammock.v1.SshAgentCall
+	216, // 109: hammock.v1.ClientMessage.discover_computers:type_name -> hammock.v1.DiscoverComputers
+	219, // 110: hammock.v1.ClientMessage.link_computer:type_name -> hammock.v1.LinkComputer
+	220, // 111: hammock.v1.ClientMessage.respond_link:type_name -> hammock.v1.RespondLink
+	221, // 112: hammock.v1.ClientMessage.unlink_computer:type_name -> hammock.v1.UnlinkComputer
+	222, // 113: hammock.v1.ClientMessage.set_computer_tint:type_name -> hammock.v1.SetComputerTint
+	223, // 114: hammock.v1.ClientMessage.create_link_invite:type_name -> hammock.v1.CreateLinkInvite
+	225, // 115: hammock.v1.ClientMessage.peer_link_hello:type_name -> hammock.v1.PeerLinkHello
+	227, // 116: hammock.v1.ClientMessage.peer_link_reveal:type_name -> hammock.v1.PeerLinkReveal
+	228, // 117: hammock.v1.ClientMessage.peer_link_confirm:type_name -> hammock.v1.PeerLinkConfirm
+	230, // 118: hammock.v1.ClientMessage.introduce_computers:type_name -> hammock.v1.IntroduceComputers
+	231, // 119: hammock.v1.ClientMessage.peer_intro_link:type_name -> hammock.v1.PeerIntroLink
+	233, // 120: hammock.v1.ClientMessage.unlink_request:type_name -> hammock.v1.UnlinkRequest
+	235, // 121: hammock.v1.ClientMessage.ssh_agent_call:type_name -> hammock.v1.SshAgentCall
 	43,  // 122: hammock.v1.ClientMessage.set_group_folder:type_name -> hammock.v1.SetGroupFolder
-	153, // 123: hammock.v1.ClientMessage.list_displays:type_name -> hammock.v1.ListDisplays
-	158, // 124: hammock.v1.ClientMessage.screen_input:type_name -> hammock.v1.ScreenInput
-	172, // 125: hammock.v1.ClientMessage.set_media_view:type_name -> hammock.v1.SetMediaView
-	166, // 126: hammock.v1.ClientMessage.server_status:type_name -> hammock.v1.ServerStatus
-	170, // 127: hammock.v1.ClientMessage.end_screen_session:type_name -> hammock.v1.EndScreenSession
-	154, // 128: hammock.v1.ClientMessage.screen_snapshot:type_name -> hammock.v1.ScreenSnapshot
-	246, // 129: hammock.v1.ClientMessage.save_schedule:type_name -> hammock.v1.SaveSchedule
-	247, // 130: hammock.v1.ClientMessage.delete_schedule:type_name -> hammock.v1.DeleteSchedule
-	248, // 131: hammock.v1.ClientMessage.run_schedule:type_name -> hammock.v1.RunSchedule
-	249, // 132: hammock.v1.ClientMessage.set_schedule_paused:type_name -> hammock.v1.SetSchedulePaused
-	250, // 133: hammock.v1.ClientMessage.skip_schedule_run:type_name -> hammock.v1.SkipScheduleRun
-	252, // 134: hammock.v1.ClientMessage.show_output:type_name -> hammock.v1.ShowOutput
+	155, // 123: hammock.v1.ClientMessage.list_displays:type_name -> hammock.v1.ListDisplays
+	160, // 124: hammock.v1.ClientMessage.screen_input:type_name -> hammock.v1.ScreenInput
+	174, // 125: hammock.v1.ClientMessage.set_media_view:type_name -> hammock.v1.SetMediaView
+	168, // 126: hammock.v1.ClientMessage.server_status:type_name -> hammock.v1.ServerStatus
+	172, // 127: hammock.v1.ClientMessage.end_screen_session:type_name -> hammock.v1.EndScreenSession
+	156, // 128: hammock.v1.ClientMessage.screen_snapshot:type_name -> hammock.v1.ScreenSnapshot
+	248, // 129: hammock.v1.ClientMessage.save_schedule:type_name -> hammock.v1.SaveSchedule
+	249, // 130: hammock.v1.ClientMessage.delete_schedule:type_name -> hammock.v1.DeleteSchedule
+	250, // 131: hammock.v1.ClientMessage.run_schedule:type_name -> hammock.v1.RunSchedule
+	251, // 132: hammock.v1.ClientMessage.set_schedule_paused:type_name -> hammock.v1.SetSchedulePaused
+	252, // 133: hammock.v1.ClientMessage.skip_schedule_run:type_name -> hammock.v1.SkipScheduleRun
+	254, // 134: hammock.v1.ClientMessage.show_output:type_name -> hammock.v1.ShowOutput
 	53,  // 135: hammock.v1.ClientMessage.float_pane:type_name -> hammock.v1.FloatPane
-	238, // 136: hammock.v1.ClientMessage.hammock_key_command:type_name -> hammock.v1.HammockKeyCommand
-	240, // 137: hammock.v1.ClientMessage.respond_hammock_key:type_name -> hammock.v1.RespondHammockKey
-	241, // 138: hammock.v1.ClientMessage.set_approval_key:type_name -> hammock.v1.SetApprovalKey
-	242, // 139: hammock.v1.ClientMessage.ssh_setup:type_name -> hammock.v1.SshSetup
-	97,  // 140: hammock.v1.ClientMessage.set_remote_networks:type_name -> hammock.v1.SetRemoteNetworks
-	177, // 141: hammock.v1.ClientMessage.editor_push:type_name -> hammock.v1.EditorPush
-	180, // 142: hammock.v1.ClientMessage.editor_select:type_name -> hammock.v1.EditorSelect
-	181, // 143: hammock.v1.ClientMessage.editor_command:type_name -> hammock.v1.EditorCommand
-	182, // 144: hammock.v1.ClientMessage.read_editor:type_name -> hammock.v1.ReadEditor
-	186, // 145: hammock.v1.ClientMessage.list_files:type_name -> hammock.v1.ListFiles
-	253, // 146: hammock.v1.ClientMessage.config_written:type_name -> hammock.v1.ConfigWritten
-	48,  // 147: hammock.v1.CreateTab.pane:type_name -> hammock.v1.PaneSpec
-	255, // 148: hammock.v1.PaneSpec.env:type_name -> hammock.v1.PaneSpec.EnvEntry
-	188, // 149: hammock.v1.PaneSpec.log:type_name -> hammock.v1.LogSource
-	175, // 150: hammock.v1.PaneSpec.editor:type_name -> hammock.v1.EditorOpen
-	4,   // 151: hammock.v1.CreatePane.direction:type_name -> hammock.v1.Split.Direction
-	48,  // 152: hammock.v1.CreatePane.spec:type_name -> hammock.v1.PaneSpec
-	24,  // 153: hammock.v1.CreatePane.frame:type_name -> hammock.v1.Frame
-	4,   // 154: hammock.v1.MergeTab.direction:type_name -> hammock.v1.Split.Direction
-	5,   // 155: hammock.v1.FloatPane.action:type_name -> hammock.v1.FloatPane.Action
-	24,  // 156: hammock.v1.FloatPane.frame:type_name -> hammock.v1.Frame
-	4,   // 157: hammock.v1.FloatPane.direction:type_name -> hammock.v1.Split.Direction
-	48,  // 158: hammock.v1.ReplacePane.spec:type_name -> hammock.v1.PaneSpec
-	6,   // 159: hammock.v1.RespondGrant.decision:type_name -> hammock.v1.RespondGrant.Decision
-	25,  // 160: hammock.v1.SetLayout.layout:type_name -> hammock.v1.Layout
-	75,  // 161: hammock.v1.ServerMessage.hello_reply:type_name -> hammock.v1.HelloReply
-	76,  // 162: hammock.v1.ServerMessage.error:type_name -> hammock.v1.Error
-	77,  // 163: hammock.v1.ServerMessage.ok:type_name -> hammock.v1.Ok
-	30,  // 164: hammock.v1.ServerMessage.state:type_name -> hammock.v1.StateUpdate
-	79,  // 165: hammock.v1.ServerMessage.pane_snapshot:type_name -> hammock.v1.PaneSnapshot
-	80,  // 166: hammock.v1.ServerMessage.pane_output:type_name -> hammock.v1.PaneOutput
-	81,  // 167: hammock.v1.ServerMessage.pane_text:type_name -> hammock.v1.PaneText
-	78,  // 168: hammock.v1.ServerMessage.created:type_name -> hammock.v1.Created
-	70,  // 169: hammock.v1.ServerMessage.grant_decision:type_name -> hammock.v1.GrantDecision
-	82,  // 170: hammock.v1.ServerMessage.auth_challenge:type_name -> hammock.v1.AuthChallenge
-	89,  // 171: hammock.v1.ServerMessage.pairing:type_name -> hammock.v1.Pairing
-	95,  // 172: hammock.v1.ServerMessage.devices:type_name -> hammock.v1.Devices
-	84,  // 173: hammock.v1.ServerMessage.paired:type_name -> hammock.v1.Paired
-	93,  // 174: hammock.v1.ServerMessage.audit_log:type_name -> hammock.v1.AuditLog
-	115, // 175: hammock.v1.ServerMessage.agent_view:type_name -> hammock.v1.AgentView
-	127, // 176: hammock.v1.ServerMessage.agent_file:type_name -> hammock.v1.AgentFile
-	129, // 177: hammock.v1.ServerMessage.invite:type_name -> hammock.v1.Invite
-	141, // 178: hammock.v1.ServerMessage.peer_joined:type_name -> hammock.v1.PeerJoined
-	147, // 179: hammock.v1.ServerMessage.browser_result:type_name -> hammock.v1.BrowserResult
-	174, // 180: hammock.v1.ServerMessage.simulator_result:type_name -> hammock.v1.SimulatorResult
-	139, // 181: hammock.v1.ServerMessage.peer_welcome:type_name -> hammock.v1.PeerWelcome
-	87,  // 182: hammock.v1.ServerMessage.show_pairing:type_name -> hammock.v1.ShowPairing
-	88,  // 183: hammock.v1.ServerMessage.device_paired:type_name -> hammock.v1.DevicePaired
-	150, // 184: hammock.v1.ServerMessage.media_ticket:type_name -> hammock.v1.MediaTicket
-	164, // 185: hammock.v1.ServerMessage.media_frame:type_name -> hammock.v1.MediaFrame
-	173, // 186: hammock.v1.ServerMessage.media_ended:type_name -> hammock.v1.MediaEnded
-	159, // 187: hammock.v1.ServerMessage.browser_menu:type_name -> hammock.v1.BrowserMenu
-	161, // 188: hammock.v1.ServerMessage.browser_clipboard:type_name -> hammock.v1.BrowserClipboard
-	101, // 189: hammock.v1.ServerMessage.agent_switched:type_name -> hammock.v1.AgentSwitched
-	104, // 190: hammock.v1.ServerMessage.session_list:type_name -> hammock.v1.SessionList
-	109, // 191: hammock.v1.ServerMessage.session_resumed:type_name -> hammock.v1.SessionResumed
-	195, // 192: hammock.v1.ServerMessage.log_view:type_name -> hammock.v1.LogView
-	198, // 193: hammock.v1.ServerMessage.folder_list:type_name -> hammock.v1.FolderList
-	202, // 194: hammock.v1.ServerMessage.group_icon:type_name -> hammock.v1.GroupIcon
-	106, // 195: hammock.v1.ServerMessage.session_excerpt:type_name -> hammock.v1.SessionExcerpt
-	215, // 196: hammock.v1.ServerMessage.discovered_computers:type_name -> hammock.v1.DiscoveredComputers
-	224, // 197: hammock.v1.ServerMessage.peer_link_nonce:type_name -> hammock.v1.PeerLinkNonce
-	227, // 198: hammock.v1.ServerMessage.peer_linked:type_name -> hammock.v1.PeerLinked
-	230, // 199: hammock.v1.ServerMessage.peer_intro_linked:type_name -> hammock.v1.PeerIntroLinked
-	232, // 200: hammock.v1.ServerMessage.unlink_taken:type_name -> hammock.v1.UnlinkTaken
-	234, // 201: hammock.v1.ServerMessage.ssh_agent_reply:type_name -> hammock.v1.SshAgentReply
-	156, // 202: hammock.v1.ServerMessage.displays:type_name -> hammock.v1.Displays
-	165, // 203: hammock.v1.ServerMessage.screen_cursor:type_name -> hammock.v1.ScreenCursor
-	171, // 204: hammock.v1.ServerMessage.screen_state:type_name -> hammock.v1.ScreenState
-	167, // 205: hammock.v1.ServerMessage.server_status_reply:type_name -> hammock.v1.ServerStatusReply
-	155, // 206: hammock.v1.ServerMessage.screen_snapshot_reply:type_name -> hammock.v1.ScreenSnapshotReply
-	251, // 207: hammock.v1.ServerMessage.schedule_reply:type_name -> hammock.v1.ScheduleReply
-	236, // 208: hammock.v1.ServerMessage.hammock_key_status:type_name -> hammock.v1.HammockKeyStatus
-	243, // 209: hammock.v1.ServerMessage.ssh_setup_reply:type_name -> hammock.v1.SshSetupReply
-	183, // 210: hammock.v1.ServerMessage.editor_update:type_name -> hammock.v1.EditorUpdate
-	179, // 211: hammock.v1.ServerMessage.editor_push_reply:type_name -> hammock.v1.EditorPushReply
-	187, // 212: hammock.v1.ServerMessage.file_list:type_name -> hammock.v1.FileList
-	74,  // 213: hammock.v1.ServerMessage.approval_pending:type_name -> hammock.v1.ApprovalPending
-	92,  // 214: hammock.v1.AuditLog.events:type_name -> hammock.v1.AuditEvent
-	90,  // 215: hammock.v1.Devices.devices:type_name -> hammock.v1.Device
-	96,  // 216: hammock.v1.Devices.networks:type_name -> hammock.v1.RemoteNetwork
-	103, // 217: hammock.v1.SessionList.sessions:type_name -> hammock.v1.SessionInfo
-	103, // 218: hammock.v1.SessionExcerpt.session:type_name -> hammock.v1.SessionInfo
-	107, // 219: hammock.v1.SessionExcerpt.messages:type_name -> hammock.v1.SessionMessage
-	7,   // 220: hammock.v1.AgentBlock.kind:type_name -> hammock.v1.AgentBlock.Kind
-	111, // 221: hammock.v1.AgentBlock.questions:type_name -> hammock.v1.AgentQuestion
-	113, // 222: hammock.v1.AgentBlock.images:type_name -> hammock.v1.AgentImage
-	112, // 223: hammock.v1.AgentQuestion.options:type_name -> hammock.v1.AgentOption
-	8,   // 224: hammock.v1.AgentPrompt.kind:type_name -> hammock.v1.AgentPrompt.Kind
-	110, // 225: hammock.v1.AgentView.blocks:type_name -> hammock.v1.AgentBlock
-	114, // 226: hammock.v1.AgentView.prompt:type_name -> hammock.v1.AgentPrompt
-	120, // 227: hammock.v1.AgentView.subagents:type_name -> hammock.v1.AgentSubagent
-	121, // 228: hammock.v1.AgentView.shells:type_name -> hammock.v1.AgentShell
-	116, // 229: hammock.v1.AgentView.tasks:type_name -> hammock.v1.AgentTaskList
-	118, // 230: hammock.v1.AgentView.links:type_name -> hammock.v1.AgentLinks
-	117, // 231: hammock.v1.AgentTaskList.tasks:type_name -> hammock.v1.AgentTask
-	9,   // 232: hammock.v1.AgentTask.status:type_name -> hammock.v1.AgentTask.Status
-	119, // 233: hammock.v1.AgentLinks.links:type_name -> hammock.v1.AgentLink
-	10,  // 234: hammock.v1.AgentLink.kind:type_name -> hammock.v1.AgentLink.Kind
-	11,  // 235: hammock.v1.AgentAnswer.decision:type_name -> hammock.v1.AgentAnswer.Decision
-	125, // 236: hammock.v1.AgentSend.attachments:type_name -> hammock.v1.AgentAttachment
-	0,   // 237: hammock.v1.RespondJoin.role:type_name -> hammock.v1.Role
-	0,   // 238: hammock.v1.SetMember.role:type_name -> hammock.v1.Role
-	0,   // 239: hammock.v1.PeerJoined.role:type_name -> hammock.v1.Role
-	157, // 240: hammock.v1.Displays.displays:type_name -> hammock.v1.Display
-	160, // 241: hammock.v1.BrowserMenu.items:type_name -> hammock.v1.BrowserMenuItem
-	168, // 242: hammock.v1.ServerStatusReply.connected:type_name -> hammock.v1.Connected
-	169, // 243: hammock.v1.ServerStatusReply.screen_viewers:type_name -> hammock.v1.ScreenViewer
-	29,  // 244: hammock.v1.ServerStatusReply.needs_you:type_name -> hammock.v1.AttentionItem
-	178, // 245: hammock.v1.EditorPush.updates:type_name -> hammock.v1.EditorChange
-	12,  // 246: hammock.v1.EditorCommand.action:type_name -> hammock.v1.EditorCommand.Action
-	178, // 247: hammock.v1.EditorUpdate.updates:type_name -> hammock.v1.EditorChange
-	184, // 248: hammock.v1.EditorUpdate.selection:type_name -> hammock.v1.EditorSelection
-	185, // 249: hammock.v1.EditorUpdate.git:type_name -> hammock.v1.GitMark
-	13,  // 250: hammock.v1.GitMark.kind:type_name -> hammock.v1.GitMark.Kind
-	3,   // 251: hammock.v1.LogEntry.level:type_name -> hammock.v1.LogLevel
-	256, // 252: hammock.v1.LogEntry.fields:type_name -> hammock.v1.LogEntry.FieldsEntry
-	3,   // 253: hammock.v1.LogFilter.levels:type_name -> hammock.v1.LogLevel
-	190, // 254: hammock.v1.WatchLog.filter:type_name -> hammock.v1.LogFilter
-	190, // 255: hammock.v1.ReadLog.filter:type_name -> hammock.v1.LogFilter
-	189, // 256: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
-	191, // 257: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
-	190, // 258: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
-	199, // 259: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
-	205, // 260: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
-	207, // 261: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
-	205, // 262: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
-	207, // 263: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
-	206, // 264: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
-	205, // 265: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
-	216, // 266: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
-	205, // 267: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
-	205, // 268: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
-	205, // 269: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
-	205, // 270: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
-	205, // 271: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
-	205, // 272: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
-	235, // 273: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
-	237, // 274: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
-	237, // 275: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
-	14,  // 276: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
-	15,  // 277: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
-	16,  // 278: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
-	245, // 279: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
-	17,  // 280: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
-	244, // 281: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
-	244, // 282: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
-	254, // 283: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
-	284, // [284:284] is the sub-list for method output_type
-	284, // [284:284] is the sub-list for method input_type
-	284, // [284:284] is the sub-list for extension type_name
-	284, // [284:284] is the sub-list for extension extendee
-	0,   // [0:284] is the sub-list for field type_name
+	240, // 136: hammock.v1.ClientMessage.hammock_key_command:type_name -> hammock.v1.HammockKeyCommand
+	242, // 137: hammock.v1.ClientMessage.respond_hammock_key:type_name -> hammock.v1.RespondHammockKey
+	243, // 138: hammock.v1.ClientMessage.set_approval_key:type_name -> hammock.v1.SetApprovalKey
+	244, // 139: hammock.v1.ClientMessage.ssh_setup:type_name -> hammock.v1.SshSetup
+	99,  // 140: hammock.v1.ClientMessage.set_remote_networks:type_name -> hammock.v1.SetRemoteNetworks
+	179, // 141: hammock.v1.ClientMessage.editor_push:type_name -> hammock.v1.EditorPush
+	182, // 142: hammock.v1.ClientMessage.editor_select:type_name -> hammock.v1.EditorSelect
+	183, // 143: hammock.v1.ClientMessage.editor_command:type_name -> hammock.v1.EditorCommand
+	184, // 144: hammock.v1.ClientMessage.read_editor:type_name -> hammock.v1.ReadEditor
+	188, // 145: hammock.v1.ClientMessage.list_files:type_name -> hammock.v1.ListFiles
+	255, // 146: hammock.v1.ClientMessage.config_written:type_name -> hammock.v1.ConfigWritten
+	74,  // 147: hammock.v1.ClientMessage.prove_app:type_name -> hammock.v1.ProveApp
+	48,  // 148: hammock.v1.CreateTab.pane:type_name -> hammock.v1.PaneSpec
+	257, // 149: hammock.v1.PaneSpec.env:type_name -> hammock.v1.PaneSpec.EnvEntry
+	190, // 150: hammock.v1.PaneSpec.log:type_name -> hammock.v1.LogSource
+	177, // 151: hammock.v1.PaneSpec.editor:type_name -> hammock.v1.EditorOpen
+	4,   // 152: hammock.v1.CreatePane.direction:type_name -> hammock.v1.Split.Direction
+	48,  // 153: hammock.v1.CreatePane.spec:type_name -> hammock.v1.PaneSpec
+	24,  // 154: hammock.v1.CreatePane.frame:type_name -> hammock.v1.Frame
+	4,   // 155: hammock.v1.MergeTab.direction:type_name -> hammock.v1.Split.Direction
+	5,   // 156: hammock.v1.FloatPane.action:type_name -> hammock.v1.FloatPane.Action
+	24,  // 157: hammock.v1.FloatPane.frame:type_name -> hammock.v1.Frame
+	4,   // 158: hammock.v1.FloatPane.direction:type_name -> hammock.v1.Split.Direction
+	48,  // 159: hammock.v1.ReplacePane.spec:type_name -> hammock.v1.PaneSpec
+	6,   // 160: hammock.v1.RespondGrant.decision:type_name -> hammock.v1.RespondGrant.Decision
+	25,  // 161: hammock.v1.SetLayout.layout:type_name -> hammock.v1.Layout
+	77,  // 162: hammock.v1.ServerMessage.hello_reply:type_name -> hammock.v1.HelloReply
+	78,  // 163: hammock.v1.ServerMessage.error:type_name -> hammock.v1.Error
+	79,  // 164: hammock.v1.ServerMessage.ok:type_name -> hammock.v1.Ok
+	30,  // 165: hammock.v1.ServerMessage.state:type_name -> hammock.v1.StateUpdate
+	81,  // 166: hammock.v1.ServerMessage.pane_snapshot:type_name -> hammock.v1.PaneSnapshot
+	82,  // 167: hammock.v1.ServerMessage.pane_output:type_name -> hammock.v1.PaneOutput
+	83,  // 168: hammock.v1.ServerMessage.pane_text:type_name -> hammock.v1.PaneText
+	80,  // 169: hammock.v1.ServerMessage.created:type_name -> hammock.v1.Created
+	70,  // 170: hammock.v1.ServerMessage.grant_decision:type_name -> hammock.v1.GrantDecision
+	84,  // 171: hammock.v1.ServerMessage.auth_challenge:type_name -> hammock.v1.AuthChallenge
+	91,  // 172: hammock.v1.ServerMessage.pairing:type_name -> hammock.v1.Pairing
+	97,  // 173: hammock.v1.ServerMessage.devices:type_name -> hammock.v1.Devices
+	86,  // 174: hammock.v1.ServerMessage.paired:type_name -> hammock.v1.Paired
+	95,  // 175: hammock.v1.ServerMessage.audit_log:type_name -> hammock.v1.AuditLog
+	117, // 176: hammock.v1.ServerMessage.agent_view:type_name -> hammock.v1.AgentView
+	129, // 177: hammock.v1.ServerMessage.agent_file:type_name -> hammock.v1.AgentFile
+	131, // 178: hammock.v1.ServerMessage.invite:type_name -> hammock.v1.Invite
+	143, // 179: hammock.v1.ServerMessage.peer_joined:type_name -> hammock.v1.PeerJoined
+	149, // 180: hammock.v1.ServerMessage.browser_result:type_name -> hammock.v1.BrowserResult
+	176, // 181: hammock.v1.ServerMessage.simulator_result:type_name -> hammock.v1.SimulatorResult
+	141, // 182: hammock.v1.ServerMessage.peer_welcome:type_name -> hammock.v1.PeerWelcome
+	89,  // 183: hammock.v1.ServerMessage.show_pairing:type_name -> hammock.v1.ShowPairing
+	90,  // 184: hammock.v1.ServerMessage.device_paired:type_name -> hammock.v1.DevicePaired
+	152, // 185: hammock.v1.ServerMessage.media_ticket:type_name -> hammock.v1.MediaTicket
+	166, // 186: hammock.v1.ServerMessage.media_frame:type_name -> hammock.v1.MediaFrame
+	175, // 187: hammock.v1.ServerMessage.media_ended:type_name -> hammock.v1.MediaEnded
+	161, // 188: hammock.v1.ServerMessage.browser_menu:type_name -> hammock.v1.BrowserMenu
+	163, // 189: hammock.v1.ServerMessage.browser_clipboard:type_name -> hammock.v1.BrowserClipboard
+	103, // 190: hammock.v1.ServerMessage.agent_switched:type_name -> hammock.v1.AgentSwitched
+	106, // 191: hammock.v1.ServerMessage.session_list:type_name -> hammock.v1.SessionList
+	111, // 192: hammock.v1.ServerMessage.session_resumed:type_name -> hammock.v1.SessionResumed
+	197, // 193: hammock.v1.ServerMessage.log_view:type_name -> hammock.v1.LogView
+	200, // 194: hammock.v1.ServerMessage.folder_list:type_name -> hammock.v1.FolderList
+	204, // 195: hammock.v1.ServerMessage.group_icon:type_name -> hammock.v1.GroupIcon
+	108, // 196: hammock.v1.ServerMessage.session_excerpt:type_name -> hammock.v1.SessionExcerpt
+	217, // 197: hammock.v1.ServerMessage.discovered_computers:type_name -> hammock.v1.DiscoveredComputers
+	226, // 198: hammock.v1.ServerMessage.peer_link_nonce:type_name -> hammock.v1.PeerLinkNonce
+	229, // 199: hammock.v1.ServerMessage.peer_linked:type_name -> hammock.v1.PeerLinked
+	232, // 200: hammock.v1.ServerMessage.peer_intro_linked:type_name -> hammock.v1.PeerIntroLinked
+	234, // 201: hammock.v1.ServerMessage.unlink_taken:type_name -> hammock.v1.UnlinkTaken
+	236, // 202: hammock.v1.ServerMessage.ssh_agent_reply:type_name -> hammock.v1.SshAgentReply
+	158, // 203: hammock.v1.ServerMessage.displays:type_name -> hammock.v1.Displays
+	167, // 204: hammock.v1.ServerMessage.screen_cursor:type_name -> hammock.v1.ScreenCursor
+	173, // 205: hammock.v1.ServerMessage.screen_state:type_name -> hammock.v1.ScreenState
+	169, // 206: hammock.v1.ServerMessage.server_status_reply:type_name -> hammock.v1.ServerStatusReply
+	157, // 207: hammock.v1.ServerMessage.screen_snapshot_reply:type_name -> hammock.v1.ScreenSnapshotReply
+	253, // 208: hammock.v1.ServerMessage.schedule_reply:type_name -> hammock.v1.ScheduleReply
+	238, // 209: hammock.v1.ServerMessage.hammock_key_status:type_name -> hammock.v1.HammockKeyStatus
+	245, // 210: hammock.v1.ServerMessage.ssh_setup_reply:type_name -> hammock.v1.SshSetupReply
+	185, // 211: hammock.v1.ServerMessage.editor_update:type_name -> hammock.v1.EditorUpdate
+	181, // 212: hammock.v1.ServerMessage.editor_push_reply:type_name -> hammock.v1.EditorPushReply
+	189, // 213: hammock.v1.ServerMessage.file_list:type_name -> hammock.v1.FileList
+	76,  // 214: hammock.v1.ServerMessage.approval_pending:type_name -> hammock.v1.ApprovalPending
+	75,  // 215: hammock.v1.ServerMessage.app_challenge:type_name -> hammock.v1.AppChallenge
+	94,  // 216: hammock.v1.AuditLog.events:type_name -> hammock.v1.AuditEvent
+	92,  // 217: hammock.v1.Devices.devices:type_name -> hammock.v1.Device
+	98,  // 218: hammock.v1.Devices.networks:type_name -> hammock.v1.RemoteNetwork
+	105, // 219: hammock.v1.SessionList.sessions:type_name -> hammock.v1.SessionInfo
+	105, // 220: hammock.v1.SessionExcerpt.session:type_name -> hammock.v1.SessionInfo
+	109, // 221: hammock.v1.SessionExcerpt.messages:type_name -> hammock.v1.SessionMessage
+	7,   // 222: hammock.v1.AgentBlock.kind:type_name -> hammock.v1.AgentBlock.Kind
+	113, // 223: hammock.v1.AgentBlock.questions:type_name -> hammock.v1.AgentQuestion
+	115, // 224: hammock.v1.AgentBlock.images:type_name -> hammock.v1.AgentImage
+	114, // 225: hammock.v1.AgentQuestion.options:type_name -> hammock.v1.AgentOption
+	8,   // 226: hammock.v1.AgentPrompt.kind:type_name -> hammock.v1.AgentPrompt.Kind
+	112, // 227: hammock.v1.AgentView.blocks:type_name -> hammock.v1.AgentBlock
+	116, // 228: hammock.v1.AgentView.prompt:type_name -> hammock.v1.AgentPrompt
+	122, // 229: hammock.v1.AgentView.subagents:type_name -> hammock.v1.AgentSubagent
+	123, // 230: hammock.v1.AgentView.shells:type_name -> hammock.v1.AgentShell
+	118, // 231: hammock.v1.AgentView.tasks:type_name -> hammock.v1.AgentTaskList
+	120, // 232: hammock.v1.AgentView.links:type_name -> hammock.v1.AgentLinks
+	119, // 233: hammock.v1.AgentTaskList.tasks:type_name -> hammock.v1.AgentTask
+	9,   // 234: hammock.v1.AgentTask.status:type_name -> hammock.v1.AgentTask.Status
+	121, // 235: hammock.v1.AgentLinks.links:type_name -> hammock.v1.AgentLink
+	10,  // 236: hammock.v1.AgentLink.kind:type_name -> hammock.v1.AgentLink.Kind
+	11,  // 237: hammock.v1.AgentAnswer.decision:type_name -> hammock.v1.AgentAnswer.Decision
+	127, // 238: hammock.v1.AgentSend.attachments:type_name -> hammock.v1.AgentAttachment
+	0,   // 239: hammock.v1.RespondJoin.role:type_name -> hammock.v1.Role
+	0,   // 240: hammock.v1.SetMember.role:type_name -> hammock.v1.Role
+	0,   // 241: hammock.v1.PeerJoined.role:type_name -> hammock.v1.Role
+	159, // 242: hammock.v1.Displays.displays:type_name -> hammock.v1.Display
+	162, // 243: hammock.v1.BrowserMenu.items:type_name -> hammock.v1.BrowserMenuItem
+	170, // 244: hammock.v1.ServerStatusReply.connected:type_name -> hammock.v1.Connected
+	171, // 245: hammock.v1.ServerStatusReply.screen_viewers:type_name -> hammock.v1.ScreenViewer
+	29,  // 246: hammock.v1.ServerStatusReply.needs_you:type_name -> hammock.v1.AttentionItem
+	180, // 247: hammock.v1.EditorPush.updates:type_name -> hammock.v1.EditorChange
+	12,  // 248: hammock.v1.EditorCommand.action:type_name -> hammock.v1.EditorCommand.Action
+	180, // 249: hammock.v1.EditorUpdate.updates:type_name -> hammock.v1.EditorChange
+	186, // 250: hammock.v1.EditorUpdate.selection:type_name -> hammock.v1.EditorSelection
+	187, // 251: hammock.v1.EditorUpdate.git:type_name -> hammock.v1.GitMark
+	13,  // 252: hammock.v1.GitMark.kind:type_name -> hammock.v1.GitMark.Kind
+	3,   // 253: hammock.v1.LogEntry.level:type_name -> hammock.v1.LogLevel
+	258, // 254: hammock.v1.LogEntry.fields:type_name -> hammock.v1.LogEntry.FieldsEntry
+	3,   // 255: hammock.v1.LogFilter.levels:type_name -> hammock.v1.LogLevel
+	192, // 256: hammock.v1.WatchLog.filter:type_name -> hammock.v1.LogFilter
+	192, // 257: hammock.v1.ReadLog.filter:type_name -> hammock.v1.LogFilter
+	191, // 258: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
+	193, // 259: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
+	192, // 260: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
+	201, // 261: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
+	207, // 262: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
+	209, // 263: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
+	207, // 264: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
+	209, // 265: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
+	208, // 266: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
+	207, // 267: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
+	218, // 268: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
+	207, // 269: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
+	207, // 270: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
+	207, // 271: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
+	207, // 272: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
+	207, // 273: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
+	207, // 274: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
+	237, // 275: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
+	239, // 276: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
+	239, // 277: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
+	14,  // 278: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
+	15,  // 279: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
+	16,  // 280: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
+	247, // 281: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
+	17,  // 282: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
+	246, // 283: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
+	246, // 284: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
+	256, // 285: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
+	286, // [286:286] is the sub-list for method output_type
+	286, // [286:286] is the sub-list for method input_type
+	286, // [286:286] is the sub-list for extension type_name
+	286, // [286:286] is the sub-list for extension extendee
+	0,   // [0:286] is the sub-list for field type_name
 }
 
 func init() { file_hammock_v1_hammock_proto_init() }
@@ -23850,6 +23999,7 @@ func file_hammock_v1_hammock_proto_init() {
 		(*ClientMessage_ReadEditor)(nil),
 		(*ClientMessage_ListFiles)(nil),
 		(*ClientMessage_ConfigWritten)(nil),
+		(*ClientMessage_ProveApp)(nil),
 	}
 	file_hammock_v1_hammock_proto_msgTypes[55].OneofWrappers = []any{
 		(*ServerMessage_HelloReply)(nil),
@@ -23905,16 +24055,17 @@ func file_hammock_v1_hammock_proto_init() {
 		(*ServerMessage_EditorPushReply)(nil),
 		(*ServerMessage_FileList)(nil),
 		(*ServerMessage_ApprovalPending)(nil),
+		(*ServerMessage_AppChallenge)(nil),
 	}
-	file_hammock_v1_hammock_proto_msgTypes[116].OneofWrappers = []any{}
-	file_hammock_v1_hammock_proto_msgTypes[202].OneofWrappers = []any{}
+	file_hammock_v1_hammock_proto_msgTypes[118].OneofWrappers = []any{}
+	file_hammock_v1_hammock_proto_msgTypes[204].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hammock_v1_hammock_proto_rawDesc), len(file_hammock_v1_hammock_proto_rawDesc)),
 			NumEnums:      18,
-			NumMessages:   239,
+			NumMessages:   241,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

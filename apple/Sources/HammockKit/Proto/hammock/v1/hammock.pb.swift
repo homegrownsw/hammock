@@ -2164,6 +2164,16 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .configWritten(newValue)}
   }
 
+  /// The Mac app proving it's the app (appproof.go): only as a local
+  /// connection's first message. Replies AppChallenge.
+  public var proveApp: Hammock_V1_ProveApp {
+    get {
+      if case .proveApp(let v)? = msg {return v}
+      return Hammock_V1_ProveApp()
+    }
+    set {msg = .proveApp(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2346,6 +2356,9 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     case listFiles(Hammock_V1_ListFiles)
     /// local clients only: the Mac app wrote these settings (configwatch.go)
     case configWritten(Hammock_V1_ConfigWritten)
+    /// The Mac app proving it's the app (appproof.go): only as a local
+    /// connection's first message. Replies AppChallenge.
+    case proveApp(Hammock_V1_ProveApp)
 
   }
 
@@ -3670,6 +3683,15 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .approvalPending(newValue)}
   }
 
+  /// reply to ProveApp
+  public var appChallenge: Hammock_V1_AppChallenge {
+    get {
+      if case .appChallenge(let v)? = msg {return v}
+      return Hammock_V1_AppChallenge()
+    }
+    set {msg = .appChallenge(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -3753,8 +3775,46 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case fileList(Hammock_V1_FileList)
     /// a request now waits for your answer (not its reply)
     case approvalPending(Hammock_V1_ApprovalPending)
+    /// reply to ProveApp
+    case appChallenge(Hammock_V1_AppChallenge)
 
   }
+
+  public init() {}
+}
+
+/// The Mac app, on a new connection to this Mac's daemon and before anything
+/// else, asks to prove it's the app: the daemon answers AppChallenge, and the
+/// app sends conn and nonce to the daemon's Mach service (service), as
+/// helpers/common/appproof.h says. Until that proof is in (or a few seconds
+/// have passed) the daemon reads nothing more from the connection; with it,
+/// the connection is the app's (what only you may do, where notifications
+/// and pairing codes go). A socket's peer can't prove it alone.
+public nonisolated struct Hammock_V1_ProveApp: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_AppChallenge: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// the daemon's Mach service (bootstrap name)
+  public var service: String = String()
+
+  /// this connection's number
+  public var conn: UInt64 = 0
+
+  /// 32 random bytes, for this connection's proof only
+  public var nonce: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 }
@@ -10341,7 +10401,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -11832,6 +11892,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .configWritten(v)
         }
       }()
+      case 126: try {
+        var v: Hammock_V1_ProveApp?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .proveApp(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .proveApp(v)
+        }
+      }()
       default: break
       }
     }
@@ -12301,6 +12374,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .configWritten?: try {
       guard case .configWritten(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 125)
+    }()
+    case .proveApp?: try {
+      guard case .proveApp(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 126)
     }()
     case nil: break
     }
@@ -13822,7 +13899,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14520,6 +14597,19 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .approvalPending(v)
         }
       }()
+      case 63: try {
+        var v: Hammock_V1_AppChallenge?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .appChallenge(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .appChallenge(v)
+        }
+      }()
       default: break
       }
     }
@@ -14746,6 +14836,10 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
       guard case .approvalPending(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 62)
     }()
+    case .appChallenge?: try {
+      guard case .appChallenge(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 63)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -14754,6 +14848,65 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
   public static func ==(lhs: Hammock_V1_ServerMessage, rhs: Hammock_V1_ServerMessage) -> Bool {
     if lhs.replyTo != rhs.replyTo {return false}
     if lhs.msg != rhs.msg {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ProveApp: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProveApp"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ProveApp, rhs: Hammock_V1_ProveApp) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_AppChallenge: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AppChallenge"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}service\0\u{1}conn\0\u{1}nonce\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.service) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.conn) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.nonce) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.service.isEmpty {
+      try visitor.visitSingularStringField(value: self.service, fieldNumber: 1)
+    }
+    if self.conn != 0 {
+      try visitor.visitSingularUInt64Field(value: self.conn, fieldNumber: 2)
+    }
+    if !self.nonce.isEmpty {
+      try visitor.visitSingularBytesField(value: self.nonce, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_AppChallenge, rhs: Hammock_V1_AppChallenge) -> Bool {
+    if lhs.service != rhs.service {return false}
+    if lhs.conn != rhs.conn {return false}
+    if lhs.nonce != rhs.nonce {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

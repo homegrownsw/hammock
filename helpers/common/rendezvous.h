@@ -7,7 +7,10 @@
 // agree: the helpers (helpers/key/main.swift through helpers/key/rendezvous.h,
 // helpers/screen/host.m) and the daemon (internal/daemon/rendezvous_darwin.go,
 // through cgo). Each helper says hello with its own magic (16 bytes, no
-// NUL), which is also its wire format's version.
+// NUL), which is also its wire format's version, and may add a few bytes of
+// its own (hmk_rv_ask, hmk_rv_hear). The Mac app proves to the daemon that
+// a socket connection is its own the same way (appproof.h), with the daemon
+// checking the hello's sender.
 //
 //   1. The daemon checks in a service under a fresh random name
 //      (bootstrap_check_in: launchd refuses a second check-in while it's
@@ -46,11 +49,13 @@
 #define HMK_RV_HELLO_ID 0x686d6b01   // "hmk" 1
 #define HMK_RV_ANSWER_ID 0x686d6b02  // "hmk" 2
 #define HMK_RV_MAX_ANSWER (16 << 20)
+#define HMK_RV_MAX_BODY 64 // a hello's own bytes after its magic, a multiple of 4
 
 #pragma pack(push, 4)
 typedef struct {
 	mach_msg_header_t header;
 	char magic[16];
+	uint8_t body[HMK_RV_MAX_BODY]; // (sent only as long as its body is: none for a plain hello)
 } hmk_rv_hello_t;
 
 typedef struct {
@@ -81,29 +86,38 @@ static inline void hmk_rv_close(mach_port_t port) {
 	mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_RECEIVE, -1);
 }
 
-// hmk_rv_hello waits up to ms for a hello with magic. KERN_SUCCESS with its
-// sender's audit token, as it was sent, in *token and its reply right in
-// *reply (the caller sends on it, or hands it to hmk_rv_drop); anything
-// else that arrives is dropped (KERN_INVALID_ARGUMENT), and a timeout is
-// MACH_RCV_TIMED_OUT.
-static inline kern_return_t hmk_rv_hello(mach_port_t port, mach_msg_timeout_t ms, const char *magic,
-                                         audit_token_t *token, mach_port_t *reply) {
+// hmk_rv_hear waits up to ms for a hello with magic and exactly n bytes of
+// body (0, or a multiple of 4 up to HMK_RV_MAX_BODY), copied to body.
+// KERN_SUCCESS with its sender's audit token, as it was sent, in *token and
+// its reply right in *reply (the caller sends on it, or hands it to
+// hmk_rv_drop); anything else that arrives is dropped
+// (KERN_INVALID_ARGUMENT), and a timeout is MACH_RCV_TIMED_OUT.
+static inline kern_return_t hmk_rv_hear(mach_port_t port, mach_msg_timeout_t ms, const char *magic, void *body, size_t n,
+                                        audit_token_t *token, mach_port_t *reply) {
 	struct {
 		hmk_rv_hello_t m;
 		mach_msg_max_trailer_t trailer;
 	} r;
 	memset(&r, 0, sizeof r);
+	if (n > HMK_RV_MAX_BODY || n % 4) return KERN_INVALID_VALUE;
 	kern_return_t kr = mach_msg(&r.m.header, HMK_RV_RCV_OPTIONS, 0, sizeof r, port, ms, MACH_PORT_NULL);
 	if (kr != KERN_SUCCESS) return kr;
 	if ((r.m.header.msgh_bits & MACH_MSGH_BITS_COMPLEX) || r.m.header.msgh_id != HMK_RV_HELLO_ID ||
-	    r.m.header.msgh_size != sizeof r.m || memcmp(r.m.magic, magic, 16) != 0 ||
+	    r.m.header.msgh_size != sizeof r.m.header + sizeof r.m.magic + n || memcmp(r.m.magic, magic, 16) != 0 ||
 	    MACH_MSGH_BITS_REMOTE(r.m.header.msgh_bits) != MACH_MSG_TYPE_PORT_SEND_ONCE) {
 		mach_msg_destroy(&r.m.header);
 		return KERN_INVALID_ARGUMENT;
 	}
+	if (n) memcpy(body, r.m.body, n);
 	*token = hmk_rv_trailer(&r.m.header)->msgh_audit;
 	*reply = r.m.header.msgh_remote_port;
 	return KERN_SUCCESS;
+}
+
+// hmk_rv_hello is hmk_rv_hear for a hello that's only its magic.
+static inline kern_return_t hmk_rv_hello(mach_port_t port, mach_msg_timeout_t ms, const char *magic,
+                                         audit_token_t *token, mach_port_t *reply) {
+	return hmk_rv_hear(port, ms, magic, NULL, 0, token, reply);
 }
 
 // hmk_rv_drop lets a hello's reply right go unanswered.
@@ -132,12 +146,14 @@ static inline kern_return_t hmk_rv_send(mach_port_t reply, const void *data, siz
 
 // ---------- the helper's end ----------
 
-// hmk_rv_fetch says hello (with magic) to the daemon's service and waits up
-// to ms for each step. KERN_SUCCESS with the answer in *data and *len
-// (vm_deallocate it) and its sender's audit token, as it was sent, in
-// *token: the caller checks who that is before believing a byte of it.
-static inline kern_return_t hmk_rv_fetch(const char *name, const char *magic, mach_msg_timeout_t ms, void **data,
-                                         size_t *len, audit_token_t *token) {
+// hmk_rv_ask says hello (with magic, and n bytes of body: see hmk_rv_hear)
+// to the daemon's service and waits up to ms for each step. KERN_SUCCESS
+// with the answer in *data and *len (vm_deallocate it) and its sender's
+// audit token, as it was sent, in *token: the caller checks who that is
+// before believing a byte of it.
+static inline kern_return_t hmk_rv_ask(const char *name, const char *magic, const void *body, size_t n,
+                                       mach_msg_timeout_t ms, void **data, size_t *len, audit_token_t *token) {
+	if (n > HMK_RV_MAX_BODY || n % 4) return KERN_INVALID_VALUE;
 	mach_port_t daemon = MACH_PORT_NULL, rx = MACH_PORT_NULL;
 	kern_return_t kr = bootstrap_look_up(bootstrap_port, name, &daemon);
 	if (kr != KERN_SUCCESS) return kr;
@@ -149,12 +165,13 @@ static inline kern_return_t hmk_rv_fetch(const char *name, const char *magic, ma
 	hmk_rv_hello_t h;
 	memset(&h, 0, sizeof h);
 	h.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, MACH_MSG_TYPE_MAKE_SEND_ONCE);
-	h.header.msgh_size = sizeof h;
+	h.header.msgh_size = (mach_msg_size_t)(sizeof h.header + sizeof h.magic + n);
 	h.header.msgh_remote_port = daemon;
 	h.header.msgh_local_port = rx;
 	h.header.msgh_id = HMK_RV_HELLO_ID;
 	memcpy(h.magic, magic, 16);
-	kr = mach_msg(&h.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof h, 0, MACH_PORT_NULL, ms, MACH_PORT_NULL);
+	if (n) memcpy(h.body, body, n);
+	kr = mach_msg(&h.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, h.header.msgh_size, 0, MACH_PORT_NULL, ms, MACH_PORT_NULL);
 	mach_port_deallocate(mach_task_self(), daemon);
 	if (kr == KERN_SUCCESS) {
 		struct {
@@ -178,4 +195,10 @@ static inline kern_return_t hmk_rv_fetch(const char *name, const char *magic, ma
 	}
 	mach_port_mod_refs(mach_task_self(), rx, MACH_PORT_RIGHT_RECEIVE, -1);
 	return kr;
+}
+
+// hmk_rv_fetch is hmk_rv_ask with a hello that's only its magic.
+static inline kern_return_t hmk_rv_fetch(const char *name, const char *magic, mach_msg_timeout_t ms, void **data,
+                                         size_t *len, audit_token_t *token) {
+	return hmk_rv_ask(name, magic, NULL, 0, ms, data, len, token);
 }

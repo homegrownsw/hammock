@@ -20,7 +20,9 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
 - **Agents.** Agents in panes are scoped (`internal/daemon/caller.go`): they read your Groups and control
   what they open, and ask you before touching anything else. Answering those requests, pairing, sharing,
   linking, remote access, SSH setup and saving schedules are done directly only in the Hammock app,
-  identified by its code signature. Asked from anywhere else (`hmk` in a shell or a terminal, the TUI, a
+  identified by its code signature, which it proves on each connection with a Mach message (checked by the
+  kernel's audit token for the message, bound to the connection's own process), not by the socket's peer,
+  which a process can fake by exec'ing a signed program in its place. Asked from anywhere else (`hmk` in a shell or a terminal, the TUI, a
   program outside Hammock), they ask you first: allow once in the app or on your paired phone; nothing
   answers its own request. Hammock doesn't take where a process runs (its parents, terminal or ssh
   session) as proof that it's you, since a program of yours chooses all of those. Until anything could ask

@@ -19,10 +19,15 @@ let package = Package(
     targets: [
         // Built by `just ghostty && just apple-deps` from the pinned Ghostty commit.
         .binaryTarget(name: "GhosttyVt", path: "Frameworks/ghostty-vt.xcframework"),
+        // The Mac app's proof to its daemon that a connection is its own
+        // (helpers/common/appproof.h, shared with the daemon): a C shim for
+        // DaemonConnection.
+        .target(name: "HammockAppProof"),
         .target(
             name: "HammockKit",
             dependencies: [
                 "GhosttyVt",
+                .target(name: "HammockAppProof", condition: .when(platforms: [.macOS])),
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
                 .product(name: "libzstd", package: "zstd"),
             ],

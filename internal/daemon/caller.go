@@ -67,11 +67,15 @@ func peerPID(c net.Conn) int {
 }
 
 // peerToken returns the audit token (macOS) of the process at the other
-// end of a local connection: what a check of who it is (person.go) holds
-// it to, so a program that connects and then execs another in its pid
-// (the app, say) isn't taken for that program. The main socket's listener
-// takes it as a client connects and again once it has spoken, and keeps
-// the client only if they're the one process (localPeerOf).
+// end of a local connection, as macOS works it out now: from the pid that
+// last used that end, as it is now (codesign.PeerToken). The main socket's
+// listener takes it as a client connects and again once it has spoken, and
+// keeps the client only if they're the one process (localPeerOf): that
+// catches a socket handed to another process between the two, but a
+// program that stops the daemon, connects, writes and execs another in its
+// pid before either is taken is taken for that program. So it proves
+// nothing on its own of who's the app (appproof.go has the app prove it
+// over Mach); the app's proof is bound to it.
 func peerToken(c net.Conn) codesign.Token {
 	for {
 		switch v := c.(type) {

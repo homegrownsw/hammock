@@ -18,7 +18,9 @@ import (
 // known to be you:
 //
 //   - the Hammock app (or its menu bar item), by its code signature (or,
-//     signed ad hoc, by being the program of the app this daemon is in);
+//     signed ad hoc, by being the program of the app this daemon is in),
+//     proven with a Mach message from the process at the other end of the
+//     connection (appproof.go), never by the socket's peer alone;
 //   - on Unraid, its plugin page, by a key only it reads (person_linux.go;
 //     nominal: everything there runs as root).
 //
@@ -188,7 +190,7 @@ func (c *conn) scope() {
 		if c.remote || c.caller.isAgent() {
 			return
 		}
-		if c.d.positivelyPerson(c.caller, c.pid, c.tok) {
+		if c.d.positivelyPerson(c.caller, c.pid, c.proven) {
 			c.personOK.Store(true)
 			return
 		}
@@ -231,32 +233,36 @@ func msgName(msg *pb.ClientMessage) string {
 }
 
 // personHook, when set (tests), stands in for positivelyPerson; plainHook
-// for plainCaller.
+// for plainCaller. selfIsPerson: whether hmkd's own process is you (tests
+// of the app's proof, whose stand-in app is the test's own process, turn it
+// off).
 var (
+	selfIsPerson = true
+
 	personHook func(cl *caller, pid int) bool
 	plainHook  func(cl *caller, pid int) bool
 )
 
 // positivelyPerson reports whether a local connection's process (cl as
-// identify placed it, pid, and on macOS its audit token as it connected)
-// is the Hammock app, or Unraid's plugin page. Checked of the program that
-// connected: by token where there is one (a program that execs another in
-// its pid since has a new pid version), and a pid whose process has since
-// exec'd or gone isn't you, whatever runs in it now.
-func (d *Daemon) positivelyPerson(cl *caller, pid int, tok codesign.Token) bool {
+// identify placed it, pid) is the Hammock app, or Unraid's plugin page.
+// The app, only by its proof (appproof.go: proven, a Mach message from the
+// app's own process, the one at the other end of the connection): never by
+// the socket's peer, which a program of yours can make look like the app by
+// exec'ing a suspended copy of it in its own pid.
+func (d *Daemon) positivelyPerson(cl *caller, pid int, proven bool) bool {
 	if personHook != nil {
 		return personHook(cl, pid)
 	}
-	if tok.Valid() && !tok.Live() || cl != nil || pid <= 0 {
+	if cl != nil || pid <= 0 {
 		return false // (the app is in no pane)
 	}
-	if pid == os.Getpid() {
-		return true // hmkd's own process (a test running it): nothing else has its pid
+	if pid == os.Getpid() && selfIsPerson {
+		// hmkd's own process (a test running it, in-process): a socket's
+		// peer is this pid only if this process used that end itself, and
+		// hmkd takes no descriptors from anything (no SCM_RIGHTS).
+		return true
 	}
-	if isHammockApp(pid, tok) || personPage(pid) {
-		return !tok.Valid() || tok.Live() // (still the process it checked)
-	}
-	return false
+	return proven || personPage(pid)
 }
 
 // plainCaller reports whether a local process that isn't the app is yours

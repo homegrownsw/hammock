@@ -148,10 +148,13 @@ func (s *sniffListener) loop() {
 			return
 		}
 		// Who connected, before anything is read, and again after: macOS
-		// gives a socket's peer as the last process to use it, so a
-		// program that connects and hands the socket to another (an exec,
-		// a child) to speak would otherwise be taken for that one. Both
-		// must be the one process (localPeer.same).
+		// gives a socket's peer as the last process to use it, as it is
+		// when asked, so a program that connects and hands the socket to
+		// another (a child) to speak would otherwise be taken for that one.
+		// Both must be the one process (localPeer.same). That doesn't stop
+		// one that execs another program in its pid before both are taken
+		// (it can stop the daemon meanwhile): nothing that matters rests on
+		// this alone (appproof.go).
 		at := localPeerOf(c)
 		go func() {
 			_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
