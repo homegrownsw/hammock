@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -94,34 +95,66 @@ func TestPaneProgramFailureHasNoStartError(t *testing.T) {
 	}
 }
 
-// The real pane-holder, asked to run a command that isn't there, listens
-// and then ends: the pane fails at once, quoting the holder's own reason.
-func TestPaneCommandNotFoundStartError(t *testing.T) {
+// A command on the person's PATH but not the daemon's (a login item's is
+// the system's, /usr/bin:/bin:…) runs (#43): the login shell finds it.
+func TestPaneCommandOnLoginPath(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "hammock-test-tool"), []byte("#!/bin/sh\nexit 9\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".profile"), []byte("PATH=\""+bin+":$PATH\"\nexport PATH\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/sh") // reads ~/.profile as a login shell
+	t.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	t.Cleanup(d.Shutdown)
 	c := dial(t, dir)
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	gid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "s"}}}))
-	start := time.Now()
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
-		GroupId: gid, Pane: &pb.PaneSpec{Command: []string{"hammock-no-such-command"}, Cwd: t.TempDir()},
+		GroupId: gid, Pane: &pb.PaneSpec{Command: []string{"hammock-test-tool", "an argument"}, Cwd: t.TempDir()},
 	}}})
-	var failed *pb.Pane
+	var exited *pb.Pane
 	waitEvent(t, c, func(m *pb.ServerMessage) bool {
 		for _, p := range m.GetState().GetPanes() {
 			if p.Exited {
-				failed = p
+				exited = p
 				return true
 			}
 		}
 		return false
 	})
-	if took := time.Since(start); took >= holderConnectTimeout {
-		t.Errorf("took %v to notice the holder had ended", took)
+	if exited.ExitStatus != 9 || exited.StartError != "" {
+		t.Errorf("exit status %d, start_error %q; want the tool's own 9", exited.ExitStatus, exited.StartError)
 	}
-	if !strings.Contains(failed.StartError, "hammock-no-such-command") {
-		t.Errorf("start_error %q doesn't name the missing command", failed.StartError)
+	if want := []string{"hammock-test-tool", "an argument"}; !slices.Equal(exited.Command, want) {
+		t.Errorf("command %q, want it as given %q", exited.Command, want)
+	}
+}
+
+func TestViaLoginShell(t *testing.T) {
+	for _, tc := range []struct {
+		cmd   []string
+		shell string
+		want  []string
+	}{
+		{[]string{"revdiff", "a b"}, "/bin/zsh", []string{"/bin/zsh", "-l", "-c", `exec "$@"`, "revdiff", "revdiff", "a b"}},
+		{[]string{"revdiff", "a b"}, "/opt/homebrew/bin/fish", []string{"/opt/homebrew/bin/fish", "-l", "-c", "exec $argv", "revdiff", "a b"}},
+		{[]string{"revdiff"}, "/bin/tcsh", []string{"revdiff"}},              // can't pass argv on
+		{[]string{"/bin/zsh", "-l"}, "/bin/zsh", []string{"/bin/zsh", "-l"}}, // a shell already
+		{[]string{"/bin/zsh", "-l", "-c", "claude"}, "/bin/zsh", []string{"/bin/zsh", "-l", "-c", "claude"}},
+		{nil, "/bin/zsh", nil},
+	} {
+		if got := viaLoginShell(tc.cmd, tc.shell); !slices.Equal(got, tc.want) {
+			t.Errorf("viaLoginShell(%q, %q) = %q, want %q", tc.cmd, tc.shell, got, tc.want)
+		}
 	}
 }
 

@@ -206,6 +206,7 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 	}
 	cols, rows, cwd := info.Cols, info.Rows, info.Cwd
 	p.mu.Unlock()
+	command = viaLoginShell(command, loginShell())
 
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		cwd, _ = os.UserHomeDir()
@@ -927,6 +928,37 @@ func runningSubagents(dir string) int {
 
 // shells are the programs whose children are "what's running" in a pane.
 var shells = map[string]bool{"zsh": true, "bash": true, "fish": true, "sh": true, "dash": true, "ksh": true, "tcsh": true, "csh": true, "nu": true, "elvish": true, "xonsh": true}
+
+// viaLoginShell runs a pane's command (hmk tab new -- CMD, create_pane)
+// through the person's login shell, as its agents, scheduled tasks and log
+// panes are: a daemon started at login (launchd) has only the system's PATH
+// (/usr/bin:/bin:…), so a command from Homebrew, mise or ~/.local/bin isn't
+// found otherwise, and the pane fails to start (#43). The shell execs it, so
+// it's still the pane's process, with its arguments untouched. A command
+// that's a shell already (a pane's own, or an agent's or log's wrapper) runs
+// as it is, and so does any command under a shell that can't pass argv on
+// (csh and the like).
+func viaLoginShell(cmd []string, shell string) []string {
+	if len(cmd) == 0 || shells[strings.TrimPrefix(filepath.Base(cmd[0]), "-")] {
+		return cmd
+	}
+	var script string
+	switch filepath.Base(shell) {
+	case "zsh", "bash", "sh", "dash", "ksh":
+		script = `exec "$@"`
+	case "fish":
+		script = `exec $argv`
+	default:
+		return cmd
+	}
+	// $0 (the name it reports errors as) is the command's own; fish has no
+	// $0, so it takes every argument as $argv.
+	out := []string{shell, "-l", "-c", script}
+	if filepath.Base(shell) != "fish" {
+		out = append(out, cmd[0])
+	}
+	return append(out, cmd...)
+}
 
 // refreshProcesses records what's running in a terminal besides its shell
 // (by name), so clients can warn before closing it: the shell's children,
