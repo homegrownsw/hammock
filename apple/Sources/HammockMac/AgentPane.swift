@@ -127,35 +127,43 @@ struct RemoteFilePreview: View {
     }
 }
 
-/// Opens a file an agent linked to in its default app, unless opening it
-/// would run something (an app, a script, an installer): those are shown in
-/// the Finder instead, for you to open yourself.
+/// Opens a file an agent (or a terminal) linked to in its default app, only
+/// when it's a plain document whose app won't run it (FileOpening); apps,
+/// scripts, installers, aliases and the like are shown in the Finder
+/// instead, for you to open yourself.
 enum FileLink {
     static func open(_ path: String) {
-        let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
-        if runsWhenOpened(url) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } else {
+        // A NUL or other control character: not a path to act on at all.
+        guard FileOpening.acceptable(path) else { NSSound.beep(); return }
+        let url = resolved(URL(fileURLWithPath: path))
+        if opensDirectly(url) {
             NSWorkspace.shared.open(url)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
         }
     }
 
-    /// Extensions that run or install something, or redirect to another URL.
-    private static let runnable: Set<String> = [
-        "app", "command", "tool", "terminal", "workflow", "action", "shortcut", "sh", "zsh", "bash", "csh", "ksh",
-        "pkg", "mpkg", "jar", "prefpane", "saver", "qlgenerator", "mdimporter", "plugin", "bundle", "appex",
-        "kext", "scptd", "webloc", "inetloc", "fileloc", "url",
-    ]
-
-    static func runsWhenOpened(_ url: URL) -> Bool {
-        if runnable.contains(url.pathExtension.lowercased()) { return true }
-        let v = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isApplicationKey, .isExecutableKey, .contentTypeKey])
-        if v?.isPackage == true || v?.isApplication == true { return true }
-        if let t = v?.contentType, t.conforms(to: .application) || t.conforms(to: .bundle) || t.conforms(to: .executable) || t.conforms(to: .package) {
-            return true
+    /// Symlinks and Finder aliases followed to what they point at (opening
+    /// an alias to an app launches the app).
+    static func resolved(_ url: URL) -> URL {
+        var url = url.resolvingSymlinksInPath()
+        for _ in 0..<8 {
+            guard (try? url.resourceValues(forKeys: [.isAliasFileKey]))?.isAliasFile == true,
+                  let next = try? URL(resolvingAliasFileAt: url, options: [.withoutUI, .withoutMounting]),
+                  next != url else { break }
+            url = next.resolvingSymlinksInPath()
         }
-        // Any file with an exec bit (a folder's only means it can be listed).
-        return v?.isDirectory != true && v?.isExecutable == true
+        return url
+    }
+
+    static func opensDirectly(_ url: URL) -> Bool {
+        let v = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .isApplicationKey, .isExecutableKey, .isAliasFileKey, .contentTypeKey])
+        guard let v, v.isApplication != true else { return false }
+        let app = NSWorkspace.shared.urlForApplication(toOpen: url).flatMap { Bundle(url: $0)?.bundleIdentifier }
+        let facts = FileOpening.Facts(type: v.contentType, isDirectory: v.isDirectory == true, isPackage: v.isPackage == true,
+                                      isExecutable: v.isDirectory != true && v.isExecutable == true,
+                                      isAlias: v.isAliasFile == true, defaultApp: app)
+        return FileOpening.opensDirectly(facts, pathExtension: url.pathExtension)
     }
 }
 
