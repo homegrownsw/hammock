@@ -93,3 +93,53 @@ func TestPaneProgramFailureHasNoStartError(t *testing.T) {
 		t.Errorf("exit status %d, start_error %q; want 7 and none", exited.ExitStatus, exited.StartError)
 	}
 }
+
+// The real pane-holder, asked to run a command that isn't there, listens
+// and then ends: the pane fails at once, quoting the holder's own reason.
+func TestPaneCommandNotFoundStartError(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	t.Cleanup(d.Shutdown)
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	gid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "s"}}}))
+	start := time.Now()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: gid, Pane: &pb.PaneSpec{Command: []string{"hammock-no-such-command"}, Cwd: t.TempDir()},
+	}}})
+	var failed *pb.Pane
+	waitEvent(t, c, func(m *pb.ServerMessage) bool {
+		for _, p := range m.GetState().GetPanes() {
+			if p.Exited {
+				failed = p
+				return true
+			}
+		}
+		return false
+	})
+	if took := time.Since(start); took >= holderConnectTimeout {
+		t.Errorf("took %v to notice the holder had ended", took)
+	}
+	if !strings.Contains(failed.StartError, "hammock-no-such-command") {
+		t.Errorf("start_error %q doesn't name the missing command", failed.StartError)
+	}
+}
+
+// A holder's log is appended to across restarts of its pane: only what this
+// holder wrote counts as its reason.
+func TestLastLogLineFromOffset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "holder.log")
+	old := "holder: got terminated\n"
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if l := lastLogLine(path, int64(len(old))); l != "" {
+		t.Errorf("quoted an earlier holder's line: %q", l)
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	_, _ = f.WriteString("holder: start: boom\n\n")
+	f.Close()
+	if l := lastLogLine(path, int64(len(old))); l != "holder: start: boom" {
+		t.Errorf("last line %q, want this holder's", l)
+	}
+}

@@ -194,6 +194,7 @@ type startedHolder struct {
 	exited chan struct{}
 	state  *os.ProcessState
 	log    string // its log file (its stderr), to say why
+	logAt  int64  // where this holder's lines start in it (it's appended to)
 }
 
 // startHolder starts the pane-holder process and hands it its secret.
@@ -228,8 +229,12 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 	args = append(args, command...)
 	logPath := filepath.Join(p.d.cfg.Dir, "logs", "holder-"+p.id+".log")
 	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	var logAt int64
 	if err == nil {
 		defer logf.Close()
+		if st, err := logf.Stat(); err == nil {
+			logAt = st.Size() // earlier holders' lines (the pane's before a restart) aren't this one's
+		}
 	} else {
 		logf = nil
 	}
@@ -238,7 +243,7 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 		tw.Close()
 		return nil, fmt.Errorf("start holder: %w", err)
 	}
-	h := &startedHolder{proc: proc, token: token, exited: make(chan struct{}), log: logPath}
+	h := &startedHolder{proc: proc, token: token, exited: make(chan struct{}), log: logPath, logAt: logAt}
 	go func() { // reap if the holder exits while we're its parent
 		h.state, _ = proc.Wait()
 		close(h.exited)
@@ -285,15 +290,15 @@ func (p *pane) connectHolder(h *startedHolder) error {
 		}
 		select {
 		case <-h.exited:
-			// Ended without listening (it can't have started its program):
-			// say how, and what it logged, rather than that its socket
-			// isn't there.
-			_ = os.Remove(p.socket)
-			why := "the pane-holder ended before it started the terminal"
-			if h.state != nil {
-				why += " (" + h.state.String() + ")"
+			if h.state == nil {
+				break // couldn't wait for it: don't take that for its end
 			}
-			if l := lastLogLine(h.log); l != "" {
+			// Ended before we reached it (it listens, then exits if its
+			// program can't start: a command that isn't found): say how,
+			// and what it logged, rather than that its socket isn't there.
+			_ = os.Remove(p.socket)
+			why := "the pane-holder ended before the terminal started (" + h.state.String() + ")"
+			if l := lastLogLine(h.log, h.logAt); l != "" {
 				why += ": " + l
 			}
 			return errors.New(why)
@@ -308,18 +313,20 @@ func (p *pane) connectHolder(h *startedHolder) error {
 	}
 }
 
-// lastLogLine is the last line of a holder's log (its stderr), shortened,
-// or "" if it has none.
-func lastLogLine(path string) string {
+// lastLogLine is the last line a holder wrote to its log (its stderr) at or
+// after offset from, shortened, or "" if it wrote none.
+func lastLogLine(path string, from int64) string {
 	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
 	defer f.Close()
 	buf := make([]byte, 4096)
-	if st, err := f.Stat(); err == nil && st.Size() > int64(len(buf)) {
-		_, _ = f.Seek(st.Size()-int64(len(buf)), 0)
+	st, err := f.Stat()
+	if err != nil || st.Size() <= from {
+		return ""
 	}
+	_, _ = f.Seek(max(from, st.Size()-int64(len(buf))), 0)
 	n, _ := f.Read(buf)
 	lines := strings.Split(strings.TrimSpace(string(buf[:n])), "\n")
 	l := strings.TrimSpace(lines[len(lines)-1])
