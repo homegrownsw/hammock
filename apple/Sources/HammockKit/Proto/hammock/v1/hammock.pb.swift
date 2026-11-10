@@ -3060,6 +3060,17 @@ public nonisolated struct Hammock_V1_GrantRequest: Sendable {
   /// Show this as the request; older daemons leave it empty.
   public var headline: String = String()
 
+  /// Something only you may do, asked from outside the Hammock app (hmk in
+  /// a pane's shell or a terminal, the TUI): headline "hmk wants to …".
+  /// Allow once or deny: never "always" (ALLOW_GROUP counts as once).
+  public var person: Bool = false
+
+  /// Where a person request came from, in Hammock's words: a pane ("Web ▸
+  /// api"), a program and its terminal ("zsh on ttys004"), "ssh from
+  /// 10.0.0.2, it says", or "a program outside Hammock". Show it beneath
+  /// the headline.
+  public var origin: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3650,6 +3661,15 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .fileList(newValue)}
   }
 
+  /// a request now waits for your answer (not its reply)
+  public var approvalPending: Hammock_V1_ApprovalPending {
+    get {
+      if case .approvalPending(let v)? = msg {return v}
+      return Hammock_V1_ApprovalPending()
+    }
+    set {msg = .approvalPending(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -3731,8 +3751,32 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case editorPushReply(Hammock_V1_EditorPushReply)
     /// reply to ListFiles
     case fileList(Hammock_V1_FileList)
+    /// a request now waits for your answer (not its reply)
+    case approvalPending(Hammock_V1_ApprovalPending)
 
   }
+
+  public init() {}
+}
+
+/// To a client whose request (request_id, its ClientMessage id) is only for
+/// you and came from outside the Hammock app: it waits for you to allow it
+/// in the app or on your phone (grant_id, a GrantRequest with person set),
+/// for up to timeout_ms. The reply follows: the request's own, or an error.
+public nonisolated struct Hammock_V1_ApprovalPending: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var requestID: UInt64 = 0
+
+  public var grantID: String = String()
+
+  public var headline: String = String()
+
+  public var timeoutMs: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 }
@@ -13510,7 +13554,7 @@ nonisolated extension Hammock_V1_SetColors: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GrantRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}requester_pane_id\0\u{3}target_pane_id\0\u{1}action\0\u{1}description\0\u{3}created_unix_ms\0\u{1}headline\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}requester_pane_id\0\u{3}target_pane_id\0\u{1}action\0\u{1}description\0\u{3}created_unix_ms\0\u{1}headline\0\u{1}person\0\u{1}origin\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -13525,6 +13569,8 @@ nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProto
       case 5: try { try decoder.decodeSingularStringField(value: &self.description_p) }()
       case 6: try { try decoder.decodeSingularInt64Field(value: &self.createdUnixMs) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.headline) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self.person) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.origin) }()
       default: break
       }
     }
@@ -13552,6 +13598,12 @@ nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProto
     if !self.headline.isEmpty {
       try visitor.visitSingularStringField(value: self.headline, fieldNumber: 7)
     }
+    if self.person != false {
+      try visitor.visitSingularBoolField(value: self.person, fieldNumber: 8)
+    }
+    if !self.origin.isEmpty {
+      try visitor.visitSingularStringField(value: self.origin, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -13563,6 +13615,8 @@ nonisolated extension Hammock_V1_GrantRequest: SwiftProtobuf.Message, SwiftProto
     if lhs.description_p != rhs.description_p {return false}
     if lhs.createdUnixMs != rhs.createdUnixMs {return false}
     if lhs.headline != rhs.headline {return false}
+    if lhs.person != rhs.person {return false}
+    if lhs.origin != rhs.origin {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -13768,7 +13822,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14453,6 +14507,19 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .fileList(v)
         }
       }()
+      case 62: try {
+        var v: Hammock_V1_ApprovalPending?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .approvalPending(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .approvalPending(v)
+        }
+      }()
       default: break
       }
     }
@@ -14675,6 +14742,10 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
       guard case .fileList(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 61)
     }()
+    case .approvalPending?: try {
+      guard case .approvalPending(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 62)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -14683,6 +14754,51 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
   public static func ==(lhs: Hammock_V1_ServerMessage, rhs: Hammock_V1_ServerMessage) -> Bool {
     if lhs.replyTo != rhs.replyTo {return false}
     if lhs.msg != rhs.msg {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ApprovalPending: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ApprovalPending"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}request_id\0\u{3}grant_id\0\u{1}headline\0\u{3}timeout_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.requestID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.grantID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.headline) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.timeoutMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.requestID != 0 {
+      try visitor.visitSingularUInt64Field(value: self.requestID, fieldNumber: 1)
+    }
+    if !self.grantID.isEmpty {
+      try visitor.visitSingularStringField(value: self.grantID, fieldNumber: 2)
+    }
+    if !self.headline.isEmpty {
+      try visitor.visitSingularStringField(value: self.headline, fieldNumber: 3)
+    }
+    if self.timeoutMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.timeoutMs, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ApprovalPending, rhs: Hammock_V1_ApprovalPending) -> Bool {
+    if lhs.requestID != rhs.requestID {return false}
+    if lhs.grantID != rhs.grantID {return false}
+    if lhs.headline != rhs.headline {return false}
+    if lhs.timeoutMs != rhs.timeoutMs {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

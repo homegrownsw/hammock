@@ -16,5 +16,6 @@ func runTUI() error {
 		return err
 	}
 	defer c.Close()
+	c.OnApproval = nil // the TUI's screen is its own (it shows the request in Needs You)
 	return tui.Run(c, os.Stdin, os.Stdout)
 }

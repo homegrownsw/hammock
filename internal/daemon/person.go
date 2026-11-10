@@ -36,7 +36,10 @@ import (
 // not placed at all) is scoped as an agent (scope), and told to do these
 // in the app or a pane's own shell.
 
-var errPersonOnly = errors.New("only you can do that: do it in the Hammock app, or run it in a Hammock pane's own shell or in a terminal of your own (not from a background job, launchd, or a terminal multiplexer)")
+var (
+	errPersonOnly  = errors.New("only you can do that: do it in the Hammock app (or ask from a terminal and allow it there or on your phone)")
+	errAnswerInApp = errors.New("only you can answer that, in the Hammock app or on your paired phone")
+)
 
 // personOnly reports whether msg is only for a person, from this computer.
 func personOnly(msg *pb.ClientMessage) bool {
@@ -83,16 +86,41 @@ func agentReachable(msg *pb.ClientMessage) bool {
 	return false
 }
 
-// personCheck refuses a person-only message from a local process that
-// isn't positively you. Agents' messages were checked by agentCheck (and
-// anything not positively you is scoped as an agent: scope).
+// personCheck asks you about a person-only message from a local process
+// that isn't positively you (approval.go): it waits for your answer
+// (errDeferred) and is handled once you allow it. Answering a request,
+// and the like (personStrict), is never asked about: refused. Agents'
+// messages were checked by agentCheck: an agent is refused these outright;
+// a caller scoped as one (not positively you) asks, as anyone does.
 func (c *conn) personCheck(msg *pb.ClientMessage) error {
 	c.scope()
-	if c.remote || c.caller.isAgent() || !personOnly(msg) || c.personOK {
+	cl := c.caller
+	if c.remote || c.personOK.Load() || cl.isAgent() && (!cl.scoped || agentReachable(msg)) {
 		return nil
 	}
-	c.d.log.Info("refused a person-only request from a process it can't tell is you", "pid", c.pid, "msg", msgName(msg))
-	return errPersonOnly
+	if personStrict(msg) {
+		c.d.log.Info("refused a person-only answer from a process that isn't the app", "pid", c.pid, "msg", msgName(msg))
+		return errAnswerInApp
+	}
+	if !personOnly(msg) {
+		return nil
+	}
+	return c.askPerson(msg)
+}
+
+// personStrict reports whether msg is an answer only you give, in the app
+// or on a paired phone: answering a request (an agent's, or one of these),
+// a Hammock Key request, the app's word that it wrote the config file,
+// clearing a security warning. Asking you about one would let whatever
+// asks answer for you.
+func personStrict(msg *pb.ClientMessage) bool {
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_RespondGrant, *pb.ClientMessage_RespondHammockKey, *pb.ClientMessage_ConfigWritten:
+		return true
+	case *pb.ClientMessage_ClearAttention:
+		return strings.HasPrefix(m.ClearAttention.Id, configAttentionPrefix)
+	}
+	return false
 }
 
 // scope works out, before a local connection's first message is handled,
@@ -108,7 +136,7 @@ func (c *conn) scope() {
 			return
 		}
 		if c.d.positivelyPerson(c.caller, c.pid, c.tok) {
-			c.personOK = true
+			c.personOK.Store(true)
 			return
 		}
 		cl := c.d.scopedCaller(c.caller, c.pid)

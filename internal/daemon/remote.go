@@ -616,7 +616,7 @@ func (d *Daemon) mayShowPairingSecret(c *conn) error {
 	if cl == nil || cl.pane == "" {
 		return nil
 	}
-	if cl.agent {
+	if cl.agent && !cl.scoped { // (one scoped as an agent asked you first: personCheck)
 		return errors.New("agents can't make pairing codes")
 	}
 	if g := d.groups[d.groupOfPane(cl.pane)]; g != nil && slices.ContainsFunc(g.Members, func(m *pb.Member) bool { return guestRole(m.Role) }) {

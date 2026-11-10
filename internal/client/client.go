@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
@@ -31,6 +32,12 @@ type Client struct {
 	mu      sync.Mutex
 	nextID  uint64
 	pending map[uint64]chan *pb.ServerMessage
+	// approvals: calls whose request waits for the person (ApprovalPending).
+	approvals map[uint64]chan *pb.ApprovalPending
+	// OnApproval, when set, is told that a call's request waits for you to
+	// allow it in the Hammock app or on your phone (hmk says so on stderr).
+	// The call then waits for that answer, past its context's deadline.
+	OnApproval func(*pb.ApprovalPending)
 	// Welcome is the daemon's reply to Hello: its version, name, user.
 	Welcome *pb.HelloReply
 	// Events receives unsolicited messages: state updates, pane snapshots and output.
@@ -124,7 +131,8 @@ func dialURL(ctx context.Context, url string, hc *http.Client, kind, name string
 	cctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
 		ws: ws, zr: zr, ctx: cctx, cancel: cancel,
-		pending: map[uint64]chan *pb.ServerMessage{},
+		pending:   map[uint64]chan *pb.ServerMessage{},
+		approvals: map[uint64]chan *pb.ApprovalPending{},
 		Events:  make(chan *pb.ServerMessage, 4096),
 		done:    make(chan struct{}),
 	}
@@ -166,6 +174,18 @@ func (c *Client) readLoop() {
 		if proto.Unmarshal(b, msg) != nil {
 			continue
 		}
+		if ap := msg.GetApprovalPending(); ap != nil {
+			c.mu.Lock()
+			ch := c.approvals[ap.RequestId]
+			c.mu.Unlock()
+			if ch != nil {
+				select {
+				case ch <- ap:
+				default:
+				}
+			}
+			continue
+		}
 		if msg.ReplyTo != 0 {
 			c.mu.Lock()
 			ch := c.pending[msg.ReplyTo]
@@ -188,8 +208,13 @@ func (c *Client) readLoop() {
 func (c *Client) Done() <-chan struct{} { return c.done }
 
 // Call sends msg and waits for its reply. An Error reply is returned as err.
+// A request only you may make, from outside the Hammock app, waits for you
+// to allow it (ApprovalPending): then the call waits for your answer as
+// long as the daemon does, whatever ctx's deadline (cancelling ctx still
+// ends it).
 func (c *Client) Call(ctx context.Context, msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	ch := make(chan *pb.ServerMessage, 1)
+	ach := make(chan *pb.ApprovalPending, 1)
 	c.mu.Lock()
 	if c.err != nil {
 		c.mu.Unlock()
@@ -197,22 +222,52 @@ func (c *Client) Call(ctx context.Context, msg *pb.ClientMessage) (*pb.ServerMes
 	}
 	c.nextID++
 	msg.Id = c.nextID
-	c.pending[msg.Id] = ch
+	id := msg.Id
+	c.pending[id] = ch
+	c.approvals[id] = ach
 	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(c.approvals, id)
+		c.mu.Unlock()
+	}()
 	if err := c.write(ctx, msg); err != nil {
 		return nil, err
 	}
-	select {
-	case reply, ok := <-ch:
-		if !ok {
-			return nil, errors.New("connection closed")
+	done := ctx.Done()
+	var asked <-chan time.Time
+	for {
+		select {
+		case reply, ok := <-ch:
+			if !ok {
+				return nil, errors.New("connection closed")
+			}
+			if e := reply.GetError(); e != nil {
+				return nil, errors.New(e.Message)
+			}
+			return reply, nil
+		case ap := <-ach:
+			if c.OnApproval != nil {
+				c.OnApproval(ap)
+			}
+			t := time.NewTimer(time.Duration(ap.TimeoutMs)*time.Millisecond + 15*time.Second)
+			defer t.Stop()
+			asked = t.C
+		case <-done:
+			if asked != nil && ctx.Err() == context.DeadlineExceeded {
+				done = nil // you're being asked: your answer is what's waited for
+				continue
+			}
+			c.mu.Lock()
+			delete(c.pending, id)
+			c.mu.Unlock()
+			return nil, ctx.Err()
+		case <-asked:
+			c.mu.Lock()
+			delete(c.pending, id)
+			c.mu.Unlock()
+			return nil, errors.New("no answer from you in time")
 		}
-		if e := reply.GetError(); e != nil {
-			return nil, errors.New(e.Message)
-		}
-		return reply, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
 }
 

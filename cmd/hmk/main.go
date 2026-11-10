@@ -253,7 +253,15 @@ func connect(ctx context.Context) (*client.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach hmkd at %s: %w", socketPath(), err)
 	}
+	c.OnApproval = waitingForYou
 	return c, nil
+}
+
+// waitingForYou says, on stderr, that what was asked waits for you: what
+// only you may do, asked from outside the Hammock app, is yours to allow
+// there or on your phone.
+func waitingForYou(ap *pb.ApprovalPending) {
+	fmt.Fprintf(os.Stderr, "Waiting for you to allow this in Hammock or on your phone (%s)…\n", termSafe(ap.Headline))
 }
 
 // world is a resolved view of the daemon's state.
@@ -1232,6 +1240,9 @@ func printWorld(w *world) {
 			printfSafe("  %s  %s\n", g.Id, grantText(g))
 			if g.Description != "" && g.Headline != "" {
 				printfSafe("      the agent says: %q\n", g.Description)
+			}
+			if g.Person {
+				printfSafe("      %s: allow or deny it in the Hammock app or on your phone\n", g.Origin)
 			}
 		}
 	}

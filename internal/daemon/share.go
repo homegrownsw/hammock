@@ -755,7 +755,9 @@ func (d *Daemon) filterFor(c *conn, u *pb.StateUpdate) *pb.StateUpdate {
 	// from wherever you are), never guests.
 	if d.isLinked(c.peer) {
 		for _, g := range u.Grants {
-			if d.grants[g.Id] != nil && show(g.Id, true) { // this computer's own (not a third's, nor theirs back)
+			// (Not what only you may do here, asked from outside the app:
+			// answered here or on a phone paired with this computer.)
+			if d.grants[g.Id] != nil && !g.Person && show(g.Id, true) { // this computer's own (not a third's, nor theirs back)
 				out.Grants = append(out.Grants, g)
 			}
 		}

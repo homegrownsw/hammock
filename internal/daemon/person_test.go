@@ -4,9 +4,11 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexjsp/hammock/internal/client"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -19,14 +21,33 @@ func asPerson(t *testing.T, is func(cl *caller, pid int) bool) {
 	t.Cleanup(func() { personHook = testPerson })
 }
 
+// personGrant waits for a request asking you, and returns it.
+func personGrant(t *testing.T, d *Daemon, not map[string]bool) *pb.GrantRequest {
+	t.Helper()
+	var req *pb.GrantRequest
+	waitFor(t, "a request asking you", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		for id, g := range d.grants {
+			if g.person && !not[id] {
+				req = proto.CloneOf(g.req)
+			}
+		}
+		return req != nil
+	})
+	return req
+}
+
 // A process the daemon can't positively tell is you (detached from its
-// pane, found only by the terminal it kept or under a multiplexer) can't
-// do what only you may, and is scoped as an agent for the rest.
-func TestPersonOnlyRefusedToUnplacedCallers(t *testing.T) {
+// pane, found only by the terminal it kept or under a multiplexer) is
+// scoped as an agent, and what only you may do asks you: it waits, and
+// goes ahead once you allow it in the app (or on a phone). It never
+// answers a request itself, its own least of all.
+func TestPersonOnlyAsksForUnplacedCallers(t *testing.T) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	defer d.Shutdown()
-	ui := dial(t, dir)
+	ui := dial(t, dir) // the app (testPerson, before asPerson below)
 	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	g := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
 	tab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
@@ -56,22 +77,20 @@ func TestPersonOnlyRefusedToUnplacedCallers(t *testing.T) {
 		}
 		return grant != ""
 	})
+	// The agent itself: refused outright, not asked about.
+	if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}); err == nil || err.Error() != errAgentOnly.Error() {
+		t.Fatalf("an agent printing a pairing code: %v, want refused", err)
+	}
 
-	personOnly := []*pb.ClientMessage{
-		{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: grant, Decision: pb.RespondGrant_DECISION_ALLOW_ONCE}}},
-		{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}},
-		{Msg: &pb.ClientMessage_SetRemoteAccess{SetRemoteAccess: &pb.SetRemoteAccess{Enabled: true}}},
-		{Msg: &pb.ClientMessage_CreateInvite{CreateInvite: &pb.CreateInvite{GroupId: g}}},
-		{Msg: &pb.ClientMessage_CreateLinkInvite{CreateLinkInvite: &pb.CreateLinkInvite{}}},
-		{Msg: &pb.ClientMessage_SshSetup{SshSetup: &pb.SshSetup{}}},
+	answer := func(id string, dec pb.RespondGrant_Decision) *pb.ClientMessage {
+		return &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: id, Decision: dec}}}
 	}
 	detached := dialAs(t, dir, nil, "mac")               // reparented to launchd: no pane
 	viaTTY := dialAs(t, dir, &caller{pane: pane}, "cli") // found by its terminal, or a multiplexer
 	for _, c := range []*client.Client{detached, viaTTY} {
-		for _, m := range personOnly {
-			if _, err := try(c, m); err == nil || !errors.Is(err, errPersonOnly) && err.Error() != errPersonOnly.Error() {
-				t.Errorf("%s: %v, want refused as person-only", msgName(m), err)
-			}
+		// Answering is never asked about: refused.
+		if _, err := try(c, answer(grant, pb.RespondGrant_DECISION_ALLOW_ONCE)); err == nil || err.Error() != errAnswerInApp.Error() {
+			t.Errorf("answering the agent: %v, want refused", err)
 		}
 		// Scoped as an agent: your pane isn't its to type into.
 		if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pane, Data: []byte("x")}}}); err == nil || err.Error() != errAgentScope.Error() {
@@ -81,8 +100,8 @@ func TestPersonOnlyRefusedToUnplacedCallers(t *testing.T) {
 		if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadPane{ReadPane: &pb.ReadPane{PaneId: pane}}}); err != nil {
 			t.Errorf("reading your pane: %v", err)
 		}
-		if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ServerStatus{ServerStatus: &pb.ServerStatus{}}}); err != nil && err.Error() == errPersonOnly.Error() {
-			t.Errorf("server status refused: %v", err)
+		if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ServerStatus{ServerStatus: &pb.ServerStatus{}}}); err != nil {
+			t.Errorf("server status: %v", err)
 		}
 	}
 	d.mu.Lock()
@@ -92,13 +111,66 @@ func TestPersonOnlyRefusedToUnplacedCallers(t *testing.T) {
 		t.Fatal("an unplaced caller answered the agent's request")
 	}
 
-	// Found by its own ancestors in its pane, it's you.
-	direct := dialAs(t, dir, &caller{pane: pane, direct: true}, "cli")
-	if _, err := try(direct, personOnly[0]); err != nil {
-		t.Fatalf("you, in your pane's shell: %v", err)
+	// A pairing code, from the terminal-found caller: it asks you.
+	type result struct {
+		r   *pb.ServerMessage
+		err error
 	}
-	if _, err := try(direct, personOnly[1]); err != nil {
-		t.Fatalf("you, printing a pairing code: %v", err)
+	ask := func(c *client.Client, m *pb.ClientMessage) chan result {
+		ch := make(chan result, 1)
+		go func() { r, err := try(c, m); ch <- result{r, err} }()
+		return ch
+	}
+	var told *pb.ApprovalPending
+	viaTTY.OnApproval = func(ap *pb.ApprovalPending) { told = ap }
+	got := ask(viaTTY, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}})
+	req := personGrant(t, d, map[string]bool{grant: true})
+	if !strings.HasPrefix(req.Headline, "hmk wants to show a pairing code") || !strings.Contains(req.Origin, "not its own shell") || req.Action != "person" {
+		t.Errorf("asked %q, from %q (%s)", req.Headline, req.Origin, req.Action)
+	}
+	// Neither it nor any other program that isn't the app answers it.
+	for _, c := range []*client.Client{viaTTY, detached} {
+		if _, err := try(c, answer(req.Id, pb.RespondGrant_DECISION_ALLOW_ONCE)); err == nil {
+			t.Fatal("a program that isn't the app answered a request asking you")
+		}
+	}
+	select {
+	case r := <-got:
+		t.Fatalf("answered before you did: %v %v", r.r, r.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// You allow it in the app: it's done, and its reply is the pairing.
+	call(t, ui, answer(req.Id, pb.RespondGrant_DECISION_ALLOW_ONCE))
+	r := <-got
+	if r.err != nil || r.r.GetPairing() == nil {
+		t.Fatalf("after you allowed it: %v %v", r.r, r.err)
+	}
+	if told == nil || told.GrantId != req.Id {
+		t.Errorf("not told it waits for you: %v", told)
+	}
+
+	// Denied: it fails, and isn't done.
+	got = ask(detached, &pb.ClientMessage{Msg: &pb.ClientMessage_SetRemoteAccess{SetRemoteAccess: &pb.SetRemoteAccess{Enabled: true}}})
+	req2 := personGrant(t, d, map[string]bool{grant: true, req.Id: true})
+	if !strings.HasPrefix(req2.Headline, "hmk wants to turn on remote access") {
+		t.Errorf("asked %q", req2.Headline)
+	}
+	call(t, ui, answer(req2.Id, pb.RespondGrant_DECISION_DENY))
+	if r := <-got; r.err == nil || r.err.Error() != errDenied.Error() {
+		t.Fatalf("denied: %v", r.err)
+	}
+	d.mu.Lock()
+	on := d.remote.on
+	d.mu.Unlock()
+	if on {
+		t.Fatal("remote access turned on though you said no")
+	}
+
+	// Unanswered: it times out, denied.
+	grantTimeout = 300 * time.Millisecond
+	defer func() { grantTimeout = 2 * time.Minute }()
+	if _, err := try(viaTTY, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateInvite{CreateInvite: &pb.CreateInvite{GroupId: g}}}); err == nil || err.Error() != errDenied.Error() {
+		t.Fatalf("unanswered: %v", err)
 	}
 }
 

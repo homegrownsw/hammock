@@ -66,10 +66,11 @@ type conn struct {
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
 	pid      int                  // a local client's process id (0 unknown)
 	tok      codesign.Token       // and its audit token as it connected (macOS)
-	// Whether a local client is positively you, worked out the first time
-	// it asks for something only you may do (person.go). Read loop only.
+	// Whether a local client is positively you (the Hammock app), worked
+	// out before its first message is handled (person.go): read elsewhere
+	// (who may answer a request), so atomic.
 	personOnce sync.Once
-	personOK   bool
+	personOK   atomic.Bool
 
 	attached map[string]*pane // only touched by the read loop
 
@@ -240,27 +241,7 @@ func (c *conn) readLoop() {
 		if err == errDeferred {
 			continue
 		}
-		if c.audited(msg) {
-			c.d.mu.Lock()
-			switch {
-			case pre != nil:
-				c.d.persist(c.d.store.Audit(*pre))
-			case c.throttleAudit(msg):
-				c.d.audit(c.auditActor(), auditAction(msg), auditTarget(msg), "")
-			}
-			c.d.mu.Unlock()
-		}
-		if msg.Id != 0 {
-			if err != nil {
-				c.replyErr(msg.Id, err)
-			} else {
-				if reply == nil {
-					reply = &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}
-				}
-				reply.ReplyTo = msg.Id
-				c.send(reply)
-			}
-		}
+		c.finish(msg, pre, reply, err)
 		if c.hangUp.CompareAndSwap(true, false) {
 			// The write loop closes it there, once the answer is written.
 			// Nothing more is read or handled meanwhile: what came in the
@@ -268,6 +249,32 @@ func (c *conn) readLoop() {
 			c.send(nil)
 			<-c.ctx.Done()
 			return
+		}
+	}
+}
+
+// finish audits a handled message (pre: a close, described before it)
+// and sends its reply.
+func (c *conn) finish(msg *pb.ClientMessage, pre *state.AuditEvent, reply *pb.ServerMessage, err error) {
+	if c.audited(msg) {
+		c.d.mu.Lock()
+		switch {
+		case pre != nil:
+			c.d.persist(c.d.store.Audit(*pre))
+		case c.throttleAudit(msg):
+			c.d.audit(c.auditActor(), auditAction(msg), auditTarget(msg), "")
+		}
+		c.d.mu.Unlock()
+	}
+	if msg.Id != 0 {
+		if err != nil {
+			c.replyErr(msg.Id, err)
+		} else {
+			if reply == nil {
+				reply = &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}
+			}
+			reply.ReplyTo = msg.Id
+			c.send(reply)
 		}
 	}
 }
@@ -324,7 +331,6 @@ func (c *conn) paneResized(p *pane) {
 }
 
 func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
-	d := c.d
 	if c.remote {
 		if reply, err, done := c.handleRemoteAuth(msg); done {
 			return reply, err
@@ -341,13 +347,24 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if err != nil || ignore {
 			return nil, err
 		}
-	} else if err := c.agentCheck(msg); err != nil {
+		return c.dispatch(msg)
+	}
+	if err := c.agentCheck(msg); err != nil {
 		// An agent's scope is checked first, so it can't reach a shared
 		// Group's panes with your role in it.
 		return nil, err
-	} else if err := c.personCheck(msg); err != nil {
-		return nil, err
-	} else if l, err := c.d.routeFor(c, msg); l != nil || err != nil {
+	}
+	if err := c.personCheck(msg); err != nil {
+		return nil, err // (errDeferred: it waits for you to allow it, person.go)
+	}
+	return c.route(msg)
+}
+
+// route handles a local client's message once it's checked: on its host
+// if it's for a Group shared with you, else here.
+func (c *conn) route(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
+	d := c.d
+	if l, err := c.d.routeFor(c, msg); l != nil || err != nil {
 		// Something in a Group shared with you: it's handled on its host.
 		if err != nil {
 			return nil, err
@@ -402,6 +419,12 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}
 		return l.forward(c, msg)
 	}
+	return c.dispatch(msg)
+}
+
+// dispatch handles a checked message here.
+func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
+	d := c.d
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello:
 		d.mu.Lock()
@@ -933,8 +956,15 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_RespondGrant:
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		if _, ok := d.grants[m.RespondGrant.Id]; !ok {
+		g, ok := d.grants[m.RespondGrant.Id]
+		if !ok {
 			return nil, errors.New("no such grant request")
+		}
+		if g.person && (g.c == c || !(c.remote && c.deviceID != "") && !(!c.remote && c.peer == "" && c.personOK.Load())) {
+			// What only you may do, asked from outside the app: yours to
+			// answer in the app or on a paired phone, never the asker's
+			// (nor another computer's).
+			return nil, errAnswerInApp
 		}
 		d.resolveGrant(m.RespondGrant.Id, m.RespondGrant.Decision, "")
 		return nil, nil

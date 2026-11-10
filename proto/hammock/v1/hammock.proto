@@ -676,6 +676,15 @@ message GrantRequest {
   // "Claude in Web ▸ api wants to type into Web ▸ api ▸ pane 2 (npm run dev)".
   // Show this as the request; older daemons leave it empty.
   string headline = 7;
+  // Something only you may do, asked from outside the Hammock app (hmk in
+  // a pane's shell or a terminal, the TUI): headline "hmk wants to …".
+  // Allow once or deny: never "always" (ALLOW_GROUP counts as once).
+  bool person = 8;
+  // Where a person request came from, in Hammock's words: a pane ("Web ▸
+  // api"), a program and its terminal ("zsh on ttys004"), "ssh from
+  // 10.0.0.2, it says", or "a program outside Hammock". Show it beneath
+  // the headline.
+  string origin = 9;
 }
 
 // Sent by the MCP server; the reply (GrantDecision) arrives once a user
@@ -764,7 +773,19 @@ message ServerMessage {
     EditorUpdate editor_update = 59;                // to an editor pane's attached clients; reply to ReadEditor
     EditorPushReply editor_push_reply = 60;         // reply to EditorPush
     FileList file_list = 61;                        // reply to ListFiles
+    ApprovalPending approval_pending = 62;          // a request now waits for your answer (not its reply)
   }
+}
+
+// To a client whose request (request_id, its ClientMessage id) is only for
+// you and came from outside the Hammock app: it waits for you to allow it
+// in the app or on your phone (grant_id, a GrantRequest with person set),
+// for up to timeout_ms. The reply follows: the request's own, or an error.
+message ApprovalPending {
+  uint64 request_id = 1;
+  string grant_id = 2;
+  string headline = 3;
+  int64 timeout_ms = 4;
 }
 
 // Remote clients get host_name and user_id only once authenticated (send

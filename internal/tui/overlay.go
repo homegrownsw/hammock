@@ -451,7 +451,7 @@ func (a *App) grantMenu(id string, x, y int) {
 			g := g
 			// What's asked, in Hammock's words, then the agent's own.
 			var about []menuItem
-			if g.Action == "schedule" {
+			if g.Action == "schedule" || g.Person {
 				// A schedule: all of what you'd allow, wrapped.
 				for _, line := range wrapWords(grantText(g), 60, 1<<20) { // all of it: the menu scrolls
 					about = append(about, menuItem{label: line, disabled: true})
@@ -461,6 +461,14 @@ func (a *App) grantMenu(id string, x, y int) {
 			}
 			if g.Headline != "" && g.Description != "" {
 				about = append(about, menuItem{label: truncate("The agent says: “"+g.Description+"”", 60), disabled: true})
+			}
+			if g.Person {
+				// What only you may do: answered in the app or on your
+				// phone, never from a terminal (the daemon refuses it).
+				about = append(about, menuItem{label: truncate(g.Origin, 60), disabled: true}, menuItem{sep: true},
+					menuItem{label: "Allow or deny it in the Hammock app or on your phone", disabled: true})
+				a.openMenu(x, y, about)
+				return
 			}
 			a.openMenu(x, y, append(append(about, menuItem{sep: true}), []menuItem{
 				{label: "Allow Once", hint: "⌃B y", run: func() { a.respondGrant(g, pb.RespondGrant_DECISION_ALLOW_ONCE) }},

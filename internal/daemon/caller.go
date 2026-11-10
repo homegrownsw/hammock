@@ -393,18 +393,15 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	}
 	d := c.d
 	if cl.scoped {
-		switch m := msg.Msg.(type) {
-		case *pb.ClientMessage_RespondGrant:
-			return errPersonOnly
-		case *pb.ClientMessage_ClearAttention:
-			// Not the word that a security setting was loosened in the
-			// config file (configwatch.go): that's for you to see.
-			if strings.HasPrefix(m.ClearAttention.Id, configAttentionPrefix) {
-				return errPersonOnly
-			}
-			return nil
-		case *pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_EndScreenSession, *pb.ClientMessage_ServerStatus,
-			*pb.ClientMessage_SetColors:
+		if personStrict(msg) {
+			// Answering you, or clearing the word that a security
+			// setting was loosened in the config file (configwatch.go):
+			// that's for you to see and do.
+			return errAnswerInApp
+		}
+		switch msg.Msg.(type) {
+		case *pb.ClientMessage_ClearAttention, *pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_EndScreenSession,
+			*pb.ClientMessage_ServerStatus, *pb.ClientMessage_SetColors:
 			return nil // as personOnly has them: anything of yours could
 		}
 	}
@@ -763,9 +760,10 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		}
 		return read(m.MergeTab.IntoPaneId)
 	}
-	// Administration, sharing, devices and the rest are for people.
+	// Administration, sharing, devices and the rest are for people: one
+	// scoped as an agent (not positively you) asks you (personCheck).
 	if cl.scoped {
-		return errPersonOnly
+		return nil
 	}
 	return errAgentOnly
 }

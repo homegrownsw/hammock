@@ -19,7 +19,8 @@ import (
 // later reply (grant requests wait for a human).
 var errDeferred = errors.New("deferred")
 
-const grantTimeout = 2 * time.Minute
+// grantTimeout is how long a request waits for your answer (tests shorten it).
+var grantTimeout = 2 * time.Minute
 
 type pendingGrant struct {
 	req     *pb.GrantRequest
@@ -28,6 +29,10 @@ type pendingGrant struct {
 	done    func(allowed bool) // instead of c: the daemon itself asked (sshagent.go); called holding d.mu
 	timer   *time.Timer
 	group   string
+	// person: c (not an agent) asked to do something only you may
+	// (approval.go): allowed once or not at all, answered only by the app
+	// or a paired phone, and withdrawn if c goes.
+	person bool
 }
 
 func grantKey(requester, action, group string) string { return requester + "|" + action + "|" + group }
@@ -62,9 +67,16 @@ func (d *Daemon) openGrant(g *pendingGrant) {
 		d.resolveGrant(id, pb.RespondGrant_DECISION_DENY, "timed out")
 	})
 	d.grants[id] = g
-	d.audit("mcp:"+g.req.RequesterPaneId, "grant-requested", g.req.TargetPaneId, auditGrant(g.req.Headline, g.req.Description))
+	if g.person {
+		d.audit("local", "approval-requested", g.req.TargetPaneId, g.req.Headline+" ("+g.req.Origin+")")
+	} else {
+		d.audit("mcp:"+g.req.RequesterPaneId, "grant-requested", g.req.TargetPaneId, auditGrant(g.req.Headline, g.req.Description))
+	}
 	d.publish(&pb.StateUpdate{Grants: []*pb.GrantRequest{proto.CloneOf(g.req)}})
 	title, sub := d.pushTitle(g.req.RequesterPaneId)
+	if g.person {
+		title, sub = "Hammock", g.req.Origin
+	}
 	// Hammock's words only: the agent's own can say anything.
 	d.push("needs_input", id, pushNote{Title: title, Subtitle: sub, Body: g.req.Headline, Category: "grant", Grant: id, Pane: g.req.RequesterPaneId},
 		func() bool { return d.grants[id] != nil })
@@ -79,16 +91,20 @@ func (d *Daemon) resolveGrant(id string, decision pb.RespondGrant_Decision, reas
 	delete(d.grants, id)
 	g.timer.Stop()
 	allowed := decision == pb.RespondGrant_DECISION_ALLOW_ONCE || decision == pb.RespondGrant_DECISION_ALLOW_GROUP
-	if allowed {
+	if allowed && !g.person {
 		d.noteOnceGrant(g.req) // the daemon lets the action through (caller.go)
 	}
-	if decision == pb.RespondGrant_DECISION_ALLOW_GROUP && g.group != "" {
+	if decision == pb.RespondGrant_DECISION_ALLOW_GROUP && g.group != "" && !g.person {
 		d.remembered[grantKey(g.req.RequesterPaneId, g.req.Action, g.group)] = true
 	}
 	if reason == "" {
 		reason = decision.String()
 	}
-	d.audit("user", "grant-"+map[bool]string{true: "allowed", false: "denied"}[allowed], g.req.TargetPaneId, auditGrant(g.req.Headline, g.req.Description)+" ("+reason+")")
+	what := auditGrant(g.req.Headline, g.req.Description)
+	if g.person {
+		what = g.req.Headline + " (" + g.req.Origin + ")"
+	}
+	d.audit("user", "grant-"+map[bool]string{true: "allowed", false: "denied"}[allowed], g.req.TargetPaneId, what+" ("+reason+")")
 	if g.done != nil {
 		g.done(allowed)
 	} else {
@@ -102,7 +118,7 @@ func (d *Daemon) resolveGrant(id string, decision pb.RespondGrant_Decision, reas
 // dropGrantsFor denies a disconnected requester's pending grants. Callers hold d.mu.
 func (d *Daemon) dropGrantsFor(c *conn) {
 	for id, g := range d.grants {
-		if g.c == c && g.done == nil {
+		if g.c == c && (g.done == nil || g.person) {
 			d.resolveGrant(id, pb.RespondGrant_DECISION_DENY, "requester disconnected")
 		}
 	}
