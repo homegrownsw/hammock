@@ -318,6 +318,10 @@ func (l *peerLink) connected(ctx context.Context, wait time.Duration) (*client.C
 	case <-ready:
 		l.cmu.Lock()
 		defer l.cmu.Unlock()
+		if l.cl == nil {
+			// It connected and has dropped again since (a hang-up).
+			return nil, errors.New("link dropped")
+		}
 		return l.cl, nil
 	case <-time.After(wait):
 		l.d.mu.Lock()
