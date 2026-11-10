@@ -64,7 +64,7 @@ extension AppModel {
         panes[id].flatMap { tabs[$0.tabID] }.flatMap { group(of: $0) }
     }
 
-    /// The Mac a shared Group runs on, as "Alex's Mac" (its owner and device).
+    /// The Mac a shared Group runs on, as "Sam's Mac" (its owner and device).
     public func hostLabel(of group: WorkspaceGroup) -> String {
         if let c = computer(of: group) { return c.name }
         guard let p = people[group.hostUserID] else { return "Another Mac" }

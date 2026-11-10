@@ -83,7 +83,7 @@ func TestTaskListTaskTools(t *testing.T) {
 
 func TestSessionLinks(t *testing.T) {
 	c := NewClaude("/p")
-	pr := `{"type":"pr-link","sessionId":"s","prNumber":6704,"prUrl":"https://github.com/plexinc/web-tv-client/pull/6704","prRepository":"plexinc/web-tv-client","timestamp":"2026-11-06T16:08:40.722Z"}`
+	pr := `{"type":"pr-link","sessionId":"s","prNumber":412,"prUrl":"https://github.com/acme/storefront/pull/412","prRepository":"acme/storefront","timestamp":"2026-11-06T16:08:40.722Z"}`
 	c.Feed([]byte(pr))
 	c.Feed([]byte(pr)) // recorded again as the session goes on: one link
 	c.Feed(ccCall("a1", "t1", "Artifact", map[string]any{"file_path": "/tmp/x/signups.html", "description": "Signups"}))
@@ -96,7 +96,7 @@ func TestSessionLinks(t *testing.T) {
 	if len(links) != 2 {
 		t.Fatalf("links %v", links)
 	}
-	if l := links[0]; l.Kind != pb.AgentLink_KIND_PULL_REQUEST || l.Number != 6704 || l.Repo != "plexinc/web-tv-client" || l.Url != "https://github.com/plexinc/web-tv-client/pull/6704" {
+	if l := links[0]; l.Kind != pb.AgentLink_KIND_PULL_REQUEST || l.Number != 412 || l.Repo != "acme/storefront" || l.Url != "https://github.com/acme/storefront/pull/412" {
 		t.Errorf("pr %v", l)
 	}
 	if l := links[1]; l.Kind != pb.AgentLink_KIND_ARTIFACT || l.Title != "Weekly Signups" || l.Icon != "chart" || l.Url != "https://claude.ai/artifact/aaaaaaaaaaaaaaaaaaaaaa" {

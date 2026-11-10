@@ -39,7 +39,7 @@ struct SSHSettings: View {
             key.publicKey = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFakeFakeFakeQm9yaW5nIGJ1dCByZWFsaXN0aWMga2V5IG1hdGVyaWFsIGZvciBzbmFwc2hvdHM= Hammock-Key-Studio"
             key.fingerprint = "SHA256:q2Xh0f3m3w2a9cJk1Vt8nZs4yLr6pE5uB7dG0iH1oKc"
             key.publicKeyPath = NSHomeDirectory() + "/Library/Application Support/Hammock/hmk-key.pub"
-            key.approvers = [.with { $0.deviceID = "dv_1"; $0.name = "Alex's iPhone" }]
+            key.approvers = [.with { $0.deviceID = "dv_1"; $0.name = "Sam's iPhone" }]
             key.canAdd = [.with { $0.deviceID = "dv_2"; $0.name = "iPad" }]
         }
     }
