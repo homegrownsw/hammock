@@ -9,6 +9,9 @@ package codesign
 #cgo LDFLAGS: -framework CoreFoundation -framework Security
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#include <libproc.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <stdlib.h>
 
 static SecCodeRef hmk_guest(int pid) {
@@ -22,6 +25,33 @@ static SecCodeRef hmk_guest(int pid) {
 	CFRelease(n);
 	return st == errSecSuccess ? code : NULL;
 }
+
+// hmk_guest_token is hmk_guest by audit token: the process as it was when
+// the token was taken. One that has since exec'd (or exited, its pid
+// reused) has a new pid version, and isn't found.
+static SecCodeRef hmk_guest_token(const audit_token_t *tok) {
+	CFDataRef d = CFDataCreate(NULL, (const UInt8 *)tok, sizeof(*tok));
+	const void *k[] = {kSecGuestAttributeAudit};
+	const void *v[] = {d};
+	CFDictionaryRef attrs = CFDictionaryCreate(NULL, k, v, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	SecCodeRef code = NULL;
+	OSStatus st = SecCodeCopyGuestWithAttributes(NULL, attrs, kSecCSDefaultFlags, &code);
+	CFRelease(attrs);
+	CFRelease(d);
+	return st == errSecSuccess ? code : NULL;
+}
+
+static int hmk_peer_token(int fd, audit_token_t *tok) {
+	socklen_t n = sizeof(*tok);
+	return getsockopt(fd, SOL_LOCAL, LOCAL_PEERTOKEN, tok, &n) == 0 && n == sizeof(*tok) ? 0 : -1;
+}
+
+static int hmk_token_path(audit_token_t *tok, char *buf, int len) {
+	return proc_pidpath_audittoken(tok, buf, (uint32_t)len) > 0 ? 0 : -1;
+}
+
+// (audit_token_to_pid, without linking libbsm: the pid is its sixth word.)
+static int hmk_token_pid(const audit_token_t *tok) { return (int)tok->val[5]; }
 
 static void hmk_copy(CFStringRef s, char *buf, int len) {
 	buf[0] = 0;
@@ -60,9 +90,26 @@ static int hmk_self(char *ident, int ilen, char *team, int tlen, int *runtime) {
 
 // hmk_check: 0 when pid's running code is valid and satisfies req (a code
 // requirement in Apple's language), filling in what hmk_info does.
+static int hmk_check_code(SecCodeRef code, const char *req, char *ident, int ilen, char *team, int tlen, int *runtime);
+
 static int hmk_check(int pid, const char *req, char *ident, int ilen, char *team, int tlen, int *runtime) {
-	SecCodeRef code = hmk_guest(pid);
+	return hmk_check_code(hmk_guest(pid), req, ident, ilen, team, tlen, runtime);
+}
+
+static int hmk_check_token(const audit_token_t *tok, const char *req, char *ident, int ilen, char *team, int tlen, int *runtime) {
+	return hmk_check_code(hmk_guest_token(tok), req, ident, ilen, team, tlen, runtime);
+}
+
+// hmk_check_code checks (and releases) code against req ("" for none:
+// only that it's validly signed).
+static int hmk_check_code(SecCodeRef code, const char *req, char *ident, int ilen, char *team, int tlen, int *runtime) {
 	if (!code) return -1;
+	if (!req[0]) {
+		int ok = SecCodeCheckValidity(code, kSecCSDefaultFlags, NULL) == errSecSuccess &&
+		         hmk_info(code, ident, ilen, team, tlen, runtime) == 0;
+		CFRelease(code);
+		return ok ? 0 : -1;
+	}
 	SecRequirementRef r = NULL;
 	CFStringRef text = CFStringCreateWithCString(NULL, req, kCFStringEncodingUTF8);
 	int ok = text && SecRequirementCreateWithString(text, kSecCSDefaultFlags, &r) == errSecSuccess &&
@@ -77,6 +124,7 @@ static int hmk_check(int pid, const char *req, char *ident, int ilen, char *team
 import "C"
 
 import (
+	"errors"
 	"sync"
 	"unsafe"
 )
@@ -116,5 +164,66 @@ func Check(pid int, requirement string) (Signature, bool) {
 	defer C.free(unsafe.Pointer(req))
 	return info(func(ident, team *C.char, runtime *C.int) C.int {
 		return C.hmk_check(C.int(pid), req, ident, 256, team, 256, runtime)
+	})
+}
+
+// Token is a process's audit token: its pid and pid version, which changes
+// when it execs, so a check by token is of the program that was running
+// when the token was taken (a socket's peer as it connected), never one
+// exec'd in its place since or a process that took its pid.
+type Token struct {
+	t  C.audit_token_t
+	ok bool
+}
+
+// PeerToken is the audit token of the process at the other end of the Unix
+// socket fd, as it was when it connected.
+func PeerToken(fd int) Token {
+	var t Token
+	t.ok = C.hmk_peer_token(C.int(fd), &t.t) == 0
+	return t
+}
+
+// Valid reports whether the token was taken.
+func (t Token) Valid() bool { return t.ok }
+
+// PID is the token's process id (0 if none).
+func (t Token) PID() int {
+	if !t.ok {
+		return 0
+	}
+	return int(C.hmk_token_pid(&t.t))
+}
+
+// Path is the executable of the token's process, if it's still the one
+// the token was taken from.
+func (t Token) Path() (string, error) {
+	if !t.ok {
+		return "", errors.New("no audit token")
+	}
+	var buf [4 * 1024]C.char
+	if C.hmk_token_path(&t.t, &buf[0], C.int(len(buf))) != 0 {
+		return "", errors.New("process gone, or not the one that connected")
+	}
+	return C.GoString(&buf[0]), nil
+}
+
+// Live reports whether the token's process still runs the program it did
+// when the token was taken.
+func (t Token) Live() bool {
+	_, err := t.Path()
+	return err == nil
+}
+
+// CheckToken is Check for the process the token was taken from, as it was
+// then: "" checks only that it's validly signed.
+func CheckToken(t Token, requirement string) (Signature, bool) {
+	if !t.ok {
+		return Signature{}, false
+	}
+	req := C.CString(requirement)
+	defer C.free(unsafe.Pointer(req))
+	return info(func(ident, team *C.char, runtime *C.int) C.int {
+		return C.hmk_check_token(&t.t, req, ident, 256, team, 256, runtime)
 	})
 }

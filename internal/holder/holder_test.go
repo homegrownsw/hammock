@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -338,24 +339,41 @@ func TestPeerRequired(t *testing.T) {
 	if out, err := exec.Command("cp", exe, hmkd).CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
+	sock := filepath.Join(dir, "s")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
 	cmd := exec.Command(hmkd, "-test.run=^TestSleepHelper$")
-	cmd.Env = append(os.Environ(), "HMK_HOLDER_TEST_SLEEP=1")
+	cmd.Env = append(os.Environ(), "HMK_HOLDER_TEST_SLEEP="+sock)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { cmd.Process.Kill(); cmd.Wait() }()
-	if !DaemonPeer("/elsewhere/hmkd", filepath.Join(dir, "pane-holder"))(cmd.Process.Pid) {
+	nc, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nc.Close()
+	peer := sockPeer(nc.(*net.UnixConn))
+	if !DaemonPeer("/elsewhere/hmkd", filepath.Join(dir, "pane-holder"))(peer) {
 		t.Error("an hmkd beside the holder refused")
 	}
-	if DaemonPeer("/elsewhere/hmkd", "/elsewhere/pane-holder")(cmd.Process.Pid) {
+	if DaemonPeer("/elsewhere/hmkd", "/elsewhere/pane-holder")(peer) {
 		t.Error("an hmkd elsewhere taken")
 	}
 }
 
 // TestSleepHelper is a program for TestPeerRequired to run under another name.
 func TestSleepHelper(t *testing.T) {
-	if os.Getenv("HMK_HOLDER_TEST_SLEEP") == "" {
+	sock := os.Getenv("HMK_HOLDER_TEST_SLEEP")
+	if sock == "" {
 		t.Skip("run by TestPeerRequired")
+	}
+	c, err := net.Dial("unix", sock) // a peer, to be checked as it connected
+	if err == nil {
+		defer c.Close()
 	}
 	time.Sleep(10 * time.Second)
 }

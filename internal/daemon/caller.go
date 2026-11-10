@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alexjsp/hammock/internal/browserjs"
+	"github.com/alexjsp/hammock/internal/codesign"
 	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
@@ -63,7 +64,36 @@ func peerPID(c net.Conn) int {
 	}
 }
 
-// peerPIDKey carries a WebSocket connection's peer pid to its handler.
+// peerToken returns the audit token (macOS) of the process at the other
+// end of a local connection, as it was when it connected: what a check of
+// who it is (person.go) holds it to, so a program that connects and then
+// execs another in its pid (the app, say) isn't taken for that program.
+func peerToken(c net.Conn) codesign.Token {
+	for {
+		switch v := c.(type) {
+		case *peekedConn:
+			c = v.Conn
+		case *net.UnixConn:
+			var t codesign.Token
+			if rc, err := v.SyscallConn(); err == nil {
+				_ = rc.Control(func(fd uintptr) { t = codesign.PeerToken(int(fd)) })
+			}
+			return t
+		default:
+			return codesign.Token{}
+		}
+	}
+}
+
+// localPeer is the process at the other end of a local connection.
+type localPeer struct {
+	pid int
+	tok codesign.Token
+}
+
+func localPeerOf(c net.Conn) localPeer { return localPeer{pid: peerPID(c), tok: peerToken(c)} }
+
+// peerPIDKey carries a WebSocket connection's localPeer to its handler.
 type peerPIDKey struct{}
 
 // onceWindow is how long an "allow once" grant lets an agent repeat the

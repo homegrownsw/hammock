@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alexjsp/hammock/internal/codesign"
 	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
@@ -106,7 +107,7 @@ func (c *conn) scope() {
 		if c.remote || c.caller.isAgent() {
 			return
 		}
-		if c.d.positivelyPerson(c.caller, c.pid) {
+		if c.d.positivelyPerson(c.caller, c.pid, c.tok) {
 			c.personOK = true
 			return
 		}
@@ -150,10 +151,17 @@ func msgName(msg *pb.ClientMessage) string {
 var personHook func(cl *caller, pid int) bool
 
 // positivelyPerson reports whether a local connection's process (cl as
-// identify placed it, pid) is known to be you.
-func (d *Daemon) positivelyPerson(cl *caller, pid int) bool {
+// identify placed it, pid, and on macOS its audit token as it connected)
+// is known to be you. Checked when its first message comes, of the
+// program that connected: by token where there is one (a program that
+// execs another in its pid since has a new pid version), and a pid whose
+// process has since exec'd or gone isn't you, whatever runs in it now.
+func (d *Daemon) positivelyPerson(cl *caller, pid int, tok codesign.Token) bool {
 	if personHook != nil {
 		return personHook(cl, pid)
+	}
+	if tok.Valid() && !tok.Live() {
+		return false
 	}
 	if cl != nil {
 		// In a pane: found by its own ancestors, and no agent's.
@@ -165,7 +173,7 @@ func (d *Daemon) positivelyPerson(cl *caller, pid int) bool {
 	if pid == os.Getpid() {
 		return true // hmkd's own process (a test running it): nothing else has its pid
 	}
-	if isHammockApp(pid) {
+	if isHammockApp(pid, tok) {
 		return true
 	}
 	stop := d.hammockPIDs()
@@ -175,7 +183,10 @@ func (d *Daemon) positivelyPerson(cl *caller, pid int) bool {
 	if r := responsibleFor(pid); r > 0 && r != pid && stop[r] {
 		return false
 	}
-	return walkToLogin(pid, stop, realTree)
+	if !walkToLogin(pid, stop, realTree) {
+		return false
+	}
+	return !tok.Valid() || tok.Live() // (still the process it walked from)
 }
 
 // hammockPIDs are this daemon, its panes' holders and their shells.

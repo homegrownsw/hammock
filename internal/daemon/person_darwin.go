@@ -28,11 +28,15 @@ var hammockAppIDs = []string{
 	"com.homegrownsw.hammock.menu", "com.homegrownsw.hammock.beta.menu",
 }
 
-// isHammockApp reports whether pid is the Hammock app (or its menu bar
-// item): signed by this daemon's own team with the hardened runtime, as
-// helpers/common/peer.h checks. Signed ad hoc (a development build), its
-// program must be one of the app this daemon is in.
-func isHammockApp(pid int) bool {
+// isHammockApp reports whether the process that connected (tok, its audit
+// token then) is the Hammock app (or its menu bar item): signed by this
+// daemon's own team with the hardened runtime, as helpers/common/peer.h
+// checks. Signed ad hoc (a development build), its program must be one of
+// the app this daemon is in, with the hardened runtime if this daemon has
+// it (no DYLD_INSERT_LIBRARIES). By token, never pid: a program that
+// connects and then execs the app in its pid (handing the connection to a
+// child) has a new pid version, and doesn't pass.
+func isHammockApp(_ int, tok codesign.Token) bool {
 	self, _ := codesign.Self()
 	if self.Team != "" {
 		var ids []string
@@ -40,13 +44,18 @@ func isHammockApp(pid int) bool {
 			ids = append(ids, fmt.Sprintf("identifier %q", id))
 		}
 		req := fmt.Sprintf("anchor apple generic and certificate leaf[subject.OU] = %q and (%s)", self.Team, strings.Join(ids, " or "))
-		s, ok := codesign.Check(pid, req)
+		s, ok := codesign.CheckToken(tok, req)
 		return ok && s.Runtime
 	}
 	app := daemonInstall()
-	exe, err := procinfo.Path(pid)
+	exe, err := tok.Path()
 	if app == "" || err != nil {
 		return false
+	}
+	if self.Runtime {
+		if s, ok := codesign.CheckToken(tok, ""); !ok || !s.Runtime {
+			return false
+		}
 	}
 	if r, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = r

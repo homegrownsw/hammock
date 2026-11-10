@@ -2,7 +2,16 @@
 
 package holder
 
-import "net"
+import (
+	"errors"
+	"net"
 
-// sockPeerPID is unknown here.
-func sockPeerPID(*net.UnixConn) int { return 0 }
+	"github.com/alexjsp/hammock/internal/codesign"
+)
+
+// sockPeer is unknown here.
+func sockPeer(*net.UnixConn) PeerProc { return PeerProc{} }
+
+func peerExe(PeerProc) (string, error) { return "", errors.New("unknown peer") }
+
+func peerSignature(PeerProc, string) (codesign.Signature, bool) { return codesign.Signature{}, false }

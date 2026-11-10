@@ -5,8 +5,14 @@ import (
 	"strings"
 
 	"github.com/alexjsp/hammock/internal/codesign"
-	"github.com/alexjsp/hammock/internal/procinfo"
 )
+
+// PeerProc is the process at the other end of a connection: its pid and,
+// on macOS, its audit token as it connected.
+type PeerProc struct {
+	PID   int
+	Token codesign.Token
+}
 
 // DaemonPeer is a Config.Peer that takes only a daemon: the program that
 // started this holder (daemon, its path then), or an hmkd of the same
@@ -15,28 +21,38 @@ import (
 // by this holder's own team (one the app was moved with). The token alone
 // would let anything of yours that read the daemon's state attach; this
 // way it also has to be the daemon.
-func DaemonPeer(daemon, install string) func(pid int) bool {
+//
+// On macOS the peer is checked by its audit token, so a program that
+// connects and then execs hmkd (or hands the connection to a child and
+// execs hmkd in its pid) isn't taken for it. And a holder with the
+// hardened runtime takes, by path, only an hmkd with it too: hmkd run with
+// DYLD_INSERT_LIBRARIES (which the runtime refuses) is anyone's code.
+// (A plain `go build`'s holder and hmkd have neither: nothing to require.)
+// On Linux, by pid: see peerExe.
+func DaemonPeer(daemon, install string) func(PeerProc) bool {
 	daemon = resolve(daemon)
 	install = resolve(install)
-	return func(pid int) bool {
-		exe, err := procinfo.Path(pid)
+	self, _ := codesign.Self()
+	return func(p PeerProc) bool {
+		exe, err := peerExe(p)
 		if err != nil {
 			return false
 		}
 		exe = resolve(exe)
-		if daemon != "" && exe == daemon {
-			return true
+		byPath := daemon != "" && exe == daemon
+		if !byPath && filepath.Base(exe) == "hmkd" && install != "" {
+			byPath = strings.HasSuffix(install, ".app") && strings.HasPrefix(exe, install+"/") ||
+				!strings.HasSuffix(install, ".app") && filepath.Dir(exe) == filepath.Dir(install)
 		}
-		if filepath.Base(exe) == "hmkd" && install != "" {
-			if strings.HasSuffix(install, ".app") && strings.HasPrefix(exe, install+"/") {
+		if byPath {
+			if !self.Runtime {
 				return true
 			}
-			if !strings.HasSuffix(install, ".app") && filepath.Dir(exe) == filepath.Dir(install) {
-				return true
-			}
+			s, ok := peerSignature(p, "")
+			return ok && s.Runtime
 		}
-		if self, _ := codesign.Self(); self.Team != "" {
-			s, ok := codesign.Check(pid, `anchor apple generic and certificate leaf[subject.OU] = "`+self.Team+`" and identifier "hmkd"`)
+		if self.Team != "" {
+			s, ok := peerSignature(p, `anchor apple generic and certificate leaf[subject.OU] = "`+self.Team+`" and identifier "hmkd"`)
 			return ok && s.Runtime
 		}
 		return false

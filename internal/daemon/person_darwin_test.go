@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alexjsp/hammock/internal/client"
+	"github.com/alexjsp/hammock/internal/codesign"
 	"github.com/alexjsp/hammock/internal/procinfo"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
@@ -45,7 +46,7 @@ func TestDetachedFromPaneIsNotPerson(t *testing.T) {
 	}
 	personHook = nil
 	defer func() { personHook = testPerson }()
-	if d.positivelyPerson(nil, pid) {
+	if d.positivelyPerson(nil, pid, codesign.Token{}) {
 		t.Fatal("a program detached from a pane passes for you")
 	}
 	// And it's scoped as an agent in the pane it left.

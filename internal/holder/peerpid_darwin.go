@@ -3,20 +3,33 @@ package holder
 import (
 	"net"
 
+	"github.com/alexjsp/hammock/internal/codesign"
 	"golang.org/x/sys/unix"
 )
 
-// sockPeerPID returns the process id at the other end of a Unix socket.
-func sockPeerPID(uc *net.UnixConn) int {
+// sockPeer is the process at the other end of a Unix socket: its pid, and
+// its audit token as it connected (codesign.Token), which a program exec'd
+// in its place since doesn't have.
+func sockPeer(uc *net.UnixConn) PeerProc {
 	rc, err := uc.SyscallConn()
 	if err != nil {
-		return 0
+		return PeerProc{}
 	}
-	pid := 0
+	var p PeerProc
 	_ = rc.Control(func(fd uintptr) {
+		p.Token = codesign.PeerToken(int(fd))
 		if v, err := unix.GetsockoptInt(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERPID); err == nil {
-			pid = v
+			p.PID = v
 		}
 	})
-	return pid
+	return p
+}
+
+// peerExe is the peer's executable, by its audit token: the program that
+// connected, not one exec'd in its pid since.
+func peerExe(p PeerProc) (string, error) { return p.Token.Path() }
+
+// peerSignature is how the peer is signed, by its audit token.
+func peerSignature(p PeerProc, requirement string) (codesign.Signature, bool) {
+	return codesign.CheckToken(p.Token, requirement)
 }

@@ -64,7 +64,7 @@ func main() {
 	}
 
 	exe, _ := os.Executable() // "" (no orphan check) if it can't be told
-	var peer func(int) bool
+	var peer func(holder.PeerProc) bool
 	if *daemon != "" {
 		peer = holder.DaemonPeer(*daemon, installOf(exe))
 	}

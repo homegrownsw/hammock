@@ -369,7 +369,7 @@ func (d *Daemon) Serve() error {
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second,
 		// Who connected, for agent scoping (caller.go).
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			return context.WithValue(ctx, peerPIDKey{}, peerPID(c))
+			return context.WithValue(ctx, peerPIDKey{}, localPeerOf(c))
 		}}
 	d.mu.Lock()
 	if d.stopped {

@@ -17,6 +17,7 @@ import (
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/alexjsp/hammock/internal/codesign"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 	"github.com/alexjsp/hammock/internal/state"
 	"github.com/alexjsp/hammock/internal/vt"
@@ -64,6 +65,7 @@ type conn struct {
 	focus    string               // the pane this client last focused
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
 	pid      int                  // a local client's process id (0 unknown)
+	tok      codesign.Token       // and its audit token as it connected (macOS)
 	// Whether a local client is positively you, worked out the first time
 	// it asks for something only you may do (person.go). Read loop only.
 	personOnce sync.Once
@@ -96,15 +98,15 @@ func (d *Daemon) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws.SetReadLimit(32 << 20)
-	pid, _ := r.Context().Value(peerPIDKey{}).(int)
-	cl := d.identify(pid)
-	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller, c.pid = cl, pid })
+	lp, _ := r.Context().Value(peerPIDKey{}).(localPeer)
+	cl := d.identify(lp.pid)
+	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller, c.pid, c.tok = cl, lp.pid, lp.tok })
 }
 
 func (d *Daemon) serveFrames(nc net.Conn, r *bufio.Reader) {
-	pid := peerPID(nc)
-	cl := d.identify(pid)
-	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller, c.pid = cl, pid })
+	lp := localPeerOf(nc)
+	cl := d.identify(lp.pid)
+	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller, c.pid, c.tok = cl, lp.pid, lp.tok })
 }
 
 func (d *Daemon) serveConn(t transport) { d.serveConnWith(t, nil) }

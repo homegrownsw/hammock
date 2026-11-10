@@ -7,11 +7,12 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/alexjsp/hammock/internal/codesign"
 	"github.com/alexjsp/hammock/internal/procinfo"
 )
 
 // isHammockApp: there's no Hammock app on Linux.
-func isHammockApp(int) bool { return false }
+func isHammockApp(int, codesign.Token) bool { return false }
 
 // responsibleFor: Linux keeps no such record.
 func responsibleFor(int) int { return 0 }
