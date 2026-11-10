@@ -73,10 +73,13 @@ relay ([relay/push](relay/push), a Cloudflare Worker, with your APNs key), passe
 test without touching your installed copy, and what a new feature needs. Every change to the apps comes with a
 release note ([release-notes/README.md](release-notes/README.md)).
 
-## Feedback
+## Feedback and contributing
 
 Bugs and ideas are welcome as [GitHub issues](https://github.com/homegrownsw/hammock/issues). To report a security
 problem, don't open an issue: see [SECURITY.md](SECURITY.md).
+
+Pull requests are welcome when they're small: bug fixes and small improvements. For anything bigger, open an
+issue first. [CONTRIBUTING.md](CONTRIBUTING.md) says how.
 
 ## Docs
 
