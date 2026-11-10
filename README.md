@@ -27,8 +27,8 @@ too, through MCP.
 
 ## Install
 
-- **Mac:** [download Hammock](https://homegrownsw.com/hammock/download) (macOS 26 or later), unzip it and move it to
-  Applications. It updates itself.
+- **Mac:** [download Hammock](https://homegrownsw.com/hammock/download) (macOS 26 or later), open it and drag Hammock
+  to Applications. It updates itself.
 - **iPhone:** in beta on TestFlight. Pair it with your Mac from Hammock ▸ Settings ▸ Devices.
 - **Linux and Unraid:** the daemon, `hmk` and the TUI, so sessions can live on a server your Mac links to. See
   [docs/linux.md](docs/linux.md).

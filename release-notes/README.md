@@ -127,7 +127,7 @@ people to read needs `allow-empty`, and a bump must go up.
 ### Where releases go
 
 Each Mac release is a GitHub Release on `homegrownsw/hammock` (`scripts/mac-update upload`), marked Latest:
-the zip (also as `Hammock.zip`), its deltas, the appcast, and the Linux tarballs and Unraid plugin. The app
+the zip (also as `Hammock.zip`), the DMG for first installs (as `Hammock.dmg`, built by `just share`), its deltas, the appcast, and the Linux tarballs and Unraid plugin. The app
 and the website use `homegrownsw.com/hammock`, whose nginx (`nginx/hammock.conf` in `homegrownsw/homegrownsw-site`)
 redirects to the latest release: the feed is `https://homegrownsw.com/hammock/appcast.xml`, and
 `https://homegrownsw.com/hammock/download` is the link for someone's first install. Moving releases elsewhere

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Signs a built Hammock.app for sharing (Developer ID, hardened runtime, secure
-# timestamps), notarizes it and staples the ticket, leaving a zip beside it:
+# timestamps), notarizes it and staples the ticket, leaving a zip beside it, and
+# Hammock.dmg (scripts/make-dmg.sh), itself signed, notarized and stapled:
 #   just share   (builds dist/share/Hammock.app, takes the credentials from
 #                 a keychain profile or 1Password and runs this; see the justfile)
 # Credentials: APPLE_ID and APP_PASSWORD (an app-specific password) in the
@@ -59,3 +60,18 @@ rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
 spctl -a -vv "$app"
 echo "$zip"
+
+# The DMG, round the stapled app: Gatekeeper checks the DMG someone downloads before the app in it.
+dmg="${app%.app}.dmg"
+"$root/scripts/make-dmg.sh" "$app" "$dmg" "$identity"
+echo "submitting $(basename "$dmg") for notarization…"
+out="$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait)"
+echo "$out"
+if ! grep -q 'status: Accepted' <<<"$out"; then
+  id="$(awk '/^  id:/{print $2; exit}' <<<"$out")"
+  [ -n "$id" ] && xcrun notarytool log "$id" "${auth[@]}"
+  exit 1
+fi
+xcrun stapler staple "$dmg"
+spctl -a -vv -t open --context context:primary-signature "$dmg"
+echo "$dmg"

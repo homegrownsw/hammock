@@ -113,7 +113,8 @@ mac-app: build apple-deps browser simulator screen key
     ./scripts/build-mac-app.sh
 
 # A notarized Hammock.app to send to someone: built into dist/share, signed
-# with Developer ID, notarized and stapled, zipped as dist/share/Hammock.zip.
+# with Developer ID, notarized and stapled, zipped as dist/share/Hammock.zip,
+# and in dist/share/Hammock.dmg, the first-install download (also notarized).
 # Notarization's credentials (team Homegrown Software) come from the
 # notarytool keychain profile NOTARY_PROFILE (default fika-notary), which
 # needs nobody at the Mac. Make it once with `xcrun notarytool
@@ -144,6 +145,14 @@ share: build apple-deps browser simulator screen key
         export APPLE_ID APP_PASSWORD
     fi
     ./scripts/notarize-mac-app.sh "{{justfile_directory()}}/dist/share/Hammock.app"
+
+# An unsigned Hammock.dmg, to look at its window (scripts/make-dmg.sh): from
+# dist/share/Hammock.app unless given another app, into dist/dmg-preview.
+# Open it on each new major macOS before releasing: Finder draws the icons and
+# their names over the background, and has moved them before.
+dmg app=(justfile_directory() / "dist/share/Hammock.app"):
+    ./scripts/make-dmg.sh "{{app}}" "{{justfile_directory()}}/dist/dmg-preview/Hammock.dmg"
+    open "{{justfile_directory()}}/dist/dmg-preview/Hammock.dmg"
 
 # ---- Releases and their notes (release-notes/README.md)
 

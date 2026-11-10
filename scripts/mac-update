@@ -14,7 +14,8 @@
 # nginx (homegrownsw-site's nginx/hammock.conf) redirects to the latest release's assets:
 #
 #   /hammock/appcast.xml   the feed, built into the app as SUFeedURL
-#   /hammock/download      Hammock.zip, the latest zip under a fixed name, for first installs
+#   /hammock/download      Hammock.dmg, the latest DMG under a fixed name, for first installs (Sparkle
+#                          keeps the zip: the DMG is only for downloads)
 #   /hammock/linux/<file>  hammock-linux-<arch>.tar.gz (fixed names too) and hammock.plg
 #
 # The appcast offers only the newest build (--maximum-versions 1), so every URL in it is in that release
@@ -26,7 +27,8 @@
 # release that made it. HMK_SKIP_LINUX=1 leaves them out.
 #
 # Every released zip is kept in dist/releases; build first fetches the last few releases' zips from GitHub
-# into it, so deltas can be made from them on any Mac.
+# into it, so deltas can be made from them on any Mac. Each release's DMG (scripts/make-dmg.sh) is kept in
+# dist/release-dmgs instead: generate_appcast takes every archive in dist/releases, a DMG too, for an update.
 #
 # The Sparkle signing key is read from the keychain (account "fika"), or from SPARKLE_KEY_FILE
 # (op document get "Hammock Sparkle EdDSA private key").
@@ -37,6 +39,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
 site="${HMK_SITE_URL:-https://homegrownsw.com/hammock}"
 archives="$root/dist/releases"
+dmgs="$root/dist/release-dmgs"
 sparkle_bin="$root/apple/.build/artifacts/sparkle/Sparkle/bin"
 deltas=5
 
@@ -70,6 +73,8 @@ case "$cmd" in
     built=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$root/dist/share/Hammock.app/Contents/Info.plist")
     [ "$built" = "$n" ] || { echo "The build is number $built, not $n." >&2; exit 1; }
     cp "$root/dist/share/Hammock.zip" "$archives/Hammock-$n.zip"
+    mkdir -p "$dmgs"
+    cp "$root/dist/share/Hammock.dmg" "$dmgs/Hammock-$n.dmg"
     cp "$notes" "$archives/Hammock-$n.html"
 
     # A fresh appcast: the last one's item pointed at its own release, and only the new build is offered.
@@ -102,13 +107,16 @@ $(sed -E -e 's|<li><b>([A-Z]+)</b> |- **\1** |' -e 's|<h4>(.*)</h4>|\1:|' -e 's|
     ;;
   upload)
     [ -e "$archives/Hammock-$n.zip" ] || { echo "No $archives/Hammock-$n.zip: build it first." >&2; exit 1; }
+    [ -e "$dmgs/Hammock-$n.dmg" ] || { echo "No $dmgs/Hammock-$n.dmg: build it first." >&2; exit 1; }
     tag="$(release_tag)"
     ver="${tag#Mac-v}" && ver="${ver%-r*}"
     stage="$(mktemp -d)"
     trap 'rm -rf "$stage"' EXIT
-    # Each file under the name it's published as: the zip also as Hammock.zip, for /hammock/download.
+    # Each file under the name it's published as: the zip also as Hammock.zip, and the DMG as Hammock.dmg,
+    # for /hammock/download.
     cp "$archives/Hammock-$n.zip" "$stage/"
     cp "$archives/Hammock-$n.zip" "$stage/Hammock.zip"
+    cp "$dmgs/Hammock-$n.dmg" "$stage/Hammock.dmg"
     cp "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml" "$stage/"
     linux="$archives/linux-$n"
     if [ -d "$linux" ]; then
@@ -129,7 +137,7 @@ $(sed -E -e 's|<li><b>([A-Z]+)</b> |- **\1** |' -e 's|<h4>(.*)</h4>|\1:|' -e 's|
     [ ! -d "$linux" ] || echo "Linux: $site/linux/hammock-linux-amd64.tar.gz (arm64 too); Unraid: $site/linux/hammock.plg"
     ;;
   discard)
-    rm -f "$archives/Hammock-$n.zip" "$archives/Hammock-$n.html" "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml"
+    rm -f "$archives/Hammock-$n.zip" "$archives/Hammock-$n.html" "$dmgs/Hammock-$n.dmg" "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml"
     rm -rf "$archives/linux-$n"
     ;;
   *) echo "usage: scripts/mac-update build <n> <notes.html> | upload <n> | discard <n>" >&2; exit 2 ;;
