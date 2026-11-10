@@ -1,0 +1,3 @@
+tag: FIXED
+date: 2026-11-10
+Shared Groups are safer. Removing someone, stopping sharing or closing the Group now always stops everything they were watching there, log panes included, and disconnects them. A Mac sharing a Group with you can set your clipboard only with what you copy from its pages yourself, and its names and titles can't carry hidden control characters or text-reversing tricks. Someone you share with can no longer show or hide floating panes outside the Group, and someone whose key merely resembles a guest's or a linked computer's can't sign in as them. Can Drive and Let Drive now say what they allow: running any command as you on this Mac.
