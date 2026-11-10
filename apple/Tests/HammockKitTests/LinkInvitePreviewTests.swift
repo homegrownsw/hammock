@@ -25,3 +25,14 @@ import Testing
         #expect(LinkInvitePreview(link: try link(.with { $0.certSha256 = "ab"; $0.userID = "u" })) == nil)
     }
 }
+
+@Suite struct LinkStartTests {
+    @Test func outsideLinksAskInAppOnesStart() {
+        #expect(LinkStart(link: nil, fromOutside: false) == .discover)
+        #expect(LinkStart(link: nil, fromOutside: true) == .discover)
+        // Link Again… passes a plain address: it starts, it isn't a "damaged link".
+        #expect(LinkStart(link: "100.64.0.2:7433", fromOutside: false) == .start("100.64.0.2:7433"))
+        #expect(LinkStart(link: "hammock://link/abc", fromOutside: false) == .start("hammock://link/abc"))
+        #expect(LinkStart(link: "hammock://link/abc", fromOutside: true) == .ask("hammock://link/abc"))
+    }
+}

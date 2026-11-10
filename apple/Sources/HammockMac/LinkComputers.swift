@@ -13,8 +13,11 @@ final class LinkUI {
     static let shared = LinkUI()
     /// Link a Computer… is up.
     var showing = false
-    /// A hammock://link/ link opened: linking starts with it.
+    /// What linking starts with: an address or hammock://link/ link.
     var link: String?
+    /// The link came from outside the app (a URL opened from a web page or a
+    /// message): it's asked about before anything is sent.
+    var linkFromOutside = false
     /// A computer to unlink, once you confirm, and where it was asked (its
     /// window, or Settings: the confirmation shows there).
     var unlinking: Computer?
@@ -32,8 +35,12 @@ final class LinkUI {
         unlinking = c
     }
 
-    func open(link: String? = nil) {
+    /// Link a Computer…, starting with `link` (an address, or a hammock://link/
+    /// link) when given. `fromOutside` only for a URL opened from elsewhere
+    /// (onOpenURL): those ask first; the app's own (Link Again…) start at once.
+    func open(link: String? = nil, fromOutside: Bool = false) {
         self.link = link
+        linkFromOutside = link != nil && fromOutside
         showing = true
         NSApp.activate()
     }
@@ -102,12 +109,15 @@ struct LinkComputerSheet: View {
         .frame(width: 480)
         .task {
             // A link opened from elsewhere: asked about first, before anything
-            // (remote access, connecting to it) happens.
-            if let link = LinkUI.shared.link {
-                LinkUI.shared.link = nil
-                asking = link
-            } else {
-                await prepare()
+            // (remote access, connecting to it) happens. The app's own (Link
+            // Again…, an address) start as they always have.
+            let how = LinkStart(link: LinkUI.shared.link, fromOutside: LinkUI.shared.linkFromOutside)
+            LinkUI.shared.link = nil
+            LinkUI.shared.linkFromOutside = false
+            switch how {
+            case .ask(let link): asking = link
+            case .start(let link): confirmedLink = link; await prepare()
+            case .discover: await prepare()
             }
         }
     }

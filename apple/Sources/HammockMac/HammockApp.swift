@@ -109,7 +109,7 @@ struct HammockApp: App {
                 .onOpenURL { url in
                     let link = url.absoluteString
                     if link.hasPrefix("hammock://join/") { SharingUI.shared.joinLink = link }
-                    if link.hasPrefix("hammock://link/") { LinkUI.shared.open(link: link) }
+                    if link.hasPrefix("hammock://link/") { LinkUI.shared.open(link: link, fromOutside: true) }
                     if link.hasPrefix("hammock://pane/") { revealLinked(String(link.dropFirst("hammock://pane/".count))) }
                 }
                 // An open window takes hammock:// links itself. Without this the

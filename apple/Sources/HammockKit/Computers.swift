@@ -267,3 +267,18 @@ public struct LinkInvitePreview: Equatable, Sendable {
         addresses = t.addresses
     }
 }
+
+/// How Link a Computer… starts: asking about a link opened from elsewhere
+/// first (nothing is sent until you say), straight away with an address or
+/// link from the app itself (Link Again…, the palette), or by looking for
+/// computers.
+public enum LinkStart: Equatable, Sendable {
+    case discover
+    case ask(String)
+    case start(String)
+
+    public init(link: String?, fromOutside: Bool) {
+        guard let link, !link.isEmpty else { self = .discover; return }
+        self = fromOutside ? .ask(link) : .start(link)
+    }
+}
