@@ -96,13 +96,20 @@
     position: relative; text-align: left; border-radius: 18px; overflow: hidden;
     background: #133528; border: 1px solid rgba(255,255,255,.14);
     box-shadow: 0 40px 100px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
-    display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 540px;
+    display: grid; grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 540px;
     font: 13px/1.35 -apple-system, BlinkMacSystemFont, Inter, sans-serif; color: #e9f2ed;
+    transition: grid-template-columns .3s cubic-bezier(.3,.7,.2,1);
   }
-  .side { background: #0d2a20; border-right: 1px solid rgba(0,0,0,.35); padding: 12px 8px 10px; display: flex; flex-direction: column; min-width: 0; }
+  /* The sidebar hides by its column closing; its contents keep their width and are clipped. */
+  .window.nosb { grid-template-columns: 0 minmax(0, 1fr); }
+  .side { background: #0d2a20; border-right: 1px solid rgba(0,0,0,.35); min-width: 0; overflow: hidden; transition: border-color .3s; }
+  .window.nosb .side { border-right-color: transparent; }
+  .side-in { width: 236px; height: 100%; padding: 12px 8px 10px; display: flex; flex-direction: column; }
   .side-top { display: flex; align-items: center; gap: 8px; padding: 2px 6px 12px; }
+  .glist { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .glist::-webkit-scrollbar { display: none; }
   .lights { display: flex; gap: 8px; margin-right: auto; }
-  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+  .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; display: grid; place-items: center; }
   .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
   .circ { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); color: #cfe0d7; }
   .grp { display: flex; align-items: center; gap: 9px; padding: 6px 8px; font-weight: 700; font-size: 14px; white-space: nowrap; }
@@ -114,7 +121,7 @@
   .trow .t { color: #8fa89b; font-size: 12px; font-variant-numeric: tabular-nums; }
   .trow.on { background: rgba(255,255,255,.12); color: #fff; }
   .st { width: 15px; height: 15px; flex: none; }
-  .needs { margin-top: auto; border-top: 1px solid rgba(255,255,255,.08); padding: 10px 2px 0; }
+  .needs { border-top: 1px solid rgba(255,255,255,.08); padding: 10px 2px 0; }
   .needs h5 { display: flex; align-items: center; gap: 6px; margin: 0 6px 6px; font: 600 11.5px -apple-system, Inter, sans-serif; color: #ff9f0a; }
   .needs h5 span { background: rgba(255,159,10,.2); border-radius: 8px; padding: 0 6px; font-size: 11px; }
   .card2 { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.08); border-radius: 11px; padding: 9px 10px; font-size: 12px; color: #c9dbd1; }
@@ -123,18 +130,32 @@
   .card2 .acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
   .card2 .acts span { padding: 3px 11px; border-radius: 7px; background: rgba(255,255,255,.12); font-weight: 500; color: #fff; }
   .card2 .acts span:last-child { background: #3fb88a; color: #062016; }
+  .nbox, .nbox .card2 { transition: opacity .25s, transform .25s; }
+  .nbox.bye, .nbox .card2.bye { opacity: 0; transform: translateX(-14px); }
   .host { display: flex; align-items: center; gap: 9px; padding: 12px 8px 2px; font-size: 12px; color: #fff; }
   .host small { display: block; color: #8fa89b; font-size: 11px; }
 
-  .main { display: grid; grid-template-rows: 52px minmax(0,1fr); min-width: 0; }
+  .main { display: grid; grid-template-rows: 52px minmax(0,1fr); min-width: 0; min-height: 0; }
   .toolbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 0 18px; background: #133528; border-bottom: 1px solid rgba(0,0,0,.3); min-width: 0; }
   .toolbar .ti { margin-right: auto; min-width: 0; white-space: nowrap; overflow: hidden; }
   .toolbar .ti b { display: block; font-size: 13.5px; }
   .toolbar .ti small { color: #8fa89b; font-size: 11.5px; }
   .cap { height: 30px; padding: 0 9px; border-radius: 15px; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); color: #cfe0d7; flex: none; }
-  .panes { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1px; background: rgba(0,0,0,.45); min-height: 0; }
-  .col { display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: rgba(0,0,0,.45); min-width: 0; min-height: 0; }
+  /* With the sidebar hidden, the lights and the sidebar button move into the toolbar, as in the app. */
+  .tb-lead { display: flex; align-items: center; gap: 8px; flex: none; max-width: 0; opacity: 0; overflow: hidden; margin-left: -8px; transition: max-width .3s cubic-bezier(.3,.7,.2,1), opacity .2s, margin .3s; }
+  .window.nosb .tb-lead { max-width: 120px; opacity: 1; margin: 0 6px 0 -4px; }
+  /* A tab's splits: .sp.h side by side, .sp.v stacked; flex-grow carries each one's share. */
+  .panes { display: flex; background: rgba(0,0,0,.45); min-width: 0; min-height: 0; }
+  .sp { display: flex; gap: 1px; background: rgba(0,0,0,.45); }
+  .sp.v { flex-direction: column; }
+  .panes > *, .sp > * { flex: 1 1 0; min-width: 0; min-height: 0; }
   .pane { display: grid; grid-template-rows: 30px minmax(0,1fr); background: #0a1a13; min-width: 0; min-height: 0; }
+  .pane.new { animation: pane-in .25s ease; }
+  @keyframes pane-in { from { opacity: 0; } }
+  .pane.focus .ptitle { background: color-mix(in srgb, #3fb88a 9%, #0f241b); }
+  .ptitle .px { margin-left: auto; flex: none; display: grid; place-items: center; width: 20px; height: 18px; border-radius: 5px; color: #8fa89b; }
+  .ptitle .state + .px { margin-left: 4px; }
+  .ptitle .px:hover { background: rgba(255,255,255,.1); color: #fff; }
   .ptitle { display: flex; align-items: center; gap: 7px; padding: 0 10px; background: #0f241b; border-bottom: 1px solid rgba(255,255,255,.05); color: #cfe0d7; font-size: 12px; white-space: nowrap; overflow: hidden; }
   .ptitle .agent { color: #fff; font-weight: 500; }
   .ptitle .cwd { color: #8fa89b; overflow: hidden; text-overflow: ellipsis; }
@@ -144,8 +165,73 @@
   .term .y { color: #ffd60a; } .term .pu { color: #d69bff; } .term .o { color: #ff9f0a; } .term .w { color: #fff; }
   .term .bul { color: #3fb88a; }
   .term .spin { color: #ff9f0a; margin-top: auto; }
+  .term .b { color: #64d2ff; }
   .caret { display: inline-block; width: 7px; height: 14px; background: #d5e5dc; vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  .caret.off { background: none; box-shadow: inset 0 0 0 1px #8fa89b; animation: none; }
   @keyframes blink { 50% { opacity: 0; } }
+  /* The pretend shell: scrolls, keeps the newest line in view. */
+  .term.sh { overflow-x: hidden; overflow-y: auto; scrollbar-width: none; cursor: text; }
+  .term.sh::-webkit-scrollbar { display: none; }
+  .term.sh > div { flex: none; min-height: 1.62em; white-space: pre-wrap; word-break: break-word; }
+  .term.sh > .train { white-space: pre; width: max-content; line-height: 1.2; animation: choo 4s linear both; }
+  @keyframes choo { from { margin-left: 100%; } to { margin-left: 0; transform: translateX(-100%); } }
+  .vim { display: flex; flex-direction: column; height: 100%; }
+  .vim .vl { flex: 1; min-height: 0; overflow: hidden; }
+  .vim .vl > div { min-height: 1.62em; white-space: pre-wrap; }
+  .vim .vt { color: #4a6ee0; }
+  .vim .vs { white-space: pre; min-height: 1.62em; color: #d5e5dc; }
+  /* A log pane: newest at the bottom. */
+  .term.logp { font-size: 11px; line-height: 1.6; padding: 8px 12px; justify-content: flex-end; }
+  .logp > div { flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .logp .lv { display: inline-block; width: 4.4em; }
+  .lv.Info { color: #64d2ff; } .lv.Debug { color: #6f8f7f; } .lv.Error { color: #ff6961; } .lv.Fault { color: #d69bff; }
+  /* A Simulator pane, an iPhone running the Weather app. */
+  .sim { background: radial-gradient(circle at 50% 40%, #23272e, #121418); display: grid; place-items: center; min-height: 0; overflow: hidden; padding: 14px; }
+  .dev { position: relative; height: 100%; max-height: 440px; aspect-ratio: 9 / 19.5; border-radius: 26px; border: 4px solid #2a2e35; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+    background: linear-gradient(180deg, #2d6cc0, #5b9be0 60%, #86b7ea); padding: 26px 9px 9px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    color: #fff; font: 9px/1.3 -apple-system, BlinkMacSystemFont, Inter, sans-serif; overflow: hidden; }
+  .dev .isl { position: absolute; top: 7px; left: 50%; transform: translateX(-50%); width: 34%; height: 10px; border-radius: 6px; background: #000; }
+  .dev small { font-size: 10px; letter-spacing: .04em; }
+  .dev .deg { font: 200 44px/1 -apple-system, BlinkMacSystemFont, Inter, sans-serif; margin-left: .25em; }
+  .dev .hrs, .dev .days { width: 100%; background: rgba(255,255,255,.17); border-radius: 10px; padding: 7px 6px; }
+  .dev .hrs { display: flex; justify-content: space-between; margin-top: 8px; }
+  .dev .hrs span { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 8.5px; }
+  .dev .hrs b { font-size: 12px; font-weight: 400; }
+  .dev .days { display: grid; gap: 6px; margin-top: 4px; }
+  .dev .days span { display: grid; grid-template-columns: 30px 16px 18px minmax(0,1fr) 18px; gap: 3px; align-items: center; font-size: 9px; }
+  .dev .days i { position: relative; display: block; height: 3px; border-radius: 2px; background: rgba(255,255,255,.25); }
+  .dev .days i::after { content: ""; position: absolute; inset: 0 var(--b) 0 var(--a); border-radius: 2px; background: linear-gradient(90deg, #7fd3ff, #ffd60a); }
+  /* Cards in the window's bottom-right corner, like the app's in-window notifications (InAppNotices.swift). */
+  .toasts { position: absolute; right: 14px; bottom: 14px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+  .toast { position: relative; pointer-events: auto; width: 320px; max-width: calc(100vw - 64px); display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 14px;
+    background: rgba(26, 64, 49, .82); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,.13); box-shadow: 0 3px 16px rgba(0,0,0,.35); color: #fff; font-size: 13px; line-height: 1.35;
+    animation: toast-in .35s cubic-bezier(.2,.9,.3,1); transition: transform .3s, opacity .3s; }
+  .toast.out { transform: translateX(calc(100% + 20px)); opacity: 0; }
+  @keyframes toast-in { from { transform: translateX(calc(100% + 20px)); opacity: 0; } }
+  .toast .tic { flex: none; width: 20px; height: 20px; display: grid; place-items: center; margin-top: 1px; }
+  .toast .tic img { width: 20px; height: 20px; border-radius: 5px; }
+  .toast .tic .st { width: 17px; height: 17px; }
+  .toast b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toast span:not(.tic):not(.tx) { color: #b9cbc1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .toast .tx { position: absolute; top: -7px; left: -7px; width: 18px; height: 18px; border-radius: 50%; display: none; place-items: center;
+    background: #24493a; border: 1px solid rgba(255,255,255,.18); color: #cfe0d7; }
+  .toast:hover .tx { display: grid; }
+  /* What the lights do when clicked: a shake for close, a squish for minimise, a swell for zoom. */
+  .window.shake { animation: shake .5s cubic-bezier(.36,.07,.19,.97); }
+  @keyframes shake { 15%, 85% { transform: translateX(-2px); } 30%, 70% { transform: translateX(5px); } 45% { transform: translateX(-7px); } 60% { transform: translateX(7px); } }
+  .window.squish { animation: squish .55s cubic-bezier(.3,.7,.2,1); transform-origin: 50% 100%; }
+  @keyframes squish { 40% { transform: scale(.96, .9); } 70% { transform: scale(1.01, 1.02); } }
+  .window.pulse { animation: pulse .5s cubic-bezier(.3,.7,.2,1); }
+  @keyframes pulse { 40% { transform: scale(1.02); } }
+  /* Once the script has made it work: what can be clicked shows it. */
+  .window.live { -webkit-user-select: none; user-select: none; }
+  .window.live :is(.grp, .trow, .circ, .cap, .lights i, .card2, .acts span, .px, .toast) { cursor: pointer; }
+  .window.live .grp { border-radius: 9px; }
+  .window.live .grp:hover, .window.live .trow:not(.on):hover { background: rgba(255,255,255,.05); }
+  .window.live :is(.circ, .cap):hover { background: rgba(255,255,255,.13); }
+  .window.live .acts span:hover { filter: brightness(1.15); }
+  .window.live .lights:hover i::before { content: attr(data-g); font: 700 10px/1 -apple-system, BlinkMacSystemFont, sans-serif; color: rgba(0,0,0,.55); }
   .web { background: #15171c; display: flex; min-height: 0; overflow: hidden; font-family: Inter, sans-serif; }
   .web nav { all: unset; width: 31%; padding: 16px 12px; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 9px; flex: none; }
   .web nav b { font: 700 12px var(--display); color: #fff; display: flex; align-items: center; gap: 6px; }
@@ -243,8 +329,9 @@
     .split { grid-template-columns: minmax(0, 1fr); gap: 44px; }
     .split.flip > :first-child { order: 0; }
     .window { grid-template-columns: 210px minmax(0,1fr); height: 500px; }
-    .panes { grid-template-columns: minmax(0, 1fr); }
-    .col + .pane { display: none; }
+    .side-in { width: 210px; }
+    /* Too narrow for side-by-side splits: only the side holding the focused pane shows. */
+    .sp.h > :not(.hf) { display: none; }
     section { padding-top: 76px; }
   }
   @media (max-width: 560px) {
@@ -255,6 +342,7 @@
     .window { grid-template-columns: minmax(0,1fr); height: 440px; }
     .cap:nth-of-type(-n+2) { display: none; }
     .side { display: none; }
+    .ptitle .px { display: none; }
     .features, .more { grid-template-columns: minmax(0, 1fr); }
     .phone { width: 270px; height: 560px; }
     .clock { font-size: 56px; }
@@ -298,80 +386,91 @@
   </svg>
   <div class="stage" aria-label="An illustration of the Hammock window: Groups and their tabs in the sidebar, an agent at work in a terminal pane, and the page it's checking in a browser pane">
     <div class="window" aria-hidden="true">
-      <aside class="side">
+      <aside class="side"><div class="side-in">
         <div class="side-top">
-          <div class="lights"><i></i><i></i><i></i></div>
-          <span class="circ"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
-          <span class="circ"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></span>
+          <div class="lights"><i data-light="close" data-g="×"></i><i data-light="min" data-g="−"></i><i data-light="zoom" data-g="+"></i></div>
+          <span class="circ" data-act="new-group"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          <span class="circ" data-act="toggle-sb"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></span>
         </div>
-        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#2f7ad9,#1d4f8a)">⛅️</span>Weather app<span class="chev">›</span><svg class="st gst"><use href="#s-done"/></svg></div>
-        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#3fb88a,#1f7a57)">📖</span>Docs site<span class="chev">⌄</span></div>
-        <div class="trow on"><svg class="st"><use href="#s-work"/></svg><span class="n">Dark mode</span><span class="t">4m</span></div>
-        <div class="trow"><svg class="st"><use href="#s-need"/></svg><span class="n">Broken links</span><span class="t">1m</span></div>
-        <div class="trow"><svg class="st"><use href="#s-done"/></svg><span class="n">Search index</span><span class="t">12m</span></div>
-        <div class="trow"><svg class="st"><use href="#s-rest"/></svg><span class="n">Release notes</span></div>
-        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#bf5af2,#7a3aa8)">🧩</span>API<span class="chev">›</span><svg class="st gst"><use href="#s-work"/></svg></div>
-        <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#ff9f0a,#c46a00)">🏠</span>Dotfiles<span class="chev">›</span></div>
+        <div class="glist">
+          <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#2f7ad9,#1d4f8a)">⛅️</span>Weather app<span class="chev">›</span><svg class="st gst"><use href="#s-done"/></svg></div>
+          <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#3fb88a,#1f7a57)">📖</span>Docs site<span class="chev">⌄</span></div>
+          <div class="trow on"><svg class="st"><use href="#s-work"/></svg><span class="n">Dark mode</span><span class="t">4m</span></div>
+          <div class="trow"><svg class="st"><use href="#s-need"/></svg><span class="n">Broken links</span><span class="t">1m</span></div>
+          <div class="trow"><svg class="st"><use href="#s-done"/></svg><span class="n">Search index</span><span class="t">12m</span></div>
+          <div class="trow"><svg class="st"><use href="#s-rest"/></svg><span class="n">Release notes</span></div>
+          <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#bf5af2,#7a3aa8)">🧩</span>API<span class="chev">›</span><svg class="st gst"><use href="#s-work"/></svg></div>
+          <div class="grp"><span class="gi" style="background:linear-gradient(135deg,#ff9f0a,#c46a00)">🏠</span>Dotfiles<span class="chev">›</span></div>
+        </div>
         <div class="needs">
-          <h5>Needs You <span>1</span></h5>
-          <div class="card2"><b>Broken links</b>claude wants to run <code>npm run check-links</code><div class="acts"><span>Deny</span><span>Allow</span></div></div>
+          <div class="nbox">
+            <h5>Needs You <span>1</span></h5>
+            <div class="card2"><b>Broken links</b>claude wants to run <code>npm run check-links</code><div class="acts"><span>Deny</span><span>Allow</span></div></div>
+          </div>
           <div class="host"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cfe0d7" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><div>Studio<small>This Mac</small></div></div>
         </div>
-      </aside>
+      </div></aside>
       <div class="main">
         <div class="toolbar">
+          <div class="tb-lead">
+            <div class="lights"><i data-light="close" data-g="×"></i><i data-light="min" data-g="−"></i><i data-light="zoom" data-g="+"></i></div>
+            <span class="circ" data-act="toggle-sb"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></span>
+          </div>
           <div class="ti"><b>Dark mode</b><small>Docs site — ~/Developer/docs</small></div>
-          <span class="cap"><svg width="16" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="16" rx="3"/><path d="M12 2v16"/></svg><small>⌄</small></span>
-          <span class="cap"><svg width="16" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="16" rx="3"/><path d="M2 10h20"/></svg><small>⌄</small></span>
-          <span class="cap"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><small>⌄</small></span>
-          <span class="cap"><svg width="18" height="16" viewBox="0 0 26 22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="18" cy="7" r="3.2"/><path d="M18 13c3.5 0 6 2 6 6"/></svg></span>
+          <span class="cap" data-act="split-r"><svg width="16" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="16" rx="3"/><path d="M12 2v16"/></svg><small>⌄</small></span>
+          <span class="cap" data-act="split-d"><svg width="16" height="14" viewBox="0 0 24 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="20" height="16" rx="3"/><path d="M2 10h20"/></svg><small>⌄</small></span>
+          <span class="cap" data-act="new-tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><small>⌄</small></span>
+          <span class="cap" data-act="share"><svg width="18" height="16" viewBox="0 0 26 22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="18" cy="7" r="3.2"/><path d="M18 13c3.5 0 6 2 6 6"/></svg></span>
         </div>
         <div class="panes">
-          <div class="col">
-          <div class="pane">
-            <div class="ptitle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="agent">zsh</span><span class="cwd">~/Developer/docs</span></div>
-            <div class="term">
-              <div><span class="g">~/Developer/docs</span> <span class="pu">main</span> <span class="p">❯</span> <span class="w">npm run dev</span></div>
-              <div>&nbsp;</div>
-              <div><span class="g">astro</span> <span class="w">v5.4</span> <span class="dim">ready in 412 ms</span></div>
-              <div><span class="dim">┃</span> Local <span class="y">http://localhost:4321/</span></div>
-              <div>&nbsp;</div>
-              <div><span class="dim">14:02:11</span> <span class="g">[watch]</span> src/styles/theme.css</div>
-              <div><span class="dim">14:02:11</span> <span class="g">[200]</span> /docs <span class="dim">18ms</span></div>
-              <div><span class="dim">14:03:40</span> <span class="g">[watch]</span> src/styles/code.css</div>
-              <div><span class="dim">14:03:40</span> <span class="g">[200]</span> /docs <span class="dim">14ms</span></div>
+          <div class="sp h hf">
+            <div class="sp v hf" style="flex-grow:1.1">
+              <div class="pane" data-p="dev">
+                <div class="ptitle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg><span class="agent">zsh</span><span class="cwd">~/Developer/docs</span></div>
+                <div class="term">
+                  <div><span class="g">~/Developer/docs</span> <span class="pu">main</span> <span class="p">❯</span> <span class="w">npm run dev</span></div>
+                  <div>&nbsp;</div>
+                  <div><span class="g">astro</span> <span class="w">v5.4</span> <span class="dim">ready in 412 ms</span></div>
+                  <div><span class="dim">┃</span> Local <span class="y">http://localhost:4321/</span></div>
+                  <div>&nbsp;</div>
+                  <div><span class="dim">14:02:11</span> <span class="g">[watch]</span> src/styles/theme.css</div>
+                  <div><span class="dim">14:02:11</span> <span class="g">[200]</span> /docs <span class="dim">18ms</span></div>
+                  <div><span class="dim">14:03:40</span> <span class="g">[watch]</span> src/styles/code.css</div>
+                  <div><span class="dim">14:03:40</span> <span class="g">[200]</span> /docs <span class="dim">14ms</span></div>
+                </div>
+              </div>
+              <div class="pane focus hf" data-p="agent">
+                <div class="ptitle"><span style="color:#ff9f0a">✳</span><span class="agent">claude ⌄</span><span class="cwd">~/Developer/docs</span><span class="state"><svg class="st" style="width:13px;height:13px"><use href="#s-work"/></svg>Working</span></div>
+                <div class="term">
+                  <div><span class="p">❯</span> <span class="w">add a dark mode to the docs, and check it</span></div>
+                  <div>&nbsp;</div>
+                  <div><span class="bul">●</span> Update <span class="pu">src/styles/theme.css</span> <span class="g">+38</span> <span class="r">−4</span></div>
+                  <div><span class="bul">●</span> hammock · browser_screenshot</div>
+                  <div class="dim">&nbsp;&nbsp;⎿ code blocks are too dim: raising contrast</div>
+                  <div><span class="bul">●</span> Update <span class="pu">src/styles/code.css</span> <span class="g">+6</span> <span class="r">−6</span></div>
+                  <div class="spin"><span data-spin>✻</span> Checking the other pages… <span class="dim">(<span data-since="dark" data-fmt="long">4m 12s</span>)</span></div>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="pane">
-            <div class="ptitle"><span style="color:#ff9f0a">✳</span><span class="agent">claude ⌄</span><span class="cwd">~/Developer/docs</span><span class="state"><svg class="st" style="width:13px;height:13px"><use href="#s-work"/></svg>Working</span></div>
-            <div class="term">
-              <div><span class="p">❯</span> <span class="w">add a dark mode to the docs, and check it</span></div>
-              <div>&nbsp;</div>
-              <div><span class="bul">●</span> Update <span class="pu">src/styles/theme.css</span> <span class="g">+38</span> <span class="r">−4</span></div>
-              <div><span class="bul">●</span> hammock · browser_screenshot</div>
-              <div class="dim">&nbsp;&nbsp;⎿ code blocks are too dim: raising contrast</div>
-              <div><span class="bul">●</span> Update <span class="pu">src/styles/code.css</span> <span class="g">+6</span> <span class="r">−6</span></div>
-              <div class="spin">✻ Checking the other pages… <span class="dim">(4m 12s)</span></div>
-            </div>
-          </div>
-          </div>
-          <div class="pane">
-            <div class="ptitle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg><span class="agent">Docs</span><span class="cwd">localhost:4321/docs</span><span class="state">‹ ›&nbsp;↻</span></div>
-            <div class="web">
-              <nav><b>📖 Docs</b><i class="on"></i><i style="width:80%"></i><i style="width:60%"></i><i style="width:75%"></i><i style="width:50%"></i><i style="width:68%"></i></nav>
-              <article>
-                <h6>Getting started</h6>
-                <i style="width:92%"></i><i style="width:78%"></i>
-                <pre><span class="k">npm</span> install <span class="s">@acme/widgets</span>
+            <div class="pane" data-p="web">
+              <div class="ptitle"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg><span class="agent">Docs</span><span class="cwd">localhost:4321/docs</span><span class="state">‹ ›&nbsp;↻</span></div>
+              <div class="web">
+                <nav><b>📖 Docs</b><i class="on"></i><i style="width:80%"></i><i style="width:60%"></i><i style="width:75%"></i><i style="width:50%"></i><i style="width:68%"></i></nav>
+                <article>
+                  <h6>Getting started</h6>
+                  <i style="width:92%"></i><i style="width:78%"></i>
+                  <pre><span class="k">npm</span> install <span class="s">@acme/widgets</span>
 <span class="k">npx</span> widgets init</pre>
-                <i style="width:85%"></i><i style="width:64%"></i>
-                <div class="callout"><i style="width:80%"></i><i style="width:55%"></i></div>
-                <i style="width:72%"></i>
-              </article>
+                  <i style="width:85%"></i><i style="width:64%"></i>
+                  <div class="callout"><i style="width:80%"></i><i style="width:55%"></i></div>
+                  <i style="width:72%"></i>
+                </article>
+              </div>
             </div>
           </div>
         </div>
       </div>
+      <div class="toasts"></div>
     </div>
   </div>
 </header>
@@ -574,6 +673,741 @@
       fit();
       setTimeout(function () { old.classList.remove('out'); }, 750);
     }, 2400);
+  })();
+</script>
+<script>
+  // The window in the hero, made to work: a pretend Hammock with Groups, tabs, splits and a shell or two.
+  // The HTML above draws its first state (and is all there is without JavaScript); from here a small
+  // model draws it. Only on wider screens: on a phone it stays a picture. It stays aria-hidden: it's a
+  // toy, and the page says everything it shows in words.
+  (() => {
+    const win = document.querySelector('.window');
+    if (!win) return;
+    const live = matchMedia('(min-width: 561px)');
+    const still = matchMedia('(prefers-reduced-motion: reduce)');
+    const q = s => win.querySelector(s);
+    const glist = q('.glist'), nbox = q('.nbox'), title = q('.toolbar .ti'), panesEl = q('.panes'), toasts = q('.toasts');
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const pick = a => a[Math.floor(Math.random() * a.length)];
+    const line = (html, cls) => `<div${cls ? ` class="${cls}"` : ''}>${html}</div>`;
+    const grad = (a, b) => `linear-gradient(135deg,${a},${b})`;
+    const st = (s, cls) => `<svg class="st${cls ? ' ' + cls : ''}"><use href="#s-${s || 'rest'}"/></svg>`;
+
+    const I = {
+      term: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg>',
+      globe: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>',
+      phone: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>',
+      log: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+      x: '<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg>',
+      people: '<svg width="18" height="16" viewBox="0 0 26 22" fill="none" stroke="#cfe0d7" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M2 20c0-4 3-6 7-6s7 2 7 6"/><circle cx="18" cy="7" r="3.2"/><path d="M18 13c3.5 0 6 2 6 6"/></svg>',
+      hammock: '<img src="icon-256.png" alt="">',
+    };
+    const MARK = { claude: '<span style="color:#ff9f0a">✳</span>', codex: '<span style="color:#cfe0d7">◎</span>' };
+    const LABEL = { work: 'Working', need: 'Needs input', done: 'Done' };
+
+    // ---- The model: Groups hold tabs, a tab holds a layout of panes.
+    // A layout node is a pane, { p, w }, or a split, { d: 'h' | 'v', w, c: [nodes] }; w is its share.
+    const T0 = Date.now();
+    const panes = {}, tabs = {};
+    let seq = 0, cur = 'dark', kbd = false;
+    const P = (id, o) => (panes[id] = Object.assign({ id }, o));
+    const leaf = (p, w = 1) => ({ p, w });
+    const H = (c, w = 1) => ({ d: 'h', w, c }), V = (c, w = 1) => ({ d: 'v', w, c });
+    const paneIds = nd => nd.p ? [nd.p] : nd.c.flatMap(paneIds);
+    const grab = id => { const el = win.querySelector(`[data-p="${id}"]`); return el ? el.lastElementChild.innerHTML : ''; };
+
+    const promptHTML = cwd => `<span class="g">${esc(cwd)}</span>${/^~\/(Developer\/[^/]+|\.dotfiles)$/.test(cwd) ? ' <span class="pu">main</span>' : ''} <span class="p">❯</span> `;
+    const prm = (cwd, cmd) => line(promptHTML(cwd) + `<span class="w">${esc(cmd)}</span>`);
+    const HINT = line('A pretend shell, so you can try Hammock right here. Type help to see what it can do.', 'dim');
+    const greeting = () => {
+      const d = new Date();
+      return [line(`Last login: ${d.toDateString().replace(/ \d{4}$/, '')} ${d.toTimeString().slice(0, 8)} on ttys00${seq % 10}`, 'dim'), HINT];
+    };
+    const mkShell = (cwd, pre, id = 'p' + ++seq) => P(id, { kind: 'sh', cwd, lines: pre || greeting(), input: '', hist: [], hi: 0, timers: [] });
+
+    const groups = [
+      { id: 'weather', name: 'Weather app', icon: '⛅️', bg: grad('#2f7ad9', '#1d4f8a'), cwd: '~/Developer/weather', tabs: ['forecast', 'build'] },
+      { id: 'docs', name: 'Docs site', icon: '📖', bg: grad('#3fb88a', '#1f7a57'), cwd: '~/Developer/docs', open: true, tabs: ['dark', 'broken', 'search', 'release'] },
+      { id: 'api', name: 'API', icon: '🧩', bg: grad('#bf5af2', '#7a3aa8'), cwd: '~/Developer/api', tabs: ['pagination', 'limits'] },
+      { id: 'dotfiles', name: 'Dotfiles', icon: '🏠', bg: grad('#ff9f0a', '#c46a00'), cwd: '~/.dotfiles', tabs: ['dotzsh', 'syslog'] },
+    ];
+    const tab = (id, name, state, secsAgo, layout, focus) =>
+      (tabs[id] = { id, name, state, since: T0 - secsAgo * 1000, layout, focus: focus || paneIds(layout)[0] });
+
+    // Docs site: the tab the HTML draws, then the others.
+    P('dev', { kind: 'term', title: 'zsh', cwd: '~/Developer/docs', html: grab('dev') });
+    P('agent', { kind: 'agent', agent: 'claude', cwd: '~/Developer/docs', html: grab('agent') });
+    P('web', { kind: 'web', title: 'Docs', url: 'localhost:4321/docs', html: grab('web') });
+    tab('dark', 'Dark mode', 'work', 252, H([V([leaf('dev'), leaf('agent')], 1.1), leaf('web')]), 'agent');
+
+    const bul = '<span class="bul">●</span>';
+    const ask = s => line(`<span class="p">❯</span> <span class="w">${s}</span>`) + line('&nbsp;');
+    const brokenBase = ask('find the broken links in the docs and fix them') +
+      line(`${bul} Read <span class="pu">dist/links.json</span>`) +
+      line(`${bul} Update <span class="pu">src/pages/guide.md</span> <span class="g">+3</span> <span class="r">−3</span>`);
+    const ran = line(`${bul} Bash <span class="pu">npm run check-links</span>`);
+    P('broken-agent', { kind: 'agent', agent: 'claude', cwd: '~/Developer/docs', html: t => {
+      if (!t.answer) return brokenBase + line('&nbsp;') + line('╭ Bash command', 'o') +
+        ['<span class="w">npm run check-links</span>', '<span class="dim">Check every link in the built site</span>', 'Do you want to proceed?',
+          '<span class="w">❯ 1. Yes</span>', '&nbsp;&nbsp;2. No'].map(s => line(`<span class="o">│</span> ${s}`)).join('');
+      if (t.answer === 'deny') return brokenBase + ran + line('&nbsp;&nbsp;⎿ Denied by you', 'dim') +
+        line(`${bul} OK, I won’t run it. The three fixes are in <span class="pu">src/pages/guide.md</span> if you’d like to check them yourself.`);
+      if (t.state === 'work') return brokenBase + ran + line('&nbsp;&nbsp;⎿ Checking 214 links…', 'dim') +
+        `<div class="spin"><span data-spin>✻</span> Checking links… <span class="dim">(<span data-since="broken" data-fmt="long">${ago(t, 'long')}</span>)</span></div>`;
+      return brokenBase + ran + line('&nbsp;&nbsp;⎿ 214 links, 0 broken', 'dim') + line(`${bul} Fixed 3 links in <span class="pu">src/pages/guide.md</span>. All 214 work now.`);
+    } });
+    tab('broken', 'Broken links', 'need', 75, leaf('broken-agent'));
+    tabs.broken.ask = 'claude wants to run <code>npm run check-links</code>';
+
+    P('search-agent', { kind: 'agent', agent: 'claude', cwd: '~/Developer/docs', html:
+      ask('rebuild the search index, with the new pages') +
+      line(`${bul} Bash <span class="pu">npm run search:build</span>`) + line('&nbsp;&nbsp;⎿ indexed 148 pages (2.1 MB)', 'dim') +
+      line(`${bul} Bash <span class="pu">npm run search:test</span>`) + line('&nbsp;&nbsp;⎿ 24 queries, all found', 'dim') +
+      line(`${bul} Done. The index has all 148 pages, the six new ones included, and every test query finds its page.`) });
+    tab('search', 'Search index', 'done', 735, leaf('search-agent'));
+
+    mkShell('~/Developer/docs', [prm('~/Developer/docs', 'git log --oneline -3'),
+      line('<span class="y">a1f3c9e</span> Dark mode for code blocks'), line('<span class="y">7d20b14</span> Fix the search box on mobile'),
+      line('<span class="y">3e9c0a2</span> Release notes for 2.4')], 'release-sh');
+    tab('release', 'Release notes', null, 0, leaf('release-sh'));
+
+    // Weather app: an agent that checked its work in the Simulator, and a build.
+    P('fc-agent', { kind: 'agent', agent: 'claude', cwd: '~/Developer/weather', html:
+      ask('make the forecast match the design, and check it in the simulator') +
+      line(`${bul} Update <span class="pu">Weather/ForecastView.swift</span> <span class="g">+88</span> <span class="r">−31</span>`) +
+      line(`${bul} Bash <span class="pu">xcodebuild -scheme Weather build</span>`) + line('&nbsp;&nbsp;⎿ ** BUILD SUCCEEDED **', 'dim') +
+      line(`${bul} hammock · sim_screenshot`) + line('&nbsp;&nbsp;⎿ the hourly row was clipped: moving it into a ScrollView', 'dim') +
+      line(`${bul} hammock · sim_screenshot`) + line('&nbsp;&nbsp;⎿ matches the design', 'dim') +
+      line(`${bul} Done. The forecast matches the design, checked on the iPhone 17 Pro simulator.`) });
+    P('sim', { kind: 'sim' });
+    tab('forecast', 'Forecast view', 'done', 480, H([leaf('fc-agent', 1.25), leaf('sim')]), 'fc-agent');
+    mkShell('~/Developer/weather', [prm('~/Developer/weather', 'xcodebuild -scheme Weather build'),
+      ...['Compiling ForecastView.swift', 'Compiling HourlyRow.swift', 'Compiling WeatherApp.swift', 'Linking Weather'].map(s => line(s, 'dim')),
+      line('<span class="g">** BUILD SUCCEEDED **</span> <span class="dim">[23.4 sec]</span>')], 'build-sh');
+    tab('build', 'Build', null, 0, leaf('build-sh'));
+
+    // API: Codex at work beside a test watcher, and a finished agent.
+    P('codex', { kind: 'agent', agent: 'codex', cwd: '~/Developer/api', html: () =>
+      line('<span class="w">›</span> <span class="w">add cursor pagination to /users</span>') + line('&nbsp;') +
+      line('<span class="w">•</span> Explored') + line('&nbsp;&nbsp;└ Read routes/users.ts, db/query.ts', 'dim') +
+      line('<span class="w">•</span> Edited <span class="pu">routes/users.ts</span> (<span class="g">+42</span> <span class="r">−9</span>)') +
+      line('<span class="w">•</span> Ran <span class="pu">npm test -- users</span>') + line('&nbsp;&nbsp;└ 1 failed: stops at the last page', 'dim') +
+      `<div class="spin" style="color:#d5e5dc"><span class="w">•</span> <b class="w">Working</b> <span class="dim">(<span data-since="pagination" data-fmt="codex">${ago(tabs.pagination, 'codex')}</span> • esc to interrupt)</span></div>` });
+    P('tests', { kind: 'term', title: 'vitest', cwd: '~/Developer/api', html:
+      line('<span style="background:#ffd60a;color:#000;font-weight:600">&nbsp;RERUN&nbsp;</span> <span class="dim">routes/users.ts</span>') + line('&nbsp;') +
+      line('<span class="g">✓</span> users › lists the first page <span class="dim">12ms</span>') +
+      line('<span class="g">✓</span> users › follows the cursor <span class="dim">9ms</span>') +
+      line('<span class="r">×</span> users › stops at the last page <span class="dim">4ms</span>') +
+      line('&nbsp;&nbsp;<span class="r">→ expected 2 to be 1</span>') + line('&nbsp;') +
+      line('<span class="dim">Test Files</span> <span class="r">1 failed</span> | <span class="g">11 passed</span> (12)') +
+      line('<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tests</span> <span class="r">1 failed</span> | <span class="g">211 passed</span> (212)') + line('&nbsp;') +
+      line('<span class="dim">Waiting for file changes…</span>') });
+    tab('pagination', 'Pagination', 'work', 125, H([leaf('codex', 1.15), leaf('tests')]), 'codex');
+    P('limits-agent', { kind: 'agent', agent: 'claude', cwd: '~/Developer/api', html:
+      ask('add rate limiting to /login') +
+      line(`${bul} Write <span class="pu">src/middleware/rateLimit.ts</span> <span class="g">+64</span>`) +
+      line(`${bul} Update <span class="pu">src/routes/login.ts</span> <span class="g">+3</span> <span class="r">−1</span>`) +
+      line(`${bul} Bash <span class="pu">npm test</span>`) + line('&nbsp;&nbsp;⎿ 212 passed', 'dim') +
+      line(`${bul} Added rate limiting to /login: five tries a minute per address, then a 429 with Retry-After. All 212 tests pass.`) });
+    tab('limits', 'Rate limits', 'done', 240, leaf('limits-agent'));
+
+    // Dotfiles: a shell, and the Mac's log.
+    mkShell('~/.dotfiles', [...greeting().slice(0, 1), prm('~/.dotfiles', 'git status'),
+      line('On branch main'), line('nothing to commit, working tree clean'), line('&nbsp;'), HINT], 'dot-sh');
+    tab('dotzsh', 'zsh', null, 0, leaf('dot-sh'));
+    const LOGS = [
+      ['hmkd', 'Info', 'pane started in ~/Developer/docs'], ['hmkd', 'Info', 'agent claude: Working'], ['Wi-Fi', 'Debug', 'roamed to the garden access point'],
+      ['softwareupdated', 'Info', 'nothing to update'], ['sharingd', 'Info', 'iPhone in range'], ['hmkd', 'Info', 'notification sent to iPhone'],
+      ['backupd', 'Info', 'backup finished in 41 s'], ['coffeed', 'Error', 'cup empty'], ['swingd', 'Fault', 'swing amplitude exceeded'],
+      ['hmkd', 'Debug', 'snapshot saved: 4 Groups, 10 tabs'], ['bluetoothd', 'Info', 'AirPods connected'], ['mds', 'Debug', 'indexed 12 files'],
+      ['hmkd', 'Info', 'agent codex: Working'], ['WindowServer', 'Debug', 'display woke'], ['nap', 'Info', 'started (estimated 20 min)'],
+    ];
+    const logRow = time => { const [proc, lv, msg] = pick(LOGS); return { time, proc, lv, msg }; };
+    P('log', { kind: 'log', rows: Array.from({ length: 24 }, (_, i) => logRow(T0 - (24 - i) * 2300)) });
+    tab('syslog', 'System log', null, 0, leaf('log'));
+
+    const SIM = '<div class="dev"><div class="isl"></div><small>EDINBURGH</small><div class="deg">12°</div><small>Partly cloudy</small><small style="opacity:.8">H 14°  L 8°</small>' +
+      '<div class="hrs">' + [['Now', '⛅️', 12], ['15', '🌤', 13], ['16', '☀️', 14], ['17', '🌥', 12], ['18', '🌧', 10]].map(([h, e, d]) => `<span>${h}<b>${e}</b>${d}°</span>`).join('') + '</div>' +
+      '<div class="days">' + [['Today', '⛅️', 8, 14, '10%', '30%'], ['Wed', '🌧', 7, 11, '5%', '55%'], ['Thu', '🌤', 9, 15, '25%', '15%'], ['Fri', '☀️', 10, 17, '35%', '0%']]
+        .map(([d, e, lo, hi, a, b]) => `<span>${d}<b>${e}</b>${lo}°<i style="--a:${a};--b:${b}"></i>${hi}°</span>`).join('') + '</div></div>';
+
+    const groupOf = id => groups.find(g => g.tabs.includes(id));
+    const tabOf = pid => Object.values(tabs).find(t => paneIds(t.layout).includes(pid));
+    const cwdOf = t => panes[t.focus].cwd || groupOf(t.id).cwd;
+    const focusedShell = () => { const p = panes[tabs[cur].focus]; return p && p.kind === 'sh' ? p : null; };
+
+    function ago(t, fmt) {
+      const s = Math.max(0, Math.floor((Date.now() - t.since) / 1000)), m = Math.floor(s / 60);
+      if (fmt === 'long') return m ? `${m}m ${s % 60}s` : `${s}s`;
+      if (fmt === 'codex') return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+      return m < 1 ? 'now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h`;
+    }
+
+    // ---- Drawing.
+    const rank = { need: 3, work: 2, done: 1 };
+    const groupState = g => g.tabs.map(id => tabs[id].state).filter(Boolean).sort((a, b) => rank[b] - rank[a])[0];
+
+    function renderSide() {
+      glist.innerHTML = groups.map(g => {
+        const agg = !g.open && groupState(g);
+        return `<div class="grp" data-g="${g.id}"><span class="gi" style="background:${g.bg}">${g.icon}</span>${esc(g.name)}<span class="chev">${g.open ? '⌄' : '›'}</span>${agg ? st(agg, 'gst') : ''}</div>` +
+          (g.open ? g.tabs.map(id => { const t = tabs[id];
+            return `<div class="trow${id === cur ? ' on' : ''}" data-t="${id}">${st(t.state)}<span class="n">${esc(t.name)}</span>` +
+              (t.state ? `<span class="t" data-since="${id}" data-fmt="short">${ago(t, 'short')}</span>` : '') + '</div>';
+          }).join('') : '');
+      }).join('');
+      const need = Object.values(tabs).filter(t => t.state === 'need');
+      nbox.innerHTML = need.length ? `<h5>Needs You <span>${need.length}</span></h5>` + need.map(t =>
+        `<div class="card2" data-need="${t.id}"><b>${esc(t.name)}</b>${t.ask}<div class="acts"><span data-act="deny">Deny</span><span data-act="allow">Allow</span></div></div>`).join('') : '';
+    }
+
+    function renderTitle() {
+      const t = tabs[cur];
+      title.innerHTML = `<b>${esc(t.name)}</b><small>${esc(groupOf(cur).name)} — ${esc(cwdOf(t))}</small>`;
+    }
+
+    const stateHTML = s => !s ? '' : `<span class="state"${s === 'need' ? ' style="color:#ff9f0a;font-weight:600"' : ''}><svg class="st" style="width:13px;height:13px"><use href="#s-${s}"/></svg>${LABEL[s]}</span>`;
+    function ptitle(p, t, many) {
+      let h;
+      if (p.kind === 'web') h = `${I.globe}<span class="agent">${esc(p.title)}</span><span class="cwd">${esc(p.url)}</span><span class="state">‹ ›&nbsp;↻</span>`;
+      else if (p.kind === 'sim') h = `${I.phone}<span class="agent">iPhone 17 Pro</span><span class="cwd">Weather · iOS 26</span>`;
+      else if (p.kind === 'log') h = `${I.log}<span class="agent">System log</span><span class="cwd">log stream --level info</span>`;
+      else if (p.agent) h = `${MARK[p.agent]}<span class="agent">${p.agent}${p.kind === 'agent' && p.agent === 'claude' ? ' ⌄' : ''}</span><span class="cwd">${esc(p.cwd)}</span>${stateHTML(t.state)}`;
+      else h = `${I.term}<span class="agent">${esc(p.title || 'zsh')}</span><span class="cwd">${esc(p.cwd)}</span>`;
+      return h + (many ? `<span class="px" data-act="close">${I.x}</span>` : '');
+    }
+    const caret = p => `<span class="caret${kbd && p.id === tabs[cur].focus ? '' : ' off'}"></span>`;
+    const bodyClass = p => ({ web: 'web', sim: 'sim', log: 'term logp', sh: 'term sh' })[p.kind] || 'term';
+    const two = n => String(n).padStart(2, '0');
+    function inner(p, t) {
+      if (p.kind === 'sh') return p.mode === 'vim' ? vimHTML(p) :
+        p.lines.join('') + (p.busy ? '' : line(promptHTML(p.cwd) + `<span class="w">${esc(p.input)}</span>${caret(p)}`));
+      if (p.kind === 'sim') return SIM;
+      if (p.kind === 'log') return p.rows.map(r => { const d = new Date(r.time);
+        return line(`<span class="dim">${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}</span> <span class="lv ${r.lv}">${r.lv}</span> <span class="w">${r.proc}</span> ${esc(r.msg)}`);
+      }).join('');
+      return typeof p.html === 'function' ? p.html(t) : p.html;
+    }
+    function node(nd, t, many) {
+      if (nd.c) return `<div class="sp ${nd.d}" style="flex-grow:${nd.w}">${nd.c.map(c => node(c, t, many)).join('')}</div>`;
+      const p = panes[nd.p], fresh = p.fresh;
+      p.fresh = false;
+      return `<div class="pane${fresh ? ' new' : ''}" data-p="${p.id}" style="flex-grow:${nd.w}"><div class="ptitle">${ptitle(p, t, many)}</div><div class="${bodyClass(p)}">${inner(p, t)}</div></div>`;
+    }
+    const scroll = b => { if (b.classList.contains('sh')) b.scrollTop = b.scrollHeight; };
+    function renderPanes() {
+      const t = tabs[cur];
+      panesEl.innerHTML = node(t.layout, t, paneIds(t.layout).length > 1);
+      panesEl.querySelectorAll('.term.sh').forEach(scroll);
+      refreshFocus();
+    }
+    function refreshPane(id) {
+      const el = panesEl.querySelector(`[data-p="${id}"]`), t = tabs[cur];
+      if (!el) return;
+      el.firstElementChild.innerHTML = ptitle(panes[id], t, paneIds(t.layout).length > 1);
+      el.lastElementChild.innerHTML = inner(panes[id], t);
+      scroll(el.lastElementChild);
+    }
+    // Which pane has focus, and whether keys go to it: the title bar's tint, the caret, and (when the
+    // window is narrow) which side of a split shows.
+    function refreshFocus() {
+      const t = tabs[cur], many = paneIds(t.layout).length > 1;
+      panesEl.querySelectorAll('.hf').forEach(e => e.classList.remove('hf'));
+      panesEl.querySelectorAll('.pane').forEach(e => e.classList.toggle('focus', many && e.dataset.p === t.focus));
+      for (let e = panesEl.querySelector(`[data-p="${t.focus}"]`); e && e !== panesEl; e = e.parentElement) e.classList.add('hf');
+      panesEl.querySelectorAll('.caret').forEach(c => c.classList.toggle('off', !(kbd && c.closest('[data-p]').dataset.p === t.focus)));
+      renderTitle();
+    }
+    function select(id) {
+      cur = id;
+      groupOf(id).open = true;
+      kbd = !!focusedShell();
+      renderSide(); renderPanes();
+    }
+    function setState(t, s) {
+      t.state = s; t.since = Date.now();
+      renderSide();
+      if (t.id === cur) paneIds(t.layout).forEach(refreshPane);
+    }
+
+    // ---- Toasts, like the app's own cards in the window's corner.
+    function toast({ icon, title, body, tab }) {
+      const el = document.createElement('div');
+      el.className = 'toast';
+      if (tab) el.dataset.tab = tab;
+      el.innerHTML = `<span class="tic">${icon}</span><div><b>${esc(title)}</b><span>${esc(body)}</span></div><span class="tx" data-act="untoast">${I.x}</span>`;
+      toasts.append(el);
+      while (toasts.children.length > 3) toasts.firstElementChild.remove();
+      let timer;
+      const arm = ms => { clearTimeout(timer); timer = setTimeout(() => untoast(el), ms); };
+      el.addEventListener('mouseenter', () => clearTimeout(timer));
+      el.addEventListener('mouseleave', () => arm(2000));
+      arm(5000);
+    }
+    function untoast(el) {
+      if (el.classList.contains('out')) return;
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 300);
+    }
+
+    const LIGHTS = {
+      close: ['shake', 'You’ll never want to close Hammock!', 'Not that it’d matter: your shells, servers and agents keep running with the window closed.'],
+      min: ['squish', 'You’ll never want to minimise Hammock!', 'Why tuck away somewhere this comfy?'],
+      zoom: ['pulse', 'Hammock can’t get any bigger in here!', 'In the app, this fills your screen.'],
+    };
+    function light(k) {
+      const [anim, title, body] = LIGHTS[k];
+      win.classList.remove('shake', 'squish', 'pulse');
+      void win.offsetWidth;
+      win.classList.add(anim);
+      setTimeout(() => win.classList.remove(anim), 600);
+      toast({ icon: I.hammock, title, body });
+    }
+
+    // ---- Groups, tabs and splits.
+    const IDEAS = [['🦙', 'Llama farm'], ['🌮', 'Taco API'], ['🚀', 'Side project'], ['🎸', 'Band website'], ['🪴', 'Plant tracker'], ['🧁', 'Bake-off'],
+      ['🛰️', 'Satellite'], ['🐙', 'Octo CLI'], ['🍜', 'Ramen finder'], ['🎲', 'Board games'], ['🦔', 'Hedgehog'], ['🍋', 'Lemonade stand']];
+    const HUES = [['#61d836', '#3a8f1f'], ['#ff453a', '#b0241c'], ['#0a84ff', '#0659b3'], ['#ffd60a', '#b39500'], ['#bf5af2', '#7a3aa8'], ['#64d2ff', '#2a8fb3'], ['#ff9f0a', '#c46a00']];
+    const ideas = IDEAS.slice().sort(() => Math.random() - .5);
+    let made = 0;
+    function newGroup() {
+      const [icon, base] = ideas[made % ideas.length], round = Math.floor(made / ideas.length), [a, b] = HUES[made % HUES.length];
+      made++;
+      const name = round ? `${base} ${round + 1}` : base;
+      const g = { id: 'g' + ++seq, name, icon, bg: grad(a, b), cwd: '~/Developer/' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), open: true, tabs: [] };
+      groups.push(g);
+      newTab(g);
+      glist.scrollTop = glist.scrollHeight;
+    }
+    function newTab(g, name = 'zsh') {
+      const p = mkShell(cur && tabs[cur] && groupOf(cur) === g ? cwdOf(tabs[cur]) : g.cwd), id = 't' + ++seq;
+      tabs[id] = { id, name, state: null, since: Date.now(), layout: leaf(p.id), focus: p.id };
+      g.tabs.push(id);
+      select(id);
+    }
+    function insert(nd, target, d, id) {
+      if (nd.p) return nd.p === target ? { d, w: nd.w, c: [leaf(target), leaf(id)] } : nd;
+      const i = nd.c.findIndex(c => c.p === target);
+      if (i >= 0 && nd.d === d) { const w = nd.c[i].w / 2; nd.c[i].w = w; nd.c.splice(i + 1, 0, leaf(id, w)); return nd; }
+      nd.c = nd.c.map(c => insert(c, target, d, id));
+      return nd;
+    }
+    function remove(nd, id) {
+      if (nd.p) return nd.p === id ? null : nd;
+      const c = nd.c.map(x => remove(x, id)).filter(Boolean);
+      if (c.length === 1) { c[0].w = nd.w; return c[0]; }
+      nd.c = c;
+      return nd;
+    }
+    function split(d, pane) {
+      const t = tabs[cur];
+      if (paneIds(t.layout).length >= 4) {
+        toast({ icon: I.hammock, title: 'That’s plenty of panes for a web page!', body: 'Hammock itself splits as far as your screen allows.' });
+        return;
+      }
+      const p = pane || mkShell(cwdOf(t));
+      p.fresh = true;
+      t.layout = insert(t.layout, t.focus, d, p.id);
+      t.focus = p.id;
+      kbd = p.kind === 'sh';
+      renderPanes();
+    }
+    function closePane(id) {
+      const t = tabs[cur];
+      if (paneIds(t.layout).length < 2) return;
+      t.layout = remove(t.layout, id);
+      (panes[id].timers || []).forEach(clearTimeout);
+      delete panes[id];
+      const left = paneIds(t.layout);
+      if (t.focus === id) { t.focus = left[0]; kbd = !!focusedShell(); }
+      if (t.state && !left.some(x => panes[x].agent)) { t.state = null; renderSide(); }
+      renderPanes();
+    }
+    function answer(id, allow) {
+      const t = tabs[id];
+      if (t.state !== 'need') return;
+      const last = Object.values(tabs).filter(x => x.state === 'need').length === 1;
+      (last ? nbox : nbox.querySelector(`[data-need="${id}"]`)).classList.add('bye');
+      setTimeout(() => {
+        nbox.classList.remove('bye');
+        t.answer = allow ? 'allow' : 'deny';
+        setState(t, allow ? 'work' : 'done');
+        if (allow) setTimeout(() => {
+          if (t.state !== 'work') return;
+          setState(t, 'done');
+          toast({ icon: st('done'), title: `${t.name} finished`, body: 'Fixed 3 links. All 214 work now.', tab: id });
+        }, 6500);
+      }, 260);
+    }
+
+    // ---- The pretend shell.
+    const say = (p, text, cls) => p.lines.push(...String(text).split('\n').map(l => line(esc(l), cls)));
+    const sayH = (p, html) => p.lines.push(html);
+    const later = (p, ms, fn) => { const h = setTimeout(() => { p.timers = p.timers.filter(x => x !== h); fn(); }, ms); p.timers.push(h); };
+    const unquote = s => s.replace(/^(['"])(.*)\1$/, '$2');
+    const home = cwd => cwd.replace(/^~/, '/Users/me');
+
+    const FS = { '~': ['Developer/', 'Documents/', 'Downloads/', 'hammock/'], '~/Documents': ['taxes-final-FINAL-v3.pdf'], '~/Downloads': ['Hammock.zip'],
+      '~/hammock': ['book.txt', 'lemonade.sh', 'pillow.txt'], '~/.dotfiles': ['gitconfig', 'hammock-config', 'zshrc'] };
+    const project = path => groups.find(g => g.cwd === path);
+    function dir(path) {
+      if (FS[path]) return FS[path];
+      if (path === '~/Developer') return groups.filter(g => g.cwd.startsWith('~/Developer/')).map(g => g.cwd.slice(12) + '/');
+      if (project(path)) return ['README.md', 'package.json', 'src/'];
+      if (path.endsWith('/src') && project(path.slice(0, -4))) return ['index.ts'];
+      return null;
+    }
+    function norm(cwd, arg) {
+      if (!arg || arg === '~') return '~';
+      const parts = arg.startsWith('~') ? ['~'] : cwd.split('/');
+      arg.replace(/^~\/?/, '').split('/').forEach(s => { if (!s || s === '.') return; if (s === '..') { if (parts.length > 1) parts.pop(); } else parts.push(s); });
+      return parts.join('/');
+    }
+    function file(name, parent) {
+      const g = project(parent.replace(/\/src$/, ''));
+      return {
+        'README.md': `# ${g ? g.name : 'Project'}\n\nIt works on my machine.`,
+        'package.json': `{\n  "name": "${g ? g.cwd.slice(12) : 'app'}",\n  "private": true,\n  "scripts": { "dev": "vite" }\n}`,
+        'index.ts': 'console.log("hello from a hammock")',
+        'book.txt': 'Chapter 1. It was a dark and stormy night, but the builds kept going.',
+        'pillow.txt': 'zzz…',
+        'lemonade.sh': '#!/bin/sh\necho "ahh"',
+        'zshrc': 'export EDITOR=vim  # brave\nalias ll="ls -la"',
+        'gitconfig': '[user]\n  name = me\n[init]\n  defaultBranch = main',
+        'hammock-config': '# ~/.config/hammock/config\ntheme = Hammock\nfont-size = 13\nnotify-style = in-app',
+      }[name] || `cat: ${name}: best not, it’s binary`;
+    }
+
+    const HELP = `A pretend shell, for trying Hammock on a web page. It knows:
+  ls  cd  cat  pwd  echo  clear  date  whoami  history  uptime
+  hmk ls              every Group, tab and pane
+  hmk tab new NAME    a new tab in this Group
+  hmk split [--down]  split this pane
+  hmk browser URL     a browser pane beside this one
+  claude, codex       ask a (pretend) agent something
+…and a few things you probably shouldn’t type.`;
+    const REPLIES = [
+      'I’m only a pretend agent on a web page. In Hammock I’d get a pane of my own, and your iPhone would hear from me when I needed you.',
+      'Done! Well, pretend done. The real me runs in Hammock, and keeps going even if you close the window.',
+      'I’d love to, but I’m about forty lines of JavaScript. Download Hammock and give the real thing a try.',
+    ];
+    const FORTUNES = [
+      'The best time to kick back was before the build started. The second best time is now.',
+      'An agent that needs you will find you. Hammock makes sure of it.',
+      'It works on my machine. — everyone, always',
+      'Close the window. Your servers won’t notice.',
+    ];
+    const TRAIN = `      (@@) (  ) (@)  ( )  @@
+     (   )
+   ====        ________                ___________
+ _D _|  |_______|        |__I_I_____===__|_________|
+  |(_)---  |   H|  HMK   | |   |        =|___ ___|
+  /     |  |   H|________| |   |         ||_| |_||
+ |      |  |   H  |  |     |   |         | [___] |
+ | ________|___H__|__|_____|[][]~|_______|       |
+ |/ |   |-----------I_____I [][] []  D   |=======|__`;
+    const cow = s => { s = s.slice(0, 40); return ` ${'_'.repeat(s.length + 2)}\n< ${s} >\n ${'-'.repeat(s.length + 2)}\n` + String.raw`        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||`; };
+
+    // A command that takes a moment: the prompt waits, ⌃C stops it (when it can be stopped).
+    function busy(p, ms, html, done, cancel) {
+      p.busy = true;
+      sayH(p, html);
+      const at = p.lines.length - 1;
+      p.cancel = cancel && (() => { p.lines.splice(at, 1); cancel(); finish(); });
+      const finish = () => { p.busy = false; p.cancel = null; p.timers.forEach(clearTimeout); p.timers = []; };
+      later(p, ms, () => { p.lines.splice(at, 1); finish(); done(); refreshPane(p.id); });
+    }
+    function agentEgg(p, name, prompt) {
+      const t = tabOf(p.id);
+      prompt = unquote(prompt) || 'hello';
+      sayH(p, line(`${MARK[name]} <span class="w">${name === 'codex' ? 'Codex' : 'Claude Code'}</span> <span class="dim">(a pretend one)</span>`) +
+        line(`<span class="p">❯</span> <span class="w">${esc(prompt)}</span>`));
+      p.agent = name;
+      setState(t, 'work');
+      busy(p, 2800, line('<span class="o"><span data-spin>✻</span> Pondering…</span>'), () => {
+        const r = pick(REPLIES);
+        sayH(p, line(`${bul} ${esc(r)}`));
+        p.agent = null;
+        setState(t, 'done');
+        toast({ icon: st('done'), title: `${t.name} finished`, body: r, tab: t.id });
+      }, () => { say(p, '  ⎿ Interrupted by you', 'dim'); p.agent = null; setState(t, null); });
+    }
+    function hmk(p, a) {
+      const t = tabOf(p.id), g = groupOf(t.id);
+      if (a[0] === 'ls') {
+        const SYM = { work: '<span style="color:#7d7aff">◐</span>', need: '<span class="o">!</span>', done: '<span class="g">✓</span>', rest: '<span class="dim">○</span>' };
+        groups.forEach(gr => {
+          sayH(p, line(`<span class="w">${esc(gr.icon + ' ' + gr.name)}</span>  <span class="dim">${esc(gr.cwd)}</span>`));
+          gr.tabs.forEach(id => { const tb = tabs[id], n = paneIds(tb.layout).length;
+            sayH(p, line(`  ${SYM[tb.state || 'rest']} ${esc(tb.name)}${tb.state ? `  <span class="dim">${LABEL[tb.state].toLowerCase()}</span>` : ''}${n > 1 ? `  <span class="dim">${n} panes</span>` : ''}`)); });
+        });
+      } else if (a[0] === 'tab' && a[1] === 'new') {
+        const name = unquote(a.slice(2).filter(x => x !== '--name').join(' ')) || 'zsh';
+        say(p, `New tab “${name}” in ${g.name}`, 'dim');
+        setTimeout(() => newTab(g, name));
+      } else if (a[0] === 'split') {
+        setTimeout(() => split(a.includes('--down') || a.includes('-d') ? 'v' : 'h'));
+      } else if (a[0] === 'browser') {
+        const url = a[1] || 'example.com', host = url.replace(/^https?:\/\//, '').split('/')[0];
+        const web = P('p' + ++seq, { kind: 'web', title: host, url, html:
+          `<nav><b>🌐 ${esc(host)}</b><i class="on"></i><i style="width:70%"></i><i style="width:55%"></i><i style="width:62%"></i></nav>` +
+          `<article><h6>${esc(host)}</h6><i style="width:90%"></i><i style="width:70%"></i><div class="callout"><i style="width:75%"></i><i style="width:50%"></i></div><i style="width:60%"></i><i style="width:82%"></i></article>` });
+        setTimeout(() => split('h', web));
+      } else if (a[0] === 'hooks') {
+        say(p, '✓ Claude Code hooks installed\n✓ Codex hooks installed', 'g'); say(p, '(pretend ones: the real ones come with the app)', 'dim');
+      } else say(p, `hmk: Hammock from the command line (the pretend one)
+  hmk ls                 every Group, tab and pane
+  hmk tab new [NAME]     a new tab in this Group
+  hmk split [--down]     split this pane
+  hmk browser URL        a browser pane beside this one
+  hmk hooks install      precise status for Claude Code and Codex`);
+    }
+
+    const CMDS = {
+      help: p => say(p, HELP),
+      ls(p, a) {
+        const flags = a.filter(x => x[0] === '-').join(''), arg = a.find(x => x[0] !== '-'), path = norm(p.cwd, arg);
+        let d = dir(path);
+        if (!d) return say(p, `ls: ${arg}: No such file or directory`);
+        if (/a/.test(flags) && path === '~') d = ['.dotfiles/', '.zshrc', ...d];
+        sayH(p, line(d.map(n => n.endsWith('/') ? `<span class="b">${esc(n.slice(0, -1))}</span>` : esc(n)).join('  ')));
+      },
+      cd(p, a) {
+        if (a[0] && a[0][0] === '/') return say(p, 'cd: let’s stay home, it’s comfier');
+        const path = norm(p.cwd, a[0]);
+        if (!dir(path)) return say(p, `cd: no such file or directory: ${a[0]}`);
+        p.cwd = path;
+        renderTitle();
+      },
+      pwd: p => say(p, home(p.cwd)),
+      cat(p, a) {
+        if (!a[0]) return say(p, 'cat: give it a file, like README.md');
+        const full = norm(p.cwd, a[0]), i = full.lastIndexOf('/'), parent = full.slice(0, i), name = full.slice(i + 1), d = dir(parent);
+        if (dir(full)) say(p, `cat: ${a[0]}: Is a directory`);
+        else if (!d || !d.includes(name)) say(p, `cat: ${a[0]}: No such file or directory`);
+        else say(p, file(name, parent));
+      },
+      echo(p, a, rest) {
+        const env = { SHELL: '/bin/zsh', USER: 'me', HOME: '/Users/me', PWD: home(p.cwd), TERM: 'xterm-ghostty', TERM_PROGRAM: 'Hammock', HMK_PANE_ID: p.id };
+        say(p, unquote(rest).replace(/\$(\w+)/g, (_, v) => env[v] || ''));
+      },
+      clear: p => { p.lines = []; },
+      date: p => say(p, new Date().toString().replace(/ \(.*\)$/, '')),
+      whoami: p => say(p, 'me'),
+      hostname: p => say(p, 'Studio'),
+      uname: (p, a) => say(p, a.includes('-a') ? 'Darwin Studio 27.0.0 Darwin Kernel Version 27.0.0 arm64 (in a hammock)' : 'Darwin'),
+      history: p => say(p, p.hist.map((h, i) => `${String(i + 1).padStart(5)}  ${h}`).join('\n')),
+      uptime: p => say(p, `${new Date().toTimeString().slice(0, 5)}  up forever, 1 user, load averages: 0.00 0.00 0.00 (very relaxed)`),
+      hmk, hammock: hmk,
+      claude: (p, a, rest) => agentEgg(p, 'claude', rest),
+      codex: (p, a, rest) => agentEgg(p, 'codex', rest),
+      vim: (p, a) => vim(p, a[0]), vi: (p, a) => vim(p, a[0]), nvim: (p, a) => vim(p, a[0]),
+      nano: (p, a) => vim(p, a[0], 'nano isn’t installed. Welcome to vim!'),
+      emacs: (p, a) => vim(p, a[0], 'emacs isn’t installed. Welcome to vim!'),
+      sudo(p, a, rest) {
+        if (/^make me a sandwich/.test(rest)) return say(p, 'Okay. 🥪');
+        if (a[0] === 'rm') return CMDS.rm(p, a.slice(1));
+        say(p, '[sudo] password for me:\nSorry, nobody’s root in a hammock. Lie back down.');
+      },
+      make(p, a, rest) {
+        if (rest === 'me a sandwich') return say(p, 'What? Make it yourself.');
+        if (rest === 'coffee') return CMDS.coffee(p);
+        say(p, 'make: *** No targets specified and no makefile found.  Stop.');
+      },
+      rm(p, a) {
+        const flags = a.filter(x => x[0] === '-').join(''), what = a.filter(x => x[0] !== '-');
+        if (/r/i.test(flags) && /f/.test(flags)) return sayH(p, line('🛟 <span class="g">The hammock caught it.</span> Nothing was deleted: Hammock never loses your work.'));
+        if (!what.length) return say(p, 'usage: rm [-f | -i] [-dIPRrvWx] file ...');
+        say(p, `rm: ${what.join(' ')}: we’d rather you didn’t, it’s a demo`);
+      },
+      exit(p) {
+        busy(p, 1200, line('[Process completed]', 'dim'), () => {
+          sayH(p, line('Just kidding. Hammock never loses your work.', 'g'));
+          p.lines.push(...greeting().slice(0, 1));
+        });
+      },
+      coffee(p) {
+        busy(p, 1800, line('<span class="o"><span data-spin>✻</span> Brewing…</span>'),
+          () => say(p, '☕ Here you go. Drink it in a hammock: if an agent needs you, Hammock will tell your iPhone.'),
+          () => say(p, '^C  Spilled it.', 'dim'));
+      },
+      brew(p, a) {
+        if (a.includes('coffee')) return CMDS.coffee(p);
+        if (a[0] === 'install' && a[1]) return say(p, `==> Downloading ${a[1]}\n==> Pouring ${a[1]}--1.0.arm64_tahoe.bottle.tar.gz\n🍺  ${a[1]} was installed (in spirit)`);
+        say(p, 'Example usage:\n  brew install FORMULA…\n  brew coffee');
+      },
+      sl(p) {
+        busy(p, still.matches ? 1500 : 4200, `<div class="train">${esc(TRAIN)}</div>`, () => say(p, '(choo choo)', 'dim'));
+      },
+      cowsay: (p, a, rest) => say(p, cow(unquote(rest) || 'Kick back.')),
+      fortune: p => say(p, pick(FORTUNES)),
+      ssh: p => { say(p, 'Approve with Face ID on your iPhone to use your Hammock Key… ✓ approved', 'dim'); say(p, 'Connection to nowhere closed: this shell lives in a web page.'); },
+      open: p => say(p, 'open: no other apps in here. Try hmk browser URL.'),
+      npm(p, a) {
+        if (a[0] === 'test') return say(p, '✓ 212 tests pass (pretend ones)', 'g');
+        if (a[0] === 'run' && a[1] === 'dev') return say(p, 'The dev server’s already running in Docs site ▸ Dark mode, and it’ll keep running even if you quit.');
+        say(p, 'npm: pretend packages only, sorry');
+      },
+      git(p, a) {
+        if (a[0] === 'status') return say(p, 'On branch main\nnothing to commit, working tree clean');
+        if (a[0] === 'log') return sayH(p, line('<span class="y">a1f3c9e</span> Dark mode for code blocks') + line('<span class="y">7d20b14</span> Fix the search box on mobile'));
+        if (a[0] === 'push') return say(p, 'Everything up-to-date (and pushed to nowhere)');
+        say(p, `git: '${a[0] || ''}' is a pretend command here. Try git status.`);
+      },
+      kill: p => say(p, 'Each pane runs in its own process, and outlives the app. Nothing here wants killing.'),
+      top: p => say(p, 'Processes: 3 total, 0 running, 3 lying in a hammock\nCPU usage: 0.00% user, 0.00% sys, 100.00% idle'),
+      man: p => say(p, 'No manual entry. Just lie back and try things.'),
+      ping: p => say(p, 'PING iphone.local: 64 bytes, time=0.4 ms. Your iPhone says hi.'),
+      hello: p => say(p, 'Hi! Kick back. Type help to see what this pretend shell can do.'),
+    };
+    Object.assign(CMDS, { '?': CMDS.help, logout: CMDS.exit, killall: CMDS.kill, pkill: CMDS.kill, htop: CMDS.top, hi: CMDS.hello, hey: CMDS.hello, ll: (p, a) => CMDS.ls(p, ['-la', ...a]) });
+
+    function run(p, raw) {
+      p.lines.push(line(promptHTML(p.cwd) + `<span class="w">${esc(raw)}</span>`));
+      const cmdline = raw.trim();
+      if (cmdline) {
+        p.hist.push(cmdline);
+        const args = cmdline.split(/\s+/), cmd = args.shift(), rest = cmdline.slice(cmd.length).trim();
+        if (Object.hasOwn(CMDS, cmd)) CMDS[cmd](p, args, rest);
+        else {
+          say(p, `zsh: command not found: ${cmd}`);
+          if (!p.hinted) { p.hinted = true; say(p, 'This shell only pretends. Type help to see what it knows.', 'dim'); }
+        }
+      }
+      p.hi = p.hist.length;
+      if (p.lines.length > 300) p.lines.splice(0, p.lines.length - 300);
+    }
+
+    // vim, and the eternal question of how to leave it.
+    function vim(p, name, msg) {
+      p.mode = 'vim';
+      p.vim = { name: name || '', text: '', cmd: null, ins: false, esc: 0, dirty: false, msg: msg || (name ? `"${name}" [New]` : '') };
+    }
+    function vimHTML(p) {
+      const v = p.vim, text = esc(v.text).split('\n');
+      if (v.cmd === null) text[text.length - 1] += caret(p);
+      const status = v.cmd !== null ? ':' + esc(v.cmd) + caret(p) : v.ins ? '<b>-- INSERT --</b>' : esc(v.msg);
+      return `<div class="vim"><div class="vl">${text.map(l => `<div>${l}</div>`).join('')}${'<div class="vt">~</div>'.repeat(30)}</div><div class="vs">${status}</div></div>`;
+    }
+    function vimKey(p, k, ctrl) {
+      const v = p.vim;
+      if (ctrl) { if (k === 'c') v.msg = 'Type  :qa!  and press <Enter> to abandon all changes and exit Vim'; return k === 'c'; }
+      if (v.cmd !== null) {
+        if (k === 'Escape') v.cmd = null;
+        else if (k === 'Backspace') v.cmd = v.cmd ? v.cmd.slice(0, -1) : null;
+        else if (k === 'Enter') { const c = v.cmd.trim(); v.cmd = null; vimCmd(p, c); }
+        else if (k.length === 1) v.cmd += k;
+        else return false;
+        return true;
+      }
+      if (v.ins) {
+        if (k === 'Escape') { v.ins = false; v.msg = ''; }
+        else if (k === 'Backspace') v.text = v.text.slice(0, -1);
+        else if (k === 'Enter') v.text += '\n';
+        else if (k.length === 1) { v.text += k; v.dirty = true; }
+        else return false;
+        return true;
+      }
+      if (k === ':') { v.cmd = ''; v.esc = 0; }
+      else if (k.length === 1 && 'iaoI'.includes(k)) { v.ins = true; v.esc = 0; }
+      else if (k === 'Escape' || k.length === 1) { if (++v.esc >= 3) v.msg = 'Type  :q  and press <Enter> to exit Vim'; }
+      else return false;
+      return true;
+    }
+    function vimCmd(p, c) {
+      const v = p.vim;
+      if (/^q(uit)?$/.test(c) && v.dirty) v.msg = 'E37: No write since last change (add ! to override)';
+      else if (/^(q(uit)?!?|qa!?|wq!?|wqa|x)$/.test(c)) { p.mode = null; p.vim = null; say(p, 'You got out of vim. Most people never do.', 'g'); }
+      else if (c === 'w') { v.dirty = false; v.msg = `"${v.name || 'untitled'}" written (to nowhere: it’s a web page)`; }
+      else v.msg = `E492: Not an editor command: ${c}`;
+    }
+
+    // ---- Input. Keys go to the focused shell once you've clicked into the window, until you click
+    // outside it or press Esc.
+    document.addEventListener('mousedown', e => {
+      if (!live.matches) return;
+      const inside = win.contains(e.target), pane = inside && !e.target.closest('[data-act]') && e.target.closest('[data-p]');
+      if (pane) { tabs[cur].focus = pane.dataset.p; kbd = !!focusedShell(); refreshFocus(); }
+      else if (!inside && kbd) { kbd = false; refreshFocus(); }
+    });
+    document.addEventListener('keydown', e => {
+      const p = kbd && live.matches && focusedShell();
+      if (!p || e.metaKey || e.altKey || e.isComposing) return;
+      const k = e.key;
+      if (p.mode === 'vim') { if (vimKey(p, k, e.ctrlKey)) { e.preventDefault(); refreshPane(p.id); } return; }
+      if (e.ctrlKey) {
+        if (k === 'c') { if (p.busy) { if (p.cancel) p.cancel(); } else { p.lines.push(line(promptHTML(p.cwd) + `<span class="w">${esc(p.input)}</span>^C`)); p.input = ''; } }
+        else if (k === 'l') p.lines = [];
+        else if (k === 'u') p.input = '';
+        else return;
+      } else if (k === 'Escape') { kbd = false; refreshFocus(); e.preventDefault(); return; }
+      else if (p.busy) { if (k.length === 1 || k === 'Enter') e.preventDefault(); return; }
+      else if (k === 'Enter') { const raw = p.input; p.input = ''; run(p, raw); }
+      else if (k === 'Backspace') p.input = p.input.slice(0, -1);
+      else if (k === 'ArrowUp') { if (p.hi > 0) p.input = p.hist[--p.hi]; }
+      else if (k === 'ArrowDown') { if (p.hi < p.hist.length) p.input = p.hist[++p.hi] || ''; }
+      else if (k === 'Tab') { const m = Object.keys(CMDS).filter(c => c.startsWith(p.input)); if (p.input && !p.input.includes(' ') && m.length === 1) p.input = m[0] + ' '; }
+      else if (k.length === 1) p.input += k;
+      else return;
+      e.preventDefault();
+      refreshPane(p.id);
+    });
+    document.addEventListener('paste', e => {
+      const p = kbd && live.matches && focusedShell();
+      if (!p || p.busy || p.mode) return;
+      p.input += (e.clipboardData.getData('text') || '').split('\n')[0];
+      e.preventDefault();
+      refreshPane(p.id);
+    });
+    win.addEventListener('click', e => {
+      if (!live.matches) return;
+      const el = e.target.closest('[data-act], [data-light], [data-t], [data-g], [data-need], .toast');
+      if (!el) return;
+      const act = el.dataset.act;
+      if (act === 'toggle-sb') win.classList.toggle('nosb');
+      else if (act === 'new-group') newGroup();
+      else if (act === 'new-tab') newTab(groupOf(cur));
+      else if (act === 'split-r') split('h');
+      else if (act === 'split-d') split('v');
+      else if (act === 'share') toast({ icon: I.people, title: 'Share a Group', body: 'In the app, invite someone to watch a live Group, or to drive it. You can take it back any time.' });
+      else if (act === 'close') closePane(el.closest('[data-p]').dataset.p);
+      else if (act === 'allow' || act === 'deny') answer(el.closest('[data-need]').dataset.need, act === 'allow');
+      else if (act === 'untoast') untoast(el.closest('.toast'));
+      else if (el.dataset.light) light(el.dataset.light);
+      else if (el.dataset.t) select(el.dataset.t);
+      else if (el.dataset.g) { const g = groups.find(x => x.id === el.dataset.g); g.open = !g.open; renderSide(); }
+      else if (el.dataset.need) select(el.dataset.need);
+      else if (el.classList.contains('toast')) { if (el.dataset.tab && tabs[el.dataset.tab]) select(el.dataset.tab); untoast(el); }
+    });
+
+    // ---- Time passes: agents' clocks tick, spinners spin, the log scrolls.
+    setInterval(() => {
+      if (document.hidden) return;
+      win.querySelectorAll('[data-since]').forEach(el => { const t = tabs[el.dataset.since]; if (t) el.textContent = ago(t, el.dataset.fmt); });
+    }, 1000);
+    const SPIN = '·✢✳✶✻✽✻✶✳✢';
+    let spun = 0;
+    if (!still.matches) setInterval(() => {
+      if (document.hidden) return;
+      spun = (spun + 1) % SPIN.length;
+      win.querySelectorAll('[data-spin]').forEach(el => { el.textContent = SPIN[spun]; });
+    }, 140);
+    setInterval(() => {
+      if (document.hidden) return;
+      paneIds(tabs[cur].layout).filter(id => panes[id].kind === 'log').forEach(id => {
+        const rows = panes[id].rows;
+        rows.push(logRow(Date.now()));
+        if (rows.length > 60) rows.shift();
+        refreshPane(id);
+      });
+    }, 2300);
+
+    win.classList.add('live');
+    renderSide(); renderPanes();
   })();
 </script>
 </body>
