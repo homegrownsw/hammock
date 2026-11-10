@@ -32,13 +32,28 @@ nothing of one it can't decrypt or that was sent over an hour ago.
    npx wrangler deploy                         # prints https://hmk-push.<you>.workers.dev
    ```
 
-   The database's tables are in `migrations/`: after pulling a change that
-   adds one, run `npx wrangler d1 migrations apply hmk-push --remote` before
-   `npx wrangler deploy`. (A database set up before migrations, from the old
-   `schema.sql`, takes them too: the first only creates what's missing.)
-3. **The app.** Build the iOS app with the relay's URL:
+   The database's tables are in `migrations/`. (A database set up before
+   migrations, from the old `schema.sql`, takes them too: the first only
+   creates what's missing.)
+3. **Production.** Add the WAF rate-limiting rule (below, Costs and abuse).
+4. **The app.** Build the iOS app with the relay's URL:
    `HMK_PUSH_RELAY=https://hmk-push.<you>.workers.dev` as a build setting
    (`just ios-device` passes it through).
+
+## Deploying a change
+
+In this order, each time:
+
+- [ ] `npm test`
+- [ ] `npx wrangler d1 migrations apply hmk-push --remote`: migrations
+      first, so the new worker never runs against an old table (the old
+      worker is fine with the new one: it only adds columns).
+- [ ] `npx wrangler deploy`
+- [ ] the WAF rate-limiting rule is still in place on the relay's route
+      (Security ▸ WAF ▸ Rate limiting rules), blocking every other path.
+
+Rows the old worker wrote between the two steps have no `last_used`;
+they're forgotten 60 days from when they were created.
 
 ## Routes
 

@@ -15,10 +15,11 @@ function fakeD1() {
           return {
             run: async () => {
               db.queries++
-              if (sql.startsWith('INSERT')) rows.set(a[0], { token: a[1], sandbox: a[2], secret: a[3], last_used: a[4] })
+              if (sql.startsWith('INSERT')) rows.set(a[0], { token: a[1], sandbox: a[2], secret: a[3], last_used: a[4], created: a[4] })
               if (sql === 'DELETE FROM devices WHERE id = ?') rows.delete(a[0])
               if (sql === 'DELETE FROM devices WHERE token = ?') for (const [id, r] of rows) if (r.token === a[0]) rows.delete(id)
-              if (sql === 'DELETE FROM devices WHERE last_used < ?') for (const [id, r] of rows) if (r.last_used < a[0]) rows.delete(id)
+              if (sql === 'DELETE FROM devices WHERE last_used < ? OR (last_used IS NULL AND created < ?)')
+                for (const [id, r] of rows) if (r.last_used == null ? r.created < a[1] : r.last_used < a[0]) rows.delete(id)
               if (sql === 'UPDATE devices SET last_used = ? WHERE id = ?' && rows.has(a[1])) rows.get(a[1]).last_used = a[0]
               if (sql.startsWith('UPDATE devices SET token') && rows.has(a[3])) Object.assign(rows.get(a[3]), { token: a[0], sandbox: a[1], last_used: a[2] })
             },
@@ -221,9 +222,17 @@ test('sends keep a device; unused ones are forgotten', async () => {
   await worker.fetch(post('/send', { id: kept.id, payload: 'eA==' }), env)
   assert.equal(env.DB.queries, q + 1)
 
+  // Rows the worker wrote before it set last_used: counted from creation.
+  const oldWorker = await (await worker.fetch(post('/register', { token: '79'.repeat(32) }), env)).json()
+  const newWorker = await (await worker.fetch(post('/register', { token: '7a'.repeat(32) }), env)).json()
+  Object.assign(env.DB.rows.get(oldWorker.id), { last_used: null, created: old })
+  env.DB.rows.get(newWorker.id).last_used = null
   await worker.scheduled({}, env)
   assert.ok(env.DB.rows.has(kept.id))
   assert.ok(!env.DB.rows.has(unused.id))
+  assert.ok(!env.DB.rows.has(oldWorker.id))
+  assert.ok(env.DB.rows.has(newWorker.id))
+  env.DB.rows.delete(newWorker.id)
   // 60 days on, the kept one goes too.
   await forgetUnused(env, Date.now() + 61 * 24 * 60 * 60 * 1000)
   assert.equal(env.DB.rows.size, 0)

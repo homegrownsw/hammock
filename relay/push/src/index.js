@@ -86,7 +86,10 @@ export default {
 }
 
 export async function forgetUnused(env, now = Date.now()) {
-  await env.DB.prepare('DELETE FROM devices WHERE last_used < ?').bind(sqlTime(now - FORGET_AFTER)).run()
+  // A row written by the worker from before last_used (between migration
+  // 0001 and the deploy that sets it) has none: counted from its creation.
+  const before = sqlTime(now - FORGET_AFTER)
+  await env.DB.prepare('DELETE FROM devices WHERE last_used < ? OR (last_used IS NULL AND created < ?)').bind(before, before).run()
 }
 
 // What a client's requests are counted by: its address, or for IPv6 its
