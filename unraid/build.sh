@@ -29,6 +29,8 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 cp -R "$here/package/." "$stage/"
 cp "$bin"/{hmk,hmkd,pane-holder} "$stage/usr/local/hammock/bin/"
+# The licences of what's in them (build-linux.sh writes it), and Hammock's.
+cp "$root/dist/linux/THIRD_PARTY_NOTICES.txt" "$root/LICENSE" "$stage/usr/local/hammock/"
 find "$stage" -name .DS_Store -delete
 find "$stage" -type d -exec chmod 755 {} +
 find "$stage" -type f -exec chmod 644 {} +

@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Settings ▸ About (the Hammock card at the top of the sidebar, and
 /// Hammock ▸ About Hammock): the version, updates, quitting with the server,
-/// and uninstalling.
+/// acknowledgements (AcknowledgementsWindow.swift) and uninstalling.
 struct AboutSettings: View {
     let model: AppModel
     @State private var uninstalling = false
@@ -65,6 +65,18 @@ struct AboutSettings: View {
                     .foregroundStyle(.secondary)
             } header: {
                 Text("Quitting")
+            }
+
+            Section {
+                LabeledContent("Third-party software and its licences") {
+                    Button("Acknowledgements…") { AcknowledgementsUI.shared.show() }
+                }
+                .settingAnchor("about.acknowledgements")
+                Text("Hammock is open source, under the MIT licence, and is built with other people's open-source software: Ghostty, Chromium, CodeMirror, Sparkle and more.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Acknowledgements")
             }
 
             Section {

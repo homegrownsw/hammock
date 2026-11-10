@@ -61,6 +61,13 @@ proto-swift:
 editor-js:
     ./apple/Editor/build.sh
 
+# Regenerate the apps' Acknowledgements (internal/acknowledgements/Acknowledgements.json): the
+# third-party software each app ships and its licences, from go list, Package.resolved, the editor's
+# bundle, THIRD_PARTY_NOTICES.md and third_party/acknowledgements.json. `just test` fails when it's stale.
+acknowledgements: deps
+    ./scripts/fetch-cef.sh >/dev/null
+    go run ./internal/acknowledgements/gen
+
 # Regenerate the emoji picker's list (a linked computer's icon) from Unicode's emoji-test.txt.
 emoji-data version="16.0":
     scripts/emoji-data.sh {{version}}

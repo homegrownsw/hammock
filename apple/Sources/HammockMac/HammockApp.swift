@@ -292,6 +292,7 @@ struct HammockApp: App {
             }
             CommandGroup(after: .help) {
                 Button("Welcome to Hammock…") { Onboarding.shared.show() }.keyboardShortcut(Keys.welcome)
+                Button("Acknowledgements") { AcknowledgementsUI.shared.show() }.keyboardShortcut(Keys.acknowledgements)
             }
             CommandMenu("Pane") {
                 Button("Next Pane") { model.cyclePane(by: 1) }.keyboardShortcut(Keys.nextPane)

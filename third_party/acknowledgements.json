@@ -1,0 +1,97 @@
+{
+  "_": [
+    "What `just acknowledgements` (internal/acknowledgements/gen) can't find in a lock file, and how it",
+    "names what it does find. It finds by itself: the Go modules linked into hmk, hmkd and pane-holder (for",
+    "macOS and Linux), the Swift packages in apple/Package.resolved, the npm packages bundled into",
+    "apple/Resources/editor.html, and the rows of THIRD_PARTY_NOTICES.md. The licence texts come from those",
+    "packages' own files, never typed here. {ghostty_src}, {cef_dir}, {goroot} and {repo} are filled in by it;",
+    "{ghostty}, {cef} and {go} are their versions. A missing file stops it: fix the path here (a new Ghostty",
+    "commit can move its dependencies' folders in {ghostty_src}/zig-pkg)."
+  ],
+  "groups": [
+    { "prefix": "@codemirror/", "name": "CodeMirror", "url": "https://codemirror.net" },
+    { "prefix": "@lezer/", "name": "Lezer", "url": "https://lezer.codemirror.net" },
+    { "prefix": "@replit/codemirror-vim", "name": "CodeMirror Vim", "url": "https://github.com/replit/codemirror-vim" },
+    { "prefix": "golang.org/x/", "name": "Go extended libraries", "url": "https://pkg.go.dev/golang.org/x" },
+    { "prefix": "modernc.org/", "name": "SQLite for Go (modernc.org)", "url": "https://gitlab.com/cznic/sqlite" },
+    { "prefix": "github.com/charmbracelet/", "name": "Charm libraries", "url": "https://github.com/charmbracelet" },
+    { "prefix": "github.com/clipperhouse/", "name": "uax29 and displaywidth", "url": "https://github.com/clipperhouse" },
+    { "prefix": "github.com/mattn/", "name": "go-isatty and go-runewidth", "url": "https://github.com/mattn" },
+    { "prefix": "github.com/segmentio/", "name": "Segment's encoding libraries", "url": "https://github.com/segmentio" }
+  ],
+  "swift": {
+    "apps": { "sparkle": ["mac"] },
+    "defaultApps": ["mac", "ios"],
+    "names": { "sparkle": "Sparkle", "swift-protobuf": "SwiftProtobuf", "zstd": "Zstandard" },
+    "licenses": { "zstd": "BSD-3-Clause" },
+    "notes": { "zstd": "Zstandard is dual-licensed (BSD or GPLv2); Hammock uses it under the BSD licence below." },
+    "exclude": ["zstd/COPYING"]
+  },
+  "components": [
+    {
+      "name": "Ghostty (libghostty-vt)",
+      "version": "{ghostty}",
+      "url": "https://ghostty.org",
+      "apps": ["mac", "ios", "linux"],
+      "files": ["{ghostty_src}/LICENSE"]
+    },
+    {
+      "name": "uucode",
+      "url": "https://github.com/jacobsandlund/uucode",
+      "apps": ["mac", "ios", "linux"],
+      "note": "Unicode tables in libghostty-vt.",
+      "files": ["{ghostty_src}/zig-pkg/uucode-0.2.0-ZZjBPoGFVgCiflJNFc6Io8xzC67B6PA5bUkk4LT0kCxg/LICENSE.md"]
+    },
+    {
+      "name": "Highway",
+      "url": "https://github.com/google/highway",
+      "license": "BSD-3-Clause",
+      "apps": ["mac", "ios", "linux"],
+      "note": "In libghostty-vt. Highway is dual-licensed (Apache 2.0 or BSD); Hammock uses it under the BSD licence below.",
+      "files": ["{ghostty_src}/zig-pkg/N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE/LICENSE-BSD3"]
+    },
+    {
+      "name": "simdutf",
+      "url": "https://github.com/simdutf/simdutf",
+      "license": "MIT",
+      "apps": ["mac", "ios", "linux"],
+      "note": "In libghostty-vt. simdutf is dual-licensed (Apache 2.0 or MIT); Hammock uses it under the MIT licence below.",
+      "files": ["{repo}/third_party/licenses/simdutf-LICENSE-MIT"]
+    },
+    {
+      "name": "Wuffs",
+      "url": "https://github.com/google/wuffs",
+      "license": "MIT",
+      "apps": ["mac", "ios", "linux"],
+      "note": "In libghostty-vt. Wuffs is dual-licensed (Apache 2.0 or MIT); Hammock uses it under the MIT licence below.",
+      "files": ["{ghostty_src}/zig-pkg/N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI/LICENSE-MIT"]
+    },
+    {
+      "name": "Unicode Character Database",
+      "url": "https://www.unicode.org/license.txt",
+      "license": "Unicode-3.0",
+      "apps": ["mac", "ios", "linux"],
+      "note": "Unicode's data: libghostty-vt's tables, and the emoji picker's list.",
+      "files": ["{repo}/third_party/licenses/unicode-LICENSE"]
+    },
+    {
+      "name": "Go",
+      "version": "{go}",
+      "url": "https://go.dev",
+      "license": "BSD-3-Clause",
+      "apps": ["mac", "linux"],
+      "note": "The Go standard library and runtime, in hmk, hmkd and pane-holder.",
+      "files": ["{goroot}/LICENSE|{goroot}/../LICENSE", "{goroot}/PATENTS|{goroot}/../PATENTS"]
+    },
+    {
+      "name": "Chromium Embedded Framework and Chromium",
+      "version": "{cef}",
+      "url": "https://bitbucket.org/chromiumembedded/cef",
+      "license": "BSD-3-Clause and others",
+      "apps": ["mac"],
+      "note": "Browser panes. Chromium's own licences, and those of the code it includes, are in its credits.",
+      "credits": "chromium",
+      "files": ["{cef_dir}/LICENSE.txt"]
+    }
+  ]
+}

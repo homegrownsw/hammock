@@ -14,6 +14,7 @@ struct SettingsScreen: View {
     @Environment(\.phoneTheme) private var theme
     #if DEBUG
     @State private var debugThemePicker = ProcessInfo.processInfo.environment["HMK_DEBUG_THEME_PICKER"] == "1"
+    @State private var debugAcknowledgements = ProcessInfo.processInfo.environment["HMK_DEBUG_ACKNOWLEDGEMENTS"] != nil
     #endif
     @AppStorage(TerminalPrefs.fontName) private var terminalFont = ""
     @AppStorage(TerminalPrefs.fontSize) private var terminalSize = TerminalPrefs.defaultSize
@@ -140,6 +141,7 @@ struct SettingsScreen: View {
                 }
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                    NavigationLink("Acknowledgements") { AcknowledgementsScreen() }
                 }
             }
             .navigationTitle("Settings")
@@ -148,6 +150,8 @@ struct SettingsScreen: View {
             .navigationDestination(isPresented: $debugThemePicker) {
                 ThemePicker(selection: $themePref, mac: PhoneTheme.resolve(pref: "", host: model.hostTheme))
             }
+            // HMK_DEBUG_ACKNOWLEDGEMENTS=1 opens Acknowledgements.
+            .navigationDestination(isPresented: $debugAcknowledgements) { AcknowledgementsScreen() }
             #endif
         }
     }

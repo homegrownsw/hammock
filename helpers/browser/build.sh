@@ -44,6 +44,11 @@ clang++ -o "$app/Contents/MacOS/$name" "$obj/host.o" "$obj/encoder.o" "$wrapper"
   -framework AppKit -framework QuartzCore -framework CoreGraphics -framework ImageIO \
   -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework IOSurface -framework Security -Wl,-ObjC
 plist "$name" "$id" > "$app/Contents/Info.plist"
+# Chromium's credits (the licences of Chromium and what it includes), from
+# the CEF build: the Mac app's Acknowledgements show them, as does
+# `hmk acknowledgements chromium`.
+mkdir -p "$app/Contents/Resources"
+cp "$cef/CREDITS.html" "$app/Contents/Resources/Chromium Credits.html"
 # APFS clone: no extra disk for the ~300 MB framework.
 cp -cR "$cef/Release/Chromium Embedded Framework.framework" "$app/Contents/Frameworks/"
 # No "(Alerts)" helper: it exists only to post macOS notifications and asks for

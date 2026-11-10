@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/alexjsp/hammock/internal/acknowledgements"
 	"github.com/alexjsp/hammock/internal/agents"
 	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
 )
@@ -630,6 +631,7 @@ func (a *App) paletteItems() []paletteItem {
 		})
 	}
 	act("keys", "Keyboard Shortcuts", "⌃B ?", "help", a.openHelp)
+	act("acknowledgements", "Acknowledgements", "", "licences licenses third party open source credits notices copyright", a.openAcknowledgements)
 	act("quit", "Quit", "⌃B q", "exit detach", func() { a.quit = true })
 	return out
 }
@@ -1187,4 +1189,27 @@ func b2f(b bool) float64 {
 		return 1
 	}
 	return 0
+}
+
+// openAcknowledgements shows the third-party software in Hammock, by
+// licence; `hmk acknowledgements NAME` prints one's licence text.
+func (a *App) openAcknowledgements() {
+	byLicense := map[string][]string{}
+	var licenses []string
+	for _, c := range acknowledgements.For(acknowledgements.ThisApp()) {
+		if byLicense[c.License] == nil {
+			licenses = append(licenses, c.License)
+		}
+		byLicense[c.License] = append(byLicense[c.License], c.Name)
+	}
+	sort.Slice(licenses, func(i, j int) bool { return len(byLicense[licenses[i]]) > len(byLicense[licenses[j]]) })
+	lines := []string{"Hammock includes this software, under these licences:", ""}
+	for _, l := range licenses {
+		lines = append(lines, l+":")
+		for _, w := range wrapWords(strings.Join(byLicense[l], ", "), 62, 4) {
+			lines = append(lines, "  "+w)
+		}
+	}
+	lines = append(lines, "", "Each one's licence: hmk acknowledgements NAME (in a shell).")
+	a.openDialog(&dialog{title: "Acknowledgements", okLabel: "Done", lines: lines})
 }

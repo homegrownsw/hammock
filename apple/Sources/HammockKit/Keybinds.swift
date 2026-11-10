@@ -213,6 +213,7 @@ public enum Keybinds {
             .init("about", "About Hammock", "Hammock", nil, "version info uninstall quit stop server"),
             .init("check_for_updates", "Check for Updates…", "Hammock", nil, "upgrade new version sparkle"),
             .init("welcome", "Welcome to Hammock…", "Hammock", nil, "onboarding help intro tour"),
+            .init("acknowledgements", "Acknowledgements", "Hammock", nil, "licences licenses third party open source credits notices copyright"),
             // File
             .init("new_tab", "New Tab", "File", c("t"), "create terminal shell"),
             .init("new_browser_tab", "New Browser Tab", "File", c("b", cs), "create web chrome page"),

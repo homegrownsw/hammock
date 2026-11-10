@@ -89,6 +89,19 @@
         },
       ],
     },
+    {
+      "kind": "group",
+      "path": "../../internal/acknowledgements",
+      "children": [
+        {
+          "path": "Acknowledgements.json",
+          "target-membership": [
+            "Hammock/resources",
+            "HammockMacApp/resources",
+          ],
+        },
+      ],
+    },
     { "kind": "folder", "path": "Shared", "target-membership": [ "Hammock", "HammockNotify" ] },
     {
       "kind": "group",

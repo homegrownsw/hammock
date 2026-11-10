@@ -48,6 +48,9 @@ cp "$root/apple/Resources/$icon" "$app/Contents/Resources/AppIcon.icns"
 cp "$root/apple/Resources/NeedsYou.caf" "$app/Contents/Resources/"
 # Editor panes' page (CodeMirror, built by `just editor-js`).
 cp "$root/apple/Resources/editor.html" "$app/Contents/Resources/"
+# Third-party software and its licences (Settings ▸ About ▸ Acknowledgements;
+# `just acknowledgements` makes it). The Xcode project bundles the same file.
+cp "$root/internal/acknowledgements/Acknowledgements.json" "$app/Contents/Resources/"
 # The app's accent colour (NSAccentColorName, below): Hammock's forest green,
 # which macOS uses while the system accent is left at multicolour.
 assets_plist="$(mktemp)"

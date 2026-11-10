@@ -18,14 +18,14 @@ enum DebugSnapshot {
                 InAppNotices.shared.post(InAppNotice(id: "debug-3", icon: .agent(.errored), title: "Migrate settings", subtitle: "🚀 Hammock", body: "Claude hit an error"))
             }
         }
-        // HMK_DEBUG_SETTINGS=notifications|keyboard|ssh|appearance|agentview|workspace (onboarding's drawing)|devices (with HMK_DEBUG_SNAPSHOT):
+        // HMK_DEBUG_SETTINGS=notifications|about|keyboard|ssh|appearance|agentview|workspace (onboarding's drawing)|devices (with HMK_DEBUG_SNAPSHOT):
         // that Settings pane rendered to <prefix>-settings-<light|dark>.png;
         // window: the whole Settings window, sidebar and all, on the pane last
         // shown (pick one with --args -settingsTab <name>);
         // HMK_DEBUG_SETTINGS_QUERY searches the keyboard one, or the window's sidebar;
         // HMK_DEBUG_SSH=key|none shows the SSH one with a made-up Hammock Key
         // (and 1Password not yet routed), or none.
-        if let pane = env["HMK_DEBUG_SETTINGS"], ["notifications", "keyboard", "ssh", "appearance", "agentview", "workspace", "devices", "editor", "window"].contains(pane), let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+        if let pane = env["HMK_DEBUG_SETTINGS"], ["notifications", "keyboard", "ssh", "appearance", "agentview", "workspace", "devices", "editor", "window", "about"].contains(pane), let prefix = env["HMK_DEBUG_SNAPSHOT"] {
             // Devices asks the daemon for its networks first, once it's connected
             // (its own .task can't run while this renders).
             Task { @MainActor in
@@ -53,9 +53,11 @@ enum DebugSnapshot {
                     ? AnyView(MiniWorkspaceDebug())
                     : pane == "devices"
                     ? AnyView(DevicesSettings(model: model, sample: devices))
+                    : pane == "about"
+                    ? AnyView(AboutSettings(model: model))
                     : AnyView(NotificationSettings(model: model))
                 // Appearance is long: all of it, to see its middle sections.
-                let height: CGFloat = pane == "appearance" ? (AppConfig.shared.isCustomTheme ? 2900 : 2000) : pane == "workspace" ? 480 : pane == "devices" || pane == "ssh" ? 1400 : pane == "window" ? 720 : 640
+                let height: CGFloat = pane == "appearance" ? (AppConfig.shared.isCustomTheme ? 2900 : 2000) : pane == "workspace" ? 480 : pane == "devices" || pane == "ssh" ? 1400 : pane == "about" ? 1150 : pane == "window" ? 720 : 640
                 let width: CGFloat = pane == "workspace" ? 1200 : pane == "window" ? 920 : 680
                 let host = NSHostingView(rootView: content.frame(width: width, height: height).background(Color(nsColor: .windowBackgroundColor)))
                 let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled], backing: .buffered, defer: false)
@@ -73,6 +75,17 @@ enum DebugSnapshot {
                 }
                 window.close()
                 } }
+            }
+        }
+        // HMK_DEBUG_ACKNOWLEDGEMENTS=1, or a component's name, or chromium-credits:
+        // the Acknowledgements window opened (on that one); with
+        // HMK_DEBUG_SNAPSHOT also rendered to <prefix>-acknowledgements-<light|dark>.png.
+        if let which = env["HMK_DEBUG_ACKNOWLEDGEMENTS"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                AcknowledgementsUI.shared.show()
+                guard let prefix = env["HMK_DEBUG_SNAPSHOT"] else { return }
+                render(AcknowledgementsView(initial: which == "1" ? nil : which), size: NSSize(width: 860, height: 600), to: "\(prefix)-acknowledgements")
             }
         }
         // HMK_DEBUG_SCHEDULES=list or edit: the Scheduled Tasks sheet (open

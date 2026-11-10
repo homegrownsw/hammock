@@ -169,6 +169,8 @@ Usage:
   hmk status [--json]                      whether the daemon is running, and its Groups, remote access
                                             and linked computers (exits 3 when it isn't running)
   hmk service install|uninstall|status     Linux: run the daemon as a systemd user service, from boot
+  hmk acknowledgements [NAME | --all]      the third-party software in Hammock and its licences
+                                            (NAME: one's licence text; --all: every one's)
 
 IDs may be abbreviated to any unique prefix; Groups and tabs can also be
 named. Set HMK_DIR to use a non-default state directory.
@@ -210,6 +212,8 @@ func main() {
 		err = runShow(args[1:])
 	case "theme":
 		err = runTheme(args[1:])
+	case "acknowledgements", "licences", "licenses":
+		err = runAcknowledgements(args[1:])
 	case "stop":
 		err = runStop(args[1:])
 	case "start":

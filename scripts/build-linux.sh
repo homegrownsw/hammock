@@ -13,7 +13,7 @@
 #   scripts/build-linux.sh [amd64|arm64 ...]
 #   HMK_VERSION=0.3.0-r700 scripts/build-linux.sh amd64
 #
-# Needs zig, go and pkg-config.
+# Needs zig, go, pkg-config and jq.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -30,6 +30,15 @@ fi
 version="${HMK_VERSION:-$(git describe --always --dirty 2>/dev/null || echo dev)+$(date +%Y%m%d%H%M%S)}"
 out="$root/dist/linux"
 mkdir -p "$out"
+# The third-party software in the binaries and its licences (`hmk
+# acknowledgements` shows the same), as text, from the file `just
+# acknowledgements` makes: into each tarball, and the Unraid package.
+notices="$out/THIRD_PARTY_NOTICES.txt"
+{
+  printf 'Hammock for Linux includes this third-party software. Each one\x27s licence follows.\n\n'
+  jq -r '[.components[] | select(.apps | index("linux"))] | map("  \(.name)\(if .version then " " + .version else "" end) (\(.license))") | join("\n")' internal/acknowledgements/Acknowledgements.json
+  jq -r '.components[] | select(.apps | index("linux")) | "\n" + ("=" * 72) + "\n\n" + .name + (if .version then " " + .version else "" end) + "\nLicence: " + .license + "\n" + (if .url then .url + "\n" else "" end) + (if (.packages // [] | length) > 1 then "Packages: " + (.packages | map(.name + "@" + .version) | join(" ")) + "\n" else "" end) + (if .note then .note + "\n" else "" end) + "\n" + .text' internal/acknowledgements/Acknowledgements.json
+} > "$notices"
 
 for arch in "${archs[@]}"; do
   case "$arch" in
@@ -65,6 +74,7 @@ for arch in "${archs[@]}"; do
   stage="$(mktemp -d)"
   mkdir "$stage/$name"
   cp "$bin"/{hmk,hmkd,pane-holder} "$stage/$name/"
+  cp "$notices" "$root/LICENSE" "$stage/$name/"
   cat > "$stage/$name/README.txt" <<EOF
 Hammock $version for Linux ($arch)
 
@@ -88,6 +98,9 @@ networks you choose; Tailscale is the easy one):
   hmk pair                # a QR code for Hammock on your iPhone
 
 hmk status shows how it's doing; hmk --help lists everything.
+
+Hammock is under the MIT licence (LICENSE); the third-party software in it
+and its licences are in THIRD_PARTY_NOTICES.txt (or: hmk acknowledgements).
 EOF
   # Plain ustar, root-owned, without macOS's extended attributes (which
   # GNU tar warns about).

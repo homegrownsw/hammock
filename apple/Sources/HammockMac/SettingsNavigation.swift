@@ -80,7 +80,7 @@ extension SettingsTab: Identifiable {
         case .sharing: "Your name and picture, and the Groups you share with other people."
         case .devices: "Your other computers, the iPhones paired with this Mac, remote access and screen sharing."
         case .ssh: "Your Hammock Key, and lending SSH keys between your computers."
-        case .about: "Its version, updates, quitting with the server, and uninstalling."
+        case .about: "Its version, updates, quitting with the server, uninstalling, and the software Hammock includes."
         }
     }
 }
@@ -281,6 +281,7 @@ enum SettingsIndex {
             e(.about, "Updates", "Check for updates now", "about.checknow", "sparkle version upgrade new release"),
             e(.about, "Quitting", "Quit and stop the server", "about.quit", "daemon shut down exit"),
             e(.about, "Uninstall", "Uninstall Hammock", "about.uninstall", "remove delete trash bin data"),
+            e(.about, "Acknowledgements", "Third-party software and its licences", "about.acknowledgements", "acknowledgements licences licenses open source credits notices copyright chromium"),
             e(.general, "Server", "Server status and state folder", "general.daemon", "daemon host connected"),
 
             e(.appearance, "Theme", "Appearance", "appearance.mode", "dark light mode automatic"),

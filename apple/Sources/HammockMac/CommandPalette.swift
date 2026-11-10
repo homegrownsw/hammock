@@ -535,6 +535,7 @@ struct CommandPalette: View {
         }
         action("settings", "Settings…", "gearshape", .gray, "preferences", keys: Keys.settings) { openSettings() }
         action("about", "About Hammock", "info.circle", .blue, "version uninstall quit stop server", keys: Keys.about) { SettingsTab.select(.about); openSettings() }
+        action("acknowledgements", "Acknowledgements", "doc.text.magnifyingglass", .gray, "licences licenses third party open source credits notices copyright chromium", keys: Keys.acknowledgements) { AcknowledgementsUI.shared.show() }
         action("keyboard-shortcuts", "Keyboard Shortcuts…", "keyboard", .gray, "keybindings keybinds hotkeys keys customize rebind settings") { SettingsTab.select(.keyboard); openSettings() }
         action("ssh-settings", "SSH and Hammock Key…", "key", .gray, "ssh key hmk key agent 1password git signing secure enclave settings") { SettingsTab.select(.ssh); openSettings() }
         action("remote-networks", "Remote Access Networks…", "network", .blue, "remote access network wifi lan local vpn wireguard tailscale listen address iphone settings") { DevicesSettingsFocus.shared.showRemoteAccess(openSettings) }
