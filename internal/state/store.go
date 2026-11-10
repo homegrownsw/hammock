@@ -5,6 +5,7 @@ package state
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -107,10 +108,10 @@ func Open(path string) (*Store, error) {
 			return nil, fmt.Errorf("state: migrate audit: %w", err)
 		}
 	}
-	// The audit log is bounded (it wasn't before 2026-11-09).
+	// The audit log is bounded (it wasn't before 2026-11-09). Not pruning
+	// it (the disk is full, say) mustn't keep the daemon from starting.
 	if err := (&Store{db: db}).PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("state: prune audit: %w", err)
+		slog.Warn("state: prune audit", "err", err)
 	}
 	// Spaces were renamed Groups (2026-10-30); their records keep their ids.
 	if _, err := db.Exec(`UPDATE entities SET kind='group' WHERE kind='space'`); err != nil {
@@ -265,7 +266,10 @@ func (s *Store) Audit(e AuditEvent) error {
 	_, err := s.db.Exec(`INSERT INTO audit(ts, actor, action, target, detail, who, summary, kind) VALUES(?,?,?,?,?,?,?,?)`,
 		time.Now().UnixMilli(), e.Actor, e.Action, e.Target, e.Detail, e.Who, e.Summary, e.Kind)
 	if err == nil && s.audits.Add(1)%auditPruneEvery == 0 {
-		err = s.PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge)
+		// The event is in: failing to prune isn't failing to record it.
+		if perr := s.PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge); perr != nil {
+			slog.Warn("state: prune audit", "err", perr)
+		}
 	}
 	return err
 }

@@ -126,3 +126,30 @@ func TestPruneAuditFailuresSeparately(t *testing.T) {
 		t.Fatalf("kept %d others and %d failures, want 3 and 4", real, failed)
 	}
 }
+
+// A store whose audit log can't be pruned (the disk is full, say) still
+// opens, and still records events.
+func TestPruneFailureIsntFatal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO audit(ts, actor, action, target, detail) VALUES(1,'a','x','','')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`CREATE TRIGGER no_prune BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(path)
+	if err != nil {
+		t.Fatalf("open with a prune failing: %v", err)
+	}
+	defer s.Close()
+	for i := range auditPruneEvery {
+		if err := s.Audit(AuditEvent{Actor: "a", Action: "y"}); err != nil {
+			t.Fatalf("event %d: %v", i, err)
+		}
+	}
+}
