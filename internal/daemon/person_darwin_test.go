@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,5 +57,19 @@ func TestDetachedFromPaneIsNotPerson(t *testing.T) {
 	d.mu.Unlock()
 	if cl := d.scopedCaller(nil, pid); cl.pane != pane || !cl.isAgent() {
 		t.Fatalf("scoped as %+v, want an agent in %s", cl, pane)
+	}
+}
+
+// An ad-hoc build's app is its bundle's own program, as Info.plist names
+// it: not any program put beside it.
+func TestBundleExecutable(t *testing.T) {
+	app := filepath.Join(t.TempDir(), "Hammock β.app")
+	os.MkdirAll(filepath.Join(app, "Contents", "MacOS"), 0o755)
+	if got := bundleExecutable(app, "Hammock"); got != filepath.Join(app, "Contents", "MacOS", "Hammock") {
+		t.Errorf("no Info.plist: %s", got)
+	}
+	os.WriteFile(filepath.Join(app, "Contents", "Info.plist"), []byte("<plist><dict>\n  <key>CFBundleExecutable</key><string>Hammock Beta</string>\n</dict></plist>"), 0o644)
+	if got := bundleExecutable(app, "Hammock"); got != filepath.Join(app, "Contents", "MacOS", "Hammock Beta") {
+		t.Errorf("from Info.plist: %s", got)
 	}
 }

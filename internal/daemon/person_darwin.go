@@ -16,7 +16,9 @@ import "C"
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/alexjsp/hammock/internal/codesign"
@@ -64,10 +66,28 @@ func isHammockApp(_ int, tok codesign.Token) bool {
 	if r, err := filepath.EvalSymlinks(app); err == nil {
 		app = r
 	}
-	dir := filepath.Dir(exe)
-	return dir == filepath.Join(app, "Contents", "MacOS") && filepath.Base(exe) != "hmkd" ||
-		dir == filepath.Join(app, "Contents", "Library", "LoginItems", "Hammock Menu.app", "Contents", "MacOS")
+	// Each bundle's own program, as its Info.plist names it: not just any
+	// program in the bundle. Weaker than a signature still: an ad-hoc
+	// build's bundle is yours to write, so a program of yours can put
+	// itself there (§5.6); release and TestFlight builds go by team above.
+	menu := filepath.Join(app, "Contents", "Library", "LoginItems", "Hammock Menu.app")
+	return exe == bundleExecutable(app, "Hammock") || exe == bundleExecutable(menu, "Hammock Menu")
 }
+
+// bundleExecutable is the program of the app bundle at app, as its
+// Info.plist's CFBundleExecutable names it (def if it can't be read: a
+// binary plist, say).
+func bundleExecutable(app, def string) string {
+	name := def
+	if b, err := os.ReadFile(filepath.Join(app, "Contents", "Info.plist")); err == nil {
+		if m := bundleExecutableRE.FindSubmatch(b); m != nil && !strings.Contains(string(m[1]), "/") {
+			name = string(m[1])
+		}
+	}
+	return filepath.Join(app, "Contents", "MacOS", name)
+}
+
+var bundleExecutableRE = regexp.MustCompile(`<key>CFBundleExecutable</key>\s*<string>([^<]+)</string>`)
 
 // loginAnchor reports whether pid starts a login session on this Mac for
 // caller: sshd from another computer, or a terminal app (Terminal, iTerm,
