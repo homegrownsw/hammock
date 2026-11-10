@@ -62,6 +62,7 @@ func runMCP(args []string) error {
 			"To hand the user a TUI and carry on when they quit it (a diff reviewer, an editor), run it with --wait as a background shell command instead of create_pane: " +
 			"`hmk tab new --name NAME --wait -- CMD` for a new tab, or `hmk split \"$HMK_PANE_ID\" --wait -- CMD` beside your pane. " +
 			"The pane closes when CMD exits cleanly and the command returns with its exit status, with no time limit, so you're woken without blocking. " +
+			"If the pane's terminal couldn't start, it exits 125 and says why on stderr: CMD never ran, so the user never saw it. " +
 			"Browser panes are real Chromium pages the user can see: open one with browser_open (e.g. your dev server), read it with browser_snapshot, " +
 			"act with browser_click/browser_type, and check browser_console and browser_network when debugging. " +
 			"Simulator panes show iOS simulators: open one with sim_open, look with sim_screenshot, act with sim_tap/sim_swipe/sim_type, " +
@@ -208,6 +209,7 @@ type paneView struct {
 	Running    bool   `json:"running"`
 	Program    string `json:"program,omitempty"` // the program in front (vim, node, the shell at a prompt)
 	ExitCode   *int32 `json:"exit_code,omitempty"`
+	StartError string `json:"start_error,omitempty"` // its terminal never started: why
 	Agent      string `json:"agent,omitempty"`
 	State      string `json:"agent_state,omitempty"`
 	Summary    string `json:"agent_summary,omitempty"`
@@ -250,6 +252,7 @@ func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
 	if p.Exited {
 		code := p.ExitStatus
 		v.ExitCode = &code
+		v.StartError = p.StartError
 	} else if len(p.Program) > 0 {
 		v.Program = p.Program[0]
 	}
@@ -540,10 +543,15 @@ func (s *mcpServer) register(server *mcp.Server) {
 				}
 				if p := w.panes[a.PaneID]; p == nil || p.Exited {
 					code := int32(0) // panes close themselves on a clean exit
+					res := map[string]any{"exited": true, "closed": p == nil, "tail": lastLines(text, 20)}
 					if p != nil {
 						code = p.ExitStatus
+						if p.StartError != "" {
+							res["start_error"] = p.StartError // never ran: not the command's own failure
+						}
 					}
-					return textResult(map[string]any{"exited": true, "closed": p == nil, "exit_code": code, "tail": lastLines(text, 20)}), nil, nil
+					res["exit_code"] = code
+					return textResult(res), nil, nil
 				}
 			}
 			if time.Now().After(deadline) {

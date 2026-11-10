@@ -195,6 +195,11 @@ message Pane {
   // Editor panes: the file and its buffer's state (the text comes with
   // AttachPane, as EditorUpdate).
   EditorInfo editor = 30;
+  // Terminal panes: why its terminal never started (its pane-holder didn't
+  // answer, or couldn't be restarted), set with exited. Empty for a program
+  // that ran and ended, whatever its status: exit_status alone can't tell
+  // the two apart (a program killed by a signal also ends -1).
+  string start_error = 31;
 }
 
 enum AgentState {

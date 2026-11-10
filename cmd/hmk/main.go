@@ -84,7 +84,8 @@ Usage:
   hmk tab new [GROUP] [--name N] [--cwd DIR] [--wait] [-- CMD...]
                                             open a tab (in GROUP, by default the one this runs in);
                                             --wait: until CMD ends, exiting with its status (a clean
-                                            exit closes the tab, a failure stays open to be read)
+                                            exit closes the tab, a failure stays open to be read);
+                                            125 if its terminal couldn't start
   hmk tab rename TAB NAME
   hmk tab name NAME                        name the tab this runs in (for agents; unnamed tabs are named automatically)
   hmk tab merge TAB INTO [--down]          put a tab's panes beside (or below) another tab's
