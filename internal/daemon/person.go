@@ -136,8 +136,22 @@ func (c *conn) personCheck(msg *pb.ClientMessage) error {
 	if c.remote || c.personOK.Load() || cl.isAgent() && (!cl.scoped || agentReachable(msg)) {
 		return nil
 	}
-	if !cl.isAgent() && plainAllowed(msg) {
-		return nil
+	if plainAllowed(msg) {
+		if !cl.isAgent() {
+			return nil
+		}
+		switch msg.Msg.(type) {
+		case *pb.ClientMessage_ListDevices:
+			// A read of nothing secret (devices' names, remote access's
+			// networks): what state.db and the config file already
+			// say to anything running as you. A script's `hmk status` (cron,
+			// launchd, ssh without a terminal: scoped) gets them.
+			return nil
+		}
+		// The rest do something (typing into a browser pane, resuming a
+		// session, looking for computers): from a scoped caller, refused
+		// rather than asked, as not worth a question each time.
+		return errPersonOnly
 	}
 	strict := personStrict(msg)
 	if !strict && !personOnly(msg) {

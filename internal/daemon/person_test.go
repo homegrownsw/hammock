@@ -746,3 +746,35 @@ func TestPlainCallersPaneClaimsAreTheirOwn(t *testing.T) {
 		}
 	}
 }
+
+// A script's `hmk status` (cron, launchd, ssh without a terminal: scoped)
+// lists devices: nothing secret, so it gets them at once; what
+// does something on the same list is refused at once. Neither asks you.
+func TestScriptsStatusNeverAsks(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	asPerson(t, nobody)
+	asPlain(t, inPaneShell)
+	outside := dialAs(t, dir, nil, "cli")
+	start := time.Now()
+	for _, m := range []*pb.ClientMessage{
+		{Msg: &pb.ClientMessage_ListDevices{ListDevices: &pb.ListDevices{}}},
+	} {
+		if _, err := try(outside, m); err != nil {
+			t.Fatalf("%T: %v", m.Msg, err)
+		}
+	}
+	if _, err := try(outside, &pb.ClientMessage{Msg: &pb.ClientMessage_DiscoverComputers{DiscoverComputers: &pb.DiscoverComputers{}}}); err == nil || err.Error() != errPersonOnly.Error() {
+		t.Fatalf("discovering computers: %v, want %v", err, errPersonOnly)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Errorf("took %v: it waited", time.Since(start))
+	}
+	d.mu.Lock()
+	n := len(d.grants)
+	d.mu.Unlock()
+	if n != 0 {
+		t.Errorf("%d requests made", n)
+	}
+}
