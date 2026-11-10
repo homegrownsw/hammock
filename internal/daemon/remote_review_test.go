@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"bytes"
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
@@ -183,5 +185,42 @@ func TestFailedSignInAuditBudget(t *testing.T) {
 	d.mu.Lock()
 	if n, more := count(); n != failAuditBudget+1 || more != "181 more failed sign-ins, not recorded one by one" {
 		t.Fatalf("after the minute: %d rows, %q", n, more)
+	}
+}
+
+// fakePeerConn is a signed-in remote connection from uid with key, as the
+// daemon tracks it.
+func fakePeerConn(d *Daemon, uid string, key []byte) *conn {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &conn{d: d, remote: true, authed: true, peer: uid, peerKey: key, kind: "peer", ctx: ctx, cancel: cancel, out: make(chan *pb.ServerMessage, 64)}
+	d.conns[c] = struct{}{}
+	return c
+}
+
+// Approving a join records the key of the connection that asked, and
+// closes any other connection signed in under the same id with another key.
+func TestApprovedJoinKeepsItsOwnKey(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	other, _, _ := ed25519.GenerateKey(rand.Reader)
+	uid := userIDFor(pub)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.groups["gr_x"] = &pb.Group{Id: "gr_x"}
+	impostor := fakePeerConn(d, uid, other) // (a key whose id collides)
+	asker := fakePeerConn(d, uid, pub)
+	d.people[uid] = &pb.Person{UserId: uid, Name: "Guest"}
+	d.joins["jr_x"] = &pendingJoin{req: &pb.JoinRequest{Id: "jr_x", GroupId: "gr_x", UserId: uid}, c: asker, msgID: 1}
+	if err := d.respondJoin(&pb.RespondJoin{Id: "jr_x", Role: pb.Role_ROLE_VIEWER}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(d.knownKey(uid), pub) {
+		t.Fatal("the key on record isn't the approved join's")
+	}
+	if impostor.ctx.Err() == nil {
+		t.Fatal("a connection with another key under the same id stays signed in as the member")
+	}
+	if asker.ctx.Err() != nil {
+		t.Fatal("the approved connection was closed")
 	}
 }

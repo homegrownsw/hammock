@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/subtle"
@@ -93,7 +94,8 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 	}
 	if len(d.scope(uid)) > 0 || d.isLinked(uid) {
 		d.remoteAuthed(c)
-		d.knowPerson(p) // (and its key, if it isn't on record yet)
+		d.rememberKey(uid, m.PublicKey) // (if it isn't on record yet: this one, which just proved it)
+		d.knowPerson(p)
 		u := &pb.StateUpdate{People: []*pb.Person{proto.CloneOf(p)}}
 		d.setOnline(uid, true, u)
 		d.publish(u)
@@ -186,13 +188,26 @@ func (d *Daemon) hangUpIfOutside(c *conn, self bool) {
 }
 
 // knowPerson records a member's (or soon-to-be member's) profile, lifting
-// the limits on its connections here. Callers hold d.mu.
+// the limits on its connections here. Only connections signed in with the
+// key on record for it are them (the caller records the key it approved
+// first: an approved join's own, a linked computer's); any other is closed.
+// With none on record yet (someone let in before keys were kept), the
+// first connection's is kept. Callers hold d.mu.
 func (d *Daemon) knowPerson(p *pb.Person) {
+	key := d.knownKey(p.UserId)
 	for c := range d.conns {
-		if c.remote && c.peer == p.UserId && c.authed {
-			d.remoteAuthed(c)
-			d.rememberKey(c.peer, c.peerKey)
+		if !c.remote || c.peer != p.UserId || !c.authed {
+			continue
 		}
+		if key == nil {
+			d.rememberKey(c.peer, c.peerKey)
+			key = d.knownKey(p.UserId)
+		}
+		if !bytes.Equal(c.peerKey, key) {
+			c.cancel() // the same id, another key: not who was let in
+			continue
+		}
+		d.remoteAuthed(c)
 	}
 	delete(d.strangers, p.UserId)
 	d.people[p.UserId] = p
@@ -434,6 +449,9 @@ func (d *Daemon) respondJoin(m *pb.RespondJoin) error {
 		d.audit("user", "join-declined", j.req.GroupId, name)
 		return nil
 	}
+	// The key let in is the one this request came with, whatever else
+	// has signed in under the same id meanwhile.
+	d.rememberKey(j.req.UserId, j.c.peerKey)
 	d.setMemberRole(g, j.req.UserId, m.Role)
 	d.resendState(j.c) // the Group first, then the answer
 	j.c.send(&pb.ServerMessage{ReplyTo: j.msgID, Msg: joined(g.Id, m.Role).Msg})
