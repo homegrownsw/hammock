@@ -209,6 +209,16 @@ public final class AppModel {
         self.remoteIdentity = remote
     }
 
+    /// A client of `standIn`, a pretend daemon (the iPhone's demo).
+    public init(standIn: DaemonStandIn, clientKind: String) {
+        self.socketPath = ""
+        self.clientKind = clientKind
+        self.standIn = standIn
+    }
+
+    /// Set: this model's daemon is a stand-in (DaemonStandIn), not a Mac.
+    @ObservationIgnored public private(set) var standIn: DaemonStandIn?
+
     private func nextChallenge() async -> Data {
         if let c = challenge { challenge = nil; return c }
         return await withCheckedContinuation { challengeWaiters.append($0) }
@@ -218,7 +228,7 @@ public final class AppModel {
 
     public func start() {
         guard !stopped else { return }
-        let c = remoteIdentity.map {
+        let c = standIn.map { DaemonConnection(standIn: $0) } ?? remoteIdentity.map {
             DaemonConnection(remoteAddresses: $0.addresses, lanSubnets: $0.lanSubnets, lastWorked: $0.address, certSHA256: $0.certSHA256)
         } ?? DaemonConnection(socketPath: socketPath)
         challenge = nil
@@ -1800,15 +1810,3 @@ extension AppModel {
     }
 }
 
-#if DEBUG
-extension AppModel {
-    /// Dev aid: shows a made-up state with no daemon behind it (the iPhone's
-    /// HMK_DEBUG_SAMPLE), for screenshots. Actions fail as when disconnected.
-    public func showSample(_ u: Hammock_V1_StateUpdate, hostName: String, userID: String) {
-        connected = true
-        self.hostName = hostName
-        myUserID = userID
-        apply(u)
-    }
-}
-#endif

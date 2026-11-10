@@ -23,6 +23,13 @@ public enum DaemonError: Error, LocalizedError {
     }
 }
 
+/// Stands in for a daemon that isn't there (the iPhone's demo): gets everything a
+/// connection would send, and answers through `reply`, from any thread. Replies to
+/// calls carry the call's id in `replyTo`; anything else is an event.
+public protocol DaemonStandIn: AnyObject, Sendable {
+    func receive(_ msg: ClientMessage, reply: @escaping @Sendable (ServerMessage) -> Void)
+}
+
 /// A connection to hmkd over its Unix socket (raw length-prefixed
 /// frames; Network.framework can't run WebSocket over a Unix socket), speaking the
 /// v1 protobuf protocol, or remotely to a paired Mac over WebSocket and
@@ -60,6 +67,9 @@ public final class DaemonConnection: @unchecked Sendable {
     private var connection: NWConnection?
     private var nextID: UInt64 = 0
     private var pending: [UInt64: (Result<ServerMessage, Error>) -> Void] = [:]
+    /// Set: there's no socket, and `standIn` answers instead (open once connected).
+    private var standIn: DaemonStandIn?
+    private var standInOpen = false
 
     public init(socketPath: String) {
         self.socketPath = socketPath
@@ -67,6 +77,12 @@ public final class DaemonConnection: @unchecked Sendable {
         self.lanSubnets = []
         self.lastWorkedAddress = nil
         self.certSHA256 = nil
+    }
+
+    /// A connection to `standIn` instead of a daemon.
+    public convenience init(standIn: DaemonStandIn) {
+        self.init(socketPath: "")
+        self.standIn = standIn
     }
 
     /// A remote connection to a paired daemon at one address.
@@ -107,7 +123,7 @@ public final class DaemonConnection: @unchecked Sendable {
         addressLock.unlock()
     }
 
-    private var isOpen: Bool { connection != nil || remoteConn != nil }
+    private var isOpen: Bool { connection != nil || remoteConn != nil || standInOpen }
 
     public static var defaultSocketPath: String {
         if let dir = ProcessInfo.processInfo.environment["HMK_DIR"] {
@@ -121,6 +137,13 @@ public final class DaemonConnection: @unchecked Sendable {
     }
 
     public func connect() {
+        if standIn != nil {
+            queue.async {
+                self.standInOpen = true
+                self.onStateChange?(true, nil)
+            }
+            return
+        }
         if let certSHA256 {
             queue.async { self.connectRemote(pin: certSHA256) }
             return
@@ -205,6 +228,11 @@ public final class DaemonConnection: @unchecked Sendable {
 
     public func disconnect() {
         queue.async {
+            if self.standInOpen {
+                self.standInOpen = false
+                self.failAll(DaemonError.closed)
+                self.onStateChange?(false, nil)
+            }
             self.connection?.cancel()
             self.remoteConn?.cancel()
             self.dial?.stop()
@@ -256,6 +284,11 @@ public final class DaemonConnection: @unchecked Sendable {
 
     func dispatch(_ data: Data) {
         guard let msg = try? ServerMessage(serializedBytes: data) else { return }
+        deliver(msg)
+    }
+
+    /// A message from the daemon (or the stand-in), on `queue`.
+    private func deliver(_ msg: ServerMessage) {
         switch msg.msg {
         case .mediaFrame(let f):
             mediaFrames[f.sessionID]?(f)
@@ -287,6 +320,10 @@ public final class DaemonConnection: @unchecked Sendable {
     }
 
     private func write(_ msg: ClientMessage) {
+        if let standIn {
+            standIn.receive(msg) { [weak self] reply in self?.queue.async { self?.deliver(reply) } }
+            return
+        }
         guard let body = try? msg.serializedData() else { return }
         if remoteConn != nil {
             sendWS(body)

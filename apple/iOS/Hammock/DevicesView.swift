@@ -142,6 +142,8 @@ private struct HostRow: View {
 struct PairingScreen: View {
     let session: Session
     var done: () -> Void = {}
+    /// First run: a way into the demo, for anyone without a Mac to hand.
+    var offersDemo = false
     @State private var code = ""
     @State private var started = false
 
@@ -173,6 +175,21 @@ struct PairingScreen: View {
             }
             if let error = session.pairingError {
                 Section { Text(error).foregroundStyle(.red) }
+            }
+            if offersDemo {
+                // A side door, not the way in: a footnote, under everything.
+                Section {} footer: {
+                    VStack(spacing: 6) {
+                        HStack(spacing: 4) {
+                            Text("No Mac to hand?")
+                            Button("See a demo") { session.startDemo() }
+                        }
+                        Text("Hammock for Mac is free at [homegrownsw.com/hammock](https://homegrownsw.com/hammock/).")
+                    }
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+                }
             }
         }
         .navigationTitle("Add Computer")

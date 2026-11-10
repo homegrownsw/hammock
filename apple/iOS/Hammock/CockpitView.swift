@@ -29,6 +29,7 @@ struct CockpitView: View {
                 SettingsScreen(model: model)
             }
         }
+        .demoBar(session)
         // Above the tab bar.
         .overlay(alignment: .bottom) { ToastOverlay(model: model).padding(.bottom, 64) }
         // A notification opened: its session.

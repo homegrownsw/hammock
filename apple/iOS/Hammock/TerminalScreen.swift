@@ -25,9 +25,6 @@ struct TerminalRepresentable: UIViewRepresentable {
     func makeUIView(context: Context) -> TerminalUIView {
         let v = TerminalUIView()
         let s = model.acquireSession(paneID)
-        #if DEBUG
-        if DebugSample.enabled { DebugSample.fill(s) }
-        #endif
         v.session = s
         v.onInput = { [model, paneID] data in model.send(paneID, data) }
         v.onFocus = { [model, paneID] in model.focus(paneID) }

@@ -45,10 +45,9 @@ final class Session {
 
     init() {
         #if DEBUG
-        // Dev aid: a made-up Mac, nothing paired or stored (DebugSample).
-        if DebugSample.enabled {
-            host = StoredHost(hostName: "MacBook", address: "", certSHA256: "sample", deviceID: "sample", privateKey: Data())
-            model = DebugSample.model()
+        // Dev aid: straight into the demo (DemoMac), nothing paired or stored.
+        if DemoMac.launchedInto {
+            startDemo()
             return
         }
         #endif
@@ -200,9 +199,30 @@ final class Session {
         persist()
     }
 
+    /// The demo is shown (DemoMac): a made-up Mac, nothing paired or stored.
+    var isDemo: Bool { model?.standIn != nil }
+
+    /// Shows the demo, in place of any Mac shown.
+    func startDemo() {
+        model?.stop()
+        host = StoredHost(hostName: "MacBook", address: "", certSHA256: "demo", deviceID: "sample", privateKey: Data())
+        let m = AppModel(standIn: DemoMac(), clientKind: "ios")
+        m.start()
+        model = m
+    }
+
+    /// Leaves the demo: for a paired Mac if there is one, else pairing.
+    func endDemo() {
+        guard isDemo else { return }
+        model?.stop()
+        model = nil
+        host = nil
+        if let next = hosts.first { show(next) }
+    }
+
     /// Renamed: the Mac shown hears it now (it's sent as the phone signs in).
     func renamed() {
-        guard let h = host, h.deviceID != nil, pending == nil else { return }
+        guard let h = host, h.deviceID != nil, pending == nil, !isDemo else { return }
         model?.stop()
         model = connect(h, secret: nil)
     }
@@ -381,6 +401,16 @@ struct RootView: View {
     var body: some View {
         if let model = session.model, session.host?.deviceID != nil || model.connected {
             CockpitView(model: model, session: session)
+                // In the demo, what would change the Mac says it needs one.
+                .alert("This Needs Your Mac", isPresented: Binding(
+                    get: { session.isDemo && model.lastError == DemoMac.needsMac },
+                    set: { if !$0 { model.lastError = nil } }
+                )) {
+                    Button("Pair Your Mac") { session.endDemo() }
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("This is a demo with a made-up Mac. Pair your own to start agents, open tabs and run tasks.")
+                }
                 .onAppear { Push.shared.session = session }
                 // Each Mac learns where to push when it's shown, and this
                 // phone's approval key for its Hammock Key.
