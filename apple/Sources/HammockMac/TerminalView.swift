@@ -901,16 +901,15 @@ struct TerminalView: NSViewRepresentable {
         }
     }
 
-    /// "Open this link?", showing where it really goes; Cancel is the default.
+    /// "Open this link?", showing where it really goes. Cancel comes first,
+    /// so NSAlert gives it Escape; Open has no key, so Return opens nothing.
     @MainActor private static func askToOpen(_ url: URL) {
         let alert = NSAlert()
         alert.messageText = "Open this link?"
         alert.informativeText = "It isn’t a web page: it could open another app, or connect to a server.\n\n\(url.absoluteString)"
-        let open = alert.addButton(withTitle: "Open")
-        let cancel = alert.addButton(withTitle: "Cancel")
-        open.keyEquivalent = ""
-        cancel.keyEquivalent = "\r"
-        let opened: (NSApplication.ModalResponse) -> Void = { if $0 == .alertFirstButtonReturn { NSWorkspace.shared.open(url) } }
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Open").keyEquivalent = ""
+        let opened: (NSApplication.ModalResponse) -> Void = { if $0 == .alertSecondButtonReturn { NSWorkspace.shared.open(url) } }
         if let window = NSApp.keyWindow {
             alert.beginSheetModal(for: window, completionHandler: opened)
         } else {
@@ -1074,9 +1073,11 @@ extension TerminalNSView {
             let menu = NSMenu()
             // Where it really goes: a program's link can say one thing and go elsewhere.
             if link.hyperlink {
-                let dest = NSMenuItem(title: Self.shortened(link.url), action: nil, keyEquivalent: "")
+                // Percent-encoded, as it goes: the raw text could carry
+                // right-to-left or other invisible marks to disguise it.
+                let dest = NSMenuItem(title: Self.shortened(url.absoluteString), action: nil, keyEquivalent: "")
                 dest.isEnabled = false
-                dest.toolTip = link.url
+                dest.toolTip = url.absoluteString
                 menu.addItem(dest)
                 menu.addItem(.separator())
             }
@@ -1120,8 +1121,10 @@ extension TerminalNSView {
         }
         guard link != hoverLink else { return }
         hoverLink = link
-        // A program's link (OSC 8) shows where it goes: its text needn't.
-        toolTip = link?.hyperlink == true ? link?.url : nil
+        // A program's link (OSC 8) shows where it goes (its text needn't),
+        // percent-encoded as in its menu (none for one that isn't a URL at
+        // all: it doesn't open either).
+        toolTip = link?.hyperlink == true ? link.flatMap { URL(string: $0.url)?.absoluteString } : nil
         (link == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
         needsDisplay = true
     }

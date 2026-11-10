@@ -156,7 +156,9 @@ struct LinkComputerSheet: View {
             }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.defaultAction)
+                // Escape cancels; Return does nothing (it mustn't link, and
+                // a Cancel that took Return would lose Escape).
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 if preview != nil {
                     Button("Link") {
                         confirmedLink = link
@@ -166,7 +168,6 @@ struct LinkComputerSheet: View {
                 }
             }
         }
-        .onExitCommand { dismiss() }
     }
 
     private func begin() async {
