@@ -698,7 +698,7 @@ struct FinishStep: View {
                         .frame(width: 112, height: 112)
                         .shadow(color: Brand.forest.opacity(0.3), radius: 18, y: 14)
                         .scaleEffect(shown ? 1 : 0.85)
-                    Text("Time for hammock.")
+                    Text("Kick back, it's Hammock time.")
                         .font(.system(size: 40, weight: .bold))
                         .kerning(-0.6)
                     Text(done.isEmpty ? "What would you like to do first?" : "You're all set. What would you like to do first?")
