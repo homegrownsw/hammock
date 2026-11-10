@@ -19,10 +19,17 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
   streams at once.
 - **Agents.** Agents in panes are scoped (`internal/daemon/caller.go`): they read your Groups and control
   what they open, and ask you before touching anything else. Answering those requests, pairing, sharing,
-  linking and remote access are taken only from you, identified by the Hammock app's code signature or a
-  shell of your own. Any other program that talks to Hammock (one left running in the background, a
-  launchd job, an agent outside Hammock) is scoped as an agent. This is a guardrail for well-meaning agents, not a sandbox: anything running as you
-  can, in the end, do what you can. For a real boundary use your agent harness's sandbox.
+  linking, remote access, SSH setup and saving schedules are done directly only in the Hammock app,
+  identified by its code signature. Asked from anywhere else (`hmk` in a shell or a terminal, the TUI, a
+  program outside Hammock), they ask you first: allow once in the app or on your paired phone; nothing
+  answers its own request. Hammock doesn't take where a process runs (its parents, terminal or ssh
+  session) as proof that it's you, since a program of yours chooses all of those. Until anything could ask
+  you (nothing paired or linked, the app not open), a terminal of yours does them directly, and the first
+  device paired after that is told. Any other program that talks to Hammock (one left running in the
+  background, a launchd job, an agent outside Hammock) is scoped as an agent. This is a guardrail for
+  well-meaning agents, not a sandbox: anything running as you can, in the end, do what you can (type
+  into your shell, drive the app through accessibility, edit your shell's startup files or Hammock's
+  state). For a real boundary use your agent harness's sandbox.
 - **Notifications.** Push payloads are end-to-end encrypted per phone; the relay (`relay/push`) sees
   device tokens, ciphertext, keyed-hash tags and the category.
 - **Untrusted output.** Terminal output, web pages and transcripts are untrusted: links that would open
