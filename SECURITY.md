@@ -24,8 +24,8 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
   program outside Hammock), they ask you first: allow once in the app or on your paired phone; nothing
   answers its own request. Hammock doesn't take where a process runs (its parents, terminal or ssh
   session) as proof that it's you, since a program of yours chooses all of those. Until anything could ask
-  you (nothing paired or linked, the app not open), a terminal of yours does them directly, and the first
-  device paired after that is told. Any other program that talks to Hammock (one left running in the
+  you (nothing ever paired or linked, the app never opened), a terminal of yours does them directly, and
+  the first device paired after that is told; once the app has been open, they wait for you to open it. Any other program that talks to Hammock (one left running in the
   background, a launchd job, an agent outside Hammock) is scoped as an agent. This is a guardrail for
   well-meaning agents, not a sandbox: anything running as you can, in the end, do what you can (type
   into your shell, drive the app through accessibility, edit your shell's startup files or Hammock's

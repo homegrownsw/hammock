@@ -261,7 +261,7 @@ func connect(ctx context.Context) (*client.Client, error) {
 // only you may do, asked from outside the Hammock app, is yours to allow
 // there or on your phone.
 func waitingForYou(ap *pb.ApprovalPending) {
-	fmt.Fprintf(os.Stderr, "Waiting for you to allow this in Hammock or on your phone (%s)…\n", termSafe(ap.Headline))
+	fmt.Fprintf(os.Stderr, "Waiting for you to allow this in the Hammock app (open it if it isn't) or on your phone (%s)…\n", termSafe(ap.Headline))
 }
 
 // world is a resolved view of the daemon's state.

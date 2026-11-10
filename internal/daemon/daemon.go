@@ -240,6 +240,7 @@ func New(cfg Config) (*Daemon, error) {
 	d.loadAgentMade()
 	d.mu.Lock()
 	d.loadSchedules()
+	d.loadBootstrap()
 	d.mu.Unlock()
 	return d, nil
 }

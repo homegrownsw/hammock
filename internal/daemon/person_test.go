@@ -408,7 +408,7 @@ func TestPersonOnlyBootstrap(t *testing.T) {
 		d.mu.Unlock()
 		t.Fatal(err)
 	}
-	d.afterBootstrap("Paired Phone")
+	d.afterBootstrap("Paired Phone", "dv_x", "")
 	item := d.attention[bootstrapAttentionPrefix+"bootstrap"]
 	d.mu.Unlock()
 	if item == nil || !strings.Contains(item.Summary, "Paired Phone from a terminal") || !strings.Contains(item.Summary, "From the shell in") {
@@ -448,10 +448,146 @@ func TestPersonOnlyAsksTheAppBeforeAnythingIsPaired(t *testing.T) {
 	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
 	term := dialAs(t, dir, nil, "cli")
 	done := make(chan error, 1)
-	go func() { _, err := try(term, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}); done <- err }()
+	go func() {
+		_, err := try(term, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}})
+		done <- err
+	}()
 	req := personGrant(t, d, nil)
 	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: req.Id, Decision: pb.RespondGrant_DECISION_ALLOW_ONCE}}})
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Once the app has connected, the bootstrap window has shut for good: with
+// the app quit and nothing paired, a terminal asks (and waits for the app)
+// instead of doing it directly, after a restart too.
+func TestBootstrapShutsOnceTheAppConnects(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	app := dialKind(t, dir, "mac") // the app (testPerson)
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	d.mu.Lock()
+	closed := d.bootstrapClosed()
+	d.mu.Unlock()
+	if !closed {
+		t.Fatal("the app connected, and the window is still open")
+	}
+	app.Close()
+	waitFor(t, "the app gone", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.nobodyToAsk()
+	})
+	d.Shutdown()
+	d = startDaemon(t, dir)
+	defer d.Shutdown()
+
+	asPerson(t, nobody)
+	asPlain(t, func(*caller, int) bool { return true })
+	hasTTY = func(int) bool { return true }
+	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
+	// A detached program with a terminal of its own: it asks, and waits.
+	term := dialAs(t, dir, nil, "cli")
+	done := make(chan error, 1)
+	go func() {
+		_, err := try(term, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}})
+		done <- err
+	}()
+	req := personGrant(t, d, nil)
+	select {
+	case err := <-done:
+		t.Fatalf("answered before anyone allowed it: %v", err)
+	default:
+	}
+	// The app opens later and says no.
+	asPerson(t, testPerson)
+	app = dialKind(t, dir, "mac")
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: req.Id, Decision: pb.RespondGrant_DECISION_DENY}}})
+	if err := <-done; err == nil || err.Error() != errDenied.Error() {
+		t.Fatalf("denied: %v", err)
+	}
+	d.mu.Lock()
+	by := d.remote.bootstrapBy
+	d.mu.Unlock()
+	if by != "" {
+		t.Fatalf("noted as a bootstrap: %q", by)
+	}
+}
+
+// The word that a terminal did what only you may survives a restart, and
+// the phone paired as it was said can't clear it: the app can, or a phone
+// paired before it.
+func TestBootstrapWarningKeptAndOnlyYoursToClear(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	asPerson(t, nobody)
+	asPlain(t, func(*caller, int) bool { return true })
+	hasTTY = func(int) bool { return true }
+	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
+	term := dialAs(t, dir, nil, "cli")
+	if r, err := try(term, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}); err != nil || r.GetPairing() == nil {
+		t.Fatalf("bootstrap: %v %v", r, err)
+	}
+	// Killed before anything is paired: where it came from is kept.
+	d.Shutdown()
+	d = startDaemon(t, dir)
+	defer func() { d.Shutdown() }()
+	d.mu.Lock()
+	if d.remote.bootstrapBy == "" {
+		d.mu.Unlock()
+		t.Fatal("forgot the bootstrap across a restart")
+	}
+	old := time.Now().Add(-time.Hour)
+	if err := d.store.PutDevice(state.Device{ID: "dv_new", Name: "Phone", PublicKey: make([]byte, 32), Paired: time.Now(), LastSeen: time.Now()}); err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	d.afterBootstrap("Paired Phone", "dv_new", "")
+	if err := d.store.PutDevice(state.Device{ID: "dv_old", Name: "Old", PublicKey: make([]byte, 32), Paired: old, LastSeen: old}); err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	if err := d.store.PutDevice(state.Device{ID: "dv_later", Name: "Later", PublicKey: make([]byte, 32), Paired: time.Now().Add(time.Second), LastSeen: time.Now()}); err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	d.mu.Unlock()
+	d.Shutdown()
+	d = startDaemon(t, dir)
+	id := bootstrapAttentionPrefix + "bootstrap"
+	d.mu.Lock()
+	item := d.attention[id]
+	closed := d.bootstrapClosed()
+	may := func(c *conn) bool { return d.mayClearBootstrap(c) }
+	newPhone, oldPhone, later := may(&conn{d: d, remote: true, deviceID: "dv_new"}), may(&conn{d: d, remote: true, deviceID: "dv_old"}), may(&conn{d: d, remote: true, deviceID: "dv_later"})
+	computer := may(&conn{d: d, peer: "u_x"})
+	d.mu.Unlock()
+	if item == nil || !strings.Contains(item.Summary, "Paired Phone from a terminal") || !closed {
+		t.Fatalf("after a restart: %v closed %v", item, closed)
+	}
+	if newPhone || later || computer || !oldPhone {
+		t.Fatalf("may clear: the new phone %v, one paired since %v, a computer %v, one paired before %v", newPhone, later, computer, oldPhone)
+	}
+	// Not from a terminal; from the app, for good.
+	if _, err := try(term2(t, dir), &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: id}}}); err == nil {
+		t.Fatal("cleared from a terminal")
+	}
+	asPerson(t, testPerson)
+	app := dialKind(t, dir, "mac")
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: id}}})
+	d.Shutdown()
+	d = startDaemon(t, dir)
+	d.mu.Lock()
+	item = d.attention[id]
+	d.mu.Unlock()
+	if item != nil {
+		t.Fatal("cleared, and back after a restart")
+	}
+}
+
+// term2 is a terminal caller that isn't the app.
+func term2(t *testing.T, dir string) *client.Client {
+	asPerson(t, nobody)
+	return dialAs(t, dir, nil, "cli")
 }

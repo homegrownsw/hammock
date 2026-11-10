@@ -718,7 +718,7 @@ func (d *Daemon) pair(c *conn, m *pb.Pair) (*pb.ServerMessage, error) {
 	c.authed, c.deviceID, c.name = true, dev.ID, dev.Name
 	d.remoteAuthed(c)
 	d.audit("device:"+dev.Name, "paired", dev.ID, m.Platform)
-	d.afterBootstrap("Paired " + cmpOr(dev.Name, "a device"))
+	d.afterBootstrap("Paired "+cmpOr(dev.Name, "a device"), dev.ID, "")
 	d.toLocal(&pb.ServerMessage{Msg: &pb.ServerMessage_DevicePaired{DevicePaired: &pb.DevicePaired{DeviceId: dev.ID, Name: dev.Name, Platform: dev.Platform}}})
 	return &pb.ServerMessage{Msg: &pb.ServerMessage_Paired{Paired: &pb.Paired{DeviceId: dev.ID}}}, nil
 }

@@ -431,6 +431,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if c.peer == "" {
 			c.kind, c.name, c.fromPane = m.Hello.ClientKind, m.Hello.ClientName, m.Hello.FromPaneId
 		}
+		if c.kind == "mac" && !c.remote && c.peer == "" && c.personOK.Load() {
+			d.closeBootstrap("the Hammock app connected") // there's someone to ask from now on (bootstrap.go)
+		}
 		remoteOn := !c.remote && d.remote.on
 		anon := c.remote && !c.authed
 		host := d.macName()
@@ -1352,6 +1355,15 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_ClearAttention:
 		d.mu.Lock()
 		defer d.mu.Unlock()
+		if strings.HasPrefix(m.ClearAttention.Id, bootstrapAttentionPrefix) {
+			// The word that a terminal did what only you may: yours, in the
+			// app (or on a phone paired before it was said), not the new
+			// phone's or computer's it's about (bootstrap.go).
+			if !d.mayClearBootstrap(c) {
+				return nil, errAnswerInApp
+			}
+			d.clearBootstrapWarning()
+		}
 		d.clearAttention(m.ClearAttention.Id)
 		return nil, nil
 

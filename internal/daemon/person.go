@@ -30,9 +30,9 @@ import (
 // them in the app or on your phone, once.
 //
 // Until something could answer (no phone paired, no computer linked, the
-// app not open), a program with a terminal that isn't an agent's does them
-// directly (bootstrap.go), and the first phone or computer paired or
-// linked after that is told so in Needs You.
+// app never yet open), a program with a terminal that isn't an agent's
+// does them directly (bootstrap.go), and the first phone or computer
+// paired or linked after that is told so in Needs You.
 //
 // Agents are refused them outright (agentCheck). For everything else
 // agent scoping applies (caller.go): a pane's own shell, and a program in
@@ -151,11 +151,13 @@ func (c *conn) personCheck(msg *pb.ClientMessage) error {
 		return errAnswerInApp
 	}
 	c.d.mu.Lock()
-	nobody := c.d.nobodyToAsk()
+	open := c.d.bootstrapOpen()
 	c.d.mu.Unlock()
-	if nobody {
+	if open {
 		return errNobodyToAsk
 	}
+	// (With the app closed and nothing paired, once the window has shut:
+	// it waits for you to open the app and allow it, or times out.)
 	return c.askPerson(msg)
 }
 
