@@ -25,6 +25,9 @@ func TestFirstPromptTypedOnceIdle(t *testing.T) {
 	d.mu.Unlock()
 	p.mu.Lock()
 	p.info.Agent = &pb.Agent{Harness: "kimi", State: pb.AgentState_AGENT_STATE_STARTING, Heuristic: true}
+	// As if its hooks had just reported, so agent detection (every 2s) leaves
+	// the pane alone: it would see /bin/cat, not kimi, and clear the agent.
+	p.hookAt = time.Now()
 	p.mu.Unlock()
 
 	d.typeFirstPrompt(p, "tidy the hangar")
