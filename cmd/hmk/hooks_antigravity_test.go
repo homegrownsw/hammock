@@ -99,7 +99,6 @@ func TestAntigravityHooksInstall(t *testing.T) {
 // Its hooks print {} whether in a Hammock pane or not.
 func TestAntigravityHookAnswers(t *testing.T) {
 	t.Setenv("HMK_PANE_ID", "")
-	t.Setenv("PERCOLATOR_PANE_ID", "")
 	var out bytes.Buffer
 	_ = forwardHook([]string{"antigravity", "PreInvocation"}, strings.NewReader(`{"conversationId":"c"}`), &out)
 	if out.String() != "{}\n" {

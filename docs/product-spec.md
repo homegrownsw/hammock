@@ -1,196 +1,216 @@
 # Hammock — Product Spec
 
-Status: Draft v0.1 · Owner: Alex Stevenson-Price · Last updated: 2026-10-29
+Status: describes Hammock as built (0.3), with what's still planned marked as such · Owner: Alex Stevenson-Price · Last updated: 2026-11-10
 
 ## 1. Summary
 
-Hammock is a persistent, agent-aware workspace for software work. A background daemon on your machine owns every terminal, agent, browser, and simulator you're working with, organised into **Groups → Tabs → Panes**. Native apps (macOS, iOS) and a TUI connect to it as views. It knows what every coding agent is doing, tells you when one needs you, lets agents drive the workspace themselves via MCP, and — later — lets you share a live Group with a collaborator over the internet.
+Hammock is a persistent, agent-aware workspace for software work. A background daemon on your machine owns every terminal, agent, browser, simulator, log and editor you're working with, organised into **Groups → Tabs → Panes**. Native apps (macOS, iOS), a TUI and the `hmk` CLI connect to it as views. It knows what each coding agent is doing, tells you when one needs you, and lets agents drive the workspace themselves through MCP. Your own computers can link to see each other's Groups, and you can share a live Group with someone else.
 
-The wedge is a **native agent cockpit**: the best place on a Mac to run and supervise many coding agents at once, with zero perceptible overhead compared to a standalone terminal.
+The wedge is a **native agent cockpit**: the best place on a Mac to run and supervise many coding agents at once, with no perceptible overhead compared to a standalone terminal.
 
 ## 2. Problem
 
-People running several coding agents in parallel juggle them across terminal tabs, tmux/herdr sessions, and windows:
+People running several coding agents in parallel juggle them across terminal tabs, multiplexer sessions and windows:
 
 - **You can't see state at a glance.** Which agent is working, which is blocked on a permission prompt, which finished ten minutes ago?
 - **Attention is pull, not push.** You find out an agent needed you by checking on it.
 - **Sessions are fragile.** Closing a window, upgrading a tool, or rebooting loses running work.
 - **You're tethered to the desk.** Unblocking an agent requires being at the machine.
-- **Agents can't use the workspace.** An agent can't open a pane to run a dev server and watch it, or launch a browser to verify its change, in a way you can see too.
+- **Agents can't use the workspace.** An agent can't open a pane to run a dev server and watch it, or open a browser to check its change, in a way you can see too.
 - **Agents are siloed by vendor.** A session started in Claude Code can't continue in Codex.
 - **Collaboration means screen sharing.** There's no way to hand a colleague a live, interactive view of your agents and terminals.
 
 ## 3. Audience and positioning
 
-1. **Phase 1 user: its author.** Hammock replaces their multiplexer as the daily driver. Quality bar is "I won't fall back to the old setup".
-2. **Public release:** developers who run multiple coding agents and want a native, persistent, agent-aware workspace.
-3. **Later:** small teams who collaborate on live agent work (multiplayer, then a hosted relay with SSO).
+1. **First user: its author.** Hammock replaced their multiplexer as the daily driver. The quality bar is "I won't fall back to the old setup".
+2. **Public release:** developers who run several coding agents and want a native, persistent, agent-aware workspace.
+3. **Later:** small teams who collaborate on live agent work (shared Groups today; a hosted relay with accounts is a plan).
 
-**Why not tmux / zellij / herdr / Warp / cmux?** Hammock is the only one combining: a persistent daemon that outlives clients and upgrades; native macOS and iOS clients with Ghostty-grade rendering; first-class agent state and push notifications; panes beyond terminals (browser, simulator) that agents can drive; and multiplayer Groups.
+**Why not tmux / zellij / herdr / Warp / cmux?** Each does part of this. Hammock is built around having all of it together: a daemon that outlives its clients and its own upgrades; native Mac and iPhone apps; agent state for many agents, with notifications that find you on the device you're using; panes beyond terminals (browser, iOS Simulator, logs, editor) that agents can drive through MCP; and your other computers and other people's Groups in the same sidebar.
 
 ## 4. Product principles
 
-1. **Local is transparent.** On the machine running the daemon, a Hammock terminal must be indistinguishable from standalone Ghostty, and a browser/simulator pane indistinguishable from a native view. This is a measured requirement (see §8), not an aspiration.
+1. **Local is transparent.** On the machine running the daemon, a Hammock terminal should feel no different from a standalone terminal like Ghostty, and a browser or simulator pane no different from a native view. This is a measured requirement (see §8), not an aspiration.
 2. **The daemon is the source of truth.** Clients are views. Close every client and nothing stops.
 3. **Attention is the scarce resource.** Hammock interrupts only when it's worth it, and only on the device you're using.
-4. **Agents are first-class users.** Anything you can do in the UI, an agent can do via MCP — within the permissions you grant.
-5. **Honest about lossy things.** Switching agents and resuming after reboot are best-effort; the UI says what was preserved and what wasn't.
+4. **Agents are first-class users.** Most of what you can do in the UI, an agent can do through MCP, within a scope the daemon enforces.
+5. **Honest about lossy things.** Switching agents and resuming after a reboot are best-effort; the UI says what was carried over and what wasn't.
 6. **Small surface, done well.** "Work OS" is deliberately limited to layout and persistence. No built-in task tracker.
 
 ## 5. Core concepts
 
 | Concept | Definition |
 |---|---|
-| **Host** | A machine running the Hammock daemon. Owns all processes. |
-| **Group** | A named group of tabs representing a piece of work. Has no stored root directory. Can be created from a template. Unit of sharing and of agent permission scope. |
-| **Tab** | A layout of panes within a Group (splits). |
-| **Pane** | A region showing one piece of content, always hosted on the server. Kinds: Terminal (v1), Browser, Simulator, Log viewer, later File viewer/editor and Android emulator. |
-| **Agent** | A coding-agent process (Claude Code, Codex, …) running in a terminal pane, with tracked state. |
-| **Thread** | A vendor-neutral record of an agent conversation, independent of the pane and agent that produced it. Enables resume and switching. |
-| **Client** | A frontend connected to a host: macOS app, iOS app, TUI. |
-| **Template** | A declarative TOML file describing a Group's tabs, panes, and commands. |
+| **Host** | A machine running the Hammock daemon (`hmkd`): a Mac, or a Linux server. Owns all processes. |
+| **Group** | A named set of tabs for a piece of work. It has a folder its new tabs open in, which follows where you last worked in it. Unit of sharing and of agent scope. |
+| **Tab** | A layout of panes within a Group: splits, plus panes floating over them. |
+| **Pane** | A region showing one piece of content, always hosted by the daemon. Kinds: terminal, browser, simulator, log, editor. |
+| **Agent** | A coding-agent process (Claude Code, Codex and others: [agents.md](agents.md)) running in a terminal pane, with tracked state. |
+| **Thread** | A vendor-neutral record of an agent conversation, independent of the pane and agent that produced it. Used to switch agents. |
+| **Client** | A frontend connected to a host: the Mac app, the iPhone app, the TUI, `hmk`. |
+| **Linked computer** | Another of your own hosts, whose Groups you see and work in as their owner. |
+| **Scheduled task** | An agent's prompt or a command the daemon runs on a schedule, each run in a new tab. |
 
 ### Working directory behaviour
 
-New panes and tabs in a Group default to the current working directory of the **last focused pane** in that Group. A Group therefore tends to cluster around one repo, but the directory is not stored on the Group or set by the user.
+New panes and tabs in a Group open in the Group's folder: the working directory of its last focused terminal, kept by the daemon as you work, so a Group whose tabs have all closed still opens new ones there. You can also set it (Change Folder…, `hmk group folder`), or create a Group from a folder (File ▸ New Group in Directory…, `hmk group new --folder`).
 
 ## 6. Features
 
-### 6.1 Terminal multiplexing (v1)
+### 6.1 Terminal multiplexing
 
-- Create, rename, reorder, and close Groups, tabs, and panes. Split horizontally and vertically; resize; zoom a pane.
-- Full-fidelity terminals powered by libghostty: true colour, Kitty keyboard protocol, Kitty graphics, ligatures, synchronized output, OSC 8 hyperlinks, OSC 7 cwd reporting.
+- Create, rename, reorder and close Groups, tabs and panes. Split in four directions, resize, zoom a pane, swap panes, merge a tab into another and break a pane out again. Panes can float over a tab, dock back into its splits or be minimised.
+- Terminals parsed by libghostty-vt in the daemon and in each client, and drawn natively: true colour, the Kitty keyboard protocol, Kitty graphics, ligatures, synchronised output, OSC 8 hyperlinks, OSC 7 working-directory reporting.
 - Scrollback that survives client disconnects and daemon upgrades.
-- Multiple clients attached to the same pane simultaneously. The PTY takes the size of the **active driver** (the client that most recently typed into or focused it); other clients letterbox/scale.
-- Search scrollback; copy mode; select across scrollback.
+- Several clients on one pane at once. The PTY takes the size of whoever typed into or focused it last; the others fit it into their space.
+- Reopen the last closed tab or pane (agents resume their sessions).
+- Not built yet: searching a terminal's scrollback, and a keyboard copy mode.
 
-### 6.2 Agent cockpit (v1 — the wedge)
+### 6.2 Agent cockpit
 
-- **Agent detection** for Claude Code and Codex via their hook systems; heuristic detection (process tree, title, OSC, screen patterns) for anything else.
-- **Agent states:** `starting`, `working`, `needs_input` (permission prompt or question), `idle` (finished a turn), `errored`, `exited`.
-- **Cockpit sidebar:** all agents across all Groups with state, Group/tab, elapsed time, last message summary. Sort by "needs me first".
-- **Attention queue:** an ordered inbox of agents needing input, finished turns, and errors. Clearing an item focuses the pane.
-- **Status everywhere:** state badges on Group, tab, and pane chrome; aggregate counts in the menu bar and Dock icon.
-- **Quick actions:** approve/deny permission prompts, send a short reply, interrupt (Esc / Ctrl-C), restart, resume.
+- **Agent detection** for every agent in the registry ([agents.md](agents.md)): through its hooks where Hammock can install them (`hmk hooks install`), otherwise from its process under the pane's shell and what its screen shows.
+- **Agent states:** `starting`, `working`, `needs_input` (a permission prompt or question), `idle` (finished a turn), `errored`, `exited`.
+- **Sidebar:** each tab shows its agent's state, and how long it's been working; collapsed Groups show a summary.
+- **Needs You:** an attention queue pinned to the bottom of the sidebar: agents waiting for input, errors, permission requests from agents using Hammock, people asking to join a shared Group and computers asking to link, with Finished (turns done) below. Acting on an item focuses its pane.
+- **Status everywhere:** state on Group, tab and pane chrome, the Dock badge, and the menu bar item (which also shows the server's state and who's connected).
+- **Agent view:** an agent pane can show its conversation natively instead of the terminal: messages, tool calls and diffs, subagents, the task list, pull requests and artifacts the session made, and cards to answer questions and permission prompts. On the Mac and the iPhone.
+- **Session finder:** every agent's sessions on this computer or a linked one, searchable, ready to resume (⌘⇧O, `hmk sessions`, `hmk resume`).
+- **Usage limits:** agents' subscription limits in the sidebar, read from disk or, if you turn it on, asked of each agent's own service.
 
-### 6.3 Notifications (v1)
+### 6.3 Notifications
 
-Triggers on by default: **agent needs input**, **agent finished a turn**, **agent errored / process exited non-zero**. Opt-in: long-running non-agent command finished (> configurable threshold).
+Triggers, each one a setting: an agent **needs input**, asks **permission**, **finished a turn**, or **errored**.
 
 Presence-aware routing:
 
-1. If you're currently viewing that pane on any client → no notification.
-2. Otherwise deliver to the **most recently active device**: a Mac banner if the Mac app saw input in the last ~2 minutes; else an iOS push.
-3. Always add to the attention queue.
-4. Per-Group and per-agent mute; Do Not Disturb respects OS Focus.
+1. If you're looking at that pane, no notification (unless you turn that on).
+2. On the Mac: in the window while it's in front, otherwise as a macOS notification (or always one or the other: `notify-style`).
+3. A push to your iPhone only while you're away from your Macs: the screen locked, untouched for a couple of minutes, or Hammock used on the phone since. It waits until then, and is dropped if the agent is answered first.
+4. Always added to Needs You.
 
-Tapping a notification deep-links to the pane.
+Tapping a notification opens the pane. Permission requests, join requests and Hammock Key approvals can be answered from the notification itself.
 
-### 6.4 Persistence and restore (v1)
+Not built: a notification when a long-running command that isn't an agent finishes, and muting a Group or an agent.
 
-- Processes survive client disconnects, Mac app quit, and **daemon upgrades/crashes** (each PTY lives in its own holder process).
-- On **reboot/logout**, Hammock restores every Group, tab, and pane with its cwd and a scrollback snapshot, restarts shells, and **automatically resumes agent sessions** (`claude --resume`, `codex resume`). A banner on each resumed pane states it was auto-resumed and from which session.
-- A global setting can disable auto-resume.
+### 6.4 Persistence and restore
 
-### 6.5 Templates (v1)
+- Processes survive client disconnects, the Mac app quitting, and **daemon upgrades and crashes**: each PTY lives in its own holder process.
+- After a **reboot or logout**, Hammock restores every Group, tab and pane with its folder and a scrollback snapshot, starts the shells again, and **resumes each agent's session** (`claude --resume`, `codex resume` and the like). Browser pages come back at their URL.
 
-- `*.hammock.toml` files declare tabs, splits, and per-pane commands/cwd/env.
-- "Save Group as template" exports the current layout.
-- Create a Group from a template via the app, CLI (`hmk group new --template web-dev.toml`), or MCP.
-- Live state is stored separately in the daemon's database; templates are inputs, not live state.
+### 6.5 Templates (not built)
 
-### 6.6 MCP: agents driving the workspace (v1, read + terminal; later all pane kinds)
+The plan was a TOML file describing a Group's tabs, splits and commands (`hmk group new --template`, "Save Group as template"). It hasn't been built. The closest thing is a Group created from a folder (§5).
 
-The daemon exposes an MCP server. Each agent launched in Hammock receives a scoped capability token automatically.
+### 6.6 MCP: agents driving the workspace
 
-Capabilities (tools):
+`hmk mcp` is an MCP server (`hmk hooks install` registers it with the agents that take one). Agents can:
 
-- Inspect: list Groups/tabs/panes, read pane screen and scrollback, get agent states.
-- Create: new tab/pane with a command, from a template.
-- Interact: send input to a pane, wait for output matching a pattern / process exit, resize, close.
-- Later: drive browser panes (navigate, click, evaluate, screenshot, DevTools data), drive simulators (launch app, tap, swipe, screenshot, logs).
+- **Panes:** list Groups, tabs and panes; read a pane's screen and scrollback; open tabs and splits with a command; type into a pane; wait for output matching a pattern or for the process to exit; arrange and close panes; show a file or page beside themselves.
+- **Browser panes:** open, navigate, read the page as an outline, click, type, press keys, evaluate, screenshot, wait for text, and read the console and network.
+- **Simulator panes:** list devices, open one, screenshot, tap, swipe, type, press buttons, rotate, pinch, fold, install, launch and terminate apps, open URLs, read logs, shut down.
+- **Log and editor panes:** open and read them filtered; open a file with lines selected, and read what you have open.
+- **Scheduled tasks and sessions:** list, save, run, pause and delete schedules; search and read past agent sessions.
 
-**Permissions:** by default an agent may fully control panes it created and read other panes in **its own Group**. Writing to panes it didn't create, or any access outside its Group, requires a grant (prompted in the app, rememberable). Users can configure defaults globally, per Group, and per agent. Every MCP action is written to an audit log visible in the app.
+**Scope:** the daemon works out who's asking from the connecting process, so it can't be talked out of it. An agent may read the panes in **its own Group** and fully control the panes it opened. Typing into, closing or scripting other panes, or anything outside its Group, asks you first (once, or always for that Group). Pairing, sharing, linking and the like are yours alone. The scope is a guardrail against an agent wandering, not a sandbox: for a real boundary, use the agent harness's own. Agents' actions are in the audit log (Settings ▸ Devices ▸ Recent Activity, `hmk audit`).
 
-### 6.7 iOS app (v1, after the Mac app)
+### 6.7 iPhone app
 
-- Cockpit: agent list, attention queue, state badges.
-- Push notifications with deep links; **actionable notifications** (Approve / Deny / Reply) for permission prompts.
-- Full interactive terminal (libghostty) with a keyboard accessory bar (Esc, Ctrl, Tab, arrows, common chords).
-- Browser and simulator panes **view-only**.
-- Connects over Tailscale; paired by QR code from the Mac app.
+- Cockpit: Groups, agents and their states, Needs You.
+- Push notifications, end-to-end encrypted, with deep links and answers in the notification (§6.3).
+- Full interactive terminal (libghostty-vt) with a keyboard accessory bar (Esc, Ctrl, Tab, arrows).
+- The agent view, editor panes, scheduled tasks, and approving the Hammock Key.
+- Browser and simulator panes as live video, driven by taps, swipes and typing.
+- The Mac's whole screen, when screen sharing is on.
+- Connects over Tailscale, your local network or a VPN (the networks you choose); paired by a QR code from the Mac or `hmk pair`.
+- In beta on TestFlight.
 
-### 6.8 TUI (v1)
+### 6.8 TUI
 
-- A thin TUI is the first client: the protocol harness and an SSH-friendly daily driver.
-- Full multiplexer UX (sidebar of Groups/agents, tabs, splits) composited into the host terminal.
-- Visual panes rendered via Kitty graphics where supported; placeholders elsewhere.
+- `hmk tui`: a sidebar of Groups and tabs, tabs, splits and floating panes, composited into the host terminal, with mouse support and a Ctrl-B prefix. Good over SSH, and the only UI on Linux.
+- Browser and simulator panes drawn with Kitty graphics where the terminal supports them (Ghostty, Kitty); placeholders elsewhere. Editor panes, or your `$EDITOR`.
 
-### 6.9 Rich panes (post-v1, in order)
+### 6.9 Rich panes
 
-1. **Browser:** a real Chromium (CEF) owned by the daemon. Locally composited in the Mac app with native input — feels like a native view and keeps running when the app quits. Agents control it at CDP level. DevTools available.
-2. **iOS Simulator:** a simulator's display shown in a pane at native fidelity locally, with touch/keyboard input; agents can launch, tap, screenshot, and read logs.
-3. **Log viewer:** structured tailing with filtering, levels, and search over files, `log stream`, `adb logcat`, simulator logs.
-4. Later: file viewer/editor, Android emulator.
+1. **Browser:** a real Chromium (CEF) in a helper the daemon starts, one per daemon, sharing one profile. On the Mac it's composited from Chromium's own GPU layer with native input, so it feels like a native view, and it keeps running when the app quits. Find in page, DevTools as a pane, and agent control over CDP.
+2. **iOS Simulator:** a simulator's screen in a pane at native fidelity, with touch, typing, hardware buttons, rotation, pinch and foldables; agents can drive it too.
+3. **Log viewer:** a file, the Mac's `log stream`, a simulator's log, `adb logcat` or any command, parsed into entries with levels, filtering and search.
+4. **Editor:** a text file in a pane (CodeMirror), its unsaved text kept by the daemon and shared live by every client; syntax highlighting, find and replace, a git change gutter and optional Vim keys.
+5. Maybe later: an Android emulator.
 
-### 6.10 Agent switching (post-v1)
+### 6.10 Agent switching
 
-- "Continue in Codex" / "Continue in Claude" on any agent pane.
-- Hammock stops the current agent, converts the Thread into the target agent's native session format, and resumes it in the same pane and cwd.
+- "Continue in Codex" / "Continue in Claude" on an agent pane, or `hmk switch`.
+- Hammock stops the current agent, converts the Thread into the target agent's native session format, and resumes it in the same pane and folder.
 - If conversion fails validation, Hammock falls back to a generated **handoff brief** (goal, progress, decisions, open todos, files changed) seeded into a fresh session.
-- The UI states what was carried over (messages, tool calls, diffs) and what was dropped (reasoning, images, oversized tool output).
-- Threads are stored locally first; the data model is designed for future E2EE sync between your own hosts.
+- The UI says what was carried over and what was dropped.
+- Claude Code ⇄ Codex only for now: other agents have no thread codec yet.
+- Threads are stored locally; the data model leaves room for end-to-end encrypted sync between your own hosts later.
 
 Prior art: Atuin Threads (neutral record store, native-format rewrite on resume).
 
-### 6.11 Multiplayer Groups (later)
+### 6.11 Shared Groups
 
-- Share a Group with another Hammock user; it appears in their app as a **remote Group** (badged with the host's name).
-- All processes run on the **host's** machine. The guest cannot spawn processes on their own machine inside a shared Group.
-- Roles: **Viewer** (watch), **Driver** (type, create panes), **Admin** (manage sharing). The host has a one-click kill switch that disconnects everyone.
-- Presence: avatars with coloured rings on the Group, tab, and pane each collaborator is viewing; a glow while they type; a "Follow" mode to mirror someone's view.
-- Bandwidth: only the panes a guest is actually viewing are streamed; terminals as byte streams, visual panes as adaptive video.
-- Connection: direct/Tailscale first. Later: hosted E2EE relay and SSO (the commercial offering).
-- Every remote action is audit-logged with the actor's identity. An agent's scope never extends to another user's Groups.
+- Share a Group with another Hammock user through an invite link; it appears in their sidebar among their own Groups, with the host's avatar and computer name.
+- All processes run on the **host's** machine.
+- Roles: **View** (watch) and **Drive** (type, answer agents, open and close tabs, drop files). The host approves each person once, changes roles and removes people, and can stop all sharing at once.
+- Presence: avatars on the tabs and panes each person is looking at, and "is typing" while they type.
+- Only the panes a guest is looking at are streamed: terminals as bytes, browser and simulator panes as video.
+- Guests reach the host over Tailscale, or, once other networks are chosen for remote access (Settings ▸ Devices), over those (a local network or a VPN). Every remote action is in the audit log with the person who did it. A guest's agents act with their person's role.
+- Planned: push notifications for guests, a Follow mode, Groups spanning several hosts, and a hosted end-to-end encrypted relay with accounts and SSO (the paid tier).
+
+### 6.12 Linked computers
+
+- Link your own computers (Macs and Linux servers) with a six-digit code checked on both. Each then shows the others' Groups in its sidebar, and you work in them as their owner: open tabs, start agents, find and resume sessions there.
+- Panes on a linked computer can use the SSH keys of the one you're at.
+
+### 6.13 Scheduled tasks
+
+The daemon runs an agent's prompt or a command on a schedule (times and days, or cron), each run in a new tab in its Group, whether or not an app is open. On the Mac, the iPhone, the TUI, `hmk schedule` and MCP; an agent adding or changing one asks you first.
+
+### 6.14 The Hammock Key and SSH
+
+An SSH key kept in the Mac's Secure Enclave that signs only when you approve, with Touch ID at the Mac or from your iPhone when you're away. Panes get Hammock's own SSH agent, which passes other requests on to yours (1Password, Secretive and the like), so the key works for ssh, git and jj signing alongside your usual keys.
+
+### 6.15 Screen sharing
+
+Optional: your iPhone or another linked Mac can see and control this Mac's whole screen, at the lock screen too, for the things only the GUI does.
 
 ## 7. Platforms and distribution
 
-- **Host:** macOS first (latest two releases). Code kept portable; Linux builds in CI, shipped later. Windows later still.
-- **Clients:** TUI → macOS app → iOS app.
-- **Install:** one download of Hammock.app. Onboarding registers the bundled daemon as a login item (user-level LaunchAgent, no admin), installs agent hooks for Claude Code / Codex (with consent), optionally symlinks the `hmk` CLI, and offers iOS pairing. Homebrew formula for headless/TUI-only installs.
-- **Licence:** open core. Daemon, protocol, CLI, and TUI are open source; native apps and hosted relay/SSO are commercial.
+- **Host:** macOS 26 or later, and Linux (glibc 2.28 or later; amd64 and arm64), with a plugin for Unraid ([linux.md](linux.md)). No app on Linux: `hmk` and the TUI. Windows isn't planned.
+- **Clients:** the Mac app, the iPhone app (iOS 26), the TUI and `hmk`.
+- **Install:** one download of Hammock.app, which updates itself (Sparkle). Onboarding registers the bundled daemon as a login item (no admin), installs the `hmk` command, and installs hooks for the agents it finds (showing the changes first, keeping a backup). The iPhone app is on TestFlight. Homebrew and apt packages are planned.
+- **Licence:** the whole repository is open source under the MIT licence. The Hammock name and icon aren't covered by it.
 
 ## 8. Non-functional requirements
 
 | Area | Requirement |
 |---|---|
-| Terminal latency (local) | Keystroke-to-photon within **8 ms (≈1 frame at 120 Hz)** of standalone Ghostty on the same machine. Enforced by benchmark in CI. |
-| Terminal throughput (local) | **≥ 90%** of standalone Ghostty throughput (e.g. `cat` of a large file). |
+| Terminal latency (local) | Keystroke-to-photon within **8 ms (≈1 frame at 120 Hz)** of standalone Ghostty on the same machine. The daemon and holder's share is measured ([benchmarks.md](benchmarks.md)); the end-to-end comparison isn't built yet. |
+| Terminal throughput (local) | **≥ 90%** of standalone Ghostty throughput (e.g. `cat` of a large file), measured against the PTY's own ceiling for now. |
 | Visual panes (local) | **≤ 1 frame** added latency; no compression artefacts. |
-| Reliability | No process loss on client quit, daemon crash, or daemon upgrade. |
+| Reliability | No process loss on client quit, daemon crash or daemon upgrade. |
 | Resource use | Idle daemon < 1% CPU; per-pane overhead < 5 MB RSS excluding scrollback. |
-| Security | No network listener except localhost and the Tailscale interface; per-device keys; audit log for remote and MCP actions. |
-| Privacy | No telemetry without opt-in. Push payloads are encrypted end-to-end; the push relay never sees content. |
+| Security | No network listener but the local socket and, with remote access on, the networks you choose; per-device and per-computer keys; an audit log for remote and agent actions. |
+| Privacy | No telemetry. Push payloads are encrypted end to end; the push relay never sees content. |
 
 ## 9. Out of scope (for now)
 
-- A built-in task/issue tracker or deep Linear/GitHub integration.
-- Git-aware Groups (worktree management, PR status).
-- Windows hosts; Linux shipped binaries before public release.
-- Mixed-host shared Groups (panes from several machines in one Group).
-- Cursor/selection-level presence inside panes.
+- A built-in task or issue tracker, or deep Linear/GitHub integration.
+- Git-aware Groups (worktree management, PR status on Groups).
+- Windows hosts.
+- Cursor- or selection-level presence inside panes.
 - Cloud-hosted execution.
 
 ## 10. Success metrics
 
-- **Milestone 1:** its author uses Hammock exclusively for 7 consecutive days.
+- Its author uses Hammock exclusively, day to day.
 - Median time from "agent needs input" to the user responding drops versus a plain-multiplexer baseline.
-- Zero lost sessions across daemon upgrades during dogfooding.
-- Latency/throughput benchmarks stay inside budget on every main-branch build.
+- Zero lost sessions across daemon upgrades.
+- Latency and throughput benchmarks stay inside budget on every main-branch build (`just bench-gate`).
 
 ## 11. Open questions
 
-- Pricing and packaging of the commercial tier.
-- Exact iOS keyboard UX for heavy terminal use.
-- Whether templates should be auto-detected from repos (`.hammock/group.toml`) before public release.
-- Browser profiles: one shared dev profile per host vs per-Group profiles.
+- Pricing and packaging of the paid tier (the hosted relay, accounts, SSO).
+- The iPhone keyboard for heavy terminal use.
+- Browser profiles: one profile per host today; whether Groups should get their own.

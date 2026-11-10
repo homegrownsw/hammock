@@ -85,7 +85,7 @@ Install, for your own user:
 
   mkdir -p ~/.local/bin && cp hmk hmkd pane-holder ~/.local/bin/
   hmk service install     # run hmkd from boot with systemd (lingering)
-  hmk hooks install       # let Claude Code and Codex report to Hammock
+  hmk hooks install       # let the agents it finds report to Hammock
 
 Without systemd, start it with: hmk start (or hmkd --dir DIR from your init).
 

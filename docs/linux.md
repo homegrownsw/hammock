@@ -1,21 +1,20 @@
 # Hammock on Linux (and Unraid)
 
 The daemon (`hmkd`), the CLI and TUI (`hmk`) and the pane holders run on Linux: a VPS, a home server, an
-Unraid box. Sessions live there; your Mac shows its Groups as a linked computer (ADR-0013), and your iPhone,
+Unraid box. Sessions live there; your Mac shows its Groups as a linked computer ([ADR-0013](adr/0013-linked-computers.md)), and your iPhone,
 paired with it, hears when an agent there needs you while you're away from your Macs. There's no app on
 Linux: everything is `hmk`, so a server you reach over SSH can be set up, linked and paired without a screen.
 
 ## Install
 
 The tarballs are on the update server with each Mac release
-(`https://hammock.jsp.scot/linux/hammock-linux-amd64.tar.gz`, and `arm64`; reachable over the tailnet for
-now). They need glibc 2.28 or later and nothing else (libghostty-vt is linked in).
+(`https://hammock.jsp.scot/linux/hammock-linux-amd64.tar.gz`, and `arm64`). They need glibc 2.28 or later and nothing else (libghostty-vt is linked in).
 
 ```sh
 tar -xzf hammock-linux-amd64.tar.gz && cd hammock-*/
 mkdir -p ~/.local/bin && cp hmk hmkd pane-holder ~/.local/bin/
 hmk service install     # a systemd user service, from boot (lingering), panes kept across restarts
-hmk hooks install       # Claude Code and Codex report to Hammock
+hmk hooks install       # your agents (Claude Code, Codex and others found) report to Hammock
 ```
 
 Without systemd: `hmk start`, or `hmkd --dir DIR` from your init system. State is in
@@ -26,7 +25,7 @@ Without systemd: `hmk start`, or `hmkd --dir DIR` from your init system. State i
 
 ## Reach it
 
-Remote access listens only on the networks you choose (ADR-0015). Tailscale is the easy one: it works from
+Remote access listens only on the networks you choose ([ADR-0016](adr/0016-remote-access-on-any-network.md)). Tailscale is the easy one: it works from
 anywhere, and only your own Tailscale user's computers may ask to link.
 
 ```sh
@@ -45,7 +44,7 @@ port can knock. `hmk remote address add HOST[:PORT]` gives out a DNS name or a f
 hmk link --accept       # waits for your Mac, shows its code, asks whether it matches
 ```
 
-Then on the Mac: Hammock ▸ Link a Computer…, and choose the server (or paste the link `hmk link --invite`
+Then on the Mac: File ▸ Link a Computer…, and choose the server (or paste the link `hmk link --invite`
 prints). Both show a six-digit code: if they match, confirm on both. From a script, or a second SSH
 session: `hmk link pending` lists computers asking, with their codes, and `hmk link confirm CODE` (typing
 the code the Mac shows) or `hmk link refuse ID` answers. `hmk computers` lists linked ones.
@@ -63,18 +62,20 @@ answered first).
 ## Unraid
 
 The plugin (`unraid/`) installs from `https://hammock.jsp.scot/linux/hammock.plg` (Plugins ▸ Install
-Plugin). Settings ▸ Hammock then shows its status, Start/Stop/Restart, the Hammock folder, remote networks,
-Link a Computer (with the code check), Pair a Device (a QR code) and Open Hammock (the TUI in a window).
+Plugin). Its page (Settings, under User Utilities: Hammock) then shows its status, Start/Stop/Restart,
+the Hammock folder, where panes keep their home, whether to start with the array, remote access, Link a Computer (with the code check), Pair a Device (a QR code) and Open Hammock (the TUI in a window).
 Every one of those is an `hmk` command underneath; `hmk` works in Unraid's terminal too.
 
 - **Everything in one folder**, by default `/mnt/user/appdata/hammock` (resolved to the pool it's on):
   `state/`, and `home/`, the panes' `HOME`, so dotfiles, `~/.claude`, history and Claude Code itself
-  (its installer puts it in `~/.local/bin`) survive reboots. Unraid's own `/root` doesn't.
+  (its installer puts it in `~/.local/bin`) survive reboots. Unraid's own `/root` doesn't. If you choose Unraid's `/root`
+  as the panes' home instead, the agents' own files (`~/.claude`, `~/.claude.json`, `~/.codex`) are still kept in
+  the folder's `agents/`, so their sign-ins outlive reboots.
 - **Runs as root**, as everything on Unraid does. Panes run bash with Unraid's `/etc/profile` minus its
   `HOME=/root` and `cd $HOME`, and with `IS_SANDBOX=1`, so Claude Code's skip-permissions mode works. That makes every pane a root shell on the
   server: a paired phone, a linked computer or anyone you let drive a shared Group can do anything root can,
   array included. Pair, link and share accordingly.
-- **With the array:** it starts when the array does, and when the array stops it stops and ends its panes
+- **With the array:** it starts when the array does (unless you turn that off), and when the array stops it stops and ends its panes
   (their open files would keep the array from unmounting). On the next start they come back: layout,
   folders, scrollback, shells, agents resumed. A watchdog (cron, every minute) starts it if it should be
   running and isn't; Stop on the page holds it stopped.

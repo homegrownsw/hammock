@@ -103,7 +103,6 @@ func TestCursorHookAnswersNeutrally(t *testing.T) {
 	payload := `{"conversation_id":"c1","generation_id":"g1","hook_event_name":"beforeShellExecution","command":"ls","cwd":"/w","cursor_version":"2026.11.05","workspace_roots":["/w"]}`
 
 	t.Setenv("HMK_PANE_ID", "")
-	t.Setenv("PERCOLATOR_PANE_ID", "")
 	var out bytes.Buffer
 	_ = forwardHook([]string{"cursor"}, strings.NewReader(payload), &out)
 	if out.String() != "{}\n" {

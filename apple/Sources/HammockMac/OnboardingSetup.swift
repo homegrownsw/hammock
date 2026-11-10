@@ -651,7 +651,7 @@ private struct NoAgents: View {
                     .font(.system(size: 16))
                     .foregroundStyle(Brand.mist, Brand.forest)
                     .accessibilityHidden(true)
-                Text("Using a different agent? Hammock still spots most agents by their screens. Hooks for others are coming.")
+                Text("Using a different agent? Hammock knows the agents listed in Settings ▸ Agents; to ask for another, open an issue on GitHub.")
                     .font(.system(size: 13))
             }
             .padding(.horizontal, 16).padding(.vertical, 14)

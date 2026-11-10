@@ -107,12 +107,7 @@ func runHooks(args []string) error {
 	return nil
 }
 
-// paneEnv reads a variable Hammock sets in panes (HMK_<name>). Panes started
-// before the rename from Percolator have PERCOLATOR_<name> instead, and
-// their agents' hooks now run hammock, so that's read too.
+// paneEnv reads a variable Hammock sets in panes (HMK_<name>).
 func paneEnv(name string) string {
-	if v := os.Getenv("HMK_" + name); v != "" {
-		return v
-	}
-	return os.Getenv("PERCOLATOR_" + name)
+	return os.Getenv("HMK_" + name)
 }

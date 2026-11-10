@@ -30,8 +30,7 @@ import SwiftUI
 ///     remote-address = HOST[:PORT]     (repeatable: extra addresses given out in pairing codes and links, a DNS name or a forwarded port; read by hmkd)
 ///     usage-live = false               (agents' usage limits asked of each agent's own service every 5 minutes, with the sign-in its CLI keeps here, not just what it saves on disk; read by hmkd)
 ///     usage-live-agents = claude, codex  (the agents usage-live asks: Settings keeps it to those whose limits the sidebar shows; unset: all; read by hmkd)
-///     menu-bar =terminal's; agent-code-font-size = 13; agent-code-wrap = prose, always or never.
-///                                       HammockKit's Prefs, UserDefaults on the iPhone)               (or active: the menu bar item only while a screen's shared or the server's down; read by Hammock Menu)
+///     menu-bar = always                (or active: the menu bar item only while a screen's shared or the server's down; read by Hammock Menu)
 ///     keep-empty-groups = true         (⌘W on a Group's last tab keeps the Group; false: closes it too)
 ///     notify-needs-input = true        (and notify-permission, notify-finished, notify-error: which agent events notify)
 ///     notify-style = auto              (or system, in-app: where notifications show)

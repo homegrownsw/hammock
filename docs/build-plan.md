@@ -32,8 +32,8 @@ Retire the riskiest technical unknowns before building on them.
 - Harness adapters for Claude Code and Codex: detection, hook installation (`hmk hooks install`), launch/resume commands. Since grown to every agent in one registry ([ADR-0015](adr/0015-agent-registry.md), [agents.md](agents.md)).
 - Agent state machine; heuristic fallback detection on VT mirrors.
 - Attention queue (daemon model + TUI view), shown as Needs You.
-- Auto-resume of agents after reboot, with banners.
-- MCP server v1 (terminal tools) with capability tokens, the group-scoped default policy, grant requests, and the audit log.
+- Auto-resume of agents after reboot. (Built without the planned banners: agents simply resume as their panes come back.)
+- MCP server v1 (terminal tools) with the group-scoped default policy, grant requests, and the audit log. (Built without capability tokens: the daemon identifies an agent from the connecting process instead, tech spec §8.)
 - Presence reporting from clients (groundwork for notification routing).
 
 ## Phase 3 — macOS app (the wedge)  ✅ done
@@ -104,7 +104,7 @@ When Claude Code runs in a pane, toggle between the raw terminal and a rich conv
 
 Decided 2026-10-30 (see [ADR-0008](adr/0008-federated-host-owned-multiplayer.md)):
 
-- **Reach:** Tailscale for now, nothing depending on it: an invite link lists endpoints, so a hosted relay can be added later as a blind pipe. TLS end to end with the host's pinned certificate; every connection signed with the guest Mac's key. (Guests are still invited over Tailscale only, though remote access itself now works on other networks: [ADR-0016](adr/0016-remote-access-on-any-network.md).)
+- **Reach:** Tailscale for now, nothing depending on it: an invite link lists endpoints, so a hosted relay can be added later as a blind pipe. TLS end to end with the host's pinned certificate; every connection signed with the guest Mac's key. (As built, guests come over Tailscale until other networks are chosen for remote access, then over those: [ADR-0016](adr/0016-remote-access-on-any-network.md).)
 - **Identity:** one key per Mac; shown as the macOS account picture (coloured initials without one), the person's name and the Mac's name. Settings ▸ Sharing to change them.
 - **Inviting:** one reusable link per Group until revoked or regenerated. The host approves each person once per Group, choosing View or Drive; they then reconnect on their own until removed. Approvals: Mac notification + Needs You, and the phone (Needs You, and a notification with Let View / Decline).
 - **Roles:** View (watch) and Drive (type, answer agents, open/split/close/rename tabs, drop files, which upload to the host, 20 MB cap). Only the host invites and changes roles. Remove a person, stop sharing a Group, or Stop All Sharing (kill switch).
