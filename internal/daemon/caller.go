@@ -375,6 +375,32 @@ func (d *Daemon) noteOnceGrant(req *pb.GrantRequest) {
 	d.onceGrants[req.RequesterPaneId+"|"+req.Action+"|"+req.TargetPaneId] = now.Add(onceWindow(req.Action))
 }
 
+// ownPaneClaims replaces what a caller that isn't an agent says of panes
+// (the pane it's in, the one that made a new pane) with the pane it's
+// really in, or none: naming an agent's pane would give that agent the new
+// pane (owners), or put output beside it. Agents' are set in agentCheck.
+func ownPaneClaims(cl *caller, msg *pb.ClientMessage) {
+	self := ""
+	if cl != nil && cl.pane != outsidePane {
+		self = cl.pane
+	}
+	creator := func(spec *pb.PaneSpec) {
+		if spec != nil {
+			spec.CreatedByPaneId = self
+		}
+	}
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_Hello:
+		m.Hello.FromPaneId = self
+	case *pb.ClientMessage_CreatePane:
+		creator(m.CreatePane.Spec)
+	case *pb.ClientMessage_CreateTab:
+		creator(m.CreateTab.Pane)
+	case *pb.ClientMessage_ReplacePane:
+		creator(m.ReplacePane.Spec)
+	}
+}
+
 var (
 	errAgentScope   = errors.New("out of scope: agents can type into, interrupt or close only panes they opened, and reach Groups shared with you only with permission; this needs the user's permission")
 	errAgentEditor  = errors.New("agents edit files on disk, not editor panes' buffers: write the file (the pane reloads it, or offers to)")
@@ -389,6 +415,9 @@ var (
 func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	c.scope()
 	cl := c.caller
+	if !cl.isAgent() {
+		ownPaneClaims(cl, msg)
+	}
 	if cl == nil || cl.pane == "" {
 		return nil
 	}

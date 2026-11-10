@@ -683,3 +683,52 @@ func TestOnlyTheAppIsKindMac(t *testing.T) {
 		t.Fatal("the app doesn't count")
 	}
 }
+
+// A caller that isn't an agent can't name an agent's pane as the one it's
+// in, or as the one that made a new pane (which would make it the
+// agent's): it's the pane it's really in, or none.
+func TestPlainCallersPaneClaimsAreTheirOwn(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	ui := dial(t, dir)
+	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
+	tab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	tab2 := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	agentPane, shellPane := d.tabs[tab].FocusedPaneId, d.tabs[tab2].FocusedPaneId
+	d.mu.Unlock()
+	asPerson(t, nobody)
+	asPlain(t, func(*caller, int) bool { return true })
+	made := func(c *client.Client) string {
+		t.Helper()
+		id := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g,
+			Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}, CreatedByPaneId: agentPane}}}}))
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.panes[d.tabs[id].FocusedPaneId].snapshotInfo().CreatedByPaneId
+	}
+	t.Setenv("HMK_PANE_ID", agentPane) // (what the clients' Hello claims)
+	term := dialAs(t, dir, nil, "cli") // a terminal outside Hammock
+	if by := made(term); by != "" {
+		t.Errorf("from a terminal: made by %q", by)
+	}
+	shell := dialAs(t, dir, &caller{pane: shellPane, direct: true}, "cli")
+	if by := made(shell); by != shellPane {
+		t.Errorf("from a pane's shell: made by %q, want its own", by)
+	}
+	d.mu.Lock()
+	var froms []string
+	for c := range d.conns {
+		if c.kind == "cli" {
+			froms = append(froms, c.fromPane)
+		}
+	}
+	d.mu.Unlock()
+	for _, f := range froms {
+		if f == agentPane {
+			t.Errorf("a caller's pane is the agent's it named")
+		}
+	}
+}
