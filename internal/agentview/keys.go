@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Answering a prompt is a short script of keystrokes, the first checked

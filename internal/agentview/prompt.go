@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Claude Code shows every prompt (its question tool, permissions, plan

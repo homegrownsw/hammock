@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/client"
 )
 
 // exitStatus ends hmk with a waited-for command's own exit status.

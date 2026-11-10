@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // runAudit prints recent activity (the audit log) in words, newest first:

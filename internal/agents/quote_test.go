@@ -4,7 +4,7 @@ import (
 	"os/exec"
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Quote is one word for the shell whatever it holds: quotes, backslashes,

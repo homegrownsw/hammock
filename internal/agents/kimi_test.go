@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Kimi Code's hook payloads (features/externalHooks: camelCase input made

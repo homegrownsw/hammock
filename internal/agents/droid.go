@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Droid is Factory's Droid CLI (read from droid 1.6.0, the npm package

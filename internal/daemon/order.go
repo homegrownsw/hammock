@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Your sidebar's order: your own Groups and those shared with you, mixed,

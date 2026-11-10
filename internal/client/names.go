@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // TabTitle is a tab's name, or "Tab N" by its position in its Group when it

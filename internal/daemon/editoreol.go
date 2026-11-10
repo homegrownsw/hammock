@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/textbuf"
+	"github.com/homegrownsw/hammock/internal/textbuf"
 )
 
 // errReadOnly refuses changing or saving over a file you may not write

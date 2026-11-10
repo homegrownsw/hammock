@@ -25,7 +25,7 @@ import (
 	"sort"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // fileUsage is a reader of usage kept in one file (path, asked each time),

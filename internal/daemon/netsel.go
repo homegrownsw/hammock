@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Remote access on any network (ADR-0015). Remote access listens on the

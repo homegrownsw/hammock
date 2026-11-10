@@ -1,4 +1,4 @@
-module github.com/alexjsp/hammock
+module github.com/homegrownsw/hammock
 
 go 1.27.2
 

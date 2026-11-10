@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/agentview"
 )
 
 // Kilo is Kilo Code's CLI, a fork of OpenCode 1.x: the same flags, plugins

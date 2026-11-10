@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/thread"
 	"github.com/klauspost/compress/zstd"
 )
 

@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"google.golang.org/protobuf/proto"
 )
 

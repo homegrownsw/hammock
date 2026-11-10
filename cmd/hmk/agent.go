@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // hmk agent: the agent view in text, for checking what the daemon parses

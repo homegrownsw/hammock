@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/procinfo"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/procinfo"
 )
 
 // The program in a terminal's foreground, for its icon: the leader

@@ -5,7 +5,7 @@ package daemon
 import (
 	"log/slog"
 
-	"github.com/alexjsp/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 func isHammockApp(int, codesign.Token) bool { return false }

@@ -3,7 +3,7 @@ package daemon
 import (
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Round 10: a link a computer since unlinked introduced is held for its

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Antigravity is Google's Antigravity CLI (agy; github.com/google-

@@ -27,7 +27,7 @@ import (
 	"os"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"golang.org/x/sys/unix"
 )
 

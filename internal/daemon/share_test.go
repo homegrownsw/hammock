@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Two daemons on this Mac, as two people: a host sharing a Group and a

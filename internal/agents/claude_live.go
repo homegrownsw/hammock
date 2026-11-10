@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // claudeKeychainItem is where Claude Code keeps its sign-in on a Mac (with

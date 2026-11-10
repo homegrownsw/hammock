@@ -10,10 +10,10 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/holder"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/holder"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Reopen Closed (⇧⌘T): the tabs and panes you closed, newest last, as what

@@ -19,8 +19,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/clipperhouse/uax29/v2/graphemes"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/textbuf"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/textbuf"
 )
 
 // editGroup is one undo (or redo) step: the changes that take it back, in

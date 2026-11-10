@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Payloads as Grok 1.0.77's hooks documentation gives them: camelCase,

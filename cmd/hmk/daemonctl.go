@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/daemon"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/daemon"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // hmk stop|start|restart: manage the daemon for this state dir. Pane

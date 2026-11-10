@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 func TestDroidCommands(t *testing.T) {

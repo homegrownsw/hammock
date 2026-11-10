@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // fakeCodec reads a tiny line format and "resumes" by echoing.

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Qwen is Alibaba's Qwen Code (github.com/QwenLM/qwen-code, formats as of

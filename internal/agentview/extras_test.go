@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // A transcript line: an assistant's tool call, or the user line with its result.

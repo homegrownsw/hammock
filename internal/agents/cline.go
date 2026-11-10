@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Cline is Cline's CLI (github.com/cline/cline apps/cli, npm "cline"), the

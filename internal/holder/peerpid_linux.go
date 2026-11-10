@@ -7,8 +7,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/alexjsp/hammock/internal/codesign"
-	"github.com/alexjsp/hammock/internal/procinfo"
+	"github.com/homegrownsw/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/procinfo"
 	"golang.org/x/sys/unix"
 )
 

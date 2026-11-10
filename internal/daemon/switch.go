@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/holder"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/holder"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // switchAgent continues a pane's agent session in another harness (ADR-0006).

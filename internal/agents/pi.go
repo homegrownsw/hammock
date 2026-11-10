@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Pi is Mario Zechner's pi coding agent (github.com/badlogic/pi-mono,

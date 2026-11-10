@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Grok is xAI's Grok CLI (`grok`: npm @xai-official/grok, or x.ai/cli's

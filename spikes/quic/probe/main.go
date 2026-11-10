@@ -24,8 +24,8 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 func main() {
@@ -179,7 +179,9 @@ func main() {
 				last++
 			}
 		}
-		defer func() { fmt.Printf("refreshes %d, frames skipped %d, still waiting %d\n", refreshes, skipped, len(pending)) }()
+		defer func() {
+			fmt.Printf("refreshes %d, frames skipped %d, still waiting %d\n", refreshes, skipped, len(pending))
+		}()
 		go func() {
 			for {
 				st, err := qc.AcceptUniStream(ctx)

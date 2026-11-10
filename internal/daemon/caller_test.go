@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/browserjs"
-	"github.com/alexjsp/hammock/internal/client"
-	"github.com/alexjsp/hammock/internal/procinfo"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/browserjs"
+	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/procinfo"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // dialAs connects a client the daemon takes to be cl (whatever its process).

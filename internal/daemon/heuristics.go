@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/procinfo"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/procinfo"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Heuristic agent detection, used when an agent's hooks aren't installed:

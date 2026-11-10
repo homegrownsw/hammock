@@ -27,8 +27,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/procinfo"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/procinfo"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // The Hammock Key: an SSH key of this Mac's own, in its Secure Enclave,
@@ -57,15 +57,15 @@ const (
 
 // hammockKeyHub is the daemon's side of the Hammock Key: guarded by d.mu.
 type hammockKeyHub struct {
-	d       *Daemon
-	status  *pb.HammockKeyStatus
-	blob    []byte // the public key, SSH wire format (nil: none)
-	keyID   string // its id, as approvals name it
+	d      *Daemon
+	status *pb.HammockKeyStatus
+	blob   []byte // the public key, SSH wire format (nil: none)
+	keyID  string // its id, as approvals name it
 	// approvers' keys as the helper has them (base64 x9.63), by device
 	approverKeys map[string]string
 	retry        *time.Timer // a status check again, after one failed
-	reqs    map[string]*keyReq
-	windows map[string]keyWindow // pane → a window you opened
+	reqs         map[string]*keyReq
+	windows      map[string]keyWindow // pane → a window you opened
 
 	// Requests' prompts and pushes end with the daemon (close).
 	ctx    context.Context
@@ -97,8 +97,8 @@ type keyWindow struct {
 }
 
 var (
-	errNoHammockKey   = errors.New("there's no Hammock Key on this Mac (Settings ▸ SSH)")
-	errKeyDeclined = errors.New("not allowed")
+	errNoHammockKey = errors.New("there's no Hammock Key on this Mac (Settings ▸ SSH)")
+	errKeyDeclined  = errors.New("not allowed")
 )
 
 func newHammockKeyHub(d *Daemon) *hammockKeyHub {
@@ -603,7 +603,7 @@ func (k *hammockKeyHub) sign(pane string, agent bool, pid int, data []byte) (*ss
 }
 
 // keyPrompt is where a request comes from, for the helper's own panel
-//: the Group, its emoji, the tab, the agent asking (its harness, or
+// : the Group, its emoji, the tab, the agent asking (its harness, or
 // "an agent"), the command. Also the Group's id, for its picture. Callers
 // hold d.mu.
 func (d *Daemon) keyPrompt(pane string, agent bool, command string) (map[string]any, string) {

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/browserjs"
-	"github.com/alexjsp/hammock/internal/codesign"
-	"github.com/alexjsp/hammock/internal/procinfo"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/browserjs"
+	"github.com/homegrownsw/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/procinfo"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Agent scoping, enforced by the daemon. What a client says about itself

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // crushSchema is Crush's database schema at v0.98.1 (its

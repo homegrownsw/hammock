@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 const clineFixtureDir = "../agentview/testdata/cline/1794050000000_k3x9q"

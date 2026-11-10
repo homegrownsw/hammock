@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Starting an agent opens a tab in the folder, in the Group asked for, and

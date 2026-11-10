@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Codex 0.166's approval prompt, as it was on screen: read like Claude's

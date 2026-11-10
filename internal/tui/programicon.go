@@ -3,7 +3,7 @@ package tui
 import (
 	"strings"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Program icons: with a Nerd Font (tui-nerd-font = true, or Settings),

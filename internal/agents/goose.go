@@ -22,8 +22,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Goose is Block's open-source agent (github.com/block/goose, now

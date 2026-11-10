@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 const detachKey = 0x1d // Ctrl-]

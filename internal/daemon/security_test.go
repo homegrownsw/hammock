@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/client"
-	"github.com/alexjsp/hammock/internal/holder"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/holder"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 func TestSecureDirTightensAndRefusesLinks(t *testing.T) {

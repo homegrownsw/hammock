@@ -23159,7 +23159,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x10LOG_LEVEL_NOTICE\x10\x03\x12\x15\n" +
 	"\x11LOG_LEVEL_WARNING\x10\x04\x12\x13\n" +
 	"\x0fLOG_LEVEL_ERROR\x10\x05\x12\x13\n" +
-	"\x0fLOG_LEVEL_FAULT\x10\x06B?Z=github.com/alexjsp/hammock/internal/proto/hammockv1;hammockv1b\x06proto3"
+	"\x0fLOG_LEVEL_FAULT\x10\x06BCZAgithub.com/homegrownsw/hammock/internal/proto/hammockv1;hammockv1b\x06proto3"
 
 var (
 	file_hammock_v1_hammock_proto_rawDescOnce sync.Once

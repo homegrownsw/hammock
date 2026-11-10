@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agents"
 )
 
 // hooksPlan is what `hmk hooks install --dry-run --json` prints: for each

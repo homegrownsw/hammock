@@ -34,7 +34,7 @@ worktree name:
 
 # Build all Go binaries into bin/.
 build: deps
-    go build -tags {{tags}} -ldflags "-X github.com/alexjsp/hammock/internal/daemon.Version=$(git describe --always --dirty)+$(date +%Y%m%d%H%M%S)" -o bin/ ./cmd/...
+    go build -tags {{tags}} -ldflags "-X github.com/homegrownsw/hammock/internal/daemon.Version=$(git describe --always --dirty)+$(date +%Y%m%d%H%M%S)" -o bin/ ./cmd/...
 
 test *args: deps
     go test -tags {{tags}} {{args}} ./...
@@ -46,7 +46,7 @@ vet: deps
     go vet -tags {{tags}} ./...
 
 proto:
-    PATH="$PATH:$(go env GOPATH)/bin" protoc -I proto --go_out=. --go_opt=module=github.com/alexjsp/hammock proto/hammock/v1/hammock.proto
+    PATH="$PATH:$(go env GOPATH)/bin" protoc -I proto --go_out=. --go_opt=module=github.com/homegrownsw/hammock proto/hammock/v1/hammock.proto
 
 # Run the daemon in the foreground against a scratch state dir.
 dev-daemon dir="/tmp/hmk-dev": deps

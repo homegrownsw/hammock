@@ -3,7 +3,7 @@ package sessions
 import (
 	"path/filepath"
 
-	"github.com/alexjsp/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agents"
 )
 
 // claudeAndCodex are the two agents' sources, as the daemon builds them,

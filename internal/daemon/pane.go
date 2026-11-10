@@ -17,12 +17,12 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	"github.com/alexjsp/hammock/internal/holder"
-	"github.com/alexjsp/hammock/internal/procinfo"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/state"
-	"github.com/alexjsp/hammock/internal/vt"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/holder"
+	"github.com/homegrownsw/hammock/internal/procinfo"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/state"
+	"github.com/homegrownsw/hammock/internal/vt"
 )
 
 // pane is the daemon's runtime for one terminal pane.

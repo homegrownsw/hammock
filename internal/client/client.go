@@ -19,8 +19,8 @@ import (
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/wirezstd"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/wirezstd"
 )
 
 // Client is a connection to hmkd.
@@ -133,8 +133,8 @@ func dialURL(ctx context.Context, url string, hc *http.Client, kind, name string
 		ws: ws, zr: zr, ctx: cctx, cancel: cancel,
 		pending:   map[uint64]chan *pb.ServerMessage{},
 		approvals: map[uint64]chan *pb.ApprovalPending{},
-		Events:  make(chan *pb.ServerMessage, 4096),
-		done:    make(chan struct{}),
+		Events:    make(chan *pb.ServerMessage, 4096),
+		done:      make(chan struct{}),
 	}
 	go c.readLoop()
 	hello := &pb.Hello{ProtocolVersion: 1, ClientKind: kind, ClientName: name}

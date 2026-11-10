@@ -56,7 +56,7 @@ func TestGoModulesAreCurrent(t *testing.T) {
 	have := versions()
 	for _, goos := range []string{"darwin", "linux"} {
 		cmd := exec.Command("go", "list", "-deps", "-tags", "ghostty",
-			"-f", "{{with .Module}}{{if not .Main}}{{.Path}} {{.Version}}{{end}}{{end}}", "github.com/alexjsp/hammock/cmd/...")
+			"-f", "{{with .Module}}{{if not .Main}}{{.Path}} {{.Version}}{{end}}{{end}}", "github.com/homegrownsw/hammock/cmd/...")
 		cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH=arm64", "CGO_ENABLED=1")
 		out, err := cmd.Output()
 		if err != nil {

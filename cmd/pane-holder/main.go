@@ -24,7 +24,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/holder"
+	"github.com/homegrownsw/hammock/internal/holder"
 )
 
 func main() {

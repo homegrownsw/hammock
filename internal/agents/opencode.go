@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/agentview"
 )
 
 // OpenCode is anomalyco's (formerly sst's) open-source OpenCode: a TUI

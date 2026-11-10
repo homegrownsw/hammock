@@ -26,11 +26,11 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/appbundle"
-	"github.com/alexjsp/hammock/internal/holder"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/state"
-	"github.com/alexjsp/hammock/internal/vt"
+	"github.com/homegrownsw/hammock/internal/appbundle"
+	"github.com/homegrownsw/hammock/internal/holder"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/state"
+	"github.com/homegrownsw/hammock/internal/vt"
 )
 
 // ProductVersion is Hammock's release version, as programs in panes see

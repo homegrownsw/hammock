@@ -24,8 +24,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Simulator panes run in one simulator host per daemon ("Hammock Simulator",

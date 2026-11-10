@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Payloads as its hooks.json docs (agy 1.5.3, bundled in the binary) give

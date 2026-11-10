@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // listSessions asks the daemon, waiting out a first index being built.

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/state"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/state"
 )
 
 // A security setting loosened in the config file by nobody here is said

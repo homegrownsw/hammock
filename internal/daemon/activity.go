@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/state"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/state"
 )
 
 // Activity (Settings ▸ Devices, hmk audit): the audit log in words. Each

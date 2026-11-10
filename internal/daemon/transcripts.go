@@ -7,7 +7,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/alexjsp/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agents"
 )
 
 // Agents' hook events name their session's transcript, which the daemon

@@ -3,7 +3,7 @@ package holder
 import (
 	"net"
 
-	"github.com/alexjsp/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/codesign"
 	"golang.org/x/sys/unix"
 )
 

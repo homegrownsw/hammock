@@ -29,7 +29,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/daemon"
+	"github.com/homegrownsw/hammock/internal/daemon"
 )
 
 func main() {

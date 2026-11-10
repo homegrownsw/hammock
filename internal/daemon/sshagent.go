@@ -16,8 +16,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // SSH agent forwarding between your linked computers, like ssh -A:

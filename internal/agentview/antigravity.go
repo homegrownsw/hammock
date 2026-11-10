@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 var _ Parser = (*Antigravity)(nil)

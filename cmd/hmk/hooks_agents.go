@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agents"
 )
 
 // Each agent Hammock installs hooks for (agents.Agent.Hooks) has a hookTarget:

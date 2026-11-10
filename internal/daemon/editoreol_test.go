@@ -3,7 +3,7 @@ package daemon
 import (
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/textbuf"
+	"github.com/homegrownsw/hammock/internal/textbuf"
 )
 
 func TestLineEndsRoundTrip(t *testing.T) {

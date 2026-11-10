@@ -17,10 +17,10 @@ import (
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/codesign"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/state"
-	"github.com/alexjsp/hammock/internal/vt"
+	"github.com/homegrownsw/hammock/internal/codesign"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/state"
+	"github.com/homegrownsw/hammock/internal/vt"
 )
 
 // sendQueue bounds how far a client can fall behind before it is dropped.

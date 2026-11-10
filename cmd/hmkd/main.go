@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/codesign"
-	"github.com/alexjsp/hammock/internal/daemon"
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	"github.com/alexjsp/hammock/internal/holder"
-	"github.com/alexjsp/hammock/internal/vt"
+	"github.com/homegrownsw/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/daemon"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/holder"
+	"github.com/homegrownsw/hammock/internal/vt"
 )
 
 func main() {

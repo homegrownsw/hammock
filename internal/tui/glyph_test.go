@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // The Orbit glyphs: work turns an indigo arc; needs-you and errors sit

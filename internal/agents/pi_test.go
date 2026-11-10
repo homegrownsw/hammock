@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // The payloads Hammock's Pi extension sends (cmd/hmk/hooks_pi.go), as pi

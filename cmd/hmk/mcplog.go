@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/client"
-	"github.com/alexjsp/hammock/internal/logview"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/logview"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

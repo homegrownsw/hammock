@@ -7,9 +7,9 @@ package daemon
 import (
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	"github.com/alexjsp/hammock/internal/agentview"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // firstPromptWait is how long an agent has to reach its prompt.

@@ -3,7 +3,7 @@ package daemon
 import (
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Round 13: a computer decides from facts it holds itself (refusals, with

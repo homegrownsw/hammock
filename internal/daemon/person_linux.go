@@ -11,8 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/alexjsp/hammock/internal/codesign"
-	"github.com/alexjsp/hammock/internal/procinfo"
+	"github.com/homegrownsw/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/procinfo"
 )
 
 // isHammockApp: there's no Hammock app on Linux.

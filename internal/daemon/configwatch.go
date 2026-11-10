@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Security settings in the config file. It's yours to edit by hand, so

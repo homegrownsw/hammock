@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // TestBackgroundShells: the main view lists the session's background
@@ -83,10 +83,10 @@ func TestBackgroundShells(t *testing.T) {
 
 func TestCleanOutput(t *testing.T) {
 	for in, want := range map[string]string{
-		"\x1b[1;32mok\x1b[0m\r\n":             "ok\n",
+		"\x1b[1;32mok\x1b[0m\r\n":               "ok\n",
 		"\x1b]8;;https://x\x07link\x1b]8;;\x07": "link",
-		"50%\r100%\n":                          "50%\r100%\n",
-		"a\x08b\tc":                            "ab\tc",
+		"50%\r100%\n":                           "50%\r100%\n",
+		"a\x08b\tc":                             "ab\tc",
 	} {
 		if got := cleanOutput([]byte(in)); got != want {
 			t.Errorf("cleanOutput(%q) = %q, want %q", in, got, want)

@@ -15,8 +15,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Between linked computers (ADR-0013, direct links only): introductions,

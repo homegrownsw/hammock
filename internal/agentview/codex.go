@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/thread"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Parser reads one agent's session file, a line at a time, into blocks.

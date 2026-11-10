@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/alexjsp/hammock/internal/appbundle"
+	"github.com/homegrownsw/hammock/internal/appbundle"
 )
 
 // DefaultDir is where Hammock's config lives unless told otherwise:

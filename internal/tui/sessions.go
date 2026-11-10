@@ -10,8 +10,8 @@ import (
 
 	"github.com/clipperhouse/uax29/v2/graphemes"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // ---------- session finder ----------

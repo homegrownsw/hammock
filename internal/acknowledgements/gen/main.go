@@ -28,7 +28,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/acknowledgements"
+	"github.com/homegrownsw/hammock/internal/acknowledgements"
 )
 
 type group struct {

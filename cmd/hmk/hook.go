@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/daemon"
+	"github.com/homegrownsw/hammock/internal/daemon"
 )
 
 // runHook forwards an agent hook event to the daemon. It must never block or

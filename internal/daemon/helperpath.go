@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/alexjsp/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 // A daemon started by a program of yours takes the programs it runs for

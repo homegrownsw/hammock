@@ -16,9 +16,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/client"
-	"github.com/alexjsp/hammock/internal/daemon"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/daemon"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 const usage = `hammock — Hammock CLI

@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/net/dns/dnsmessage"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 )
 
 func ifa(name, cidr string) ifAddr {

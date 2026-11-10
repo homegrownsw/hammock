@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 func TestLiveUsage(t *testing.T) {

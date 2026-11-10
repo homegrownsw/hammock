@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/daemon"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/daemon"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // errNotRunning makes hmk status exit 3 (as systemctl status does) when the

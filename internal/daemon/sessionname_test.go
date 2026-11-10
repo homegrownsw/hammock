@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agents"
 )
 
 func TestNameTranscript(t *testing.T) {

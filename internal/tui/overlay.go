@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/acknowledgements"
-	"github.com/alexjsp/hammock/internal/agents"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/acknowledgements"
+	"github.com/homegrownsw/hammock/internal/agents"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 var bgctx = context.Background()

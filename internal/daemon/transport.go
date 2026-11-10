@@ -12,7 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/alexjsp/hammock/internal/wirezstd"
+	"github.com/homegrownsw/hammock/internal/wirezstd"
 )
 
 // transport carries whole protobuf messages for a conn.

@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/procinfo"
+	"github.com/homegrownsw/hammock/internal/procinfo"
 )
 
 // Pane holders outlive the daemon by design (ADR-0003), so nothing else ends

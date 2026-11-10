@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // errNoSignIn: the agent's CLI isn't signed in here (or its sign-in has

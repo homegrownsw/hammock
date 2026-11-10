@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // The TUI asks about another computer's link request, or one it asked for

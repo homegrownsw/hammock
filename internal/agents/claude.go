@@ -7,9 +7,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Claude is Anthropic's Claude Code: hooks in ~/.claude/settings.json,

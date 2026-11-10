@@ -18,8 +18,8 @@ import (
 
 	"github.com/quic-go/quic-go"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // fakeEncoder stands in for a helper: 100 frames a second per session while

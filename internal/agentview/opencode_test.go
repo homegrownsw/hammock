@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // The database fixtures beside this (testdata/opencode/v2.sql,

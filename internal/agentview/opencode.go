@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // OpenCodeLine is one line of an OpenCode session as Open writes it: the

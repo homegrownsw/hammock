@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 )
 
 // The TUI reads Hammock's config file (~/.config/hammock/config, or a β's: hammockconfig.Dir;

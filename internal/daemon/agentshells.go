@@ -13,8 +13,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Background shells in the agent view: the main view lists the session's

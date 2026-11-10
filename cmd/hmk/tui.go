@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/tui"
+	"github.com/homegrownsw/hammock/internal/tui"
 )
 
 func runTUI() error {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/alexjsp/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/agentview"
 )
 
 // Aider is Paul Gauthier's open source pair programmer

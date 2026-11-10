@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // fakeJWT is a JWT (unsigned) that expires at exp.

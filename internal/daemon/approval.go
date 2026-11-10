@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/procinfo"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/procinfo"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Approval requests (person.go). What only you may do, asked from anything

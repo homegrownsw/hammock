@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // On a computer without a screen, "you're on your phone" means you used it

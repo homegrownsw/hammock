@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Moonshot's Kimi Code CLI (github.com/MoonshotAI/kimi-code, read at 2.5.2:

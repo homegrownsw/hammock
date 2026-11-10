@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // The screen is drawn immediate-mode each frame; everything clickable

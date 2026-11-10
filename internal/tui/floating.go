@@ -3,8 +3,8 @@ package tui
 import (
 	"math"
 
-	"github.com/alexjsp/hammock/internal/client"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/client"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Floating panes: a tab's panes floating over its splits (Tab.floating, back

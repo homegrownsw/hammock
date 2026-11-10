@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 func feed(t *testing.T, s *Store, text string) []*pb.LogEntry {

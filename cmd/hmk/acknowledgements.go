@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/alexjsp/hammock/internal/acknowledgements"
+	"github.com/homegrownsw/hammock/internal/acknowledgements"
 )
 
 // runAcknowledgements is `hmk acknowledgements [NAME | --all]`: the

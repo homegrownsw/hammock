@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/simshot"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/simshot"
 )
 
 // The TUI can't show a simulator, but it can drive one: its buttons and

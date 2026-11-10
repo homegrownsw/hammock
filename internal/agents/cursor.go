@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Cursor is Cursor's CLI agent (cursor-agent, `agent` in newer installs).

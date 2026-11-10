@@ -26,7 +26,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // Session is one session as the finder shows it.

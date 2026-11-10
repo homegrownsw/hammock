@@ -22,7 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
-	"github.com/alexjsp/hammock/internal/textbuf"
+	"github.com/homegrownsw/hammock/internal/textbuf"
 )
 
 // Terminal modes the TUI turns on (Run) and off again: the alternate

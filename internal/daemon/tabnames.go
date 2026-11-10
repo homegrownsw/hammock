@@ -9,8 +9,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/alexjsp/hammock/internal/agents"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/agents"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Smart names for unnamed tabs, with no setup: an agent tab is named after

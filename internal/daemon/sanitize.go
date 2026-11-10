@@ -5,7 +5,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Text from another computer (a host's Groups, a guest's or a computer's

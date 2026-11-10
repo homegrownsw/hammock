@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 )
 
 // The TUI's Settings screen (⌃B s, or Settings… in the palette): its own

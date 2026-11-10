@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 // hammockAppIDs are the Hammock app's bundle ids (and its menu bar item's).

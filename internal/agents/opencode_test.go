@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/agentview"
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
-	"github.com/alexjsp/hammock/internal/sessions"
-	"github.com/alexjsp/hammock/internal/thread"
+	"github.com/homegrownsw/hammock/internal/agentview"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/sessions"
+	"github.com/homegrownsw/hammock/internal/thread"
 )
 
 // openCodeFixture builds a database from one of agentview's SQL fixtures at

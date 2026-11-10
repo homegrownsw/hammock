@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 )
 
 // runTheme lists Hammock's themes, or picks one: app-theme in the config

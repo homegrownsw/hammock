@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexjsp/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 // PeerProc is the process at the other end of a connection: its pid and,

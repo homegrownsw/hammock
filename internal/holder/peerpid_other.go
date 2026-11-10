@@ -6,7 +6,7 @@ import (
 	"errors"
 	"net"
 
-	"github.com/alexjsp/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 // sockPeer is unknown here.

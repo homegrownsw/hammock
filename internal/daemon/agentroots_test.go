@@ -3,7 +3,7 @@ package daemon
 import (
 	"testing"
 
-	"github.com/alexjsp/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agents"
 )
 
 // addAgentRoots makes dirs session folders of harness too, for the test.

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // A tab you name also names its Claude session: Hammock appends the same

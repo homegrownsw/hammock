@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	pb "github.com/alexjsp/hammock/internal/proto/hammockv1"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 const remoteUsage = "usage: hmk remote on|off | networks | enable|disable NETWORK | address add|remove HOST[:PORT]"
