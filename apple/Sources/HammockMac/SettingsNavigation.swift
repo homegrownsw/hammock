@@ -338,7 +338,7 @@ enum SettingsIndex {
             e(.notifications, "How to notify me", "Send a test notification", "notify.test"),
 
             e(.sharing, "You", "Your name and picture", nil, "avatar profile account"),
-            e(.sharing, "Sharing", "Share Groups with other people", "sharing.groups", "group sharing multiplayer invite toolbar button"),
+            e(.sharing, "Sharing", "Allow Group sharing", "sharing.groups", "share groups other people invite toolbar button"),
             e(.sharing, "Sharing", "Shared Groups", nil, "people guests"),
 
             e(.devices, "Your Computers", "Your computers", nil, "linked mac linux"),

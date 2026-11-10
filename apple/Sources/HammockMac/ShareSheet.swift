@@ -261,9 +261,9 @@ struct SharingSettings: View {
                 }
             }
             Section("Sharing") {
-                Toggle("Share Groups with other people", isOn: sharingBinding)
+                Toggle("Allow Group sharing", isOn: sharingBinding)
                     .settingAnchor("sharing.groups")
-                Text("Shows Share Group in the toolbar, the Group menu and the command palette. Turning it off stops sharing every Group.")
+                Text("Lets you invite people to your Groups, from Share Group in the toolbar, the Group menu and the command palette. Nothing is shared until you do. Turning it off stops sharing every Group.")
                     .font(.caption).foregroundStyle(.secondary)
                 let s = model.sharing
                 LabeledContent("Shared Groups", value: "\(s.groups)")
