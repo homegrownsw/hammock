@@ -65,7 +65,7 @@ case "$cmd" in
     mkdir -p "$archives"
     echo "fetching the last ${deltas} releases' zips from ${repo}…"
     gh release list --repo "$repo" --exclude-drafts --limit 50 --json tagName -q '.[].tagName' |
-      grep '^Mac-v' | head -n "$deltas" | while read -r t; do
+      { grep '^Mac-v' || true; } | head -n "$deltas" | while read -r t; do
         gh release download "$t" --repo "$repo" --pattern 'Hammock-*.zip' --dir "$archives" --skip-existing
       done
 
