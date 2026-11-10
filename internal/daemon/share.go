@@ -585,7 +585,13 @@ func (d *Daemon) revokeStreams(c *conn) {
 		return
 	}
 	sc := d.scope(c.peer)
+	linked := d.isLinked(c.peer)
 	outside := func(paneID string) bool {
+		if strings.HasPrefix(paneID, "screen:") {
+			// A display, not a pane: in no Group, and only ever your linked
+			// computers' (screenAllowed), however Groups change.
+			return !linked
+		}
 		_, in := sc[d.groupOfPane(paneID)]
 		return !in
 	}
@@ -598,9 +604,9 @@ func (d *Daemon) revokeStreams(c *conn) {
 			}
 		}
 	}
-	// Video of panes now outside, and menus its input opened (it may have
-	// lost Drive too, so it can't answer them). Off the daemon lock: ending a
-	// session takes it.
+	// Video of panes now outside, and menus its input opened in them (it
+	// may have lost Drive too, so it can't answer them). Off the daemon
+	// lock: ending a session takes it.
 	var gone []*mediaSession
 	for _, ms := range d.media.matching(func(ms *mediaSession) bool { return ms.owner == c }) {
 		if outside(ms.paneID) {
@@ -611,7 +617,11 @@ func (d *Daemon) revokeStreams(c *conn) {
 		for _, ms := range gone {
 			ms.end("you no longer have access to that pane")
 		}
-		d.browsers.closeMenusFor(c)
+		d.browsers.closeMenusOutside(c, func(paneID string) bool {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			return outside(paneID)
+		})
 		for _, lp := range logs {
 			lp.unwatch(c) // (its lock isn't taken under the daemon's)
 		}

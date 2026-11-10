@@ -589,6 +589,51 @@ func (h *browserHub) closeMenusFor(c *conn) {
 	}
 }
 
+// closeMenusOutside dismisses the menus c was showing in panes outside
+// reports are now out of its reach, and forgets its input there, leaving
+// those in panes it still reaches. outside is called without h.mu held (it
+// may take the daemon's lock).
+func (h *browserHub) closeMenusOutside(c *conn, outside func(paneID string) bool) {
+	h.mu.Lock()
+	panes := map[string]bool{}
+	for _, rm := range h.menus {
+		if rm.c == c {
+			panes[rm.pane] = false
+		}
+	}
+	for p, ic := range h.inputs {
+		if ic == c {
+			panes[p] = false
+		}
+	}
+	h.mu.Unlock()
+	if len(panes) == 0 {
+		return
+	}
+	for p := range panes {
+		panes[p] = outside(p)
+	}
+	h.mu.Lock()
+	var gone []*remoteMenu
+	var seqs []int
+	for seq, rm := range h.menus {
+		if rm.c == c && panes[rm.pane] {
+			gone = append(gone, rm)
+			seqs = append(seqs, seq)
+			delete(h.menus, seq)
+		}
+	}
+	for p, ic := range h.inputs {
+		if ic == c && panes[p] {
+			delete(h.inputs, p)
+		}
+	}
+	h.mu.Unlock()
+	for i, rm := range gone {
+		h.answerMenu(rm.kind, seqs[i], -1)
+	}
+}
+
 // clipboard passes text a remote viewer copied to that viewer.
 func (h *browserHub) clipboard(m hostMsg) {
 	h.mu.Lock()
