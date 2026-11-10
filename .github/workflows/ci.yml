@@ -1,31 +1,40 @@
 # Go tests, vet and the benchmark gate on macOS (the daemon's home platform),
-# plus a build of the Swift clients.
+# plus a build of the Swift clients. GitHub's runners are free for public repos;
+# Actions are switched on for the repo once it's public.
 name: ci
 on:
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   macos:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The apps need Xcode 27.2 or later (the project's JSON format, Swift 6).
+      - name: Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode_27.*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode" && xcodebuild -version
       - name: Tools
-        run: brew install just zig protobuf swift-protobuf
+        run: brew install just zig
+      # libghostty-vt, built once per pinned Ghostty commit (scripts/ghostty-deps.sh).
       - name: Cache libghostty-vt
         uses: actions/cache@v4
         with:
-          path: third_party/ghostty/out
+          path: ~/Library/Caches/hammock/ghostty
           key: ghostty-${{ hashFiles('third_party/ghostty/VERSION') }}
-      - name: Build libghostty-vt
-        run: '[ -d third_party/ghostty/out/lib ] || just ghostty'
       - name: Vet and test
         run: |
+          just deps
           export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig
-          just vet
-          just test
+          just vet test
       - name: Benchmark gate
         run: |
           export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig
