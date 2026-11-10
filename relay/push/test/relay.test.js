@@ -97,6 +97,16 @@ test('a removed app is forgotten', async () => {
   assert.equal(env.DB.rows.has(reg.id), false)
 })
 
+test('a token for another topic is forgotten too', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const reg = await (await worker.fetch(post('/register', { token: 'ce'.repeat(32) }), env)).json()
+  globalThis.fetch = async () => new Response(JSON.stringify({ reason: 'DeviceTokenNotForTopic' }), { status: 400 })
+  const r = await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)
+  assert.equal(r.status, 410)
+  assert.equal(env.DB.rows.has(reg.id), false)
+})
+
 test('sends are rate limited', async () => {
   resetJWT()
   const { env } = await testEnv()

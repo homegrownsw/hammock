@@ -192,8 +192,12 @@ async function send({ id, payload, thread, collapse, category }, env) {
       reason = JSON.parse(text).reason
     } catch {}
     console.error('apns', r.status, text.slice(0, 200))
-    if (r.status === 410 || reason === 'BadDeviceToken') await forget(env, id) // the app was removed
-    if (r.status === 410 || reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic') return json({ error: 'gone' }, 410)
+    // The app was removed, or the token is no good for it (another app's,
+    // or the other APNs environment's): forgotten, and the Mac told it's gone.
+    if (r.status === 410 || reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic') {
+      await forget(env, id)
+      return json({ error: 'gone' }, 410)
+    }
     return json({ error: 'refused' }, 502)
   }
   // Still in use: kept (written at most once a day).
