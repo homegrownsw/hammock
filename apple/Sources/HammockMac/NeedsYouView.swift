@@ -242,7 +242,9 @@ struct AttentionCard: View {
     }
 }
 
-/// An agent asking to act outside its default scope (via MCP).
+/// An agent asking to act outside its default scope (via MCP), or hmk
+/// asking to do something only you may (from a shell or a terminal: allowed
+/// once, and saying where it came from).
 struct GrantCard: View {
     let model: AppModel
     let grant: GrantRequest
@@ -259,7 +261,13 @@ struct GrantCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     // Hammock's words, then the agent's own, marked as such.
                     Text(grant.headlineText).fontWeight(.semibold)
-                        .lineLimit(grant.action == "schedule" ? nil : 4) // a schedule: all of what you'd allow
+                        .lineLimit(grant.showsWholeHeadline ? nil : 4) // a schedule: all of what you'd allow
+                    if let origin = grant.originText {
+                        Text(origin)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
                     if let note = grant.agentNote {
                         Text("The agent says: “\(note)”")
                             .font(.callout)
@@ -271,7 +279,9 @@ struct GrantCard: View {
             HStack(spacing: 6) {
                 Spacer()
                 Button("Deny") { CardExit.leave(.denied, $exit) { model.respond(to: grant, .deny) } }
-                Button("Always in Group") { CardExit.leave(.allowed, $exit) { model.respond(to: grant, .allowGroup) } }
+                if grant.canAllowAlways {
+                    Button("Always in Group") { CardExit.leave(.allowed, $exit) { model.respond(to: grant, .allowGroup) } }
+                }
                 Button("Allow Once") { CardExit.leave(.allowed, $exit) { model.respond(to: grant, .allowOnce) } }
                     .buttonStyle(.borderedProminent)
             }

@@ -186,8 +186,12 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // Your other computers' agents ask here too: the one you used last tells you.
         guard model.notifiesHere, NotifyPrefs.on(NotifyPrefs.grants) else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Permission requested"
-        if let tab = model.panes[grant.requesterPaneID].flatMap({ model.tab(of: $0) }) { content.subtitle = model.title(of: tab) }
+        content.title = grant.person ? "Allow this?" : "Permission requested"
+        if let origin = grant.originText {
+            content.subtitle = origin
+        } else if let tab = model.panes[grant.requesterPaneID].flatMap({ model.tab(of: $0) }) {
+            content.subtitle = model.title(of: tab)
+        }
         content.body = grant.headlineText
         content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["paneID": grant.requesterPaneID, Self.live: true]

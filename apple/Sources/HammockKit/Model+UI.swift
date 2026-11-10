@@ -33,6 +33,21 @@ extension Hammock_V1_GrantRequest {
     public var agentNote: String? {
         headline.isEmpty || description_p.isEmpty ? nil : description_p
     }
+
+    /// Where a request to do something only you may do came from ("From
+    /// the shell in Web ▸ api", "From hmk run by zsh on ttys004, outside
+    /// Hammock"), to show beneath the headline; nil for an agent's.
+    public var originText: String? {
+        person && !origin.isEmpty ? origin : nil
+    }
+
+    /// Whether "Always" may be offered: an agent's requests can be
+    /// remembered for its Group; what only you may do is allowed once.
+    public var canAllowAlways: Bool { !person }
+
+    /// Whether to show all of the headline: a schedule (all of what you'd
+    /// allow), and what only you may do.
+    public var showsWholeHeadline: Bool { action == "schedule" || person }
 }
 
 /// A user key's short fingerprint, as a join card shows it: the user id's

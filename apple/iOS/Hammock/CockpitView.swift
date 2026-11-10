@@ -598,10 +598,16 @@ struct GrantRow: View {
             // white too, invisible on the card.
             Label {
                 Text(grant.headlineText).font(.headline)
+                    .lineLimit(grant.showsWholeHeadline ? nil : 4)
             } icon: {
                 Image(systemName: "hand.raised.circle.fill")
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, .orange)
+            }
+            if let origin = grant.originText {
+                Text(origin)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .lineLimit(3)
             }
             if let note = grant.agentNote {
                 Text("The agent says: “\(note)”")
@@ -611,7 +617,9 @@ struct GrantRow: View {
             HStack {
                 Button("Deny") { withAnimation { model.respond(to: grant, .deny) } }.buttonStyle(.bordered)
                 Spacer()
-                Button("Always") { withAnimation { model.respond(to: grant, .allowGroup) } }.buttonStyle(.bordered)
+                if grant.canAllowAlways {
+                    Button("Always") { withAnimation { model.respond(to: grant, .allowGroup) } }.buttonStyle(.bordered)
+                }
                 Button("Allow") { withAnimation { model.respond(to: grant, .allowOnce) } }.prominentButton()
             }
         }
