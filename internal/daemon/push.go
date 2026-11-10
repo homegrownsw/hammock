@@ -44,11 +44,12 @@ const awayAfter = 2 * time.Minute
 // pushClient sends to relays (replaceable in tests).
 var pushClient = http.DefaultClient
 
-// pushRelays are the relays a phone may name: ours, plus any in
+// pushRelays are the relays a phone may name: ours (at its own domain, and
+// at the workers.dev name phones registered before that use), plus any in
 // HMK_PUSH_RELAY (comma-separated, as the iPhone build takes it) for a
 // relay of your own. Replaceable in tests.
 var pushRelays = func() []string {
-	out := []string{"https://hmk-push.homegrownsw.workers.dev"}
+	out := []string{"https://push.homegrownsw.com", "https://hmk-push.homegrownsw.workers.dev"}
 	for _, r := range strings.Split(os.Getenv("HMK_PUSH_RELAY"), ",") {
 		if o := relayOrigin(strings.TrimSpace(r)); o != "" {
 			out = append(out, o)

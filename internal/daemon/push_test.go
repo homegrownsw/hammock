@@ -195,3 +195,18 @@ func TestPushTag(t *testing.T) {
 		t.Fatal("a tag for no id")
 	}
 }
+
+// Ours, at its own domain and at the workers.dev name phones registered
+// before the move use; nothing else.
+func TestKnownRelays(t *testing.T) {
+	for _, u := range []string{"https://push.homegrownsw.com", "https://hmk-push.homegrownsw.workers.dev", "https://PUSH.homegrownsw.com/"} {
+		if !knownRelay(u) {
+			t.Errorf("%s should be allowed", u)
+		}
+	}
+	for _, u := range []string{"http://push.homegrownsw.com", "https://push.homegrownsw.com.evil.example", "https://evil.example", "https://push.homegrownsw.com/x"} {
+		if knownRelay(u) {
+			t.Errorf("%s shouldn't be allowed", u)
+		}
+	}
+}

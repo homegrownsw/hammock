@@ -29,13 +29,20 @@ nothing of one it can't decrypt or that was sent over an hour ago.
    npx wrangler secret put APNS_KEY < AuthKey_XXXXXXXXXX.p8
    echo XXXXXXXXXX | npx wrangler secret put APNS_KEY_ID
    echo 2G974K78BH | npx wrangler secret put APNS_TEAM_ID
-   npx wrangler deploy                         # prints https://hmk-push.<you>.workers.dev
+   npx wrangler deploy                         # https://hmk-push.<you>.workers.dev
    ```
 
    The database's tables are in `migrations/`. (A database set up before
    migrations, from the old `schema.sql`, takes them too: the first only
    creates what's missing.)
-3. **Production.** Add the WAF rate-limiting rule (below, Costs and abuse).
+
+   Ours also answers at https://push.homegrownsw.com (`routes` in wrangler.toml; the deploy makes its DNS
+   record, as homegrownsw.com's DNS is on Cloudflare), the URL the iPhone app uses. It still answers at
+   hmk-push.homegrownsw.workers.dev for phones registered before that; both reach the same Worker and
+   database, so a phone's id works at either. Without a domain on Cloudflare, take `routes` out.
+3. **Production.** Add the WAF rate-limiting rule (below, Costs and abuse) on push.homegrownsw.com. It only
+   covers that domain: the workers.dev name bypasses it, so once phones have moved to the domain, set
+   `workers_dev = false` in wrangler.toml.
 4. **The app.** Build the iOS app with the relay's URL:
    `HMK_PUSH_RELAY=https://hmk-push.<you>.workers.dev` as a build setting
    (`just ios-device` passes it through).

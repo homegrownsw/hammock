@@ -2,6 +2,13 @@ name = "hmk-push"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
+# Served at push.homegrownsw.com (homegrownsw.com's DNS is on Cloudflare; the deploy makes the record), and
+# still at hmk-push.homegrownsw.workers.dev, which phones registered before the move use. Both are the same
+# Worker and database, so a phone's relay id works at either. The WAF rule (README) only covers the domain,
+# so once phones have moved to it, turn workers_dev off.
+workers_dev = true
+routes = [{ pattern = "push.homegrownsw.com", custom_domain = true }]
+
 [vars]
 APNS_TOPIC = "com.homegrownsw.hammock"
 
