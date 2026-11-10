@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,6 +67,10 @@ type conn struct {
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
 	pid      int                  // a local client's process id (0 unknown)
 	tok      codesign.Token       // and its audit token as it connected (macOS)
+	// Refused attempts audited (auditRefused, guarded by d.mu): since
+	// refusedAt, how many, and how many more not recorded one by one.
+	refusedAt             time.Time
+	refusedN, refusedMore int
 	// Whether a local client is positively you (the Hammock app), worked
 	// out before its first message is handled (person.go): read elsewhere
 	// (who may answer a request), so atomic.
@@ -229,11 +234,13 @@ func (c *conn) readLoop() {
 			continue
 		}
 		// A close is described before it happens, while what it closes has
-		// its name.
+		// its name (and written only once it has: finish).
 		var pre *state.AuditEvent
 		if c.audited(msg) && closes(msg) {
 			c.d.mu.Lock()
-			pre = c.d.auditEvent(c.auditActor(), auditAction(msg), auditTarget(msg), "")
+			if c.signedIn() {
+				pre = c.d.auditEvent(c.auditActor(), auditAction(msg), auditTarget(msg), "")
+			}
 			c.d.mu.Unlock()
 		}
 		reply, err := c.handle(msg)
@@ -253,11 +260,16 @@ func (c *conn) readLoop() {
 }
 
 // finish audits a handled message (pre: a close, described before it)
-// and sends its reply.
+// and sends its reply. What was done is audited as done; what was refused
+// as a refused attempt (auditRefused); nothing from a connection that
+// hasn't signed in (signedIn).
 func (c *conn) finish(msg *pb.ClientMessage, pre *state.AuditEvent, reply *pb.ServerMessage, err error) {
 	if c.audited(msg) {
 		c.d.mu.Lock()
 		switch {
+		case !c.signedIn():
+		case err != nil:
+			c.auditRefused(msg, err)
 		case pre != nil:
 			c.d.persist(c.d.store.Audit(*pre))
 		case c.throttleAudit(msg):
@@ -428,7 +440,13 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_Hello:
 		d.mu.Lock()
 		if c.peer == "" {
-			c.kind, c.name, c.fromPane = m.Hello.ClientKind, m.Hello.ClientName, m.Hello.FromPaneId
+			c.kind = m.Hello.ClientKind
+			if !c.remote {
+				// A remote connection's name is what it signs in as (pair,
+				// authenticate), never what its Hello says (before signing
+				// in, or after); and it's in no pane here.
+				c.name, c.fromPane = m.Hello.ClientName, m.Hello.FromPaneId
+			}
 			if c.kind == "mac" && !c.remote && !c.personOK.Load() {
 				// Only the app is the app (person.go): where notifications
 				// and requests go, and who's shown a pairing code, follow it.
@@ -1386,8 +1404,66 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	return nil, errors.New("unsupported message")
 }
 
+// signedIn reports whether c's messages may be audited at all: a local
+// connection, or a remote one signed in as a paired device, a linked
+// computer or a guest in a Group here. Not one that hasn't signed in, nor a
+// stranger (a peer signed in with a key anyone can make, a member of
+// nothing and not linked: share.go), whose every message anyone who can
+// reach this Mac could send: what they're refused isn't written down
+// (their failed sign-ins are, under limits of their own: auditSignInFailed).
+// Callers hold d.mu.
+func (c *conn) signedIn() bool {
+	switch {
+	case !c.remote:
+		return true
+	case !c.authed:
+		return false
+	case c.peer == "":
+		return true // a paired device
+	}
+	return c.d.isLinked(c.peer) || len(c.d.scope(c.peer)) > 0
+}
+
+// A connection's refused attempts are audited refusedAuditBudget a
+// refusedAuditEvery at most: beyond it, one row says how many more.
+const refusedAuditBudget = 10
+
+var refusedAuditEvery = time.Minute // (a variable for tests)
+
+// auditRefused records that msg, an audited message from c (signed in),
+// was refused with err: as an attempt ("tried to close …", state.RefusedPrefix),
+// which the store keeps to a cap of its own, so refused attempts never push
+// out what was done; and at most refusedAuditBudget a minute from one
+// connection. Callers hold d.mu.
+func (c *conn) auditRefused(msg *pb.ClientMessage, err error) {
+	d := c.d
+	now := time.Now()
+	if now.Sub(c.refusedAt) >= refusedAuditEvery {
+		c.refusedAt, c.refusedN = now, 0
+	}
+	if c.refusedN < refusedAuditBudget {
+		c.refusedN++
+		d.audit(c.auditActor(), state.RefusedPrefix+auditAction(msg), auditTarget(msg), oneLine(err.Error(), 120))
+		return
+	}
+	if c.refusedMore++; c.refusedMore == 1 {
+		// One row for the rest, once this minute is up.
+		actor := c.auditActor()
+		time.AfterFunc(time.Until(c.refusedAt.Add(refusedAuditEvery)), func() {
+			d.mu.Lock()
+			defer d.mu.Unlock()
+			if n := c.refusedMore; n > 0 {
+				c.refusedMore = 0
+				d.audit(actor, state.RefusedPrefix+"more", "", strconv.Itoa(n))
+			}
+		})
+	}
+}
+
 // audited reports whether msg from c goes in the audit log: mutating
-// requests made by agents (the MCP server) and, later, remote peers.
+// requests made by agents (the MCP server, programs scoped as agents) and
+// remote clients (paired devices, guests, linked computers), once signed
+// in (finish).
 func (c *conn) audited(msg *pb.ClientMessage) bool {
 	if c.kind != "mcp" && !c.remote && !c.caller.isAgent() {
 		return false

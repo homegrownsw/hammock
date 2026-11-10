@@ -19,8 +19,12 @@ func (d *Daemon) audit(actor, action, target, detail string) {
 	d.persist(d.store.Audit(*d.auditEvent(actor, action, target, detail)))
 }
 
-// auditEvent is an event described now, to record. Callers hold d.mu.
+// auditEvent is an event described now, to record: what it's given cut to
+// the store's limits first (state.AuditText), so its words are too, and
+// the store keeps every field within them whoever calls. Callers hold d.mu.
 func (d *Daemon) auditEvent(actor, action, target, detail string) *state.AuditEvent {
+	actor, action = state.AuditText(actor, state.AuditActorMax), state.AuditText(action, state.AuditActionMax)
+	target, detail = state.AuditText(target, state.AuditTargetMax), state.AuditText(detail, state.AuditDetailMax)
 	who, summary, kind := d.describeAudit(actor, action, target, detail)
 	return &state.AuditEvent{Actor: actor, Action: action, Target: target, Detail: detail, Who: who, Summary: summary, Kind: kind}
 }
@@ -34,13 +38,17 @@ func closes(msg *pb.ClientMessage) bool {
 	return false
 }
 
-// auditActor is who c is, for the audit log: a guest, an agent (by its
-// pane), else its client kind and name ("ios:iPhone", "cli:hmk").
+// auditActor is who c is, for the audit log: a guest or linked computer
+// (by its user id), a paired device (by the name it signed in with), an
+// agent (by its pane), else its client kind and name ("cli:hmk"). A remote
+// connection's Hello never says who it is: what it signed in as does.
 // Callers hold d.mu.
 func (c *conn) auditActor() string {
 	switch {
 	case c.peer != "":
 		return "guest:" + c.peer
+	case c.remote:
+		return "device:" + c.name
 	case c.isAgent() || c.caller.isAgent():
 		if p := c.fromPane; p != "" {
 			return "agent:" + p
@@ -57,6 +65,13 @@ func (c *conn) auditActor() string {
 func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summary, kind string) {
 	who, kind = d.auditWho(actor)
 	pane := func() string { return d.auditPane(target) }
+	if op, ok := strings.CutPrefix(action, state.RefusedPrefix); ok {
+		// Something it asked for and wasn't let do (conn.go: auditRefused).
+		if op == "more" {
+			return who, "had " + detail + " more requests refused, not recorded one by one", kind
+		}
+		return who, "tried to " + d.attempted(op, target) + " (refused: " + detail + ")", kind
+	}
 	switch action {
 	case "input":
 		summary = "typed in " + pane()
@@ -196,6 +211,11 @@ func (d *Daemon) auditWho(actor string) (who, kind string) {
 			}
 			return "Your iPhone", "device"
 		}
+		if k == "remote" {
+			// One that hasn't signed in (a pairing code that didn't work):
+			// its name is only what it says, not one of yours.
+			return "A device calling itself “" + name + "”", "device"
+		}
 		return name, "device"
 	case "guest":
 		if p := d.people[name]; p != nil && p.Name != "" {
@@ -222,6 +242,61 @@ func (d *Daemon) auditWho(actor string) (who, kind string) {
 		return "You", "you"
 	}
 	return actor, ""
+}
+
+// attempted says what a refused message asked for, after "tried to":
+// what describeAudit says it did, had it been done.
+func (d *Daemon) attempted(op, target string) string {
+	pane := func() string { return d.auditPane(target) }
+	switch op {
+	case "input":
+		return "type in " + pane()
+	case "create-pane":
+		return "open a pane beside " + pane()
+	case "create-tab":
+		return "open a tab in " + d.groupLabel(target)
+	case "close-pane":
+		return "close " + pane()
+	case "close-tab":
+		return "close the tab " + d.tabLabel(target)
+	case "signal":
+		return "interrupt " + pane()
+	case "browse":
+		return "open a page in " + pane()
+	case "devtools":
+		return "open DevTools for " + pane()
+	case "answer":
+		return "answer a question in " + pane()
+	case "message":
+		return "send a message to " + pane()
+	case "upload":
+		return "upload a file to " + pane()
+	case "clear-log":
+		return "clear the log in " + pane()
+	case "start-agent":
+		h, dir, _ := strings.Cut(target, " in ")
+		return "start " + capitalize(h) + " in " + client.DirTitle(dir)
+	case "group-picture":
+		return "change the picture of " + d.groupLabel(target)
+	case "group-folder":
+		g, dir, _ := strings.Cut(target, " → ")
+		return "change the folder of " + d.groupLabel(g) + " to " + client.DirTitle(dir)
+	case "edit":
+		return "edit " + pane()
+	case "arrange-pane":
+		if d.tabs[target] != nil {
+			return "arrange the panes of " + d.tabLabel(target)
+		}
+		return "arrange " + pane()
+	}
+	if what, ok := strings.CutPrefix(op, "editor-"); ok {
+		id, _, _ := strings.Cut(target, " → ")
+		return what + " in " + d.auditPane(id)
+	}
+	if target != "" {
+		return op + " " + target
+	}
+	return op
 }
 
 // auditPane names a pane where it is, or what it was.

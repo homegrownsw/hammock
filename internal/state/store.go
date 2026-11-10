@@ -6,8 +6,11 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 	_ "modernc.org/sqlite"
@@ -24,11 +27,63 @@ type Store struct {
 // The audit log keeps at most auditKeepRows events and none older than
 // auditKeepAge: enough history to look back on, without growing for ever.
 const (
-	auditKeepRows   = 50000
-	auditKeepFailed = 5000 // failed sign-ins and joins, on top (PruneAudit)
-	auditKeepAge    = 90 * 24 * time.Hour
-	auditPruneEvery = 500
+	auditKeepRows    = 50000
+	auditKeepFailed  = 5000 // failed sign-ins and joins, on top (PruneAudit)
+	auditKeepRefused = 5000 // refused attempts, on top of both (PruneAudit)
+	auditKeepAge     = 90 * 24 * time.Hour
+	auditPruneEvery  = 500
 )
+
+// RefusedPrefix starts the action of a refused attempt ("refused:close-pane"):
+// something an agent, device or guest asked for and wasn't let do. They're
+// kept to a cap of their own (PruneAudit).
+const RefusedPrefix = "refused:"
+
+// The most of each audit field kept, in bytes: generous for what's really
+// recorded (names, labels, paths, a short reason), small enough that the
+// log's rows can't fill the disk.
+const (
+	AuditActorMax   = 160
+	AuditActionMax  = 160
+	AuditTargetMax  = 400
+	AuditDetailMax  = 400
+	AuditWhoMax     = 200
+	AuditSummaryMax = 1000
+	AuditKindMax    = 32
+)
+
+// AuditText is s as an audit field keeps it: on one line, with no control
+// or bidirectional formatting characters (each a space, so a row can't be
+// made to read as two, or other than it is), and at most max bytes, cut on
+// a character boundary with an ellipsis.
+func AuditText(s string, max int) string {
+	bad := func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) }
+	if strings.IndexFunc(s, bad) >= 0 || !utf8.ValidString(s) {
+		s = strings.Map(func(r rune) rune {
+			if bad(r) {
+				return ' '
+			}
+			return r // (invalid bytes come out as U+FFFD)
+		}, s)
+	}
+	if len(s) <= max {
+		return s
+	}
+	const more = "…"
+	i := max - len(more)
+	for i > 0 && !utf8.RuneStart(s[i]) {
+		i--
+	}
+	return s[:i] + more
+}
+
+// bound is e with every field within its limit (AuditText).
+func (e AuditEvent) bound() AuditEvent {
+	e.Actor, e.Action = AuditText(e.Actor, AuditActorMax), AuditText(e.Action, AuditActionMax)
+	e.Target, e.Detail = AuditText(e.Target, AuditTargetMax), AuditText(e.Detail, AuditDetailMax)
+	e.Who, e.Summary, e.Kind = AuditText(e.Who, AuditWhoMax), AuditText(e.Summary, AuditSummaryMax), AuditText(e.Kind, AuditKindMax)
+	return e
+}
 
 // PaneRuntime records how to reach a pane's holder process.
 type PaneRuntime struct {
@@ -110,7 +165,7 @@ func Open(path string) (*Store, error) {
 	}
 	// The audit log is bounded (it wasn't before 2026-11-09). Not pruning
 	// it (the disk is full, say) mustn't keep the daemon from starting.
-	if err := (&Store{db: db}).PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge); err != nil {
+	if err := (&Store{db: db}).PruneAudit(auditKeepRows, auditKeepFailed, auditKeepRefused, auditKeepAge); err != nil {
 		slog.Warn("state: prune audit", "err", err)
 	}
 	// Spaces were renamed Groups (2026-10-30); their records keep their ids.
@@ -261,32 +316,41 @@ func (s *Store) Load() (*Snapshot, error) {
 	return snap, rt.Err()
 }
 
-// Audit appends an audit event (its Time is now).
+// Audit appends an audit event (its Time is now), its fields cut to their
+// limits (AuditText).
 func (s *Store) Audit(e AuditEvent) error {
+	e = e.bound()
 	_, err := s.db.Exec(`INSERT INTO audit(ts, actor, action, target, detail, who, summary, kind) VALUES(?,?,?,?,?,?,?,?)`,
 		time.Now().UnixMilli(), e.Actor, e.Action, e.Target, e.Detail, e.Who, e.Summary, e.Kind)
 	if err == nil && s.audits.Add(1)%auditPruneEvery == 0 {
 		// The event is in: failing to prune isn't failing to record it.
-		if perr := s.PruneAudit(auditKeepRows, auditKeepFailed, auditKeepAge); perr != nil {
+		if perr := s.PruneAudit(auditKeepRows, auditKeepFailed, auditKeepRefused, auditKeepAge); perr != nil {
 			slog.Warn("state: prune audit", "err", perr)
 		}
 	}
 	return err
 }
 
-// failedActions are the audit events anyone who can reach this Mac can
-// cause (failed sign-ins and joins): they're kept to a cap of their own,
-// so they can't push the rest of the history out.
-const failedActions = `('auth-failed','pair-rejected','join-rejected')`
+// The audit events kept to caps of their own, so that however many there
+// are they can't push the rest of the history out: failed sign-ins and
+// joins (anyone who can reach this Mac can cause them), and refused
+// attempts (RefusedPrefix: anything signed in can cause them). Each is
+// also capped apart from the other.
+const (
+	failedClass  = `action IN ('auth-failed','pair-rejected','join-rejected')`
+	refusedClass = `substr(action, 1, 8) = '` + RefusedPrefix + `'`
+	restClass    = `NOT (` + failedClass + `) AND NOT (` + refusedClass + `)`
+)
 
 // PruneAudit drops audit events older than maxAge, failed sign-ins and
-// joins beyond the newest keepFailed of them, and the rest beyond the
-// newest keep.
-func (s *Store) PruneAudit(keep, keepFailed int, maxAge time.Duration) error {
-	_, err := s.db.Exec(`DELETE FROM audit WHERE ts < ?
-		OR (action IN `+failedActions+` AND id <= (SELECT id FROM audit WHERE action IN `+failedActions+` ORDER BY id DESC LIMIT 1 OFFSET ?))
-		OR (action NOT IN `+failedActions+` AND id <= (SELECT id FROM audit WHERE action NOT IN `+failedActions+` ORDER BY id DESC LIMIT 1 OFFSET ?))`,
-		time.Now().Add(-maxAge).UnixMilli(), keepFailed, keep)
+// joins beyond the newest keepFailed of them, refused attempts beyond the
+// newest keepRefused, and the rest beyond the newest keep.
+func (s *Store) PruneAudit(keep, keepFailed, keepRefused int, maxAge time.Duration) error {
+	beyond := func(class string) string {
+		return `(` + class + ` AND id <= (SELECT id FROM audit WHERE ` + class + ` ORDER BY id DESC LIMIT 1 OFFSET ?))`
+	}
+	_, err := s.db.Exec(`DELETE FROM audit WHERE ts < ? OR `+beyond(failedClass)+` OR `+beyond(refusedClass)+` OR `+beyond(restClass),
+		time.Now().Add(-maxAge).UnixMilli(), keepFailed, keepRefused, keep)
 	return err
 }
 

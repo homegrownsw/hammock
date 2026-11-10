@@ -2,8 +2,10 @@ package state
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
@@ -83,7 +85,7 @@ func TestPruneAudit(t *testing.T) {
 	if _, err := s.db.Exec(`UPDATE audit SET ts = 1 WHERE id = (SELECT MAX(id) FROM audit)`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PruneAudit(4, 4, time.Hour); err != nil {
+	if err := s.PruneAudit(4, 4, 4, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	evs, _ := s.RecentAudit(100)
@@ -110,7 +112,7 @@ func TestPruneAuditFailuresSeparately(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := s.PruneAudit(5, 4, time.Hour); err != nil {
+	if err := s.PruneAudit(5, 4, 4, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	evs, _ := s.RecentAudit(100)
@@ -124,6 +126,83 @@ func TestPruneAuditFailuresSeparately(t *testing.T) {
 	}
 	if real != 3 || failed != 4 {
 		t.Fatalf("kept %d others and %d failures, want 3 and 4", real, failed)
+	}
+}
+
+// Refused attempts have a cap of their own too, apart from failed sign-ins:
+// a flood of them pushes out neither the real history nor the failures.
+func TestPruneAuditRefusedSeparately(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, a := range []string{"paired", "close-pane", "auth-failed", "join-rejected"} {
+		if err := s.Audit(AuditEvent{Actor: "user", Action: a}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 30 {
+		if err := s.Audit(AuditEvent{Actor: "guest:us_x", Action: RefusedPrefix + []string{"close-pane", "create-tab", "more"}[i%3]}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.PruneAudit(5, 4, 6, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	evs, _ := s.RecentAudit(100)
+	var real, failed, refused int
+	for _, e := range evs {
+		switch {
+		case strings.HasPrefix(e.Action, RefusedPrefix):
+			refused++
+		case e.Action == "auth-failed" || e.Action == "join-rejected":
+			failed++
+		default:
+			real++
+		}
+	}
+	if real != 2 || failed != 2 || refused != 6 {
+		t.Fatalf("kept %d others, %d failures and %d refused, want 2, 2 and 6", real, failed, refused)
+	}
+}
+
+// Every field of an audit event is kept within its limit, on one line,
+// cut on a character boundary, whatever the caller gives.
+func TestAuditFieldsBounded(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	huge := strings.Repeat("é", 300000) // two bytes each: a cut can land mid-character
+	e := AuditEvent{Actor: "peer:" + huge, Action: huge, Target: "gr_1 → /" + huge, Detail: "line one\nline two\x1b[2J‮" + huge,
+		Who: huge, Summary: huge, Kind: huge}
+	if err := s.Audit(e); err != nil {
+		t.Fatal(err)
+	}
+	evs, _ := s.RecentAudit(1)
+	got := evs[0]
+	for _, f := range []struct {
+		name, v string
+		max     int
+	}{
+		{"actor", got.Actor, AuditActorMax}, {"action", got.Action, AuditActionMax}, {"target", got.Target, AuditTargetMax},
+		{"detail", got.Detail, AuditDetailMax}, {"who", got.Who, AuditWhoMax}, {"summary", got.Summary, AuditSummaryMax}, {"kind", got.Kind, AuditKindMax},
+	} {
+		if len(f.v) > f.max || !utf8.ValidString(f.v) || !strings.HasSuffix(f.v, "…") {
+			t.Errorf("%s: %d bytes (at most %d), valid %v, %q…", f.name, len(f.v), f.max, utf8.ValidString(f.v), f.v[:min(len(f.v), 20)])
+		}
+	}
+	if strings.ContainsAny(got.Detail, "\n\x1b‮") || !strings.HasPrefix(got.Detail, "line one line two [2J ") {
+		t.Errorf("detail kept its controls: %q", got.Detail[:40])
+	}
+	// What's within its limits is kept as it is.
+	if AuditText("Claude in Web ▸ api", AuditWhoMax) != "Claude in Web ▸ api" {
+		t.Error("a short field was changed")
+	}
+	if c := AuditText(strings.Repeat("x", 500), AuditTargetMax); AuditText(c, AuditTargetMax) != c {
+		t.Error("cutting a field twice changes it again")
 	}
 }
 
