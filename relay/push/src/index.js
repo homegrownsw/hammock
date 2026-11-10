@@ -16,7 +16,8 @@
 //
 // Routes (JSON in and out):
 //   POST /register   {token, sandbox, id?, secret?} → {id, secret} (the
-//                    same id, given its secret: a phone's new token)
+//                    same id, given its secret: a phone's new token, its
+//                    weekly refresh, or coming back after being forgotten)
 //   POST /unregister {id, secret}           → {}
 //   POST /send       {id, payload, thread?, collapse?, category?} → {}
 //
@@ -41,6 +42,7 @@ const ROUTES = new Set(['/register', '/unregister', '/send'])
 const CATEGORIES = new Set(['join', 'grant', 'hammockkey'])
 const DAY = 24 * 60 * 60 * 1000
 const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
+const SECRET = /^[0-9a-f]{48}$/ // what register hands out (randomHex(24))
 
 export default {
   async fetch(request, env) {
@@ -114,6 +116,17 @@ async function register({ token, sandbox, id, secret }, env, client) {
     const dev = await device(env, id)
     if (dev && dev.secret === (await sha256(secret))) {
       await env.DB.prepare('UPDATE devices SET token = ?, sandbox = ?, last_used = ? WHERE id = ?').bind(token, sandbox ? 1 : 0, sqlTime(Date.now()), id).run()
+      return json({ id, secret })
+    }
+    // Forgotten (unused for 60 days, or APNs said its token was bad): the
+    // phone comes back with the same id and secret, so Macs still holding
+    // the id reach it again without being told a new one. Only while no row
+    // holds the id: the id is random and known only to the phone and its
+    // Macs, so this can't take anyone's id over.
+    if (!dev && SECRET.test(secret)) {
+      await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used) VALUES (?, ?, ?, ?, ?)')
+        .bind(id, token, sandbox ? 1 : 0, await sha256(secret), sqlTime(Date.now()))
+        .run()
       return json({ id, secret })
     }
   }

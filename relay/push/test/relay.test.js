@@ -128,10 +128,34 @@ test('a phone keeps its id with its secret; nobody else can take it', async () =
   globalThis.fetch = async (url) => (sent.push(url), new Response(null, { status: 200 }))
   assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 200)
   assert.equal(sent[0], 'https://api.sandbox.push.apple.com/3/device/' + token2)
-  // An id that's gone: a new one.
-  env.DB.rows.delete(first.id)
-  const fresh = await (await worker.fetch(post('/register', { token: token2, id: first.id, secret: first.secret }), env)).json()
-  assert.notEqual(fresh.id, first.id)
+})
+
+test('a forgotten phone comes back with its id and secret, and sends reach it', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const token = '21'.repeat(32)
+  const first = await (await worker.fetch(post('/register', { token }), env)).json()
+  // Unused for 60 days: forgotten; a Mac sending to it is told it's gone.
+  env.DB.rows.get(first.id).last_used = '2000-01-01 00:00:00'
+  await worker.scheduled({}, env)
+  assert.ok(!env.DB.rows.has(first.id))
+  globalThis.fetch = async () => new Response(null, { status: 200 })
+  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 404)
+  // Its weekly refresh brings the same id back, with the same secret.
+  const back = await (await worker.fetch(post('/register', { token, id: first.id, secret: first.secret }), env)).json()
+  assert.deepEqual(back, first)
+  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 200)
+  // A refresh keeps it from being forgotten.
+  env.DB.rows.get(first.id).last_used = '2000-01-01 00:00:00'
+  await worker.fetch(post('/register', { token, id: first.id, secret: first.secret }), env)
+  await worker.scheduled({}, env)
+  assert.ok(env.DB.rows.has(first.id))
+  // Once it's back, nobody else can claim the id; and a secret that isn't
+  // one the relay could have handed out doesn't bring an id back.
+  const other = await (await worker.fetch(post('/register', { token: '43'.repeat(32), id: first.id, secret: 'f'.repeat(48) }), env)).json()
+  assert.notEqual(other.id, first.id)
+  const made = await (await worker.fetch(post('/register', { token, id: 'e'.repeat(32), secret: 'short' }), env)).json()
+  assert.notEqual(made.id, 'e'.repeat(32))
 })
 
 test('registrations are rate limited per address', async () => {

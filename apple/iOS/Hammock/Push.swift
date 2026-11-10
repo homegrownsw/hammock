@@ -51,13 +51,20 @@ final class Push: NSObject {
         }
     }
 
-    /// iOS gave us a device token: register it with the relay (again only
-    /// if it changed), then with the Mac being shown.
+    /// How often the phone registers again with the token it has: the relay
+    /// forgets a phone nothing has sent to (or registered) for 60 days, and
+    /// one always at its Mac gets no notifications to keep it.
+    static let refreshEvery: TimeInterval = 7 * 24 * 60 * 60
+
+    /// iOS gave us a device token (each launch): register it with the relay
+    /// if it changed, or a week on (so the relay keeps it), then with the
+    /// Mac being shown.
     func gotToken(_ data: Data) {
         let hex = data.map { String(format: "%02x", $0) }.joined()
         Task {
             let had = RelayCredentials.load()
-            if hex != token || had == nil {
+            let registered = UserDefaults.standard.object(forKey: "push.registered") as? Date ?? .distantPast
+            if hex != token || had == nil || Date().timeIntervalSince(registered) > Self.refreshEvery {
                 do {
                     // With the id it has, given its secret, it keeps that id
                     // (a new token, or the app reinstalled).
@@ -67,13 +74,18 @@ final class Push: NSObject {
                     guard let id = r["id"], let secret = r["secret"] else { throw URLError(.badServerResponse) }
                     RelayCredentials.save(.init(id: id, secret: secret))
                     UserDefaults.standard.set(hex, forKey: "push.token")
+                    UserDefaults.standard.set(Date(), forKey: "push.registered")
                     // Where they were kept before: in backups, so another
                     // phone restored from one could take this one's id over.
                     UserDefaults.standard.removeObject(forKey: "push.relayID")
                     UserDefaults.standard.removeObject(forKey: "push.relaySecret")
                 } catch {
-                    status = "Couldn't reach the push relay"
-                    return
+                    // Only a week's refresh: the id it has still works (or
+                    // will be refreshed next launch).
+                    if hex != token || had == nil {
+                        status = "Couldn't reach the push relay"
+                        return
+                    }
                 }
             }
             status = "On"

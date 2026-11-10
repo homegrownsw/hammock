@@ -44,7 +44,9 @@ nothing of one it can't decrypt or that was sent over an hour ago.
 
 - `POST /register {token, sandbox, id?, secret?}` → `{id, secret}`: a phone
   registering, 10 a minute per client address. With the `id` and `secret`
-  it had (a new token, or the app reinstalled), it keeps that id; without,
+  it had (a new token, the app reinstalled, or its weekly refresh, which
+  keeps it from being forgotten), it keeps that id, and one forgotten comes
+  back with the same id and secret while no other row holds it; without,
   it gets a new one, and an earlier id for the same token stays (whoever
   learnt a phone's token can't cut it off) until it goes unused.
 - `POST /unregister {id, secret}`
