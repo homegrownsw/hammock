@@ -561,6 +561,21 @@ func TestAgentEvaluateNeedsControl(t *testing.T) {
 	if err := eval("fetch('/account/delete', {method: 'POST'})"); err != errAgentScope {
 		t.Fatalf("its own JavaScript in your page in another Group: %v", err)
 	}
+	// A key twice: the browser may run the first, so it's not read-only.
+	dup := &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserCall{BrowserCall: &pb.BrowserCall{
+		PaneId: page, Method: "Runtime.evaluate",
+		ParamsJson: `{"expression":"fetch('/account/delete')","expression":"window.devicePixelRatio"}`,
+	}}}
+	if err := c.agentCheck(dup); err != errAgentScope {
+		t.Fatalf("a repeated key: %v", err)
+	}
+	// What's read-only goes on as it was checked, re-encoded.
+	ok := &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserCall{BrowserCall: &pb.BrowserCall{
+		PaneId: page, Method: "Runtime.evaluate", ParamsJson: ` { "expression" : "window.devicePixelRatio" } `,
+	}}}
+	if err := c.agentCheck(ok); err != nil || ok.GetBrowserCall().ParamsJson != `{"expression":"window.devicePixelRatio"}` {
+		t.Fatalf("read-only: %v, sent as %s", err, ok.GetBrowserCall().ParamsJson)
+	}
 	d.mu.Lock()
 	d.noteOnceGrant(&pb.GrantRequest{RequesterPaneId: agentPane, Action: "browse", TargetPaneId: page})
 	d.mu.Unlock()

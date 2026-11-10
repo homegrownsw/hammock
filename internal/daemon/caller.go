@@ -653,9 +653,17 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		// one, maybe), so only in panes it may control.
 		// (Only this computer's browser panes: browser calls aren't routed
 		// to linked computers, nor taken from remote connections.)
-		readOnly := !browserCallMutates(m.BrowserCall.Method) ||
-			m.BrowserCall.Method == "Runtime.evaluate" && browserjs.ReadOnly(m.BrowserCall.ParamsJson)
+		readOnly := !browserCallMutates(m.BrowserCall.Method)
+		var checked string
+		if m.BrowserCall.Method == "Runtime.evaluate" {
+			checked, readOnly = browserjs.ReadOnlyParams(m.BrowserCall.ParamsJson)
+		}
 		if readOnly && read(m.BrowserCall.PaneId) == nil {
+			if checked != "" {
+				// What was checked is what runs: re-encoded, not the
+				// bytes as sent (a key twice: Chromium may take the other).
+				m.BrowserCall.ParamsJson = checked
+			}
 			return nil
 		}
 		return control(m.BrowserCall.PaneId, "browse")

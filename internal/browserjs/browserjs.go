@@ -29,21 +29,87 @@ func WaitFor(text, sel string) string {
 // ReadOnly reports whether a Runtime.evaluate call (its params, as JSON)
 // only runs one of the scripts above.
 func ReadOnly(paramsJSON string) bool {
+	_, ok := ReadOnlyParams(paramsJSON)
+	return ok
+}
+
+// evalParams are the Runtime.evaluate params a read-only call may have.
+type evalParams struct {
+	Expression    string `json:"expression"`
+	ReturnByValue *bool  `json:"returnByValue,omitempty"`
+	AwaitPromise  *bool  `json:"awaitPromise,omitempty"`
+	UserGesture   *bool  `json:"userGesture,omitempty"`
+}
+
+// ReadOnlyParams is ReadOnly, also giving the params to send in their place:
+// re-encoded from what was checked, so the browser runs exactly that. (Sent
+// as they came, `{"expression":"evil()","expression":"window.devicePixelRatio"}`
+// passes here, Go keeping the last key, and may run the first in Chromium;
+// a key repeated is refused too.)
+func ReadOnlyParams(paramsJSON string) (string, bool) {
+	if dupKeys(paramsJSON) {
+		return "", false
+	}
 	var p map[string]json.RawMessage
 	if json.Unmarshal([]byte(paramsJSON), &p) != nil {
-		return false
+		return "", false
 	}
 	for k := range p {
 		switch k {
 		case "expression", "returnByValue", "awaitPromise", "userGesture":
 		default:
-			return false // (a context id, the command line API, …)
+			return "", false // (a context id, the command line API, …)
 		}
 	}
-	var expr string
-	if json.Unmarshal(p["expression"], &expr) != nil {
-		return false
+	var e evalParams
+	if json.Unmarshal(p["expression"], &e.Expression) != nil {
+		return "", false
 	}
+	for k, dst := range map[string]**bool{"returnByValue": &e.ReturnByValue, "awaitPromise": &e.AwaitPromise, "userGesture": &e.UserGesture} {
+		if raw, ok := p[k]; ok {
+			var b bool
+			if json.Unmarshal(raw, &b) != nil {
+				return "", false
+			}
+			*dst = &b
+		}
+	}
+	if !readOnlyExpr(e.Expression) {
+		return "", false
+	}
+	var out strings.Builder
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(e) != nil {
+		return "", false
+	}
+	return strings.TrimSuffix(out.String(), "\n"), true
+}
+
+// dupKeys reports whether the JSON object s names a key twice (as decoded:
+// "\u0065xpression" is "expression"), or isn't an object.
+func dupKeys(s string) bool {
+	dec := json.NewDecoder(strings.NewReader(s))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return true
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		t, err := dec.Token()
+		k, ok := t.(string)
+		if err != nil || !ok || seen[k] {
+			return true
+		}
+		seen[k] = true
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func readOnlyExpr(expr string) bool {
 	switch expr {
 	case Snapshot, DevicePixelRatio:
 		return true
