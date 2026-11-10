@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/homegrownsw/hammock/internal/codesign"
 	"github.com/homegrownsw/hammock/internal/procinfo"
@@ -201,8 +202,33 @@ func (c *conn) scope() {
 		c.d.mu.Lock()
 		c.caller = cl // (read by other connections under d.mu)
 		c.d.mu.Unlock()
-		c.d.log.Info("scoped a local client it can't place as yours as an agent", "pid", c.pid, "pane", cl.pane)
+		// Which program, and what started it: a pid alone is gone by the time
+		// anyone reads the log. Once per program and parent: something that
+		// polls (every few seconds, for hours) would otherwise fill the log.
+		prog, parent := processPath(c.pid), ""
+		if pp, err := procinfo.Parent(c.pid); err == nil {
+			parent = processPath(pp)
+		}
+		if _, seen := scopedLogged.LoadOrStore(prog+"\x00"+parent, true); seen {
+			c.d.log.Debug("scoped a local client it can't place as yours as an agent", "pid", c.pid, "pane", cl.pane, "program", prog, "parent", parent)
+			return
+		}
+		c.d.log.Info("scoped a local client it can't place as yours as an agent (once per program)", "pid", c.pid, "pane", cl.pane, "program", prog, "parent", parent)
 	})
+}
+
+// scopedLogged holds the programs (and their parents) scope has logged.
+var scopedLogged sync.Map
+
+// processPath is pid's program, or "?" when it can't be read.
+func processPath(pid int) string {
+	if p, err := procinfo.Path(pid); err == nil && p != "" {
+		return p
+	}
+	if n, err := procinfo.Name(pid); err == nil && n != "" {
+		return n
+	}
+	return "?"
 }
 
 // scopedCaller is who a local process that isn't yours is, for agent
