@@ -47,7 +47,8 @@ State lives in `~/Library/Application Support/Hammock` (override with `HMK_DIR`)
 ## Build from source
 
 Requirements: macOS 26 and Xcode 27.2 (Swift 6; the project is Xcode's JSON format), Go 1.27+, `zig` 0.17 (for
-libghostty-vt), `just`, and `protoc` with `protoc-gen-go` and `protoc-gen-swift` only to regenerate protocol code.
+libghostty-vt), `just`, `uv` only for the DMG (`just share`, `just dmg`), and `protoc` with `protoc-gen-go` and
+`protoc-gen-swift` only to regenerate protocol code.
 
 ```sh
 just build          # Go binaries → bin/ (hmkd, hmk, pane-holder); builds libghostty-vt the first

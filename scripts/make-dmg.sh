@@ -12,22 +12,36 @@
 # dist/releases, where generate_appcast would take it for another update.
 #
 # dmgbuild writes Finder's layout (.DS_Store) itself, so this needs no Finder or logged-in desktop. It runs
-# from uv, pinned, with nothing installed.
+# from uv with nothing installed, it and its dependencies pinned: this runs beside the signing identity.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-app="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-out="$2"
+usage="usage: scripts/make-dmg.sh <Hammock.app> <out.dmg> [signing identity]"
+[ -d "${1:?$usage}" ] || { echo "No app at $1" >&2; exit 1; }
+app="$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")"
+mkdir -p "$(dirname "${2:?$usage}")"
+out="$(cd "$(dirname "$2")" && pwd -P)/$(basename "$2")"
 identity="${3:-}"
-[ -d "$app" ] || { echo "No app at $app" >&2; exit 1; }
 command -v uvx >/dev/null || { echo "make-dmg needs uv (brew install uv)" >&2; exit 1; }
-case "$out" in */dist/releases/*) echo "Not in dist/releases: generate_appcast would offer it as an update." >&2; exit 1 ;; esac
+case "$out" in "$(cd "$root" && pwd -P)"/dist/releases/*)
+  echo "Not in dist/releases: generate_appcast would offer it as an update." >&2; exit 1 ;;
+esac
 
-mkdir -p "$(dirname "$out")"
 rm -f "$out"
-uvx --quiet --from 'dmgbuild==1.6.5' dmgbuild \
+uvx --quiet --from 'dmgbuild==1.6.5' --with 'ds_store==1.3.3' --with 'mac_alias==2.2.3' dmgbuild \
   -s "$root/scripts/dmg-settings.py" \
   -D app="$app" -D background="$root/apple/Resources/dmg-background.png" \
   Hammock "$out"
+
+# dmgbuild doesn't check its copy of the app: look inside before anything is signed or shipped.
+mnt="$(mktemp -d)"
+hdiutil attach -quiet -readonly -nobrowse -mountpoint "$mnt" "$out"
+trap 'hdiutil detach -quiet "$mnt" 2>/dev/null; rmdir "$mnt" 2>/dev/null' EXIT
+inside="$mnt/$(basename "$app")"
+[ -d "$inside" ] && [ "$(readlink "$mnt/Applications")" = /Applications ] ||
+  { echo "$out is missing the app or the Applications shortcut." >&2; exit 1; }
+# The app as it was given: signed if it was (any build here is, ad hoc at least).
+codesign --verify --strict "$inside"
+hdiutil detach -quiet "$mnt" && trap - EXIT && rmdir "$mnt"
 
 if [ -n "$identity" ]; then
   codesign --force --timestamp --sign "$identity" "$out"

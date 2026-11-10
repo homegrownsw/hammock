@@ -14,8 +14,8 @@
 # nginx (homegrownsw-site's nginx/hammock.conf) redirects to the latest release's assets:
 #
 #   /hammock/appcast.xml   the feed, built into the app as SUFeedURL
-#   /hammock/download      Hammock.dmg, the latest DMG under a fixed name, for first installs (Sparkle
-#                          keeps the zip: the DMG is only for downloads)
+#   /hammock/download      the latest DMG, Hammock.dmg, for first installs; Sparkle keeps the zip (point
+#                          it there only once a release has a Hammock.dmg; until then it's Hammock.zip)
 #   /hammock/linux/<file>  hammock-linux-<arch>.tar.gz (fixed names too) and hammock.plg
 #
 # The appcast offers only the newest build (--maximum-versions 1), so every URL in it is in that release

@@ -17,7 +17,7 @@ format = "ULMO"
 # dmgbuild finds dmg-background@2x.png beside it and makes a Retina TIFF of the two.
 background = defines["background"]  # noqa: F821
 # The window's frame, title bar included: the background is 660×400, and the title bar is 32 more on
-# macOS 26 and later (28 before, which only leaves 4 pt of the background unseen).
+# macOS 26 and later (measured on macOS 27). Were it 28, 4 pt of plain window would show below the picture.
 window_rect = ((200, 160), (660, 432))
 default_view = "icon-view"
 show_status_bar = False
@@ -33,5 +33,5 @@ text_size = 14
 # Centres, in points from the top left of the background.
 icon_locations = {name: (165, 204), "Applications": (495, 204)}
 arrange_by = None
-# Not hide_extension: it sets com.apple.FinderInfo on the app, which breaks codesign --verify --strict.
+# Not hide_extensions: it sets com.apple.FinderInfo on the app, which breaks codesign --verify --strict.
 # Finder hides .app on its own unless someone shows every extension.

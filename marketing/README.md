@@ -37,4 +37,5 @@ checked out at `~/Developer/homegrownsw-site`). `just site` copies the page, the
 repo's `site/hammock/`; commit them there and run its `just deploy`.
 
 Links on the page are relative, so it works under `/hammock/`. Its Download buttons go to `download`, which the
-site's nginx redirects to the latest release's `Hammock.dmg` on GitHub (the site repo's `nginx/hammock.conf`).
+site's nginx redirects to the latest release's `Hammock.dmg` on GitHub (the site repo's `nginx/hammock.conf`; it
+was `Hammock.zip` until the first release with a DMG).

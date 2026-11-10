@@ -39,6 +39,21 @@ else
   echo "set APPLE_ID and APP_PASSWORD, or NOTARY_PROFILE" >&2
   exit 2
 fi
+# The DMG needs uv (scripts/make-dmg.sh): find out now, not after notarizing the app.
+command -v uvx >/dev/null || { echo "just share needs uv for the DMG (brew install uv)" >&2; exit 1; }
+
+# Submits $1 and waits. notarytool exits 0 for a rejected submission; its status says.
+notarize() {
+  local out id
+  echo "submitting $(basename "$1") for notarization…"
+  out="$(xcrun notarytool submit "$1" "${auth[@]}" --wait)"
+  echo "$out"
+  if ! grep -q 'status: Accepted' <<<"$out"; then
+    id="$(awk '/^  id:/{print $2; exit}' <<<"$out")"
+    [ -n "$id" ] && xcrun notarytool log "$id" "${auth[@]}"
+    exit 1
+  fi
+}
 
 # Inside out with the hardened runtime and secure timestamps.
 "$root/scripts/sign-mac-app.sh" "$app" "$identity" --timestamp
@@ -46,15 +61,7 @@ fi
 zip="${app%.app}.zip"
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
-echo "submitting $(basename "$zip") for notarization…"
-out="$(xcrun notarytool submit "$zip" "${auth[@]}" --wait)"
-echo "$out"
-# notarytool exits 0 for a rejected submission; its status says.
-if ! grep -q 'status: Accepted' <<<"$out"; then
-  id="$(awk '/^  id:/{print $2; exit}' <<<"$out")"
-  [ -n "$id" ] && xcrun notarytool log "$id" "${auth[@]}"
-  exit 1
-fi
+notarize "$zip"
 xcrun stapler staple "$app"
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
@@ -64,14 +71,7 @@ echo "$zip"
 # The DMG, round the stapled app: Gatekeeper checks the DMG someone downloads before the app in it.
 dmg="${app%.app}.dmg"
 "$root/scripts/make-dmg.sh" "$app" "$dmg" "$identity"
-echo "submitting $(basename "$dmg") for notarization…"
-out="$(xcrun notarytool submit "$dmg" "${auth[@]}" --wait)"
-echo "$out"
-if ! grep -q 'status: Accepted' <<<"$out"; then
-  id="$(awk '/^  id:/{print $2; exit}' <<<"$out")"
-  [ -n "$id" ] && xcrun notarytool log "$id" "${auth[@]}"
-  exit 1
-fi
+notarize "$dmg"
 xcrun stapler staple "$dmg"
 spctl -a -vv -t open --context context:primary-signature "$dmg"
 echo "$dmg"
