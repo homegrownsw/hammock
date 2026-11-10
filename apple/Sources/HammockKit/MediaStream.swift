@@ -5,7 +5,7 @@
 // relays the host's video). Decoded in hardware by an
 // AVSampleBufferDisplayLayer.
 //
-// Network.framework quirks this relies on (docs/spikes/remote-media.md): the
+// Network.framework quirks this relies on (docs/internals/remote-media.md): the
 // group opens an empty stream of its own first; it never raises the peer's
 // stream limit, so the initial one is huge; control-stream sends must pass
 // isComplete: false or they finish the stream.

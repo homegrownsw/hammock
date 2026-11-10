@@ -5,7 +5,7 @@ Status: Accepted · 2026-10-31 · supersedes the transport in ADR-0005's remote 
 ## Context
 ADR-0005 and the tech spec (§7.1) chose VideoToolbox encode over WebRTC (pion in the daemon, "Apple's WebRTC framework" in the apps) for showing browser and simulator panes on the iPhone and to guests. That was written before remote access settled on Tailscale (ADR-0007) and peer links on WebSocket over TLS (ADR-0008), and Apple ships no public WebRTC framework: the iPhone would need Google's libwebrtc. Under Tailscale, WebRTC's NAT traversal buys nothing; its remaining strengths are loss tolerance and rate control.
 
-Options weighed (2026-10-31): H.264 over the existing WebSocket link (no new dependencies, but TCP stalls on loss); QUIC (quic-go in the daemon, Network.framework's built-in QUIC on iOS); WebRTC. See [the spike](../spikes/remote-media.md).
+Options weighed (2026-10-31): H.264 over the existing WebSocket link (no new dependencies, but TCP stalls on loss); QUIC (quic-go in the daemon, Network.framework's built-in QUIC on iOS); WebRTC. See [the spike](../internals/remote-media.md).
 
 ## Decision
 - **Codec:** H.264 from VideoToolbox in low-latency mode (no frame reordering, real-time), encoded in the helper that owns the pixels (Hammock Simulator, Hammock Browser), one session per viewer while that viewer watches. Hammock Simulator encodes its framebuffer IOSurface; Hammock Browser decodes Chromium's DevTools screencast (no Screen Recording permission; see the spike notes) and encodes that.

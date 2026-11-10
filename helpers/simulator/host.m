@@ -1,7 +1,7 @@
 // Hammock Simulator: the process that shows and drives simulator panes.
 //
 // One host per daemon, like the browser host. It talks to CoreSimulator and
-// SimulatorKit (private frameworks; see docs/spikes/simulator-panes.md) so
+// SimulatorKit (private frameworks; see docs/internals/simulator-panes.md) so
 // that no Simulator.app window is needed:
 //
 // - Display: a device's framebuffer is an IOSurface, updated in place. The

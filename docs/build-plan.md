@@ -123,7 +123,7 @@ Build order: the daemon peer link and its tests (two daemons on one Mac), then t
 
 ## Phase 10 — Simulator panes  ✅ built (rotation, pinch and the software keyboard 2026-11-01)
 
-- ✅ **Spike** ([notes](spikes/simulator-panes.md)): the framebuffer IOSurface through CoreSimulator and touches through SimulatorKit's HID client both work headlessly on Xcode 27.
+- ✅ **Spike** ([notes](internals/simulator-panes.md)): the framebuffer IOSurface through CoreSimulator and touches through SimulatorKit's HID client both work headlessly on Xcode 27.
 - ✅ **Hammock Simulator** helper (`helpers/simulator`, one per daemon): the device's screen as a CAContext layer for the app, touches, buttons, typing, screenshots, device list.
 - ✅ Simulator panes: daemon pane kind, Mac pane (fitted screen, click/drag to touch, typing, Home/Lock, New Simulator Tab menu), `hmk sim`, TUI placeholder (live in Ghostty and Kitty since Phase 9's TUI graphics).
 - ✅ MCP tools: `sim_list_devices`, `sim_open`, `sim_screenshot`, `sim_tap`, `sim_swipe`, `sim_type`, `sim_press_button`, `sim_install_app`, `sim_launch_app`, `sim_terminate_app`, `sim_open_url`, `sim_logs`.

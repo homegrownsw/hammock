@@ -1,6 +1,6 @@
 # Spike: browser panes that feel native
 
-Status: in progress · 2026-10-30 · Code: [`spikes/browser/`](../../spikes/browser) · Decision: [ADR-0011](../adr/0011-browser-panes-hidden-window-host.md) (proposed)
+Status: in progress · 2026-10-30 · Code: [`spikes/browser/`](../../internals/browser) · Decision: [ADR-0011](../adr/0011-browser-panes-hidden-window-host.md) (proposed)
 
 ## Question
 

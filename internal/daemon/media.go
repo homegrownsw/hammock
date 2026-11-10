@@ -1,6 +1,6 @@
 package daemon
 
-// Remote video of visual panes (ADR-0012, docs/spikes/remote-media.md).
+// Remote video of visual panes (ADR-0012, docs/internals/remote-media.md).
 //
 // A viewer (the iPhone, a guest's daemon) asks OpenMedia on its control
 // link and gets a session. The helper that owns the pane's pixels encodes

@@ -12,7 +12,7 @@ import (
 // Answering a prompt is a short script of keystrokes, the first checked
 // against the screen (it must still show the options the client saw), so a
 // changed or vanished prompt never gets stray keys. See
-// docs/spikes/agent-view-keys.md for what Claude Code expects.
+// docs/internals/agent-view-keys.md for what Claude Code expects.
 
 // Step types Keys once Ready reports the screen is right for them.
 type Step struct {

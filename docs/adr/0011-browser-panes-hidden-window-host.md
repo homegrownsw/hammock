@@ -1,6 +1,6 @@
 # ADR-0011: Browser panes run windowed Chromium behind a hidden window
 
-Status: Proposed · 2026-10-30 (pending the at-desk feel test in [the spike notes](../spikes/browser-panes.md))
+Status: Proposed · 2026-10-30 (pending the at-desk feel test in [the spike notes](../internals/browser-panes.md))
 
 ## Context
 ADR-0005 chose daemon-owned CEF helpers with remote CoreAnimation layers for local display. CEF's supported way to render outside its own window is offscreen rendering (OSR), and its input API has no trackpad gesture phases or pinch. That rules out rubber-banding and native-feeling scrolling, which are the top priority for "feels transparent".

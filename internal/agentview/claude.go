@@ -1,7 +1,7 @@
 // Package agentview turns an agent's session file into the blocks of the
 // agent view (a conversation, as in Claude's apps), and reads the prompt the
 // agent is showing from its screen. See docs/build-plan.md (Phase 7) and
-// docs/spikes/agent-view-keys.md.
+// docs/internals/agent-view-keys.md.
 package agentview
 
 import (
