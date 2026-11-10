@@ -10,6 +10,7 @@ package daemon
 
 import (
 	"bufio"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,6 +51,10 @@ type screenHub struct {
 
 	media *hostMedia
 
+	// secret proves to the hosts this daemon starts that it's the one that
+	// started them (screenauth.go); one per daemon run, never on disk.
+	secret []byte
+
 	shapes map[uint32]*pb.ScreenCursor // pointer shapes the host has sent (image, hot spot, size), by id
 }
 
@@ -57,11 +62,13 @@ type screenMsg struct {
 	T       string `json:"t"`
 	Seq     int    `json:"seq"`
 	Pid     int    `json:"pid"`
-	Refused bool   `json:"refused"` // a hello from a host another daemon started
-	Built   int64  `json:"built"`
-	Screen  bool   `json:"screen"` // Screen Recording allowed
-	Input   bool   `json:"input"`  // Accessibility allowed
-	Error   string `json:"error"`
+	Refused bool   `json:"refused"` // a hello from a host that won't take this daemon
+	// hello: what to answer (screenauth.go) before the host serves anything.
+	Challenge []byte `json:"challenge"` // base64 in the JSON
+	Built     int64  `json:"built"`
+	Screen    bool   `json:"screen"` // Screen Recording allowed
+	Input     bool   `json:"input"`  // Accessibility allowed
+	Error     string `json:"error"`
 	// cursor and cursorShape (the pointer: where, and its shapes).
 	Display  uint32  `json:"display"`
 	IsMain   bool    `json:"main"`
@@ -91,7 +98,10 @@ type screenMsg struct {
 
 func newScreenHub(d *Daemon) *screenHub {
 	h := &screenHub{d: d, path: screenHostPath(), kick: make(chan struct{}, 1), calls: map[int]chan screenMsg{}, shapes: map[uint32]*pb.ScreenCursor{}}
-	h.media = &hostMedia{d: d, name: "screen", socket: func() string { return ScreenSocketPath(d.cfg.Dir) }, ensure: h.ensure}
+	h.secret = make([]byte, 32)
+	_, _ = rand.Read(h.secret)
+	h.media = &hostMedia{d: d, name: "screen", socket: func() string { return ScreenSocketPath(d.cfg.Dir) }, ensure: h.ensure,
+		greet: func(c net.Conn, r *bufio.Reader) error { _, err := h.greet(c, r); return err }}
 	return h
 }
 
@@ -242,12 +252,17 @@ func (h *screenHub) spawn() error {
 	// and remembers Screen Recording and Accessibility for Hammock Screen
 	// itself, not for whatever started the daemon.
 	app := strings.TrimSuffix(h.path, "/Contents/MacOS/Hammock Screen")
-	// It talks to this process only (--owner): nothing else of yours gets
-	// its permissions.
-	owner := "--owner=" + strconv.Itoa(os.Getpid())
-	cmd := exec.Command("/usr/bin/open", "-g", "-j", "-n", "-a", app, "--args", "--socket="+ScreenSocketPath(dir), owner, "--log="+logf.Name())
+	// It serves only this daemon, which it learns over Mach (the rendezvous
+	// named here) and checks on every connection (screenauth.go), never by
+	// what its command line says: nothing else of yours gets its
+	// permissions.
+	name, err := h.rendezvousFor(ScreenSocketPath(dir))
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("/usr/bin/open", "-g", "-j", "-n", "-a", app, "--args", "--socket="+ScreenSocketPath(dir), "--rendezvous="+name, "--log="+logf.Name())
 	if !strings.HasSuffix(app, ".app") {
-		cmd = exec.Command(h.path, "--socket="+ScreenSocketPath(dir), owner)
+		cmd = exec.Command(h.path, "--socket="+ScreenSocketPath(dir), "--rendezvous="+name)
 		cmd.Stdout, cmd.Stderr = logf, logf
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	}
@@ -260,24 +275,22 @@ func (h *screenHub) spawn() error {
 	return nil
 }
 
-// current reads the host's hello: whether it's this build's, else it's
-// told to quit (and run starts this build's).
+// current greets the host (screenauth.go): whether it's this daemon's and
+// this build's. One that won't take this daemon (another daemon started
+// it, or another build) is stopped, and an outdated one told to quit; run
+// then starts this build's.
 func (h *screenHub) current(c net.Conn, r *bufio.Reader) bool {
-	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
-	defer c.SetReadDeadline(time.Time{})
-	line, err := r.ReadBytes('\n')
-	var m screenMsg
-	if err != nil || json.Unmarshal(line, &m) != nil || m.T != "hello" {
-		return false
-	}
-	if m.Refused {
-		// Started by an earlier daemon (it talks only to that one): it goes,
-		// and run starts ours.
-		h.d.log.Info("replacing a previous daemon's screen host", "pid", m.Pid)
-		if m.Pid > 0 {
-			_ = syscall.Kill(m.Pid, syscall.SIGTERM)
+	m, err := h.greet(c, r)
+	var refused errScreenHostRefused
+	if errors.As(err, &refused) {
+		h.d.log.Info("replacing a screen host that refused this daemon", "pid", refused.pid)
+		if refused.pid > 0 {
+			_ = syscall.Kill(refused.pid, syscall.SIGTERM)
 		}
 		time.Sleep(300 * time.Millisecond)
+		return false
+	}
+	if err != nil {
 		return false
 	}
 	if st, err := os.Stat(h.path); err == nil && m.Built != 0 && st.ModTime().Unix() != m.Built {

@@ -6,10 +6,32 @@
 // Recording for the picture and Accessibility for input; it asks for neither
 // on its own, only when told to (request).
 //
+// Who it serves: only the daemon that started it. Its socket's peer can't
+// say who that is (a process of yours can connect, then exec a suspended
+// hmkd in its own place, and the peer then looks like hmkd:
+// helpers/common/rendezvous.h), so:
+//   - it's started with --rendezvous=NAME, a Mach service of the daemon's,
+//     and asks it for a secret, believing the answer only if the message's
+//     audit token (its sender as it sent it) is hmkd, signed by this
+//     helper's own team with the hardened runtime (ad hoc: the hmkd of its
+//     own build), and only for the socket it was told to serve. Without
+//     one it doesn't start: started by anything else, it serves no one.
+//   - each connection's hello carries a fresh challenge, and nothing is
+//     served until the client answers it: auth {pid, mac}, the HMAC-SHA256
+//     under the secret of the challenge and both ends' pids (the daemon's,
+//     which must be this socket's peer, and this host's own), so the secret
+//     never crosses the socket and a relay can't pass the daemon's answer
+//     on. The daemon's end, and why: internal/daemon/screenauth.go. A
+//     daemon that can't answer (a restarted one, with a new secret) hears
+//     hello {refused}, and replaces this host with its own.
+//   - and, from before that, the peer's code signature (helpers/common/
+//     peer.h): hmkd's, checked as it connects.
+//
 // Protocol: newline-delimited JSON over a Unix socket, any number of
 // clients. A display is its CGDirectDisplayID, as a string where an "id" is
 // asked for.
-//   client -> host: displays {seq}, request {seq, what: screen|input},
+//   client -> host, first: auth {pid, mac} (above), then:
+//                   displays {seq}, request {seq, what: screen|input},
 //                   input {display, op, args} (ScreenInput's ops: mouse,
 //                   wheel, key, text), quit,
 //                   media (this connection carries video from now on)
@@ -19,7 +41,8 @@
 //                   rate {sid, bitrate, fps}, keyframe {sid}, refresh {sid},
 //                   ltr {sid, tokens}, hold {sid, on}, stop {sid}: as for the
 //                   simulator host (helpers/simulator/host.m)
-//   host -> client: hello {pid, built}, displaysResult {seq, displays: [{id,
+//   host -> client: hello {pid, built, challenge (base64)}, authed (or
+//                   hello {pid, refused}, and it hangs up), displaysResult {seq, displays: [{id,
 //                   name, w, h (points), scale, main}], screen (Screen
 //                   Recording allowed), input (Accessibility allowed)},
 //                   requestResult {seq, screen, input}
@@ -35,6 +58,9 @@
 #import <ImageIO/ImageIO.h>
 
 #import "../media/encoder.h"
+#include "../common/peer.h"
+#include "../common/rendezvous.h"
+#import <CommonCrypto/CommonHMAC.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -46,6 +72,8 @@
 @property(strong) dispatch_source_t src, writeSrc;
 @property(strong) NSMutableData *buf, *out;
 @property BOOL media;
+@property BOOL authed;               // it answered its challenge
+@property(strong) NSData *challenge;  // what it must answer (one try)
 @end
 @implementation Conn
 @end
@@ -118,7 +146,7 @@ enum { kGridW = 32, kGridH = 18, kCells = kGridW * kGridH };
 
 @interface Host : NSObject
 @property(copy) NSString *socketPath;
-@property pid_t owner;  // the daemon: the only process it talks to
+@property(strong) NSData *secret;  // from the daemon that started it (main)
 @property(strong) NSMutableArray<Conn *> *conns;
 @property(strong) NSMutableDictionary<NSNumber *, Capture *> *captures;
 // Each display's last snapshot (a JPEG, and when): what a sleeping one showed.
@@ -624,13 +652,14 @@ static BOOL screenLocked(void) {
   dispatch_source_set_event_handler(self.acceptSrc, ^{
     int c = accept(fd, NULL, NULL);
     if (c < 0) return;
-    // Only the daemon that started this host: anything else of yours (an
-    // agent in a pane) would have its Screen Recording and Accessibility.
-    // Another hears whose this is and goes (a restarted daemon then
-    // replaces it).
+    // Only hmkd, by its signature (helpers/common/peer.h): anything else
+    // of yours (an agent in a pane) would have its Screen Recording and
+    // Accessibility. Not the app either: it never connects here. One
+    // refused is told so: a daemon this host doesn't take (one of another
+    // build, signed otherwise) then replaces it with its own.
     pid_t peer = 0;
-    socklen_t plen = sizeof peer;
-    if (self.owner && (getsockopt(c, SOL_LOCAL, LOCAL_PEERPID, &peer, &plen) != 0 || peer != self.owner)) {
+    const char *why = "";
+    if (!HammockPeerAllowed(c, HammockPeerDaemon, &peer, &why)) {
       NSData *no = [NSJSONSerialization dataWithJSONObject:@{@"t" : @"hello", @"pid" : @(getpid()), @"refused" : @YES} options:0 error:nil];
       write(c, no.bytes, no.length);
       write(c, "\n", 1);
@@ -638,6 +667,7 @@ static BOOL screenLocked(void) {
       fprintf(stderr, "screen-host: refused a connection from pid %d\n", peer);
       return;
     }
+    fprintf(stderr, "screen-host: connection from pid %d (%s)\n", peer, why);
     int on = 1;
     setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
     fcntl(c, F_SETFL, fcntl(c, F_GETFL) | O_NONBLOCK);
@@ -651,7 +681,12 @@ static BOOL screenLocked(void) {
     dispatch_resume(conn.src);
     [self.conns addObject:conn];
     self.lonelySince = 0;
-    [self send:@{@"t" : @"hello", @"pid" : @(getpid()), @"built" : @(self.built)} to:conn];
+    uint8_t challenge[32];
+    arc4random_buf(challenge, sizeof challenge);
+    conn.challenge = [NSData dataWithBytes:challenge length:sizeof challenge];
+    [self send:@{@"t" : @"hello", @"pid" : @(getpid()), @"built" : @(self.built),
+                 @"challenge" : [conn.challenge base64EncodedStringWithOptions:0]}
+            to:conn];
     // A new connection (the daemon again, after a restart) hears the
     // pointer's shapes and place afresh.
     [self.sentShapes removeAllObjects];
@@ -1172,8 +1207,53 @@ static NSData *jpegOf(CGImageRef img, int maxWidth, int *w, int *h) {
   }];
 }
 
+// Whether auth m answers c's challenge: HMAC-SHA256 under the secret of
+// "hmk-screen-auth-v1\n", the challenge, and the daemon's pid then this
+// host's (big-endian 32 bits each), the daemon's being c's peer
+// (screenMAC in internal/daemon/screenauth.go). One try per connection.
+- (BOOL)authOK:(NSDictionary *)m from:(Conn *)c {
+  NSData *challenge = c.challenge;
+  c.challenge = nil;
+  NSNumber *pid = m[@"pid"];
+  NSString *mac = m[@"mac"];
+  if (self.secret.length != 32 || challenge.length != 32 || ![pid isKindOfClass:NSNumber.class] ||
+      ![mac isKindOfClass:NSString.class])
+    return NO;
+  pid_t peer = 0;
+  socklen_t n = sizeof peer;
+  if (getsockopt(c.fd, SOL_LOCAL, LOCAL_PEERPID, &peer, &n) != 0 || peer <= 0 || peer != pid.intValue) return NO;
+  NSData *got = [[NSData alloc] initWithBase64EncodedString:mac options:0];
+  if (got.length != CC_SHA256_DIGEST_LENGTH) return NO;
+  uint32_t pids[2] = {htonl((uint32_t)peer), htonl((uint32_t)getpid())};
+  static const char label[] = "hmk-screen-auth-v1\n";
+  CCHmacContext ctx;
+  CCHmacInit(&ctx, kCCHmacAlgSHA256, self.secret.bytes, self.secret.length);
+  CCHmacUpdate(&ctx, label, sizeof label - 1);
+  CCHmacUpdate(&ctx, challenge.bytes, challenge.length);
+  CCHmacUpdate(&ctx, pids, sizeof pids);
+  uint8_t want[CC_SHA256_DIGEST_LENGTH];
+  CCHmacFinal(&ctx, want);
+  return timingsafe_bcmp(want, got.bytes, sizeof want) == 0;
+}
+
 - (void)handle:(NSDictionary *)m from:(Conn *)c {
   NSString *t = m[@"t"];
+  if (!c.authed) {
+    // Nothing, not even quit, before the daemon proves it's the one that
+    // started this host.
+    if ([t isEqualToString:@"auth"] && [self authOK:m from:c]) {
+      c.authed = YES;
+      [self send:@{@"t" : @"authed"} to:c];
+      return;
+    }
+    pid_t peer = 0;
+    socklen_t n = sizeof peer;
+    getsockopt(c.fd, SOL_LOCAL, LOCAL_PEERPID, &peer, &n);
+    fprintf(stderr, "screen-host: pid %d didn't prove it's the daemon that started this host: hung up\n", peer);
+    [self send:@{@"t" : @"hello", @"pid" : @(getpid()), @"refused" : @YES} to:c];
+    [self drop:c];
+    return;
+  }
   if ([t isEqualToString:@"quit"]) exit(0);
   if ([t isEqualToString:@"media"]) {
     [self send:@{@"t" : @"mediaReady"} to:c];
@@ -1220,25 +1300,65 @@ static NSData *jpegOf(CGImageRef img, int maxWidth, int *w, int *h) {
 
 @end
 
+#define HMK_SCREEN_HELLO "hmk-scr-hello-v1"  // 16 bytes: screenHello in internal/daemon/screenauth.go
+#define HMK_SCREEN_PROTOCOL 1                // screenProtocol there
+
+// The secret, from the daemon's rendezvous (helpers/common/rendezvous.h),
+// if Hammock's daemon sent it, for this socket; else nil, and why.
+static NSData *fetchSecret(const char *name, NSString *socketPath) {
+  void *data = NULL;
+  size_t len = 0;
+  audit_token_t token;
+  kern_return_t kr = hmk_rv_fetch(name, HMK_SCREEN_HELLO, 10000, &data, &len, &token);
+  if (kr != KERN_SUCCESS) {
+    fprintf(stderr, "screen-host: no answer from a daemon at %s (mach error %#x)\n", name, kr);
+    return nil;
+  }
+  NSData *bytes = [NSData dataWithBytes:data length:len];
+  vm_deallocate(mach_task_self(), (vm_address_t)data, len);
+  // Who sent it, as it sent it: a process that has exec'd since isn't found.
+  NSString *team = HammockOwnTeam(NULL);
+  if (!(team ? HammockSignedAsHammock(token, team, HammockPeerDaemon) : HammockOwnProgram(token, HammockPeerDaemon))) {
+    fprintf(stderr, "screen-host: the answer at %s isn't from Hammock's daemon (pid %d)\n", name, (int)token.val[5]);
+    return nil;
+  }
+  NSDictionary *m = [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nil];
+  if (![m isKindOfClass:NSDictionary.class] || ![m[@"v"] isKindOfClass:NSNumber.class] ||
+      [m[@"v"] intValue] != HMK_SCREEN_PROTOCOL || ![m[@"secret"] isKindOfClass:NSString.class] ||
+      ![m[@"socket"] isKindOfClass:NSString.class]) {
+    fprintf(stderr, "screen-host: the daemon's answer is from another build of Hammock\n");
+    return nil;
+  }
+  if (![m[@"socket"] isEqualToString:socketPath]) {
+    fprintf(stderr, "screen-host: the daemon wants a host on another socket (%s)\n", [m[@"socket"] UTF8String]);
+    return nil;
+  }
+  NSData *secret = [[NSData alloc] initWithBase64EncodedString:m[@"secret"] options:0];
+  return secret.length == 32 ? secret : nil;
+}
+
 int main(int argc, char **argv) {
   @autoreleasepool {
     NSString *socketPath = nil;
-    pid_t owner = 0;
+    const char *rendezvous = NULL;
     for (int i = 1; i < argc; i++) {
       if (!strncmp(argv[i], "--socket=", 9)) socketPath = @(argv[i] + 9);
-      if (!strncmp(argv[i], "--owner=", 8)) owner = atoi(argv[i] + 8);
+      if (!strncmp(argv[i], "--rendezvous=", 13)) rendezvous = argv[i] + 13;
       // Started through Launch Services, it has no stderr of the daemon's.
       if (!strncmp(argv[i], "--log=", 6) && freopen(argv[i] + 6, "a", stderr)) setvbuf(stderr, NULL, _IONBF, 0);
     }
-    if (!socketPath || owner <= 0) {
-      fprintf(stderr, "usage: Hammock Screen --socket=PATH --owner=PID\n");
+    if (!socketPath || !rendezvous) {
+      fprintf(stderr, "usage: Hammock Screen --socket=PATH --rendezvous=NAME [--log=FILE] (hmkd starts it)\n");
       return 2;
     }
+    // Only the daemon that started it: without its secret, it serves no one.
+    NSData *secret = fetchSecret(rendezvous, socketPath);
+    if (!secret) return 1;
     NSApplication *app = NSApplication.sharedApplication;
     app.activationPolicy = NSApplicationActivationPolicyProhibited;
     gHost = [Host new];
     gHost.socketPath = socketPath;
-    gHost.owner = owner;
+    gHost.secret = secret;
     gHost.conns = [NSMutableArray array];
     gHost.captures = [NSMutableDictionary dictionary];
     gHost.frames = dispatch_queue_create("screen.frames", DISPATCH_QUEUE_SERIAL);

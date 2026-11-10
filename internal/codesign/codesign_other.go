@@ -26,6 +26,7 @@ type Token struct{}
 // PeerToken: no audit tokens here.
 func PeerToken(int) Token { return Token{} }
 
+func TokenFromWords([8]uint32) Token             { return Token{} }
 func (Token) Valid() bool                        { return false }
 func (Token) PID() int                           { return 0 }
 func (Token) Path() (string, error)              { return "", errNoToken }

@@ -220,6 +220,19 @@ func PeerToken(fd int) Token {
 	return t
 }
 
+// TokenFromWords is the audit token whose eight words these are: a Mach
+// message's audit trailer, say, which is its sender's as it sent it
+// (helpers/common/rendezvous.h), not worked out later from a pid as a
+// socket's peer token is.
+func TokenFromWords(w [8]uint32) Token {
+	var t Token
+	for i := range w {
+		t.t.val[i] = C.uint(w[i])
+	}
+	t.ok = true
+	return t
+}
+
 // Valid reports whether the token was taken.
 func (t Token) Valid() bool { return t.ok }
 

@@ -18,7 +18,7 @@ clang -fobjc-arc -O2 -mmacosx-version-min=14.4 -Wall \
   "$here/host.m" "$here/../media/encoder.m" -o "$app/Contents/MacOS/$name" \
   -Wl,-sectcreate,__CGPreLoginApp,__cgpreloginapp,/dev/null \
   -framework AppKit -framework ApplicationServices -framework QuartzCore -framework ScreenCaptureKit \
-  -framework IOSurface -framework IOKit -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework CoreImage -framework ImageIO
+  -framework IOSurface -framework IOKit -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework CoreImage -framework ImageIO -framework Security
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -219,7 +219,6 @@ typedef void (^RunnerDone)(NSString *error);
 
 @interface Host : NSObject
 @property(copy) NSString *socketPath;
-@property pid_t owner;  // the hmkd that started it (--owner)
 @property(strong) NSMutableDictionary<NSString *, Pane *> *panes;
 @property(strong) NSMutableDictionary<NSString *, Runner *> *runners;  // by udid
 // The orientation each foldable was last turned to (by udid), by
@@ -256,11 +255,12 @@ static Host *gHost;
   dispatch_source_set_event_handler(self.acceptSrc, ^{
     int c = accept(fd, NULL, NULL);
     if (c < 0) return;
-    // Only hmkd and the Hammock app (helpers/common/peer.h): not anything
-    // else of yours, an agent in a pane, past hmkd's checks.
+    // Only hmkd and the Hammock app, by their signatures (helpers/common/
+    // peer.h): not anything else of yours, an agent in a pane, past hmkd's
+    // checks.
     pid_t peer = 0;
     const char *why = "";
-    if (!HammockPeerAllowed(c, self.owner, &peer, &why)) {
+    if (!HammockPeerAllowed(c, HammockPeerDaemon | HammockPeerApp, &peer, &why)) {
       fprintf(stderr, "%s: refused a connection from pid %d\n", getprogname(), peer);
       close(c);
       return;
@@ -1401,10 +1401,8 @@ static NSString *prepareRunner(NSString **error) {
 int main(int argc, char **argv) {
   @autoreleasepool {
     NSString *socketPath = nil;
-    pid_t owner = 0;
     for (int i = 1; i < argc; i++) {
       if (!strncmp(argv[i], "--socket=", 9)) socketPath = @(argv[i] + 9);
-      if (!strncmp(argv[i], "--owner=", 8)) owner = atoi(argv[i] + 8);
     }
     if (!socketPath) {
       fprintf(stderr, "usage: Hammock Simulator --socket=PATH\n");
@@ -1432,7 +1430,6 @@ int main(int argc, char **argv) {
     app.activationPolicy = NSApplicationActivationPolicyProhibited;
     gHost = [Host new];
     gHost.socketPath = socketPath;
-    gHost.owner = owner;
     gHost.panes = [NSMutableDictionary dictionary];
     gHost.runners = [NSMutableDictionary dictionary];
     gHost.rotations = [NSMutableDictionary dictionary];

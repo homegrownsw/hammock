@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -252,8 +251,9 @@ func (h *simHub) spawn() error {
 		return err
 	}
 	defer logf.Close()
-	// It talks only to this daemon and the Hammock app (helpers/common/peer.h).
-	cmd := exec.Command(h.path, "--socket="+SimulatorSocketPath(dir), "--owner="+strconv.Itoa(os.Getpid()))
+	// It talks only to hmkd and the Hammock app, by their code signatures
+	// (helpers/common/peer.h).
+	cmd := exec.Command(h.path, "--socket="+SimulatorSocketPath(dir))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.Env = baseEnv()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // outlives the daemon

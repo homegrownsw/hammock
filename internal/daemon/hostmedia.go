@@ -21,6 +21,9 @@ type hostMedia struct {
 	name   string        // for logs
 	socket func() string // the helper's socket
 	ensure func()        // starts the helper if it isn't running
+	// greet, if set, is what the helper must hear before anything else on a
+	// connection (the screen host's challenge: screenauth.go).
+	greet func(c net.Conn, r *bufio.Reader) error
 
 	start sync.Once
 	mu    sync.Mutex
@@ -125,10 +128,15 @@ func (h *hostMedia) run() {
 }
 
 func (h *hostMedia) serve(c net.Conn) error {
+	r := bufio.NewReaderSize(c, 1<<20)
+	if h.greet != nil {
+		if err := h.greet(c, r); err != nil {
+			return err
+		}
+	}
 	if _, err := c.Write([]byte(`{"t":"media"}` + "\n")); err != nil {
 		return err
 	}
-	r := bufio.NewReaderSize(c, 1<<20)
 	// The host's greeting lines, then mediaReady, then frames. A helper from
 	// before video never says it: give up, and say why.
 	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))

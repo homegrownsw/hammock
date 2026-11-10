@@ -195,7 +195,6 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 
 @interface Host : NSObject
 @property(copy) NSString *socketPath;
-@property pid_t owner;  // the hmkd that started it (--owner)
 @property(strong) NSMutableDictionary<NSString *, Browser *> *browsers;
 @property(strong) NSMutableArray<Conn *> *conns;
 @property(strong) dispatch_source_t acceptSrc;
@@ -1047,11 +1046,12 @@ static time_t mtimeOf(const char *path) {
   dispatch_source_set_event_handler(self.acceptSrc, ^{
     int c = accept(fd, NULL, NULL);
     if (c < 0) return;
-    // Only hmkd and the Hammock app (helpers/common/peer.h): not anything
-    // else of yours, an agent in a pane, past hmkd's checks.
+    // Only hmkd and the Hammock app, by their signatures (helpers/common/
+    // peer.h): not anything else of yours, an agent in a pane, past hmkd's
+    // checks.
     pid_t peer = 0;
     const char *why = "";
-    if (!HammockPeerAllowed(c, self.owner, &peer, &why)) {
+    if (!HammockPeerAllowed(c, HammockPeerDaemon | HammockPeerApp, &peer, &why)) {
       fprintf(stderr, "%s: refused a connection from pid %d\n", getprogname(), peer);
       close(c);
       return;
@@ -2019,7 +2019,6 @@ int main(int argc, char *argv[]) {
     }
     gHost = [Host new];
     gHost.socketPath = @(cl->GetSwitchValue("socket").ToString().c_str());
-    if (cl->HasSwitch("owner")) gHost.owner = (pid_t)atoi(cl->GetSwitchValue("owner").ToString().c_str());
     gHost.browsers = [NSMutableDictionary dictionary];
     gHost.conns = [NSMutableArray array];
     gHost.built = mtimeOf(NSBundle.mainBundle.executablePath.fileSystemRepresentation);

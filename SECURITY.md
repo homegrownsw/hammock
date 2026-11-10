@@ -36,6 +36,10 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
   message, not by a pid), so an agent can't run it to skip the daemon's rules. Its prompts say in its own
   words what will be signed, created, deleted or allowed, and name each device it would let approve by its
   key's fingerprint.
+- **Screen sharing.** Its helper holds Screen Recording and Accessibility, so it serves only the daemon that
+  started it: it gets a secret from that daemon over Mach (checked by the kernel's audit token for the message,
+  not by a pid or the socket's peer, which a process can fake by exec'ing a signed program in its place), and
+  every connection must answer a fresh challenge with it. Started by anything else, it doesn't run.
 - **Notifications.** Push payloads are end-to-end encrypted per phone; the relay (`relay/push`) sees
   device tokens, ciphertext, keyed-hash tags and the category.
 - **Untrusted output.** Terminal output, web pages and transcripts are untrusted: links that would open

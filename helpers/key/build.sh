@@ -11,8 +11,8 @@ name="Hammock Key"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$root/apple/Resources/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
-# rendezvous.h: how the daemon hands it a request (internal/daemon builds
-# from the same header).
+# rendezvous.h: how the daemon hands it a request (on
+# helpers/common/rendezvous.h, which internal/daemon builds from too).
 swiftc -O -swift-version 5 -target arm64-apple-macos26.0 -import-objc-header "$here/rendezvous.h" \
   "$here/main.swift" "$here/panel.swift" -o "$app/Contents/MacOS/$name"
 cat > "$app/Contents/Info.plist" <<PLIST
