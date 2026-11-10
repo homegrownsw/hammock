@@ -555,9 +555,10 @@ func (d *Daemon) mergeComputers(cs *pb.Computers, from string) {
 	cleanComputer(n)
 	n.ThisComputer, n.Online, n.Refused, n.IdleMs = false, false, false, 0
 	n.LinkedUnixMs, n.LastSeenUnixMs = l.Record.LinkedUnixMs, l.Record.LastSeenUnixMs
-	if n.Key = l.Record.Key; len(n.Key) == 0 && userIDFor(r.Key) == from {
-		n.Key = r.Key // (its own, signed in with: an upgraded link learns it so)
-	}
+	// Its key is never taken from what it says of itself: a link without one
+	// yet (from an earlier build) learns it only as proven, signing in
+	// (signIn, peerHello).
+	n.Key = l.Record.Key
 	n.LastInputUnixMs = l.Record.LastInputUnixMs
 	if r.IdleMs > 0 {
 		n.LastInputUnixMs = time.Now().UnixMilli() - (r.IdleMs - 1)

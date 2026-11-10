@@ -95,6 +95,12 @@ func (d *Daemon) peerHello(c *conn, m *pb.PeerHello) (*pb.ServerMessage, error) 
 	if len(d.scope(uid)) > 0 || d.isLinked(uid) {
 		d.remoteAuthed(c)
 		d.rememberKey(uid, m.PublicKey) // (if it isn't on record yet: this one, which just proved it)
+		if sl := d.comp.links[uid]; sl != nil && sl.Record != nil && len(sl.Record.Key) == 0 && d.isLinked(uid) {
+			// A link from an earlier build learns its key as proven here
+			// (or by signIn), never from what it says of itself.
+			sl.Record.Key = m.PublicKey
+			d.persist(d.store.PutRecord("complink", uid, sl))
+		}
 		d.knowPerson(p)
 		u := &pb.StateUpdate{People: []*pb.Person{proto.CloneOf(p)}}
 		d.setOnline(uid, true, u)

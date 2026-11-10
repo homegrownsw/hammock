@@ -224,3 +224,33 @@ func TestApprovedJoinKeepsItsOwnKey(t *testing.T) {
 		t.Fatal("the approved connection was closed")
 	}
 }
+
+// A linked computer with no key on record yet (linked by an earlier build)
+// never learns it from what it says of itself, only as proven signing in.
+func TestLegacyLinkLearnsOnlyProvenKey(t *testing.T) {
+	host, _ := startHost(t)
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	uid := userIDFor(pub)
+	host.mu.Lock()
+	host.comp.links[uid] = &pb.StoredLink{CertSha256: "cc", Record: &pb.Computer{UserId: uid, Name: "Other"}}
+	l := newLink(host, &pb.InviteToken{CertSha256: "cc", HostUserId: uid})
+	l.linked = true
+	host.links["cc"] = l
+	// Its state, claiming a key (before signIn has stored the proven one).
+	l.applyLocked(&pb.StateUpdate{Computers: &pb.Computers{List: []*pb.Computer{{UserId: uid, Name: "Other", Key: pub}}}}, false)
+	got := host.comp.links[uid].Record.Key
+	host.mu.Unlock()
+	if len(got) != 0 {
+		t.Fatal("a link learned its key from its own state")
+	}
+	// Signing in here proves it.
+	if _, err := peerHelloWith(t, host, pub, priv); err != nil {
+		t.Fatal(err)
+	}
+	host.mu.Lock()
+	got = host.comp.links[uid].Record.Key
+	host.mu.Unlock()
+	if !bytes.Equal(got, pub) {
+		t.Fatal("the key proven signing in wasn't recorded")
+	}
+}
