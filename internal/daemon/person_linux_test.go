@@ -13,7 +13,19 @@ import (
 // Unraid's page is you only with the key hmkd left for it, in the
 // environment hmk was started with.
 func TestPersonKey(t *testing.T) {
+	was := onUnraid
+	defer func() { onUnraid = was }()
+
+	// Not on Unraid: no key is written, and an old one goes.
+	onUnraid = func() bool { return false }
 	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, personKeyFile), []byte("old\n"), 0o600)
+	writePersonKey(dir, slog.Default())
+	if _, err := os.Stat(filepath.Join(dir, personKeyFile)); err == nil {
+		t.Fatal("a key left for a page that isn't there")
+	}
+
+	onUnraid = func() bool { return true }
 	writePersonKey(dir, slog.Default())
 	b, err := os.ReadFile(filepath.Join(dir, personKeyFile))
 	if err != nil {
@@ -32,9 +44,14 @@ func TestPersonKey(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(50 * time.Millisecond)
-		if got := hasPersonKey(cmd.Process.Pid); got != tc.ok {
+		if got := personPage(cmd.Process.Pid); got != tc.ok {
 			t.Errorf("key %q: %v, want %v", tc.key, got, tc.ok)
 		}
+		onUnraid = func() bool { return false }
+		if personPage(cmd.Process.Pid) {
+			t.Errorf("key %q taken off Unraid", tc.key)
+		}
+		onUnraid = func() bool { return true }
 		cmd.Process.Kill()
 		cmd.Wait()
 	}

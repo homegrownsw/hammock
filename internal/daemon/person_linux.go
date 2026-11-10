@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/alexjsp/hammock/internal/codesign"
@@ -21,8 +22,15 @@ func isHammockApp(int, codesign.Token) bool { return false }
 func responsibleFor(int) int { return 0 }
 
 // personPage reports whether pid is Unraid's plugin page asking for you:
-// started with this run's key (below).
-func personPage(pid int) bool { return hasPersonKey(pid) }
+// on Unraid, started with this run's key (below).
+func personPage(pid int) bool { return onUnraid() && hasPersonKey(pid) }
+
+// onUnraid reports whether this is Unraid (its release file), the only
+// Linux with a page of Hammock's that asks as you (tests fake it).
+var onUnraid = sync.OnceValue(func() bool {
+	_, err := os.Stat("/etc/unraid-version")
+	return err == nil
+})
 
 // Unraid's Hammock page (action.php) runs hmk for you from php-fpm. Any
 // program of root's can send php-fpm a FastCGI request naming a script of
@@ -39,8 +47,14 @@ const personKeyFile = "person.key"
 
 var personKey atomic.Value // string
 
-// writePersonKey makes a new key for this run of the daemon, in dir.
+// writePersonKey makes a new key for this run of the daemon, in dir: only
+// on Unraid. Anywhere else it removes one an older hmkd left (a file any
+// program of yours, an agent's included, could read and pass on).
 func writePersonKey(dir string, log *slog.Logger) {
+	if !onUnraid() {
+		_ = os.Remove(filepath.Join(dir, personKeyFile))
+		return
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return
