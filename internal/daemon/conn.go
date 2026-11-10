@@ -430,6 +430,11 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		d.mu.Lock()
 		if c.peer == "" {
 			c.kind, c.name, c.fromPane = m.Hello.ClientKind, m.Hello.ClientName, m.Hello.FromPaneId
+			if c.kind == "mac" && !c.remote && !c.personOK.Load() {
+				// Only the app is the app (person.go): where notifications
+				// and requests go, and who's shown a pairing code, follow it.
+				c.kind = "other"
+			}
 		}
 		if c.kind == "mac" && !c.remote && c.peer == "" && c.personOK.Load() {
 			d.closeBootstrap("the Hammock app connected") // there's someone to ask from now on (bootstrap.go)

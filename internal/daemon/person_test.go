@@ -656,3 +656,30 @@ func TestApprovalSaysWhoTypedIntoThePane(t *testing.T) {
 		t.Fatalf("old, you haven't typed since: %+v", s)
 	}
 }
+
+// A local client that isn't the app by its signature can't say it's the
+// app: notifications, requests and pairing codes go by it.
+func TestOnlyTheAppIsKindMac(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	asPerson(t, nobody)
+	asPlain(t, func(*caller, int) bool { return true })
+	fake := dialAs(t, dir, nil, "mac")
+	call(t, fake, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	d.mu.Lock()
+	open := d.appIsOpen()
+	d.mu.Unlock()
+	if open {
+		t.Fatal("a plain caller saying it's the app counts as the app")
+	}
+	asPerson(t, testPerson)
+	app := dialKind(t, dir, "mac")
+	call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	d.mu.Lock()
+	open = d.appIsOpen()
+	d.mu.Unlock()
+	if !open {
+		t.Fatal("the app doesn't count")
+	}
+}
