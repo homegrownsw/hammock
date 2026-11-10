@@ -17,8 +17,10 @@ type FrameType uint8
 
 const (
 	// FrameAttach (client → holder): payload u64 from_offset, then the
-	// holder's token if it has one. Must be the first frame a client sends. The holder replies with FrameInfo, then replays
-	// buffered output from max(from_offset, ring start) and streams live output.
+	// holder's token if it has one. The first frame a client sends, or on
+	// macOS the first after its proof (FrameProve). The holder replies with
+	// FrameInfo, then replays buffered output from max(from_offset, ring
+	// start) and streams live output.
 	FrameAttach FrameType = 1
 	// FrameInfo (holder → client): see Info.
 	FrameInfo FrameType = 2
@@ -35,6 +37,14 @@ const (
 	// FrameClose (client → holder): ask the holder to exit. If the child is still
 	// running it is sent SIGHUP first.
 	FrameClose FrameType = 8
+	// FrameProve (client → holder, macOS): no payload; the first frame a
+	// daemon sends, asking to prove the connection is its own (proof.go).
+	// Holders from before the proof close the connection on it.
+	FrameProve FrameType = 9
+	// FrameChallenge (holder → client): u64 the connection's number, its
+	// 32-byte nonce, then the name of the holder's Mach service for the
+	// proof. The holder reads nothing more until the proof is in.
+	FrameChallenge FrameType = 10
 )
 
 // MaxFramePayload bounds a single frame to protect against corrupt streams.

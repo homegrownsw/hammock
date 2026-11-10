@@ -5,12 +5,13 @@
 //
 // Shared by both ends, so a daemon and a helper from one build always
 // agree: the helpers (helpers/key/main.swift through helpers/key/rendezvous.h,
-// helpers/screen/host.m) and the daemon (internal/daemon/rendezvous_darwin.go,
-// through cgo). Each helper says hello with its own magic (16 bytes, no
-// NUL), which is also its wire format's version, and may add a few bytes of
-// its own (hmk_rv_ask, hmk_rv_hear). The Mac app proves to the daemon that
-// a socket connection is its own the same way (appproof.h), with the daemon
-// checking the hello's sender.
+// helpers/screen/host.m) and the daemon (internal/rendezvous, through cgo).
+// Each helper says hello with its own magic (16 bytes, no NUL), which is
+// also its wire format's version, and may add a few bytes of its own
+// (hmk_rv_ask, hmk_rv_hear). The Mac app proves to the daemon that a socket
+// connection is its own the same way (appproof.h), with the daemon checking
+// the hello's sender, and so does the daemon to a pane holder
+// (internal/holder/proof.go, through internal/rendezvous at both ends).
 //
 //   1. The daemon checks in a service under a fresh random name
 //      (bootstrap_check_in: launchd refuses a second check-in while it's

@@ -10,7 +10,9 @@
 // With --daemon, only that program (or another hmkd of the same install)
 // may attach, token or not. With --state, only the process holding that
 // state directory's locks (its daemon: holder.OpenStateLock) may attach,
-// and the daemon starting the holder must hold them.
+// and the daemon starting the holder must hold them. On macOS, with either,
+// a client proves over Mach that it's the process the two are checked of
+// before anything it sends counts (internal/holder/proof.go).
 package main
 
 import (

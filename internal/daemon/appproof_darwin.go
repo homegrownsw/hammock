@@ -5,13 +5,6 @@ package daemon
 #include <stdlib.h>
 #include "appproof.h"
 
-// hmk_app_proof_hear waits up to ms for a proof (appproof.h): its sender's
-// audit token as it sent it, and its body.
-static kern_return_t hmk_app_proof_hear(mach_port_t port, mach_msg_timeout_t ms, audit_token_t *token, mach_port_t *reply,
-                                        hmk_app_proof_body_t *body) {
-	return hmk_rv_hear(port, ms, HMK_APP_PROOF_HELLO, body, sizeof *body, token, reply);
-}
-
 static kern_return_t hmk_app_proof_send(const char *service, uint64_t conn, const uint8_t *nonce, size_t n,
                                         mach_msg_timeout_t ms, char *answer, size_t cap) {
 	return hmk_app_prove(service, conn, nonce, n, ms, answer, cap);
@@ -26,7 +19,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/homegrownsw/hammock/internal/codesign"
+	machrv "github.com/homegrownsw/hammock/internal/rendezvous"
 )
 
 // appProofHello is the app's proof's hello (HMK_APP_PROOF_HELLO).
@@ -63,25 +56,15 @@ func (d *Daemon) serveAppProofs(rv *rendezvous) error {
 			return nil
 		default:
 		}
-		var tok C.audit_token_t
-		var reply C.mach_port_t
-		var body C.hmk_app_proof_body_t
-		switch kr := C.hmk_app_proof_hear(rv.port, 200, &tok, &reply, &body); kr {
-		case C.KERN_SUCCESS:
-		case C.MACH_RCV_TIMED_OUT, C.KERN_INVALID_ARGUMENT, C.MACH_RCV_TOO_LARGE:
+		h, err := rv.svc.Hear(200*time.Millisecond, C.sizeof_hmk_app_proof_body_t)
+		if errors.Is(err, machrv.ErrNothing) {
 			continue // nothing yet, or something else, dropped
-		default:
-			return fmt.Errorf("the service broke (mach error %#x)", int(kr))
 		}
-		var w [8]uint32
-		for i := range w {
-			w[i] = uint32(tok.val[i])
+		if err != nil {
+			return err
 		}
-		b := C.GoBytes(unsafe.Pointer(&body), C.int(unsafe.Sizeof(body)))
-		answer := d.appProof(binary.BigEndian.Uint64(b[:8]), b[8:], codesign.TokenFromWords(w))
-		p := C.CBytes([]byte(answer))
-		C.hmk_rv_send(reply, p, C.size_t(len(answer)))
-		C.free(p)
+		answer := d.appProof(binary.BigEndian.Uint64(h.Body[:8]), h.Body[8:], h.Token)
+		_ = h.Answer([]byte(answer))
 	}
 }
 

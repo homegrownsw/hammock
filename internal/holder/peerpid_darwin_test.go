@@ -8,10 +8,11 @@ import (
 	"testing"
 )
 
-// TestHelperSpeaks isn't a test: run with HMK_TEST_SPEAK set, it sends an
-// attach (with that token) on the connection it was handed as fd 3, and
-// says whether the holder answered; with HMK_TEST_SPEAK_DIAL, on one it
-// makes itself to that socket.
+// TestHelperSpeaks isn't a test: run with HMK_TEST_SPEAK set, it proves
+// itself and sends an attach (with that token) on the connection it was
+// handed as fd 3 (with HMK_TEST_SPEAK_RAW, the attach only, as a daemon from
+// before the proof would), and says whether the holder answered; with
+// HMK_TEST_SPEAK_DIAL, on one it makes itself to that socket.
 func TestHelperSpeaks(t *testing.T) {
 	tok := os.Getenv("HMK_TEST_SPEAK")
 	if tok == "" {
@@ -29,10 +30,8 @@ func TestHelperSpeaks(t *testing.T) {
 			os.Exit(2)
 		}
 	}
-	if WriteFrame(c, FrameAttach, append(u64(0), tok...)) != nil {
-		os.Exit(2)
-	}
-	if f, err := ReadFrame(c); err == nil && f.Type == FrameInfo {
+	if hc, err := attach(c, 0, []byte(tok), os.Getenv("HMK_TEST_SPEAK_RAW") == ""); err == nil {
+		hc.Close()
 		os.Stdout.WriteString("attached\n")
 	} else {
 		os.Stdout.WriteString("refused\n")

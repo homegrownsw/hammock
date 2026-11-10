@@ -42,6 +42,12 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
   started it: it gets a secret from that daemon over Mach (checked by the kernel's audit token for the message,
   not by a pid or the socket's peer, which a process can fake by exec'ing a signed program in its place), and
   every connection must answer a fresh challenge with it. Started by anything else, it doesn't run.
+- **Pane holders.** Each terminal pane's program runs under a holder process, which serves only the daemon of
+  its own state dir (whoever it serves can type into and read the pane): on a Mac the daemon proves each
+  connection with a Mach message (checked by the kernel's audit token for the message, bound to the
+  connection's own process, which must also be the signed hmkd holding the state dir's locks), not by the
+  socket's peer. Holders started by builds before that, until their panes are restarted, and every holder on
+  Linux, check the socket's peer, which a process of yours can fake: a speed bump, not a boundary.
 - **Notifications.** Push payloads are end-to-end encrypted per phone; the relay (`relay/push`) sees
   device tokens, ciphertext, keyed-hash tags and the category.
 - **Untrusted output.** Terminal output, web pages and transcripts are untrusted: links that would open

@@ -33,8 +33,12 @@ import (
 // file a flock was taken through (CloseInherited): a descriptor of the
 // lock, flocked and let go by a program while no daemon ran, can't be
 // carried into the real hmkd across exec and pass for its own once the
-// real daemon has the lock again. Unlike a POSIX record lock, a flock isn't
-// dropped when the process closes another descriptor of the same file.
+// real daemon has the lock again. That holds only of an hmkd that has run:
+// one exec'd suspended (POSIX_SPAWN_START_SUSPENDED) closes nothing, and on
+// macOS a socket's peer can be just that, so there the check is of a
+// proof's sender, which was running when it sent it (proof.go). Unlike a
+// POSIX record lock, a flock isn't dropped when the process closes another
+// descriptor of the same file.
 //
 // The directory's lock, and not only run/daemon.lock: a copy of the state
 // whose run/daemon.lock was the real one's (renamed into the copy while no

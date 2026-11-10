@@ -8,7 +8,8 @@ import (
 )
 
 // PeerProc is the process at the other end of a connection: its pid and,
-// on macOS, its audit token as it connected.
+// on macOS, an audit token (the socket's peer's as it was asked, or a
+// proof's sender's as it sent it).
 type PeerProc struct {
 	PID   int
 	Token codesign.Token
@@ -22,15 +23,16 @@ type PeerProc struct {
 // would let anything of yours that read the daemon's state attach; this
 // way it also has to be the daemon.
 //
-// On macOS the peer is checked by its audit token, taken as it connects and
-// again once it has sent its first frame (the server refuses a client whose
-// two aren't the one process, still running), so a program that connects
-// and then execs hmkd (or hands the connection to a child, or to an hmkd)
-// isn't taken for it. And a holder with the
+// On macOS it's given the audit token of a proof's sender as it sent it
+// (proof.go), which the holder has checked is the process at the other end
+// of the connection: not the socket's peer token, which macOS works out
+// when asked from whichever process last used the socket, so a program
+// that connects and then execs a suspended hmkd in its own place (or hands
+// the connection to a child) would pass for it. And a holder with the
 // hardened runtime takes, by path, only an hmkd with it too: hmkd run with
 // DYLD_INSERT_LIBRARIES (which the runtime refuses) is anyone's code.
 // (A plain `go build`'s holder and hmkd have neither: nothing to require.)
-// On Linux, by pid: see peerExe.
+// On Linux, by the socket's peer pid: see peerExe.
 func DaemonPeer(daemon, install string) func(PeerProc) bool {
 	daemon = resolve(daemon)
 	install = resolve(install)

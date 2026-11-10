@@ -37,6 +37,11 @@ type Config struct {
 	// State, when set, must be locked by the process at the other end of
 	// each connection: the daemon of the holder's own state directory, not
 	// another hmkd started on a copy of it (statelock.go).
+	//
+	// On macOS, with Peer or State set, a client must prove over Mach that
+	// it's the process at its end of the connection before anything it
+	// sends counts, and both are checked of that process as it sent the
+	// proof (proof.go): a socket's peer is whoever last used it.
 	State *StateLock
 	// IdleExit makes the holder exit once the child has exited and no client
 	// has been attached for this long. Zero means wait for FrameClose forever.
@@ -55,6 +60,11 @@ type Config struct {
 	// under the pane (reap_linux.go). Only for a holder of its own process:
 	// it reaps every exited child but the command's.
 	AdoptOrphans bool
+
+	// legacy (tests) makes the holder one from before the proof: it closes
+	// a connection whose first frame isn't FrameAttach, and checks Peer and
+	// State of the socket's peer.
+	legacy bool
 }
 
 // maxChunk bounds a single output frame.
@@ -101,6 +111,9 @@ type Server struct {
 	inMu   sync.Mutex
 	inCond *sync.Cond
 	inBuf  [][]byte
+
+	proofs   proofs   // connections waiting for their proof (proof.go)
+	proofSvc proofSvc // the Mach service proofs come to
 }
 
 // Start launches the child on a new PTY and begins serving the socket.
@@ -235,11 +248,11 @@ func (s *Server) accept() {
 		if err != nil {
 			return
 		}
-		// Who connected, before anything is read: macOS gives a socket's
-		// peer as the last process to use it, which could otherwise be one
-		// it was handed to that only wrote the first frame.
+		// Who connected, before anything is read or a nonce sent: macOS
+		// gives a socket's peer as the last process to use it, which could
+		// otherwise be one it was handed to that only wrote the first frame.
 		var at PeerProc
-		if uc, ok := conn.(*net.UnixConn); ok && (s.cfg.Peer != nil || s.cfg.State != nil) {
+		if uc, ok := conn.(*net.UnixConn); ok && (proofSupported || s.cfg.Peer != nil || s.cfg.State != nil) {
 			at = sockPeer(uc)
 		}
 		go s.serve(conn, at)
@@ -248,7 +261,33 @@ func (s *Server) accept() {
 
 func (s *Server) serve(conn net.Conn, at PeerProc) {
 	first, err := ReadFrame(conn)
-	if err != nil || first.Type != FrameAttach || len(first.Payload) < 8 {
+	if err != nil {
+		conn.Close()
+		return
+	}
+	checked := s.cfg.Peer != nil || s.cfg.State != nil
+	mach := proofSupported && !s.cfg.legacy
+	proven := false
+	switch {
+	case first.Type == FrameProve && mach:
+		if err := s.awaitProof(conn, at); err != nil {
+			logf("refused a client (pid %d): its proof: %v", at.PID, err)
+			conn.Close()
+			return
+		}
+		proven = true
+		if first, err = ReadFrame(conn); err != nil {
+			conn.Close()
+			return
+		}
+	case first.Type == FrameAttach && checked && mach:
+		// Never the socket checks instead, whoever asks: they're what a
+		// process that execs hmkd in its own place passes (proof.go).
+		logf("refused a client (pid %d): it attached without proving itself (a daemon from before the proof?)", at.PID)
+		conn.Close()
+		return
+	}
+	if first.Type != FrameAttach || len(first.Payload) < 8 {
 		conn.Close()
 		return
 	}
@@ -256,7 +295,9 @@ func (s *Server) serve(conn net.Conn, at PeerProc) {
 		conn.Close()
 		return
 	}
-	if s.cfg.Peer != nil || s.cfg.State != nil {
+	if checked && !proven {
+		// Linux, which has no proof (and tests' legacy holders): the
+		// socket's peer, a speed bump there (peerpid_linux.go).
 		var p PeerProc
 		if uc, ok := conn.(*net.UnixConn); ok {
 			p = sockPeer(uc)

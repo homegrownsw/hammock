@@ -272,7 +272,10 @@ func (p *pane) connectHolder(h *startedHolder) error {
 	proc, token := h.proc, h.token
 	deadline := time.Now().Add(holderConnectTimeout)
 	for {
-		hc, err := holder.Dial(p.socket, 0, token)
+		// Only once the socket is the new holder's (dialHolder's rule): until
+		// it has replaced what was at its path (a link, put there by
+		// whatever copied this state), a dial could reach another holder.
+		hc, err := p.dialHolder(p.socket, 0, token)
 		if err == nil {
 			// Recorded first, so a daemon taking over (detachHolder) while
 			// this runs finds the holder to reconnect to.
