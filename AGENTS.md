@@ -2,6 +2,20 @@
 
 Notes for coding agents, and people, working on Hammock. If `AGENTS.local.md` is beside this file, read it too: it's the maintainer's own (git-ignored), and where it differs from this file, it wins.
 
+## This repository is public
+
+Hammock is open source (MIT), and everything in it is public: code, comments, tests and their data, docs, commit messages, and the repo's issues and pull requests. None of it may carry private information, whatever the Mac you're working on has in front of you:
+
+- **Nothing about the people working on it, or the Mac it's built on:** no names (other than as commit authors), email addresses, home paths (`/Users/<name>`), computer, device or host names, IP addresses, device IDs, Apple IDs, or employers and their clients.
+- **No secrets:** no tokens, keys, passwords, certificates, `.release.env` values or 1Password item names.
+- **Nothing from other projects on the machine:** don't name, quote, copy from or link to other repositories, private or not, or other projects in `~/Developer`, in code, docs, issues or commit messages. Describe the idea instead. Third-party open source Hammock uses is credited in THIRD_PARTY_NOTICES.md and the acknowledgements, and links to it are fine.
+- **Placeholders instead:** `/Users/me`, `~/Developer/app`, `you@example.com`, `Studio` or `Sam's iPhone`, `100.64.0.2`, `acme/widgets#42`. Test data taken from a real session (an agent transcript, a log) is anonymised before it's committed: paths, names, repos, account ids and tokens.
+- **Screenshots and recordings** in issues or pull requests show test data, not someone's real Groups, panes or notifications.
+
+Private context for the maintainer (their machines, accounts, release credentials, private history) belongs in `AGENTS.local.md`, which isn't committed. Before committing, read your diff with this in mind.
+
+## Working on Hammock
+
 - **Worktrees go in `.claude/worktrees/<name>`** (git-ignored), on a branch of the same name: `just worktree onboarding` (or `git worktree add .claude/worktrees/onboarding -b onboarding`, or EnterWorktree; without `just`, copy `.signing-identity` (and `AGENTS.local.md`, if there is one) into it, or its β is signed ad hoc and loses privacy grants on every rebuild). Not in sibling folders next to the repo. A new worktree needs nothing built first: the `just` recipes that build link libghostty-vt from a cache shared by every checkout (`~/Library/Caches/hammock/ghostty`, built once per pinned Ghostty commit; `scripts/ghostty-deps.sh`). Don't build Ghostty in a worktree; if you build without `just` (plain `go build`, `swift build`, `xcodebuild`), run `just deps` first. **Tear a worktree down with `just worktree-remove <name>`**, not `git worktree remove` or a generic cleanup: it also stops that worktree's β, its daemon and panes and deletes its state dir (below), and refuses while anything still runs from the worktree's build. `just beta-prune` clears β state left by worktrees removed without it.
 - Start with [README.md](README.md) (building and running) and [docs/build-plan.md](docs/build-plan.md) (the phases). Open work, follow-ups and known gaps are GitHub issues (below), not docs.
 - Build and test in the dev app, β. Don't rebuild, kill or relaunch the installed `Hammock.app` or its daemon unless asked: it's the one the person at this Mac is working in.
