@@ -2,8 +2,9 @@
 //
 // Low-latency VideoToolbox: real-time, no frame reordering, low-latency rate
 // control, keyframes only when asked. Frames come out as AVCC (4-byte
-// big-endian NAL lengths); a keyframe carries its SPS and PPS as NALs in
-// front, so a viewer can start from any keyframe.
+// big-endian NAL lengths); a keyframe carries its parameter sets (VPS, SPS
+// and PPS for HEVC, SPS and PPS for H.264) as NALs in front, so a viewer can
+// start from any keyframe.
 //
 // Loss recovery uses long-term references (LTR): some frames carry a token;
 // once the viewer is known to have that frame (and everything before it),

@@ -45,7 +45,8 @@
 //   on a media connection, after one line {"t":"mediaReady"}: binary
 //   records as HammockMediaRecord writes them (helpers/media/encoder.h): sid,
 //   flags (keyframe, refresh), capture time, size, LTR token, then the frame
-//   (AVCC; keyframes lead with SPS and PPS).
+//   (AVCC; keyframes lead with their parameter sets: VPS, SPS and PPS for
+//   HEVC, SPS and PPS for H.264).
 #import <AppKit/AppKit.h>
 #import <CoreImage/CoreImage.h>
 #import <IOSurface/IOSurface.h>
@@ -221,9 +222,10 @@ typedef void (^RunnerDone)(NSString *error);
 @property pid_t owner;  // the hmkd that started it (--owner)
 @property(strong) NSMutableDictionary<NSString *, Pane *> *panes;
 @property(strong) NSMutableDictionary<NSString *, Runner *> *runners;  // by udid
-// Degrees clockwise each device is turned (by udid), as its runner reports:
-// the framebuffer stays in the device's portrait, so the host turns the
-// picture (layer, screenshots, video) and maps input back.
+// The orientation each foldable was last turned to (by udid), by
+// rotateFoldable, which turns left and right from it: kept only in this
+// process, so after the host restarts a relative turn starts from portrait.
+// (How a screen is drawn turned comes from its uiOrientation instead.)
 @property(strong) NSMutableDictionary<NSString *, NSNumber *> *rotations;
 // Foldables: each one's hinge angle as last set, and its guest helper
 // (helpers/simulator/guest, run inside the device), by udid.

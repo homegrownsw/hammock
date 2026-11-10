@@ -21,9 +21,10 @@ import (
 // connecting process: the pane it runs in (its ancestors up to a pane's
 // shell) and whether it is an agent (an agent harness among those
 // ancestors, or running in a pane an agent made). Agents get the policy
-// `hmk mcp` applies: read panes in their own Group, control only panes
-// they made (directly or through panes they made), and anything else only
-// with the user's grant. There's no opt-out: these limits are guardrails
+// `hmk mcp` applies: read every pane in your own Groups and on your linked
+// computers, organise your own Groups, control only panes they made
+// (directly or through panes they made), and anything else only with your
+// grant (agentCheck; tech spec §8). There's no opt-out: these limits are guardrails
 // against an agent wandering, not a boundary (an agent can run anything the
 // user can); a real boundary is the agent harness's own sandbox.
 // Everything outside Hammock's panes (the Mac app, the
