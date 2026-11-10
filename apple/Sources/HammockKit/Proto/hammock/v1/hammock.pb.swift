@@ -1105,6 +1105,9 @@ public nonisolated struct Hammock_V1_AgentKind: Sendable {
   /// its limits can be asked of its own service (usage-live)
   public var liveUsage: Bool = false
 
+  /// a message starting with "!" runs as a shell command
+  public var shellMode: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -10023,7 +10026,7 @@ nonisolated extension Hammock_V1_HostTheme: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_AgentKind: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentKind"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{3}short_name\0\u{1}installed\0\u{3}can_resume\0\u{3}agent_view\0\u{3}can_switch\0\u{1}schedulable\0\u{1}usage\0\u{1}hooks\0\u{1}sessions\0\u{1}install\0\u{3}live_usage\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}name\0\u{3}short_name\0\u{1}installed\0\u{3}can_resume\0\u{3}agent_view\0\u{3}can_switch\0\u{1}schedulable\0\u{1}usage\0\u{1}hooks\0\u{1}sessions\0\u{1}install\0\u{3}live_usage\0\u{3}shell_mode\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10044,6 +10047,7 @@ nonisolated extension Hammock_V1_AgentKind: SwiftProtobuf.Message, SwiftProtobuf
       case 11: try { try decoder.decodeSingularBoolField(value: &self.sessions) }()
       case 12: try { try decoder.decodeSingularStringField(value: &self.install) }()
       case 13: try { try decoder.decodeSingularBoolField(value: &self.liveUsage) }()
+      case 14: try { try decoder.decodeSingularBoolField(value: &self.shellMode) }()
       default: break
       }
     }
@@ -10089,6 +10093,9 @@ nonisolated extension Hammock_V1_AgentKind: SwiftProtobuf.Message, SwiftProtobuf
     if self.liveUsage != false {
       try visitor.visitSingularBoolField(value: self.liveUsage, fieldNumber: 13)
     }
+    if self.shellMode != false {
+      try visitor.visitSingularBoolField(value: self.shellMode, fieldNumber: 14)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -10106,6 +10113,7 @@ nonisolated extension Hammock_V1_AgentKind: SwiftProtobuf.Message, SwiftProtobuf
     if lhs.sessions != rhs.sessions {return false}
     if lhs.install != rhs.install {return false}
     if lhs.liveUsage != rhs.liveUsage {return false}
+    if lhs.shellMode != rhs.shellMode {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -64,6 +64,8 @@ type Claude struct {
 	// Background shells, and each one's place by its task id.
 	shells  []*Shell
 	shellAt map[string]int
+	// The "!" command you ran at its prompt, waiting for its output.
+	bang string
 
 	// The model of the latest reply, and the context it took (its input,
 	// cached or not); the most it has taken, to tell a 1M window.
@@ -363,9 +365,19 @@ var (
 	imageRef    = regexp.MustCompile(`\[Image #\d+\]`)
 )
 
-func (c *Claude) userText(id, s string, imgs []*pb.AgentImage, ms int64) []*pb.AgentBlock {
+func (c *Claude) userText(id, s string, imgs []*pb.AgentImage, ms int64) (out []*pb.AgentBlock) {
 	// Sent from the agent view, it was pasted: shown as typed.
 	t := strings.TrimSpace(thread.UnwrapPasted(s))
+	if bangLine(t) {
+		// First: what a command printed can hold any of the markers below.
+		return c.bangCommand(id, t, ms)
+	}
+	if c.bang != "" {
+		// A "!" command whose output never came (interrupted): done, now
+		// something else has been typed.
+		settled := c.endBang("", "")
+		defer func() { out = append(settled, out...) }()
+	}
 	switch {
 	case strings.HasPrefix(t, "[Request interrupted"):
 		return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_NOTE, TimeUnixMs: ms, Text: "Interrupted"})
@@ -412,6 +424,83 @@ var (
 	taskStatus  = regexp.MustCompile(`(?s)<status>(.*?)</status>`)
 	taskResult  = regexp.MustCompile(`(?s)<result>(.*?)</result>`)
 )
+
+// bangLine: a line of a "!" command you ran at Claude Code's prompt (bash
+// mode): the command (<bash-input>) or what it printed (<bash-stdout>,
+// <bash-stderr>). By how it starts: the output can hold the tags too.
+func bangLine(t string) bool {
+	return strings.HasPrefix(t, "<bash-input>") || strings.HasPrefix(t, "<bash-stdout>") || strings.HasPrefix(t, "<bash-stderr>")
+}
+
+// bangCommand is a "!" command you ran at Claude Code's prompt: recorded as
+// one user line, <bash-input>cmd</bash-input>, and what it printed as the
+// next, <bash-stdout>…</bash-stdout><bash-stderr>…</bash-stderr>. Shown as
+// the Bash tool it is, "Ran `cmd`", with that output under it: not a
+// message you wrote, nor (the output) one from Claude.
+func (c *Claude) bangCommand(id, t string, ms int64) []*pb.AgentBlock {
+	var out []*pb.AgentBlock
+	if rest, ok := strings.CutPrefix(t, "<bash-input>"); ok {
+		cmd, after, _ := strings.Cut(rest, "</bash-input>")
+		if c.bang != "" {
+			out = c.endBang("", "")
+		}
+		cmd = strings.TrimSpace(cmd)
+		c.bang, c.turn = id, id
+		out = append(out, c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_TOOL, Tool: "Bash", TimeUnixMs: ms, Input: cmd,
+			Title: "Ran `" + firstLine(cmd) + "`", Pending: true, TurnId: id})...)
+		if t = strings.TrimSpace(after); t == "" {
+			return out
+		}
+		// The command and its output in one line: the output replaces its
+		// pending block.
+		out = out[:len(out)-1]
+	}
+	stdout, stderr := bashStreams(t)
+	if stdout == "(Bash completed with no output)" {
+		stdout = ""
+	}
+	return append(out, c.endBang(stripANSI(stdout), stripANSI(stderr))...)
+}
+
+// endBang settles the "!" command waiting for its output, with what it
+// printed. Claude Code doesn't record its exit status, and plenty that
+// works writes only to stderr: it isn't marked failed.
+func (c *Claude) endBang(stdout, stderr string) []*pb.AgentBlock {
+	i, ok := c.byID[c.bang]
+	c.bang = ""
+	if !ok {
+		return nil
+	}
+	b := cloneBlock(c.blocks[i])
+	b.Pending = false
+	var text []string
+	for _, s := range []string{stdout, stderr} {
+		if s = strings.TrimRight(s, "\n"); strings.TrimSpace(s) != "" {
+			text = append(text, s)
+		}
+	}
+	b.Output = clip(strings.Join(text, "\n"), maxOutput)
+	return c.add(b)
+}
+
+// bashStreams splits a "!" command's output line, <bash-stdout>…
+// </bash-stdout><bash-stderr>…</bash-stderr> (Claude Code's and Kimi's),
+// at the last place one stream ends and the other starts: what it printed
+// can hold those tags too.
+func bashStreams(t string) (stdout, stderr string) {
+	t = strings.TrimSpace(t)
+	const mid = "</bash-stdout><bash-stderr>"
+	if rest, ok := strings.CutPrefix(t, "<bash-stdout>"); ok {
+		if i := strings.LastIndex(rest, mid); i >= 0 {
+			return rest[:i], strings.TrimSuffix(rest[i+len(mid):], "</bash-stderr>")
+		}
+		return strings.TrimSuffix(rest, "</bash-stdout>"), ""
+	}
+	if rest, ok := strings.CutPrefix(t, "<bash-stderr>"); ok {
+		return "", strings.TrimSuffix(rest, "</bash-stderr>")
+	}
+	return "", ""
+}
 
 // taskNotification: a note saying which task finished, with what it
 // reported tucked under it.

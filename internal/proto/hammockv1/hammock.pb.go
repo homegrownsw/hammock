@@ -2753,6 +2753,7 @@ type AgentKind struct {
 	Sessions      bool                   `protobuf:"varint,11,opt,name=sessions,proto3" json:"sessions,omitempty"`                    // its sessions are in the session finder
 	Install       string                 `protobuf:"bytes,12,opt,name=install,proto3" json:"install,omitempty"`                       // a command that installs it
 	LiveUsage     bool                   `protobuf:"varint,13,opt,name=live_usage,json=liveUsage,proto3" json:"live_usage,omitempty"` // its limits can be asked of its own service (usage-live)
+	ShellMode     bool                   `protobuf:"varint,14,opt,name=shell_mode,json=shellMode,proto3" json:"shell_mode,omitempty"` // a message starting with "!" runs as a shell command
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2874,6 +2875,13 @@ func (x *AgentKind) GetInstall() string {
 func (x *AgentKind) GetLiveUsage() bool {
 	if x != nil {
 		return x.LiveUsage
+	}
+	return false
+}
+
+func (x *AgentKind) GetShellMode() bool {
+	if x != nil {
+		return x.ShellMode
 	}
 	return false
 }
@@ -21258,7 +21266,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x12dark_terminal_file\x18\x05 \x01(\tR\x10darkTerminalFile\x12\x1f\n" +
 	"\vagent_color\x18\x06 \x01(\tR\n" +
 	"agentColor\x12!\n" +
-	"\fwindow_theme\x18\a \x01(\tR\vwindowTheme\"\xec\x02\n" +
+	"\fwindow_theme\x18\a \x01(\tR\vwindowTheme\"\x8b\x03\n" +
 	"\tAgentKind\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
@@ -21278,7 +21286,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\bsessions\x18\v \x01(\bR\bsessions\x12\x18\n" +
 	"\ainstall\x18\f \x01(\tR\ainstall\x12\x1d\n" +
 	"\n" +
-	"live_usage\x18\r \x01(\bR\tliveUsage\"=\n" +
+	"live_usage\x18\r \x01(\bR\tliveUsage\x12\x1d\n" +
+	"\n" +
+	"shell_mode\x18\x0e \x01(\bR\tshellMode\"=\n" +
 	"\vUsageLimits\x12.\n" +
 	"\x06agents\x18\x01 \x03(\v2\x16.hammock.v1.AgentUsageR\x06agents\"\x81\x01\n" +
 	"\n" +

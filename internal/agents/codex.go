@@ -17,6 +17,7 @@ import (
 // compressed), with its usage limits in them.
 var Codex = &Agent{
 	ID: "codex", Order: 10, Name: "Codex", Short: "Codex", Command: "codex",
+	ShellMode: true,
 	Install:   "brew install codex",
 	LiveUsage: codexLiveUsage,
 	Hooks:     true,

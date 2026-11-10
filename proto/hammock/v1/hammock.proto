@@ -311,6 +311,7 @@ message AgentKind {
   bool sessions = 11;     // its sessions are in the session finder
   string install = 12;    // a command that installs it
   bool live_usage = 13;   // its limits can be asked of its own service (usage-live)
+  bool shell_mode = 14;   // a message starting with "!" runs as a shell command
 }
 
 // Agents' subscription usage limits, as their CLIs last reported them:

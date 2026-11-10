@@ -423,13 +423,13 @@ func (k *Kimi) userMessage(m *KimiMessage, id string, ms int64) []*pb.AgentBlock
 	return nil // Kimi's reminders, retries, compaction summaries
 }
 
-var kimiShellStream = regexp.MustCompile(`(?s)<bash-(stdout|stderr)>(.*?)</bash-(stdout|stderr)>`)
-
-// kimiShellOutput is a "!" command's stdout and stderr.
+// kimiShellOutput is a "!" command's stdout and stderr (escaped, as
+// Claude Code's aren't).
 func kimiShellOutput(text string) string {
 	var out []string
-	for _, m := range kimiShellStream.FindAllStringSubmatch(text, -1) {
-		if s := strings.TrimRight(html.UnescapeString(m[2]), "\n"); s != "" {
+	stdout, stderr := bashStreams(text)
+	for _, s := range []string{stdout, stderr} {
+		if s = strings.TrimRight(html.UnescapeString(s), "\n"); s != "" {
 			out = append(out, s)
 		}
 	}

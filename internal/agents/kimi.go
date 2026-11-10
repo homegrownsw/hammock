@@ -46,6 +46,7 @@ import (
 //   - its plan's quotas come from Kimi's servers (/usage): nothing on disk.
 var Kimi = &Agent{
 	ID: "kimi", Order: 120, Name: "Kimi Code", Short: "Kimi", Command: "kimi",
+	ShellMode: true,
 	Procs:     []string{"kimi-code"},
 	Install:   "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
 	LiveUsage: kimiLiveUsage,
