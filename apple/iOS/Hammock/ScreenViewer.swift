@@ -359,9 +359,15 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
     private var momentum: CADisplayLink?
     private var velocity = CGPoint.zero
     private var scrollAt = CGPoint.zero
-    /// A pinch is zooming: the same two fingers don't scroll the Mac meanwhile.
-    private var pinching = false
     private var scrolling = false
+    /// What two fingers are doing: settled once they've moved enough to
+    /// tell (apart or together: zoom; the same way: scroll), then kept till
+    /// they lift, so a scroll doesn't turn into a zoom halfway (two fingers
+    /// never keep quite the same distance apart) or a zoom into a scroll.
+    private enum TwoFingers { case undecided, scroll, zoom }
+    private var twoFingerMode = TwoFingers.undecided
+    private var twoFingerStart: (centre: CGPoint, spread: CGFloat)?
+    private var twoFingerGestures = 0 // the pan and the pinch, while they're going
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -798,35 +804,82 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
 
     @objc private func twoFingers(_ g: UIPanGestureRecognizer) {
         track(g)
-        if trackpad {
-            scroll(g, at: nil)
-        } else if zoom > 1.01 {
-            // Touch mode, zoomed: two fingers move the view.
+        defer { twoFingersDone(g) }
+        // Touch mode, zoomed: two fingers move the view (as they do while zooming).
+        let movesView = !trackpad && zoom > 1.01
+        switch settleTwoFingers(g) {
+        case .undecided:
+            g.setTranslation(.zero, in: self)
+            // A quick flick, over before it could be told: a scroll.
+            if g.state == .ended, !movesView, hypot(g.velocity(in: self).x, g.velocity(in: self).y) > 300 {
+                scrollAt = trackpad ? cursor : fraction(g.location(in: self))
+                wheel(0, 0, phase: "began")
+                wheel(0, 0, phase: "ended")
+                velocity = g.velocity(in: self)
+                startMomentum()
+            }
+            return
+        case .zoom where !movesView:
+            g.setTranslation(.zero, in: self)
+            return
+        default: break
+        }
+        if movesView {
             let t = g.translation(in: self)
             g.setTranslation(.zero, in: self)
             pan.x += t.x
             pan.y += t.y
             place()
         } else {
-            scroll(g, at: g.location(in: self))
+            scroll(g, at: trackpad ? nil : g.location(in: self))
+        }
+    }
+
+    /// Two fingers' centre and how far apart they are.
+    private func twoFingerSpot(_ g: UIGestureRecognizer) -> (centre: CGPoint, spread: CGFloat)? {
+        guard g.numberOfTouches >= 2 else { return nil }
+        let a = g.location(ofTouch: 0, in: self), b = g.location(ofTouch: 1, in: self)
+        return (CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), hypot(a.x - b.x, a.y - b.y))
+    }
+
+    /// Decides, from either two-finger gesture, whether the fingers are
+    /// zooming or scrolling: by whichever they've done more of once they've
+    /// moved 10 points from where they were when the first gesture began.
+    private func settleTwoFingers(_ g: UIGestureRecognizer) -> TwoFingers {
+        if g.state == .began { twoFingerGestures += 1 }
+        guard twoFingerMode == .undecided, let now = twoFingerSpot(g) else { return twoFingerMode }
+        guard let start = twoFingerStart else {
+            twoFingerStart = now
+            return .undecided
+        }
+        let travel = hypot(now.centre.x - start.centre.x, now.centre.y - start.centre.y)
+        let spread = abs(now.spread - start.spread)
+        if max(travel, spread) >= 10 { twoFingerMode = spread > travel ? .zoom : .scroll }
+        return twoFingerMode
+    }
+
+    /// Once both two-finger gestures are over, the next two fingers decide afresh.
+    private func twoFingersDone(_ g: UIGestureRecognizer) {
+        guard [.ended, .cancelled, .failed].contains(g.state) else { return }
+        twoFingerGestures = max(0, twoFingerGestures - 1)
+        if twoFingerGestures == 0 {
+            twoFingerMode = .undecided
+            twoFingerStart = nil
         }
     }
 
     @objc private func pinch(_ g: UIPinchGestureRecognizer) {
         track(g)
-        switch g.state {
-        case .began:
-            pinching = true
-            if scrolling {
-                // It turned out to be a pinch: end the scroll it started, no momentum.
-                scrolling = false
-                wheel(0, 0, phase: "ended")
-            }
-        case .ended, .cancelled, .failed:
-            pinching = false
-            keepPointerInView()
+        defer { twoFingersDone(g) }
+        let mode = settleTwoFingers(g)
+        if [.ended, .cancelled, .failed].contains(g.state) {
+            if mode == .zoom { keepPointerInView() }
             return
-        default: break
+        }
+        // Undecided, the scale builds up, to be zoomed by at once if it's a zoom.
+        guard mode == .zoom else {
+            if mode == .scroll { g.scale = 1 }
+            return
         }
         guard g.state == .changed || g.state == .began else { return }
         let before = zoom
@@ -853,11 +906,6 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
     }
 
     private func scroll(_ g: UIPanGestureRecognizer, at p: CGPoint?) {
-        // Two fingers pinching aren't scrolling.
-        if pinching {
-            g.setTranslation(.zero, in: self)
-            return
-        }
         switch g.state {
         case .began:
             stopMomentum()
@@ -868,7 +916,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
             let t = g.translation(in: self)
             g.setTranslation(.zero, in: self)
             if !scrolling {
-                // The pinch ended with the fingers still down: a scroll from here.
+                // Two fingers only just settled on scrolling: a scroll from here.
                 scrollAt = p.map(fraction) ?? cursor
                 scrolling = true
                 wheel(0, 0, phase: "began")
