@@ -1,27 +1,6 @@
 This build:
-[NEW] Code blocks in the agent view can wrap long lines: Markdown and text blocks wrap by default, every block has a Wrap button, and Settings ▸ Agent View picks which blocks wrap.
-[NEW] Markdown in a code block can be shown rendered: press Preview in its header, and Source to go back.
-[NEW] No Mac to hand? The pairing screen's **See a demo** opens Hammock with a made-up Mac: agents working and waiting, their conversations, and a scheduled task to allow.
-[NEW] Settings ▸ About ▸ Acknowledgements lists the open-source software Hammock is built with, and each one's licence.
-[NEW] Settings ▸ Usage Limits lists every agent your Mac can show limits for, not just Claude and Codex. For up-to-date numbers, turn on Ask each agent's service for its usage on the Mac, and show that agent's limits in the Mac's sidebar too.
-[FIXED] Agent view: a message starting with ! now shows it will run as a shell command (Claude Code, Codex and Kimi), and the command and its output show as a command you ran, not as a message.
-[FIXED] A Markdown file shown in the agent view inside four backticks, or tildes, no longer breaks apart at its own code blocks.
-[FIXED] Agents waiting on a background job, such as a Claude Code monitor, no longer alert you every time it reports progress, only when the job finishes, the agent stops waiting or it needs you.
-[FIXED] An agent at rest with shells still running no longer shows a fainter ring than one without.
-[FIXED] Needs You and its notifications show what `hmk` on your Mac asks to do that only you may, and where it came from, with Allow and Deny (never Always).
-[FIXED] Answering from a notification (Allow, Deny, Let View, Decline) now needs your iPhone unlocked, and with Require Face ID on it opens Hammock to ask first. Notifications take everything they show, their buttons included, only from what your Mac encrypted, and old ones replayed later show nothing. The keys for them are no longer in iPhone backups: a restored iPhone makes new ones when it next connects to each Mac.
-[FIXED] Settings lists usage limits only for the agents installed on your Mac (and any you'd already switched on), not every agent Hammock knows.
-[FIXED] Start an Agent names your Mac instead of calling it “This Mac”, and the Group menu shows each Group's icon.
-[FIXED] The screen tile on Devices says “Display Asleep”, not “Asleep”, when the Mac is awake but its display is off.
-
-Earlier 0.3.0 builds:
-[NEW] Agent view: a question with previews shows the picked option's preview, and takes notes to go with your answer.
-[NEW] Agent view: pull requests the session opened and artifacts it published show as chips above the message box (a PR's title and state from GitHub); tap one to open it.
-[NEW] Agent view: recommended options are marked, the option you tapped shows it's being answered, and answered questions show the notes you gave.
-[NEW] Agent view: the agent's task list sits above the message box while it has one (how far through, what it's doing now; tap for the whole list), for Claude Code and Codex's plan.
-[NEW] Editor panes: open, edit and save your Mac's files on your iPhone, with syntax highlighting, find, Go to Line and a bar of the keys a phone lacks. Edits show live on your Mac, and the other way round.
-[NEW] Fika is now called Hammock, with a new icon and forest-green colours. The `fika` command is now `hmk`: run `hmk hooks install` to point your agents’ hooks and MCP server at it.
-[NEW] Hammock on your iPhone can now reach your Mac over your local network or a VPN like WireGuard, not just Tailscale, and finds it again when its address changes.
-[NEW] Hammock on your iPhone now follows your Mac's theme: the app's colour, your messages in the agent view and the terminal's colours all match it. To use a different one on the phone, pick it in Settings ▸ Appearance ▸ Theme. If you had chosen an agent view colour other than Hammock's green, the theme of that colour takes its place.
-[NEW] Sessions: each row puts the title 
-…
+[NEW] The Hammock Key's approval sheet on iPhone is clearer: it opens at full height, shows the Group and tab asking as the Mac does, and its Approve button shows Touch ID on phones with it.
+[NEW] Agents can be approved for 5 minutes with the Hammock Key: tick the box on the Mac's prompt, or choose Approve for 5 Minutes on your iPhone, so a script's few commits or a burst of SSH commands asks once. An agent's window is its own: your programs in that pane still ask.
+[NEW] Diff panes on your iPhone: review the changes an agent's made, comment on a line or a file, send your comments to it and see its replies.
+[FIXED] Notifications about an agent, a permission, someone asking to join or a Hammock Key request now leave Notification Center once they're dealt with, wherever you dealt with them, instead of piling up (at the latest when you next open Hammock).
+[FIXED] Start an Agent: a gap between the chosen Group's picture or emoji and its name.
