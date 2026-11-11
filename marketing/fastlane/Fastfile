@@ -3,7 +3,7 @@
 # ASC_API_KEY_PATH.
 #
 #   just appstore-preview          # read-only: the key, the app record, the versions, the URLs, precheck
-#   just appstore-push             # the listing text, age rating, review details, What's New, and TestFlight's
+#   just appstore-push             # the listing text, screenshots, age rating, review details, What's New, and TestFlight's
 #                                  # test information; saves, never submits
 #   just appstore-push-testflight  # only TestFlight's test information
 #   just appstore-pull             # overwrite marketing/appstore/metadata with what App Store Connect holds
@@ -16,6 +16,7 @@ fastlane_version "2.238.0"
 require "fileutils"
 require "net/http"
 require "open3"
+require "tmpdir"
 
 APP_IDENTIFIER = CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)
 
@@ -31,6 +32,22 @@ WHATS_NEW_PATH = File.join(APPSTORE_DIR, "whats-new")
 WHATS_NEW_SCRIPT = File.expand_path("../scripts/appstore-whats-new", __dir__)
 VERSION_FILE = File.join(REPO_ROOT, "apple", "iOS", "Config", "Version.xcconfig")
 IOS = Spaceship::ConnectAPI::Platform::IOS
+# What the listing shows (marketing/appstore/README.md): the marketing images, composed from the screenshots by
+# `just appstore-marketing`. marketing/<locale>/ holds the 6.9" iPhone (-iphone69) and 13" iPad (-ipad13) sets,
+# which deliver uploads, telling them apart by size; duo/marketing/<locale>/ the iPhone Duo's (-duo), which the
+# push uploads itself through the API (deliver has no display type for it yet). Screenshots and their stamps:
+SCREENSHOTS_PATH = File.join(APPSTORE_DIR, "marketing")
+DUO_PATH = File.join(APPSTORE_DIR, "duo", "marketing")
+CAPTURED = { iphone_ipad: File.join(APPSTORE_DIR, "screenshots"), duo: File.join(APPSTORE_DIR, "duo", "screenshots") }.freeze
+DUO_DISPLAY_TYPE = "APP_IPHONE_DUO"
+# HMK_APPSTORE_SCREENSHOTS=0 leaves every screenshot set as App Store Connect has it; HMK_APPSTORE_DUO=0 the Duo's.
+def screenshots?
+  ENV["HMK_APPSTORE_SCREENSHOTS"] != "0"
+end
+
+def duo?
+  screenshots? && ENV["HMK_APPSTORE_DUO"] != "0"
+end
 
 # The listing's locales: one directory each under metadata/.
 def locales
@@ -122,8 +139,10 @@ def deliver_options
     metadata_path: METADATA_PATH,
     app_rating_config_path: AGE_RATING_PATH,
     skip_binary_upload: true,
-    # Screenshots aren't made yet (marketing/appstore/README.md): App Store Connect keeps what it has.
-    skip_screenshots: true,
+    # The iPhone and iPad images; the push empties those sets first (clear_deliver_screenshots!), not deliver's
+    # overwrite_screenshots, which would empty the iPhone Duo's too.
+    screenshots_path: upload_root,
+    overwrite_screenshots: false,
     run_precheck_before_submit: false,
     precheck_include_in_app_purchases: false,
     submit_for_review: false,
@@ -134,6 +153,133 @@ def deliver_options
     # No demo login: deliver sets "sign-in required" off when there's none.
     app_review_information: review_contact.merge(notes: review_notes),
   }
+end
+
+# --- Screenshots: the marketing images (marketing/appstore/README.md).
+
+def image_files(dir, locale, tag)
+  Dir[File.join(dir, locale, "*-#{tag}.png")].sort
+end
+
+def stamp(path)
+  File.exist?(path) ? File.read(path).strip : nil
+end
+
+# What deliver uploads: a copy of each listing locale's iPhone and iPad images (deliver turns on a listing locale
+# for each folder it's given, so only the listing's own).
+def upload_root
+  @upload_root ||= begin
+    dir = Dir.mktmpdir("hammock-screenshots")
+    at_exit { FileUtils.rm_rf(dir) }
+    locales.each do |locale|
+      from = File.join(SCREENSHOTS_PATH, locale)
+      next unless File.directory?(from)
+      FileUtils.mkdir_p(File.join(dir, locale))
+      (image_files(SCREENSHOTS_PATH, locale, "iphone69") + image_files(SCREENSHOTS_PATH, locale, "ipad13"))
+        .each { |f| FileUtils.cp(f, File.join(dir, locale)) }
+    end
+    dir
+  end
+end
+
+# Why the images can't be pushed as they are: a set missing or uneven, or composed from a capture other than the
+# one on disk (the .captured stamp the compositor copies), or captured for another app version.
+def screenshot_problems
+  return [] unless screenshots?
+  problems = []
+  sets = [[SCREENSHOTS_PATH, CAPTURED[:iphone_ipad], %w[iphone69 ipad13]]]
+  sets << [DUO_PATH, CAPTURED[:duo], %w[duo]] if duo?
+  sets.each do |dir, captured, tags|
+    current = stamp(File.join(captured, "en-GB", ".captured"))
+    locales.each do |locale|
+      counts = tags.to_h { |t| [t, image_files(dir, locale, t).count] }
+      where = dir.delete_prefix("#{APPSTORE_DIR}/")
+      if counts.values.all?(&:zero?)
+        problems << "#{where}/#{locale}/ has no images: run just appstore-screenshots, then just appstore-marketing"
+        next
+      end
+      counts.each { |t, n| problems << "#{where}/#{locale}/ has no -#{t} images" if n.zero? }
+      problems << "#{where}/#{locale}/ has sets of different sizes (#{counts.map { |t, n| "#{n} #{t}" }.join(', ')})" if counts.values.uniq.size > 1
+      made = stamp(File.join(dir, locale, ".captured"))
+      if made != current
+        problems << "#{where}/#{locale}/ was composed from an older capture: run just appstore-marketing"
+      end
+    end
+    version = current.to_s[/^version=(.+)$/, 1]
+    if version && version != marketing_version
+      problems << "#{captured.delete_prefix("#{APPSTORE_DIR}/")} was captured from #{version}, not #{marketing_version}: run just appstore-screenshots"
+    end
+  end
+  problems
+end
+
+def duo_set?(set)
+  set.screenshot_display_type == DUO_DISPLAY_TYPE
+end
+
+# Empties the sets deliver is about to fill, in the locales it uploads to, leaving the iPhone Duo's alone (deliver's
+# own overwrite_screenshots would delete every set, the Duo's included). A delete doesn't always stick at once, so
+# it tries a few times, then checks.
+def clear_deliver_screenshots!(version)
+  uploading = locales.select { |l| Dir[File.join(upload_root, l, "*.png")].any? }
+  full = lambda do
+    version.get_app_store_version_localizations.select { |loc| uploading.include?(loc.locale) }.flat_map do |loc|
+      loc.get_app_screenshot_sets.reject { |set| duo_set?(set) || (set.app_screenshots || []).empty? }.map { |set| [loc, set] }
+    end
+  end
+  5.times do
+    sets = full.call
+    return if sets.empty?
+    sets.each do |loc, set|
+      UI.message("Clearing #{loc.locale} #{set.screenshot_display_type}")
+      set.delete!
+    rescue StandardError => e
+      UI.error("Couldn't clear #{loc.locale} #{set.screenshot_display_type}: #{e.message}")
+    end
+  end
+  left = full.call
+  UI.user_error!("Couldn't clear #{left.map { |loc, set| "#{loc.locale} #{set.screenshot_display_type}" }.join(', ')}.") unless left.empty?
+end
+
+# The iPhone Duo set, through the API's APP_IPHONE_DUO: each locale's set is made to hold duo/marketing/<locale>/,
+# in filename order. What it holds already (matched by MD5, and not failed at Apple) is kept; the rest is
+# deleted and the missing files uploaded. When deliver gains the display type, this can go.
+def sync_duo_screenshots!(version)
+  return UI.important("iPhone Duo: left as App Store Connect has it (HMK_APPSTORE_DUO=0).") unless duo?
+  version.get_app_store_version_localizations.sort_by(&:locale).each do |loc|
+    files = image_files(DUO_PATH, loc.locale, "duo")
+    next if files.empty?
+    set = loc.get_app_screenshot_sets.find { |s| duo_set?(s) } || create_duo_set(loc)
+    wanted = files.to_h { |path| [Deliver::UploadScreenshots.calculate_checksum(path), path] }
+    held = {}
+    (set.app_screenshots || []).each do |shot|
+      sum = shot.source_file_checksum
+      failed = (shot.asset_delivery_state || {})["state"] == "FAILED"
+      if sum && wanted.key?(sum) && !held.key?(sum) && !failed
+        held[sum] = shot
+      else
+        shot.delete!
+      end
+    end
+    missing = wanted.reject { |sum, _| held.key?(sum) }
+    missing.each do |sum, path|
+      UI.message("Uploading #{File.basename(path)} (#{loc.locale} iPhone Duo)")
+      held[sum] = set.upload_screenshot(path: path, wait_for_processing: true)
+    rescue StandardError => e
+      UI.user_error!("App Store Connect didn't take #{File.basename(path)} (#{loc.locale} iPhone Duo): #{e.message}. " \
+                     "The next push tries again.")
+    end
+    set.reorder_screenshots(app_screenshot_ids: wanted.keys.map { |sum| held[sum].id })
+    UI.success("iPhone Duo (#{loc.locale}): #{wanted.count} screenshot(s), #{missing.count} of them new.")
+  end
+end
+
+def create_duo_set(loc)
+  loc.create_app_screenshot_set(attributes: { screenshotDisplayType: DUO_DISPLAY_TYPE })
+rescue StandardError => e
+  UI.user_error!("App Store Connect refused an iPhone Duo screenshot set for #{loc.locale}: #{e.message}\n" \
+                 "  Everything before it is uploaded. Drag duo/marketing/#{loc.locale}/ in by hand, and push without " \
+                 "it meanwhile: HMK_APPSTORE_DUO=0 just appstore-push")
 end
 
 # --- TestFlight's test information: each locale's Beta App Description, feedback email and URLs, and the Beta App
@@ -214,6 +360,7 @@ def preflight_problems
   problems = placeholders.map { |f| "#{f} still has an [OWNER …] placeholder." }
   missing = review_contact_missing
   problems << "App Review's contact isn't set: #{missing.join(', ')} (marketing/.env.appstore)." unless missing.empty?
+  problems += screenshot_problems.map { |p| "Screenshots: #{p}" }
   problems
 end
 
@@ -238,6 +385,10 @@ platform :ios do
       end
       tf = testflight_changes(app)
       UI.message(tf.empty? ? "TestFlight: up to date." : "TestFlight: a push would change\n#{tf.join("\n")}")
+      if screenshots?
+        counts = locales.map { |l| "#{l} #{image_files(SCREENSHOTS_PATH, l, "iphone69").count} iPhone, #{image_files(SCREENSHOTS_PATH, l, "ipad13").count} iPad, #{duo? ? image_files(DUO_PATH, l, "duo").count : "(left alone)"} iPhone Duo" }
+        UI.message("Screenshots a push would upload: #{counts.join("; ")}")
+      end
     end
 
     Dir[File.join(APPSTORE_DIR, "{metadata,testflight}", "*", "*_url.txt")].map { |p| File.read(p).strip }
@@ -279,7 +430,17 @@ platform :ios do
     notes, said = whats_new_for(app)
     UI.message(said)
     options[:release_notes] = notes if notes
-    deliver(options)
+    version = editable_version(app)
+    # The text first, then the screenshots: deliver validates the text as it goes, so a refusal never leaves the
+    # listing with its screenshot sets already emptied.
+    deliver(options.merge(skip_screenshots: true))
+    if screenshots?
+      clear_deliver_screenshots!(version)
+      deliver(options.merge(skip_metadata: true))
+      sync_duo_screenshots!(version)
+    else
+      UI.important("Screenshots: left as App Store Connect has them (HMK_APPSTORE_SCREENSHOTS=0).")
+    end
     push_testflight!(app)
     UI.success("Uploaded. Saved in App Store Connect, NOT submitted for review.")
   end

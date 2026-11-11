@@ -33,7 +33,7 @@ just appstore-install          # Fastlane, once per machine (Ruby 3.3)
 just appstore-check            # offline: limits, fields, keywords, URLs, categories, age rating, review notes
 just appstore-preview          # read-only against App Store Connect: the key, the app, its versions, What's New,
                                # what a push would change in TestFlight, the URLs, precheck
-just appstore-push             # upload the listing text, age rating, review details, What's New and TestFlight's
+just appstore-push             # upload the listing text, screenshots, age rating, review details, What's New and TestFlight's
                                # test information. Saves; never submits
 just appstore-push-testflight  # only TestFlight's test information
 just appstore-pull             # overwrite metadata/ with what App Store Connect holds, then `git diff`
@@ -131,5 +131,18 @@ The images go to `marketing/<locale>/NN-<panel>-<device>.png` (the iPhone and iP
 and `duo/marketing/<locale>/` (the iPhone Duo's), with `preview-<device>.png` beside them, each set side by side.
 GENERATED and gitignored. `just appstore-install` installs Playwright's Chromium (pnpm, into `marketing/node_modules`).
 
-The push leaves App Store Connect's screenshots as they are (`skip_screenshots`) until uploading them is wired
-in (next), and the app preview after that.
+## Pushing them
+
+`just appstore-push` uploads the images after the text: it empties the iPhone and iPad sets in each listing locale
+and has deliver fill them from `marketing/<locale>/` (deliver tells the two apart by size), then makes each
+locale's iPhone Duo set (App Store Connect's `APP_IPHONE_DUO`, which deliver can't upload yet) hold exactly
+`duo/marketing/<locale>/`, through the API: what it holds already is kept (matched by MD5), the rest replaced,
+in filename order. If Apple refuses the Duo set, the push says so: drag the files in by hand and push with
+`HMK_APPSTORE_DUO=0` meanwhile.
+
+The preview and the push refuse images that would mislead: a set missing or of uneven length, images composed
+from an older capture than the one on disk, or screenshots taken from another app version than the project's
+`MARKETING_VERSION`. `HMK_APPSTORE_SCREENSHOTS=0 just appstore-push` leaves every screenshot set as App Store
+Connect has it; `HMK_APPSTORE_DUO=0`, the Duo's.
+
+The app preview video comes next.

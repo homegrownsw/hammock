@@ -202,7 +202,7 @@ appstore-preview: appstore-check
     marketing/scripts/appstore-fastlane ios preview
 
 # Saves in App Store Connect; never submits, never a binary.
-# Upload the listing text, age rating, review details, What's New and TestFlight's test information.
+# Upload the listing text, screenshots, age rating, review details, What's New and TestFlight's test information.
 appstore-push: appstore-check
     marketing/scripts/appstore-fastlane ios push
 
