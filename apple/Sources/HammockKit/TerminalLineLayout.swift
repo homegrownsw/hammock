@@ -72,8 +72,8 @@ public struct TerminalLine {
     public struct Glyphs { public var font: CTFont, color: TerminalColor, glyphs: [CGGlyph], positions: [CGPoint] }
     /// One glyph stretched or shrunk to its cell (box drawing, powerline,
     /// Nerd Font icons): draw it at the origin after concatenating
-    /// `transform` and then scaleBy(1, -1).
-    public struct Fitted { public var font: CTFont, color: TerminalColor, glyph: CGGlyph, transform: CGAffineTransform }
+    /// `transform` and then scaleBy(1, -1), clipped to `clip` if it has one.
+    public struct Fitted { public var font: CTFont, color: TerminalColor, glyph: CGGlyph, transform: CGAffineTransform, clip: CGRect? }
     /// A filled rectangle: block elements (blended), underlines and
     /// strikethroughs (copied, as NSRectFill does).
     public struct Rect { public var rect: CGRect, color: TerminalColor, copy: Bool }
@@ -158,7 +158,10 @@ public final class TerminalLineLayout {
     /// FNV-1a over the row's text and styles.
     static func key(_ row: [TerminalCell]) -> UInt64 {
         var h: UInt64 = 0xCBF29CE484222325
-        @inline(__always) func mix(_ v: UInt64) { h = (h ^ v) &* 0x100000001B3 }
+        // Each word's high bits folded down first: a multiply only carries
+        // differences upwards, so colours in the high bits would barely
+        // reach the rest of the hash.
+        @inline(__always) func mix(_ v: UInt64) { h = (h ^ (v ^ (v >> 29) ^ (v >> 47))) &* 0x100000001B3 }
         for c in row {
             for u in c.text.utf8 { mix(UInt64(u)) }
             var bits: UInt64 = 0x80 // ends the text, so "ab","c" isn't "a","bc"
@@ -259,8 +262,8 @@ public final class TerminalLineLayout {
                 clusterStart[col] = startX
                 let x = CGFloat(col) * cw + (positions[g].x - startX)
                 let color = palette.foreground(of: cell)
-                if let fit = symbolFit(glyph: glyphs[g], font: runFont, col: col, row: row, x: x) {
-                    line.text.append(.fitted(.init(font: runFont, color: color, glyph: glyphs[g], transform: fit)))
+                if let (fit, clip) = symbolFit(glyph: glyphs[g], font: runFont, col: col, row: row, x: x) {
+                    line.text.append(.fitted(.init(font: runFont, color: color, glyph: glyphs[g], transform: fit, clip: clip)))
                 } else if let last = plain.last, last.color == color {
                     plain[plain.count - 1].glyphs.append(glyphs[g])
                     plain[plain.count - 1].positions.append(CGPoint(x: x, y: -baseline))
@@ -278,7 +281,12 @@ public final class TerminalLineLayout {
     /// segments join seamlessly; other icons shrink to the space they have
     /// (two cells when followed by a blank, as Ghostty does). Box drawing
     /// spans the cell's height. nil = draw as is.
-    private func symbolFit(glyph: CGGlyph, font: CTFont, col: Int, row: [TerminalCell], x: CGFloat) -> CGAffineTransform? {
+    ///
+    /// Glyphs made to fill their cell are clipped to it: their anti-aliased
+    /// edges would otherwise bleed half a pixel into the next row, there
+    /// after a whole redraw and gone after that row alone is redrawn (a
+    /// faint line under a powerline prompt that came and went as you typed).
+    private func symbolFit(glyph: CGGlyph, font: CTFont, col: Int, row: [TerminalCell], x: CGFloat) -> (CGAffineTransform, CGRect?)? {
         guard col < row.count, let scalar = row[col].text.unicodeScalars.first else { return nil }
         let cw = fonts.cellWidth, ch = fonts.cellHeight
         if (0x2500...0x257F).contains(scalar.value) || (0x1FB00...0x1FBFF).contains(scalar.value) {
@@ -287,7 +295,8 @@ public final class TerminalLineLayout {
             // the line spacing).
             let a = CTFontGetAscent(font), d = CTFontGetDescent(font)
             let sy = ch / (a + d)
-            return CGAffineTransform(translationX: x, y: a * sy).scaledBy(x: 1, y: sy)
+            // Across the row only: lines reach past the cell sideways to join.
+            return (CGAffineTransform(translationX: x, y: a * sy).scaledBy(x: 1, y: sy), CGRect(x: x - cw, y: 0, width: cw * 3, height: ch))
         }
         guard (0xE000...0xF8FF).contains(scalar.value) || scalar.value >= 0xF0000 else { return nil }
         var g = glyph
@@ -298,13 +307,13 @@ public final class TerminalLineLayout {
         if (0xE0B0...0xE0D7).contains(scalar.value) {
             // Map the glyph's bounds onto the cell.
             let sx = cw / b.width, sy = ch / b.height
-            return CGAffineTransform(translationX: left - b.minX * sx, y: b.maxY * sy).scaledBy(x: sx, y: sy)
+            return (CGAffineTransform(translationX: left - b.minX * sx, y: b.maxY * sy).scaledBy(x: sx, y: sy), CGRect(x: left, y: 0, width: cw, height: ch))
         }
         let nextBlank = col + 1 < row.count && (row[col + 1].text.isEmpty || row[col + 1].text == " ")
         let room = cw * (row[col].wide || nextBlank ? 2 : 1)
         guard b.maxX > room + 0.5 else { return nil }
         let s = room / b.maxX
-        return CGAffineTransform(translationX: x, y: fonts.baseline + (b.midY * s - b.midY)).scaledBy(x: s, y: s)
+        return (CGAffineTransform(translationX: x, y: fonts.baseline + (b.midY * s - b.midY)).scaledBy(x: s, y: s), nil)
     }
 
     /// Block elements (U+2580–259F) as rectangles snapped to device pixels, as

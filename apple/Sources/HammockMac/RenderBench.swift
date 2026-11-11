@@ -283,6 +283,19 @@ enum RenderBench {
         var c = Rand(s: 0x2545F4914F6CDD1D)
         let colourful = (0..<59).map { _ in line(&c, cols: 200, colour: true) }.joined(separator: "\r\n")
         func typing(_ i: Int) -> String { i % typed.count == typed.count - 1 ? "\u{1b}[\(typed.count - 1)D\u{1b}[K" : String(typed[i % typed.count]) }
+        // HMK_DEBUG_RENDER_BENCH_REPLAY=<dir>: what real programs printed,
+        // recorded with script(1) into <dir>/<name>.<cols>x<rows>.ts, drawn
+        // instead of the made-up screens (to compare renderers on them).
+        if let dir = ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_REPLAY"],
+           let files = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+            return files.sorted().compactMap { file -> Screen? in
+                let parts = file.split(separator: ".")
+                guard parts.count == 3, parts[2] == "ts", let size = Optional(parts[1].split(separator: "x")), size.count == 2,
+                      let cols = Int(size[0]), let rows = Int(size[1]),
+                      let data = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent(file)) else { return nil }
+                return Screen(name: String(parts[0]), cols: cols, rows: rows, setup: String(decoding: data, as: UTF8.self), step: { _ in "" })
+            }
+        }
         return [
             scrolling("plain-80x24", 80, 24, colour: false),
             scrolling("plain-200x60", 200, 60, colour: false),

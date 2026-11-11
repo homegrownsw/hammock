@@ -81,6 +81,8 @@ Since 2026-11-11 rows are laid out by `TerminalLineLayout` (HammockKit): each ro
 
 \* The old renderer laid every row out on every draw, so a flood cost what scrolling did.
 
+To compare renderers on real programs, record them with `script -q -t 0 <dir>/<name>.<cols>x<rows>.ts <command>` in a terminal of that size (a detached tmux session sized with `-x`/`-y` works), then run the bench with `HMK_DEBUG_RENDER_BENCH_REPLAY=<dir>`: it draws each recording's last screen instead of the made-up ones. `-t 0` matters: without it `script` buffers, and the end of the recording is missing until the program exits. A powerline prompt, Claude Code and vim recorded this way drew identically before and after phase 1, apart from glyphs that fill their cell (powerline separators, box drawing) now being clipped to it: their anti-aliased edges bled half a pixel into the next row, shown after a whole redraw and gone after a redraw of that row alone.
+
 What's left with rows kept is almost all CoreGraphics rasterising glyphs (13 ms for plain text at 400×100): the part a Metal renderer replaces (`docs/design/metal-renderer.md`). A flood still shapes every row, about half its time.
 
 `HMK_DEBUG_RENDER_STATS=<file>` times the real thing instead. Every draw, and every write of a pane's output into its engine, is timed, and a JSON line is appended every two seconds. Floods of 256-colour text (`cat` of a 115 MB file), p50 per draw:

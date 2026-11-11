@@ -438,8 +438,9 @@ final class TerminalNSView: NSView {
         let l = layoutCache ?? TerminalLineLayout(fonts: layoutFonts(), palette: palette)
         layoutCache = l
         l.setPalette(palette)
-        // The screen and as much again (a dense 400-column row's layout is
-        // ~25 KB, and there are two generations).
+        // Each generation holds twice the screen, so up to four screens are
+        // kept: a dense 400-column row and its layout are ~40 KB, about 16 MB
+        // for a full 400×100 pane.
         l.capacity = max(f.rows * 2, 48)
         return l
     }
@@ -498,6 +499,7 @@ final class TerminalNSView: NSView {
                 ctx.scaleBy(x: 1, y: -1)
                 CTFontDrawGlyphs(g.font, g.glyphs, g.positions, g.glyphs.count, ctx)
             case .fitted(let f):
+                if let clip = f.clip { ctx.clip(to: clip) }
                 ctx.setFillColor(cg(f.color))
                 ctx.concatenate(f.transform)
                 ctx.scaleBy(x: 1, y: -1)
