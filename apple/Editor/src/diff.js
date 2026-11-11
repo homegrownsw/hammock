@@ -5,8 +5,8 @@
 // show them with CodeMirror's merge views, mounting a file's only as it
 // nears the screen so a diff of any size stays quick.
 
-import { EditorState, Compartment } from "@codemirror/state"
-import { EditorView, lineNumbers, highlightSpecialChars, ViewPlugin, Decoration, WidgetType } from "@codemirror/view"
+import { EditorState, Compartment, RangeSet } from "@codemirror/state"
+import { EditorView, lineNumbers, highlightSpecialChars, ViewPlugin, Decoration, WidgetType, GutterMarker, gutterLineClass } from "@codemirror/view"
 import { LanguageDescription } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
 import { MergeView, unifiedMergeView, diff as textDiff, Change, getChunks, getOriginalDoc } from "@codemirror/merge"
@@ -1007,6 +1007,8 @@ class ComposerWidget extends WidgetType {
 
 const composerKey = (c) => `new:${c.path}:${c.side}:${c.line}:${c.endLine}`
 const rangeLine = Decoration.line({ class: "cm-commentRange" })
+// …and their line numbers.
+const rangeGutter = new class extends GutterMarker { elementClass = "cm-commentRangeGutter" }()
 const threadKey = (t) => JSON.stringify([t, openReplies.has(t.id), shownResolved.has(t.id), shownOutdated.has(t.id),
   t.comments.filter((c) => editing.has(c.id)).map((c) => c.id), config.target && config.target.id, config.canSend])
 
@@ -1018,7 +1020,7 @@ function refreshThreads(path) {
   const placed = new Set()
   const unified = isUnified(m.views)
   for (const view of m.views) {
-    const side = sideOf(view), marks = []
+    const side = sideOf(view), marks = [], numbers = []
     for (const t of all) {
       if (t.line < 1) continue
       const pos = posFor(view, t, unified)
@@ -1028,14 +1030,20 @@ function refreshThreads(path) {
     }
     const r = dragRange
     if (r && r.path === path && r.side === side) {
-      for (let l = Math.min(r.from, r.to); l <= Math.max(r.from, r.to) && l <= view.state.doc.lines; l++) marks.push(rangeLine.range(view.state.doc.line(l).from))
+      for (let l = Math.min(r.from, r.to); l <= Math.max(r.from, r.to) && l <= view.state.doc.lines; l++) {
+        marks.push(rangeLine.range(view.state.doc.line(l).from))
+        numbers.push(rangeGutter.range(view.state.doc.line(l).from))
+      }
     }
     const c = composer
     if (c && c.path === path && c.line > 0 && (c.side === side) && c.endLine <= view.state.doc.lines && !(r && r.path === path)) {
       marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(view.state.doc.line(c.endLine).to))
-      for (let l = c.line; l <= c.endLine; l++) marks.push(rangeLine.range(view.state.doc.line(l).from))
+      for (let l = c.line; l <= c.endLine; l++) {
+        marks.push(rangeLine.range(view.state.doc.line(l).from))
+        numbers.push(rangeGutter.range(view.state.doc.line(l).from))
+      }
     }
-    view.dispatch({ effects: m.thr.reconfigure(EditorView.decorations.of(Decoration.set(marks, true))) })
+    view.dispatch({ effects: m.thr.reconfigure([EditorView.decorations.of(Decoration.set(marks, true)), gutterLineClass.of(RangeSet.of(numbers, true))]) })
     fitWidgets(view)
   }
   // Above the file: its file comments, threads whose lines aren't shown,

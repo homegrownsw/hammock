@@ -188,7 +188,10 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .fbody .cm-lineNumbers .cm-gutterElement:hover { color: transparent; }
 .fbody .cm-lineNumbers .cm-gutterElement:hover::before { content: "+"; position: absolute; inset: 1px 3px; border-radius: 4px; background: var(--accent);
   color: var(--on-accent); font: 600 13px/1 var(--ui); display: flex; align-items: center; justify-content: center; }
-.fbody .cm-commentRange { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; }
+/* Over the line's own colour (a layer on top), so it shows on changed lines too. */
+.fbody .cm-line.cm-commentRange { background-image: linear-gradient(color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--accent) 24%, transparent)) !important;
+  box-shadow: inset 3px 0 0 var(--accent); }
+.fbody .cm-gutterElement.cm-commentRangeGutter { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--fg); }
 
 /* The code can be selected and copied (the page's own controls can't). */
 .fbody .cm-content, .fbody .cm-deletedChunk, .fbody .cm-deletedLine { -webkit-user-select: text; user-select: text; }
