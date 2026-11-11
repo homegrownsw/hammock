@@ -112,6 +112,13 @@ key:
 mac-app: build apple-deps browser simulator screen key
     ./scripts/build-mac-app.sh
 
+# Update the Hammock you're running to this checkout's build: build it
+# (mac-app, swapped in beside the running one), quit the running app and
+# its daemon (panes keep running), and open the new one. The main checkout
+# only (a worktree's app is its β: just beta).
+prod: mac-app
+    ./scripts/update-prod.sh
+
 # A notarized Hammock.app to send to someone: built into dist/share, signed
 # with Developer ID, notarized and stapled, zipped as dist/share/Hammock.zip,
 # and in dist/share/Hammock.dmg, the first-install download (also notarized).
