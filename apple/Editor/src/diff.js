@@ -1329,8 +1329,37 @@ function buttons(keep, submit, cancel) {
   return { row, main: () => submit(can) }
 }
 
+// keepInView scrolls the files so el (a comment box being typed in) is
+// above the keyboard: iOS doesn't reliably scroll one inside the files'
+// own scroller into view as the keyboard comes up.
+function keepInView(elx) {
+  const box = $("files")
+  if (!elx || !elx.isConnected) return
+  const vv = window.visualViewport
+  const r = elx.getBoundingClientRect(), b = box.getBoundingClientRect()
+  const bottom = Math.min(b.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight) - 12
+  const top = b.top + 8
+  if (r.bottom > bottom) box.scrollTop += Math.min(r.bottom - bottom, r.top - top)
+  else if (r.top < top) box.scrollTop -= top - r.top
+  pinTop()
+}
+
+// The box being typed in, kept above the keyboard as it opens (and as
+// the visible area changes).
+const typingBox = () => {
+  const a = document.activeElement
+  return a instanceof HTMLTextAreaElement ? a.closest(".composer, .thread") || a : null
+}
+for (const target of [window.visualViewport, window].filter(Boolean)) {
+  target.addEventListener("resize", () => { const b = typingBox(); if (b) requestAnimationFrame(() => keepInView(b)) })
+}
+
 function textBox(key, placeholder, submit, cancel) { // submit: ⌘Return
   const ta = el("textarea")
+  ta.addEventListener("focus", () => {
+    // Now, and once the keyboard has finished coming up.
+    for (const ms of [50, 350, 700]) setTimeout(() => { if (document.activeElement === ta) keepInView(ta.closest(".composer, .thread") || ta) }, ms)
+  })
   ta.placeholder = placeholder
   ta.value = drafts.get(key) || ""
   ta.rows = 3
