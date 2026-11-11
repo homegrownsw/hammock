@@ -428,6 +428,9 @@ struct RootView: View {
                     Task { await Push.shared.registerWithMac() }
                     if let key = ApprovalKey.publicKey() { model.sendApprovalKey(key) }
                     DemoMac.reportSettled()
+                    #if DEBUG
+                    DemoDirector.start(model)
+                    #endif
                 }
                 .sheet(item: Binding(get: { keyRequest(model) }, set: { r in
                     // Closed without an answer: not shown again (the one on screen).

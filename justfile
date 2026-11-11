@@ -222,6 +222,10 @@ appstore-screenshots *args:
 appstore-marketing *args:
     node --disable-warning=ExperimentalWarning marketing/scripts/appstore-marketing.ts {{args}}
 
+# Record the App Store's videos from the demo and cut them (the app preview and the search results video).
+appstore-preview-video *args:
+    marketing/scripts/appstore-preview-video {{args}}
+
 # What's New for an iPhone version, from its release notes (--pending: with the notes not cut yet).
 appstore-whats-new version *args:
     marketing/scripts/appstore-whats-new {{version}} {{args}}

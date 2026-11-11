@@ -1,5 +1,5 @@
 {
-  "//": "The App Store marketing images, one panel per image in the listing's order (marketing/appstore/README.md). Each shows one screenshot (scenes.json) in its device, light or dark, under a headline (\\n breaks a line; *words* are set in Hammock's colours) and a subline. `devices` lays the same panels out for each device. marketing/scripts/appstore-marketing.ts only draws what this says. A device's frame is in its frame colour for the panel's theme, where frames-cli has more than one. frameDevice names the frame where the screenshot's size matches more than one (the iPhone: the 17 Pro Max simulator takes them).",
+  "//": "The App Store marketing images, one panel per image in the listing's order (marketing/appstore/README.md). Each shows one screenshot (scenes.json) in its device, light or dark, under a headline (\\n breaks a line; *words* are set in Hammock's colours) and a subline. `devices` lays the same panels out for each device. marketing/scripts/appstore-marketing.ts only draws what this says. A device's frame is in its frame colour for the panel's theme, where frames-cli has more than one. frameDevice names the frame where the screenshot's size matches more than one (the iPhone: the 17 Pro Max simulator takes them). header is the product page header (iOS 27): the icon over the wordmark and a tagline, all in the middle third, the only part an iPhone shows.",
   "panels": [
     {
       "id": "needs-you",
@@ -81,5 +81,9 @@
         "light": "Star White"
       }
     }
+  },
+  "header": {
+    "wordmark": "Hammock",
+    "tagline": "Your terminals and agents, always on."
   }
 }

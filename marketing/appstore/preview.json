@@ -1,0 +1,69 @@
+{
+  "//": "The app preview and the search results video (marketing/appstore/README.md). `takes` are recorded in the Simulator by marketing/scripts/appstore-preview-video on the 6.9\" iPhone: each launches the app into its demo and plays its `steps` (DemoDirector's verbs, apple/iOS/Hammock/DemoDirector.swift), whose `mark:` steps note moments to cut on; `env` adds the app's HMK_DEBUG_* variables. `edit` is cut from the takes, the same shots for both videos: each starts `from` seconds after a take's mark and runs `seconds`, under its caption (\\n breaks a line; *words* in Hammock's colours). `end` is the end card, and `poster` the poster frame's time in the preview (a whole second).",
+  "takes": {
+    "1-allow": {
+      "appearance": "dark",
+      "steps": "wait:1200;mark:list;wait:2600;open:p_triage;mark:prompt;wait:2200;allow:p_triage;mark:allowed;wait:4200;mark:finished;wait:800"
+    },
+    "2-agent": {
+      "appearance": "dark",
+      "steps": "wait:1200;open:p_polish;mark:agent;wait:3800"
+    },
+    "3-terminal": {
+      "appearance": "dark",
+      "env": {
+        "HMK_DEBUG_KEYBOARD": "1"
+      },
+      "steps": "wait:1000;open:p_shell;mark:shell;wait:1400;type:p_shell:npm test\n;mark:typed;wait:2200"
+    },
+    "4-groups": {
+      "appearance": "dark",
+      "steps": "wait:1000;tab:groups;mark:groups;wait:3200"
+    }
+  },
+  "edit": {
+    "poster": 2,
+    "shots": [
+      {
+        "take": "1-allow",
+        "mark": "list",
+        "from": 0,
+        "seconds": 3.2,
+        "caption": "Kick back.\nKnow when an agent\n*needs you*."
+      },
+      {
+        "take": "1-allow",
+        "mark": "prompt",
+        "from": 0.3,
+        "seconds": 6.8,
+        "caption": "Allow it from\n*anywhere*."
+      },
+      {
+        "take": "2-agent",
+        "mark": "agent",
+        "from": 0.6,
+        "seconds": 3.2,
+        "caption": "See *exactly*\nwhat it did."
+      },
+      {
+        "take": "3-terminal",
+        "mark": "shell",
+        "from": 0.9,
+        "seconds": 4.4,
+        "caption": "Your terminals,\n*in your pocket*."
+      },
+      {
+        "take": "4-groups",
+        "mark": "groups",
+        "from": 0.5,
+        "seconds": 2.8,
+        "caption": "Your whole\n*workspace*."
+      }
+    ],
+    "end": {
+      "seconds": 3,
+      "headline": "Kick back.\nYour agents\n*keep going*.",
+      "subline": "Hammock for iPhone and Mac"
+    }
+  }
+}

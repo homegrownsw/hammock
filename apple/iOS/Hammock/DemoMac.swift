@@ -260,7 +260,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 let line = typed.trimmingCharacters(in: .whitespaces)
                 typed = ""
                 out += "\r\n"
-                if !line.isEmpty {
+                if let canned = Self.shellReplies[line] {
+                    out += canned
+                } else if !line.isEmpty {
                     out += "\u{1B}[2m(The demo doesn’t run commands: with your Mac paired, this is its shell.)\u{1B}[0m\r\n"
                 }
                 out += Self.prompt
@@ -448,6 +450,17 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
     }
 
     static let triageCommand = "gh issue list --label needs-triage --json number,title"
+
+    /// What the demo's shell answers to a few commands (anything else says the demo doesn't run commands).
+    static let shellReplies: [String: String] = [
+        "git status": "On branch main\r\nYour branch is ahead of 'origin/main' by 2 commits.\r\n\r\n"
+            + "Changes not staged for commit:\r\n  \(e)31mmodified:   apple/iOS/Settings.swift\(e)0m\r\n",
+        "git push": "Enumerating objects: 14, done.\r\nWriting objects: 100% (8/8), 2.31 KiB | 2.31 MiB/s, done.\r\n"
+            + "To github.com:acme/widgets.git\r\n   \(e)33m7d3e215..4f2a91c\(e)0m  main -> main\r\n",
+        "ls": "\(e)1;34mapple\(e)0m  \(e)1;34minternal\(e)0m  \(e)1;34mrelease-notes\(e)0m  justfile  README.md  go.mod\r\n",
+        "npm test": "\r\n> widgets@1.8.0 test\r\n> vitest run\r\n\r\n \(e)32m✓\(e)0m src/forecast.test.ts \(e)2m(12 tests)\(e)0m\r\n"
+            + " \(e)32m✓\(e)0m src/theme.test.ts \(e)2m(4 tests)\(e)0m\r\n\r\n \(e)1;32mTest Files\(e)0m  2 passed\r\n \(e)1;32m     Tests\(e)0m  16 passed\r\n",
+    ]
     private static let e = "\u{1B}["
     static let prompt = "\(e)1;32mme@MacBook\(e)0m \(e)1;34m~/Developer/hammock\(e)0m $ "
 
@@ -478,7 +491,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 + "  \(e)2m➜  Network: use --host to expose\(e)0m\r\n\r\n"
                 + "\(e)2m9:38:02\(e)0m \(e)36m[vite]\(e)0m page reload \(e)2msrc/App.tsx\(e)0m\r\n"
                 + "\(e)2m9:39:15\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/Forecast.tsx\(e)0m\r\n"
-                + "\(e)2m9:40:47\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/theme.css\(e)0m\r\n"
+                + "\(e)2m9:40:47\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/theme.css\(e)0m\r\n^C\r\n" + prompt
         case "p_backup":
             return "\(e)1;32mme@MacBook\(e)0m \(e)1;34m~\(e)0m $ rsync -a ~/.config/ /Volumes/Backup/config/\r\n"
                 + "\(e)2msent 18.2 MB  received 4.1 kB  12.1 MB/sec\(e)0m\r\n"

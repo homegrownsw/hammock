@@ -30,6 +30,12 @@ struct CockpitView: View {
             }
         }
         .demoBar(session)
+        #if DEBUG
+        // Dev aid: the demo director's tab (DemoDirector, for the App Store's videos).
+        .onReceive(NotificationCenter.default.publisher(for: DemoDirector.navigate)) { n in
+            if let t = n.userInfo?["tab"] as? String { withAnimation { tab = t } }
+        }
+        #endif
         // Above the tab bar.
         .overlay(alignment: .bottom) { ToastOverlay(model: model).padding(.bottom, 64) }
         // A notification opened: its session.
@@ -146,6 +152,10 @@ struct SessionsView: View {
                 if path.isEmpty, let p = ProcessInfo.processInfo.environment["HMK_DEBUG_PATH"] {
                     path = p.split(separator: ",").map(String.init)
                 }
+            }
+            // The demo director's path (DemoDirector, for the App Store's videos).
+            .onReceive(NotificationCenter.default.publisher(for: DemoDirector.navigate)) { n in
+                if let p = n.userInfo?["path"] as? [String] { path = p }
             }
             #endif
             .showsStartedAgents(origin: "sessions", path: $path)

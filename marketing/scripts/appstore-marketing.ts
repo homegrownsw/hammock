@@ -56,6 +56,7 @@ interface Layout {
 const data = JSON.parse(readFileSync(join(APPSTORE, "marketing.json"), "utf8")) as {
   panels: Panel[];
   devices: Record<DeviceId, Layout>;
+  header: { wordmark: string; tagline: string };
 };
 
 // --- Arguments.
@@ -70,10 +71,12 @@ for (let i = 0; i < args.length; i++) {
     devices.push(d);
   } else throw new Error(`unknown argument ${args[i]}`);
 }
-if (only && !data.panels.some((p) => p.id === only)) {
+if (only && only !== "header" && !data.panels.some((p) => p.id === only)) {
   throw new Error(`'${only}' isn't a panel: ${data.panels.map((p) => p.id).join(", ")}`);
 }
-const which: DeviceId[] = devices.length ? devices : ["iphone", "ipad", "duo"];
+const which: DeviceId[] = only === "header" ? [] : devices.length ? devices : ["iphone", "ipad", "duo"];
+// The product page header: with every panel (no --only or --device), or alone with --only header.
+const header = only === "header" || (!only && !devices.length);
 const frames = process.env.FRAMES_BIN ?? "frames";
 
 // --- The page: the website's colours and type (marketing/index.html), a glow, the copy and the framed device.
@@ -189,6 +192,7 @@ for (const dev of which) {
   }
   await ctx.close();
 }
+if (header) await drawHeader();
 await browser.close();
 
 if (problems.length) {
@@ -196,3 +200,54 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(`Made ${made} marketing image(s) for ${LOCALES.join(", ")} (${which.join(", ")}).`);
+
+// The product page header (iOS 27): 3840 x 1646, opaque PNG, across the top of the product page. On an iPhone only
+// its middle third shows, under the status bar and the back and share buttons, so the icon, wordmark and tagline sit
+// in the middle third and below the top quarter, and the edges carry only the glow, which a crop can't cut in half.
+// creative/<locale>/header.png, and creative/header-preview.png: the whole image, with the iPhone's crop outlined.
+async function drawHeader() {
+  const W = 3840, H = 1646;
+  // The iPhone app's icon, drawn as Icon Composer does (apple/iOS/Hammock/AppIcon.icon): its fill under its mark.
+  const mark = pathToFileURL(join(ROOT, "apple/iOS/Hammock/AppIcon.icon/Assets/mark.png")).href;
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@700&display=block" rel="stylesheet">
+<style>
+  html, body { margin:0; width:${W}px; height:${H}px; overflow:hidden; background:#06140e; -webkit-font-smoothing:antialiased; }
+  body { position:relative; background-image:
+    radial-gradient(40% 70% at 50% 62%, rgba(46,138,98,.55), transparent 70%),
+    radial-gradient(30% 50% at 18% 80%, rgba(97,216,54,.10), transparent 70%),
+    radial-gradient(30% 50% at 35% 20%, rgba(255,159,10,.07), transparent 70%),
+    radial-gradient(30% 50% at 68% 22%, rgba(191,90,242,.08), transparent 70%),
+    radial-gradient(30% 50% at 84% 82%, rgba(10,132,255,.10), transparent 70%); }
+  .mark { position:absolute; left:50%; top:62%; transform:translate(-50%, -50%); text-align:center; width:1200px; }
+  .icon { display:inline-block; width:300px; height:300px; border-radius:68px; overflow:hidden;
+    background:linear-gradient(180deg, rgb(29,96,70), rgb(7,26,18)); box-shadow:0 40px 120px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.08); }
+  .icon img { width:100%; height:100%; display:block; }
+  h1 { margin:44px 0 0; font:700 168px/1 "Space Grotesk", sans-serif; letter-spacing:-0.04em; color:#eaf6ef; }
+  p { margin:26px 0 0; font:400 50px/1.3 Inter, sans-serif; color:#a3c2b2; }
+</style></head><body><div class="mark"><span class="icon"><img src="${mark}"></span><h1>${esc(data.header.wordmark)}</h1><p>${esc(data.header.tagline)}</p></div></body></html>`;
+  const ctx = await browser.newContext({ viewport: { width: W, height: H } });
+  const tab = await ctx.newPage();
+  const work = join(BUILD, "header");
+  mkdirSync(work, { recursive: true });
+  const file = join(work, "page.html");
+  writeFileSync(file, html);
+  await tab.goto(pathToFileURL(file).href, { waitUntil: "networkidle" });
+  await tab.evaluate(() => document.fonts.ready);
+  // What the iPhone shows is the middle third: the mark must fit inside it, below the top quarter.
+  const box = await tab.evaluate(() => document.querySelector(".mark")!.getBoundingClientRect().toJSON());
+  if (box.left < W / 3 || box.right > (2 * W) / 3 || box.top < H / 4) {
+    problems.push(`header: the icon and words leave the iPhone's crop (the middle third, below the top quarter)`);
+  }
+  const raw = join(work, "header.png");
+  await tab.screenshot({ path: raw });
+  await ctx.close();
+  const first = join(APPSTORE, "creative", LOCALES[0], "header.png");
+  for (const loc of LOCALES) mkdirSync(join(APPSTORE, "creative", loc), { recursive: true });
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", raw, "-pix_fmt", "rgb24", first]);
+  for (const loc of LOCALES.slice(1)) copyFileSync(first, join(APPSTORE, "creative", loc, "header.png"));
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", first, "-vf",
+    `drawbox=x=${W / 3}:y=0:w=${W / 3}:h=${H}:color=white@0.8:t=6,drawbox=x=0:y=${H / 4}:w=${W}:h=2:color=white@0.4:t=2`,
+    join(APPSTORE, "creative", "header-preview.png")]);
+  console.log(`  marketing/appstore/creative/<locale>/header.png (${W} x ${H})`);
+}
