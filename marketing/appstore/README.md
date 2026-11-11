@@ -40,8 +40,9 @@ just appstore-pull             # overwrite metadata/ with what App Store Connect
 just appstore-whats-new 0.3.0  # What's New for a version, from its release notes (--pending for the one being built)
 ```
 
-The loop is **edit → `appstore-check` → `appstore-preview` → `appstore-push`**, then submit the version for
-review in App Store Connect by hand. The push never renames the app by accident: it refuses when `name.txt`
+The loop is **edit → `appstore-check` → `appstore-push`**, then submit the version for review in App Store Connect
+by hand. The push runs the preview's checks first and uploads nothing if they find a problem, so it's one command,
+and one 1Password approval; `appstore-preview` is the same look without the upload. The push never renames the app by accident: it refuses when `name.txt`
 differs from the store's, until `HMK_APPSTORE_ALLOW_RENAME=1`.
 
 ## The API key

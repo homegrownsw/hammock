@@ -364,60 +364,66 @@ def preflight_problems
   problems
 end
 
+# The preview: everything a push would do and change, checked against App Store Connect, read-only. The push runs
+# it first too, so one `just appstore-push` (one 1Password approval) both shows and uploads, and stops before
+# uploading anything when it finds a problem. Returns the app record.
+def preflight!
+  problems = preflight_problems
+  app = app_record
+  if app.nil?
+    problems << "App Store Connect has no app with the bundle id #{APP_IDENTIFIER}."
+  else
+    UI.success("App: #{app.name} (#{app.id}), primary language #{app.primary_locale}")
+    changes = name_changes(app)
+    UI.important("A push would RENAME the app:\n#{changes.join("\n")}") unless changes.empty?
+    version = editable_version(app)
+    if version.nil?
+      problems << "There's no editable App Store version for a push to write to: add one in App Store Connect."
+    else
+      UI.success("Editable version: #{version.version_string} (#{version.app_store_state})")
+      UI.message(whats_new_for(app).last)
+    end
+    tf = testflight_changes(app)
+    UI.message(tf.empty? ? "TestFlight: up to date." : "TestFlight: a push would change\n#{tf.join("\n")}")
+    if screenshots?
+      counts = locales.map { |l| "#{l} #{image_files(SCREENSHOTS_PATH, l, "iphone69").count} iPhone, #{image_files(SCREENSHOTS_PATH, l, "ipad13").count} iPad, #{duo? ? image_files(DUO_PATH, l, "duo").count : "(left alone)"} iPhone Duo" }
+      UI.message("Screenshots a push would upload: #{counts.join("; ")}")
+    end
+  end
+
+  Dir[File.join(APPSTORE_DIR, "{metadata,testflight}", "*", "*_url.txt")].map { |p| File.read(p).strip }
+    .reject(&:empty?).uniq.sort.each do |url|
+    code = fetch_status(url)
+    if code == 200
+      UI.success("#{code}  #{url}")
+    else
+      problems << "#{url} returned #{code}. App Review opens every one of these."
+    end
+  end
+
+  if app
+    precheck(app_identifier: APP_IDENTIFIER, api_key_path: asc_api_key_path,
+             include_in_app_purchases: false, default_rule_level: :warn)
+  end
+
+  UI.user_error!("Preflight found #{problems.count} problem(s):\n  - #{problems.join("\n  - ")}") unless problems.empty?
+  app
+end
+
 platform :ios do
   # Read-only. Not `deliver(verify_only: true)`: that verifies a binary and never reaches the metadata.
-  desc "Read-only preflight: the key, the app record, the versions, What's New, TestFlight, the URLs, precheck"
+  desc "Read-only preflight: the key, the app record, the versions, What's New, TestFlight, screenshots, the URLs, precheck"
   lane :preview do
-    problems = preflight_problems
-    app = app_record
-    if app.nil?
-      problems << "App Store Connect has no app with the bundle id #{APP_IDENTIFIER}."
-    else
-      UI.success("App: #{app.name} (#{app.id}), primary language #{app.primary_locale}")
-      changes = name_changes(app)
-      UI.important("A push would RENAME the app:\n#{changes.join("\n")}") unless changes.empty?
-      version = editable_version(app)
-      if version.nil?
-        problems << "There's no editable App Store version for a push to write to: add one in App Store Connect."
-      else
-        UI.success("Editable version: #{version.version_string} (#{version.app_store_state})")
-        UI.message(whats_new_for(app).last)
-      end
-      tf = testflight_changes(app)
-      UI.message(tf.empty? ? "TestFlight: up to date." : "TestFlight: a push would change\n#{tf.join("\n")}")
-      if screenshots?
-        counts = locales.map { |l| "#{l} #{image_files(SCREENSHOTS_PATH, l, "iphone69").count} iPhone, #{image_files(SCREENSHOTS_PATH, l, "ipad13").count} iPad, #{duo? ? image_files(DUO_PATH, l, "duo").count : "(left alone)"} iPhone Duo" }
-        UI.message("Screenshots a push would upload: #{counts.join("; ")}")
-      end
-    end
-
-    Dir[File.join(APPSTORE_DIR, "{metadata,testflight}", "*", "*_url.txt")].map { |p| File.read(p).strip }
-      .reject(&:empty?).uniq.sort.each do |url|
-      code = fetch_status(url)
-      if code == 200
-        UI.success("#{code}  #{url}")
-      else
-        problems << "#{url} returned #{code}. App Review opens every one of these."
-      end
-    end
-
-    if app
-      precheck(app_identifier: APP_IDENTIFIER, api_key_path: asc_api_key_path,
-               include_in_app_purchases: false, default_rule_level: :warn)
-    end
-
-    UI.user_error!("Preflight found #{problems.count} problem(s):\n  - #{problems.join("\n  - ")}") unless problems.empty?
+    preflight!
     UI.success("Preflight passed. Nothing was uploaded: `just appstore-push` does that.")
   end
 
   desc "Upload the listing text, age rating, review details, What's New and TestFlight's test information. " \
        "Saves; never submits, never a binary."
   lane :push do
-    # Everything that could fail part-way is refused before anything is sent.
-    problems = preflight_problems
-    UI.user_error!("Not ready:\n  - #{problems.join("\n  - ")}") unless problems.empty?
-    app = app_record
-    UI.user_error!("App Store Connect has no app with the bundle id #{APP_IDENTIFIER}.") if app.nil?
+    # The preview first: everything that could fail part-way is refused before anything is sent.
+    app = preflight!
+    UI.success("Preflight passed. Uploading.")
     changes = name_changes(app)
     if !changes.empty? && ENV["HMK_APPSTORE_ALLOW_RENAME"] != "1"
       UI.user_error!("Refusing to rename the app:\n#{changes.join("\n")}\n" \
