@@ -174,10 +174,14 @@ public final class TerminalEngine {
         ghostty_terminal_resize(terminal, UInt16(cols), UInt16(rows), UInt32(cellPixels.w), UInt32(cellPixels.h))
     }
 
-    /// Sets the cell size in pixels (as drawn), keeping the grid.
-    public func setCellPixels(width: Int, height: Int) {
-        guard width > 0, height > 0, (width, height) != cellPixels else { return }
+    /// Sets the cell size in pixels (as drawn), keeping the grid. Returns
+    /// whether it changed: Kitty images are placed by it, so a frame read
+    /// before it changed has none, or has them at the old size.
+    @discardableResult
+    public func setCellPixels(width: Int, height: Int) -> Bool {
+        guard width > 0, height > 0, (width, height) != cellPixels else { return false }
         resize(cols: cols, rows: rows, cellWidth: width, cellHeight: height)
+        return true
     }
 
     /// Scrolls the viewport by `delta` rows (negative = back into scrollback).

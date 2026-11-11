@@ -402,7 +402,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     /// and the cursor (filled while you type, else an underline).
     private func scene(scale: CGFloat) -> TerminalMetalRenderer.Scene? {
         guard let session else { return nil }
-        let f = session.engine.frame()
+        var f = session.engine.frame()
         let theme = session.engine.theme
         guard f.cols > 0 else {
             return TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: false, background: f.background, padding: 0, cellHeight: 1)
@@ -435,8 +435,14 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         layout.capacity = max(f.rows * 2, 48)
         metal?.capacity = layout.capacity
         // Kitty images are sized by the cell, in pixels; nothing else here
-        // tells the engine (the Mac's pane does, in reportGrid).
-        session.engine.setCellPixels(width: Int((m.cw * scale).rounded()), height: Int((m.ch * scale).rounded()))
+        // tells the engine (the Mac's pane does, in reportGrid). Known only
+        // now, with the font sized to fit: when it's new, read the screen
+        // again, or its images aren't placed until the next draw (the first
+        // draw had none, and Claude Code's images stayed blank until you
+        // scrolled).
+        if session.engine.setCellPixels(width: Int((m.cw * scale).rounded()), height: Int((m.ch * scale).rounded())) {
+            f = session.engine.frame()
+        }
 
         var scene = TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: false, background: f.background,
                                                 padding: origin.x, cellHeight: m.ch)

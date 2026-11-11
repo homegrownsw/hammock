@@ -1,5 +1,6 @@
 import CoreText
 import Foundation
+import ImageIO
 import Testing
 @testable import HammockKit
 
@@ -249,4 +250,58 @@ private func cells(_ s: String) -> [TerminalCell] { s.map { TerminalCell(text: $
     #expect(line.backgrounds.count == 1 && line.backgrounds[0].x == 8.5 && line.backgrounds[0].width == 17)
     #expect(line.rects.contains { !$0.copy && $0.rect == CGRect(x: 0, y: 0, width: 8.5, height: 18) }) // the full block
     #expect(line.rects.contains { $0.copy && $0.rect.minX == 8.5 }) // the underline
+}
+
+// Kitty images placed with Unicode placeholders (as Claude Code shows them)
+// when the placeholder cells arrive before the image: a screen sent on
+// connecting, say. The rows didn't change when the image came, but it must
+// still be drawn.
+@Test func placesImagesWhosePlaceholdersCameFirst() throws {
+    let ctx = CGContext(data: nil, width: 8, height: 4, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 8, height: 4))
+    let png = NSMutableData()
+    let dest = try #require(CGImageDestinationCreateWithData(png, "public.png" as CFString, 1, nil))
+    CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+    #expect(CGImageDestinationFinalize(dest))
+    let transmit = "\u{1b}_Ga=T,U=1,i=42,f=100,c=2,r=1,q=2;\((png as Data).base64EncodedString())\u{1b}\\"
+    // Image 42 (in the foreground colour), row 0, columns 0 and 1.
+    let cells = "\u{1b}[38;5;42m\u{10EEEE}\u{0305}\u{0305}\u{10EEEE}\u{0305}\u{030D}\u{1b}[39m\r\n"
+
+    let first = TerminalEngine(cols: 20, rows: 4)
+    first.setCellPixels(width: 10, height: 20)
+    first.write(Data((transmit + cells).utf8))
+    _ = first.frame()
+    #expect(first.images().count == 1) // the usual order
+
+    let late = TerminalEngine(cols: 20, rows: 4)
+    late.setCellPixels(width: 10, height: 20)
+    late.write(Data(cells.utf8))
+    _ = late.frame()
+    #expect(late.images().isEmpty)
+    late.write(Data(transmit.utf8))
+    _ = late.frame()
+    #expect(late.images().count == 1)
+
+    // The cell size told after the screen came (the iPhone learns it as it
+    // first draws): the image is still drawn, at its size.
+    let unsized = TerminalEngine(cols: 20, rows: 4)
+    unsized.write(Data((transmit + cells).utf8))
+    _ = unsized.frame()
+    unsized.setCellPixels(width: 10, height: 20)
+    _ = unsized.frame()
+    // Before any cell size, nothing's placed; setting it says so, and the
+    // next frame places the image (the iPhone reads the screen again then).
+    let fresh = TerminalEngine(cols: 20, rows: 4)
+    fresh.write(Data((transmit + cells).utf8))
+    _ = fresh.frame()
+    #expect(fresh.images().isEmpty)
+    #expect(fresh.setCellPixels(width: 10, height: 20))
+    #expect(!fresh.setCellPixels(width: 10, height: 20))
+    _ = fresh.frame()
+    #expect(fresh.images().count == 1)
+
+    let placed = unsized.images(), sizedFirst = first.images()
+    #expect(placed.count == 1 && placed.first?.width == sizedFirst.first?.width && placed.first?.height == sizedFirst.first?.height)
 }
