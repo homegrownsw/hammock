@@ -258,13 +258,19 @@ struct EditorPaneView: View {
             Image(systemName: info.path.isEmpty ? "doc" : "doc.text")
                 .foregroundStyle(.secondary)
                 .frame(width: 14)
-            PaneKindMenu(model: model, paneID: paneID) {
-                HStack(spacing: 4) {
+            HStack(spacing: 5) {
+                PaneKindMenu(model: model, paneID: paneID) {
                     Text(info.name.isEmpty ? "Untitled" : info.name).fontWeight(.semibold)
-                    if info.dirty {
-                        Circle().fill(.secondary).frame(width: 7, height: 7)
-                            .help("Edited: not saved yet (⌘S saves)")
-                    }
+                }
+                // Beside the menu, not in its label: a Menu's label draws only
+                // its text and images. `.tooltip`, as `.help` never shows here.
+                if info.dirty {
+                    Circle().fill(.secondary).frame(width: 7, height: 7)
+                        .frame(width: 13, height: 20)
+                        .contentShape(Rectangle())
+                        .tooltip("Unsaved Changes")
+                        .accessibilityElement()
+                        .accessibilityLabel("Unsaved Changes")
                 }
             }
             Text(shortPath)
