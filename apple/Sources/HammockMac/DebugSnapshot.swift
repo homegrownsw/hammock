@@ -111,6 +111,24 @@ enum DebugSnapshot {
                 }
             }
         }
+        // HMK_DEBUG_START_AGENT=1: the Start an Agent sheet opened on the
+        // current Group; with HMK_DEBUG_SNAPSHOT also rendered on its own to
+        // <prefix>-start-agent-<light|dark>.png.
+        if env["HMK_DEBUG_START_AGENT"] != nil {
+            Task { @MainActor in
+                // Once the daemon's state (and its Groups) is in.
+                for _ in 0..<40 {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if AppModelRegistry.shared?.groups.isEmpty == false { break }
+                }
+                guard let model = AppModelRegistry.shared else { return }
+                AgentLauncher.shared.open(model)
+                guard let prefix = env["HMK_DEBUG_SNAPSHOT"], let request = AgentLauncher.shared.request else { return }
+                // Its Groups' pictures, fetched as the sheet shows them.
+                try? await Task.sleep(for: .seconds(3))
+                render(StartAgentSheet(model: model, request: request), size: NSSize(width: 520, height: 600), to: "\(prefix)-start-agent")
+            }
+        }
         // HMK_DEBUG_PROMPT=plain|other|preview|tasks: the agent view's question
         // card with a made-up question (PromptCardSample), rendered to
         // <prefix>-prompt-<light|dark>.png.

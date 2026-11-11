@@ -45,6 +45,9 @@ public struct StartAgentView: View {
     private var usable: [WorkspaceGroup] { Self.groups(model, on: computerID) }
 
     private var group: WorkspaceGroup? { model.groups.first { $0.id == groupID } }
+    private func groupName(_ g: WorkspaceGroup) -> String {
+        g.isRemote && !g.isOnLinkedComputer ? "\(model.title(of: g)) · \(model.hostLabel(of: g))" : model.title(of: g)
+    }
     private var installed: [String] { list?.agents ?? AgentCatalog.installed.map(\.id) }
     private var agents: [Hammock_V1_AgentKind] { AgentCatalog.startable(installedIDs: list?.agents, chosen: harness) }
     private var home: String { list?.home ?? "" }
@@ -81,14 +84,23 @@ public struct StartAgentView: View {
                         }
                         Picker("Group", selection: $groupID) {
                             ForEach(usable) { g in
-                                Label {
-                                    Text(g.isRemote && !g.isOnLinkedComputer ? "\(model.title(of: g)) · \(model.hostLabel(of: g))" : model.title(of: g))
-                                } icon: {
-                                    model.groupMenuIcon(g)
-                                }
-                                .tag(g.id)
+                                Label { Text(groupName(g)) } icon: { model.groupMenuIcon(g) }
+                                    .tag(g.id)
                             }
                             Label(usable.isEmpty ? "A new Group" : "The folder's Group, or a new one", systemImage: "folder.badge.plus").tag("")
+                        } currentValueLabel: {
+                            // The chosen Group as the row shows it. The row
+                            // draws a Label's icon against its name when it's
+                            // an image (a Group's emoji or picture) rather than
+                            // a symbol, with no gap on the iPhone and too
+                            // little on the Mac, and makes any view given here
+                            // into icon and text, so the gap is a space in the
+                            // name (none after the default symbol).
+                            if let g = group, usable.contains(where: { $0.id == g.id }) {
+                                Label { Text((g.icon.isEmpty && model.groupPicture(g) == nil ? "" : " ") + groupName(g)) } icon: { model.groupMenuIcon(g) }
+                            } else {
+                                Label(usable.isEmpty ? "A new Group" : "The folder's Group, or a new one", systemImage: "folder.badge.plus")
+                            }
                         }
                         .onChange(of: groupID) { cwdTouched = false } // its folder, as at first
                     }
