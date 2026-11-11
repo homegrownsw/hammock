@@ -665,7 +665,7 @@ func TestAgentDevToolsIsItsPage(t *testing.T) {
 	// Made by it (before this rule, say), DevTools for your page is still
 	// your page's.
 	d.mu.Lock()
-	theirs, err := d.createTab(g1, "", &pb.PaneSpec{Url: DevToolsURL + page, CreatedByPaneId: self}, "")
+	theirs, err := d.createTab(g1, "", &pb.PaneSpec{Url: DevToolsURL + page, CreatedByPaneId: self}, "", "")
 	if err != nil {
 		d.mu.Unlock()
 		t.Fatal(err)

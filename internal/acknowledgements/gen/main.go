@@ -6,7 +6,7 @@
 //   - Go modules: those linked into ./cmd/... (hmk, hmkd, pane-holder) for
 //     macOS (the Mac app) and Linux (the tarballs), from `go list -deps`.
 //   - Swift packages: apple/Package.resolved's pins, from their checkouts.
-//   - npm packages: those esbuild bundles into apple/Resources/editor.html.
+//   - npm packages: those esbuild bundles into apple/Resources/editor.html and diff.html.
 //   - Code copied into the repo: THIRD_PARTY_NOTICES.md's table and sections.
 //   - The rest (libghostty-vt and what it vendors, Go itself, CEF):
 //     third_party/acknowledgements.json, with texts from their own files.
@@ -310,8 +310,8 @@ func swiftPackages(root string, m *manifest) ([]pkg, error) {
 
 // MARK: npm
 
-// npmPackages lists the packages esbuild bundles into the editor's page, as
-// apple/Editor/build.sh bundles it.
+// npmPackages lists the packages esbuild bundles into the editor's and diff
+// panes' pages, as apple/Editor/build.sh bundles them.
 func npmPackages(root string) ([]pkg, error) {
 	dir := filepath.Join(root, "apple/Editor")
 	if _, err := os.Stat(filepath.Join(dir, "node_modules/.package-lock.json")); err != nil {
@@ -319,27 +319,29 @@ func npmPackages(root string) ([]pkg, error) {
 			return nil, err
 		}
 	}
-	meta, err := os.CreateTemp("", "hmk-editor-meta-*.json")
-	if err != nil {
-		return nil, err
-	}
-	meta.Close()
-	defer os.Remove(meta.Name())
-	if _, err := output(dir, nil, "npm", "exec", "--", "esbuild", "src/main.js", "--bundle", "--format=iife",
-		"--target=safari18", "--metafile="+meta.Name(), "--outfile="+os.DevNull, "--log-level=warning"); err != nil {
-		return nil, err
-	}
-	var m struct {
-		Inputs map[string]json.RawMessage `json:"inputs"`
-	}
-	if err := readJSON(meta.Name(), &m); err != nil {
-		return nil, err
-	}
 	re := regexp.MustCompile(`^node_modules/((?:@[^/]+/)?[^/]+)/`)
 	names := map[string]bool{}
-	for in := range m.Inputs {
-		if s := re.FindStringSubmatch(in); s != nil {
-			names[s[1]] = true
+	for _, entry := range []string{"src/main.js", "src/diff.js"} {
+		meta, err := os.CreateTemp("", "hmk-editor-meta-*.json")
+		if err != nil {
+			return nil, err
+		}
+		meta.Close()
+		defer os.Remove(meta.Name())
+		if _, err := output(dir, nil, "npm", "exec", "--", "esbuild", entry, "--bundle", "--format=iife",
+			"--target=safari18", "--metafile="+meta.Name(), "--outfile="+os.DevNull, "--log-level=warning"); err != nil {
+			return nil, err
+		}
+		var m struct {
+			Inputs map[string]json.RawMessage `json:"inputs"`
+		}
+		if err := readJSON(meta.Name(), &m); err != nil {
+			return nil, err
+		}
+		for in := range m.Inputs {
+			if s := re.FindStringSubmatch(in); s != nil {
+				names[s[1]] = true
+			}
 		}
 	}
 	var pkgs []pkg

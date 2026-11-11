@@ -142,6 +142,7 @@ enum PaneKind {
   PANE_KIND_BROWSER = 2;
   PANE_KIND_SIMULATOR = 3;
   PANE_KIND_EDITOR = 4;  // a text file (editor.go): its buffer is the daemon's
+  PANE_KIND_DIFF = 5;    // a git diff to review (diff.go): the daemon runs git, clients show it
 }
 
 message Pane {
@@ -200,6 +201,8 @@ message Pane {
   // that ran and ended, whatever its status: exit_status alone can't tell
   // the two apart (a program killed by a signal also ends -1).
   string start_error = 31;
+  // Diff panes: what it compares, and whether that's changed since.
+  DiffInfo diff = 32;
 }
 
 enum AgentState {
@@ -509,6 +512,11 @@ message ClientMessage {
     // The Mac app proving it's the app (appproof.go): only as a local
     // connection's first message. Replies AppChallenge.
     ProveApp prove_app = 126;
+    // Diff panes (diff.go). ReadDiff replies DiffContent; ReadDiffFile
+    // DiffFileText; DiffCommand Ok.
+    ReadDiff read_diff = 127;
+    ReadDiffFile read_diff_file = 128;
+    DiffCommand diff_command = 129;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -539,6 +547,8 @@ message CreateTab {
   // the daemon picks one). "tb_" and 8 of abcdefghijkmnpqrstuvwxyz23456789,
   // not already used.
   string tab_id = 4;
+  // Set: the tab goes just after this one in the Group (else last).
+  string after_tab_id = 5;
 }
 message RenameTab { string tab_id = 1; string name = 2; }
 // remember (from a linked computer): a person closed it there, so it goes
@@ -561,6 +571,7 @@ message PaneSpec {
   string simulator = 8;           // set: a simulator pane showing this device (UDID)
   LogSource log = 9;              // set: a log pane: a terminal running this source, shown as a log
   EditorOpen editor = 10;         // set: an editor pane on this file (path empty: untitled)
+  DiffOpen diff = 11;             // set: a diff pane on this repository
 }
 
 message CreatePane {
@@ -778,6 +789,8 @@ message ServerMessage {
     FileList file_list = 61;                        // reply to ListFiles
     ApprovalPending approval_pending = 62;          // a request now waits for your answer (not its reply)
     AppChallenge app_challenge = 63;                // reply to ProveApp
+    DiffContent diff_content = 64;                  // reply to ReadDiff
+    DiffFileText diff_file_text = 65;               // reply to ReadDiffFile
   }
 }
 
@@ -2384,4 +2397,130 @@ message ConfigWritten {
 message ConfigEntry {
   string key = 1;
   repeated string values = 2;  // its lines' values, in order; none: removed
+}
+
+// Diff panes (diff.go): a git diff, worked out by the daemon on the
+// repository's computer and read by clients a file at a time. The diff
+// follows the repository: when what it compares changes, DiffInfo.stale is
+// set, and clients offer to refresh (ReadDiff with refresh) rather than
+// changing what's on screen under you.
+
+// What a diff compares.
+message DiffSource {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;  // when opening: the branch against its base, else what's uncommitted
+    KIND_UNCOMMITTED = 1;  // the working tree (staged and not, untracked files too) against HEAD
+    KIND_BRANCH = 2;       // HEAD against where it left base (the merge base): what a pull request would show
+    KIND_COMMIT = 3;       // one commit against its parent
+    KIND_RANGE = 4;        // base..rev
+  }
+  Kind kind = 1;
+  // KIND_BRANCH: what it's compared with (empty: the default branch,
+  // origin's if there is one). KIND_RANGE: where it starts.
+  string base = 2;
+  string rev = 3;              // KIND_COMMIT: the commit; KIND_RANGE: where it ends
+  bool with_uncommitted = 4;   // KIND_BRANCH: and what isn't committed yet
+  bool merge_base = 5;         // KIND_RANGE: from base and rev's merge base (base...rev)
+}
+
+// What a diff pane opens.
+message DiffOpen {
+  string repo = 1;    // a folder in the repository (empty: the pane's cwd, else the Group's folder)
+  DiffSource source = 2;
+  DiffView view = 3;  // how it starts out (empty fields: the settings')
+}
+
+// A pane's own choices, over the diff-* settings. Empty: the setting's.
+message DiffView {
+  string style = 1;       // "split" or "unified"
+  string whitespace = 2;  // "show" or "ignore"
+  string wrap = 3;        // "on" or "off"
+}
+
+message DiffInfo {
+  string repo = 1;         // the repository's top folder
+  DiffSource source = 2;   // as worked out (never KIND_UNSPECIFIED)
+  string title = 3;        // "Uncommitted changes", "feature vs main", "1a2b3c4 Fix the thing"
+  string base_rev = 4;     // the commit compared from
+  string head_rev = 5;     // compared to ("" the working tree)
+  string branch = 6;       // HEAD's branch ("" detached)
+  uint32 files = 7;        // as last read
+  uint32 added = 8;
+  uint32 removed = 9;
+  // What it compares has changed since it was last read: clients offer to
+  // refresh. Also set when generation moves on from what a client shows.
+  bool stale = 10;
+  string error = 11;       // why there's nothing to show (not a repository, a commit that's gone)
+  DiffView view = 12;
+  uint64 generation = 13;  // goes up each time it's worked out afresh
+}
+
+// The diff's files (refresh: work it out again first; else as last worked
+// out, or worked out now if it never was).
+message ReadDiff { string pane_id = 1; bool refresh = 2; }
+
+message DiffContent {
+  string pane_id = 1;
+  uint64 generation = 2;
+  repeated DiffFile files = 3;
+  repeated DiffCommit commits = 4;  // HEAD's recent commits, to pick one or a range from
+  repeated string branches = 5;     // branches to compare with, the default first
+  string default_branch = 6;
+}
+
+message DiffFile {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_MODIFIED = 1;
+    STATUS_ADDED = 2;
+    STATUS_DELETED = 3;
+    STATUS_RENAMED = 4;
+    STATUS_COPIED = 5;
+    STATUS_TYPE_CHANGED = 6;
+  }
+  string path = 1;      // relative to the repository's top folder
+  string old_path = 2;  // renamed or copied from
+  Status status = 3;
+  uint32 added = 4;     // lines
+  uint32 removed = 5;
+  bool binary = 6;
+  bool generated = 7;   // a lockfile, or marked linguist-generated: shown collapsed
+  bool untracked = 8;   // new, and not yet added to git
+}
+
+message DiffCommit {
+  string sha = 1;
+  string subject = 2;
+  string author = 3;
+  int64 unix = 4;
+}
+
+// One file's two sides, as of the generation given (its base side never
+// changes; the working tree's is as it is now).
+message ReadDiffFile { string pane_id = 1; uint64 generation = 2; string path = 3; }
+
+message DiffFileText {
+  string pane_id = 1;
+  string path = 2;
+  string old_text = 3;
+  string new_text = 4;
+  // Images: their bytes (a binary file that isn't one has neither).
+  bytes old_data = 5;
+  bytes new_data = 6;
+  string mime = 7;
+  uint64 old_size = 8;  // bytes
+  uint64 new_size = 9;
+  bool too_large = 10;  // a side too big to send (sizes say how big)
+}
+
+message DiffCommand {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_SET_SOURCE = 1;  // compare source instead (worked out afresh)
+    ACTION_SET_VIEW = 2;    // view replaces the pane's own choices
+  }
+  string pane_id = 1;
+  Action action = 2;
+  DiffSource source = 3;
+  DiffView view = 4;
 }

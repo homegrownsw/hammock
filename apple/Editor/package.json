@@ -1,7 +1,7 @@
 {
   "name": "hammock-editor",
   "private": true,
-  "description": "Editor panes' CodeMirror, bundled into apple/Resources/editor.html by `just editor-js`.",
+  "description": "Editor and diff panes' CodeMirror, bundled into apple/Resources/editor.html and diff.html by `just editor-js`.",
   "type": "module",
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",

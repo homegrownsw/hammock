@@ -616,6 +616,13 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		return errAgentEditor
 	case *pb.ClientMessage_EditorPush, *pb.ClientMessage_EditorSelect:
 		return errAgentEditor
+	case *pb.ClientMessage_ReadDiff:
+		return read(m.ReadDiff.PaneId)
+	case *pb.ClientMessage_ReadDiffFile:
+		return read(m.ReadDiffFile.PaneId)
+	case *pb.ClientMessage_DiffCommand:
+		// Changing what a diff you're looking at shows: its own diffs, or asked.
+		return control(m.DiffCommand.PaneId, "send")
 	case *pb.ClientMessage_ListFiles:
 		if m.ListFiles.GroupId != "" {
 			if ownGroup(m.ListFiles.GroupId) {

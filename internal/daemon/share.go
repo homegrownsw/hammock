@@ -917,6 +917,13 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(pane(m.ClearLog.PaneId))
 	case *pb.ClientMessage_ReadEditor:
 		return view(pane(m.ReadEditor.PaneId))
+	case *pb.ClientMessage_ReadDiff:
+		return view(pane(m.ReadDiff.PaneId))
+	case *pb.ClientMessage_ReadDiffFile:
+		return view(pane(m.ReadDiffFile.PaneId))
+	case *pb.ClientMessage_DiffCommand:
+		// What it compares and how it's shown: the same for everyone on the pane.
+		return drive(pane(m.DiffCommand.PaneId))
 	case *pb.ClientMessage_EditorSelect:
 		// A viewer's cursor isn't kept: it can't point agents at things.
 		r, err := pane(m.EditorSelect.PaneId)

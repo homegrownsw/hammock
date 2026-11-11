@@ -898,6 +898,10 @@ func (a *App) drawPanes() {
 			}
 			continue
 		}
+		if p != nil && p.Kind == pb.PaneKind_PANE_KIND_DIFF {
+			a.drawDiffPlaceholder(p, body)
+			continue
+		}
 		if isEditor(p) {
 			if cx, cy, vis := a.drawEditor(p, body, focused); vis {
 				curX, curY, curShow = cx, cy, true
@@ -1049,6 +1053,24 @@ func (a *App) drawSimulatorPlaceholder(p *pb.Pane, r rect) {
 	line(cy, "▯ "+p.Title, Cell{FG: th.fg, HasFG: true, Bold: true})
 	line(cy+1, state, Cell{FG: th.dim, HasFG: true})
 	line(cy+2, "Simulators show in the Hammock app.", Cell{FG: th.faint, HasFG: true})
+}
+
+// drawDiffPlaceholder stands in for a diff pane, which the apps show.
+func (a *App) drawDiffPlaceholder(p *pb.Pane, r rect) {
+	th, s := a.th, a.scr
+	cy := r.y + r.h/2 - 1
+	line := func(y int, str string, c Cell) {
+		str = truncate(str, r.w-4)
+		s.Text(r.x+(r.w-textWidth(str))/2, y, r.w-4, str, c)
+	}
+	d := p.GetDiff()
+	line(cy, "± "+d.GetTitle(), Cell{FG: th.fg, HasFG: true, Bold: true})
+	if d.GetError() != "" {
+		line(cy+1, d.GetError(), Cell{FG: th.dim, HasFG: true})
+	} else if d.GetGeneration() > 0 {
+		line(cy+1, fmt.Sprintf("%d files · +%d −%d", d.GetFiles(), d.GetAdded(), d.GetRemoved()), Cell{FG: th.dim, HasFG: true})
+	}
+	line(cy+2, "Diffs to review show in the Hammock app.", Cell{FG: th.faint, HasFG: true})
 }
 
 // isTerm reports whether a pane is a terminal (not a browser or simulator).

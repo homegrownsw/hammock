@@ -46,8 +46,8 @@ otool -l "$app/Contents/MacOS/Hammock" | grep -q '@executable_path/../Frameworks
   install_name_tool -add_rpath @executable_path/../Frameworks "$app/Contents/MacOS/Hammock"
 cp "$root/apple/Resources/$icon" "$app/Contents/Resources/AppIcon.icns"
 cp "$root/apple/Resources/NeedsYou.caf" "$app/Contents/Resources/"
-# Editor panes' page (CodeMirror, built by `just editor-js`).
-cp "$root/apple/Resources/editor.html" "$app/Contents/Resources/"
+# Editor and diff panes' pages (CodeMirror, built by `just editor-js`).
+cp "$root/apple/Resources/editor.html" "$root/apple/Resources/diff.html" "$app/Contents/Resources/"
 # Third-party software and its licences (Settings ▸ About ▸ Acknowledgements;
 # `just acknowledgements` makes it). The Xcode project bundles the same file.
 cp "$root/internal/acknowledgements/Acknowledgements.json" "$app/Contents/Resources/"

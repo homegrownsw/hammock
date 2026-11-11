@@ -188,6 +188,7 @@ public final class AppModel {
     @ObservationIgnored var agentSessions: [String: AgentSession] = [:]
     @ObservationIgnored var logSessions: [String: LogSession] = [:]
     @ObservationIgnored var editorSessions: [String: EditorSession] = [:]
+    @ObservationIgnored var diffSessions: [String: DiffSession] = [:]
     /// Groups' pictures (PNG) by hash, and the ones being fetched.
     public internal(set) var groupPictures: [String: Data] = [:]
     @ObservationIgnored var pictureLoads: [String: Task<Void, Never>] = [:]
@@ -305,6 +306,7 @@ public final class AppModel {
             rewatchAgents()
             rewatchLogs()
             reattachEditors()
+            reattachDiffs()
         } catch {
             lastError = error.localizedDescription
         }

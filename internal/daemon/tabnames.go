@@ -68,7 +68,8 @@ func tabAutoName(panes []*pb.Pane) (name, key string) {
 }
 
 func terminalPane(p *pb.Pane) bool {
-	return p.Kind != pb.PaneKind_PANE_KIND_BROWSER && p.Kind != pb.PaneKind_PANE_KIND_SIMULATOR && p.Kind != pb.PaneKind_PANE_KIND_EDITOR
+	return p.Kind != pb.PaneKind_PANE_KIND_BROWSER && p.Kind != pb.PaneKind_PANE_KIND_SIMULATOR && p.Kind != pb.PaneKind_PANE_KIND_EDITOR &&
+		p.Kind != pb.PaneKind_PANE_KIND_DIFF
 }
 
 // agentAutoName is a running agent's session title.

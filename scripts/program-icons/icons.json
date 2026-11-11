@@ -193,7 +193,7 @@
     "emacs": "emacs", "emacsclient": "emacs",
     "hx": "helix", "helix": "helix",
     "nano": "editor", "pico": "editor", "micro": "editor", "kak": "editor", "ne": "editor", "ed": "editor",
-    "hammock-editor": "document",
+    "hammock-editor": "document", "hammock-diff": "git",
     "git": "git", "lazygit": "git", "gitui": "git", "tig": "git", "jj": "git",
     "gh": "github", "glab": "gitlab",
     "docker": "docker", "docker-compose": "docker", "lazydocker": "docker", "podman": "podman",

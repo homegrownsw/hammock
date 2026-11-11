@@ -122,6 +122,13 @@ Usage:
                                             file, whether it's saved, and the selection)
   hmk edit --select PANE LINE[:COL][-LINE[:COL]]
                                             select lines in an editor pane (LINE alone: all of it) and scroll to them
+  hmk diff [REV | FROM..TO | FROM...TO] [--uncommitted | --branch [--base B] [--with-uncommitted]]
+           [--repo DIR] [--split | --unified] [--ignore-whitespace] [--beside PANE [--down] | --group G]
+           [--name NAME] [--wait]
+                                            open a git diff to review in a new tab after this pane's
+                                            (--beside: split beside a pane). With no REV: this branch
+                                            against its base, uncommitted changes too, or on the default
+                                            branch what's uncommitted; REV: one commit; --wait: until closed
   hmk attach PANE                          attach this terminal (Ctrl-] detaches)
   hmk send PANE [TEXT] [--key NAME]... [--enter]
                                             type TEXT into a pane, then press keys (escape, ctrl-c,
@@ -725,6 +732,9 @@ func runCommand(args []string) error {
 	case "edit":
 		return runEdit(w, call, args)
 
+	case "diff":
+		return runDiff(w, c, call, args)
+
 	case "nav":
 		if len(args) < 3 {
 			return fmt.Errorf("usage: hmk nav PANE URL|back|forward|reload|stop")
@@ -1224,6 +1234,10 @@ func printWorld(w *world) {
 						status += "  (changed on disk)"
 					}
 					printfSafe("   %s%s  %-24s editor  %s%s\n", focus, p.Id, truncate(p.Title, 24), ed.GetPath(), status)
+					continue
+				}
+				if p.Kind == pb.PaneKind_PANE_KIND_DIFF {
+					printfSafe("   %s%s  %-24s diff  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.GetDiff().GetRepo(), status)
 					continue
 				}
 				if p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {

@@ -68,7 +68,7 @@ func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage
 		gid = d.createGroupQuiet("").Id
 	}
 	spec := &pb.PaneSpec{Cwd: cwd, Command: agentShellCommand(cmd), CreatedByPaneId: creator}
-	t, err := d.createTab(gid, "", spec, m.TabId)
+	t, err := d.createTab(gid, "", spec, m.TabId, "")
 	if err != nil {
 		if made {
 			d.dropQuietGroup(gid) // the pane couldn't start: never shown

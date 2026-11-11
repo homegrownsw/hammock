@@ -72,7 +72,7 @@ extension SettingsTab: Identifiable {
         case .general: "The server, the menu bar, Groups, the hmk command and links to other apps."
         case .appearance: "Light and dark, your theme, and how the window, tabs, panes and cursor look."
         case .terminal: "The terminal's font, copying and pasting, and images programs show."
-        case .editor: "Editor panes: wrapping, line numbers, indents, font size and Vim keys."
+        case .editor: "Editor and diff panes: wrapping, line numbers, indents, font size, Vim keys and how diffs are laid out."
         case .keyboard: "Change any shortcut. Search by name or keys."
         case .agents: "Closing agents at work, usage limits in the sidebar, and Hammock's hooks and tools for agents."
         case .agentView: "How agent panes open, and the agent view's colour and fonts."
@@ -315,6 +315,9 @@ enum SettingsIndex {
             e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tab width editorconfig"),
             e(.editor, "Editor panes", "Editor font size", "editor.fontsize", "text"),
             e(.editor, "Editor panes", "Vim keys", "editor.vim", "vi modal"),
+            e(.editor, "Diff panes", "Split or unified layout", "diff.style", "diff review changes side by side one column"),
+            e(.editor, "Diff panes", "Ignore whitespace", "diff.whitespace", "diff review changes spaces indentation -w"),
+            e(.editor, "Diff panes", "Wrap long lines", "diff.wrap", "diff review changes word wrap"),
 
             e(.agents, "Closing", "Warn before closing an agent that's at work", "agents.closeguard", "quit confirm"),
             e(.agents, "Usage Limits in the Sidebar", "Usage limits in the sidebar", "agents.usage", "claude codex gemini cursor copilot limit 5 hours week"),

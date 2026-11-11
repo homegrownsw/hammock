@@ -264,6 +264,8 @@ struct HammockApp: App {
                     }
                 }
                 Button("Scheduled Tasks") { ScheduleUI.shared.showList() }.keyboardShortcut(Keys.scheduledTasks)
+                Button("Review Changes") { DiffUI.review(model) }.keyboardShortcut(Keys.reviewChanges)
+                    .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
                 Divider()
                 Button("Next Tab") { model.cycleTab(by: 1) }.keyboardShortcut(Keys.nextTab)
                 Button("Previous Tab") { model.cycleTab(by: -1) }.keyboardShortcut(Keys.previousTab)

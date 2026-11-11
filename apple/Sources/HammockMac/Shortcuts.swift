@@ -113,6 +113,7 @@ enum Keys {
     static var editorReload: KeyboardShortcut? { shortcut("editor_reload") }
     static var editorShowDiff: KeyboardShortcut? { shortcut("editor_show_diff") }
     static var editorWrap: KeyboardShortcut? { shortcut("editor_wrap") }
+    static var reviewChanges: KeyboardShortcut? { shortcut("review_changes") }
     static var simShutDown: KeyboardShortcut? { shortcut("sim_shut_down") }
     static var simScreenshotFile: KeyboardShortcut? { shortcut("sim_screenshot_file") }
     static var simScreenshotCopy: KeyboardShortcut? { shortcut("sim_screenshot_copy") }

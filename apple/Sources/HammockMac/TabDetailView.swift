@@ -285,6 +285,8 @@ struct PaneView: View {
                 SimulatorPaneView(model: model, paneID: paneID, isFocused: isFocused)
             } else if pane?.kind == .editor {
                 EditorPaneView(model: model, paneID: paneID, isFocused: isFocused)
+            } else if pane?.kind == .diff {
+                DiffPaneView(model: model, paneID: paneID, isFocused: isFocused)
             } else {
                 VStack(spacing: 0) {
                     header

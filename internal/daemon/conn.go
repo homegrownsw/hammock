@@ -577,7 +577,7 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_CreateTab:
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		t, err := d.createTab(m.CreateTab.GroupId, m.CreateTab.Name, m.CreateTab.Pane, m.CreateTab.TabId)
+		t, err := d.createTab(m.CreateTab.GroupId, m.CreateTab.Name, m.CreateTab.Pane, m.CreateTab.TabId, m.CreateTab.AfterTabId)
 		if err != nil {
 			return nil, err
 		}
@@ -683,6 +683,23 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 			return nil, err
 		}
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_EditorUpdate{EditorUpdate: u}}, nil
+
+	case *pb.ClientMessage_ReadDiff:
+		dc, err := d.diffs.read(m.ReadDiff)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_DiffContent{DiffContent: dc}}, nil
+
+	case *pb.ClientMessage_ReadDiffFile:
+		t, err := d.diffs.readFile(m.ReadDiffFile)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_DiffFileText{DiffFileText: t}}, nil
+
+	case *pb.ClientMessage_DiffCommand:
+		return nil, d.diffs.command(m.DiffCommand)
 
 	case *pb.ClientMessage_ListFiles:
 		d.mu.Lock()
@@ -1485,7 +1502,7 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 	case *pb.ClientMessage_Input, *pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab,
 		*pb.ClientMessage_ClosePane, *pb.ClientMessage_CloseTab, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_BrowserNavigate, *pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_ClearLog, *pb.ClientMessage_StartAgent, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder,
-		*pb.ClientMessage_EditorPush:
+		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand:
 		return true
 	case *pb.ClientMessage_EditorCommand:
 		// Saving, reloading; not an agent showing you a line.
@@ -1570,6 +1587,8 @@ func auditAction(msg *pb.ClientMessage) string {
 		return "group-folder"
 	case *pb.ClientMessage_EditorPush:
 		return "edit"
+	case *pb.ClientMessage_DiffCommand:
+		return "diff-" + strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(msg.GetDiffCommand().Action.String(), "ACTION_"), "_", "-"))
 	case *pb.ClientMessage_EditorCommand:
 		return "editor-" + strings.ToLower(strings.TrimPrefix(msg.GetEditorCommand().Action.String(), "ACTION_"))
 	}
@@ -1602,6 +1621,8 @@ func auditTarget(msg *pb.ClientMessage) string {
 		return m.StartAgent.Harness + " in " + m.StartAgent.Cwd
 	case *pb.ClientMessage_EditorPush:
 		return m.EditorPush.PaneId
+	case *pb.ClientMessage_DiffCommand:
+		return m.DiffCommand.PaneId
 	case *pb.ClientMessage_EditorCommand:
 		if m.EditorCommand.Path != "" {
 			return m.EditorCommand.PaneId + " → " + m.EditorCommand.Path

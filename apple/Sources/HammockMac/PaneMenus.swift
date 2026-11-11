@@ -504,6 +504,7 @@ private struct FoldedPane: View {
         case .browser: Image(systemName: "globe")
         case .simulator: Image(systemName: "iphone")
         case .editor: Image(systemName: "doc.text")
+        case .diff: Image(systemName: "plusminus")
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
                 StatusIcon(state: p.agent.shownState, size: 13)

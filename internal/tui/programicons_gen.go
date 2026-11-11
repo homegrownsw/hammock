@@ -150,6 +150,7 @@ var programIcons = map[string]string{
 	"gtop":             "monitor",
 	"gunicorn":         "python",
 	"gvim":             "vim",
+	"hammock-diff":     "git",
 	"hammock-editor":   "document",
 	"harlequin":        "database",
 	"hatch":            "python",

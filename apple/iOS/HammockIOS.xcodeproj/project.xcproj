@@ -84,6 +84,12 @@
             "Hammock/resources",
             "HammockMacApp/resources",
           ],
+        }, {
+          "path": "diff.html",
+          "target-membership": [
+            "Hammock/resources",
+            "HammockMacApp/resources",
+          ],
         },
       ],
     }, {

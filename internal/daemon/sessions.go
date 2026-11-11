@@ -285,7 +285,7 @@ func (d *Daemon) resumeSession(m *pb.ResumeSession) (*pb.SessionResumed, error) 
 		d.mu.Unlock()
 		return nil, errors.New("no Group to open it in")
 	}
-	t, err := d.createTab(gid, "", &pb.PaneSpec{Cwd: cwd}, "")
+	t, err := d.createTab(gid, "", &pb.PaneSpec{Cwd: cwd}, "", "")
 	if err != nil {
 		d.mu.Unlock()
 		return nil, err

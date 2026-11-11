@@ -101,6 +101,8 @@ public struct ProgramIcon: View {
 
     /// What an editor pane shows (icons.json maps it to "document").
     public static let editorPane = "hammock-editor"
+    /// What a diff pane shows (icons.json maps it to "git").
+    public static let diffPane = "hammock-diff"
 
     /// An icon's colours in the colourful style, 0xRRGGBB.
     struct Colors: Equatable {
@@ -307,6 +309,7 @@ extension AppModel {
     /// (else none: a page shows its favicon, a simulator the terminal glyph).
     public func focusedProgram(of tab: WorkspaceTab) -> [String] {
         if let p = panes[tab.focusedPaneID], p.isEditor { return [ProgramIcon.editorPane] }
+        if let p = panes[tab.focusedPaneID], p.isDiff { return [ProgramIcon.diffPane] }
         guard let p = panes[tab.focusedPaneID], p.kind == .terminal || p.kind == .unspecified, !p.exited else { return [] }
         return p.program
     }

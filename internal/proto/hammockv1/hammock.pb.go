@@ -95,6 +95,7 @@ const (
 	PaneKind_PANE_KIND_BROWSER     PaneKind = 2
 	PaneKind_PANE_KIND_SIMULATOR   PaneKind = 3
 	PaneKind_PANE_KIND_EDITOR      PaneKind = 4 // a text file (editor.go): its buffer is the daemon's
+	PaneKind_PANE_KIND_DIFF        PaneKind = 5 // a git diff to review (diff.go): the daemon runs git, clients show it
 )
 
 // Enum value maps for PaneKind.
@@ -105,6 +106,7 @@ var (
 		2: "PANE_KIND_BROWSER",
 		3: "PANE_KIND_SIMULATOR",
 		4: "PANE_KIND_EDITOR",
+		5: "PANE_KIND_DIFF",
 	}
 	PaneKind_value = map[string]int32{
 		"PANE_KIND_UNSPECIFIED": 0,
@@ -112,6 +114,7 @@ var (
 		"PANE_KIND_BROWSER":     2,
 		"PANE_KIND_SIMULATOR":   3,
 		"PANE_KIND_EDITOR":      4,
+		"PANE_KIND_DIFF":        5,
 	}
 )
 
@@ -1040,6 +1043,171 @@ func (ScheduleRun_Status) EnumDescriptor() ([]byte, []int) {
 	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{229, 0}
 }
 
+type DiffSource_Kind int32
+
+const (
+	DiffSource_KIND_UNSPECIFIED DiffSource_Kind = 0 // when opening: the branch against its base, else what's uncommitted
+	DiffSource_KIND_UNCOMMITTED DiffSource_Kind = 1 // the working tree (staged and not, untracked files too) against HEAD
+	DiffSource_KIND_BRANCH      DiffSource_Kind = 2 // HEAD against where it left base (the merge base): what a pull request would show
+	DiffSource_KIND_COMMIT      DiffSource_Kind = 3 // one commit against its parent
+	DiffSource_KIND_RANGE       DiffSource_Kind = 4 // base..rev
+)
+
+// Enum value maps for DiffSource_Kind.
+var (
+	DiffSource_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "KIND_UNCOMMITTED",
+		2: "KIND_BRANCH",
+		3: "KIND_COMMIT",
+		4: "KIND_RANGE",
+	}
+	DiffSource_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED": 0,
+		"KIND_UNCOMMITTED": 1,
+		"KIND_BRANCH":      2,
+		"KIND_COMMIT":      3,
+		"KIND_RANGE":       4,
+	}
+)
+
+func (x DiffSource_Kind) Enum() *DiffSource_Kind {
+	p := new(DiffSource_Kind)
+	*p = x
+	return p
+}
+
+func (x DiffSource_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiffSource_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_hammock_v1_hammock_proto_enumTypes[18].Descriptor()
+}
+
+func (DiffSource_Kind) Type() protoreflect.EnumType {
+	return &file_hammock_v1_hammock_proto_enumTypes[18]
+}
+
+func (x DiffSource_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiffSource_Kind.Descriptor instead.
+func (DiffSource_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{239, 0}
+}
+
+type DiffFile_Status int32
+
+const (
+	DiffFile_STATUS_UNSPECIFIED  DiffFile_Status = 0
+	DiffFile_STATUS_MODIFIED     DiffFile_Status = 1
+	DiffFile_STATUS_ADDED        DiffFile_Status = 2
+	DiffFile_STATUS_DELETED      DiffFile_Status = 3
+	DiffFile_STATUS_RENAMED      DiffFile_Status = 4
+	DiffFile_STATUS_COPIED       DiffFile_Status = 5
+	DiffFile_STATUS_TYPE_CHANGED DiffFile_Status = 6
+)
+
+// Enum value maps for DiffFile_Status.
+var (
+	DiffFile_Status_name = map[int32]string{
+		0: "STATUS_UNSPECIFIED",
+		1: "STATUS_MODIFIED",
+		2: "STATUS_ADDED",
+		3: "STATUS_DELETED",
+		4: "STATUS_RENAMED",
+		5: "STATUS_COPIED",
+		6: "STATUS_TYPE_CHANGED",
+	}
+	DiffFile_Status_value = map[string]int32{
+		"STATUS_UNSPECIFIED":  0,
+		"STATUS_MODIFIED":     1,
+		"STATUS_ADDED":        2,
+		"STATUS_DELETED":      3,
+		"STATUS_RENAMED":      4,
+		"STATUS_COPIED":       5,
+		"STATUS_TYPE_CHANGED": 6,
+	}
+)
+
+func (x DiffFile_Status) Enum() *DiffFile_Status {
+	p := new(DiffFile_Status)
+	*p = x
+	return p
+}
+
+func (x DiffFile_Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiffFile_Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_hammock_v1_hammock_proto_enumTypes[19].Descriptor()
+}
+
+func (DiffFile_Status) Type() protoreflect.EnumType {
+	return &file_hammock_v1_hammock_proto_enumTypes[19]
+}
+
+func (x DiffFile_Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiffFile_Status.Descriptor instead.
+func (DiffFile_Status) EnumDescriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{245, 0}
+}
+
+type DiffCommand_Action int32
+
+const (
+	DiffCommand_ACTION_UNSPECIFIED DiffCommand_Action = 0
+	DiffCommand_ACTION_SET_SOURCE  DiffCommand_Action = 1 // compare source instead (worked out afresh)
+	DiffCommand_ACTION_SET_VIEW    DiffCommand_Action = 2 // view replaces the pane's own choices
+)
+
+// Enum value maps for DiffCommand_Action.
+var (
+	DiffCommand_Action_name = map[int32]string{
+		0: "ACTION_UNSPECIFIED",
+		1: "ACTION_SET_SOURCE",
+		2: "ACTION_SET_VIEW",
+	}
+	DiffCommand_Action_value = map[string]int32{
+		"ACTION_UNSPECIFIED": 0,
+		"ACTION_SET_SOURCE":  1,
+		"ACTION_SET_VIEW":    2,
+	}
+)
+
+func (x DiffCommand_Action) Enum() *DiffCommand_Action {
+	p := new(DiffCommand_Action)
+	*p = x
+	return p
+}
+
+func (x DiffCommand_Action) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DiffCommand_Action) Descriptor() protoreflect.EnumDescriptor {
+	return file_hammock_v1_hammock_proto_enumTypes[20].Descriptor()
+}
+
+func (DiffCommand_Action) Type() protoreflect.EnumType {
+	return &file_hammock_v1_hammock_proto_enumTypes[20]
+}
+
+func (x DiffCommand_Action) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DiffCommand_Action.Descriptor instead.
+func (DiffCommand_Action) EnumDescriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{249, 0}
+}
+
 type Group struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1926,7 +2094,9 @@ type Pane struct {
 	// answer, or couldn't be restarted), set with exited. Empty for a program
 	// that ran and ended, whatever its status: exit_status alone can't tell
 	// the two apart (a program killed by a signal also ends -1).
-	StartError    string `protobuf:"bytes,31,opt,name=start_error,json=startError,proto3" json:"start_error,omitempty"`
+	StartError string `protobuf:"bytes,31,opt,name=start_error,json=startError,proto3" json:"start_error,omitempty"`
+	// Diff panes: what it compares, and whether that's changed since.
+	Diff          *DiffInfo `protobuf:"bytes,32,opt,name=diff,proto3" json:"diff,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2176,6 +2346,13 @@ func (x *Pane) GetStartError() string {
 		return x.StartError
 	}
 	return ""
+}
+
+func (x *Pane) GetDiff() *DiffInfo {
+	if x != nil {
+		return x.Diff
+	}
+	return nil
 }
 
 type Agent struct {
@@ -3193,6 +3370,9 @@ type ClientMessage struct {
 	//	*ClientMessage_ListFiles
 	//	*ClientMessage_ConfigWritten
 	//	*ClientMessage_ProveApp
+	//	*ClientMessage_ReadDiff
+	//	*ClientMessage_ReadDiffFile
+	//	*ClientMessage_DiffCommand
 	Msg           isClientMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4277,6 +4457,33 @@ func (x *ClientMessage) GetProveApp() *ProveApp {
 	return nil
 }
 
+func (x *ClientMessage) GetReadDiff() *ReadDiff {
+	if x != nil {
+		if x, ok := x.Msg.(*ClientMessage_ReadDiff); ok {
+			return x.ReadDiff
+		}
+	}
+	return nil
+}
+
+func (x *ClientMessage) GetReadDiffFile() *ReadDiffFile {
+	if x != nil {
+		if x, ok := x.Msg.(*ClientMessage_ReadDiffFile); ok {
+			return x.ReadDiffFile
+		}
+	}
+	return nil
+}
+
+func (x *ClientMessage) GetDiffCommand() *DiffCommand {
+	if x != nil {
+		if x, ok := x.Msg.(*ClientMessage_DiffCommand); ok {
+			return x.DiffCommand
+		}
+	}
+	return nil
+}
+
 type isClientMessage_Msg interface {
 	isClientMessage_Msg()
 }
@@ -4794,6 +5001,20 @@ type ClientMessage_ProveApp struct {
 	ProveApp *ProveApp `protobuf:"bytes,126,opt,name=prove_app,json=proveApp,proto3,oneof"`
 }
 
+type ClientMessage_ReadDiff struct {
+	// Diff panes (diff.go). ReadDiff replies DiffContent; ReadDiffFile
+	// DiffFileText; DiffCommand Ok.
+	ReadDiff *ReadDiff `protobuf:"bytes,127,opt,name=read_diff,json=readDiff,proto3,oneof"`
+}
+
+type ClientMessage_ReadDiffFile struct {
+	ReadDiffFile *ReadDiffFile `protobuf:"bytes,128,opt,name=read_diff_file,json=readDiffFile,proto3,oneof"`
+}
+
+type ClientMessage_DiffCommand struct {
+	DiffCommand *DiffCommand `protobuf:"bytes,129,opt,name=diff_command,json=diffCommand,proto3,oneof"`
+}
+
 func (*ClientMessage_Hello) isClientMessage_Msg() {}
 
 func (*ClientMessage_Subscribe) isClientMessage_Msg() {}
@@ -5023,6 +5244,12 @@ func (*ClientMessage_ListFiles) isClientMessage_Msg() {}
 func (*ClientMessage_ConfigWritten) isClientMessage_Msg() {}
 
 func (*ClientMessage_ProveApp) isClientMessage_Msg() {}
+
+func (*ClientMessage_ReadDiff) isClientMessage_Msg() {}
+
+func (*ClientMessage_ReadDiffFile) isClientMessage_Msg() {}
+
+func (*ClientMessage_DiffCommand) isClientMessage_Msg() {}
 
 type Hello struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -5398,7 +5625,9 @@ type CreateTab struct {
 	// Chosen by the client, so it can show the tab before the reply (empty:
 	// the daemon picks one). "tb_" and 8 of abcdefghijkmnpqrstuvwxyz23456789,
 	// not already used.
-	TabId         string `protobuf:"bytes,4,opt,name=tab_id,json=tabId,proto3" json:"tab_id,omitempty"`
+	TabId string `protobuf:"bytes,4,opt,name=tab_id,json=tabId,proto3" json:"tab_id,omitempty"`
+	// Set: the tab goes just after this one in the Group (else last).
+	AfterTabId    string `protobuf:"bytes,5,opt,name=after_tab_id,json=afterTabId,proto3" json:"after_tab_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5457,6 +5686,13 @@ func (x *CreateTab) GetPane() *PaneSpec {
 func (x *CreateTab) GetTabId() string {
 	if x != nil {
 		return x.TabId
+	}
+	return ""
+}
+
+func (x *CreateTab) GetAfterTabId() string {
+	if x != nil {
+		return x.AfterTabId
 	}
 	return ""
 }
@@ -5635,6 +5871,7 @@ type PaneSpec struct {
 	Simulator       string                 `protobuf:"bytes,8,opt,name=simulator,proto3" json:"simulator,omitempty"`                                        // set: a simulator pane showing this device (UDID)
 	Log             *LogSource             `protobuf:"bytes,9,opt,name=log,proto3" json:"log,omitempty"`                                                    // set: a log pane: a terminal running this source, shown as a log
 	Editor          *EditorOpen            `protobuf:"bytes,10,opt,name=editor,proto3" json:"editor,omitempty"`                                             // set: an editor pane on this file (path empty: untitled)
+	Diff            *DiffOpen              `protobuf:"bytes,11,opt,name=diff,proto3" json:"diff,omitempty"`                                                 // set: a diff pane on this repository
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -5735,6 +5972,13 @@ func (x *PaneSpec) GetLog() *LogSource {
 func (x *PaneSpec) GetEditor() *EditorOpen {
 	if x != nil {
 		return x.Editor
+	}
+	return nil
+}
+
+func (x *PaneSpec) GetDiff() *DiffOpen {
+	if x != nil {
+		return x.Diff
 	}
 	return nil
 }
@@ -7276,6 +7520,8 @@ type ServerMessage struct {
 	//	*ServerMessage_FileList
 	//	*ServerMessage_ApprovalPending
 	//	*ServerMessage_AppChallenge
+	//	*ServerMessage_DiffContent
+	//	*ServerMessage_DiffFileText
 	Msg           isServerMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -7811,6 +8057,24 @@ func (x *ServerMessage) GetAppChallenge() *AppChallenge {
 	return nil
 }
 
+func (x *ServerMessage) GetDiffContent() *DiffContent {
+	if x != nil {
+		if x, ok := x.Msg.(*ServerMessage_DiffContent); ok {
+			return x.DiffContent
+		}
+	}
+	return nil
+}
+
+func (x *ServerMessage) GetDiffFileText() *DiffFileText {
+	if x != nil {
+		if x, ok := x.Msg.(*ServerMessage_DiffFileText); ok {
+			return x.DiffFileText
+		}
+	}
+	return nil
+}
+
 type isServerMessage_Msg interface {
 	isServerMessage_Msg()
 }
@@ -8031,6 +8295,14 @@ type ServerMessage_AppChallenge struct {
 	AppChallenge *AppChallenge `protobuf:"bytes,63,opt,name=app_challenge,json=appChallenge,proto3,oneof"` // reply to ProveApp
 }
 
+type ServerMessage_DiffContent struct {
+	DiffContent *DiffContent `protobuf:"bytes,64,opt,name=diff_content,json=diffContent,proto3,oneof"` // reply to ReadDiff
+}
+
+type ServerMessage_DiffFileText struct {
+	DiffFileText *DiffFileText `protobuf:"bytes,65,opt,name=diff_file_text,json=diffFileText,proto3,oneof"` // reply to ReadDiffFile
+}
+
 func (*ServerMessage_HelloReply) isServerMessage_Msg() {}
 
 func (*ServerMessage_Error) isServerMessage_Msg() {}
@@ -8138,6 +8410,10 @@ func (*ServerMessage_FileList) isServerMessage_Msg() {}
 func (*ServerMessage_ApprovalPending) isServerMessage_Msg() {}
 
 func (*ServerMessage_AppChallenge) isServerMessage_Msg() {}
+
+func (*ServerMessage_DiffContent) isServerMessage_Msg() {}
+
+func (*ServerMessage_DiffFileText) isServerMessage_Msg() {}
 
 // The Mac app, on a new connection to this Mac's daemon and before anything
 // else, asks to prove it's the app: the daemon answers AppChallenge, and the
@@ -21472,6 +21748,902 @@ func (x *ConfigEntry) GetValues() []string {
 	return nil
 }
 
+// What a diff compares.
+type DiffSource struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Kind  DiffSource_Kind        `protobuf:"varint,1,opt,name=kind,proto3,enum=hammock.v1.DiffSource_Kind" json:"kind,omitempty"`
+	// KIND_BRANCH: what it's compared with (empty: the default branch,
+	// origin's if there is one). KIND_RANGE: where it starts.
+	Base            string `protobuf:"bytes,2,opt,name=base,proto3" json:"base,omitempty"`
+	Rev             string `protobuf:"bytes,3,opt,name=rev,proto3" json:"rev,omitempty"`                                                 // KIND_COMMIT: the commit; KIND_RANGE: where it ends
+	WithUncommitted bool   `protobuf:"varint,4,opt,name=with_uncommitted,json=withUncommitted,proto3" json:"with_uncommitted,omitempty"` // KIND_BRANCH: and what isn't committed yet
+	MergeBase       bool   `protobuf:"varint,5,opt,name=merge_base,json=mergeBase,proto3" json:"merge_base,omitempty"`                   // KIND_RANGE: from base and rev's merge base (base...rev)
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DiffSource) Reset() {
+	*x = DiffSource{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[239]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffSource) ProtoMessage() {}
+
+func (x *DiffSource) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[239]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffSource.ProtoReflect.Descriptor instead.
+func (*DiffSource) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{239}
+}
+
+func (x *DiffSource) GetKind() DiffSource_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return DiffSource_KIND_UNSPECIFIED
+}
+
+func (x *DiffSource) GetBase() string {
+	if x != nil {
+		return x.Base
+	}
+	return ""
+}
+
+func (x *DiffSource) GetRev() string {
+	if x != nil {
+		return x.Rev
+	}
+	return ""
+}
+
+func (x *DiffSource) GetWithUncommitted() bool {
+	if x != nil {
+		return x.WithUncommitted
+	}
+	return false
+}
+
+func (x *DiffSource) GetMergeBase() bool {
+	if x != nil {
+		return x.MergeBase
+	}
+	return false
+}
+
+// What a diff pane opens.
+type DiffOpen struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Repo          string                 `protobuf:"bytes,1,opt,name=repo,proto3" json:"repo,omitempty"` // a folder in the repository (empty: the pane's cwd, else the Group's folder)
+	Source        *DiffSource            `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	View          *DiffView              `protobuf:"bytes,3,opt,name=view,proto3" json:"view,omitempty"` // how it starts out (empty fields: the settings')
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffOpen) Reset() {
+	*x = DiffOpen{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[240]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffOpen) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffOpen) ProtoMessage() {}
+
+func (x *DiffOpen) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[240]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffOpen.ProtoReflect.Descriptor instead.
+func (*DiffOpen) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{240}
+}
+
+func (x *DiffOpen) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+func (x *DiffOpen) GetSource() *DiffSource {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *DiffOpen) GetView() *DiffView {
+	if x != nil {
+		return x.View
+	}
+	return nil
+}
+
+// A pane's own choices, over the diff-* settings. Empty: the setting's.
+type DiffView struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Style         string                 `protobuf:"bytes,1,opt,name=style,proto3" json:"style,omitempty"`           // "split" or "unified"
+	Whitespace    string                 `protobuf:"bytes,2,opt,name=whitespace,proto3" json:"whitespace,omitempty"` // "show" or "ignore"
+	Wrap          string                 `protobuf:"bytes,3,opt,name=wrap,proto3" json:"wrap,omitempty"`             // "on" or "off"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffView) Reset() {
+	*x = DiffView{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[241]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffView) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffView) ProtoMessage() {}
+
+func (x *DiffView) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[241]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffView.ProtoReflect.Descriptor instead.
+func (*DiffView) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{241}
+}
+
+func (x *DiffView) GetStyle() string {
+	if x != nil {
+		return x.Style
+	}
+	return ""
+}
+
+func (x *DiffView) GetWhitespace() string {
+	if x != nil {
+		return x.Whitespace
+	}
+	return ""
+}
+
+func (x *DiffView) GetWrap() string {
+	if x != nil {
+		return x.Wrap
+	}
+	return ""
+}
+
+type DiffInfo struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Repo    string                 `protobuf:"bytes,1,opt,name=repo,proto3" json:"repo,omitempty"`                      // the repository's top folder
+	Source  *DiffSource            `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`                  // as worked out (never KIND_UNSPECIFIED)
+	Title   string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`                    // "Uncommitted changes", "feature vs main", "1a2b3c4 Fix the thing"
+	BaseRev string                 `protobuf:"bytes,4,opt,name=base_rev,json=baseRev,proto3" json:"base_rev,omitempty"` // the commit compared from
+	HeadRev string                 `protobuf:"bytes,5,opt,name=head_rev,json=headRev,proto3" json:"head_rev,omitempty"` // compared to ("" the working tree)
+	Branch  string                 `protobuf:"bytes,6,opt,name=branch,proto3" json:"branch,omitempty"`                  // HEAD's branch ("" detached)
+	Files   uint32                 `protobuf:"varint,7,opt,name=files,proto3" json:"files,omitempty"`                   // as last read
+	Added   uint32                 `protobuf:"varint,8,opt,name=added,proto3" json:"added,omitempty"`
+	Removed uint32                 `protobuf:"varint,9,opt,name=removed,proto3" json:"removed,omitempty"`
+	// What it compares has changed since it was last read: clients offer to
+	// refresh. Also set when generation moves on from what a client shows.
+	Stale         bool      `protobuf:"varint,10,opt,name=stale,proto3" json:"stale,omitempty"`
+	Error         string    `protobuf:"bytes,11,opt,name=error,proto3" json:"error,omitempty"` // why there's nothing to show (not a repository, a commit that's gone)
+	View          *DiffView `protobuf:"bytes,12,opt,name=view,proto3" json:"view,omitempty"`
+	Generation    uint64    `protobuf:"varint,13,opt,name=generation,proto3" json:"generation,omitempty"` // goes up each time it's worked out afresh
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffInfo) Reset() {
+	*x = DiffInfo{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[242]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffInfo) ProtoMessage() {}
+
+func (x *DiffInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[242]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffInfo.ProtoReflect.Descriptor instead.
+func (*DiffInfo) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{242}
+}
+
+func (x *DiffInfo) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+func (x *DiffInfo) GetSource() *DiffSource {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *DiffInfo) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *DiffInfo) GetBaseRev() string {
+	if x != nil {
+		return x.BaseRev
+	}
+	return ""
+}
+
+func (x *DiffInfo) GetHeadRev() string {
+	if x != nil {
+		return x.HeadRev
+	}
+	return ""
+}
+
+func (x *DiffInfo) GetBranch() string {
+	if x != nil {
+		return x.Branch
+	}
+	return ""
+}
+
+func (x *DiffInfo) GetFiles() uint32 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
+func (x *DiffInfo) GetAdded() uint32 {
+	if x != nil {
+		return x.Added
+	}
+	return 0
+}
+
+func (x *DiffInfo) GetRemoved() uint32 {
+	if x != nil {
+		return x.Removed
+	}
+	return 0
+}
+
+func (x *DiffInfo) GetStale() bool {
+	if x != nil {
+		return x.Stale
+	}
+	return false
+}
+
+func (x *DiffInfo) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *DiffInfo) GetView() *DiffView {
+	if x != nil {
+		return x.View
+	}
+	return nil
+}
+
+func (x *DiffInfo) GetGeneration() uint64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+// The diff's files (refresh: work it out again first; else as last worked
+// out, or worked out now if it never was).
+type ReadDiff struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
+	Refresh       bool                   `protobuf:"varint,2,opt,name=refresh,proto3" json:"refresh,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadDiff) Reset() {
+	*x = ReadDiff{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[243]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadDiff) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadDiff) ProtoMessage() {}
+
+func (x *ReadDiff) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[243]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadDiff.ProtoReflect.Descriptor instead.
+func (*ReadDiff) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{243}
+}
+
+func (x *ReadDiff) GetPaneId() string {
+	if x != nil {
+		return x.PaneId
+	}
+	return ""
+}
+
+func (x *ReadDiff) GetRefresh() bool {
+	if x != nil {
+		return x.Refresh
+	}
+	return false
+}
+
+type DiffContent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
+	Generation    uint64                 `protobuf:"varint,2,opt,name=generation,proto3" json:"generation,omitempty"`
+	Files         []*DiffFile            `protobuf:"bytes,3,rep,name=files,proto3" json:"files,omitempty"`
+	Commits       []*DiffCommit          `protobuf:"bytes,4,rep,name=commits,proto3" json:"commits,omitempty"`   // HEAD's recent commits, to pick one or a range from
+	Branches      []string               `protobuf:"bytes,5,rep,name=branches,proto3" json:"branches,omitempty"` // branches to compare with, the default first
+	DefaultBranch string                 `protobuf:"bytes,6,opt,name=default_branch,json=defaultBranch,proto3" json:"default_branch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffContent) Reset() {
+	*x = DiffContent{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[244]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffContent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffContent) ProtoMessage() {}
+
+func (x *DiffContent) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[244]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffContent.ProtoReflect.Descriptor instead.
+func (*DiffContent) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{244}
+}
+
+func (x *DiffContent) GetPaneId() string {
+	if x != nil {
+		return x.PaneId
+	}
+	return ""
+}
+
+func (x *DiffContent) GetGeneration() uint64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *DiffContent) GetFiles() []*DiffFile {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+func (x *DiffContent) GetCommits() []*DiffCommit {
+	if x != nil {
+		return x.Commits
+	}
+	return nil
+}
+
+func (x *DiffContent) GetBranches() []string {
+	if x != nil {
+		return x.Branches
+	}
+	return nil
+}
+
+func (x *DiffContent) GetDefaultBranch() string {
+	if x != nil {
+		return x.DefaultBranch
+	}
+	return ""
+}
+
+type DiffFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`                      // relative to the repository's top folder
+	OldPath       string                 `protobuf:"bytes,2,opt,name=old_path,json=oldPath,proto3" json:"old_path,omitempty"` // renamed or copied from
+	Status        DiffFile_Status        `protobuf:"varint,3,opt,name=status,proto3,enum=hammock.v1.DiffFile_Status" json:"status,omitempty"`
+	Added         uint32                 `protobuf:"varint,4,opt,name=added,proto3" json:"added,omitempty"` // lines
+	Removed       uint32                 `protobuf:"varint,5,opt,name=removed,proto3" json:"removed,omitempty"`
+	Binary        bool                   `protobuf:"varint,6,opt,name=binary,proto3" json:"binary,omitempty"`
+	Generated     bool                   `protobuf:"varint,7,opt,name=generated,proto3" json:"generated,omitempty"` // a lockfile, or marked linguist-generated: shown collapsed
+	Untracked     bool                   `protobuf:"varint,8,opt,name=untracked,proto3" json:"untracked,omitempty"` // new, and not yet added to git
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffFile) Reset() {
+	*x = DiffFile{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[245]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffFile) ProtoMessage() {}
+
+func (x *DiffFile) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[245]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffFile.ProtoReflect.Descriptor instead.
+func (*DiffFile) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{245}
+}
+
+func (x *DiffFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DiffFile) GetOldPath() string {
+	if x != nil {
+		return x.OldPath
+	}
+	return ""
+}
+
+func (x *DiffFile) GetStatus() DiffFile_Status {
+	if x != nil {
+		return x.Status
+	}
+	return DiffFile_STATUS_UNSPECIFIED
+}
+
+func (x *DiffFile) GetAdded() uint32 {
+	if x != nil {
+		return x.Added
+	}
+	return 0
+}
+
+func (x *DiffFile) GetRemoved() uint32 {
+	if x != nil {
+		return x.Removed
+	}
+	return 0
+}
+
+func (x *DiffFile) GetBinary() bool {
+	if x != nil {
+		return x.Binary
+	}
+	return false
+}
+
+func (x *DiffFile) GetGenerated() bool {
+	if x != nil {
+		return x.Generated
+	}
+	return false
+}
+
+func (x *DiffFile) GetUntracked() bool {
+	if x != nil {
+		return x.Untracked
+	}
+	return false
+}
+
+type DiffCommit struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sha           string                 `protobuf:"bytes,1,opt,name=sha,proto3" json:"sha,omitempty"`
+	Subject       string                 `protobuf:"bytes,2,opt,name=subject,proto3" json:"subject,omitempty"`
+	Author        string                 `protobuf:"bytes,3,opt,name=author,proto3" json:"author,omitempty"`
+	Unix          int64                  `protobuf:"varint,4,opt,name=unix,proto3" json:"unix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffCommit) Reset() {
+	*x = DiffCommit{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[246]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffCommit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffCommit) ProtoMessage() {}
+
+func (x *DiffCommit) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[246]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffCommit.ProtoReflect.Descriptor instead.
+func (*DiffCommit) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{246}
+}
+
+func (x *DiffCommit) GetSha() string {
+	if x != nil {
+		return x.Sha
+	}
+	return ""
+}
+
+func (x *DiffCommit) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *DiffCommit) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
+}
+
+func (x *DiffCommit) GetUnix() int64 {
+	if x != nil {
+		return x.Unix
+	}
+	return 0
+}
+
+// One file's two sides, as of the generation given (its base side never
+// changes; the working tree's is as it is now).
+type ReadDiffFile struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
+	Generation    uint64                 `protobuf:"varint,2,opt,name=generation,proto3" json:"generation,omitempty"`
+	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadDiffFile) Reset() {
+	*x = ReadDiffFile{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[247]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadDiffFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadDiffFile) ProtoMessage() {}
+
+func (x *ReadDiffFile) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[247]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadDiffFile.ProtoReflect.Descriptor instead.
+func (*ReadDiffFile) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{247}
+}
+
+func (x *ReadDiffFile) GetPaneId() string {
+	if x != nil {
+		return x.PaneId
+	}
+	return ""
+}
+
+func (x *ReadDiffFile) GetGeneration() uint64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *ReadDiffFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type DiffFileText struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	PaneId  string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
+	Path    string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	OldText string                 `protobuf:"bytes,3,opt,name=old_text,json=oldText,proto3" json:"old_text,omitempty"`
+	NewText string                 `protobuf:"bytes,4,opt,name=new_text,json=newText,proto3" json:"new_text,omitempty"`
+	// Images: their bytes (a binary file that isn't one has neither).
+	OldData       []byte `protobuf:"bytes,5,opt,name=old_data,json=oldData,proto3" json:"old_data,omitempty"`
+	NewData       []byte `protobuf:"bytes,6,opt,name=new_data,json=newData,proto3" json:"new_data,omitempty"`
+	Mime          string `protobuf:"bytes,7,opt,name=mime,proto3" json:"mime,omitempty"`
+	OldSize       uint64 `protobuf:"varint,8,opt,name=old_size,json=oldSize,proto3" json:"old_size,omitempty"` // bytes
+	NewSize       uint64 `protobuf:"varint,9,opt,name=new_size,json=newSize,proto3" json:"new_size,omitempty"`
+	TooLarge      bool   `protobuf:"varint,10,opt,name=too_large,json=tooLarge,proto3" json:"too_large,omitempty"` // a side too big to send (sizes say how big)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffFileText) Reset() {
+	*x = DiffFileText{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[248]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffFileText) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffFileText) ProtoMessage() {}
+
+func (x *DiffFileText) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[248]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffFileText.ProtoReflect.Descriptor instead.
+func (*DiffFileText) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{248}
+}
+
+func (x *DiffFileText) GetPaneId() string {
+	if x != nil {
+		return x.PaneId
+	}
+	return ""
+}
+
+func (x *DiffFileText) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DiffFileText) GetOldText() string {
+	if x != nil {
+		return x.OldText
+	}
+	return ""
+}
+
+func (x *DiffFileText) GetNewText() string {
+	if x != nil {
+		return x.NewText
+	}
+	return ""
+}
+
+func (x *DiffFileText) GetOldData() []byte {
+	if x != nil {
+		return x.OldData
+	}
+	return nil
+}
+
+func (x *DiffFileText) GetNewData() []byte {
+	if x != nil {
+		return x.NewData
+	}
+	return nil
+}
+
+func (x *DiffFileText) GetMime() string {
+	if x != nil {
+		return x.Mime
+	}
+	return ""
+}
+
+func (x *DiffFileText) GetOldSize() uint64 {
+	if x != nil {
+		return x.OldSize
+	}
+	return 0
+}
+
+func (x *DiffFileText) GetNewSize() uint64 {
+	if x != nil {
+		return x.NewSize
+	}
+	return 0
+}
+
+func (x *DiffFileText) GetTooLarge() bool {
+	if x != nil {
+		return x.TooLarge
+	}
+	return false
+}
+
+type DiffCommand struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
+	Action        DiffCommand_Action     `protobuf:"varint,2,opt,name=action,proto3,enum=hammock.v1.DiffCommand_Action" json:"action,omitempty"`
+	Source        *DiffSource            `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	View          *DiffView              `protobuf:"bytes,4,opt,name=view,proto3" json:"view,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiffCommand) Reset() {
+	*x = DiffCommand{}
+	mi := &file_hammock_v1_hammock_proto_msgTypes[249]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiffCommand) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiffCommand) ProtoMessage() {}
+
+func (x *DiffCommand) ProtoReflect() protoreflect.Message {
+	mi := &file_hammock_v1_hammock_proto_msgTypes[249]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiffCommand.ProtoReflect.Descriptor instead.
+func (*DiffCommand) Descriptor() ([]byte, []int) {
+	return file_hammock_v1_hammock_proto_rawDescGZIP(), []int{249}
+}
+
+func (x *DiffCommand) GetPaneId() string {
+	if x != nil {
+		return x.PaneId
+	}
+	return ""
+}
+
+func (x *DiffCommand) GetAction() DiffCommand_Action {
+	if x != nil {
+		return x.Action
+	}
+	return DiffCommand_ACTION_UNSPECIFIED
+}
+
+func (x *DiffCommand) GetSource() *DiffSource {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *DiffCommand) GetView() *DiffView {
+	if x != nil {
+		return x.View
+	}
+	return nil
+}
+
 var File_hammock_v1_hammock_proto protoreflect.FileDescriptor
 
 const file_hammock_v1_hammock_proto_rawDesc = "" +
@@ -21553,7 +22725,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tDirection\x12\x19\n" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14DIRECTION_HORIZONTAL\x10\x01\x12\x16\n" +
-	"\x12DIRECTION_VERTICAL\x10\x02\"\xe1\a\n" +
+	"\x12DIRECTION_VERTICAL\x10\x02\"\x8b\b\n" +
 	"\x04Pane\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06tab_id\x18\x02 \x01(\tR\x05tabId\x12(\n" +
@@ -21592,7 +22764,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x11shown_for_pane_id\x18\x1c \x01(\tR\x0eshownForPaneId\x12.\n" +
 	"\x06editor\x18\x1e \x01(\v2\x16.hammock.v1.EditorInfoR\x06editor\x12\x1f\n" +
 	"\vstart_error\x18\x1f \x01(\tR\n" +
-	"startError\"\xf1\x02\n" +
+	"startError\x12(\n" +
+	"\x04diff\x18  \x01(\v2\x14.hammock.v1.DiffInfoR\x04diff\"\xf1\x02\n" +
 	"\x05Agent\x12\x18\n" +
 	"\aharness\x18\x01 \x01(\tR\aharness\x12\x1d\n" +
 	"\n" +
@@ -21687,7 +22860,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\fused_percent\x18\x02 \x01(\x01R\vusedPercent\x12\x1f\n" +
 	"\vresets_unix\x18\x03 \x01(\x03R\n" +
 	"resetsUnix\x12%\n" +
-	"\x0ewindow_minutes\x18\x04 \x01(\x05R\rwindowMinutes\"\x9a9\n" +
+	"\x0ewindow_minutes\x18\x04 \x01(\x05R\rwindowMinutes\"\xd1:\n" +
 	"\rClientMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12)\n" +
 	"\x05hello\x18\n" +
@@ -21832,7 +23005,10 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\n" +
 	"list_files\x18| \x01(\v2\x15.hammock.v1.ListFilesH\x00R\tlistFiles\x12B\n" +
 	"\x0econfig_written\x18} \x01(\v2\x19.hammock.v1.ConfigWrittenH\x00R\rconfigWritten\x123\n" +
-	"\tprove_app\x18~ \x01(\v2\x14.hammock.v1.ProveAppH\x00R\bproveAppB\x05\n" +
+	"\tprove_app\x18~ \x01(\v2\x14.hammock.v1.ProveAppH\x00R\bproveApp\x123\n" +
+	"\tread_diff\x18\x7f \x01(\v2\x14.hammock.v1.ReadDiffH\x00R\breadDiff\x12A\n" +
+	"\x0eread_diff_file\x18\x80\x01 \x01(\v2\x18.hammock.v1.ReadDiffFileH\x00R\freadDiffFile\x12=\n" +
+	"\fdiff_command\x18\x81\x01 \x01(\v2\x17.hammock.v1.DiffCommandH\x00R\vdiffCommandB\x05\n" +
 	"\x03msgJ\x04\b6\x107J\x04\b`\x10aR\x10set_group_agents\"\xb3\x01\n" +
 	"\x05Hello\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1f\n" +
@@ -21859,12 +23035,14 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\bgroup_id\x18\x01 \x01(\tR\agroupId\"C\n" +
 	"\x0eSetGroupFolder\x12\x19\n" +
 	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x16\n" +
-	"\x06folder\x18\x02 \x01(\tR\x06folder\"{\n" +
+	"\x06folder\x18\x02 \x01(\tR\x06folder\"\x9d\x01\n" +
 	"\tCreateTab\x12\x19\n" +
 	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12(\n" +
 	"\x04pane\x18\x03 \x01(\v2\x14.hammock.v1.PaneSpecR\x04pane\x12\x15\n" +
-	"\x06tab_id\x18\x04 \x01(\tR\x05tabId\"6\n" +
+	"\x06tab_id\x18\x04 \x01(\tR\x05tabId\x12 \n" +
+	"\fafter_tab_id\x18\x05 \x01(\tR\n" +
+	"afterTabId\"6\n" +
 	"\tRenameTab\x12\x15\n" +
 	"\x06tab_id\x18\x01 \x01(\tR\x05tabId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"=\n" +
@@ -21874,7 +23052,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\fReopenClosed\x12\x1f\n" +
 	"\vcomputer_id\x18\x01 \x01(\tR\n" +
 	"computerId\x12\x19\n" +
-	"\bclose_id\x18\x02 \x01(\tR\acloseId\"\xfd\x02\n" +
+	"\bclose_id\x18\x02 \x01(\tR\acloseId\"\xa7\x03\n" +
 	"\bPaneSpec\x12\x18\n" +
 	"\acommand\x18\x01 \x03(\tR\acommand\x12\x10\n" +
 	"\x03cwd\x18\x02 \x01(\tR\x03cwd\x12/\n" +
@@ -21886,7 +23064,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tsimulator\x18\b \x01(\tR\tsimulator\x12'\n" +
 	"\x03log\x18\t \x01(\v2\x15.hammock.v1.LogSourceR\x03log\x12.\n" +
 	"\x06editor\x18\n" +
-	" \x01(\v2\x16.hammock.v1.EditorOpenR\x06editor\x1a6\n" +
+	" \x01(\v2\x16.hammock.v1.EditorOpenR\x06editor\x12(\n" +
+	"\x04diff\x18\v \x01(\v2\x14.hammock.v1.DiffOpenR\x04diff\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x89\x02\n" +
@@ -22012,7 +23191,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\aMoveTab\x12\x15\n" +
 	"\x06tab_id\x18\x01 \x01(\tR\x05tabId\x12\x19\n" +
 	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x14\n" +
-	"\x05index\x18\x03 \x01(\x05R\x05index\"\xd3\x1a\n" +
+	"\x05index\x18\x03 \x01(\x05R\x05index\"\xd3\x1b\n" +
 	"\rServerMessage\x12\x19\n" +
 	"\breply_to\x18\x01 \x01(\x04R\areplyTo\x129\n" +
 	"\vhello_reply\x18\n" +
@@ -22079,7 +23258,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x11editor_push_reply\x18< \x01(\v2\x1b.hammock.v1.EditorPushReplyH\x00R\x0feditorPushReply\x123\n" +
 	"\tfile_list\x18= \x01(\v2\x14.hammock.v1.FileListH\x00R\bfileList\x12H\n" +
 	"\x10approval_pending\x18> \x01(\v2\x1b.hammock.v1.ApprovalPendingH\x00R\x0fapprovalPending\x12?\n" +
-	"\rapp_challenge\x18? \x01(\v2\x18.hammock.v1.AppChallengeH\x00R\fappChallengeB\x05\n" +
+	"\rapp_challenge\x18? \x01(\v2\x18.hammock.v1.AppChallengeH\x00R\fappChallenge\x12<\n" +
+	"\fdiff_content\x18@ \x01(\v2\x17.hammock.v1.DiffContentH\x00R\vdiffContent\x12@\n" +
+	"\x0ediff_file_text\x18A \x01(\v2\x18.hammock.v1.DiffFileTextH\x00R\fdiffFileTextB\x05\n" +
 	"\x03msg\"\n" +
 	"\n" +
 	"\bProveApp\"R\n" +
@@ -23274,20 +24455,125 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\aentries\x18\x01 \x03(\v2\x17.hammock.v1.ConfigEntryR\aentries\"7\n" +
 	"\vConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
-	"\x06values\x18\x02 \x03(\tR\x06values*]\n" +
+	"\x06values\x18\x02 \x03(\tR\x06values\"\x93\x02\n" +
+	"\n" +
+	"DiffSource\x12/\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x1b.hammock.v1.DiffSource.KindR\x04kind\x12\x12\n" +
+	"\x04base\x18\x02 \x01(\tR\x04base\x12\x10\n" +
+	"\x03rev\x18\x03 \x01(\tR\x03rev\x12)\n" +
+	"\x10with_uncommitted\x18\x04 \x01(\bR\x0fwithUncommitted\x12\x1d\n" +
+	"\n" +
+	"merge_base\x18\x05 \x01(\bR\tmergeBase\"d\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10KIND_UNCOMMITTED\x10\x01\x12\x0f\n" +
+	"\vKIND_BRANCH\x10\x02\x12\x0f\n" +
+	"\vKIND_COMMIT\x10\x03\x12\x0e\n" +
+	"\n" +
+	"KIND_RANGE\x10\x04\"x\n" +
+	"\bDiffOpen\x12\x12\n" +
+	"\x04repo\x18\x01 \x01(\tR\x04repo\x12.\n" +
+	"\x06source\x18\x02 \x01(\v2\x16.hammock.v1.DiffSourceR\x06source\x12(\n" +
+	"\x04view\x18\x03 \x01(\v2\x14.hammock.v1.DiffViewR\x04view\"T\n" +
+	"\bDiffView\x12\x14\n" +
+	"\x05style\x18\x01 \x01(\tR\x05style\x12\x1e\n" +
+	"\n" +
+	"whitespace\x18\x02 \x01(\tR\n" +
+	"whitespace\x12\x12\n" +
+	"\x04wrap\x18\x03 \x01(\tR\x04wrap\"\xee\x02\n" +
+	"\bDiffInfo\x12\x12\n" +
+	"\x04repo\x18\x01 \x01(\tR\x04repo\x12.\n" +
+	"\x06source\x18\x02 \x01(\v2\x16.hammock.v1.DiffSourceR\x06source\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12\x19\n" +
+	"\bbase_rev\x18\x04 \x01(\tR\abaseRev\x12\x19\n" +
+	"\bhead_rev\x18\x05 \x01(\tR\aheadRev\x12\x16\n" +
+	"\x06branch\x18\x06 \x01(\tR\x06branch\x12\x14\n" +
+	"\x05files\x18\a \x01(\rR\x05files\x12\x14\n" +
+	"\x05added\x18\b \x01(\rR\x05added\x12\x18\n" +
+	"\aremoved\x18\t \x01(\rR\aremoved\x12\x14\n" +
+	"\x05stale\x18\n" +
+	" \x01(\bR\x05stale\x12\x14\n" +
+	"\x05error\x18\v \x01(\tR\x05error\x12(\n" +
+	"\x04view\x18\f \x01(\v2\x14.hammock.v1.DiffViewR\x04view\x12\x1e\n" +
+	"\n" +
+	"generation\x18\r \x01(\x04R\n" +
+	"generation\"=\n" +
+	"\bReadDiff\x12\x17\n" +
+	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x18\n" +
+	"\arefresh\x18\x02 \x01(\bR\arefresh\"\xe7\x01\n" +
+	"\vDiffContent\x12\x17\n" +
+	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x02 \x01(\x04R\n" +
+	"generation\x12*\n" +
+	"\x05files\x18\x03 \x03(\v2\x14.hammock.v1.DiffFileR\x05files\x120\n" +
+	"\acommits\x18\x04 \x03(\v2\x16.hammock.v1.DiffCommitR\acommits\x12\x1a\n" +
+	"\bbranches\x18\x05 \x03(\tR\bbranches\x12%\n" +
+	"\x0edefault_branch\x18\x06 \x01(\tR\rdefaultBranch\"\x90\x03\n" +
+	"\bDiffFile\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x19\n" +
+	"\bold_path\x18\x02 \x01(\tR\aoldPath\x123\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1b.hammock.v1.DiffFile.StatusR\x06status\x12\x14\n" +
+	"\x05added\x18\x04 \x01(\rR\x05added\x12\x18\n" +
+	"\aremoved\x18\x05 \x01(\rR\aremoved\x12\x16\n" +
+	"\x06binary\x18\x06 \x01(\bR\x06binary\x12\x1c\n" +
+	"\tgenerated\x18\a \x01(\bR\tgenerated\x12\x1c\n" +
+	"\tuntracked\x18\b \x01(\bR\tuntracked\"\x9b\x01\n" +
+	"\x06Status\x12\x16\n" +
+	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x13\n" +
+	"\x0fSTATUS_MODIFIED\x10\x01\x12\x10\n" +
+	"\fSTATUS_ADDED\x10\x02\x12\x12\n" +
+	"\x0eSTATUS_DELETED\x10\x03\x12\x12\n" +
+	"\x0eSTATUS_RENAMED\x10\x04\x12\x11\n" +
+	"\rSTATUS_COPIED\x10\x05\x12\x17\n" +
+	"\x13STATUS_TYPE_CHANGED\x10\x06\"d\n" +
+	"\n" +
+	"DiffCommit\x12\x10\n" +
+	"\x03sha\x18\x01 \x01(\tR\x03sha\x12\x18\n" +
+	"\asubject\x18\x02 \x01(\tR\asubject\x12\x16\n" +
+	"\x06author\x18\x03 \x01(\tR\x06author\x12\x12\n" +
+	"\x04unix\x18\x04 \x01(\x03R\x04unix\"[\n" +
+	"\fReadDiffFile\x12\x17\n" +
+	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x02 \x01(\x04R\n" +
+	"generation\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\"\x8e\x02\n" +
+	"\fDiffFileText\x12\x17\n" +
+	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x19\n" +
+	"\bold_text\x18\x03 \x01(\tR\aoldText\x12\x19\n" +
+	"\bnew_text\x18\x04 \x01(\tR\anewText\x12\x19\n" +
+	"\bold_data\x18\x05 \x01(\fR\aoldData\x12\x19\n" +
+	"\bnew_data\x18\x06 \x01(\fR\anewData\x12\x12\n" +
+	"\x04mime\x18\a \x01(\tR\x04mime\x12\x19\n" +
+	"\bold_size\x18\b \x01(\x04R\aoldSize\x12\x19\n" +
+	"\bnew_size\x18\t \x01(\x04R\anewSize\x12\x1b\n" +
+	"\ttoo_large\x18\n" +
+	" \x01(\bR\btooLarge\"\x86\x02\n" +
+	"\vDiffCommand\x12\x17\n" +
+	"\apane_id\x18\x01 \x01(\tR\x06paneId\x126\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x1e.hammock.v1.DiffCommand.ActionR\x06action\x12.\n" +
+	"\x06source\x18\x03 \x01(\v2\x16.hammock.v1.DiffSourceR\x06source\x12(\n" +
+	"\x04view\x18\x04 \x01(\v2\x14.hammock.v1.DiffViewR\x04view\"L\n" +
+	"\x06Action\x12\x16\n" +
+	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11ACTION_SET_SOURCE\x10\x01\x12\x13\n" +
+	"\x0fACTION_SET_VIEW\x10\x02*]\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +
 	"\vROLE_DRIVER\x10\x02\x12\r\n" +
 	"\tROLE_HOST\x10\x03\x12\x0e\n" +
 	"\n" +
-	"ROLE_OWNER\x10\x04*\x83\x01\n" +
+	"ROLE_OWNER\x10\x04*\x97\x01\n" +
 	"\bPaneKind\x12\x19\n" +
 	"\x15PANE_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12PANE_KIND_TERMINAL\x10\x01\x12\x15\n" +
 	"\x11PANE_KIND_BROWSER\x10\x02\x12\x17\n" +
 	"\x13PANE_KIND_SIMULATOR\x10\x03\x12\x14\n" +
-	"\x10PANE_KIND_EDITOR\x10\x04*\xc0\x01\n" +
+	"\x10PANE_KIND_EDITOR\x10\x04\x12\x12\n" +
+	"\x0ePANE_KIND_DIFF\x10\x05*\xc0\x01\n" +
 	"\n" +
 	"AgentState\x12\x1b\n" +
 	"\x17AGENT_STATE_UNSPECIFIED\x10\x00\x12\x18\n" +
@@ -23318,8 +24604,8 @@ func file_hammock_v1_hammock_proto_rawDescGZIP() []byte {
 	return file_hammock_v1_hammock_proto_rawDescData
 }
 
-var file_hammock_v1_hammock_proto_enumTypes = make([]protoimpl.EnumInfo, 18)
-var file_hammock_v1_hammock_proto_msgTypes = make([]protoimpl.MessageInfo, 241)
+var file_hammock_v1_hammock_proto_enumTypes = make([]protoimpl.EnumInfo, 21)
+var file_hammock_v1_hammock_proto_msgTypes = make([]protoimpl.MessageInfo, 252)
 var file_hammock_v1_hammock_proto_goTypes = []any{
 	(Role)(0),                   // 0: hammock.v1.Role
 	(PaneKind)(0),               // 1: hammock.v1.PaneKind
@@ -23339,540 +24625,572 @@ var file_hammock_v1_hammock_proto_goTypes = []any{
 	(Schedule_Overlap)(0),       // 15: hammock.v1.Schedule.Overlap
 	(Schedule_Notify)(0),        // 16: hammock.v1.Schedule.Notify
 	(ScheduleRun_Status)(0),     // 17: hammock.v1.ScheduleRun.Status
-	(*Group)(nil),               // 18: hammock.v1.Group
-	(*Member)(nil),              // 19: hammock.v1.Member
-	(*Person)(nil),              // 20: hammock.v1.Person
-	(*JoinRequest)(nil),         // 21: hammock.v1.JoinRequest
-	(*Tab)(nil),                 // 22: hammock.v1.Tab
-	(*FloatingPane)(nil),        // 23: hammock.v1.FloatingPane
-	(*Frame)(nil),               // 24: hammock.v1.Frame
-	(*Layout)(nil),              // 25: hammock.v1.Layout
-	(*Split)(nil),               // 26: hammock.v1.Split
-	(*Pane)(nil),                // 27: hammock.v1.Pane
-	(*Agent)(nil),               // 28: hammock.v1.Agent
-	(*AttentionItem)(nil),       // 29: hammock.v1.AttentionItem
-	(*StateUpdate)(nil),         // 30: hammock.v1.StateUpdate
-	(*HostTheme)(nil),           // 31: hammock.v1.HostTheme
-	(*AgentKind)(nil),           // 32: hammock.v1.AgentKind
-	(*UsageLimits)(nil),         // 33: hammock.v1.UsageLimits
-	(*AgentUsage)(nil),          // 34: hammock.v1.AgentUsage
-	(*UsageWindow)(nil),         // 35: hammock.v1.UsageWindow
-	(*ClientMessage)(nil),       // 36: hammock.v1.ClientMessage
-	(*Hello)(nil),               // 37: hammock.v1.Hello
-	(*Subscribe)(nil),           // 38: hammock.v1.Subscribe
-	(*CreateGroup)(nil),         // 39: hammock.v1.CreateGroup
-	(*RenameGroup)(nil),         // 40: hammock.v1.RenameGroup
-	(*SetGroupIcon)(nil),        // 41: hammock.v1.SetGroupIcon
-	(*CloseGroup)(nil),          // 42: hammock.v1.CloseGroup
-	(*SetGroupFolder)(nil),      // 43: hammock.v1.SetGroupFolder
-	(*CreateTab)(nil),           // 44: hammock.v1.CreateTab
-	(*RenameTab)(nil),           // 45: hammock.v1.RenameTab
-	(*CloseTab)(nil),            // 46: hammock.v1.CloseTab
-	(*ReopenClosed)(nil),        // 47: hammock.v1.ReopenClosed
-	(*PaneSpec)(nil),            // 48: hammock.v1.PaneSpec
-	(*CreatePane)(nil),          // 49: hammock.v1.CreatePane
-	(*ClosePane)(nil),           // 50: hammock.v1.ClosePane
-	(*MergeTab)(nil),            // 51: hammock.v1.MergeTab
-	(*BreakOutPane)(nil),        // 52: hammock.v1.BreakOutPane
-	(*FloatPane)(nil),           // 53: hammock.v1.FloatPane
-	(*ReplacePane)(nil),         // 54: hammock.v1.ReplacePane
-	(*BrowserNavigate)(nil),     // 55: hammock.v1.BrowserNavigate
-	(*AttachPane)(nil),          // 56: hammock.v1.AttachPane
-	(*DetachPane)(nil),          // 57: hammock.v1.DetachPane
-	(*Input)(nil),               // 58: hammock.v1.Input
-	(*Resize)(nil),              // 59: hammock.v1.Resize
-	(*Focus)(nil),               // 60: hammock.v1.Focus
-	(*ReadPane)(nil),            // 61: hammock.v1.ReadPane
-	(*SignalPane)(nil),          // 62: hammock.v1.SignalPane
-	(*Presence)(nil),            // 63: hammock.v1.Presence
-	(*ClearAttention)(nil),      // 64: hammock.v1.ClearAttention
-	(*ShutdownDaemon)(nil),      // 65: hammock.v1.ShutdownDaemon
-	(*SetColors)(nil),           // 66: hammock.v1.SetColors
-	(*GrantRequest)(nil),        // 67: hammock.v1.GrantRequest
-	(*RequestGrant)(nil),        // 68: hammock.v1.RequestGrant
-	(*RespondGrant)(nil),        // 69: hammock.v1.RespondGrant
-	(*GrantDecision)(nil),       // 70: hammock.v1.GrantDecision
-	(*SetLayout)(nil),           // 71: hammock.v1.SetLayout
-	(*MoveTab)(nil),             // 72: hammock.v1.MoveTab
-	(*ServerMessage)(nil),       // 73: hammock.v1.ServerMessage
-	(*ProveApp)(nil),            // 74: hammock.v1.ProveApp
-	(*AppChallenge)(nil),        // 75: hammock.v1.AppChallenge
-	(*ApprovalPending)(nil),     // 76: hammock.v1.ApprovalPending
-	(*HelloReply)(nil),          // 77: hammock.v1.HelloReply
-	(*Error)(nil),               // 78: hammock.v1.Error
-	(*Ok)(nil),                  // 79: hammock.v1.Ok
-	(*Created)(nil),             // 80: hammock.v1.Created
-	(*PaneSnapshot)(nil),        // 81: hammock.v1.PaneSnapshot
-	(*PaneOutput)(nil),          // 82: hammock.v1.PaneOutput
-	(*PaneText)(nil),            // 83: hammock.v1.PaneText
-	(*AuthChallenge)(nil),       // 84: hammock.v1.AuthChallenge
-	(*Pair)(nil),                // 85: hammock.v1.Pair
-	(*Paired)(nil),              // 86: hammock.v1.Paired
-	(*Authenticate)(nil),        // 87: hammock.v1.Authenticate
-	(*CreatePairing)(nil),       // 88: hammock.v1.CreatePairing
-	(*ShowPairing)(nil),         // 89: hammock.v1.ShowPairing
-	(*DevicePaired)(nil),        // 90: hammock.v1.DevicePaired
-	(*Pairing)(nil),             // 91: hammock.v1.Pairing
-	(*Device)(nil),              // 92: hammock.v1.Device
-	(*ListAudit)(nil),           // 93: hammock.v1.ListAudit
-	(*AuditEvent)(nil),          // 94: hammock.v1.AuditEvent
-	(*AuditLog)(nil),            // 95: hammock.v1.AuditLog
-	(*ListDevices)(nil),         // 96: hammock.v1.ListDevices
-	(*Devices)(nil),             // 97: hammock.v1.Devices
-	(*RemoteNetwork)(nil),       // 98: hammock.v1.RemoteNetwork
-	(*SetRemoteNetworks)(nil),   // 99: hammock.v1.SetRemoteNetworks
-	(*RevokeDevice)(nil),        // 100: hammock.v1.RevokeDevice
-	(*SetRemoteAccess)(nil),     // 101: hammock.v1.SetRemoteAccess
-	(*SwitchAgent)(nil),         // 102: hammock.v1.SwitchAgent
-	(*AgentSwitched)(nil),       // 103: hammock.v1.AgentSwitched
-	(*ListSessions)(nil),        // 104: hammock.v1.ListSessions
-	(*SessionInfo)(nil),         // 105: hammock.v1.SessionInfo
-	(*SessionList)(nil),         // 106: hammock.v1.SessionList
-	(*SessionExcerpts)(nil),     // 107: hammock.v1.SessionExcerpts
-	(*SessionExcerpt)(nil),      // 108: hammock.v1.SessionExcerpt
-	(*SessionMessage)(nil),      // 109: hammock.v1.SessionMessage
-	(*ResumeSession)(nil),       // 110: hammock.v1.ResumeSession
-	(*SessionResumed)(nil),      // 111: hammock.v1.SessionResumed
-	(*AgentBlock)(nil),          // 112: hammock.v1.AgentBlock
-	(*AgentQuestion)(nil),       // 113: hammock.v1.AgentQuestion
-	(*AgentOption)(nil),         // 114: hammock.v1.AgentOption
-	(*AgentImage)(nil),          // 115: hammock.v1.AgentImage
-	(*AgentPrompt)(nil),         // 116: hammock.v1.AgentPrompt
-	(*AgentView)(nil),           // 117: hammock.v1.AgentView
-	(*AgentTaskList)(nil),       // 118: hammock.v1.AgentTaskList
-	(*AgentTask)(nil),           // 119: hammock.v1.AgentTask
-	(*AgentLinks)(nil),          // 120: hammock.v1.AgentLinks
-	(*AgentLink)(nil),           // 121: hammock.v1.AgentLink
-	(*AgentSubagent)(nil),       // 122: hammock.v1.AgentSubagent
-	(*AgentShell)(nil),          // 123: hammock.v1.AgentShell
-	(*WatchAgent)(nil),          // 124: hammock.v1.WatchAgent
-	(*AgentAnswer)(nil),         // 125: hammock.v1.AgentAnswer
-	(*AgentSend)(nil),           // 126: hammock.v1.AgentSend
-	(*AgentAttachment)(nil),     // 127: hammock.v1.AgentAttachment
-	(*ReadAgentFile)(nil),       // 128: hammock.v1.ReadAgentFile
-	(*AgentFile)(nil),           // 129: hammock.v1.AgentFile
-	(*CreateInvite)(nil),        // 130: hammock.v1.CreateInvite
-	(*Invite)(nil),              // 131: hammock.v1.Invite
-	(*RevokeInvite)(nil),        // 132: hammock.v1.RevokeInvite
-	(*RespondJoin)(nil),         // 133: hammock.v1.RespondJoin
-	(*SetMember)(nil),           // 134: hammock.v1.SetMember
-	(*StopSharing)(nil),         // 135: hammock.v1.StopSharing
-	(*SetProfile)(nil),          // 136: hammock.v1.SetProfile
-	(*JoinShared)(nil),          // 137: hammock.v1.JoinShared
-	(*LeaveShared)(nil),         // 138: hammock.v1.LeaveShared
-	(*InviteToken)(nil),         // 139: hammock.v1.InviteToken
-	(*PeerHello)(nil),           // 140: hammock.v1.PeerHello
-	(*PeerWelcome)(nil),         // 141: hammock.v1.PeerWelcome
-	(*PeerJoin)(nil),            // 142: hammock.v1.PeerJoin
-	(*PeerJoined)(nil),          // 143: hammock.v1.PeerJoined
-	(*MoveGroup)(nil),           // 144: hammock.v1.MoveGroup
-	(*UploadFile)(nil),          // 145: hammock.v1.UploadFile
-	(*RegisterPush)(nil),        // 146: hammock.v1.RegisterPush
-	(*BrowserCall)(nil),         // 147: hammock.v1.BrowserCall
-	(*BrowserLogs)(nil),         // 148: hammock.v1.BrowserLogs
-	(*BrowserResult)(nil),       // 149: hammock.v1.BrowserResult
-	(*SimulatorCall)(nil),       // 150: hammock.v1.SimulatorCall
-	(*OpenMedia)(nil),           // 151: hammock.v1.OpenMedia
-	(*MediaTicket)(nil),         // 152: hammock.v1.MediaTicket
-	(*CloseMedia)(nil),          // 153: hammock.v1.CloseMedia
-	(*BrowserInput)(nil),        // 154: hammock.v1.BrowserInput
-	(*ListDisplays)(nil),        // 155: hammock.v1.ListDisplays
-	(*ScreenSnapshot)(nil),      // 156: hammock.v1.ScreenSnapshot
-	(*ScreenSnapshotReply)(nil), // 157: hammock.v1.ScreenSnapshotReply
-	(*Displays)(nil),            // 158: hammock.v1.Displays
-	(*Display)(nil),             // 159: hammock.v1.Display
-	(*ScreenInput)(nil),         // 160: hammock.v1.ScreenInput
-	(*BrowserMenu)(nil),         // 161: hammock.v1.BrowserMenu
-	(*BrowserMenuItem)(nil),     // 162: hammock.v1.BrowserMenuItem
-	(*BrowserClipboard)(nil),    // 163: hammock.v1.BrowserClipboard
-	(*BrowserMenuChoice)(nil),   // 164: hammock.v1.BrowserMenuChoice
-	(*MediaAck)(nil),            // 165: hammock.v1.MediaAck
-	(*MediaFrame)(nil),          // 166: hammock.v1.MediaFrame
-	(*ScreenCursor)(nil),        // 167: hammock.v1.ScreenCursor
-	(*ServerStatus)(nil),        // 168: hammock.v1.ServerStatus
-	(*ServerStatusReply)(nil),   // 169: hammock.v1.ServerStatusReply
-	(*Connected)(nil),           // 170: hammock.v1.Connected
-	(*ScreenViewer)(nil),        // 171: hammock.v1.ScreenViewer
-	(*EndScreenSession)(nil),    // 172: hammock.v1.EndScreenSession
-	(*ScreenState)(nil),         // 173: hammock.v1.ScreenState
-	(*SetMediaView)(nil),        // 174: hammock.v1.SetMediaView
-	(*MediaEnded)(nil),          // 175: hammock.v1.MediaEnded
-	(*SimulatorResult)(nil),     // 176: hammock.v1.SimulatorResult
-	(*EditorOpen)(nil),          // 177: hammock.v1.EditorOpen
-	(*EditorInfo)(nil),          // 178: hammock.v1.EditorInfo
-	(*EditorPush)(nil),          // 179: hammock.v1.EditorPush
-	(*EditorChange)(nil),        // 180: hammock.v1.EditorChange
-	(*EditorPushReply)(nil),     // 181: hammock.v1.EditorPushReply
-	(*EditorSelect)(nil),        // 182: hammock.v1.EditorSelect
-	(*EditorCommand)(nil),       // 183: hammock.v1.EditorCommand
-	(*ReadEditor)(nil),          // 184: hammock.v1.ReadEditor
-	(*EditorUpdate)(nil),        // 185: hammock.v1.EditorUpdate
-	(*EditorSelection)(nil),     // 186: hammock.v1.EditorSelection
-	(*GitMark)(nil),             // 187: hammock.v1.GitMark
-	(*ListFiles)(nil),           // 188: hammock.v1.ListFiles
-	(*FileList)(nil),            // 189: hammock.v1.FileList
-	(*LogSource)(nil),           // 190: hammock.v1.LogSource
-	(*LogEntry)(nil),            // 191: hammock.v1.LogEntry
-	(*LogFilter)(nil),           // 192: hammock.v1.LogFilter
-	(*LogFacet)(nil),            // 193: hammock.v1.LogFacet
-	(*WatchLog)(nil),            // 194: hammock.v1.WatchLog
-	(*ReadLog)(nil),             // 195: hammock.v1.ReadLog
-	(*ClearLog)(nil),            // 196: hammock.v1.ClearLog
-	(*LogView)(nil),             // 197: hammock.v1.LogView
-	(*StartAgent)(nil),          // 198: hammock.v1.StartAgent
-	(*ListFolders)(nil),         // 199: hammock.v1.ListFolders
-	(*FolderList)(nil),          // 200: hammock.v1.FolderList
-	(*FolderSuggestion)(nil),    // 201: hammock.v1.FolderSuggestion
-	(*ReadSession)(nil),         // 202: hammock.v1.ReadSession
-	(*ReadGroupIcon)(nil),       // 203: hammock.v1.ReadGroupIcon
-	(*GroupIcon)(nil),           // 204: hammock.v1.GroupIcon
-	(*SetGroupIconImage)(nil),   // 205: hammock.v1.SetGroupIconImage
-	(*Computers)(nil),           // 206: hammock.v1.Computers
-	(*Computer)(nil),            // 207: hammock.v1.Computer
-	(*StoredLink)(nil),          // 208: hammock.v1.StoredLink
-	(*IntroHop)(nil),            // 209: hammock.v1.IntroHop
-	(*Refusal)(nil),             // 210: hammock.v1.Refusal
-	(*PendingUnlink)(nil),       // 211: hammock.v1.PendingUnlink
-	(*LegacyComputer)(nil),      // 212: hammock.v1.LegacyComputer
-	(*LegacyLink)(nil),          // 213: hammock.v1.LegacyLink
-	(*LegacyUnlink)(nil),        // 214: hammock.v1.LegacyUnlink
-	(*LinkRequest)(nil),         // 215: hammock.v1.LinkRequest
-	(*DiscoverComputers)(nil),   // 216: hammock.v1.DiscoverComputers
-	(*DiscoveredComputers)(nil), // 217: hammock.v1.DiscoveredComputers
-	(*DiscoveredComputer)(nil),  // 218: hammock.v1.DiscoveredComputer
-	(*LinkComputer)(nil),        // 219: hammock.v1.LinkComputer
-	(*RespondLink)(nil),         // 220: hammock.v1.RespondLink
-	(*UnlinkComputer)(nil),      // 221: hammock.v1.UnlinkComputer
-	(*SetComputerTint)(nil),     // 222: hammock.v1.SetComputerTint
-	(*CreateLinkInvite)(nil),    // 223: hammock.v1.CreateLinkInvite
-	(*LinkToken)(nil),           // 224: hammock.v1.LinkToken
-	(*PeerLinkHello)(nil),       // 225: hammock.v1.PeerLinkHello
-	(*PeerLinkNonce)(nil),       // 226: hammock.v1.PeerLinkNonce
-	(*PeerLinkReveal)(nil),      // 227: hammock.v1.PeerLinkReveal
-	(*PeerLinkConfirm)(nil),     // 228: hammock.v1.PeerLinkConfirm
-	(*PeerLinked)(nil),          // 229: hammock.v1.PeerLinked
-	(*IntroduceComputers)(nil),  // 230: hammock.v1.IntroduceComputers
-	(*PeerIntroLink)(nil),       // 231: hammock.v1.PeerIntroLink
-	(*PeerIntroLinked)(nil),     // 232: hammock.v1.PeerIntroLinked
-	(*UnlinkRequest)(nil),       // 233: hammock.v1.UnlinkRequest
-	(*UnlinkTaken)(nil),         // 234: hammock.v1.UnlinkTaken
-	(*SshAgentCall)(nil),        // 235: hammock.v1.SshAgentCall
-	(*SshAgentReply)(nil),       // 236: hammock.v1.SshAgentReply
-	(*SshAgentKey)(nil),         // 237: hammock.v1.SshAgentKey
-	(*HammockKeyStatus)(nil),    // 238: hammock.v1.HammockKeyStatus
-	(*HammockKeyApprover)(nil),  // 239: hammock.v1.HammockKeyApprover
-	(*HammockKeyCommand)(nil),   // 240: hammock.v1.HammockKeyCommand
-	(*HammockKeyRequest)(nil),   // 241: hammock.v1.HammockKeyRequest
-	(*RespondHammockKey)(nil),   // 242: hammock.v1.RespondHammockKey
-	(*SetApprovalKey)(nil),      // 243: hammock.v1.SetApprovalKey
-	(*SshSetup)(nil),            // 244: hammock.v1.SshSetup
-	(*SshSetupReply)(nil),       // 245: hammock.v1.SshSetupReply
-	(*Schedule)(nil),            // 246: hammock.v1.Schedule
-	(*ScheduleRun)(nil),         // 247: hammock.v1.ScheduleRun
-	(*SaveSchedule)(nil),        // 248: hammock.v1.SaveSchedule
-	(*DeleteSchedule)(nil),      // 249: hammock.v1.DeleteSchedule
-	(*RunSchedule)(nil),         // 250: hammock.v1.RunSchedule
-	(*SetSchedulePaused)(nil),   // 251: hammock.v1.SetSchedulePaused
-	(*SkipScheduleRun)(nil),     // 252: hammock.v1.SkipScheduleRun
-	(*ScheduleReply)(nil),       // 253: hammock.v1.ScheduleReply
-	(*ShowOutput)(nil),          // 254: hammock.v1.ShowOutput
-	(*ConfigWritten)(nil),       // 255: hammock.v1.ConfigWritten
-	(*ConfigEntry)(nil),         // 256: hammock.v1.ConfigEntry
-	nil,                         // 257: hammock.v1.PaneSpec.EnvEntry
-	nil,                         // 258: hammock.v1.LogEntry.FieldsEntry
+	(DiffSource_Kind)(0),        // 18: hammock.v1.DiffSource.Kind
+	(DiffFile_Status)(0),        // 19: hammock.v1.DiffFile.Status
+	(DiffCommand_Action)(0),     // 20: hammock.v1.DiffCommand.Action
+	(*Group)(nil),               // 21: hammock.v1.Group
+	(*Member)(nil),              // 22: hammock.v1.Member
+	(*Person)(nil),              // 23: hammock.v1.Person
+	(*JoinRequest)(nil),         // 24: hammock.v1.JoinRequest
+	(*Tab)(nil),                 // 25: hammock.v1.Tab
+	(*FloatingPane)(nil),        // 26: hammock.v1.FloatingPane
+	(*Frame)(nil),               // 27: hammock.v1.Frame
+	(*Layout)(nil),              // 28: hammock.v1.Layout
+	(*Split)(nil),               // 29: hammock.v1.Split
+	(*Pane)(nil),                // 30: hammock.v1.Pane
+	(*Agent)(nil),               // 31: hammock.v1.Agent
+	(*AttentionItem)(nil),       // 32: hammock.v1.AttentionItem
+	(*StateUpdate)(nil),         // 33: hammock.v1.StateUpdate
+	(*HostTheme)(nil),           // 34: hammock.v1.HostTheme
+	(*AgentKind)(nil),           // 35: hammock.v1.AgentKind
+	(*UsageLimits)(nil),         // 36: hammock.v1.UsageLimits
+	(*AgentUsage)(nil),          // 37: hammock.v1.AgentUsage
+	(*UsageWindow)(nil),         // 38: hammock.v1.UsageWindow
+	(*ClientMessage)(nil),       // 39: hammock.v1.ClientMessage
+	(*Hello)(nil),               // 40: hammock.v1.Hello
+	(*Subscribe)(nil),           // 41: hammock.v1.Subscribe
+	(*CreateGroup)(nil),         // 42: hammock.v1.CreateGroup
+	(*RenameGroup)(nil),         // 43: hammock.v1.RenameGroup
+	(*SetGroupIcon)(nil),        // 44: hammock.v1.SetGroupIcon
+	(*CloseGroup)(nil),          // 45: hammock.v1.CloseGroup
+	(*SetGroupFolder)(nil),      // 46: hammock.v1.SetGroupFolder
+	(*CreateTab)(nil),           // 47: hammock.v1.CreateTab
+	(*RenameTab)(nil),           // 48: hammock.v1.RenameTab
+	(*CloseTab)(nil),            // 49: hammock.v1.CloseTab
+	(*ReopenClosed)(nil),        // 50: hammock.v1.ReopenClosed
+	(*PaneSpec)(nil),            // 51: hammock.v1.PaneSpec
+	(*CreatePane)(nil),          // 52: hammock.v1.CreatePane
+	(*ClosePane)(nil),           // 53: hammock.v1.ClosePane
+	(*MergeTab)(nil),            // 54: hammock.v1.MergeTab
+	(*BreakOutPane)(nil),        // 55: hammock.v1.BreakOutPane
+	(*FloatPane)(nil),           // 56: hammock.v1.FloatPane
+	(*ReplacePane)(nil),         // 57: hammock.v1.ReplacePane
+	(*BrowserNavigate)(nil),     // 58: hammock.v1.BrowserNavigate
+	(*AttachPane)(nil),          // 59: hammock.v1.AttachPane
+	(*DetachPane)(nil),          // 60: hammock.v1.DetachPane
+	(*Input)(nil),               // 61: hammock.v1.Input
+	(*Resize)(nil),              // 62: hammock.v1.Resize
+	(*Focus)(nil),               // 63: hammock.v1.Focus
+	(*ReadPane)(nil),            // 64: hammock.v1.ReadPane
+	(*SignalPane)(nil),          // 65: hammock.v1.SignalPane
+	(*Presence)(nil),            // 66: hammock.v1.Presence
+	(*ClearAttention)(nil),      // 67: hammock.v1.ClearAttention
+	(*ShutdownDaemon)(nil),      // 68: hammock.v1.ShutdownDaemon
+	(*SetColors)(nil),           // 69: hammock.v1.SetColors
+	(*GrantRequest)(nil),        // 70: hammock.v1.GrantRequest
+	(*RequestGrant)(nil),        // 71: hammock.v1.RequestGrant
+	(*RespondGrant)(nil),        // 72: hammock.v1.RespondGrant
+	(*GrantDecision)(nil),       // 73: hammock.v1.GrantDecision
+	(*SetLayout)(nil),           // 74: hammock.v1.SetLayout
+	(*MoveTab)(nil),             // 75: hammock.v1.MoveTab
+	(*ServerMessage)(nil),       // 76: hammock.v1.ServerMessage
+	(*ProveApp)(nil),            // 77: hammock.v1.ProveApp
+	(*AppChallenge)(nil),        // 78: hammock.v1.AppChallenge
+	(*ApprovalPending)(nil),     // 79: hammock.v1.ApprovalPending
+	(*HelloReply)(nil),          // 80: hammock.v1.HelloReply
+	(*Error)(nil),               // 81: hammock.v1.Error
+	(*Ok)(nil),                  // 82: hammock.v1.Ok
+	(*Created)(nil),             // 83: hammock.v1.Created
+	(*PaneSnapshot)(nil),        // 84: hammock.v1.PaneSnapshot
+	(*PaneOutput)(nil),          // 85: hammock.v1.PaneOutput
+	(*PaneText)(nil),            // 86: hammock.v1.PaneText
+	(*AuthChallenge)(nil),       // 87: hammock.v1.AuthChallenge
+	(*Pair)(nil),                // 88: hammock.v1.Pair
+	(*Paired)(nil),              // 89: hammock.v1.Paired
+	(*Authenticate)(nil),        // 90: hammock.v1.Authenticate
+	(*CreatePairing)(nil),       // 91: hammock.v1.CreatePairing
+	(*ShowPairing)(nil),         // 92: hammock.v1.ShowPairing
+	(*DevicePaired)(nil),        // 93: hammock.v1.DevicePaired
+	(*Pairing)(nil),             // 94: hammock.v1.Pairing
+	(*Device)(nil),              // 95: hammock.v1.Device
+	(*ListAudit)(nil),           // 96: hammock.v1.ListAudit
+	(*AuditEvent)(nil),          // 97: hammock.v1.AuditEvent
+	(*AuditLog)(nil),            // 98: hammock.v1.AuditLog
+	(*ListDevices)(nil),         // 99: hammock.v1.ListDevices
+	(*Devices)(nil),             // 100: hammock.v1.Devices
+	(*RemoteNetwork)(nil),       // 101: hammock.v1.RemoteNetwork
+	(*SetRemoteNetworks)(nil),   // 102: hammock.v1.SetRemoteNetworks
+	(*RevokeDevice)(nil),        // 103: hammock.v1.RevokeDevice
+	(*SetRemoteAccess)(nil),     // 104: hammock.v1.SetRemoteAccess
+	(*SwitchAgent)(nil),         // 105: hammock.v1.SwitchAgent
+	(*AgentSwitched)(nil),       // 106: hammock.v1.AgentSwitched
+	(*ListSessions)(nil),        // 107: hammock.v1.ListSessions
+	(*SessionInfo)(nil),         // 108: hammock.v1.SessionInfo
+	(*SessionList)(nil),         // 109: hammock.v1.SessionList
+	(*SessionExcerpts)(nil),     // 110: hammock.v1.SessionExcerpts
+	(*SessionExcerpt)(nil),      // 111: hammock.v1.SessionExcerpt
+	(*SessionMessage)(nil),      // 112: hammock.v1.SessionMessage
+	(*ResumeSession)(nil),       // 113: hammock.v1.ResumeSession
+	(*SessionResumed)(nil),      // 114: hammock.v1.SessionResumed
+	(*AgentBlock)(nil),          // 115: hammock.v1.AgentBlock
+	(*AgentQuestion)(nil),       // 116: hammock.v1.AgentQuestion
+	(*AgentOption)(nil),         // 117: hammock.v1.AgentOption
+	(*AgentImage)(nil),          // 118: hammock.v1.AgentImage
+	(*AgentPrompt)(nil),         // 119: hammock.v1.AgentPrompt
+	(*AgentView)(nil),           // 120: hammock.v1.AgentView
+	(*AgentTaskList)(nil),       // 121: hammock.v1.AgentTaskList
+	(*AgentTask)(nil),           // 122: hammock.v1.AgentTask
+	(*AgentLinks)(nil),          // 123: hammock.v1.AgentLinks
+	(*AgentLink)(nil),           // 124: hammock.v1.AgentLink
+	(*AgentSubagent)(nil),       // 125: hammock.v1.AgentSubagent
+	(*AgentShell)(nil),          // 126: hammock.v1.AgentShell
+	(*WatchAgent)(nil),          // 127: hammock.v1.WatchAgent
+	(*AgentAnswer)(nil),         // 128: hammock.v1.AgentAnswer
+	(*AgentSend)(nil),           // 129: hammock.v1.AgentSend
+	(*AgentAttachment)(nil),     // 130: hammock.v1.AgentAttachment
+	(*ReadAgentFile)(nil),       // 131: hammock.v1.ReadAgentFile
+	(*AgentFile)(nil),           // 132: hammock.v1.AgentFile
+	(*CreateInvite)(nil),        // 133: hammock.v1.CreateInvite
+	(*Invite)(nil),              // 134: hammock.v1.Invite
+	(*RevokeInvite)(nil),        // 135: hammock.v1.RevokeInvite
+	(*RespondJoin)(nil),         // 136: hammock.v1.RespondJoin
+	(*SetMember)(nil),           // 137: hammock.v1.SetMember
+	(*StopSharing)(nil),         // 138: hammock.v1.StopSharing
+	(*SetProfile)(nil),          // 139: hammock.v1.SetProfile
+	(*JoinShared)(nil),          // 140: hammock.v1.JoinShared
+	(*LeaveShared)(nil),         // 141: hammock.v1.LeaveShared
+	(*InviteToken)(nil),         // 142: hammock.v1.InviteToken
+	(*PeerHello)(nil),           // 143: hammock.v1.PeerHello
+	(*PeerWelcome)(nil),         // 144: hammock.v1.PeerWelcome
+	(*PeerJoin)(nil),            // 145: hammock.v1.PeerJoin
+	(*PeerJoined)(nil),          // 146: hammock.v1.PeerJoined
+	(*MoveGroup)(nil),           // 147: hammock.v1.MoveGroup
+	(*UploadFile)(nil),          // 148: hammock.v1.UploadFile
+	(*RegisterPush)(nil),        // 149: hammock.v1.RegisterPush
+	(*BrowserCall)(nil),         // 150: hammock.v1.BrowserCall
+	(*BrowserLogs)(nil),         // 151: hammock.v1.BrowserLogs
+	(*BrowserResult)(nil),       // 152: hammock.v1.BrowserResult
+	(*SimulatorCall)(nil),       // 153: hammock.v1.SimulatorCall
+	(*OpenMedia)(nil),           // 154: hammock.v1.OpenMedia
+	(*MediaTicket)(nil),         // 155: hammock.v1.MediaTicket
+	(*CloseMedia)(nil),          // 156: hammock.v1.CloseMedia
+	(*BrowserInput)(nil),        // 157: hammock.v1.BrowserInput
+	(*ListDisplays)(nil),        // 158: hammock.v1.ListDisplays
+	(*ScreenSnapshot)(nil),      // 159: hammock.v1.ScreenSnapshot
+	(*ScreenSnapshotReply)(nil), // 160: hammock.v1.ScreenSnapshotReply
+	(*Displays)(nil),            // 161: hammock.v1.Displays
+	(*Display)(nil),             // 162: hammock.v1.Display
+	(*ScreenInput)(nil),         // 163: hammock.v1.ScreenInput
+	(*BrowserMenu)(nil),         // 164: hammock.v1.BrowserMenu
+	(*BrowserMenuItem)(nil),     // 165: hammock.v1.BrowserMenuItem
+	(*BrowserClipboard)(nil),    // 166: hammock.v1.BrowserClipboard
+	(*BrowserMenuChoice)(nil),   // 167: hammock.v1.BrowserMenuChoice
+	(*MediaAck)(nil),            // 168: hammock.v1.MediaAck
+	(*MediaFrame)(nil),          // 169: hammock.v1.MediaFrame
+	(*ScreenCursor)(nil),        // 170: hammock.v1.ScreenCursor
+	(*ServerStatus)(nil),        // 171: hammock.v1.ServerStatus
+	(*ServerStatusReply)(nil),   // 172: hammock.v1.ServerStatusReply
+	(*Connected)(nil),           // 173: hammock.v1.Connected
+	(*ScreenViewer)(nil),        // 174: hammock.v1.ScreenViewer
+	(*EndScreenSession)(nil),    // 175: hammock.v1.EndScreenSession
+	(*ScreenState)(nil),         // 176: hammock.v1.ScreenState
+	(*SetMediaView)(nil),        // 177: hammock.v1.SetMediaView
+	(*MediaEnded)(nil),          // 178: hammock.v1.MediaEnded
+	(*SimulatorResult)(nil),     // 179: hammock.v1.SimulatorResult
+	(*EditorOpen)(nil),          // 180: hammock.v1.EditorOpen
+	(*EditorInfo)(nil),          // 181: hammock.v1.EditorInfo
+	(*EditorPush)(nil),          // 182: hammock.v1.EditorPush
+	(*EditorChange)(nil),        // 183: hammock.v1.EditorChange
+	(*EditorPushReply)(nil),     // 184: hammock.v1.EditorPushReply
+	(*EditorSelect)(nil),        // 185: hammock.v1.EditorSelect
+	(*EditorCommand)(nil),       // 186: hammock.v1.EditorCommand
+	(*ReadEditor)(nil),          // 187: hammock.v1.ReadEditor
+	(*EditorUpdate)(nil),        // 188: hammock.v1.EditorUpdate
+	(*EditorSelection)(nil),     // 189: hammock.v1.EditorSelection
+	(*GitMark)(nil),             // 190: hammock.v1.GitMark
+	(*ListFiles)(nil),           // 191: hammock.v1.ListFiles
+	(*FileList)(nil),            // 192: hammock.v1.FileList
+	(*LogSource)(nil),           // 193: hammock.v1.LogSource
+	(*LogEntry)(nil),            // 194: hammock.v1.LogEntry
+	(*LogFilter)(nil),           // 195: hammock.v1.LogFilter
+	(*LogFacet)(nil),            // 196: hammock.v1.LogFacet
+	(*WatchLog)(nil),            // 197: hammock.v1.WatchLog
+	(*ReadLog)(nil),             // 198: hammock.v1.ReadLog
+	(*ClearLog)(nil),            // 199: hammock.v1.ClearLog
+	(*LogView)(nil),             // 200: hammock.v1.LogView
+	(*StartAgent)(nil),          // 201: hammock.v1.StartAgent
+	(*ListFolders)(nil),         // 202: hammock.v1.ListFolders
+	(*FolderList)(nil),          // 203: hammock.v1.FolderList
+	(*FolderSuggestion)(nil),    // 204: hammock.v1.FolderSuggestion
+	(*ReadSession)(nil),         // 205: hammock.v1.ReadSession
+	(*ReadGroupIcon)(nil),       // 206: hammock.v1.ReadGroupIcon
+	(*GroupIcon)(nil),           // 207: hammock.v1.GroupIcon
+	(*SetGroupIconImage)(nil),   // 208: hammock.v1.SetGroupIconImage
+	(*Computers)(nil),           // 209: hammock.v1.Computers
+	(*Computer)(nil),            // 210: hammock.v1.Computer
+	(*StoredLink)(nil),          // 211: hammock.v1.StoredLink
+	(*IntroHop)(nil),            // 212: hammock.v1.IntroHop
+	(*Refusal)(nil),             // 213: hammock.v1.Refusal
+	(*PendingUnlink)(nil),       // 214: hammock.v1.PendingUnlink
+	(*LegacyComputer)(nil),      // 215: hammock.v1.LegacyComputer
+	(*LegacyLink)(nil),          // 216: hammock.v1.LegacyLink
+	(*LegacyUnlink)(nil),        // 217: hammock.v1.LegacyUnlink
+	(*LinkRequest)(nil),         // 218: hammock.v1.LinkRequest
+	(*DiscoverComputers)(nil),   // 219: hammock.v1.DiscoverComputers
+	(*DiscoveredComputers)(nil), // 220: hammock.v1.DiscoveredComputers
+	(*DiscoveredComputer)(nil),  // 221: hammock.v1.DiscoveredComputer
+	(*LinkComputer)(nil),        // 222: hammock.v1.LinkComputer
+	(*RespondLink)(nil),         // 223: hammock.v1.RespondLink
+	(*UnlinkComputer)(nil),      // 224: hammock.v1.UnlinkComputer
+	(*SetComputerTint)(nil),     // 225: hammock.v1.SetComputerTint
+	(*CreateLinkInvite)(nil),    // 226: hammock.v1.CreateLinkInvite
+	(*LinkToken)(nil),           // 227: hammock.v1.LinkToken
+	(*PeerLinkHello)(nil),       // 228: hammock.v1.PeerLinkHello
+	(*PeerLinkNonce)(nil),       // 229: hammock.v1.PeerLinkNonce
+	(*PeerLinkReveal)(nil),      // 230: hammock.v1.PeerLinkReveal
+	(*PeerLinkConfirm)(nil),     // 231: hammock.v1.PeerLinkConfirm
+	(*PeerLinked)(nil),          // 232: hammock.v1.PeerLinked
+	(*IntroduceComputers)(nil),  // 233: hammock.v1.IntroduceComputers
+	(*PeerIntroLink)(nil),       // 234: hammock.v1.PeerIntroLink
+	(*PeerIntroLinked)(nil),     // 235: hammock.v1.PeerIntroLinked
+	(*UnlinkRequest)(nil),       // 236: hammock.v1.UnlinkRequest
+	(*UnlinkTaken)(nil),         // 237: hammock.v1.UnlinkTaken
+	(*SshAgentCall)(nil),        // 238: hammock.v1.SshAgentCall
+	(*SshAgentReply)(nil),       // 239: hammock.v1.SshAgentReply
+	(*SshAgentKey)(nil),         // 240: hammock.v1.SshAgentKey
+	(*HammockKeyStatus)(nil),    // 241: hammock.v1.HammockKeyStatus
+	(*HammockKeyApprover)(nil),  // 242: hammock.v1.HammockKeyApprover
+	(*HammockKeyCommand)(nil),   // 243: hammock.v1.HammockKeyCommand
+	(*HammockKeyRequest)(nil),   // 244: hammock.v1.HammockKeyRequest
+	(*RespondHammockKey)(nil),   // 245: hammock.v1.RespondHammockKey
+	(*SetApprovalKey)(nil),      // 246: hammock.v1.SetApprovalKey
+	(*SshSetup)(nil),            // 247: hammock.v1.SshSetup
+	(*SshSetupReply)(nil),       // 248: hammock.v1.SshSetupReply
+	(*Schedule)(nil),            // 249: hammock.v1.Schedule
+	(*ScheduleRun)(nil),         // 250: hammock.v1.ScheduleRun
+	(*SaveSchedule)(nil),        // 251: hammock.v1.SaveSchedule
+	(*DeleteSchedule)(nil),      // 252: hammock.v1.DeleteSchedule
+	(*RunSchedule)(nil),         // 253: hammock.v1.RunSchedule
+	(*SetSchedulePaused)(nil),   // 254: hammock.v1.SetSchedulePaused
+	(*SkipScheduleRun)(nil),     // 255: hammock.v1.SkipScheduleRun
+	(*ScheduleReply)(nil),       // 256: hammock.v1.ScheduleReply
+	(*ShowOutput)(nil),          // 257: hammock.v1.ShowOutput
+	(*ConfigWritten)(nil),       // 258: hammock.v1.ConfigWritten
+	(*ConfigEntry)(nil),         // 259: hammock.v1.ConfigEntry
+	(*DiffSource)(nil),          // 260: hammock.v1.DiffSource
+	(*DiffOpen)(nil),            // 261: hammock.v1.DiffOpen
+	(*DiffView)(nil),            // 262: hammock.v1.DiffView
+	(*DiffInfo)(nil),            // 263: hammock.v1.DiffInfo
+	(*ReadDiff)(nil),            // 264: hammock.v1.ReadDiff
+	(*DiffContent)(nil),         // 265: hammock.v1.DiffContent
+	(*DiffFile)(nil),            // 266: hammock.v1.DiffFile
+	(*DiffCommit)(nil),          // 267: hammock.v1.DiffCommit
+	(*ReadDiffFile)(nil),        // 268: hammock.v1.ReadDiffFile
+	(*DiffFileText)(nil),        // 269: hammock.v1.DiffFileText
+	(*DiffCommand)(nil),         // 270: hammock.v1.DiffCommand
+	nil,                         // 271: hammock.v1.PaneSpec.EnvEntry
+	nil,                         // 272: hammock.v1.LogEntry.FieldsEntry
 }
 var file_hammock_v1_hammock_proto_depIdxs = []int32{
-	19,  // 0: hammock.v1.Group.members:type_name -> hammock.v1.Member
+	22,  // 0: hammock.v1.Group.members:type_name -> hammock.v1.Member
 	0,   // 1: hammock.v1.Group.my_role:type_name -> hammock.v1.Role
 	0,   // 2: hammock.v1.Member.role:type_name -> hammock.v1.Role
-	25,  // 3: hammock.v1.Tab.layout:type_name -> hammock.v1.Layout
-	23,  // 4: hammock.v1.Tab.floating:type_name -> hammock.v1.FloatingPane
-	24,  // 5: hammock.v1.FloatingPane.frame:type_name -> hammock.v1.Frame
+	28,  // 3: hammock.v1.Tab.layout:type_name -> hammock.v1.Layout
+	26,  // 4: hammock.v1.Tab.floating:type_name -> hammock.v1.FloatingPane
+	27,  // 5: hammock.v1.FloatingPane.frame:type_name -> hammock.v1.Frame
 	4,   // 6: hammock.v1.FloatingPane.origin_direction:type_name -> hammock.v1.Split.Direction
-	26,  // 7: hammock.v1.Layout.split:type_name -> hammock.v1.Split
+	29,  // 7: hammock.v1.Layout.split:type_name -> hammock.v1.Split
 	4,   // 8: hammock.v1.Split.direction:type_name -> hammock.v1.Split.Direction
-	25,  // 9: hammock.v1.Split.children:type_name -> hammock.v1.Layout
+	28,  // 9: hammock.v1.Split.children:type_name -> hammock.v1.Layout
 	1,   // 10: hammock.v1.Pane.kind:type_name -> hammock.v1.PaneKind
-	28,  // 11: hammock.v1.Pane.agent:type_name -> hammock.v1.Agent
-	190, // 12: hammock.v1.Pane.log:type_name -> hammock.v1.LogSource
-	178, // 13: hammock.v1.Pane.editor:type_name -> hammock.v1.EditorInfo
-	2,   // 14: hammock.v1.Agent.state:type_name -> hammock.v1.AgentState
-	2,   // 15: hammock.v1.AttentionItem.state:type_name -> hammock.v1.AgentState
-	18,  // 16: hammock.v1.StateUpdate.groups:type_name -> hammock.v1.Group
-	22,  // 17: hammock.v1.StateUpdate.tabs:type_name -> hammock.v1.Tab
-	27,  // 18: hammock.v1.StateUpdate.panes:type_name -> hammock.v1.Pane
-	29,  // 19: hammock.v1.StateUpdate.attention:type_name -> hammock.v1.AttentionItem
-	67,  // 20: hammock.v1.StateUpdate.grants:type_name -> hammock.v1.GrantRequest
-	20,  // 21: hammock.v1.StateUpdate.people:type_name -> hammock.v1.Person
-	21,  // 22: hammock.v1.StateUpdate.join_requests:type_name -> hammock.v1.JoinRequest
-	33,  // 23: hammock.v1.StateUpdate.usage:type_name -> hammock.v1.UsageLimits
-	206, // 24: hammock.v1.StateUpdate.computers:type_name -> hammock.v1.Computers
-	215, // 25: hammock.v1.StateUpdate.link_requests:type_name -> hammock.v1.LinkRequest
-	246, // 26: hammock.v1.StateUpdate.schedules:type_name -> hammock.v1.Schedule
-	238, // 27: hammock.v1.StateUpdate.hammock_key:type_name -> hammock.v1.HammockKeyStatus
-	241, // 28: hammock.v1.StateUpdate.hammock_key_requests:type_name -> hammock.v1.HammockKeyRequest
-	31,  // 29: hammock.v1.StateUpdate.theme:type_name -> hammock.v1.HostTheme
-	32,  // 30: hammock.v1.StateUpdate.agent_kinds:type_name -> hammock.v1.AgentKind
-	34,  // 31: hammock.v1.UsageLimits.agents:type_name -> hammock.v1.AgentUsage
-	35,  // 32: hammock.v1.AgentUsage.windows:type_name -> hammock.v1.UsageWindow
-	37,  // 33: hammock.v1.ClientMessage.hello:type_name -> hammock.v1.Hello
-	38,  // 34: hammock.v1.ClientMessage.subscribe:type_name -> hammock.v1.Subscribe
-	39,  // 35: hammock.v1.ClientMessage.create_group:type_name -> hammock.v1.CreateGroup
-	40,  // 36: hammock.v1.ClientMessage.rename_group:type_name -> hammock.v1.RenameGroup
-	42,  // 37: hammock.v1.ClientMessage.close_group:type_name -> hammock.v1.CloseGroup
-	44,  // 38: hammock.v1.ClientMessage.create_tab:type_name -> hammock.v1.CreateTab
-	45,  // 39: hammock.v1.ClientMessage.rename_tab:type_name -> hammock.v1.RenameTab
-	46,  // 40: hammock.v1.ClientMessage.close_tab:type_name -> hammock.v1.CloseTab
-	49,  // 41: hammock.v1.ClientMessage.create_pane:type_name -> hammock.v1.CreatePane
-	50,  // 42: hammock.v1.ClientMessage.close_pane:type_name -> hammock.v1.ClosePane
-	56,  // 43: hammock.v1.ClientMessage.attach_pane:type_name -> hammock.v1.AttachPane
-	57,  // 44: hammock.v1.ClientMessage.detach_pane:type_name -> hammock.v1.DetachPane
-	58,  // 45: hammock.v1.ClientMessage.input:type_name -> hammock.v1.Input
-	59,  // 46: hammock.v1.ClientMessage.resize:type_name -> hammock.v1.Resize
-	60,  // 47: hammock.v1.ClientMessage.focus:type_name -> hammock.v1.Focus
-	61,  // 48: hammock.v1.ClientMessage.read_pane:type_name -> hammock.v1.ReadPane
-	62,  // 49: hammock.v1.ClientMessage.signal_pane:type_name -> hammock.v1.SignalPane
-	63,  // 50: hammock.v1.ClientMessage.presence:type_name -> hammock.v1.Presence
-	64,  // 51: hammock.v1.ClientMessage.clear_attention:type_name -> hammock.v1.ClearAttention
-	71,  // 52: hammock.v1.ClientMessage.set_layout:type_name -> hammock.v1.SetLayout
-	68,  // 53: hammock.v1.ClientMessage.request_grant:type_name -> hammock.v1.RequestGrant
-	69,  // 54: hammock.v1.ClientMessage.respond_grant:type_name -> hammock.v1.RespondGrant
-	72,  // 55: hammock.v1.ClientMessage.move_tab:type_name -> hammock.v1.MoveTab
-	102, // 56: hammock.v1.ClientMessage.switch_agent:type_name -> hammock.v1.SwitchAgent
-	88,  // 57: hammock.v1.ClientMessage.create_pairing:type_name -> hammock.v1.CreatePairing
-	96,  // 58: hammock.v1.ClientMessage.list_devices:type_name -> hammock.v1.ListDevices
-	100, // 59: hammock.v1.ClientMessage.revoke_device:type_name -> hammock.v1.RevokeDevice
-	85,  // 60: hammock.v1.ClientMessage.pair:type_name -> hammock.v1.Pair
-	87,  // 61: hammock.v1.ClientMessage.authenticate:type_name -> hammock.v1.Authenticate
-	101, // 62: hammock.v1.ClientMessage.set_remote_access:type_name -> hammock.v1.SetRemoteAccess
-	66,  // 63: hammock.v1.ClientMessage.set_colors:type_name -> hammock.v1.SetColors
-	41,  // 64: hammock.v1.ClientMessage.set_group_icon:type_name -> hammock.v1.SetGroupIcon
-	65,  // 65: hammock.v1.ClientMessage.shutdown_daemon:type_name -> hammock.v1.ShutdownDaemon
-	93,  // 66: hammock.v1.ClientMessage.list_audit:type_name -> hammock.v1.ListAudit
-	55,  // 67: hammock.v1.ClientMessage.browser_navigate:type_name -> hammock.v1.BrowserNavigate
-	124, // 68: hammock.v1.ClientMessage.watch_agent:type_name -> hammock.v1.WatchAgent
-	125, // 69: hammock.v1.ClientMessage.agent_answer:type_name -> hammock.v1.AgentAnswer
-	126, // 70: hammock.v1.ClientMessage.agent_send:type_name -> hammock.v1.AgentSend
-	128, // 71: hammock.v1.ClientMessage.read_agent_file:type_name -> hammock.v1.ReadAgentFile
-	130, // 72: hammock.v1.ClientMessage.create_invite:type_name -> hammock.v1.CreateInvite
-	132, // 73: hammock.v1.ClientMessage.revoke_invite:type_name -> hammock.v1.RevokeInvite
-	133, // 74: hammock.v1.ClientMessage.respond_join:type_name -> hammock.v1.RespondJoin
-	134, // 75: hammock.v1.ClientMessage.set_member:type_name -> hammock.v1.SetMember
-	135, // 76: hammock.v1.ClientMessage.stop_sharing:type_name -> hammock.v1.StopSharing
-	136, // 77: hammock.v1.ClientMessage.set_profile:type_name -> hammock.v1.SetProfile
-	137, // 78: hammock.v1.ClientMessage.join_shared:type_name -> hammock.v1.JoinShared
-	138, // 79: hammock.v1.ClientMessage.leave_shared:type_name -> hammock.v1.LeaveShared
-	140, // 80: hammock.v1.ClientMessage.peer_hello:type_name -> hammock.v1.PeerHello
-	142, // 81: hammock.v1.ClientMessage.peer_join:type_name -> hammock.v1.PeerJoin
-	145, // 82: hammock.v1.ClientMessage.upload_file:type_name -> hammock.v1.UploadFile
-	144, // 83: hammock.v1.ClientMessage.move_group:type_name -> hammock.v1.MoveGroup
-	146, // 84: hammock.v1.ClientMessage.register_push:type_name -> hammock.v1.RegisterPush
-	147, // 85: hammock.v1.ClientMessage.browser_call:type_name -> hammock.v1.BrowserCall
-	148, // 86: hammock.v1.ClientMessage.browser_logs:type_name -> hammock.v1.BrowserLogs
-	150, // 87: hammock.v1.ClientMessage.simulator_call:type_name -> hammock.v1.SimulatorCall
-	51,  // 88: hammock.v1.ClientMessage.merge_tab:type_name -> hammock.v1.MergeTab
-	52,  // 89: hammock.v1.ClientMessage.break_out_pane:type_name -> hammock.v1.BreakOutPane
-	54,  // 90: hammock.v1.ClientMessage.replace_pane:type_name -> hammock.v1.ReplacePane
-	89,  // 91: hammock.v1.ClientMessage.show_pairing:type_name -> hammock.v1.ShowPairing
-	151, // 92: hammock.v1.ClientMessage.open_media:type_name -> hammock.v1.OpenMedia
-	153, // 93: hammock.v1.ClientMessage.close_media:type_name -> hammock.v1.CloseMedia
-	165, // 94: hammock.v1.ClientMessage.media_ack:type_name -> hammock.v1.MediaAck
-	154, // 95: hammock.v1.ClientMessage.browser_input:type_name -> hammock.v1.BrowserInput
-	164, // 96: hammock.v1.ClientMessage.browser_menu_choice:type_name -> hammock.v1.BrowserMenuChoice
-	104, // 97: hammock.v1.ClientMessage.list_sessions:type_name -> hammock.v1.ListSessions
-	110, // 98: hammock.v1.ClientMessage.resume_session:type_name -> hammock.v1.ResumeSession
-	194, // 99: hammock.v1.ClientMessage.watch_log:type_name -> hammock.v1.WatchLog
-	195, // 100: hammock.v1.ClientMessage.read_log:type_name -> hammock.v1.ReadLog
-	196, // 101: hammock.v1.ClientMessage.clear_log:type_name -> hammock.v1.ClearLog
-	198, // 102: hammock.v1.ClientMessage.start_agent:type_name -> hammock.v1.StartAgent
-	199, // 103: hammock.v1.ClientMessage.list_folders:type_name -> hammock.v1.ListFolders
-	202, // 104: hammock.v1.ClientMessage.read_session:type_name -> hammock.v1.ReadSession
-	203, // 105: hammock.v1.ClientMessage.read_group_icon:type_name -> hammock.v1.ReadGroupIcon
-	205, // 106: hammock.v1.ClientMessage.set_group_icon_image:type_name -> hammock.v1.SetGroupIconImage
-	107, // 107: hammock.v1.ClientMessage.session_excerpts:type_name -> hammock.v1.SessionExcerpts
-	47,  // 108: hammock.v1.ClientMessage.reopen_closed:type_name -> hammock.v1.ReopenClosed
-	216, // 109: hammock.v1.ClientMessage.discover_computers:type_name -> hammock.v1.DiscoverComputers
-	219, // 110: hammock.v1.ClientMessage.link_computer:type_name -> hammock.v1.LinkComputer
-	220, // 111: hammock.v1.ClientMessage.respond_link:type_name -> hammock.v1.RespondLink
-	221, // 112: hammock.v1.ClientMessage.unlink_computer:type_name -> hammock.v1.UnlinkComputer
-	222, // 113: hammock.v1.ClientMessage.set_computer_tint:type_name -> hammock.v1.SetComputerTint
-	223, // 114: hammock.v1.ClientMessage.create_link_invite:type_name -> hammock.v1.CreateLinkInvite
-	225, // 115: hammock.v1.ClientMessage.peer_link_hello:type_name -> hammock.v1.PeerLinkHello
-	227, // 116: hammock.v1.ClientMessage.peer_link_reveal:type_name -> hammock.v1.PeerLinkReveal
-	228, // 117: hammock.v1.ClientMessage.peer_link_confirm:type_name -> hammock.v1.PeerLinkConfirm
-	230, // 118: hammock.v1.ClientMessage.introduce_computers:type_name -> hammock.v1.IntroduceComputers
-	231, // 119: hammock.v1.ClientMessage.peer_intro_link:type_name -> hammock.v1.PeerIntroLink
-	233, // 120: hammock.v1.ClientMessage.unlink_request:type_name -> hammock.v1.UnlinkRequest
-	235, // 121: hammock.v1.ClientMessage.ssh_agent_call:type_name -> hammock.v1.SshAgentCall
-	43,  // 122: hammock.v1.ClientMessage.set_group_folder:type_name -> hammock.v1.SetGroupFolder
-	155, // 123: hammock.v1.ClientMessage.list_displays:type_name -> hammock.v1.ListDisplays
-	160, // 124: hammock.v1.ClientMessage.screen_input:type_name -> hammock.v1.ScreenInput
-	174, // 125: hammock.v1.ClientMessage.set_media_view:type_name -> hammock.v1.SetMediaView
-	168, // 126: hammock.v1.ClientMessage.server_status:type_name -> hammock.v1.ServerStatus
-	172, // 127: hammock.v1.ClientMessage.end_screen_session:type_name -> hammock.v1.EndScreenSession
-	156, // 128: hammock.v1.ClientMessage.screen_snapshot:type_name -> hammock.v1.ScreenSnapshot
-	248, // 129: hammock.v1.ClientMessage.save_schedule:type_name -> hammock.v1.SaveSchedule
-	249, // 130: hammock.v1.ClientMessage.delete_schedule:type_name -> hammock.v1.DeleteSchedule
-	250, // 131: hammock.v1.ClientMessage.run_schedule:type_name -> hammock.v1.RunSchedule
-	251, // 132: hammock.v1.ClientMessage.set_schedule_paused:type_name -> hammock.v1.SetSchedulePaused
-	252, // 133: hammock.v1.ClientMessage.skip_schedule_run:type_name -> hammock.v1.SkipScheduleRun
-	254, // 134: hammock.v1.ClientMessage.show_output:type_name -> hammock.v1.ShowOutput
-	53,  // 135: hammock.v1.ClientMessage.float_pane:type_name -> hammock.v1.FloatPane
-	240, // 136: hammock.v1.ClientMessage.hammock_key_command:type_name -> hammock.v1.HammockKeyCommand
-	242, // 137: hammock.v1.ClientMessage.respond_hammock_key:type_name -> hammock.v1.RespondHammockKey
-	243, // 138: hammock.v1.ClientMessage.set_approval_key:type_name -> hammock.v1.SetApprovalKey
-	244, // 139: hammock.v1.ClientMessage.ssh_setup:type_name -> hammock.v1.SshSetup
-	99,  // 140: hammock.v1.ClientMessage.set_remote_networks:type_name -> hammock.v1.SetRemoteNetworks
-	179, // 141: hammock.v1.ClientMessage.editor_push:type_name -> hammock.v1.EditorPush
-	182, // 142: hammock.v1.ClientMessage.editor_select:type_name -> hammock.v1.EditorSelect
-	183, // 143: hammock.v1.ClientMessage.editor_command:type_name -> hammock.v1.EditorCommand
-	184, // 144: hammock.v1.ClientMessage.read_editor:type_name -> hammock.v1.ReadEditor
-	188, // 145: hammock.v1.ClientMessage.list_files:type_name -> hammock.v1.ListFiles
-	255, // 146: hammock.v1.ClientMessage.config_written:type_name -> hammock.v1.ConfigWritten
-	74,  // 147: hammock.v1.ClientMessage.prove_app:type_name -> hammock.v1.ProveApp
-	48,  // 148: hammock.v1.CreateTab.pane:type_name -> hammock.v1.PaneSpec
-	257, // 149: hammock.v1.PaneSpec.env:type_name -> hammock.v1.PaneSpec.EnvEntry
-	190, // 150: hammock.v1.PaneSpec.log:type_name -> hammock.v1.LogSource
-	177, // 151: hammock.v1.PaneSpec.editor:type_name -> hammock.v1.EditorOpen
-	4,   // 152: hammock.v1.CreatePane.direction:type_name -> hammock.v1.Split.Direction
-	48,  // 153: hammock.v1.CreatePane.spec:type_name -> hammock.v1.PaneSpec
-	24,  // 154: hammock.v1.CreatePane.frame:type_name -> hammock.v1.Frame
-	4,   // 155: hammock.v1.MergeTab.direction:type_name -> hammock.v1.Split.Direction
-	5,   // 156: hammock.v1.FloatPane.action:type_name -> hammock.v1.FloatPane.Action
-	24,  // 157: hammock.v1.FloatPane.frame:type_name -> hammock.v1.Frame
-	4,   // 158: hammock.v1.FloatPane.direction:type_name -> hammock.v1.Split.Direction
-	48,  // 159: hammock.v1.ReplacePane.spec:type_name -> hammock.v1.PaneSpec
-	6,   // 160: hammock.v1.RespondGrant.decision:type_name -> hammock.v1.RespondGrant.Decision
-	25,  // 161: hammock.v1.SetLayout.layout:type_name -> hammock.v1.Layout
-	77,  // 162: hammock.v1.ServerMessage.hello_reply:type_name -> hammock.v1.HelloReply
-	78,  // 163: hammock.v1.ServerMessage.error:type_name -> hammock.v1.Error
-	79,  // 164: hammock.v1.ServerMessage.ok:type_name -> hammock.v1.Ok
-	30,  // 165: hammock.v1.ServerMessage.state:type_name -> hammock.v1.StateUpdate
-	81,  // 166: hammock.v1.ServerMessage.pane_snapshot:type_name -> hammock.v1.PaneSnapshot
-	82,  // 167: hammock.v1.ServerMessage.pane_output:type_name -> hammock.v1.PaneOutput
-	83,  // 168: hammock.v1.ServerMessage.pane_text:type_name -> hammock.v1.PaneText
-	80,  // 169: hammock.v1.ServerMessage.created:type_name -> hammock.v1.Created
-	70,  // 170: hammock.v1.ServerMessage.grant_decision:type_name -> hammock.v1.GrantDecision
-	84,  // 171: hammock.v1.ServerMessage.auth_challenge:type_name -> hammock.v1.AuthChallenge
-	91,  // 172: hammock.v1.ServerMessage.pairing:type_name -> hammock.v1.Pairing
-	97,  // 173: hammock.v1.ServerMessage.devices:type_name -> hammock.v1.Devices
-	86,  // 174: hammock.v1.ServerMessage.paired:type_name -> hammock.v1.Paired
-	95,  // 175: hammock.v1.ServerMessage.audit_log:type_name -> hammock.v1.AuditLog
-	117, // 176: hammock.v1.ServerMessage.agent_view:type_name -> hammock.v1.AgentView
-	129, // 177: hammock.v1.ServerMessage.agent_file:type_name -> hammock.v1.AgentFile
-	131, // 178: hammock.v1.ServerMessage.invite:type_name -> hammock.v1.Invite
-	143, // 179: hammock.v1.ServerMessage.peer_joined:type_name -> hammock.v1.PeerJoined
-	149, // 180: hammock.v1.ServerMessage.browser_result:type_name -> hammock.v1.BrowserResult
-	176, // 181: hammock.v1.ServerMessage.simulator_result:type_name -> hammock.v1.SimulatorResult
-	141, // 182: hammock.v1.ServerMessage.peer_welcome:type_name -> hammock.v1.PeerWelcome
-	89,  // 183: hammock.v1.ServerMessage.show_pairing:type_name -> hammock.v1.ShowPairing
-	90,  // 184: hammock.v1.ServerMessage.device_paired:type_name -> hammock.v1.DevicePaired
-	152, // 185: hammock.v1.ServerMessage.media_ticket:type_name -> hammock.v1.MediaTicket
-	166, // 186: hammock.v1.ServerMessage.media_frame:type_name -> hammock.v1.MediaFrame
-	175, // 187: hammock.v1.ServerMessage.media_ended:type_name -> hammock.v1.MediaEnded
-	161, // 188: hammock.v1.ServerMessage.browser_menu:type_name -> hammock.v1.BrowserMenu
-	163, // 189: hammock.v1.ServerMessage.browser_clipboard:type_name -> hammock.v1.BrowserClipboard
-	103, // 190: hammock.v1.ServerMessage.agent_switched:type_name -> hammock.v1.AgentSwitched
-	106, // 191: hammock.v1.ServerMessage.session_list:type_name -> hammock.v1.SessionList
-	111, // 192: hammock.v1.ServerMessage.session_resumed:type_name -> hammock.v1.SessionResumed
-	197, // 193: hammock.v1.ServerMessage.log_view:type_name -> hammock.v1.LogView
-	200, // 194: hammock.v1.ServerMessage.folder_list:type_name -> hammock.v1.FolderList
-	204, // 195: hammock.v1.ServerMessage.group_icon:type_name -> hammock.v1.GroupIcon
-	108, // 196: hammock.v1.ServerMessage.session_excerpt:type_name -> hammock.v1.SessionExcerpt
-	217, // 197: hammock.v1.ServerMessage.discovered_computers:type_name -> hammock.v1.DiscoveredComputers
-	226, // 198: hammock.v1.ServerMessage.peer_link_nonce:type_name -> hammock.v1.PeerLinkNonce
-	229, // 199: hammock.v1.ServerMessage.peer_linked:type_name -> hammock.v1.PeerLinked
-	232, // 200: hammock.v1.ServerMessage.peer_intro_linked:type_name -> hammock.v1.PeerIntroLinked
-	234, // 201: hammock.v1.ServerMessage.unlink_taken:type_name -> hammock.v1.UnlinkTaken
-	236, // 202: hammock.v1.ServerMessage.ssh_agent_reply:type_name -> hammock.v1.SshAgentReply
-	158, // 203: hammock.v1.ServerMessage.displays:type_name -> hammock.v1.Displays
-	167, // 204: hammock.v1.ServerMessage.screen_cursor:type_name -> hammock.v1.ScreenCursor
-	173, // 205: hammock.v1.ServerMessage.screen_state:type_name -> hammock.v1.ScreenState
-	169, // 206: hammock.v1.ServerMessage.server_status_reply:type_name -> hammock.v1.ServerStatusReply
-	157, // 207: hammock.v1.ServerMessage.screen_snapshot_reply:type_name -> hammock.v1.ScreenSnapshotReply
-	253, // 208: hammock.v1.ServerMessage.schedule_reply:type_name -> hammock.v1.ScheduleReply
-	238, // 209: hammock.v1.ServerMessage.hammock_key_status:type_name -> hammock.v1.HammockKeyStatus
-	245, // 210: hammock.v1.ServerMessage.ssh_setup_reply:type_name -> hammock.v1.SshSetupReply
-	185, // 211: hammock.v1.ServerMessage.editor_update:type_name -> hammock.v1.EditorUpdate
-	181, // 212: hammock.v1.ServerMessage.editor_push_reply:type_name -> hammock.v1.EditorPushReply
-	189, // 213: hammock.v1.ServerMessage.file_list:type_name -> hammock.v1.FileList
-	76,  // 214: hammock.v1.ServerMessage.approval_pending:type_name -> hammock.v1.ApprovalPending
-	75,  // 215: hammock.v1.ServerMessage.app_challenge:type_name -> hammock.v1.AppChallenge
-	94,  // 216: hammock.v1.AuditLog.events:type_name -> hammock.v1.AuditEvent
-	92,  // 217: hammock.v1.Devices.devices:type_name -> hammock.v1.Device
-	98,  // 218: hammock.v1.Devices.networks:type_name -> hammock.v1.RemoteNetwork
-	105, // 219: hammock.v1.SessionList.sessions:type_name -> hammock.v1.SessionInfo
-	105, // 220: hammock.v1.SessionExcerpt.session:type_name -> hammock.v1.SessionInfo
-	109, // 221: hammock.v1.SessionExcerpt.messages:type_name -> hammock.v1.SessionMessage
-	7,   // 222: hammock.v1.AgentBlock.kind:type_name -> hammock.v1.AgentBlock.Kind
-	113, // 223: hammock.v1.AgentBlock.questions:type_name -> hammock.v1.AgentQuestion
-	115, // 224: hammock.v1.AgentBlock.images:type_name -> hammock.v1.AgentImage
-	114, // 225: hammock.v1.AgentQuestion.options:type_name -> hammock.v1.AgentOption
-	8,   // 226: hammock.v1.AgentPrompt.kind:type_name -> hammock.v1.AgentPrompt.Kind
-	112, // 227: hammock.v1.AgentView.blocks:type_name -> hammock.v1.AgentBlock
-	116, // 228: hammock.v1.AgentView.prompt:type_name -> hammock.v1.AgentPrompt
-	122, // 229: hammock.v1.AgentView.subagents:type_name -> hammock.v1.AgentSubagent
-	123, // 230: hammock.v1.AgentView.shells:type_name -> hammock.v1.AgentShell
-	118, // 231: hammock.v1.AgentView.tasks:type_name -> hammock.v1.AgentTaskList
-	120, // 232: hammock.v1.AgentView.links:type_name -> hammock.v1.AgentLinks
-	119, // 233: hammock.v1.AgentTaskList.tasks:type_name -> hammock.v1.AgentTask
-	9,   // 234: hammock.v1.AgentTask.status:type_name -> hammock.v1.AgentTask.Status
-	121, // 235: hammock.v1.AgentLinks.links:type_name -> hammock.v1.AgentLink
-	10,  // 236: hammock.v1.AgentLink.kind:type_name -> hammock.v1.AgentLink.Kind
-	11,  // 237: hammock.v1.AgentAnswer.decision:type_name -> hammock.v1.AgentAnswer.Decision
-	127, // 238: hammock.v1.AgentSend.attachments:type_name -> hammock.v1.AgentAttachment
-	0,   // 239: hammock.v1.RespondJoin.role:type_name -> hammock.v1.Role
-	0,   // 240: hammock.v1.SetMember.role:type_name -> hammock.v1.Role
-	0,   // 241: hammock.v1.PeerJoined.role:type_name -> hammock.v1.Role
-	159, // 242: hammock.v1.Displays.displays:type_name -> hammock.v1.Display
-	162, // 243: hammock.v1.BrowserMenu.items:type_name -> hammock.v1.BrowserMenuItem
-	170, // 244: hammock.v1.ServerStatusReply.connected:type_name -> hammock.v1.Connected
-	171, // 245: hammock.v1.ServerStatusReply.screen_viewers:type_name -> hammock.v1.ScreenViewer
-	29,  // 246: hammock.v1.ServerStatusReply.needs_you:type_name -> hammock.v1.AttentionItem
-	180, // 247: hammock.v1.EditorPush.updates:type_name -> hammock.v1.EditorChange
-	12,  // 248: hammock.v1.EditorCommand.action:type_name -> hammock.v1.EditorCommand.Action
-	180, // 249: hammock.v1.EditorUpdate.updates:type_name -> hammock.v1.EditorChange
-	186, // 250: hammock.v1.EditorUpdate.selection:type_name -> hammock.v1.EditorSelection
-	187, // 251: hammock.v1.EditorUpdate.git:type_name -> hammock.v1.GitMark
-	13,  // 252: hammock.v1.GitMark.kind:type_name -> hammock.v1.GitMark.Kind
-	3,   // 253: hammock.v1.LogEntry.level:type_name -> hammock.v1.LogLevel
-	258, // 254: hammock.v1.LogEntry.fields:type_name -> hammock.v1.LogEntry.FieldsEntry
-	3,   // 255: hammock.v1.LogFilter.levels:type_name -> hammock.v1.LogLevel
-	192, // 256: hammock.v1.WatchLog.filter:type_name -> hammock.v1.LogFilter
-	192, // 257: hammock.v1.ReadLog.filter:type_name -> hammock.v1.LogFilter
-	191, // 258: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
-	193, // 259: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
-	192, // 260: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
-	201, // 261: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
-	207, // 262: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
-	209, // 263: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
-	207, // 264: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
-	209, // 265: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
-	208, // 266: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
-	207, // 267: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
-	218, // 268: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
-	207, // 269: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
-	207, // 270: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
-	207, // 271: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
-	207, // 272: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
-	207, // 273: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
-	207, // 274: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
-	237, // 275: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
-	239, // 276: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
-	239, // 277: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
-	14,  // 278: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
-	15,  // 279: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
-	16,  // 280: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
-	247, // 281: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
-	17,  // 282: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
-	246, // 283: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
-	246, // 284: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
-	256, // 285: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
-	286, // [286:286] is the sub-list for method output_type
-	286, // [286:286] is the sub-list for method input_type
-	286, // [286:286] is the sub-list for extension type_name
-	286, // [286:286] is the sub-list for extension extendee
-	0,   // [0:286] is the sub-list for field type_name
+	31,  // 11: hammock.v1.Pane.agent:type_name -> hammock.v1.Agent
+	193, // 12: hammock.v1.Pane.log:type_name -> hammock.v1.LogSource
+	181, // 13: hammock.v1.Pane.editor:type_name -> hammock.v1.EditorInfo
+	263, // 14: hammock.v1.Pane.diff:type_name -> hammock.v1.DiffInfo
+	2,   // 15: hammock.v1.Agent.state:type_name -> hammock.v1.AgentState
+	2,   // 16: hammock.v1.AttentionItem.state:type_name -> hammock.v1.AgentState
+	21,  // 17: hammock.v1.StateUpdate.groups:type_name -> hammock.v1.Group
+	25,  // 18: hammock.v1.StateUpdate.tabs:type_name -> hammock.v1.Tab
+	30,  // 19: hammock.v1.StateUpdate.panes:type_name -> hammock.v1.Pane
+	32,  // 20: hammock.v1.StateUpdate.attention:type_name -> hammock.v1.AttentionItem
+	70,  // 21: hammock.v1.StateUpdate.grants:type_name -> hammock.v1.GrantRequest
+	23,  // 22: hammock.v1.StateUpdate.people:type_name -> hammock.v1.Person
+	24,  // 23: hammock.v1.StateUpdate.join_requests:type_name -> hammock.v1.JoinRequest
+	36,  // 24: hammock.v1.StateUpdate.usage:type_name -> hammock.v1.UsageLimits
+	209, // 25: hammock.v1.StateUpdate.computers:type_name -> hammock.v1.Computers
+	218, // 26: hammock.v1.StateUpdate.link_requests:type_name -> hammock.v1.LinkRequest
+	249, // 27: hammock.v1.StateUpdate.schedules:type_name -> hammock.v1.Schedule
+	241, // 28: hammock.v1.StateUpdate.hammock_key:type_name -> hammock.v1.HammockKeyStatus
+	244, // 29: hammock.v1.StateUpdate.hammock_key_requests:type_name -> hammock.v1.HammockKeyRequest
+	34,  // 30: hammock.v1.StateUpdate.theme:type_name -> hammock.v1.HostTheme
+	35,  // 31: hammock.v1.StateUpdate.agent_kinds:type_name -> hammock.v1.AgentKind
+	37,  // 32: hammock.v1.UsageLimits.agents:type_name -> hammock.v1.AgentUsage
+	38,  // 33: hammock.v1.AgentUsage.windows:type_name -> hammock.v1.UsageWindow
+	40,  // 34: hammock.v1.ClientMessage.hello:type_name -> hammock.v1.Hello
+	41,  // 35: hammock.v1.ClientMessage.subscribe:type_name -> hammock.v1.Subscribe
+	42,  // 36: hammock.v1.ClientMessage.create_group:type_name -> hammock.v1.CreateGroup
+	43,  // 37: hammock.v1.ClientMessage.rename_group:type_name -> hammock.v1.RenameGroup
+	45,  // 38: hammock.v1.ClientMessage.close_group:type_name -> hammock.v1.CloseGroup
+	47,  // 39: hammock.v1.ClientMessage.create_tab:type_name -> hammock.v1.CreateTab
+	48,  // 40: hammock.v1.ClientMessage.rename_tab:type_name -> hammock.v1.RenameTab
+	49,  // 41: hammock.v1.ClientMessage.close_tab:type_name -> hammock.v1.CloseTab
+	52,  // 42: hammock.v1.ClientMessage.create_pane:type_name -> hammock.v1.CreatePane
+	53,  // 43: hammock.v1.ClientMessage.close_pane:type_name -> hammock.v1.ClosePane
+	59,  // 44: hammock.v1.ClientMessage.attach_pane:type_name -> hammock.v1.AttachPane
+	60,  // 45: hammock.v1.ClientMessage.detach_pane:type_name -> hammock.v1.DetachPane
+	61,  // 46: hammock.v1.ClientMessage.input:type_name -> hammock.v1.Input
+	62,  // 47: hammock.v1.ClientMessage.resize:type_name -> hammock.v1.Resize
+	63,  // 48: hammock.v1.ClientMessage.focus:type_name -> hammock.v1.Focus
+	64,  // 49: hammock.v1.ClientMessage.read_pane:type_name -> hammock.v1.ReadPane
+	65,  // 50: hammock.v1.ClientMessage.signal_pane:type_name -> hammock.v1.SignalPane
+	66,  // 51: hammock.v1.ClientMessage.presence:type_name -> hammock.v1.Presence
+	67,  // 52: hammock.v1.ClientMessage.clear_attention:type_name -> hammock.v1.ClearAttention
+	74,  // 53: hammock.v1.ClientMessage.set_layout:type_name -> hammock.v1.SetLayout
+	71,  // 54: hammock.v1.ClientMessage.request_grant:type_name -> hammock.v1.RequestGrant
+	72,  // 55: hammock.v1.ClientMessage.respond_grant:type_name -> hammock.v1.RespondGrant
+	75,  // 56: hammock.v1.ClientMessage.move_tab:type_name -> hammock.v1.MoveTab
+	105, // 57: hammock.v1.ClientMessage.switch_agent:type_name -> hammock.v1.SwitchAgent
+	91,  // 58: hammock.v1.ClientMessage.create_pairing:type_name -> hammock.v1.CreatePairing
+	99,  // 59: hammock.v1.ClientMessage.list_devices:type_name -> hammock.v1.ListDevices
+	103, // 60: hammock.v1.ClientMessage.revoke_device:type_name -> hammock.v1.RevokeDevice
+	88,  // 61: hammock.v1.ClientMessage.pair:type_name -> hammock.v1.Pair
+	90,  // 62: hammock.v1.ClientMessage.authenticate:type_name -> hammock.v1.Authenticate
+	104, // 63: hammock.v1.ClientMessage.set_remote_access:type_name -> hammock.v1.SetRemoteAccess
+	69,  // 64: hammock.v1.ClientMessage.set_colors:type_name -> hammock.v1.SetColors
+	44,  // 65: hammock.v1.ClientMessage.set_group_icon:type_name -> hammock.v1.SetGroupIcon
+	68,  // 66: hammock.v1.ClientMessage.shutdown_daemon:type_name -> hammock.v1.ShutdownDaemon
+	96,  // 67: hammock.v1.ClientMessage.list_audit:type_name -> hammock.v1.ListAudit
+	58,  // 68: hammock.v1.ClientMessage.browser_navigate:type_name -> hammock.v1.BrowserNavigate
+	127, // 69: hammock.v1.ClientMessage.watch_agent:type_name -> hammock.v1.WatchAgent
+	128, // 70: hammock.v1.ClientMessage.agent_answer:type_name -> hammock.v1.AgentAnswer
+	129, // 71: hammock.v1.ClientMessage.agent_send:type_name -> hammock.v1.AgentSend
+	131, // 72: hammock.v1.ClientMessage.read_agent_file:type_name -> hammock.v1.ReadAgentFile
+	133, // 73: hammock.v1.ClientMessage.create_invite:type_name -> hammock.v1.CreateInvite
+	135, // 74: hammock.v1.ClientMessage.revoke_invite:type_name -> hammock.v1.RevokeInvite
+	136, // 75: hammock.v1.ClientMessage.respond_join:type_name -> hammock.v1.RespondJoin
+	137, // 76: hammock.v1.ClientMessage.set_member:type_name -> hammock.v1.SetMember
+	138, // 77: hammock.v1.ClientMessage.stop_sharing:type_name -> hammock.v1.StopSharing
+	139, // 78: hammock.v1.ClientMessage.set_profile:type_name -> hammock.v1.SetProfile
+	140, // 79: hammock.v1.ClientMessage.join_shared:type_name -> hammock.v1.JoinShared
+	141, // 80: hammock.v1.ClientMessage.leave_shared:type_name -> hammock.v1.LeaveShared
+	143, // 81: hammock.v1.ClientMessage.peer_hello:type_name -> hammock.v1.PeerHello
+	145, // 82: hammock.v1.ClientMessage.peer_join:type_name -> hammock.v1.PeerJoin
+	148, // 83: hammock.v1.ClientMessage.upload_file:type_name -> hammock.v1.UploadFile
+	147, // 84: hammock.v1.ClientMessage.move_group:type_name -> hammock.v1.MoveGroup
+	149, // 85: hammock.v1.ClientMessage.register_push:type_name -> hammock.v1.RegisterPush
+	150, // 86: hammock.v1.ClientMessage.browser_call:type_name -> hammock.v1.BrowserCall
+	151, // 87: hammock.v1.ClientMessage.browser_logs:type_name -> hammock.v1.BrowserLogs
+	153, // 88: hammock.v1.ClientMessage.simulator_call:type_name -> hammock.v1.SimulatorCall
+	54,  // 89: hammock.v1.ClientMessage.merge_tab:type_name -> hammock.v1.MergeTab
+	55,  // 90: hammock.v1.ClientMessage.break_out_pane:type_name -> hammock.v1.BreakOutPane
+	57,  // 91: hammock.v1.ClientMessage.replace_pane:type_name -> hammock.v1.ReplacePane
+	92,  // 92: hammock.v1.ClientMessage.show_pairing:type_name -> hammock.v1.ShowPairing
+	154, // 93: hammock.v1.ClientMessage.open_media:type_name -> hammock.v1.OpenMedia
+	156, // 94: hammock.v1.ClientMessage.close_media:type_name -> hammock.v1.CloseMedia
+	168, // 95: hammock.v1.ClientMessage.media_ack:type_name -> hammock.v1.MediaAck
+	157, // 96: hammock.v1.ClientMessage.browser_input:type_name -> hammock.v1.BrowserInput
+	167, // 97: hammock.v1.ClientMessage.browser_menu_choice:type_name -> hammock.v1.BrowserMenuChoice
+	107, // 98: hammock.v1.ClientMessage.list_sessions:type_name -> hammock.v1.ListSessions
+	113, // 99: hammock.v1.ClientMessage.resume_session:type_name -> hammock.v1.ResumeSession
+	197, // 100: hammock.v1.ClientMessage.watch_log:type_name -> hammock.v1.WatchLog
+	198, // 101: hammock.v1.ClientMessage.read_log:type_name -> hammock.v1.ReadLog
+	199, // 102: hammock.v1.ClientMessage.clear_log:type_name -> hammock.v1.ClearLog
+	201, // 103: hammock.v1.ClientMessage.start_agent:type_name -> hammock.v1.StartAgent
+	202, // 104: hammock.v1.ClientMessage.list_folders:type_name -> hammock.v1.ListFolders
+	205, // 105: hammock.v1.ClientMessage.read_session:type_name -> hammock.v1.ReadSession
+	206, // 106: hammock.v1.ClientMessage.read_group_icon:type_name -> hammock.v1.ReadGroupIcon
+	208, // 107: hammock.v1.ClientMessage.set_group_icon_image:type_name -> hammock.v1.SetGroupIconImage
+	110, // 108: hammock.v1.ClientMessage.session_excerpts:type_name -> hammock.v1.SessionExcerpts
+	50,  // 109: hammock.v1.ClientMessage.reopen_closed:type_name -> hammock.v1.ReopenClosed
+	219, // 110: hammock.v1.ClientMessage.discover_computers:type_name -> hammock.v1.DiscoverComputers
+	222, // 111: hammock.v1.ClientMessage.link_computer:type_name -> hammock.v1.LinkComputer
+	223, // 112: hammock.v1.ClientMessage.respond_link:type_name -> hammock.v1.RespondLink
+	224, // 113: hammock.v1.ClientMessage.unlink_computer:type_name -> hammock.v1.UnlinkComputer
+	225, // 114: hammock.v1.ClientMessage.set_computer_tint:type_name -> hammock.v1.SetComputerTint
+	226, // 115: hammock.v1.ClientMessage.create_link_invite:type_name -> hammock.v1.CreateLinkInvite
+	228, // 116: hammock.v1.ClientMessage.peer_link_hello:type_name -> hammock.v1.PeerLinkHello
+	230, // 117: hammock.v1.ClientMessage.peer_link_reveal:type_name -> hammock.v1.PeerLinkReveal
+	231, // 118: hammock.v1.ClientMessage.peer_link_confirm:type_name -> hammock.v1.PeerLinkConfirm
+	233, // 119: hammock.v1.ClientMessage.introduce_computers:type_name -> hammock.v1.IntroduceComputers
+	234, // 120: hammock.v1.ClientMessage.peer_intro_link:type_name -> hammock.v1.PeerIntroLink
+	236, // 121: hammock.v1.ClientMessage.unlink_request:type_name -> hammock.v1.UnlinkRequest
+	238, // 122: hammock.v1.ClientMessage.ssh_agent_call:type_name -> hammock.v1.SshAgentCall
+	46,  // 123: hammock.v1.ClientMessage.set_group_folder:type_name -> hammock.v1.SetGroupFolder
+	158, // 124: hammock.v1.ClientMessage.list_displays:type_name -> hammock.v1.ListDisplays
+	163, // 125: hammock.v1.ClientMessage.screen_input:type_name -> hammock.v1.ScreenInput
+	177, // 126: hammock.v1.ClientMessage.set_media_view:type_name -> hammock.v1.SetMediaView
+	171, // 127: hammock.v1.ClientMessage.server_status:type_name -> hammock.v1.ServerStatus
+	175, // 128: hammock.v1.ClientMessage.end_screen_session:type_name -> hammock.v1.EndScreenSession
+	159, // 129: hammock.v1.ClientMessage.screen_snapshot:type_name -> hammock.v1.ScreenSnapshot
+	251, // 130: hammock.v1.ClientMessage.save_schedule:type_name -> hammock.v1.SaveSchedule
+	252, // 131: hammock.v1.ClientMessage.delete_schedule:type_name -> hammock.v1.DeleteSchedule
+	253, // 132: hammock.v1.ClientMessage.run_schedule:type_name -> hammock.v1.RunSchedule
+	254, // 133: hammock.v1.ClientMessage.set_schedule_paused:type_name -> hammock.v1.SetSchedulePaused
+	255, // 134: hammock.v1.ClientMessage.skip_schedule_run:type_name -> hammock.v1.SkipScheduleRun
+	257, // 135: hammock.v1.ClientMessage.show_output:type_name -> hammock.v1.ShowOutput
+	56,  // 136: hammock.v1.ClientMessage.float_pane:type_name -> hammock.v1.FloatPane
+	243, // 137: hammock.v1.ClientMessage.hammock_key_command:type_name -> hammock.v1.HammockKeyCommand
+	245, // 138: hammock.v1.ClientMessage.respond_hammock_key:type_name -> hammock.v1.RespondHammockKey
+	246, // 139: hammock.v1.ClientMessage.set_approval_key:type_name -> hammock.v1.SetApprovalKey
+	247, // 140: hammock.v1.ClientMessage.ssh_setup:type_name -> hammock.v1.SshSetup
+	102, // 141: hammock.v1.ClientMessage.set_remote_networks:type_name -> hammock.v1.SetRemoteNetworks
+	182, // 142: hammock.v1.ClientMessage.editor_push:type_name -> hammock.v1.EditorPush
+	185, // 143: hammock.v1.ClientMessage.editor_select:type_name -> hammock.v1.EditorSelect
+	186, // 144: hammock.v1.ClientMessage.editor_command:type_name -> hammock.v1.EditorCommand
+	187, // 145: hammock.v1.ClientMessage.read_editor:type_name -> hammock.v1.ReadEditor
+	191, // 146: hammock.v1.ClientMessage.list_files:type_name -> hammock.v1.ListFiles
+	258, // 147: hammock.v1.ClientMessage.config_written:type_name -> hammock.v1.ConfigWritten
+	77,  // 148: hammock.v1.ClientMessage.prove_app:type_name -> hammock.v1.ProveApp
+	264, // 149: hammock.v1.ClientMessage.read_diff:type_name -> hammock.v1.ReadDiff
+	268, // 150: hammock.v1.ClientMessage.read_diff_file:type_name -> hammock.v1.ReadDiffFile
+	270, // 151: hammock.v1.ClientMessage.diff_command:type_name -> hammock.v1.DiffCommand
+	51,  // 152: hammock.v1.CreateTab.pane:type_name -> hammock.v1.PaneSpec
+	271, // 153: hammock.v1.PaneSpec.env:type_name -> hammock.v1.PaneSpec.EnvEntry
+	193, // 154: hammock.v1.PaneSpec.log:type_name -> hammock.v1.LogSource
+	180, // 155: hammock.v1.PaneSpec.editor:type_name -> hammock.v1.EditorOpen
+	261, // 156: hammock.v1.PaneSpec.diff:type_name -> hammock.v1.DiffOpen
+	4,   // 157: hammock.v1.CreatePane.direction:type_name -> hammock.v1.Split.Direction
+	51,  // 158: hammock.v1.CreatePane.spec:type_name -> hammock.v1.PaneSpec
+	27,  // 159: hammock.v1.CreatePane.frame:type_name -> hammock.v1.Frame
+	4,   // 160: hammock.v1.MergeTab.direction:type_name -> hammock.v1.Split.Direction
+	5,   // 161: hammock.v1.FloatPane.action:type_name -> hammock.v1.FloatPane.Action
+	27,  // 162: hammock.v1.FloatPane.frame:type_name -> hammock.v1.Frame
+	4,   // 163: hammock.v1.FloatPane.direction:type_name -> hammock.v1.Split.Direction
+	51,  // 164: hammock.v1.ReplacePane.spec:type_name -> hammock.v1.PaneSpec
+	6,   // 165: hammock.v1.RespondGrant.decision:type_name -> hammock.v1.RespondGrant.Decision
+	28,  // 166: hammock.v1.SetLayout.layout:type_name -> hammock.v1.Layout
+	80,  // 167: hammock.v1.ServerMessage.hello_reply:type_name -> hammock.v1.HelloReply
+	81,  // 168: hammock.v1.ServerMessage.error:type_name -> hammock.v1.Error
+	82,  // 169: hammock.v1.ServerMessage.ok:type_name -> hammock.v1.Ok
+	33,  // 170: hammock.v1.ServerMessage.state:type_name -> hammock.v1.StateUpdate
+	84,  // 171: hammock.v1.ServerMessage.pane_snapshot:type_name -> hammock.v1.PaneSnapshot
+	85,  // 172: hammock.v1.ServerMessage.pane_output:type_name -> hammock.v1.PaneOutput
+	86,  // 173: hammock.v1.ServerMessage.pane_text:type_name -> hammock.v1.PaneText
+	83,  // 174: hammock.v1.ServerMessage.created:type_name -> hammock.v1.Created
+	73,  // 175: hammock.v1.ServerMessage.grant_decision:type_name -> hammock.v1.GrantDecision
+	87,  // 176: hammock.v1.ServerMessage.auth_challenge:type_name -> hammock.v1.AuthChallenge
+	94,  // 177: hammock.v1.ServerMessage.pairing:type_name -> hammock.v1.Pairing
+	100, // 178: hammock.v1.ServerMessage.devices:type_name -> hammock.v1.Devices
+	89,  // 179: hammock.v1.ServerMessage.paired:type_name -> hammock.v1.Paired
+	98,  // 180: hammock.v1.ServerMessage.audit_log:type_name -> hammock.v1.AuditLog
+	120, // 181: hammock.v1.ServerMessage.agent_view:type_name -> hammock.v1.AgentView
+	132, // 182: hammock.v1.ServerMessage.agent_file:type_name -> hammock.v1.AgentFile
+	134, // 183: hammock.v1.ServerMessage.invite:type_name -> hammock.v1.Invite
+	146, // 184: hammock.v1.ServerMessage.peer_joined:type_name -> hammock.v1.PeerJoined
+	152, // 185: hammock.v1.ServerMessage.browser_result:type_name -> hammock.v1.BrowserResult
+	179, // 186: hammock.v1.ServerMessage.simulator_result:type_name -> hammock.v1.SimulatorResult
+	144, // 187: hammock.v1.ServerMessage.peer_welcome:type_name -> hammock.v1.PeerWelcome
+	92,  // 188: hammock.v1.ServerMessage.show_pairing:type_name -> hammock.v1.ShowPairing
+	93,  // 189: hammock.v1.ServerMessage.device_paired:type_name -> hammock.v1.DevicePaired
+	155, // 190: hammock.v1.ServerMessage.media_ticket:type_name -> hammock.v1.MediaTicket
+	169, // 191: hammock.v1.ServerMessage.media_frame:type_name -> hammock.v1.MediaFrame
+	178, // 192: hammock.v1.ServerMessage.media_ended:type_name -> hammock.v1.MediaEnded
+	164, // 193: hammock.v1.ServerMessage.browser_menu:type_name -> hammock.v1.BrowserMenu
+	166, // 194: hammock.v1.ServerMessage.browser_clipboard:type_name -> hammock.v1.BrowserClipboard
+	106, // 195: hammock.v1.ServerMessage.agent_switched:type_name -> hammock.v1.AgentSwitched
+	109, // 196: hammock.v1.ServerMessage.session_list:type_name -> hammock.v1.SessionList
+	114, // 197: hammock.v1.ServerMessage.session_resumed:type_name -> hammock.v1.SessionResumed
+	200, // 198: hammock.v1.ServerMessage.log_view:type_name -> hammock.v1.LogView
+	203, // 199: hammock.v1.ServerMessage.folder_list:type_name -> hammock.v1.FolderList
+	207, // 200: hammock.v1.ServerMessage.group_icon:type_name -> hammock.v1.GroupIcon
+	111, // 201: hammock.v1.ServerMessage.session_excerpt:type_name -> hammock.v1.SessionExcerpt
+	220, // 202: hammock.v1.ServerMessage.discovered_computers:type_name -> hammock.v1.DiscoveredComputers
+	229, // 203: hammock.v1.ServerMessage.peer_link_nonce:type_name -> hammock.v1.PeerLinkNonce
+	232, // 204: hammock.v1.ServerMessage.peer_linked:type_name -> hammock.v1.PeerLinked
+	235, // 205: hammock.v1.ServerMessage.peer_intro_linked:type_name -> hammock.v1.PeerIntroLinked
+	237, // 206: hammock.v1.ServerMessage.unlink_taken:type_name -> hammock.v1.UnlinkTaken
+	239, // 207: hammock.v1.ServerMessage.ssh_agent_reply:type_name -> hammock.v1.SshAgentReply
+	161, // 208: hammock.v1.ServerMessage.displays:type_name -> hammock.v1.Displays
+	170, // 209: hammock.v1.ServerMessage.screen_cursor:type_name -> hammock.v1.ScreenCursor
+	176, // 210: hammock.v1.ServerMessage.screen_state:type_name -> hammock.v1.ScreenState
+	172, // 211: hammock.v1.ServerMessage.server_status_reply:type_name -> hammock.v1.ServerStatusReply
+	160, // 212: hammock.v1.ServerMessage.screen_snapshot_reply:type_name -> hammock.v1.ScreenSnapshotReply
+	256, // 213: hammock.v1.ServerMessage.schedule_reply:type_name -> hammock.v1.ScheduleReply
+	241, // 214: hammock.v1.ServerMessage.hammock_key_status:type_name -> hammock.v1.HammockKeyStatus
+	248, // 215: hammock.v1.ServerMessage.ssh_setup_reply:type_name -> hammock.v1.SshSetupReply
+	188, // 216: hammock.v1.ServerMessage.editor_update:type_name -> hammock.v1.EditorUpdate
+	184, // 217: hammock.v1.ServerMessage.editor_push_reply:type_name -> hammock.v1.EditorPushReply
+	192, // 218: hammock.v1.ServerMessage.file_list:type_name -> hammock.v1.FileList
+	79,  // 219: hammock.v1.ServerMessage.approval_pending:type_name -> hammock.v1.ApprovalPending
+	78,  // 220: hammock.v1.ServerMessage.app_challenge:type_name -> hammock.v1.AppChallenge
+	265, // 221: hammock.v1.ServerMessage.diff_content:type_name -> hammock.v1.DiffContent
+	269, // 222: hammock.v1.ServerMessage.diff_file_text:type_name -> hammock.v1.DiffFileText
+	97,  // 223: hammock.v1.AuditLog.events:type_name -> hammock.v1.AuditEvent
+	95,  // 224: hammock.v1.Devices.devices:type_name -> hammock.v1.Device
+	101, // 225: hammock.v1.Devices.networks:type_name -> hammock.v1.RemoteNetwork
+	108, // 226: hammock.v1.SessionList.sessions:type_name -> hammock.v1.SessionInfo
+	108, // 227: hammock.v1.SessionExcerpt.session:type_name -> hammock.v1.SessionInfo
+	112, // 228: hammock.v1.SessionExcerpt.messages:type_name -> hammock.v1.SessionMessage
+	7,   // 229: hammock.v1.AgentBlock.kind:type_name -> hammock.v1.AgentBlock.Kind
+	116, // 230: hammock.v1.AgentBlock.questions:type_name -> hammock.v1.AgentQuestion
+	118, // 231: hammock.v1.AgentBlock.images:type_name -> hammock.v1.AgentImage
+	117, // 232: hammock.v1.AgentQuestion.options:type_name -> hammock.v1.AgentOption
+	8,   // 233: hammock.v1.AgentPrompt.kind:type_name -> hammock.v1.AgentPrompt.Kind
+	115, // 234: hammock.v1.AgentView.blocks:type_name -> hammock.v1.AgentBlock
+	119, // 235: hammock.v1.AgentView.prompt:type_name -> hammock.v1.AgentPrompt
+	125, // 236: hammock.v1.AgentView.subagents:type_name -> hammock.v1.AgentSubagent
+	126, // 237: hammock.v1.AgentView.shells:type_name -> hammock.v1.AgentShell
+	121, // 238: hammock.v1.AgentView.tasks:type_name -> hammock.v1.AgentTaskList
+	123, // 239: hammock.v1.AgentView.links:type_name -> hammock.v1.AgentLinks
+	122, // 240: hammock.v1.AgentTaskList.tasks:type_name -> hammock.v1.AgentTask
+	9,   // 241: hammock.v1.AgentTask.status:type_name -> hammock.v1.AgentTask.Status
+	124, // 242: hammock.v1.AgentLinks.links:type_name -> hammock.v1.AgentLink
+	10,  // 243: hammock.v1.AgentLink.kind:type_name -> hammock.v1.AgentLink.Kind
+	11,  // 244: hammock.v1.AgentAnswer.decision:type_name -> hammock.v1.AgentAnswer.Decision
+	130, // 245: hammock.v1.AgentSend.attachments:type_name -> hammock.v1.AgentAttachment
+	0,   // 246: hammock.v1.RespondJoin.role:type_name -> hammock.v1.Role
+	0,   // 247: hammock.v1.SetMember.role:type_name -> hammock.v1.Role
+	0,   // 248: hammock.v1.PeerJoined.role:type_name -> hammock.v1.Role
+	162, // 249: hammock.v1.Displays.displays:type_name -> hammock.v1.Display
+	165, // 250: hammock.v1.BrowserMenu.items:type_name -> hammock.v1.BrowserMenuItem
+	173, // 251: hammock.v1.ServerStatusReply.connected:type_name -> hammock.v1.Connected
+	174, // 252: hammock.v1.ServerStatusReply.screen_viewers:type_name -> hammock.v1.ScreenViewer
+	32,  // 253: hammock.v1.ServerStatusReply.needs_you:type_name -> hammock.v1.AttentionItem
+	183, // 254: hammock.v1.EditorPush.updates:type_name -> hammock.v1.EditorChange
+	12,  // 255: hammock.v1.EditorCommand.action:type_name -> hammock.v1.EditorCommand.Action
+	183, // 256: hammock.v1.EditorUpdate.updates:type_name -> hammock.v1.EditorChange
+	189, // 257: hammock.v1.EditorUpdate.selection:type_name -> hammock.v1.EditorSelection
+	190, // 258: hammock.v1.EditorUpdate.git:type_name -> hammock.v1.GitMark
+	13,  // 259: hammock.v1.GitMark.kind:type_name -> hammock.v1.GitMark.Kind
+	3,   // 260: hammock.v1.LogEntry.level:type_name -> hammock.v1.LogLevel
+	272, // 261: hammock.v1.LogEntry.fields:type_name -> hammock.v1.LogEntry.FieldsEntry
+	3,   // 262: hammock.v1.LogFilter.levels:type_name -> hammock.v1.LogLevel
+	195, // 263: hammock.v1.WatchLog.filter:type_name -> hammock.v1.LogFilter
+	195, // 264: hammock.v1.ReadLog.filter:type_name -> hammock.v1.LogFilter
+	194, // 265: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
+	196, // 266: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
+	195, // 267: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
+	204, // 268: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
+	210, // 269: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
+	212, // 270: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
+	210, // 271: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
+	212, // 272: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
+	211, // 273: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
+	210, // 274: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
+	221, // 275: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
+	210, // 276: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
+	210, // 277: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
+	210, // 278: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
+	210, // 279: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
+	210, // 280: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
+	210, // 281: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
+	240, // 282: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
+	242, // 283: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
+	242, // 284: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
+	14,  // 285: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
+	15,  // 286: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
+	16,  // 287: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
+	250, // 288: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
+	17,  // 289: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
+	249, // 290: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
+	249, // 291: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
+	259, // 292: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
+	18,  // 293: hammock.v1.DiffSource.kind:type_name -> hammock.v1.DiffSource.Kind
+	260, // 294: hammock.v1.DiffOpen.source:type_name -> hammock.v1.DiffSource
+	262, // 295: hammock.v1.DiffOpen.view:type_name -> hammock.v1.DiffView
+	260, // 296: hammock.v1.DiffInfo.source:type_name -> hammock.v1.DiffSource
+	262, // 297: hammock.v1.DiffInfo.view:type_name -> hammock.v1.DiffView
+	266, // 298: hammock.v1.DiffContent.files:type_name -> hammock.v1.DiffFile
+	267, // 299: hammock.v1.DiffContent.commits:type_name -> hammock.v1.DiffCommit
+	19,  // 300: hammock.v1.DiffFile.status:type_name -> hammock.v1.DiffFile.Status
+	20,  // 301: hammock.v1.DiffCommand.action:type_name -> hammock.v1.DiffCommand.Action
+	260, // 302: hammock.v1.DiffCommand.source:type_name -> hammock.v1.DiffSource
+	262, // 303: hammock.v1.DiffCommand.view:type_name -> hammock.v1.DiffView
+	304, // [304:304] is the sub-list for method output_type
+	304, // [304:304] is the sub-list for method input_type
+	304, // [304:304] is the sub-list for extension type_name
+	304, // [304:304] is the sub-list for extension extendee
+	0,   // [0:304] is the sub-list for field type_name
 }
 
 func init() { file_hammock_v1_hammock_proto_init() }
@@ -24000,6 +25318,9 @@ func file_hammock_v1_hammock_proto_init() {
 		(*ClientMessage_ListFiles)(nil),
 		(*ClientMessage_ConfigWritten)(nil),
 		(*ClientMessage_ProveApp)(nil),
+		(*ClientMessage_ReadDiff)(nil),
+		(*ClientMessage_ReadDiffFile)(nil),
+		(*ClientMessage_DiffCommand)(nil),
 	}
 	file_hammock_v1_hammock_proto_msgTypes[55].OneofWrappers = []any{
 		(*ServerMessage_HelloReply)(nil),
@@ -24056,6 +25377,8 @@ func file_hammock_v1_hammock_proto_init() {
 		(*ServerMessage_FileList)(nil),
 		(*ServerMessage_ApprovalPending)(nil),
 		(*ServerMessage_AppChallenge)(nil),
+		(*ServerMessage_DiffContent)(nil),
+		(*ServerMessage_DiffFileText)(nil),
 	}
 	file_hammock_v1_hammock_proto_msgTypes[118].OneofWrappers = []any{}
 	file_hammock_v1_hammock_proto_msgTypes[204].OneofWrappers = []any{}
@@ -24064,8 +25387,8 @@ func file_hammock_v1_hammock_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hammock_v1_hammock_proto_rawDesc), len(file_hammock_v1_hammock_proto_rawDesc)),
-			NumEnums:      18,
-			NumMessages:   241,
+			NumEnums:      21,
+			NumMessages:   252,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

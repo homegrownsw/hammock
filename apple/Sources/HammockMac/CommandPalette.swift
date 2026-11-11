@@ -195,6 +195,10 @@ struct CommandPalette: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { LogUI.shared.request = LogRequest(groupID: group) }
         }
         action("new-editor-tab", "New Editor Tab", "doc.badge.plus", .indigo, "create text file untitled note write code", keys: Keys.newEditorTab) { EditorUI.shared.newTab(model) }
+        action("review-changes", "Review Changes", "plusminus", .orange, "diff git review pull request branch", keys: Keys.reviewChanges) { DiffUI.review(model) }
+        action("review-uncommitted", "Review Uncommitted Changes", "plusminus", .orange, "diff git review working tree staged") { DiffUI.review(model, source: DiffUI.uncommitted) }
+        action("review-branch", "Review This Branch", "plusminus", .orange, "diff git review pull request base main") { DiffUI.review(model, source: DiffUI.branch) }
+        action("review-last-commit", "Review the Last Commit", "plusminus", .orange, "diff git review head commit") { DiffUI.review(model, source: DiffUI.lastCommit) }
         action("quick-open", "Quick Open…", "doc.text.magnifyingglass", .indigo, "find file fuzzy go to open editor", keys: Keys.quickOpen) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { EditorUI.shared.showQuickOpen(model) }
         }

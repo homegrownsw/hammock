@@ -424,7 +424,7 @@ func (d *Daemon) browserPopup(fromID, u string, page bool) {
 	if t == nil {
 		return
 	}
-	nt, err := d.createTab(t.GroupId, "", &pb.PaneSpec{Url: u, CreatedByPaneId: fromID}, "")
+	nt, err := d.createTab(t.GroupId, "", &pb.PaneSpec{Url: u, CreatedByPaneId: fromID}, "", "")
 	if err != nil {
 		d.log.Error("open popup", "err", err)
 		return

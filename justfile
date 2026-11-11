@@ -56,7 +56,7 @@ dev-daemon dir="/tmp/hmk-dev": deps
 proto-swift:
     protoc -I proto --swift_out=apple/Sources/HammockKit/Proto --swift_opt=Visibility=Public proto/hammock/v1/hammock.proto
 
-# Rebuild editor panes' page (apple/Resources/editor.html, committed) from
+# Rebuild editor and diff panes' pages (apple/Resources/editor.html and diff.html, committed) from
 # apple/Editor: CodeMirror and Hammock's glue, bundled with esbuild.
 editor-js:
     ./apple/Editor/build.sh

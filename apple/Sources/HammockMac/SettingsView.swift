@@ -642,6 +642,7 @@ struct EditorSettings: View {
         Form {
             SettingsPaneHeader(tab: .editor)
             EditorSettingsSection()
+            DiffSettingsSection()
         }
         .formStyle(.grouped)
         .settingsScrollTarget()

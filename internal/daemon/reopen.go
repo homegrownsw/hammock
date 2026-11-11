@@ -486,6 +486,11 @@ func reopenSpec(info *pb.Pane) (*pb.PaneSpec, func(*Daemon, *pane)) {
 			return nil, nil // an untitled buffer goes with its pane
 		}
 		return &pb.PaneSpec{Editor: &pb.EditorOpen{Path: info.Editor.GetPath()}}, nil
+	case pb.PaneKind_PANE_KIND_DIFF:
+		if info.Diff.GetRepo() == "" {
+			return nil, nil
+		}
+		return &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: info.Diff.GetRepo(), Source: proto.CloneOf(info.Diff.GetSource()), View: proto.CloneOf(info.Diff.GetView())}}, nil
 	}
 	cwd := info.Cwd
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {

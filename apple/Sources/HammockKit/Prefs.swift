@@ -175,5 +175,6 @@ extension Pref {
         [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentCodeWrap, agentDefaultView]
             + AgentCatalog.known.keys.sorted().map { usageLimits($0) }
             + editor
+            + diff
     }
 }

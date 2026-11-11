@@ -249,6 +249,8 @@ public enum Keybinds {
             .init("show_computer", "Show Computer 1…9", "View", c(KeyChord.digits, cc), "filter sidebar only linked"),
             // Not ⌥⌘S: AppKit's own (hidden) Toggle Sidebar has it, and took it.
             .init("scheduled_tasks", "Scheduled Tasks", "View", c("s", cs), "schedule cron timer recurring runs automation"),
+            // ⌥⌘R: free in macOS and here.
+            .init("review_changes", "Review Changes", "View", c("r", co), "diff git review changes pull request branch commit uncommitted"),
             // ⌥⌘Z: free in macOS; a setting, so it works with any pane focused.
             .init("editor_wrap", "Wrap Lines in Editors", "View", c("z", co), "text word soft wrap long lines editor"),
             .init("next_tab", "Next Tab", "View", c("]", cs), "switch cycle go forward"),

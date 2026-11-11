@@ -308,7 +308,7 @@ func (d *Daemon) startRun(s *pb.Schedule, due time.Time, manual bool) (*pb.Sched
 		// at the line buffer's 1024 bytes). A shell stays once it exits.
 		spec.Command = agentShellCommand(typed)
 	}
-	t, err := d.createTab(g.Id, runTabName(s, now), spec, "")
+	t, err := d.createTab(g.Id, runTabName(s, now), spec, "", "")
 	if err != nil {
 		if made {
 			d.dropQuietGroup(g.Id)

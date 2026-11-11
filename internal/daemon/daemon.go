@@ -94,6 +94,7 @@ type Daemon struct {
 	browsers     *browserHub
 	simulators   *simHub
 	editors      *editorHub
+	diffs        *diffHub
 	screens      *screenHub
 	started      time.Time // when this daemon started (the menu bar's uptime)
 	media        *mediaHub
@@ -246,6 +247,7 @@ func New(cfg Config) (*Daemon, error) {
 	d.browsers = newBrowserHub(d)
 	d.simulators = newSimHub(d)
 	d.editors = newEditorHub(d)
+	d.diffs = newDiffHub(d)
 	d.screens = newScreenHub(d)
 	d.media = newMediaHub(d)
 	d.sessions = &sessionFinder{d: d}
@@ -301,6 +303,10 @@ func (d *Daemon) restore() error {
 				editorSaved, _ = d.store.Records(editorRecord)
 			}
 			d.editors.restore(p, editorSaved)
+			continue
+		}
+		if info.Kind == pb.PaneKind_PANE_KIND_DIFF {
+			d.diffs.restore(p)
 			continue
 		}
 		if info.Kind == pb.PaneKind_PANE_KIND_BROWSER {
@@ -475,6 +481,7 @@ func (d *Daemon) shutdown() {
 		_ = srv.Close()
 	}
 	d.editors.close()
+	d.diffs.close()
 	d.agentHub.close()
 	d.sshHub.close()
 	d.hammockKey.close()
@@ -643,7 +650,7 @@ func (d *Daemon) checkTabID(id string) error {
 
 // createTab adds a tab to a Group with one pane. id is the client's choice
 // (CreateTab.tab_id), or empty for a new one.
-func (d *Daemon) createTab(groupID, name string, spec *pb.PaneSpec, id string) (*pb.Tab, error) {
+func (d *Daemon) createTab(groupID, name string, spec *pb.PaneSpec, id, after string) (*pb.Tab, error) {
 	s, ok := d.groups[groupID]
 	if !ok {
 		return nil, fmt.Errorf("no such group %q", groupID)
@@ -664,10 +671,17 @@ func (d *Daemon) createTab(groupID, name string, spec *pb.PaneSpec, id string) (
 	if t.Name == "" && p.info.Log != nil {
 		t.Name = p.info.Log.Label
 	}
+	if t.Name == "" && p.info.Kind == pb.PaneKind_PANE_KIND_DIFF {
+		t.Name = "Review"
+	}
 	t.Layout = leaf(p.id)
 	t.FocusedPaneId = p.id
 	d.tabs[t.Id] = t
-	s.TabIds = append(s.TabIds, t.Id)
+	if i := slices.Index(s.TabIds, after); after != "" && i >= 0 {
+		s.TabIds = slices.Insert(s.TabIds, i+1, t.Id)
+	} else {
+		s.TabIds = append(s.TabIds, t.Id)
+	}
 	if d.panes[s.LastFocusedPaneId] == nil && p.isTerminal() {
 		// None yet, or it's closed since (the Group's tabs had all gone).
 		s.LastFocusedPaneId = p.id // an unnamed Group is named after this pane's directory
@@ -734,6 +748,9 @@ func (d *Daemon) startPane(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	}
 	if spec.Editor != nil {
 		return d.startEditor(t, spec)
+	}
+	if spec.Diff != nil {
+		return d.startDiff(t, spec)
 	}
 	cwd := spec.Cwd
 	if cwd == "" {

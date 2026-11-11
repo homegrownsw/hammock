@@ -384,4 +384,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   editor-tab-width = 4, editor-indent = spaces | tabs   (what Tab inserts; a file's .editorconfig beats them)
 #   editor-font-size = 13          (editor panes on the Mac and iPhone; unset: the terminal's font size)
 #   editor-vim = false             (editor panes on the Mac and iPhone: Vim keys)
-#   editor-tui-external = false    (hmk tui: open editor panes in $VISUAL or $EDITOR; edits from your other devices show there only when it reloads the file)`
+#   editor-tui-external = false    (hmk tui: open editor panes in $VISUAL or $EDITOR; edits from your other devices show there only when it reloads the file)
+#   diff-style = unified | split   (diff panes: old and new in one column, or side by side; a pane's own choice beats it)
+#   diff-whitespace = show | ignore   (diff panes: ignore lines that differ only in their spaces, as git diff -w)
+#   diff-wrap = false              (diff panes: wrap long lines instead of scrolling sideways)`
