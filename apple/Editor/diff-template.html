@@ -180,9 +180,22 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 #target { max-width: 220px; }
 #target .t { overflow: hidden; text-overflow: ellipsis; }
 #target .chev { opacity: 0.6; }
-.fhead .ccount { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px;
-  border-radius: 9px; background: color-mix(in srgb, var(--accent) 22%, transparent); font-size: 11px; font-weight: 600; }
-.row .cn { color: var(--accent); font-weight: 600; }
+/* A file's comments: its open threads; filled when there are replies you haven't seen. */
+.bubble { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 5px; border-radius: 9px;
+  color: var(--dim); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; vertical-align: middle; }
+.bubble .icon { width: 12px; height: 12px; }
+.bubble.lit { background: var(--accent); color: var(--on-accent); }
+.fhead .ccount { display: inline-flex; }
+/* Over the files: new replies, and which way. */
+.newpill { position: absolute; z-index: 8; left: 50%; bottom: 18px; transform: translate(-50%, 8px); opacity: 0; pointer-events: none;
+  height: 28px; padding: 0 14px; border-radius: 14px; background: var(--accent); color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); transition: opacity 0.15s, transform 0.15s; white-space: nowrap; }
+.newpill.up { bottom: auto; top: 12px; transform: translate(-50%, -8px); }
+.newpill.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.newpill:hover { filter: brightness(1.08); }
+@media (min-width: 641px) { .newpill { left: calc(50% + 130px); } #tree.hidden ~ .newpill { left: 50%; } }
+.cmt.flash { animation: flash 1.6s ease-out; }
+@keyframes flash { 0%, 30% { background: color-mix(in srgb, var(--accent) 22%, transparent); } 100% { background: transparent; } }
 /* Line numbers take a comment: a + on hover; a range being commented on. */
 .fbody .cm-lineNumbers .cm-gutterElement { cursor: pointer; position: relative; }
 .fbody .cm-lineNumbers .cm-gutterElement:hover { color: transparent; }

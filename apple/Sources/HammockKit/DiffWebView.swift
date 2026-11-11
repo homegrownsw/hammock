@@ -177,6 +177,9 @@ public final class DiffSession {
         bridge?.setReview(j)
     }
 
+    /// Shows the next reply you haven't seen (and marks it seen).
+    public func showNextUnread() { bridge?.nextUnread() }
+
     func readReview() {
         model?.connection?.call({ $0.readReview = .with { $0.paneID = self.paneID } }) { [weak self] r in
             Task { @MainActor in
@@ -610,6 +613,8 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
     }
 
     public func reveal(_ path: String) { call("hammock.reveal(p)", ["p": path]) }
+
+    func nextUnread() { call("hammock.nextUnread()", [:]) }
 
     func setReview(_ r: [String: Any]) {
         guard ready else { return }

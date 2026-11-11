@@ -109,12 +109,17 @@ struct DiffPaneView: View {
                 .truncationMode(.head)
             Spacer(minLength: 6)
             if info.unread > 0 {
-                Text(info.unread == 1 ? "1 new reply" : "\(info.unread) new replies")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Color.themeAccent, in: Capsule())
-                    .help("Replies from the agent you haven't seen yet")
+                Button {
+                    session?.showNextUnread()
+                } label: {
+                    Text(info.unread == 1 ? "1 new reply" : "\(info.unread) new replies")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.themeAccent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Go to the next reply you haven't seen (N in the diff)")
             }
             if info.queued > 0 {
                 Text("\(info.queued) waiting to send")

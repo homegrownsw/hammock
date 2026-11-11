@@ -536,7 +536,8 @@ function renderTree() {
       row.append(el("span", "tw"), st, el("span", "name", f.path.split("/").pop()))
       const n = el("span", "n")
       const open = threadsOf(f.path).filter((t) => t.state !== "resolved").length
-      if (open) n.append(el("span", "cn", `${open}`), " ")
+      const fresh = unreadIn(f.path)
+      if (open || fresh) n.append(bubble(open, fresh), " ")
       if (!f.binary && (f.added || f.removed)) n.append(el("span", "add", `+${f.added}`), " ", el("span", "del", `−${f.removed}`))
       row.append(n)
       row.title = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path
@@ -686,10 +687,7 @@ function renderSection(sec, f) {
     head.append(c)
   }
   const cc = el("span", "ccount")
-  const nThreads = threadsOf(f.path).filter((t) => t.state !== "resolved").length
-  cc.textContent = nThreads ? String(nThreads) : ""
-  cc.style.display = nThreads ? "" : "none"
-  cc.title = "Open threads"
+  fillCount(cc, f.path)
   head.append(cc)
   if (f.untracked) head.append(el("span", "tag", "untracked"))
   if (f.generated) head.append(el("span", "tag", "generated"))
@@ -901,6 +899,7 @@ function onScroll() {
     if (!current && sections.size) current = sections.keys().next().value
     setActive(current)
     markStuck(current)
+    updateNewPill()
   })
 }
 
@@ -1061,9 +1060,126 @@ function refreshAllThreads() {
   renderBar()
   for (const [path, s] of sections) {
     const b = s.querySelector(".fhead .ccount")
-    const n = threadsOf(path).filter((t) => t.state !== "resolved").length
-    if (b) { b.textContent = n ? String(n) : ""; b.style.display = n ? "" : "none" }
+    if (b) fillCount(b, path)
   }
+  updateNewPill()
+}
+
+// ---- finding comments, new ones especially ----
+
+const openIn = (path) => threadsOf(path).filter((t) => t.state !== "resolved").length
+const unreadIn = (path) => threadsOf(path).reduce((n, t) => n + t.comments.filter((c) => c.unread).length, 0)
+
+// bubble is a file's comment icon: its open threads, filled with the
+// accent when it has replies you haven't seen.
+function bubble(open, fresh) {
+  const b = el("span", "bubble" + (fresh ? " lit" : ""))
+  b.innerHTML = svg.comment
+  if (open) b.append(el("span", null, String(open)))
+  b.title = (open ? plural(open, "open thread", "open threads") : "") + (fresh ? (open ? ", " : "") + plural(fresh, "new reply", "new replies") : "")
+  return b
+}
+
+function fillCount(cc, path) {
+  const open = openIn(path), fresh = unreadIn(path)
+  cc.textContent = ""
+  cc.style.display = open || fresh ? "" : "none"
+  if (open || fresh) cc.append(bubble(open, fresh))
+}
+
+// unreadList is every reply you haven't seen, in the files' order, then
+// by where they are in the file.
+function unreadList() {
+  const out = []
+  for (const f of order) {
+    const ts = threadsOf(f.path).slice().sort((a, b) => a.line - b.line)
+    for (const t of ts) for (const c of t.comments) if (c.unread) out.push({ path: f.path, thread: t, comment: c })
+  }
+  return out
+}
+
+// where is a reply's place in the files (to tell above from below): its
+// element's, once its file is showing it, else its file's.
+function where(u) {
+  const box = $("files")
+  const elx = box.querySelector(`[data-comment="${CSS.escape(u.comment.id)}"]`)
+  if (elx) return elx.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop
+  const s = sectionOf(u.path)
+  return s ? s.offsetTop + (u.thread.line || 0) * lineHeight() : 0
+}
+
+function onScreen(u) {
+  const box = $("files"), elx = box.querySelector(`[data-comment="${CSS.escape(u.comment.id)}"]`)
+  if (!elx) return false
+  const r = elx.getBoundingClientRect(), b = box.getBoundingClientRect()
+  return r.bottom > b.top + 30 && r.top < b.bottom - 30
+}
+
+// nextUnread is the reply to go to: the first below what's on screen
+// (back: the last above it), going round when there's none that way.
+function nextUnread(back) {
+  const list = unreadList()
+  if (!list.length) return null
+  const box = $("files"), top = box.scrollTop + 40, bottom = box.scrollTop + box.clientHeight - 40
+  const placed = list.map((u) => ({ u, y: where(u) }))
+  if (back) {
+    const above = placed.filter((p) => p.y < top)
+    return (above.length ? above[above.length - 1] : placed[placed.length - 1]).u
+  }
+  const visible = placed.find((p) => onScreen(p.u))
+  if (visible) return visible.u
+  const below = placed.find((p) => p.y > bottom)
+  return (below || placed[0]).u
+}
+
+// jumpTo shows a reply (opening its file and its thread), flashes it, and
+// marks it seen.
+async function jumpTo(u) {
+  if (!u) return
+  const f = byPath.get(u.path)
+  if (!f) return
+  if (u.thread.state === "resolved") shownResolved.add(u.thread.id)
+  reveal(u.path)
+  const box = $("files")
+  let elx = null
+  for (let i = 0; i < 120 && !elx; i++) { // its file's sides arrive, then it's drawn
+    await new Promise((r) => requestAnimationFrame(r))
+    if (u.thread.state === "resolved" && mounted.has(u.path) && i === 0) refreshThreads(u.path)
+    elx = box.querySelector(`[data-comment="${CSS.escape(u.comment.id)}"]`)
+  }
+  if (!elx) return
+  const r = elx.getBoundingClientRect(), b = box.getBoundingClientRect()
+  box.scrollTop += r.top - b.top - box.clientHeight / 3
+  pinTop()
+  elx.classList.add("flash")
+  setTimeout(() => elx.classList.remove("flash"), 1600)
+  markSeen([u.comment.id])
+}
+
+function markSeen(ids) {
+  for (const t of review.threads) for (const c of t.comments) if (ids.includes(c.id)) c.unread = false
+  post({ type: "review", command: { action: "markRead", commentIds: ids } })
+  refreshAllThreads()
+}
+
+// The pill over the files: how many new replies, and which way the next one is.
+function updateNewPill() {
+  let pill = $("newPill")
+  if (!pill) {
+    pill = el("button", "newpill")
+    pill.id = "newPill"
+    pill.onclick = () => jumpTo(nextUnread(false))
+    $("main").append(pill)
+  }
+  const list = unreadList()
+  const next = list.length ? nextUnread(false) : null
+  if (!next || onScreen(next)) { pill.classList.remove("on"); return }
+  const box = $("files")
+  const up = where(next) < box.scrollTop
+  pill.textContent = `${plural(list.length, "new reply", "new replies")} ${up ? "↑" : "↓"}`
+  pill.title = "Go to the next reply you haven't seen (N; ⇧N for the one before)"
+  pill.classList.toggle("up", up)
+  pill.classList.add("on")
 }
 
 // ---- writing a comment ----
@@ -1347,19 +1463,24 @@ function commentDOM(t, c) {
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // Agents' comments you've had on screen are read.
-let readQueue = new Set(), readTimer = null
+// A reply counts as seen once it's been on screen for a second (not as
+// you scroll past it), with the window in front.
+const seenTimers = new Map()
 const seen = new IntersectionObserver((entries) => {
   for (const e of entries) {
-    if (!e.isIntersecting || !document.hasFocus()) continue
-    seen.unobserve(e.target)
-    readQueue.add(e.target.dataset.comment)
-  }
-  if (readQueue.size && !readTimer) {
-    readTimer = setTimeout(() => {
-      readTimer = null
-      post({ type: "review", command: { action: "markRead", commentIds: [...readQueue] } })
-      readQueue = new Set()
-    }, 1200)
+    const id = e.target.dataset.comment
+    if (!e.isIntersecting) {
+      clearTimeout(seenTimers.get(e.target))
+      seenTimers.delete(e.target)
+      continue
+    }
+    if (seenTimers.has(e.target)) continue
+    seenTimers.set(e.target, setTimeout(() => {
+      seenTimers.delete(e.target)
+      if (!e.target.isConnected || !document.hasFocus()) return
+      seen.unobserve(e.target)
+      markSeen([id])
+    }, 1000))
   }
 }, { threshold: 0.6 })
 
@@ -1501,6 +1622,9 @@ window.hammock = {
   /** Scroll to a file (an agent pointing at one). */
   reveal(path) { reveal(path) },
 
+  /** The next reply you haven't seen (the app's "new replies" pill). */
+  nextUnread() { jumpTo(nextUnread(false)) },
+
   /** The pane's review: its threads. */
   setReview(r) {
     review = { id: r.id || "", threads: r.threads || [] }
@@ -1515,7 +1639,15 @@ $("scrim").onclick = closePops
 $("files").addEventListener("scroll", onScroll, { passive: true })
 $("filter").addEventListener("input", () => { renderTree(); renderFiles(false) })
 $("filter").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.target.value = ""; renderTree(); renderFiles(false) } })
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePops() })
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closePops()
+  // N / ⇧N: the next (or previous) reply you haven't seen; not while typing.
+  const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement
+  if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "n") {
+    e.preventDefault()
+    jumpTo(nextUnread(e.shiftKey))
+  }
+})
 document.addEventListener("mousedown", () => post({ type: "focus" }), true)
 window.addEventListener("resize", () => { if (openPopID) closePops() })
 if (window.innerWidth <= 640) treeHidden = true
