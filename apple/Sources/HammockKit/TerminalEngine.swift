@@ -3,14 +3,14 @@ import Foundation
 import GhosttyVt
 
 /// An RGB colour from the terminal.
-public struct RGB: Equatable, Sendable {
+public struct RGB: Hashable, Sendable {
     public var r, g, b: UInt8
     public init(_ c: GhosttyColorRgb) { r = c.r; g = c.g; b = c.b }
     public init(r: UInt8, g: UInt8, b: UInt8) { self.r = r; self.g = g; self.b = b }
 }
 
 /// One cell ready to draw.
-public struct TerminalCell: Sendable {
+public struct TerminalCell: Hashable, Sendable {
     public var text: String          // grapheme cluster; "" for empty
     public var fg: RGB?              // nil = default foreground
     public var bg: RGB?              // nil = default background

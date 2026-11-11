@@ -63,6 +63,26 @@ Since 2026-11-11, a pane redraws only the rows output changed (libghostty-vt's d
 
 A keystroke now costs a row, whatever else is on screen; in β, typing into a 117×37 pane of colour drew in 0.2 ms. Output that scrolls changes every row, so floods and big panes still cost what the first table says: a Metal renderer (#18) is what would bring those down.
 
+### Laying rows out once (#18, phase 1)
+
+Since 2026-11-11 rows are laid out by `TerminalLineLayout` (HammockKit): each row is shaped once with only its fonts as attributes, colours are looked up per glyph afterwards, and layouts are kept by the row's content, so a line that scrolls keeps its layout. The output is pixel for pixel the old renderer's (25 pixels of anti-aliasing differ on the Unicode screen, where shaping now spans colour changes). `just render-bench` draws in the light appearance whatever the Mac's, and adds floods: a whole screen of new lines between draws, so nothing is cached. p50 per draw, whole pane:
+
+| Screen | Grid | Before | After | Rows kept |
+|---|---|---|---|---|
+| plain, scrolling | 200×60 | 5.6 ms | 4.0 ms | 98% |
+| plain, scrolling | 400×100 | 17.9 ms | 13.1 ms | 99% |
+| colour, scrolling | 200×60 | 16.1 ms | 4.3 ms | 98% |
+| colour, scrolling | 400×100 | 53.5 ms | 16.3 ms | 99% |
+| flood (colour, every row new) | 200×60 | 16.1 ms* | 8.7 ms | 0% |
+| flood | 400×100 | 53.5 ms* | 29.9 ms | 0% |
+| tui | 200×60 | 8.2 ms | 6.9 ms | 3% |
+| unicode | 200×60 | 31.1 ms | 5.8 ms | 98% |
+| typing at a full screen of colour, whole pane | 200×60 | 15.7 ms | 3.9 ms | 99% |
+
+\* The old renderer laid every row out on every draw, so a flood cost what scrolling did.
+
+What's left with rows kept is almost all CoreGraphics rasterising glyphs (13 ms for plain text at 400×100): the part a Metal renderer replaces (`docs/design/metal-renderer.md`). A flood still shapes every row, about half its time.
+
 `HMK_DEBUG_RENDER_STATS=<file>` times the real thing instead. Every draw, and every write of a pane's output into its engine, is timed, and a JSON line is appended every two seconds. Floods of 256-colour text (`cat` of a 115 MB file), p50 per draw:
 
 | Pane | Before #59 | After #59 (2026-11-11) |

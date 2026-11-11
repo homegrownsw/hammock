@@ -48,6 +48,8 @@ enum RenderBench {
         let frameMs: Stats, drawMs: Stats, totalMs: Stats
         /// Rows drawn per draw, on average.
         let rows: Double
+        /// Rows whose layout was kept from an earlier draw (TerminalLineLayout).
+        let cacheHits: Double
     }
 
     struct Result: Encodable {
@@ -78,7 +80,7 @@ enum RenderBench {
         let only = ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_ONLY"].map { Set($0.split(separator: ",").map(String.init)) }
         let base = (out as NSString).deletingPathExtension
         var results: [Result] = []
-        for screen in makeScreens() where only?.contains(screen.name) ?? true {
+        for screen in makeScreens(draws: draws) where only?.contains(screen.name) ?? true {
             guard let (full, fullImage) = measure(screen, draws: draws, changedRows: false),
                   let (rows, rowsImage) = measure(screen, draws: draws, changedRows: true) else { continue }
             if let png = NSBitmapImageRep(cgImage: fullImage).representation(using: .png, properties: [:]) {
@@ -101,13 +103,13 @@ enum RenderBench {
 
         var table = "renderer \(report.renderer), \(report.machine), \(report.font), @\(report.scale)x, ms per draw (p50 / p99)\n"
         table += "screen".padding(toLength: 22, withPad: " ", startingAt: 0)
-            + "grid      frame          whole pane       changed rows     rows/draw  same\n"
+            + "grid      frame          whole pane       changed rows     rows/draw  cached  same\n"
         for r in results {
             func pair(_ s: Stats) -> String { String(format: "%6.2f / %-6.2f", s.p50, s.p99) }
             table += r.screen.padding(toLength: 22, withPad: " ", startingAt: 0)
                 + "\(r.cols)x\(r.rows)".padding(toLength: 10, withPad: " ", startingAt: 0)
                 + pair(r.full.frameMs) + " " + pair(r.full.totalMs) + "  " + pair(r.changedRows.totalMs) + "  "
-                + String(format: "%6.1f", r.changedRows.rows) + "     " + (r.same ? "yes" : "NO") + "\n"
+                + String(format: "%6.1f", r.changedRows.rows) + String(format: "  %5.0f%%", r.full.cacheHits * 100) + "    " + (r.same ? "yes" : "NO") + "\n"
         }
         FileHandle.standardError.write(Data(table.utf8))
         exit(0)
@@ -144,8 +146,9 @@ enum RenderBench {
             totalMs.append((f + d) * 1000)
         }
         defer { TerminalNSView.timing = nil }
+        var counted = (hits: 0, misses: 0)
         for i in 0..<(warmup + draws) {
-            if i == warmup { frameMs = []; drawMs = []; totalMs = []; rows = [] }
+            if i == warmup { frameMs = []; drawMs = []; totalMs = []; rows = []; counted = view.layoutCounts }
             if i > 0 { session.engine.write(Data(screen.step(i - 1).utf8)) }
             // The first draw is whole either way: there's nothing there yet.
             let changes = session.engine.takeChanges()
@@ -164,9 +167,12 @@ enum RenderBench {
             NSGraphicsContext.restoreGraphicsState()
         }
         view.benchRects = nil
+        let end = view.layoutCounts
+        let looked = (end.hits - counted.hits) + (end.misses - counted.misses)
         guard let image = ctx.makeImage() else { return nil }
         return (Run(frameMs: Stats(frameMs), drawMs: Stats(drawMs), totalMs: Stats(totalMs),
-                    rows: rows.isEmpty ? 0 : rows.reduce(0, +) / Double(rows.count)), image)
+                    rows: rows.isEmpty ? 0 : rows.reduce(0, +) / Double(rows.count),
+                    cacheHits: looked == 0 ? 0 : Double(end.hits - counted.hits) / Double(looked)), image)
     }
 
     private static func sysctl(_ name: String) -> String {
@@ -251,13 +257,19 @@ enum RenderBench {
         return s
     }
 
-    static func makeScreens() -> [Screen] {
+    static func makeScreens(draws: Int) -> [Screen] {
         func scrolling(_ name: String, _ cols: Int, _ rows: Int, colour: Bool) -> Screen {
             var r = Rand(s: 0x9E3779B97F4A7C15)
             var lines: [String] = []
             for _ in 0..<(rows + 200) { lines.append(line(&r, cols: cols, colour: colour)) }
             return Screen(name: name, cols: cols, rows: rows, setup: lines[0..<rows].joined(separator: "\r\n"),
                           step: { i in "\r\n" + lines[rows + i % 200] })
+        }
+        // A flood: a whole screen of new lines between draws, none seen before.
+        func flood(_ name: String, _ cols: Int, _ rows: Int) -> Screen {
+            var r = Rand(s: 0x5851F42D4C957F2D)
+            let screens = (0...(draws + 10)).map { _ in (0..<rows).map { _ in line(&r, cols: cols, colour: true) }.joined(separator: "\r\n") }
+            return Screen(name: name, cols: cols, rows: rows, setup: screens[0], step: { i in "\r\n" + screens[min(i + 1, screens.count - 1)] })
         }
         var u = Rand(s: 0xD1B54A32D192ED03)
         var uni: [String] = []
@@ -277,6 +289,8 @@ enum RenderBench {
             scrolling("plain-400x100", 400, 100, colour: false),
             scrolling("colour-200x60", 200, 60, colour: true),
             scrolling("colour-400x100", 400, 100, colour: true),
+            flood("flood-200x60", 200, 60),
+            flood("flood-400x100", 400, 100),
             Screen(name: "tui-200x60", cols: 200, rows: 60, setup: "\u{1b}[?1049h" + tuis[0], step: { i in tuis[(i + 1) % tuis.count] }),
             Screen(name: "unicode-200x60", cols: 200, rows: 60, setup: uni[0..<60].joined(separator: "\r\n"),
                    step: { i in "\r\n" + uni[60 + i % 200] }),

@@ -1,3 +1,4 @@
+import CoreText
 import Foundation
 import Testing
 @testable import HammockKit
@@ -196,4 +197,56 @@ private func drag(_ t: TerminalEngine, from a: CGPoint, to b: CGPoint, at time: 
 
     t.write(Data("\r\n\r\n\r\n\r\n\r\n\r\n\r\n".utf8)) // scrolled: every row moved
     if case .rows(let rows) = t.takeChanges().dirty { #expect(rows.count == 6) }
+}
+
+// TerminalLineLayout (#18 phase 1): what both renderers draw from.
+private func testLayout() -> TerminalLineLayout {
+    let font = CTFontCreateWithName("Menlo" as CFString, 14, nil)
+    let bold = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitBold, .traitBold) ?? font
+    let fonts = TerminalFonts(regular: font, bold: bold, italic: font, boldItalic: bold,
+                              cellWidth: 8.5, cellHeight: 18, baseline: 14, scale: 2)
+    return TerminalLineLayout(fonts: fonts, palette: TerminalPalette(foreground: RGB(r: 0, g: 0, b: 0), background: RGB(r: 255, g: 255, b: 255),
+                                                                     selection: RGB(r: 0, g: 0, b: 255), selectionForeground: nil))
+}
+
+private func cells(_ s: String) -> [TerminalCell] { s.map { TerminalCell(text: $0 == " " ? "" : String($0)) } }
+
+@Test func laysGlyphsOnTheGrid() {
+    let l = testLayout()
+    var row = cells("ab  c")
+    row[4].fg = RGB(r: 255, g: 0, b: 0)
+    let line = l.line(row)
+    var placed: [(x: CGFloat, color: TerminalColor)] = []
+    for case .glyphs(let g) in line.text { for p in g.positions { placed.append((p.x, g.color)) } }
+    // Three glyphs, each at its column; no glyph for the gap's space.
+    #expect(placed.map(\.x) == [0, 8.5, 34])
+    #expect(placed.last?.color == TerminalColor(RGB(r: 255, g: 0, b: 0)))
+}
+
+@Test func cachesRowsByContent() {
+    let l = testLayout()
+    _ = l.line(cells("hello"))
+    _ = l.line(cells("world"))
+    _ = l.line(cells("hello"))
+    #expect(l.hits == 1 && l.misses == 2)
+    var bold = cells("hello")
+    bold[0].bold = true
+    _ = l.line(bold) // same text, another style: not the same row
+    #expect(l.misses == 3)
+    // A palette change lays everything out again.
+    l.setPalette(TerminalPalette(foreground: RGB(r: 1, g: 1, b: 1), background: RGB(r: 255, g: 255, b: 255), selection: RGB(r: 0, g: 0, b: 255), selectionForeground: nil))
+    _ = l.line(cells("hello"))
+    #expect(l.misses == 4)
+}
+
+@Test func drawsBlocksAndBackgroundsAsRects() {
+    let l = testLayout()
+    var row = cells("█x ")
+    row[1].bg = RGB(r: 9, g: 9, b: 9)
+    row[2].bg = RGB(r: 9, g: 9, b: 9)
+    row[1].underline = true
+    let line = l.line(row)
+    #expect(line.backgrounds.count == 1 && line.backgrounds[0].x == 8.5 && line.backgrounds[0].width == 17)
+    #expect(line.rects.contains { !$0.copy && $0.rect == CGRect(x: 0, y: 0, width: 8.5, height: 18) }) // the full block
+    #expect(line.rects.contains { $0.copy && $0.rect.minX == 8.5 }) // the underline
 }

@@ -27,7 +27,7 @@ A profile of the 400×100 colour screen (`sample` during the bench) splits a dra
 | Swift bookkeeping per run (arrays, strings, column maps) | most of the rest | Only if the layout is cached |
 | Copying the screen out of libghostty (`frame()`) | 2–8% | Unchanged |
 
-**So a glyph atlas alone removes at most a third of the cost.** The plan caches shaped lines too, keyed by their content rather than their row, so a line that scrolls up keeps its shaping. That makes a scrolling flood mostly cache hits: only the new line at the bottom is shaped.
+**So a glyph atlas alone removes at most a third of the cost.** The plan caches shaped lines too, keyed by their content rather than their row, so a line that scrolls up keeps its shaping: only the new lines at the bottom are shaped. A real flood scrolls a whole screen or more between frames, though, so there every line is new; shaping a new line has to get cheaper as well.
 
 ## Design
 
@@ -63,7 +63,7 @@ A profile of the 400×100 colour screen (`sample` during the bench) splits a dra
 
 ## Phases
 
-1. **Line layout and line cache, drawn by CoreText.** No visible change. Measured on its own: it should cut most of the shaping and attribute-building time, so CoreText gets faster before any Metal exists, and it's needed by Metal anyway. The cheap fixes go in here too: italic fonts and `CGColor`s cached instead of made per run.
+1. **Line layout and line cache, drawn by CoreText.** Done 2026-11-11 (`TerminalLineLayout`): pixel for pixel the old output, and 3–5× faster on scrolling screens (colour at 400×100: 53.5 → 16.3 ms), 1.8× on floods (53.5 → 29.9 ms), where every row is new and nothing can be kept (`docs/benchmarks.md`). Two findings: in a flood the cache never hits, so what made floods faster was shaping each row once with fonts only, a cheap row hash, and attributes built once; and with rows kept, what's left is CoreGraphics rasterising glyphs, which is Metal's to remove.
 2. **Metal for plain text,** behind a config key (`terminal-renderer = coretext | metal`, CoreText by default): backgrounds, text, bold, italic, faint, cursor, decorations, blocks. Bench and PNGs alongside CoreText.
 3. **Parity:**
    - fallback fonts and colour emoji;

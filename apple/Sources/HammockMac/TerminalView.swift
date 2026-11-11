@@ -199,6 +199,7 @@ final class TerminalNSView: NSView {
         let extra = (AppConfig.shared.cellHeightExtra(base: natural)).rounded()
         cellHeight = max(natural + extra, ceil(font.pointSize * 0.5))
         ascent = ceil(CTFontGetAscent(ctFont)) + ((cellHeight - natural) / 2).rounded(.down)
+        layoutCache?.setFonts(layoutFonts())
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -335,28 +336,16 @@ final class TerminalNSView: NSView {
         let images = session.engine.images()
         drawImages(images, .belowBackground)
         // Only the rows asked for (redrawChanges): dirtyRect is the bounds of them all.
-        let wanted = f.cells.indices.map { wants(rowRect($0)) }
-        for (y, row) in f.cells.enumerated() where wanted[y] {
+        let layout = lineLayout(for: f, theme: theme)
+        var lines: [(top: CGFloat, line: TerminalLine)] = []
+        for (y, row) in f.cells.enumerated() where wants(rowRect(y)) {
             let top = padding + CGFloat(y) * cellHeight
-
-            // Backgrounds, merged into runs.
-            var x = 0
-            while x < row.count {
-                let bg = background(of: row[x], frame: f, theme: theme)
-                var end = x + 1
-                while end < row.count, background(of: row[end], frame: f, theme: theme) == bg { end += 1 }
-                if let bg {
-                    color(bg).setFill()
-                    NSRect(x: padding + CGFloat(x) * cellWidth, y: top, width: CGFloat(end - x) * cellWidth, height: cellHeight).fill()
-                }
-                x = end
-            }
+            let line = layout.line(row)
+            drawBackgrounds(line, top: top)
+            lines.append((top, line))
         }
         drawImages(images, .belowText)
-        for (y, row) in f.cells.enumerated() where wanted[y] {
-            let top = padding + CGFloat(y) * cellHeight
-            drawText(row.indices.map { ($0, row[$0]) }, row: row, top: top, frame: f)
-        }
+        for (top, line) in lines { drawText(line, top: top) }
         drawImages(images, .aboveText)
 
         // The link under the pointer while ⌘ is held: underlined.
@@ -396,7 +385,7 @@ final class TerminalNSView: NSView {
                         c.fg = f.background
                         c.inverse = false
                         c.selected = false
-                        drawText([(f.cursorX, c)], row: cells, top: rect.minY, frame: f)
+                        drawText(layout.layout([(f.cursorX, c)], row: cells), top: rect.minY)
                     }
                 }
             }
@@ -435,208 +424,88 @@ final class TerminalNSView: NSView {
         s.draw(with: NSRect(x: origin.x, y: origin.y + ascent + 1, width: width + cellWidth, height: cellHeight), options: [], context: nil)
     }
 
-    private func background(of c: TerminalCell, frame f: TerminalFrame, theme: TerminalTheme) -> RGB? {
-        if c.selected { return theme.selection }
-        if c.inverse { return c.fg ?? f.foreground }
-        return c.bg
+    // Rows are laid out by TerminalLineLayout (shared with the Metal
+    // renderer to come, docs/design/metal-renderer.md), which keeps the
+    // layouts of rows it has seen; here they're drawn with CoreGraphics.
+    private var layoutCache: TerminalLineLayout?
+    private var cgColors: [TerminalColor: CGColor] = [:]
+    /// Rows laid out afresh and kept, so far (RenderBench).
+    var layoutCounts: (hits: Int, misses: Int) { (layoutCache?.hits ?? 0, layoutCache?.misses ?? 0) }
+
+    private func lineLayout(for f: TerminalFrame, theme: TerminalTheme) -> TerminalLineLayout {
+        let palette = TerminalPalette(foreground: f.foreground, background: f.background,
+                                      selection: theme.selection, selectionForeground: theme.selectionForeground)
+        let l = layoutCache ?? TerminalLineLayout(fonts: layoutFonts(), palette: palette)
+        layoutCache = l
+        l.setPalette(palette)
+        // The screen and as much again (a dense 400-column row's layout is
+        // ~25 KB, and there are two generations).
+        l.capacity = max(f.rows * 2, 48)
+        return l
     }
 
-    private func sameStyle(_ a: TerminalCell, _ b: TerminalCell) -> Bool {
-        a.fg == b.fg && a.bg == b.bg && a.bold == b.bold && a.italic == b.italic && a.faint == b.faint &&
-            a.underline == b.underline && a.strikethrough == b.strikethrough && a.inverse == b.inverse && a.selected == b.selected
+    private func layoutFonts() -> TerminalFonts {
+        let italic = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        let boldItalic = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
+        return TerminalFonts(regular: font, bold: boldFont, italic: italic, boldItalic: boldItalic,
+                             cellWidth: cellWidth, cellHeight: cellHeight, baseline: ascent + 1,
+                             scale: window?.backingScaleFactor ?? 2)
     }
 
-    private func attributes(for cell: TerminalCell, frame f: TerminalFrame) -> [NSAttributedString.Key: Any] {
-        var fg = cell.inverse ? (cell.bg ?? f.background) : (cell.fg ?? f.foreground)
-        if cell.selected { fg = session?.engine.theme.selectionForeground ?? (cell.fg == nil ? f.foreground : fg) }
-        var font = cell.bold ? boldFont : self.font
-        if cell.italic { font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) }
-        var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color(fg, alpha: cell.faint ? 0.6 : 1), .ligature: 0]
-        if cell.invisible { attrs[.foregroundColor] = NSColor.clear }
-        return attrs
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        layoutCache?.setFonts(layoutFonts())
+        needsDisplay = true
     }
 
-    /// Draws cells' text with every glyph pinned to its cell. CoreText lays the
-    /// cells out as one line (so it still picks fallback fonts for symbols and
-    /// emoji), but glyphs are placed by column rather than by CoreText's
-    /// advances, which drift off the grid with fallback fonts and fractional
-    /// widths: enough to hide powerline separators under the next segment.
-    private func drawText(_ cells: [(col: Int, cell: TerminalCell)], row: [TerminalCell], top: CGFloat, frame f: TerminalFrame) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let baseline = top + ascent + 1
-        let line = NSMutableAttributedString()
-        var colAt: [Int] = []  // UTF-16 offset -> column
-        // Blank cells aren't drawn, but a space still goes where they were:
-        // shaped without it, "about this" becomes "aboutthis", and a font's
-        // contextual alternates (Maple Mono's italic "tt") join glyphs across
-        // the gap and draw the second letter in the blank cell.
-        var gap: Int?  // column of the first skipped cell since the last text
-        var i = 0
-        while i < cells.count {
-            let (col, cell) = cells[i]
-            if cell.underline || cell.strikethrough { drawDecorations(cell, col: col, baseline: baseline, frame: f) }
-            if cell.spacer || cell.invisible || cell.text.isEmpty || cell.text == " " || drawBlock(cell, col: col, top: top, frame: f) {
-                if !cell.spacer, gap == nil { gap = col }
-                i += 1; continue
-            }
-            // Coalesce same-style cells into one attributed run.
-            var text = "", cols: [Int] = []
-            if let g = gap, line.length > 0 { text = " "; cols = [g] }
-            gap = nil
-            text += cell.text
-            cols += [Int](repeating: col, count: cell.text.utf16.count)
-            var j = i + 1
-            while j < cells.count, sameStyle(cells[j].cell, cell) {
-                let (c2, cell2) = cells[j]
-                if cell2.underline || cell2.strikethrough { drawDecorations(cell2, col: c2, baseline: baseline, frame: f) }
-                if cell2.spacer || cell2.invisible || cell2.text.isEmpty || cell2.text == " " || drawBlock(cell2, col: c2, top: top, frame: f) {
-                    if !cell2.spacer, gap == nil { gap = c2 }
-                } else {
-                    if let g = gap { text += " "; cols.append(g); gap = nil }
-                    text += cell2.text
-                    cols += [Int](repeating: c2, count: cell2.text.utf16.count)
-                }
-                j += 1
-            }
-            line.append(NSAttributedString(string: text, attributes: attributes(for: cell, frame: f)))
-            colAt += cols
-            i = j
-        }
-        guard line.length > 0 else { return }
+    private func cg(_ c: TerminalColor) -> CGColor {
+        if let x = cgColors[c] { return x }
+        let x = CGColor(srgbRed: CGFloat(c.rgb.r) / 255, green: CGFloat(c.rgb.g) / 255, blue: CGFloat(c.rgb.b) / 255, alpha: c.alpha)
+        if cgColors.count > 4096 { cgColors = [:] }
+        cgColors[c] = x
+        return x
+    }
 
+    private func drawBackgrounds(_ line: TerminalLine, top: CGFloat) {
+        guard !line.backgrounds.isEmpty, let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.saveGState()
         defer { ctx.restoreGState() }
+        ctx.setBlendMode(.copy) // as NSRectFill
+        for b in line.backgrounds {
+            ctx.setFillColor(cg(TerminalColor(b.color)))
+            ctx.fill(CGRect(x: padding + b.x, y: top, width: b.width, height: cellHeight))
+        }
+    }
+
+    /// A row's rectangles (blocks, underlines), then its glyphs.
+    private func drawText(_ line: TerminalLine, top: CGFloat) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.translateBy(x: padding, y: top)
+        for r in line.rects {
+            ctx.setBlendMode(r.copy ? .copy : .normal)
+            ctx.setFillColor(cg(r.color))
+            ctx.fill(r.rect)
+        }
+        ctx.setBlendMode(.normal)
         ctx.textMatrix = .identity
-        let ctLine = CTLineCreateWithAttributedString(line)
-        for run in CTLineGetGlyphRuns(ctLine) as! [CTRun] {
-            let n = CTRunGetGlyphCount(run)
-            guard n > 0 else { continue }
-            let attrs = CTRunGetAttributes(run) as NSDictionary
-            let runFont = attrs[kCTFontAttributeName] as! CTFont
-            let fg = (attrs[NSAttributedString.Key.foregroundColor] as? NSColor) ?? .textColor
-            ctx.setFillColor(fg.cgColor)
-            var glyphs = [CGGlyph](repeating: 0, count: n)
-            var positions = [CGPoint](repeating: .zero, count: n)
-            var indices = [CFIndex](repeating: 0, count: n)
-            CTRunGetGlyphs(run, CFRange(), &glyphs)
-            CTRunGetPositions(run, CFRange(), &positions)
-            CTRunGetStringIndices(run, CFRange(), &indices)
-            // The view is flipped; glyphs are drawn in an unflipped space, so
-            // a baseline at y lands at -y there.
-            var plain: [CGGlyph] = [], at: [CGPoint] = []
-            // Combining marks keep their offset from their cluster's first glyph.
-            var clusterStart: [Int: CGFloat] = [:]
-            for g in 0..<n {
-                let col = colAt[min(indices[g], colAt.count - 1)]
-                let startX = clusterStart[col] ?? positions[g].x
-                clusterStart[col] = startX
-                let x = padding + CGFloat(col) * cellWidth + (positions[g].x - startX)
-                if let fit = symbolFit(glyph: glyphs[g], font: runFont, col: col, row: row, top: top, x: x, baseline: baseline) {
-                    ctx.saveGState()
-                    ctx.concatenate(fit)
-                    ctx.scaleBy(x: 1, y: -1)
-                    var glyph = glyphs[g]
-                    var origin = CGPoint.zero
-                    CTFontDrawGlyphs(runFont, &glyph, &origin, 1, ctx)
-                    ctx.restoreGState()
-                } else {
-                    plain.append(glyphs[g])
-                    at.append(CGPoint(x: x, y: -baseline))
-                }
-            }
-            if !plain.isEmpty {
-                ctx.saveGState()
+        for item in line.text {
+            ctx.saveGState()
+            switch item {
+            case .glyphs(let g):
+                ctx.setFillColor(cg(g.color))
                 ctx.scaleBy(x: 1, y: -1)
-                CTFontDrawGlyphs(runFont, plain, at, plain.count, ctx)
-                ctx.restoreGState()
+                CTFontDrawGlyphs(g.font, g.glyphs, g.positions, g.glyphs.count, ctx)
+            case .fitted(let f):
+                ctx.setFillColor(cg(f.color))
+                ctx.concatenate(f.transform)
+                ctx.scaleBy(x: 1, y: -1)
+                var glyph = f.glyph
+                var origin = CGPoint.zero
+                CTFontDrawGlyphs(f.font, &glyph, &origin, 1, ctx)
             }
-        }
-    }
-
-    /// Nerd Font symbols (Private Use Area) are often wider than a cell.
-    /// Powerline separators are stretched to fill their cell exactly so
-    /// segments join seamlessly; other icons shrink to the space they have
-    /// (two cells when followed by a blank, as Ghostty does). nil = draw as is.
-    private func symbolFit(glyph: CGGlyph, font: CTFont, col: Int, row: [TerminalCell], top: CGFloat, x: CGFloat, baseline: CGFloat) -> CGAffineTransform? {
-        guard col < row.count, let scalar = row[col].text.unicodeScalars.first else { return nil }
-        if (0x2500...0x257F).contains(scalar.value) || (0x1FB00...0x1FBFF).contains(scalar.value) {
-            // Box drawing and block elements are designed to span the font's
-            // line height; stretch that to the cell so lines join across rows
-            // (the cell is taller than the font by the line spacing).
-            let a = CTFontGetAscent(font), d = CTFontGetDescent(font)
-            let sy = cellHeight / (a + d)
-            return CGAffineTransform(translationX: x, y: top + a * sy).scaledBy(x: 1, y: sy)
-        }
-        guard (0xE000...0xF8FF).contains(scalar.value) || scalar.value >= 0xF0000 else { return nil }
-        var g = glyph
-        var b = CGRect.zero
-        CTFontGetBoundingRectsForGlyphs(font, .horizontal, &g, &b, 1)
-        guard b.width > 0, b.height > 0 else { return nil }
-        let left = padding + CGFloat(col) * cellWidth
-        if (0xE0B0...0xE0D7).contains(scalar.value) {
-            // Map the glyph's bounds onto the cell.
-            let sx = cellWidth / b.width, sy = cellHeight / b.height
-            return CGAffineTransform(translationX: left - b.minX * sx, y: top + b.maxY * sy).scaledBy(x: sx, y: sy)
-        }
-        let nextBlank = col + 1 < row.count && (row[col + 1].text.isEmpty || row[col + 1].text == " ")
-        let room = cellWidth * (row[col].wide || nextBlank ? 2 : 1)
-        guard b.maxX > room + 0.5 else { return nil }
-        let s = room / b.maxX
-        return CGAffineTransform(translationX: x, y: baseline + (b.midY * s - b.midY)).scaledBy(x: s, y: s)
-    }
-
-    /// Block elements (U+2580–259F) as rectangles snapped to device pixels, as
-    /// Ghostty draws them: glyphs leave anti-aliased seams where cells meet
-    /// (the cell width isn't a whole number of pixels), striping block art.
-    private func drawBlock(_ cell: TerminalCell, col: Int, top: CGFloat, frame f: TerminalFrame) -> Bool {
-        guard cell.text.unicodeScalars.count == 1, let v = cell.text.unicodeScalars.first?.value, (0x2580...0x259F).contains(v) else { return false }
-        let scale = window?.backingScaleFactor ?? 2
-        let x0 = padding + CGFloat(col) * cellWidth
-        let fg = (attributes(for: cell, frame: f)[.foregroundColor] as? NSColor) ?? .textColor
-        func snap(_ x: CGFloat) -> CGFloat { (x * scale).rounded() / scale }
-        // A rectangle in fractions of the cell, y from the top.
-        func fill(_ fx: CGFloat, _ fy: CGFloat, _ fw: CGFloat, _ fh: CGFloat, alpha: CGFloat = 1) {
-            let l = snap(x0 + fx * cellWidth), r = snap(x0 + (fx + fw) * cellWidth)
-            let t = snap(top + fy * cellHeight), b = snap(top + (fy + fh) * cellHeight)
-            fg.withAlphaComponent(fg.alphaComponent * alpha).setFill()
-            NSRect(x: l, y: t, width: r - l, height: b - t).fill(using: .sourceOver)
-        }
-        func quadrants(_ q: Int) { // 1 upper left, 2 upper right, 4 lower left, 8 lower right
-            if q & 1 != 0 { fill(0, 0, 0.5, 0.5) }
-            if q & 2 != 0 { fill(0.5, 0, 0.5, 0.5) }
-            if q & 4 != 0 { fill(0, 0.5, 0.5, 0.5) }
-            if q & 8 != 0 { fill(0.5, 0.5, 0.5, 0.5) }
-        }
-        switch v {
-        case 0x2580: fill(0, 0, 1, 0.5)
-        case 0x2581...0x2587: let n = CGFloat(v - 0x2580) / 8; fill(0, 1 - n, 1, n) // lower eighths
-        case 0x2588: fill(0, 0, 1, 1)
-        case 0x2589...0x258F: fill(0, 0, CGFloat(0x2590 - v) / 8, 1) // left eighths
-        case 0x2590: fill(0.5, 0, 0.5, 1)
-        case 0x2591: fill(0, 0, 1, 1, alpha: 0.25)
-        case 0x2592: fill(0, 0, 1, 1, alpha: 0.5)
-        case 0x2593: fill(0, 0, 1, 1, alpha: 0.75)
-        case 0x2594: fill(0, 0, 1, 1.0 / 8)
-        case 0x2595: fill(7.0 / 8, 0, 1.0 / 8, 1)
-        default:
-            let q: [UInt32: Int] = [0x2596: 4, 0x2597: 8, 0x2598: 1, 0x2599: 13, 0x259A: 9, 0x259B: 7, 0x259C: 11, 0x259D: 2, 0x259E: 6, 0x259F: 14]
-            quadrants(q[v] ?? 0)
-        }
-        return true
-    }
-
-    private func drawDecorations(_ cell: TerminalCell, col: Int, baseline: CGFloat, frame f: TerminalFrame) {
-        let font = cell.bold ? boldFont : self.font
-        let fg = (attributes(for: cell, frame: f)[.foregroundColor] as? NSColor) ?? .textColor
-        fg.setFill()
-        let x = padding + CGFloat(col) * cellWidth
-        let w = cellWidth * (cell.wide ? 2 : 1)
-        let thickness = max(1, CTFontGetUnderlineThickness(font as CTFont))
-        if cell.underline {
-            NSRect(x: x, y: baseline - CTFontGetUnderlinePosition(font as CTFont), width: w, height: thickness).fill()
-        }
-        if cell.strikethrough {
-            NSRect(x: x, y: baseline - CTFontGetXHeight(font as CTFont) / 2, width: w, height: thickness).fill()
+            ctx.restoreGState()
         }
     }
 

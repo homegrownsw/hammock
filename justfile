@@ -329,7 +329,8 @@ render-bench out="": mac-dev
     eval "$(./scripts/beta-identity.sh)"
     out="{{out}}"
     [ -n "$out" ] || out="$(mktemp -d)/render.json"
-    HMK_DEBUG_RENDER_BENCH="$out" "$beta_app/Contents/MacOS/Hammock"
+    # Light, whatever the Mac's appearance, so runs (and their PNGs) compare.
+    HMK_DEBUG_RENDER_BENCH="$out" "$beta_app/Contents/MacOS/Hammock" -appearance light
     echo "results: $out"
 
 # Generate the iOS Xcode project and build it for the simulator.
