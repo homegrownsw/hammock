@@ -20,7 +20,8 @@ public final class TerminalMetalRenderer {
     public static let pixelFormat = MTLPixelFormat.bgra8Unorm
 
     /// What every pane shares: the device, its queue, the pipeline and the
-    /// glyph atlas (one per app, not per pane: it's 16 MB).
+    /// glyph atlas (one per app, not per pane: it's 16 MB). Use it, and every
+    /// renderer, from one thread (the main one): the atlas isn't locked.
     public final class Context {
         public let device: MTLDevice
         let queue: MTLCommandQueue
