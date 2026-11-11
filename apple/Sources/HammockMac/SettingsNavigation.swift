@@ -311,7 +311,6 @@ enum SettingsIndex {
             e(.terminal, "Font", "Line spacing", "terminal.linespacing", "cell height"),
             e(.terminal, "Font", "Thicken text", "terminal.thicken", "bold"),
             e(.terminal, "Text", "Copy text when selected", "terminal.copy", "clipboard selection"),
-            e(.terminal, "Text","Show images from file paths", "terminal.images", "pictures claude"),
             e(.terminal, "Text", "Ask before pasting text that could run commands", "terminal.paste", "clipboard paste protection"),
 
             e(.tools, "Tools", "Tools", nil, "features turn off disable hide mcp agents"),

@@ -99,8 +99,9 @@ func kgImage(t *testing.T, m *ghosttyMirror, id uint32) *libghostty.KittyGraphic
 	return img
 }
 
-// image-file-medium = false: images sent as a file path (t=f) aren't read.
-func TestKittyFileMediumSwitch(t *testing.T) {
+// Images sent as a file path (t=f): the mirror never opens the path itself;
+// the daemon inlines the image (KittyFiles) and the mirror places that.
+func TestKittyFileImages(t *testing.T) {
 	src := image.NewNRGBA(image.Rect(0, 0, 4, 4))
 	var p bytes.Buffer
 	if err := png.Encode(&p, src); err != nil {
@@ -110,15 +111,18 @@ func TestKittyFileMediumSwitch(t *testing.T) {
 	if err := os.WriteFile(path, p.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old := ImageFileMedium
-	t.Cleanup(func() { ImageFileMedium = old })
-	for _, on := range []bool{true, false} {
-		ImageFileMedium = func() bool { return on }
+	cmd := []byte(fmt.Sprintf("\x1b_Ga=T,t=f,f=100,i=9,q=2;%s\x1b\\", base64.StdEncoding.EncodeToString([]byte(path))))
+	for _, inline := range []bool{true, false} {
 		m := New(40, 12).(*ghosttyMirror)
 		m.SetCellSize(10, 20)
-		m.Write([]byte(fmt.Sprintf("\x1b_Ga=T,t=f,f=100,i=9,q=2;%s\x1b\\", base64.StdEncoding.EncodeToString([]byte(path)))))
-		if got := len(placements(t, m)) == 1; got != on {
-			t.Errorf("file medium %v: placed %v", on, got)
+		if inline {
+			var k KittyFiles
+			m.Write(k.Rewrite(cmd))
+		} else {
+			m.Write(cmd)
+		}
+		if got := len(placements(t, m)) == 1; got != inline {
+			t.Errorf("inlined %v: placed %v", inline, got)
 		}
 		m.Close()
 	}

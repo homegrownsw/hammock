@@ -62,11 +62,10 @@ func newMirror(cols, rows int) Mirror {
 	// supported, and placements tracked); clients draw them.
 	limit := uint64(kittyStorage)
 	_ = t.SetKittyImageStorageLimit(&limit)
-	// Images sent as a file path (t=f), which Claude Code uses for images it
-	// read: programs here already run as the user, so reading a file they
-	// name gives them nothing new. Clients on this Mac read it too. Off with
-	// image-file-medium = false in Hammock's config (ImageFileMedium).
-	_ = t.SetKittyImageMediumFile(ImageFileMedium())
+	// Images sent as a file path (t=f) aren't read here: the daemon reads
+	// them once, only if they're images, and sends them on inline
+	// (KittyFiles), so this mirror and every client get the image itself.
+	_ = t.SetKittyImageMediumFile(false)
 	return m
 }
 

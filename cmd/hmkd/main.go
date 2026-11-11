@@ -14,9 +14,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/codesign"
 	"github.com/homegrownsw/hammock/internal/daemon"
-	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	"github.com/homegrownsw/hammock/internal/holder"
-	"github.com/homegrownsw/hammock/internal/vt"
 )
 
 func main() {
@@ -56,9 +54,6 @@ func main() {
 			listen = strings.Split(*remoteListen, ",")
 		}
 	}
-	// Kitty images sent as a file path (t=f): image-file-medium in Hammock's
-	// config, read as each pane's terminal is made.
-	vt.ImageFileMedium = func() bool { return hammockconfig.Bool("image-file-medium", true) }
 	d, err := daemon.New(daemon.Config{Dir: *dir, HolderPath: *holderPath, Log: log, Remote: *remote, RemoteListen: listen})
 	if err != nil {
 		if errors.Is(err, daemon.ErrAlreadyRunning) {

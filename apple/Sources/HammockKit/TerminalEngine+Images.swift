@@ -28,10 +28,6 @@ public struct TerminalImage {
 enum KittyGraphicsSetup {
     static let storageLimit: UInt64 = 128 << 20
 
-    /// Whether new terminals take Kitty images sent as a file path (t=f):
-    /// `image-file-medium` in Hammock's config (set by the Mac app's AppConfig).
-    nonisolated(unsafe) static var fileMedium = true
-
     static let installDecoder: Void = {
         let decode: GhosttySysDecodePngFn = { _, allocator, data, len, out in
             guard let data, let out, len > 0 else { return false }
@@ -66,21 +62,15 @@ enum KittyGraphicsSetup {
         _ = installDecoder
         var limit = storageLimit
         ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT, &limit)
-        // Images sent as a file path (t=f), as the daemon accepts them (it
-        // answers the program's queries); the file is on this Mac. Both
-        // follow image-file-medium in Hammock's config.
-        var file = fileMedium
+        // Images sent as a file path (t=f) aren't read here: the daemon
+        // reads them, only if they're images, and sends them on inline, so
+        // they show on every device, not just the Mac with the file.
+        var file = false
         ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_MEDIUM_FILE, &file)
     }
 }
 
 extension TerminalEngine {
-    /// Whether terminals made from now on read Kitty images sent as a file
-    /// path (t=f); `image-file-medium` in Hammock's config.
-    public static var imageFileMedium: Bool {
-        get { KittyGraphicsSetup.fileMedium }
-        set { KittyGraphicsSetup.fileMedium = newValue }
-    }
 
     /// The images on screen as of the last frame(), back to front within
     /// each layer. Pixel images are cached by image id and generation.

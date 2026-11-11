@@ -61,11 +61,6 @@ type Colors struct {
 // New returns the best available mirror for a terminal of the given size.
 func New(cols, rows int) Mirror { return newMirror(cols, rows) }
 
-// ImageFileMedium says whether new terminals take Kitty images sent as a
-// file path (t=f). The daemon sets it from Hammock's config
-// (image-file-medium); asked as each terminal is made.
-var ImageFileMedium = func() bool { return true }
-
 // OSC tracks title (OSC 0/2) and working directory (OSC 7) reports in a PTY
 // byte stream, independent of the mirror implementation.
 type OSC struct {

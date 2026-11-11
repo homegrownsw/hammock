@@ -19,7 +19,6 @@ import SwiftUI
 ///     sidebar-color = #RRGGBB          (or light:#…,dark:#…; overrides the window theme, with app-theme = custom)
 ///     toolbar-color = #RRGGBB
 ///     sidebar-opacity = 0.4            (0 glassy … 1 opaque)
-///     image-file-medium = true         (Kitty images sent as a file path; false: only inline ones. Also the daemon's.)
 ///     clipboard-paste-protection = true      (ask before a paste that could run commands)
 ///     clipboard-paste-bracketed-safe = true  (unless the program takes bracketed pastes)
 ///     simulator-shutdown = true        (simulators Hammock booted shut down after their last pane; read by hmkd)
@@ -154,9 +153,6 @@ final class AppConfig {
     private(set) var sidebarOpacity = 0.0
     /// …as the file has it, not following the slider while it moves.
     private(set) var savedSidebarOpacity = 0.0
-    /// Kitty images sent as a file path (t=f) are shown (the daemon reads
-    /// the same key); off, only images sent inline are.
-    private(set) var imageFileMedium = true
     /// Simulators Hammock booted shut down a minute after their last pane
     /// closes (the daemon reads the key; this is for Settings).
     private(set) var simulatorShutdown = true
@@ -393,8 +389,6 @@ final class AppConfig {
         toolbarColor = WindowTheme.colorPair(ours["toolbar-color"])
         sidebarOpacity = min(max(ours["sidebar-opacity"].flatMap(Double.init) ?? 0, 0), 1)
         savedSidebarOpacity = sidebarOpacity
-        imageFileMedium = ours["image-file-medium"] != "false"
-        TerminalEngine.imageFileMedium = imageFileMedium
         simulatorShutdown = ours["simulator-shutdown"] != "false"
         browserNewTabExternal = ours["browser-new-tab"] != "hammock"
         sshAgentForwarding = ours["ssh-agent-forwarding"] != "false"
@@ -750,7 +744,6 @@ final class AppConfig {
         #   dim-inactive-panes = false     (true: dim the panes you're not typing in, a little)
         #   active-pane-border = false     (true: a border around the focused pane)
         #   active-pane-border-color = accent   (or #RRGGBB, or light:#…,dark:#…)
-        #   image-file-medium = true       (Kitty images sent as a file path; false: inline ones only)
         #   simulator-shutdown = true      (simulators Hammock booted shut down a minute after their last pane closes)
         #   ssh-agent-forwarding = true    (panes on your linked computers use the SSH keys of the one you're at)
         #   ssh-upstream-agent = PATH      (the SSH agent Hammock's passes requests on to; default: ~/.ssh/config's IdentityAgent for every host, else SSH_AUTH_SOCK)

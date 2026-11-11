@@ -31,22 +31,27 @@ type pane struct {
 	id       string
 	extraEnv map[string]string
 
-	mu       sync.Mutex
-	info     *pb.Pane
-	socket   string
-	token    []byte // the holder's client secret (nil: an older holder without one)
-	hc       *holder.Client
-	mirror   vt.Mirror
-	osc      vt.OSC
-	offset   uint64 // next byte offset expected from the holder
-	attached map[*conn]struct{}
-	sizes    map[*conn][2]uint32
-	driver   *conn
-	pid      int
-	gen      int // bumps on every holder (re)connection; stale readers exit
-	closed   bool
-	hookAt   time.Time      // last hook event; heuristics stand down while fresh
-	asking   *pb.AgentBlock // a question from a PreToolUse hook, until answered (often not yet in the transcript)
+	mu     sync.Mutex
+	info   *pb.Pane
+	socket string
+	token  []byte // the holder's client secret (nil: an older holder without one)
+	hc     *holder.Client
+	mirror vt.Mirror
+	osc    vt.OSC
+	offset uint64 // next byte offset expected from the holder
+	// Kitty images sent as a file path, inlined for clients that can't
+	// open it (vt.KittyFiles); what clients get is then longer than what
+	// the holder sent, so their offsets count what they've been sent.
+	kitty     vt.KittyFiles
+	outOffset uint64
+	attached  map[*conn]struct{}
+	sizes     map[*conn][2]uint32
+	driver    *conn
+	pid       int
+	gen       int // bumps on every holder (re)connection; stale readers exit
+	closed    bool
+	hookAt    time.Time      // last hook event; heuristics stand down while fresh
+	asking    *pb.AgentBlock // a question from a PreToolUse hook, until answered (often not yet in the transcript)
 	// The agent's turn was started by a background task reporting progress
 	// (a Monitor's event), not by you or by the task ending: its finish
 	// isn't news (agents.go).
@@ -473,6 +478,7 @@ func (p *pane) attachHolderLocked(hc *holder.Client) int {
 		p.seed = nil
 	}
 	p.osc = vt.OSC{}
+	p.kitty = vt.KittyFiles{}
 	p.offset = hc.Info.RingStart
 	if len(p.resume) > 0 {
 		// The same process, reconnected: continue from the saved screen.
@@ -599,12 +605,16 @@ func (p *pane) read(hc *holder.Client, gen int) {
 		if p.log != nil {
 			p.log.write(data, ev.Offset)
 		}
-		p.mirror.Write(data)
+		shown := p.kitty.Rewrite(data)
+		p.mirror.Write(shown)
 		p.osc.Write(data)
 		p.offset = ev.Offset + uint64(len(data))
 		p.lastOut = time.Now()
-		for c := range p.attached {
-			c.sendOutput(p, ev.Offset, data)
+		if len(shown) > 0 {
+			for c := range p.attached {
+				c.sendOutput(p, p.outOffset, shown)
+			}
+			p.outOffset += uint64(len(shown))
 		}
 		changed := false
 		if p.osc.Changed {
