@@ -44,7 +44,22 @@ public final class PaneSession {
     /// Removes an owner's observer (other views of the pane keep theirs).
     public func unobserve(_ owner: AnyObject) { observers[ObjectIdentifier(owner)] = nil }
 
-    func notify() { for fn in observers.values { fn() } }
+    func notify() {
+        latestChanges = nil
+        for fn in observers.values { fn() }
+    }
+
+    private var latestChanges: TerminalChanges?
+
+    /// What the output that just arrived changed on screen, for an observer
+    /// that redraws only that: asked of the engine once per notify, so every
+    /// view of the pane sees the same answer.
+    public var changes: TerminalChanges {
+        if let latestChanges { return latestChanges }
+        let c = engine.takeChanges()
+        latestChanges = c
+        return c
+    }
 
     init(paneID: String, cols: Int, rows: Int) {
         self.paneID = paneID

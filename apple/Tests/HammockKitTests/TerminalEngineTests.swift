@@ -177,3 +177,23 @@ private func drag(_ t: TerminalEngine, from a: CGPoint, to b: CGPoint, at time: 
     #expect(c?.url == "https://hammock.dev")
     #expect(c?.spans == [.init(row: 0, cols: 0..<12)])
 }
+
+// The Mac pane redraws only the rows output changed (#18).
+@Test func reportsChangedRows() {
+    let t = TerminalEngine(cols: 20, rows: 6)
+    t.write(Data("one\r\ntwo\r\nthree".utf8))
+    #expect(t.takeChanges().dirty == .full) // nothing drawn yet
+    #expect(t.takeChanges() == TerminalChanges(dirty: .none, cursorRow: 2))
+
+    t.write(Data("!".utf8)) // a key typed at the end of row 2
+    let typed = t.takeChanges()
+    #expect(typed.cursorRow == 2)
+    guard case .rows(let rows) = typed.dirty else { Issue.record("expected rows, got \(typed.dirty)"); return }
+    #expect(rows.contains(2) && !rows.contains(0) && !rows.contains(5))
+
+    t.write(Data("\u{1b}[1;1H".utf8)) // the cursor moves, nothing else
+    #expect(t.takeChanges().cursorRow == 0)
+
+    t.write(Data("\r\n\r\n\r\n\r\n\r\n\r\n\r\n".utf8)) // scrolled: every row moved
+    if case .rows(let rows) = t.takeChanges().dirty { #expect(rows.count == 6) }
+}

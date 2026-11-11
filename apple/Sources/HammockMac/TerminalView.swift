@@ -10,7 +10,7 @@ final class TerminalNSView: NSView {
             oldValue?.unobserve(self)
             session?.observe(self) { [weak self] in
                 self?.blinkOn = true // solid while output arrives
-                self?.redraw()
+                self?.redrawChanges()
             }
             applyTheme()
             needsDisplay = true
@@ -108,6 +108,66 @@ final class TerminalNSView: NSView {
         if PaneMotion.shared.isMoving || folded { pendingDisplay = true } else { needsDisplay = true }
     }
 
+    /// After output: redraws only the rows it changed, and the rows the
+    /// cursor left and reached (a keystroke at a full screen of colour costs
+    /// a row, not the pane: docs/benchmarks.md). Anything else that changes
+    /// the picture (selection, scrolling back, theme, focus) redraws it all.
+    private func redrawChanges() {
+        guard let session else { return }
+        let changes = session.changes // asked even when put off, so they don't pile up
+        if PaneMotion.shared.isMoving || folded {
+            pendingDisplay = true
+            return
+        }
+        if let rects = rectsToRedraw(changes) { rects.forEach(setNeedsDisplay) } else { needsDisplay = true }
+    }
+
+    /// The rows changes need redrawn, with the cursor's old and new ones;
+    /// nil for the whole pane.
+    func rectsToRedraw(_ changes: TerminalChanges) -> [NSRect]? {
+        guard let session else { return nil }
+        var rows = IndexSet()
+        switch changes.dirty {
+        case .full:
+            return nil
+        case .rows where !session.engine.images().isEmpty:
+            return nil // Kitty images can span rows that didn't change
+        case .rows(let changed):
+            rows = changed
+        case .none:
+            break
+        }
+        if let y = drawnCursorRow { rows.insert(y) }
+        if let y = changes.cursorRow { rows.insert(y) }
+        return rows.map(rowRect)
+    }
+
+    /// Redraws the cursor's row (blinking), unless panes are moving or it's folded away.
+    private func redrawCursor() {
+        if PaneMotion.shared.isMoving || folded { pendingDisplay = true; return }
+        if let y = drawnCursorRow { setNeedsDisplay(rowRect(y)) } else { needsDisplay = true }
+    }
+
+    /// Row y's band across the whole pane (the first and last take the padding too).
+    private func rowRect(_ y: Int) -> NSRect {
+        var top = padding + CGFloat(y) * cellHeight, bottom = top + cellHeight
+        if y <= 0 { top = 0 }
+        if y >= (session?.engine.rows ?? 0) - 1 { bottom = bounds.height }
+        return NSRect(x: 0, y: top, width: bounds.width, height: max(bottom - top, 0))
+    }
+
+    /// What RenderBench draws, in place of AppKit's rects being drawn
+    /// (it draws outside a display pass, where needsToDraw can't answer).
+    var benchRects: [NSRect]?
+
+    private func wants(_ r: NSRect) -> Bool {
+        if let benchRects { return benchRects.contains { $0.intersects(r) } }
+        return needsToDraw(r)
+    }
+
+    /// The row the cursor was last drawn on (shown or blinked off), to clear it once it moves.
+    private var drawnCursorRow: Int?
+
     private func settle() {
         if pendingGrid { pendingGrid = false; reportGrid() }
         if pendingDisplay, !folded { pendingDisplay = false; needsDisplay = true }
@@ -195,7 +255,7 @@ final class TerminalNSView: NSView {
         blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if self.blinkWanted { self.blinkOn.toggle(); self.redraw() } else if !self.blinkOn { self.blinkOn = true; self.redraw() }
+                if self.blinkWanted { self.blinkOn.toggle(); self.redrawCursor() } else if !self.blinkOn { self.blinkOn = true; self.redrawCursor() }
             }
         }
     }
@@ -274,9 +334,10 @@ final class TerminalNSView: NSView {
         // background and the text, above the text.
         let images = session.engine.images()
         drawImages(images, .belowBackground)
-        for (y, row) in f.cells.enumerated() {
+        // Only the rows asked for (redrawChanges): dirtyRect is the bounds of them all.
+        let wanted = f.cells.indices.map { wants(rowRect($0)) }
+        for (y, row) in f.cells.enumerated() where wanted[y] {
             let top = padding + CGFloat(y) * cellHeight
-            if top > dirtyRect.maxY || top + cellHeight < dirtyRect.minY { continue }
 
             // Backgrounds, merged into runs.
             var x = 0
@@ -292,9 +353,8 @@ final class TerminalNSView: NSView {
             }
         }
         drawImages(images, .belowText)
-        for (y, row) in f.cells.enumerated() {
+        for (y, row) in f.cells.enumerated() where wanted[y] {
             let top = padding + CGFloat(y) * cellHeight
-            if top > dirtyRect.maxY || top + cellHeight < dirtyRect.minY { continue }
             drawText(row.indices.map { ($0, row[$0]) }, row: row, top: top, frame: f)
         }
         drawImages(images, .aboveText)
@@ -313,6 +373,7 @@ final class TerminalNSView: NSView {
 
         // Cursor.
         blinkWanted = focused && f.cursorBlinking
+        drawnCursorRow = f.cursorVisible && f.cursorY < f.cells.count ? f.cursorY : nil
         if f.cursorVisible, f.cursorY < f.cells.count, blinkOn || !blinkWanted {
             let rect = NSRect(x: padding + CGFloat(f.cursorX) * cellWidth, y: padding + CGFloat(f.cursorY) * cellHeight,
                               width: cellWidth, height: cellHeight)

@@ -29,6 +29,24 @@ public struct TerminalCell: Sendable {
 public enum CursorStyle: Sendable, Hashable { case block, bar, underline, hollow }
 
 /// A snapshot of what to draw.
+/// What changed on a terminal's screen (TerminalEngine.takeChanges).
+public struct TerminalChanges: Equatable, Sendable {
+    public enum Dirty: Equatable, Sendable {
+        case none
+        /// Rows of the viewport, from the top.
+        case rows(IndexSet)
+        case full
+    }
+    public var dirty: Dirty
+    /// The cursor's row in the viewport, if it's showing.
+    public var cursorRow: Int?
+
+    public init(dirty: Dirty, cursorRow: Int? = nil) {
+        self.dirty = dirty
+        self.cursorRow = cursorRow
+    }
+}
+
 public struct TerminalFrame: Sendable {
     public var cols = 0
     public var rows = 0
@@ -245,6 +263,42 @@ public final class TerminalEngine {
         }
         guard r == GHOSTTY_SUCCESS else { return Data(text.utf8) }
         return Data(bytes: out, count: written)
+    }
+
+    /// What changed on screen since the last call, from libghostty's dirty
+    /// tracking (conservative: a row may be dirty and look the same), and
+    /// where the cursor is now. A renderer that draws only these rows must
+    /// also redraw the rows the cursor left and reached. Calling it marks
+    /// everything clean, so one caller asks for each change (PaneSession).
+    public func takeChanges() -> TerminalChanges {
+        guard let terminal, let renderState, rowIter != nil,
+              ghostty_render_state_update(renderState, terminal) == GHOSTTY_SUCCESS else { return TerminalChanges(dirty: .full) }
+        defer { ghostty_render_state_clean(renderState) }
+        var changes = TerminalChanges(dirty: .none)
+        var cursor = GhosttyRenderStateCursor()
+        cursor.size = MemoryLayout<GhosttyRenderStateCursor>.size
+        if ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_CURSOR, &cursor) == GHOSTTY_SUCCESS,
+           cursor.visible, cursor.viewport_has_value {
+            changes.cursorRow = Int(cursor.viewport_y)
+        }
+        var dirty = GHOSTTY_RENDER_STATE_DIRTY_FULL
+        ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty)
+        switch dirty {
+        case GHOSTTY_RENDER_STATE_DIRTY_FALSE:
+            break
+        case GHOSTTY_RENDER_STATE_DIRTY_PARTIAL:
+            guard ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &rowIter) == GHOSTTY_SUCCESS else {
+                changes.dirty = .full
+                break
+            }
+            var rows = IndexSet()
+            var y: UInt16 = 0
+            while ghostty_render_state_row_iterator_next_dirty(rowIter, &y) { rows.insert(Int(y)) }
+            changes.dirty = rows.isEmpty ? .none : .rows(rows)
+        default:
+            changes.dirty = .full
+        }
+        return changes
     }
 
     /// Captures everything needed to draw the current viewport.

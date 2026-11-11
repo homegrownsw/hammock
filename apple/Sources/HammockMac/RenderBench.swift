@@ -42,12 +42,24 @@ enum RenderBench {
         }
     }
 
+    /// One way of drawing a screen: the whole pane each time, or only the
+    /// rows output changed (with the cursor's), as the pane does.
+    struct Run: Encodable {
+        let frameMs: Stats, drawMs: Stats, totalMs: Stats
+        /// Rows drawn per draw, on average.
+        let rows: Double
+    }
+
     struct Result: Encodable {
         let screen: String
         let cols: Int, rows: Int
         let pixels: String
         let draws: Int
-        let frameMs: Stats, drawMs: Stats, totalMs: Stats
+        let full: Run
+        let changedRows: Run
+        /// Whether the last frame drawn row by row is the same, pixel for
+        /// pixel, as the one drawn whole: a missed row would show here.
+        let same: Bool
     }
 
     struct Report: Encodable {
@@ -62,73 +74,99 @@ enum RenderBench {
 
     static func runIfRequested() {
         guard let out = ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH"], !out.isEmpty else { return }
-        let warmup = 10, draws = Int(ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_DRAWS"] ?? "") ?? 120
+        let draws = Int(ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_DRAWS"] ?? "") ?? 120
         let only = ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_ONLY"].map { Set($0.split(separator: ",").map(String.init)) }
-        let scale: CGFloat = 2
+        let base = (out as NSString).deletingPathExtension
         var results: [Result] = []
-        var font = ""
         for screen in makeScreens() where only?.contains(screen.name) ?? true {
-            let session = PaneSession.standalone(paneID: "bench-\(screen.name)", cols: screen.cols, rows: screen.rows)
-            let view = TerminalNSView(frame: .zero)
-            view.session = session
-            let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,
-                              height: CGFloat(screen.rows) * view.cellHeight + view.padding * 2)
-            view.setFrameSize(size)
-            let (font0, _) = TerminalFont.resolve()
-            font = "\(font0.fontName) \(font0.pointSize)pt"
-            session.engine.write(Data(screen.setup.utf8))
-
-            let w = Int(size.width * scale), h = Int(size.height * scale)
-            guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { continue }
-            // Flipped, in points, as AppKit hands a flipped view its context.
-            ctx.translateBy(x: 0, y: CGFloat(h))
-            ctx.scaleBy(x: scale, y: -scale)
-            let gc = NSGraphicsContext(cgContext: ctx, flipped: true)
-
-            var frameMs: [Double] = [], drawMs: [Double] = [], totalMs: [Double] = []
-            TerminalNSView.timing = { f, d in
-                frameMs.append(f * 1000)
-                drawMs.append(d * 1000)
-                totalMs.append((f + d) * 1000)
-            }
-            for i in 0..<(warmup + draws) {
-                if i == warmup { frameMs = []; drawMs = []; totalMs = [] }
-                session.engine.write(Data(screen.step(i).utf8))
-                NSGraphicsContext.saveGraphicsState()
-                NSGraphicsContext.current = gc
-                view.draw(view.bounds)
-                NSGraphicsContext.restoreGraphicsState()
-            }
-            TerminalNSView.timing = nil
-            view.session = nil
-
-            if let image = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) {
-                let base = (out as NSString).deletingPathExtension
+            guard let (full, fullImage) = measure(screen, draws: draws, changedRows: false),
+                  let (rows, rowsImage) = measure(screen, draws: draws, changedRows: true) else { continue }
+            if let png = NSBitmapImageRep(cgImage: fullImage).representation(using: .png, properties: [:]) {
                 try? png.write(to: URL(fileURLWithPath: "\(base)-\(screen.name).png"))
             }
-            results.append(Result(screen: screen.name, cols: screen.cols, rows: screen.rows, pixels: "\(w)x\(h)", draws: totalMs.count,
-                                  frameMs: Stats(frameMs), drawMs: Stats(drawMs), totalMs: Stats(totalMs)))
+            let same = fullImage.dataProvider?.data == rowsImage.dataProvider?.data
+            if !same, let png = NSBitmapImageRep(cgImage: rowsImage).representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: "\(base)-\(screen.name)-rows.png"))
+            }
+            results.append(Result(screen: screen.name, cols: screen.cols, rows: screen.rows,
+                                  pixels: "\(fullImage.width)x\(fullImage.height)", draws: draws, full: full, changedRows: rows, same: same))
         }
 
+        let (font, _) = TerminalFont.resolve()
         let report = Report(renderer: "coretext", machine: sysctl("hw.model"), os: ProcessInfo.processInfo.operatingSystemVersionString,
-                            font: font, scale: Int(scale), date: ISO8601DateFormatter().string(from: Date()), results: results)
+                            font: "\(font.fontName) \(font.pointSize)pt", scale: Int(scale), date: ISO8601DateFormatter().string(from: Date()), results: results)
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? enc.encode(report) { try? data.write(to: URL(fileURLWithPath: out)) }
 
-        var table = "renderer \(report.renderer), \(report.machine), \(font), @\(report.scale)x, ms per draw (p50 / p99)\n"
-        table += "screen".padding(toLength: 16, withPad: " ", startingAt: 0) + "grid      frame          draw           total          fps(p50)\n"
+        var table = "renderer \(report.renderer), \(report.machine), \(report.font), @\(report.scale)x, ms per draw (p50 / p99)\n"
+        table += "screen".padding(toLength: 22, withPad: " ", startingAt: 0)
+            + "grid      frame          whole pane       changed rows     rows/draw  same\n"
         for r in results {
             func pair(_ s: Stats) -> String { String(format: "%6.2f / %-6.2f", s.p50, s.p99) }
-            table += r.screen.padding(toLength: 16, withPad: " ", startingAt: 0)
+            table += r.screen.padding(toLength: 22, withPad: " ", startingAt: 0)
                 + "\(r.cols)x\(r.rows)".padding(toLength: 10, withPad: " ", startingAt: 0)
-                + pair(r.frameMs) + " " + pair(r.drawMs) + " " + pair(r.totalMs) + " "
-                + String(format: "%6.0f", r.totalMs.p50 > 0 ? 1000 / r.totalMs.p50 : 0) + "\n"
+                + pair(r.full.frameMs) + " " + pair(r.full.totalMs) + "  " + pair(r.changedRows.totalMs) + "  "
+                + String(format: "%6.1f", r.changedRows.rows) + "     " + (r.same ? "yes" : "NO") + "\n"
         }
         FileHandle.standardError.write(Data(table.utf8))
         exit(0)
+    }
+
+    private static let scale: CGFloat = 2
+
+    /// Draws a screen draws times (after ten to warm up), each after its
+    /// next step of output, and returns the timings and the last frame.
+    private static func measure(_ screen: Screen, draws: Int, changedRows: Bool) -> (Run, CGImage)? {
+        let warmup = 10
+        let session = PaneSession.standalone(paneID: "bench-\(screen.name)", cols: screen.cols, rows: screen.rows)
+        let view = TerminalNSView(frame: .zero)
+        view.session = session
+        defer { view.session = nil }
+        let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,
+                          height: CGFloat(screen.rows) * view.cellHeight + view.padding * 2)
+        view.setFrameSize(size)
+        session.engine.write(Data(screen.setup.utf8))
+
+        let w = Int(size.width * scale), h = Int(size.height * scale)
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
+        // Flipped, in points, as AppKit hands a flipped view its context.
+        ctx.translateBy(x: 0, y: CGFloat(h))
+        ctx.scaleBy(x: scale, y: -scale)
+        let gc = NSGraphicsContext(cgContext: ctx, flipped: true)
+
+        var frameMs: [Double] = [], drawMs: [Double] = [], totalMs: [Double] = [], rows: [Double] = []
+        TerminalNSView.timing = { f, d in
+            frameMs.append(f * 1000)
+            drawMs.append(d * 1000)
+            totalMs.append((f + d) * 1000)
+        }
+        defer { TerminalNSView.timing = nil }
+        for i in 0..<(warmup + draws) {
+            if i == warmup { frameMs = []; drawMs = []; totalMs = []; rows = [] }
+            if i > 0 { session.engine.write(Data(screen.step(i - 1).utf8)) }
+            // The first draw is whole either way: there's nothing there yet.
+            let changes = session.engine.takeChanges()
+            let rects = (changedRows && i > 0 ? view.rectsToRedraw(changes) : nil) ?? [view.bounds]
+            let rowCount = rects.reduce(0.0) { $0 + ($1.height >= view.bounds.height ? Double(screen.rows) : 1) }
+            rows.append(Swift.min(rowCount, Double(screen.rows)))
+            guard !rects.isEmpty else { continue }
+            view.benchRects = rects
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = gc
+            // AppKit clips a view's drawing to the rects it asked for.
+            ctx.saveGState()
+            ctx.clip(to: rects)
+            view.draw(rects.reduce(rects[0]) { $0.union($1) })
+            ctx.restoreGState()
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        view.benchRects = nil
+        guard let image = ctx.makeImage() else { return nil }
+        return (Run(frameMs: Stats(frameMs), drawMs: Stats(drawMs), totalMs: Stats(totalMs),
+                    rows: rows.isEmpty ? 0 : rows.reduce(0, +) / Double(rows.count)), image)
     }
 
     private static func sysctl(_ name: String) -> String {
@@ -230,6 +268,9 @@ enum RenderBench {
         var p = Rand(s: 0xBF58476D1CE4E5B9)
         let history = (0..<12).map { _ in "\u{1b}[32m~/Developer/app\u{1b}[0m $ " + line(&p, cols: 60, colour: false) }.joined(separator: "\r\n")
         let typed = Array("git commit -m \"Draw the terminal with Metal and a glyph cache\"")
+        var c = Rand(s: 0x2545F4914F6CDD1D)
+        let colourful = (0..<59).map { _ in line(&c, cols: 200, colour: true) }.joined(separator: "\r\n")
+        func typing(_ i: Int) -> String { i % typed.count == typed.count - 1 ? "\u{1b}[\(typed.count - 1)D\u{1b}[K" : String(typed[i % typed.count]) }
         return [
             scrolling("plain-80x24", 80, 24, colour: false),
             scrolling("plain-200x60", 200, 60, colour: false),
@@ -242,7 +283,11 @@ enum RenderBench {
             // A shell with a little history, and someone typing: one cell
             // changes per draw, but the whole pane is drawn.
             Screen(name: "typing-200x60", cols: 200, rows: 60, setup: history + "\r\n\u{1b}[32m~/Developer/app\u{1b}[0m $ ",
-                   step: { i in i % typed.count == typed.count - 1 ? "\u{1b}[\(typed.count - 1)D\u{1b}[K" : String(typed[i % typed.count]) }),
+                   step: typing),
+            // The same keys at the bottom of a full screen of colour (a
+            // coding agent's TUI, an editor).
+            Screen(name: "typing-colour-200x60", cols: 200, rows: 60, setup: colourful + "\r\n\u{1b}[32m~/Developer/app\u{1b}[0m $ ",
+                   step: typing),
         ]
     }
 }
