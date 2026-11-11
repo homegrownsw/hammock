@@ -1139,13 +1139,30 @@ async function jumpTo(u) {
   const f = byPath.get(u.path)
   if (!f) return
   if (u.thread.state === "resolved") shownResolved.add(u.thread.id)
-  reveal(u.path)
   const box = $("files")
-  let elx = null
-  for (let i = 0; i < 120 && !elx; i++) { // its file's sides arrive, then it's drawn
-    await new Promise((r) => requestAnimationFrame(r))
-    if (u.thread.state === "resolved" && mounted.has(u.path) && i === 0) refreshThreads(u.path)
-    elx = box.querySelector(`[data-comment="${CSS.escape(u.comment.id)}"]`)
+  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  const find = () => box.querySelector(`[data-comment="${CSS.escape(u.comment.id)}"]`)
+  let elx = find()
+  if (!elx) {
+    reveal(u.path)
+    // Its file's sides come from the daemon, then it's drawn…
+    for (let i = 0; i < 400 && !mounted.get(u.path)?.views; i++) await frame()
+    const m = mounted.get(u.path)
+    if (!m) return
+    refreshThreads(u.path)
+    // …but only near the screen: a reply far down a long file isn't
+    // drawn yet. Go to its line, as the editor has it laid out, first.
+    const unified = isUnified(m.views)
+    for (const view of m.views) {
+      const pos = posFor(view, u.thread, unified)
+      if (pos < 0) continue
+      const block = view.lineBlockAt(pos)
+      const y = view.documentTop + block.bottom - box.getBoundingClientRect().top
+      box.scrollTop += y - box.clientHeight / 3
+      pinTop()
+      break
+    }
+    for (let i = 0; i < 120 && !(elx = find()); i++) await frame()
   }
   if (!elx) return
   const r = elx.getBoundingClientRect(), b = box.getBoundingClientRect()
