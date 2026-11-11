@@ -118,21 +118,24 @@ function applyTheme() {
 // What CodeMirror shows in a file: the editor's theme, then the diff's
 // colours (red on the old side, green on the new) over it.
 function diffTheme() {
-  const th = config.theme, p = th.palette || []
-  const add = p[2] || "#98c379", del = p[1] || "#e06c75"
+  const th = config.theme
   const dim = mix(th.foreground, th.background, 0.45)
-  // Faint for a changed line, a little more for the words that changed in
-  // it (drawn over the line's): the code's own colours stay readable.
-  const line = th.dark ? 0.1 : 0.09, word = th.dark ? 0.16 : 0.18
+  // The backgrounds are a clear green and red of their own, not the
+  // theme's: many themes' are muted, and faded they turn grey, so the
+  // code's colours on them get hard to read. Faint for a changed line, more
+  // for the words that changed in it (drawn over the line's).
+  const add = th.dark ? "#2ea043" : "#1f9e3e", del = th.dark ? "#f85149" : "#e5383b"
+  const line = th.dark ? 0.15 : 0.11, word = th.dark ? 0.32 : 0.24
+  const lineDel = th.dark ? 0.13 : 0.09, wordDel = th.dark ? 0.32 : 0.2
   return EditorView.theme({
     "&": { height: "auto" },
     ".cm-content": { padding: "2px 0" },
     ".cm-gutters": { borderRight: `1px solid ${mix(th.background, th.foreground, 0.07)}` },
-    "&.cm-merge-a .cm-changedLine, & .cm-deletedChunk": { backgroundColor: tint(del, line) + " !important" },
+    "&.cm-merge-a .cm-changedLine, & .cm-deletedChunk": { backgroundColor: tint(del, lineDel) + " !important" },
     "&.cm-merge-b .cm-changedLine, & .cm-insertedLine": { backgroundColor: tint(add, line) + " !important" },
     // A deleted line's text is all in a <del>: only its changed words are marked.
     "& del, & .cm-deletedLine, & .cm-deletedChunk .cm-deletedLine del": { background: "none !important", textDecoration: "none" },
-    "&.cm-merge-a .cm-changedText, & .cm-deletedChunk .cm-deletedText": { background: tint(del, word) + " !important", borderRadius: "2px" },
+    "&.cm-merge-a .cm-changedText, & .cm-deletedChunk .cm-deletedText": { background: tint(del, wordDel) + " !important", borderRadius: "2px" },
     "&.cm-merge-b .cm-changedText, & .cm-insertedLine .cm-changedText": { background: tint(add, word) + " !important", borderRadius: "2px" },
     "&.cm-merge-a .cm-changedLineGutter, & .cm-deletedLineGutter": { background: del + " !important" },
     "&.cm-merge-b .cm-changedLineGutter": { background: add + " !important" },
