@@ -4,12 +4,13 @@ import Metal
 import QuartzCore
 import SwiftUI
 
-/// Draws a pane's TerminalEngine with CoreText and turns keyboard/mouse input
+/// Draws a pane's TerminalEngine (with Metal, or CoreGraphics) and turns keyboard/mouse input
 /// into PTY bytes. Purely a view: all terminal state comes from the daemon.
 final class TerminalNSView: NSView {
     var session: PaneSession? {
         didSet {
             oldValue?.unobserve(self)
+            if oldValue !== session { metal?.forgetImages() }
             session?.observe(self) { [weak self] in
                 self?.blinkOn = true // solid while output arrives
                 self?.redrawChanges()
@@ -408,8 +409,6 @@ final class TerminalNSView: NSView {
 
     override var wantsUpdateLayer: Bool { metal != nil }
 
-
-
     /// Metal draws into this, a sublayer filling the view: AppKit never asks
     /// a view backed by a CAMetalLayer itself to update, so the view keeps
     /// an ordinary layer (updateLayer is called as for any other view) and
@@ -428,8 +427,10 @@ final class TerminalNSView: NSView {
         // Two drawables, not three: a full-screen pane on a 6K display is
         // 85 MB each, and drawing waits on the GPU's last frame anyway.
         l.maximumDrawableCount = 2
-        // Moved and resized with the view, never animated.
+        // Moved and resized with the view, never animated; under its
+        // subviews' layers (the "Copied" pill).
         l.actions = ["bounds": NSNull(), "position": NSNull(), "frame": NSNull(), "contents": NSNull()]
+        l.zPosition = -1
         layer?.addSublayer(l)
         return l
     }
@@ -473,6 +474,24 @@ final class TerminalNSView: NSView {
         benchRects = nil
         NSGraphicsContext.restoreGraphicsState()
         return ctx.makeImage()
+    }
+
+    /// For a debug snapshot: the pane's CoreGraphics drawing as its layer's
+    /// own contents, and the Metal layer hidden, so a render of the window's
+    /// layers puts it in place, under whatever sits above it (the palette,
+    /// a sheet), until endSnapshot().
+    func beginSnapshot(scale: CGFloat) {
+        guard let image = snapshotImage(scale: scale), let layer else { return }
+        layer.contents = image
+        layer.contentsScale = scale
+        layer.contentsGravity = .resize
+        metalLayer?.isHidden = true
+    }
+
+    func endSnapshot() {
+        guard metal != nil else { return }
+        layer?.contents = nil
+        metalLayer?.isHidden = false
     }
 
     /// Draws the pane into `texture` with Metal (RenderBench). The command
@@ -617,9 +636,9 @@ final class TerminalNSView: NSView {
         s.draw(with: NSRect(x: origin.x, y: origin.y + ascent + 1, width: width + cellWidth, height: cellHeight), options: [], context: nil)
     }
 
-    // Rows are laid out by TerminalLineLayout (shared with the Metal
-    // renderer to come, docs/design/metal-renderer.md), which keeps the
-    // layouts of rows it has seen; here they're drawn with CoreGraphics.
+    // Rows are laid out by TerminalLineLayout, which keeps the layouts of
+    // rows it has seen; Metal draws them (metalScene) or, here, CoreGraphics
+    // (docs/design/metal-renderer.md).
     private var layoutCache: TerminalLineLayout?
     private var cgColors: [TerminalColor: CGColor] = [:]
     /// Rows laid out afresh and kept, so far (RenderBench).
@@ -635,6 +654,9 @@ final class TerminalNSView: NSView {
         // kept: a dense 400-column row and its layout are ~40 KB, about 16 MB
         // for a full 400×100 pane.
         l.capacity = max(f.rows * 2, 48)
+        // A line the layout lets go of comes back with a new id, so Metal
+        // need keep no more rows than it does.
+        metal?.capacity = l.capacity
         return l
     }
 

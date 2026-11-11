@@ -78,6 +78,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     var session: PaneSession? {
         didSet {
             oldValue?.unobserve(self)
+            if oldValue !== session { metal?.forgetImages() }
             session?.observe(self) { [weak self] in self?.setNeedsDisplay() }
             applyTheme()
             setNeedsDisplay()
@@ -125,6 +126,11 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         addInteraction(editMenu)
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: UserDefaults.didChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged), name: PhoneTheme.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(cameBack), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+
+    @objc private func cameBack() {
+        if redrawWhenBack { redrawWhenBack = false; setNeedsDisplay() }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -350,6 +356,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     // which draws into a Metal sublayer. draw(_:), CoreGraphics, is what's
     // left where Metal can't start.
     private let metal = TerminalMetalRenderer()
+    private var redrawWhenBack = false
     private var layout: TerminalLineLayout?
     /// The fonts and cell size the layout was made for.
     private var layoutKey = ""
@@ -364,6 +371,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         l.presentsWithTransaction = true // in step with the keyboard's animation
         l.maximumDrawableCount = 2
         l.actions = ["bounds": NSNull(), "position": NSNull(), "frame": NSNull(), "contents": NSNull()]
+        l.zPosition = -1
         l.frame = bounds
         layer.addSublayer(l)
         return l
@@ -376,6 +384,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
             layer.contents = image.cgImage
             return
         }
+        // iOS refuses GPU work from the background: drawn on the way back.
+        guard UIApplication.shared.applicationState != .background else { redrawWhenBack = true; return }
         let scale = window?.screen.scale ?? traitCollection.displayScale
         let size = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
         guard size.width >= 1, size.height >= 1, let scene = scene(scale: scale) else { return }
@@ -423,6 +433,10 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         guard let layout else { return nil }
         layout.setPalette(palette)
         layout.capacity = max(f.rows * 2, 48)
+        metal?.capacity = layout.capacity
+        // Kitty images are sized by the cell, in pixels; nothing else here
+        // tells the engine (the Mac's pane does, in reportGrid).
+        session.engine.setCellPixels(width: Int((m.cw * scale).rounded()), height: Int((m.ch * scale).rounded()))
 
         var scene = TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: false, background: f.background,
                                                 padding: origin.x, cellHeight: m.ch)

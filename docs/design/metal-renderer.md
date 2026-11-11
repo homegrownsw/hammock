@@ -31,35 +31,25 @@ A profile of the 400×100 colour screen (`sample` during the bench) splits a dra
 
 ## Design
 
-### Layers
+### As built
 
-1. **Line layout (HammockKit, renderer-agnostic).** It turns a row of `TerminalCell`s into positioned glyphs: font, glyph id, column, colour, and the special cases the CoreText renderer handles today, which are box drawing stretched to the cell, powerline separators fitted to it, Nerd Font icons shrunk to fit, block elements drawn as pixel-snapped rectangles, combining marks kept on their cluster, spaces kept between runs so contextual alternates don't join across a gap, ligatures off, and wide cells. Also backgrounds merged into runs, and decorations. CoreText still shapes and picks fallback fonts, exactly as now; this layer moves that logic out of `drawText` so both renderers share it.
-2. **Line cache.** Keyed by a hash of the row's text and styles (not its index), with bounded memory (LRU). It's invalidated by a font, size, thicken or theme change.
-3. **Renderers.** The existing CoreText one, reworked to draw from the line layout, and a new Metal one. A `TerminalRenderer` protocol sits between `TerminalNSView` (input, selection, IME, links: unchanged) and the drawing.
+1. **Line layout (`TerminalLineLayout`, HammockKit).** It turns a row of `TerminalCell`s into a `TerminalLine`: backgrounds merged into runs; rectangles for block elements (pixel-snapped) and underlines; and glyphs placed by column, with box drawing stretched to the cell, powerline separators fitted to it, Nerd Font icons shrunk to fit, combining marks kept on their cluster, a space kept between runs so contextual alternates don't join across a gap, ligatures off, and wide cells. CoreText shapes each row once, with only its fonts as attributes, and picks fallback fonts; colours are looked up per glyph afterwards.
+2. **Line cache.** In the same class: layouts kept by a hash of the row's text and styles (not its index), checked against the row on a hit, two generations sized to twice the pane's rows. A font, size or palette change clears it.
+3. **Two renderers of the same lines.** `TerminalNSView` (input, selection, IME, links: unchanged) draws them with Metal (`metalScene`, then `TerminalMetalRenderer`) or with CoreGraphics (`draw(_:)`), which is what `terminal-renderer = coretext`, a Mac without Metal and the debug snapshots use. There's no protocol between them: the scene is built in the view, as `draw(_:)` is.
 
 ### The Metal renderer
 
-- **A `CAMetalLayer`** backing the pane. Its contents stay at the top left while a pane animates (as `layerContentsPlacement = .topLeft` does now), and frames are presented in step with window resizes and pane animations (`presentsWithTransaction` while `PaneMotion` is moving).
-- **Two glyph atlases:** an 8-bit coverage one for text, rasterised by CoreText with the same settings as now (no font smoothing unless `font-thicken`), and a colour one for emoji. Glyphs are keyed by font, glyph, and a quarter-pixel horizontal offset, because cells are half points wide and glyphs mustn't snap. Atlases grow, then reset when full, and are rebuilt when the backing scale changes (a window moving to another display).
-- **One pass per frame:**
-  - cell backgrounds, selection and inverse;
-  - Kitty images below the text;
-  - text as instanced quads;
-  - decorations, block elements and the cursor as rectangles;
-  - images above the text;
-  - the hover-link underline and IME text.
-
-  Blending matches CoreGraphics (sRGB, not linear), so text has the same weight it has now.
-- **Per-row instance data** is rebuilt only for dirty rows (the `takeChanges` from #18's first step) and drawn whole every frame, which is cheap on the GPU.
-- **Pacing:** draws are coalesced to the display's refresh (a display link) rather than one per batch of output.
-- **First on the main thread,** where the engine lives. Moving encoding to its own thread is a later step, only if measurements say so.
+- **A Metal sublayer**, not a CAMetalLayer backing the view: AppKit never asks a view backed by one to update, so the pane keeps an ordinary layer and draws into the sublayer from `updateLayer` (on the iPhone, from `display(_:)`). Its contents stay at the top left while a pane animates, and frames are presented in step with Core Animation (`presentsWithTransaction`), two drawables per pane.
+- **One glyph atlas** for the whole app, RGBA: text as white with its coverage as alpha (tinted when drawn), colour glyphs as they are. CoreText rasterises each glyph with the same settings the pane draws with (no font smoothing unless `font-thicken`, and then dark text as dark on light), placed as CoreGraphics places glyphs: on a whole pixel vertically and a quarter pixel across. Glyphs are keyed by font, glyph and their whole transform (so the backing scale too); when the atlas fills it starts afresh and every pane rebuilds its rows.
+- **One instanced draw per frame**, split where the texture changes: Kitty images below the backgrounds, the cells' backgrounds, images below the text, the text and its rectangles, images above the text, text being composed, the cursor and a link's underline, the character under a block cursor. Blending is premultiplied over, in encoded sRGB, as CoreGraphics blends text.
+- **Rows built once:** what each line becomes on the GPU is kept by the line's id, so a frame builds only the rows that are new; the whole pane is drawn every frame.
+- **No display link:** a frame is drawn when the pane is asked to update, as before; after #59 output arrives in batches, so that's already about once per batch. On the main thread, where the engine lives.
 
 ### Measuring
 
-- `just render-bench` gains a renderer column. The Metal renderer draws offscreen into a texture and waits for the GPU, reporting CPU and GPU time separately.
-- Each screen's last frame is written from both renderers as PNGs side by side, for comparison by eye. They won't match pixel for pixel (blending and rasterisation differ slightly), so a perceptual diff flags anything larger than anti-aliasing.
-- Live: `HMK_DEBUG_RENDER_STATS` as now, and keystroke-to-photon (#19) if it's built by then.
-- The debug snapshots (`HMK_DEBUG_SNAPSHOT`) use `cacheDisplay`, which can't see Metal layers. The Metal renderer gets a read-back of its last frame so snapshots and agents' UI checks keep working.
+- `just render-bench` with `HMK_DEBUG_RENDER_BENCH_RENDERER=metal` draws each screen with both renderers, Metal offscreen into a texture waiting for the GPU, reporting CPU and GPU time separately and the share of pixels that differ visibly, with each renderer's last frame as a PNG. `HMK_DEBUG_RENDER_BENCH_REPLAY` does the same for recordings of real programs.
+- Live: `HMK_DEBUG_RENDER_STATS`, and keystroke-to-photon (#19) when it's built.
+- Debug snapshots (`HMK_DEBUG_SNAPSHOT`) render the window's layers, which can't see Metal: while they render, each Metal pane shows its CoreGraphics drawing as its layer's contents instead, so it lands under whatever sits above it. The views dump says which renderer each pane uses.
 
 ## Phases
 
@@ -92,5 +82,5 @@ A profile of the 400×100 colour screen (`sample` during the bench) splits a dra
 
 ## Questions for later
 
-- Should `terminal-renderer` be a visible setting in Settings, or only a config key while it's experimental?
+- Should `terminal-renderer` be a visible setting in Settings, or stay a config-file key for going back to CoreGraphics?
 - If phase 1 alone brings scrolling colour at 200×60 under 8 ms, is Metal still worth it before the iPhone needs it? The bench will say after phase 1.

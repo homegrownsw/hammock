@@ -20,7 +20,7 @@ public final class TerminalMetalRenderer {
     public static let pixelFormat = MTLPixelFormat.bgra8Unorm
 
     /// What every pane shares: the device, its queue, the pipeline and the
-    /// glyph atlas (one per app, not per pane: it's 16 MB). Use it, and every
+    /// glyph atlas (one per app, not per pane: 16 MB on the GPU and its copy here). Use it, and every
     /// renderer, from one thread (the main one): the atlas isn't locked.
     public final class Context {
         public let device: MTLDevice
@@ -157,6 +157,9 @@ public final class TerminalMetalRenderer {
             rows = [:]
             olderRows = [:]
             (instances, segments) = build(scene)
+            // Still too much for the whole atlas: draw what fitted rather
+            // than start afresh on every frame.
+            atlas.acceptOverflow()
         }
         atlas.upload()
 
@@ -265,6 +268,10 @@ public final class TerminalMetalRenderer {
         imageTextures[img.key] = t
         return t
     }
+
+    /// The pane now shows another session: its images' keys (programs'
+    /// own ids, often 1) mean other images.
+    public func forgetImages() { imageTextures = [:] }
 
     private func forgetImages(except shown: Set<String>) {
         guard imageTextures.count > shown.count else { return }
@@ -467,6 +474,10 @@ final class GlyphAtlas {
         texture = t
         pixels = [UInt8](repeating: 0, count: 2048 * 2048 * 4)
     }
+
+    /// A frame needed more glyphs than the atlas holds even empty: carry on
+    /// with what fitted (the rest go undrawn until it's reset again).
+    func acceptOverflow() { overflowed = false }
 
     func reset() {
         generation += 1
