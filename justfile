@@ -213,6 +213,10 @@ appstore-push-testflight: appstore-check
 appstore-pull:
     marketing/scripts/appstore-pull
 
+# Take the App Store screenshots from the demo in the Simulator: [SCENE] [--light|--dark] [--device iphone|ipad|duo].
+appstore-screenshots *args:
+    marketing/scripts/appstore-screenshots {{args}}
+
 # What's New for an iPhone version, from its release notes (--pending: with the notes not cut yet).
 appstore-whats-new version *args:
     marketing/scripts/appstore-whats-new {{version}} {{args}}

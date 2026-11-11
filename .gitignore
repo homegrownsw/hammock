@@ -40,3 +40,8 @@ DerivedData/
 /marketing/fastlane/report.xml
 /marketing/fastlane/README.md
 /marketing/.bundle/
+# GENERATED: the App Store screenshots (just appstore-screenshots) and the Simulator build they're taken from.
+/marketing/build/
+/marketing/appstore/screenshots/
+/marketing/appstore/screenshots-dark/
+/marketing/appstore/duo/

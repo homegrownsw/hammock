@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+#
+# Takes the App Store screenshots from the real iPhone app in the Simulator (marketing/appstore/README.md).
+#
+#   just appstore-screenshots                  # every scene, light into appstore/screenshots/<locale>/ and dark
+#                                              # into appstore/screenshots-dark/<locale>/
+#   just appstore-screenshots 02-allow         # one scene (in both appearances)
+#   just appstore-screenshots --light          # only the light set (--dark: only the dark one)
+#   just appstore-screenshots --device ipad    # one device (iphone, ipad or duo; repeatable). Default: all three
+#   just appstore-screenshots --skip-build     # reuse the last Simulator build
+#
+# The scenes are marketing/appstore/scenes.json. The Debug app is built for the Simulator and launched once per
+# scene into its demo (HMK_DEBUG_SAMPLE: DemoMac, a made-up Mac, so nothing personal is ever in a screenshot)
+# with HMK_DEBUG_SCREENSHOT, which hides the demo's bar and writes "HammockScreenshot: done" to stderr once the
+# screen has settled, and the scene's own HMK_DEBUG_* variables, which open the screen it shows. The Debug build
+# is used because only it has those; nothing on screen differs from Release.
+#
+# The app's words are English only, so one set serves every listing locale: it's taken once, into en-GB (the
+# listing's primary language). The status bar reads 9:41, full battery and signal. The output is GENERATED and
+# gitignored; deliver uploads it in filename order, which is why every scene's id starts with its NN.
+#
+# The devices, each its own simulator ("Hammock App Store <device>", made if missing, so yours are never touched),
+# one at a time:
+#   iphone  6.9" iPhone, 1320 x 2868 (iPhone 17 Pro Max): screenshots/<locale>/NN-<scene>-iphone69.png. App Store
+#           Connect scales it down for the smaller iPhones.
+#   ipad    13" iPad, 2064 x 2752 portrait (iPad Pro 13-inch (M5)): NN-<scene>-ipad13.png.
+#   duo     iPhone Duo, unfolded (its inner display, where Hammock's sidebar and panes sit side by side), in
+#           landscape: 2853 x 2007 (HMK_DUO_ORIENTATION=portrait for 2007 x 2853). Into duo/screenshots/<locale>/
+#           NN-<scene>-duo.png, apart from the rest because deliver has no iPhone Duo display type yet. It's
+#           unfolded by Hammock's own simulator guest helper (helpers/simulator/guest), built if missing.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+root="$PWD"
+
+locale="en-GB"
+bundle_id="com.homegrownsw.hammock"
+scenes_file="marketing/appstore/scenes.json"
+derived="marketing/build/DerivedData"
+log="$root/marketing/build/screenshot-stderr.log"
+
+appearances="light dark"
+build=1
+only=""
+devices=""
+want_device=0
+for arg in "$@"; do
+  if [ "$want_device" -eq 1 ]; then
+    case "$arg" in
+      iphone | ipad | duo) devices="$devices $arg" ;;
+      *) echo >&2 "--device takes iphone, ipad or duo, not '$arg'"; exit 2 ;;
+    esac
+    want_device=0
+    continue
+  fi
+  case "$arg" in
+    --light) appearances="light" ;;
+    --dark) appearances="dark" ;;
+    --skip-build) build=0 ;;
+    --device) want_device=1 ;;
+    -h | --help) sed -n '2,30p' "$0"; exit 0 ;;
+    -*) echo >&2 "unknown option $arg"; exit 2 ;;
+    *) only="$arg" ;;
+  esac
+done
+[ "$want_device" -eq 0 ] || { echo >&2 "--device needs a value"; exit 2; }
+devices="${devices:- iphone ipad duo}"
+
+if [ -n "$only" ] && ! jq -e --arg id "$only" '.scenes | any(.id == $id)' "$scenes_file" >/dev/null; then
+  echo >&2 "'$only' isn't one of: $(jq -r '[.scenes[].id] | join(" ")' "$scenes_file")"
+  exit 2
+fi
+
+duo_orientation="${HMK_DUO_ORIENTATION:-landscape}"
+
+# Per device: its simulator's type, the runtime it needs, the pixel size Apple takes, its file tag and its folder.
+device_config() {
+  case "$1" in
+    iphone)
+      device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max" expected="1320x2868" tag="iphone69"
+      shots_root="marketing/appstore/screenshots" ;;
+    ipad)
+      device_type="com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB" expected="2064x2752" tag="ipad13"
+      shots_root="marketing/appstore/screenshots" ;;
+    duo)
+      device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-Duo" tag="duo"
+      expected="2853x2007"; [ "$duo_orientation" = portrait ] && expected="2007x2853"
+      shots_root="marketing/appstore/duo/screenshots" ;;
+  esac
+  device_name="Hammock App Store $1"
+}
+
+png_size() {
+  echo "$(sips -g pixelWidth "$1" | awk '/pixelWidth/ {print $2}')x$(sips -g pixelHeight "$1" | awk '/pixelHeight/ {print $2}')"
+}
+
+# The simulator for a device: ours if it exists, else made on the newest runtime that can run that device type.
+simulator_for() {
+  local udid runtime
+  udid=$(xcrun simctl list devices available -j |
+    jq -r --arg name "$device_name" '[.devices[][] | select(.name == $name)][0].udid // empty')
+  if [ -n "$udid" ]; then echo "$udid"; return; fi
+  for runtime in $(xcrun simctl list runtimes available -j | jq -r '[.runtimes[] | select(.platform == "iOS")] | sort_by(.version) | reverse | .[].identifier'); do
+    if udid=$(xcrun simctl create "$device_name" "$device_type" "$runtime" 2>/dev/null); then echo "$udid"; return; fi
+  done
+  echo >&2 "Couldn't make a '$device_type' simulator on any installed iOS runtime (the iPhone Duo needs iOS 27.1)."
+  return 1
+}
+
+# ---- 1. build ---------------------------------------------------------------------------------------------
+app="$derived/Build/Products/Debug-iphonesimulator/Hammock.app"
+mkdir -p "$(dirname "$log")"
+if [ "$build" -eq 1 ]; then
+  echo "==> Building the Debug app for the Simulator"
+  just deps >/dev/null
+  # arm64 only: libghostty-vt has no x86_64 simulator slice.
+  xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -configuration Debug \
+    -destination "generic/platform=iOS Simulator" -derivedDataPath "$derived" \
+    CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -quiet build
+fi
+[ -d "$app" ] || { echo >&2 "no Simulator build at $app (run without --skip-build)"; exit 1; }
+
+guest="$root/bin/Hammock Simulator.app/Contents/Resources/hmk-sim-guest"
+if [[ " $devices " == *" duo "* ]] && [ ! -x "$guest" ]; then
+  echo "==> Building Hammock's simulator helper (for the iPhone Duo's fold)"
+  ./helpers/simulator/build.sh >/dev/null
+fi
+
+version=$(sed -nE 's/^MARKETING_VERSION = ([^ ]+).*$/\1/p' apple/iOS/Config/Version.xcconfig)
+
+# ---- 2. each device's simulator, one at a time ----------------------------------------------------------
+udid=""
+cleanup() {
+  [ -n "$udid" ] || return 0
+  xcrun simctl terminate "$udid" "$bundle_id" >/dev/null 2>&1 || true
+  xcrun simctl status_bar "$udid" clear >/dev/null 2>&1 || true
+  xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
+  udid=""
+}
+trap cleanup EXIT
+
+# The iPhone Duo, opened flat and turned (the guest helper's hinge and orientation, which go by the phone's own way up:
+# its inner display lies sideways to that, so the phone in "portrait" shows the inner display in landscape).
+unfold() {
+  printf 'hinge 180\norientation %s\n' "$([ "$duo_orientation" = portrait ] && echo landscape-left || echo portrait)" |
+    { sleep 2; cat; sleep 2; } | xcrun simctl spawn "$udid" "$guest" >/dev/null
+  sleep 1
+}
+display_for() {
+  [ "$1" = duo ] || return 0
+  xcrun simctl io "$udid" enumerate 2>/dev/null | awk '
+    /^[[:space:]]*UUID:/ { id = $2 }
+    /Default width: 2007$/ { print "--display=" id; exit }'
+}
+
+# A scene's environment, as `simctl launch` passes it on: SIMCTL_CHILD_<name>=<value>, one per line; on the wide
+# devices (iPad, the unfolded Duo), with its "wide" variables too.
+scene_env() { # scene_env <scene> <device>
+  jq -r --arg dev "$2" '(.env // {}) + (if $dev == "iphone" then {} else (.wide // {}) end) | to_entries[] | "SIMCTL_CHILD_\(.key)=\(.value)"' <<<"$1"
+}
+
+captured=0
+capture_device() {
+  local dev="$1" device_type expected tag shots_root device_name
+  device_config "$dev"
+  udid=$(simulator_for)
+  echo "==> $device_name ($udid)"
+  # One simulator at a time: each takes gigabytes.
+  xcrun simctl list devices booted -j | jq -r '.devices[][].udid' |
+    while read -r other; do xcrun simctl shutdown "$other" >/dev/null 2>&1 || true; done
+  xcrun simctl boot "$udid" >/dev/null 2>&1 || true
+  xcrun simctl bootstatus "$udid" -b >/dev/null
+  xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+    --cellularMode active --cellularBars 4 --operatorName "" --batteryState charged --batteryLevel 100
+  # A fresh install, so nothing left from an earlier run (paired Macs, settings) shows up.
+  xcrun simctl uninstall "$udid" "$bundle_id" >/dev/null 2>&1 || true
+  xcrun simctl install "$udid" "$app"
+  [ "$dev" = duo ] && unfold
+  local display
+  display=$(display_for "$dev")
+
+  for appearance in $appearances; do
+    local out_root="$shots_root"
+    [ "$appearance" = dark ] && out_root="${shots_root}-dark"
+    xcrun simctl ui "$udid" appearance "$appearance"
+    mkdir -p "$out_root/$locale"
+    local took=0 scene
+    while IFS= read -r scene; do
+      local name dest size settled env=()
+      name=$(jq -r .id <<<"$scene")
+      if [ -n "$only" ] && [ "$name" != "$only" ]; then continue; fi
+      dest="$out_root/$locale/${name}-${tag}.png"
+      echo "==> $name ($dev, $appearance)"
+      : >"$log"
+      while IFS= read -r e; do env+=("$e"); done < <(scene_env "$scene" "$dev")
+      env SIMCTL_CHILD_HMK_DEBUG_SAMPLE=1 SIMCTL_CHILD_HMK_DEBUG_SCREENSHOT=1 ${env[@]+"${env[@]}"} \
+        xcrun simctl launch --terminate-running-process --stderr="$log" "$udid" "$bundle_id" >/dev/null
+      settled=0
+      for _ in $(seq 1 300); do
+        if grep -q "HammockScreenshot: done" "$log"; then settled=1; break; fi
+        sleep 0.1
+      done
+      if [ "$settled" -eq 0 ]; then
+        echo >&2 "$name: the app never said the screen had settled (a Debug build, with HMK_DEBUG_SCREENSHOT?)"
+        tail -5 "$log" >&2 || true
+        exit 1
+      fi
+      # shellcheck disable=SC2086 # $display is empty or one --display= argument
+      xcrun simctl io "$udid" screenshot --type=png --mask=ignored $display "$dest" >/dev/null 2>&1
+      size=$(png_size "$dest")
+      if [ "$size" != "$expected" ]; then
+        echo >&2 "$dest is $size, but the $dev set must be $expected."
+        exit 1
+      fi
+      echo "    $dest ($size)"
+      took=$((took + 1))
+    done < <(jq -c '.scenes[]' "$scenes_file")
+    captured=$((captured + took))
+
+    # What the push compares: the app version these show and the commit they were taken from.
+    if [ -z "$only" ]; then
+      printf 'version=%s\ncommit=%s\nappearance=%s\ncaptured_at=%s\n' "$version" "$(git rev-parse --short HEAD)" \
+        "$appearance" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$out_root/$locale/.captured"
+    fi
+  done
+  cleanup
+}
+
+for dev in $devices; do capture_device "$dev"; done
+
+echo
+echo "Took $captured screenshot(s) ($devices; $appearances)."

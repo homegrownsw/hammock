@@ -21,6 +21,26 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
     static var launchedInto: Bool { ProcessInfo.processInfo.environment["HMK_DEBUG_SAMPLE"] == "1" }
     #endif
 
+    /// Dev aid for the App Store screenshots (marketing/scripts/appstore-screenshots): HMK_DEBUG_SCREENSHOT=1 hides
+    /// the demo's bar, and once the app has its state and has settled, writes "HammockScreenshot: done" to stderr,
+    /// which is when the picture is taken. Debug builds only.
+    static var screenshotMode: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["HMK_DEBUG_SCREENSHOT"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    /// Says the screen has settled (screenshotMode), a moment after the state arrives: long enough for a pushed
+    /// screen, its conversation and its terminal to draw.
+    @MainActor static func reportSettled() {
+        guard screenshotMode else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            FileHandle.standardError.write(Data("HammockScreenshot: done\n".utf8))
+        }
+    }
+
     /// Everything happens on `q`, in order, as on a daemon's connection.
     private let q = DispatchQueue(label: "hammock.demo")
     private var state: Hammock_V1_StateUpdate
@@ -70,7 +90,12 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         case .subscribe:
             answer(msg) { $0.state = state }
         case .attachPane(let a):
-            send(.with { $0.paneSnapshot = .with { $0.paneID = a.paneID; $0.cols = 80; $0.rows = 40; $0.data = Data(Self.terminal(a.paneID).utf8) } })
+            let (cols, rows) = sizes[a.paneID] ?? (80, 40)
+            snapshot(a.paneID, cols: cols, rows: rows)
+        case .resize(let r):
+            // As a Mac does: the pane takes the size the phone asks for, and is drawn again at it.
+            sizes[r.paneID] = (r.cols, r.rows)
+            snapshot(r.paneID, cols: r.cols, rows: r.rows)
         case .input(let i) where i.paneID == "p_shell":
             shellTyped(i.data)
         case .watchAgent(let w):
@@ -109,6 +134,15 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             // Everything else (sizes, focus, presence, lists) is fine as it is.
             answer(msg)
         }
+    }
+
+    // MARK: Terminals
+
+    private var sizes: [String: (UInt32, UInt32)] = [:]
+
+    private func snapshot(_ paneID: String, cols: UInt32, rows: UInt32) {
+        let text = paneID == "p_shell" ? Self.terminal(paneID) + typed : Self.terminal(paneID)
+        send(.with { $0.paneSnapshot = .with { $0.paneID = paneID; $0.cols = cols; $0.rows = rows; $0.data = Data(text.utf8) } })
     }
 
     // MARK: State
@@ -421,15 +455,30 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
     static func terminal(_ paneID: String) -> String {
         switch paneID {
         case "p_shell":
-            return prompt + "git status --short\r\n"
-                + " \(e)31mM\(e)0m apple/iOS/Hammock/SettingsScreen.swift\r\n"
+            let ok = "\(e)32mok\(e)0m"
+            return prompt + "git log --oneline -4\r\n"
+                + "\(e)33m4f2a91c\(e)0m Agent view: long lines wrap\r\n"
+                + "\(e)33m9c07e3d\(e)0m Settings: a theme for the phone\r\n"
+                + "\(e)33m1b88f40\(e)0m Daemon: quieter logs\r\n"
+                + "\(e)33m7d3e215\(e)0m Groups remember their folder\r\n"
+                + prompt + "git status --short\r\n"
+                + " \(e)31mM\(e)0m apple/iOS/Settings.swift\r\n"
                 + " \(e)31mM\(e)0m internal/daemon/theme.go\r\n"
-                + "\(e)32m??\(e)0m apple/iOS/Hammock/PhoneTheme.swift\r\n"
+                + "\(e)32m??\(e)0m apple/iOS/PhoneTheme.swift\r\n"
                 + prompt + "go test ./internal/...\r\n"
-                + "ok  \tinternal/daemon\t\(e)33m12.4s\(e)0m\r\n"
-                + "ok  \tinternal/hammockconfig\t\(e)33m0.2s\(e)0m\r\n"
-                + "\(e)35mPASS\(e)0m\r\n"
-                + prompt
+                + "\(ok)  internal/agents     \(e)2m0.41s\(e)0m\r\n"
+                + "\(ok)  internal/daemon     \(e)2m12.4s\(e)0m\r\n"
+                + "\(ok)  internal/state      \(e)2m0.18s\(e)0m\r\n"
+                + "\(ok)  internal/thread     \(e)2m0.09s\(e)0m\r\n"
+                + "\(ok)  internal/tui        \(e)2m0.57s\(e)0m\r\n"
+                + "\(ok)  internal/vt         \(e)2m0.02s\(e)0m\r\n"
+                + prompt + "npm run dev\r\n\r\n"
+                + "  \(e)1;32mVITE\(e)0m v7.1  ready in \(e)1m312\(e)0m ms\r\n\r\n"
+                + "  \(e)32m➜\(e)0m  Local:   \(e)36mhttp://localhost:5173/\(e)0m\r\n"
+                + "  \(e)2m➜  Network: use --host to expose\(e)0m\r\n\r\n"
+                + "\(e)2m9:38:02\(e)0m \(e)36m[vite]\(e)0m page reload \(e)2msrc/App.tsx\(e)0m\r\n"
+                + "\(e)2m9:39:15\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/Forecast.tsx\(e)0m\r\n"
+                + "\(e)2m9:40:47\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/theme.css\(e)0m\r\n"
         case "p_backup":
             return "\(e)1;32mme@MacBook\(e)0m \(e)1;34m~\(e)0m $ rsync -a ~/.config/ /Volumes/Backup/config/\r\n"
                 + "\(e)2msent 18.2 MB  received 4.1 kB  12.1 MB/sec\(e)0m\r\n"

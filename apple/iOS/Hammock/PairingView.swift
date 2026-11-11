@@ -46,7 +46,7 @@ extension View {
     /// The demo's bar, above the tab bar on every tab (only in the demo).
     @ViewBuilder
     func demoBar(_ session: Session) -> some View {
-        if session.isDemo {
+        if session.isDemo, !DemoMac.screenshotMode {
             tabViewBottomAccessory { DemoBar(session: session) }
         } else {
             self

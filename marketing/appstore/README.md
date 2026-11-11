@@ -79,10 +79,37 @@ homegrownsw.com/hammock/privacy/.
 **App Review** gets `review_information/notes.txt`: there's no sign-in, and the app's demo ("See a demo" on the
 first screen) lets a reviewer try it without a Mac, with the demo video at homegrownsw.com/hammock/demo.mp4.
 
-## Screenshots and previews (next)
+## The screenshots
 
-Not made yet, so the push leaves App Store Connect's as they are (`skip_screenshots`). The plan: capture them from
-the real app in the Simulator, against the demo (made-up Groups and agents, nothing personal), in light and dark,
-on the 6.9" iPhone, the 13" iPad and iPhone Duo unfolded (its inner display, where Hammock's sidebar and panes
-show at their best); frame them under a headline and subline for the marketing images; and record the app
-preview the same way. All generated and gitignored, with their scenes and copy committed here.
+```bash
+just appstore-screenshots                  # every scene, light and dark, on the iPhone, the iPad and iPhone Duo
+just appstore-screenshots 02-allow         # …or one scene
+just appstore-screenshots --device iphone  # …or one device (iphone, ipad, duo; repeatable); --light or --dark
+just appstore-screenshots --skip-build     # reuse the last Simulator build
+```
+
+`scripts/appstore-screenshots` builds the Debug iPhone app for the Simulator and launches it once per scene in
+`scenes.json`, into its demo (`apple/iOS/Hammock/DemoMac.swift`: a made-up Mac standing in for the daemon, so
+nothing personal is ever in a screenshot). A scene is the app's own `HMK_DEBUG_*` variables (AGENTS.md: which tab,
+which screens pushed); `HMK_DEBUG_SCREENSHOT=1` hides the demo's bar and writes `HammockScreenshot: done` to stderr
+once the screen has settled, and the picture is taken then. The app is installed afresh on each simulator first,
+and the status bar reads 9:41 with full battery and signal.
+
+Each scene is taken in light and dark, on three simulators of the script's own ("Hammock App Store iphone",
+"… ipad", "… duo", made when missing, so yours are never touched), one at a time:
+
+| Device | Simulator | Size | File |
+|---|---|---|---|
+| 6.9" iPhone | iPhone 17 Pro Max | 1320 × 2868 | `screenshots/en-GB/NN-<scene>-iphone69.png` |
+| 13" iPad | iPad Pro 13-inch (M5) | 2064 × 2752 | `screenshots/en-GB/NN-<scene>-ipad13.png` |
+| iPhone Duo, unfolded | iPhone Duo (iOS 27.1) | 2853 × 2007 | `duo/screenshots/en-GB/NN-<scene>-duo.png` |
+
+**The iPhone Duo is shown unfolded**, on its inner display in landscape, where the sidebar and a pane sit side by
+side (`HMK_DUO_ORIENTATION=portrait` for 2007 × 2853). The script opens it with Hammock's own simulator guest
+helper (`helpers/simulator/guest`: `hinge 180`), built if it's missing. deliver has no iPhone Duo display type
+yet, so that set is kept apart, in `duo/`.
+
+The app's words are English only, so one set, in `en-GB` (the listing's primary language), serves every locale.
+All of it is GENERATED and gitignored, with a `.captured` stamp naming the app version and commit. The push leaves
+App Store Connect's screenshots as they are (`skip_screenshots`) until the marketing images, framed under a
+headline and subline, are made from these (next), and the app preview after them.
