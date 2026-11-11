@@ -289,7 +289,8 @@ function renderBar() {
   if (config.canSend) {
     const n = unsentCount()
     if (n && config.target) {
-      const send = el("button", "btn send", `Send ${n} to ${agentName()}`)
+      const narrow = window.innerWidth <= 640
+      const send = el("button", "btn send", narrow ? `Send ${n}` : `Send ${n} to ${agentName()}`)
       send.title = "Send every comment not yet sent, as one message"
       send.onclick = () => post({ type: "review", command: { action: "send" } })
       bar.append(send)
@@ -1685,7 +1686,7 @@ document.addEventListener("keydown", (e) => {
   }
 })
 document.addEventListener("mousedown", () => post({ type: "focus" }), true)
-window.addEventListener("resize", () => { if (openPopID) closePops() })
+window.addEventListener("resize", () => { if (openPopID) closePops(); renderBar() })
 if (window.innerWidth <= 640) treeHidden = true
 applyTheme()
 renderBar()

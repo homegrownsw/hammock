@@ -37,16 +37,8 @@ struct DiffScreen: View {
                 Color.clear
             }
         }
+        // (No menu of its own: the pane's is there, and Refresh is in the page.)
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Refresh", systemImage: "arrow.clockwise") { session?.load(refresh: true) }
-                } label: {
-                    Label("More", systemImage: info.stale ? "ellipsis.circle.fill" : "ellipsis.circle")
-                }
-            }
-        }
         .onAppear { if session == nil { session = model.acquireDiff(paneID) } }
         .onDisappear {
             if session != nil {

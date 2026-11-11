@@ -221,7 +221,10 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 /* Narrow (an iPhone, a thin split): the tree floats over the files. */
 @media (max-width: 640px) {
   #tree { position: absolute; z-index: 10; top: 0; bottom: 0; left: 0; background: var(--bg); box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3); width: min(300px, 85vw); }
-  #totals .files { display: none; }
+  #totals { display: none; }
+  #bar { gap: 4px; padding: 0 6px; }
+  #source { flex: 1; }
+  #target { max-width: 120px; }
   #files { padding: 8px 6px 40vh; }
   .fhead .seg { display: none; }
 }
