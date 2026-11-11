@@ -111,8 +111,8 @@ struct HammockKeyApprovalSheet: View {
                     if request.windowMs > 0, request.agent {
                         let name = Place(model: model, request: request).agent
                         let agent = name == "An agent" ? "the agent" : name
-                        note("Approving for \(minutes) minutes also lets \(agent) in this pane sign without asking again. "
-                             + "Your own programs still ask.", systemImage: "clock")
+                        note("Approving for \(minutes) minutes also lets \(agent) in this pane sign without asking again.",
+                             systemImage: "clock")
                     } else if request.windowMs > 0 {
                         note("Approving for \(minutes) minutes also lets programs in this pane sign without asking again.",
                              systemImage: "clock")
