@@ -1,4 +1,6 @@
 import HammockKit
+import Metal
+import QuartzCore
 import SwiftUI
 import UIKit
 
@@ -306,6 +308,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if let metalLayer, metalLayer.frame != bounds { metalLayer.frame = bounds }
         reportGrid(force: false)
         setNeedsDisplay()
     }
@@ -341,6 +344,107 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     }
 
     // MARK: Drawing
+
+    // Metal draws the pane (TerminalMetalRenderer, from TerminalLineLayout's
+    // rows, as on the Mac; #18): setNeedsDisplay ends up in display(_:),
+    // which draws into a Metal sublayer. draw(_:), CoreGraphics, is what's
+    // left where Metal can't start.
+    private let metal = TerminalMetalRenderer()
+    private var layout: TerminalLineLayout?
+    /// The fonts and cell size the layout was made for.
+    private var layoutKey = ""
+
+    private lazy var metalLayer: CAMetalLayer? = metal.map { metal in
+        let l = CAMetalLayer()
+        l.device = metal.device
+        l.pixelFormat = TerminalMetalRenderer.pixelFormat
+        l.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+        l.framebufferOnly = true
+        l.isOpaque = true
+        l.presentsWithTransaction = true // in step with the keyboard's animation
+        l.maximumDrawableCount = 2
+        l.actions = ["bounds": NSNull(), "position": NSNull(), "frame": NSNull(), "contents": NSNull()]
+        l.frame = bounds
+        layer.addSublayer(l)
+        return l
+    }
+
+    override func display(_ layer: CALayer) {
+        guard let metal, let metalLayer else {
+            // No Metal: CoreGraphics, into the layer.
+            let image = UIGraphicsImageRenderer(bounds: bounds).image { _ in draw(bounds) }
+            layer.contents = image.cgImage
+            return
+        }
+        let scale = window?.screen.scale ?? traitCollection.displayScale
+        let size = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard size.width >= 1, size.height >= 1, let scene = scene(scale: scale) else { return }
+        metalLayer.contentsScale = scale
+        if metalLayer.drawableSize != size { metalLayer.drawableSize = size }
+        guard let drawable = metalLayer.nextDrawable() else { return }
+        let cb = metal.render(scene, to: drawable.texture)
+        cb?.waitUntilScheduled()
+        drawable.present()
+    }
+
+    /// The same as draw(_:), as a scene for Metal: the font shrunk so a
+    /// wider pane (sized by the Mac) still fits, the cells, Kitty images,
+    /// and the cursor (filled while you type, else an underline).
+    private func scene(scale: CGFloat) -> TerminalMetalRenderer.Scene? {
+        guard let session else { return nil }
+        let f = session.engine.frame()
+        let theme = session.engine.theme
+        guard f.cols > 0 else {
+            return TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: false, background: f.background, padding: 0, cellHeight: 1)
+        }
+        let usable = bounds.inset(by: safeAreaInsets)
+        var size = baseSize
+        let base = metrics(size: size)
+        let needW = CGFloat(f.cols) * base.cw + padding * 2
+        let needH = CGFloat(f.rows) * base.ch + padding * 2
+        let shrink = min(1, usable.width / needW, usable.height / needH)
+        if shrink < 1 { size = max(5, size * shrink) }
+        let m = metrics(size: size)
+        let origin = CGPoint(x: usable.minX + padding, y: usable.minY + padding)
+        drawn = (origin, m.cw, m.ch)
+
+        let key = "\(m.font.fontName)|\(size)|\(m.cw)|\(m.ch)|\(m.inset)|\(scale)"
+        let palette = TerminalPalette(foreground: f.foreground, background: f.background,
+                                      selection: theme.selection, selectionForeground: theme.selectionForeground)
+        if layout == nil || key != layoutKey {
+            func italic(_ font: UIFont) -> UIFont {
+                font.fontDescriptor.withSymbolicTraits(font.fontDescriptor.symbolicTraits.union(.traitItalic)).map { UIFont(descriptor: $0, size: font.pointSize) } ?? font
+            }
+            let fonts = TerminalFonts(regular: m.font as CTFont, bold: m.bold as CTFont, italic: italic(m.font) as CTFont, boldItalic: italic(m.bold) as CTFont,
+                                      cellWidth: m.cw, cellHeight: m.ch, baseline: m.inset + m.font.ascender, scale: scale)
+            if let layout { layout.setFonts(fonts) } else { layout = TerminalLineLayout(fonts: fonts, palette: palette) }
+            layoutKey = key
+        }
+        guard let layout else { return nil }
+        layout.setPalette(palette)
+        layout.capacity = max(f.rows * 2, 48)
+
+        var scene = TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: false, background: f.background,
+                                                padding: origin.x, cellHeight: m.ch)
+        for (y, row) in f.cells.enumerated() {
+            let top = origin.y + CGFloat(y) * m.ch
+            if top > bounds.maxY { break }
+            scene.rows.append((top, layout.line(row)))
+        }
+        for img in session.engine.images() {
+            let rect = CGRect(x: origin.x + CGFloat(img.col) * m.cw + img.offsetX / scale,
+                              y: origin.y + CGFloat(img.row) * m.ch + img.offsetY / scale,
+                              width: img.width / scale, height: img.height / scale)
+            scene.images.append(.init(key: img.key, source: img.source, sourceRect: img.sourceRect, rect: rect, layer: img.layer))
+        }
+        if f.cursorVisible {
+            let r = CGRect(x: origin.x + CGFloat(f.cursorX) * m.cw, y: origin.y + CGFloat(f.cursorY) * m.ch, width: m.cw, height: m.ch)
+            cursorRect = r
+            let c = TerminalColor(f.cursorColor ?? theme.cursor, alpha: isFirstResponder ? 0.7 : 0.35)
+            scene.overlay.append(.init(rect: isFirstResponder ? r : CGRect(x: r.minX, y: r.maxY - 2, width: r.width, height: 2), color: c, copy: false))
+        }
+        return scene
+    }
 
     private func color(_ c: RGB, alpha: CGFloat = 1) -> UIColor {
         UIColor(red: CGFloat(c.r) / 255, green: CGFloat(c.g) / 255, blue: CGFloat(c.b) / 255, alpha: alpha)
