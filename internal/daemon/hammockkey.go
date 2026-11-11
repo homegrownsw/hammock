@@ -51,12 +51,17 @@ import (
 //
 // "For a while" is 10 minutes, in the pane that asked: a rebase signing
 // many commits, a deploy script. Touch ID here opens one for your own
-// programs; agents are asked every time. The helper fixes how long a
-// window lasts (keyWindowMs in its main.swift), and its prompt says so.
+// programs. An agent's is 5 minutes (a script's few commits, a burst of ssh
+// to a remote machine), and only if you choose it: a box on the Mac's
+// prompt, a button on the phone. The two are kept apart: an agent never
+// signs within a window you opened for your own programs, nor they within
+// its. The helper fixes how long each lasts (keyWindowMs and
+// agentKeyWindowMs in its main.swift), and its prompt says so.
 
 const (
-	hammockKeyTimeout = 2 * time.Minute  // how long a request waits on you
-	hammockKeyWindow  = 10 * time.Minute // "this pane for a while"
+	hammockKeyTimeout     = 2 * time.Minute  // how long a request waits on you
+	hammockKeyWindow      = 10 * time.Minute // "this pane for a while"
+	hammockKeyAgentWindow = 5 * time.Minute  // an agent's while
 )
 
 // hammockKeyHub is the daemon's side of the Hammock Key: guarded by d.mu.
@@ -69,7 +74,7 @@ type hammockKeyHub struct {
 	approverKeys map[string]string
 	retry        *time.Timer // a status check again, after one failed
 	reqs         map[string]*keyReq
-	windows      map[string]keyWindow // pane → a window you opened
+	windows      map[windowKey]keyWindow // a window you opened, by pane and whose
 
 	// Requests' prompts and pushes end with the daemon (close).
 	ctx    context.Context
@@ -100,6 +105,16 @@ type keyWindow struct {
 	until time.Time
 }
 
+// windowKey is whose a window is: a pane's own programs', or its agent's.
+type windowKey struct {
+	pane  string
+	agent bool
+}
+
+// windowable: a request from pane may open a window (one in a pane of
+// Hammock's, not from outside it).
+func windowable(pane string) bool { return pane != "" && pane != outsidePane }
+
 var (
 	errNoHammockKey = errors.New("there's no Hammock Key on this Mac (Settings ▸ SSH)")
 	errKeyDeclined  = errors.New("not allowed")
@@ -107,7 +122,7 @@ var (
 
 func newHammockKeyHub(d *Daemon) *hammockKeyHub {
 	ctx, stop := context.WithCancel(context.Background())
-	return &hammockKeyHub{d: d, status: &pb.HammockKeyStatus{}, reqs: map[string]*keyReq{}, windows: map[string]keyWindow{}, ctx: ctx, stop: stop}
+	return &hammockKeyHub{d: d, status: &pb.HammockKeyStatus{}, reqs: map[string]*keyReq{}, windows: map[windowKey]keyWindow{}, ctx: ctx, stop: stop}
 }
 
 // close withdraws requests' prompts and waits for their pushes to stop.
@@ -286,7 +301,7 @@ func (k *hammockKeyHub) refresh() *pb.HammockKeyStatus {
 		}
 	} else {
 		_ = os.Remove(filepath.Join(d.cfg.Dir, "hmk-key.pub"))
-		k.windows = map[string]keyWindow{}
+		k.windows = map[windowKey]keyWindow{}
 	}
 	k.approverKeys = approverKeys
 	st.CanAdd = k.addable(st.Approvers)
@@ -513,13 +528,15 @@ func (k *hammockKeyHub) sign(pane string, agent bool, pid int, data []byte) (*ss
 	}
 	what, command := describeSigning(data, pid)
 
-	// A window this pane has: the helper checks the token.
+	// A window this pane has, for whoever's asking (an agent never uses
+	// yours, nor your programs its): the helper checks the token.
+	wk := windowKey{pane, agent}
 	d.mu.Lock()
-	w, ok := k.windows[pane]
+	w, ok := k.windows[wk]
 	d.mu.Unlock()
-	if ok && !agent && pane != "" && time.Now().Before(w.until) {
+	if ok && windowable(pane) && time.Now().Before(w.until) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		res, err := runKeyHelper(ctx, "sign", map[string]any{"data": base64.StdEncoding.EncodeToString(data), "pane": pane, "token": w.token})
+		res, err := runKeyHelper(ctx, "sign", map[string]any{"data": base64.StdEncoding.EncodeToString(data), "pane": pane, "agent": agent, "token": w.token})
 		cancel()
 		if err == nil {
 			if sig, err := keySignature(res); err == nil {
@@ -530,7 +547,7 @@ func (k *hammockKeyHub) sign(pane string, agent bool, pid int, data []byte) (*ss
 			}
 		}
 		d.mu.Lock()
-		delete(k.windows, pane)
+		delete(k.windows, wk)
 		d.mu.Unlock()
 	}
 
@@ -543,8 +560,11 @@ func (k *hammockKeyHub) sign(pane string, agent bool, pid int, data []byte) (*ss
 	sum := sha256.Sum256(data)
 	label := d.tabPath(pane)
 	var window int64
-	if !agent && pane != "" {
+	if windowable(pane) {
 		window = hammockKeyWindow.Milliseconds()
+		if agent {
+			window = hammockKeyAgentWindow.Milliseconds()
+		}
 	}
 	who := "A program"
 	if agent {
@@ -600,9 +620,11 @@ func (k *hammockKeyHub) sign(pane string, agent bool, pid int, data []byte) (*ss
 			detail = append(detail, "in "+label)
 		}
 		res, err := runKeyHelper(ctx, "sign", map[string]any{
-			// "window": allowing also opens this pane's window, as long as the
-			// helper lets one last (hammockKeyWindow), which its prompt says.
+			// "window": allowing also opens this pane's window (an agent's
+			// only if you tick its box), as long as the helper lets one last
+			// (hammockKeyWindow, hammockKeyAgentWindow), which its prompt says.
 			"data": base64.StdEncoding.EncodeToString(data), "pane": pane, "context": strings.Join(detail, ", "), "window": window > 0,
+			"agent":  agent,
 			"prompt": prompt,
 		})
 		switch {
@@ -713,9 +735,13 @@ func (k *hammockKeyHub) finish(id string, res keyResult) {
 	detail := r.req.Headline
 	switch {
 	case res.err == nil:
-		if res.token != "" && !r.req.Agent && r.req.PaneId != "" {
-			k.windows[r.req.PaneId] = keyWindow{token: res.token, until: time.UnixMilli(res.until)}
-			detail += ", and for a while in that pane"
+		if res.token != "" && windowable(r.req.PaneId) {
+			k.windows[windowKey{r.req.PaneId, r.req.Agent}] = keyWindow{token: res.token, until: time.UnixMilli(res.until)}
+			if r.req.Agent {
+				detail += ", and for a while for the agent in that pane"
+			} else {
+				detail += ", and for a while in that pane"
+			}
 		}
 		d.audit(r.actor, "hmk-key-sign", r.req.PaneId, detail+" (approved on "+cmpOr(res.by, "a device")+")")
 	case errors.Is(res.err, errKeyDeclined):
@@ -751,13 +777,13 @@ func (k *hammockKeyHub) respond(c *conn, m *pb.RespondHammockKey, reply func(err
 	}
 	scope := "once"
 	if m.Window {
-		if r.req.Agent || r.req.WindowMs == 0 {
-			return errors.New("an agent's request can only be approved once")
+		if r.req.WindowMs == 0 {
+			return errors.New("this request can only be approved once")
 		}
 		scope = "window"
 	}
 	in := map[string]any{
-		"data": base64.StdEncoding.EncodeToString(r.data), "pane": r.req.PaneId,
+		"data": base64.StdEncoding.EncodeToString(r.data), "pane": r.req.PaneId, "agent": r.req.Agent,
 		"approval": map[string]any{
 			"request": r.req.Id, "approver": c.deviceID, "scope": scope,
 			"signature": base64.StdEncoding.EncodeToString(m.Signature), "expires": m.ExpiresUnixMs,

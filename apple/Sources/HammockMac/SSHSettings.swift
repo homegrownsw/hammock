@@ -123,7 +123,7 @@ struct SSHSettings: View {
             Text("Hammock Key")
         } footer: {
             if key.exists {
-                Text("Hammock asks with Touch ID here and on the phones below at once; the first answer wins. Your own programs can be allowed for 10 minutes in their pane; agents are asked every time.")
+                Text("Hammock asks with Touch ID here and on the phones below at once; the first answer wins. Allowing your own programs also allows them for 10 minutes in their pane; an agent can be allowed for 5 minutes if you choose to.")
             }
         }
     }

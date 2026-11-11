@@ -30,17 +30,20 @@ struct KeyPrompt {
     var agent = "" // "Claude", "An agent", or "" for a program of yours
     var command = ""
     var windowMinutes: Int64 = 0
+    /// An agent's window: a box you tick, not what allowing always does.
+    var windowIsChoice = false
 
     /// From the daemon's "prompt" (keyPrompt in hammockkey.go).
-    init(headline: String, from p: [String: Any]?, window: Bool = false) {
+    init(headline: String, from p: [String: Any]?, window: Bool = false, agent: Bool = false) {
         self.headline = headline
         // As long as this helper lets a token last (sign in main.swift).
-        windowMinutes = window ? keyWindowMs / 60000 : 0
+        windowMinutes = window ? (agent ? agentKeyWindowMs : keyWindowMs) / 60000 : 0
+        windowIsChoice = window && agent
         guard let p else { return }
         group = p["group"] as? String ?? ""
         groupIcon = p["group_icon"] as? String ?? ""
         tab = p["tab"] as? String ?? ""
-        agent = p["agent"] as? String ?? ""
+        self.agent = p["agent"] as? String ?? ""
         command = p["command"] as? String ?? ""
         if let b64 = p["group_picture"] as? String, let d = Data(base64Encoded: b64) {
             groupPicture = NSImage(data: d)
@@ -52,6 +55,10 @@ struct KeyPrompt {
 
 enum PanelOutcome { case allowed, declined, password, unavailable }
 
+/// Whether you ticked an agent's window box: kept across the panel's
+/// re-arming (each Touch ID evaluation draws the view afresh).
+@Observable final class WindowChoice { var on = false }
+
 /// The first letter up: describe's words start a sentence here.
 func sentence(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
 
@@ -60,6 +67,7 @@ func sentence(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() 
 struct KeyPromptView: View {
     let prompt: KeyPrompt
     let touchID: AnyView
+    var choice = WindowChoice()
     var onDeny: () -> Void = {}
     var onPassword: () -> Void = {}
 
@@ -74,7 +82,15 @@ struct KeyPromptView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if prompt.windowMinutes > 0 {
+            if prompt.windowMinutes > 0, prompt.windowIsChoice {
+                @Bindable var choice = choice
+                Toggle(isOn: $choice.on) {
+                    Text("Also let \(prompt.agent.isEmpty ? "the agent" : prompt.agent) in this pane sign for the next \(prompt.windowMinutes) minutes without asking again")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .toggleStyle(.checkbox)
+                .font(.callout)
+            } else if prompt.windowMinutes > 0 {
                 Label("Allowing also lets programs in this pane sign for the next \(prompt.windowMinutes) minutes without asking again.",
                       systemImage: "clock")
                     .font(.callout)
@@ -261,8 +277,9 @@ func screenLocked() -> Bool {
 
 /// Asks with the panel and Touch ID in it. .unavailable when there's no
 /// Touch ID to ask with; .password when you'd rather type it (or Touch ID
-/// gave up): the system sheet asks then.
-func askInPanel(_ prompt: KeyPrompt, reason: String) -> PanelOutcome {
+/// gave up): the system sheet asks then. choice: whether you ticked an
+/// agent's window box.
+func askInPanel(_ prompt: KeyPrompt, reason: String, choice: WindowChoice = WindowChoice()) -> PanelOutcome {
     guard !screenLocked(), LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
         return .unavailable
     }
@@ -287,7 +304,7 @@ func askInPanel(_ prompt: KeyPrompt, reason: String) -> PanelOutcome {
         waiting = false
         let ctx = LAContext()
         let auth = LAAuthenticationView(context: ctx, controlSize: .small) // 32 pt; .regular is 64
-        let host = NSHostingView(rootView: KeyPromptView(prompt: prompt, touchID: AnyView(AuthView(view: auth)),
+        let host = NSHostingView(rootView: KeyPromptView(prompt: prompt, touchID: AnyView(AuthView(view: auth)), choice: choice,
                                                          onDeny: { finish(.declined) },
                                                          onPassword: { finish(.password) }))
         host.safeAreaRegions = []
@@ -342,7 +359,8 @@ func preview(_ args: [String]) {
                           "command": "git commit -S -m \"Key prompt: show the tab\""]]
     }
     var prompt = KeyPrompt(headline: req["headline"] as? String ?? "sign with your Hammock Key",
-                           from: req["prompt"] as? [String: Any], window: req["window"] as? Bool ?? false)
+                           from: req["prompt"] as? [String: Any], window: req["window"] as? Bool ?? false,
+                           agent: req["agent"] as? Bool ?? false)
     if let command = req["command"] as? String, ["create", "delete", "add-approver"].contains(command) {
         let approvers = (req["approvers"] as? [Any] ?? []).compactMap { try? parseApprover($0) }
         prompt = changePrompt(command, approvers: approvers).0

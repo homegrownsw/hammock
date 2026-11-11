@@ -87,7 +87,7 @@ enum ApprovalKey {
 }
 
 /// A Mac asks to sign with its Hammock Key: approve once, for a while in that
-/// pane (your own programs only), or say no. Shown while the request waits,
+/// pane (10 minutes for your own programs, 5 for an agent's), or say no. Shown while the request waits,
 /// on a phone that may approve. Drawn like the Mac's own prompt
 /// (helpers/key/panel.swift): what's signed, then which tab in which Group
 /// is asking, and by what.
@@ -108,8 +108,11 @@ struct HammockKeyApprovalSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     source
-                    if request.agent {
-                        note("Agents are asked every time.", systemImage: "sparkles")
+                    if request.windowMs > 0, request.agent {
+                        let name = Place(model: model, request: request).agent
+                        let agent = name == "An agent" ? "the agent" : name
+                        note("Approving for \(minutes) minutes also lets \(agent) in this pane sign without asking again.",
+                             systemImage: "clock")
                     } else if request.windowMs > 0 {
                         note("Approving for \(minutes) minutes also lets programs in this pane sign without asking again.",
                              systemImage: "clock")
@@ -135,7 +138,7 @@ struct HammockKeyApprovalSheet: View {
                         Label("Approve", systemImage: unlockSymbol).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
-                    if request.windowMs > 0, !request.agent {
+                    if request.windowMs > 0 {
                         Button { approve(window: true) } label: {
                             Text("Approve for \(minutes) Minutes").frame(maxWidth: .infinity)
                         }

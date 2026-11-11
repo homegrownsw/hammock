@@ -20130,7 +20130,7 @@ type HammockKeyRequest struct {
 	Command       string                 `protobuf:"bytes,4,opt,name=command,proto3" json:"command,omitempty"`   // the program that asked ("git push origin main")
 	PaneId        string                 `protobuf:"bytes,5,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
 	PaneLabel     string                 `protobuf:"bytes,6,opt,name=pane_label,json=paneLabel,proto3" json:"pane_label,omitempty"` // "hammock ▸ main"
-	Agent         bool                   `protobuf:"varint,7,opt,name=agent,proto3" json:"agent,omitempty"`                         // an agent asked: approve once, never for a while
+	Agent         bool                   `protobuf:"varint,7,opt,name=agent,proto3" json:"agent,omitempty"`                         // an agent asked: a while is its own, and shorter
 	DataHash      string                 `protobuf:"bytes,8,opt,name=data_hash,json=dataHash,proto3" json:"data_hash,omitempty"`    // hex SHA-256 of what's signed (an approval signs it)
 	CreatedUnixMs int64                  `protobuf:"varint,9,opt,name=created_unix_ms,json=createdUnixMs,proto3" json:"created_unix_ms,omitempty"`
 	ExpiresUnixMs int64                  `protobuf:"varint,10,opt,name=expires_unix_ms,json=expiresUnixMs,proto3" json:"expires_unix_ms,omitempty"`

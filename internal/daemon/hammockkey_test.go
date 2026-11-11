@@ -32,8 +32,10 @@ import (
 
 // fakeKeyHelper stands in for helpers/key (the Secure Enclave and Touch
 // ID) when the test binary runs as it: the key is a P-256 key in a file,
-// Touch ID answers as HMK_TEST_TOUCH says (allow, deny, or wait to be
-// withdrawn), and a phone's approval is checked as the real helper does.
+// Touch ID answers as HMK_TEST_TOUCH says (allow, allow-window: allow with
+// an agent's window box ticked, deny, or wait to be withdrawn), and a
+// phone's approval is checked as the real helper does. A window's token
+// is "tok:<pane>", with ":agent" for an agent's.
 // Like the real one, it takes its request from the daemon that ran it
 // (--daemon: keyHelperFetch), never from its arguments or stdin.
 func fakeKeyHelper() int {
@@ -62,7 +64,7 @@ func fakeKeyHelper() int {
 	keyPath, apprPath := filepath.Join(dir, "key.pem"), filepath.Join(dir, "approvers.json")
 	touch := func() int {
 		switch os.Getenv("HMK_TEST_TOUCH") {
-		case "allow":
+		case "allow", "allow-window":
 			return 0
 		case "wait":
 			ch := make(chan os.Signal, 1)
@@ -136,10 +138,15 @@ func fakeKeyHelper() int {
 		}
 		data, _ := base64.StdEncoding.DecodeString(in["data"].(string))
 		pane, _ := in["pane"].(string)
+		agent := in["agent"] == true
+		tok := "tok:" + pane
+		if agent {
+			tok += ":agent"
+		}
 		window := false
 		switch {
 		case in["token"] != nil:
-			if in["token"] != "tok:"+pane {
+			if in["token"] != tok {
 				return fail(2, "that approval has run out")
 			}
 		case in["approval"] != nil:
@@ -168,7 +175,8 @@ func fakeKeyHelper() int {
 			if c := touch(); c != 0 {
 				return fail(c, "not allowed")
 			}
-			window = in["window"] == true
+			// An agent's window only with its box ticked.
+			window = in["window"] == true && (!agent || os.Getenv("HMK_TEST_TOUCH") == "allow-window")
 		}
 		h := sha256.Sum256(data)
 		r, s, _ := ecdsa.Sign(rand.Reader, k, h[:])
@@ -177,7 +185,11 @@ func fakeKeyHelper() int {
 		s.FillBytes(raw[32:])
 		res := map[string]any{"signature": base64.StdEncoding.EncodeToString(raw)}
 		if window && pane != "" {
-			res["token"], res["until"] = "tok:"+pane, time.Now().Add(10*time.Minute).UnixMilli()
+			length := 10 * time.Minute
+			if agent {
+				length = 5 * time.Minute
+			}
+			res["token"], res["until"] = tok, time.Now().Add(length).UnixMilli()
 		}
 		return out(res)
 	}
@@ -407,7 +419,7 @@ func TestHammockKeyTouchID(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.mu.Lock()
-	w, ok := d.hammockKey.windows["pn_x"]
+	w, ok := d.hammockKey.windows[windowKey{"pn_x", false}]
 	d.mu.Unlock()
 	if !ok || w.token != "tok:pn_x" {
 		t.Fatalf("no window: %+v", w)
@@ -422,17 +434,71 @@ func TestHammockKeyTouchID(t *testing.T) {
 	}
 	// An expired window asks again.
 	d.mu.Lock()
-	d.hammockKey.windows["pn_x"] = keyWindow{token: "tok:pn_x", until: time.Now().Add(-time.Second)}
+	d.hammockKey.windows[windowKey{"pn_x", false}] = keyWindow{token: "tok:pn_x", until: time.Now().Add(-time.Second)}
 	d.mu.Unlock()
 	if _, err := d.hammockKey.sign("pn_x", false, 0, data); err == nil {
 		t.Fatal("an expired window signed")
 	}
-	// Agents are asked every time: the window isn't theirs.
+	// Your window isn't an agent's.
 	d.mu.Lock()
-	d.hammockKey.windows["pn_x"] = keyWindow{token: "tok:pn_x", until: time.Now().Add(time.Minute)}
+	d.hammockKey.windows[windowKey{"pn_x", false}] = keyWindow{token: "tok:pn_x", until: time.Now().Add(time.Minute)}
 	d.mu.Unlock()
 	if _, err := d.hammockKey.sign("pn_x", true, 0, data); err == nil {
 		t.Fatal("an agent signed within your window")
+	}
+
+	// An agent's request allowed without its box ticked opens no window.
+	t.Setenv("HMK_TEST_TOUCH", "allow")
+	if _, err := d.hammockKey.sign("pn_z", true, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	_, ok = d.hammockKey.windows[windowKey{"pn_z", true}]
+	d.mu.Unlock()
+	if ok {
+		t.Fatal("an agent's window opened without the box")
+	}
+	// With it ticked: 5 minutes, the agent's own.
+	t.Setenv("HMK_TEST_TOUCH", "allow-window")
+	if _, err := d.hammockKey.sign("pn_z", true, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	w, ok = d.hammockKey.windows[windowKey{"pn_z", true}]
+	d.mu.Unlock()
+	if left := time.Until(w.until); !ok || w.token != "tok:pn_z:agent" || left > 5*time.Minute || left < 4*time.Minute {
+		t.Fatalf("agent's window: %+v", w)
+	}
+	t.Setenv("HMK_TEST_TOUCH", "deny")
+	if _, err := d.hammockKey.sign("pn_z", true, 0, data); err != nil {
+		t.Fatalf("agent's window: %v", err)
+	}
+	// It isn't yours.
+	if _, err := d.hammockKey.sign("pn_z", false, 0, data); err == nil {
+		t.Fatal("your program signed within the agent's window")
+	}
+	// Yours, opened in the same pane, sits beside it: neither replaces the other.
+	t.Setenv("HMK_TEST_TOUCH", "allow")
+	if _, err := d.hammockKey.sign("pn_z", false, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	mine, okMine := d.hammockKey.windows[windowKey{"pn_z", false}]
+	its, okIts := d.hammockKey.windows[windowKey{"pn_z", true}]
+	d.mu.Unlock()
+	if !okMine || !okIts || mine.token != "tok:pn_z" || its.token != "tok:pn_z:agent" {
+		t.Fatalf("windows side by side: %+v %+v", mine, its)
+	}
+	// From outside Hammock: no window, however it's allowed.
+	t.Setenv("HMK_TEST_TOUCH", "allow-window")
+	if _, err := d.hammockKey.sign(outsidePane, true, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	_, ok = d.hammockKey.windows[windowKey{outsidePane, true}]
+	d.mu.Unlock()
+	if ok {
+		t.Fatal("a window for outside Hammock")
 	}
 
 	// Nobody to ask (Touch ID can't, no phone may approve): it says so at
@@ -453,8 +519,55 @@ func TestRedactURLs(t *testing.T) {
 	}
 }
 
+// A phone may approve an agent's request for a while: 5 minutes, the
+// agent's window, not yours.
+func TestHammockKeyPhoneAgentWindow(t *testing.T) {
+	sshConfig(t, "")
+	useFakeKeyHelper(t, "wait")
+	d := startDaemon(t, shortDir(t))
+	phone := addPhone(t, d, "dv_phone")
+	t.Setenv("HMK_TEST_TOUCH", "allow")
+	keyStatus(t, d, pb.HammockKeyCommand_OP_CREATE, "")
+	t.Setenv("HMK_TEST_TOUCH", "wait")
+	data := []byte("hello")
+	done := make(chan error, 1)
+	go func() {
+		_, err := d.hammockKey.sign("pn_a", true, 0, data)
+		done <- err
+	}()
+	req := waitKeyRequest(t, d)
+	if !req.Agent || req.WindowMs != hammockKeyAgentWindow.Milliseconds() {
+		t.Fatalf("request: %v", req)
+	}
+	expires := time.Now().Add(time.Minute).UnixMilli()
+	h := sha256.Sum256(approvalMessage(req.KeyId, req.Id, req.DataHash, "window", req.PaneId, expires))
+	asn, _ := ecdsa.SignASN1(rand.Reader, phone, h[:])
+	verdict := make(chan error, 1)
+	d.mu.Lock()
+	err := d.hammockKey.respond(&conn{deviceID: "dv_phone"}, &pb.RespondHammockKey{Id: req.Id, Allow: true, Window: true, Signature: asn, ExpiresUnixMs: expires},
+		func(err error) { verdict <- err })
+	d.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-verdict; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	w, ok := d.hammockKey.windows[windowKey{"pn_a", true}]
+	_, yours := d.hammockKey.windows[windowKey{"pn_a", false}]
+	d.mu.Unlock()
+	if !ok || w.token != "tok:pn_a:agent" || yours {
+		t.Fatalf("windows: %+v %v", w, yours)
+	}
+}
+
 // Agents can't approve, nor create or delete the key; a phone can't
-// approve for a while what an agent asked.
+// approve for a while what offers no window (a request from outside
+// Hammock's panes).
 func TestHammockKeyAgentsAndScope(t *testing.T) {
 	sshConfig(t, "")
 	useFakeKeyHelper(t, "allow")
@@ -474,7 +587,7 @@ func TestHammockKeyAgentsAndScope(t *testing.T) {
 	d.hammockKey.reqs["fk_a"] = &keyReq{req: &pb.HammockKeyRequest{Id: "fk_a", Agent: true}, done: make(chan keyResult, 1), cancel: func() {}}
 	err := d.hammockKey.respond(&conn{deviceID: "dv"}, &pb.RespondHammockKey{Id: "fk_a", Allow: true, Window: true, Signature: []byte{1}}, func(error) {})
 	if err == nil {
-		t.Fatal("approved an agent's request for a while")
+		t.Fatal("approved for a while a request that offers none")
 	}
 	// Approving needs a phone's signature: a client here can only deny.
 	if err := d.hammockKey.respond(&conn{}, &pb.RespondHammockKey{Id: "fk_a", Allow: true}, func(error) {}); err == nil {
