@@ -157,8 +157,8 @@ just appstore-marketing --only header      # the product page header
 | | File | Spec |
 |---|---|---|
 | App preview | `previews/<locale>/01-hammock-preview.mp4` | 886 × 1920, 30 fps, H.264, a silent sound track; placed on the 6.9" iPhone and iPhone Duo |
-| Search results | `creative/<locale>/search-results.mp4` | 2400 × 1600 (3:2), 30 fps, no sound; on iOS 27 it replaces the preview and screenshots in search |
-| Product page header | `creative/<locale>/header.png` | 3840 × 1646, opaque; on an iPhone only its middle third shows (`creative/header-preview.png` outlines it) |
+| Search results | `creative/<locale>/search-results.mp4` | 2400 × 1600 (3:2), 30 fps, no sound; on iOS 27 it replaces the preview and screenshots in search. Its caption and screen sit in the art safe area (56.5% × 40.2%, centred) |
+| Product page header | `creative/<locale>/header.png` | 3840 × 1646, opaque; what matters sits in the art safe area, 1646 × 661, centred (`creative/header-preview.png` outlines it) |
 
 **The videos.** `scripts/appstore-preview-video` records each take in `preview.json` on the 6.9" iPhone simulator,
 from a fresh install, with `simctl io recordVideo`: the app is launched into its demo with `HMK_DEBUG_TAKE`, whose
@@ -169,9 +169,14 @@ caption above the screen for the preview, beside it for the search results video
 ffmpeg encodes them to spec. A `.made` stamp names the `preview.json` they were cut to, and the push refuses videos
 cut to another.
 
-**The header** is brand imagery, not a screen: the iPhone app's icon (its Icon Composer fill and mark), the
-wordmark and a tagline from `marketing.json`'s `header`, inside the middle third and below the top quarter (the
-compositor refuses it otherwise), on the ground and glow of the marketing images.
+**The safe areas** come from Apple's creative asset templates (developer.apple.com/app-store/asset-best-practices;
+the Sketch one is zipped JSON, so its "Art Safe Area" rectangles can be read): devices and orientations crop these
+assets differently, and only what's inside the safe area is sure to show. Check new layouts in App Store Connect's
+Device Preview too.
+
+**The header** is brand imagery, not a screen: the iPhone app's icon (its Icon Composer fill and mark) beside the
+wordmark and a tagline from `marketing.json`'s `header`, filling the art safe area (the compositor refuses it
+when they leave it), on the ground and glow of the marketing images.
 
 **The push** places all three through App Store Connect's Asset Library, which fastlane doesn't support yet. A
 placement can't be edited, so one whose asset came from the same bytes (its reference name carries their SHA-256)

@@ -40,8 +40,10 @@ const LAYOUTS = {
     copy: "left:40px; right:40px; top:80px; text-align:center;", headline: 70, endHeadline: 84, subline: 34,
   },
   search: {
-    w: 2400, h: 1600, screen: { x: 1560, y: 60, w: 680 }, radius: 54,
-    copy: "left:150px; width:1250px; top:50%; transform:translateY(-50%);", headline: 128, endHeadline: 140, subline: 52,
+    // Inside Apple's art safe area (its templates: 56.5% x 40.2% of the canvas, centred; 1355 x 644 here): the caption
+    // and the screen, which overhangs it a little at the top and bottom (status bar and tab bar only).
+    w: 2400, h: 1600, screen: { x: 1500, y: 430, w: 341 }, radius: 30,
+    copy: "left:560px; width:880px; top:50%; transform:translateY(-50%);", headline: 88, endHeadline: 92, subline: 38,
   },
 } as const;
 type Kind = keyof typeof LAYOUTS;
@@ -129,7 +131,7 @@ for (const kind of Object.keys(LAYOUTS) as Kind[]) {
   }
   // The end card: the icon, a headline and a subline, on the same ground.
   const endPng = join(WORK, `${kind}-end.png`);
-  const iconSize = kind === "preview" ? 220 : 260;
+  const iconSize = kind === "preview" ? 220 : 170;
   await render(kind, pageHTML(kind,
     `<div class="end"><span class="icon"><img src="${mark}"></span><h1>${lines(edit.end.headline)}</h1><p>${esc(edit.end.subline)}</p></div>`,
     `.end { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; padding:0 60px; }

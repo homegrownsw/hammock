@@ -201,12 +201,14 @@ if (problems.length) {
 }
 console.log(`Made ${made} marketing image(s) for ${LOCALES.join(", ")} (${which.join(", ")}).`);
 
-// The product page header (iOS 27): 3840 x 1646, opaque PNG, across the top of the product page. On an iPhone only
-// its middle third shows, under the status bar and the back and share buttons, so the icon, wordmark and tagline sit
-// in the middle third and below the top quarter, and the edges carry only the glow, which a crop can't cut in half.
-// creative/<locale>/header.png, and creative/header-preview.png: the whole image, with the iPhone's crop outlined.
+// The product page header (iOS 27): 3840 x 1646, opaque PNG, across the top of the product page. Devices and
+// orientations crop it differently, so what matters sits in Apple's art safe area (from its design templates, linked
+// from developer.apple.com/app-store/asset-best-practices: 1646 x 661, centred), and the rest carries only the ground
+// and glow, which a crop can't cut in half. creative/<locale>/header.png, and creative/header-preview.png: the whole
+// image with the safe area outlined.
 async function drawHeader() {
   const W = 3840, H = 1646;
+  const HEADER_SAFE = { w: 1646, h: 661 };
   // The iPhone app's icon, drawn as Icon Composer does (apple/iOS/Hammock/AppIcon.icon): its fill under its mark.
   const mark = pathToFileURL(join(ROOT, "apple/iOS/Hammock/AppIcon.icon/Assets/mark.png")).href;
   const html = `<!doctype html><html><head><meta charset="utf-8">
@@ -214,18 +216,20 @@ async function drawHeader() {
 <style>
   html, body { margin:0; width:${W}px; height:${H}px; overflow:hidden; background:#06140e; -webkit-font-smoothing:antialiased; }
   body { position:relative; background-image:
-    radial-gradient(40% 70% at 50% 62%, rgba(46,138,98,.55), transparent 70%),
+    radial-gradient(40% 70% at 50% 50%, rgba(46,138,98,.55), transparent 70%),
     radial-gradient(30% 50% at 18% 80%, rgba(97,216,54,.10), transparent 70%),
     radial-gradient(30% 50% at 35% 20%, rgba(255,159,10,.07), transparent 70%),
     radial-gradient(30% 50% at 68% 22%, rgba(191,90,242,.08), transparent 70%),
     radial-gradient(30% 50% at 84% 82%, rgba(10,132,255,.10), transparent 70%); }
-  .mark { position:absolute; left:50%; top:62%; transform:translate(-50%, -50%); text-align:center; width:1200px; }
-  .icon { display:inline-block; width:300px; height:300px; border-radius:68px; overflow:hidden;
+  .mark { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); display:flex; align-items:center; gap:72px; }
+  .words { text-align:left; }
+  .icon { flex:none; display:block; width:420px; height:420px; border-radius:94px; overflow:hidden;
     background:linear-gradient(180deg, rgb(29,96,70), rgb(7,26,18)); box-shadow:0 40px 120px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.08); }
   .icon img { width:100%; height:100%; display:block; }
-  h1 { margin:44px 0 0; font:700 168px/1 "Space Grotesk", sans-serif; letter-spacing:-0.04em; color:#eaf6ef; }
-  p { margin:26px 0 0; font:400 50px/1.3 Inter, sans-serif; color:#a3c2b2; }
-</style></head><body><div class="mark"><span class="icon"><img src="${mark}"></span><h1>${esc(data.header.wordmark)}</h1><p>${esc(data.header.tagline)}</p></div></body></html>`;
+  h1 { margin:0; font:700 236px/0.95 "Space Grotesk", sans-serif; letter-spacing:-0.045em; color:#eaf6ef; }
+  p { margin:30px 0 0 6px; font:400 54px/1.25 Inter, sans-serif; color:#a3c2b2; white-space:nowrap; }
+</style></head><body><div class="mark"><span class="icon"><img src="${mark}"></span>
+  <div class="words"><h1>${esc(data.header.wordmark)}</h1><p>${esc(data.header.tagline)}</p></div></div></body></html>`;
   const ctx = await browser.newContext({ viewport: { width: W, height: H } });
   const tab = await ctx.newPage();
   const work = join(BUILD, "header");
@@ -234,10 +238,12 @@ async function drawHeader() {
   writeFileSync(file, html);
   await tab.goto(pathToFileURL(file).href, { waitUntil: "networkidle" });
   await tab.evaluate(() => document.fonts.ready);
-  // What the iPhone shows is the middle third: the mark must fit inside it, below the top quarter.
+  // The icon and words must fit inside the art safe area.
+  const sx = (W - HEADER_SAFE.w) / 2, sy = (H - HEADER_SAFE.h) / 2;
   const box = await tab.evaluate(() => document.querySelector(".mark")!.getBoundingClientRect().toJSON());
-  if (box.left < W / 3 || box.right > (2 * W) / 3 || box.top < H / 4) {
-    problems.push(`header: the icon and words leave the iPhone's crop (the middle third, below the top quarter)`);
+  if (box.left < sx || box.right > sx + HEADER_SAFE.w || box.top < sy || box.bottom > sy + HEADER_SAFE.h) {
+    problems.push(`header: the icon and words (${Math.round(box.width)} x ${Math.round(box.height)}) leave the art safe area ` +
+      `(${HEADER_SAFE.w} x ${HEADER_SAFE.h})`);
   }
   const raw = join(work, "header.png");
   await tab.screenshot({ path: raw });
@@ -247,7 +253,7 @@ async function drawHeader() {
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", raw, "-pix_fmt", "rgb24", first]);
   for (const loc of LOCALES.slice(1)) copyFileSync(first, join(APPSTORE, "creative", loc, "header.png"));
   execFileSync("ffmpeg", ["-v", "error", "-y", "-i", first, "-vf",
-    `drawbox=x=${W / 3}:y=0:w=${W / 3}:h=${H}:color=white@0.8:t=6,drawbox=x=0:y=${H / 4}:w=${W}:h=2:color=white@0.4:t=2`,
+    `drawbox=x=${(W - HEADER_SAFE.w) / 2}:y=${(H - HEADER_SAFE.h) / 2}:w=${HEADER_SAFE.w}:h=${HEADER_SAFE.h}:color=white@0.8:t=6`,
     join(APPSTORE, "creative", "header-preview.png")]);
   console.log(`  marketing/appstore/creative/<locale>/header.png (${W} x ${H})`);
 }
