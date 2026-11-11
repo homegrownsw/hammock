@@ -1,13 +1,54 @@
 {
-  "//": "The App Store screenshots, in order: each is the iPhone app's demo (DemoMac: a made-up Mac, nothing personal) opened at a screen by its Debug-only HMK_DEBUG_* variables (env), plus, on the wide devices (the iPad and the unfolded iPhone Duo, where a list and the screen it opens sit side by side), wide's. marketing/scripts/appstore-screenshots takes them; marketing/appstore/README.md says how.",
+  "//": "The App Store screenshots, in order: each is the iPhone app's demo (DemoMac: a made-up Mac, nothing personal) opened at a screen by its Debug-only HMK_DEBUG_* variables (env), plus, on the wide devices (the iPad and the unfolded iPhone Duo, where a list and the screen it opens sit side by side), wide's, or on the iPhone, narrow's. marketing/scripts/appstore-screenshots takes them; marketing/appstore/README.md says how.",
   "scenes": [
-    { "id": "01-needs-you", "what": "Sessions: an agent waiting on you, others working and done", "env": {},
-      "wide": { "HMK_DEBUG_PATH": "p_brief" } },
-    { "id": "02-allow", "what": "The waiting agent's conversation, with its permission prompt", "env": { "HMK_DEBUG_PATH": "p_triage" } },
-    { "id": "03-agent-view", "what": "An agent at work: its edits as diffs", "env": { "HMK_DEBUG_PATH": "p_polish" } },
-    { "id": "04-terminal", "what": "A terminal on the Mac", "env": { "HMK_DEBUG_PATH": "p_shell" } },
-    { "id": "05-groups", "what": "Groups: the Mac's Groups and tabs, and a linked computer's", "env": { "HMK_DEBUG_COCKPIT_TAB": "groups" },
-      "wide": { "HMK_DEBUG_OPEN_FIRST": "1" } },
-    { "id": "06-schedules", "what": "Scheduled tasks and their runs", "env": { "HMK_DEBUG_PATH": "schedules" } }
+    {
+      "id": "01-needs-you",
+      "what": "Sessions: an agent waiting on you, others working and done",
+      "env": {},
+      "wide": {
+        "HMK_DEBUG_PATH": "p_brief"
+      }
+    },
+    {
+      "id": "02-allow",
+      "what": "The waiting agent's conversation, with its permission prompt",
+      "env": {
+        "HMK_DEBUG_PATH": "p_triage"
+      }
+    },
+    {
+      "id": "03-agent-view",
+      "what": "An agent at work: its edits as diffs",
+      "env": {
+        "HMK_DEBUG_PATH": "p_polish"
+      }
+    },
+    {
+      "id": "04-terminal",
+      "what": "A terminal on the Mac (on the iPhone, keyboard up with its extra keys)",
+      "env": {
+        "HMK_DEBUG_PATH": "p_shell"
+      },
+      "narrow": {
+        "HMK_DEBUG_KEYBOARD": "1"
+      }
+    },
+    {
+      "id": "05-groups",
+      "what": "Groups: the Mac's Groups and tabs, and a linked computer's",
+      "env": {
+        "HMK_DEBUG_COCKPIT_TAB": "groups"
+      },
+      "wide": {
+        "HMK_DEBUG_OPEN_FIRST": "1"
+      }
+    },
+    {
+      "id": "06-schedules",
+      "what": "Scheduled tasks and their runs",
+      "env": {
+        "HMK_DEBUG_PATH": "schedules"
+      }
+    }
   ]
 }

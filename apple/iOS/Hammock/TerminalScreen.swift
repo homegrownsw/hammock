@@ -319,6 +319,12 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil, active { reportGrid(force: true) }
+        #if DEBUG
+        // Dev aid (the App Store screenshots): HMK_DEBUG_KEYBOARD=1 types into the terminal as it opens, keyboard up.
+        if window != nil, active, ProcessInfo.processInfo.environment["HMK_DEBUG_KEYBOARD"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in _ = self?.becomeFirstResponder() }
+        }
+        #endif
     }
 
     /// The grid this view could show at the base font size.

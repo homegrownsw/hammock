@@ -51,8 +51,8 @@
       "subline": 46,
       "copyTop": 200,
       "copyWidth": 1160,
-      "deviceWidth": 1080,
-      "deviceTop": 800,
+      "deviceWidth": 990,
+      "deviceTop": 760,
       "frame": {
         "dark": "Deep Blue",
         "light": "Silver"

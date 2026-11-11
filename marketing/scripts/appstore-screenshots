@@ -155,9 +155,9 @@ display_for() {
 }
 
 # A scene's environment, as `simctl launch` passes it on: SIMCTL_CHILD_<name>=<value>, one per line; on the wide
-# devices (iPad, the unfolded Duo), with its "wide" variables too.
+# devices (iPad, the unfolded Duo), with its "wide" variables too, and on the iPhone its "narrow" ones.
 scene_env() { # scene_env <scene> <device>
-  jq -r --arg dev "$2" '(.env // {}) + (if $dev == "iphone" then {} else (.wide // {}) end) | to_entries[] | "SIMCTL_CHILD_\(.key)=\(.value)"' <<<"$1"
+  jq -r --arg dev "$2" '(.env // {}) + (if $dev == "iphone" then (.narrow // {}) else (.wide // {}) end) | to_entries[] | "SIMCTL_CHILD_\(.key)=\(.value)"' <<<"$1"
 }
 
 captured=0
