@@ -6,11 +6,11 @@
 // nears the screen so a diff of any size stays quick.
 
 import { EditorState, Compartment } from "@codemirror/state"
-import { EditorView, lineNumbers, highlightSpecialChars, ViewPlugin, Decoration } from "@codemirror/view"
+import { EditorView, lineNumbers, highlightSpecialChars, ViewPlugin, Decoration, WidgetType } from "@codemirror/view"
 import { LanguageDescription } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
-import { MergeView, unifiedMergeView, diff as textDiff, Change, getChunks } from "@codemirror/merge"
-import { themeExtension, mix, tint } from "./theme.js"
+import { MergeView, unifiedMergeView, diff as textDiff, Change, getChunks, getOriginalDoc } from "@codemirror/merge"
+import { themeExtension, mix, tint, hexToRGB } from "./theme.js"
 
 const post = (m) => {
   try { window.webkit.messageHandlers.hammock.postMessage(m) } catch (e) { console.log("hammock:", JSON.stringify(m)) }
@@ -26,6 +26,10 @@ let config = {
   view: { style: "unified", whitespace: "show", wrap: false },
   overridden: false, // the pane has choices of its own (Use My Settings clears them)
   canDrive: true,
+  // Reviews: the agent comments go to ({ id, name } or null), the agents to
+  // choose from, whether you can send (not a guest), and the Send tick.
+  target: null, agents: [], canSend: true,
+  accent: "", // the app's (the theme's); "" the palette's blue
 }
 let info = { title: "", stale: false, error: "", generation: 0, files: 0, added: 0, removed: 0, source: { kind: "uncommitted" }, branch: "" }
 let content = null // { generation, files, commits, branches, defaultBranch }
@@ -52,6 +56,7 @@ const svg = {
   chevron: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
   sidebar: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/></svg>',
   gear: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h7M12 4h2M2 8h2M7 8h7M2 12h8M13 12h1"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="8" r="1.5"/><circle cx="11.5" cy="12" r="1.5"/></svg>',
+  comment: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 3.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7l-3 2.5v-2.5h-.5a1 1 0 0 1-1-1z"/></svg>',
   open: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg>',
 }
 
@@ -103,7 +108,11 @@ function applyTheme() {
   set("--line", mix(th.background, th.foreground, 0.13))
   set("--panel", mix(th.background, th.foreground, 0.035))
   set("--hover", mix(th.background, th.foreground, 0.09))
-  set("--accent", pal(4, "#61afef"))
+  const accent = config.accent || pal(4, "#61afef")
+  set("--accent", accent)
+  // Text on it: white, or black on a light one.
+  const [ar, ag, ab] = hexToRGB(accent)
+  set("--on-accent", 0.2126 * ar + 0.7152 * ag + 0.0722 * ab > 170 ? "#111111" : "#ffffff")
   set("--add", pal(2, "#98c379"))
   set("--del", pal(1, "#e06c75"))
   set("--mod", pal(4, "#61afef"))
@@ -276,6 +285,26 @@ function renderBar() {
   }
   bar.append(totals, el("span", "spacer"))
 
+  // Who comments go to, and sending the ones not yet sent.
+  if (config.canSend) {
+    const n = unsentCount()
+    if (n && config.target) {
+      const send = el("button", "btn send", `Send ${n} to ${agentName()}`)
+      send.title = "Send every comment not yet sent, as one message"
+      send.onclick = () => post({ type: "review", command: { action: "send" } })
+      bar.append(send)
+    }
+    const to = el("button", "btn")
+    to.id = "target"
+    to.append(el("span", "t", config.target ? `→ ${config.target.name}` : "No agent"))
+    const ch = el("span", "chev")
+    ch.innerHTML = svg.chevron
+    to.append(ch)
+    to.title = "Who your comments go to"
+    to.onclick = (e) => { e.stopPropagation(); openPop("targetPop", to, renderTargetPop) }
+    bar.append(to)
+  }
+
   const gear = el("button", "btn")
   gear.innerHTML = svg.gear
   gear.title = "Diff settings"
@@ -315,7 +344,7 @@ function openPop(id, anchor, render) {
 }
 
 function closePops() {
-  for (const id of ["sourcePop", "settingsPop"]) $(id).classList.remove("on")
+  for (const id of ["sourcePop", "settingsPop", "targetPop"]) $(id).classList.remove("on")
   $("scrim").classList.remove("on")
   openPopID = ""
 }
@@ -506,6 +535,8 @@ function renderTree() {
       st.title = statusWords(f)
       row.append(el("span", "tw"), st, el("span", "name", f.path.split("/").pop()))
       const n = el("span", "n")
+      const open = threadsOf(f.path).filter((t) => t.state !== "resolved").length
+      if (open) n.append(el("span", "cn", `${open}`), " ")
       if (!f.binary && (f.added || f.removed)) n.append(el("span", "add", `+${f.added}`), " ", el("span", "del", `−${f.removed}`))
       row.append(n)
       row.title = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path
@@ -654,6 +685,12 @@ function renderSection(sec, f) {
     c.append(el("span", "add", `+${f.added}`), " ", el("span", "del", `−${f.removed}`))
     head.append(c)
   }
+  const cc = el("span", "ccount")
+  const nThreads = threadsOf(f.path).filter((t) => t.state !== "resolved").length
+  cc.textContent = nThreads ? String(nThreads) : ""
+  cc.style.display = nThreads ? "" : "none"
+  cc.title = "Open threads"
+  head.append(cc)
   if (f.untracked) head.append(el("span", "tag", "untracked"))
   if (f.generated) head.append(el("span", "tag", "generated"))
   head.append(el("span", "spacer"))
@@ -666,6 +703,13 @@ function renderSection(sec, f) {
       seg.append(b)
     }
     head.append(seg)
+  }
+  if (config.canDrive) {
+    const cm = el("button", "btn")
+    cm.innerHTML = svg.comment
+    cm.title = "Comment on This File"
+    cm.onclick = () => { u.open = true; if (sec.classList.contains("closed")) renderSection(sec, f); openComposer({ path: f.path, side: "new", line: 0, endLine: 0 }) }
+    head.append(cm)
   }
   if (f.status !== "deleted") {
     const o = el("button", "btn")
@@ -748,7 +792,14 @@ function mount(path) {
   const body = sec.querySelector(".fbody")
   if (!body || !u.open) return
   body.textContent = ""
-  const done = (destroy = () => {}) => { body.style.minHeight = ""; mounted.set(path, { destroy }) }
+  // File comments, and threads whose lines aren't in what's shown.
+  const top = el("div", "fthreads")
+  body.append(top)
+  const done = (destroy = () => {}, views = [], thr = null) => {
+    body.style.minHeight = ""
+    mounted.set(path, { destroy, views, thr, top })
+    refreshThreads(path)
+  }
 
   if (t.error) { body.append(el("div", "note", t.error)); return done() }
   if (t.tooLarge) {
@@ -781,14 +832,17 @@ function mount(path) {
     return done()
   }
 
-  const lang = new Compartment()
+  const lang = new Compartment(), thr = new Compartment()
   const exts = [
-    EditorState.readOnly.of(true), EditorView.editable.of(false),
-    lineNumbers(), highlightSpecialChars(), EditorState.tabSize.of(4),
+    // Read-only, but focusable, so the code can be selected and copied;
+    // no caret, and no keyboard on the iPhone.
+    EditorState.readOnly.of(true), EditorView.contentAttributes.of({ inputmode: "none", "aria-readonly": "true" }),
+    lineNumbers({ domEventHandlers: { mousedown: (view, block, e) => gutterDown(view, block, e, path) } }),
+    highlightSpecialChars(), EditorState.tabSize.of(4),
     // The diff's colours first: of two themes, CodeMirror lets the first win.
     diffTheme(), themeExtension(config),
     config.view.wrap ? EditorView.lineWrapping : [],
-    lang.of([]), wholeLines,
+    lang.of([]), wholeLines, thr.of([]),
   ]
   const collapse = u.whole ? undefined : { margin: 3, minSize: 4 }
   const diffConfig = { scanLimit: 5000, timeout: 1500, ...(ignore ? { override: diffIgnoringSpace } : {}) }
@@ -819,7 +873,7 @@ function mount(path) {
     views = [mv.a, mv.b]
     destroy = () => mv.destroy()
   }
-  done(destroy)
+  done(destroy, views, thr)
   // Highlighting comes when its language has loaded.
   const desc = LanguageDescription.matchFilename(languages, f.path.split("/").pop())
   if (desc) {
@@ -863,6 +917,518 @@ function markStuck(path) {
   stuckSec = now
 }
 
+// ---- reviews: comment threads ----
+
+// The pane's review (the daemon's: setReview), the comment being written,
+// and what's typed in replies, kept as threads redraw.
+let review = { id: "", threads: [] }
+let composer = null // { path, side, line, endLine } (line 0: the file)
+const drafts = new Map() // "new:path:side:line" or "reply:threadID" → text
+const openReplies = new Set() // threads whose reply box is open
+const shownResolved = new Set() // resolved threads opened to read
+const shownOutdated = new Set()
+const editing = new Set() // your comments being edited
+
+const threadsOf = (path) => review.threads.filter((t) => t.path === path)
+const agentName = () => config.target ? config.target.name : "the agent"
+
+// sideOf is which side a view shows: split's left is the old one.
+const sideOf = (view) => view.dom.classList.contains("cm-merge-a") ? "old" : "new"
+const isUnified = (views) => views.length === 1
+
+// posFor is where a thread's widget goes in view (after its last line), or
+// -1 when its lines aren't there (shown above the file instead).
+function posFor(view, t, unified) {
+  const doc = view.state.doc
+  if (t.side === sideOf(view)) {
+    if (t.endLine > doc.lines || t.endLine < 1) return -1
+    return doc.line(t.endLine).to
+  }
+  if (!unified || t.side !== "old") return -1
+  // Unified shows the new side: an old-side thread goes after where its
+  // lines were (the change they're in, or the same place among unchanged ones).
+  const orig = getOriginalDoc(view.state), found = getChunks(view.state)
+  if (!orig || t.endLine > orig.lines) return -1
+  const at = orig.line(t.endLine).from
+  let delta = 0
+  for (const c of found ? found.chunks : []) {
+    if (at < c.fromA) break
+    if (at < c.toA) return doc.lineAt(Math.min(c.toB > c.fromB ? c.toB - 1 : c.fromB, doc.length)).to
+    delta = c.toB - c.toA
+  }
+  const p = Math.min(Math.max(at + delta, 0), doc.length)
+  return doc.lineAt(p).to
+}
+
+// A widget's height changes as it lays out (and as you type in it): the
+// editor measures it again, or its line numbers drift from its lines.
+// fitWidgets keeps threads and comment boxes to the width you can see of
+// a view (its code can be wider, scrolling sideways), beside its gutter.
+function fitWidgets(view) {
+  if (view._fit) return
+  const fit = () => {
+    const g = view.dom.querySelector(".cm-gutters")
+    const gw = g ? g.offsetWidth : 0
+    view.dom.style.setProperty("--gutw", `${gw}px`)
+    view.dom.style.setProperty("--wvis", `${Math.max(view.scrollDOM.clientWidth - gw, 200)}px`)
+  }
+  view._fit = new ResizeObserver(fit)
+  view._fit.observe(view.scrollDOM)
+  fit()
+}
+
+// (In a padded wrapper: the editor doesn't count a widget's margins.)
+function measured(view, inner) {
+  const dom = el("div", "wwrap")
+  dom.append(inner)
+  const ro = new ResizeObserver(() => view.requestMeasure())
+  ro.observe(dom)
+  dom._ro = ro
+  return dom
+}
+
+class ThreadWidget extends WidgetType {
+  constructor(t, key) { super(); this.t = t; this.key = key }
+  eq(o) { return o.key === this.key }
+  toDOM(view) { return measured(view, threadDOM(this.t)) }
+  destroy(dom) { dom._ro?.disconnect() }
+  ignoreEvent() { return true }
+  get estimatedHeight() { return 90 + 50 * this.t.comments.length }
+}
+
+class ComposerWidget extends WidgetType {
+  constructor(c) { super(); this.c = c; this.key = composerKey(c) }
+  eq(o) { return o.key === this.key }
+  toDOM(view) { return measured(view, composerDOM(this.c)) }
+  destroy(dom) { dom._ro?.disconnect() }
+  ignoreEvent() { return true }
+  get estimatedHeight() { return 130 }
+}
+
+const composerKey = (c) => `new:${c.path}:${c.side}:${c.line}:${c.endLine}`
+const rangeLine = Decoration.line({ class: "cm-commentRange" })
+const threadKey = (t) => JSON.stringify([t, openReplies.has(t.id), shownResolved.has(t.id), shownOutdated.has(t.id),
+  t.comments.filter((c) => editing.has(c.id)).map((c) => c.id), config.target && config.target.id, config.canSend])
+
+// refreshThreads redraws a mounted file's threads: in its views, and above them.
+function refreshThreads(path) {
+  const m = mounted.get(path)
+  if (!m) return
+  const all = threadsOf(path)
+  const placed = new Set()
+  const unified = isUnified(m.views)
+  for (const view of m.views) {
+    const side = sideOf(view), marks = []
+    for (const t of all) {
+      if (t.line < 1) continue
+      const pos = posFor(view, t, unified)
+      if (pos < 0) continue
+      placed.add(t.id)
+      marks.push(Decoration.widget({ widget: new ThreadWidget(t, threadKey(t)), block: true, side: 1 }).range(pos))
+    }
+    const r = dragRange
+    if (r && r.path === path && r.side === side) {
+      for (let l = Math.min(r.from, r.to); l <= Math.max(r.from, r.to) && l <= view.state.doc.lines; l++) marks.push(rangeLine.range(view.state.doc.line(l).from))
+    }
+    const c = composer
+    if (c && c.path === path && c.line > 0 && (c.side === side) && c.endLine <= view.state.doc.lines && !(r && r.path === path)) {
+      marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(view.state.doc.line(c.endLine).to))
+      for (let l = c.line; l <= c.endLine; l++) marks.push(rangeLine.range(view.state.doc.line(l).from))
+    }
+    view.dispatch({ effects: m.thr.reconfigure(EditorView.decorations.of(Decoration.set(marks, true))) })
+    fitWidgets(view)
+  }
+  // Above the file: its file comments, threads whose lines aren't shown,
+  // and a new file comment.
+  m.top.textContent = ""
+  for (const t of all) if (!placed.has(t.id)) m.top.append(threadDOM(t))
+  if (composer && composer.path === path && composer.line === 0) m.top.append(composerDOM(composer))
+  m.top.style.display = m.top.childNodes.length ? "" : "none"
+}
+
+function refreshAllThreads() {
+  for (const p of mounted.keys()) refreshThreads(p)
+  renderTree()
+  renderBar()
+  for (const [path, s] of sections) {
+    const b = s.querySelector(".fhead .ccount")
+    const n = threadsOf(path).filter((t) => t.state !== "resolved").length
+    if (b) { b.textContent = n ? String(n) : ""; b.style.display = n ? "" : "none" }
+  }
+}
+
+// ---- writing a comment ----
+
+let drag = null
+let dragRange = null // { path, side, from, to }: lines being dragged over, shown as you go
+function gutterDown(view, block, e, path) {
+  if (e.button !== 0) return false
+  const line = view.state.doc.lineAt(block.from).number
+  // Shift-click: from the line the comment box is on to this one.
+  if (e.shiftKey && composer && composer.path === path && composer.side === sideOf(view)) {
+    openComposer({ path, side: sideOf(view), line: Math.min(composer.line, line), endLine: Math.max(composer.line, line) })
+    return true
+  }
+  drag = { view, path, from: line }
+  const lineAt = (ev) => {
+    const b = view.lineBlockAtHeight(ev.clientY - view.documentTop)
+    return view.state.doc.lineAt(Math.min(Math.max(b.from, 0), view.state.doc.length)).number
+  }
+  dragRange = { path, side: sideOf(view), from: line, to: line }
+  refreshThreads(path)
+  let queued = false
+  const move = (ev) => {
+    if (!drag) return
+    const to = lineAt(ev)
+    if (dragRange && to !== dragRange.to) {
+      dragRange.to = to
+      if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; refreshThreads(path) }) }
+    }
+  }
+  const up = (ev) => {
+    window.removeEventListener("mouseup", up, true)
+    window.removeEventListener("mousemove", move, true)
+    const d = drag
+    drag = null
+    dragRange = null
+    if (!d) return
+    const to = lineAt(ev)
+    openComposer({ path: d.path, side: sideOf(d.view), line: Math.min(d.from, to), endLine: Math.max(d.from, to) })
+  }
+  window.addEventListener("mousemove", move, true)
+  window.addEventListener("mouseup", up, true)
+  e.preventDefault()
+  return true
+}
+
+function openComposer(c) {
+  const was = composer
+  composer = c
+  if (was && was.path !== c.path) refreshThreads(was.path)
+  refreshThreads(c.path)
+  requestAnimationFrame(() => {
+    const ta = document.querySelector(`.composer[data-key="${CSS.escape(composerKey(c))}"] textarea`)
+    if (ta) { ta.focus(); ta.selectionStart = ta.value.length }
+  })
+}
+
+function closeComposer() {
+  const was = composer
+  composer = null
+  if (was) { drafts.delete(composerKey(was)); refreshThreads(was.path) }
+}
+
+function linesText(c) {
+  if (c.line === 0) return "Commenting on the file"
+  const side = c.side === "old" ? " (before the change)" : ""
+  return (c.endLine > c.line ? `Commenting on lines ${c.line}–${c.endLine}` : `Commenting on line ${c.line}`) + side
+}
+
+// buttons is a comment box's row: Cancel, then keep it (Add Comment,
+// Reply), and with an agent to send to, Send to it, the main one.
+// submit(send) posts it; ⌘Return does the main one.
+function buttons(keep, submit, cancel) {
+  const row = el("div", "crow")
+  const can = !!config.target && config.canSend
+  const no = el("button", "btn", "Cancel")
+  no.onclick = cancel
+  const add = el("button", can ? "btn" : "btn primary", keep)
+  add.onclick = () => submit(false)
+  row.append(el("span", "spacer"), no, add)
+  if (can) {
+    const send = el("button", "btn primary", `Send to ${agentName()}`)
+    send.onclick = () => submit(true)
+    send.title = "Post it and send it to the agent now"
+    add.title = "Post it, to send later (or keep as a note)"
+    row.append(send)
+  }
+  return { row, main: () => submit(can) }
+}
+
+function textBox(key, placeholder, submit, cancel) { // submit: ⌘Return
+  const ta = el("textarea")
+  ta.placeholder = placeholder
+  ta.value = drafts.get(key) || ""
+  ta.rows = 3
+  ta.oninput = () => { drafts.set(key, ta.value); grow(ta) }
+  ta.onkeydown = (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit() }
+    if (e.key === "Escape") { e.preventDefault(); cancel() }
+    e.stopPropagation()
+  }
+  requestAnimationFrame(() => grow(ta))
+  return ta
+}
+
+function grow(ta) {
+  ta.style.height = "auto"
+  ta.style.height = `${Math.min(ta.scrollHeight + 2, 320)}px`
+}
+
+function composerDOM(c) {
+  const key = composerKey(c)
+  const box = el("div", "composer")
+  box.dataset.key = key
+  box.append(el("div", "cfor", linesText(c)))
+  const submit = (send) => {
+    const text = ta.value.trim()
+    if (!text) return
+    post({ type: "review", command: { action: "addThread", path: c.path, side: c.side, line: c.line, endLine: c.endLine, text, send } })
+    drafts.delete(key)
+    composer = null
+    refreshThreads(c.path)
+  }
+  const b = buttons("Add Comment", submit, closeComposer)
+  const ta = textBox(key, "Leave a comment (Markdown)", () => b.main(), closeComposer)
+  box.append(ta, b.row)
+  return box
+}
+
+// ---- a thread ----
+
+function when(ms) {
+  const s = (Date.now() - ms) / 1000
+  if (s < 60) return "just now"
+  if (s < 3600) return `${Math.floor(s / 60)}m`
+  if (s < 86400) return `${Math.floor(s / 3600)}h`
+  return new Date(ms).toLocaleDateString()
+}
+
+function threadDOM(t) {
+  const box = el("div", `thread st-${t.state}` + (t.outdated ? " outdated" : ""))
+  box.dataset.thread = t.id
+  const resolvedClosed = t.state === "resolved" && !shownResolved.has(t.id)
+  // A resolved thread, folded to a line.
+  if (resolvedClosed) {
+    const line = el("button", "tfold")
+    line.append(el("span", "badge resolved", "Resolved"), el("span", "tsum", firstLine(t.comments[0]?.text || "")),
+      el("span", "tcount", plural(t.comments.length, "comment", "comments")))
+    line.onclick = () => { shownResolved.add(t.id); refreshThreads(t.path) }
+    box.append(line)
+    return box
+  }
+  const head = el("div", "thead")
+  if (t.line > 0 && t.endLine > t.line) head.append(el("span", "tlines", `Lines ${t.line}–${t.endLine}`))
+  else if (t.line > 0) head.append(el("span", "tlines", `Line ${t.line}`))
+  else head.append(el("span", "tlines", "The file"))
+  if (t.side === "old") head.append(el("span", "badge", "Before the change"))
+  if (t.outdated) head.append(el("span", "badge outdated", "Outdated"))
+  if (t.state === "addressed") head.append(el("span", "badge addressed", "Addressed"))
+  if (t.state === "resolved") {
+    const fold = el("button", "btn link", "Hide")
+    fold.onclick = () => { shownResolved.delete(t.id); refreshThreads(t.path) }
+    head.append(el("span", "badge resolved", "Resolved"), el("span", "spacer"), fold)
+  }
+  box.append(head)
+  // Outdated: the code as it was when commented on.
+  if (t.outdated && t.quote) {
+    if (shownOutdated.has(t.id)) {
+      const pre = el("pre", "quote", t.quote)
+      box.append(pre)
+    }
+    const b = el("button", "btn link", shownOutdated.has(t.id) ? "Hide the code it was on" : "Show the code it was on")
+    b.onclick = () => { shownOutdated.has(t.id) ? shownOutdated.delete(t.id) : shownOutdated.add(t.id); refreshThreads(t.path) }
+    box.append(b)
+  }
+  for (const c of t.comments) box.append(commentDOM(t, c))
+  // Reply, resolve.
+  const actions = el("div", "tact")
+  if (openReplies.has(t.id)) {
+    const key = "reply:" + t.id
+    const submit = (send) => {
+      const text = ta.value.trim()
+      if (!text) return
+      post({ type: "review", command: { action: "reply", threadId: t.id, text, send } })
+      drafts.delete(key)
+      openReplies.delete(t.id)
+      refreshThreads(t.path)
+    }
+    const cancel = () => { openReplies.delete(t.id); refreshThreads(t.path) }
+    const b = buttons("Reply", submit, cancel)
+    const ta = textBox(key, "Reply (Markdown)", () => b.main(), cancel)
+    actions.append(ta, b.row)
+    actions.classList.add("open")
+    requestAnimationFrame(() => ta.focus())
+  } else if (config.canDrive) {
+    const reply = el("button", "replybox", "Reply…")
+    reply.onclick = () => { openReplies.add(t.id); refreshThreads(t.path) }
+    actions.append(reply)
+    const st = el("button", "btn")
+    if (t.state === "resolved") {
+      st.textContent = "Reopen"
+      st.onclick = () => post({ type: "review", command: { action: "setState", threadId: t.id, state: "open" } })
+    } else {
+      st.textContent = "Resolve"
+      st.onclick = () => { shownResolved.delete(t.id); post({ type: "review", command: { action: "setState", threadId: t.id, state: "resolved" } }) }
+    }
+    actions.append(st)
+  }
+  box.append(actions)
+  return box
+}
+
+function firstLine(s) { const l = s.split("\n")[0]; return l.length > 90 ? l.slice(0, 90) + "…" : l }
+
+function commentDOM(t, c) {
+  const box = el("div", "cmt" + (c.agent ? " agent" : "") + (c.unread ? " unread" : ""))
+  box.dataset.comment = c.id
+  const who = el("div", "who")
+  who.append(el("span", "name", c.agent ? cap(c.author || "agent") : c.author || "You"), el("span", "when", when(c.unixMs)))
+  if (c.unread) who.append(el("span", "badge new", "New"))
+  if (c.delivery === "unsent") {
+    const pill = el("span", "badge unsent", "Not sent")
+    who.append(pill)
+    if (config.target && config.canSend) {
+      const b = el("button", "btn link", `Send to ${agentName()}`)
+      b.onclick = () => post({ type: "review", command: { action: "send", commentIds: [c.id] } })
+      who.append(b)
+    }
+  } else if (c.delivery === "queued") {
+    const pill = el("span", "badge queued", `Queued: ${agentName()} is waiting on you`)
+    pill.title = "It goes once you've answered what the agent is asking"
+    who.append(pill)
+  } else if (c.delivery === "sent") {
+    who.append(el("span", "sent", "Sent"))
+  }
+  const mine = !c.agent && c.delivery === "unsent" && config.canDrive
+  if (mine && !editing.has(c.id)) {
+    who.append(el("span", "spacer"))
+    const ed = el("button", "btn link", "Edit")
+    ed.onclick = () => { editing.add(c.id); drafts.set("edit:" + c.id, c.text); refreshThreads(t.path) }
+    const del = el("button", "btn link danger", "Delete")
+    del.onclick = () => post({ type: "review", command: { action: "deleteComment", commentId: c.id } })
+    who.append(ed, del)
+  }
+  box.append(who)
+  if (editing.has(c.id)) {
+    const key = "edit:" + c.id
+    const save = () => {
+      const text = ta.value.trim()
+      if (!text) return
+      post({ type: "review", command: { action: "editComment", commentId: c.id, text } })
+      editing.delete(c.id)
+      drafts.delete(key)
+      refreshThreads(t.path)
+    }
+    const cancel = () => { editing.delete(c.id); drafts.delete(key); refreshThreads(t.path) }
+    const ta = textBox(key, "", save, cancel)
+    const row = el("div", "crow")
+    const ok = el("button", "btn primary", "Save")
+    ok.onclick = save
+    const no = el("button", "btn", "Cancel")
+    no.onclick = cancel
+    row.append(el("span", "spacer"), no, ok)
+    box.append(ta, row)
+  } else {
+    const body = el("div", "md")
+    body.innerHTML = markdown(c.text)
+    box.append(body)
+  }
+  if (c.unread) seen.observe(box)
+  return box
+}
+
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+
+// Agents' comments you've had on screen are read.
+let readQueue = new Set(), readTimer = null
+const seen = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting || !document.hasFocus()) continue
+    seen.unobserve(e.target)
+    readQueue.add(e.target.dataset.comment)
+  }
+  if (readQueue.size && !readTimer) {
+    readTimer = setTimeout(() => {
+      readTimer = null
+      post({ type: "review", command: { action: "markRead", commentIds: [...readQueue] } })
+      readQueue = new Set()
+    }, 1200)
+  }
+}, { threshold: 0.6 })
+
+// ---- a little Markdown ----
+
+const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c])
+
+// markdown renders the Markdown comments use: paragraphs, lists, quotes,
+// code (fenced and inline), bold, italics and links (web ones only).
+function markdown(src) {
+  const out = []
+  const lines = src.replace(/\r\n?/g, "\n").split("\n")
+  let i = 0
+  const inline = (s) => {
+    const codes = []
+    s = s.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000` })
+    s = escapeHTML(s)
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+      .replace(/(^|[^_\w])_([^_\s][^_]*)_/g, "$1<em>$2</em>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>')
+    return s.replace(/\u0000(\d+)\u0000/g, (_, n) => `<code>${escapeHTML(codes[+n])}</code>`)
+  }
+  while (i < lines.length) {
+    const l = lines[i]
+    if (/^```/.test(l)) {
+      const code = []
+      i++
+      while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++])
+      i++
+      out.push(`<pre><code>${escapeHTML(code.join("\n"))}</code></pre>`)
+      continue
+    }
+    if (/^\s*[-*+]\s+/.test(l) || /^\s*\d+[.)]\s+/.test(l)) {
+      const ordered = /^\s*\d/.test(l)
+      const items = []
+      while (i < lines.length && (/^\s*[-*+]\s+/.test(lines[i]) || /^\s*\d+[.)]\s+/.test(lines[i]))) {
+        items.push(`<li>${inline(lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, ""))}</li>`)
+        i++
+      }
+      out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`)
+      continue
+    }
+    if (/^>\s?/.test(l)) {
+      const q = []
+      while (i < lines.length && /^>\s?/.test(lines[i])) q.push(lines[i++].replace(/^>\s?/, ""))
+      out.push(`<blockquote>${inline(q.join(" "))}</blockquote>`)
+      continue
+    }
+    if (!l.trim()) { i++; continue }
+    const para = []
+    while (i < lines.length && lines[i].trim() && !/^```|^\s*[-*+]\s+|^\s*\d+[.)]\s+|^>/.test(lines[i])) para.push(lines[i++])
+    out.push(`<p>${para.map(inline).join("<br>")}</p>`)
+  }
+  return out.join("")
+}
+
+// ---- who comments go to ----
+
+function renderTargetPop(pop) {
+  pop.textContent = ""
+  pop.append(el("h4", null, "Send comments to"))
+  const agents = config.agents || []
+  if (!agents.length) pop.append(el("div", "line", "No agents running in this Group."))
+  for (const a of agents) {
+    const b = el("button", "item" + (config.target && config.target.id === a.id ? " on" : ""))
+    b.append(el("span", null, a.name))
+    if (a.detail) b.append(el("span", "sub", a.detail))
+    b.onclick = () => { closePops(); post({ type: "review", command: { action: "setTarget", targetPaneId: a.id } }) }
+    pop.append(b)
+  }
+  if (config.target) {
+    pop.append(el("hr"))
+    const none = el("button", "item", "No One")
+    none.onclick = () => { closePops(); post({ type: "review", command: { action: "setTarget", targetPaneId: "" } }) }
+    pop.append(none)
+  }
+}
+
+function unsentCount() {
+  let n = 0
+  for (const t of review.threads) for (const c of t.comments) if (c.delivery === "unsent") n++
+  return n
+}
+
 // ---- what the app calls (window.hammock) ----
 
 window.hammock = {
@@ -873,6 +1439,7 @@ window.hammock = {
     applyTheme()
     renderBar()
     if (content && JSON.stringify([config.theme, config.font, config.view]) !== before) renderFiles(true)
+    else if (content) for (const p of mounted.keys()) refreshThreads(p)
   },
 
   /** The pane's DiffInfo: title, totals, stale, error. */
@@ -917,6 +1484,12 @@ window.hammock = {
 
   /** Scroll to a file (an agent pointing at one). */
   reveal(path) { reveal(path) },
+
+  /** The pane's review: its threads. */
+  setReview(r) {
+    review = { id: r.id || "", threads: r.threads || [] }
+    refreshAllThreads()
+  },
 }
 
 // ---- wiring ----

@@ -6,7 +6,7 @@ import HammockKit
 extension Pref {
     /// Every one, for that move (with Pref.shared, both apps' settings).
     static var mac: [Pref] {
-        [NotifyPrefs.needsInput, NotifyPrefs.grants, NotifyPrefs.finished, NotifyPrefs.errored, NotifyPrefs.sound,
+        [NotifyPrefs.needsInput, NotifyPrefs.grants, NotifyPrefs.finished, NotifyPrefs.errored, NotifyPrefs.reviewReplies, NotifyPrefs.sound,
          NotifyPrefs.whenVisible, NotifyPrefs.badge, NotifyPrefs.style,
          SidebarLayout.pref, FinishedPrefs.pref, CollapsedAgentsPrefs.pref, CloseGuard.pref, Pref.simulatorFrame]
     }

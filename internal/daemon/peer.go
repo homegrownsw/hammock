@@ -1020,6 +1020,10 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.ReadDiffFile.PaneId
 	case *pb.ClientMessage_DiffCommand:
 		return m.DiffCommand.PaneId
+	case *pb.ClientMessage_ReadReview:
+		return m.ReadReview.PaneId
+	case *pb.ClientMessage_ReviewCommand:
+		return m.ReviewCommand.PaneId
 	case *pb.ClientMessage_ListFiles:
 		if m.ListFiles.GroupId != "" {
 			return m.ListFiles.GroupId

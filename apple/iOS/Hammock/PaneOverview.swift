@@ -184,7 +184,15 @@ private struct PaneCard: View {
 
     private var detail: String? {
         guard let p = pane else { return nil }
-        return p.kind == .browser ? URL(string: p.url)?.host() : p.kind == .simulator ? nil : p.kind == .editor ? (p.editor.dirty ? "Edited" : nil) : p.shortCwd
+        return p.kind == .browser ? URL(string: p.url)?.host() : p.kind == .simulator ? nil : p.kind == .editor ? (p.editor.dirty ? "Edited" : nil) : p.kind == .diff ? diffDetail(p) : p.shortCwd
+    }
+
+    /// A diff pane: its open threads, and replies you haven't read.
+    private func diffDetail(_ p: Pane) -> String? {
+        var parts: [String] = []
+        if p.diff.openThreads > 0 { parts.append(p.diff.openThreads == 1 ? "1 thread" : "\(p.diff.openThreads) threads") }
+        if p.diff.unread > 0 { parts.append("\(p.diff.unread) new") }
+        return parts.isEmpty ? p.diff.title : parts.joined(separator: " · ")
     }
 
     @ViewBuilder private var icon: some View {
@@ -192,6 +200,7 @@ private struct PaneCard: View {
         case .browser: Image(systemName: "globe").foregroundStyle(.secondary)
         case .simulator: Image(systemName: "iphone").foregroundStyle(.secondary)
         case .editor: Image(systemName: "doc.text").foregroundStyle(.secondary)
+        case .diff: Image(systemName: "plusminus").foregroundStyle(.secondary)
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
                 StateGlyph(state: p.agent.shownState)

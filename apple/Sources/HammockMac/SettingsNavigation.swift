@@ -334,6 +334,7 @@ enum SettingsIndex {
             e(.notifications, "Notify me when an agent", "Asks for permission", "notify.grants", "alert approve"),
             e(.notifications, "Notify me when an agent", "Finishes", "notify.finished", "alert done"),
             e(.notifications, "Notify me when an agent", "Hits an error", "notify.errored", "alert fail"),
+            e(.notifications, "Notify me when an agent", "Replies to my review comments", "notify.reviewReplies", "diff review comment thread answer"),
             e(.notifications, "How to notify me", "Show notifications", "notify.style", "in-app window banner macos"),
             e(.notifications, "How to notify me", "Play a sound with notifications", "notify.sound", "alert"),
             e(.notifications, "How to notify me", "Also notify for the tab I'm looking at", "notify.visible", "alert"),

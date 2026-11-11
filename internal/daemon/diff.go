@@ -29,6 +29,12 @@ type diffHub struct {
 	st   map[string]*diffState // by pane
 	once sync.Once
 	stop chan struct{}
+
+	// Reviews (review.go), by id, and what each is of (reviewKey; worked
+	// out as panes find theirs).
+	reviews    map[string]*pb.Review
+	reviewKeys map[string]string
+	sending    map[string]bool // panes whose comments are being typed to their agent
 }
 
 type diffState struct {
@@ -48,10 +54,15 @@ type diffState struct {
 	watchers    map[*conn]bool
 	stale       bool
 	checking    bool
+	reviewID    string
+	target      string // the agent comments go to
 }
 
 func newDiffHub(d *Daemon) *diffHub {
-	return &diffHub{d: d, st: map[string]*diffState{}, stop: make(chan struct{})}
+	h := &diffHub{d: d, st: map[string]*diffState{}, stop: make(chan struct{}),
+		reviews: map[string]*pb.Review{}, reviewKeys: map[string]string{}, sending: map[string]bool{}}
+	h.loadReviews()
+	return h
 }
 
 func (h *diffHub) start() { h.once.Do(func() { go h.run() }) }
@@ -86,17 +97,24 @@ func (d *Daemon) startDiff(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 		return nil, err
 	}
 	id := newID("pn")
+	// Comments go to the agent it's opened for, or the agent that opened it.
+	target := open.TargetPaneId
+	if target == "" {
+		if c := d.panes[spec.CreatedByPaneId]; c != nil && c.snapshotInfo().Agent != nil {
+			target = spec.CreatedByPaneId
+		}
+	}
 	info := &pb.Pane{
 		Id: id, TabId: t.Id, Kind: pb.PaneKind_PANE_KIND_DIFF, Title: r.Title, Cwd: r.Repo,
 		CreatedByPaneId: spec.CreatedByPaneId,
 		Diff: &pb.DiffInfo{
 			Repo: r.Repo, Source: proto.CloneOf(r.Source), Title: r.Title, BaseRev: r.Base, HeadRev: r.Head, Branch: r.Branch,
-			View: cleanDiffView(open.View),
+			View: cleanDiffView(open.View), TargetPaneId: target,
 		},
 	}
 	h := d.diffs
 	h.mu.Lock()
-	h.st[id] = &diffState{paneID: id, repo: r.Repo, source: proto.CloneOf(r.Source), resolved: r, watchers: map[*conn]bool{}}
+	h.st[id] = &diffState{paneID: id, repo: r.Repo, source: proto.CloneOf(r.Source), resolved: r, watchers: map[*conn]bool{}, target: target}
 	h.mu.Unlock()
 	h.start()
 	p := newPane(d, info)
@@ -115,7 +133,11 @@ func (h *diffHub) restore(p *pane) {
 	info.Diff.Stale = false
 	h.mu.Lock()
 	h.st[p.id] = &diffState{paneID: p.id, repo: info.Diff.Repo, source: proto.CloneOf(info.Diff.Source),
-		generation: info.Diff.Generation, watchers: map[*conn]bool{}}
+		generation: info.Diff.Generation, watchers: map[*conn]bool{}, target: info.Diff.TargetPaneId}
+	if rv := h.reviews[info.Diff.ReviewId]; rv != nil {
+		rv.PaneId = p.id
+		h.st[p.id].reviewID = rv.Id
+	}
 	h.mu.Unlock()
 	h.start()
 }
@@ -123,6 +145,9 @@ func (h *diffHub) restore(p *pane) {
 func (h *diffHub) paneClosed(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if s := h.st[id]; s != nil && s.reviewID != "" {
+		h.releaseReviewLocked(s.reviewID)
+	}
 	delete(h.st, id)
 }
 
@@ -187,10 +212,18 @@ func (h *diffHub) compute(s *diffState, refresh bool) error {
 	s.computed, s.stale = true, false
 	if err == nil {
 		s.resolved, s.files, s.fingerprint = r, files, fp
+		h.attachReviewLocked(s)
 	} else {
 		s.files, s.fingerprint = nil, ""
 	}
 	h.mu.Unlock()
+	if err == nil {
+		// Its threads, found again in the diff as it is now.
+		defer func() {
+			h.reanchor(s)
+			h.publish(s)
+		}()
+	}
 
 	d := h.d
 	d.mu.Lock()
@@ -357,11 +390,17 @@ func cleanDiffView(v *pb.DiffView) *pb.DiffView {
 func (h *diffHub) run() {
 	tick := time.NewTicker(diffPollEvery)
 	defer tick.Stop()
+	lastPrune := time.Time{}
 	for {
 		select {
 		case <-h.stop:
 			return
 		case <-tick.C:
+		}
+		h.flushQueued()
+		if time.Since(lastPrune) > time.Hour {
+			lastPrune = time.Now()
+			go h.pruneReviews()
 		}
 		h.mu.Lock()
 		var due []*diffState

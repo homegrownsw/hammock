@@ -517,6 +517,11 @@ message ClientMessage {
     ReadDiff read_diff = 127;
     ReadDiffFile read_diff_file = 128;
     DiffCommand diff_command = 129;
+    // Reviews: comment threads on diffs (review.go). ReadReview replies
+    // Review; ListReviews ReviewList; ReviewCommand ReviewReply.
+    ReadReview read_review = 130;
+    ListReviews list_reviews = 131;
+    ReviewCommand review_command = 132;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -791,6 +796,9 @@ message ServerMessage {
     AppChallenge app_challenge = 63;                // reply to ProveApp
     DiffContent diff_content = 64;                  // reply to ReadDiff
     DiffFileText diff_file_text = 65;               // reply to ReadDiffFile
+    Review review = 66;                             // reply to ReadReview; to a diff pane's attached clients as its review changes
+    ReviewList review_list = 67;                    // reply to ListReviews
+    ReviewReply review_reply = 68;                  // reply to ReviewCommand
   }
 }
 
@@ -2428,6 +2436,8 @@ message DiffOpen {
   string repo = 1;    // a folder in the repository (empty: the pane's cwd, else the Group's folder)
   DiffSource source = 2;
   DiffView view = 3;  // how it starts out (empty fields: the settings')
+  // The agent its comments go to (empty: the agent that opened it, if one did).
+  string target_pane_id = 4;
 }
 
 // A pane's own choices, over the diff-* settings. Empty: the setting's.
@@ -2453,6 +2463,14 @@ message DiffInfo {
   string error = 11;       // why there's nothing to show (not a repository, a commit that's gone)
   DiffView view = 12;
   uint64 generation = 13;  // goes up each time it's worked out afresh
+  // Its review (comment threads), once it has one, and the agent comments
+  // go to ("" none chosen).
+  string review_id = 14;
+  string target_pane_id = 15;
+  uint32 open_threads = 16;  // not resolved
+  uint32 unsent = 17;        // your comments not yet sent to the agent
+  uint32 unread = 18;        // agents' comments you haven't seen
+  uint32 queued = 19;        // sent, waiting for the agent to be free to take them
 }
 
 // The diff's files (refresh: work it out again first; else as last worked
@@ -2523,4 +2541,107 @@ message DiffCommand {
   Action action = 2;
   DiffSource source = 3;
   DiffView view = 4;
+}
+
+// Reviews (review.go): comment threads on a diff, kept by the daemon apart
+// from its pane: closing a pane whose threads are all resolved lets its
+// review go; one with threads still open keeps it (for two weeks
+// untouched), and opening the same diff again brings them back.
+message Review {
+  string id = 1;
+  string repo = 2;
+  DiffSource source = 3;
+  string title = 4;
+  string group_id = 5;
+  string target_pane_id = 6;  // the agent its comments go to
+  repeated ReviewThread threads = 7;
+  int64 updated_unix_ms = 8;
+  string pane_id = 9;         // the diff pane showing it ("" none is open)
+}
+
+message ReviewThread {
+  enum Side {
+    SIDE_NEW = 0;  // the diff's new side (what's there now)
+    SIDE_OLD = 1;  // what it was
+  }
+  enum State {
+    STATE_OPEN = 0;
+    STATE_ADDRESSED = 1;  // the agent says it's dealt with: yours to resolve
+    STATE_RESOLVED = 2;
+  }
+  string id = 1;
+  string path = 2;      // relative to the repository's top folder
+  Side side = 3;
+  uint32 line = 4;      // 1-based; 0: the file as a whole
+  uint32 end_line = 5;  // the last line commented on (line alone: line)
+  // The lines as they were when commented on, and a few either side: how
+  // the thread finds them again as the code changes.
+  string quote = 6;
+  string before = 7;
+  string after = 8;
+  State state = 9;
+  bool outdated = 10;   // its lines have changed since, or gone
+  repeated ReviewComment comments = 11;
+  int64 created_unix_ms = 12;
+}
+
+message ReviewComment {
+  enum Delivery {
+    DELIVERY_NONE = 0;    // an agent's, or not for sending
+    DELIVERY_UNSENT = 1;  // yours, not yet sent to the agent
+    DELIVERY_QUEUED = 2;  // sent, held until the agent can take it (it's waiting on you)
+    DELIVERY_SENT = 3;
+  }
+  string id = 1;
+  string author = 2;          // a person's name ("" you), or the agent's ("claude")
+  bool agent = 3;
+  string text = 4;            // Markdown
+  int64 unix_ms = 5;
+  Delivery delivery = 6;
+  bool unread = 7;            // an agent's you haven't seen
+  string author_pane_id = 8;  // the agent's pane
+}
+
+// A pane's review (pane_id), or one by id.
+message ReadReview { string pane_id = 1; string review_id = 2; }
+
+// The reviews the caller can see (an agent: those in its Groups).
+message ListReviews {}
+message ReviewList { repeated Review reviews = 1; }
+
+message ReviewCommand {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_ADD_THREAD = 1;     // path, side, line, end_line, text (send: to the agent now)
+    ACTION_REPLY = 2;          // thread_id, text (send)
+    ACTION_SET_STATE = 3;      // thread_id, state (agents: addressed only, with text as a note)
+    ACTION_SEND = 4;           // comment_ids (empty: every one unsent) to the agent, as one message
+    ACTION_DELETE_COMMENT = 5; // comment_id: yours, unsent (a thread with none left goes)
+    ACTION_SET_TARGET = 6;     // target_pane_id: the agent comments go to
+    ACTION_MARK_READ = 7;      // comment_ids (empty: all)
+    ACTION_EDIT_COMMENT = 8;   // comment_id, text: yours, unsent
+  }
+  string pane_id = 1;    // the diff pane; or
+  string review_id = 2;  // a review whose pane is closed
+  Action action = 3;
+  string thread_id = 4;
+  string comment_id = 5;
+  string path = 6;
+  ReviewThread.Side side = 7;
+  uint32 line = 8;
+  uint32 end_line = 9;
+  string text = 10;
+  bool send = 11;
+  ReviewThread.State state = 12;
+  repeated string comment_ids = 13;
+  string target_pane_id = 14;
+}
+
+message ReviewReply {
+  Review review = 1;
+  string thread_id = 2;   // the thread made or replied to
+  string comment_id = 3;  // the comment made
+  // SEND: how many went, and how many wait for the agent (it's waiting on you).
+  uint32 sent = 4;
+  uint32 queued = 5;
 }

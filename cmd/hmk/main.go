@@ -129,6 +129,13 @@ Usage:
                                             (--beside: split beside a pane). With no REV: this branch
                                             against its base, uncommitted changes too, or on the default
                                             branch what's uncommitted; REV: one commit; --wait: until closed
+  hmk review [list [--all] | show [REVIEW|PANE] [--all-threads]] [--json]
+                                            the comment threads on diffs: yours (sent to you, or on diffs
+                                            you opened), open ones
+  hmk review reply THREAD TEXT | address THREAD [NOTE] | comment [REVIEW|PANE] FILE:LINE[-LINE] TEXT
+                                            answer a thread, mark it addressed (the user resolves it), or
+                                            start one on a diff's new side
+  hmk review wait [REVIEW|PANE] [--timeout S]   until the user sends comments or resolves threads
   hmk attach PANE                          attach this terminal (Ctrl-] detaches)
   hmk send PANE [TEXT] [--key NAME]... [--enter]
                                             type TEXT into a pane, then press keys (escape, ctrl-c,
@@ -734,6 +741,9 @@ func runCommand(args []string) error {
 
 	case "diff":
 		return runDiff(w, c, call, args)
+
+	case "review":
+		return runReview(w, c, call, args)
 
 	case "nav":
 		if len(args) < 3 {

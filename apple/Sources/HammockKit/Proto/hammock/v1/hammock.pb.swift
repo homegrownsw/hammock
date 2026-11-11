@@ -2216,6 +2216,32 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .diffCommand(newValue)}
   }
 
+  /// Reviews: comment threads on diffs (review.go). ReadReview replies
+  /// Review; ListReviews ReviewList; ReviewCommand ReviewReply.
+  public var readReview: Hammock_V1_ReadReview {
+    get {
+      if case .readReview(let v)? = msg {return v}
+      return Hammock_V1_ReadReview()
+    }
+    set {msg = .readReview(newValue)}
+  }
+
+  public var listReviews: Hammock_V1_ListReviews {
+    get {
+      if case .listReviews(let v)? = msg {return v}
+      return Hammock_V1_ListReviews()
+    }
+    set {msg = .listReviews(newValue)}
+  }
+
+  public var reviewCommand: Hammock_V1_ReviewCommand {
+    get {
+      if case .reviewCommand(let v)? = msg {return v}
+      return Hammock_V1_ReviewCommand()
+    }
+    set {msg = .reviewCommand(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2406,6 +2432,11 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     case readDiff(Hammock_V1_ReadDiff)
     case readDiffFile(Hammock_V1_ReadDiffFile)
     case diffCommand(Hammock_V1_DiffCommand)
+    /// Reviews: comment threads on diffs (review.go). ReadReview replies
+    /// Review; ListReviews ReviewList; ReviewCommand ReviewReply.
+    case readReview(Hammock_V1_ReadReview)
+    case listReviews(Hammock_V1_ListReviews)
+    case reviewCommand(Hammock_V1_ReviewCommand)
 
   }
 
@@ -3770,6 +3801,33 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .diffFileText(newValue)}
   }
 
+  /// reply to ReadReview; to a diff pane's attached clients as its review changes
+  public var review: Hammock_V1_Review {
+    get {
+      if case .review(let v)? = msg {return v}
+      return Hammock_V1_Review()
+    }
+    set {msg = .review(newValue)}
+  }
+
+  /// reply to ListReviews
+  public var reviewList: Hammock_V1_ReviewList {
+    get {
+      if case .reviewList(let v)? = msg {return v}
+      return Hammock_V1_ReviewList()
+    }
+    set {msg = .reviewList(newValue)}
+  }
+
+  /// reply to ReviewCommand
+  public var reviewReply: Hammock_V1_ReviewReply {
+    get {
+      if case .reviewReply(let v)? = msg {return v}
+      return Hammock_V1_ReviewReply()
+    }
+    set {msg = .reviewReply(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -3859,6 +3917,12 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case diffContent(Hammock_V1_DiffContent)
     /// reply to ReadDiffFile
     case diffFileText(Hammock_V1_DiffFileText)
+    /// reply to ReadReview; to a diff pane's attached clients as its review changes
+    case review(Hammock_V1_Review)
+    /// reply to ListReviews
+    case reviewList(Hammock_V1_ReviewList)
+    /// reply to ReviewCommand
+    case reviewReply(Hammock_V1_ReviewReply)
 
   }
 
@@ -9092,6 +9156,9 @@ public nonisolated struct Hammock_V1_DiffOpen: Sendable {
   /// Clears the value of `view`. Subsequent reads from it will return its default value.
   public mutating func clearView() {self._view = nil}
 
+  /// The agent its comments go to (empty: the agent that opened it, if one did).
+  public var targetPaneID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -9207,6 +9274,42 @@ public nonisolated struct Hammock_V1_DiffInfo: @unchecked Sendable {
   public var generation: UInt64 {
     get {_storage._generation}
     set {_uniqueStorage()._generation = newValue}
+  }
+
+  /// Its review (comment threads), once it has one, and the agent comments
+  /// go to ("" none chosen).
+  public var reviewID: String {
+    get {_storage._reviewID}
+    set {_uniqueStorage()._reviewID = newValue}
+  }
+
+  public var targetPaneID: String {
+    get {_storage._targetPaneID}
+    set {_uniqueStorage()._targetPaneID = newValue}
+  }
+
+  /// not resolved
+  public var openThreads: UInt32 {
+    get {_storage._openThreads}
+    set {_uniqueStorage()._openThreads = newValue}
+  }
+
+  /// your comments not yet sent to the agent
+  public var unsent: UInt32 {
+    get {_storage._unsent}
+    set {_uniqueStorage()._unsent = newValue}
+  }
+
+  /// agents' comments you haven't seen
+  public var unread: UInt32 {
+    get {_storage._unread}
+    set {_uniqueStorage()._unread = newValue}
+  }
+
+  /// sent, waiting for the agent to be free to take them
+  public var queued: UInt32 {
+    get {_storage._queued}
+    set {_uniqueStorage()._queued = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -9485,6 +9588,445 @@ public nonisolated struct Hammock_V1_DiffCommand: Sendable {
 
   fileprivate var _source: Hammock_V1_DiffSource? = nil
   fileprivate var _view: Hammock_V1_DiffView? = nil
+}
+
+/// Reviews (review.go): comment threads on a diff, kept by the daemon apart
+/// from its pane: closing a pane whose threads are all resolved lets its
+/// review go; one with threads still open keeps it (for two weeks
+/// untouched), and opening the same diff again brings them back.
+public nonisolated struct Hammock_V1_Review: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var id: String = String()
+
+  public var repo: String = String()
+
+  public var source: Hammock_V1_DiffSource {
+    get {_source ?? Hammock_V1_DiffSource()}
+    set {_source = newValue}
+  }
+  /// Returns true if `source` has been explicitly set.
+  public var hasSource: Bool {self._source != nil}
+  /// Clears the value of `source`. Subsequent reads from it will return its default value.
+  public mutating func clearSource() {self._source = nil}
+
+  public var title: String = String()
+
+  public var groupID: String = String()
+
+  /// the agent its comments go to
+  public var targetPaneID: String = String()
+
+  public var threads: [Hammock_V1_ReviewThread] = []
+
+  public var updatedUnixMs: Int64 = 0
+
+  /// the diff pane showing it ("" none is open)
+  public var paneID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _source: Hammock_V1_DiffSource? = nil
+}
+
+public nonisolated struct Hammock_V1_ReviewThread: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var id: String = String()
+
+  /// relative to the repository's top folder
+  public var path: String = String()
+
+  public var side: Hammock_V1_ReviewThread.Side = .new
+
+  /// 1-based; 0: the file as a whole
+  public var line: UInt32 = 0
+
+  /// the last line commented on (line alone: line)
+  public var endLine: UInt32 = 0
+
+  /// The lines as they were when commented on, and a few either side: how
+  /// the thread finds them again as the code changes.
+  public var quote: String = String()
+
+  public var before: String = String()
+
+  public var after: String = String()
+
+  public var state: Hammock_V1_ReviewThread.State = .open
+
+  /// its lines have changed since, or gone
+  public var outdated: Bool = false
+
+  public var comments: [Hammock_V1_ReviewComment] = []
+
+  public var createdUnixMs: Int64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Side: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+
+    /// the diff's new side (what's there now)
+    case new // = 0
+
+    /// what it was
+    case old // = 1
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .new
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .new
+      case 1: self = .old
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .new: return 0
+      case .old: return 1
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_ReviewThread.Side] = [
+      .new,
+      .old,
+    ]
+
+  }
+
+  public nonisolated enum State: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case `open` // = 0
+
+    /// the agent says it's dealt with: yours to resolve
+    case addressed // = 1
+    case resolved // = 2
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .open
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .open
+      case 1: self = .addressed
+      case 2: self = .resolved
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .open: return 0
+      case .addressed: return 1
+      case .resolved: return 2
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_ReviewThread.State] = [
+      .open,
+      .addressed,
+      .resolved,
+    ]
+
+  }
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_ReviewComment: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var id: String = String()
+
+  /// a person's name ("" you), or the agent's ("claude")
+  public var author: String = String()
+
+  public var agent: Bool = false
+
+  /// Markdown
+  public var text: String = String()
+
+  public var unixMs: Int64 = 0
+
+  public var delivery: Hammock_V1_ReviewComment.Delivery = .none
+
+  /// an agent's you haven't seen
+  public var unread: Bool = false
+
+  /// the agent's pane
+  public var authorPaneID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Delivery: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+
+    /// an agent's, or not for sending
+    case none // = 0
+
+    /// yours, not yet sent to the agent
+    case unsent // = 1
+
+    /// sent, held until the agent can take it (it's waiting on you)
+    case queued // = 2
+    case sent // = 3
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .none
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .none
+      case 1: self = .unsent
+      case 2: self = .queued
+      case 3: self = .sent
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .none: return 0
+      case .unsent: return 1
+      case .queued: return 2
+      case .sent: return 3
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_ReviewComment.Delivery] = [
+      .none,
+      .unsent,
+      .queued,
+      .sent,
+    ]
+
+  }
+
+  public init() {}
+}
+
+/// A pane's review (pane_id), or one by id.
+public nonisolated struct Hammock_V1_ReadReview: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  public var reviewID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// The reviews the caller can see (an agent: those in its Groups).
+public nonisolated struct Hammock_V1_ListReviews: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_ReviewList: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var reviews: [Hammock_V1_Review] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_ReviewCommand: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// the diff pane; or
+  public var paneID: String = String()
+
+  /// a review whose pane is closed
+  public var reviewID: String = String()
+
+  public var action: Hammock_V1_ReviewCommand.Action = .unspecified
+
+  public var threadID: String = String()
+
+  public var commentID: String = String()
+
+  public var path: String = String()
+
+  public var side: Hammock_V1_ReviewThread.Side = .new
+
+  public var line: UInt32 = 0
+
+  public var endLine: UInt32 = 0
+
+  public var text: String = String()
+
+  public var send: Bool = false
+
+  public var state: Hammock_V1_ReviewThread.State = .open
+
+  public var commentIds: [String] = []
+
+  public var targetPaneID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case unspecified // = 0
+
+    /// path, side, line, end_line, text (send: to the agent now)
+    case addThread // = 1
+
+    /// thread_id, text (send)
+    case reply // = 2
+
+    /// thread_id, state (agents: addressed only, with text as a note)
+    case setState // = 3
+
+    /// comment_ids (empty: every one unsent) to the agent, as one message
+    case send // = 4
+
+    /// comment_id: yours, unsent (a thread with none left goes)
+    case deleteComment // = 5
+
+    /// target_pane_id: the agent comments go to
+    case setTarget // = 6
+
+    /// comment_ids (empty: all)
+    case markRead // = 7
+
+    /// comment_id, text: yours, unsent
+    case editComment // = 8
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .unspecified
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .addThread
+      case 2: self = .reply
+      case 3: self = .setState
+      case 4: self = .send
+      case 5: self = .deleteComment
+      case 6: self = .setTarget
+      case 7: self = .markRead
+      case 8: self = .editComment
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .addThread: return 1
+      case .reply: return 2
+      case .setState: return 3
+      case .send: return 4
+      case .deleteComment: return 5
+      case .setTarget: return 6
+      case .markRead: return 7
+      case .editComment: return 8
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_ReviewCommand.Action] = [
+      .unspecified,
+      .addThread,
+      .reply,
+      .setState,
+      .send,
+      .deleteComment,
+      .setTarget,
+      .markRead,
+      .editComment,
+    ]
+
+  }
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_ReviewReply: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var review: Hammock_V1_Review {
+    get {_storage._review ?? Hammock_V1_Review()}
+    set {_uniqueStorage()._review = newValue}
+  }
+  /// Returns true if `review` has been explicitly set.
+  public var hasReview: Bool {_storage._review != nil}
+  /// Clears the value of `review`. Subsequent reads from it will return its default value.
+  public mutating func clearReview() {_uniqueStorage()._review = nil}
+
+  /// the thread made or replied to
+  public var threadID: String {
+    get {_storage._threadID}
+    set {_uniqueStorage()._threadID = newValue}
+  }
+
+  /// the comment made
+  public var commentID: String {
+    get {_storage._commentID}
+    set {_uniqueStorage()._commentID = newValue}
+  }
+
+  /// SEND: how many went, and how many wait for the agent (it's waiting on you).
+  public var sent: UInt32 {
+    get {_storage._sent}
+    set {_uniqueStorage()._sent = newValue}
+  }
+
+  public var queued: UInt32 {
+    get {_storage._queued}
+    set {_uniqueStorage()._queued = newValue}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -10995,7 +11537,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -12538,6 +13080,45 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .diffCommand(v)
         }
       }()
+      case 130: try {
+        var v: Hammock_V1_ReadReview?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .readReview(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .readReview(v)
+        }
+      }()
+      case 131: try {
+        var v: Hammock_V1_ListReviews?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .listReviews(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .listReviews(v)
+        }
+      }()
+      case 132: try {
+        var v: Hammock_V1_ReviewCommand?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .reviewCommand(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .reviewCommand(v)
+        }
+      }()
       default: break
       }
     }
@@ -13023,6 +13604,18 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .diffCommand?: try {
       guard case .diffCommand(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 129)
+    }()
+    case .readReview?: try {
+      guard case .readReview(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 130)
+    }()
+    case .listReviews?: try {
+      guard case .listReviews(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 131)
+    }()
+    case .reviewCommand?: try {
+      guard case .reviewCommand(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 132)
     }()
     case nil: break
     }
@@ -14556,7 +15149,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -15293,6 +15886,45 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .diffFileText(v)
         }
       }()
+      case 66: try {
+        var v: Hammock_V1_Review?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .review(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .review(v)
+        }
+      }()
+      case 67: try {
+        var v: Hammock_V1_ReviewList?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .reviewList(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .reviewList(v)
+        }
+      }()
+      case 68: try {
+        var v: Hammock_V1_ReviewReply?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .reviewReply(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .reviewReply(v)
+        }
+      }()
       default: break
       }
     }
@@ -15530,6 +16162,18 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
     case .diffFileText?: try {
       guard case .diffFileText(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 65)
+    }()
+    case .review?: try {
+      guard case .review(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 66)
+    }()
+    case .reviewList?: try {
+      guard case .reviewList(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 67)
+    }()
+    case .reviewReply?: try {
+      guard case .reviewReply(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 68)
     }()
     case nil: break
     }
@@ -24519,7 +25163,7 @@ nonisolated extension Hammock_V1_DiffSource.Kind: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_DiffOpen: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".DiffOpen"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}source\0\u{1}view\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}source\0\u{1}view\0\u{3}target_pane_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -24530,6 +25174,7 @@ nonisolated extension Hammock_V1_DiffOpen: SwiftProtobuf.Message, SwiftProtobuf.
       case 1: try { try decoder.decodeSingularStringField(value: &self.repo) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._source) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._view) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.targetPaneID) }()
       default: break
       }
     }
@@ -24549,6 +25194,9 @@ nonisolated extension Hammock_V1_DiffOpen: SwiftProtobuf.Message, SwiftProtobuf.
     try { if let v = self._view {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    if !self.targetPaneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.targetPaneID, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -24556,6 +25204,7 @@ nonisolated extension Hammock_V1_DiffOpen: SwiftProtobuf.Message, SwiftProtobuf.
     if lhs.repo != rhs.repo {return false}
     if lhs._source != rhs._source {return false}
     if lhs._view != rhs._view {return false}
+    if lhs.targetPaneID != rhs.targetPaneID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -24603,7 +25252,7 @@ nonisolated extension Hammock_V1_DiffView: SwiftProtobuf.Message, SwiftProtobuf.
 
 nonisolated extension Hammock_V1_DiffInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".DiffInfo"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}source\0\u{1}title\0\u{3}base_rev\0\u{3}head_rev\0\u{1}branch\0\u{1}files\0\u{1}added\0\u{1}removed\0\u{1}stale\0\u{1}error\0\u{1}view\0\u{1}generation\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}source\0\u{1}title\0\u{3}base_rev\0\u{3}head_rev\0\u{1}branch\0\u{1}files\0\u{1}added\0\u{1}removed\0\u{1}stale\0\u{1}error\0\u{1}view\0\u{1}generation\0\u{3}review_id\0\u{3}target_pane_id\0\u{3}open_threads\0\u{1}unsent\0\u{1}unread\0\u{1}queued\0")
 
   fileprivate class _StorageClass {
     var _repo: String = String()
@@ -24619,6 +25268,12 @@ nonisolated extension Hammock_V1_DiffInfo: SwiftProtobuf.Message, SwiftProtobuf.
     var _error: String = String()
     var _view: Hammock_V1_DiffView? = nil
     var _generation: UInt64 = 0
+    var _reviewID: String = String()
+    var _targetPaneID: String = String()
+    var _openThreads: UInt32 = 0
+    var _unsent: UInt32 = 0
+    var _unread: UInt32 = 0
+    var _queued: UInt32 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -24642,6 +25297,12 @@ nonisolated extension Hammock_V1_DiffInfo: SwiftProtobuf.Message, SwiftProtobuf.
       _error = source._error
       _view = source._view
       _generation = source._generation
+      _reviewID = source._reviewID
+      _targetPaneID = source._targetPaneID
+      _openThreads = source._openThreads
+      _unsent = source._unsent
+      _unread = source._unread
+      _queued = source._queued
     }
   }
 
@@ -24673,6 +25334,12 @@ nonisolated extension Hammock_V1_DiffInfo: SwiftProtobuf.Message, SwiftProtobuf.
         case 11: try { try decoder.decodeSingularStringField(value: &_storage._error) }()
         case 12: try { try decoder.decodeSingularMessageField(value: &_storage._view) }()
         case 13: try { try decoder.decodeSingularUInt64Field(value: &_storage._generation) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._reviewID) }()
+        case 15: try { try decoder.decodeSingularStringField(value: &_storage._targetPaneID) }()
+        case 16: try { try decoder.decodeSingularUInt32Field(value: &_storage._openThreads) }()
+        case 17: try { try decoder.decodeSingularUInt32Field(value: &_storage._unsent) }()
+        case 18: try { try decoder.decodeSingularUInt32Field(value: &_storage._unread) }()
+        case 19: try { try decoder.decodeSingularUInt32Field(value: &_storage._queued) }()
         default: break
         }
       }
@@ -24724,6 +25391,24 @@ nonisolated extension Hammock_V1_DiffInfo: SwiftProtobuf.Message, SwiftProtobuf.
       if _storage._generation != 0 {
         try visitor.visitSingularUInt64Field(value: _storage._generation, fieldNumber: 13)
       }
+      if !_storage._reviewID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._reviewID, fieldNumber: 14)
+      }
+      if !_storage._targetPaneID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._targetPaneID, fieldNumber: 15)
+      }
+      if _storage._openThreads != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._openThreads, fieldNumber: 16)
+      }
+      if _storage._unsent != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._unsent, fieldNumber: 17)
+      }
+      if _storage._unread != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._unread, fieldNumber: 18)
+      }
+      if _storage._queued != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._queued, fieldNumber: 19)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -24746,6 +25431,12 @@ nonisolated extension Hammock_V1_DiffInfo: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._error != rhs_storage._error {return false}
         if _storage._view != rhs_storage._view {return false}
         if _storage._generation != rhs_storage._generation {return false}
+        if _storage._reviewID != rhs_storage._reviewID {return false}
+        if _storage._targetPaneID != rhs_storage._targetPaneID {return false}
+        if _storage._openThreads != rhs_storage._openThreads {return false}
+        if _storage._unsent != rhs_storage._unsent {return false}
+        if _storage._unread != rhs_storage._unread {return false}
+        if _storage._queued != rhs_storage._queued {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -25125,4 +25816,521 @@ nonisolated extension Hammock_V1_DiffCommand: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_DiffCommand.Action: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SET_SOURCE\0\u{1}ACTION_SET_VIEW\0")
+}
+
+nonisolated extension Hammock_V1_Review: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".Review"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}repo\0\u{1}source\0\u{1}title\0\u{3}group_id\0\u{3}target_pane_id\0\u{1}threads\0\u{3}updated_unix_ms\0\u{3}pane_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.repo) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._source) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.title) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.groupID) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.targetPaneID) }()
+      case 7: try { try decoder.decodeRepeatedMessageField(value: &self.threads) }()
+      case 8: try { try decoder.decodeSingularInt64Field(value: &self.updatedUnixMs) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
+    }
+    if !self.repo.isEmpty {
+      try visitor.visitSingularStringField(value: self.repo, fieldNumber: 2)
+    }
+    try { if let v = self._source {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    if !self.title.isEmpty {
+      try visitor.visitSingularStringField(value: self.title, fieldNumber: 4)
+    }
+    if !self.groupID.isEmpty {
+      try visitor.visitSingularStringField(value: self.groupID, fieldNumber: 5)
+    }
+    if !self.targetPaneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.targetPaneID, fieldNumber: 6)
+    }
+    if !self.threads.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.threads, fieldNumber: 7)
+    }
+    if self.updatedUnixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.updatedUnixMs, fieldNumber: 8)
+    }
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 9)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_Review, rhs: Hammock_V1_Review) -> Bool {
+    if lhs.id != rhs.id {return false}
+    if lhs.repo != rhs.repo {return false}
+    if lhs._source != rhs._source {return false}
+    if lhs.title != rhs.title {return false}
+    if lhs.groupID != rhs.groupID {return false}
+    if lhs.targetPaneID != rhs.targetPaneID {return false}
+    if lhs.threads != rhs.threads {return false}
+    if lhs.updatedUnixMs != rhs.updatedUnixMs {return false}
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ReviewThread: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReviewThread"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}path\0\u{1}side\0\u{1}line\0\u{3}end_line\0\u{1}quote\0\u{1}before\0\u{1}after\0\u{1}state\0\u{1}outdated\0\u{1}comments\0\u{3}created_unix_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.side) }()
+      case 4: try { try decoder.decodeSingularUInt32Field(value: &self.line) }()
+      case 5: try { try decoder.decodeSingularUInt32Field(value: &self.endLine) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.quote) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.before) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.after) }()
+      case 9: try { try decoder.decodeSingularEnumField(value: &self.state) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.outdated) }()
+      case 11: try { try decoder.decodeRepeatedMessageField(value: &self.comments) }()
+      case 12: try { try decoder.decodeSingularInt64Field(value: &self.createdUnixMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    if self.side != .new {
+      try visitor.visitSingularEnumField(value: self.side, fieldNumber: 3)
+    }
+    if self.line != 0 {
+      try visitor.visitSingularUInt32Field(value: self.line, fieldNumber: 4)
+    }
+    if self.endLine != 0 {
+      try visitor.visitSingularUInt32Field(value: self.endLine, fieldNumber: 5)
+    }
+    if !self.quote.isEmpty {
+      try visitor.visitSingularStringField(value: self.quote, fieldNumber: 6)
+    }
+    if !self.before.isEmpty {
+      try visitor.visitSingularStringField(value: self.before, fieldNumber: 7)
+    }
+    if !self.after.isEmpty {
+      try visitor.visitSingularStringField(value: self.after, fieldNumber: 8)
+    }
+    if self.state != .open {
+      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 9)
+    }
+    if self.outdated != false {
+      try visitor.visitSingularBoolField(value: self.outdated, fieldNumber: 10)
+    }
+    if !self.comments.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.comments, fieldNumber: 11)
+    }
+    if self.createdUnixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.createdUnixMs, fieldNumber: 12)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ReviewThread, rhs: Hammock_V1_ReviewThread) -> Bool {
+    if lhs.id != rhs.id {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.side != rhs.side {return false}
+    if lhs.line != rhs.line {return false}
+    if lhs.endLine != rhs.endLine {return false}
+    if lhs.quote != rhs.quote {return false}
+    if lhs.before != rhs.before {return false}
+    if lhs.after != rhs.after {return false}
+    if lhs.state != rhs.state {return false}
+    if lhs.outdated != rhs.outdated {return false}
+    if lhs.comments != rhs.comments {return false}
+    if lhs.createdUnixMs != rhs.createdUnixMs {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ReviewThread.Side: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0SIDE_NEW\0\u{1}SIDE_OLD\0")
+}
+
+nonisolated extension Hammock_V1_ReviewThread.State: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0STATE_OPEN\0\u{1}STATE_ADDRESSED\0\u{1}STATE_RESOLVED\0")
+}
+
+nonisolated extension Hammock_V1_ReviewComment: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReviewComment"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}author\0\u{1}agent\0\u{1}text\0\u{3}unix_ms\0\u{1}delivery\0\u{1}unread\0\u{3}author_pane_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.author) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.agent) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.unixMs) }()
+      case 6: try { try decoder.decodeSingularEnumField(value: &self.delivery) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.unread) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.authorPaneID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
+    }
+    if !self.author.isEmpty {
+      try visitor.visitSingularStringField(value: self.author, fieldNumber: 2)
+    }
+    if self.agent != false {
+      try visitor.visitSingularBoolField(value: self.agent, fieldNumber: 3)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 4)
+    }
+    if self.unixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.unixMs, fieldNumber: 5)
+    }
+    if self.delivery != .none {
+      try visitor.visitSingularEnumField(value: self.delivery, fieldNumber: 6)
+    }
+    if self.unread != false {
+      try visitor.visitSingularBoolField(value: self.unread, fieldNumber: 7)
+    }
+    if !self.authorPaneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.authorPaneID, fieldNumber: 8)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ReviewComment, rhs: Hammock_V1_ReviewComment) -> Bool {
+    if lhs.id != rhs.id {return false}
+    if lhs.author != rhs.author {return false}
+    if lhs.agent != rhs.agent {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.unixMs != rhs.unixMs {return false}
+    if lhs.delivery != rhs.delivery {return false}
+    if lhs.unread != rhs.unread {return false}
+    if lhs.authorPaneID != rhs.authorPaneID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ReviewComment.Delivery: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0DELIVERY_NONE\0\u{1}DELIVERY_UNSENT\0\u{1}DELIVERY_QUEUED\0\u{1}DELIVERY_SENT\0")
+}
+
+nonisolated extension Hammock_V1_ReadReview: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReadReview"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}review_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.reviewID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if !self.reviewID.isEmpty {
+      try visitor.visitSingularStringField(value: self.reviewID, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ReadReview, rhs: Hammock_V1_ReadReview) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.reviewID != rhs.reviewID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ListReviews: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListReviews"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ListReviews, rhs: Hammock_V1_ListReviews) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ReviewList: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReviewList"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reviews\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.reviews) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.reviews.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.reviews, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ReviewList, rhs: Hammock_V1_ReviewList) -> Bool {
+    if lhs.reviews != rhs.reviews {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ReviewCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReviewCommand"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}review_id\0\u{1}action\0\u{3}thread_id\0\u{3}comment_id\0\u{1}path\0\u{1}side\0\u{1}line\0\u{3}end_line\0\u{1}text\0\u{1}send\0\u{1}state\0\u{3}comment_ids\0\u{3}target_pane_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.reviewID) }()
+      case 3: try { try decoder.decodeSingularEnumField(value: &self.action) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.threadID) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.commentID) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 7: try { try decoder.decodeSingularEnumField(value: &self.side) }()
+      case 8: try { try decoder.decodeSingularUInt32Field(value: &self.line) }()
+      case 9: try { try decoder.decodeSingularUInt32Field(value: &self.endLine) }()
+      case 10: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 11: try { try decoder.decodeSingularBoolField(value: &self.send) }()
+      case 12: try { try decoder.decodeSingularEnumField(value: &self.state) }()
+      case 13: try { try decoder.decodeRepeatedStringField(value: &self.commentIds) }()
+      case 14: try { try decoder.decodeSingularStringField(value: &self.targetPaneID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if !self.reviewID.isEmpty {
+      try visitor.visitSingularStringField(value: self.reviewID, fieldNumber: 2)
+    }
+    if self.action != .unspecified {
+      try visitor.visitSingularEnumField(value: self.action, fieldNumber: 3)
+    }
+    if !self.threadID.isEmpty {
+      try visitor.visitSingularStringField(value: self.threadID, fieldNumber: 4)
+    }
+    if !self.commentID.isEmpty {
+      try visitor.visitSingularStringField(value: self.commentID, fieldNumber: 5)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 6)
+    }
+    if self.side != .new {
+      try visitor.visitSingularEnumField(value: self.side, fieldNumber: 7)
+    }
+    if self.line != 0 {
+      try visitor.visitSingularUInt32Field(value: self.line, fieldNumber: 8)
+    }
+    if self.endLine != 0 {
+      try visitor.visitSingularUInt32Field(value: self.endLine, fieldNumber: 9)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 10)
+    }
+    if self.send != false {
+      try visitor.visitSingularBoolField(value: self.send, fieldNumber: 11)
+    }
+    if self.state != .open {
+      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 12)
+    }
+    if !self.commentIds.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.commentIds, fieldNumber: 13)
+    }
+    if !self.targetPaneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.targetPaneID, fieldNumber: 14)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ReviewCommand, rhs: Hammock_V1_ReviewCommand) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.reviewID != rhs.reviewID {return false}
+    if lhs.action != rhs.action {return false}
+    if lhs.threadID != rhs.threadID {return false}
+    if lhs.commentID != rhs.commentID {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.side != rhs.side {return false}
+    if lhs.line != rhs.line {return false}
+    if lhs.endLine != rhs.endLine {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.send != rhs.send {return false}
+    if lhs.state != rhs.state {return false}
+    if lhs.commentIds != rhs.commentIds {return false}
+    if lhs.targetPaneID != rhs.targetPaneID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ReviewCommand.Action: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_ADD_THREAD\0\u{1}ACTION_REPLY\0\u{1}ACTION_SET_STATE\0\u{1}ACTION_SEND\0\u{1}ACTION_DELETE_COMMENT\0\u{1}ACTION_SET_TARGET\0\u{1}ACTION_MARK_READ\0\u{1}ACTION_EDIT_COMMENT\0")
+}
+
+nonisolated extension Hammock_V1_ReviewReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReviewReply"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}review\0\u{3}thread_id\0\u{3}comment_id\0\u{1}sent\0\u{1}queued\0")
+
+  fileprivate class _StorageClass {
+    var _review: Hammock_V1_Review? = nil
+    var _threadID: String = String()
+    var _commentID: String = String()
+    var _sent: UInt32 = 0
+    var _queued: UInt32 = 0
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _review = source._review
+      _threadID = source._threadID
+      _commentID = source._commentID
+      _sent = source._sent
+      _queued = source._queued
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularMessageField(value: &_storage._review) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._threadID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._commentID) }()
+        case 4: try { try decoder.decodeSingularUInt32Field(value: &_storage._sent) }()
+        case 5: try { try decoder.decodeSingularUInt32Field(value: &_storage._queued) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      try { if let v = _storage._review {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+      } }()
+      if !_storage._threadID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._threadID, fieldNumber: 2)
+      }
+      if !_storage._commentID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._commentID, fieldNumber: 3)
+      }
+      if _storage._sent != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._sent, fieldNumber: 4)
+      }
+      if _storage._queued != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._queued, fieldNumber: 5)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ReviewReply, rhs: Hammock_V1_ReviewReply) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._review != rhs_storage._review {return false}
+        if _storage._threadID != rhs_storage._threadID {return false}
+        if _storage._commentID != rhs_storage._commentID {return false}
+        if _storage._sent != rhs_storage._sent {return false}
+        if _storage._queued != rhs_storage._queued {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
 }

@@ -735,7 +735,7 @@ struct PaneScreen: View {
     private var title: String {
         guard let pane, let tab = model.tab(of: pane) else { return "" }
         if asTab != nil || model.panes(in: tab).count < 2 { return model.title(of: tab) }
-        if pane.kind == .browser || pane.kind == .simulator || pane.kind == .editor { return pane.title.isEmpty ? model.title(of: tab) : pane.title }
+        if pane.kind == .browser || pane.kind == .simulator || pane.kind == .editor || pane.kind == .diff { return pane.title.isEmpty ? model.title(of: tab) : pane.title }
         return pane.displayName
     }
 
@@ -748,6 +748,8 @@ struct PaneScreen: View {
                     SimulatorScreen(model: model, paneID: pane.id, active: scenePhase == .active, canDrive: canDrive(pane))
                 } else if pane.kind == .editor {
                     EditorScreen(model: model, paneID: pane.id, canDrive: canDrive(pane))
+                } else if pane.kind == .diff {
+                    DiffScreen(model: model, paneID: pane.id, canDrive: canDrive(pane))
                 } else if pane.isLog {
                     if logRaw {
                         TerminalScreen(model: model, paneID: pane.id, active: true)

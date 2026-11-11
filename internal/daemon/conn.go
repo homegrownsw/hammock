@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -700,6 +701,44 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 
 	case *pb.ClientMessage_DiffCommand:
 		return nil, d.diffs.command(m.DiffCommand)
+
+	case *pb.ClientMessage_ReadReview:
+		rv, err := d.diffs.readReview(m.ReadReview)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_Review{Review: rv}}, nil
+
+	case *pb.ClientMessage_ListReviews:
+		list := d.diffs.listReviews()
+		if c.caller.isAgent() {
+			// An agent's: those in your Groups.
+			d.mu.Lock()
+			list = slices.DeleteFunc(list, func(rv *pb.Review) bool { _, ok := d.groups[rv.GroupId]; return !ok })
+			d.mu.Unlock()
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_ReviewList{ReviewList: &pb.ReviewList{Reviews: list}}}, nil
+
+	case *pb.ClientMessage_ReviewCommand:
+		who := reviewer{}
+		d.mu.Lock()
+		if cl := c.caller; cl.isAgent() {
+			who.agent, who.pane, who.name = true, cl.pane, "agent"
+			if p := d.panes[cl.pane]; p != nil {
+				if a := p.snapshotInfo().Agent; a != nil && a.Harness != "" {
+					who.name = a.Harness
+				}
+			}
+		} else if c.peer != "" && !d.isLinked(c.peer) {
+			who.guest, who.name = true, c.name
+		}
+		group := d.groupOfPane(m.ReviewCommand.PaneId)
+		d.mu.Unlock()
+		r, err := d.diffs.reviewCommand(m.ReviewCommand, who, group)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_ReviewReply{ReviewReply: r}}, nil
 
 	case *pb.ClientMessage_ListFiles:
 		d.mu.Lock()
@@ -1502,7 +1541,7 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 	case *pb.ClientMessage_Input, *pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab,
 		*pb.ClientMessage_ClosePane, *pb.ClientMessage_CloseTab, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_BrowserNavigate, *pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_ClearLog, *pb.ClientMessage_StartAgent, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder,
-		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand:
+		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReviewCommand:
 		return true
 	case *pb.ClientMessage_EditorCommand:
 		// Saving, reloading; not an agent showing you a line.
@@ -1587,6 +1626,8 @@ func auditAction(msg *pb.ClientMessage) string {
 		return "group-folder"
 	case *pb.ClientMessage_EditorPush:
 		return "edit"
+	case *pb.ClientMessage_ReviewCommand:
+		return "review-" + strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(msg.GetReviewCommand().Action.String(), "ACTION_"), "_", "-"))
 	case *pb.ClientMessage_DiffCommand:
 		return "diff-" + strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(msg.GetDiffCommand().Action.String(), "ACTION_"), "_", "-"))
 	case *pb.ClientMessage_EditorCommand:
@@ -1623,6 +1664,8 @@ func auditTarget(msg *pb.ClientMessage) string {
 		return m.EditorPush.PaneId
 	case *pb.ClientMessage_DiffCommand:
 		return m.DiffCommand.PaneId
+	case *pb.ClientMessage_ReviewCommand:
+		return cmpOr(m.ReviewCommand.PaneId, m.ReviewCommand.ReviewId)
 	case *pb.ClientMessage_EditorCommand:
 		if m.EditorCommand.Path != "" {
 			return m.EditorCommand.PaneId + " → " + m.EditorCommand.Path

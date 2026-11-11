@@ -87,8 +87,12 @@ struct DiffPaneView: View {
     private var config: DiffConfig {
         let dark = colorScheme == .dark
         let c = AppConfig.shared
+        let agents = model.diffAgents(for: paneID)
+        // Sending to an agent is the Group's owner's (a guest comments only).
+        let canSend = model.group(ofPane: paneID).map { !$0.isRemote || $0.myRole == .owner } ?? true
         return .from(theme: c.theme(isDark: dark), dark: dark, fontFamily: c.fontFamily ?? "SF Mono", fontSize: c.fontSize ?? 13,
-                     view: info.view, canDrive: canDrive)
+                     view: info.view, canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend,
+                     accent: .themeAccent)
     }
 
     private var header: some View {
@@ -104,6 +108,22 @@ struct DiffPaneView: View {
                 .lineLimit(1)
                 .truncationMode(.head)
             Spacer(minLength: 6)
+            if info.unread > 0 {
+                Text(info.unread == 1 ? "1 new reply" : "\(info.unread) new replies")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Color.themeAccent, in: Capsule())
+                    .help("Replies from the agent you haven't seen yet")
+            }
+            if info.queued > 0 {
+                Text("\(info.queued) waiting to send")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+                    .help("Comments held until the agent has your answer: it's waiting on you")
+            }
             if session?.loading == true {
                 ProgressView().controlSize(.mini)
             }

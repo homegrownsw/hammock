@@ -29,6 +29,7 @@ struct HammockApp: App {
             Notifier.shared.notify(item, pane: pane, model: m)
         }
         m.onScheduleRun = { s, run in Notifier.shared.notifyRun(run, of: s, model: m) }
+        m.onReviewReplies = { p, n in Notifier.shared.notifyReview(p, new: n, model: m) }
         m.onLinkRequest = { req in Notifier.shared.notifyLink(req) }
         m.onGrant = { grant in Notifier.shared.notifyGrant(grant, model: m) }
         m.onJoinRequest = { req in Notifier.shared.notifyJoin(req, model: m) }

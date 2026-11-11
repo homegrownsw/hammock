@@ -220,7 +220,7 @@ struct EditorScreen: View {
     }
 }
 
-private extension UIColor {
+extension UIColor {
     convenience init(rgb c: RGB) {
         self.init(red: CGFloat(c.r) / 255, green: CGFloat(c.g) / 255, blue: CGFloat(c.b) / 255, alpha: 1)
     }

@@ -151,6 +151,8 @@ public final class AppModel {
     /// daemon raises no "finished" item for it, so clients tell you
     /// (Schedules.swift). Not for runs that ended while disconnected.
     @ObservationIgnored public var onScheduleRun: ((Schedule, ScheduleRun) -> Void)?
+    /// An agent answered review comments on a diff pane: how many new.
+    @ObservationIgnored public var onReviewReplies: ((Pane, Int) -> Void)?
     /// Called when an agent asks for permission.
     @ObservationIgnored public var onGrant: ((GrantRequest) -> Void)?
     /// Called when someone asks to join a Group you share.
@@ -336,6 +338,8 @@ public final class AppModel {
             logSessions[v.paneID]?.apply(v)
         case .editorUpdate(let u):
             editorSessions[u.paneID]?.apply(u)
+        case .review(let r):
+            diffSessions[r.paneID]?.apply(r)
         case .browserMenu(let m):
             browserMenus[m.paneID] = m
         case .browserClipboard(let c):
@@ -458,6 +462,9 @@ public final class AppModel {
             // browser does.
             if old == nil, !u.full, p.kind == .browser, !p.createdByPaneID.isEmpty, p.createdByPaneID == focusedPaneID {
                 selectedTabID = p.tabID
+            }
+            if p.isDiff, let old, !u.full, p.diff.unread > old.diff.unread {
+                onReviewReplies?(p, Int(p.diff.unread - old.diff.unread))
             }
             if let session = sessions[p.id], old?.cols != p.cols || old?.rows != p.rows {
                 session.engine.resize(cols: Int(p.cols), rows: Int(p.rows))

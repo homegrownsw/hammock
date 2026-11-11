@@ -109,6 +109,7 @@ func agentReachable(msg *pb.ClientMessage) bool {
 		*pb.ClientMessage_ReadEditor, *pb.ClientMessage_EditorCommand, *pb.ClientMessage_EditorPush,
 		*pb.ClientMessage_EditorSelect, *pb.ClientMessage_ListFiles,
 		*pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand,
+		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ListReviews, *pb.ClientMessage_ReviewCommand,
 		*pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab, *pb.ClientMessage_CreateGroup,
 		*pb.ClientMessage_MoveGroup, *pb.ClientMessage_StartAgent, *pb.ClientMessage_ListFolders,
 		*pb.ClientMessage_CloseGroup, *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule,

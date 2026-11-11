@@ -356,7 +356,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   claude-usage-live = false      (Claude's usage limits asked of Anthropic every 5 minutes, with Claude Code's sign-in)
 #   menu-bar = always | active     (the menu bar item; active: only while a screen's shared or the server's down)
 #   keep-empty-groups = true       (⌘W on a Group's last tab keeps the Group; false: closes it too)
-#   notify-needs-input = true      (notify me when an agent waits for my input; and notify-permission, notify-finished, notify-error)
+#   notify-needs-input = true      (notify me when an agent waits for my input; and notify-permission, notify-finished, notify-error; notify-review-replies = false: an agent answering my diff comments)
 #   notify-style = auto | system | in-app   (auto: in the window while it's in front, else as macOS notifications)
 #   notify-sound = true, notify-current-tab = false, dock-badge = true   (current tab: also for the tab I'm looking at)
 #   sidebar-layout = vertical | compact | horizontal   (horizontal: the Group's tabs in a tab bar along the top)

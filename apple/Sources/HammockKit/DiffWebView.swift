@@ -38,10 +38,18 @@ public struct DiffConfig: Equatable {
     /// The pane has choices of its own (Use My Settings clears them).
     public var overridden: Bool
     public var canDrive: Bool
+    /// Reviews: the agent comments go to, the agents that could take them
+    /// (this Group's), and whether you can send (a guest can't).
+    public var target: DiffAgent?
+    public var agents: [DiffAgent] = []
+    public var canSend = true
+    /// The app's accent (the theme's), for the page's buttons ("" its own).
+    public var accent = ""
 
     /// From the settings (Prefs), the pane's choices and the platform's theme and font.
     @MainActor public static func from(theme: TerminalTheme, dark: Bool, fontFamily: String, fontSize: Double,
-                                       view: Hammock_V1_DiffView, canDrive: Bool) -> DiffConfig {
+                                       view: Hammock_V1_DiffView, canDrive: Bool, target: DiffAgent? = nil,
+                                       agents: [DiffAgent] = [], canSend: Bool = true, accent: Color? = nil) -> DiffConfig {
         let p = Prefs.shared
         let size = p.string(.editorFontSize).isEmpty ? fontSize : p.double(.editorFontSize)
         let style = view.style.isEmpty ? p.string(.diffStyle) : view.style
@@ -49,7 +57,21 @@ public struct DiffConfig: Equatable {
         let wrap = view.wrap.isEmpty ? p.bool(.diffWrap) : view.wrap == "on"
         return DiffConfig(theme: theme, dark: dark, fontFamily: fontFamily, fontSize: size,
                           style: style == "split" ? "split" : "unified", whitespace: ws == "ignore" ? "ignore" : "show", wrap: wrap,
-                          overridden: !(view.style.isEmpty && view.whitespace.isEmpty && view.wrap.isEmpty), canDrive: canDrive)
+                          overridden: !(view.style.isEmpty && view.whitespace.isEmpty && view.wrap.isEmpty), canDrive: canDrive,
+                          target: target, agents: agents, canSend: canSend, accent: accent.map(Self.hex) ?? "")
+    }
+
+    /// A colour as #rrggbb (sRGB).
+    @MainActor static func hex(_ c: Color) -> String {
+        #if os(macOS)
+        guard let n = NSColor(c).usingColorSpace(.sRGB) else { return "" }
+        let (r, g, b) = (n.redComponent, n.greenComponent, n.blueComponent)
+        #else
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(c).getRed(&r, green: &g, blue: &b, alpha: &a) else { return "" }
+        #endif
+        func v(_ x: CGFloat) -> Int { Int((min(max(x, 0), 1) * 255).rounded()) }
+        return String(format: "#%02x%02x%02x", v(r), v(g), v(b))
     }
 
     var json: [String: Any] {
@@ -65,7 +87,44 @@ public struct DiffConfig: Equatable {
             "font": ["family": fontFamily, "size": fontSize],
             "view": ["style": style, "whitespace": whitespace, "wrap": wrap],
             "overridden": overridden, "canDrive": canDrive, "platform": platform,
+            "target": target.map { $0.json } ?? NSNull(), "agents": agents.map(\.json), "canSend": canSend,
+            "accent": accent,
         ]
+    }
+}
+
+/// An agent review comments can go to.
+public struct DiffAgent: Equatable, Sendable {
+    public var id: String
+    public var name: String
+    public var detail: String
+
+    public init(id: String, name: String, detail: String) {
+        self.id = id
+        self.name = name
+        self.detail = detail
+    }
+
+    var json: [String: Any] { ["id": id, "name": name, "detail": detail] }
+}
+
+extension AppModel {
+    /// The agents a diff pane's comments can go to: those running in its
+    /// Group (the pane's target first, even if it's elsewhere).
+    public func diffAgents(for paneID: String) -> (target: DiffAgent?, agents: [DiffAgent]) {
+        guard let pane = panes[paneID], pane.isDiff else { return (nil, []) }
+        let group = self.group(ofPane: paneID)?.id
+        func agent(_ p: Pane) -> DiffAgent {
+            let tab = self.tab(of: p).map { title(of: $0) } ?? ""
+            return DiffAgent(id: p.id, name: AgentCatalog.name(of: p.agent.harness), detail: tab)
+        }
+        var list: [DiffAgent] = []
+        for p in panes.values where p.hasAgent && p.agent.state != .exited && p.id != paneID && self.group(ofPane: p.id)?.id == group {
+            list.append(agent(p))
+        }
+        list.sort { ($0.detail, $0.id) < ($1.detail, $1.id) }
+        let target = panes[pane.diff.targetPaneID].map(agent)
+        return (target, list)
     }
 }
 
@@ -88,6 +147,8 @@ public final class DiffSession {
     @ObservationIgnored weak var bridge: DiffBridge?
     /// What the page was last given, for a page that loads after (a second window).
     @ObservationIgnored private var content: [String: Any]?
+    @ObservationIgnored private var reviewJSON: [String: Any]?
+
     @ObservationIgnored private var texts: [String: [String: Any]] = [:]
 
     init(paneID: String, model: AppModel) {
@@ -103,8 +164,76 @@ public final class DiffSession {
         bridge = b
         if let content {
             b.load(content)
+            if let reviewJSON { b.setReview(reviewJSON) }
         } else {
             load(refresh: false)
+        }
+    }
+
+    /// The review, as the daemon sends it (on reading, and as it changes).
+    func apply(_ r: Hammock_V1_Review) {
+        let j = Self.json(r)
+        reviewJSON = j
+        bridge?.setReview(j)
+    }
+
+    func readReview() {
+        model?.connection?.call({ $0.readReview = .with { $0.paneID = self.paneID } }) { [weak self] r in
+            Task { @MainActor in
+                if case .success(let m) = r { self?.apply(m.review) }
+            }
+        }
+    }
+
+    /// A review command from the page (add a thread, reply, resolve, send…).
+    func reviewCommand(_ c: [String: Any]) {
+        guard let conn = model?.connection else {
+            error = DiffError.offline.localizedDescription
+            return
+        }
+        var m = Hammock_V1_ReviewCommand()
+        m.paneID = paneID
+        m.action = switch c["action"] as? String {
+        case "addThread": .addThread
+        case "reply": .reply
+        case "setState": .setState
+        case "send": .send
+        case "deleteComment": .deleteComment
+        case "setTarget": .setTarget
+        case "markRead": .markRead
+        case "editComment": .editComment
+        default: .unspecified
+        }
+        m.threadID = c["threadId"] as? String ?? ""
+        m.commentID = c["commentId"] as? String ?? ""
+        m.path = c["path"] as? String ?? ""
+        m.side = c["side"] as? String == "old" ? .old : .new
+        m.line = UInt32(c["line"] as? Int ?? 0)
+        m.endLine = UInt32(c["endLine"] as? Int ?? 0)
+        m.text = c["text"] as? String ?? ""
+        m.send = c["send"] as? Bool ?? false
+        m.state = switch c["state"] as? String {
+        case "addressed": .addressed
+        case "resolved": .resolved
+        default: .open
+        }
+        m.commentIds = c["commentIds"] as? [String] ?? []
+        m.targetPaneID = c["targetPaneId"] as? String ?? ""
+        let msg = m
+        conn.call({ $0.reviewCommand = msg }) { [weak self] r in
+            Task { @MainActor in
+                guard let self else { return }
+                switch r {
+                case .success(let reply):
+                    if reply.reviewReply.hasReview { self.apply(reply.reviewReply.review) }
+                    if reply.reviewReply.queued > 0 {
+                        self.error = "Held until the agent has your answer: it's waiting on you"
+                    }
+                case .failure(let e):
+                    self.error = e.localizedDescription
+                    self.readReview() // what the daemon has, comments saved but not sent included
+                }
+            }
         }
     }
 
@@ -128,6 +257,7 @@ public final class DiffSession {
                     self.content = json
                     self.error = ""
                     self.bridge?.load(json)
+                    self.readReview()
                 case .failure(let e):
                     self.error = e.localizedDescription
                 }
@@ -220,6 +350,33 @@ public final class DiffSession {
             "commits": c.commits.map { ["sha": $0.sha, "subject": $0.subject, "author": $0.author, "unix": NSNumber(value: $0.unix)] },
             "branches": c.branches,
             "defaultBranch": c.defaultBranch,
+        ]
+    }
+
+    static func json(_ r: Hammock_V1_Review) -> [String: Any] {
+        [
+            "id": r.id,
+            "threads": r.threads.map { t -> [String: Any] in
+                let state = switch t.state {
+                case .addressed: "addressed"
+                case .resolved: "resolved"
+                default: "open"
+                }
+                return [
+                    "id": t.id, "path": t.path, "side": t.side == .old ? "old" : "new", "line": Int(t.line),
+                    "endLine": Int(max(t.endLine, t.line)), "state": state, "outdated": t.outdated, "quote": t.quote,
+                    "comments": t.comments.map { c -> [String: Any] in
+                        let delivery = switch c.delivery {
+                        case .unsent: "unsent"
+                        case .queued: "queued"
+                        case .sent: "sent"
+                        default: "none"
+                        }
+                        return ["id": c.id, "author": c.author, "agent": c.agent, "text": c.text, "unixMs": NSNumber(value: c.unixMs),
+                                "delivery": delivery, "unread": c.unread]
+                    },
+                ]
+            },
         ]
     }
 
@@ -399,6 +556,9 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
             }
         case "openFile":
             if let p = m["path"] as? String { onOpenFile?(p) }
+        case "review":
+            if let c = m["command"] as? [String: Any] { session.reviewCommand(c) }
+
         case "focus":
             onFocus?()
         default:
@@ -450,6 +610,11 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
     }
 
     public func reveal(_ path: String) { call("hammock.reveal(p)", ["p": path]) }
+
+    func setReview(_ r: [String: Any]) {
+        guard ready else { return }
+        call("hammock.setReview(r)", ["r": r])
+    }
 
     private func call(_ js: String, _ args: [String: Any]) {
         webView.callAsyncJavaScript(js, arguments: args, in: nil, in: .page) { r in

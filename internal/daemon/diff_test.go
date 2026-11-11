@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/homegrownsw/hammock/internal/client"
@@ -118,5 +119,144 @@ func TestDiffPane(t *testing.T) {
 		GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: t.TempDir()}},
 	}}}); err == nil {
 		t.Error("a diff pane outside a repository")
+	}
+}
+
+func TestReviewThreads(t *testing.T) {
+	dir := shortDir(t)
+	repo := t.TempDir()
+	if r, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = r
+	}
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\nthree\nfour\nfive\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\nTHREE\nfour\nfive\n"), 0o644)
+
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	agentTab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Cwd: repo}}}}))
+	d.mu.Lock()
+	agentPane := d.tabs[agentTab].FocusedPaneId
+	ap := d.panes[agentPane]
+	d.mu.Unlock()
+	// It's an agent waiting on you: comments sent now are held.
+	ap.mu.Lock()
+	ap.info.Agent = &pb.Agent{Harness: "claude", State: pb.AgentState_AGENT_STATE_NEEDS_INPUT}
+	ap.mu.Unlock()
+
+	tabID := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo, TargetPaneId: agentPane}},
+	}}}))
+	d.mu.Lock()
+	paneID := d.tabs[tabID].FocusedPaneId
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: paneID}}})
+	cmd := func(m *pb.ReviewCommand) (*pb.ReviewReply, error) {
+		m.PaneId = paneID
+		r, err := editorCall(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReviewCommand{ReviewCommand: m}})
+		return r.GetReviewReply(), err
+	}
+
+	// A comment on line 3, sent at once: held, the agent is asking you something.
+	r, err := cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_ADD_THREAD, Path: "a.txt", Line: 3, Text: "Why shout?", Send: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := r.Review.Threads[0]
+	if th.Quote != "THREE" || th.Before != "one\ntwo" || th.After != "four\nfive" || r.Queued != 1 {
+		t.Fatalf("thread %v, queued %d", th, r.Queued)
+	}
+	if di := paneDiff(d, paneID); di.ReviewId == "" || di.Queued != 1 || di.OpenThreads != 1 || di.TargetPaneId != agentPane {
+		t.Fatalf("info %v", di)
+	}
+	// One kept back, a note to yourself.
+	r, _ = cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_ADD_THREAD, Path: "a.txt", Line: 1, EndLine: 2, Text: "fine"})
+	note := r.CommentId
+	if di := paneDiff(d, paneID); di.Unsent != 1 || di.OpenThreads != 2 {
+		t.Fatalf("info %v", di)
+	}
+	if _, err := cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_ADD_THREAD, Path: "nope.txt", Line: 1, Text: "x"}); err == nil {
+		t.Error("a thread on a file not in the diff")
+	}
+
+	// The agent answers, and marks it addressed; it can't resolve it.
+	who := reviewer{name: "claude", agent: true, pane: agentPane}
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_SET_STATE, ThreadId: th.Id,
+		State: pb.ReviewThread_STATE_RESOLVED}, who, g); err == nil {
+		t.Error("an agent resolved a thread")
+	}
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_SEND}, who, g); err == nil {
+		t.Error("an agent sent comments")
+	}
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_SET_STATE, ThreadId: th.Id,
+		State: pb.ReviewThread_STATE_ADDRESSED, Text: "Lowered it."}, who, g); err != nil {
+		t.Fatal(err)
+	}
+	if di := paneDiff(d, paneID); di.Unread != 1 {
+		t.Fatalf("the agent's reply is unread: %v", di)
+	}
+	rv := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadReview{ReadReview: &pb.ReadReview{PaneId: paneID}}}).GetReview()
+	if got := findThread(rv, th.Id); got.State != pb.ReviewThread_STATE_ADDRESSED || len(got.Comments) != 2 || !got.Comments[1].Agent || got.Comments[1].Author != "claude" {
+		t.Fatalf("thread after the agent: %v", got)
+	}
+	cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_MARK_READ})
+	if di := paneDiff(d, paneID); di.Unread != 0 {
+		t.Fatalf("read: %v", di)
+	}
+	// The message the agent gets.
+	msg := reviewMessage(rv, []string{th.Comments[0].Id})
+	if !strings.Contains(msg, "a.txt:3 [thread "+th.Id+"]") || !strings.Contains(msg, "> THREE") || !strings.Contains(msg, "Why shout?") {
+		t.Errorf("message:\n%s", msg)
+	}
+
+	// The code moves on: line 3 is now line 4; lines 1-2 changed (outdated).
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("zero\nONE\nTWO\nTHREE\nfour\nfive\n"), 0o644)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: paneID, Refresh: true}}})
+	rv = call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadReview{ReadReview: &pb.ReadReview{PaneId: paneID}}}).GetReview()
+	if got := findThread(rv, th.Id); got.Line != 4 || got.Outdated {
+		t.Errorf("moved thread: line %d, outdated %v", got.Line, got.Outdated)
+	}
+	if got := rv.Threads[1]; !got.Outdated {
+		t.Errorf("changed lines' thread isn't outdated: %v", got)
+	}
+
+	// Your note can go; edited first.
+	if _, err := cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_EDIT_COMMENT, CommentId: note, Text: "fine really"}); err != nil {
+		t.Fatal(err)
+	}
+	cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_DELETE_COMMENT, CommentId: note})
+	if di := paneDiff(d, paneID); di.OpenThreads != 1 || di.Unsent != 0 {
+		t.Fatalf("after deleting: %v", di)
+	}
+
+	// Closing the pane with a thread open keeps the review; reopening the
+	// same diff brings it back.
+	reviewID := paneDiff(d, paneID).ReviewId
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: paneID}}})
+	if d.diffs.reviewGroup(reviewID) != g {
+		t.Fatal("the review went with its pane, threads still open")
+	}
+	tab2 := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo}},
+	}}}))
+	d.mu.Lock()
+	pane2 := d.tabs[tab2].FocusedPaneId
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: pane2}}})
+	if di := paneDiff(d, pane2); di.ReviewId != reviewID || di.TargetPaneId != agentPane {
+		t.Fatalf("reopened: %v", di)
+	}
+	// Resolved, and closed: it goes.
+	if _, err := editorCall(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReviewCommand{ReviewCommand: &pb.ReviewCommand{PaneId: pane2,
+		Action: pb.ReviewCommand_ACTION_SET_STATE, ThreadId: th.Id, State: pb.ReviewThread_STATE_RESOLVED}}}); err != nil {
+		t.Fatal(err)
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: pane2}}})
+	if d.diffs.reviewGroup(reviewID) != "" {
+		t.Fatal("a review with every thread resolved outlived its pane")
 	}
 }

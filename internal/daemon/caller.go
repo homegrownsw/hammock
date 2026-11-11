@@ -623,6 +623,26 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	case *pb.ClientMessage_DiffCommand:
 		// Changing what a diff you're looking at shows: its own diffs, or asked.
 		return control(m.DiffCommand.PaneId, "send")
+	case *pb.ClientMessage_ListReviews:
+		return nil // only your Groups' are listed
+	// Reading and answering review threads (sending them and resolving
+	// them are refused by the review itself): on diffs it may read.
+	case *pb.ClientMessage_ReadReview:
+		if m.ReadReview.PaneId != "" {
+			return read(m.ReadReview.PaneId)
+		}
+		if mine(d.diffs.reviewGroup(m.ReadReview.ReviewId)) {
+			return nil
+		}
+		return errAgentScope
+	case *pb.ClientMessage_ReviewCommand:
+		if m.ReviewCommand.PaneId != "" {
+			return read(m.ReviewCommand.PaneId)
+		}
+		if mine(d.diffs.reviewGroup(m.ReviewCommand.ReviewId)) {
+			return nil
+		}
+		return errAgentScope
 	case *pb.ClientMessage_ListFiles:
 		if m.ListFiles.GroupId != "" {
 			if ownGroup(m.ListFiles.GroupId) {

@@ -276,6 +276,8 @@ struct NotificationSettings: View {
                     .settingAnchor("notify.finished")
                 Toggle("Hits an error", isOn: prefs.boolBinding(NotifyPrefs.errored))
                     .settingAnchor("notify.errored")
+                Toggle("Replies to my review comments", isOn: prefs.boolBinding(NotifyPrefs.reviewReplies))
+                    .settingAnchor("notify.reviewReplies")
             }
             Section("How to notify me") {
                 Picker("Show notifications", selection: Binding(get: { style }, set: { prefs.set(NotifyPrefs.style, $0.rawValue) })) {

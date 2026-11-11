@@ -7,7 +7,7 @@
 <style>
 :root {
   --bg: #1e1e1e; --fg: #d4d4d4; --dim: #8a8a8a; --faint: #5a5a5a; --line: #333; --panel: #252525; --hover: #2c2c2c;
-  --accent: #61afef; --add: #98c379; --del: #e06c75; --mod: #61afef; --ren: #c678dd; --warn: #e5c07b;
+  --accent: #61afef; --on-accent: #ffffff; --add: #98c379; --del: #e06c75; --mod: #61afef; --ren: #c678dd; --warn: #e5c07b;
   --ui: -apple-system, system-ui, sans-serif; --code: Menlo, monospace; --code-size: 13px;
 }
 * { box-sizing: border-box; }
@@ -36,7 +36,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 #stale { display: none; align-items: center; gap: 10px; padding: 6px 12px; flex: none;
   background: color-mix(in srgb, var(--accent) 12%, var(--bg)); border-bottom: 1px solid var(--line); }
 #stale.on { display: flex; }
-#stale .btn { height: 22px; padding: 0 10px; border-radius: 6px; background: var(--accent); color: var(--bg); font-weight: 600; }
+#stale .btn { height: 22px; padding: 0 10px; border-radius: 6px; background: var(--accent); color: var(--on-accent); font-weight: 600; }
 
 #main { flex: 1; display: flex; min-height: 0; position: relative; }
 
@@ -110,10 +110,91 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .pop .line input[type=text] { width: 120px; font-family: var(--code); }
 .pop label { display: flex; align-items: center; gap: 6px; }
 .pop hr { border: none; border-top: 1px solid var(--line); margin: 6px 0; }
-.pop .go { background: var(--accent); color: var(--bg); font-weight: 600; }
+.pop .go { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .pop .go:hover { background: var(--accent); filter: brightness(1.1); }
 #scrim { position: absolute; inset: 0; z-index: 19; display: none; }
 #scrim.on { display: block; }
+
+/* Review threads and the comment box, under their lines (or above the file). */
+.fthreads { padding: 8px 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.fthreads:empty { display: none; }
+.fthreads > .thread, .fthreads > .composer { margin: 0 0 8px; }
+.wwrap { padding: 6px 12px 8px; position: sticky; left: var(--gutw, 0); width: var(--wvis, auto); box-sizing: border-box; }
+.wwrap > .thread, .wwrap > .composer { margin: 0; }
+.thread, .composer { margin: 6px 12px 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+  font: 13px/1.45 var(--ui); color: var(--fg); -webkit-user-select: text; user-select: text; max-width: 900px; white-space: normal; cursor: auto; }
+.thread.st-resolved { opacity: 0.85; }
+.thead { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px; }
+.tlines { font-weight: 600; }
+.badge { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 9px; font-size: 11px; font-weight: 600;
+  background: var(--hover); color: var(--dim); white-space: nowrap; }
+.badge.addressed { background: color-mix(in srgb, var(--add) 22%, transparent); color: var(--fg); }
+.badge.resolved { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--fg); }
+.badge.outdated { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--fg); }
+.badge.unsent { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--fg); }
+.badge.queued { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg); }
+.badge.new { background: var(--accent); color: var(--on-accent); }
+.tfold { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; text-align: left; color: var(--dim); }
+.tfold:hover { background: var(--hover); border-radius: 8px; }
+.tsum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tcount { font-size: 11px; }
+.quote { margin: 8px 10px 0; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  font: 12px/1.4 var(--code); white-space: pre; overflow-x: auto; color: var(--dim); }
+.cmt { padding: 8px 10px; }
+.cmt + .cmt { border-top: 1px solid var(--line); }
+.cmt.unread { box-shadow: inset 3px 0 0 var(--accent); }
+.who { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin-bottom: 3px; }
+.who .name { font-weight: 600; }
+.cmt.agent .who .name { color: var(--accent); }
+.who .when, .who .sent { color: var(--faint); }
+.md p, .md ul, .md ol, .md blockquote, .md pre { margin: 0 0 6px; }
+.md > :last-child { margin-bottom: 0; }
+.md ul, .md ol { padding-left: 20px; }
+.md code { font: 0.92em var(--code); background: var(--hover); padding: 1px 4px; border-radius: 4px; }
+.md pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: 8px; color: var(--dim); }
+.md a { color: var(--accent); }
+.tact { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--line); }
+.tact.open { flex-direction: column; align-items: stretch; }
+.replybox { flex: 1; text-align: left; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--faint); }
+.replybox:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.composer { padding: 8px 10px; }
+.cfor { font-size: 12px; color: var(--dim); margin-bottom: 6px; font-weight: 600; }
+.composer textarea, .tact textarea, .cmt textarea { width: 100%; resize: none; font: 13px/1.45 var(--ui); color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 60px; }
+.composer textarea:focus, .tact textarea:focus, .cmt textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -1px; }
+.crow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.crow .btn, .tact .btn, .thead .btn, .who .btn { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--bg); white-space: nowrap; }
+.crow .btn:hover, .tact .btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); background: var(--accent) !important; }
+.btn.link, .who .btn.link, .thread > .btn.link { border: none; background: none; padding: 0 2px; height: auto; color: var(--accent); }
+.thread > .btn.link { margin: 6px 10px 0; font-size: 12px; }
+.btn.link:hover { text-decoration: underline; }
+.btn.link.danger { color: var(--del); }
+.sendto { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+#bar .btn.send { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+#bar .btn.send:hover { filter: brightness(1.08); background: var(--accent); }
+#target { max-width: 220px; }
+#target .t { overflow: hidden; text-overflow: ellipsis; }
+#target .chev { opacity: 0.6; }
+.fhead .ccount { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: color-mix(in srgb, var(--accent) 22%, transparent); font-size: 11px; font-weight: 600; }
+.row .cn { color: var(--accent); font-weight: 600; }
+/* Line numbers take a comment: a + on hover; a range being commented on. */
+.fbody .cm-lineNumbers .cm-gutterElement { cursor: pointer; position: relative; }
+.fbody .cm-lineNumbers .cm-gutterElement:hover { color: transparent; }
+.fbody .cm-lineNumbers .cm-gutterElement:hover::before { content: "+"; position: absolute; inset: 1px 3px; border-radius: 4px; background: var(--accent);
+  color: var(--on-accent); font: 600 13px/1 var(--ui); display: flex; align-items: center; justify-content: center; }
+.fbody .cm-commentRange { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; }
+
+/* The code can be selected and copied (the page's own controls can't). */
+.fbody .cm-content, .fbody .cm-deletedChunk, .fbody .cm-deletedLine { -webkit-user-select: text; user-select: text; }
+.fbody .cm-gutters { -webkit-user-select: none; user-select: none; }
+.fbody .cm-cursorLayer, .fbody .cm-cursor { display: none !important; }
+.fbody .cm-content { caret-color: transparent; }
 
 /* CodeMirror in a file: as tall as it needs, the files scroll. */
 .fbody .cm-editor { height: auto !important; }
@@ -142,6 +223,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 <div id="scrim"></div>
 <div class="pop" id="sourcePop"></div>
 <div class="pop" id="settingsPop"></div>
+<div class="pop" id="targetPop"></div>
 <script>
 /*SCRIPT*/
 </script>

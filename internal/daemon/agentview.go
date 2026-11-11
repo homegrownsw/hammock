@@ -806,34 +806,44 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 		return errors.New("nothing to send")
 	}
 	go func() {
-		// As pastes (bracketed when the program asked, which Claude Code
-		// does): a pasted image path becomes [Image #n], and newlines stay in
-		// the message instead of sending it line by line.
-		paste := func(s string) []byte { return firstPromptPaste(s, p.bracketedPaste()) }
-		var steps []agentview.Step
-		// Whatever was typed into its input box in the terminal goes first:
-		// the message goes in alone.
-		steps = append(steps, agentview.Step{Keys: agentview.ClearInput(agentview.InputLines(p.text(false))), What: "clear"})
-		// Each separately, so each pasted path is taken as a file.
-		for _, path := range paths {
-			steps = append(steps, agentview.Step{Keys: paste(path + " "), What: "attachment"})
-		}
-		if text != "" {
-			steps = append(steps, agentview.Step{Keys: paste(text), What: "message"})
-		}
-		steps = append(steps, agentview.Step{Keys: agentview.Enter(p.kittyKeys()), What: "enter"})
-		for i, s := range steps {
-			if i > 0 {
-				time.Sleep(150 * time.Millisecond) // separate bursts, or it's one paste
-			}
-			if _, err := p.input(c, s.Keys); err != nil {
-				c.replyErr(id, err)
-				return
-			}
+		if err := typeToAgent(p, c, text, paths); err != nil {
+			c.replyErr(id, err)
+			return
 		}
 		c.send(&pb.ServerMessage{ReplyTo: id, Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}})
 	}()
 	return errDeferred
+}
+
+// typeToAgent types a message (and files' paths) into an agent's pane as
+// the composer does, and presses Enter. It takes a moment: not under d.mu.
+// c is who's typing (nil: Hammock itself, as for review comments).
+func typeToAgent(p *pane, c *conn, text string, paths []string) error {
+	// As pastes (bracketed when the program asked, which Claude Code
+	// does): a pasted image path becomes [Image #n], and newlines stay in
+	// the message instead of sending it line by line.
+	paste := func(s string) []byte { return firstPromptPaste(s, p.bracketedPaste()) }
+	var steps []agentview.Step
+	// Whatever was typed into its input box in the terminal goes first:
+	// the message goes in alone.
+	steps = append(steps, agentview.Step{Keys: agentview.ClearInput(agentview.InputLines(p.text(false))), What: "clear"})
+	// Each separately, so each pasted path is taken as a file.
+	for _, path := range paths {
+		steps = append(steps, agentview.Step{Keys: paste(path + " "), What: "attachment"})
+	}
+	if text != "" {
+		steps = append(steps, agentview.Step{Keys: paste(text), What: "message"})
+	}
+	steps = append(steps, agentview.Step{Keys: agentview.Enter(p.kittyKeys()), What: "enter"})
+	for i, s := range steps {
+		if i > 0 {
+			time.Sleep(150 * time.Millisecond) // separate bursts, or it's one paste
+		}
+		if _, err := p.input(c, s.Keys); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // saveAttachment writes an attachment where its path needs no quoting (the

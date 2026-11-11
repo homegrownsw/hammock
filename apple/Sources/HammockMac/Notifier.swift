@@ -8,6 +8,9 @@ enum NotifyPrefs {
     static let grants = Pref("notify-permission", defaults: "notify.grants", true)
     static let finished = Pref("notify-finished", defaults: "notify.finished", true)
     static let errored = Pref("notify-error", defaults: "notify.errored", true)
+    /// An agent answering your comments on a diff (off: an agent fixing ten
+    /// comments would send ten, and you hear when it finishes anyway).
+    static let reviewReplies = Pref("notify-review-replies", defaults: "notify.reviewReplies", false)
     static let sound = Pref("notify-sound", defaults: "notify.sound", true)
     /// Also for the tab you're looking at.
     static let whenVisible = Pref("notify-current-tab", defaults: "notify.whenVisible", false)
@@ -141,6 +144,24 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.userInfo = ["paneID": item.paneID, Self.live: true]
         content.threadIdentifier = item.paneID
         deliver(UNNotificationRequest(identifier: item.id, content: content, trigger: nil), icon: .agent(item.state), open: Self.reveal(item.paneID))
+    }
+
+    /// An agent replied in, or started, threads on a diff you're reviewing,
+    /// while you're not looking at it.
+    func notifyReview(_ pane: Pane, new: Int, model: AppModel) {
+        guard model.notifiesHere, NotifyPrefs.on(NotifyPrefs.reviewReplies), new > 0 else { return }
+        if NSApp.isActive, let tab = model.selectedTab, AppModel.shownPaneIDs(of: tab).contains(pane.id) { return }
+        let content = UNMutableNotificationContent()
+        let tab = model.tab(of: pane)
+        content.title = tab.map { model.title(of: $0) } ?? "Review"
+        content.subtitle = pane.diff.title
+        let who = model.panes[pane.diff.targetPaneID].map { AgentCatalog.name(of: $0.agent.harness) } ?? "The agent"
+        content.body = new == 1 ? "\(who) replied to your review" : "\(who) replied to your review (\(new) new)"
+        content.sound = NotifyPrefs.needsYouSound
+        content.userInfo = ["paneID": pane.id]
+        content.threadIdentifier = pane.id
+        deliver(UNNotificationRequest(identifier: "review-" + pane.id, content: content, trigger: nil), icon: .agent(.idle),
+                open: Self.reveal(pane.id))
     }
 
     /// A scheduled run ended (the daemon raises no "finished" item for
