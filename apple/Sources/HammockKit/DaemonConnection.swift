@@ -156,7 +156,8 @@ public final class DaemonConnection: @unchecked Sendable {
             case .ready:
                 // Raw-frame transport: magic, then 4-byte big-endian length + protobuf per message.
                 conn.send(content: Data("PRC1".utf8), completion: .contentProcessed { _ in })
-                self.receiveHeader()
+                self.readBuffer.removeAll()
+                self.receiveFrames(conn)
                 // Ready once the daemon has the app's proof (or won't): the
                 // first thing on the connection, before anything that needs it.
                 self.proveApp { [weak self] in
@@ -254,22 +255,41 @@ public final class DaemonConnection: @unchecked Sendable {
         for (_, cb) in ended { cb("The connection to Hammock closed.") }
     }
 
-    private func receiveHeader() {
-        connection?.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            guard error == nil, let data, data.count == 4 else {
-                return self.receiveFailed(error ?? DaemonError.closed)
+    /// Bytes read from the local socket that don't yet make a whole message
+    /// (`receiveFrames`), touched only on `queue`.
+    private var readBuffer = Data()
+
+    /// Reads the local socket in large chunks, each holding however many
+    /// messages (4-byte big-endian length, then the message) have arrived:
+    /// under a flood of output, two reads per message cost more than the
+    /// messages themselves.
+    private func receiveFrames(_ conn: NWConnection) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { [weak self] data, _, isComplete, error in
+            guard let self, self.connection === conn else { return }
+            if let data, !data.isEmpty {
+                self.readBuffer.append(data)
+                self.dispatchFrames()
             }
-            let n = data.withUnsafeBytes { Int(UInt32(bigEndian: $0.loadUnaligned(as: UInt32.self))) }
-            if n == 0 { return self.receiveHeader() }
-            self.connection?.receive(minimumIncompleteLength: n, maximumLength: n) { [weak self] body, _, _, error in
-                guard let self else { return }
-                guard error == nil, let body, body.count == n else {
-                    return self.receiveFailed(error ?? DaemonError.closed)
-                }
-                self.dispatch(body)
-                self.receiveHeader()
-            }
+            if let error { return self.receiveFailed(error) }
+            if isComplete { return self.receiveFailed(DaemonError.closed) }
+            self.receiveFrames(conn)
+        }
+    }
+
+    /// Dispatches each whole message in `readBuffer`, keeping what's left.
+    private func dispatchFrames() {
+        let base = readBuffer.startIndex
+        var at = base
+        while readBuffer.endIndex - at >= 4 {
+            let n = readBuffer.withUnsafeBytes { Int(UInt32(bigEndian: $0.loadUnaligned(fromByteOffset: at - base, as: UInt32.self))) }
+            guard readBuffer.endIndex - at - 4 >= n else { break }
+            if n > 0 { dispatch(readBuffer.subdata(in: at + 4 ..< at + 4 + n)) }
+            at += 4 + n
+        }
+        if at == readBuffer.endIndex {
+            readBuffer.removeAll(keepingCapacity: true)
+        } else if at > base {
+            readBuffer.removeSubrange(base ..< at)
         }
     }
 

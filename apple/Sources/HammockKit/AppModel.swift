@@ -271,8 +271,12 @@ public final class AppModel {
         } ?? DaemonConnection(socketPath: socketPath)
         challenge = nil
         conn = c
+        let inbox = inbox
         c.onEvent = { [weak self] msg in
-            DispatchQueue.main.async { self?.handle(msg) }
+            // The first message waiting asks the main thread for them all:
+            // under a flood, one hop takes many messages, not one each.
+            guard inbox.add(msg) else { return }
+            DispatchQueue.main.async { self?.handle(inbox.take()) }
         }
         c.onStateChange = { [weak self] ready, err in
             DispatchQueue.main.async { self?.connectionChanged(ready: ready, error: err) }
@@ -349,7 +353,60 @@ public final class AppModel {
         }
     }
 
+    /// Messages from the daemon waiting for the main thread (`start`).
+    @ObservationIgnored private let inbox = Inbox()
+
+    final class Inbox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var waiting: [ServerMessage] = []
+
+        /// Adds msg; true if nothing was waiting, so the main thread must be
+        /// asked to take them.
+        func add(_ msg: ServerMessage) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            waiting.append(msg)
+            return waiting.count == 1
+        }
+
+        func take() -> [ServerMessage] {
+            lock.lock()
+            defer { lock.unlock() }
+            let all = waiting
+            waiting = []
+            return all
+        }
+    }
+
     // MARK: State
+
+    /// Handles messages in order, except that each pane's output is gathered
+    /// up to the next other message and written into its engine at once:
+    /// one write and one redraw request per pane, not one per message.
+    private func handle(_ batch: [ServerMessage]) {
+        var output: [(id: String, data: Data)] = []
+        func writeOutput() {
+            for (id, data) in output {
+                guard let session = sessions[id] else { continue }
+                session.engine.write(data)
+                session.notify()
+            }
+            output.removeAll()
+        }
+        for msg in batch {
+            if case .paneOutput(let o) = msg.msg {
+                if let i = output.firstIndex(where: { $0.id == o.paneID }) {
+                    output[i].data.append(o.data)
+                } else {
+                    output.append((o.paneID, o.data))
+                }
+            } else {
+                writeOutput()
+                handle(msg)
+            }
+        }
+        writeOutput()
+    }
 
     private func handle(_ msg: ServerMessage) {
         switch msg.msg {

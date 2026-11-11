@@ -603,13 +603,8 @@ func (p *pane) read(hc *holder.Client, gen int) {
 		p.osc.Write(data)
 		p.offset = ev.Offset + uint64(len(data))
 		p.lastOut = time.Now()
-		if len(p.attached) > 0 {
-			msg := &pb.ServerMessage{Msg: &pb.ServerMessage_PaneOutput{PaneOutput: &pb.PaneOutput{
-				PaneId: p.id, Offset: ev.Offset, Data: data,
-			}}}
-			for c := range p.attached {
-				c.sendOutput(p, msg)
-			}
+		for c := range p.attached {
+			c.sendOutput(p, ev.Offset, data)
 		}
 		changed := false
 		if p.osc.Changed {

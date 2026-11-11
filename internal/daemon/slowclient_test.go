@@ -151,19 +151,12 @@ func TestSlowClientResyncsInsteadOfDropping(t *testing.T) {
 	p := &pane{id: "pn_test", info: &pb.Pane{Cols: 20, Rows: 5}, attached: map[*conn]struct{}{c: {}}}
 	p.mirror = vt.New(20, 5)
 	defer p.mirror.Close()
-	output := func(s string) {
-		p.mu.Lock()
-		p.mirror.Write([]byte(s))
-		msg := &pb.ServerMessage{Msg: &pb.ServerMessage_PaneOutput{PaneOutput: &pb.PaneOutput{PaneId: p.id, Offset: p.offset, Data: []byte(s)}}}
-		p.offset += uint64(len(s))
-		for cl := range p.attached {
-			cl.sendOutput(p, msg)
-		}
-		p.mu.Unlock()
-	}
+	output := testOutput(p)
 
+	// Other messages fill the queue to the limit (output alone would be
+	// merged into one message).
 	for i := 0; i < lagHigh; i++ {
-		output("x")
+		c.send(&pb.ServerMessage{})
 	}
 	if len(c.out) != lagHigh || c.hasLag.Load() {
 		t.Fatalf("queued %d (lagging %v) before the limit", len(c.out), c.hasLag.Load())
@@ -199,6 +192,97 @@ func TestSlowClientResyncsInsteadOfDropping(t *testing.T) {
 	output("more")
 	if o := (<-c.out).GetPaneOutput(); o == nil || string(o.Data) != "more" {
 		t.Fatalf("after resync got %v", o)
+	}
+}
+
+// testOutput returns a func that feeds s to p as its holder's output would
+// be: into its mirror, and to each attached client.
+func testOutput(p *pane) func(s string) {
+	return func(s string) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.mirror != nil {
+			p.mirror.Write([]byte(s))
+		}
+		data := []byte(s)
+		for cl := range p.attached {
+			cl.sendOutput(p, p.offset, data)
+		}
+		p.offset += uint64(len(s))
+	}
+}
+
+// take is the write loop's side of the queue: the next message, as it's
+// about to be written.
+func take(t *testing.T, c *conn) *pb.ServerMessage {
+	t.Helper()
+	select {
+	case msg := <-c.out:
+		c.taken(msg)
+		return msg
+	default:
+		t.Fatal("nothing queued")
+		return nil
+	}
+}
+
+// A pane's output joins its message still in the queue, rather than queueing
+// one per read; once the message is being written, more output starts another.
+func TestOutputMergesWhileQueued(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &conn{out: make(chan *pb.ServerMessage, sendQueue), ctx: ctx, cancel: cancel}
+	a := &pane{id: "pn_a", attached: map[*conn]struct{}{c: {}}}
+	b := &pane{id: "pn_b", attached: map[*conn]struct{}{c: {}}}
+	outA, outB := testOutput(a), testOutput(b)
+
+	first := []byte("one")
+	a.mu.Lock()
+	c.sendOutput(a, 0, first)
+	a.offset = 3
+	a.mu.Unlock()
+	outB("x")
+	outA("two")
+	outB("y")
+	outA("three")
+	if len(c.out) != 2 {
+		t.Fatalf("queued %d messages, want 2 (one per pane)", len(c.out))
+	}
+	if o := take(t, c).GetPaneOutput(); o.PaneId != "pn_a" || o.Offset != 0 || string(o.Data) != "onetwothree" {
+		t.Fatalf("first message %v", o)
+	}
+	if string(first) != "one" {
+		t.Fatalf("the read merged into was changed: %q", first)
+	}
+	// pn_a's message is gone from the queue: its output starts a new one.
+	outA("four")
+	if o := take(t, c).GetPaneOutput(); o.PaneId != "pn_b" || string(o.Data) != "xy" {
+		t.Fatalf("second message %v", o)
+	}
+	if o := take(t, c).GetPaneOutput(); o.PaneId != "pn_a" || o.Offset != 11 || string(o.Data) != "four" {
+		t.Fatalf("third message %v", o)
+	}
+
+	// Nothing grows past a message sent after it (a snapshot, a state change).
+	outA("five")
+	c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_PaneSnapshot{PaneSnapshot: &pb.PaneSnapshot{PaneId: "pn_a"}}})
+	outA("six")
+	if o := take(t, c).GetPaneOutput(); string(o.Data) != "five" {
+		t.Fatalf("output before the snapshot: %v", o)
+	}
+	if take(t, c).GetPaneSnapshot() == nil {
+		t.Fatal("snapshot out of order")
+	}
+	if o := take(t, c).GetPaneOutput(); string(o.Data) != "six" {
+		t.Fatalf("output after the snapshot: %v", o)
+	}
+
+	// A message gathers at most mergeMax.
+	big := strings.Repeat("z", mergeMax/2+1)
+	outA(big)
+	outA(big)
+	if len(c.out) != 2 {
+		t.Fatalf("queued %d messages past mergeMax, want 2", len(c.out))
 	}
 }
 
