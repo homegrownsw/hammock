@@ -9,8 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
@@ -283,6 +286,109 @@ func TestOutputMergesWhileQueued(t *testing.T) {
 	outA(big)
 	if len(c.out) != 2 {
 		t.Fatalf("queued %d messages past mergeMax, want 2", len(c.out))
+	}
+}
+
+// A flood of one pane's output, merged into few messages, still counts as
+// falling behind once enough of it is queued.
+func TestSlowClientLagsOnQueuedBytes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &conn{out: make(chan *pb.ServerMessage, sendQueue), ctx: ctx, cancel: cancel}
+	p := &pane{id: "pn_test", attached: map[*conn]struct{}{c: {}}}
+	output := testOutput(p)
+	chunk := strings.Repeat("x", 64<<10)
+	for i := 0; i < lagBytes/len(chunk); i++ {
+		output(chunk)
+	}
+	if c.hasLag.Load() || c.queuedBytes.Load() != lagBytes {
+		t.Fatalf("lagging %v with %d bytes queued, before the limit", c.hasLag.Load(), c.queuedBytes.Load())
+	}
+	if want := lagBytes / mergeMax; len(c.out) != want {
+		t.Fatalf("queued %d messages, want %d", len(c.out), want)
+	}
+	output("y")
+	if !c.hasLag.Load() || c.queuedBytes.Load() != lagBytes {
+		t.Fatalf("past the limit: lagging %v, %d bytes queued", c.hasLag.Load(), c.queuedBytes.Load())
+	}
+	for len(c.out) > 0 {
+		take(t, c)
+	}
+	if c.queuedBytes.Load() != 0 {
+		t.Fatalf("%d bytes still counted as queued", c.queuedBytes.Load())
+	}
+}
+
+// recordingTransport keeps what the write loop writes.
+type recordingTransport struct {
+	mu     sync.Mutex
+	writes [][]byte
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (r *recordingTransport) Read(ctx context.Context) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (r *recordingTransport) Write(_ context.Context, b []byte) error {
+	r.mu.Lock()
+	r.writes = append(r.writes, b)
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *recordingTransport) Close() error {
+	r.once.Do(func() { close(r.closed) })
+	return nil
+}
+
+// The real write loop, writing while output keeps arriving, sends every byte
+// once and in order (run with -race: merging into a message being written
+// would be a race).
+func TestWriteLoopSendsMergedOutputWhole(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tr := &recordingTransport{closed: make(chan struct{})}
+	c := &conn{t: tr, out: make(chan *pb.ServerMessage, sendQueue), ctx: ctx, cancel: cancel}
+	p := &pane{id: "pn_test", attached: map[*conn]struct{}{c: {}}}
+	go c.writeLoop()
+	output := testOutput(p)
+	var want strings.Builder
+	for i := 0; i < 20000; i++ {
+		s := fmt.Sprintf("line %d\n", i)
+		want.WriteString(s)
+		output(s)
+	}
+	c.send(nil) // hang up once everything before it is written
+	<-tr.closed
+
+	var got strings.Builder
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	for _, b := range tr.writes {
+		msg := &pb.ServerMessage{}
+		if err := proto.Unmarshal(b, msg); err != nil {
+			t.Fatal(err)
+		}
+		o := msg.GetPaneOutput()
+		if o == nil {
+			t.Fatalf("wrote %v", msg)
+		}
+		if o.Offset != uint64(got.Len()) {
+			t.Fatalf("message at offset %d, want %d", o.Offset, got.Len())
+		}
+		got.Write(o.Data)
+	}
+	if got.String() != want.String() {
+		t.Fatalf("wrote %d bytes in %d messages, want %d", got.Len(), len(tr.writes), want.Len())
+	}
+	if len(tr.writes) >= 20000 {
+		t.Logf("nothing merged (%d messages): the write loop kept up", len(tr.writes))
+	}
+	if c.queuedBytes.Load() != 0 {
+		t.Fatalf("%d bytes still counted as queued", c.queuedBytes.Load())
 	}
 }
 

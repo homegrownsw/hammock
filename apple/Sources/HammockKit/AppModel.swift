@@ -276,7 +276,7 @@ public final class AppModel {
             // The first message waiting asks the main thread for them all:
             // under a flood, one hop takes many messages, not one each.
             guard inbox.add(msg) else { return }
-            DispatchQueue.main.async { self?.handle(inbox.take()) }
+            DispatchQueue.main.async { self?.drain(inbox) }
         }
         c.onStateChange = { [weak self] ready, err in
             DispatchQueue.main.async { self?.connectionChanged(ready: ready, error: err) }
@@ -357,25 +357,54 @@ public final class AppModel {
     @ObservationIgnored private let inbox = Inbox()
 
     final class Inbox: @unchecked Sendable {
+        /// How much output one hop to the main thread takes at most, so a
+        /// backlog (the main thread was busy) is parsed a piece at a time,
+        /// with drawing and input in between, not all at once.
+        static let maxBytes = 4 << 20
+
         private let lock = NSLock()
         private var waiting: [ServerMessage] = []
+        private var start = 0
+        private var asked = false
 
-        /// Adds msg; true if nothing was waiting, so the main thread must be
-        /// asked to take them.
+        /// Adds msg; true if the main thread must be asked to take what's
+        /// waiting (it hasn't been already).
         func add(_ msg: ServerMessage) -> Bool {
             lock.lock()
             defer { lock.unlock() }
             waiting.append(msg)
-            return waiting.count == 1
+            if asked { return false }
+            asked = true
+            return true
         }
 
-        func take() -> [ServerMessage] {
+        /// The messages waiting, up to about `maxBytes` of output, and
+        /// whether more are left (then the main thread is asked again).
+        func take() -> (batch: ArraySlice<ServerMessage>, more: Bool) {
             lock.lock()
             defer { lock.unlock() }
-            let all = waiting
-            waiting = []
-            return all
+            var end = start, bytes = 0
+            while end < waiting.count, bytes < Self.maxBytes {
+                if case .paneOutput(let o) = waiting[end].msg { bytes += o.data.count }
+                end += 1
+            }
+            let batch = waiting[start ..< end]
+            if end == waiting.count {
+                waiting = []
+                start = 0
+                asked = false
+                return (batch, false)
+            }
+            start = end
+            return (batch, true)
         }
+    }
+
+    /// Handles what's waiting in `inbox`, a batch per turn of the main thread.
+    private func drain(_ inbox: Inbox) {
+        let (batch, more) = inbox.take()
+        handle(batch)
+        if more { DispatchQueue.main.async { [weak self] in self?.drain(inbox) } }
     }
 
     // MARK: State
@@ -383,12 +412,12 @@ public final class AppModel {
     /// Handles messages in order, except that each pane's output is gathered
     /// up to the next other message and written into its engine at once:
     /// one write and one redraw request per pane, not one per message.
-    private func handle(_ batch: [ServerMessage]) {
+    private func handle(_ batch: ArraySlice<ServerMessage>) {
         var output: [(id: String, data: Data)] = []
         func writeOutput() {
             for (id, data) in output {
                 guard let session = sessions[id] else { continue }
-                session.engine.write(data)
+                PaneSession.timed(data.count, snapshot: false) { session.engine.write(data) }
                 session.notify()
             }
             output.removeAll()
@@ -420,10 +449,6 @@ public final class AppModel {
             session.notify()
         case .authChallenge(let c):
             if challengeWaiters.isEmpty { challenge = c.nonce } else { challengeWaiters.removeFirst().resume(returning: c.nonce) }
-        case .paneOutput(let o):
-            guard let session = sessions[o.paneID] else { return }
-            PaneSession.timed(o.data.count, snapshot: false) { session.engine.write(o.data) }
-            session.notify()
         case .agentView(let v):
             agentSessions[AgentSession.key(v.paneID, v.subagentID, v.shellID)]?.apply(v)
         case .logView(let v):

@@ -287,7 +287,8 @@ public final class DaemonConnection: @unchecked Sendable {
             at += 4 + n
         }
         if at == readBuffer.endIndex {
-            readBuffer.removeAll(keepingCapacity: true)
+            // Kept for the next read, unless a big snapshot grew it.
+            readBuffer.removeAll(keepingCapacity: readBuffer.count <= 2 << 20)
         } else if at > base {
             readBuffer.removeSubrange(base ..< at)
         }
