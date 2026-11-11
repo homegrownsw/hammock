@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"strconv"
+	"strings"
 
 	"go.mitchellh.com/libghostty"
 )
@@ -17,6 +19,11 @@ import (
 // pictures Claude Code puts on screen until it drew them again. kittyImages
 // re-sends them: each image on screen once (as PNG), then each placement at
 // its cell, then the cursor back where it was.
+//
+// Images shown with Unicode placeholders (a virtual placement, U=1, and
+// placeholder characters in the text: how Claude Code shows them) have no
+// cell of their own: the text already carries the placeholders, so each
+// image they refer to is sent with its virtual placement made again.
 
 // pngCache holds each image's PNG, by image id, for the content generation
 // it was made from: snapshots are taken often (every 30s to disk).
@@ -25,7 +32,7 @@ type pngCache map[uint32]struct {
 	b64 string
 }
 
-func (m *ghosttyMirror) kittyImages() []byte {
+func (m *ghosttyMirror) kittyImages(text []byte) []byte {
 	kg, err := m.t.KittyGraphics()
 	if err != nil {
 		return nil
@@ -40,9 +47,41 @@ func (m *ghosttyMirror) kittyImages() []byte {
 	}
 	var b bytes.Buffer
 	sent := map[uint32]bool{}
+	var shown map[uint32]bool // images the text's placeholders refer to
 	for it.Next() {
 		p, err := it.Info()
-		if err != nil || p.IsVirtual {
+		if err != nil {
+			continue
+		}
+		if p.IsVirtual {
+			if shown == nil {
+				shown = placeholderImages(text)
+			}
+			if !shown[p.ImageID&0xFFFFFF] {
+				continue
+			}
+			img := kg.Image(p.ImageID)
+			if img == nil {
+				continue
+			}
+			if !sent[p.ImageID] {
+				data := m.imagePNG(img)
+				if data == "" {
+					continue
+				}
+				transmit(&b, p.ImageID, data)
+				sent[p.ImageID] = true
+			}
+			fmt.Fprintf(&b, "\x1b_Ga=p,U=1,i=%d", p.ImageID)
+			for _, kv := range []struct {
+				k string
+				v uint32
+			}{{"p", p.PlacementID}, {"c", p.Columns}, {"r", p.Rows}} {
+				if kv.v != 0 {
+					fmt.Fprintf(&b, ",%s=%d", kv.k, kv.v)
+				}
+			}
+			b.WriteString(",q=2\x1b\\")
 			continue
 		}
 		img := kg.Image(p.ImageID)
@@ -83,6 +122,80 @@ func (m *ghosttyMirror) kittyImages() []byte {
 	y, _ := m.t.CursorY()
 	fmt.Fprintf(&b, "\x1b[%d;%dH", y+1, x+1)
 	return b.Bytes()
+}
+
+// placeholderImages are the images placeholder characters (U+10EEEE) in a
+// formatted screen refer to: the low 24 bits of each one's id, which is its
+// foreground colour (a 256-colour index or an RGB value; a third
+// diacritic would carry the top 8 bits, which Claude Code's ids don't use).
+func placeholderImages(text []byte) map[uint32]bool {
+	const placeholder = "\U0010EEEE"
+	ids := map[uint32]bool{}
+	if !bytes.Contains(text, []byte(placeholder)) {
+		return ids
+	}
+	var fg uint32
+	for i := 0; i < len(text); {
+		if text[i] == 0x1b && i+1 < len(text) && text[i+1] == '[' {
+			end := i + 2
+			for end < len(text) && (text[end] < 0x40 || text[end] > 0x7e) {
+				end++
+			}
+			if end < len(text) && text[end] == 'm' {
+				fg = sgrForeground(string(text[i+2:end]), fg)
+			}
+			i = end + 1
+			continue
+		}
+		if bytes.HasPrefix(text[i:], []byte(placeholder)) {
+			ids[fg] = true
+			i += len(placeholder)
+			continue
+		}
+		i++
+	}
+	return ids
+}
+
+// sgrForeground follows an SGR sequence's parameters to the foreground
+// colour as a number (0: the default). Extended colours (38, 48, 58) take
+// their own parameters, ;- or :-separated: 5;n, or 2;r;g;b (2::r:g:b with
+// an empty colour space).
+func sgrForeground(params string, fg uint32) uint32 {
+	var ps []string
+	for _, p := range strings.Split(params, ";") {
+		ps = append(ps, strings.Split(p, ":")...)
+	}
+	num := func(i int) uint32 {
+		if i >= len(ps) {
+			return 0
+		}
+		n, _ := strconv.Atoi(ps[i])
+		return uint32(n)
+	}
+	for i := 0; i < len(ps); i++ {
+		switch ps[i] {
+		case "", "0", "39":
+			fg = 0
+		case "38", "48", "58":
+			kind := ps[i]
+			var c uint32
+			switch {
+			case i+1 < len(ps) && ps[i+1] == "5":
+				c, i = num(i+2), i+2
+			case i+1 < len(ps) && ps[i+1] == "2":
+				j := i + 2
+				if j+3 < len(ps) && ps[j] == "" { // 2::r:g:b
+					j++
+				}
+				c, i = num(j)<<16|num(j+1)<<8|num(j+2), j+2
+			}
+			if kind == "38" {
+				fg = c
+			}
+		}
+	}
+	return fg
 }
 
 // transmit writes an image's PNG (base64) in the protocol's 4 KB chunks.

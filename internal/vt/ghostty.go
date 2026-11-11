@@ -133,7 +133,7 @@ func (m *ghosttyMirror) Snapshot() []byte {
 	if err != nil {
 		return []byte("\x1bc")
 	}
-	return append(append([]byte("\x1bc"), out...), m.kittyImages()...)
+	return append(append([]byte("\x1bc"), out...), m.kittyImages(out)...)
 }
 
 func (m *ghosttyMirror) BracketedPaste() bool {

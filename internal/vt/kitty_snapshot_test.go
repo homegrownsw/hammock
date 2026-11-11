@@ -127,3 +127,69 @@ func TestKittyFileImages(t *testing.T) {
 		m.Close()
 	}
 }
+
+// Images shown with Unicode placeholders (a virtual placement and
+// placeholder characters, as Claude Code shows them) come with the
+// snapshot too: a client that receives the screen again (opening the pane
+// on the phone, a resize, catching up) otherwise had placeholders pointing
+// at nothing until the program drew the image again.
+func TestSnapshotKeepsPlaceholderImages(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 20, 10))
+	for i := range src.Pix {
+		src.Pix[i] = 150
+	}
+	var p bytes.Buffer
+	if err := png.Encode(&p, src); err != nil {
+		t.Fatal(err)
+	}
+	const id = 10350049 // an RGB colour: 157;237;225
+	cells := "\x1b[38;2;157;237;225m\U0010EEEE̅̅\U0010EEEE̅̍\x1b[39m"
+	transmitCmd := fmt.Sprintf("\x1b_Ga=T,U=1,i=%d,f=100,c=2,r=1,q=2;%s\x1b\\", id, base64.StdEncoding.EncodeToString(p.Bytes()))
+
+	m := New(40, 12).(*ghosttyMirror)
+	defer m.Close()
+	m.SetCellSize(10, 20)
+	m.Write([]byte(transmitCmd + "image: " + cells + "\r\n"))
+	snap := m.Snapshot()
+	if !bytes.Contains(snap, []byte(fmt.Sprintf("a=p,U=1,i=%d", id))) || !bytes.Contains(snap, []byte(fmt.Sprintf("a=t,f=100,i=%d", id))) {
+		t.Fatalf("the snapshot doesn't bring the placeholder image: %q", snap[max(0, len(snap)-300):])
+	}
+	c := New(40, 12).(*ghosttyMirror)
+	defer c.Close()
+	c.SetCellSize(10, 20)
+	c.Write(snap)
+	kg, err := c.t.KittyGraphics()
+	if err != nil || kg.Image(id) == nil {
+		t.Fatal("a client fed the snapshot has no image")
+	}
+
+	// An image nothing on screen refers to stays out.
+	o := New(40, 12).(*ghosttyMirror)
+	defer o.Close()
+	o.SetCellSize(10, 20)
+	o.Write([]byte(transmitCmd + "no placeholders\r\n"))
+	if bytes.Contains(o.Snapshot(), []byte("a=p,U=1")) {
+		t.Fatal("sent an image no placeholder shows")
+	}
+}
+
+func TestSGRForeground(t *testing.T) {
+	for _, c := range []struct {
+		params string
+		was    uint32
+		want   uint32
+	}{
+		{"38;2;157;237;225", 0, 10350049},
+		{"38:2::157:237:225", 0, 10350049},
+		{"38;5;42", 0, 42},
+		{"1;38;5;42;48;2;0;0;0", 0, 42}, // a black background doesn't reset it
+		{"48;2;0;0;0", 42, 42},
+		{"0", 42, 0},
+		{"39", 42, 0},
+		{"1", 42, 42},
+	} {
+		if got := sgrForeground(c.params, c.was); got != c.want {
+			t.Errorf("%q from %d: %d, want %d", c.params, c.was, got, c.want)
+		}
+	}
+}
