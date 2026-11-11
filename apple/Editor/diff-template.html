@@ -179,7 +179,10 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 #bar .btn.send:hover { filter: brightness(1.08); background: var(--accent); }
 #target { max-width: 220px; }
 #target .t { overflow: hidden; text-overflow: ellipsis; }
-#target .k { color: var(--dim); }
+#bar .split { display: inline-flex; }
+#bar .split .btn.send:first-child { border-radius: 6px 0 0 6px; }
+#bar .split .btn.more { border-radius: 0 6px 6px 0; padding: 0 5px; margin-left: 1px; }
+#bar .btn.picker { border: 1px solid var(--line); }
 #target .chev { opacity: 0.6; }
 /* A file's comments: its open threads; filled when there are replies you haven't seen. */
 .bubble { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 5px; border-radius: 9px;

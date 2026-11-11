@@ -286,25 +286,32 @@ function renderBar() {
   bar.append(totals, el("span", "spacer"))
 
   // Who comments go to, and sending the ones not yet sent.
+  // One control: with comments to send, a split button (Send | ▾, the ▾
+  // choosing the agent); without, just the agent, as a picker.
   if (config.canSend) {
     const n = unsentCount()
+    const pick = (anchor) => (e) => { e.stopPropagation(); openPop("targetPop", anchor, renderTargetPop) }
+    const chev = () => { const c = el("span", "chev"); c.innerHTML = svg.chevron; return c }
     if (n && config.target) {
       const narrow = window.innerWidth <= 640
+      const split = el("span", "split")
       const send = el("button", "btn send", narrow ? `Send ${n}` : `Send ${n} to ${agentName()}`)
       send.title = "Send every comment not yet sent, as one message"
       send.onclick = () => post({ type: "review", command: { action: "send" } })
-      bar.append(send)
+      const to = el("button", "btn send more")
+      to.append(chev())
+      to.title = "Choose the agent comments go to"
+      to.onclick = pick(split)
+      split.append(send, to)
+      bar.append(split)
+    } else {
+      const to = el("button", "btn picker")
+      to.id = "target"
+      to.append(el("span", "t", config.target ? config.target.name : "No agent"), chev())
+      to.title = "The agent your comments are sent to"
+      to.onclick = pick(to)
+      bar.append(to)
     }
-    const to = el("button", "btn")
-    to.id = "target"
-    // A setting, not an action: "Agent: Claude".
-    to.append(el("span", "k", "Agent:"), el("span", "t", config.target ? config.target.name : "None"))
-    const ch = el("span", "chev")
-    ch.innerHTML = svg.chevron
-    to.append(ch)
-    to.title = "The agent your comments are sent to"
-    to.onclick = (e) => { e.stopPropagation(); openPop("targetPop", to, renderTargetPop) }
-    bar.append(to)
   }
 
   const gear = el("button", "btn")
