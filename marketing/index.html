@@ -1229,7 +1229,7 @@
       },
       rm(p, a) {
         const flags = a.filter(x => x[0] === '-').join(''), what = a.filter(x => x[0] !== '-');
-        if (/r/i.test(flags) && /f/.test(flags)) return sayH(p, line('🛟 <span class="g">The hammock caught it.</span> Nothing was deleted: Hammock never loses your work.'));
+        if (/r/i.test(flags) && /f/.test(flags)) return sayH(p, line('🙅 <span class="g">Nice try.</span> Nothing was deleted: it’s a website, the files are painted on.'));
         if (!what.length) return say(p, 'usage: rm [-f | -i] [-dIPRrvWx] file ...');
         say(p, `rm: ${what.join(' ')}: we’d rather you didn’t, it’s a demo`);
       },
