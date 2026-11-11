@@ -57,11 +57,12 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .st.M { color: var(--mod); } .st.A { color: var(--add); } .st.D { color: var(--del); } .st.R, .st.C { color: var(--ren); } .st.T { color: var(--warn); }
 
 /* The files. */
-#files { flex: 1; overflow: auto; min-width: 0; padding: 10px 12px 40vh; }
+#files { flex: 1; overflow: auto; min-width: 0; padding: 10px 12px 40vh; position: relative; }
 .file { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; background: var(--bg); }
 .fhead { position: sticky; top: -10px; z-index: 3; display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 8px;
   background: var(--panel); border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
-.file.closed .fhead { border-bottom: none; border-radius: 8px; }
+/* Closed, the border stays (clear): the file keeps its height to the pixel. */
+.file.closed .fhead { border-bottom-color: transparent; border-radius: 8px; }
 .fhead .path { font: 12px var(--code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; -webkit-user-select: text; user-select: text; }
 .fhead .path .dir { color: var(--dim); }
 .fhead .path .from { color: var(--dim); }

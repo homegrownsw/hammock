@@ -6,10 +6,10 @@
 // nears the screen so a diff of any size stays quick.
 
 import { EditorState, Compartment } from "@codemirror/state"
-import { EditorView, lineNumbers, highlightSpecialChars } from "@codemirror/view"
+import { EditorView, lineNumbers, highlightSpecialChars, ViewPlugin, Decoration } from "@codemirror/view"
 import { LanguageDescription } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
-import { MergeView, unifiedMergeView, diff as textDiff, Change } from "@codemirror/merge"
+import { MergeView, unifiedMergeView, diff as textDiff, Change, getChunks } from "@codemirror/merge"
 import { themeExtension, mix, tint } from "./theme.js"
 
 const post = (m) => {
@@ -132,11 +132,16 @@ function diffTheme() {
     ".cm-content": { padding: "2px 0" },
     ".cm-gutters": { borderRight: `1px solid ${mix(th.background, th.foreground, 0.07)}` },
     "&.cm-merge-a .cm-changedLine, & .cm-deletedChunk": { backgroundColor: tint(del, lineDel) + " !important" },
-    "&.cm-merge-b .cm-changedLine, & .cm-insertedLine": { backgroundColor: tint(add, line) + " !important" },
+    "&.cm-merge-b .cm-changedLine": { backgroundColor: tint(add, line) + " !important" },
+    // Unified: a new line's text is in an <ins> as well: the line's tint is enough.
+    "& ins.cm-insertedLine": { background: "none !important", textDecoration: "none" },
     // A deleted line's text is all in a <del>: only its changed words are marked.
     "& del, & .cm-deletedLine, & .cm-deletedChunk .cm-deletedLine del": { background: "none !important", textDecoration: "none" },
     "&.cm-merge-a .cm-changedText, & .cm-deletedChunk .cm-deletedText": { background: tint(del, wordDel) + " !important", borderRadius: "2px" },
     "&.cm-merge-b .cm-changedText, & .cm-insertedLine .cm-changedText": { background: tint(add, word) + " !important", borderRadius: "2px" },
+    // Words fill the line's height, so marks on lines one under another meet.
+    "& .cm-changedText, & .cm-deletedText": { padding: "0.14em 0", boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" },
+    "& .cm-wholeChange .cm-changedText": { background: "none !important" },
     "&.cm-merge-a .cm-changedLineGutter, & .cm-deletedLineGutter": { background: del + " !important" },
     "&.cm-merge-b .cm-changedLineGutter": { background: add + " !important" },
     ".cm-changeGutter": { width: "3px", paddingLeft: "0" },
@@ -150,6 +155,48 @@ function diffTheme() {
     ".cm-activeLine": { background: "none" },
   }, { dark: th.dark })
 }
+
+// ---- whole lines ----
+
+// A line that's new (or gone) all through is marked by its background:
+// marking every word in it as changed too only makes it harder to read.
+// wholeLines flags those lines (cm-wholeChange), and the theme leaves
+// their words unmarked; words in lines that were edited stay marked.
+const wholeLine = Decoration.line({ class: "cm-wholeChange" })
+const wholeLines = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = this.build(view) }
+  update(u) { if (u.docChanged || u.viewportChanged || u.transactions.length) this.decorations = this.build(u.view) }
+  build(view) {
+    const found = getChunks(view.state)
+    if (!found) return Decoration.none
+    const isA = found.side === "a", doc = view.state.doc, marks = []
+    const { from: vFrom, to: vTo } = view.viewport
+    for (const c of found.chunks) {
+      const from = isA ? c.fromA : c.fromB, to = Math.min(isA ? c.toA : c.toB, doc.length)
+      if (to < vFrom || from > vTo || from >= to) continue
+      // What changed in the chunk, in this side's positions.
+      const ranges = c.changes.map((ch) => isA ? [from + ch.fromA, from + ch.toA] : [from + ch.fromB, from + ch.toB]).filter(([a, b]) => b > a)
+      for (let pos = from; pos < to;) {
+        const line = doc.lineAt(pos)
+        const text = line.text, start = text.search(/\S/)
+        if (start >= 0) {
+          const end = text.length - (text.length - text.trimEnd().length)
+          const s = line.from + start, e = line.from + end
+          // Covered, start to end, by the changes?
+          let at = s, moved = true
+          while (at < e && moved) {
+            moved = false
+            for (const [a, b] of ranges) if (a <= at && b > at) { at = b; moved = true }
+            while (at < e && /\s/.test(text[at - line.from])) { at++; moved = true }
+          }
+          if (at >= e) marks.push(wholeLine.range(line.from))
+        }
+        pos = line.to + 1
+      }
+    }
+    return Decoration.set(marks, true)
+  }
+}, { decorations: (v) => v.decorations })
 
 // ---- ignoring whitespace ----
 
@@ -489,8 +536,46 @@ function reveal(path) {
   const sec = sectionOf(path)
   if (!sec) return
   if (!u.open) { u.open = true; renderSection(sec, f) }
-  $("files").scrollTop = sec.offsetTop - 10
+  pin = { path, off: -10 }
+  holdPin()
   setActive(path)
+}
+
+// ---- keeping your place ----
+
+// WebKit doesn't keep the scroll steady when something above what you're
+// looking at changes height (files load and unload as you scroll, at sizes
+// guessed until then), so we do: pin is the file at the top and how far
+// into it you are, and when heights change the scroll follows it.
+let pin = null
+let sectionList = []
+const resizes = new ResizeObserver(() => holdPin())
+
+// pinTop notes the file at the top (one whose header sits just below the
+// top counts: that's where reveal puts it).
+function pinTop() {
+  const top = $("files").scrollTop
+  let lo = 0, hi = sectionList.length - 1, at = -1
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1
+    if (sectionList[m].offsetTop <= top + 12) { at = m; lo = m + 1 } else hi = m - 1
+  }
+  const s = sectionList[Math.max(at, 0)]
+  pin = s ? { path: s.dataset.path, off: top - s.offsetTop } : null
+}
+
+function holdPin() {
+  const s = pin && sections.get(pin.path)
+  if (!s) return
+  const box = $("files"), want = s.offsetTop + pin.off
+  if (Math.abs(box.scrollTop - want) > 1) box.scrollTop = want
+}
+
+// keepHeader: a file you open or close stays where it is, its header in
+// view if you were inside it.
+function keepHeader(path) {
+  pinTop()
+  if (pin && pin.path === path && pin.off > -10) pin.off = -10
 }
 
 // ---- the files ----
@@ -518,15 +603,12 @@ function observers() {
 // screen). keepScroll: stay on the file that was at the top.
 function renderFiles(keepScroll) {
   const box = $("files")
-  let anchor = null
-  if (keepScroll) {
-    for (const [path, s] of sections) {
-      if (s.offsetTop + s.offsetHeight > box.scrollTop) { anchor = { path, off: box.scrollTop - s.offsetTop }; break }
-    }
-  }
+  if (keepScroll) pinTop()
+  const anchor = keepScroll ? pin : null
   for (const p of [...mounted.keys()]) unmount(p, false)
   box.textContent = ""
   sections.clear()
+  resizes.disconnect()
   observers()
   const q = $("filter").value.trim().toLowerCase()
   for (const f of order) {
@@ -536,9 +618,11 @@ function renderFiles(keepScroll) {
     sections.set(f.path, sec)
     renderSection(sec, f)
     box.append(sec)
+    resizes.observe(sec)
   }
+  sectionList = [...sections.values()]
   renderEmpty()
-  if (anchor && sections.has(anchor.path)) box.scrollTop = sections.get(anchor.path).offsetTop + anchor.off
+  if (anchor && sections.has(anchor.path)) { pin = anchor; holdPin() } else { pin = null; box.scrollTop = 0 }
   onScroll()
 }
 
@@ -553,7 +637,7 @@ function renderSection(sec, f) {
   const tw = el("button", "btn twisty")
   tw.innerHTML = svg.chevron
   tw.title = u.open ? "Close this file" : "Open this file"
-  tw.onclick = () => { u.open = !u.open; renderSection(sec, f) }
+  tw.onclick = () => { keepHeader(f.path); u.open = !u.open; renderSection(sec, f) }
   head.append(tw)
   const st = el("span", "st " + statusLetter(f), statusLetter(f))
   st.title = statusWords(f)
@@ -578,7 +662,7 @@ function renderSection(sec, f) {
     const seg = el("div", "seg")
     for (const [whole, label] of [[false, "Changes"], [true, "Whole File"]]) {
       const b = el("button", u.whole === whole ? "on" : "", label)
-      b.onclick = () => { if (u.whole !== whole) { u.whole = whole; u.open = true; renderSection(sec, f) } }
+      b.onclick = () => { if (u.whole !== whole) { keepHeader(f.path); u.whole = whole; u.open = true; renderSection(sec, f) } }
       seg.append(b)
     }
     head.append(seg)
@@ -590,7 +674,7 @@ function renderSection(sec, f) {
     o.onclick = () => post({ type: "openFile", path: f.path })
     head.append(o)
   }
-  head.ondblclick = (e) => { if (e.target === head || e.target.classList.contains("spacer")) { u.open = !u.open; renderSection(sec, f) } }
+  head.ondblclick = (e) => { if (e.target === head || e.target.classList.contains("spacer")) { keepHeader(f.path); u.open = !u.open; renderSection(sec, f) } }
   sec.append(head)
 
   const body = el("div", "fbody")
@@ -601,7 +685,7 @@ function renderSection(sec, f) {
     const n = el("div", "note")
     n.append(el("span", null, f.generated ? "A generated file: its changes aren't shown." : `A large diff: ${plural(f.added + f.removed, "line", "lines")} changed.`))
     const b = el("button", "btn", "Show Them")
-    b.onclick = () => { u.loaded = true; renderSection(sec, f) }
+    b.onclick = () => { keepHeader(f.path); u.loaded = true; renderSection(sec, f) }
     n.append(b)
     body.append(n)
     return
@@ -704,7 +788,7 @@ function mount(path) {
     // The diff's colours first: of two themes, CodeMirror lets the first win.
     diffTheme(), themeExtension(config),
     config.view.wrap ? EditorView.lineWrapping : [],
-    lang.of([]),
+    lang.of([]), wholeLines,
   ]
   const collapse = u.whole ? undefined : { margin: 3, minSize: 4 }
   const diffConfig = { scanLimit: 5000, timeout: 1500, ...(ignore ? { override: diffIgnoringSpace } : {}) }
@@ -749,6 +833,7 @@ function mount(path) {
 // The file at the top is the tree's active one.
 let scrollQueued = false
 function onScroll() {
+  pinTop()
   if (scrollQueued) return
   scrollQueued = true
   requestAnimationFrame(() => {
