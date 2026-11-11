@@ -874,6 +874,31 @@ func (a *App) openEditor(group, path string, large bool) {
 	})
 }
 
+// reviewChanges opens a diff of the focused pane's repository (the apps
+// show it; here it's a placeholder) in a new tab just after this one.
+func (a *App) reviewChanges() {
+	group := a.currentGroup()
+	if group == "" {
+		a.flash("Open a Group first")
+		return
+	}
+	repo := ""
+	if p := a.panes[a.focus]; p != nil {
+		repo = p.Cwd
+		if ed := p.GetEditor(); isEditor(p) && ed.GetPath() != "" {
+			repo = filepath.Dir(ed.GetPath())
+		}
+	}
+	spec := &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo}}
+	a.callErr(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: group, Pane: spec, AfterTabId: a.selTab}}}, func(r *pb.ServerMessage, err error) {
+		if err != nil {
+			a.flash("⚠ " + err.Error())
+			return
+		}
+		a.selectTab(client.CreatedID(r))
+	})
+}
+
 // splitEditor opens an untitled editor beside paneID.
 func (a *App) splitEditor(paneID string, dir pb.Split_Direction) {
 	if paneID == "" {

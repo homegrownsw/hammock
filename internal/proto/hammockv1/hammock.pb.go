@@ -23496,21 +23496,27 @@ func (x *ReviewList) GetReviews() []*Review {
 }
 
 type ReviewCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`       // the diff pane; or
-	ReviewId      string                 `protobuf:"bytes,2,opt,name=review_id,json=reviewId,proto3" json:"review_id,omitempty"` // a review whose pane is closed
-	Action        ReviewCommand_Action   `protobuf:"varint,3,opt,name=action,proto3,enum=hammock.v1.ReviewCommand_Action" json:"action,omitempty"`
-	ThreadId      string                 `protobuf:"bytes,4,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
-	CommentId     string                 `protobuf:"bytes,5,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
-	Path          string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`
-	Side          ReviewThread_Side      `protobuf:"varint,7,opt,name=side,proto3,enum=hammock.v1.ReviewThread_Side" json:"side,omitempty"`
-	Line          uint32                 `protobuf:"varint,8,opt,name=line,proto3" json:"line,omitempty"`
-	EndLine       uint32                 `protobuf:"varint,9,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
-	Text          string                 `protobuf:"bytes,10,opt,name=text,proto3" json:"text,omitempty"`
-	Send          bool                   `protobuf:"varint,11,opt,name=send,proto3" json:"send,omitempty"`
-	State         ReviewThread_State     `protobuf:"varint,12,opt,name=state,proto3,enum=hammock.v1.ReviewThread_State" json:"state,omitempty"`
-	CommentIds    []string               `protobuf:"bytes,13,rep,name=comment_ids,json=commentIds,proto3" json:"comment_ids,omitempty"`
-	TargetPaneId  string                 `protobuf:"bytes,14,opt,name=target_pane_id,json=targetPaneId,proto3" json:"target_pane_id,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	PaneId       string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`       // the diff pane; or
+	ReviewId     string                 `protobuf:"bytes,2,opt,name=review_id,json=reviewId,proto3" json:"review_id,omitempty"` // a review whose pane is closed
+	Action       ReviewCommand_Action   `protobuf:"varint,3,opt,name=action,proto3,enum=hammock.v1.ReviewCommand_Action" json:"action,omitempty"`
+	ThreadId     string                 `protobuf:"bytes,4,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
+	CommentId    string                 `protobuf:"bytes,5,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	Path         string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`
+	Side         ReviewThread_Side      `protobuf:"varint,7,opt,name=side,proto3,enum=hammock.v1.ReviewThread_Side" json:"side,omitempty"`
+	Line         uint32                 `protobuf:"varint,8,opt,name=line,proto3" json:"line,omitempty"`
+	EndLine      uint32                 `protobuf:"varint,9,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
+	Text         string                 `protobuf:"bytes,10,opt,name=text,proto3" json:"text,omitempty"`
+	Send         bool                   `protobuf:"varint,11,opt,name=send,proto3" json:"send,omitempty"`
+	State        ReviewThread_State     `protobuf:"varint,12,opt,name=state,proto3,enum=hammock.v1.ReviewThread_State" json:"state,omitempty"`
+	CommentIds   []string               `protobuf:"bytes,13,rep,name=comment_ids,json=commentIds,proto3" json:"comment_ids,omitempty"`
+	TargetPaneId string                 `protobuf:"bytes,14,opt,name=target_pane_id,json=targetPaneId,proto3" json:"target_pane_id,omitempty"`
+	// ACTION_ADD_THREAD: the lines as the page showed them, and a few either
+	// side (the file may have changed on disk since): what the thread quotes
+	// and finds them again by. Empty: as the file is now.
+	Quote         string `protobuf:"bytes,15,opt,name=quote,proto3" json:"quote,omitempty"`
+	Before        string `protobuf:"bytes,16,opt,name=before,proto3" json:"before,omitempty"`
+	After         string `protobuf:"bytes,17,opt,name=after,proto3" json:"after,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -23639,6 +23645,27 @@ func (x *ReviewCommand) GetCommentIds() []string {
 func (x *ReviewCommand) GetTargetPaneId() string {
 	if x != nil {
 		return x.TargetPaneId
+	}
+	return ""
+}
+
+func (x *ReviewCommand) GetQuote() string {
+	if x != nil {
+		return x.Quote
+	}
+	return ""
+}
+
+func (x *ReviewCommand) GetBefore() string {
+	if x != nil {
+		return x.Before
+	}
+	return ""
+}
+
+func (x *ReviewCommand) GetAfter() string {
+	if x != nil {
+		return x.After
 	}
 	return ""
 }
@@ -25704,7 +25731,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vListReviews\":\n" +
 	"\n" +
 	"ReviewList\x12,\n" +
-	"\areviews\x18\x01 \x03(\v2\x12.hammock.v1.ReviewR\areviews\"\xaa\x05\n" +
+	"\areviews\x18\x01 \x03(\v2\x12.hammock.v1.ReviewR\areviews\"\xee\x05\n" +
 	"\rReviewCommand\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x1b\n" +
 	"\treview_id\x18\x02 \x01(\tR\breviewId\x128\n" +
@@ -25722,7 +25749,10 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05state\x18\f \x01(\x0e2\x1e.hammock.v1.ReviewThread.StateR\x05state\x12\x1f\n" +
 	"\vcomment_ids\x18\r \x03(\tR\n" +
 	"commentIds\x12$\n" +
-	"\x0etarget_pane_id\x18\x0e \x01(\tR\ftargetPaneId\"\xd1\x01\n" +
+	"\x0etarget_pane_id\x18\x0e \x01(\tR\ftargetPaneId\x12\x14\n" +
+	"\x05quote\x18\x0f \x01(\tR\x05quote\x12\x16\n" +
+	"\x06before\x18\x10 \x01(\tR\x06before\x12\x14\n" +
+	"\x05after\x18\x11 \x01(\tR\x05after\"\xd1\x01\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11ACTION_ADD_THREAD\x10\x01\x12\x10\n" +

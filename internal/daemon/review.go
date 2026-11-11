@@ -125,7 +125,7 @@ func (h *diffHub) attachReviewLocked(s *diffState) {
 			h.reviewKeys[s.reviewID] = key
 			return
 		}
-		h.releaseReviewLocked(s.reviewID)
+		h.releaseReviewLocked(s.reviewID, s)
 		s.reviewID = ""
 	}
 	rv := h.keyOf(key)
@@ -150,12 +150,32 @@ func (h *diffHub) attachReviewLocked(s *diffState) {
 	}
 }
 
-// releaseReviewLocked is a pane letting go of its review: kept while it
-// has threads open, else gone. Callers hold h.mu.
-func (h *diffHub) releaseReviewLocked(id string) {
+// panesOf is the panes showing review id (two can show one diff). Callers
+// hold h.mu.
+func (h *diffHub) panesOf(id string) []*diffState {
+	var out []*diffState
+	for _, s := range h.st {
+		if s.reviewID == id && id != "" {
+			out = append(out, s)
+		}
+	}
+	slices.SortFunc(out, func(a, b *diffState) int { return strings.Compare(a.paneID, b.paneID) })
+	return out
+}
+
+// releaseReviewLocked is pane leaving letting go of its review: while
+// another pane shows it, that one has it; after the last, it's kept while
+// it has threads open, else gone. Callers hold h.mu.
+func (h *diffHub) releaseReviewLocked(id string, leaving *diffState) {
 	rv := h.reviews[id]
 	if rv == nil {
 		return
+	}
+	for _, o := range h.panesOf(id) {
+		if o != leaving {
+			rv.PaneId = o.paneID
+			return
+		}
 	}
 	open := false
 	for _, t := range rv.Threads {
@@ -242,6 +262,30 @@ func (h *diffHub) publish(s *diffState) {
 	}
 }
 
+// publishAll publishes s's review to every pane showing it (just s, if it
+// has none yet). Not under h.mu or d.mu.
+func (h *diffHub) publishAll(s *diffState) {
+	h.mu.Lock()
+	list := h.panesOf(s.reviewID)
+	h.mu.Unlock()
+	if len(list) == 0 {
+		list = []*diffState{s}
+	}
+	for _, x := range list {
+		h.publish(x)
+	}
+}
+
+// publishReview publishes review id to the panes showing it.
+func (h *diffHub) publishReview(id string) {
+	h.mu.Lock()
+	list := h.panesOf(id)
+	h.mu.Unlock()
+	for _, x := range list {
+		h.publish(x)
+	}
+}
+
 // readReview answers ReadReview.
 func (h *diffHub) readReview(m *pb.ReadReview) (*pb.Review, error) {
 	h.mu.Lock()
@@ -295,7 +339,10 @@ func (h *diffHub) reviewOf(m *pb.ReviewCommand) (*diffState, *pb.Review, error) 
 	if rv == nil {
 		return nil, nil, fmt.Errorf("no review %s", m.ReviewId)
 	}
-	return h.st[rv.PaneId], rv, nil
+	if list := h.panesOf(rv.Id); len(list) > 0 {
+		return list[0], rv, nil
+	}
+	return nil, rv, nil
 }
 
 func findThread(rv *pb.Review, id string) *pb.ReviewThread {
@@ -379,8 +426,15 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 			r := s.resolved
 			rv = &pb.Review{Id: newID("rv"), Repo: r.Repo, Source: proto.CloneOf(r.Source), Title: r.Title, GroupId: groupID, PaneId: s.paneID}
 			h.reviews[rv.Id] = rv
-			h.reviewKeys[rv.Id] = reviewKey(r)
+			key := reviewKey(r)
+			h.reviewKeys[rv.Id] = key
 			s.reviewID = rv.Id
+			// Other panes on the same diff show it too.
+			for _, o := range h.st {
+				if o != s && o.reviewID == "" && o.resolved != nil && reviewKey(o.resolved) == key {
+					o.reviewID = rv.Id
+				}
+			}
 		}
 		rv.TargetPaneId = s.target
 		rv.Threads = append(rv.Threads, t)
@@ -437,7 +491,9 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 			h.mu.Unlock()
 			return nil, fmt.Errorf("no comment %s", m.CommentId)
 		}
-		if c.Agent || c.Delivery != pb.ReviewComment_DELIVERY_UNSENT {
+		// Yours (not the owner's if you're a guest, nor a guest's if you're
+		// the owner), not yet sent: unsent, or held for a busy agent.
+		if c.Agent || c.Author != who.name || c.Delivery != pb.ReviewComment_DELIVERY_UNSENT && c.Delivery != pb.ReviewComment_DELIVERY_QUEUED {
 			h.mu.Unlock()
 			return nil, errors.New("only your own comments, before they're sent, can be changed")
 		}
@@ -493,6 +549,9 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 		s = ps
 		s.target = m.TargetPaneId
 		if rv != nil {
+			for _, o := range h.panesOf(rv.Id) {
+				o.target = m.TargetPaneId
+			}
 			rv.TargetPaneId = s.target
 			h.saveReviewLocked(rv)
 		}
@@ -504,6 +563,10 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 		if err != nil {
 			h.mu.Unlock()
 			return nil, err
+		}
+		if ps == nil {
+			h.mu.Unlock()
+			return nil, errors.New("open the diff to send its comments")
 		}
 		s = ps
 		for _, t := range rv.GetThreads() {
@@ -524,10 +587,13 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 
 	var sendErr error
 	if len(toSend) > 0 && s != nil {
-		reply.Sent, reply.Queued, sendErr = h.send(s, toSend)
+		h.mu.Lock()
+		rvID, target := s.reviewID, s.target
+		h.mu.Unlock()
+		reply.Sent, reply.Queued, sendErr = h.send(rvID, target, toSend)
 	}
 	if s != nil {
-		h.publish(s)
+		h.publishAll(s)
 		h.mu.Lock()
 		if rv := h.reviews[s.reviewID]; rv != nil {
 			reply.Review = proto.CloneOf(rv)
@@ -574,6 +640,18 @@ func (h *diffHub) newThread(m *pb.ReviewCommand) (*pb.ReviewThread, *diffState, 
 	if m.Line == 0 {
 		return t, s, nil // the file as a whole
 	}
+	end := max(m.EndLine, m.Line)
+	t.Line, t.EndLine = m.Line, end
+	if m.Quote != "" {
+		// What the page showed: the file may have moved on since (its
+		// lines are found again when the diff is refreshed).
+		const most = 64 << 10
+		if len(m.Quote) > most || len(m.Before) > most || len(m.After) > most {
+			return nil, nil, errors.New("that's too many lines for one comment")
+		}
+		t.Quote, t.Before, t.After = m.Quote, m.Before, m.After
+		return t, s, nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	ft, err := gitdiff.FileText(ctx, r, f)
@@ -585,11 +663,9 @@ func (h *diffHub) newThread(m *pb.ReviewCommand) (*pb.ReviewThread, *diffState, 
 		text = ft.OldText
 	}
 	lines := splitLines(text)
-	end := max(m.EndLine, m.Line)
 	if int(end) > len(lines) {
 		return nil, nil, fmt.Errorf("%s has %d lines on that side, not %d", f.Path, len(lines), end)
 	}
-	t.Line, t.EndLine = m.Line, end
 	t.Quote = strings.Join(lines[m.Line-1:end], "\n")
 	t.Before = strings.Join(lines[max(int(m.Line)-1-reviewContext, 0):m.Line-1], "\n")
 	t.After = strings.Join(lines[end:min(int(end)+reviewContext, len(lines))], "\n")
@@ -604,16 +680,16 @@ func splitLines(text string) []string {
 	return strings.Split(strings.TrimSuffix(strings.ReplaceAll(text, "\r\n", "\n"), "\n"), "\n")
 }
 
-// send delivers comments to s's agent as one message, or holds them while
-// it's waiting on you. Not under h.mu or d.mu.
-func (h *diffHub) send(s *diffState, ids []string) (sent, queued uint32, err error) {
+// send delivers review rvID's comments ids to the agent in pane target as
+// one message, or holds them while it's waiting on you. One send per
+// review at a time (two panes can show it). Not under h.mu or d.mu.
+func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, err error) {
 	h.mu.Lock()
-	if h.sending[s.paneID] {
+	if h.sending[rvID] {
 		h.mu.Unlock()
 		return 0, 0, errors.New("comments are on their way already: try again in a moment")
 	}
-	target := s.target
-	rv := h.reviews[s.reviewID]
+	rv := h.reviews[rvID]
 	if rv == nil {
 		h.mu.Unlock()
 		return 0, 0, errors.New("there's nothing to send")
@@ -622,12 +698,12 @@ func (h *diffHub) send(s *diffState, ids []string) (sent, queued uint32, err err
 		h.mu.Unlock()
 		return 0, 0, errors.New("choose an agent to send comments to")
 	}
-	h.sending[s.paneID] = true
+	h.sending[rvID] = true
 	snap := proto.CloneOf(rv)
 	h.mu.Unlock()
 	defer func() {
 		h.mu.Lock()
-		delete(h.sending, s.paneID)
+		delete(h.sending, rvID)
 		h.mu.Unlock()
 	}()
 
@@ -743,13 +819,12 @@ func reviewMessage(rv *pb.Review, ids []string) string {
 func (h *diffHub) flushQueued() {
 	h.mu.Lock()
 	type due struct {
-		s   *diffState
-		ids []string
+		rvID, target string
+		ids          []string
 	}
 	var list []due
-	for _, s := range h.st {
-		rv := h.reviews[s.reviewID]
-		if rv == nil || s.target == "" || h.sending[s.paneID] {
+	for _, rv := range h.reviews {
+		if h.sending[rv.Id] {
 			continue
 		}
 		var ids []string
@@ -761,30 +836,57 @@ func (h *diffHub) flushQueued() {
 			}
 		}
 		if len(ids) > 0 {
-			list = append(list, due{s, ids})
+			list = append(list, due{rv.Id, rv.TargetPaneId, ids})
 		}
 	}
 	h.mu.Unlock()
 	for _, x := range list {
 		h.d.mu.Lock()
-		p := h.d.panes[x.s.target]
-		waiting := true
-		if p != nil {
+		var state pb.AgentState
+		if p := h.d.panes[x.target]; p != nil {
 			p.mu.Lock()
-			waiting = p.info.Agent != nil && p.info.Agent.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT
+			if a := p.info.Agent; a != nil {
+				state = a.State
+			}
 			p.mu.Unlock()
 		}
 		h.d.mu.Unlock()
-		if waiting {
+		switch state {
+		case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
+			continue // still waiting on you
+		case pb.AgentState_AGENT_STATE_UNSPECIFIED, pb.AgentState_AGENT_STATE_EXITED:
+			// Its agent has gone (or its pane): they're yours to send
+			// again, to another, rather than held for nothing.
+			h.unqueue(x.rvID, x.ids)
+			h.publishReview(x.rvID)
 			continue
 		}
 		go func() {
-			if _, _, err := h.send(x.s, x.ids); err != nil {
-				h.d.log.Warn("review comments held for the agent couldn't be sent", "pane", x.s.paneID, "err", err)
+			if _, _, err := h.send(x.rvID, x.target, x.ids); err != nil {
+				h.d.log.Warn("review comments held for the agent couldn't be sent", "review", x.rvID, "err", err)
+				h.unqueue(x.rvID, x.ids)
 			}
-			h.publish(x.s)
+			h.publishReview(x.rvID)
 		}()
 	}
+}
+
+// unqueue puts held comments back to unsent.
+func (h *diffHub) unqueue(rvID string, ids []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	rv := h.reviews[rvID]
+	if rv == nil {
+		return
+	}
+	for _, t := range rv.Threads {
+		for _, c := range t.Comments {
+			if c.Delivery == pb.ReviewComment_DELIVERY_QUEUED && slices.Contains(ids, c.Id) {
+				c.Delivery = pb.ReviewComment_DELIVERY_UNSENT
+			}
+		}
+	}
+	h.saveReviewLocked(rv)
 }
 
 // reanchor finds each of s's threads' lines again in the diff as it is
@@ -897,7 +999,7 @@ func (h *diffHub) pruneReviews() {
 	h.mu.Lock()
 	var check []*pb.Review
 	for id, rv := range h.reviews {
-		if rv.PaneId != "" && h.st[rv.PaneId] != nil {
+		if len(h.panesOf(id)) > 0 {
 			continue
 		}
 		if time.Since(time.UnixMilli(rv.UpdatedUnixMs)) > reviewKeep {
@@ -911,11 +1013,13 @@ func (h *diffHub) pruneReviews() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_, err := gitdiff.Resolve(ctx, rv.Repo, rv.Source)
 		cancel()
-		if err == nil {
+		// Only when git says so: a folder that isn't there (a disk not yet
+		// mounted) or git timing out isn't the commits being gone.
+		if !gitdiff.IsGone(err) {
 			continue
 		}
 		h.mu.Lock()
-		if x := h.reviews[rv.Id]; x != nil && x.PaneId == "" {
+		if x := h.reviews[rv.Id]; x != nil && len(h.panesOf(rv.Id)) == 0 {
 			h.deleteReviewLocked(rv.Id)
 		}
 		h.mu.Unlock()

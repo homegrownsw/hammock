@@ -206,3 +206,17 @@ func TestNotARepository(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestGoneOrNot(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	if _, err := Resolve(ctx, dir, ParseRev("0123456789abcdef0123456789abcdef01234567")); !IsGone(err) {
+		t.Errorf("a commit that isn't there: %v", err)
+	}
+	if _, err := Resolve(ctx, dir, &pb.DiffSource{Kind: pb.DiffSource_KIND_BRANCH, Base: "nope"}); !IsGone(err) {
+		t.Errorf("a branch that isn't there: %v", err)
+	}
+	if _, err := Resolve(ctx, filepath.Join(dir, "missing"), nil); err == nil || IsGone(err) {
+		t.Errorf("a folder that isn't there isn't gone for good: %v", err)
+	}
+}

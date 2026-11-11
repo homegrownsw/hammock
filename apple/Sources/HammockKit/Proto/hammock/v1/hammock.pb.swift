@@ -9867,40 +9867,100 @@ public nonisolated struct Hammock_V1_ReviewList: Sendable {
   public init() {}
 }
 
-public nonisolated struct Hammock_V1_ReviewCommand: Sendable {
+public nonisolated struct Hammock_V1_ReviewCommand: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   /// the diff pane; or
-  public var paneID: String = String()
+  public var paneID: String {
+    get {_storage._paneID}
+    set {_uniqueStorage()._paneID = newValue}
+  }
 
   /// a review whose pane is closed
-  public var reviewID: String = String()
+  public var reviewID: String {
+    get {_storage._reviewID}
+    set {_uniqueStorage()._reviewID = newValue}
+  }
 
-  public var action: Hammock_V1_ReviewCommand.Action = .unspecified
+  public var action: Hammock_V1_ReviewCommand.Action {
+    get {_storage._action}
+    set {_uniqueStorage()._action = newValue}
+  }
 
-  public var threadID: String = String()
+  public var threadID: String {
+    get {_storage._threadID}
+    set {_uniqueStorage()._threadID = newValue}
+  }
 
-  public var commentID: String = String()
+  public var commentID: String {
+    get {_storage._commentID}
+    set {_uniqueStorage()._commentID = newValue}
+  }
 
-  public var path: String = String()
+  public var path: String {
+    get {_storage._path}
+    set {_uniqueStorage()._path = newValue}
+  }
 
-  public var side: Hammock_V1_ReviewThread.Side = .new
+  public var side: Hammock_V1_ReviewThread.Side {
+    get {_storage._side}
+    set {_uniqueStorage()._side = newValue}
+  }
 
-  public var line: UInt32 = 0
+  public var line: UInt32 {
+    get {_storage._line}
+    set {_uniqueStorage()._line = newValue}
+  }
 
-  public var endLine: UInt32 = 0
+  public var endLine: UInt32 {
+    get {_storage._endLine}
+    set {_uniqueStorage()._endLine = newValue}
+  }
 
-  public var text: String = String()
+  public var text: String {
+    get {_storage._text}
+    set {_uniqueStorage()._text = newValue}
+  }
 
-  public var send: Bool = false
+  public var send: Bool {
+    get {_storage._send}
+    set {_uniqueStorage()._send = newValue}
+  }
 
-  public var state: Hammock_V1_ReviewThread.State = .open
+  public var state: Hammock_V1_ReviewThread.State {
+    get {_storage._state}
+    set {_uniqueStorage()._state = newValue}
+  }
 
-  public var commentIds: [String] = []
+  public var commentIds: [String] {
+    get {_storage._commentIds}
+    set {_uniqueStorage()._commentIds = newValue}
+  }
 
-  public var targetPaneID: String = String()
+  public var targetPaneID: String {
+    get {_storage._targetPaneID}
+    set {_uniqueStorage()._targetPaneID = newValue}
+  }
+
+  /// ACTION_ADD_THREAD: the lines as the page showed them, and a few either
+  /// side (the file may have changed on disk since): what the thread quotes
+  /// and finds them again by. Empty: as the file is now.
+  public var quote: String {
+    get {_storage._quote}
+    set {_uniqueStorage()._quote = newValue}
+  }
+
+  public var before: String {
+    get {_storage._before}
+    set {_uniqueStorage()._before = newValue}
+  }
+
+  public var after: String {
+    get {_storage._after}
+    set {_uniqueStorage()._after = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -9983,6 +10043,8 @@ public nonisolated struct Hammock_V1_ReviewCommand: Sendable {
   }
 
   public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Hammock_V1_ReviewReply: @unchecked Sendable {
@@ -26140,94 +26202,177 @@ nonisolated extension Hammock_V1_ReviewList: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_ReviewCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ReviewCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}review_id\0\u{1}action\0\u{3}thread_id\0\u{3}comment_id\0\u{1}path\0\u{1}side\0\u{1}line\0\u{3}end_line\0\u{1}text\0\u{1}send\0\u{1}state\0\u{3}comment_ids\0\u{3}target_pane_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}review_id\0\u{1}action\0\u{3}thread_id\0\u{3}comment_id\0\u{1}path\0\u{1}side\0\u{1}line\0\u{3}end_line\0\u{1}text\0\u{1}send\0\u{1}state\0\u{3}comment_ids\0\u{3}target_pane_id\0\u{1}quote\0\u{1}before\0\u{1}after\0")
+
+  fileprivate class _StorageClass {
+    var _paneID: String = String()
+    var _reviewID: String = String()
+    var _action: Hammock_V1_ReviewCommand.Action = .unspecified
+    var _threadID: String = String()
+    var _commentID: String = String()
+    var _path: String = String()
+    var _side: Hammock_V1_ReviewThread.Side = .new
+    var _line: UInt32 = 0
+    var _endLine: UInt32 = 0
+    var _text: String = String()
+    var _send: Bool = false
+    var _state: Hammock_V1_ReviewThread.State = .open
+    var _commentIds: [String] = []
+    var _targetPaneID: String = String()
+    var _quote: String = String()
+    var _before: String = String()
+    var _after: String = String()
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _paneID = source._paneID
+      _reviewID = source._reviewID
+      _action = source._action
+      _threadID = source._threadID
+      _commentID = source._commentID
+      _path = source._path
+      _side = source._side
+      _line = source._line
+      _endLine = source._endLine
+      _text = source._text
+      _send = source._send
+      _state = source._state
+      _commentIds = source._commentIds
+      _targetPaneID = source._targetPaneID
+      _quote = source._quote
+      _before = source._before
+      _after = source._after
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.reviewID) }()
-      case 3: try { try decoder.decodeSingularEnumField(value: &self.action) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.threadID) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.commentID) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.path) }()
-      case 7: try { try decoder.decodeSingularEnumField(value: &self.side) }()
-      case 8: try { try decoder.decodeSingularUInt32Field(value: &self.line) }()
-      case 9: try { try decoder.decodeSingularUInt32Field(value: &self.endLine) }()
-      case 10: try { try decoder.decodeSingularStringField(value: &self.text) }()
-      case 11: try { try decoder.decodeSingularBoolField(value: &self.send) }()
-      case 12: try { try decoder.decodeSingularEnumField(value: &self.state) }()
-      case 13: try { try decoder.decodeRepeatedStringField(value: &self.commentIds) }()
-      case 14: try { try decoder.decodeSingularStringField(value: &self.targetPaneID) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._paneID) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._reviewID) }()
+        case 3: try { try decoder.decodeSingularEnumField(value: &_storage._action) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._threadID) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._commentID) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._path) }()
+        case 7: try { try decoder.decodeSingularEnumField(value: &_storage._side) }()
+        case 8: try { try decoder.decodeSingularUInt32Field(value: &_storage._line) }()
+        case 9: try { try decoder.decodeSingularUInt32Field(value: &_storage._endLine) }()
+        case 10: try { try decoder.decodeSingularStringField(value: &_storage._text) }()
+        case 11: try { try decoder.decodeSingularBoolField(value: &_storage._send) }()
+        case 12: try { try decoder.decodeSingularEnumField(value: &_storage._state) }()
+        case 13: try { try decoder.decodeRepeatedStringField(value: &_storage._commentIds) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._targetPaneID) }()
+        case 15: try { try decoder.decodeSingularStringField(value: &_storage._quote) }()
+        case 16: try { try decoder.decodeSingularStringField(value: &_storage._before) }()
+        case 17: try { try decoder.decodeSingularStringField(value: &_storage._after) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.paneID.isEmpty {
-      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
-    }
-    if !self.reviewID.isEmpty {
-      try visitor.visitSingularStringField(value: self.reviewID, fieldNumber: 2)
-    }
-    if self.action != .unspecified {
-      try visitor.visitSingularEnumField(value: self.action, fieldNumber: 3)
-    }
-    if !self.threadID.isEmpty {
-      try visitor.visitSingularStringField(value: self.threadID, fieldNumber: 4)
-    }
-    if !self.commentID.isEmpty {
-      try visitor.visitSingularStringField(value: self.commentID, fieldNumber: 5)
-    }
-    if !self.path.isEmpty {
-      try visitor.visitSingularStringField(value: self.path, fieldNumber: 6)
-    }
-    if self.side != .new {
-      try visitor.visitSingularEnumField(value: self.side, fieldNumber: 7)
-    }
-    if self.line != 0 {
-      try visitor.visitSingularUInt32Field(value: self.line, fieldNumber: 8)
-    }
-    if self.endLine != 0 {
-      try visitor.visitSingularUInt32Field(value: self.endLine, fieldNumber: 9)
-    }
-    if !self.text.isEmpty {
-      try visitor.visitSingularStringField(value: self.text, fieldNumber: 10)
-    }
-    if self.send != false {
-      try visitor.visitSingularBoolField(value: self.send, fieldNumber: 11)
-    }
-    if self.state != .open {
-      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 12)
-    }
-    if !self.commentIds.isEmpty {
-      try visitor.visitRepeatedStringField(value: self.commentIds, fieldNumber: 13)
-    }
-    if !self.targetPaneID.isEmpty {
-      try visitor.visitSingularStringField(value: self.targetPaneID, fieldNumber: 14)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      if !_storage._paneID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._paneID, fieldNumber: 1)
+      }
+      if !_storage._reviewID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._reviewID, fieldNumber: 2)
+      }
+      if _storage._action != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._action, fieldNumber: 3)
+      }
+      if !_storage._threadID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._threadID, fieldNumber: 4)
+      }
+      if !_storage._commentID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._commentID, fieldNumber: 5)
+      }
+      if !_storage._path.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._path, fieldNumber: 6)
+      }
+      if _storage._side != .new {
+        try visitor.visitSingularEnumField(value: _storage._side, fieldNumber: 7)
+      }
+      if _storage._line != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._line, fieldNumber: 8)
+      }
+      if _storage._endLine != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._endLine, fieldNumber: 9)
+      }
+      if !_storage._text.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._text, fieldNumber: 10)
+      }
+      if _storage._send != false {
+        try visitor.visitSingularBoolField(value: _storage._send, fieldNumber: 11)
+      }
+      if _storage._state != .open {
+        try visitor.visitSingularEnumField(value: _storage._state, fieldNumber: 12)
+      }
+      if !_storage._commentIds.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._commentIds, fieldNumber: 13)
+      }
+      if !_storage._targetPaneID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._targetPaneID, fieldNumber: 14)
+      }
+      if !_storage._quote.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._quote, fieldNumber: 15)
+      }
+      if !_storage._before.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._before, fieldNumber: 16)
+      }
+      if !_storage._after.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._after, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_ReviewCommand, rhs: Hammock_V1_ReviewCommand) -> Bool {
-    if lhs.paneID != rhs.paneID {return false}
-    if lhs.reviewID != rhs.reviewID {return false}
-    if lhs.action != rhs.action {return false}
-    if lhs.threadID != rhs.threadID {return false}
-    if lhs.commentID != rhs.commentID {return false}
-    if lhs.path != rhs.path {return false}
-    if lhs.side != rhs.side {return false}
-    if lhs.line != rhs.line {return false}
-    if lhs.endLine != rhs.endLine {return false}
-    if lhs.text != rhs.text {return false}
-    if lhs.send != rhs.send {return false}
-    if lhs.state != rhs.state {return false}
-    if lhs.commentIds != rhs.commentIds {return false}
-    if lhs.targetPaneID != rhs.targetPaneID {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._paneID != rhs_storage._paneID {return false}
+        if _storage._reviewID != rhs_storage._reviewID {return false}
+        if _storage._action != rhs_storage._action {return false}
+        if _storage._threadID != rhs_storage._threadID {return false}
+        if _storage._commentID != rhs_storage._commentID {return false}
+        if _storage._path != rhs_storage._path {return false}
+        if _storage._side != rhs_storage._side {return false}
+        if _storage._line != rhs_storage._line {return false}
+        if _storage._endLine != rhs_storage._endLine {return false}
+        if _storage._text != rhs_storage._text {return false}
+        if _storage._send != rhs_storage._send {return false}
+        if _storage._state != rhs_storage._state {return false}
+        if _storage._commentIds != rhs_storage._commentIds {return false}
+        if _storage._targetPaneID != rhs_storage._targetPaneID {return false}
+        if _storage._quote != rhs_storage._quote {return false}
+        if _storage._before != rhs_storage._before {return false}
+        if _storage._after != rhs_storage._after {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

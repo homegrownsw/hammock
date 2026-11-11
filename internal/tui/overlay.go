@@ -548,6 +548,7 @@ func (a *App) paletteItems() []paletteItem {
 	})
 	act("quick-open", "Quick Open…", "⌃B e", "open file find edit editor text code", a.openQuickOpen)
 	act("new-editor", "New Editor Tab", "⌃B E", "edit editor text file untitled create code", func() { a.openEditor("", "", false) })
+	act("review-changes", "Review Changes", "", "diff git review pull request branch commit uncommitted", a.reviewChanges)
 	act("new-group", "New Group", "⌃B S", "create", a.newGroup)
 	act("new-group-in-directory", "New Group in Directory…", "", "create folder project open path", a.openNewGroupInFolder)
 	a.computerItems(act)

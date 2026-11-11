@@ -2635,6 +2635,12 @@ message ReviewCommand {
   ReviewThread.State state = 12;
   repeated string comment_ids = 13;
   string target_pane_id = 14;
+  // ACTION_ADD_THREAD: the lines as the page showed them, and a few either
+  // side (the file may have changed on disk since): what the thread quotes
+  // and finds them again by. Empty: as the file is now.
+  string quote = 15;
+  string before = 16;
+  string after = 17;
 }
 
 message ReviewReply {

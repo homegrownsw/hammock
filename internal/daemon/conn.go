@@ -448,6 +448,11 @@ func (c *conn) route(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 // dispatch handles a checked message here.
 func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	d := c.d
+	// A diff pane's git, before d.mu is taken to make it (dropped if the
+	// pane isn't made after all).
+	if open := d.prepareDiff(msg); open != nil {
+		defer d.diffs.takePrepared(open)
+	}
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello:
 		d.mu.Lock()

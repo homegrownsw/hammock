@@ -144,7 +144,11 @@ public final class DiffSession {
 
     weak var model: AppModel?
     var refs = 0
+    /// The page commands go to: the newest (or last focused).
     @ObservationIgnored weak var bridge: DiffBridge?
+    /// Every page showing the pane (two windows can show one tab): each
+    /// gets the diff and its review, and its own files.
+    @ObservationIgnored private let pages = NSHashTable<DiffBridge>.weakObjects()
     /// What the page was last given, for a page that loads after (a second window).
     @ObservationIgnored private var content: [String: Any]?
     @ObservationIgnored private var reviewJSON: [String: Any]?
@@ -161,6 +165,7 @@ public final class DiffSession {
     func detach() { model?.connection?.send { $0.detachPane = .with { $0.paneID = paneID } } }
 
     func pageReady(_ b: DiffBridge) {
+        pages.add(b)
         bridge = b
         if let content {
             b.load(content)
@@ -174,8 +179,10 @@ public final class DiffSession {
     func apply(_ r: Hammock_V1_Review) {
         let j = Self.json(r)
         reviewJSON = j
-        bridge?.setReview(j)
+        for p in pages.allObjects { p.setReview(j) }
     }
+
+    func pageFocused(_ b: DiffBridge) { bridge = b }
 
     /// Shows the next reply you haven't seen (and marks it seen).
     public func showNextUnread() { bridge?.nextUnread() }
@@ -222,6 +229,9 @@ public final class DiffSession {
         }
         m.commentIds = c["commentIds"] as? [String] ?? []
         m.targetPaneID = c["targetPaneId"] as? String ?? ""
+        m.quote = c["quote"] as? String ?? ""
+        m.before = c["before"] as? String ?? ""
+        m.after = c["after"] as? String ?? ""
         let msg = m
         conn.call({ $0.reviewCommand = msg }) { [weak self] r in
             Task { @MainActor in
@@ -259,7 +269,7 @@ public final class DiffSession {
                     if self.content?["generation"] as? UInt64 != c.generation { self.texts = [:] }
                     self.content = json
                     self.error = ""
-                    self.bridge?.load(json)
+                    for p in self.pages.allObjects { p.load(json) }
                     self.readReview()
                 case .failure(let e):
                     self.error = e.localizedDescription
@@ -268,16 +278,17 @@ public final class DiffSession {
         }
     }
 
-    func needFile(_ path: String, generation: UInt64) {
-        if let t = texts[path], t["generation"] as? UInt64 == generation {
-            bridge?.fileText(t)
+    /// A page asking for a file's two sides: they go to that page.
+    func needFile(_ path: String, generation: UInt64, for page: DiffBridge) {
+        if let t = texts[path], (t["generation"] as? NSNumber)?.uint64Value == generation {
+            page.fileText(t)
             return
         }
         guard let conn = model?.connection else {
-            bridge?.fileError(path, generation: generation, DiffError.offline.localizedDescription)
+            page.fileError(path, generation: generation, DiffError.offline.localizedDescription)
             return
         }
-        conn.call({ $0.readDiffFile = .with { $0.paneID = self.paneID; $0.path = path; $0.generation = generation } }) { [weak self] r in
+        conn.call({ $0.readDiffFile = .with { $0.paneID = self.paneID; $0.path = path; $0.generation = generation } }) { [weak self, weak page] r in
             Task { @MainActor in
                 guard let self else { return }
                 switch r {
@@ -291,9 +302,9 @@ public final class DiffSession {
                     if !t.newData.isEmpty { j["newData"] = t.newData.base64EncodedString() }
                     // Kept for another page showing the pane (small ones: big ones are read again).
                     if t.oldText.utf8.count + t.newText.utf8.count + t.oldData.count + t.newData.count < 2_000_000 { self.texts[path] = j }
-                    self.bridge?.fileText(j)
+                    page?.fileText(j)
                 case .failure(let e):
-                    self.bridge?.fileError(path, generation: generation, e.localizedDescription)
+                    page?.fileError(path, generation: generation, e.localizedDescription)
                 }
             }
         }
@@ -541,7 +552,7 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
             session.pageReady(self)
         case "needFile":
             if let path = m["path"] as? String {
-                session.needFile(path, generation: (m["generation"] as? NSNumber)?.uint64Value ?? 0)
+                session.needFile(path, generation: (m["generation"] as? NSNumber)?.uint64Value ?? 0, for: self)
             }
         case "refresh":
             session.load(refresh: true)
@@ -563,6 +574,7 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
             if let c = m["command"] as? [String: Any] { session.reviewCommand(c) }
 
         case "focus":
+            session.pageFocused(self)
             onFocus?()
         default:
             break

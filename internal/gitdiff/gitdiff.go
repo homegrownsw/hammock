@@ -206,9 +206,9 @@ func Resolve(ctx context.Context, dir string, src *pb.DiffSource) (*Resolved, er
 		mb, err := line(ctx, repo, "merge-base", r.BaseRef, "HEAD")
 		if err != nil || mb == "" {
 			if !refExists(ctx, repo, r.BaseRef) {
-				return nil, fmt.Errorf("no branch %s to compare with", s.Base)
+				return nil, gone("no branch %s to compare with", s.Base)
 			}
-			return nil, fmt.Errorf("HEAD and %s have no history in common", s.Base)
+			return nil, gone("HEAD and %s have no history in common", s.Base)
 		}
 		r.Base = mb
 		if !s.WithUncommitted {
@@ -228,7 +228,7 @@ func Resolve(ctx context.Context, dir string, src *pb.DiffSource) (*Resolved, er
 		}
 		c, err := line(ctx, repo, "rev-parse", "--verify", "-q", s.Rev+"^{commit}")
 		if err != nil || c == "" {
-			return nil, fmt.Errorf("no commit %s", s.Rev)
+			return nil, gone("no commit %s", s.Rev)
 		}
 		r.Head = c
 		if p, err := line(ctx, repo, "rev-parse", "--verify", "-q", c+"^1"); err == nil && p != "" {
@@ -245,17 +245,17 @@ func Resolve(ctx context.Context, dir string, src *pb.DiffSource) (*Resolved, er
 		}
 		from, err := line(ctx, repo, "rev-parse", "--verify", "-q", s.Base+"^{commit}")
 		if err != nil || from == "" {
-			return nil, fmt.Errorf("no commit %s", s.Base)
+			return nil, gone("no commit %s", s.Base)
 		}
 		to, err := line(ctx, repo, "rev-parse", "--verify", "-q", s.Rev+"^{commit}")
 		if err != nil || to == "" {
-			return nil, fmt.Errorf("no commit %s", s.Rev)
+			return nil, gone("no commit %s", s.Rev)
 		}
 		dots := ".."
 		if s.MergeBase {
 			mb, err := line(ctx, repo, "merge-base", from, to)
 			if err != nil || mb == "" {
-				return nil, fmt.Errorf("%s and %s have no history in common", s.Base, s.Rev)
+				return nil, gone("%s and %s have no history in common", s.Base, s.Rev)
 			}
 			from, dots = mb, "..."
 		}
@@ -265,6 +265,21 @@ func Resolve(ctx context.Context, dir string, src *pb.DiffSource) (*Resolved, er
 		return nil, fmt.Errorf("unknown kind of diff %v", s.Kind)
 	}
 	return r, nil
+}
+
+// GoneError says what a diff compares isn't there any more (a commit, a
+// branch): unlike a folder that isn't there (a disk not mounted yet) or git
+// taking too long, it won't come back.
+type GoneError struct{ msg string }
+
+func (e *GoneError) Error() string { return e.msg }
+
+func gone(format string, a ...any) error { return &GoneError{fmt.Sprintf(format, a...)} }
+
+// IsGone reports whether err is a GoneError.
+func IsGone(err error) bool {
+	var g *GoneError
+	return errors.As(err, &g)
 }
 
 // name shortens a commit's id for a title; a ref's name stays.
@@ -333,11 +348,21 @@ func Files(ctx context.Context, r *Resolved) ([]*pb.DiffFile, error) {
 		for _, p := range splitZ(out) {
 			f := &pb.DiffFile{Path: p, Status: pb.DiffFile_STATUS_ADDED, Untracked: true}
 			full := filepath.Join(r.Repo, filepath.FromSlash(p))
-			if st, err := os.Stat(full); err != nil || !st.Mode().IsRegular() {
-				continue // a nested repository, a socket
+			st, err := os.Lstat(full)
+			if err != nil {
+				continue
 			}
-			if b, n, err := countLines(full); err == nil {
-				f.Binary, f.Added = b, n
+			switch {
+			case st.Mode()&os.ModeSymlink != 0:
+				f.Added = 1 // git keeps a link as the path it points to: one line
+			case !st.Mode().IsRegular():
+				continue // a nested repository, a socket
+			case st.Size() > MaxSide:
+				// Too big to show: not read (here, on every refresh) to count.
+			default:
+				if b, n, err := countLines(full); err == nil {
+					f.Binary, f.Added = b, n
+				}
 			}
 			files = append(files, f)
 		}

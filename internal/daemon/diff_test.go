@@ -267,3 +267,110 @@ func TestReviewThreads(t *testing.T) {
 		t.Fatal("a review with every thread resolved outlived its pane")
 	}
 }
+
+func TestReviewSharedAndHeld(t *testing.T) {
+	dir := shortDir(t)
+	repo := t.TempDir()
+	if r, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = r
+	}
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.MkdirAll(filepath.Join(repo, "docs"), 0o755)
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\n2\n"), 0o644)
+
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	agentTab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Cwd: repo}}}}))
+	d.mu.Lock()
+	agentPane := d.tabs[agentTab].FocusedPaneId
+	ap := d.panes[agentPane]
+	d.mu.Unlock()
+	ap.mu.Lock()
+	ap.info.Agent = &pb.Agent{Harness: "claude", State: pb.AgentState_AGENT_STATE_NEEDS_INPUT}
+	ap.mu.Unlock()
+
+	open := func() string {
+		tab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+			GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo, TargetPaneId: agentPane}},
+		}}}))
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.tabs[tab].FocusedPaneId
+	}
+	one, two := open(), open()
+	for _, p := range []string{one, two} {
+		call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: p}}})
+	}
+	// A comment from the first pane, with the lines as the page showed them
+	// (the file has moved on since, say): the thread quotes those.
+	r := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReviewCommand{ReviewCommand: &pb.ReviewCommand{
+		PaneId: one, Action: pb.ReviewCommand_ACTION_ADD_THREAD, Path: "a.txt", Line: 2, Text: "Spell it out", Send: true,
+		Quote: "two", Before: "one",
+	}}}).GetReviewReply()
+	if q := r.Review.Threads[0].Quote; q != "two" || r.Queued != 1 {
+		t.Fatalf("quote %q, queued %d", q, r.Queued)
+	}
+	// The second pane shows the same review, its counts too.
+	waitFor(t, "the other pane's counts", func() bool {
+		return paneDiff(d, two).Queued == 1 && paneDiff(d, two).ReviewId == paneDiff(d, one).ReviewId
+	})
+
+	// Its agent has gone: held comments are yours to send again, not stuck.
+	ap.mu.Lock()
+	ap.info.Agent.State = pb.AgentState_AGENT_STATE_EXITED
+	ap.mu.Unlock()
+	d.diffs.flushQueued()
+	waitFor(t, "held comments back to unsent", func() bool { return paneDiff(d, one).Unsent == 1 && paneDiff(d, two).Unsent == 1 })
+
+	// A guest can't change your comments (nor you a guest's).
+	commentID := r.CommentId
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: one, Action: pb.ReviewCommand_ACTION_EDIT_COMMENT, CommentId: commentID, Text: "mine now"},
+		reviewer{name: "Sam", guest: true}, g); err == nil {
+		t.Error("a guest edited the owner's comment")
+	}
+
+	// Closing one pane leaves the review with the other.
+	reviewID := paneDiff(d, one).ReviewId
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: one}}})
+	if rv, _ := d.diffs.readReview(&pb.ReadReview{ReviewId: reviewID}); rv.GetPaneId() != two {
+		t.Fatalf("the review's pane after closing the other: %q", rv.GetPaneId())
+	}
+	// With none open, sending by its id says to open it.
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: two}}})
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{ReviewId: reviewID, Action: pb.ReviewCommand_ACTION_SEND}, reviewer{}, g); err == nil ||
+		!strings.Contains(err.Error(), "open the diff") {
+		t.Errorf("sending with the diff closed: %v", err)
+	}
+
+	// Pruning: a repository that isn't there now (a disk not mounted) keeps
+	// it; a commit that's gone doesn't.
+	d.diffs.mu.Lock()
+	d.diffs.reviews[reviewID].Repo = filepath.Join(repo, "not-mounted")
+	d.diffs.mu.Unlock()
+	d.diffs.pruneReviews()
+	if d.diffs.reviewGroup(reviewID) == "" {
+		t.Fatal("pruned for a folder that isn't there")
+	}
+	d.diffs.mu.Lock()
+	d.diffs.reviews[reviewID].Repo = repo
+	d.diffs.reviews[reviewID].Source = &pb.DiffSource{Kind: pb.DiffSource_KIND_COMMIT, Rev: "0123456789abcdef0123456789abcdef01234567"}
+	d.diffs.mu.Unlock()
+	d.diffs.pruneReviews()
+	if d.diffs.reviewGroup(reviewID) != "" {
+		t.Fatal("kept a review whose commit is gone")
+	}
+
+	// A guest in a Group whose folder is inside the repository can't diff all of it.
+	d.mu.Lock()
+	d.groups[g].Folder = filepath.Join(repo, "docs")
+	err := d.guestEditorPath(&pb.PaneSpec{Diff: &pb.DiffOpen{}}, g)
+	d.mu.Unlock()
+	if err == nil {
+		t.Error("a guest's diff of the repository around the Group's folder")
+	}
+}

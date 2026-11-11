@@ -1378,6 +1378,21 @@ function grow(ta) {
   ta.style.height = `${Math.min(ta.scrollHeight + 2, 320)}px`
 }
 
+// shownLines is the lines a comment is on, as this page shows them, and a
+// few either side: the file on disk may have moved on since it was read.
+function shownLines(c) {
+  const t = texts.get(c.path)
+  if (!t || c.line < 1 || t.error || t.tooLarge) return {}
+  const text = (c.side === "old" ? t.oldText : t.newText) || ""
+  const lines = text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n")
+  if (c.endLine > lines.length) return {}
+  return {
+    quote: lines.slice(c.line - 1, c.endLine).join("\n"),
+    before: lines.slice(Math.max(c.line - 4, 0), c.line - 1).join("\n"),
+    after: lines.slice(c.endLine, c.endLine + 3).join("\n"),
+  }
+}
+
 function composerDOM(c) {
   const key = composerKey(c)
   const box = el("div", "composer")
@@ -1386,7 +1401,7 @@ function composerDOM(c) {
   const submit = (send) => {
     const text = ta.value.trim()
     if (!text) return
-    post({ type: "review", command: { action: "addThread", path: c.path, side: c.side, line: c.line, endLine: c.endLine, text, send } })
+    post({ type: "review", command: { action: "addThread", path: c.path, side: c.side, line: c.line, endLine: c.endLine, text, send, ...shownLines(c) } })
     drafts.delete(key)
     composer = null
     refreshThreads(c.path)
@@ -1503,7 +1518,7 @@ function commentDOM(t, c) {
   } else if (c.delivery === "sent") {
     who.append(el("span", "sent", "Sent"))
   }
-  const mine = !c.agent && c.delivery === "unsent" && config.canDrive
+  const mine = !c.agent && (c.delivery === "unsent" || c.delivery === "queued") && config.canDrive
   if (mine && !editing.has(c.id)) {
     who.append(el("span", "spacer"))
     const ed = el("button", "btn link", "Edit")

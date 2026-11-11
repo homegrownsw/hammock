@@ -34,7 +34,8 @@ type diffHub struct {
 	// out as panes find theirs).
 	reviews    map[string]*pb.Review
 	reviewKeys map[string]string
-	sending    map[string]bool // panes whose comments are being typed to their agent
+	sending    map[string]bool // reviews whose comments are being typed to their agent
+	prepared   map[*pb.DiffOpen]preparedDiff
 }
 
 type diffState struct {
@@ -55,12 +56,14 @@ type diffState struct {
 	stale       bool
 	checking    bool
 	reviewID    string
-	target      string // the agent comments go to
+	target      string    // the agent comments go to
+	nextCheck   time.Time // a big repository is checked less often (check)
 }
 
 func newDiffHub(d *Daemon) *diffHub {
 	h := &diffHub{d: d, st: map[string]*diffState{}, stop: make(chan struct{}),
-		reviews: map[string]*pb.Review{}, reviewKeys: map[string]string{}, sending: map[string]bool{}}
+		reviews: map[string]*pb.Review{}, reviewKeys: map[string]string{}, sending: map[string]bool{},
+		prepared: map[*pb.DiffOpen]preparedDiff{}}
 	h.loadReviews()
 	return h
 }
@@ -77,6 +80,66 @@ func (h *diffHub) close() {
 	}
 }
 
+// preparedDiff is a diff worked out for a pane about to be made.
+type preparedDiff struct {
+	r   *gitdiff.Resolved
+	err error
+}
+
+// prepareDiff works out the diff a message makes a pane for (CreateTab,
+// CreatePane, ReplacePane), before d.mu is taken to make it: startDiff
+// takes it from there. Not under d.mu.
+func (d *Daemon) prepareDiff(msg *pb.ClientMessage) *pb.DiffOpen {
+	var spec *pb.PaneSpec
+	var paneRef, groupID string
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_CreateTab:
+		spec, groupID = m.CreateTab.Pane, m.CreateTab.GroupId
+	case *pb.ClientMessage_CreatePane:
+		spec, paneRef = m.CreatePane.Spec, m.CreatePane.SplitPaneId
+	case *pb.ClientMessage_ReplacePane:
+		spec, paneRef = m.ReplacePane.Spec, m.ReplacePane.PaneId
+	}
+	open := spec.GetDiff()
+	if open == nil {
+		return nil
+	}
+	d.mu.Lock()
+	dir := open.Repo
+	if dir == "" {
+		dir = spec.Cwd
+	}
+	if p := d.panes[paneRef]; dir == "" && p != nil {
+		dir = p.cwd() // a split's, as splitPane gives it
+	}
+	if dir == "" {
+		if groupID == "" {
+			groupID = d.groupOfPane(paneRef)
+		}
+		if g := d.groups[groupID]; g != nil {
+			dir = d.groupFolder(g)
+		}
+	}
+	d.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	r, err := gitdiff.Resolve(ctx, expandHome(dir), open.Source)
+	h := d.diffs
+	h.mu.Lock()
+	h.prepared[open] = preparedDiff{r, err}
+	h.mu.Unlock()
+	return open
+}
+
+// takePrepared is what prepareDiff worked out for open, if it did.
+func (h *diffHub) takePrepared(open *pb.DiffOpen) (*gitdiff.Resolved, error, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	x, ok := h.prepared[open]
+	delete(h.prepared, open)
+	return x.r, x.err, ok
+}
+
 // startDiff creates a diff pane for tab t (not yet placed in its layout).
 // Callers hold d.mu.
 func (d *Daemon) startDiff(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
@@ -90,9 +153,14 @@ func (d *Daemon) startDiff(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 			dir = d.groupFolder(g)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	r, err := gitdiff.Resolve(ctx, expandHome(dir), open.Source)
+	// Worked out before d.mu was taken (prepareDiff), as a rule: git can
+	// take a while in a big repository, and everything waits on d.mu.
+	r, err, ok := d.diffs.takePrepared(open)
+	if !ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		r, err = gitdiff.Resolve(ctx, expandHome(dir), open.Source)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +214,7 @@ func (h *diffHub) paneClosed(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if s := h.st[id]; s != nil && s.reviewID != "" {
-		h.releaseReviewLocked(s.reviewID)
+		h.releaseReviewLocked(s.reviewID, s)
 	}
 	delete(h.st, id)
 }
@@ -405,7 +473,7 @@ func (h *diffHub) run() {
 		h.mu.Lock()
 		var due []*diffState
 		for _, s := range h.st {
-			if len(s.watchers) > 0 && s.computed && !s.stale && !s.checking && s.resolved != nil && s.resolved.Live() {
+			if len(s.watchers) > 0 && s.computed && !s.stale && !s.checking && s.resolved != nil && s.resolved.Live() && time.Now().After(s.nextCheck) {
 				s.checking = true
 				due = append(due, s)
 			}
@@ -423,10 +491,17 @@ func (h *diffHub) check(s *diffState) {
 	r, was := s.resolved, s.fingerprint
 	h.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	start := time.Now()
 	fp, err := gitdiff.Fingerprint(ctx, r)
+	took := time.Since(start)
 	cancel()
 	h.mu.Lock()
 	s.checking = false
+	// git status taking a while (a big repository): less often, so the
+	// diff isn't most of what the Mac is doing.
+	if took > 300*time.Millisecond {
+		s.nextCheck = time.Now().Add(min(took*5, 30*time.Second))
+	}
 	moved := err == nil && fp != was && h.st[s.paneID] == s && s.fingerprint == was && !s.stale
 	if moved {
 		s.stale = true

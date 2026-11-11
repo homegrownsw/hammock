@@ -636,6 +636,18 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		}
 		return errAgentScope
 	case *pb.ClientMessage_ReviewCommand:
+		// What agents may do with threads, checked here as well as by the
+		// review: one on another computer sees the message as yours.
+		switch rc := m.ReviewCommand; rc.Action {
+		case pb.ReviewCommand_ACTION_ADD_THREAD, pb.ReviewCommand_ACTION_REPLY:
+			rc.Send = false
+		case pb.ReviewCommand_ACTION_SET_STATE:
+			if rc.State != pb.ReviewThread_STATE_ADDRESSED {
+				return errors.New("agents mark threads addressed; resolving them is the user's")
+			}
+		default:
+			return errors.New("sending, resolving and choosing who comments go to are the user's")
+		}
 		if m.ReviewCommand.PaneId != "" {
 			return read(m.ReviewCommand.PaneId)
 		}

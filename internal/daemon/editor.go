@@ -25,6 +25,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/homegrownsw/hammock/internal/gitdiff"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/textbuf"
 	"google.golang.org/protobuf/proto"
@@ -1423,7 +1424,18 @@ func (d *Daemon) guestEditorPath(spec *pb.PaneSpec, groupID string) error {
 		if err != nil || !insideFolder(path, folder) {
 			return errors.New("guests open diffs only inside the Group's folder")
 		}
-		df.Repo, spec.Cwd = path, ""
+		// The repository as a whole, too: a diff is all of it, and a
+		// folder inside a repository isn't all of it.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		top, err := gitdiff.TopLevel(ctx, path)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if !insideFolder(top, folder) {
+			return errors.New("guests open diffs only of repositories inside the Group's folder")
+		}
+		df.Repo, spec.Cwd = top, ""
 	}
 	open := spec.GetEditor()
 	if open == nil || open.Path == "" {
