@@ -63,6 +63,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
   background: var(--panel); border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
 /* Closed, the border stays (clear): the file keeps its height to the pixel. */
 .file.closed .fhead { border-bottom-color: transparent; border-radius: 8px; }
+.file.stuck .fhead { border-radius: 0; }
 .fhead .path { font: 12px var(--code); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; -webkit-user-select: text; user-select: text; }
 .fhead .path .dir { color: var(--dim); }
 .fhead .path .from { color: var(--dim); }

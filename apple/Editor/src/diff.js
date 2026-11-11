@@ -846,7 +846,21 @@ function onScroll() {
     }
     if (!current && sections.size) current = sections.keys().next().value
     setActive(current)
+    markStuck(current)
   })
+}
+
+// A header stuck to the top squares its corners: rounded, the code
+// scrolling under it would show at them.
+let stuckSec = null
+function markStuck(path) {
+  const s = sectionOf(path)
+  const head = s?.querySelector(".fhead")
+  const stuck = !!head && head.getBoundingClientRect().top - s.getBoundingClientRect().top > s.clientTop + 0.5
+  const now = stuck ? s : null
+  if (stuckSec && stuckSec !== now) stuckSec.classList.remove("stuck")
+  if (now) now.classList.add("stuck")
+  stuckSec = now
 }
 
 // ---- what the app calls (window.hammock) ----
