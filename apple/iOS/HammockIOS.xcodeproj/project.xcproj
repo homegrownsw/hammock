@@ -72,15 +72,13 @@
             "Hammock/resources",
             "HammockMacApp/resources",
           ],
-        },
-        {
+        }, {
           "path": "NeedsYou.caf",
           "target-membership": [
             "Hammock/resources",
             "HammockMacApp/resources",
           ],
-        },
-        {
+        }, {
           "path": "editor.html",
           "target-membership": [
             "Hammock/resources",
@@ -88,8 +86,7 @@
           ],
         },
       ],
-    },
-    {
+    }, {
       "kind": "group",
       "path": "../../internal/acknowledgements",
       "children": [
