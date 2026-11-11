@@ -33,9 +33,16 @@ swift build -c "$config" --product HammockMac
 bin="$(swift build -c "$config" --show-bin-path)"
 
 # OUT puts the app elsewhere (a build to share, leaving your own alone).
-app="${OUT:-$root/dist}/$name.app"
-mkdir -p "$(dirname "$app")"
+final="${OUT:-$root/dist}/$name.app"
+parent="$(dirname "$final")"
+mkdir -p "$parent"
+# Built beside it and swapped in at the end, not rebuilt in place: the app
+# being replaced is usually running (deleting it under itself can fail,
+# with "Input/output error", and breaks it before the new one is ready).
+app="$parent/.$name.app.next"
 rm -rf "$app"
+# Copies a previous build left behind, still in use then (below).
+for old in "$parent/.$name.app.old-"*; do [ -e "$old" ] && { rm -rf "$old" 2>/dev/null || true; }; done
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/HammockMac" "$app/Contents/MacOS/Hammock"
 # Sparkle (updates, HammockUpdates) is a dynamic framework SwiftPM leaves
@@ -123,4 +130,14 @@ PLIST
 # Signed inside out with the hardened runtime, as shared builds are.
 identity="${SIGN_IDENTITY:-$(cat "$root/.signing-identity" 2>/dev/null || true)}"
 "$root/scripts/sign-mac-app.sh" "$app" "${identity:--}" --timestamp=none
-echo "$app"
+# The swap: renames, which work whatever's running from the old one.
+old=""
+if [ -e "$final" ]; then
+  old="$parent/.$name.app.old-$(date +%s)-$$"
+  mv "$final" "$old"
+fi
+mv "$app" "$final"
+if [ -n "$old" ] && ! rm -rf "$old" 2>/dev/null; then
+  echo "note: the previous $name.app is still in use; it's at $old until the next build" >&2
+fi
+echo "$final"
