@@ -198,6 +198,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .fbody .cm-gutters { -webkit-user-select: none; user-select: none; }
 .fbody .cm-cursorLayer, .fbody .cm-cursor { display: none !important; }
 .fbody .cm-content { caret-color: transparent; }
+.fbody .cm-content textarea { caret-color: var(--fg); } /* comment boxes are in the code: their caret shows */
 
 /* CodeMirror in a file: as tall as it needs, the files scroll. */
 .fbody .cm-editor { height: auto !important; }

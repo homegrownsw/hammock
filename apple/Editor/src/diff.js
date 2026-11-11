@@ -1036,9 +1036,10 @@ function refreshThreads(path) {
       }
     }
     const c = composer
-    if (c && c.path === path && c.line > 0 && (c.side === side) && c.endLine <= view.state.doc.lines && !(r && r.path === path)) {
+    if (c && c.path === path && c.line > 0 && (c.side === side) && c.endLine <= view.state.doc.lines) {
       marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(view.state.doc.line(c.endLine).to))
-      for (let l = c.line; l <= c.endLine; l++) {
+      // (While dragging out another range, that's the one highlighted.)
+      for (let l = c.line; l <= c.endLine && !(r && r.path === path && r.side === side); l++) {
         marks.push(rangeLine.range(view.state.doc.line(l).from))
         numbers.push(rangeGutter.range(view.state.doc.line(l).from))
       }
@@ -1101,7 +1102,14 @@ function gutterDown(view, block, e, path) {
     dragRange = null
     if (!d) return
     const to = lineAt(ev)
-    openComposer({ path: d.path, side: sideOf(d.view), line: Math.min(d.from, to), endLine: Math.max(d.from, to) })
+    const c = { path: d.path, side: sideOf(d.view), line: Math.min(d.from, to), endLine: Math.max(d.from, to) }
+    // The lines the box is already on: it stays as it is.
+    if (composer && composerKey(composer) === composerKey(c)) {
+      refreshThreads(d.path)
+      document.querySelector(`.composer[data-key="${CSS.escape(composerKey(c))}"] textarea`)?.focus()
+      return
+    }
+    openComposer(c)
   }
   window.addEventListener("mousemove", move, true)
   window.addEventListener("mouseup", up, true)
