@@ -63,4 +63,11 @@ Since 2026-11-11, a pane redraws only the rows output changed (libghostty-vt's d
 
 A keystroke now costs a row, whatever else is on screen; in β, typing into a 117×37 pane of colour drew in 0.2 ms. Output that scrolls changes every row, so floods and big panes still cost what the first table says: a Metal renderer (#18) is what would bring those down.
 
-`HMK_DEBUG_RENDER_STATS=<file>` times the real thing instead. Every draw, and every write of a pane's output into its engine, is timed, and a JSON line is appended every two seconds. Flooding a 117×37 pane with 256-colour text (`cat` of a 115 MB file) gave 120 draws/s, the display's rate, at 3.3 ms each. That was 39% of the main thread drawing and 24% parsing about 52 MB/s of output. The daemon still skipped output and sent a fresh screen 4–5 times a second, as it does for a client that has fallen behind. At that size, delivery rather than drawing is what a flood runs into.
+`HMK_DEBUG_RENDER_STATS=<file>` times the real thing instead. Every draw, and every write of a pane's output into its engine, is timed, and a JSON line is appended every two seconds. Floods of 256-colour text (`cat` of a 115 MB file), p50 per draw:
+
+| Pane | Before #59 | After #59 (2026-11-11) |
+|---|---|---|
+| 117×37 | 120 draws/s at 3.3 ms; 39% of the main thread drawing, 24% parsing 52 MB/s; ~25,000 messages/s, a fresh screen 4–5 times a second | ~53 draws/s at 3.6 ms; 19% drawing, 30% parsing 60 MB/s; 60 batches/s, no fresh screens |
+| 328×86 (a 6K display, full screen) | not measured | ~18 draws/s at 15 ms; 27% drawing, 22% parsing 45 MB/s; no fresh screens |
+
+Since #59 the app no longer falls behind: output comes in batches and the screen is drawn once per batch. In a big pane each draw is 15 ms, which is what holds a flood to about 18 frames a second there. That's the case a faster renderer is for (`docs/design/metal-renderer.md`).
