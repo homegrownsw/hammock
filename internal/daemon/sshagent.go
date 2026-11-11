@@ -351,8 +351,8 @@ func (a *sshAgentConn) SignWithFlags(key ssh.PublicKey, data []byte, flags agent
 	isHammock := d0.hammockKey.isKey(blob)
 	d0.mu.Unlock()
 	if isHammock {
-		// The Hammock Key: you approve each use (an agent's every time), so
-		// it needs no grant first.
+		// The Hammock Key: you approve each use (or a while of them in the
+		// pane: an agent's only if you choose), so it needs no grant first.
 		return d0.hammockKey.sign(a.pane, a.agent, a.pid, data)
 	}
 	a.mu.Lock()

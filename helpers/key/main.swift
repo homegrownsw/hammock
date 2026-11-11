@@ -164,6 +164,11 @@ func touchID(_ reason: String, prompt: KeyPrompt? = nil) throws -> Bool {
     case .declined: throw Fail(message: "not allowed", code: 2)
     case .password, .unavailable: break
     }
+    // Ticked, then "Use Password…": the sheet says so too.
+    var reason = reason
+    if choice.on, let p = prompt, p.windowIsChoice {
+        reason += ", and let \(p.agent.isEmpty ? "the agent" : p.agent) in that pane sign for the next \(p.windowMinutes) minutes without asking"
+    }
     let ctx = LAContext()
     ctx.localizedCancelTitle = "Don't Allow"
     var err: NSError?
@@ -493,7 +498,10 @@ func run() throws {
         // for a program of yours in a pane, always; for an agent, only if you
         // tick the panel's box. A phone's approval says for itself whether
         // it opens one. An agent's window is its own: its token says so.
-        let askWindow = (req["window"] as? Bool ?? false) && !pane.isEmpty
+        // Never for a program outside Hammock's panes (the daemon's
+        // outsidePane): "outside" isn't one place.
+        let inPane = !pane.isEmpty && pane != "outside"
+        let askWindow = (req["window"] as? Bool ?? false) && inPane
         let agent = req["agent"] as? Bool ?? false
         let key = try enclaveKey(s)
         var window = false
@@ -521,7 +529,7 @@ func run() throws {
         }
         let sig = try key.signature(for: data)
         var out: [String: Any] = ["signature": sig.rawRepresentation.base64EncodedString()]
-        if window, !pane.isEmpty {
+        if window, inPane {
             let until = Int64(Date().timeIntervalSince1970 * 1000) + (agent ? agentKeyWindowMs : keyWindowMs)
             out["token"] = try token(pane: pane, agent: agent, until: until, stored: s)
             out["until"] = until

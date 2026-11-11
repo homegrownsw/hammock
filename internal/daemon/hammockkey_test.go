@@ -477,6 +477,18 @@ func TestHammockKeyTouchID(t *testing.T) {
 	if _, err := d.hammockKey.sign("pn_z", false, 0, data); err == nil {
 		t.Fatal("your program signed within the agent's window")
 	}
+	// Yours, opened in the same pane, sits beside it: neither replaces the other.
+	t.Setenv("HMK_TEST_TOUCH", "allow")
+	if _, err := d.hammockKey.sign("pn_z", false, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Lock()
+	mine, okMine := d.hammockKey.windows[windowKey{"pn_z", false}]
+	its, okIts := d.hammockKey.windows[windowKey{"pn_z", true}]
+	d.mu.Unlock()
+	if !okMine || !okIts || mine.token != "tok:pn_z" || its.token != "tok:pn_z:agent" {
+		t.Fatalf("windows side by side: %+v %+v", mine, its)
+	}
 	// From outside Hammock: no window, however it's allowed.
 	t.Setenv("HMK_TEST_TOUCH", "allow-window")
 	if _, err := d.hammockKey.sign(outsidePane, true, 0, data); err != nil {
