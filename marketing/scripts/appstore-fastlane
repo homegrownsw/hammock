@@ -49,7 +49,11 @@ if [ -f "$env_file" ] && [ -z "${HMK_OP_RESOLVED:-}" ] && grep -q "op://" "$env_
     echo >&2 "appstore-fastlane: $env_file has op:// references, but the 1Password CLI (op) isn't installed."
     exit 1
   fi
-  HMK_OP_RESOLVED=1 exec op run --env-file "$env_file" -- "$self" "$@"
+  # Only this file's references: `op run` resolves every op:// value it inherits too, and others may be in the
+  # environment for other jobs (the justfile loads .release.env, whose 1Password item has no field on purpose).
+  others=()
+  while IFS='=' read -r name _; do others+=(-u "$name"); done < <(env | grep -E '^[A-Za-z_][A-Za-z0-9_]*=op://' || true)
+  exec env ${others[@]+"${others[@]}"} HMK_OP_RESOLVED=1 op run --env-file "$env_file" -- "$self" "$@"
 fi
 if [ -f "$env_file" ]; then
   # Only what isn't set already: an exported value (or one from `op run`) wins over the file.
