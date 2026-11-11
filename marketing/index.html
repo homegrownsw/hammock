@@ -1235,7 +1235,7 @@
       },
       exit(p) {
         busy(p, 1200, line('[Process completed]', 'dim'), () => {
-          sayH(p, line('Just kidding. Hammock never loses your work.', 'g'));
+          sayH(p, line('Just kidding. You can’t leave, you’re in a hammock.', 'g'));
           p.lines.push(...greeting().slice(0, 1));
         });
       },
