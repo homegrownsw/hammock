@@ -249,7 +249,8 @@ enum DebugSnapshot {
                     lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height)\(extra)")
                 }
                 if v is TerminalNSView || depth < 3 {
-                    lines.append(String(repeating: "  ", count: depth) + "\(type(of: v)) \(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))x\(Int(r.height)) hidden=\(v.isHidden)")
+                    let renderer = (v as? TerminalNSView).map { $0.metal == nil ? " renderer=coretext" : " renderer=metal" } ?? ""
+                    lines.append(String(repeating: "  ", count: depth) + "\(type(of: v)) \(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))x\(Int(r.height)) hidden=\(v.isHidden)\(renderer)")
                     if let t = v as? TerminalNSView, let s = t.session { lines.append(s.engine.text().split(separator: "\n").suffix(4).joined(separator: "\n")) }
                 }
                 v.subviews.forEach { walk($0, depth + 1) }
