@@ -1,9 +1,78 @@
 package daemon
 
 import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"net"
+	"sync"
 	"testing"
 	"time"
 )
+
+// TestSimulatorBarrierAfterClose: the shutdown op waits on a barrier after closing
+// the pane, so the host has torn the pane down before the device goes (a
+// device shut down under a pane's teardown crashed the host). The host
+// answers a barrier after the lines before it, and the answer reaches ask.
+func TestSimulatorBarrierAfterClose(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	ln, err := net.Listen("unix", SimulatorSocketPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	var mu sync.Mutex
+	var got []string
+	go func() { // a stand-in host: records lines, answers barriers
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		sc := bufio.NewScanner(c)
+		for sc.Scan() {
+			var m struct {
+				T   string `json:"t"`
+				Seq int    `json:"seq"`
+			}
+			if json.Unmarshal(sc.Bytes(), &m) != nil {
+				continue
+			}
+			mu.Lock()
+			got = append(got, m.T)
+			mu.Unlock()
+			if m.T == "barrier" {
+				fmt.Fprintf(c, `{"t":"barrierResult","seq":%d}`+"\n", m.Seq)
+			}
+		}
+	}()
+	h := d.simulators
+	h.path = "stand-in" // found, so run dials the socket above
+	h.ensure()
+	for i := 0; ; i++ {
+		h.mu.Lock()
+		up := h.c != nil
+		h.mu.Unlock()
+		if up {
+			break
+		}
+		if i > 200 {
+			t.Fatal("never connected to the stand-in host")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.close("p1", "")
+	if _, err := h.ask(map[string]any{"t": "barrier"}, 2*time.Second); err != nil {
+		t.Fatalf("barrier: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 2 || got[0] != "close" || got[1] != "barrier" {
+		t.Fatalf("host saw %v, want [close barrier]", got)
+	}
+}
 
 // TestSimulatorShutdownBookkeeping: a device Hammock booted (seen off, then on)
 // is shut down a while after its last pane closes, unless shown again first;

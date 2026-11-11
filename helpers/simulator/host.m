@@ -27,7 +27,8 @@
 //                   text {id, text}, key {id, usage, shift, cmd},
 //                   paste {id, text} (through the device's pasteboard),
 //                   copy {id, seq} (⌘C, then the device's pasteboard),
-//                   shot {id, seq}, devices {seq}, quit,
+//                   shot {id, seq}, devices {seq}, barrier {seq} (answered
+//                   once the lines before it are handled), quit,
 //                   media (this connection carries video from now on)
 //   on a media connection:
 //                   encode {id, sid, bitrate, fps, maxPixels} (a viewer's
@@ -41,7 +42,8 @@
 //                   directory), mask (the screen's shape, a PDF)},
 //                   layer {id, ctx} (to viewers), copyResult {seq, text},
 //                   shotResult {seq, png | error}, devicesResult {seq, devices},
-//                   runnerResult {seq, error?}; state also has foldable, hinge
+//                   barrierResult {seq}, runnerResult {seq, error?}; state
+//                   also has foldable, hinge
 //   on a media connection, after one line {"t":"mediaReady"}: binary
 //   records as HammockMediaRecord writes them (helpers/media/encoder.h): sid,
 //   flags (keyframe, refresh), capture time, size, LTR token, then the frame
@@ -539,9 +541,7 @@ static double lit(id screen) {
 
 // Shows a screen in the pane, following its frames.
 - (void)attach:(Pane *)p screen:(id)screen {
-  if (p.callbackID && p.screen && [p.screen respondsToSelector:NSSelectorFromString(@"unregisterScreenCallbacksWithUUID:")]) {
-    MSG(p.screen, @"unregisterScreenCallbacksWithUUID:", [[NSUUID alloc] initWithUUIDString:p.callbackID]);
-  }
+  [self forgetScreen:p];
   p.screen = screen;
   p.inner = p.foldable && [self isInner:screen of:p.device];
   id screenProps = MSG(screen, @"screenProperties");
@@ -575,6 +575,24 @@ static double lit(id screen) {
   if (p.viewer) [self sendLayer:p];
 }
 
+// Stops following a pane's screen, but only while its device is booted. A
+// device that's shut down or deleted (by simctl, an agent, or a shutdown
+// racing a close) takes its screen's remote proxy with it, and messaging
+// that proxy crashes inside SimulatorKit (EXC_BAD_ACCESS in ROCK's
+// invocation): there's nothing left to unregister from. The device's state
+// (a local SimDevice, safe to read) catches up a moment after a shutdown, so
+// this narrows the window for shutdowns from outside Hammock rather than
+// closing it; the daemon's own shutdown waits for the close (barrier).
+- (void)forgetScreen:(Pane *)p {
+  if (!p.callbackID || !p.screen) return;
+  NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:p.callbackID];
+  p.callbackID = nil;
+  if (!p.device || !booted(p.device)) return;
+  if ([p.screen respondsToSelector:NSSelectorFromString(@"unregisterScreenCallbacksWithUUID:")]) {
+    MSG(p.screen, @"unregisterScreenCallbacksWithUUID:", uuid);
+  }
+}
+
 - (void)showSurface:(Pane *)p {
   IOSurfaceRef s = (__bridge IOSurfaceRef)MSG(p.screen, @"framebufferSurface");
   if (!s) return;
@@ -605,12 +623,7 @@ static double lit(id screen) {
 - (void)teardown:(Pane *)p {
   for (Session *s in p.sessions) [s.encoder invalidate];
   [p.sessions removeAllObjects];
-  if (p.callbackID && p.screen) {
-    NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:p.callbackID];
-    if ([p.screen respondsToSelector:NSSelectorFromString(@"unregisterScreenCallbacksWithUUID:")]) {
-      MSG(p.screen, @"unregisterScreenCallbacksWithUUID:", uuid);
-    }
-  }
+  [self forgetScreen:p];
   p.screen = nil;
   p.hid = nil;
   p.context.layer = nil;
@@ -1311,6 +1324,13 @@ static NSString *prepareRunner(NSString **error) {
   }
   if (c.media) {
     [self handleMedia:m from:c];
+    return;
+  }
+  // Answered once everything sent before it on this connection is done
+  // (lines are handled in order): a close's teardown, before the daemon
+  // shuts the device down.
+  if ([t isEqualToString:@"barrier"]) {
+    [self send:@{@"t" : @"barrierResult", @"seq" : m[@"seq"] ?: @0} to:c];
     return;
   }
   if ([t isEqualToString:@"devices"]) {
