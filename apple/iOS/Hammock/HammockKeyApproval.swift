@@ -100,7 +100,7 @@ struct HammockKeyApprovalSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var busy = false
     @State private var error: String?
-    @State private var unlock = Unlock.current
+    private var unlockSymbol: String { AppLock.symbol }
 
     var body: some View {
         NavigationStack {
@@ -131,14 +131,8 @@ struct HammockKeyApprovalSheet: View {
             .safeAreaBar(edge: .bottom) {
                 VStack(spacing: 8) {
                     Button { approve(window: false) } label: {
-                        Group {
-                            if let symbol = unlock.symbol {
-                                Label("Approve", systemImage: symbol)
-                            } else {
-                                Text("Approve")
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
+                        // Touch ID, Face ID or Optic ID: however this phone unlocks.
+                        Label("Approve", systemImage: unlockSymbol).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
                     if request.windowMs > 0, !request.agent {
@@ -193,24 +187,32 @@ struct HammockKeyApprovalSheet: View {
     /// Where it's from: the Group and tab, then the command.
     private var source: some View {
         let place = Place(model: model, request: request)
+        // No pane (a program outside Hammock): who asked, not a made-up place.
+        let inPane = !place.groupName.isEmpty || !place.tabName.isEmpty
         return VStack(alignment: .leading, spacing: 12) {
-            Text(request.agent ? "\(place.agent) is asking from" : "Asked from")
+            Text(!inPane ? "Asked by" : request.agent ? "\(place.agent) is asking from" : "Asked from")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
             HStack(spacing: 12) {
                 avatar(place)
                 VStack(alignment: .leading, spacing: 3) {
+                    if !inPane {
+                        Text(request.agent ? "\(place.agent) outside Hammock" : "A program outside Hammock")
+                            .font(.headline)
+                            .lineLimit(1)
+                    }
                     if !place.groupName.isEmpty {
                         Text(place.groupName)
                             .font(.headline)
                             .lineLimit(1)
                     }
-                    Label(place.tabName.isEmpty ? "A pane on \(hostName)" : place.tabName,
-                          systemImage: "rectangle.topthird.inset.filled")
-                        .font(place.groupName.isEmpty ? .headline : .body.weight(.medium))
-                        .foregroundStyle(place.groupName.isEmpty ? .primary : .secondary)
-                        .lineLimit(1)
+                    if !place.tabName.isEmpty {
+                        Label(place.tabName, systemImage: "rectangle.topthird.inset.filled")
+                            .font(place.groupName.isEmpty ? .headline : .body.weight(.medium))
+                            .foregroundStyle(place.groupName.isEmpty ? .primary : .secondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -309,33 +311,6 @@ extension HammockKeyApprovalSheet {
         static func split(_ label: String) -> (group: String, tab: String) {
             guard let r = label.range(of: " ▸ ") else { return ("", label) }
             return (String(label[..<r.lowerBound]), String(label[r.upperBound...]))
-        }
-    }
-
-    /// How this phone unlocks its approval key: the Approve button's symbol.
-    enum Unlock {
-        case faceID, touchID, opticID, passcode
-
-        static var current: Unlock {
-            let ctx = LAContext()
-            // biometryType is only set once canEvaluatePolicy has run.
-            _ = ctx.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-            switch ctx.biometryType {
-            case .faceID: return .faceID
-            case .touchID: return .touchID
-            case .opticID: return .opticID
-            default: return .passcode
-            }
-        }
-
-        /// The system's symbol for it; none for the passcode.
-        var symbol: String? {
-            switch self {
-            case .faceID: "faceid"
-            case .touchID: "touchid"
-            case .opticID: "opticid"
-            case .passcode: nil
-            }
         }
     }
 }
