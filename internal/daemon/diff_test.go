@@ -10,6 +10,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"google.golang.org/protobuf/proto"
 )
 
 func gitIn(t *testing.T, dir string, args ...string) {
@@ -211,6 +212,12 @@ func TestReviewThreads(t *testing.T) {
 	msg := reviewMessage(rv, []string{th.Comments[0].Id})
 	if !strings.Contains(msg, "a.txt:3 [thread "+th.Id+"]") || !strings.Contains(msg, "> THREE") || !strings.Contains(msg, "Why shout?") {
 		t.Errorf("message:\n%s", msg)
+	}
+	// A minified line is quoted only so far.
+	long := proto.CloneOf(rv)
+	findThread(long, th.Id).Quote = strings.Repeat("x", 5000)
+	if msg := reviewMessage(long, []string{th.Comments[0].Id}); strings.Count(msg, "x") > reviewQuoteWidth+10 || !strings.Contains(msg, "x…") {
+		t.Errorf("a long quoted line isn't cut short: %d characters", len(msg))
 	}
 
 	// The code moves on: line 3 is now line 4; lines 1-2 changed (outdated).

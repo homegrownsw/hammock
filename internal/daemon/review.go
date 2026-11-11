@@ -675,6 +675,19 @@ func (h *diffHub) send(s *diffState, ids []string) (sent, queued uint32, err err
 	return uint32(len(ids)), 0, nil
 }
 
+// reviewQuoteWidth is how much of each quoted line an agent's message
+// carries: a minified file's one line can be many kilobytes.
+const reviewQuoteWidth = 200
+
+// clip cuts s to n characters (runes), with an ellipsis if it was longer.
+func clip(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
 // reviewMessage is the message an agent gets: each comment with where it
 // is and the lines it's about, and how to answer in the threads.
 func reviewMessage(rv *pb.Review, ids []string) string {
@@ -712,7 +725,7 @@ func reviewMessage(rv *pb.Review, ids []string) string {
 					q = append(q[:8], "…")
 				}
 				for _, l := range q {
-					fmt.Fprintf(&b, "   > %s\n", l)
+					fmt.Fprintf(&b, "   > %s\n", clip(l, reviewQuoteWidth))
 				}
 			}
 			for _, l := range strings.Split(c.Text, "\n") {
