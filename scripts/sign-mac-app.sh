@@ -72,7 +72,9 @@ sign_sim_resources() { # path to Hammock Simulator.app
   local res="$1/Contents/Resources" f
   [ -d "$res" ] || return 0
   find "$res" -type f -print0 | while IFS= read -r -d '' f; do
-    case "$(file -b "$f")" in *Mach-O*) sign "$f" ;; esac
+    case "$(file -b "$f")" in *Mach-O*) ;; *) continue ;; esac
+    # The guest helper runs inside simulators, which need it to take their DYLD_* variables (sim-guest.plist).
+    if [ "$(basename "$f")" = hmk-sim-guest ]; then sign --entitlements "$ent/sim-guest.plist" "$f"; else sign "$f"; fi
   done
   find "$res" -type d \( -name '*.app' -o -name '*.xctest' -o -name '*.framework' -o -name '*.appex' \) -print0 |
     while IFS= read -r -d '' f; do printf '%s\t%s\0' "$(tr -cd / <<<"$f" | wc -c)" "$f"; done |
