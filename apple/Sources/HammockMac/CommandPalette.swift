@@ -167,7 +167,9 @@ struct CommandPalette: View {
         }
         let focused = model.focusedPaneID ?? model.selectedTab?.focusedPaneID
         let group = model.currentGroup?.id ?? model.groups.first?.id
+        let toolsOff = Set(HammockTool.allCases.filter { !$0.on })
         func action(_ id: String, _ title: String, _ symbol: String, _ color: Color, _ keywords: String = "", keys: KeyboardShortcut? = nil, emoji: String? = nil, run: @escaping () -> Void) {
+            if let t = Self.tool(ofAction: id), toolsOff.contains(t) { return } // turned off in Settings ▸ Tools
             out.append(PaletteItem(id: "action:" + id, title: title, subtitle: "Command", icon: emoji.map { .emoji($0) } ?? .symbol(symbol, color), keywords: keywords, shortcut: keys, run: run))
         }
         action("new-tab", "New Tab", "plus.square", .blue, "create", keys: Keys.newTab) { if let group { Task { await model.createTab(in: group) } } }
@@ -568,7 +570,7 @@ struct CommandPalette: View {
         // else after the matches, as a search.
         let typed = query.trimmingCharacters(in: .whitespaces)
         let looksLikeURL = !typed.contains(" ") && (typed.contains(".") || typed.contains("://") || typed.hasPrefix("localhost"))
-        if let group = model.currentGroup?.id ?? model.groups.first?.id {
+        if HammockTool.browser.on, let group = model.currentGroup?.id ?? model.groups.first?.id {
             let open = PaletteItem(id: "open:" + typed, title: looksLikeURL ? "Open \(typed)" : "Search the web for “\(typed)”",
                                    subtitle: "New browser tab", icon: .symbol(looksLikeURL ? "globe" : "magnifyingglass", .blue)) {
                 Task { await model.createBrowserTab(in: group, url: typed) }
@@ -675,5 +677,20 @@ private struct PaletteRow: View {
                 .fill(flashing ? Color.themeAccent.opacity(0.3) : selected ? Color.themeAccent.opacity(0.16) : .clear)
         }
         .contentShape(Rectangle())
+    }
+}
+
+extension CommandPalette {
+    /// The tool (Settings ▸ Tools) a palette action opens or is for, so a
+    /// tool turned off has none.
+    static func tool(ofAction id: String) -> HammockTool? {
+        switch id {
+        case "new-browser-tab", "split-browser", "split-browser-down", "split-browser-left", "split-browser-up": .browser
+        case "new-log-tab", "split-log", "sim-log": .log
+        case "new-editor-tab", "editor-wrap", "quick-open", "open-file", "split-editor", "split-editor-down": .editor
+        case _ where id.hasPrefix("review-"): .diff
+        case _ where id.hasPrefix("split-sim:"): .simulator
+        default: nil
+        }
     }
 }

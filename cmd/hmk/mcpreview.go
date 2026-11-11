@@ -45,7 +45,7 @@ type reviewWaitArgs struct {
 }
 
 func (s *mcpServer) registerReview(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "review_threads",
 		Description: "The comment threads the user has left on a diff (diff_open), with the lines each is on and every comment: " +
 			"use it when they say to check their comments, or after comments arrive as a message. " +
@@ -86,7 +86,7 @@ func (s *mcpServer) registerReview(server *mcp.Server) {
 		return textResult(out), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "review_reply",
 		Description: "Reply in a review thread (review_threads gives their ids): to answer a question, or say why you'd rather not change something.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a reviewReplyArgs) (*mcp.CallToolResult, any, error) {
@@ -100,7 +100,7 @@ func (s *mcpServer) registerReview(server *mcp.Server) {
 		return textResult(map[string]string{"thread_id": a.Thread, "comment_id": r.CommentId}), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "review_mark_addressed",
 		Description: "Mark a review thread addressed once you've made the change it asks for (or answered it), with a short note of what you did. " +
 			"The user checks and resolves it: you can't resolve threads.",
@@ -111,7 +111,7 @@ func (s *mcpServer) registerReview(server *mcp.Server) {
 		return textResult(map[string]string{"thread_id": a.Thread, "state": "addressed"}), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "review_comment",
 		Description: "Start a thread of your own on a diff the user is reviewing: to point out something you changed and why, or ask about a line. " +
 			"On the diff's new side (what the code is now).",
@@ -142,7 +142,7 @@ func (s *mcpServer) registerReview(server *mcp.Server) {
 		return textResult(map[string]string{"thread_id": r.ThreadId, "comment_id": r.CommentId}), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "review_wait",
 		Description: "Wait until the user sends you comments on a diff, or resolves threads, then return the open threads. " +
 			"Only when they've asked you to open a diff and wait for their review: otherwise end your turn after diff_open (their comments arrive as a message).",

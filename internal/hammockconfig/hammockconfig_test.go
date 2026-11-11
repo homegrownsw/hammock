@@ -187,3 +187,21 @@ func TestEditorSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestPaneKinds(t *testing.T) {
+	if off := PaneKindsOff(nil); off != nil {
+		t.Fatalf("every kind is on by default: %v off", off)
+	}
+	values := map[string]string{"diff-enabled": "false", "browser-enabled": "true", "log-enabled": "no"}
+	if off := PaneKindsOff(values); len(off) != 1 || off[0] != "diff" {
+		t.Fatalf("off: %v", off)
+	}
+	if !PaneKindOn(values, "log") {
+		t.Fatal("only false turns a kind off")
+	}
+	for _, k := range PaneKinds {
+		if !strings.Contains(header, PaneKindKey(k)) {
+			t.Errorf("the header doesn't list %s", PaneKindKey(k))
+		}
+	}
+}

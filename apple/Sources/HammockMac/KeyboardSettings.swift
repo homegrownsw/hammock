@@ -353,7 +353,7 @@ final class ShortcutRecording {
 
 /// Which Settings pane shows (remembered, and set to open one directly).
 enum SettingsTab: String {
-    case general, appearance, terminal, editor, keyboard, agents, agentView, notifications, sharing, devices, ssh, about
+    case general, appearance, terminal, tools, editor, keyboard, agents, agentView, notifications, sharing, devices, ssh, about
     static let key = "settingsTab"
 
     static func select(_ tab: SettingsTab) { UserDefaults.standard.set(tab.rawValue, forKey: key) }

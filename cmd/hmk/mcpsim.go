@@ -142,7 +142,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		}
 	}
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_list_devices",
 		Description: "List this Mac's iOS simulators (name, OS, UDID, whether running).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listArgs) (*mcp.CallToolResult, any, error) {
@@ -153,7 +153,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult(devs), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "sim_open",
 		Description: "Open an iOS simulator in a pane in the user's workspace (split next to your pane, or in a new tab), booting it if needed. " +
 			"Returns the pane id for the other sim_ tools.",
@@ -225,7 +225,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult(map[string]string{"pane_id": id, "device": dev.Name, "udid": dev.UDID, "status": status}), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_screenshot",
 		Description: "Screenshot a simulator pane's screen, in points (the coordinates sim_tap and sim_swipe take).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simPaneArgs) (*mcp.CallToolResult, any, error) {
@@ -239,7 +239,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{Data: r.GetPng(), MIMEType: "image/png"}}}, nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_tap",
 		Description: "Tap a simulator's screen at a point (in points, as in sim_screenshot).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simTapArgs) (*mcp.CallToolResult, any, error) {
@@ -252,7 +252,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult(fmt.Sprintf("Tapped %.0f,%.0f", a.X, a.Y)), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_swipe",
 		Description: "Swipe on a simulator's screen from one point to another (in points): scroll, drag, pull to refresh.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simSwipeArgs) (*mcp.CallToolResult, any, error) {
@@ -265,7 +265,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Swiped"), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_type",
 		Description: "Type text into whatever has focus on a simulator (tap a text field first).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simTypeArgs) (*mcp.CallToolResult, any, error) {
@@ -278,7 +278,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Typed"), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_press_button",
 		Description: "Press a simulator's hardware button: home (go to the home screen), lock, side or siri; or keyboard, which shows or hides the software keyboard.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simButtonArgs) (*mcp.CallToolResult, any, error) {
@@ -291,7 +291,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Pressed " + a.Button), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_rotate",
 		Description: "Rotate a simulator: a quarter turn left or right, or to an orientation. The first rotation or pinch on a device can take a while (Hammock starts an XCTest runner on it).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simRotateArgs) (*mcp.CallToolResult, any, error) {
@@ -304,7 +304,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Rotated " + a.Orientation + " (take a screenshot for the new size)"), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_fold",
 		Description: "Open or close a foldable simulator (the iPhone Duo), or set its hinge angle. Closed shows the cover screen, open the inner one; take a screenshot after.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simFoldArgs) (*mcp.CallToolResult, any, error) {
@@ -321,7 +321,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Folded"), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_pinch",
 		Description: "Pinch on a simulator's screen with two fingers around a point (in points): zoom a map, photo or web page in or out.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simPinchArgs) (*mcp.CallToolResult, any, error) {
@@ -334,7 +334,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Pinched"), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_shutdown",
 		Description: "Close a simulator pane and shut its simulator down (when you're done with it). Simulators Hammock booted also shut down a minute after their last pane closes.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simPaneArgs) (*mcp.CallToolResult, any, error) {
@@ -347,7 +347,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Shut the simulator down and closed its pane"), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_install_app",
 		Description: "Install a built app (.app bundle for the simulator, e.g. from DerivedData) on a simulator.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simAppArgs) (*mcp.CallToolResult, any, error) {
@@ -361,7 +361,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Installed " + a.App), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_launch_app",
 		Description: "Launch (or relaunch) an installed app on a simulator by bundle id. Returns its process id.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simAppArgs) (*mcp.CallToolResult, any, error) {
@@ -376,7 +376,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult(out), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_terminate_app",
 		Description: "Quit an app on a simulator by bundle id.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simAppArgs) (*mcp.CallToolResult, any, error) {
@@ -390,7 +390,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Quit " + a.App), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_open_url",
 		Description: "Open a URL on a simulator: a web page in Safari, or a deep link into an app.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simURLArgs) (*mcp.CallToolResult, any, error) {
@@ -404,7 +404,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		return textResult("Opened " + a.URL), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name:        "sim_logs",
 		Description: "Read a simulator's recent system log (os_log), optionally filtered with a predicate. Untrusted content.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simLogArgs) (*mcp.CallToolResult, any, error) {

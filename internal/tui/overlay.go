@@ -113,6 +113,7 @@ type menu struct {
 }
 
 func (a *App) openMenu(x, y int, items []menuItem) {
+	items = withoutToolsOff(items)
 	m := &menu{x: x, y: y, items: items, sel: -1, open: newSpring(gentle)}
 	m.open.from(0)
 	m.open.to(1)
@@ -532,6 +533,9 @@ func (a *App) paletteItems() []paletteItem {
 		}})
 	}
 	act := func(id, title, hint, kw string, run func()) {
+		if k := paletteTool(id); k != "" && toolOff(k) {
+			return // turned off in Settings
+		}
 		out = append(out, paletteItem{id: "action:" + id, title: title, sub: "Command", hint: hint, keywords: kw, glyph: glyph{"›", a.th.dim, false}, run: run})
 	}
 	act("new-tab", "New Tab", "⌃B c", "create", func() { a.newTab("", "") })
@@ -762,10 +766,12 @@ func (p *palette) filtered(a *App) []paletteItem {
 	typed := strings.TrimSpace(p.query)
 	looksLikeURL := !strings.Contains(typed, " ") && (strings.Contains(typed, ".") || strings.Contains(typed, "://") || strings.HasPrefix(typed, "localhost"))
 	open := paletteItem{id: "open", title: "Search the web for “" + typed + "”", sub: "New browser tab", glyph: glyph{"⌕", a.th.accent, false}, run: func() { a.newTab("", typed) }}
-	if looksLikeURL {
+	switch {
+	case toolOff("browser"):
+	case looksLikeURL:
 		open.title, open.glyph = "Open "+typed, glyph{"◎", a.th.accent, false}
 		res = append([]paletteItem{open}, res...)
-	} else {
+	default:
 		res = append(res, open)
 	}
 	return res

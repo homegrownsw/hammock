@@ -261,7 +261,9 @@ struct SidebarView: View {
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                     Button("New Agent Tab…") { AgentLauncher.shared.open(model, groupID: group.id) }
-                    Button("New Log Tab…") { LogUI.shared.request = LogRequest(groupID: group.id) }
+                    if HammockTool.log.on {
+                        Button("New Log Tab…") { LogUI.shared.request = LogRequest(groupID: group.id) }
+                    }
                     Button("New Scheduled Task…") { ScheduleUI.shared.new(model, groupID: group.id) }
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                     Button("Change Folder…") { GroupFolder.choose(model, group) }

@@ -36,24 +36,36 @@ struct SplitMenuItems: View {
     var body: some View {
         if floating {
             Button("Terminal") { Task { await model.newFloating(over: paneID) } }.keyboardShortcut(Keys.newFloatingPane)
-            Button("Browser") { Task { await model.newFloating(over: paneID, spec: .with { $0.url = "about:blank" }) } }
-            Menu("Simulator") {
-                SimulatorItems { udid in Task { await model.newFloating(over: paneID, spec: .with { $0.simulator = udid }) } }
+            if HammockTool.browser.on {
+                Button("Browser") { Task { await model.newFloating(over: paneID, spec: .with { $0.url = "about:blank" }) } }
+            }
+            if HammockTool.simulator.on {
+                Menu("Simulator") {
+                    SimulatorItems { udid in Task { await model.newFloating(over: paneID, spec: .with { $0.simulator = udid }) } }
+                }
             }
         } else {
             Button("Terminal") { Task { await model.split(paneID, direction: direction, before: before) } }
                 .keyboardShortcut(before ? (direction == .horizontal ? Keys.splitLeft : Keys.splitUp) : (direction == .horizontal ? Keys.splitRight : Keys.splitDown))
-            Button("Browser") { Task { await model.splitBrowser(paneID, direction: direction, before: before) } }
-                .keyboardShortcut(before ? nil : direction == .horizontal ? Keys.splitBrowserRight : Keys.splitBrowserDown)
-            Menu("Simulator") {
-                SimulatorItems { udid in Task { await model.splitSimulator(paneID, direction: direction, udid: udid, before: before) } }
+            if HammockTool.browser.on {
+                Button("Browser") { Task { await model.splitBrowser(paneID, direction: direction, before: before) } }
+                    .keyboardShortcut(before ? nil : direction == .horizontal ? Keys.splitBrowserRight : Keys.splitBrowserDown)
+            }
+            if HammockTool.simulator.on {
+                Menu("Simulator") {
+                    SimulatorItems { udid in Task { await model.splitSimulator(paneID, direction: direction, udid: udid, before: before) } }
+                }
             }
             if !before {
-                Button("Log…") { LogUI.shared.split(model, paneID, direction) }
-                    .keyboardShortcut(direction == .horizontal ? Keys.splitLogRight : nil)
-                Button("Editor") { EditorUI.shared.split(model, paneID, direction) }
-                    .keyboardShortcut(direction == .horizontal ? Keys.splitEditorRight : Keys.splitEditorDown)
-                Button("File…") { EditorUI.shared.showQuickOpen(model, splitPane: paneID, direction: direction) }
+                if HammockTool.log.on {
+                    Button("Log…") { LogUI.shared.split(model, paneID, direction) }
+                        .keyboardShortcut(direction == .horizontal ? Keys.splitLogRight : nil)
+                }
+                if HammockTool.editor.on {
+                    Button("Editor") { EditorUI.shared.split(model, paneID, direction) }
+                        .keyboardShortcut(direction == .horizontal ? Keys.splitEditorRight : Keys.splitEditorDown)
+                    Button("File…") { EditorUI.shared.showQuickOpen(model, splitPane: paneID, direction: direction) }
+                }
             }
         }
     }
@@ -127,7 +139,9 @@ struct PaneMenuItems: View {
                 Button("Close Phone") { model.foldSimulator(paneID, "closed") }
             }
             Button("Shut Down Simulator") { model.shutDownSimulator(paneID) }
-            Button("Show Simulator Log") { LogUI.shared.showSimulatorLog(model, paneID) }
+            if HammockTool.log.on {
+                Button("Show Simulator Log") { LogUI.shared.showSimulatorLog(model, paneID) }
+            }
         }
         if let p = model.panes[paneID], p.kind == .browser, !p.url.hasPrefix("hmk-devtools:"), model.group(ofPane: paneID)?.isRemote != true {
             Button("Show DevTools") { Task { await model.showDevTools(paneID) } }
@@ -213,13 +227,21 @@ struct NewTabMenuItems: View {
     var body: some View {
         Button("Terminal Tab") { Task { await model.createTab(in: groupID) } }.keyboardShortcut(Keys.newTab)
         Button("Agent Tab…") { AgentLauncher.shared.open(model, groupID: groupID) }.keyboardShortcut(Keys.newAgentTab)
-        Button("Browser Tab") { Task { await model.createBrowserTab(in: groupID) } }.keyboardShortcut(Keys.newBrowserTab)
-        Menu("Simulator Tab") {
-            SimulatorItems { udid in Task { await model.createSimulatorTab(in: groupID, udid: udid) } }
+        if HammockTool.browser.on {
+            Button("Browser Tab") { Task { await model.createBrowserTab(in: groupID) } }.keyboardShortcut(Keys.newBrowserTab)
         }
-        Button("Log Tab…") { LogUI.shared.request = LogRequest(groupID: groupID) }.keyboardShortcut(Keys.newLogTab)
-        Button("Editor Tab") { EditorUI.shared.open(model, "", groupID: groupID) }.keyboardShortcut(Keys.newEditorTab)
-        Button("File…") { EditorUI.shared.quickOpen = QuickOpenRequest(groupID: groupID) }.keyboardShortcut(Keys.quickOpen)
+        if HammockTool.simulator.on {
+            Menu("Simulator Tab") {
+                SimulatorItems { udid in Task { await model.createSimulatorTab(in: groupID, udid: udid) } }
+            }
+        }
+        if HammockTool.log.on {
+            Button("Log Tab…") { LogUI.shared.request = LogRequest(groupID: groupID) }.keyboardShortcut(Keys.newLogTab)
+        }
+        if HammockTool.editor.on {
+            Button("Editor Tab") { EditorUI.shared.open(model, "", groupID: groupID) }.keyboardShortcut(Keys.newEditorTab)
+            Button("File…") { EditorUI.shared.quickOpen = QuickOpenRequest(groupID: groupID) }.keyboardShortcut(Keys.quickOpen)
+        }
     }
 }
 
@@ -267,14 +289,18 @@ struct PaneKindMenu<Label: View>: View {
         Menu {
             Section("Show") {
                 item("Terminal", "apple.terminal", current: pane?.kind == .terminal) { Hammock_V1_PaneSpec() }
-                item("Browser", "globe", current: pane?.kind == .browser) { .with { $0.url = "about:blank" } }
-                Menu {
-                    SimulatorItems { udid in
-                        guard pane?.kind != .simulator || pane?.deviceUdid != udid else { return }
-                        change("a simulator", .with { $0.simulator = udid })
+                if HammockTool.browser.on || pane?.kind == .browser {
+                    item("Browser", "globe", current: pane?.kind == .browser) { .with { $0.url = "about:blank" } }
+                }
+                if HammockTool.simulator.on || pane?.kind == .simulator {
+                    Menu {
+                        SimulatorItems { udid in
+                            guard pane?.kind != .simulator || pane?.deviceUdid != udid else { return }
+                            change("a simulator", .with { $0.simulator = udid })
+                        }
+                    } label: {
+                        if pane?.kind == .simulator { SwiftUI.Label("Simulator", systemImage: "checkmark") } else { Text("Simulator") }
                     }
-                } label: {
-                    if pane?.kind == .simulator { SwiftUI.Label("Simulator", systemImage: "checkmark") } else { Text("Simulator") }
                 }
             }
             if let pane, pane.isEditor, model.group(ofPane: paneID)?.canDrive != false {

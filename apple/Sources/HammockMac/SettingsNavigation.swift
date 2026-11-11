@@ -11,7 +11,7 @@ extension SettingsTab: Identifiable {
 
     /// The sidebar, in its groups.
     static let sidebar: [[SettingsTab]] = [
-        [.general, .appearance, .terminal, .editor, .keyboard],
+        [.general, .appearance, .terminal, .tools, .editor, .keyboard],
         [.agents, .agentView, .notifications],
         [.sharing, .devices, .ssh],
     ]
@@ -21,6 +21,7 @@ extension SettingsTab: Identifiable {
         case .general: "General"
         case .appearance: "Appearance"
         case .terminal: "Terminal"
+        case .tools: "Tools"
         case .editor: "Editor"
         case .keyboard: "Keyboard"
         case .agents: "Agents"
@@ -38,6 +39,7 @@ extension SettingsTab: Identifiable {
         case .general: "gearshape.fill"
         case .appearance: "circle.lefthalf.filled"
         case .terminal: "apple.terminal.fill"
+        case .tools: "wrench.and.screwdriver.fill"
         case .editor: "doc.text.fill"
         case .keyboard: "keyboard.fill"
         case .agents: "sparkles"
@@ -55,6 +57,7 @@ extension SettingsTab: Identifiable {
         case .general, .keyboard: Color(white: 0.55)
         case .appearance: Color(white: 0.12)
         case .terminal: Color(red: 0.15, green: 0.19, blue: 0.16)
+        case .tools: .cyan
         case .editor: .indigo
         case .agents: .orange
         case .agentView: .purple
@@ -72,6 +75,7 @@ extension SettingsTab: Identifiable {
         case .general: "The server, the menu bar, Groups, the hmk command and links to other apps."
         case .appearance: "Light and dark, your theme, and how the window, tabs, panes and cursor look."
         case .terminal: "The terminal's font, copying and pasting, and images programs show."
+        case .tools: "What Hammock can open beside your terminals. If you already do one of these your own way, turn it off and neither Hammock nor its agents will offer it."
         case .editor: "Editor and diff panes: wrapping, line numbers, indents, font size, Vim keys and how diffs are laid out."
         case .keyboard: "Change any shortcut. Search by name or keys."
         case .agents: "Closing agents at work, usage limits in the sidebar, and Hammock's hooks and tools for agents."
@@ -310,6 +314,8 @@ enum SettingsIndex {
             e(.terminal, "Text","Show images from file paths", "terminal.images", "pictures claude"),
             e(.terminal, "Text", "Ask before pasting text that could run commands", "terminal.paste", "clipboard paste protection"),
 
+            e(.tools, "Tools", "Tools", nil, "features turn off disable hide mcp agents"),
+        ] + HammockTool.allCases.map { e(.tools, "Tools", $0.title, "tools.\($0.rawValue)", $0.keywords) } + [
             e(.editor, "Editor panes", "Wrap long lines", "editor.wrap", "word wrap"),
             e(.editor, "Editor panes", "Line numbers", "editor.linenumbers", "gutter"),
             e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tab width editorconfig"),

@@ -96,7 +96,7 @@ func (s *mcpServer) editorPane(ctx context.Context, id, what string) (*world, *p
 }
 
 func (s *mcpServer) registerEditor(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "editor_open",
 		Description: "Show the user a file in an editor pane beside yours (or in a new tab), with a line or range selected and scrolled into view: " +
 			"use it to point them at code you're talking about. An editor pane in that tab already on the file is reused. " +
@@ -168,7 +168,7 @@ func (s *mcpServer) registerEditor(server *mcp.Server) {
 		return textResult(map[string]string{"pane_id": client.CreatedID(res), "path": path}), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "editor_read",
 		Description: "Read an editor pane: its file's path, its text as the user sees it (unsaved edits included), whether it's dirty (unsaved) " +
 			"or in conflict (the file changed on disk under unsaved edits), and the user's selection (from/to as LINE:COL, and the selected text), " +
@@ -190,7 +190,7 @@ func (s *mcpServer) registerEditor(server *mcp.Server) {
 		return textResult(v), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "editor_select",
 		Description: "Select a range in an editor pane and scroll it into view, to highlight something for the user. " +
 			"It moves their cursor, so use it when you're showing them something, not while they're typing there.",

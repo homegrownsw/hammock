@@ -181,6 +181,13 @@ struct DiffWebViewRep: NSViewRepresentable {
         bridge.onOpenFile = { [model, paneID] path in
             guard let p = model.panes[paneID], p.isDiff else { return }
             let full = (p.diff.repo as NSString).appendingPathComponent(path)
+            guard HammockTool.editor.on else {
+                // Turned off in Settings ▸ Tools: the file's own app, as a
+                // terminal's file links open (a file that would run something
+                // is shown in the Finder). Not a shared Group's: it's on its host.
+                if model.group(ofPane: paneID)?.isRemote != true { FileLink.open(full) }
+                return
+            }
             EditorUI.shared.open(model, full, groupID: nil, splitPane: paneID, direction: .horizontal)
         }
         bridge.configure(config)

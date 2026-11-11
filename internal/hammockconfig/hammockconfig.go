@@ -170,6 +170,34 @@ func EditorSettings(values map[string]string) Editor {
 	return e
 }
 
+// PaneKinds are the tools Hammock shows in panes besides terminals, which
+// can be turned off (Settings ▸ Tools): each has a <kind>-enabled key,
+// true by default.
+// Off, Hammock doesn't offer that kind in its menus, and agents lose its
+// tools (hmk mcp) and are refused it by the daemon, so it never gets in the
+// way of how someone already works (their own diff reviewer, say).
+var PaneKinds = []string{"browser", "simulator", "editor", "diff", "log"}
+
+// PaneKindKey is kind's key: "diff-enabled".
+func PaneKindKey(kind string) string { return kind + "-enabled" }
+
+// PaneKindOn reports whether kind is turned on in values (Values): any
+// value but "false" is.
+func PaneKindOn(values map[string]string, kind string) bool {
+	return strings.TrimSpace(values[PaneKindKey(kind)]) != "false"
+}
+
+// PaneKindsOff is the kinds turned off in values, in PaneKinds' order.
+func PaneKindsOff(values map[string]string) []string {
+	var off []string
+	for _, k := range PaneKinds {
+		if !PaneKindOn(values, k) {
+			off = append(off, k)
+		}
+	}
+	return off
+}
+
 // Change is one key's new value ("": removed), for SetAll.
 type Change struct{ Key, Value string }
 
@@ -387,4 +415,6 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   editor-tui-external = false    (hmk tui: open editor panes in $VISUAL or $EDITOR; edits from your other devices show there only when it reloads the file)
 #   diff-style = unified | split   (diff panes: old and new in one column, or side by side; a pane's own choice beats it)
 #   diff-whitespace = show | ignore   (diff panes: ignore lines that differ only in their spaces, as git diff -w)
-#   diff-wrap = false              (diff panes: wrap long lines instead of scrolling sideways)`
+#   diff-wrap = false              (diff panes: wrap long lines instead of scrolling sideways)
+#   browser-enabled = true, simulator-enabled = true, editor-enabled = true, diff-enabled = true, log-enabled = true
+#                                  (false: Hammock doesn't offer that tool, in its menus or to agents)`

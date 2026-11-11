@@ -887,7 +887,7 @@ struct TerminalView: NSViewRepresentable {
     static func open(_ url: URL, inHammock: Bool, beside paneID: String, model: AppModel) {
         switch AgentLink.opening(url) {
         case .web:
-            if inHammock {
+            if inHammock && HammockTool.browser.on { // else (turned off in Settings ▸ Tools) your browser
                 Task { await model.splitBrowser(paneID, direction: .horizontal, url: url.absoluteString) }
             } else {
                 NSWorkspace.shared.open(url)

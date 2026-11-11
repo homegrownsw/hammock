@@ -65,6 +65,8 @@ import SwiftUI
 ///     editor-tab-width = 4             (editor-indent = spaces or tabs; a file's .editorconfig, or its own indentation, wins)
 ///     editor-font-size = 13            (unset: the terminal's size; editor-tui-external = false: hmk tui opens $EDITOR instead)
 ///     diff-style = unified             (diff panes: unified or split; diff-whitespace = show or ignore; diff-wrap = false)
+///     diff-enabled = true              (and browser-enabled, simulator-enabled, editor-enabled, log-enabled: false and Hammock
+///                                       doesn't offer that tool, in its menus or to agents: Settings ▸ Tools; read by hmkd and hmk mcp)
 ///
 /// Font, cursor and paste keys fall back to Ghostty's config. Themes are Ghostty theme files,
 /// found in ~/.config/hammock/themes, ~/.config/ghostty/themes and
@@ -785,6 +787,8 @@ final class AppConfig {
         #   diff-style = unified | split   (diff panes: old and new in one column, or side by side; a pane's own choice beats it)
         #   diff-whitespace = show | ignore   (diff panes: ignore lines that differ only in their spaces, as git diff -w)
         #   diff-wrap = false              (diff panes: wrap long lines instead of scrolling sideways)
+        #   browser-enabled = true, simulator-enabled = true, editor-enabled = true, diff-enabled = true, log-enabled = true
+        #                                  (false: Hammock doesn't offer that tool, in its menus or to agents)
         """
 }
 

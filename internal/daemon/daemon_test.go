@@ -44,6 +44,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	// Nor the real config's tools turned off (panekinds.go): every one is on
+	// unless a test turns it off (its own HMK_CONFIG_DIR).
+	if os.Getenv("HMK_CONFIG_DIR") == "" {
+		os.Setenv("HMK_CONFIG_DIR", dir)
+	}
 	// Tests send hook events from outside any pane: take the pane they name.
 	hookPane = func(_ *Daemon, _ net.Conn, claimed string) string { return claimed }
 	// And are you (person.go), unless they say they're an agent: tests run

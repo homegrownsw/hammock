@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -120,11 +121,15 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		return textResult(out), nil, nil
 	})
 
+	saveDesc := "Create (no id) or change a scheduled task: Hammock's daemon then starts the agent (Claude Code by default, or Codex or another Hammock knows) with the prompt (or runs the command) " +
+		"at that time, each run a new tab in the Group, the user told when it's ready. Use this instead of launchd or cron for agent tasks. " +
+		"The user is asked to allow it first (this waits for their answer)."
+	if hammockconfig.PaneKindOn(hammockconfig.Values(), "browser") { // hmk show opens a browser pane
+		saveDesc += " To show a page from a run, have the prompt end with running `hmk show FILE`."
+	}
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "schedule_save",
-		Description: "Create (no id) or change a scheduled task: Hammock's daemon then starts the agent (Claude Code by default, or Codex or another Hammock knows) with the prompt (or runs the command) " +
-			"at that time, each run a new tab in the Group, the user told when it's ready. Use this instead of launchd or cron for agent tasks. " +
-			"The user is asked to allow it first (this waits for their answer). To show a page from a run, have the prompt end with running `hmk show FILE`.",
+		Name:        "schedule_save",
+		Description: saveDesc,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleSaveArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
 		if err != nil {
@@ -252,7 +257,12 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		return textResult(map[string]bool{"deleted": true}), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+}
+
+// registerShowOutput adds show_output: it opens a browser pane, so it's
+// one of the browser's tools (registerKind), there only while that's on.
+func (s *mcpServer) registerShowOutput(server *mcp.Server) {
+	addTool(s, server, &mcp.Tool{
 		Name: "show_output",
 		Description: "Show the user a file (HTML, Markdown, an image, a PDF) or a web page in a browser pane beside your pane, " +
 			"reusing the one you showed in last time (or one in your tab already on that page), even after you restart. Use it for a report or page you made, e.g. at the end of a scheduled run.",

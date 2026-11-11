@@ -25,7 +25,7 @@ enum DebugSnapshot {
         // HMK_DEBUG_SETTINGS_QUERY searches the keyboard one, or the window's sidebar;
         // HMK_DEBUG_SSH=key|none shows the SSH one with a made-up Hammock Key
         // (and 1Password not yet routed), or none.
-        if let pane = env["HMK_DEBUG_SETTINGS"], ["notifications", "keyboard", "ssh", "appearance", "agentview", "workspace", "devices", "editor", "window", "about"].contains(pane), let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+        if let pane = env["HMK_DEBUG_SETTINGS"], ["notifications", "keyboard", "ssh", "appearance", "agentview", "workspace", "devices", "editor", "tools", "window", "about"].contains(pane), let prefix = env["HMK_DEBUG_SNAPSHOT"] {
             // Devices asks the daemon for its networks first, once it's connected
             // (its own .task can't run while this renders).
             Task { @MainActor in
@@ -47,6 +47,8 @@ enum DebugSnapshot {
                     ? AnyView(AppearanceSettings())
                     : pane == "editor"
                     ? AnyView(EditorSettings())
+                    : pane == "tools"
+                    ? AnyView(ToolsSettings())
                     : pane == "agentview"
                     ? AnyView(AgentViewSettings())
                     : pane == "workspace"

@@ -884,6 +884,9 @@ func (a *App) command(b []byte) int {
 	case 'c', 't':
 		a.newTab("", "")
 	case 'b':
+		if toolOff("browser") {
+			break
+		}
 		a.openPrompt("New Browser Tab", "Address", "", func(v string) {
 			if v != "" {
 				a.newTab("", v)
@@ -892,9 +895,13 @@ func (a *App) command(b []byte) int {
 	case 'S':
 		a.newGroup()
 	case 'e':
-		a.openQuickOpen()
+		if !toolOff("editor") {
+			a.openQuickOpen()
+		}
 	case 'E':
-		a.openEditor("", "", false)
+		if !toolOff("editor") {
+			a.openEditor("", "", false)
+		}
 	case 'M':
 		a.cycleComputer()
 	case 'T':

@@ -143,15 +143,22 @@ struct HammockApp: App {
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Tab") { newTab() }.keyboardShortcut(Keys.newTab)
-                Button("New Browser Tab") { newTab(browser: true) }.keyboardShortcut(Keys.newBrowserTab)
+                // Tools turned off in Settings ▸ Tools aren't offered (HammockTool).
+                if HammockTool.browser.on {
+                    Button("New Browser Tab") { newTab(browser: true) }.keyboardShortcut(Keys.newBrowserTab)
+                }
                 Button("New Agent Tab…") { AgentLauncher.shared.open(model) }.keyboardShortcut(Keys.newAgentTab)
-                Button("New Log Tab…") { LogUI.shared.newTab(model) }.keyboardShortcut(Keys.newLogTab)
-                Button("New Editor Tab") { EditorUI.shared.newTab(model) }.keyboardShortcut(Keys.newEditorTab)
-                    .disabled(model.currentGroup?.canAddTabs == false)
-                Button("Quick Open…") { EditorUI.shared.showQuickOpen(model) }.keyboardShortcut(Keys.quickOpen)
-                    .disabled(model.currentGroup == nil && model.groups.isEmpty)
-                Button("Open File…") { EditorUI.shared.openFile(model) }.keyboardShortcut(Keys.openFile)
-                    .disabled(model.currentGroup == nil && model.groups.isEmpty)
+                if HammockTool.log.on {
+                    Button("New Log Tab…") { LogUI.shared.newTab(model) }.keyboardShortcut(Keys.newLogTab)
+                }
+                if HammockTool.editor.on {
+                    Button("New Editor Tab") { EditorUI.shared.newTab(model) }.keyboardShortcut(Keys.newEditorTab)
+                        .disabled(model.currentGroup?.canAddTabs == false)
+                    Button("Quick Open…") { EditorUI.shared.showQuickOpen(model) }.keyboardShortcut(Keys.quickOpen)
+                        .disabled(model.currentGroup == nil && model.groups.isEmpty)
+                    Button("Open File…") { EditorUI.shared.openFile(model) }.keyboardShortcut(Keys.openFile)
+                        .disabled(model.currentGroup == nil && model.groups.isEmpty)
+                }
                 Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
                 NewGroupMenuItems(model: model)
                 Button("Link a Computer…") { LinkUI.shared.open() }.keyboardShortcut(Keys.linkComputer)
@@ -234,7 +241,9 @@ struct HammockApp: App {
             }
             CommandGroup(after: .sidebar) {
                 Button(sidebarHidden ? "Show Sidebar" : "Hide Sidebar") { sidebarHidden.toggle() }.keyboardShortcut(Keys.toggleSidebar)
-                Toggle("Wrap Lines in Editors", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
+                if HammockTool.editor.on {
+                    Toggle("Wrap Lines in Editors", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
+                }
                 if model.hasLinkedComputers {
                     Menu("Show Computer") {
                         // ⌃⌘0 and ⌃⌘1…9: free in macOS (its desktops are ⌃1…9) and here (tabs are ⌘1…9).
@@ -265,8 +274,10 @@ struct HammockApp: App {
                     }
                 }
                 Button("Scheduled Tasks") { ScheduleUI.shared.showList() }.keyboardShortcut(Keys.scheduledTasks)
-                Button("Review Changes") { DiffUI.review(model) }.keyboardShortcut(Keys.reviewChanges)
-                    .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
+                if HammockTool.diff.on {
+                    Button("Review Changes") { DiffUI.review(model) }.keyboardShortcut(Keys.reviewChanges)
+                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
+                }
                 Divider()
                 Button("Next Tab") { model.cycleTab(by: 1) }.keyboardShortcut(Keys.nextTab)
                 Button("Previous Tab") { model.cycleTab(by: -1) }.keyboardShortcut(Keys.previousTab)
@@ -313,29 +324,39 @@ struct HammockApp: App {
                 }
                     .keyboardShortcut(Keys.toggleAgentView)
                     .disabled(focused.flatMap { model.panes[$0] }.map { !model.supportsAgentView($0) } ?? true)
-                Button("Split Right with Browser") {
-                    if let id = focused { Task { await model.splitBrowser(id, direction: .horizontal) } }
-                }.keyboardShortcut(Keys.splitBrowserRight)
-                Button("Split Down with Browser") {
-                    if let id = focused { Task { await model.splitBrowser(id, direction: .vertical) } }
-                }.keyboardShortcut(Keys.splitBrowserDown)
+                if HammockTool.browser.on {
+                    Button("Split Right with Browser") {
+                        if let id = focused { Task { await model.splitBrowser(id, direction: .horizontal) } }
+                    }.keyboardShortcut(Keys.splitBrowserRight)
+                    Button("Split Down with Browser") {
+                        if let id = focused { Task { await model.splitBrowser(id, direction: .vertical) } }
+                    }.keyboardShortcut(Keys.splitBrowserDown)
+                }
                 Button("Show DevTools") { if let id = focused { Task { await model.showDevTools(id) } } }
                     .keyboardShortcut(Keys.devTools)
                     .disabled(!focusedIsBrowser || focused.flatMap { model.panes[$0] }?.url.hasPrefix("hmk-devtools:") == true)
-                Button("Split Right with Log…") { if let id = focused { LogUI.shared.split(model, id, .horizontal) } }
-                    .keyboardShortcut(Keys.splitLogRight)
-                    .disabled(focused == nil)
-                Button("Split Right with Editor") { if let id = focused { EditorUI.shared.split(model, id, .horizontal) } }
-                    .keyboardShortcut(Keys.splitEditorRight)
-                    .disabled(focused == nil)
-                Button("Split Down with Editor") { if let id = focused { EditorUI.shared.split(model, id, .vertical) } }
-                    .keyboardShortcut(Keys.splitEditorDown)
-                    .disabled(focused == nil)
-                Button("Show Simulator Log") { if let id = focused { LogUI.shared.showSimulatorLog(model, id) } }
-                    .keyboardShortcut(Keys.showSimulatorLog)
-                    .disabled(focused.flatMap { model.panes[$0] }?.kind != .simulator)
-                Menu("Split Right with Simulator") {
-                    SimulatorItems { udid in if let id = focused { Task { await model.splitSimulator(id, direction: .horizontal, udid: udid) } } }
+                if HammockTool.log.on {
+                    Button("Split Right with Log…") { if let id = focused { LogUI.shared.split(model, id, .horizontal) } }
+                        .keyboardShortcut(Keys.splitLogRight)
+                        .disabled(focused == nil)
+                }
+                if HammockTool.editor.on {
+                    Button("Split Right with Editor") { if let id = focused { EditorUI.shared.split(model, id, .horizontal) } }
+                        .keyboardShortcut(Keys.splitEditorRight)
+                        .disabled(focused == nil)
+                    Button("Split Down with Editor") { if let id = focused { EditorUI.shared.split(model, id, .vertical) } }
+                        .keyboardShortcut(Keys.splitEditorDown)
+                        .disabled(focused == nil)
+                }
+                if HammockTool.log.on {
+                    Button("Show Simulator Log") { if let id = focused { LogUI.shared.showSimulatorLog(model, id) } }
+                        .keyboardShortcut(Keys.showSimulatorLog)
+                        .disabled(focused.flatMap { model.panes[$0] }?.kind != .simulator)
+                }
+                if HammockTool.simulator.on {
+                    Menu("Split Right with Simulator") {
+                        SimulatorItems { udid in if let id = focused { Task { await model.splitSimulator(id, direction: .horizontal, udid: udid) } } }
+                    }
                 }
                 // Only with a simulator focused: ⌘← and ⌘→ belong to the terminal otherwise.
                 if let id = focused, model.panes[id]?.kind == .simulator {

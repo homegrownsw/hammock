@@ -27,7 +27,7 @@ type diffOpenArgs struct {
 }
 
 func (s *mcpServer) registerDiff(server *mcp.Server) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "diff_open",
 		Description: "Show the user a git diff to review, in a diff pane laid out like a pull request's Files Changed (a new tab just after yours, unless split_pane_id). " +
 			"Use it when they ask to see the diff, review your changes or look over your work before a pull request. " +

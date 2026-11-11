@@ -74,6 +74,27 @@ func editorSettings() []setting {
 	}
 }
 
+// toolSettings turn Hammock's tools on and off (the <kind>-enabled keys,
+// shared with the Mac's Settings ▸ Tools).
+func toolSettings() []setting {
+	names := map[string]string{"browser": "Browser", "simulator": "Simulator", "editor": "Editor", "diff": "Diff viewer", "log": "Log viewer"}
+	var out []setting
+	for _, k := range hammockconfig.PaneKinds {
+		out = append(out, setting{"Tools: " + names[k], func(*App) string { return onOff(!toolOff(k)) }, func(a *App, _ int) {
+			v := "false"
+			if toolOff(k) {
+				v = "" // on is the default
+			}
+			if err := hammockconfig.Set(hammockconfig.PaneKindKey(k), v); err != nil {
+				a.flash("⚠ " + err.Error())
+				return
+			}
+			toolsOff = hammockconfig.PaneKindsOff(hammockconfig.Values())
+		}, "Off: not offered in Hammock's menus, and agents don't get its tools."})
+	}
+	return out
+}
+
 type settingsView struct {
 	sel   int
 	open  *spring
@@ -136,6 +157,7 @@ func (a *App) openSettings() {
 		}, ""},
 	}}
 	v.items = append(v.items, editorSettings()...)
+	v.items = append(v.items, toolSettings()...)
 	v.open.from(0)
 	v.open.to(1)
 	a.overlay = v

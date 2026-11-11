@@ -131,6 +131,7 @@ struct SettingsView: View {
         case .general: GeneralSettings(model: model)
         case .appearance: AppearanceSettings()
         case .terminal: TerminalSettings()
+        case .tools: ToolsSettings()
         case .editor: EditorSettings()
         case .keyboard: KeyboardSettings()
         case .agents: AgentSettings()
