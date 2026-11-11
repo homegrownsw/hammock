@@ -237,6 +237,21 @@ public struct AgentConversationView: View {
     @State private var layoutWidth: CGFloat?
     @State private var resize = ResizeState()
     private final class ResizeState { var tick = 0 }
+    /// The rows the lazy stack has made (in view, or about to be), so the
+    /// end showing none of them can be put right (checkRowsMade). A
+    /// reference, so keeping count redraws nothing.
+    @State private var made = MadeRows()
+    private final class MadeRows {
+        var ids = Set<String>()
+        var checking = false
+        /// The last row when passes last made none: none are going to be
+        /// made (what's sent fills the view), so not again until there's more.
+        var gaveUpAt: String?
+        /// Called when the last made row goes.
+        var emptied: (() -> Void)?
+    }
+    /// Bumped to have the lazy stack go over its rows again.
+    @State private var rowsPass = 0
     /// Scrolls rows you open into view.
     @State private var revealer = RowRevealer()
     /// Where the conversation's scrolled to (Latest goes to the end).
@@ -364,6 +379,34 @@ public struct AgentConversationView: View {
         }
     }
 
+    /// At the end of the conversation with none of its rows made: has the
+    /// lazy stack go over them until it makes the ones in view. Following the
+    /// end to the marker under the rows (a long conversation opened, or a
+    /// message sent in one), the stack can be left making no rows: its
+    /// estimate of where they are, far too tall, still says they're past
+    /// what's in view, and nothing asks it again, so all that showed was the
+    /// tail (Working…) under a blank screen until the keyboard went or you
+    /// scrolled. Each pass corrects the estimate a step.
+    private func checkRowsMade(_ s: AgentSession, _ proxy: ScrollViewProxy) {
+        guard made.ids.isEmpty, !made.checking, let last = s.items.last?.id, made.gaveUpAt != last else { return }
+        made.checking = true
+        Task { @MainActor in
+            defer { made.checking = false }
+            // Rows on their way (scrolled to, or new) are made in a moment.
+            try? await Task.sleep(for: .milliseconds(100))
+            for _ in 0..<12 {
+                guard made.ids.isEmpty, !s.items.isEmpty, glide.gap < 60 else { break }
+                rowsPass += 1
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+            if made.ids.isEmpty {
+                made.gaveUpAt = last
+            } else if glide.gap < 60 {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        }
+    }
+
     private func glideToEnd() {
         glide.pending = false
         // To the end as laid out (the marker under the lazy rows):
@@ -438,6 +481,10 @@ public struct AgentConversationView: View {
 
     @ViewBuilder
     private func conversation(_ s: AgentSession) -> some View {
+        // Taken out of self for the rows: a row's closure holding self would
+        // update every row whenever this view does.
+        let made = made
+        let pass = rowsPass
         VStack(spacing: 0) {
             if !s.subagentID.isEmpty {
                 SubagentHeader(subagent: session?.subagents.first { $0.id == s.subagentID }, working: s.working) { viewing = nil }
@@ -474,12 +521,18 @@ public struct AgentConversationView: View {
                                 AgentItemView(item: item, session: s)
                                     .equatable()
                                     .id(item.id)
-                                    // DevLog: when the newest row first shows, after it was asked for.
                                     .onAppear {
+                                        _ = pass // a new pass goes over the rows (checkRowsMade)
+                                        made.ids.insert(item.id)
+                                        // DevLog: when the newest row first shows, after it was asked for.
                                         if item.id == s.items.last?.id, !s.shownSinceAsked, let asked = s.askedAt {
                                             s.shownSinceAsked = true
                                             DevLog.agent("pane \(s.paneID): rows shown after \(DevLog.since(asked)) (\(s.items.count) rows)")
                                         }
+                                    }
+                                    .onDisappear {
+                                        made.ids.remove(item.id)
+                                        if made.ids.isEmpty { made.emptied?() }
                                     }
                                     .jankRow(item.id)
                             }
@@ -521,6 +574,7 @@ public struct AgentConversationView: View {
                 } action: { old, new in
                     glide.gap = new.gap
                     if !landed, !s.items.isEmpty { land(at: new.gap) }
+                    if new.gap < 60 { checkRowsMade(s, proxy) }
                     if JankProbe.enabled {
                         JankProbe.shared.viewport = new.container
                         JankProbe.shared.contentHeight = new.content
@@ -579,6 +633,7 @@ public struct AgentConversationView: View {
                 // above measure their real heights, so land again once they have.
                 .onAppear {
                     revealer.proxy = proxy
+                    made.emptied = { [s] in if glide.gap < 60 { checkRowsMade(s, proxy) } }
                     if !s.items.isEmpty { landAtLatest() }
                     proxy.scrollTo("bottom", anchor: .bottom)
                     Task { @MainActor in
