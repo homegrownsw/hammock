@@ -26,6 +26,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 #source { min-width: 0; font-weight: 600; }
 #source .t { overflow: hidden; text-overflow: ellipsis; }
 #source .chev { opacity: 0.6; font-weight: normal; }
+.srcicon { display: none; }
 #totals { color: var(--dim); white-space: nowrap; }
 .add { color: var(--add); }
 .del { color: var(--del); }
@@ -223,11 +224,16 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .fbody .cm-mergeView { overflow: visible; }
 
 /* Narrow (an iPhone, a thin split): the tree floats over the files. */
+@media (max-width: 360px) { #totals { display: none; } }
 @media (max-width: 640px) {
   #tree { position: absolute; z-index: 10; top: 0; bottom: 0; left: 0; background: var(--bg); box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3); width: min(300px, 85vw); }
-  #totals { display: none; }
   #bar { gap: 4px; padding: 0 6px; }
-  #source { flex: 1; }
+  #source .t { display: none; }
+  .srcicon { display: inline-flex; }
+  #source .chev { display: none; }
+  #bar .btn { padding: 0 5px; }
+  #totals { flex: 1; min-width: 0; overflow: hidden; }
+  #totals .files { display: none; }
   #target { max-width: 120px; }
   #files { padding: 8px 6px 40vh; }
   .fhead .seg { display: none; }

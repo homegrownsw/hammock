@@ -56,6 +56,7 @@ const svg = {
   chevron: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>',
   sidebar: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/></svg>',
   gear: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 4h7M12 4h2M2 8h2M7 8h7M2 12h8M13 12h1"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="8" r="1.5"/><circle cx="11.5" cy="12" r="1.5"/></svg>',
+  compare: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.5"/><circle cx="12" cy="12.5" r="1.5"/><path d="M4 5v4a3 3 0 0 0 3 3h3.5M12 11V7a3 3 0 0 0-3-3H5.5"/></svg>',
   comment: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 3.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7l-3 2.5v-2.5h-.5a1 1 0 0 1-1-1z"/></svg>',
   open: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg>',
 }
@@ -269,11 +270,14 @@ function renderBar() {
 
   const src = el("button", "btn")
   src.id = "source"
-  src.append(el("span", "t", sourceLabel()))
+  // (Narrow, it's an icon: the phone's title bar says what's compared.)
+  const ic = el("span", "srcicon")
+  ic.innerHTML = svg.compare
+  src.append(ic, el("span", "t", sourceLabel()))
   const ch = el("span", "chev")
   ch.innerHTML = svg.chevron
   src.append(ch)
-  src.title = "Choose what to compare"
+  src.title = `${sourceLabel()}: choose what to compare`
   src.onclick = (e) => { e.stopPropagation(); openPop("sourcePop", src, renderSourcePop) }
   bar.append(src)
 
@@ -281,7 +285,11 @@ function renderBar() {
   totals.id = "totals"
   if (content) {
     totals.append(el("span", "files", plural(order.length, "file", "files") + " "))
-    totals.append(el("span", "add", `+${info.added.toLocaleString()}`), " ", el("span", "del", `−${info.removed.toLocaleString()}`))
+    // Narrow: big numbers short (+13k).
+    const num = (n) => window.innerWidth <= 640 && n >= 10000
+      ? new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 0 }).format(n) : n.toLocaleString()
+    totals.append(el("span", "add", `+${num(info.added)}`), " ", el("span", "del", `−${num(info.removed)}`))
+    totals.title = `${plural(order.length, "file", "files")}, ${info.added.toLocaleString()} lines added, ${info.removed.toLocaleString()} removed`
   }
   bar.append(totals, el("span", "spacer"))
 
@@ -293,9 +301,8 @@ function renderBar() {
     const pick = (anchor) => (e) => { e.stopPropagation(); openPop("targetPop", anchor, renderTargetPop) }
     const chev = () => { const c = el("span", "chev"); c.innerHTML = svg.chevron; return c }
     if (n && config.target) {
-      const narrow = window.innerWidth <= 640
       const split = el("span", "split")
-      const send = el("button", "btn send", narrow ? `Send ${n}` : `Send ${n} to ${agentName()}`)
+      const send = el("button", "btn send", `Send ${n} to ${agentName()}`)
       send.title = "Send every comment not yet sent, as one message"
       send.onclick = () => post({ type: "review", command: { action: "send" } })
       const to = el("button", "btn send more")
