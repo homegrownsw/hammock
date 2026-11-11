@@ -174,10 +174,17 @@ enum { kGridW = 32, kGridH = 18, kCells = kGridW * kGridH };
 @property BOOL locked;
 @property IOPMAssertionID awake;
 @property BOOL pressed;
+// The key held on the viewer, repeating here (key repeat, below).
+@property(strong) NSTimer *repeatTimer;
+@property(weak) Conn *repeatConn;
 - (void)frameFor:(Session *)s;
 - (void)send:(NSDictionary *)msg to:(Conn *)c;
 - (void)changed:(NSArray<NSValue *> *)rects on:(Session *)s;
 - (void)encode:(Session *)s;
+@end
+
+@interface Host (Input)
+- (void)stopRepeat;
 @end
 
 static Host *gHost;
@@ -411,7 +418,43 @@ static CGPoint pointOn(CGDirectDisplayID d, NSDictionary *a) {
   CFRelease(e);
 }
 
-- (void)input:(CGDirectDisplayID)d op:(NSString *)op args:(NSDictionary *)a {
+// Key repeat. macOS doesn't repeat a key it's told of (a posted down is one
+// press, however long until its up), and an iPhone's or iPad's keyboard
+// says only down and up: so a key held on the viewer repeats here, at this
+// Mac's own rate (Settings ▸ Keyboard), until its up, another key, or its
+// viewer going. A Mac viewer's own repeats (repeat: true) post as repeats
+// and start the wait again, so they and these don't both come.
+static const CFTimeInterval kRepeatLongest = 30;  // an up lost on the way stops it by then
+
+- (void)stopRepeat {
+  [self.repeatTimer invalidate];
+  self.repeatTimer = nil;
+  self.repeatConn = nil;
+}
+
+- (void)repeat:(CGKeyCode)vk flags:(CGEventFlags)flags from:(Conn *)c {
+  [self stopRepeat];
+  if (vk >= 54 && vk <= 63) return;  // modifiers and Caps Lock don't repeat
+  NSTimeInterval delay = NSEvent.keyRepeatDelay, every = NSEvent.keyRepeatInterval;
+  if (!(delay > 0)) delay = 0.5;
+  if (!(every > 0)) every = 0.083;
+  CFTimeInterval until = CACurrentMediaTime() + kRepeatLongest;
+  __weak Host *weak = self;
+  NSTimer *t = [[NSTimer alloc] initWithFireDate:[NSDate dateWithTimeIntervalSinceNow:delay] interval:every repeats:YES block:^(NSTimer *timer) {
+    Host *h = weak;
+    if (!h || CACurrentMediaTime() > until) { [timer invalidate]; return; }
+    CGEventRef e = CGEventCreateKeyboardEvent(h.source, vk, true);
+    CGEventSetIntegerValueField(e, kCGKeyboardEventAutorepeat, 1);
+    CGEventSetFlags(e, flags);
+    [h post:e];
+  }];
+  t.tolerance = MIN(every / 10, 0.005);
+  [NSRunLoop.mainRunLoop addTimer:t forMode:NSRunLoopCommonModes];
+  self.repeatTimer = t;
+  self.repeatConn = c;
+}
+
+- (void)input:(CGDirectDisplayID)d op:(NSString *)op args:(NSDictionary *)a from:(Conn *)c {
   if (![a isKindOfClass:NSDictionary.class]) a = @{};
   CGEventFlags flags = flagsFor(a[@"mods"]);
   if ([op isEqualToString:@"mouse"]) {
@@ -464,10 +507,17 @@ static CGPoint pointOn(CGDirectDisplayID d, NSDictionary *a) {
     [self post:e];
   } else if ([op isEqualToString:@"key"]) {
     CGKeyCode vk = (CGKeyCode)[a[@"vk"] unsignedIntValue];
-    CGEventRef e = CGEventCreateKeyboardEvent(self.source, vk, ![a[@"type"] isEqualToString:@"up"]);
+    BOOL down = ![a[@"type"] isEqualToString:@"up"];
+    CGEventRef e = CGEventCreateKeyboardEvent(self.source, vk, down);
+    if (down && [a[@"repeat"] boolValue]) CGEventSetIntegerValueField(e, kCGKeyboardEventAutorepeat, 1);
     CGEventSetFlags(e, flags);
+    // Any key's up stops the repeat too: a real keyboard's does only for its
+    // own key, but an up for another means the viewer's lost track of this one.
+    [self stopRepeat];
     [self post:e];
+    if (down) [self repeat:vk flags:flags from:c];
   } else if ([op isEqualToString:@"text"]) {
+    [self stopRepeat];
     NSString *text = [a[@"text"] isKindOfClass:NSString.class] ? a[@"text"] : @"";
     // In chunks: an event carries at most 20 UTF-16 units.
     // At most 20 UTF-16 units an event (what one carries), whole
@@ -702,6 +752,7 @@ static BOOL screenLocked(void) {
 
 - (void)drop:(Conn *)c {
   if (!c || ![self.conns containsObject:c]) return;
+  if (self.repeatConn == c) [self stopRepeat];
   for (Capture *cap in self.captures.allValues.copy) {
     for (Session *s in cap.sessions.copy) {
       if (s.conn == c) [self stopSession:s];
@@ -1294,7 +1345,7 @@ static NSData *jpegOf(CGImageRef img, int maxWidth, int *w, int *h) {
   } else if ([t isEqualToString:@"input"]) {
     CGDirectDisplayID d = (CGDirectDisplayID)[m[@"display"] longLongValue];
     if (!d) d = CGMainDisplayID();
-    [self input:d op:m[@"op"] ?: @"" args:m[@"args"]];
+    [self input:d op:m[@"op"] ?: @"" args:m[@"args"] from:c];
   }
 }
 

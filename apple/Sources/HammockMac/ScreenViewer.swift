@@ -248,6 +248,18 @@ final class ScreenNSView: NSView {
     override var acceptsFirstResponder: Bool { !viewOnly }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if let old = window { NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: old) }
+        if let newWindow {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowResignedKey), name: NSWindow.didResignKeyNotification, object: newWindow)
+        } else {
+            releaseKeys()
+        }
+    }
+
+    @objc private func windowResignedKey() { releaseKeys() }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil {
@@ -418,7 +430,22 @@ final class ScreenNSView: NSView {
     // MARK: Keys
 
     private func key(_ type: String, _ e: NSEvent) {
-        send("key", ["type": type, "vk": Int(e.keyCode), "mods": mods(e.modifierFlags)])
+        var a: [String: Any] = ["type": type, "vk": Int(e.keyCode), "mods": mods(e.modifierFlags)]
+        // The other Mac repeats a held key itself; it posts these as repeats.
+        if type == "down", e.isARepeat { a["repeat"] = true }
+        send("key", a)
+    }
+
+    /// Lets go of the keys held here (their ups would go elsewhere now), so
+    /// none stays down, or repeating, on the other Mac.
+    private func releaseKeys() {
+        for vk in downKeys { send("key", ["type": "up", "vk": Int(vk), "mods": [String]()]) }
+        downKeys.removeAll()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        releaseKeys()
+        return super.resignFirstResponder()
     }
 
     override func keyDown(with e: NSEvent) {

@@ -1107,6 +1107,18 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
         if !rest.isEmpty { super.pressesEnded(rest, with: event) }
     }
 
+    /// A press iOS takes back (the app going to the background, the view
+    /// losing the keyboard) is let go on the Mac too, or it'd stay down there
+    /// and repeat.
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        var rest = Set<UIPress>()
+        for p in presses {
+            guard let k = p.key, let vk = Self.hidToMac[k.keyCode.rawValue] else { rest.insert(p); continue }
+            send?("key", ["type": "up", "vk": vk, "mods": Self.mods(k.modifierFlags)])
+        }
+        if !rest.isEmpty { super.pressesCancelled(rest, with: event) }
+    }
+
     private static func mods(_ f: UIKeyModifierFlags) -> [String] {
         var m: [String] = []
         if f.contains(.shift) { m.append("shift") }
