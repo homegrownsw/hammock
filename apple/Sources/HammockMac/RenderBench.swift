@@ -28,6 +28,8 @@ enum RenderBench {
         let setup: String
         /// The bytes written before draw n.
         let step: (Int) -> String
+        /// Text being composed in an input method, shown at the cursor.
+        var composing = ""
     }
 
     struct Stats: Encodable {
@@ -153,7 +155,11 @@ enum RenderBench {
         let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,
                           height: CGFloat(screen.rows) * view.cellHeight + view.padding * 2)
         view.setFrameSize(size)
+        // A view out of a window never tells the engine its cell size, which
+        // Kitty images are sized by.
+        session.engine.setCellPixels(width: Int((view.cellWidth * scale).rounded()), height: Int((view.cellHeight * scale).rounded()))
         session.engine.write(Data(screen.setup.utf8))
+        if !screen.composing.isEmpty { view.markedText = NSMutableAttributedString(string: screen.composing) }
         let w = Int(size.width * scale), h = Int(size.height * scale)
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: TerminalMetalRenderer.pixelFormat, width: w, height: h, mipmapped: false)
         desc.usage = [.renderTarget, .shaderRead]
@@ -217,7 +223,11 @@ enum RenderBench {
         let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,
                           height: CGFloat(screen.rows) * view.cellHeight + view.padding * 2)
         view.setFrameSize(size)
+        // A view out of a window never tells the engine its cell size, which
+        // Kitty images are sized by.
+        session.engine.setCellPixels(width: Int((view.cellWidth * scale).rounded()), height: Int((view.cellHeight * scale).rounded()))
         session.engine.write(Data(screen.setup.utf8))
+        if !screen.composing.isEmpty { view.markedText = NSMutableAttributedString(string: screen.composing) }
 
         let w = Int(size.width * scale), h = Int(size.height * scale)
         guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
@@ -346,6 +356,39 @@ enum RenderBench {
         return s
     }
 
+    /// Kitty images over coloured text, one in each layer: above the text
+    /// (z 0), below it (z -1), and below the cells' backgrounds.
+    private static func images() -> Screen {
+        func png(_ w: Int, _ h: Int, hue: CGFloat) -> String {
+            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            let colors = [NSColor(hue: hue, saturation: 0.8, brightness: 0.9, alpha: 1).cgColor, NSColor(hue: hue + 0.3, saturation: 0.7, brightness: 0.5, alpha: 0.6).cgColor]
+            ctx.drawLinearGradient(CGGradient(colorsSpace: nil, colors: colors as CFArray, locations: [0, 1])!, start: .zero, end: CGPoint(x: w, y: h), options: [])
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.8).cgColor)
+            ctx.fillEllipse(in: CGRect(x: w / 4, y: h / 4, width: w / 2, height: h / 2))
+            let rep = NSBitmapImageRep(cgImage: ctx.makeImage()!)
+            return rep.representation(using: .png, properties: [:])!.base64EncodedString()
+        }
+        /// The image at the cursor, cols × rows cells, in chunks of 4096 as programs send them.
+        func place(_ b64: String, cols: Int, rows: Int, z: Int, id: Int) -> String {
+            var out = "", rest = Substring(b64), first = true
+            while !rest.isEmpty {
+                let chunk = rest.prefix(4096)
+                rest = rest.dropFirst(chunk.count)
+                let more = rest.isEmpty ? 0 : 1
+                out += first ? "\u{1b}_Ga=T,f=100,i=\(id),q=2,C=1,c=\(cols),r=\(rows),z=\(z),m=\(more);\(chunk)\u{1b}\\" : "\u{1b}_Gm=\(more);\(chunk)\u{1b}\\"
+                first = false
+            }
+            return out
+        }
+        var r = Rand(s: 0x632BE59BD9B4E019)
+        var setup = (0..<40).map { _ in line(&r, cols: 120, colour: true) }.joined(separator: "\r\n")
+        setup += "\u{1b}[3;5H" + place(png(240, 160, hue: 0.6), cols: 30, rows: 10, z: 0, id: 1)
+        setup += "\u{1b}[8;50H" + place(png(300, 200, hue: 0.1), cols: 30, rows: 10, z: -1, id: 2)
+        setup += "\u{1b}[20;20H" + place(png(400, 200, hue: 0.35), cols: 60, rows: 12, z: -1_073_741_825, id: 3)
+        return Screen(name: "images-120x40", cols: 120, rows: 40, setup: setup, step: { _ in "" })
+    }
+
     static func makeScreens(draws: Int) -> [Screen] {
         func scrolling(_ name: String, _ cols: Int, _ rows: Int, colour: Bool) -> Screen {
             var r = Rand(s: 0x9E3779B97F4A7C15)
@@ -392,6 +435,9 @@ enum RenderBench {
             scrolling("colour-200x60", 200, 60, colour: true),
             scrolling("colour-400x100", 400, 100, colour: true),
             flood("flood-200x60", 200, 60),
+            images(),
+            Screen(name: "composing-120x30", cols: 120, rows: 30, setup: (0..<29).map { _ in line(&c, cols: 120, colour: true) }.joined(separator: "\r\n") + "\r\n$ echo ",
+                   step: { _ in "" }, composing: "日本語 kana あ"),
             flood("flood-400x100", 400, 100),
             Screen(name: "tui-200x60", cols: 200, rows: 60, setup: "\u{1b}[?1049h" + tuis[0], step: { i in tuis[(i + 1) % tuis.count] }),
             Screen(name: "unicode-200x60", cols: 200, rows: 60, setup: uni[0..<60].joined(separator: "\r\n"),

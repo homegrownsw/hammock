@@ -206,6 +206,17 @@ enum DebugSnapshot {
                 ctx.scaleBy(x: scale, y: scale)
                 if !view.isFlipped { } 
                 layer.render(in: ctx)
+                // Panes Metal draws: their CoreGraphics drawing over their
+                // place, since a layer render can't see a Metal layer.
+                @MainActor func metalPanes(_ v: NSView) {
+                    if let t = v as? TerminalNSView, !t.isHiddenOrHasHiddenAncestor, let image = t.snapshotImage(scale: scale) {
+                        var r = t.convert(t.bounds, to: view)
+                        if view.isFlipped { r.origin.y = size.height - r.maxY }
+                        ctx.draw(image, in: r)
+                    }
+                    v.subviews.forEach(metalPanes)
+                }
+                metalPanes(view)
                 // The same through AppKit's drawing, which gets the sidebar's
                 // list (inside its glass) that the layer render leaves out.
                 if ProcessInfo.processInfo.environment["HMK_DEBUG_CACHED"] == "1", let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {

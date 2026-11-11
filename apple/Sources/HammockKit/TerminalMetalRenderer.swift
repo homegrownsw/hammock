@@ -68,7 +68,7 @@ public final class TerminalMetalRenderer {
         var uv: SIMD4<Float>     // atlas pixels: x0, y0, x1, y1
         var color: SIMD4<Float>  // straight (not premultiplied) sRGB
         var clip: SIMD4<Float>   // x0, y0, x1, y1 in device pixels; x1 < x0: none
-        var kind: UInt32         // 0 rectangle, 1 glyph tinted with color, 2 colour glyph
+        var kind: UInt32         // 0 rectangle, 1 glyph tinted with color, 2 colour glyph, 3 image
         var pad: SIMD3<UInt32> = .zero
     }
 
@@ -100,11 +100,33 @@ public final class TerminalMetalRenderer {
         public var cellHeight: CGFloat
         /// Rows to draw, each at its top: backgrounds of all of them first.
         public var rows: [(top: CGFloat, line: TerminalLine)] = []
+        /// Text being composed in an input method, drawn after the rows
+        /// and before the overlay (so the cursor shows on top of it).
+        public var composing: [(top: CGFloat, line: TerminalLine)] = []
         /// Drawn after the rows (the cursor, a link's underline), in the
         /// pane's own space.
         public var overlay: [TerminalLine.Rect] = []
-        /// Text drawn after the overlay (the character under a block cursor).
+        /// Text drawn after the overlay (the character under a block cursor,
+        /// text being composed in an input method).
         public var overlayText: [(top: CGFloat, line: TerminalLine)] = []
+        /// Kitty images, each in its layer: below the cells' backgrounds,
+        /// between them and the text, or above the text.
+        public var images: [Image] = []
+
+        public struct Image {
+            public var key: String
+            public var source: CGImage
+            public var sourceRect: CGRect  // pixels of `source`
+            public var rect: CGRect        // where, in the pane's points
+            public var layer: TerminalImage.Layer
+            public init(key: String, source: CGImage, sourceRect: CGRect, rect: CGRect, layer: TerminalImage.Layer) {
+                self.key = key
+                self.source = source
+                self.sourceRect = sourceRect
+                self.rect = rect
+                self.layer = layer
+            }
+        }
 
         public init(size: CGSize, scale: CGFloat, thicken: Bool, background: RGB, padding: CGFloat, cellHeight: CGFloat) {
             self.cellHeight = cellHeight
@@ -125,7 +147,7 @@ public final class TerminalMetalRenderer {
             rows = [:]
             olderRows = [:]
         }
-        var instances = build(scene)
+        var (instances, segments) = build(scene)
         if atlas.overflowed {
             // The atlas filled up while building: start it afresh (every
             // pane builds its rows again) and build this frame again.
@@ -133,7 +155,7 @@ public final class TerminalMetalRenderer {
             builtFor.atlas = atlas.generation
             rows = [:]
             olderRows = [:]
-            instances = build(scene)
+            (instances, segments) = build(scene)
         }
         atlas.upload()
 
@@ -152,8 +174,10 @@ public final class TerminalMetalRenderer {
             enc.setRenderPipelineState(context.pipeline)
             enc.setVertexBuffer(buffer, offset: 0, index: 0)
             enc.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
-            enc.setFragmentTexture(atlas.texture, index: 0)
-            enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: instances.count)
+            for seg in segments where seg.count > 0 {
+                enc.setFragmentTexture(seg.texture ?? atlas.texture, index: 0)
+                enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: seg.count, baseInstance: seg.start)
+            }
         }
         enc.endEncoding()
         commit?(cb)
@@ -163,27 +187,87 @@ public final class TerminalMetalRenderer {
 
     // MARK: Building
 
-    private func build(_ scene: Scene) -> [Instance] {
+    /// A run of instances drawn with one texture: the atlas (nil), or an image's.
+    private struct Segment { var start: Int; var count: Int; var texture: MTLTexture? }
+
+    /// The frame's instances, and the runs to draw them in, in order:
+    /// images below the backgrounds, the rows' backgrounds, images below the
+    /// text, the rows' text, images above it, then the overlay.
+    private func build(_ scene: Scene) -> ([Instance], [Segment]) {
         let s = Float(scene.scale)
         let pad = Float(scene.padding) * s
-        var back: [Instance] = [], front: [Instance] = []
-        back.reserveCapacity(scene.rows.count * 8)
-        front.reserveCapacity(scene.rows.count * 200)
-        for (top, line) in scene.rows {
-            let r = instances(for: line, scale: scene.scale, thicken: scene.thicken)
-            let dy = Float(top) * s
-            for var i in r.back { i.rect.x += pad; i.rect.y += dy; back.append(i) }
-            for var i in r.front { shift(&i, dx: pad, dy: dy); front.append(i) }
+        var all: [Instance] = []
+        all.reserveCapacity(scene.rows.count * 200)
+        var segments: [Segment] = []
+        func run(_ texture: MTLTexture? = nil, _ add: () -> Void) {
+            let start = all.count
+            add()
+            if let last = segments.last, last.texture === texture, last.start + last.count == start {
+                segments[segments.count - 1].count += all.count - start
+            } else {
+                segments.append(Segment(start: start, count: all.count - start, texture: texture))
+            }
         }
-        var all = back
-        all += front
-        for r in scene.overlay { all.append(rect(r.rect, color: r.color, scale: scene.scale)) }
-        for (top, line) in scene.overlayText {
-            let r = build(line, scale: scene.scale, thicken: scene.thicken)
-            let dy = Float(top) * s
-            for var i in r.front { shift(&i, dx: pad, dy: dy); all.append(i) }
+        func images(_ layer: TerminalImage.Layer) {
+            for img in scene.images where img.layer == layer {
+                guard let t = imageTexture(img) else { continue }
+                run(t) {
+                    let r = img.rect
+                    all.append(Instance(rect: SIMD4(Float(r.minX) * s, Float(r.minY) * s, Float(r.width) * s, Float(r.height) * s),
+                                        uv: SIMD4(Float(img.sourceRect.minX), Float(img.sourceRect.minY), Float(img.sourceRect.maxX), Float(img.sourceRect.maxY)),
+                                        color: SIMD4(1, 1, 1, 1), clip: Self.noClip, kind: 3))
+                }
+            }
         }
-        return all
+        let built = scene.rows.map { (top: Float($0.top) * s, rows: instances(for: $0.line, scale: scene.scale, thicken: scene.thicken)) }
+        images(.belowBackground)
+        run { for (dy, r) in built { for var i in r.back { i.rect.x += pad; i.rect.y += dy; all.append(i) } } }
+        images(.belowText)
+        run { for (dy, r) in built { for var i in r.front { shift(&i, dx: pad, dy: dy); all.append(i) } } }
+        images(.aboveText)
+        run {
+            func text(_ lines: [(top: CGFloat, line: TerminalLine)]) {
+                for (top, line) in lines {
+                    let r = build(line, scale: scene.scale, thicken: scene.thicken)
+                    let dy = Float(top) * s
+                    for var i in r.back { i.rect.x += pad; i.rect.y += dy; all.append(i) }
+                    for var i in r.front { shift(&i, dx: pad, dy: dy); all.append(i) }
+                }
+            }
+            text(scene.composing)
+            for r in scene.overlay { all.append(rect(r.rect, color: r.color, scale: scene.scale)) }
+            text(scene.overlayText)
+        }
+        forgetImages(except: Set(scene.images.map(\.key)))
+        return (all, segments)
+    }
+
+    // MARK: Images
+
+    /// Kitty images uploaded, by their key (the image and its generation),
+    /// dropped once a frame doesn't show them.
+    private var imageTextures: [String: MTLTexture] = [:]
+
+    private func imageTexture(_ img: Scene.Image) -> MTLTexture? {
+        if let t = imageTextures[img.key] { return t }
+        let w = img.source.width, h = img.source.height
+        guard w > 0, h > 0, w <= 16384, h <= 16384 else { return nil }
+        // Premultiplied RGBA in sRGB, as the pane's context would draw it.
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(img.source, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
+        desc.usage = .shaderRead
+        guard let t = device.makeTexture(descriptor: desc) else { return nil }
+        t.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: pixels, bytesPerRow: w * 4)
+        imageTextures[img.key] = t
+        return t
+    }
+
+    private func forgetImages(except shown: Set<String>) {
+        guard imageTextures.count > shown.count else { return }
+        imageTextures = imageTextures.filter { shown.contains($0.key) }
     }
 
     private func shift(_ i: inout Instance, dx: Float, dy: Float) {
@@ -224,6 +308,12 @@ public final class TerminalMetalRenderer {
 
     private static let noClip = SIMD4<Float>(1, 0, 0, 0)
 
+    /// Dark text: font smoothing (font-thicken) thickens it differently
+    /// from light text, so its glyphs are rasterised as dark on light.
+    static func isDark(_ c: TerminalColor) -> Bool {
+        0.2126 * Double(c.rgb.r) + 0.7152 * Double(c.rgb.g) + 0.0722 * Double(c.rgb.b) < 128
+    }
+
     private func rect(_ r: CGRect, color c: TerminalColor, scale: CGFloat) -> Instance {
         let s = Float(scale)
         return Instance(rect: SIMD4(Float(r.minX) * s, Float(r.minY) * s, Float(r.width) * s, Float(r.height) * s),
@@ -242,15 +332,16 @@ public final class TerminalMetalRenderer {
             switch item {
             case .glyphs(let g):
                 let c = color(g.color)
+                let dark = Self.isDark(g.color)
                 for (glyph, p) in zip(g.glyphs, g.positions) {
                     // Glyph space to the row's pixels: at (x, baseline), y up.
                     let m = CGAffineTransform(a: scale, b: 0, c: 0, d: -scale, tx: p.x * scale, ty: -p.y * scale)
-                    if let i = glyphInstance(g.font, glyph, m, color: c, clip: nil, thicken: thicken) { r.front.append(i) }
+                    if let i = glyphInstance(g.font, glyph, m, color: c, clip: nil, thicken: thicken, darkText: dark) { r.front.append(i) }
                 }
             case .fitted(let f):
                 let m = CGAffineTransform(scaleX: 1, y: -1).concatenating(f.transform).concatenating(CGAffineTransform(scaleX: scale, y: scale))
                 let clip = f.clip.map { CGRect(x: $0.minX * scale, y: $0.minY * scale, width: $0.width * scale, height: $0.height * scale) }
-                if let i = glyphInstance(f.font, f.glyph, m, color: color(f.color), clip: clip, thicken: thicken) { r.front.append(i) }
+                if let i = glyphInstance(f.font, f.glyph, m, color: color(f.color), clip: clip, thicken: thicken, darkText: Self.isDark(f.color)) { r.front.append(i) }
             }
         }
         return r
@@ -261,14 +352,14 @@ public final class TerminalMetalRenderer {
     /// pixels: its origin on a whole pixel vertically and a quarter pixel
     /// across (subpixel positioning is horizontal only). Whole pixels move
     /// the quad; the quarter is rasterised in.
-    private func glyphInstance(_ font: CTFont, _ glyph: CGGlyph, _ m: CGAffineTransform, color: SIMD4<Float>, clip: CGRect?, thicken: Bool) -> Instance? {
+    private func glyphInstance(_ font: CTFont, _ glyph: CGGlyph, _ m: CGAffineTransform, color: SIMD4<Float>, clip: CGRect?, thicken: Bool, darkText: Bool) -> Instance? {
         let qx = (m.tx * 4).rounded() / 4
         let ix = floor(qx), iy = ceil(m.ty)
         let fx = qx - ix, fy: CGFloat = 0
         var local = m
         local.tx = fx
         local.ty = fy
-        guard let e = atlas.glyph(font, glyph, local, thicken: thicken) else { return nil }
+        guard let e = atlas.glyph(font, glyph, local, thicken: thicken, darkText: thicken && darkText) else { return nil }
         let x = Float(ix) + Float(e.origin.x), y = Float(iy) + Float(e.origin.y)
         let clipV = clip.map { SIMD4<Float>(Float($0.minX), Float($0.minY), Float($0.maxX), Float($0.maxY)) } ?? Self.noClip
         return Instance(rect: SIMD4(x, y, Float(e.size.width), Float(e.size.height)),
@@ -319,6 +410,11 @@ public final class TerminalMetalRenderer {
         constexpr sampler s(coord::pixel, filter::nearest);
         float4 t = atlas.sample(s, in.uv);
         if (in.kind == 1) { float a = t.a * c.a; return float4(c.rgb * a, a); }
+        if (in.kind == 3) {
+            // An image, scaled to its place: smoothed, as CoreGraphics draws it.
+            constexpr sampler smooth(coord::pixel, filter::linear, address::clamp_to_edge);
+            return atlas.sample(smooth, in.uv);
+        }
         return t * c.a;
     }
     """
@@ -340,6 +436,7 @@ final class GlyphAtlas {
         let glyph: CGGlyph
         let a: Float, b: Float, c: Float, d: Float, tx: Float, ty: Float
         let thicken: Bool
+        let darkText: Bool
     }
 
     /// A CTFont by value: fallback fonts come back as new objects per line.
@@ -381,15 +478,19 @@ final class GlyphAtlas {
 
     /// The glyph drawn with `m` (its linear part, and a translation under a
     /// pixel), rasterised if it's new. nil: nothing to draw (a space).
-    func glyph(_ font: CTFont, _ glyph: CGGlyph, _ m: CGAffineTransform, thicken: Bool) -> Entry? {
-        let key = Key(font: FontKey(font: font), glyph: glyph, a: Float(m.a), b: Float(m.b), c: Float(m.c), d: Float(m.d), tx: Float(m.tx), ty: Float(m.ty), thicken: thicken)
+    /// With font smoothing (thicken), CoreGraphics thickens dark text on a
+    /// light background less than light text on a dark one; `darkText`
+    /// rasterises it as dark on light, to match.
+    func glyph(_ font: CTFont, _ glyph: CGGlyph, _ m: CGAffineTransform, thicken: Bool, darkText: Bool) -> Entry? {
+        let key = Key(font: FontKey(font: font), glyph: glyph, a: Float(m.a), b: Float(m.b), c: Float(m.c), d: Float(m.d), tx: Float(m.tx), ty: Float(m.ty),
+                      thicken: thicken, darkText: darkText)
         if let e = entries[key] { return e }
-        let e = rasterise(font, glyph, m, thicken: thicken)
+        let e = rasterise(font, glyph, m, thicken: thicken, darkText: darkText)
         entries[key] = e
         return e
     }
 
-    private func rasterise(_ font: CTFont, _ glyph: CGGlyph, _ m: CGAffineTransform, thicken: Bool) -> Entry? {
+    private func rasterise(_ font: CTFont, _ glyph: CGGlyph, _ m: CGAffineTransform, thicken: Bool, darkText: Bool) -> Entry? {
         var g = glyph
         var bounds = CGRect.zero
         CTFontGetBoundingRectsForGlyphs(font, .horizontal, &g, &bounds, 1)
@@ -412,18 +513,34 @@ final class GlyphAtlas {
         ctx.translateBy(x: CGFloat(-x0), y: CGFloat(h + y0))
         ctx.scaleBy(x: 1, y: -1)
         ctx.concatenate(m)
-        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        let colored = CTFontGetSymbolicTraits(font).contains(.traitColorGlyphs)
+        let inverted = darkText && !colored
+        if inverted {
+            // Black on opaque white: coverage is how dark each pixel came out.
+            ctx.saveGState()
+            ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: -100_000, y: -100_000, width: 200_000, height: 200_000))
+            ctx.restoreGState()
+            ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+        } else {
+            ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        }
         var origin = CGPoint.zero
         CTFontDrawGlyphs(font, &g, &origin, 1, ctx)
         guard let data = ctx.data else { return nil }
         let src = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        if inverted {
+            for i in stride(from: 0, to: w * h * 4, by: 4) {
+                let a = 255 - src[i + 1] // green: closest to perceived darkness
+                src[i] = a; src[i + 1] = a; src[i + 2] = a; src[i + 3] = a
+            }
+        }
         pixels.withUnsafeMutableBytes { buf in
             for row in 0..<h {
                 memcpy(buf.baseAddress! + ((slot.y + row) * width + slot.x) * 4, src + row * w * 4, w * 4)
             }
         }
         dirty = (min(dirty?.minY ?? slot.y, slot.y), max(dirty?.maxY ?? 0, slot.y + h - 1))
-        let colored = CTFontGetSymbolicTraits(font).contains(.traitColorGlyphs)
         return Entry(uv: CGRect(x: slot.x, y: slot.y, width: w, height: h), origin: CGPoint(x: x0, y: y0),
                      size: CGSize(width: w, height: h), colored: colored)
     }

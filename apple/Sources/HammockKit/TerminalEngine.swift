@@ -24,6 +24,8 @@ public struct TerminalCell: Hashable, Sendable {
     public var wide = false          // occupies this and the next column
     public var spacer = false        // trailing half of a wide cell
     public var selected = false
+
+    public init(text: String) { self.text = text }
 }
 
 public enum CursorStyle: Sendable, Hashable { case block, bar, underline, hollow }

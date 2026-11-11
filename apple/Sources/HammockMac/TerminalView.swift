@@ -452,6 +452,25 @@ final class TerminalNSView: NSView {
         if let timing { timing(frameTime, CACurrentMediaTime() - start - frameTime) }
     }
 
+    /// A Metal pane drawn by CoreGraphics instead, for the debug snapshots:
+    /// they render the window's layers, which can't see a Metal layer's
+    /// contents. nil for a pane CoreGraphics draws anyway.
+    func snapshotImage(scale: CGFloat) -> CGImage? {
+        guard metal != nil, bounds.width >= 1, bounds.height >= 1 else { return nil }
+        let w = Int(bounds.width * scale), h = Int(bounds.height * scale)
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.translateBy(x: 0, y: CGFloat(h))
+        ctx.scaleBy(x: scale, y: -scale)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        benchRects = [bounds] // outside a display pass: draw every row
+        draw(bounds)
+        benchRects = nil
+        NSGraphicsContext.restoreGraphicsState()
+        return ctx.makeImage()
+    }
+
     /// Draws the pane into `texture` with Metal (RenderBench). The command
     /// buffer is committed; wait on it before reading the texture.
     func renderMetal(into texture: MTLTexture, scale: CGFloat) -> MTLCommandBuffer? {
@@ -464,9 +483,9 @@ final class TerminalNSView: NSView {
         return cb
     }
 
-    /// What Metal draws: the same rows, cursor and link underline as
-    /// draw(_:). Not yet: Kitty images, and IME text being composed (#18,
-    /// phase 3). Also returns the time spent in frame().
+    /// What Metal draws: the same as draw(_:): Kitty images, the rows, a
+    /// link's underline, text being composed, the cursor. Also returns the
+    /// time spent in frame().
     private func metalScene(scale: CGFloat) -> (TerminalMetalRenderer.Scene, CFTimeInterval)? {
         guard let session else { return nil }
         let theme = session.engine.theme
@@ -482,6 +501,12 @@ final class TerminalNSView: NSView {
         let layout = lineLayout(for: f, theme: theme)
         for (y, row) in f.cells.enumerated() {
             scene.rows.append((padding + CGFloat(y) * cellHeight, layout.line(row)))
+        }
+        for img in session.engine.images() {
+            let rect = CGRect(x: padding + CGFloat(img.col) * cellWidth + img.offsetX / scale,
+                              y: padding + CGFloat(img.row) * cellHeight + img.offsetY / scale,
+                              width: img.width / scale, height: img.height / scale)
+            scene.images.append(.init(key: img.key, source: img.source, sourceRect: img.sourceRect, rect: rect, layer: img.layer))
         }
         if let link = hoverLink {
             for span in link.spans where span.row < f.rows {
@@ -514,6 +539,7 @@ final class TerminalNSView: NSView {
                     if f.cursorX < cells.count, !cells[f.cursorX].text.isEmpty {
                         var c = cells[f.cursorX]
                         c.fg = f.background
+                        c.bg = nil // the cursor is its background
                         c.inverse = false
                         c.selected = false
                         scene.overlayText.append((rect.minY, layout.layout([(f.cursorX, c)], row: cells)))
@@ -521,7 +547,38 @@ final class TerminalNSView: NSView {
                 }
             }
         }
+        if let composing = markedLine(frame: f, theme: theme, layout: layout) {
+            scene.composing.append((padding + CGFloat(f.cursorY) * cellHeight, composing))
+        }
         return (scene, frameTime)
+    }
+
+    /// Text being composed in an input method, at the cursor and underlined
+    /// (drawMarkedText's, as cells: two for a character wider than one).
+    private func markedLine(frame f: TerminalFrame, theme: TerminalTheme, layout: TerminalLineLayout) -> TerminalLine? {
+        guard markedText.length > 0 else { return nil }
+        var row = [TerminalCell](repeating: TerminalCell(text: ""), count: max(f.cursorX, 0))
+        var cells: [(col: Int, cell: TerminalCell)] = []
+        for ch in markedText.string {
+            let s = String(ch)
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: [.font: font]))
+            let wide = CTLineGetTypographicBounds(line, nil, nil, nil) > Double(cellWidth) * 1.5
+            var c = TerminalCell(text: s)
+            c.fg = theme.foreground
+            c.bg = theme.background
+            c.underline = true
+            c.wide = wide
+            cells.append((row.count, c))
+            row.append(c)
+            if wide {
+                var spacer = TerminalCell(text: "")
+                spacer.spacer = true
+                spacer.bg = theme.background
+                cells.append((row.count, spacer))
+                row.append(spacer)
+            }
+        }
+        return layout.layout(cells, row: row)
     }
 
     /// Draws Kitty graphics images in one layer. Sizes are in device pixels

@@ -95,6 +95,8 @@ Since 2026-11-11 rows are laid out by `TerminalLineLayout` (HammockKit): each ro
 | tui | 200×60 | 6.77 | 3.08 | 0.36 | 0% |
 | unicode | 200×60 | 5.86 | 0.79 | 0.22 | 0.15% (emoji edges) |
 | typing at a full screen of colour | 200×60 | 3.84 | 0.55 | 0.14 | 0% |
+| Kitty images, one in each layer | 120×40 | 2.83 | 0.23 | 0.08 | 0% |
+| text being composed (IME) | 120×30 | 1.17 | 0.24 | 0.10 | 0.10% (laid out on the grid) |
 | Claude Code (recorded) | 160×48 | 0.82 | 0.25 | 0.26 | 0% |
 | powerline prompt (recorded) | 160×48 | 1.12 | 0.24 | 0.29 | 0.006% |
 | vim (recorded) | 160×48 | 0.83 | 0.21 | 0.25 | 0% |

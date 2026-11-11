@@ -16,6 +16,11 @@ public struct TerminalImage {
     public var width: CGFloat        // pixels to draw at
     public var height: CGFloat
     public var image: CGImage        // already cropped to the source rectangle
+    /// The whole image, the part of it shown (pixels), and a key that stays
+    /// the same while the image does: for a renderer that uploads it once.
+    public var source: CGImage
+    public var sourceRect: CGRect
+    public var key: String
 }
 
 /// Kitty images need storage, and PNGs a decoder (ImageIO here). Set up once
@@ -118,9 +123,11 @@ extension TerminalEngine {
             let sw: UInt32 = get(GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_WIDTH, 0)
             let sh: UInt32 = get(GHOSTTY_RENDER_STATE_IMAGE_DATA_SOURCE_HEIGHT, 0)
             var img = full
+            var sourceRect = CGRect(x: 0, y: 0, width: full.width, height: full.height)
             if sw > 0, sh > 0, Int(sw) != full.width || Int(sh) != full.height,
                let c = full.cropping(to: CGRect(x: Int(sx), y: Int(sy), width: Int(sw), height: Int(sh))) {
                 img = c
+                sourceRect = CGRect(x: Int(sx), y: Int(sy), width: Int(sw), height: Int(sh))
             }
             var layer = GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT
             ghostty_render_state_image_get(it, GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER, &layer)
@@ -134,7 +141,7 @@ extension TerminalEngine {
                 offsetY: CGFloat(get(GHOSTTY_RENDER_STATE_IMAGE_DATA_CELL_OFFSET_Y, UInt32(0))),
                 width: CGFloat(get(GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_WIDTH, UInt32(0))),
                 height: CGFloat(get(GHOSTTY_RENDER_STATE_IMAGE_DATA_PIXEL_HEIGHT, UInt32(0))),
-                image: img))
+                image: img, source: full, sourceRect: sourceRect, key: key))
         }
         imageCache = imageCache.filter { live.contains($0.key) }
         return out.sorted { $0.z < $1.z }

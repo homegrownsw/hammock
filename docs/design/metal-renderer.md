@@ -65,17 +65,13 @@ A profile of the 400×100 colour screen (`sample` during the bench) splits a dra
 
 1. **Line layout and line cache, drawn by CoreText.** Done 2026-11-11 (`TerminalLineLayout`): pixel for pixel the old output, and 3–5× faster on scrolling screens (colour at 400×100: 53.5 → 16.3 ms), 1.8× on floods (53.5 → 29.9 ms), where every row is new and nothing can be kept (`docs/benchmarks.md`). Two findings: in a flood the cache never hits, so what made floods faster was shaping each row once with fonts only, a cheap row hash, and attributes built once; and with rows kept, what's left is CoreGraphics rasterising glyphs, which is Metal's to remove.
 2. **Metal for plain text,** behind a config key (`terminal-renderer = coretext | metal`, CoreText by default): backgrounds, text, bold, italic, faint, cursor, decorations, blocks. Bench and PNGs alongside CoreText. Done 2026-11-11 (`TerminalMetalRenderer`): it draws every bench screen and the recordings of a powerline prompt, Claude Code and vim the same as CoreText (no pixel differs visibly on 15 of 17; a few emoji edges on the other two), at 1.6–2 ms of CPU and 0.6 ms of GPU for a full 400×100 pane instead of 12–16 ms; a flood into a full-screen 6K pane draws ~77 frames a second instead of ~18. What made it match: glyphs placed as CoreGraphics places them (origins on a whole pixel vertically, a quarter pixel across), and blending in encoded sRGB. A pane backed by a CAMetalLayer is never asked to update by AppKit, so the pane keeps an ordinary layer and draws into a Metal sublayer from `updateLayer`. Not yet drawn by Metal: Kitty images and IME text being composed; debug snapshots (`cacheDisplay`) don't see it.
-3. **Parity:**
-   - fallback fonts and colour emoji;
-   - the box-drawing, powerline and icon fitting;
-   - selection, hover links and IME;
-   - Kitty images;
-   - `font-thicken`, `adjust-cell-height` and themes;
-   - pane animations, zoom and fold;
-   - moving between displays;
-   - the snapshot read-back.
+3. **Parity.** Done 2026-11-11:
+   - Kitty images in their three layers (below the cells' backgrounds, between them and the text, above the text), uploaded once per image (`TerminalImage` now carries the whole image, the part shown and a key) and drawn smoothed, as CoreGraphics draws them: a bench screen with one in each layer matches CoreText.
+   - Text being composed in an input method, at the cursor and underlined, drawn before the cursor so the cursor shows on it. It's laid out on the grid (CJK two cells), where it will land once committed, rather than at its natural width as CoreText draws it.
+   - `font-thicken`: CoreGraphics thickens dark text on light differently from light text on dark, so with it on, dark text's glyphs are rasterised as dark on light. Plain text matches exactly; coloured text within 64/255 here and there.
+   - Debug snapshots (`HMK_DEBUG_SNAPSHOT`): they render the window's layers, which can't see a Metal layer, so a Metal pane draws itself with CoreGraphics into the snapshot.
+   - Already right from phase 2: fallback fonts and colour emoji, box drawing, powerline and icon fitting, selection, links, themes, `adjust-cell-height`, pane animations, zoom and fold (checked by hand), and a window moving to a display of another scale (glyphs are keyed by their transform, which includes the scale).
 
-   Checked against a list of screens, the bench's eight plus Claude Code, nvim, htop and a powerline prompt, light and dark.
 4. **Default to Metal on the Mac,** with CoreText still selectable for a release, then removed (or kept as the snapshot fallback, if that turns out simpler).
 5. **The iPhone.** `TerminalScreen.swift` has its own, simpler CoreText renderer without the icon fitting or block elements. Moving it onto the shared line layout and the Metal renderer brings it to parity with the Mac.
 
