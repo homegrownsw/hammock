@@ -159,9 +159,6 @@ struct ScheduledTasksSheet: View {
             }
             Divider()
             HStack {
-                Text("To show a page beside a run, the agent calls `hmk show`.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
