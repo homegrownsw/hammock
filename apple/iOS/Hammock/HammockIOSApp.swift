@@ -276,6 +276,14 @@ final class Session {
             self.host = paired
             self.persist()
         }
+        // Dealt with (here, on the Mac or anywhere else): its notification
+        // goes from Notification Center, as on the Mac. Silent pushes do
+        // this while the app isn't running (DeliveredNotes.clear).
+        m.onResolved = { ids in Push.shared.withdraw(ids, host: h.id) }
+        m.onFullState = { [weak m] in
+            guard let m else { return }
+            Push.shared.reconcile(m, host: h.id)
+        }
         // Renamed on the Mac (Settings ▸ Sharing): the list and title follow.
         m.onHostName = { [weak self] name in
             guard let self, let i = self.hosts.firstIndex(where: { $0.id == h.id }), self.hosts[i].hostName != name else { return }

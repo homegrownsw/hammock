@@ -92,6 +92,14 @@ type pushNote struct {
 	// At is when it was sent (Unix seconds): the phone drops one much older,
 	// so a relay can't replay old notifications.
 	At int64 `json:"at,omitempty"`
+	// Live: about something that's resolved (answered, seen, cleared,
+	// withdrawn), and goes from the phone then: when a clear for its ID
+	// arrives, or the app finds it's no longer live.
+	Live bool `json:"live,omitempty"`
+	// Clear: not a notification but word that what ID was about is
+	// resolved: the phone takes down what it showed for it (sent silently,
+	// clearPushes).
+	Clear bool `json:"clear,omitempty"`
 }
 
 // pushTag stands in for an id in what the relay sees (a notification's
@@ -327,6 +335,9 @@ func (d *Daemon) push(event, collapse string, n pushNote, pending func() bool) {
 		}
 	}
 	n.ID = collapse
+	// Whatever is pending until something resolves it (all but a
+	// scheduled run's result) is cleared from the phone when it is.
+	n.Live = pending != nil
 	go d.pushWhenAway(event, collapse, n, pending)
 }
 
@@ -370,6 +381,11 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 			to = append(to, target{deviceID, r})
 		}
 	}
+	if n.Live {
+		for _, t := range to {
+			d.notePushed(collapse, t.id)
+		}
+	}
 	d.mu.Unlock()
 	for _, t := range to {
 		if sealed, err := seal(t.r.Key, plain); err == nil {
@@ -391,7 +407,7 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 			n.Host = fp
 		}
 	}
-	n.ID, n.At = collapse, time.Now().Unix()
+	n.ID, n.At, n.Live = collapse, time.Now().Unix(), true
 	plain, _ := json.Marshal(n)
 	for _, id := range deviceIDs {
 		r := &pb.RegisterPush{}
@@ -399,9 +415,94 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 			continue
 		}
 		if sealed, err := seal(r.Key, plain); err == nil {
+			d.notePushed(collapse, id)
 			go d.sendPush(id, r, sealed, n, collapse)
 		}
 	}
+}
+
+// notePushed records that a phone was sent a notification about id, so it's
+// told when that's resolved (clearPushes). Callers hold d.mu.
+func (d *Daemon) notePushed(id, deviceID string) {
+	if d.pushSent == nil {
+		d.pushSent = map[string][]string{}
+	}
+	if !slices.Contains(d.pushSent[id], deviceID) {
+		d.pushSent[id] = append(d.pushSent[id], deviceID)
+	}
+}
+
+// clearPushes: what u resolves (attention items cleared, grants, join and
+// Hammock Key requests answered or withdrawn) is no longer anything to be
+// told about. The phones that were told get a silent push saying so, and
+// take its notification out of Notification Center, wherever it was dealt
+// with. Callers hold d.mu.
+func (d *Daemon) clearPushes(u *pb.StateUpdate) {
+	if len(d.pushSent) == 0 {
+		return
+	}
+	var ids []string
+	for _, l := range [][]string{u.ClearedAttentionIds, u.ResolvedGrantIds, u.ResolvedJoinIds, u.ResolvedHammockKeyIds} {
+		ids = append(ids, l...)
+	}
+	var recs map[string][]byte
+	for _, id := range ids {
+		phones := d.pushSent[id]
+		if len(phones) == 0 {
+			continue
+		}
+		delete(d.pushSent, id)
+		if recs == nil {
+			if recs, _ = d.store.Records("push"); recs == nil {
+				return
+			}
+		}
+		n := pushNote{ID: id, Host: d.remote.fingerprint, At: time.Now().Unix(), Clear: true}
+		if n.Host == "" {
+			if _, fp, err := loadOrCreateCert(d.cfg.Dir); err == nil {
+				n.Host = fp
+			}
+		}
+		if clearedPush != nil {
+			clearedPush(id)
+		}
+		plain, _ := json.Marshal(n)
+		for _, deviceID := range phones {
+			r := &pb.RegisterPush{}
+			if b := recs[deviceID]; b == nil || proto.Unmarshal(b, r) != nil {
+				continue
+			}
+			if sealed, err := seal(r.Key, plain); err == nil {
+				go d.sendClear(deviceID, r, sealed)
+			}
+		}
+	}
+}
+
+// clearedPush, in tests, hears of each clear sent. Called holding d.mu.
+var clearedPush func(id string)
+
+// sendClear asks the relay for a silent push. Best effort: a relay from
+// before clears answers 404 for the path, which says nothing about the
+// phone (unlike a send's), and the app tidies up when it next opens anyway.
+func (d *Daemon) sendClear(deviceID string, r *pb.RegisterPush, sealed []byte) {
+	if !knownRelay(r.RelayUrl) {
+		return
+	}
+	body, _ := json.Marshal(map[string]string{"id": r.RelayId, "payload": base64.StdEncoding.EncodeToString(sealed)})
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayOrigin(r.RelayUrl)+"/clear", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("content-type", "application/json")
+	resp, err := pushClient.Do(req)
+	if err != nil {
+		d.log.Debug("push clear", "device", deviceID, "err", err)
+		return
+	}
+	resp.Body.Close()
 }
 
 // seal encrypts with AES-256-GCM: nonce | ciphertext | tag (CryptoKit's
