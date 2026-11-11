@@ -40,7 +40,11 @@ func (d *Daemon) serverStatus() *pb.ServerMessage {
 			continue
 		}
 		seen[kind+c.name] = true
-		r.Connected = append(r.Connected, &pb.Connected{Name: c.name, Kind: kind})
+		name := c.name
+		if sl := d.comp.links[c.peer]; kind == "computer" && sl != nil && sl.Record != nil && sl.Record.Name != "" {
+			name = sl.Record.Name // a linked computer is yours: its name, not its person's
+		}
+		r.Connected = append(r.Connected, &pb.Connected{Name: name, Kind: kind})
 	}
 	for _, a := range d.attention {
 		if a.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT || a.State == pb.AgentState_AGENT_STATE_ERRORED {

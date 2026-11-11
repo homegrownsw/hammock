@@ -86,7 +86,7 @@ func (d *Daemon) loadIdentity() error {
 	name := d.store.Setting("profile.name")
 	if name == "" {
 		if u, err := user.Current(); err == nil {
-			name = strings.TrimSpace(u.Name)
+			name = personName(u)
 			if name == "" {
 				name = u.Username
 			}
@@ -98,6 +98,17 @@ func (d *Daemon) loadIdentity() error {
 		DeviceName: d.deviceName(), Avatar: avatar, Me: true,
 	}}
 	return nil
+}
+
+// personName is the full name of an account, from its GECOS field on Linux
+// (its first part: "Sam Smith,Room 1,..."). root's is a description, not a
+// person ("Console and webGui login account" on Unraid, "root" elsewhere).
+func personName(u *user.User) string {
+	if u.Uid == "0" {
+		return ""
+	}
+	n, _, _ := strings.Cut(u.Name, ",")
+	return strings.TrimSpace(n)
 }
 
 // deviceName is this Mac's name as others see it: the one set in Settings
