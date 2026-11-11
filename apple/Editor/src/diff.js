@@ -1206,6 +1206,16 @@ let dragRange = null // { path, side, from, to }: lines being dragged over, show
 function gutterDown(view, block, e, path) {
   if (e.button !== 0) return false
   const line = view.state.doc.lineAt(block.from).number
+  // Touch (no drag, no shift): with a comment box open in this file, a
+  // second line stretches it over the lines between.
+  if (touch() && composer && composer.path === path && composer.side === sideOf(view) && composer.line > 0) {
+    const anchor = composer.anchor || composer.line
+    if (line !== anchor || composer.endLine !== composer.line) {
+      openComposer({ path, side: sideOf(view), line: Math.min(anchor, line), endLine: Math.max(anchor, line), anchor })
+    }
+    e.preventDefault()
+    return true
+  }
   // Shift-click: from the line the comment box is on to this one.
   if (e.shiftKey && composer && composer.path === path && composer.side === sideOf(view)) {
     openComposer({ path, side: sideOf(view), line: Math.min(composer.line, line), endLine: Math.max(composer.line, line) })
@@ -1252,6 +1262,11 @@ function gutterDown(view, block, e, path) {
 
 function openComposer(c) {
   const was = composer
+  // Stretched to more lines (or moved): what's typed comes along.
+  if (was && drafts.has(composerKey(was)) && composerKey(was) !== composerKey(c)) {
+    drafts.set(composerKey(c), drafts.get(composerKey(was)))
+    drafts.delete(composerKey(was))
+  }
   composer = c
   if (was && was.path !== c.path) refreshThreads(was.path)
   refreshThreads(c.path)
@@ -1267,10 +1282,14 @@ function closeComposer() {
   if (was) { drafts.delete(composerKey(was)); refreshThreads(was.path) }
 }
 
+// touch is a phone (or tablet): no mouse to drag with.
+const touch = () => config.platform === "ios" || matchMedia("(pointer: coarse)").matches
+
 function linesText(c) {
   if (c.line === 0) return "Commenting on the file"
   const side = c.side === "old" ? " (before the change)" : ""
-  return (c.endLine > c.line ? `Commenting on lines ${c.line}–${c.endLine}` : `Commenting on line ${c.line}`) + side
+  const hint = touch() ? " · tap another line number for more lines" : ""
+  return (c.endLine > c.line ? `Commenting on lines ${c.line}–${c.endLine}` : `Commenting on line ${c.line}`) + side + hint
 }
 
 // buttons is a comment box's row: Cancel, then keep it (Add Comment,

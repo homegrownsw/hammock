@@ -155,7 +155,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let tab = model.tab(of: pane)
         content.title = tab.map { model.title(of: $0) } ?? "Review"
         content.subtitle = pane.diff.title
-        let who = model.panes[pane.diff.targetPaneID].map { AgentCatalog.name(of: $0.agent.harness) } ?? "The agent"
+        let who = model.panes[pane.diff.targetPaneID].map { AgentCatalog.shortName(of: $0.agent.harness) } ?? "The agent"
         content.body = new == 1 ? "\(who) replied to your review" : "\(who) replied to your review (\(new) new)"
         content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["paneID": pane.id]

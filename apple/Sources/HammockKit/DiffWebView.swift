@@ -116,7 +116,7 @@ extension AppModel {
         let group = self.group(ofPane: paneID)?.id
         func agent(_ p: Pane) -> DiffAgent {
             let tab = self.tab(of: p).map { title(of: $0) } ?? ""
-            return DiffAgent(id: p.id, name: AgentCatalog.name(of: p.agent.harness), detail: tab)
+            return DiffAgent(id: p.id, name: AgentCatalog.shortName(of: p.agent.harness), detail: tab)
         }
         var list: [DiffAgent] = []
         for p in panes.values where p.hasAgent && p.agent.state != .exited && p.id != paneID && self.group(ofPane: p.id)?.id == group {
