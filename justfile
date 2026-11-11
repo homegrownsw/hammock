@@ -227,11 +227,14 @@ site:
     [ -d "$repo/site" ] || { echo "No site repo at $repo (set HMK_SITE_REPO)." >&2; exit 1; }
     out="$repo/site/hammock"
     mkdir -p "$out"
-    perl -0pe 's{^[ \t]*/\*.*?\*/[ \t]*\n}{}gms; s{^[ \t]*//.*\n}{}gm' marketing/index.html > "$out/index.html"
+    strip() { perl -0pe 's{^[ \t]*/\*.*?\*/[ \t]*\n}{}gms; s{^[ \t]*//.*\n}{}gm' "$1"; }
+    strip marketing/index.html > "$out/index.html"
+    strip marketing/page.css > "$out/page.css"
+    for p in privacy support; do mkdir -p "$out/$p"; strip "marketing/$p.html" > "$out/$p/index.html"; done
     cp marketing/banner.png "$out/"
     sips -Z 512 apple/Resources/AppIcon-1024.png --out "$out/icon-512.png" >/dev/null
     sips -Z 256 apple/Resources/AppIcon-1024.png --out "$out/icon-256.png" >/dev/null
-    chmod 644 "$out"/*
+    find "$out" -type f -exec chmod 644 {} +
     git -C "$repo" status --short -- site/hammock
 
 # The release scripts' tests: notes, the check, and cutting releases against a throwaway repo.

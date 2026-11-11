@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy · Hammock</title>
+<meta name="description" content="What Hammock, for Mac and iPhone, does with your data: no account, no analytics, no tracking.">
+<meta name="theme-color" content="#06140e">
+<link rel="canonical" href="https://homegrownsw.com/hammock/privacy/">
+<link rel="icon" href="../icon-256.png">
+<link rel="apple-touch-icon" href="../icon-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../page.css">
+</head>
+<body>
+<div class="wrap">
+<nav aria-label="Main">
+  <a class="brand" href="../"><img src="../icon-256.png" alt="">Hammock</a>
+  <div class="links">
+    <a href="../">Home</a>
+    <a href="../support/">Support</a>
+    <a href="https://github.com/homegrownsw/hammock">GitHub</a>
+  </div>
+</nav>
+
+<main class="legal">
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 11 November 2026</p>
+
+  <p>Hammock is made by Homegrown Software Ltd. ("we", "us"). This policy covers Hammock for Mac, Hammock for iPhone, and Hammock on Linux and Unraid: what they do with your data, what they don't, and how to reach us.</p>
+
+  <h2>Summary</h2>
+  <ul>
+    <li>Hammock has no account, and never asks who you are.</li>
+    <li>There are no analytics, advertising or tracking in any part of Hammock.</li>
+    <li>Your terminals, agents and files stay on your own computers. Your iPhone talks to your Mac directly, not through us.</li>
+    <li>The only service we run for the apps is the one that passes notifications to your iPhone, and it can't read them.</li>
+  </ul>
+
+  <h2>What stays on your computers</h2>
+  <p>Everything Hammock shows you (your Groups, terminals, what your agents say and do, your settings, scrollback and files) lives on the Mac or server running Hammock. When you pair an iPhone, it connects to that computer directly, over your own network or VPN, with a key made during pairing; nothing it sees passes through us. Groups you share, and computers you link, connect to each other the same way.</p>
+  <p>On your iPhone, the app keeps your paired computers and its own settings, which are included in your device backups like any other app's data. The keys that let it read your notifications are kept out of backups.</p>
+
+  <h2>Notifications</h2>
+  <p>If you turn on notifications on your iPhone, it registers with our notification relay (run on Cloudflare), which keeps its Apple push token, a random ID your Macs send to, a hash used to unregister it, and when it was registered and last used. When your Mac has something to tell you, it encrypts the notification with a key only your iPhone holds and sends it to the relay, which passes it to Apple to deliver. The relay can't read what's in it, doesn't know who you are, and forgets any iPhone that hasn't used it for 60 days.</p>
+
+  <h2>Updates and downloads</h2>
+  <p>Hammock for Mac checks for updates by fetching a feed from homegrownsw.com, which points to the release files on GitHub. Those requests carry what every web request does (your IP address, and the app's version in its user agent) and nothing else. Our website keeps standard server logs, which we use only to keep it running. Downloads come from GitHub, under <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>.</p>
+
+  <h2>Services you connect</h2>
+  <p>Some features talk to services you've set up yourself, from your own computer, with your own sign-in: the coding agents you run and their providers, GitHub (when the agent view shows a pull request), and a service's usage limits if you choose to show them. Those go straight from your computer to that service, under its own privacy policy. We never see them.</p>
+
+  <h2>App Store and TestFlight</h2>
+  <p>Hammock for iPhone is distributed through Apple's App Store and TestFlight. Apple collects information about downloads and, if you allow it, crash reports and TestFlight feedback, under <a href="https://www.apple.com/legal/privacy/">Apple's privacy policy</a>. We may see what Apple shares with developers (download counts, crash reports, feedback you send), but no personal information about you.</p>
+
+  <h2>Children</h2>
+  <p>Hammock is a tool for developers. It doesn't knowingly collect any information from anyone, children included.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If we change this policy in a way that matters, we'll update the date at the top of this page and say so in the release notes. Hammock is open source, so you can also see exactly what it does in <a href="https://github.com/homegrownsw/hammock">its code</a>.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy? Email <a href="mailto:hammock@homegrownsw.com">hammock@homegrownsw.com</a>.</p>
+</main>
+
+<footer>
+  <a href="../">Hammock</a> · <a href="../support/">Support</a> · <a href="./">Privacy</a> · Made by <a href="https://homegrownsw.com/">Homegrown Software</a>
+</footer>
+</div>
+</body>
+</html>

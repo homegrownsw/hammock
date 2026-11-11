@@ -17,7 +17,7 @@ What the iPhone app sends, and where:
   it's a development build, and when it was registered and last used. Nothing about the person, and no content:
   notifications are encrypted on the Mac for that phone (a key only the phone and its Macs hold) and the relay only
   passes them to Apple. The token is used only to deliver the notifications the person asked for, not linked to an
-  identity, and not used for tracking, so Apple's definitions leave it out of the label. Devices unused for a while
+  identity, and not used for tracking, so Apple's definitions leave it out of the label. Devices unused for 60 days
   are deleted (`relay/push`).
 - **Nothing else**: no analytics, crash reporting, advertising or tracking SDKs, and no account.
 
