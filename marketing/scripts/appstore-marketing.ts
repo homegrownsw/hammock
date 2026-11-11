@@ -50,6 +50,8 @@ interface Layout {
   deviceRight?: number;
   /** frames-cli's colour for the frame on a dark or a light panel (none: its only one). */
   frame?: { dark: string; light: string };
+  /** frames-cli's frame by name, where the screenshot's size matches more than one device's. */
+  frameDevice?: string;
 }
 const data = JSON.parse(readFileSync(join(APPSTORE, "marketing.json"), "utf8")) as {
   panels: Panel[];
@@ -145,7 +147,8 @@ for (const dev of which) {
     const framedDir = join(work, "framed");
     rmSync(framedDir, { recursive: true, force: true });
     const colour = data.devices[dev].frame?.[panel.theme];
-    execFileSync(frames, ["frame", shot, "-o", framedDir, ...(colour ? ["--color", colour] : [])], { stdio: "ignore" });
+    const named = data.devices[dev].frameDevice;
+    execFileSync(frames, ["frame", shot, "-o", framedDir, ...(named ? ["--device", named] : []), ...(colour ? ["--color", colour] : [])], { stdio: "ignore" });
     const framed = join(framedDir, `${panel.shot}-${d.tag}_framed.png`);
     // From a file, so the page may show the framed image beside it (a page made from a string can't).
     const html = join(work, "page.html");
@@ -154,7 +157,8 @@ for (const dev of which) {
     await tab.evaluate(() => document.fonts.ready);
     // A headline that wraps onto more lines than it's written on, or a subline over two, doesn't fit its device.
     const fit = await tab.evaluate(() => {
-      const lines = [...document.querySelectorAll("h1 .line")].map((el) => el.getClientRects().length);
+      const h1lh = parseFloat(getComputedStyle(document.querySelector("h1")!).lineHeight);
+      const lines = [...document.querySelectorAll("h1 .line")].map((el) => Math.round(el.getBoundingClientRect().height / h1lh));
       const p = document.querySelector("p")!;
       const lh = parseFloat(getComputedStyle(p).lineHeight);
       return { wrapped: lines.some((n) => n > 1), sublines: Math.round(p.getBoundingClientRect().height / lh) };

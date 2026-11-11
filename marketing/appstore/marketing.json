@@ -1,11 +1,11 @@
 {
-  "//": "The App Store marketing images, one panel per image in the listing's order (marketing/appstore/README.md). Each shows one screenshot (scenes.json) in its device, light or dark, under a headline (\\n breaks a line; *words* are set in Hammock's colours) and a subline. `devices` lays the same panels out for each device. marketing/scripts/appstore-marketing.ts only draws what this says. A device's frame is in its frame colour for the panel's theme, where frames-cli has more than one.",
+  "//": "The App Store marketing images, one panel per image in the listing's order (marketing/appstore/README.md). Each shows one screenshot (scenes.json) in its device, light or dark, under a headline (\\n breaks a line; *words* are set in Hammock's colours) and a subline. `devices` lays the same panels out for each device. marketing/scripts/appstore-marketing.ts only draws what this says. A device's frame is in its frame colour for the panel's theme, where frames-cli has more than one. frameDevice names the frame where the screenshot's size matches more than one (the iPhone: the 17 Pro Max simulator takes them).",
   "panels": [
     {
       "id": "needs-you",
       "shot": "01-needs-you",
       "theme": "dark",
-      "headline": "Kick back.\nWe'll say when\nit *needs you*.",
+      "headline": "Kick back.\nKnow when an agent\n*needs you*.",
       "subline": "Every agent waiting on you, from all your Macs, in one place."
     },
     {
@@ -56,7 +56,8 @@
       "frame": {
         "dark": "Deep Blue",
         "light": "Silver"
-      }
+      },
+      "frameDevice": "iPhone 17 Pro Max Portrait"
     },
     "ipad": {
       "layout": "stacked",
@@ -69,12 +70,12 @@
     },
     "duo": {
       "layout": "beside",
-      "headline": 120,
+      "headline": 108,
       "subline": 44,
       "copyLeft": 150,
-      "copyWidth": 860,
-      "deviceWidth": 1700,
-      "deviceRight": 90,
+      "copyWidth": 1080,
+      "deviceWidth": 1540,
+      "deviceRight": 70,
       "frame": {
         "dark": "Night Sky",
         "light": "Star White"
