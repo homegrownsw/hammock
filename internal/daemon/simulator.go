@@ -289,7 +289,7 @@ func (h *simHub) read(c net.Conn) {
 			}
 			h.mu.Unlock()
 			h.d.simulatorState(m)
-		case "shotResult", "devicesResult", "copyResult", "runnerResult", "syncResult":
+		case "shotResult", "devicesResult", "copyResult", "runnerResult", "barrierResult":
 			h.mu.Lock()
 			ch := h.calls[m.Seq]
 			delete(h.calls, m.Seq)
@@ -513,9 +513,11 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 			}
 			// Not until the host has torn the pane down: shutting the device
 			// down under it crashes the host (helpers/simulator/host.m,
-			// forgetScreen). It handles lines in order, so a sync answered
+			// forgetScreen). It handles lines in order, so a barrier answered
 			// means the close before it is done.
-			_, _ = h.ask(map[string]any{"t": "sync"}, 5*time.Second)
+			if _, err := h.ask(map[string]any{"t": "barrier"}, 5*time.Second); err != nil {
+				d.log.Warn("simulator shutdown: the host didn't confirm the pane closed", "pane", p.id, "err", err)
+			}
 			h.shutDown(udid)
 			reply(map[string]any{"ok": true}, nil)
 			return

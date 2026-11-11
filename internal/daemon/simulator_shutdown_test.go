@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// TestSimulatorSyncAfterClose: the shutdown op waits on a sync after closing
+// TestSimulatorBarrierAfterClose: the shutdown op waits on a barrier after closing
 // the pane, so the host has torn the pane down before the device goes (a
 // device shut down under a pane's teardown crashed the host). The host
-// answers a sync after the lines before it, and the answer reaches ask.
-func TestSimulatorSyncAfterClose(t *testing.T) {
+// answers a barrier after the lines before it, and the answer reaches ask.
+func TestSimulatorBarrierAfterClose(t *testing.T) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	defer d.Shutdown()
@@ -25,7 +25,7 @@ func TestSimulatorSyncAfterClose(t *testing.T) {
 	defer ln.Close()
 	var mu sync.Mutex
 	var got []string
-	go func() { // a stand-in host: records lines, answers syncs
+	go func() { // a stand-in host: records lines, answers barriers
 		c, err := ln.Accept()
 		if err != nil {
 			return
@@ -43,8 +43,8 @@ func TestSimulatorSyncAfterClose(t *testing.T) {
 			mu.Lock()
 			got = append(got, m.T)
 			mu.Unlock()
-			if m.T == "sync" {
-				fmt.Fprintf(c, `{"t":"syncResult","seq":%d}`+"\n", m.Seq)
+			if m.T == "barrier" {
+				fmt.Fprintf(c, `{"t":"barrierResult","seq":%d}`+"\n", m.Seq)
 			}
 		}
 	}()
@@ -64,13 +64,13 @@ func TestSimulatorSyncAfterClose(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	h.close("p1", "")
-	if _, err := h.ask(map[string]any{"t": "sync"}, 2*time.Second); err != nil {
-		t.Fatalf("sync: %v", err)
+	if _, err := h.ask(map[string]any{"t": "barrier"}, 2*time.Second); err != nil {
+		t.Fatalf("barrier: %v", err)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(got) != 2 || got[0] != "close" || got[1] != "sync" {
-		t.Fatalf("host saw %v, want [close sync]", got)
+	if len(got) != 2 || got[0] != "close" || got[1] != "barrier" {
+		t.Fatalf("host saw %v, want [close barrier]", got)
 	}
 }
 
