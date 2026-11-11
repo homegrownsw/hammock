@@ -20,6 +20,9 @@
 //                    weekly refresh, or coming back after being forgotten)
 //   POST /unregister {id, secret}           → {}
 //   POST /send       {id, payload, thread?, collapse?, category?} → {}
+//   POST /clear      {id, payload}           → {} (a silent push: what a
+//                    notification was about is dealt with, so the phone
+//                    takes it down; it says which only in the ciphertext)
 //
 // Secrets (wrangler secret put): APNS_KEY (the .p8 file's contents),
 // APNS_KEY_ID, APNS_TEAM_ID. Vars: APNS_TOPIC (the app's bundle id).
@@ -38,7 +41,7 @@
 
 const MAX_PAYLOAD = 3000 // base64 ciphertext; APNs allows 4 KB in all
 const MAX_BODY = 4096 // the payload and the rest of a send
-const ROUTES = new Set(['/register', '/unregister', '/send'])
+const ROUTES = new Set(['/register', '/unregister', '/send', '/clear'])
 const CATEGORIES = new Set(['join', 'grant', 'hammockkey'])
 const DAY = 24 * 60 * 60 * 1000
 const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
@@ -69,6 +72,8 @@ export default {
           return await unregister(body, env)
         case '/send':
           return await send(body, env)
+        case '/clear':
+          return await send(body, env, true)
       }
       return json({ error: 'not found' }, 404)
     } catch (e) {
@@ -152,7 +157,7 @@ async function unregister({ id, secret }, env) {
   return json({})
 }
 
-async function send({ id, payload, thread, collapse, category }, env) {
+async function send({ id, payload, thread, collapse, category }, env, clear = false) {
   // Everything that needs no database first.
   if (!validID(id)) return json({ error: 'unknown device' }, 404)
   if (typeof payload !== 'string' || payload.length > MAX_PAYLOAD || !/^[A-Za-z0-9+/=]+$/.test(payload)) {
@@ -163,24 +168,38 @@ async function send({ id, payload, thread, collapse, category }, env) {
   if (env.SENDS && !(await env.SENDS.limit({ key: id })).success) return json({ error: 'slow down' }, 429)
   const dev = await device(env, id)
   if (!dev) return json({ error: 'unknown device' }, 404)
-  const aps = {
-    // Shown only if the phone can't decrypt (the extension replaces it).
-    alert: { title: 'Hammock', body: 'Something needs you' },
-    'mutable-content': 1,
-    sound: 'NeedsYou.caf', // Hammock's kalimba note, in the app's bundle (HammockNotify sets it too)
+  let aps, headers
+  if (clear) {
+    // Nothing shown: it wakes the app, which decrypts it and takes down the
+    // notification it names. Background pushes go at low priority (APNs
+    // turns down a 10), and iOS may hold them back.
+    aps = { 'content-available': 1 }
+    headers = {
+      authorization: 'bearer ' + (await apnsJWT(env)),
+      'apns-topic': env.APNS_TOPIC,
+      'apns-push-type': 'background',
+      'apns-priority': '5',
+    }
+  } else {
+    aps = {
+      // Shown only if the phone can't decrypt (the extension replaces it).
+      alert: { title: 'Hammock', body: 'Something needs you' },
+      'mutable-content': 1,
+      sound: 'NeedsYou.caf', // Hammock's kalimba note, in the app's bundle (HammockNotify sets it too)
+    }
+    // Only Hammock's own categories (the phone sets it again from the note).
+    if (CATEGORIES.has(category)) aps.category = category
+    // A Hammock Key request waits on you for a couple of minutes: through Focus.
+    if (category === 'hammockkey') aps['interruption-level'] = 'time-sensitive'
+    if (thread) aps['thread-id'] = String(thread).slice(0, 64)
+    headers = {
+      authorization: 'bearer ' + (await apnsJWT(env)),
+      'apns-topic': env.APNS_TOPIC,
+      'apns-push-type': 'alert',
+      'apns-priority': '10',
+    }
+    if (collapse) headers['apns-collapse-id'] = String(collapse).slice(0, 64)
   }
-  // Only Hammock's own categories (the phone sets it again from the note).
-  if (CATEGORIES.has(category)) aps.category = category
-  // A Hammock Key request waits on you for a couple of minutes: through Focus.
-  if (category === 'hammockkey') aps['interruption-level'] = 'time-sensitive'
-  if (thread) aps['thread-id'] = String(thread).slice(0, 64)
-  const headers = {
-    authorization: 'bearer ' + (await apnsJWT(env)),
-    'apns-topic': env.APNS_TOPIC,
-    'apns-push-type': 'alert',
-    'apns-priority': '10',
-  }
-  if (collapse) headers['apns-collapse-id'] = String(collapse).slice(0, 64)
   const host = dev.sandbox ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com'
   const r = await fetch(`${host}/3/device/${dev.token}`, { method: 'POST', headers, body: JSON.stringify({ aps, e: payload }) })
   if (!r.ok) {

@@ -295,3 +295,27 @@ test('only known categories reach Apple', async () => {
   assert.equal(sent[1].aps.category, 'hammockkey')
   assert.equal(sent[1].aps['interruption-level'], 'time-sensitive')
 })
+
+test('a clear is a silent push, with nothing but the ciphertext', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const token = 'cf'.repeat(32)
+  const reg = await (await worker.fetch(post('/register', { token }), env)).json()
+  const sent = []
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url, init })
+    return new Response(null, { status: 200 })
+  }
+  // Hints a send would pass on are ignored.
+  const r = await worker.fetch(post('/clear', { id: reg.id, payload: 'c2VjcmV0', thread: 't', collapse: 'c', category: 'grant' }), env)
+  assert.equal(r.status, 200)
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].url, 'https://api.push.apple.com/3/device/' + token)
+  assert.deepEqual(JSON.parse(sent[0].init.body), { aps: { 'content-available': 1 }, e: 'c2VjcmV0' })
+  assert.equal(sent[0].init.headers['apns-push-type'], 'background')
+  assert.equal(sent[0].init.headers['apns-priority'], '5')
+  assert.equal(sent[0].init.headers['apns-collapse-id'], undefined)
+  // Checked as a send is.
+  assert.equal((await worker.fetch(post('/clear', { id: 'f'.repeat(32), payload: 'eA==' }), env)).status, 404)
+  assert.equal((await worker.fetch(post('/clear', { id: reg.id, payload: '<script>' }), env)).status, 400)
+})

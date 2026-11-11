@@ -70,8 +70,9 @@ type Daemon struct {
 	ln     net.Listener
 	srv    *http.Server
 
-	mu        sync.Mutex // guards everything below; never acquired while holding a pane's mu
-	phoneAt   time.Time  // you last did something in Hammock on a paired phone (push.go)
+	mu        sync.Mutex          // guards everything below; never acquired while holding a pane's mu
+	phoneAt   time.Time           // you last did something in Hammock on a paired phone (push.go)
+	pushSent  map[string][]string // what phones were notified of, by id: told when it's resolved (push.go)
 	groups    map[string]*pb.Group
 	tabs      map[string]*pb.Tab
 	panes     map[string]*pane
@@ -514,6 +515,7 @@ func (d *Daemon) shutdown() {
 
 // publish sends a state update to every subscribed connection. Callers hold d.mu.
 func (d *Daemon) publish(u *pb.StateUpdate) {
+	d.clearPushes(u)
 	d.version++
 	u.Version = d.version
 	msg := &pb.ServerMessage{Msg: &pb.ServerMessage_State{State: u}}

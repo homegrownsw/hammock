@@ -257,6 +257,72 @@ extension Push {
     }
 }
 
+extension Push {
+    /// What these were about (on the Mac `host`) is dealt with, as the Mac
+    /// being shown says: their notifications go from Notification Center.
+    func withdraw(_ ids: [String], host: String) {
+        let ids = Set(ids)
+        Task {
+            let gone = await DeliveredNotes.from(host).filter { ids.contains($0.note.id) }
+            DeliveredNotes.remove(gone)
+        }
+    }
+
+    /// After connecting: notifications about what's no longer live on this
+    /// Mac go, including ones whose clear never came (iOS holds silent
+    /// pushes back, and doesn't wake an app that was swiped away).
+    func reconcile(_ model: AppModel, host: String) {
+        Task {
+            let delivered = await DeliveredNotes.from(host)
+            // Read after: something raised while iOS answered is live.
+            let live = model.liveNoticeIDs
+            DeliveredNotes.remove(delivered.filter { $0.note.live && !live.contains($0.note.id) })
+        }
+    }
+}
+
+/// Notifications in Notification Center, by what their note says.
+enum DeliveredNotes {
+    struct Note: Sendable {
+        let id: String
+        /// About something that's resolved (the Mac marks it), not a
+        /// scheduled run's result, which stays until you clear it.
+        let live: Bool
+        /// When the Mac sent it (by its clock).
+        let at: Double?
+    }
+
+    /// Those from one Mac (by its certificate fingerprint).
+    static func from(_ host: String) async -> [(identifier: String, note: Note)] {
+        await UNUserNotificationCenter.current().deliveredNotifications().compactMap { n in
+            guard let note = PushKeys.note(n.request.content.userInfo), let id = note["id"] as? String, !id.isEmpty,
+                  (note["host"] as? String)?.lowercased() == host.lowercased() else { return nil }
+            return (n.request.identifier, Note(id: id, live: note["live"] as? Bool ?? false, at: (note["at"] as? NSNumber)?.doubleValue))
+        }
+    }
+
+    static func remove(_ these: [(identifier: String, note: Note)]) {
+        guard !these.isEmpty else { return }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: these.map(\.identifier))
+    }
+
+    /// A silent push from a Mac saying what a notification was about is
+    /// dealt with (answered, seen or withdrawn, wherever): it goes. Only
+    /// one sent before the clear: the same thing can need you again since.
+    static func clear(_ userInfo: [AnyHashable: Any]) async -> Bool {
+        guard let note = PushKeys.note(userInfo), note["clear"] as? Bool == true, PushKeys.fresh(note),
+              let id = note["id"] as? String, !id.isEmpty, let host = note["host"] as? String else { return false }
+        let at = (note["at"] as? NSNumber)?.doubleValue
+        let gone = await from(host).filter { d in
+            guard d.note.id == id else { return false }
+            guard let at, let sent = d.note.at else { return true }
+            return sent <= at
+        }
+        remove(gone)
+        return !gone.isEmpty
+    }
+}
+
 /// This phone's relay id and the secret that proves it, in the Keychain for
 /// this device only: kept through a reinstall (so it keeps its id), never
 /// restored onto another phone from a backup (which would take this one's
@@ -302,5 +368,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         MainActor.assumeIsolated { Push.shared.failed(error) }
+    }
+
+    /// A silent push: a Mac clearing a notification (DeliveredNotes.clear).
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        nonisolated(unsafe) let info = userInfo
+        nonisolated(unsafe) let done = completionHandler
+        Task { @MainActor in
+            done(await DeliveredNotes.clear(info) ? .newData : .noData)
+        }
     }
 }

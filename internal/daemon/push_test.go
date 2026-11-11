@@ -25,11 +25,18 @@ import (
 // Mac, the relay gets a note only the phone can read.
 func TestPushWhileAway(t *testing.T) {
 	sent := make(chan map[string]string, 4)
+	cleared := make(chan map[string]string, 16)
 	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if r.URL.Path == "/send" {
+		switch r.URL.Path {
+		case "/send":
 			sent <- body
+		case "/clear":
+			select {
+			case cleared <- body:
+			default:
+			}
 		}
 	}))
 	defer relay.Close()
@@ -37,12 +44,12 @@ func TestPushWhileAway(t *testing.T) {
 	var idle atomic.Int64
 	var locked atomic.Bool
 	idle.Store(int64(time.Hour))
-	oldClient, oldIdle, oldLocked, oldRelays, oldPoll := pushClient, idleTime, screenLocked, pushRelays, pushPoll
-	pushClient, pushRelays, pushPoll = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond
+	oldClient, oldIdle, oldLocked, oldRelays, oldPoll, oldDelay := pushClient, idleTime, screenLocked, pushRelays, pushPoll, clearDelay
+	pushClient, pushRelays, pushPoll, clearDelay = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond, 0
 	idleTime = func() time.Duration { return time.Duration(idle.Load()) }
 	screenLocked = locked.Load
 	defer func() {
-		pushClient, idleTime, screenLocked, pushRelays, pushPoll = oldClient, oldIdle, oldLocked, oldRelays, oldPoll
+		pushClient, idleTime, screenLocked, pushRelays, pushPoll, clearDelay = oldClient, oldIdle, oldLocked, oldRelays, oldPoll, oldDelay
 	}()
 
 	dir := shortDir(t)
@@ -111,18 +118,46 @@ func TestPushWhileAway(t *testing.T) {
 		strings.Contains(got["thread"]+got["collapse"], paneID) {
 		t.Fatalf("push %v", got)
 	}
-	sealed, _ := base64.StdEncoding.DecodeString(got["payload"])
-	block, _ := aes.NewCipher(key)
-	gcm, _ := cipher.NewGCM(block)
-	plain, err := gcm.Open(nil, sealed[:12], sealed[12:], nil)
-	if err != nil {
-		t.Fatalf("decrypt: %v", err)
+	open := func(payload string) pushNote {
+		t.Helper()
+		sealed, _ := base64.StdEncoding.DecodeString(payload)
+		block, _ := aes.NewCipher(key)
+		gcm, _ := cipher.NewGCM(block)
+		plain, err := gcm.Open(nil, sealed[:12], sealed[12:], nil)
+		if err != nil {
+			t.Fatalf("decrypt: %v", err)
+		}
+		var note pushNote
+		_ = json.Unmarshal(plain, &note)
+		return note
 	}
-	var note pushNote
-	_ = json.Unmarshal(plain, &note)
+	note := open(got["payload"])
 	if note.Title != "Map Judder" || note.Subtitle != "Atlas" || note.Pane != paneID || note.Host == "" ||
-		note.ID != "at_"+paneID || time.Since(time.Unix(note.At, 0)) > time.Minute {
+		note.ID != "at_"+paneID || !note.Live || time.Since(time.Unix(note.At, 0)) > time.Minute {
 		t.Fatalf("note %+v", note)
+	}
+
+	// Answered (here, at the Mac): the phone is told to take it down,
+	// silently, saying only which notification.
+	sendHook(t, dir, HookEvent{PaneID: paneID, Harness: "claude", Payload: json.RawMessage(`{"hook_event_name":"UserPromptSubmit","prompt":"yes"}`)})
+	select {
+	case c := <-cleared:
+		n := open(c["payload"])
+		if c["id"] != "relay-id-1" || c["collapse"] != "" || c["thread"] != "" ||
+			n.ID != "at_"+paneID || !n.Clear || n.Host != note.Host || n.Title != "" || n.Pane != "" {
+			t.Fatalf("clear %v: %+v", c, n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no clear sent once it was answered")
+	}
+	// Once only: the same id resolved again tells no one.
+	d.mu.Lock()
+	d.publish(&pb.StateUpdate{ClearedAttentionIds: []string{"at_" + paneID}})
+	d.mu.Unlock()
+	select {
+	case c := <-cleared:
+		t.Fatalf("cleared again: %v", c)
+	case <-time.After(300 * time.Millisecond):
 	}
 
 	// At the Mac (just used), nothing is pushed, even with another app in
