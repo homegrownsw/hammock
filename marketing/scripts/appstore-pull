@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+# Overwrites marketing/appstore/metadata/ with what App Store Connect holds (marketing/appstore/README.md).
+#
+#   just appstore-pull
+#
+# For taking in a change someone made on the App Store Connect website: run it, then `git diff`. It refuses when
+# the metadata has uncommitted changes, so it can't throw work away. Screenshots aren't pulled (they're made here),
+# and nor is TestFlight's text (testflight/), which only this repo writes.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+dir=marketing/appstore/metadata
+
+if ! git diff --quiet -- "$dir" || ! git diff --cached --quiet -- "$dir"; then
+  echo >&2 "$dir/ has uncommitted changes: commit them first."
+  exit 1
+fi
+
+metadata="$PWD/$dir"
+marketing/scripts/appstore-fastlane deliver download_metadata --force \
+  --app_identifier com.homegrownsw.hammock --metadata_path "$metadata"
+
+# The contact is personal data and never lives in git (marketing/.env.appstore supplies it); What's New comes
+# from the release notes; the rest are fields this listing doesn't use, which deliver writes empty.
+rm -f "$metadata"/review_information/{first_name,last_name,email_address,phone_number,demo_user,demo_password}.txt \
+  "$metadata"/*/release_notes.txt "$metadata"/*/apple_tv_privacy_policy.txt
+echo "Pulled. Review the changes with: git diff -- $dir"

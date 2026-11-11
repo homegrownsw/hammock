@@ -1,0 +1,3 @@
+Hammock keeps your terminals and coding agents running on your Mac. Hammock for iPhone shows you what your agents are doing, lets you answer them when they need you (allow a command, answer a question, send a message), and notifies you the moment one does. You can also type into your Mac's terminals, see its Groups and panes, and start new agents.
+
+It pairs directly with Hammock on your own Mac by scanning a code: there's no account. You'll need Hammock for Mac, free at homegrownsw.com/hammock. Without one, tap "See a demo" on the first screen to look around.

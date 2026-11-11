@@ -1,0 +1,6 @@
+# The iPhone app this listing belongs to.
+app_identifier "com.homegrownsw.hammock"
+
+# No `apple_id` on purpose: authentication is an App Store Connect API key (marketing/scripts/appstore-fastlane),
+# which carries the team with it. An Apple ID would bring back an interactive two-factor login, which no script
+# can answer, as a fallback the moment the key was missing.

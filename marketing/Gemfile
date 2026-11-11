@@ -1,0 +1,9 @@
+# Fastlane, for the App Store listing and nothing else (marketing/appstore/README.md): `deliver` pushes the
+# listing text, and later its screenshots, to App Store Connect, and the push also writes TestFlight's test
+# information. Builds never go through Fastlane: Xcode Cloud makes and uploads them (release-notes/README.md).
+#
+#   just appstore-install     # bundle install into marketing/vendor/bundle, once per machine
+
+source "https://rubygems.org"
+
+gem "fastlane", "~> 2.238"

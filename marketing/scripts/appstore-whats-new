@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#
+# Prints the App Store's What's New for an iPhone version, from its release notes (release-notes/README.md):
+# its NEW and FIXED notes, under "New" and "Fixed", as plain text (the store shows no Markdown), within the
+# store's 4000 characters. INTERNAL notes never appear.
+#
+#   marketing/scripts/appstore-whats-new 0.3.0             # the notes cut for 0.3.0 (release-notes/ios/v0.3.0/)
+#   marketing/scripts/appstore-whats-new 0.3.0 --pending   # …and those not cut yet (the version being built)
+#
+# The push (marketing/fastlane/Fastfile) calls it for the version App Store Connect is editing, with --pending
+# when that's the version the project is building.
+
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source-path=SCRIPTDIR/../.. source=scripts/lib/release-notes.sh
+. "$root/scripts/lib/release-notes.sh"
+
+version="${1:?usage: appstore-whats-new <version> [--pending]}"
+dirs=("$root/release-notes/ios/v$version")
+[ "${2:-}" = "--pending" ] && dirs+=("$root/release-notes/ios/pending")
+
+lines=""
+for d in "${dirs[@]}"; do
+  [ -d "$d" ] || continue
+  rendered="$(render_dir "$d")"
+  if [ -n "$rendered" ]; then lines+="$rendered"$'\n'; fi
+done
+lines="$(new_first "$lines")"
+[ -n "$lines" ] || exit 0
+
+# Markdown's emphasis and code marks out, as the store shows them literally.
+# shellcheck disable=SC2016 # sed expressions, not shell ones
+plain() { sed -E 's/\*\*([^*]+)\*\*/\1/g; s/\*([^*]+)\*/\1/g; s/`([^`]+)`/\1/g'; }
+section() { # section <TAG> <heading>
+  local items
+  items="$(printf '%s\n' "$lines" | sed -nE "s/^\[$1\] /• /p" | plain)"
+  if [ -n "$items" ]; then printf '%s\n%s\n\n' "$2" "$items"; fi
+}
+text="$(section NEW New)$(section FIXED Fixed)"
+fit_to_limit 4000 "${text%$'\n'}"
+echo

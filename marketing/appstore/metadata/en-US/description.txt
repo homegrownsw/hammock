@@ -1,0 +1,21 @@
+Hammock keeps your terminals and coding agents running on your Mac, whatever happens to the window. Hammock for iPhone puts them in your hand, so you can step away from the desk without stopping the work.
+
+KNOW WHEN AN AGENT NEEDS YOU
+Get a notification the moment an agent wants permission, asks a question, or finishes. Needs You gathers everything waiting on you in one place.
+
+ANSWER FROM WHEREVER YOU ARE
+Allow a command, pick an answer, or send a new message, and the agent carries on on your Mac. Attach a photo or a file when it helps.
+
+READ WHAT IT DID
+Each agent's session reads as a conversation: what it said, the commands it ran, the edits it made as diffs, and its task list. Switch to the terminal behind it at any time.
+
+YOUR WHOLE WORKSPACE
+Your Groups, tabs and panes, as they are on your Mac. Type into any terminal, watch a dev server's log, see a browser or simulator pane, start a new agent in any folder, and check on scheduled tasks.
+
+ALL YOUR COMPUTERS
+Pair as many Macs as you like, and Linux servers running Hammock, and switch between them. See your agents' usage limits at a glance.
+
+PRIVATE BY DESIGN
+No account and no cloud service: your iPhone pairs directly with Hammock on your own Mac, by scanning a code, and talks to it over your local network or your VPN. Notifications are encrypted so only your iPhone can read them. Lock the app with Face ID if you like.
+
+Hammock for iPhone needs Hammock on your Mac (macOS 26 or later), which is free and open source: homegrownsw.com/hammock. No Mac to hand? Tap "See a demo" to look around first.

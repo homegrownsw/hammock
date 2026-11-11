@@ -1,0 +1,6 @@
+{
+  "name": "hammock-marketing",
+  "private": true,
+  "type": "module",
+  "description": "Tooling for the App Store listing (marketing/appstore/README.md)."
+}

@@ -1,0 +1,12 @@
+Hammock for iPhone is the companion to Hammock, a free, open-source terminal app for the Mac (https://homegrownsw.com/hammock/, source at https://github.com/homegrownsw/hammock). It has no account, sign-in or purchases. The iPhone pairs directly with Hammock on the person's own Mac, by scanning a pairing code the Mac shows, and connects to it over their local network or VPN. From the iPhone they can follow their coding agents' work, answer an agent waiting for permission, and use their Mac's terminals.
+
+Since it needs a Mac running Hammock, the app has a demo for review: tap "See a demo" on the first screen (under the pairing form). It shows a made-up Mac, with agents working, waiting and done:
+- Tap Allow on the agent waiting under Needs You, and it carries on and finishes.
+- Open any agent to read its conversation, or switch to its terminal with the button at the top.
+- Send an agent a message; the demo answers.
+- Actions that would change the Mac (starting an agent, opening a tab) say they need a real one.
+"Pair Your Mac", at the bottom of the screen, leaves the demo.
+
+A video of pairing with a real Mac and then using the app: https://homegrownsw.com/hammock/demo.mp4
+
+Permissions: Camera, only to scan the pairing code. Local Network, to reach the Mac. Face ID, an optional app lock. Notifications are sent by the person's own Mac through a push relay, encrypted so that only the iPhone can read them.

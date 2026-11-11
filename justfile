@@ -187,6 +187,36 @@ release-ios *args:
 release-apple *args:
     scripts/release apple "$@"
 
+# The iPhone app's App Store listing and TestFlight test information come from marketing/appstore/ (its README).
+# Install Fastlane into marketing/vendor/, once per machine (needs Ruby 3.3).
+appstore-install:
+    cd marketing && bundle config --local path vendor/bundle && bundle install
+
+# Offline: limits, fields, keywords, URLs, categories, age rating, review notes, TestFlight's text.
+appstore-check:
+    node --disable-warning=ExperimentalWarning marketing/scripts/check-metadata.ts
+
+# A read-only look before appstore-push: the key, the app, its versions, What's New, TestFlight, URLs, precheck.
+appstore-preview: appstore-check
+    marketing/scripts/appstore-fastlane ios preview
+
+# Saves in App Store Connect; never submits, never a binary.
+# Upload the listing text, age rating, review details, What's New and TestFlight's test information.
+appstore-push: appstore-check
+    marketing/scripts/appstore-fastlane ios push
+
+# Upload only TestFlight's test information.
+appstore-push-testflight: appstore-check
+    marketing/scripts/appstore-fastlane ios push_testflight
+
+# Overwrite marketing/appstore/metadata/ with what App Store Connect holds, then review it with git diff.
+appstore-pull:
+    marketing/scripts/appstore-pull
+
+# What's New for an iPhone version, from its release notes (--pending: with the notes not cut yet).
+appstore-whats-new version *args:
+    marketing/scripts/appstore-whats-new {{version}} {{args}}
+
 # Copy the website (marketing/) into the homegrownsw.com site repo, as site/hammock/ (HMK_SITE_REPO, default
 # ~/Developer/homegrownsw-site). Commit it there and `just deploy` it from there: this publishes nothing.
 # The page's comments are for the repo, so the copy drops them: each one starts its own line, `//` or `/* … */`.

@@ -5,6 +5,8 @@
 - `banner.html` → `banner.png`: the banner at the top of the repo's README (also the site's link preview).
 - `dmg-background.html` → `apple/Resources/dmg-background.png` and `@2x`: the window of Hammock.dmg, the download
   (`scripts/make-dmg.sh`; `just dmg` makes one to look at).
+- `appstore/`: the iPhone app's App Store listing and TestFlight test information, pushed with Fastlane (`fastlane/`,
+  `scripts/`; `appstore/README.md`).
 
 
 ## Re-render the banner

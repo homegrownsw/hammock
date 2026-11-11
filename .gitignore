@@ -25,3 +25,18 @@ DerivedData/
 /apple/Editor/node_modules/
 /.release.env
 /AGENTS.local.md
+
+# The App Store listing (marketing/appstore/README.md): Fastlane installs into marketing/vendor; the API key and
+# the App Review contact's details are in marketing/.env.appstore, never in git; What's New is written from the
+# release notes; deliver's scratch files.
+/marketing/vendor/
+/marketing/.env.appstore
+/marketing/appstore/whats-new/
+/marketing/appstore/metadata/review_information/phone_number.txt
+/marketing/appstore/metadata/review_information/first_name.txt
+/marketing/appstore/metadata/review_information/last_name.txt
+/marketing/appstore/metadata/review_information/email_address.txt
+/marketing/appstore/metadata/*/release_notes.txt
+/marketing/fastlane/report.xml
+/marketing/fastlane/README.md
+/marketing/.bundle/
