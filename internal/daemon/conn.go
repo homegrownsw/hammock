@@ -36,6 +36,15 @@ const (
 	lagLow    = sendQueue / 8
 )
 
+// mergeMax bounds how much of a pane's output one queued message gathers
+// (sendOutput). Merged messages hold far more than one read each, so lag is
+// also judged by the output queued (lagBytes), not only by messages: a client
+// on a slow link is sent a fresh screen rather than a backlog of old output.
+const (
+	mergeMax = 256 << 10
+	lagBytes = 16 << 20
+)
+
 // conn is one connected client.
 type conn struct {
 	d      *Daemon
@@ -90,8 +99,19 @@ type conn struct {
 	lagMu   sync.Mutex
 	lagging map[*pane]bool
 	hasLag  atomic.Bool
-	once    sync.Once
-	hangUp  atomic.Bool // close once the message being handled is answered
+
+	// Output still waiting in out, by pane id (sendOutput): more of the
+	// same pane's output joins it instead of queueing another message, so a
+	// client behind a flood is sent fewer, larger messages. sendMu guards it
+	// and putting anything on out.
+	sendMu sync.Mutex
+	queued map[string]*queuedOutput
+	// Bytes of pane output in out: added as it's queued, taken away as it's
+	// written (taken).
+	queuedBytes atomic.Int64
+
+	once   sync.Once
+	hangUp atomic.Bool // close once the message being handled is answered
 }
 
 var engineName = sync.OnceValue(func() string {
@@ -140,6 +160,19 @@ func (d *Daemon) serveConnWith(t transport, setup func(*conn)) {
 // send queues msg without blocking; a client that can't keep up is dropped
 // and must reconnect (re-attaching gives it a fresh snapshot).
 func (c *conn) send(msg *pb.ServerMessage) {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	// Output queued before msg mustn't grow past it: a snapshot or a
+	// change sent now would arrive before output that came after it.
+	clear(c.queued)
+	c.enqueue(msg)
+}
+
+// enqueue puts msg on out, or drops c if it's full. Callers hold sendMu.
+func (c *conn) enqueue(msg *pb.ServerMessage) {
+	if o := msg.GetPaneOutput(); o != nil {
+		c.queuedBytes.Add(int64(len(o.Data)))
+	}
 	select {
 	case c.out <- msg:
 	default:
@@ -147,16 +180,25 @@ func (c *conn) send(msg *pb.ServerMessage) {
 	}
 }
 
+// queuedOutput is a pane's output message waiting in a conn's queue.
+type queuedOutput struct {
+	out   *pb.PaneOutput
+	owned bool // Data is this message's own, to append to (not the pane's read)
+}
+
 // sendOutput queues a pane's output for c, unless c has fallen behind (its
-// queue past lagHigh): then that pane's output is skipped until c has caught
-// up, when resync sends the pane's screen instead. Callers hold p.mu.
-func (c *conn) sendOutput(p *pane, msg *pb.ServerMessage) {
+// queue past lagHigh messages or lagBytes of output): then that pane's output is skipped until c has caught
+// up, when resync sends the pane's screen instead. Output arriving while the
+// pane's last output is still queued is added to that message (up to
+// mergeMax): when c is keeping up, each read is sent as it comes, and when
+// it isn't, it's sent fewer, larger messages. Callers hold p.mu.
+func (c *conn) sendOutput(p *pane, offset uint64, data []byte) {
 	c.lagMu.Lock()
 	if c.lagging[p] {
 		c.lagMu.Unlock()
 		return
 	}
-	if len(c.out) >= lagHigh {
+	if len(c.out) >= lagHigh || c.queuedBytes.Load() >= lagBytes {
 		if c.lagging == nil {
 			c.lagging = map[*pane]bool{}
 		}
@@ -166,7 +208,41 @@ func (c *conn) sendOutput(p *pane, msg *pb.ServerMessage) {
 		return
 	}
 	c.lagMu.Unlock()
-	c.send(msg)
+
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	// Only output that follows on joins: after a holder restart, say, the
+	// pane's output starts again at another offset.
+	if q := c.queued[p.id]; q != nil && len(q.out.Data)+len(data) <= mergeMax && q.out.Offset+uint64(len(q.out.Data)) == offset {
+		if !q.owned {
+			q.out.Data = append(make([]byte, 0, min(mergeMax, 2*(len(q.out.Data)+len(data)))), q.out.Data...)
+			q.owned = true
+		}
+		q.out.Data = append(q.out.Data, data...)
+		c.queuedBytes.Add(int64(len(data)))
+		return
+	}
+	out := &pb.PaneOutput{PaneId: p.id, Offset: offset, Data: data}
+	if c.queued == nil {
+		c.queued = map[string]*queuedOutput{}
+	}
+	c.queued[p.id] = &queuedOutput{out: out}
+	c.enqueue(&pb.ServerMessage{Msg: &pb.ServerMessage_PaneOutput{PaneOutput: out}})
+}
+
+// taken stops output joining msg, which the write loop is about to write,
+// and counts its output as no longer queued.
+func (c *conn) taken(msg *pb.ServerMessage) {
+	o := msg.GetPaneOutput()
+	if o == nil {
+		return
+	}
+	c.sendMu.Lock()
+	if q := c.queued[o.PaneId]; q != nil && q.out == o {
+		delete(c.queued, o.PaneId)
+	}
+	c.queuedBytes.Add(-int64(len(o.Data)))
+	c.sendMu.Unlock()
 }
 
 // resync sends the screen of each pane whose output c missed while behind.
@@ -206,6 +282,7 @@ func (c *conn) writeLoop() {
 				c.cancel() // hung up (everything before it written)
 				return
 			}
+			c.taken(msg)
 			b, err := proto.Marshal(msg)
 			if err != nil {
 				continue
@@ -221,7 +298,7 @@ func (c *conn) writeLoop() {
 				c.cancel()
 				return
 			}
-			if c.hasLag.Load() && len(c.out) <= lagLow {
+			if c.hasLag.Load() && len(c.out) <= lagLow && c.queuedBytes.Load() <= lagBytes/8 {
 				c.resync()
 			}
 		}

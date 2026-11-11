@@ -9,8 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
@@ -151,19 +154,12 @@ func TestSlowClientResyncsInsteadOfDropping(t *testing.T) {
 	p := &pane{id: "pn_test", info: &pb.Pane{Cols: 20, Rows: 5}, attached: map[*conn]struct{}{c: {}}}
 	p.mirror = vt.New(20, 5)
 	defer p.mirror.Close()
-	output := func(s string) {
-		p.mu.Lock()
-		p.mirror.Write([]byte(s))
-		msg := &pb.ServerMessage{Msg: &pb.ServerMessage_PaneOutput{PaneOutput: &pb.PaneOutput{PaneId: p.id, Offset: p.offset, Data: []byte(s)}}}
-		p.offset += uint64(len(s))
-		for cl := range p.attached {
-			cl.sendOutput(p, msg)
-		}
-		p.mu.Unlock()
-	}
+	output := testOutput(p)
 
+	// Other messages fill the queue to the limit (output alone would be
+	// merged into one message).
 	for i := 0; i < lagHigh; i++ {
-		output("x")
+		c.send(&pb.ServerMessage{})
 	}
 	if len(c.out) != lagHigh || c.hasLag.Load() {
 		t.Fatalf("queued %d (lagging %v) before the limit", len(c.out), c.hasLag.Load())
@@ -199,6 +195,200 @@ func TestSlowClientResyncsInsteadOfDropping(t *testing.T) {
 	output("more")
 	if o := (<-c.out).GetPaneOutput(); o == nil || string(o.Data) != "more" {
 		t.Fatalf("after resync got %v", o)
+	}
+}
+
+// testOutput returns a func that feeds s to p as its holder's output would
+// be: into its mirror, and to each attached client.
+func testOutput(p *pane) func(s string) {
+	return func(s string) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.mirror != nil {
+			p.mirror.Write([]byte(s))
+		}
+		data := []byte(s)
+		for cl := range p.attached {
+			cl.sendOutput(p, p.offset, data)
+		}
+		p.offset += uint64(len(s))
+	}
+}
+
+// take is the write loop's side of the queue: the next message, as it's
+// about to be written.
+func take(t *testing.T, c *conn) *pb.ServerMessage {
+	t.Helper()
+	select {
+	case msg := <-c.out:
+		c.taken(msg)
+		return msg
+	default:
+		t.Fatal("nothing queued")
+		return nil
+	}
+}
+
+// A pane's output joins its message still in the queue, rather than queueing
+// one per read; once the message is being written, more output starts another.
+func TestOutputMergesWhileQueued(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &conn{out: make(chan *pb.ServerMessage, sendQueue), ctx: ctx, cancel: cancel}
+	a := &pane{id: "pn_a", attached: map[*conn]struct{}{c: {}}}
+	b := &pane{id: "pn_b", attached: map[*conn]struct{}{c: {}}}
+	outA, outB := testOutput(a), testOutput(b)
+
+	first := []byte("one")
+	a.mu.Lock()
+	c.sendOutput(a, 0, first)
+	a.offset = 3
+	a.mu.Unlock()
+	outB("x")
+	outA("two")
+	outB("y")
+	outA("three")
+	if len(c.out) != 2 {
+		t.Fatalf("queued %d messages, want 2 (one per pane)", len(c.out))
+	}
+	if o := take(t, c).GetPaneOutput(); o.PaneId != "pn_a" || o.Offset != 0 || string(o.Data) != "onetwothree" {
+		t.Fatalf("first message %v", o)
+	}
+	if string(first) != "one" {
+		t.Fatalf("the read merged into was changed: %q", first)
+	}
+	// pn_a's message is gone from the queue: its output starts a new one.
+	outA("four")
+	if o := take(t, c).GetPaneOutput(); o.PaneId != "pn_b" || string(o.Data) != "xy" {
+		t.Fatalf("second message %v", o)
+	}
+	if o := take(t, c).GetPaneOutput(); o.PaneId != "pn_a" || o.Offset != 11 || string(o.Data) != "four" {
+		t.Fatalf("third message %v", o)
+	}
+
+	// Nothing grows past a message sent after it (a snapshot, a state change).
+	outA("five")
+	c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_PaneSnapshot{PaneSnapshot: &pb.PaneSnapshot{PaneId: "pn_a"}}})
+	outA("six")
+	if o := take(t, c).GetPaneOutput(); string(o.Data) != "five" {
+		t.Fatalf("output before the snapshot: %v", o)
+	}
+	if take(t, c).GetPaneSnapshot() == nil {
+		t.Fatal("snapshot out of order")
+	}
+	if o := take(t, c).GetPaneOutput(); string(o.Data) != "six" {
+		t.Fatalf("output after the snapshot: %v", o)
+	}
+
+	// A message gathers at most mergeMax.
+	big := strings.Repeat("z", mergeMax/2+1)
+	outA(big)
+	outA(big)
+	if len(c.out) != 2 {
+		t.Fatalf("queued %d messages past mergeMax, want 2", len(c.out))
+	}
+}
+
+// A flood of one pane's output, merged into few messages, still counts as
+// falling behind once enough of it is queued.
+func TestSlowClientLagsOnQueuedBytes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &conn{out: make(chan *pb.ServerMessage, sendQueue), ctx: ctx, cancel: cancel}
+	p := &pane{id: "pn_test", attached: map[*conn]struct{}{c: {}}}
+	output := testOutput(p)
+	chunk := strings.Repeat("x", 64<<10)
+	for i := 0; i < lagBytes/len(chunk); i++ {
+		output(chunk)
+	}
+	if c.hasLag.Load() || c.queuedBytes.Load() != lagBytes {
+		t.Fatalf("lagging %v with %d bytes queued, before the limit", c.hasLag.Load(), c.queuedBytes.Load())
+	}
+	if want := lagBytes / mergeMax; len(c.out) != want {
+		t.Fatalf("queued %d messages, want %d", len(c.out), want)
+	}
+	output("y")
+	if !c.hasLag.Load() || c.queuedBytes.Load() != lagBytes {
+		t.Fatalf("past the limit: lagging %v, %d bytes queued", c.hasLag.Load(), c.queuedBytes.Load())
+	}
+	for len(c.out) > 0 {
+		take(t, c)
+	}
+	if c.queuedBytes.Load() != 0 {
+		t.Fatalf("%d bytes still counted as queued", c.queuedBytes.Load())
+	}
+}
+
+// recordingTransport keeps what the write loop writes.
+type recordingTransport struct {
+	mu     sync.Mutex
+	writes [][]byte
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (r *recordingTransport) Read(ctx context.Context) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (r *recordingTransport) Write(_ context.Context, b []byte) error {
+	r.mu.Lock()
+	r.writes = append(r.writes, b)
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *recordingTransport) Close() error {
+	r.once.Do(func() { close(r.closed) })
+	return nil
+}
+
+// The real write loop, writing while output keeps arriving, sends every byte
+// once and in order (run with -race: merging into a message being written
+// would be a race).
+func TestWriteLoopSendsMergedOutputWhole(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tr := &recordingTransport{closed: make(chan struct{})}
+	c := &conn{t: tr, out: make(chan *pb.ServerMessage, sendQueue), ctx: ctx, cancel: cancel}
+	p := &pane{id: "pn_test", attached: map[*conn]struct{}{c: {}}}
+	go c.writeLoop()
+	output := testOutput(p)
+	var want strings.Builder
+	for i := 0; i < 20000; i++ {
+		s := fmt.Sprintf("line %d\n", i)
+		want.WriteString(s)
+		output(s)
+	}
+	c.send(nil) // hang up once everything before it is written
+	<-tr.closed
+
+	var got strings.Builder
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	for _, b := range tr.writes {
+		msg := &pb.ServerMessage{}
+		if err := proto.Unmarshal(b, msg); err != nil {
+			t.Fatal(err)
+		}
+		o := msg.GetPaneOutput()
+		if o == nil {
+			t.Fatalf("wrote %v", msg)
+		}
+		if o.Offset != uint64(got.Len()) {
+			t.Fatalf("message at offset %d, want %d", o.Offset, got.Len())
+		}
+		got.Write(o.Data)
+	}
+	if got.String() != want.String() {
+		t.Fatalf("wrote %d bytes in %d messages, want %d", got.Len(), len(tr.writes), want.Len())
+	}
+	if len(tr.writes) >= 20000 {
+		t.Logf("nothing merged (%d messages): the write loop kept up", len(tr.writes))
+	}
+	if c.queuedBytes.Load() != 0 {
+		t.Fatalf("%d bytes still counted as queued", c.queuedBytes.Load())
 	}
 }
 
