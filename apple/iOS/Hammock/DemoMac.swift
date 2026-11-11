@@ -386,18 +386,27 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         ]
         #if DEBUG
         // HMK_DEBUG_HMK_KEY=1: the Mac's Hammock Key, this phone allowed to
-        // approve it, and a request waiting (its sheet shows).
-        if ProcessInfo.processInfo.environment["HMK_DEBUG_HMK_KEY"] == "1" {
+        // approve it, and a request waiting (its sheet shows); =agent, an
+        // agent's ssh login instead.
+        let keyDebug = ProcessInfo.processInfo.environment["HMK_DEBUG_HMK_KEY"]
+        if keyDebug == "1" || keyDebug == "agent" {
+            let agent = keyDebug == "agent"
             u.hammockKey = .with {
                 $0.exists = true; $0.available = true; $0.fingerprint = "SHA256:q2Xh0f3m3w2a9cJk1Vt8nZs4yLr6pE5uB7dG0iH1oKc"
                 $0.approvers = [.with { $0.deviceID = "sample"; $0.name = "iPhone" }]
             }
             u.hammockKeyRequests = [.with {
-                $0.id = "fk_sample"; $0.what = "Sign for git (a commit or tag)"; $0.command = "git commit -m Fix the release notes"
-                $0.paneID = "p_triage"; $0.paneLabel = "Hammock ▸ Triage"; $0.agent = false
-                $0.headline = "A program in Hammock ▸ Triage: Sign for git (a commit or tag) (git commit -m Fix the release notes)"
+                $0.id = "fk_sample"; $0.paneID = "p_triage"; $0.paneLabel = "Hammock ▸ Triage"; $0.agent = agent
+                if agent {
+                    $0.what = "Log in as me with SSH"; $0.command = "ssh build-box just test"
+                    $0.headline = "Claude in Hammock ▸ Triage: Log in as me with SSH (ssh build-box just test)"
+                    $0.windowMs = 300_000
+                } else {
+                    $0.what = "Sign for git (a commit or tag)"; $0.command = "git commit -m Fix the release notes"
+                    $0.headline = "A program in Hammock ▸ Triage: Sign for git (a commit or tag) (git commit -m Fix the release notes)"
+                    $0.windowMs = 600_000
+                }
                 $0.dataHash = String(repeating: "ab", count: 32); $0.createdUnixMs = ago(0); $0.expiresUnixMs = ms(now.addingTimeInterval(120))
-                $0.windowMs = 600_000
             }]
         }
         #endif

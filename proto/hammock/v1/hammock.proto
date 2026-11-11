@@ -2227,7 +2227,7 @@ message HammockKeyRequest {
   string command = 4;       // the program that asked ("git push origin main")
   string pane_id = 5;
   string pane_label = 6;    // "hammock ▸ main"
-  bool agent = 7;           // an agent asked: approve once, never for a while
+  bool agent = 7;           // an agent asked: a while is its own, and shorter
   string data_hash = 8;     // hex SHA-256 of what's signed (an approval signs it)
   int64 created_unix_ms = 9;
   int64 expires_unix_ms = 10;

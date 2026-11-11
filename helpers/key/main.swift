@@ -24,7 +24,7 @@
 // holds where the parent's pid, or a socket's, doesn't). An ad-hoc
 // development build has no team: there the sender must be the hmkd beside
 // this helper. So an agent in a pane can't run it itself to skip the
-// daemon's rules (agents asked every time, the audit log).
+// daemon's rules (an agent's window only its own, the audit log).
 //
 // And the prompt says what will happen in the helper's own words: what's
 // signed, from the data; creating or deleting the key, or the device it
@@ -42,7 +42,7 @@
 //   delete          {}
 //   add-approver    {"approver"}
 //   remove-approver {"id"}
-//   sign            {"data", "pane", "window", "context", "prompt": {...},
+//   sign            {"data", "pane", "agent", "window", "context", "prompt": {...},
 //                    "approval": {...}, "token"}
 // ("prompt": where it's from, for the panel: keyPrompt in hammockkey.go.)
 // Out on stdout: exit 0 with JSON, or 1 with a message on stderr; 2 when
@@ -50,7 +50,7 @@
 // Hammock β's key apart from the real one.
 //
 //   hmk-key --daemon <service>
-//   hmk-key preview [--snapshot <prefix>] < {"command", ...} or {"headline", "window", "prompt"}
+//   hmk-key preview [--snapshot <prefix>] < {"command", ...} or {"headline", "window", "agent", "prompt"}
 // (preview shows a prompt, or renders it, signing nothing: anyone may run it.)
 import CryptoKit
 import Foundation
@@ -78,6 +78,10 @@ let protocolVersion = 1
 /// How long a window lasts: the daemon's hammockKeyWindow, and what the
 /// prompt says.
 let keyWindowMs: Int64 = 10 * 60 * 1000
+/// An agent's: the daemon's hammockKeyAgentWindow. Shorter, and only if you
+/// choose it (the prompt's box, the phone's button): a script's few
+/// commits, a burst of ssh to a remote machine.
+let agentKeyWindowMs: Int64 = 5 * 60 * 1000
 /// β's key, not the real one: from the daemon's request.
 var beta = false
 var service: String { beta ? "com.homegrownsw.hammock.key.beta" : "com.homegrownsw.hammock.key" }
@@ -149,10 +153,14 @@ var current: LAContext?
 /// Asks you here: in Hammock's own panel (panel.swift) when there's Touch ID,
 /// else (or when you'd rather type your password) the system sheet. Only
 /// your "Don't Allow" is a no (exit 2): anything else (the screen locked,
-/// nobody to ask) leaves the answer to your phone.
-func touchID(_ reason: String, prompt: KeyPrompt? = nil) throws {
-    switch askInPanel(prompt ?? KeyPrompt(headline: reason), reason: reason) {
-    case .allowed: return
+/// nobody to ask) leaves the answer to your phone. Returns whether you
+/// ticked the panel's box for an agent's window (the system sheet has none:
+/// shown on its own, it opens none).
+@discardableResult
+func touchID(_ reason: String, prompt: KeyPrompt? = nil) throws -> Bool {
+    let choice = WindowChoice()
+    switch askInPanel(prompt ?? KeyPrompt(headline: reason), reason: reason, choice: choice) {
+    case .allowed: return choice.on
     case .declined: throw Fail(message: "not allowed", code: 2)
     case .password, .unavailable: break
     }
@@ -177,6 +185,7 @@ func touchID(_ reason: String, prompt: KeyPrompt? = nil) throws {
         let said = (failure as? LAError)?.code == .userCancel
         throw Fail(message: failure?.localizedDescription ?? "not allowed", code: said ? 2 : 1)
     }
+    return choice.on // ticked before "Use Password…"; never, if the panel wasn't shown
 }
 
 // MARK: - Phone approvals
@@ -370,14 +379,16 @@ func changePrompt(_ command: String, approvers: [Approver] = []) -> (KeyPrompt, 
 
 // MARK: - Window tokens
 
-func token(pane: String, until: Int64, stored: Stored) throws -> String {
+/// A window's token: the pane and when it ends, and "agent" for an agent's,
+/// so neither kind's token serves the other.
+func token(pane: String, agent: Bool, until: Int64, stored: Stored) throws -> String {
     guard let k = Data(base64Encoded: stored.hmac) else { throw Fail(message: "the Hammock Key is damaged") }
-    let payload = Data("\(pane)\n\(until)".utf8)
+    let payload = Data((agent ? "\(pane)\n\(until)\nagent" : "\(pane)\n\(until)").utf8)
     let mac = HMAC<SHA256>.authenticationCode(for: payload, using: SymmetricKey(data: k))
     return payload.base64EncodedString() + "." + Data(mac).base64EncodedString()
 }
 
-func checkToken(_ t: String, pane: String, stored: Stored) -> Bool {
+func checkToken(_ t: String, pane: String, agent: Bool, stored: Stored) -> Bool {
     let parts = t.split(separator: ".")
     guard parts.count == 2, let payload = Data(base64Encoded: String(parts[0])), let mac = Data(base64Encoded: String(parts[1])),
           let k = Data(base64Encoded: stored.hmac),
@@ -385,7 +396,10 @@ func checkToken(_ t: String, pane: String, stored: Stored) -> Bool {
           let text = String(data: payload, encoding: .utf8)
     else { return false }
     let fields = text.split(separator: "\n", omittingEmptySubsequences: false)
-    guard fields.count == 2, String(fields[0]) == pane, let until = Int64(fields[1]) else { return false }
+    let isAgents = fields.count == 3 && fields[2] == "agent"
+    guard fields.count == 2 || isAgents, isAgents == agent, String(fields[0]) == pane, let until = Int64(fields[1]) else {
+        return false
+    }
     return until > Int64(Date().timeIntervalSince1970 * 1000)
 }
 
@@ -475,14 +489,16 @@ func run() throws {
             throw Fail(message: "nothing to sign")
         }
         let pane = req["pane"] as? String ?? ""
-        // Allowing here opens a window too (a program of yours in a pane,
-        // never an agent: the daemon's rule), for as long as this helper
-        // says. A phone's approval says for itself whether it opens one.
+        // Allowing here opens a window too, for as long as this helper says:
+        // for a program of yours in a pane, always; for an agent, only if you
+        // tick the panel's box. A phone's approval says for itself whether
+        // it opens one. An agent's window is its own: its token says so.
         let askWindow = (req["window"] as? Bool ?? false) && !pane.isEmpty
+        let agent = req["agent"] as? Bool ?? false
         let key = try enclaveKey(s)
         var window = false
         if let t = req["token"] as? String {
-            guard !pane.isEmpty, checkToken(t, pane: pane, stored: s) else {
+            guard !pane.isEmpty, checkToken(t, pane: pane, agent: agent, stored: s) else {
                 throw Fail(message: "that approval has run out", code: 2)
             }
         } else if let a = req["approval"] as? [String: Any] {
@@ -494,17 +510,20 @@ func run() throws {
             if let context = req["context"] as? String, !context.isEmpty {
                 reason += " (" + String(context.prefix(160)) + ")"
             }
-            if askWindow {
+            // (An agent's window is the panel's box: the system sheet on its
+            // own, which has none, never opens one.)
+            if askWindow, !agent {
                 reason += ", and let programs in that pane sign for the next \(keyWindowMs / 60000) minutes without asking"
             }
-            try touchID(reason, prompt: KeyPrompt(headline: describe(data), from: req["prompt"] as? [String: Any], window: askWindow))
-            window = askWindow
+            let ticked = try touchID(reason, prompt: KeyPrompt(headline: describe(data), from: req["prompt"] as? [String: Any],
+                                                               window: askWindow, agent: agent))
+            window = askWindow && (!agent || ticked)
         }
         let sig = try key.signature(for: data)
         var out: [String: Any] = ["signature": sig.rawRepresentation.base64EncodedString()]
         if window, !pane.isEmpty {
-            let until = Int64(Date().timeIntervalSince1970 * 1000) + keyWindowMs
-            out["token"] = try token(pane: pane, until: until, stored: s)
+            let until = Int64(Date().timeIntervalSince1970 * 1000) + (agent ? agentKeyWindowMs : keyWindowMs)
+            out["token"] = try token(pane: pane, agent: agent, until: until, stored: s)
             out["until"] = until
         }
         output(out)

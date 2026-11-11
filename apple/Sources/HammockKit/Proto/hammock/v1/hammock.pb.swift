@@ -8185,7 +8185,7 @@ public nonisolated struct Hammock_V1_HammockKeyRequest: Sendable {
   /// "hammock ▸ main"
   public var paneLabel: String = String()
 
-  /// an agent asked: approve once, never for a while
+  /// an agent asked: a while is its own, and shorter
   public var agent: Bool = false
 
   /// hex SHA-256 of what's signed (an approval signs it)
