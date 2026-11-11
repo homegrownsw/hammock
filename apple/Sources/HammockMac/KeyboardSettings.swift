@@ -97,7 +97,7 @@ struct KeyboardSettings: View {
             Label("\(config.keybindProblems.count) keybind line\(config.keybindProblems.count == 1 ? "" : "s") in the config file couldn't be used:", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             ForEach(config.keybindProblems, id: \.self) { Text($0.description).foregroundStyle(.secondary).padding(.leading, 22) }
-            Text("Saving here keeps them in the file, to fix there.").foregroundStyle(.tertiary).padding(.leading, 22)
+            Text("They stay in the file until you fix them there.").foregroundStyle(.tertiary).padding(.leading, 22)
         }
         .font(.callout)
         .frame(maxWidth: .infinity, alignment: .leading)

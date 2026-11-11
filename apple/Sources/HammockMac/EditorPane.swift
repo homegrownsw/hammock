@@ -763,7 +763,7 @@ struct EditorSettingsSection: View {
                 }
             }
             Toggle("Vim keys", isOn: prefs.boolBinding(.editorVim))
-            Text("A file's .editorconfig, or how it's already indented, beats the indent settings. Without its own size, the editor follows the terminal's font.")
+            Text(".editorconfig and a file's existing indentation take precedence.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

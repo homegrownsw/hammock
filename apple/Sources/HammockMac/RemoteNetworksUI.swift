@@ -72,7 +72,7 @@ struct NetworkChooser: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Where should Hammock listen?").font(.title3.weight(.bold))
-                Text("Your iPhone and your other computers reach this Mac on the networks you choose. Devices on them can reach Hammock, but still need to be paired or linked to get in.")
+                Text("Devices on the networks you choose still need to be paired or linked.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -213,7 +213,7 @@ struct RemoteNetworksSettings: View {
         }
         VStack(alignment: .leading, spacing: 6) {
             Text("Extra addresses").font(.headline)
-            Text("Given out in pairing codes and links along with this Mac's own: a DNS name, a VPN endpoint or a router's forwarded port, as host or host:port.")
+            Text("Added to pairing codes and links: a DNS name, VPN endpoint or forwarded port (host or host:port).")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

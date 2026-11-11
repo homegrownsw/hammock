@@ -679,7 +679,7 @@ struct YourComputersSection: View {
                     .foregroundStyle(.secondary)
             }
             if !model.hasLinkedComputers && !model.computers.contains(where: { $0.needsAttention }) {
-                Text("Link another computer of yours (a Mac, or a Linux box running hmkd) and each shows the other's Groups, badged by computer.")
+                Text("Linked computers (Macs, or Linux running hmkd) show each other's Groups.")
                     .foregroundStyle(.secondary)
             }
             Group {
@@ -731,7 +731,7 @@ struct YourComputersSection: View {
         } header: {
             Text("Your Computers")
         } footer: {
-            Text("Each one shows every other's Groups. Unlinking one here unlinks it everywhere.")
+            Text("Unlinking one here unlinks it everywhere.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

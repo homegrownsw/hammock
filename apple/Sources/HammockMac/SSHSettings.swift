@@ -55,7 +55,7 @@ struct SSHSettings: View {
                     get: { AppConfig.shared.sshAgentForwarding },
                     set: { AppConfig.shared.set("ssh-agent-forwarding", $0 ? nil : "false") }))
                     .settingAnchor("ssh.forwarding")
-                Text("Like ssh -A: ssh and git in a pane on another of your computers can use this Mac's keys while you're here, and panes here use the keys of the one you're at. Agents ask you first. For panes opened from now on; off on either computer, nothing is lent.")
+                Text("Like ssh -A, between your computers. Agents ask first. Applies to new panes.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
@@ -104,7 +104,7 @@ struct SSHSettings: View {
                 Text("This Mac has no Secure Enclave, so it can't have a Hammock Key.")
                     .foregroundStyle(.secondary)
             } else {
-                Text("An SSH key that never leaves this Mac's Secure Enclave and signs only when you say so: Touch ID here, or Face ID on your iPhone when you're away. Your usual keys go on working at your desk; the Hammock Key covers the rest, for ssh, git push and signing commits.")
+                Text("An SSH key in this Mac's Secure Enclave that signs only when you approve, with Touch ID here or Face ID on your iPhone. For ssh, git push and signing commits.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 HStack {
@@ -123,7 +123,7 @@ struct SSHSettings: View {
             Text("Hammock Key")
         } footer: {
             if key.exists {
-                Text("Hammock asks with Touch ID here and on the phones below at once; the first answer wins. Allowing your own programs also allows them for 10 minutes in their pane; an agent can be allowed for 5 minutes if you choose to.")
+                Text("Your own programs can be allowed for 10 minutes, and agents for 5 if you choose.")
             }
         }
     }
@@ -147,7 +147,7 @@ struct SSHSettings: View {
         } header: {
             Text("Who Can Approve")
         } footer: {
-            Text("A paired iPhone shows up here once you've opened Hammock on it. Letting it approve needs Touch ID here, so nobody can add a phone while you're away.")
+            Text("Paired iPhones appear here once Hammock has been opened on them.")
         }
     }
 
@@ -219,7 +219,7 @@ struct SSHSettings: View {
     private var copySheet: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Copy the Hammock Key to a Server").font(.headline)
-            Text("Opens a tab running ssh-copy-id, which adds it to the server's authorized_keys. Log in there as you usually do.")
+            Text("Runs ssh-copy-id in a new tab.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             TextField("user@host", text: $copyHost).onSubmit(copyToServer)

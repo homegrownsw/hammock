@@ -60,7 +60,7 @@ struct AboutSettings: View {
                     }
                 }
                 .settingAnchor("about.quit")
-                Text("Quitting leaves the server running: your panes, agents and paired devices carry on, and Hammock picks up where you were when you open it again. Stopping the server too ends that until you next open Hammock.")
+                Text("Quitting leaves the server running, so panes, agents and paired devices carry on.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
@@ -72,7 +72,7 @@ struct AboutSettings: View {
                     Button("Acknowledgements…") { AcknowledgementsUI.shared.show() }
                 }
                 .settingAnchor("about.acknowledgements")
-                Text("Hammock is open source, under the MIT licence, and is built with other people's open-source software: Ghostty, Chromium, CodeMirror, Sparkle and more.")
+                Text("Hammock is open source (MIT) and built on Ghostty, Chromium, CodeMirror, Sparkle and more.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
@@ -85,7 +85,7 @@ struct AboutSettings: View {
                         .disabled(uninstalling)
                 }
                 .settingAnchor("about.uninstall")
-                Text("Stops the server and what's running in your panes, removes the login item, the hmk command and agents' hooks and tools, and moves Hammock to the Bin. You can also remove your settings and data.")
+                Text("Stops everything Hammock runs, removes its hooks and hmk command, and moves it to the Bin. You can also remove your settings and data.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if let error {

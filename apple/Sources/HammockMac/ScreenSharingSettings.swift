@@ -18,7 +18,7 @@ struct ScreenSharingSection: View {
         Section {
             Toggle(isOn: Binding(get: { on }, set: { AppConfig.shared.set("screen-sharing", $0 ? "true" : nil) })) {
                 Text("Let your iPhone and other Macs see and control this Mac’s screen")
-                Text("Only your own devices, never guests or agents. Each session is logged, and your iPhone asks for Face ID first.")
+                Text("Never guests or agents. Your iPhone asks for Face ID first.")
             }
             if on {
                 // Accessibility first: macOS has Hammock Screen Sharing quit and
@@ -28,7 +28,7 @@ struct ScreenSharingSection: View {
                     await ask("input")
                 }
                 step(done: screen, title: "Allow Screen Recording",
-                     detail: "So the picture can be sent to your devices. macOS lists it under \(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Hammock"), and shows its own indicator while a session runs.", enabled: input) {
+                     detail: "So your devices can see the screen. macOS lists it as \(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Hammock").", enabled: input) {
                     await ask("screen")
                 }
             }
@@ -36,7 +36,7 @@ struct ScreenSharingSection: View {
             Text("Screen Sharing")
         } footer: {
             if on {
-                Text("Works while you’re logged in. After a restart, log in at the Mac before sharing its screen again.")
+                Text("After a restart, log in at the Mac first.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

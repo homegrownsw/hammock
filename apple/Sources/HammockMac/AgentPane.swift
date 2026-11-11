@@ -192,7 +192,7 @@ struct AgentViewSettings: View {
                     CurrentMiniWindow { $0.agentView = v == "agent"; $0.border = true }
                 }
                 .settingAnchor("agentview.default")
-                Text("Each pane remembers your choice once you switch it (\(Keys.label("toggle_agent_view").map { "\($0), or " } ?? "")the control in its header). Claude Code sessions only, for now.")
+                Text("\(Keys.label("toggle_agent_view").map { "Switch a pane with \($0). " } ?? "")Claude Code only, for now.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Colour") {
@@ -230,8 +230,6 @@ struct AgentViewSettings: View {
                     Text("Never").tag("never")
                 }
                 .settingAnchor("agentview.codewrap")
-                Text("Each code block also has its own Wrap button, and Markdown blocks a Preview button to show them rendered.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Preview") {
                 VStack(alignment: .leading, spacing: 8) {

@@ -246,24 +246,24 @@ struct SharingSettings: View {
                         .buttonStyle(.link)
                     }
                 }
-                Text("Shown to people you share Groups with, and in Groups they share with you.")
+                Text("Shown to people you share Groups with.")
                     .font(.caption).foregroundStyle(.secondary)
                 TextField("This Mac's name", text: $deviceName, prompt: Text(model.me?.deviceName ?? Host.current().localizedName ?? ""))
                     .onSubmit { saveDeviceName() }
-                Text("How your phone and the people you share with see this Mac. Empty: its own name, from System Settings.")
+                Text("Leave empty to use the name from System Settings.")
                     .font(.caption).foregroundStyle(.secondary)
                 if !model.myUserID.isEmpty {
                     LabeledContent("Your key", value: keyFingerprint(userID: model.myUserID))
                         .font(.body.monospaced())
                         .textSelection(.enabled)
-                    Text("When you ask to join, the host sees this. Read it out to them if they ask.")
+                    Text("Hosts see this when you ask to join.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("Sharing") {
                 Toggle("Allow Group sharing", isOn: sharingBinding)
                     .settingAnchor("sharing.groups")
-                Text("Lets you invite people to your Groups, from Share Group in the toolbar, the Group menu and the command palette. Nothing is shared until you do. Turning it off stops sharing every Group.")
+                Text("Nothing is shared until you share a Group. Turning this off stops sharing all of them.")
                     .font(.caption).foregroundStyle(.secondary)
                 let s = model.sharing
                 LabeledContent("Shared Groups", value: "\(s.groups)")

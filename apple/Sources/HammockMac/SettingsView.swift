@@ -162,7 +162,7 @@ private struct GeneralSettings: View {
                         }
                     }
                     .settingAnchor("general.login")
-                Text("Keeps your terminals and agents running even when this window isn't open. Pane processes always survive the app quitting.")
+                Text("Keeps your terminals and agents running when Hammock isn't open.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -171,21 +171,15 @@ private struct GeneralSettings: View {
                     get: { AppConfig.shared.menuBar },
                     set: { AppConfig.shared.set("menu-bar", $0 == "active" ? "active" : nil) })) {
                     Text("Always").tag("always")
-                    Text("Only when something’s happening").tag("active")
+                    Text("When a screen is shared or the server is down").tag("active")
                 }
                 .settingAnchor("general.menubar")
-                Text("The server’s status and controls, who’s connected, and who’s watching this Mac’s screen. When something’s happening: a screen shared, or the server down.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
             Section("Groups") {
                 Toggle("Keep a Group when its last tab closes", isOn: Binding(
                     get: { AppConfig.shared.keepEmptyGroups },
                     set: { AppConfig.shared.set("keep-empty-groups", $0 ? nil : "false") }))
                     .settingAnchor("general.keepgroups")
-                Text("Closing a Group's last tab with \(Keys.label("close") ?? "Close") leaves the Group, ready to open a new tab in its folder. Off, closing it closes the Group too.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
             Section("Command-line tool") {
                 LabeledContent(CommandLineTool.linkName) {
@@ -201,7 +195,7 @@ private struct GeneralSettings: View {
                     }
                 }
                 .settingAnchor("general.cli")
-                Text("Control Hammock from any terminal: hmk ls, hmk tab new, hmk send…")
+                Text("Control Hammock from any terminal.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -212,7 +206,7 @@ private struct GeneralSettings: View {
                     Text("Open in your default browser").tag(true)
                     Text("Open in a Hammock browser tab").tag(false)
                 }
-                Text("Where a link a page opens in a new tab goes when you click it. ⌘-click, a middle click, Open Link in New Tab and sign-in windows always open in Hammock.")
+                Text("⌘-click, middle-click and sign-in windows always open in Hammock.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -226,17 +220,17 @@ private struct GeneralSettings: View {
                         Button("Forget") { AppConfig.shared.setBrowserOpenSchemes(schemes.filter { $0 != scheme }) }
                     }
                 }
-                Text("A browser pane asks before opening a link in another app (obsidian:, zoommtg:, …). These open without asking: you chose Always when asked.")
+                Text("These open in their app without asking.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .settingAnchor("general.links")
             }
             Section("Simulators") {
-                Toggle("Shut down simulators when you're done with them", isOn: Binding(
+                Toggle("Shut down simulators when their last pane closes", isOn: Binding(
                     get: { AppConfig.shared.simulatorShutdown },
                     set: { AppConfig.shared.set("simulator-shutdown", $0 ? nil : "false") }))
                     .settingAnchor("general.simulators")
-                Text("A simulator Hammock started shuts down a minute after its last pane closes. Ones that were already running (Xcode's) are left alone.")
+                Text("Only ones Hammock started.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -285,7 +279,7 @@ struct NotificationSettings: View {
             }
             Section("How to notify me") {
                 Picker("Show notifications", selection: Binding(get: { style }, set: { prefs.set(NotifyPrefs.style, $0.rawValue) })) {
-                    Text("In the Hammock window when it's in front, otherwise as macOS notifications").tag(NotifyStyle.auto)
+                    Text("In Hammock when it's in front, otherwise macOS").tag(NotifyStyle.auto)
                     Text("As macOS notifications").tag(NotifyStyle.system)
                     Text("In the Hammock window").tag(NotifyStyle.inApp)
                 }
@@ -357,10 +351,6 @@ struct AppearanceSettings: View {
                     .settingAnchor("appearance.theme")
             } header: {
                 Text("Theme")
-            } footer: {
-                Text("A theme sets the terminal's colours, the window's, the agent view's and the focused pane's border, for light and dark.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
             if config.isCustomTheme { customTheme }
             Section("Window") {
@@ -389,10 +379,10 @@ struct AppearanceSettings: View {
                     GroupHeadingsPicture(subtle: h == .subtle, icons: config.groupIcons)
                 }
                 .settingAnchor("appearance.headings")
-                Text("Subtle headings are smaller and dimmer than the tabs under them. Horizontal tabs keep prominent ones.")
+                Text("Horizontal tabs always use Prominent.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                PictureToggle(label: "Group icons", caption: "A Group's icon before its name in the sidebar.",
+                PictureToggle(label: "Group icons",
                               isOn: Binding(get: { config.groupIcons }, set: { config.set("group-icons", $0 ? nil : "false") })) {
                     GroupHeadingsPicture(subtle: config.groupHeadings == .subtle, icons: config.groupIcons)
                 }
@@ -402,21 +392,17 @@ struct AppearanceSettings: View {
                     CurrentMiniWindow { $0.tabStatus = s; if $0.layout == .horizontal { $0.layout = .vertical } }
                 }
                 .settingAnchor("appearance.tabstatus")
-                Text("At the end of the row, a tab's icon shows which agent it runs. Horizontal tabs and the command palette always show status in the icon.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                PictureToggle(label: "Show finished agents", caption: "Agents that are done and need nothing get their own list at the bottom of the sidebar, under Needs You.", isOn: Prefs.shared.boolBinding(FinishedPrefs.pref)) {
+                PictureToggle(label: "Show finished agents", caption: "In their own list at the bottom of the sidebar.", isOn: Prefs.shared.boolBinding(FinishedPrefs.pref)) {
                     FinishedPicture(on: showFinished)
                 }
                 .settingAnchor("appearance.finished")
                 PictureToggle(label: "Show active agents in collapsed Groups",
-                              caption: "A collapsed Group keeps showing a tab while its agent is working, waiting, has failed or has finished, until you've seen it.",
                               isOn: Prefs.shared.boolBinding(CollapsedAgentsPrefs.pref)) {
                     CollapsedAgentsPicture(on: showAgentsCollapsed)
                 }
                 .disabled(layout == .horizontal)
                 .settingAnchor("appearance.collapsed")
-                PictureToggle(label: "Close button on hover", caption: "The tab under the pointer shows a button to close it: at the end of the row in the sidebar, at the start of the tab in the tab bar.",
+                PictureToggle(label: "Close button on hover",
                               isOn: Binding(get: { config.tabCloseButton }, set: { config.set("tab-close-button", $0 ? nil : "false") })) {
                     TabClosePicture(on: config.tabCloseButton)
                 }
@@ -426,9 +412,6 @@ struct AppearanceSettings: View {
                     ProgramIconsPicture(style: s)
                 }
                 .settingAnchor("appearance.programicons")
-                Text("Tabs and panes show what's running in them: vim, git, Homebrew… With none, they show a terminal. Agents always show their logo.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
             Section("Panes") {
                 PicturePicker(label: "Spacing", options: [(AppConfig.PaneSpacing.compact, "Compact"), (.spacious, "Spacious")],
@@ -436,12 +419,11 @@ struct AppearanceSettings: View {
                     CurrentMiniWindow { $0.spacious = s == .spacious }
                 }
                 .settingAnchor("appearance.spacing")
-                PictureToggle(label: "Dim inactive panes", caption: "Panes you're not typing in fade back a little.", isOn: Binding(get: { config.dimInactivePanes }, set: { config.set("dim-inactive-panes", $0 ? "true" : nil) })) {
+                PictureToggle(label: "Dim inactive panes", isOn: Binding(get: { config.dimInactivePanes }, set: { config.set("dim-inactive-panes", $0 ? "true" : nil) })) {
                     FocusPicture(dim: config.dimInactivePanes, border: false)
                 }
                 .settingAnchor("appearance.dim")
-                PictureToggle(label: "Show a border around the active pane",
-                              caption: config.isCustomTheme ? "Around the pane you're typing in." : "Around the pane you're typing in, in your theme's colour.",
+                PictureToggle(label: "Border around the active pane",
                               isOn: Binding(get: { config.activePaneBorder }, set: { config.set("active-pane-border", $0 ? "true" : nil) })) {
                     FocusPicture(dim: false, border: config.activePaneBorder)
                 }
@@ -453,7 +435,7 @@ struct AppearanceSettings: View {
                     CursorPicture(style: name, blink: false)
                 }
                 .settingAnchor("appearance.cursor")
-                PictureToggle(label: "Blink", caption: "Programs can still pick their own cursor (vim's insert mode, for example).",
+                PictureToggle(label: "Blink", caption: "Programs can override this.",
                               isOn: Binding(get: { config.cursorBlink }, set: { config.set("cursor-style-blink", $0 ? nil : "false") })) {
                     CursorPicture(style: config.cursorStyleName, blink: config.cursorBlink)
                 }
@@ -487,7 +469,7 @@ struct AppearanceSettings: View {
                 }
             }
             .padding(.vertical, 4)
-            Text("Your own colours go in the config file: sidebar-color and toolbar-color, as #RRGGBB or light:#…,dark:#…, override these.")
+            Text("sidebar-color and toolbar-color in the config file override these.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -500,7 +482,7 @@ struct AppearanceSettings: View {
                 ForEach(themes, id: \.self) { Text($0).tag($0) }
             }
             ThemeSwatch(theme: config.darkTheme)
-            Text("The terminal follows the app's appearance. Themes are Ghostty theme files, from ~/.config/hammock/themes, ~/.config/ghostty/themes and Ghostty's bundled themes.")
+            Text("Ghostty themes, including any in ~/.config/hammock/themes or ~/.config/ghostty/themes.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -626,14 +608,14 @@ private struct TerminalSettings: View {
                     .settingAnchor("terminal.thicken")
                 Toggle("Copy text when selected", isOn: Binding(get: { config.copyOnSelect }, set: { config.set("copy-on-select", $0 ? "true" : nil) }))
                     .settingAnchor("terminal.copy")
-                Toggle("Show images programs name by file path", isOn: Binding(get: { config.imageFileMedium }, set: { config.set("image-file-medium", $0 ? nil : "false") }))
+                Toggle("Show images from file paths", isOn: Binding(get: { config.imageFileMedium }, set: { config.set("image-file-medium", $0 ? nil : "false") }))
                     .settingAnchor("terminal.images")
-                Text("Programs can show an image by naming a file (Claude Code does, for images it reads). Off, only images they send themselves are shown. Applies to panes opened from now on.")
+                Text("Used by Claude Code, among others. Applies to new panes.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Toggle("Ask before pasting text that could run commands", isOn: Binding(get: { config.pasteProtection }, set: { config.set("clipboard-paste-protection", $0 ? nil : "false") }))
                     .settingAnchor("terminal.paste")
-                Text("Saved in \(config.displayPath); unset keys follow your Ghostty config. \(Keys.label("bigger") ?? "Bigger") / \(Keys.label("smaller") ?? "Smaller") zoom temporarily; \(Keys.label("actual_size") ?? "Actual Size") resets.")
+                Text("Unset keys follow your Ghostty config.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -670,13 +652,11 @@ private struct AgentSettings: View {
     @State private var output = ""
     @State private var running = false
 
-    /// What turning on usage-live does, naming the agents it can ask.
+    /// What turning on usage-live does.
     private var liveUsageNote: String {
-        let names = AgentCatalog.withLiveUsage.map { AgentCatalog.shortName(of: $0.id) }
-        let which = names.isEmpty ? "" : " (" + ListFormatter.localizedString(byJoining: names) + ")"
-        var note = "Agents save their usage now and then, if at all, so it can be hours behind. With this on, Hammock asks the service of each agent shown above\(which) every 5 minutes, with the sign-in that agent's own CLI keeps on this Mac: used for that request only, never kept or sent anywhere else. macOS may ask you to allow reading an agent's sign-in from the Keychain."
+        var note = "Checks every 5 minutes with each agent's own sign-in, which never leaves this Mac. macOS may ask for Keychain access."
         if AppConfig.shared.claudeUsageLive && !AppConfig.shared.usageLive {
-            note += " For now Hammock asks Anthropic for Claude's alone, as you set up before."
+            note += " For now, only Claude's, as you set up before."
         }
         return note
     }
@@ -687,18 +667,12 @@ private struct AgentSettings: View {
             Section {
                 Toggle("Warn before closing an agent that's at work", isOn: Prefs.shared.boolBinding(CloseGuard.pref))
                     .settingAnchor("agents.closeguard")
-                Text("Asks first when closing a pane or tab would stop an agent that's working, waiting for you or running a command.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
             Section("Usage Limits in the Sidebar") {
                 ForEach(UsageLimitsPrefs.agents, id: \.harness) { a in
                     UsageToggle(harness: a.harness)
                         .settingAnchor(a.harness == UsageLimitsPrefs.agents.first?.harness ? "agents.usage" : "agents.usage.\(a.harness)")
                 }
-                Text("Shows how much of each limit window (5 hours, a week…) is used, and when it resets, as the agent last saved it on this Mac. Only agents installed here are listed.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                 Toggle("Ask each agent's service for its usage", isOn: Binding(
                     get: { AppConfig.shared.usageLive },
                     set: {
@@ -711,7 +685,7 @@ private struct AgentSettings: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                Text("Hammock detects coding agents (Claude Code, Codex and others) automatically from their processes and screens. Installing hooks gives exact states (working, waiting for permission, finished) and enables resuming sessions after a restart. It also gives agents Hammock's tools: running commands in their own panes, and driving browser panes (open, read, click, type, screenshots, console and network).")
+                Text("Hooks give exact agent states and let sessions resume after a restart. They also give agents Hammock's tools: their own panes and browser control.")
                     .font(.callout)
                 HStack {
                     Button("Preview Changes") { run(["hooks", "install", "--dry-run"]) }
@@ -721,7 +695,7 @@ private struct AgentSettings: View {
                     if running { ProgressView().controlSize(.small) }
                 }
                 .settingAnchor("agents.hooks")
-                Text("Edits ~/.claude/settings.json and ~/.codex/config.toml (and the settings of any other agent installed here), keeping a backup of each, and registers the tools with `claude mcp add`. Existing hooks are left in place. Agents outside Hammock don't get the tools.")
+                Text("Edits each installed agent's settings, with a backup. Your existing hooks are kept.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

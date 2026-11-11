@@ -67,11 +67,11 @@ struct DevicesSettings: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                 }
-                Text("Your iPhone connects directly to this Mac on the networks below, encrypted and pinned to this Mac's certificate. Anything a paired device does is logged.")
+                Text("Direct, encrypted connections on the networks below. Everything a paired device does is logged.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if model.hasLinkedComputers {
-                    Text("Your linked computers reach this one this way too, so it stays on while any are linked. Unlink them above to turn it off.")
+                    Text("Linked computers need this on. Unlink them to turn it off.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -326,7 +326,7 @@ private struct RecentActivity: View {
                 .fixedSize()
             }
         } footer: {
-            Text("What agents, your devices and guests have done through Hammock, and the permissions asked for. Also `hmk audit`.")
+            Text("Also in `hmk audit`.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

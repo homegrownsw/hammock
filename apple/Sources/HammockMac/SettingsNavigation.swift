@@ -73,7 +73,7 @@ extension SettingsTab: Identifiable {
         case .appearance: "Light and dark, your theme, and how the window, tabs, panes and cursor look."
         case .terminal: "The terminal's font, copying and pasting, and images programs show."
         case .editor: "Editor panes: wrapping, line numbers, indents, font size and Vim keys."
-        case .keyboard: "Every action's shortcut, to change. Search by name or by keys."
+        case .keyboard: "Change any shortcut. Search by name or keys."
         case .agents: "Closing agents at work, usage limits in the sidebar, and Hammock's hooks and tools for agents."
         case .agentView: "How agent panes open, and the agent view's colour and fonts."
         case .notifications: "Hear about agents that need you, in the Hammock window or as macOS notifications."
@@ -276,7 +276,7 @@ enum SettingsIndex {
             e(.general, "Groups", "Keep a Group when its last tab closes", "general.keepgroups", "empty close"),
             e(.general, "Command-line tool", "Install the hmk command", "general.cli", "cli terminal path shell"),
             e(.general, "Links to other apps", "Links to other apps", "general.links", "browser url scheme open obsidian zoom"),
-            e(.general, "Simulators", "Shut down simulators when you're done with them", "general.simulators", "ios xcode iphone"),
+            e(.general, "Simulators", "Shut down simulators when their last pane closes", "general.simulators", "ios xcode iphone done"),
             e(.about, "Updates", "Check for updates daily", "about.updates", "sparkle version upgrade"),
             e(.about, "Updates", "Check for updates now", "about.checknow", "sparkle version upgrade new release"),
             e(.about, "Quitting", "Quit and stop the server", "about.quit", "daemon shut down exit"),
@@ -297,7 +297,7 @@ enum SettingsIndex {
             e(.appearance, "Tabs", "Program icons", "appearance.programicons", "vim git colorful plain"),
             e(.appearance, "Panes", "Pane spacing", "appearance.spacing", "compact spacious gap"),
             e(.appearance, "Panes", "Dim inactive panes", "appearance.dim", "fade focus"),
-            e(.appearance, "Panes", "Show a border around the active pane", "appearance.border", "focus outline"),
+            e(.appearance, "Panes", "Border around the active pane", "appearance.border", "focus outline show"),
             e(.appearance, "Cursor", "Cursor shape", "appearance.cursor", "block bar underline caret"),
             e(.appearance, "Cursor", "Cursor blink", "appearance.blink", "caret"),
             e(.appearance, "Config", "Edit config file", "appearance.config", "themes folder ghostty"),
@@ -307,7 +307,7 @@ enum SettingsIndex {
             e(.terminal, "Font", "Line spacing", "terminal.linespacing", "cell height"),
             e(.terminal, "Font", "Thicken text", "terminal.thicken", "bold"),
             e(.terminal, "Text", "Copy text when selected", "terminal.copy", "clipboard selection"),
-            e(.terminal, "Text","Show images programs name by file path", "terminal.images", "pictures claude"),
+            e(.terminal, "Text","Show images from file paths", "terminal.images", "pictures claude"),
             e(.terminal, "Text", "Ask before pasting text that could run commands", "terminal.paste", "clipboard paste protection"),
 
             e(.editor, "Editor panes", "Wrap long lines", "editor.wrap", "word wrap"),
