@@ -277,8 +277,9 @@ final class Session {
             self.persist()
         }
         // Dealt with (here, on the Mac or anywhere else): its notification
-        // goes from Notification Center, as on the Mac. Silent pushes do
-        // this while the app isn't running (DeliveredNotes.clear).
+        // goes from Notification Center, as on the Mac. While the app isn't
+        // running a silent push does it, when iOS lets it through
+        // (DeliveredNotes.clear); otherwise reconciling on connect does.
         m.onResolved = { ids in Push.shared.withdraw(ids, host: h.id) }
         m.onFullState = { [weak m] in
             guard let m else { return }

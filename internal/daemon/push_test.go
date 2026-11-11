@@ -44,12 +44,12 @@ func TestPushWhileAway(t *testing.T) {
 	var idle atomic.Int64
 	var locked atomic.Bool
 	idle.Store(int64(time.Hour))
-	oldClient, oldIdle, oldLocked, oldRelays, oldPoll := pushClient, idleTime, screenLocked, pushRelays, pushPoll
-	pushClient, pushRelays, pushPoll = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond
+	oldClient, oldIdle, oldLocked, oldRelays, oldPoll, oldDelay := pushClient, idleTime, screenLocked, pushRelays, pushPoll, clearDelay
+	pushClient, pushRelays, pushPoll, clearDelay = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond, 0
 	idleTime = func() time.Duration { return time.Duration(idle.Load()) }
 	screenLocked = locked.Load
 	defer func() {
-		pushClient, idleTime, screenLocked, pushRelays, pushPoll = oldClient, oldIdle, oldLocked, oldRelays, oldPoll
+		pushClient, idleTime, screenLocked, pushRelays, pushPoll, clearDelay = oldClient, oldIdle, oldLocked, oldRelays, oldPoll, oldDelay
 	}()
 
 	dir := shortDir(t)
@@ -150,8 +150,10 @@ func TestPushWhileAway(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no clear sent once it was answered")
 	}
-	// Once only.
-	sendHook(t, dir, HookEvent{PaneID: paneID, Harness: "claude", Payload: json.RawMessage(`{"hook_event_name":"UserPromptSubmit","prompt":"and"}`)})
+	// Once only: the same id resolved again tells no one.
+	d.mu.Lock()
+	d.publish(&pb.StateUpdate{ClearedAttentionIds: []string{"at_" + paneID}})
+	d.mu.Unlock()
 	select {
 	case c := <-cleared:
 		t.Fatalf("cleared again: %v", c)

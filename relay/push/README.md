@@ -58,8 +58,7 @@ In this order, each time:
 - [ ] `npx wrangler deploy`
 - [ ] the WAF rate-limiting rule is still in place on the relay's route
       (Security ▸ WAF ▸ Rate limiting rules), blocking every other path,
-      and lets through any route this change adds (`/clear` came after
-      the rule was first written).
+      and lets through every route the worker has (Routes, below).
 
 Rows the old worker wrote between the two steps have no `last_used`;
 they're forgotten 60 days from when they were created.
@@ -88,7 +87,8 @@ and the rest age out unused.
   is dealt with (answered, seen, withdrawn), so the phone takes it down. A
   silent background push (`content-available`, priority 5) carrying only
   the ciphertext, which names the notification; checked and counted as a
-  send is. Macs ignore a relay that doesn't have it yet (a 404 here
+  send is. The relay learns when something was dealt with, not what. Macs
+  ignore a relay that doesn't have it yet (a 404 here
   doesn't make them forget the phone, as one from `/send` does).
 
 Any other path or method is turned away, as is a body over 4 KB. Every

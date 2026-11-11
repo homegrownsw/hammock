@@ -37,7 +37,8 @@ import (
 // the ids themselves don't leave the Mac); and the category ("join",
 // "grant", "hammockkey" or none), which says what kind of notification it
 // is. The phone takes everything it shows, its category included, from
-// the decrypted note.
+// the decrypted note. A clear (clearPushes) is ciphertext only: the relay
+// learns when something a phone was told of is dealt with, not what.
 
 const awayAfter = 2 * time.Minute
 
@@ -92,8 +93,8 @@ type pushNote struct {
 	// At is when it was sent (Unix seconds): the phone drops one much older,
 	// so a relay can't replay old notifications.
 	At int64 `json:"at,omitempty"`
-	// Live: about something that's resolved (answered, seen, cleared,
-	// withdrawn), and goes from the phone then: when a clear for its ID
+	// Live: about something that gets resolved (answered, seen, cleared,
+	// withdrawn), and goes from the phone once it is: when a clear for its ID
 	// arrives, or the app finds it's no longer live.
 	Live bool `json:"live,omitempty"`
 	// Clear: not a notification but word that what ID was about is
@@ -328,12 +329,7 @@ func (d *Daemon) push(event, collapse string, n pushNote, pending func() bool) {
 	if recs, err := d.store.Records("push"); err != nil || len(recs) == 0 {
 		return
 	}
-	n.Host = d.remote.fingerprint
-	if n.Host == "" {
-		if _, fp, err := loadOrCreateCert(d.cfg.Dir); err == nil {
-			n.Host = fp
-		}
-	}
+	n.Host = d.pushHost()
 	n.ID = collapse
 	// Whatever is pending until something resolves it (all but a
 	// scheduled run's result) is cleared from the phone when it is.
@@ -401,12 +397,7 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 	if err != nil || len(recs) == 0 {
 		return
 	}
-	n.Host = d.remote.fingerprint
-	if n.Host == "" {
-		if _, fp, err := loadOrCreateCert(d.cfg.Dir); err == nil {
-			n.Host = fp
-		}
-	}
+	n.Host = d.pushHost()
 	n.ID, n.At, n.Live = collapse, time.Now().Unix(), true
 	plain, _ := json.Marshal(n)
 	for _, id := range deviceIDs {
@@ -421,8 +412,20 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 	}
 }
 
+// pushHost is this Mac as phones know it: its certificate's fingerprint.
+// Callers hold d.mu.
+func (d *Daemon) pushHost() string {
+	if d.remote.fingerprint != "" {
+		return d.remote.fingerprint
+	}
+	_, fp, _ := loadOrCreateCert(d.cfg.Dir)
+	return fp
+}
+
 // notePushed records that a phone was sent a notification about id, so it's
-// told when that's resolved (clearPushes). Callers hold d.mu.
+// told when that's resolved (clearPushes). In memory only: after the daemon
+// restarts, phones tidy up when the app next connects instead. Callers
+// hold d.mu.
 func (d *Daemon) notePushed(id, deviceID string) {
 	if d.pushSent == nil {
 		d.pushSent = map[string][]string{}
@@ -441,32 +444,22 @@ func (d *Daemon) clearPushes(u *pb.StateUpdate) {
 	if len(d.pushSent) == 0 {
 		return
 	}
-	var ids []string
+	told := map[string][]string{}
 	for _, l := range [][]string{u.ClearedAttentionIds, u.ResolvedGrantIds, u.ResolvedJoinIds, u.ResolvedHammockKeyIds} {
-		ids = append(ids, l...)
+		for _, id := range l {
+			if phones := d.pushSent[id]; len(phones) > 0 {
+				told[id] = phones
+				delete(d.pushSent, id)
+			}
+		}
 	}
-	var recs map[string][]byte
-	for _, id := range ids {
-		phones := d.pushSent[id]
-		if len(phones) == 0 {
-			continue
-		}
-		delete(d.pushSent, id)
-		if recs == nil {
-			if recs, _ = d.store.Records("push"); recs == nil {
-				return
-			}
-		}
-		n := pushNote{ID: id, Host: d.remote.fingerprint, At: time.Now().Unix(), Clear: true}
-		if n.Host == "" {
-			if _, fp, err := loadOrCreateCert(d.cfg.Dir); err == nil {
-				n.Host = fp
-			}
-		}
-		if clearedPush != nil {
-			clearedPush(id)
-		}
-		plain, _ := json.Marshal(n)
+	if len(told) == 0 {
+		return
+	}
+	recs, _ := d.store.Records("push")
+	host, at := d.pushHost(), time.Now().Unix()
+	for id, phones := range told {
+		plain, _ := json.Marshal(pushNote{ID: id, Host: host, At: at, Clear: true})
 		for _, deviceID := range phones {
 			r := &pb.RegisterPush{}
 			if b := recs[deviceID]; b == nil || proto.Unmarshal(b, r) != nil {
@@ -479,8 +472,10 @@ func (d *Daemon) clearPushes(u *pb.StateUpdate) {
 	}
 }
 
-// clearedPush, in tests, hears of each clear sent. Called holding d.mu.
-var clearedPush func(id string)
+// clearDelay holds a clear back a moment: the notification it clears may
+// still be on its way (sent just before it was dealt with), and APNs
+// doesn't keep a silent push behind an alert. Replaceable in tests.
+var clearDelay = 2 * time.Second
 
 // sendClear asks the relay for a silent push. Best effort: a relay from
 // before clears answers 404 for the path, which says nothing about the
@@ -489,6 +484,7 @@ func (d *Daemon) sendClear(deviceID string, r *pb.RegisterPush, sealed []byte) {
 	if !knownRelay(r.RelayUrl) {
 		return
 	}
+	time.Sleep(clearDelay)
 	body, _ := json.Marshal(map[string]string{"id": r.RelayId, "payload": base64.StdEncoding.EncodeToString(sealed)})
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
