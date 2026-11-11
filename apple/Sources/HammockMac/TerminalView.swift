@@ -56,6 +56,9 @@ final class TerminalNSView: NSView {
     /// Posted when an overlay (the command palette) closes: the pane that
     /// should have the keyboard takes it back.
     static let refocus = Notification.Name("HammockTerminalRefocus")
+    /// Told each draw's seconds spent in `frame()` and then drawing, while
+    /// the renderer is being measured (HMK_DEBUG_RENDER_BENCH and _STATS).
+    static var timing: ((_ frame: CFTimeInterval, _ draw: CFTimeInterval) -> Void)?
     private var thicken: Bool { AppConfig.shared.fontThicken }
 
     override init(frame: NSRect) {
@@ -252,7 +255,14 @@ final class TerminalNSView: NSView {
             dirtyRect.fill()
             return
         }
+        // Off unless measuring (RenderBench, RenderStats): the time taken
+        // copying the screen out of libghostty, then drawing it.
+        let timing = Self.timing
+        let start = timing == nil ? 0 : CACurrentMediaTime()
+        var copied = start
+        defer { if let timing { timing(copied - start, CACurrentMediaTime() - copied) } }
         let f = session.engine.frame()
+        if timing != nil { copied = CACurrentMediaTime() }
         color(f.background).setFill()
         dirtyRect.fill()
 

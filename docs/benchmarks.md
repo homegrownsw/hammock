@@ -27,3 +27,28 @@ Notes:
 - Keystroke-to-photon against standalone Ghostty (screen-capture based) isn't
   built yet ([#19](https://github.com/homegrownsw/hammock/issues/19)); it
   needs Screen Recording permission on the machine running it.
+
+## The Mac terminal renderer
+
+`just render-bench` builds this checkout's β and draws fixed screens offscreen, at 2x, through the pane's real drawing code (`RenderBench.swift`), then prints a table and writes JSON (and a PNG of each screen, to compare renderers by eye). Each draw is split into `frame` (copying the screen out of libghostty-vt into Swift cells) and `draw` (drawing them). Between draws the screen changes as it would under output: a line scrolls in, a TUI redraws, a key is typed. It leaves out Core Animation's upload of the layer and the display itself: that's keystroke-to-photon ([#19](https://github.com/homegrownsw/hammock/issues/19)).
+
+CoreText baseline: Apple M4 Pro, macOS 27, Hack Nerd Font 14 pt, 2026-11-11, three runs (p50 ranged within 2%; one run shown). Milliseconds per draw, p50 / p99:
+
+| Screen | Grid | `frame` | `draw` | Total | Draws/s at p50 |
+|---|---|---|---|---|---|
+| plain | 80×24 | 0.04 / 0.05 | 0.90 / 1.04 | 0.94 / 1.08 | 1063 |
+| plain | 200×60 | 0.28 / 0.31 | 5.31 / 5.63 | 5.59 / 5.94 | 179 |
+| plain | 400×100 | 0.91 / 1.02 | 17.10 / 19.75 | 18.02 / 20.67 | 55 |
+| colour (256-colour words, some backgrounds, bold, italic) | 200×60 | 0.40 / 0.43 | 15.73 / 16.34 | 16.13 / 16.74 | 62 |
+| colour | 400×100 | 1.36 / 1.56 | 52.09 / 53.87 | 53.45 / 55.24 | 19 |
+| tui (status bar, box drawing, row backgrounds, block bars) | 200×60 | 0.34 / 0.36 | 7.75 / 8.13 | 8.09 / 8.46 | 124 |
+| unicode (CJK, emoji, Nerd Font icons, powerline, combining marks) | 200×60 | 0.42 / 0.47 | 30.82 / 31.99 | 31.22 / 32.43 | 32 |
+| typing (a short shell history, one key per draw) | 200×60 | 0.15 / 0.16 | 0.86 / 1.08 | 1.01 / 1.23 | 989 |
+
+What it says:
+
+- Drawing is the cost, not getting the screen out of libghostty: `frame` is 3–8% of each draw.
+- The cost follows the text and its style runs, not the pane's size: a sparse 200×60 shell draws in 1 ms, the same pane full of coloured words in 16 ms, and Unicode with fallback fonts in 31 ms. A full pane is drawn on every change, a single typed key included.
+- A 120 Hz display gives 8.3 ms a frame. Colourful or Unicode-heavy screens at 200×60 miss it, and a full-screen pane on a large display (400×100 is about a 6K display at 14 pt) misses even 60 Hz: 18 ms plain, 53 ms coloured.
+
+`HMK_DEBUG_RENDER_STATS=<file>` times the real thing instead. Every draw, and every write of a pane's output into its engine, is timed, and a JSON line is appended every two seconds. Flooding a 117×37 pane with 256-colour text (`cat` of a 115 MB file) gave 120 draws/s, the display's rate, at 3.3 ms each. That was 39% of the main thread drawing and 24% parsing about 52 MB/s of output. The daemon still skipped output and sent a fresh screen 4–5 times a second, as it does for a client that has fallen behind. At that size, delivery rather than drawing is what a flood runs into.

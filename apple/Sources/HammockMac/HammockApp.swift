@@ -454,6 +454,8 @@ struct HammockApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        RenderBench.runIfRequested() // measures, then quits
+        RenderStats.startIfRequested()
         NSApp.setActivationPolicy(.regular)
         AppConfig.shared.applyAppearance()
         NSApp.activate()

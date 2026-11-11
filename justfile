@@ -320,6 +320,18 @@ bench:
     go test -tags {{tags}} -run xxx -bench OutputThroughput -benchtime 1x ./internal/daemon/
     go test -run xxx -bench . -benchtime 3x ./internal/holder/
 
+# The Mac terminal renderer's draw time on fixed screens, offscreen, in this
+# checkout's β (RenderBench.swift, docs/benchmarks.md). Writes OUT (a JSON
+# file; a temporary one if empty) and a PNG of each screen beside it.
+render-bench out="": mac-dev
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(./scripts/beta-identity.sh)"
+    out="{{out}}"
+    [ -n "$out" ] || out="$(mktemp -d)/render.json"
+    HMK_DEBUG_RENDER_BENCH="$out" "$beta_app/Contents/MacOS/Hammock"
+    echo "results: $out"
+
 # Generate the iOS Xcode project and build it for the simulator.
 ios: deps
     xcodebuild -project apple/iOS/HammockIOS.xcodeproj -scheme Hammock -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -derivedDataPath /tmp/hmk-ios-build CODE_SIGNING_ALLOWED=NO build

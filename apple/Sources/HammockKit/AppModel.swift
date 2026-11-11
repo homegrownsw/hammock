@@ -50,6 +50,26 @@ public final class PaneSession {
         self.paneID = paneID
         self.engine = TerminalEngine(cols: cols, rows: rows)
     }
+
+    /// A session fed by hand rather than by a daemon, ready to draw at once
+    /// (the renderer benchmark, HMK_DEBUG_RENDER_BENCH).
+    public static func standalone(paneID: String, cols: Int, rows: Int) -> PaneSession {
+        let s = PaneSession(paneID: paneID, cols: cols, rows: rows)
+        s.ready = true
+        return s
+    }
+
+    /// Told the bytes and seconds of each write of a pane's output (or a
+    /// snapshot) into its engine, while the Mac's renderer is measured
+    /// (HMK_DEBUG_RENDER_STATS): parsing shares the main thread with drawing.
+    @MainActor public static var writeTiming: ((_ bytes: Int, _ seconds: CFTimeInterval, _ snapshot: Bool) -> Void)?
+
+    @MainActor static func timed(_ bytes: Int, snapshot: Bool, _ write: () -> Void) {
+        guard let writeTiming else { return write() }
+        let start = CACurrentMediaTime()
+        write()
+        writeTiming(bytes, CACurrentMediaTime() - start, snapshot)
+    }
 }
 
 /// The client's view of a daemon: state, actions and pane streams. Shared by
@@ -323,14 +343,14 @@ public final class AppModel {
         case .paneSnapshot(let s):
             guard let session = sessions[s.paneID] else { return }
             session.engine.reset(cols: Int(s.cols), rows: Int(s.rows))
-            session.engine.write(s.data)
+            PaneSession.timed(s.data.count, snapshot: true) { session.engine.write(s.data) }
             session.ready = true
             session.notify()
         case .authChallenge(let c):
             if challengeWaiters.isEmpty { challenge = c.nonce } else { challengeWaiters.removeFirst().resume(returning: c.nonce) }
         case .paneOutput(let o):
             guard let session = sessions[o.paneID] else { return }
-            session.engine.write(o.data)
+            PaneSession.timed(o.data.count, snapshot: false) { session.engine.write(o.data) }
             session.notify()
         case .agentView(let v):
             agentSessions[AgentSession.key(v.paneID, v.subagentID, v.shellID)]?.apply(v)
