@@ -1,5 +1,6 @@
 import AppKit
 import HammockKit
+import Metal
 
 /// Measures the terminal renderer (issue #18: is CoreText what limits us?).
 ///
@@ -62,6 +63,13 @@ enum RenderBench {
         /// Whether the last frame drawn row by row is the same, pixel for
         /// pixel, as the one drawn whole: a missed row would show here.
         let same: Bool
+        /// With HMK_DEBUG_RENDER_BENCH_RENDERER=metal: the same screen drawn
+        /// with Metal (CPU time, and the GPU's), and the share of its pixels
+        /// that differ visibly (any channel by more than 24 of 255) from
+        /// CoreGraphics' (the PNG is beside the others, `-metal`).
+        var metal: Run?
+        var metalGPUMs: Stats?
+        var metalDiffers: Double?
     }
 
     struct Report: Encodable {
@@ -79,6 +87,7 @@ enum RenderBench {
         let draws = Int(ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_DRAWS"] ?? "") ?? 120
         let only = ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_ONLY"].map { Set($0.split(separator: ",").map(String.init)) }
         let base = (out as NSString).deletingPathExtension
+        let withMetal = ProcessInfo.processInfo.environment["HMK_DEBUG_RENDER_BENCH_RENDERER"] == "metal"
         var results: [Result] = []
         for screen in makeScreens(draws: draws) where only?.contains(screen.name) ?? true {
             guard let (full, fullImage) = measure(screen, draws: draws, changedRows: false),
@@ -90,12 +99,21 @@ enum RenderBench {
             if !same, let png = NSBitmapImageRep(cgImage: rowsImage).representation(using: .png, properties: [:]) {
                 try? png.write(to: URL(fileURLWithPath: "\(base)-\(screen.name)-rows.png"))
             }
-            results.append(Result(screen: screen.name, cols: screen.cols, rows: screen.rows,
-                                  pixels: "\(fullImage.width)x\(fullImage.height)", draws: draws, full: full, changedRows: rows, same: same))
+            var result = Result(screen: screen.name, cols: screen.cols, rows: screen.rows,
+                                pixels: "\(fullImage.width)x\(fullImage.height)", draws: draws, full: full, changedRows: rows, same: same)
+            if withMetal, let (run, gpu, image) = measureMetal(screen, draws: draws) {
+                result.metal = run
+                result.metalGPUMs = gpu
+                result.metalDiffers = differs(fullImage, image)
+                if let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) {
+                    try? png.write(to: URL(fileURLWithPath: "\(base)-\(screen.name)-metal.png"))
+                }
+            }
+            results.append(result)
         }
 
         let (font, _) = TerminalFont.resolve()
-        let report = Report(renderer: "coretext", machine: sysctl("hw.model"), os: ProcessInfo.processInfo.operatingSystemVersionString,
+        let report = Report(renderer: withMetal ? "coretext, metal" : "coretext", machine: sysctl("hw.model"), os: ProcessInfo.processInfo.operatingSystemVersionString,
                             font: "\(font.fontName) \(font.pointSize)pt", scale: Int(scale), date: ISO8601DateFormatter().string(from: Date()), results: results)
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -103,19 +121,90 @@ enum RenderBench {
 
         var table = "renderer \(report.renderer), \(report.machine), \(report.font), @\(report.scale)x, ms per draw (p50 / p99)\n"
         table += "screen".padding(toLength: 22, withPad: " ", startingAt: 0)
-            + "grid      frame          whole pane       changed rows     rows/draw  cached  same\n"
+            + "grid      frame          whole pane       changed rows     rows/draw  cached  same"
+            + (withMetal ? "   metal cpu        metal gpu        differs" : "") + "\n"
         for r in results {
             func pair(_ s: Stats) -> String { String(format: "%6.2f / %-6.2f", s.p50, s.p99) }
             table += r.screen.padding(toLength: 22, withPad: " ", startingAt: 0)
                 + "\(r.cols)x\(r.rows)".padding(toLength: 10, withPad: " ", startingAt: 0)
                 + pair(r.full.frameMs) + " " + pair(r.full.totalMs) + "  " + pair(r.changedRows.totalMs) + "  "
-                + String(format: "%6.1f", r.changedRows.rows) + String(format: "  %5.0f%%", r.full.cacheHits * 100) + "    " + (r.same ? "yes" : "NO") + "\n"
+                + String(format: "%6.1f", r.changedRows.rows) + String(format: "  %5.0f%%", r.full.cacheHits * 100) + "    " + (r.same ? "yes" : "NO ")
+            if let m = r.metal, let g = r.metalGPUMs, let d = r.metalDiffers {
+                table += "   " + pair(m.totalMs) + "  " + pair(g) + String(format: "  %6.3f%%", d * 100)
+            }
+            table += "\n"
         }
         FileHandle.standardError.write(Data(table.utf8))
         exit(0)
     }
 
     private static let scale: CGFloat = 2
+
+    /// The screen drawn with Metal into a texture, waiting for the GPU each
+    /// time: CPU time (frame, then building and encoding), the GPU's time,
+    /// and the last frame.
+    private static func measureMetal(_ screen: Screen, draws: Int) -> (Run, Stats, CGImage)? {
+        let warmup = 10
+        let session = PaneSession.standalone(paneID: "bench-\(screen.name)", cols: screen.cols, rows: screen.rows)
+        let view = TerminalNSView(frame: .zero, metal: true)
+        guard let device = view.metal?.device else { return nil }
+        view.session = session
+        defer { view.session = nil }
+        let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,
+                          height: CGFloat(screen.rows) * view.cellHeight + view.padding * 2)
+        view.setFrameSize(size)
+        session.engine.write(Data(screen.setup.utf8))
+        let w = Int(size.width * scale), h = Int(size.height * scale)
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: TerminalMetalRenderer.pixelFormat, width: w, height: h, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .shared
+        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+
+        var frameMs: [Double] = [], cpuMs: [Double] = [], totalMs: [Double] = [], gpuMs: [Double] = []
+        TerminalNSView.timing = { f, d in
+            frameMs.append(f * 1000)
+            cpuMs.append(d * 1000)
+            totalMs.append((f + d) * 1000)
+        }
+        defer { TerminalNSView.timing = nil }
+        for i in 0..<(warmup + draws) {
+            if i == warmup { frameMs = []; cpuMs = []; totalMs = []; gpuMs = [] }
+            if i > 0 { session.engine.write(Data(screen.step(i - 1).utf8)) }
+            _ = session.engine.takeChanges()
+            guard let cb = view.renderMetal(into: texture, scale: scale) else { return nil }
+            cb.waitUntilCompleted()
+            gpuMs.append((cb.gpuEndTime - cb.gpuStartTime) * 1000)
+        }
+        // BGRA, as drawn, into a CGImage.
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        texture.getBytes(&bytes, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let image = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return nil }
+        return (Run(frameMs: Stats(frameMs), drawMs: Stats(cpuMs), totalMs: Stats(totalMs), rows: Double(screen.rows), cacheHits: 0), Stats(gpuMs), image)
+    }
+
+    /// The share of pixels where any channel differs by more than 24.
+    private static func differs(_ a: CGImage, _ b: CGImage) -> Double {
+        func pixels(_ i: CGImage) -> [UInt8] {
+            var p = [UInt8](repeating: 0, count: i.width * i.height * 4)
+            let ctx = CGContext(data: &p, width: i.width, height: i.height, bitsPerComponent: 8, bytesPerRow: i.width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+            ctx?.draw(i, in: CGRect(x: 0, y: 0, width: i.width, height: i.height))
+            return p
+        }
+        guard a.width == b.width, a.height == b.height else { return 1 }
+        let pa = pixels(a), pb = pixels(b)
+        var n = 0
+        var i = 0
+        while i < pa.count {
+            if abs(Int(pa[i]) - Int(pb[i])) > 24 || abs(Int(pa[i + 1]) - Int(pb[i + 1])) > 24 || abs(Int(pa[i + 2]) - Int(pb[i + 2])) > 24 { n += 1 }
+            i += 4
+        }
+        return Double(n) / Double(a.width * a.height)
+    }
 
     /// Draws a screen draws times (after ten to warm up), each after its
     /// next step of output, and returns the timings and the last frame.

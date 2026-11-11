@@ -1,5 +1,7 @@
 import AppKit
 import HammockKit
+import Metal
+import QuartzCore
 import SwiftUI
 
 /// Draws a pane's TerminalEngine with CoreText and turns keyboard/mouse input
@@ -61,8 +63,17 @@ final class TerminalNSView: NSView {
     static var timing: ((_ frame: CFTimeInterval, _ draw: CFTimeInterval) -> Void)?
     private var thicken: Bool { AppConfig.shared.fontThicken }
 
-    override init(frame: NSRect) {
+    /// Draws the pane when terminal-renderer = metal (#18); nil: CoreGraphics
+    /// draws it, in draw(_:). Chosen when the pane opens.
+    let metal: TerminalMetalRenderer?
+
+    override convenience init(frame: NSRect) {
+        self.init(frame: frame, metal: AppConfig.shared.terminalRenderer == "metal")
+    }
+
+    init(frame: NSRect, metal useMetal: Bool) {
         (font, boldFont) = TerminalFont.resolve()
+        metal = useMetal ? TerminalMetalRenderer() : nil
         super.init(frame: frame)
         fontObserver = NotificationCenter.default.addObserver(forName: TerminalFont.changed, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reloadFont() }
@@ -390,6 +401,127 @@ final class TerminalNSView: NSView {
                 }
             }
         }
+    }
+
+    // MARK: Metal
+
+    override var wantsUpdateLayer: Bool { metal != nil }
+
+
+
+    /// Metal draws into this, a sublayer filling the view: AppKit never asks
+    /// a view backed by a CAMetalLayer itself to update, so the view keeps
+    /// an ordinary layer (updateLayer is called as for any other view) and
+    /// draws into this one from there.
+    private lazy var metalLayer: CAMetalLayer? = metal.map { metal in
+        let l = CAMetalLayer()
+        l.device = metal.device
+        l.pixelFormat = TerminalMetalRenderer.pixelFormat
+        l.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+        l.framebufferOnly = true
+        l.isOpaque = true
+        // Shown in step with Core Animation's transaction, so a pane being
+        // resized never shows a frame of the wrong size.
+        l.presentsWithTransaction = true
+        l.contentsGravity = .topLeft
+        // Moved and resized with the view, never animated.
+        l.actions = ["bounds": NSNull(), "position": NSNull(), "frame": NSNull(), "contents": NSNull()]
+        layer?.addSublayer(l)
+        return l
+    }
+
+    override func layout() {
+        super.layout()
+        if let metalLayer, metalLayer.frame != bounds { metalLayer.frame = bounds }
+    }
+
+    override func updateLayer() {
+        guard metal != nil, let layer = metalLayer else { return }
+        if layer.frame != bounds { layer.frame = bounds }
+        let scale = window?.backingScaleFactor ?? 2
+        let size = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard size.width >= 1, size.height >= 1 else { return }
+        layer.contentsScale = scale
+        if layer.drawableSize != size { layer.drawableSize = size }
+        let timing = Self.timing
+        let start = timing == nil ? 0 : CACurrentMediaTime()
+        guard let (scene, frameTime) = metalScene(scale: scale), let drawable = layer.nextDrawable() else { return }
+        let cb = metal?.render(scene, to: drawable.texture)
+        cb?.waitUntilScheduled()
+        drawable.present()
+        if let timing { timing(frameTime, CACurrentMediaTime() - start - frameTime) }
+    }
+
+    /// Draws the pane into `texture` with Metal (RenderBench). The command
+    /// buffer is committed; wait on it before reading the texture.
+    func renderMetal(into texture: MTLTexture, scale: CGFloat) -> MTLCommandBuffer? {
+        guard let metal else { return nil }
+        let timing = Self.timing
+        let start = timing == nil ? 0 : CACurrentMediaTime()
+        guard let (scene, frameTime) = metalScene(scale: scale) else { return nil }
+        let cb = metal.render(scene, to: texture)
+        if let timing { timing(frameTime, CACurrentMediaTime() - start - frameTime) }
+        return cb
+    }
+
+    /// What Metal draws: the same rows, cursor and link underline as
+    /// draw(_:). Not yet: Kitty images, and IME text being composed (#18,
+    /// phase 3). Also returns the time spent in frame().
+    private func metalScene(scale: CGFloat) -> (TerminalMetalRenderer.Scene, CFTimeInterval)? {
+        guard let session else { return nil }
+        let theme = session.engine.theme
+        guard session.ready else {
+            return (TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: thicken, background: theme.background,
+                                                padding: padding, cellHeight: cellHeight), 0)
+        }
+        let start = CACurrentMediaTime()
+        let f = session.engine.frame()
+        let frameTime = CACurrentMediaTime() - start
+        var scene = TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: thicken, background: f.background,
+                                                padding: padding, cellHeight: cellHeight)
+        let layout = lineLayout(for: f, theme: theme)
+        for (y, row) in f.cells.enumerated() {
+            scene.rows.append((padding + CGFloat(y) * cellHeight, layout.line(row)))
+        }
+        if let link = hoverLink {
+            for span in link.spans where span.row < f.rows {
+                scene.overlay.append(.init(rect: CGRect(x: padding + CGFloat(span.cols.lowerBound) * cellWidth, y: padding + CGFloat(span.row + 1) * cellHeight - 2,
+                                                        width: CGFloat(span.cols.count) * cellWidth, height: 1),
+                                           color: TerminalColor(theme.foreground), copy: true))
+            }
+        }
+        let focused = window?.isKeyWindow == true && window?.firstResponder === self
+        blinkWanted = focused && f.cursorBlinking
+        drawnCursorRow = f.cursorVisible && f.cursorY < f.cells.count ? f.cursorY : nil
+        if f.cursorVisible, f.cursorY < f.cells.count, blinkOn || !blinkWanted {
+            let rect = CGRect(x: padding + CGFloat(f.cursorX) * cellWidth, y: padding + CGFloat(f.cursorY) * cellHeight,
+                              width: cellWidth, height: cellHeight)
+            let cc = TerminalColor(f.cursorColor ?? theme.cursor)
+            func add(_ r: CGRect) { scene.overlay.append(.init(rect: r, color: cc, copy: true)) }
+            if !focused || f.cursorStyle == .hollow {
+                // A 1-point outline inside the cell, as the stroke draws it.
+                add(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: 1))
+                add(CGRect(x: rect.minX, y: rect.maxY - 1, width: rect.width, height: 1))
+                add(CGRect(x: rect.minX, y: rect.minY + 1, width: 1, height: rect.height - 2))
+                add(CGRect(x: rect.maxX - 1, y: rect.minY + 1, width: 1, height: rect.height - 2))
+            } else {
+                switch f.cursorStyle {
+                case .bar: add(CGRect(x: rect.minX, y: rect.minY, width: AppConfig.shared.cursorThin ? 1 : 2, height: rect.height))
+                case .underline: add(CGRect(x: rect.minX, y: rect.maxY - 2, width: rect.width, height: 2))
+                default:
+                    add(rect)
+                    let cells = f.cells[f.cursorY]
+                    if f.cursorX < cells.count, !cells[f.cursorX].text.isEmpty {
+                        var c = cells[f.cursorX]
+                        c.fg = f.background
+                        c.inverse = false
+                        c.selected = false
+                        scene.overlayText.append((rect.minY, layout.layout([(f.cursorX, c)], row: cells)))
+                    }
+                }
+            }
+        }
+        return (scene, frameTime)
     }
 
     /// Draws Kitty graphics images in one layer. Sizes are in device pixels

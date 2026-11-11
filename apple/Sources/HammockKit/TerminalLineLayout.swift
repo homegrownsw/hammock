@@ -76,9 +76,15 @@ public struct TerminalLine {
     public struct Fitted { public var font: CTFont, color: TerminalColor, glyph: CGGlyph, transform: CGAffineTransform, clip: CGRect? }
     /// A filled rectangle: block elements (blended), underlines and
     /// strikethroughs (copied, as NSRectFill does).
-    public struct Rect { public var rect: CGRect, color: TerminalColor, copy: Bool }
+    public struct Rect {
+        public var rect: CGRect, color: TerminalColor, copy: Bool
+        public init(rect: CGRect, color: TerminalColor, copy: Bool) { self.rect = rect; self.color = color; self.copy = copy }
+    }
     public enum Text { case glyphs(Glyphs), fitted(Fitted) }
 
+    /// Unique to this layout (a kept row keeps its id), so a renderer can
+    /// keep what it built from it.
+    public internal(set) var id: UInt64 = 0
     public var backgrounds: [Background] = []
     /// Drawn before the text.
     public var rects: [Rect] = []
@@ -105,6 +111,7 @@ public final class TerminalLineLayout {
     private var older: [UInt64: Entry] = [:]
     public var capacity = 512
     public private(set) var hits = 0, misses = 0
+    private var lastID: UInt64 = 0
 
     public init(fonts: TerminalFonts, palette: TerminalPalette) {
         self.fonts = fonts
@@ -185,6 +192,8 @@ public final class TerminalLineLayout {
     /// Some cells of a row (the one under a block cursor), not cached.
     public func layout(_ cells: [(col: Int, cell: TerminalCell)], row: [TerminalCell]) -> TerminalLine {
         var line = TerminalLine()
+        lastID += 1
+        line.id = lastID
         let f = fonts, cw = f.cellWidth
 
         // Backgrounds, merged into runs.

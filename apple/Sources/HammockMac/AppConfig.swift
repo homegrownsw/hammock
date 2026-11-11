@@ -12,6 +12,7 @@ import SwiftUI
 ///     font-family = Hack Nerd Font
 ///     font-size = 15
 ///     font-thicken = false
+///     terminal-renderer = coretext     (or metal: draw terminal panes with Metal; experimental, for panes opened after it's set)
 ///     adjust-cell-height = 20%         (line spacing: taller (or, negative, shorter) terminal rows; or points: 2)
 ///     window-theme = NAME              (Native, Graphite, Hammock, Ocean, …, Match Terminal)
 ///     agent-color = Ocean              (the agent view's colour: an AgentColor or theme name, or #RRGGBB, light:#…,dark:#…; unset: the window theme's)
@@ -118,6 +119,8 @@ final class AppConfig {
     /// The font comes from Ghostty's config (not set in Hammock's).
     private(set) var fontFromGhostty = false
     private(set) var fontThicken = false
+    /// terminal-renderer: "metal" draws terminal panes with Metal (#18).
+    private(set) var terminalRenderer = "coretext"
     /// Terminal line spacing, Ghostty's `adjust-cell-height`: "20%" (of the
     /// font's line height) or "2" (points); negative makes rows shorter.
     private(set) var cellHeightAdjust: String?
@@ -374,6 +377,7 @@ final class AppConfig {
         fontFromGhostty = ours["font-family"] == nil && fontFamily != nil
         fontSize = (ours["font-size"] ?? ghostty["font-size"]).flatMap(Double.init)
         fontThicken = (ours["font-thicken"] ?? ghostty["font-thicken"]) == "true"
+        terminalRenderer = ours["terminal-renderer"] == "metal" ? "metal" : "coretext"
         cellHeightAdjust = (ours["adjust-cell-height"] ?? ghostty["adjust-cell-height"]).flatMap { $0.isEmpty ? nil : $0 }
         // Ghostty's bar is thin, so falling back to it looks the same here.
         let style = ours["cursor-style"] ?? ghostty["cursor-style"].map { $0 == "bar" ? "bar_thin" : $0 }
@@ -728,6 +732,7 @@ final class AppConfig {
         #                                   agent-color, active-pane-border-color, sidebar-color and toolbar-color keys apply)
         #   theme = dark:NAME,light:NAME   (Ghostty theme files; see Settings ▸ Appearance)
         #   font-family = NAME, font-size = 15, font-thicken = false
+        #   terminal-renderer = coretext   (or metal: experimental, for terminal panes opened after it's set)
         #   adjust-cell-height = 20%       (terminal line spacing: a percentage of the line height, or points; negative: tighter)
         #   cursor-style = block | bar | bar_thin | underline | block_hollow, cursor-style-blink = true
         #   copy-on-select = false

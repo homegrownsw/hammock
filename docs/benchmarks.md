@@ -81,6 +81,26 @@ Since 2026-11-11 rows are laid out by `TerminalLineLayout` (HammockKit): each ro
 
 \* The old renderer laid every row out on every draw, so a flood cost what scrolling did.
 
+### Metal (#18, phase 2)
+
+`HMK_DEBUG_RENDER_BENCH_RENDERER=metal` also draws each screen with the Metal renderer into a texture, waiting for the GPU, and reports its CPU time, the GPU's, and the share of pixels that differ visibly (any channel by more than 24) from CoreGraphics' (its PNG is beside the others, `-metal`). 2026-11-11, p50, ms per draw:
+
+| Screen | Grid | CoreText | Metal, CPU | Metal, GPU | Differs |
+|---|---|---|---|---|---|
+| plain | 200×60 | 3.66 | 0.58 | 0.24 | 0% |
+| plain | 400×100 | 12.32 | 1.63 | 0.55 | 0% |
+| colour | 400×100 | 15.68 | 1.98 | 0.62 | 0% |
+| flood (every row new) | 200×60 | 8.43 | 5.07 | 0.62 | 0% |
+| flood | 400×100 | 28.95 | 16.60 | 2.07 | 0% |
+| tui | 200×60 | 6.77 | 3.08 | 0.36 | 0% |
+| unicode | 200×60 | 5.86 | 0.79 | 0.22 | 0.15% (emoji edges) |
+| typing at a full screen of colour | 200×60 | 3.84 | 0.55 | 0.14 | 0% |
+| Claude Code (recorded) | 160×48 | 0.82 | 0.25 | 0.26 | 0% |
+| powerline prompt (recorded) | 160×48 | 1.12 | 0.24 | 0.29 | 0.006% |
+| vim (recorded) | 160×48 | 0.83 | 0.21 | 0.25 | 0% |
+
+Metal draws the whole pane every time; what it costs on the CPU is laying out rows it hasn't seen, so a flood (every row new) is still about half shaping. Live, with `terminal-renderer = metal`, a flood into a full-screen pane on a 6K display (328×86) drew ~77 frames a second at 5.9 ms (p50, including waiting for a drawable), against ~18 at 15 ms with CoreText.
+
 To compare renderers on real programs, record them with `script -q -t 0 <dir>/<name>.<cols>x<rows>.ts <command>` in a terminal of that size (a detached tmux session sized with `-x`/`-y` works), then run the bench with `HMK_DEBUG_RENDER_BENCH_REPLAY=<dir>`: it draws each recording's last screen instead of the made-up ones. `-t 0` matters: without it `script` buffers, and the end of the recording is missing until the program exits. A powerline prompt, Claude Code and vim recorded this way drew identically before and after phase 1, apart from glyphs that fill their cell (powerline separators, box drawing) now being clipped to it: their anti-aliased edges bled half a pixel into the next row, shown after a whole redraw and gone after a redraw of that row alone.
 
 What's left with rows kept is almost all CoreGraphics rasterising glyphs (13 ms for plain text at 400×100): the part a Metal renderer replaces (`docs/design/metal-renderer.md`). A flood still shapes every row, about half its time.
