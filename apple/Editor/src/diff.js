@@ -297,11 +297,12 @@ function renderBar() {
     }
     const to = el("button", "btn")
     to.id = "target"
-    to.append(el("span", "t", config.target ? `→ ${config.target.name}` : "No agent"))
+    // A setting, not an action: "Agent: Claude".
+    to.append(el("span", "k", "Agent:"), el("span", "t", config.target ? config.target.name : "None"))
     const ch = el("span", "chev")
     ch.innerHTML = svg.chevron
     to.append(ch)
-    to.title = "Who your comments go to"
+    to.title = "The agent your comments are sent to"
     to.onclick = (e) => { e.stopPropagation(); openPop("targetPop", to, renderTargetPop) }
     bar.append(to)
   }
