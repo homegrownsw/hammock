@@ -2,7 +2,7 @@
 // the one being developed, x.y.z. Every target includes this file, and
 // scripts/build-mac-app.sh reads it for the Mac builds made outside Xcode.
 // Set it with `just version <x.y.z>`; a release's `bump` does too.
-MARKETING_VERSION = 0.3.0
+MARKETING_VERSION = 0.4.0
 
 // The build number is the build service's: Xcode Cloud's CI_BUILD_NUMBER,
 // written in by ci_scripts/ci_pre_xcodebuild.sh; for the Mac's Sparkle
