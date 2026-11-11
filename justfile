@@ -188,9 +188,10 @@ release-apple *args:
     scripts/release apple "$@"
 
 # The iPhone app's App Store listing and TestFlight test information come from marketing/appstore/ (its README).
-# Install Fastlane into marketing/vendor/, once per machine (needs Ruby 3.3).
+# Install Fastlane and Playwright (for the marketing images) into marketing/, once per machine (Ruby 3.3, Node 24).
 appstore-install:
     cd marketing && bundle config --local path vendor/bundle && bundle install
+    cd marketing && pnpm install && pnpm exec playwright install chromium
 
 # Offline: limits, fields, keywords, URLs, categories, age rating, review notes, TestFlight's text.
 appstore-check:
@@ -216,6 +217,10 @@ appstore-pull:
 # Take the App Store screenshots from the demo in the Simulator: [SCENE] [--light|--dark] [--device iphone|ipad|duo].
 appstore-screenshots *args:
     marketing/scripts/appstore-screenshots {{args}}
+
+# Compose the marketing images from the screenshots: [--only PANEL] [--device iphone|ipad|duo].
+appstore-marketing *args:
+    node --disable-warning=ExperimentalWarning marketing/scripts/appstore-marketing.ts {{args}}
 
 # What's New for an iPhone version, from its release notes (--pending: with the notes not cut yet).
 appstore-whats-new version *args:

@@ -110,6 +110,26 @@ helper (`helpers/simulator/guest`: `hinge 180`), built if it's missing. deliver 
 yet, so that set is kept apart, in `duo/`.
 
 The app's words are English only, so one set, in `en-GB` (the listing's primary language), serves every locale.
-All of it is GENERATED and gitignored, with a `.captured` stamp naming the app version and commit. The push leaves
-App Store Connect's screenshots as they are (`skip_screenshots`) until the marketing images, framed under a
-headline and subline, are made from these (next), and the app preview after them.
+All of it is GENERATED and gitignored, with a `.captured` stamp naming the app version and commit.
+
+## The marketing images
+
+```bash
+just appstore-marketing                # every device and panel, and a contact sheet of each set
+just appstore-marketing --only allow   # …or one panel; --device iphone|ipad|duo for one device
+```
+
+What the listing shows: each screenshot in its device's frame ([frames-cli](https://github.com/viticci/frames-cli),
+`FRAMES_BIN` or `frames` on the PATH), under a headline and a subline, in the website's colours and type (Space
+Grotesk and Inter; Hammock's spectrum on the headline's *starred* words), rendered by Playwright's Chromium at
+exactly the device's size and flattened to opaque RGB. `scripts/appstore-marketing.ts` only draws what
+`marketing.json` says: each panel's screenshot, theme (light or dark: which screenshot and which ground) and copy,
+and each device's type sizes, layout (copy above the device, or beside it on the landscape Duo) and frame colour.
+It refuses a headline that wraps onto more lines than it's written on, or a subline over two.
+
+The images go to `marketing/<locale>/NN-<panel>-<device>.png` (the iPhone and iPad sets, which deliver uploads)
+and `duo/marketing/<locale>/` (the iPhone Duo's), with `preview-<device>.png` beside them, each set side by side.
+GENERATED and gitignored. `just appstore-install` installs Playwright's Chromium (pnpm, into `marketing/node_modules`).
+
+The push leaves App Store Connect's screenshots as they are (`skip_screenshots`) until uploading them is wired
+in (next), and the app preview after that.

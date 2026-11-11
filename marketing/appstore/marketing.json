@@ -1,0 +1,84 @@
+{
+  "//": "The App Store marketing images, one panel per image in the listing's order (marketing/appstore/README.md). Each shows one screenshot (scenes.json) in its device, light or dark, under a headline (\\n breaks a line; *words* are set in Hammock's colours) and a subline. `devices` lays the same panels out for each device. marketing/scripts/appstore-marketing.ts only draws what this says. A device's frame is in its frame colour for the panel's theme, where frames-cli has more than one.",
+  "panels": [
+    {
+      "id": "needs-you",
+      "shot": "01-needs-you",
+      "theme": "dark",
+      "headline": "Kick back.\nWe'll say when\nit *needs you*.",
+      "subline": "Every agent waiting on you, from all your Macs, in one place."
+    },
+    {
+      "id": "allow",
+      "shot": "02-allow",
+      "theme": "light",
+      "headline": "Allow it from\n*anywhere*.",
+      "subline": "Answer a prompt or a question, and the agent carries on on your Mac."
+    },
+    {
+      "id": "agent-view",
+      "shot": "03-agent-view",
+      "theme": "dark",
+      "headline": "See *exactly*\nwhat it did.",
+      "subline": "Every command it ran and every edit it made, as a conversation."
+    },
+    {
+      "id": "terminal",
+      "shot": "04-terminal",
+      "theme": "dark",
+      "headline": "Your terminals,\n*in your pocket*.",
+      "subline": "Type into any shell on your Mac, with the keys a phone lacks."
+    },
+    {
+      "id": "groups",
+      "shot": "05-groups",
+      "theme": "light",
+      "headline": "Your whole\n*workspace*.",
+      "subline": "Groups, tabs and panes as they are on your Mac, and every Mac you link."
+    },
+    {
+      "id": "schedules",
+      "shot": "06-schedules",
+      "theme": "dark",
+      "headline": "Agents that run\n*on schedule*.",
+      "subline": "Morning briefings, nightly triage: what ran, and what's coming up."
+    }
+  ],
+  "devices": {
+    "iphone": {
+      "layout": "stacked",
+      "headline": 118,
+      "subline": 46,
+      "copyTop": 200,
+      "copyWidth": 1160,
+      "deviceWidth": 1080,
+      "deviceTop": 800,
+      "frame": {
+        "dark": "Deep Blue",
+        "light": "Silver"
+      }
+    },
+    "ipad": {
+      "layout": "stacked",
+      "headline": 140,
+      "subline": 56,
+      "copyTop": 190,
+      "copyWidth": 1760,
+      "deviceWidth": 1820,
+      "deviceTop": 760
+    },
+    "duo": {
+      "layout": "beside",
+      "headline": 120,
+      "subline": 44,
+      "copyLeft": 150,
+      "copyWidth": 860,
+      "deviceWidth": 1700,
+      "deviceRight": 90,
+      "frame": {
+        "dark": "Night Sky",
+        "light": "Star White"
+      }
+    }
+  }
+}
