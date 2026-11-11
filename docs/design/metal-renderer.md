@@ -72,7 +72,7 @@ A profile of the 400×100 colour screen (`sample` during the bench) splits a dra
    - Debug snapshots (`HMK_DEBUG_SNAPSHOT`): they render the window's layers, which can't see a Metal layer, so a Metal pane draws itself with CoreGraphics into the snapshot.
    - Already right from phase 2: fallback fonts and colour emoji, box drawing, powerline and icon fitting, selection, links, themes, `adjust-cell-height`, pane animations, zoom and fold (checked by hand), and a window moving to a display of another scale (glyphs are keyed by their transform, which includes the scale).
 
-4. **Default to Metal on the Mac,** with CoreText still selectable for a release, then removed (or kept as the snapshot fallback, if that turns out simpler).
+4. **Default to Metal on the Mac,** with CoreText still selectable for a release, then removed (or kept as the snapshot fallback, if that turns out simpler). Done 2026-11-11: `terminal-renderer` is `metal` unless set to `coretext`, and a Mac where Metal can't start uses CoreGraphics. Each pane keeps two drawables, not Core Animation's three (85 MB each for a full-screen pane on a 6K display). The CoreGraphics drawing stays: it's what debug snapshots and `terminal-renderer = coretext` use, and both draw the same `TerminalLine`s, so keeping it costs little.
 5. **The iPhone.** `TerminalScreen.swift` has its own, simpler CoreText renderer without the icon fitting or block elements. Moving it onto the shared line layout and the Metal renderer brings it to parity with the Mac.
 
 ## Goals

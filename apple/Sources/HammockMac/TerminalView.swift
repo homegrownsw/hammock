@@ -63,8 +63,9 @@ final class TerminalNSView: NSView {
     static var timing: ((_ frame: CFTimeInterval, _ draw: CFTimeInterval) -> Void)?
     private var thicken: Bool { AppConfig.shared.fontThicken }
 
-    /// Draws the pane when terminal-renderer = metal (#18); nil: CoreGraphics
-    /// draws it, in draw(_:). Chosen when the pane opens.
+    /// Draws the pane (terminal-renderer = metal, the default; #18). nil:
+    /// CoreGraphics draws it, in draw(_:), with terminal-renderer = coretext
+    /// or where Metal can't start. Chosen when the pane opens.
     let metal: TerminalMetalRenderer?
 
     override convenience init(frame: NSRect) {
@@ -424,6 +425,9 @@ final class TerminalNSView: NSView {
         // resized never shows a frame of the wrong size.
         l.presentsWithTransaction = true
         l.contentsGravity = .topLeft
+        // Two drawables, not three: a full-screen pane on a 6K display is
+        // 85 MB each, and drawing waits on the GPU's last frame anyway.
+        l.maximumDrawableCount = 2
         // Moved and resized with the view, never animated.
         l.actions = ["bounds": NSNull(), "position": NSNull(), "frame": NSNull(), "contents": NSNull()]
         layer?.addSublayer(l)

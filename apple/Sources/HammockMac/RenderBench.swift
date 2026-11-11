@@ -217,7 +217,7 @@ enum RenderBench {
     private static func measure(_ screen: Screen, draws: Int, changedRows: Bool) -> (Run, CGImage)? {
         let warmup = 10
         let session = PaneSession.standalone(paneID: "bench-\(screen.name)", cols: screen.cols, rows: screen.rows)
-        let view = TerminalNSView(frame: .zero)
+        let view = TerminalNSView(frame: .zero, metal: false)
         view.session = session
         defer { view.session = nil }
         let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,

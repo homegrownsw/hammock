@@ -362,7 +362,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #                                   agent-color, active-pane-border-color, sidebar-color and toolbar-color keys apply)
 #   theme = dark:NAME,light:NAME   (Ghostty theme files; see Settings ▸ Appearance)
 #   font-family = NAME, font-size = 15, font-thicken = false
-#   terminal-renderer = coretext   (or metal: experimental, for terminal panes opened after it's set)
+#   terminal-renderer = metal      (or coretext: CoreGraphics, as before Metal; for terminal panes opened after it's set)
 #   adjust-cell-height = 20%       (terminal line spacing: a percentage of the line height, or points; negative: tighter)
 #   cursor-style = block | bar | bar_thin | underline | block_hollow, cursor-style-blink = true
 #   copy-on-select = false

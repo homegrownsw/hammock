@@ -16,5 +16,5 @@ ADR-0004 assumed the Apple clients could feed bytes into libghostty's own Metal 
 - No dependency on Ghostty internals or forks; iOS uses the same engine.
 - Snapshot format: the daemon sends VT-formatted replays (libghostty formatter, VT format with extras), not the binary snapshot format, so client and daemon only need compatible VT parsing.
 
-## As built (2026-11-10)
-The Mac and iPhone still draw with CoreText; a Metal renderer is [#18](https://github.com/homegrownsw/hammock/issues/18), if profiling shows CoreText is the bottleneck.
+## As built (2026-11-11)
+Rows are laid out once by `TerminalLineLayout` (HammockKit: CoreText shapes them and picks fallback fonts, and it decides where every glyph, block and line goes) and drawn by `TerminalMetalRenderer`: glyphs rasterised by CoreText into an atlas, one instanced draw per frame ([#18](https://github.com/homegrownsw/hammock/issues/18), [docs/design/metal-renderer.md](../design/metal-renderer.md)). The Mac draws with Metal by default; `terminal-renderer = coretext` draws the same layout with CoreGraphics. Ligatures are still off.
