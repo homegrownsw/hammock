@@ -304,7 +304,7 @@ struct ScreenTouch: UIViewRepresentable {
     static func dismantleUIView(_ v: ScreenTouchView, coordinator: ()) { v.stop() }
 }
 
-final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
+final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
     var send: ((String, [String: Any]) -> Void)?
     var onState: ((MediaStream.State) -> Void)?
     var onKeyboard: ((Bool) -> Void)?
@@ -702,6 +702,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
         var a: [String: Any] = ["type": type, "x": p.x, "y": p.y, "button": button, "clicks": clicks]
         if pressed { a["pressed"] = true }
         if !mods.isEmpty { a["mods"] = Array(mods) }
+        if type == "down" { forgetTyped() }  // a click may move the Mac's caret
         send?("mouse", a)
     }
 
@@ -977,6 +978,24 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
     var smartQuotesType: UITextSmartQuotesType { get { .no } set {} }
     var smartDashesType: UITextSmartDashesType { get { .no } set {} }
     var spellCheckingType: UITextSpellCheckingType { get { .no } set {} }
+    var smartInsertDeleteType: UITextSmartInsertDeleteType { get { .no } set {} }
+    // For UITextInput (below): what was typed lately, as plain text, and the
+    // composition in progress (IME, dictation).
+    fileprivate var typed: [Character] = []
+    fileprivate var marked = ""
+    var markedTextStyle: [NSAttributedString.Key: Any]?
+    weak var inputDelegate: UITextInputDelegate?
+    lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
+
+    /// Forget what was typed (the Mac's caret may have moved), and tell the
+    /// keyboard its document changed.
+    fileprivate func forgetTyped() {
+        guard !typed.isEmpty || !marked.isEmpty else { return }
+        inputDelegate?.textWillChange(self)
+        typed = []
+        marked = ""
+        inputDelegate?.textDidChange(self)
+    }
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
@@ -1000,6 +1019,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
     }
 
     private func key(_ vk: Int) {
+        if vk != 0x33 { forgetTyped() }
         send?("key", ["type": "down", "vk": vk, "mods": Array(mods)])
         send?("key", ["type": "up", "vk": vk, "mods": Array(mods)])
         clearMods()
@@ -1012,12 +1032,14 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
         if !mods.isEmpty, text.count == 1, let vk = Self.keyCodes[Character(text.lowercased())] {
             var m = mods
             if text != text.lowercased() { m.insert("shift") }
+            forgetTyped()
             send?("key", ["type": "down", "vk": vk, "mods": Array(m)])
             send?("key", ["type": "up", "vk": vk, "mods": Array(m)])
             clearMods()
             return
         }
         if macLocked {
+            forgetTyped()
             // Key by key, with shift where the character needs it (a US
             // layout), for a password field that takes only keys.
             for ch in text {
@@ -1034,6 +1056,8 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
             return
         }
         send?("text", ["text": text])
+        typed.append(contentsOf: text)
+        if typed.count > 400 { typed.removeFirst(typed.count - 400) }
         clearMods()
     }
 
@@ -1053,7 +1077,10 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UIKeyInput {
         return m
     }()
 
-    func deleteBackward() { key(0x33) }
+    func deleteBackward() {
+        if !typed.isEmpty { typed.removeLast() }
+        key(0x33)
+    }
 
     private lazy var modifierBar: ModifierBar = {
         let v = ModifierBar()
@@ -1319,4 +1346,112 @@ final class ModifierBar: UIInputView {
             b.configuration?.subtitle = locked.contains(m) ? "locked" : nil
         }
     }
+}
+
+// MARK: UITextInput
+
+// The software keyboard repeats its delete key (and offers dictation and
+// IME) only for views that are UITextInput, not just UIKeyInput. So, as the
+// terminal does (TerminalScreen.swift), the screen is one, over a stand-in
+// document: a run of underscores, then what was typed lately, with the caret
+// at its end. The keyboard deletes from it as from any text, and each
+// delete goes to the Mac as its Delete key.
+extension ScreenTouchView {
+    private static let standIn = String(repeating: "_", count: 64)
+    private var docLength: Int { Self.standIn.count + typed.count + marked.count }
+    private var doc: [Character] { Array(Self.standIn) + typed + Array(marked) }
+    private func idx(_ p: UITextPosition) -> Int { (p as? StandInPosition)?.i ?? docLength }
+
+    var selectedTextRange: UITextRange? {
+        get { StandInRange(docLength, docLength) }
+        set {}
+    }
+
+    var markedTextRange: UITextRange? {
+        marked.isEmpty ? nil : StandInRange(Self.standIn.count + typed.count, docLength)
+    }
+
+    var beginningOfDocument: UITextPosition { StandInPosition(0) }
+    var endOfDocument: UITextPosition { StandInPosition(docLength) }
+
+    func text(in range: UITextRange) -> String? {
+        guard let r = range as? StandInRange else { return nil }
+        let d = doc
+        let a = max(0, min(r.a, d.count)), b = max(a, min(r.b, d.count))
+        return String(d[a..<b])
+    }
+
+    /// The keyboard replacing text (dictation revising what it typed, or a
+    /// word deleted at once while delete repeats): Delete back to where the
+    /// range starts, then the new text and what came after the range, typed
+    /// again.
+    func replace(_ range: UITextRange, withText text: String) {
+        guard let r = range as? StandInRange else { return }
+        let base = Self.standIn.count
+        let end = base + typed.count
+        let a = min(max(r.a, 0), end), b = min(max(r.b, a), end)
+        let tail = b > base ? Array(typed[(b - base)...]) : typed
+        for _ in 0..<(end - a) {
+            send?("key", ["type": "down", "vk": 0x33, "mods": [String]()])
+            send?("key", ["type": "up", "vk": 0x33, "mods": [String]()])
+        }
+        typed = a > base ? Array(typed[..<(a - base)]) : []
+        let again = text + String(tail)
+        if !again.isEmpty { insertText(again) }
+    }
+
+    func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
+        marked = markedText ?? ""
+    }
+
+    func unmarkText() {
+        let t = marked
+        marked = ""
+        if !t.isEmpty { insertText(t) }
+    }
+
+    func textRange(from fromPosition: UITextPosition, to toPosition: UITextPosition) -> UITextRange? {
+        StandInRange(idx(fromPosition), idx(toPosition))
+    }
+
+    func position(from position: UITextPosition, offset: Int) -> UITextPosition? {
+        let i = idx(position) + offset
+        return (0...docLength).contains(i) ? StandInPosition(i) : nil
+    }
+
+    func position(from position: UITextPosition, in direction: UITextLayoutDirection, offset: Int) -> UITextPosition? {
+        switch direction {
+        case .left, .up: self.position(from: position, offset: -offset)
+        default: self.position(from: position, offset: offset)
+        }
+    }
+
+    func compare(_ position: UITextPosition, to other: UITextPosition) -> ComparisonResult {
+        let a = idx(position), b = idx(other)
+        return a < b ? .orderedAscending : a > b ? .orderedDescending : .orderedSame
+    }
+
+    func offset(from: UITextPosition, to toPosition: UITextPosition) -> Int { idx(toPosition) - idx(from) }
+
+    func position(within range: UITextRange, farthestIn direction: UITextLayoutDirection) -> UITextPosition? {
+        guard let r = range as? StandInRange else { return nil }
+        return StandInPosition(direction == .left || direction == .up ? r.a : r.b)
+    }
+
+    func characterRange(byExtending position: UITextPosition, in direction: UITextLayoutDirection) -> UITextRange? {
+        let i = idx(position)
+        return direction == .left || direction == .up ? StandInRange(max(0, i - 1), i) : StandInRange(i, min(docLength, i + 1))
+    }
+
+    func baseWritingDirection(for position: UITextPosition, in direction: UITextStorageDirection) -> NSWritingDirection { .leftToRight }
+    func setBaseWritingDirection(_ writingDirection: NSWritingDirection, for range: UITextRange) {}
+
+    // The screen has no caret of its own to show: the keyboard's suggestions
+    // and the like go at the bottom of the view.
+    func caretRect(for position: UITextPosition) -> CGRect { CGRect(x: bounds.midX, y: bounds.maxY - 1, width: 1, height: 1) }
+    func firstRect(for range: UITextRange) -> CGRect { caretRect(for: endOfDocument) }
+    func selectionRects(for range: UITextRange) -> [UITextSelectionRect] { [] }
+    func closestPosition(to point: CGPoint) -> UITextPosition? { endOfDocument }
+    func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? { range.end }
+    func characterRange(at point: CGPoint) -> UITextRange? { nil }
 }
