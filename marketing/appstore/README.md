@@ -146,4 +146,37 @@ from an older capture than the one on disk, or screenshots taken from another ap
 `MARKETING_VERSION`. `HMK_APPSTORE_SCREENSHOTS=0 just appstore-push` leaves every screenshot set as App Store
 Connect has it; `HMK_APPSTORE_DUO=0`, the Duo's.
 
-The app preview video comes next.
+## The app preview, the search results video and the header
+
+```bash
+just appstore-preview-video                # record the takes in the Simulator and cut both videos (a few minutes)
+just appstore-preview-video --edit-only    # …or re-cut the last takes (preview.json's edit changed)
+just appstore-marketing --only header      # the product page header
+```
+
+| | File | Spec |
+|---|---|---|
+| App preview | `previews/<locale>/01-hammock-preview.mp4` | 886 × 1920, 30 fps, H.264, a silent sound track; placed on the 6.9" iPhone and iPhone Duo |
+| Search results | `creative/<locale>/search-results.mp4` | 2400 × 1600 (3:2), 30 fps, no sound; on iOS 27 it replaces the preview and screenshots in search |
+| Product page header | `creative/<locale>/header.png` | 3840 × 1646, opaque; on an iPhone only its middle third shows (`creative/header-preview.png` outlines it) |
+
+**The videos.** `scripts/appstore-preview-video` records each take in `preview.json` on the 6.9" iPhone simulator,
+from a fresh install, with `simctl io recordVideo`: the app is launched into its demo with `HMK_DEBUG_TAKE`, whose
+steps `DemoDirector` (`apple/iOS/Hammock/DemoDirector.swift`, Debug only) plays: open a screen, switch tab, allow
+the waiting agent, type into a terminal, and `mark:` the moments the edit cuts on. `scripts/preview/compose.ts`
+cuts the edit's shots from the takes and lays them out twice in the marketing images' colours and type (the
+caption above the screen for the preview, beside it for the search results video), crossfaded, with an end card;
+ffmpeg encodes them to spec. A `.made` stamp names the `preview.json` they were cut to, and the push refuses videos
+cut to another.
+
+**The header** is brand imagery, not a screen: the iPhone app's icon (its Icon Composer fill and mark), the
+wordmark and a tagline from `marketing.json`'s `header`, inside the middle third and below the top quarter (the
+compositor refuses it otherwise), on the ground and glow of the marketing images.
+
+**The push** places all three through App Store Connect's Asset Library, which fastlane doesn't support yet. A
+placement can't be edited, so one whose asset came from the same bytes (its reference name carries their SHA-256)
+is kept, and any other is replaced: the new asset is uploaded and processed first, and only then is the old
+placement removed, so a failed upload leaves App Store Connect as it was. Apple processes videos before they can
+be placed, which can take minutes (`HMK_APPSTORE_ASSET_TIMEOUT`, seconds, default 1200); one still processing at
+the timeout stays in the library for the next push. The preview reports what each placement holds against this
+tree. `HMK_APPSTORE_PREVIEW=0` / `HMK_APPSTORE_CREATIVE=0` leave a kind as App Store Connect has it.

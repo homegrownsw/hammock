@@ -16,6 +16,8 @@ fastlane_version "2.238.0"
 require "fileutils"
 require "net/http"
 require "open3"
+require "digest"
+require "json"
 require "tmpdir"
 
 APP_IDENTIFIER = CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)
@@ -282,6 +284,206 @@ rescue StandardError => e
                  "it meanwhile: HMK_APPSTORE_DUO=0 just appstore-push")
 end
 
+# --- The app preview and the creative assets (marketing/appstore/README.md): the app preview, the product page
+# header and the search results video, placed through App Store Connect's Asset Library, which fastlane can't do
+# yet. HMK_APPSTORE_PREVIEW=0 / HMK_APPSTORE_CREATIVE=0 leave those kinds as App Store Connect has them.
+
+PREVIEWS_PATH = File.join(APPSTORE_DIR, "previews")
+CREATIVE_PATH = File.join(APPSTORE_DIR, "creative")
+PREVIEW_EDIT = File.join(APPSTORE_DIR, "preview.json")
+ASSET_PLACEMENTS = [
+  { kind: :preview, type: "APP_PREVIEW", groups: %w[IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE IPHONE_DUO_PROFILE],
+    category: "APP_SCREENSHOTS_AND_PREVIEWS", file: ->(locale) { File.join(PREVIEWS_PATH, locale, "01-hammock-preview.mp4") } },
+  { kind: :creative, type: "PRODUCT_PAGE_HEADER_ASSET", groups: %w[DEFAULT_PROFILE],
+    category: "CREATIVE_ASSETS", file: ->(locale) { File.join(CREATIVE_PATH, locale, "header.png") } },
+  { kind: :creative, type: "APP_STORE_SEARCH_RESULTS_ASSET", groups: %w[DEFAULT_PROFILE],
+    category: "CREATIVE_ASSETS", file: ->(locale) { File.join(CREATIVE_PATH, locale, "search-results.mp4") } },
+].freeze
+# States an asset can be placed in: processed or further along, not uploading, processing, failed or rejected.
+UNPLACEABLE_ASSET_STATES = %w[AWAITING_UPLOAD UPLOAD_COMPLETE FAILED REJECTED ARCHIVED].freeze
+
+def asset_kind_on?(kind)
+  ENV[kind == :preview ? "HMK_APPSTORE_PREVIEW" : "HMK_APPSTORE_CREATIVE"] != "0"
+end
+
+def asc
+  Spaceship::ConnectAPI.token ||= Spaceship::ConnectAPI::Token.from_json_file(asc_api_key_path)
+  Spaceship::ConnectAPI.client.tunes_request_client
+end
+
+def sha256(path)
+  Digest::SHA256.file(path).hexdigest
+end
+
+# The placements a push would make: [placement, locale, file] for each file that's there.
+def wanted_placements
+  ASSET_PLACEMENTS.select { |p| asset_kind_on?(p[:kind]) }.flat_map do |p|
+    locales.filter_map { |locale| [p, locale, p[:file].(locale)] if File.exist?(p[:file].(locale)) }
+  end
+end
+
+# Why the media can't be placed as it is: missing for some locales but not others, or videos cut to another
+# preview.json than this one (their .made stamp, from marketing/scripts/preview/compose.ts).
+def asset_problems
+  edit = sha256(PREVIEW_EDIT)
+  ASSET_PLACEMENTS.select { |p| asset_kind_on?(p[:kind]) }.flat_map do |p|
+    have = locales.select { |l| File.exist?(p[:file].(l)) }
+    next [] if have.empty?
+    problems = (locales - have).map { |l| "#{p[:type]}: none for #{l}, though #{have.join(', ')} has one" }
+    if p[:file].(have.first).end_with?(".mp4")
+      have.each do |l|
+        stamp = File.join(File.dirname(p[:file].(l)), ".made")
+        made = File.exist?(stamp) ? File.read(stamp)[/^edit=(.*)$/, 1] : nil
+        problems << "#{p[:type]} (#{l}): cut to another preview.json (run just appstore-preview-video --edit-only)" if made != edit
+      end
+    end
+    problems
+  end
+end
+
+# The poster frame's time, as App Store Connect wants it: HH:MM:SS:FF at the preview's 30 fps (preview.json keeps
+# it on a whole second, where the readings of that format agree).
+def preview_frame_time_code
+  frames = (JSON.parse(File.read(PREVIEW_EDIT))["edit"]["poster"].to_f * 30).round
+  format("%02d:%02d:%02d:%02d", frames / 108_000, frames / 1800 % 60, frames / 30 % 60, frames % 30)
+end
+
+# A version localization's placements of the Asset Library's kinds, with their assets' reference names.
+def asset_placements(loc)
+  body = asc.get("v1/appStoreVersionLocalizations/#{loc.id}/placements", { include: "image,video", limit: 200 }).body
+  assets = (body["included"] || []).to_h { |a| [[a["type"], a["id"]], a] }
+  (body["data"] || []).map do |pl|
+    rel = pl["relationships"] || {}
+    ref = %w[image video].filter_map { |k| rel.dig(k, "data") }.first
+    asset = ref && assets[[ref["type"], ref["id"]]]
+    { id: pl["id"], type: pl.dig("attributes", "placementType"), group: pl.dig("attributes", "placementGroup"),
+      state: pl.dig("attributes", "state"), reference: asset&.dig("attributes", "referenceName") }
+  end
+end
+
+# The name an asset is uploaded under: its file's name and the SHA-256 of its bytes, so a placement (or an asset
+# already in the library) can be matched to a file in this tree.
+def asset_reference(path)
+  "hammock-#{sha256(path)[0, 16]}-#{File.basename(path)}"
+end
+
+# The asset for a file: one the library holds already from the same bytes, or a fresh upload; processed, as
+# [type, id].
+def asset_for!(library_id, path, category)
+  type = path.end_with?(".mp4", ".mov", ".m4v") ? "appAssetLibraryVideos" : "appAssetLibraryImages"
+  reference = asset_reference(path)
+  held = asc.get("v1/appAssetLibraries/#{library_id}/#{type.delete_prefix('appAssetLibrary').downcase}",
+                 { "filter[referenceName]" => reference, limit: 50 }).body["data"] || []
+  reusable = held.find { |a| !%w[FAILED REJECTED ARCHIVED].include?(a.dig("attributes", "state")) }
+  if reusable
+    UI.message("#{File.basename(path)} is in the Asset Library already (#{reusable.dig('attributes', 'state')})")
+    return wait_for_asset!(type, reusable["id"], path)
+  end
+  upload_asset!(library_id, type, path, category, reference)
+end
+
+def upload_asset!(library_id, type, path, category, reference)
+  attributes = { fileName: File.basename(path), fileSize: File.size(path), category: category, referenceName: reference }
+  attributes[:previewFrameTimeCode] = preview_frame_time_code if category == "APP_SCREENSHOTS_AND_PREVIEWS"
+  UI.message("Uploading #{path.delete_prefix("#{APPSTORE_DIR}/")} (#{(File.size(path) / 1e6).round(1)} MB)")
+  asset = asc.post("v1/#{type}", { data: { type: type, attributes: attributes,
+                                          relationships: { assetLibrary: { data: { type: "appAssetLibraries", id: library_id } } } } }).body["data"]
+  File.open(path, "rb") do |f|
+    (asset.dig("attributes", "uploadOperations") || []).each do |op|
+      f.seek(op["offset"])
+      uri = URI(op["url"])
+      req = Net::HTTPGenericRequest.new(op["method"], true, true, uri)
+      (op["requestHeaders"] || []).each { |h| req[h["name"]] = h["value"] }
+      req.body = f.read(op["length"])
+      res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 300) { |http| http.request(req) }
+      UI.user_error!("Uploading #{File.basename(path)} failed: HTTP #{res.code}") unless res.is_a?(Net::HTTPSuccess)
+    end
+  end
+  asc.patch("v1/#{type}/#{asset['id']}", { data: { type: type, id: asset["id"], attributes: { uploaded: true } } })
+  wait_for_asset!(type, asset["id"], path)
+end
+
+# Waits for Apple to process an asset (a video takes a while). One still processing at the timeout stays in the
+# library, and the next push finds it by its reference name instead of uploading it again.
+def wait_for_asset!(type, id, path)
+  deadline = Time.now + Integer(ENV.fetch("HMK_APPSTORE_ASSET_TIMEOUT", "1200"), 10)
+  loop do
+    attrs = asc.get("v1/#{type}/#{id}").body.dig("data", "attributes")
+    state = attrs["state"]
+    if %w[FAILED REJECTED].include?(state)
+      UI.user_error!("App Store Connect #{state == 'FAILED' ? "couldn't process" : 'rejected'} #{File.basename(path)}: " \
+                     "#{attrs['stateDetails'] || 'no reason given'}")
+    end
+    return [type, id] unless UNPLACEABLE_ASSET_STATES.include?(state)
+    UI.user_error!("App Store Connect is still processing #{File.basename(path)}; push again later.") if Time.now > deadline
+    UI.message("Waiting for App Store Connect to process #{File.basename(path)} (#{state})…")
+    sleep(15)
+  end
+end
+
+def create_placement!(asset, loc, type, group)
+  kind = asset.first == "appAssetLibraryVideos" ? :video : :image
+  asc.post("v1/appAssetLibraryPlacements", { data: { type: "appAssetLibraryPlacements",
+                                                     attributes: { placementType: type, placementGroup: group },
+                                                     relationships: { kind => { data: { type: asset.first, id: asset.last } },
+                                                                      appStoreVersionLocalization: { data: { type: "appStoreVersionLocalizations", id: loc.id } } } } })
+end
+
+# Makes each locale's placements hold exactly this tree's files. A new asset is ready (uploaded and processed, or
+# found in the library) before an old placement goes, so a failed upload leaves App Store Connect as it was.
+def sync_asset_library!(app, version)
+  wanted = wanted_placements
+  ASSET_PLACEMENTS.each do |p|
+    next if wanted.any? { |w| w.first.equal?(p) }
+    UI.important("#{p[:type]}: #{asset_kind_on?(p[:kind]) ? 'nothing here' : 'turned off'}, so App Store Connect's is left as it is.")
+  end
+  return if wanted.empty?
+  library_id = asc.get("v1/apps/#{app.id}/assetLibrary").body.dig("data", "id")
+  UI.user_error!("App Store Connect has no Asset Library for #{app.name}.") if library_id.nil?
+  ready = {}
+  localizations = version.get_app_store_version_localizations.to_h { |loc| [loc.locale, loc] }
+  wanted.each do |p, locale, path|
+    loc = localizations[locale] or UI.user_error!("App Store Connect has no #{locale} localization for #{version.version_string}.")
+    reference = asset_reference(path)
+    current = asset_placements(loc)
+    p[:groups].each do |group|
+      mine = current.select { |c| c[:type] == p[:type] && c[:group] == group }
+      keep = mine.find { |c| c[:reference] == reference }
+      ready[reference] ||= asset_for!(library_id, path, p[:category]) unless keep
+      (mine - [keep]).each do |c|
+        UI.message("Removing the #{p[:type]} placement (#{locale}, #{group}) that held #{c[:reference] || 'another asset'}")
+        asc.delete("v1/appAssetLibraryPlacements/#{c[:id]}")
+      end
+      if keep
+        UI.message("#{p[:type]} (#{locale}, #{group}): already #{File.basename(path)}")
+      else
+        create_placement!(ready[reference], loc, p[:type], group)
+        UI.success("#{p[:type]} (#{locale}, #{group}): #{File.basename(path)}")
+      end
+    end
+  end
+end
+
+# What App Store Connect holds of those kinds, per locale, against this tree. Read-only, for the preview.
+def report_asset_library(version)
+  version.get_app_store_version_localizations.sort_by(&:locale).each do |loc|
+    current = asset_placements(loc)
+    ASSET_PLACEMENTS.each do |p|
+      path = p[:file].(loc.locale)
+      here = File.exist?(path) ? asset_reference(path) : nil
+      p[:groups].each do |group|
+        mine = current.select { |c| c[:type] == p[:type] && c[:group] == group }
+        held = mine.map { |c| "#{c[:reference] || '?'} (#{c[:state]})" }.join(", ")
+        said = "#{p[:type]} (#{loc.locale}, #{group}): #{held.empty? ? 'none' : held} in App Store Connect; " \
+               "#{here ? File.basename(path) : 'nothing'} here"
+        here && mine.size == 1 && mine.first[:reference] == here ? UI.success(said) : UI.important(said)
+      end
+    end
+  end
+rescue StandardError => e
+  UI.important("Couldn't read the listing's Asset Library placements (#{e.class}): #{e.message}")
+end
+
 # --- TestFlight's test information: each locale's Beta App Description, feedback email and URLs, and the Beta App
 # Review details (the same contact and notes as the App Store's). deliver doesn't do these, so Spaceship does.
 
@@ -361,6 +563,7 @@ def preflight_problems
   missing = review_contact_missing
   problems << "App Review's contact isn't set: #{missing.join(', ')} (marketing/.env.appstore)." unless missing.empty?
   problems += screenshot_problems.map { |p| "Screenshots: #{p}" }
+  problems += asset_problems.map { |p| "Asset Library: #{p}" }
   problems
 end
 
@@ -382,6 +585,7 @@ def preflight!
     else
       UI.success("Editable version: #{version.version_string} (#{version.app_store_state})")
       UI.message(whats_new_for(app).last)
+      report_asset_library(version)
     end
     tf = testflight_changes(app)
     UI.message(tf.empty? ? "TestFlight: up to date." : "TestFlight: a push would change\n#{tf.join("\n")}")
@@ -447,6 +651,7 @@ platform :ios do
     else
       UI.important("Screenshots: left as App Store Connect has them (HMK_APPSTORE_SCREENSHOTS=0).")
     end
+    sync_asset_library!(app, version)
     push_testflight!(app)
     UI.success("Uploaded. Saved in App Store Connect, NOT submitted for review.")
   end
