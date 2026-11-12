@@ -94,6 +94,8 @@ final class IslandScene {
     // Loops over the top in a row (each within a moment of the last).
     private var loops = 0
     private var lastLoop: Float = -10
+    // When they last got back in: they hold on tight for a moment after.
+    private var settledAt: Float = -10
 
     // The sleeper, who doesn't always stay in it.
     private enum Sleeper {
@@ -519,7 +521,9 @@ final class IslandScene {
         case .napping:
             // They hang on through one loop of the hammock; a second in a
             // row, or a really hard spin of the island, and off they go, far.
-            if loops >= 2 {
+            let holdingOn = t - settledAt < 1.5
+            if holdingOn { loops = 0 } // loops while holding on don't count
+            if loops >= 2 && !holdingOn {
                 loops = 0
                 let r = sleeper.position(relativeTo: turntable) - pivot.position
                 // Over the top the hammock's slow, so the throw has a
@@ -529,7 +533,7 @@ final class IslandScene {
                 throwSleeper(normalize(flat) * max(4.5, abs(along.z) * 1.4) + [0, 3.2, 0])
                 return
             }
-            if abs(spin) > 6 {
+            if abs(spin) > 6 && !holdingOn {
                 let r = sleeper.position(relativeTo: turntable)
                 let around = cross(SIMD3<Float>(0, spin > 0 ? 1 : -1, 0), r + [0.001, 0, 0])
                 spin *= 0.5
@@ -640,6 +644,8 @@ final class IslandScene {
                 swingVelocity = swingVelocity * 0.3 + 1
                 bonk = 0.6
                 nextZ = 1.2
+                settledAt = t
+                loops = 0
                 sleeperState = .napping
             } else {
                 sleeperState = .hopping(p, from)
