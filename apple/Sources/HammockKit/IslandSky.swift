@@ -91,6 +91,7 @@ final class IslandSky {
     private var nights = 0
 
     private var clouds: [(entity: Entity, speed: Float)] = []
+    private var lastCloudTone: Float = -1
     private var shooting: [(entity: Entity, age: Float, velocity: SIMD3<Float>)] = []
     private var nextShooting: Float = 3
 
@@ -126,7 +127,7 @@ final class IslandSky {
         // two soft glows, with a ring of rounded rays turning slowly.
         sun.name = "sun"
         sun.components.set(BillboardComponent())
-        sun.addChild(Island.softGlow(radius: 8, 1, 0.9, 0.55, opacity: 0.7, z: -0.3))
+        sun.addChild(Island.softGlow(radius: 5.6, 1, 0.92, 0.6, opacity: 0.32, z: -0.3))
         for k in 0..<12 {
             let ray = ModelEntity(mesh: .generateBox(width: 0.55, height: 1.2, depth: 0.01, cornerRadius: 0.27),
                                   materials: [Island.unlit(1, 0.80, 0.30)])
@@ -328,10 +329,22 @@ final class IslandSky {
         light.light.intensity = 2800 * daylight + 500 * night
         fill.light.intensity = 700 * daylight + 160 * night
 
-        // Clouds drift by and come round again.
+        // Clouds drift by and come round again: white by day, blushing at
+        // dawn and dusk, slate blue-grey by night.
         for c in clouds {
             c.entity.position.x += c.speed * dt
             if c.entity.position.x > 42 { c.entity.position.x = -42 }
+        }
+        let cloudTone = (daylight * 20).rounded() / 20 + (Island.smoothstep(0.1, 0.45, s) * 4).rounded() / 100
+        if cloudTone != lastCloudTone {
+            lastCloudTone = cloudTone
+            let blush = Island.mix(SIMD3<Float>(1, 0.8, 0.75), [1, 1, 1], Island.smoothstep(0.1, 0.45, s))
+            let c = Island.mix(SIMD3<Float>(0.46, 0.5, 0.66), blush, Island.smoothstep(0, 0.7, daylight))
+            var m = Island.material(Double(c.x), Double(c.y), Double(c.z))
+            m.emissiveIntensity = Island.mix(0.16, 0.28, daylight)
+            for cloud in clouds {
+                for case let puff as ModelEntity in cloud.entity.children { puff.model?.materials = [m] }
+            }
         }
 
         // Shooting stars, on dark nights.

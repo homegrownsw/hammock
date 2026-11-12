@@ -129,6 +129,8 @@ final class IslandEffects {
     func tint(_ root: Entity) {
         var found: [ModelEntity] = []
         func walk(_ e: Entity) {
+            // Clouds keep their own colour through the day (IslandSky).
+            guard e.name != "cloud" else { return }
             if let m = e as? ModelEntity { found.append(m) }
             e.children.forEach(walk)
         }
