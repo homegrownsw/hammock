@@ -1,1 +1,1 @@
-A fast, native Mac terminal that never loses your work: shells, coding agents, browsers and simulators that keep running, on your Mac and iPhone.
+A fast, native Mac terminal that never loses your work: a terminal multiplexer for shells, coding agents, browsers and simulators, on your Mac and iPhone.
