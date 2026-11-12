@@ -2273,7 +2273,8 @@ public struct PromptCardSample: View {
 // MARK: - Composer
 
 /// The "/command" being typed at the cursor, anywhere in a message (Claude
-/// Code runs one mid-line too): from a "/" at the start or after a space or
+/// Code runs its skills and your commands mid-line too, though not its
+/// built-ins): from a "/" at the start or after a space or
 /// line break, up to the cursor, with nothing but one of those or the end
 /// after it.
 enum SlashToken {
@@ -2284,6 +2285,12 @@ enum SlashToken {
         while start > text.startIndex, !text[text.index(before: start)].isWhitespace { start = text.index(before: start) }
         guard start < cursor, text[start] == "/" else { return nil }
         return start..<cursor
+    }
+
+    /// The token starts the message: nothing but spaces and line breaks
+    /// before it. Agents' built-in commands only run there.
+    static func startsMessage(_ token: Range<String.Index>, in text: String) -> Bool {
+        text[..<token.lowerBound].allSatisfy(\.isWhitespace)
     }
 
     /// The text with that token replaced by a command and a space, and where
@@ -2350,7 +2357,9 @@ struct Composer: View {
     private var suggestions: [String] {
         guard let r = slashToken else { return [] }
         let q = text[r].lowercased()
-        return Array(session.commands.filter { $0.lowercased().hasPrefix(q) }.prefix(8))
+        // Built-ins only run at the start: later in a message they'd be sent as text.
+        let skip = SlashToken.startsMessage(r, in: text) ? [] : session.startCommands
+        return Array(session.commands.filter { !skip.contains($0) && $0.lowercased().hasPrefix(q) }.prefix(8))
     }
 
     /// Sets the text from code, not typing: the cursor known for the old

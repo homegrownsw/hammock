@@ -74,6 +74,7 @@ var Claude = &Agent{
 	},
 	Subagents:     true,
 	SlashCommands: slashCommands,
+	StartCommands: claudeBuiltins,
 	SessionURL:    claudeSessionURL,
 	Usage:         claudeUsage,
 	LiveUsage:     claudeLiveUsage,

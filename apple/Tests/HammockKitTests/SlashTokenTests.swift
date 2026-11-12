@@ -29,6 +29,23 @@ import Testing
         #expect(token("|") == nil)
     }
 
+    /// Whether the token at the cursor marked "|" starts the message.
+    private func starts(_ s: String) -> Bool {
+        let i = s.firstIndex(of: "|")!
+        var t = s
+        t.remove(at: i)
+        let cursor = t.index(t.startIndex, offsetBy: s.distance(from: s.startIndex, to: i))
+        return SlashToken.startsMessage(SlashToken.at(cursor, in: t)!, in: t)
+    }
+
+    @Test func knowsWhenItStartsTheMessage() {
+        #expect(starts("/cl|"))
+        #expect(starts("  /cl|"))
+        #expect(starts("\n/cl|"))
+        #expect(!starts("hi /cl|"))
+        #expect(!starts("line one\n/cl|"))
+    }
+
     @Test func completesInPlace() {
         let t = "file it, use /iss to build it"
         let r = t.range(of: "/iss")!

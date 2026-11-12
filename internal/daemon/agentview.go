@@ -80,6 +80,7 @@ type agentWatch struct {
 	ctx      ctxInfo // the model and context last sent
 	errText  string
 	commands []string
+	starts   []string // those of commands that only run at a message's start
 	stop     chan struct{}
 }
 
@@ -343,6 +344,7 @@ func (w *agentWatch) refresh() *pb.AgentView {
 		w.newParser()
 		if ag := agents.Get(w.harness); w.sub == "" && ag != nil && ag.SlashCommands != nil {
 			w.commands = ag.SlashCommands(w.p.cwd())
+			w.starts = startCommands(w.commands, ag.StartCommands)
 		}
 		u.Replace = true
 	}
@@ -617,13 +619,24 @@ func windowStart(blocks []*pb.AgentBlock, to int) int {
 	return 0
 }
 
+// startCommands is those of commands that are in starts.
+func startCommands(commands, starts []string) []string {
+	var out []string
+	for _, c := range commands {
+		if slices.Contains(starts, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // snapshot is the latest turns, replacing what a client shows. Callers hold w.mu.
 func (w *agentWatch) snapshot() *pb.AgentView {
 	if w.shell != "" {
 		return &pb.AgentView{PaneId: w.p.id, ShellId: w.shell, Replace: true, Working: w.working, Error: w.errText, ShellOutput: string(w.shellText)}
 	}
 	v := &pb.AgentView{PaneId: w.p.id, SubagentId: w.sub, Replace: true, Prompt: w.prompt, Working: w.working, Status: w.status,
-		Commands: w.commands, Error: w.errText, Subagents: w.subs, Shells: w.shells, Draft: w.draft}
+		Commands: w.commands, StartCommands: w.starts, Error: w.errText, Subagents: w.subs, Shells: w.shells, Draft: w.draft}
 	if w.parser == nil {
 		return v
 	}

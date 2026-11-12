@@ -11737,6 +11737,7 @@ type AgentView struct {
 	ShellOutput   string                 `protobuf:"bytes,20,opt,name=shell_output,json=shellOutput,proto3" json:"shell_output,omitempty"`        // its output, ANSI stripped: all of it kept (replace) or what's new
 	Tasks         *AgentTaskList         `protobuf:"bytes,21,opt,name=tasks,proto3" json:"tasks,omitempty"`                                       // the session's task list (sent when it changes; unset: unchanged)
 	Links         *AgentLinks            `protobuf:"bytes,22,opt,name=links,proto3" json:"links,omitempty"`                                       // its pull requests and artifacts (sent when they change)
+	StartCommands []string               `protobuf:"bytes,23,rep,name=start_commands,json=startCommands,proto3" json:"start_commands,omitempty"`  // those of commands that only run at the start of a message (built-ins): not offered later in one
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11921,6 +11922,13 @@ func (x *AgentView) GetTasks() *AgentTaskList {
 func (x *AgentView) GetLinks() *AgentLinks {
 	if x != nil {
 		return x.Links
+	}
+	return nil
+}
+
+func (x *AgentView) GetStartCommands() []string {
+	if x != nil {
+		return x.StartCommands
 	}
 	return nil
 }
@@ -24809,7 +24817,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tKIND_NONE\x10\x00\x12\x11\n" +
 	"\rKIND_QUESTION\x10\x01\x12\x13\n" +
 	"\x0fKIND_PERMISSION\x10\x02\x12\r\n" +
-	"\tKIND_PLAN\x10\x03\"\xf4\x05\n" +
+	"\tKIND_PLAN\x10\x03\"\x9b\x06\n" +
 	"\tAgentView\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x18\n" +
 	"\areplace\x18\x02 \x01(\bR\areplace\x12.\n" +
@@ -24835,7 +24843,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\bshell_id\x18\x13 \x01(\tR\ashellId\x12!\n" +
 	"\fshell_output\x18\x14 \x01(\tR\vshellOutput\x12/\n" +
 	"\x05tasks\x18\x15 \x01(\v2\x19.hammock.v1.AgentTaskListR\x05tasks\x12,\n" +
-	"\x05links\x18\x16 \x01(\v2\x16.hammock.v1.AgentLinksR\x05links\"<\n" +
+	"\x05links\x18\x16 \x01(\v2\x16.hammock.v1.AgentLinksR\x05links\x12%\n" +
+	"\x0estart_commands\x18\x17 \x03(\tR\rstartCommands\"<\n" +
 	"\rAgentTaskList\x12+\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x15.hammock.v1.AgentTaskR\x05tasks\"\xd8\x01\n" +
 	"\tAgentTask\x12\x0e\n" +

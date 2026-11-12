@@ -88,6 +88,7 @@ var Codex = &Agent{
 
 	NewParser:     func(cwd string, _ bool) agentview.Parser { return agentview.NewCodex(cwd) },
 	SlashCommands: func(string) []string { return codexSlashCommands() },
+	StartCommands: codexBuiltins,
 	Usage:         codexUsage,
 }
 

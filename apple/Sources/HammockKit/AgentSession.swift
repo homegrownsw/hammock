@@ -42,6 +42,9 @@ public final class AgentSession {
     public private(set) var draft = ""
     public private(set) var hasMore = false
     public private(set) var commands: [String] = []
+    /// Those of `commands` that only run at the start of a message (the
+    /// agent's built-ins): not offered later in one.
+    public private(set) var startCommands: Set<String> = []
     /// The model of the latest reply (e.g. claude-opus-5-5), the context it
     /// took, and the window that counts against.
     public private(set) var agentModel = ""
@@ -162,6 +165,7 @@ public final class AgentSession {
                 keptAbove = true
             }
             set(\.commands, v.commands)
+            set(\.startCommands, Set(v.startCommands))
         } else if v.older {
             bs = v.blocks + bs
             loadingOlder = false

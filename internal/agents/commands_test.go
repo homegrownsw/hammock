@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -98,5 +99,39 @@ func TestClaudeSlashCommands(t *testing.T) {
 	}
 	if !slices.IsSorted(got) {
 		t.Errorf("not sorted: %v", got)
+	}
+}
+
+// The built-ins, which only run at a message's start, are among the
+// commands offered, and the skills and commands that run anywhere aren't.
+func TestStartCommandsAreBuiltins(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, "commands"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "commands", "mine.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := claudeSlashCommands(tmp, t.TempDir())
+	for _, c := range Get("claude").StartCommands {
+		if !slices.Contains(got, c) {
+			t.Errorf("start command %s isn't offered", c)
+		}
+	}
+	for _, c := range []string{"/mine", "/loop", "/simplify"} {
+		if !slices.Contains(got, c) {
+			t.Errorf("%s isn't offered", c)
+		}
+		if slices.Contains(Get("claude").StartCommands, c) {
+			t.Errorf("%s runs anywhere in a message, but is a start command", c)
+		}
+	}
+	if !slices.Contains(Get("claude").StartCommands, "/clear") || !slices.Contains(Get("codex").StartCommands, "/model") {
+		t.Error("built-ins missing from the start commands")
+	}
+	for _, c := range Get("codex").StartCommands {
+		if strings.HasPrefix(c, "/prompts:") {
+			t.Errorf("Codex's prompt %s is a start command", c)
+		}
 	}
 }

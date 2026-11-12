@@ -1194,6 +1194,7 @@ message AgentView {
   string shell_output = 20;          // its output, ANSI stripped: all of it kept (replace) or what's new
   AgentTaskList tasks = 21;          // the session's task list (sent when it changes; unset: unchanged)
   AgentLinks links = 22;             // its pull requests and artifacts (sent when they change)
+  repeated string start_commands = 23; // those of commands that only run at the start of a message (built-ins): not offered later in one
 }
 
 // An agent's task list: Claude Code's (TodoWrite, or TaskCreate and
