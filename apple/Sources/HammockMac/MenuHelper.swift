@@ -49,10 +49,12 @@ enum MenuHelper {
         }
         let item = SMAppService.loginItem(identifier: bundleID)
         // Registering starts it; started here only if it was registered
-        // already (and isn't running: it quit, or was quit).
-        if item.status != .enabled {
+        // already (and isn't running: it quit, or was quit). Not at all from
+        // a copy run from outside Applications (AppMover): its login item
+        // would go with it, and running, it would hold the disk image open.
+        if !AppMover.provisional, item.status != .enabled {
             try? item.register()
-        } else if NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty {
+        } else if !AppMover.provisional, NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty {
             let cfg = NSWorkspace.OpenConfiguration()
             cfg.activates = false
             cfg.addsToRecentItems = false

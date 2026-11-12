@@ -16,6 +16,7 @@ enum DaemonService {
 
     static func setEnabled(_ on: Bool) throws {
         if on {
+            if AppMover.provisional { throw NotInApplications() }
             try service.register()
             if service.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
         } else {

@@ -40,7 +40,9 @@ struct HammockApp: App {
         m.onDevicePaired = { name in Notifier.shared.notifyPaired(name) }
         m.onResolved = { ids in Notifier.shared.withdraw(ids) }
         m.onFullState = { Notifier.shared.reconcile(m) }
-        m.start()
+        // Run from outside Applications, the app first asks to move there
+        // (AppMover, at launch), so no daemon starts from a copy about to go.
+        if AppMover.shouldOffer { AppMover.deferredStart = { m.start() } } else { m.start() }
         _ = Updater.shared // Sparkle's daily check (release builds only)
     }
 
@@ -481,6 +483,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         AppConfig.shared.applyAppearance()
         NSApp.activate()
+        guard AppMover.offerIfNeeded() else { return } // moving: this copy quits
         Notifier.shared.setUp()
         AppConfig.shared.followUsageChoice()
         DebugSnapshot.scheduleIfRequested()
