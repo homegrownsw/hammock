@@ -643,7 +643,8 @@ public final class AppModel {
             }
         }
         if selectedTabID == nil, selectedGroupID == nil {
-            selectedTabID = groups.lazy.compactMap { $0.tabIds.first }.first
+            // The sidebar's first tab (on the computer shown), else any.
+            selectedTabID = (shownGroups + groups).lazy.compactMap { $0.tabIds.first }.first
         }
         let resolved = u.clearedAttentionIds + u.resolvedGrantIds + u.resolvedJoinIds + u.resolvedLinkIds + u.resolvedHammockKeyIds
         if !resolved.isEmpty { onResolved?(resolved) }
@@ -1536,11 +1537,14 @@ extension AppModel {
     }
 
     /// Closes a Group, first selecting the next Group's tab (or, with none,
-    /// a Group without tabs).
+    /// a Group without tabs): one the sidebar shows, else one on a computer
+    /// it doesn't.
     func closeGroupSelectingNeighbour(_ id: String) async {
         let (wasTab, wasGroup) = (selectedTabID, selectedGroupID)
-        if let j = groups.firstIndex(where: { $0.id == id }) {
-            let neighbours = groups[(j + 1)...].map(\.self) + groups[..<j].reversed()
+        let shown = shownGroups.contains { $0.id == id } ? shownGroups : groups
+        if let j = shown.firstIndex(where: { $0.id == id }) {
+            let shownIDs = Set(shown.map(\.id))
+            let neighbours = shown[(j + 1)...].map(\.self) + shown[..<j].reversed() + groups.filter { !shownIDs.contains($0.id) }
             if let t = neighbours.lazy.compactMap({ $0.tabIds.first }).first {
                 selectedTabID = t
             } else if let g = neighbours.first {
