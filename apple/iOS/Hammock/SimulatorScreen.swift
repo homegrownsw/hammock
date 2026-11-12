@@ -66,6 +66,12 @@ struct SimulatorScreen: View {
         .ignoresSafeArea(edges: fullScreen ? .all : [])
         .gesture(ThreeFingerTouch(began: { if fullScreen { threeFingers() } }, ended: { settle() }))
         .overlay(alignment: .bottom) { if fullScreen { fullScreenControls } }
+        // Shaking the phone shows them too.
+        .onReceive(NotificationCenter.default.publisher(for: UIWindow.didShake)) { _ in
+            guard fullScreen, !controls else { return }
+            withAnimation { controls = true }
+            controlsUsed += 1
+        }
         .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .bottomBar)
         .statusBarHidden(fullScreen)
         .persistentSystemOverlays(fullScreen ? .hidden : .automatic)
@@ -158,7 +164,7 @@ struct SimulatorScreen: View {
         if controls {
             VStack(spacing: 10) {
                 if hint {
-                    Text("Touch with three fingers to show these again.")
+                    Text("Touch with three fingers, or shake your iPhone, to show these again.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 14).padding(.vertical, 7)
@@ -358,6 +364,17 @@ private struct ThreeFingerTouch: UIGestureRecognizerRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
+}
+
+extension UIWindow {
+    /// The phone was shaken: posted by every window, whatever's first
+    /// responder (a shake goes up the responder chain to its window).
+    static let didShake = Notification.Name("HammockWindowDidShake")
+
+    override open func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        if motion == .motionShake { NotificationCenter.default.post(name: UIWindow.didShake, object: self) }
+        super.motionEnded(motion, with: event)
     }
 }
 
