@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/homegrownsw/hammock/internal/daemon"
 )
@@ -50,7 +52,7 @@ func forwardHook(args []string, stdin io.Reader, stdout io.Writer) error {
 		if len(args) > 1 {
 			event = args[1]
 		}
-		payload, _ = io.ReadAll(io.LimitReader(stdin, 1<<20))
+		payload = readHookPayload(stdin)
 	}
 	if !json.Valid(payload) {
 		payload = []byte("{}")
@@ -78,6 +80,99 @@ func forwardHook(args []string, stdin io.Reader, stdout io.Writer) error {
 	_ = json.NewEncoder(conn).Encode(daemon.HookEvent{PaneID: paneID, Harness: harness, Event: event, Payload: payload})
 	_, _ = io.Copy(io.Discard, conn)
 	return nil
+}
+
+// hookPayloadMax is the most of a hook's stdin passed on as it is. A bigger
+// payload (a PreToolUse for a Write of a large file, say) is passed on with
+// its long strings cut to hookStringMax, so its event name, session and tool
+// still arrive.
+const (
+	hookPayloadMax = 1 << 20
+	hookStringMax  = 4 << 10
+)
+
+// readHookPayload reads a hook event's JSON from r: as it is when it's small
+// enough, else slimmed by slimJSON.
+func readHookPayload(r io.Reader) []byte {
+	head, _ := io.ReadAll(io.LimitReader(r, hookPayloadMax+1))
+	if len(head) <= hookPayloadMax {
+		return head
+	}
+	return slimJSON(io.MultiReader(bytes.NewReader(head), r), hookStringMax)
+}
+
+// slimJSON re-encodes the JSON read from r with each string longer than max
+// bytes cut short (on a rune), without holding the whole of it in memory as
+// it does. If the JSON ends early or is malformed, what came before is kept
+// and closed off.
+func slimJSON(r io.Reader, max int) []byte {
+	dec := json.NewDecoder(r)
+	dec.UseNumber()
+	type level struct {
+		object bool
+		n      int // values written
+	}
+	var (
+		out   bytes.Buffer
+		stack []level
+		key   []byte // an object's key, written with its value
+	)
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		if d, ok := tok.(json.Delim); ok && (d == '}' || d == ']') {
+			out.WriteByte(byte(d))
+			stack = stack[:len(stack)-1]
+		} else {
+			top := len(stack) - 1
+			if s, ok := tok.(string); ok {
+				if top >= 0 && stack[top].object && key == nil {
+					key, _ = json.Marshal(s)
+					continue
+				}
+				if len(s) > max {
+					s = s[:max]
+					for len(s) > 0 && !utf8.ValidString(s) {
+						s = s[:len(s)-1]
+					}
+					tok = s
+				}
+			}
+			if top >= 0 {
+				if stack[top].n > 0 {
+					out.WriteByte(',')
+				}
+				if stack[top].object {
+					out.Write(key)
+					out.WriteByte(':')
+					key = nil
+				}
+			}
+			if d, ok := tok.(json.Delim); ok {
+				out.WriteByte(byte(d))
+				stack = append(stack, level{object: d == '{'})
+				continue
+			}
+			b, _ := json.Marshal(tok)
+			out.Write(b)
+		}
+		if len(stack) == 0 {
+			break // the one value
+		}
+		stack[len(stack)-1].n++
+	}
+	// Ended early: close what's open (a key without its value was never
+	// written).
+	for i := len(stack) - 1; i >= 0; i-- {
+		if stack[i].object {
+			out.WriteByte('}')
+		} else {
+			out.WriteByte(']')
+		}
+	}
+	return out.Bytes()
 }
 
 // fromCursor: payload is a Cursor hook's (each has cursor_version).
