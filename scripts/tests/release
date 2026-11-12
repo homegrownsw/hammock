@@ -2,8 +2,9 @@
 # Tests for release notes and release cuts (release-notes/README.md): `just test-release`.
 #
 #   scripts/note, scripts/note-check   writing notes and requiring them
-#   scripts/release                    freezing the notes into a release, its tags and number, the bump, and
-#                                      taking everything back when a step fails
+#   scripts/release                    freezing the notes into a release, its tags and number, each app's
+#                                      version, and taking everything back when a step fails
+#   scripts/version                    showing and setting the versions
 #   ci_pre_xcodebuild.sh               Xcode Cloud's build number and the tag's version
 #
 # The release script runs for real, against throwaway repos with a bare remote (it commits, tags and
@@ -26,6 +27,7 @@ exit 0
 EOF
 chmod +x "$tmp/mac-update"
 export HMK_RELEASE_MAC_UPDATE="$tmp/mac-update"
+export HMK_RELEASE_YEAR=2026
 calls() { cat "$tmp/mac-update.log" 2>/dev/null || true; rm -f "$tmp/mac-update.log"; }
 
 pass=0
@@ -43,14 +45,15 @@ contains() { if printf '%s' "$2" | grep -qF -- "$1"; then echo yes; else echo no
 
 # A throwaway repo shaped just enough like this one: the scripts, Version.xcconfig, and pending notes for
 # each app (one for people to read, one INTERNAL).
-fixture() { # fixture <version>
+fixture() { # fixture <version> [ios version]
   local dir="$tmp/repo-$RANDOM$RANDOM"
   mkdir -p "$dir"/{scripts/lib,apple/iOS/Config,apple/iOS/ci_scripts,release-notes/mac/pending,release-notes/ios/pending}
   cp "$REPO"/scripts/{release,note,note-check,version,commit-number} "$dir/scripts/"
   echo 0 >"$dir/scripts/history-commits"
   cp "$REPO/scripts/lib/release-notes.sh" "$dir/scripts/lib/"
   cp "$REPO/apple/iOS/ci_scripts/ci_pre_xcodebuild.sh" "$dir/apple/iOS/ci_scripts/"
-  printf 'MARKETING_VERSION = %s\nCURRENT_PROJECT_VERSION = 0\n' "$1" >"$dir/apple/iOS/Config/Version.xcconfig"
+  printf 'HAMMOCK_MAC_VERSION = %s\nHAMMOCK_IOS_VERSION = %s\nCURRENT_PROJECT_VERSION = 0\n' "$1" "${2:-$1}" \
+    >"$dir/apple/iOS/Config/Version.xcconfig"
   for p in mac ios; do
     printf 'tag: FIXED\ndate: 2026-11-01\nA <thing> & more works now.\n' >"$dir/release-notes/$p/pending/1-a-thing.md"
     printf 'tag: NEW\ndate: 2026-11-01\nA new thing.\n' >"$dir/release-notes/$p/pending/new-thing.md"
@@ -69,9 +72,12 @@ fixture() { # fixture <version>
 count() { git -C "$1" rev-list --count "${2:-HEAD}"; }
 remote_tags() { git -C "$1.remote" tag -l | tr '\n' ' ' | sed 's/ $//'; }
 release() { (cd "$1" && ./scripts/release "${@:2}" >/dev/null 2>&1); }
+ver() { git -C "$1" show "${3:-HEAD}:apple/iOS/Config/Version.xcconfig" | sed -nE "s/^HAMMOCK_$2_VERSION = (.*)/\\1/p"; }
+# A release of a version already cut (its tag), as if from an earlier run.
+mark_released() { git -C "$1" tag "$2-v$3-r1" "$(git -C "$1" rev-list --max-parents=0 HEAD)"; git -C "$1" push -q origin "$2-v$3-r1"; }
 
 echo "notes:"
-d=$(fixture 0.2.0)
+d=$(fixture 2026.1.0)
 (cd "$d" && ./scripts/note mac fixed "It's fixed (really)." >/dev/null)
 check "a Mac note" "tag: FIXED" "$(head -n1 "$d/release-notes/mac/pending/it-s-fixed-really.md" 2>/dev/null)"
 check "keeps the text as written" "It's fixed (really)." "$(tail -n1 "$d/release-notes/mac/pending/it-s-fixed-really.md")"
@@ -86,7 +92,7 @@ check "the issue from the branch" "yes" "$([ -e "$d/release-notes/ios/pending/77
 check "refuses an unnamed app" "fails" "$( (cd "$d" && ./scripts/note fixed "No app." >/dev/null 2>&1) && echo passes || echo fails)"
 
 echo "note-check:"
-d=$(fixture 0.2.0)
+d=$(fixture 2026.1.0)
 mkdir -p "$d"/internal/daemon "$d"/apple/Sources/HammockKit "$d"/apple/iOS/Hammock "$d"/docs
 nc() { (cd "$d" && ./scripts/note-check >/dev/null 2>&1) && echo passes || echo fails; }
 echo x >"$d/docs/a.md"
@@ -105,58 +111,101 @@ rm -rf "$d/release-notes/ios/pending/kit.md"
 check "NO_RELEASE_NOTE=1 skips it" passes "$( (cd "$d" && NO_RELEASE_NOTE=1 ./scripts/note-check >/dev/null 2>&1) && echo passes || echo fails)"
 
 echo "dry run:"
-d=$(fixture 0.2.0)
-out=$(cd "$d" && HMK_RELEASE_DRYRUN=1 ./scripts/release apple no-bump 2>&1)
-check "tags carry the next commit's number" yes "$(contains "Mac-v0.2.0-r2 and iOS-v0.2.0-r2" "$out")"
+d=$(fixture 2026.1.0)
+out=$(cd "$d" && HMK_RELEASE_DRYRUN=1 ./scripts/release apple next 2>&1)
+check "tags carry the next commit's number" yes "$(contains "Mac-v2026.1.0-r2 and iOS-v2026.1.0-r2" "$out")"
 check "INTERNAL stays out of the notes" no "$(contains "Plumbing" "$out")"
 check "changes nothing" "1 " "$(count "$d") $(remote_tags "$d")"
 check "builds nothing" "" "$(calls)"
 printf '100\n' >"$d/scripts/history-commits"
-out=$(cd "$d" && HMK_RELEASE_DRYRUN=1 ./scripts/release apple no-bump 2>&1)
-check "numbers count the commits before this repo too" yes "$(contains "Mac-v0.2.0-r102 and iOS-v0.2.0-r102" "$out")"
+out=$(cd "$d" && HMK_RELEASE_DRYRUN=1 ./scripts/release apple next 2>&1)
+check "numbers count the commits before this repo too" yes "$(contains "Mac-v2026.1.0-r102 and iOS-v2026.1.0-r102" "$out")"
+
+echo "versions:"
+d=$(fixture 2026.1.0)
+dry() { (cd "$d" && HMK_RELEASE_DRYRUN=1 ./scripts/release "$@" 2>&1 | sed -nE 's/^\[dry run\] commit .([^ ]+ v[^ ]+).*/\1/p'); }
+check "an unreleased version is released as it is" "release(mac): v2026.1.0" "$(dry mac next)"
+mark_released "$d" Mac 2026.1.0
+mark_released "$d" iOS 2026.1.0
+check "a released Mac version moves to the next patch" "release(mac): v2026.1.1" "$(dry mac next)"
+check "iOS next is a patch too" "release(ios): v2026.1.1" "$(dry ios next)"
+check "iOS build keeps the version" "release(ios): v2026.1.0" "$(dry ios build)"
+check "a joint release is the next N" "release: v2026.2.0" "$(dry apple next)"
+check "the Mac can't build the same version" "" "$(dry mac build)"
+check "a version that doesn't go up is refused" "" "$(dry mac 2026.0.9)"
+check "a released Mac version can't be cut again" "" "$(dry mac 2026.1.0)"
+check "a chosen version" "release(ios): v2026.3.0" "$(dry ios 2026.3.0)"
+d=$(fixture 2026.4.2 2026.4.0)
+mark_released "$d" Mac 2026.4.2
+mark_released "$d" iOS 2026.4.0
+check "joint: past both apps" "release: v2026.5.0" "$(dry apple next)"
+check "joint: a new year starts at 1" "release: v2027.1.0" "$(HMK_RELEASE_YEAR=2027 dry apple next)"
+d=$(fixture 0.4.0)
+mark_released "$d" Mac 0.4.0
+mark_released "$d" iOS 0.4.0
+check "joint: from 0.x to this year's first" "release: v2026.1.0" "$(dry apple next)"
+check "just version shows both" "Mac: 0.4.0|iOS: 0.4.0" "$( (cd "$d" && ./scripts/version) | tr '\n' '|' | sed 's/|$//')"
+(cd "$d" && ./scripts/version ios 2026.1.0 >/dev/null)
+check "just version sets one" "0.4.0 2026.1.0" "$(sed -nE 's/^HAMMOCK_(MAC|IOS)_VERSION = (.*)/\2/p' "$d/apple/iOS/Config/Version.xcconfig" | tr '\n' ' ' | sed 's/ $//')"
 
 echo "iOS release:"
-d=$(fixture 0.2.0)
-release "$d" ios no-bump
-check "pushed the release commit and tag" "2 iOS-v0.2.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
+d=$(fixture 2026.1.0)
+release "$d" ios next
+check "pushed the release commit and tag" "2 iOS-v2026.1.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
 wtt=$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-GB.txt")
 check "What to Test, New then Fixed" "This build||New|• A new thing.||Fixed|• A <thing> & more works now." "$(printf '%s' "$wtt" | tr '\n' '|')"
 check "en-US is the same" "$wtt" "$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-US.txt")"
-check "filed the iOS notes" "0 3" "$(ls "$d/release-notes/ios/pending" | wc -l | tr -d ' ') $(ls "$d/release-notes/ios/v0.2.0" | wc -l | tr -d ' ')"
+check "filed the iOS notes" "0 3" "$(ls "$d/release-notes/ios/pending" | wc -l | tr -d ' ') $(ls "$d/release-notes/ios/v2026.1.0" | wc -l | tr -d ' ')"
 check "left the Mac's pending" "3" "$(ls "$d/release-notes/mac/pending" | wc -l | tr -d ' ')"
 check "the Mac isn't built" "" "$(calls)"
-check "a second cut needs notes" fails "$(release "$d" ios no-bump && echo passes || echo fails)"
-release "$d" ios no-bump allow-empty
+check "a second cut needs notes" fails "$(release "$d" ios build && echo passes || echo fails)"
+release "$d" ios build allow-empty
 wtt=$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-GB.txt")
-check "…or allow-empty, listing the earlier build's" yes "$(contains "Earlier 0.2.0 builds" "$wtt")"
-check "…as r3" "iOS-v0.2.0-r2 iOS-v0.2.0-r3" "$(remote_tags "$d")"
+check "…or allow-empty, listing the earlier build's" yes "$(contains "Earlier 2026.1 builds" "$wtt")"
+check "…as r3, the same version" "iOS-v2026.1.0-r2 iOS-v2026.1.0-r3" "$(remote_tags "$d")"
+release "$d" ios next allow-empty
+check "a hotfix is the next patch" "iOS-v2026.1.0-r2 iOS-v2026.1.0-r3 iOS-v2026.1.1-r4" "$(remote_tags "$d")"
+check "…set in the tagged commit" "2026.1.1" "$(ver "$d" IOS iOS-v2026.1.1-r4)"
+check "…leaving the Mac's alone" "2026.1.0" "$(ver "$d" MAC iOS-v2026.1.1-r4)"
+check "…with 2026.1.0's summary" "yes" "$([ -e "$d/release-notes/ios/v2026.1.0.md" ] && echo yes)"
 
 echo "Mac release:"
-d=$(fixture 0.2.0)
-release "$d" mac no-bump
+d=$(fixture 2026.1.0)
+release "$d" mac next
 check "built, then uploaded, release 2" "build 2|upload 2|" "$(calls | tr '\n' '|')"
-check "pushed the commit and tag" "2 Mac-v0.2.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
+check "pushed the commit and tag" "2 Mac-v2026.1.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
 html=$(cat "$tmp/notes.html")
 check "the notes as HTML, escaped" yes "$(contains "<li>A &lt;thing&gt; &amp; more works now.</li>" "$html")"
 check "in sections, New first" "<h4>New</h4>|<ul>|<li>A new thing.</li>|</ul>|<h4>Fixed</h4>|<ul>|<li>A &lt;thing&gt; &amp; more works now.</li>|</ul>" "$(printf '%s' "$html" | tr '\n' '|')"
+(cd "$d" && ./scripts/note mac fixed "Patched." >/dev/null && git add -A && git commit -qm note && git push -q origin main)
+release "$d" mac next
+check "the next Mac release is a patch" "Mac-v2026.1.0-r2 Mac-v2026.1.1-r4" "$(remote_tags "$d")"
+check "…set in the tagged commit" "2026.1.1" "$(ver "$d" MAC Mac-v2026.1.1-r4)"
+check "…leaving the iPhone's alone" "2026.1.0" "$(ver "$d" IOS Mac-v2026.1.1-r4)"
+html=$(cat "$tmp/notes.html")
+check "…its notes, then the family's earlier ones" "<h4>Fixed</h4>|<ul>|<li>Patched.</li>|</ul>|<h3>Earlier in 2026.1</h3>|<h4>New</h4>|<ul>|<li>A new thing.</li>|</ul>|<h4>Fixed</h4>|<ul>|<li>A &lt;thing&gt; &amp; more works now.</li>|</ul>" "$(printf '%s' "$html" | tr '\n' '|')"
+check "…and 2026.1.0's summary" "# Mac 2026.1.0||## New||- A new thing.||## Fixed||- A <thing> & more works now.||## Internal||- Plumbing." "$(tr '\n' '|' <"$d/release-notes/mac/v2026.1.0.md" | sed 's/|$//')"
+calls >/dev/null
 
 echo "a failed Mac build takes it all back:"
-d=$(fixture 0.2.0)
-check "fails" fails "$( (cd "$d" && FAKE_BUILD_FAIL=1 ./scripts/release mac no-bump >/dev/null 2>&1) && echo passes || echo fails)"
-check "…publishing nothing" "1 " "$(count "$d.remote" main) $(remote_tags "$d")"
-check "…back where it started, with no tag" "1 " "$(count "$d") $(git -C "$d" tag -l)"
+d=$(fixture 2026.1.0)
+mark_released "$d" Mac 2026.1.0
+check "fails" fails "$( (cd "$d" && FAKE_BUILD_FAIL=1 ./scripts/release mac next >/dev/null 2>&1) && echo passes || echo fails)"
+check "…publishing nothing" "1 Mac-v2026.1.0-r1" "$(count "$d.remote" main) $(remote_tags "$d")"
+check "…back where it started, with no new tag" "1 Mac-v2026.1.0-r1" "$(count "$d") $(git -C "$d" tag -l)"
+check "…and its version" "2026.1.0" "$(ver "$d" MAC)"
 check "…the notes still pending" "3" "$(ls "$d/release-notes/mac/pending" | wc -l | tr -d ' ')"
 check "…and the build discarded" "build 2|discard 2|" "$(calls | tr '\n' '|')"
 
 echo "a failed upload keeps the release:"
-d=$(fixture 0.2.0)
-out=$(cd "$d" && FAKE_UPLOAD_FAIL=1 ./scripts/release mac no-bump 2>&1) || true
-check "pushed anyway" "Mac-v0.2.0-r2" "$(remote_tags "$d")"
+d=$(fixture 2026.1.0)
+out=$(cd "$d" && FAKE_UPLOAD_FAIL=1 ./scripts/release mac next 2>&1) || true
+check "pushed anyway" "Mac-v2026.1.0-r2" "$(remote_tags "$d")"
 check "and says how to retry" yes "$(contains "scripts/mac-update upload 2" "$out")"
 calls >/dev/null
 
 echo "rejected push:"
-d=$(fixture 0.2.0)
+d=$(fixture 2026.1.0)
 other="$tmp/other-$RANDOM"
 git clone -q "$d.remote" "$other"
 git -C "$other" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m "someone else"
@@ -170,37 +219,41 @@ EOF
 chmod +x "$tmp/mac-update-push"
 git -C "$d" pull -q --rebase origin main
 start=$(git -C "$d" rev-parse HEAD)
-check "fails" fails "$( (cd "$d" && HMK_RELEASE_MAC_UPDATE="$tmp/mac-update-push" ./scripts/release apple no-bump >/dev/null 2>&1) && echo passes || echo fails)"
+check "fails" fails "$( (cd "$d" && HMK_RELEASE_MAC_UPDATE="$tmp/mac-update-push" ./scripts/release apple next >/dev/null 2>&1) && echo passes || echo fails)"
 check "…no tags published or kept" "|" "$(remote_tags "$d")|$(git -C "$d" tag -l)"
 check "…back where it started" "$start" "$(git -C "$d" rev-parse HEAD)"
 check "…the build discarded, never uploaded" "build 3|discard 3|" "$(calls | tr '\n' '|')"
 
-echo "bump:"
-d=$(fixture 0.2.0)
-release "$d" apple bump 0.3.0
-check "tagged under the old version" "Mac-v0.2.0-r2 iOS-v0.2.0-r2" "$(remote_tags "$d")"
-check "the tag has the old version" "0.2.0" "$(git -C "$d" show Mac-v0.2.0-r2:apple/iOS/Config/Version.xcconfig | sed -nE 's/^MARKETING_VERSION = (.*)/\1/p')"
-check "main has the new one" "0.3.0" "$(git -C "$d.remote" show main:apple/iOS/Config/Version.xcconfig | sed -nE 's/^MARKETING_VERSION = (.*)/\1/p')"
-check "the summary, INTERNAL included" "# Mac 0.2.0||## New||- A new thing.||## Fixed||- A <thing> & more works now.||## Internal||- Plumbing." "$(tr '\n' '|' <"$d/release-notes/mac/v0.2.0.md" | sed 's/|$//')"
-check "a bump must go up" fails "$(release "$d" mac bump 0.2.5 allow-empty && echo passes || echo fails)"
+echo "joint release:"
+d=$(fixture 0.4.0)
+mark_released "$d" Mac 0.4.0
+mark_released "$d" iOS 0.4.0
+mkdir -p "$d/release-notes/mac/v0.4.0" && printf 'tag: NEW\ndate: 2026-10-01\nOld.\n' >"$d/release-notes/mac/v0.4.0/old.md"
+(cd "$d" && git add -A && git commit -qm old && git push -q origin main)
+release "$d" apple next
+check "both tagged in one commit" "3 Mac-v0.4.0-r1 Mac-v2026.1.0-r3 iOS-v0.4.0-r1 iOS-v2026.1.0-r3" "$(count "$d.remote" main) $(remote_tags "$d")"
+check "both versions set in it" "2026.1.0 2026.1.0" "$(ver "$d" MAC Mac-v2026.1.0-r3) $(ver "$d" IOS iOS-v2026.1.0-r3)"
+check "the old version's summary, only where it had notes" "yes no" "$([ -e "$d/release-notes/mac/v0.4.0.md" ] && echo yes || echo no) $([ -e "$d/release-notes/ios/v0.4.0.md" ] && echo yes || echo no)"
+html=$(cat "$tmp/notes.html")
+check "the Mac's notes leave 0.4.0's out" no "$(contains "Old." "$html")"
 calls >/dev/null
 
 echo "preflight:"
-d=$(fixture 0.2.0)
+d=$(fixture 2026.1.0)
 echo dirty >"$d/x"
-check "a dirty tree is refused" fails "$(release "$d" ios no-bump && echo passes || echo fails)"
+check "a dirty tree is refused" fails "$(release "$d" ios next && echo passes || echo fails)"
 rm "$d/x"
 git -C "$d" commit -q --allow-empty -m unpushed
-check "unpushed commits are refused" fails "$(release "$d" ios no-bump && echo passes || echo fails)"
+check "unpushed commits are refused" fails "$(release "$d" ios next && echo passes || echo fails)"
 
 echo "ci_pre_xcodebuild.sh:"
-d=$(fixture 0.2.0)
+d=$(fixture 2026.2.3 2026.2.0)
 ci() { (cd "$d" && CI_PRIMARY_REPOSITORY_PATH="$d" "$@" ./apple/iOS/ci_scripts/ci_pre_xcodebuild.sh >/dev/null 2>&1) && echo passes || echo fails; }
 check "a branch build" passes "$(ci env CI_BUILD_NUMBER=42)"
 check "stamps the build number" "42" "$(sed -nE 's/^CURRENT_PROJECT_VERSION = (.*)/\1/p' "$d/apple/iOS/Config/Version.xcconfig")"
-check "a matching tag" passes "$(ci env CI_BUILD_NUMBER=43 CI_TAG=iOS-v0.2.0-r615)"
-check "a tag for another version" fails "$(ci env CI_BUILD_NUMBER=44 CI_TAG=iOS-v0.1.0-r615)"
-check "a malformed tag" fails "$(ci env CI_BUILD_NUMBER=45 CI_TAG=iOS-v0.2-r1)"
+check "a tag matching the iPhone's version" passes "$(ci env CI_BUILD_NUMBER=43 CI_TAG=iOS-v2026.2.0-r615)"
+check "a tag for the Mac's" fails "$(ci env CI_BUILD_NUMBER=44 CI_TAG=iOS-v2026.2.3-r615)"
+check "a malformed tag" fails "$(ci env CI_BUILD_NUMBER=45 CI_TAG=iOS-v2026.2-r1)"
 check "Mac tags aren't checked" passes "$(ci env CI_BUILD_NUMBER=46 CI_TAG=Mac-v9.9.9-r1)"
 
 echo "the committed notes:"

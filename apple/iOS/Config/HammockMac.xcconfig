@@ -3,6 +3,7 @@
 // `just mac-dev` (scripts/build-mac-app.sh), which make the same bundle.
 
 #include "Version.xcconfig"
+MARKETING_VERSION = $(HAMMOCK_MAC_VERSION)
 
 PRODUCT_NAME = Hammock
 PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock

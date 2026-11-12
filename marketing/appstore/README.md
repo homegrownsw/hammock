@@ -143,8 +143,8 @@ in filename order. If Apple refuses the Duo set, the push says so: drag the file
 
 The preview and the push refuse images that would mislead: a set missing or of uneven length, images composed
 from an older capture than the one on disk, or screenshots taken from another app version than the project's
-`MARKETING_VERSION`. `HMK_APPSTORE_SCREENSHOTS=0 just appstore-push` leaves every screenshot set as App Store
-Connect has it; `HMK_APPSTORE_DUO=0`, the Duo's.
+iPhone version (`HAMMOCK_IOS_VERSION` in Version.xcconfig). `HMK_APPSTORE_SCREENSHOTS=0 just appstore-push`
+leaves every screenshot set as App Store Connect has it; `HMK_APPSTORE_DUO=0`, the Duo's.
 
 ## The app preview, the search results video and the header
 

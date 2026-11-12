@@ -2,6 +2,7 @@
 // for the target in the project itself override these, so keep them here.
 
 #include "Version.xcconfig"
+MARKETING_VERSION = $(HAMMOCK_IOS_VERSION)
 
 PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock
 // The icon is an Icon Composer bundle (Hammock/AppIcon.icon): Liquid Glass,

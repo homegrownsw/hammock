@@ -173,23 +173,25 @@ note *args:
 note-check *args:
     scripts/note-check "$@"
 
-# Show both apps' version, or set it: `just version 0.3.0`.
+# Show each app's version, or set them: `just version 2026.2.0` (both), `just version mac 2026.1.4` (one).
 [positional-arguments]
 version *args:
     scripts/version "$@"
 
-# Cut a Mac release (a Sparkle update, published as a GitHub Release): `just release-mac no-bump`, or `bump 0.3.0` for a
-# version's last release (+ allow-empty). Builds, notarizes (the fika-notary keychain profile; see share) and uploads it.
+# Cut a Mac release (a Sparkle update, published as a GitHub Release): `just release-mac next` (the next patch,
+# 2026.1.0 → 2026.1.1) or a version (+ allow-empty). Builds, notarizes (the fika-notary keychain profile; see share)
+# and uploads it. Versions: release-notes/README.md.
 [positional-arguments]
 release-mac *args:
     scripts/release mac "$@"
 
-# Cut a TestFlight build (the iOS-v* tag starts Xcode Cloud): as release-mac.
+# Cut a TestFlight build (the iOS-v* tag starts Xcode Cloud): `just release-ios build` (another build of the
+# iPhone's version), `next` (a hotfix's new patch, which App Review sees again) or a version (+ allow-empty).
 [positional-arguments]
 release-ios *args:
     scripts/release ios "$@"
 
-# Cut both apps' releases in one release commit, with one bump after it: as release-mac.
+# Cut both apps' joint release in one release commit: `just release-apple next` (2026.1.x → 2026.2.0) or a version.
 [positional-arguments]
 release-apple *args:
     scripts/release apple "$@"

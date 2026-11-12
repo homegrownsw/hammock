@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# Shows Hammock's version (both apps), or sets it: `just version`, `just version 0.3.0`. It lives in
-# apple/iOS/Config/Version.xcconfig (release-notes/README.md); a release's `bump` sets it too.
+# Shows each app's version, or sets them (release-notes/README.md): `just version`, `just version 2026.2.0`
+# (both apps), `just version mac 2026.1.4` (one). They live in apple/iOS/Config/Version.xcconfig; a release
+# sets them too, so set one here only to release at a version `next` wouldn't choose.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/release-notes.sh
 . "$ROOT/scripts/lib/release-notes.sh"
-if [ -z "${1:-}" ]; then read_version "$ROOT"; exit 0; fi
-version_ok "$1" || { echo "'$1' isn't a version like 0.3.0." >&2; exit 2; }
-write_version "$ROOT" "$1"
-echo "Version: $1 ($(version_file "$ROOT" | sed "s|$ROOT/||"))"
+case "${1:-}" in
+  "") for p in $PLATFORMS_ALL; do echo "$(label "$p"): $(read_version "$ROOT" "$p")"; done; exit 0 ;;
+  mac | ios) apps="$1"; ver="${2:-}" ;;
+  *) apps="$PLATFORMS_ALL"; ver="$1" ;;
+esac
+version_ok "$ver" || { echo "'$ver' isn't a version like 2026.1.0." >&2; exit 2; }
+for p in $apps; do
+  write_version "$ROOT" "$p" "$ver"
+  echo "$(label "$p"): $ver ($(version_file "$ROOT" | sed "s|$ROOT/||"))"
+done

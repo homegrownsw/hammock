@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # Cuts a release (release-notes/README.md): of the Mac app (a Sparkle update), the iOS app (a TestFlight
-# build), or both at once. `just release-mac`,
-# `just release-ios` and `just release-apple` run it.
+# build), or both at once. `just release-mac`, `just release-ios` and `just release-apple` run it.
 #
-#   scripts/release <mac|ios|apple>                           prompts with gum
-#   scripts/release <mac|ios|apple> no-bump [allow-empty]     cut a release, keep the version
-#   scripts/release <mac|ios|apple> bump 0.3.0 [allow-empty]  cut the version's last release, then set 0.3.0
+#   scripts/release <mac|ios|apple>                     prompts with gum
+#   scripts/release <mac|ios|apple> next [allow-empty]  the app's next version (below)
+#   scripts/release ios build [allow-empty]             another TestFlight build of the iPhone's version
+#   scripts/release <mac|ios|apple> <x.y.z> [...]       a version of your choosing
 #
-# For each app it freezes the pending notes into the release, files them under the version, optionally
-# bumps the version, then commits, tags and pushes:
+# Each app has its own version, YYYY.N.P (apple/iOS/Config/Version.xcconfig): the year, its Nth joint release,
+# and a patch. A joint release (apple) is both apps at the next YYYY.N.0; the Mac ships patches in between
+# (2026.1.1, 2026.1.2…), each its own version, while the iPhone gets more TestFlight builds of its YYYY.N.0
+# (a new iOS version means another App Review), or a patch for a hotfix. `next` is, for the Mac or iOS, the
+# next patch, and for both the next joint release; an app whose version in the file hasn't been released yet
+# (set ahead with `just version`) is released at that version instead. The release commit itself sets the
+# version, since a build is made from exactly the tagged commit and checks its version against the tag.
+#
+# For each app it freezes the pending notes into the release, files them under the version, then commits,
+# tags and pushes:
 #
 #   mac    tag Mac-v<x.y.z>-r<n>. Before anything is pushed it builds the tagged commit with its update feed,
 #          notarizes it, and makes the appcast with the notes in it (scripts/mac-update build); a failure
@@ -16,15 +24,12 @@
 #          Release (scripts/mac-update upload), where Sparkle finds it.
 #   ios    apple/iOS/TestFlight/WhatToTest.<locale>.txt (Xcode Cloud reads it from the tagged commit), tag
 #          iOS-v<x.y.z>-r<n>; the tag starts Xcode Cloud's TestFlight build.
-#   apple  both, in one release commit carrying both tags, and one bump after it.
+#   apple  both, in one release commit carrying both tags.
 #
-# One version for both apps: MARKETING_VERSION in apple/iOS/Config/Version.xcconfig, which every target
-# includes and the Mac's own build reads. A bump finishes it: the release is tagged under the current
-# version, and a second commit after the tag raises it, since a build is made from exactly the tagged commit
-# and checks its version against the tag.
+# An app moving on from a version gets that version's summary, release-notes/<app>/v<old>.md, in the commit.
 #
 # n in r<n> is the release commit's number on main (scripts/commit-number), which is also the Mac build's
-# CFBundleVersion: Mac-v0.2.0-r615 is build 615, and an iOS release cut alongside it is r615 too. Each cut
+# CFBundleVersion: Mac-v2026.1.0-r615 is build 615, and an iOS release cut alongside it is r615 too. Each cut
 # makes a commit, so no two releases share a number. The iOS build number is still Xcode Cloud's
 # CI_BUILD_NUMBER, which App Store Connect insists on.
 #
@@ -32,8 +37,8 @@
 # clean checkout exactly level with origin/main (require_level_with_origin_main).
 #
 # HMK_RELEASE_DRYRUN=1 prints the plan (the notes each release would carry, the notes it would move, the
-# tags, the version) and changes nothing, skipping the preflight so it runs anywhere.
-# HMK_RELEASE_MAC_UPDATE names a stand-in for scripts/mac-update (the tests use one).
+# tags, the versions) and changes nothing, skipping the preflight so it runs anywhere.
+# HMK_RELEASE_MAC_UPDATE names a stand-in for scripts/mac-update (the tests use one); HMK_RELEASE_YEAR the year.
 set -euo pipefail
 shopt -s nullglob
 
@@ -50,7 +55,7 @@ case "$TARGET" in
   mac) PLATFORMS="mac" ;;
   ios) PLATFORMS="ios" ;;
   apple) PLATFORMS="mac ios" ;;
-  *) echo "usage: scripts/release <mac|ios|apple> [no-bump | bump <x.y.z>] [allow-empty]" >&2; exit 2 ;;
+  *) echo "usage: scripts/release <mac|ios|apple> [next | build | <x.y.z>] [allow-empty]" >&2; exit 2 ;;
 esac
 shift
 has() { [[ " $PLATFORMS " == *" $1 "* ]]; }
@@ -62,11 +67,13 @@ IOS_NOTES_LOCALES="en-GB en-US"
 
 usage() {
   cat >&2 <<EOF
-usage: scripts/release $TARGET [no-bump | bump <x.y.z>] [allow-empty]
+usage: scripts/release $TARGET [next | build | <x.y.z>] [allow-empty]
 
   (no arguments)   prompts with gum
-  no-bump          cut a release and keep the version
-  bump <x.y.z>     cut the last release of this version, then raise the version to <x.y.z>
+  next             the next version: a patch for the Mac or iOS (2026.1.0 → 2026.1.1),
+                   the next joint release for both (→ 2026.2.0, or 2027.1.0 in a new year)
+  build            iOS only: another TestFlight build of the iPhone's version
+  <x.y.z>          this version, higher than the app's last
   allow-empty      cut a release even with no new notes for people to read
 EOF
   exit 2
@@ -75,26 +82,27 @@ EOF
 # ---- arguments ---------------------------------------------------------------------------------------------
 NONINTERACTIVE=0
 MODE=""
-NEXT_VER=""
+ASKED_VER=""
 ALLOW_EMPTY=0
 if [ "$#" -gt 0 ]; then
   NONINTERACTIVE=1
   for a in "$@"; do
     case "$a" in
-      bump) MODE=bump ;;
-      no-bump) MODE=no-bump ;;
+      next) MODE=next ;;
+      build) MODE=build ;;
       allow-empty) ALLOW_EMPTY=1 ;;
-      [0-9]*) NEXT_VER="$a" ;;
+      [0-9]*) MODE=version; ASKED_VER="$a" ;;
       *) echo "Unknown argument '$a'." >&2; usage ;;
     esac
   done
-  [ -n "$MODE" ] || { echo "Say 'no-bump' or 'bump <x.y.z>'." >&2; usage; }
-  if [ "$MODE" = bump ] && [ -z "$NEXT_VER" ]; then echo "'bump' needs a version, e.g. 'bump 0.3.0'." >&2; usage; fi
-  if [ "$MODE" = no-bump ] && [ -n "$NEXT_VER" ]; then echo "'no-bump' takes no version." >&2; usage; fi
+  [ -n "$MODE" ] || { echo "Say 'next'$([ "$TARGET" = ios ] && echo ", 'build'") or a version." >&2; usage; }
+  if [ "$MODE" = build ] && [ "$TARGET" != ios ]; then
+    echo "'build' is for iOS: every Mac release, and every joint one, is a new version." >&2; usage
+  fi
 fi
 
 if [ "$NONINTERACTIVE" != 1 ] && [ -z "$DRYRUN" ] && ! command -v gum >/dev/null 2>&1; then
-  echo "Prompting needs gum: brew install gum. Or pass the arguments, e.g. just release-$TARGET no-bump" >&2
+  echo "Prompting needs gum: brew install gum. Or pass the arguments, e.g. just release-$TARGET next" >&2
   exit 1
 fi
 
@@ -106,27 +114,100 @@ else
   git -C "$ROOT" fetch --tags --quiet 2>/dev/null || true
 fi
 
-# ---- the version and number --------------------------------------------------------------------------------
-VER=$(read_version "$ROOT")
-version_ok "$VER" || { echo "$(version_file "$ROOT") sets MARKETING_VERSION to '$VER'; it should be x.y.z." >&2; exit 1; }
-# The release commit is the next one on main.
-N=$(($("$ROOT/scripts/commit-number" "$ROOT") + 1))
-
-# ---- each app's tag and notes ------------------------------------------------------------------------------
-# Per app, in variables named after it (TAG_mac, THIS_ios, …), since macOS's bash has no maps.
+# ---- the versions and number -------------------------------------------------------------------------------
+# Per app, in variables named after it (CUR_mac, VER_ios, TAG_mac, THIS_ios, …), since macOS's bash has no maps.
 set_var() { printf -v "$1_$2" '%s' "$3"; }
 get_var() { local n="$1_$2"; printf '%s' "${!n}"; }
 
+for p in $PLATFORMS_ALL; do
+  cur=$(read_version "$ROOT" "$p")
+  version_ok "$cur" ||
+    { echo "$(version_file "$ROOT") sets $(version_key "$p") to '$cur'; it should be x.y.z." >&2; exit 1; }
+  set_var CUR "$p" "$cur"
+done
+# The release commit is the next one on main.
+N=$(($("$ROOT/scripts/commit-number" "$ROOT") + 1))
+
+# An app's next version: its version in the file if that hasn't been released yet, else the next patch.
+next_for() { # next_for <mac|ios>
+  local cur
+  cur=$(get_var CUR "$1")
+  if is_released "$ROOT" "$1" "$cur"; then next_patch "$cur"; else echo "$cur"; fi
+}
+# Both apps' next joint release: the version both are set to, if neither has released it, else the next one.
+next_joint_for() {
+  if [ "$(get_var CUR mac)" = "$(get_var CUR ios)" ] && [ "$(get_var CUR mac | sed -E "s/.*\.//")" = 0 ] &&
+    ! is_released "$ROOT" mac "$(get_var CUR mac)" && ! is_released "$ROOT" ios "$(get_var CUR ios)"; then
+    get_var CUR mac
+  else
+    next_joint "$(get_var CUR mac)" "$(get_var CUR ios)"
+  fi
+}
+
+if [ "$NONINTERACTIVE" != 1 ]; then
+  if [ -n "$DRYRUN" ]; then
+    MODE=next
+  else
+    case "$TARGET" in
+      mac) MODE=next ;;
+      apple)
+        MODE=version
+        ASKED_VER=$(gum input --header "Both apps' version (a joint release)" --value "$(next_joint_for)") ;;
+      ios)
+        if is_released "$ROOT" ios "$(get_var CUR ios)"; then
+          build="Another TestFlight build of $(get_var CUR ios)"
+          choice=$(gum choose --header "This iOS release" "$build" "A new version, $(next_for ios) (App Review again)")
+          if [ "$choice" = "$build" ]; then MODE=build; else MODE=next; fi
+        else
+          MODE=next
+        fi ;;
+    esac
+  fi
+fi
+
+for p in $PLATFORMS; do
+  cur=$(get_var CUR "$p")
+  case "$MODE" in
+    build) ver="$cur" ;;
+    version) ver="$ASKED_VER" ;;
+    next) if [ "$TARGET" = apple ]; then ver=$(next_joint_for); else ver=$(next_for "$p"); fi ;;
+  esac
+  version_ok "$ver" || { echo "'$ver' isn't a version like 2026.1.0." >&2; exit 1; }
+  if [ "$ver" = "$cur" ]; then
+    if [ "$p" = mac ] && is_released "$ROOT" mac "$cur"; then
+      echo "The Mac has a release of ${cur} already; each Mac release is a new version (next: $(next_for mac))." >&2
+      exit 1
+    fi
+  elif ! version_gt "$ver" "$cur"; then
+    echo "The $(label "$p") version must go up: ${ver} isn't higher than ${cur}." >&2
+    exit 1
+  fi
+  set_var VER "$p" "$ver"
+done
+
+# ---- each app's tag and notes ------------------------------------------------------------------------------
+# The notes of a version's family (2026.1.*), newest first: the earlier releases this one comes after.
+render_family() { # render_family <mac|ios> <family>
+  local d r lines=""
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    r=$(render_dir "$d")
+    if [ -n "$r" ]; then lines+="$r"$'\n'; fi
+  done < <(family_dirs "$ROOT" "$1" "$2")
+  new_first "$lines"
+}
+
 for p in $PLATFORMS; do
   L=$(label "$p")
-  tag="${L}-v${VER}-r${N}"
+  ver=$(get_var VER "$p")
+  tag="${L}-v${ver}-r${N}"
   if git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     echo "$tag already exists: is HEAD a release commit that was never pushed? (git reset --hard origin/main)" >&2
     exit 1
   fi
   set_var TAG "$p" "$tag"
   this=$(render_dir "$ROOT/release-notes/$p/pending")
-  prev=$(render_dir "$ROOT/release-notes/$p/v${VER}")
+  prev=$(render_family "$p" "$(version_family "$ver")")
   set_var THIS "$p" "$this"
   set_var PREV "$p" "$prev"
 
@@ -144,8 +225,8 @@ for p in $PLATFORMS; do
   fi
 done
 
-# iOS: TestFlight's What to Test, as plain text: this build's notes, then the earlier builds' of the version,
-# each under New and Fixed headings.
+# iOS: TestFlight's What to Test, as plain text: this build's notes, then the earlier builds' of the version's
+# family, each under New and Fixed headings.
 ios_notes() {
   local this prev
   this=$(get_var THIS ios)
@@ -153,53 +234,47 @@ ios_notes() {
   fit_to_limit 4000 "$(
     printf 'This build\n\n'
     if [ -n "$this" ]; then printf '%s\n' "$(lines_to_text "$this")"; else printf 'Behind-the-scenes improvements.\n'; fi
-    if [ -n "$prev" ]; then printf '\nEarlier %s builds\n\n%s\n' "$VER" "$(lines_to_text "$prev")"; fi
+    if [ -n "$prev" ]; then printf '\nEarlier %s builds\n\n%s\n' "$(version_family "$(get_var VER ios)")" "$(lines_to_text "$prev")"; fi
   )"
 }
 # Mac: the same, as HTML for Sparkle's update window (embedded in the appcast by scripts/mac-update, and the
-# GitHub Release's notes).
+# GitHub Release's notes). Sparkle shows only the newest release's notes, so someone skipping patches still
+# sees what the ones they skipped brought.
 mac_notes_html() {
   local this prev
   this=$(get_var THIS mac)
   prev=$(get_var PREV mac)
   if [ -n "$this" ]; then lines_to_html "$this"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
   if [ -n "$prev" ]; then
-    echo "<h3>Earlier in ${VER}</h3>"
+    echo "<h3>Earlier in $(version_family "$(get_var VER mac)")</h3>"
     lines_to_html "$prev"
   fi
 }
 
-# ---- the bump ----------------------------------------------------------------------------------------------
-DO_BUMP=0
-if [ "$NONINTERACTIVE" = 1 ]; then
-  [ "$MODE" = bump ] && DO_BUMP=1
-elif [ -z "$DRYRUN" ]; then
-  if gum confirm "Is this the last release of ${VER} (bump the version afterwards)?"; then
-    DO_BUMP=1
-    NEXT_VER=$(gum input --header "Next version" --value "$(suggest_next "$VER")")
-  fi
-fi
-if [ "$DO_BUMP" = 1 ]; then
-  version_ok "$NEXT_VER" || { echo "'$NEXT_VER' isn't a version like 1.2.3." >&2; exit 1; }
-  version_gt "$NEXT_VER" "$VER" || { echo "The next version ($NEXT_VER) must be higher than $VER." >&2; exit 1; }
-fi
-
 if [ "$TARGET" = apple ]; then
-  RELEASE_MSG="release: v${VER} (r${N}, Mac and iOS)"
-  BUMP_MSG="release: bump to v${NEXT_VER}"
+  RELEASE_MSG="release: v$(get_var VER mac) (r${N}, Mac and iOS)"
 else
-  RELEASE_MSG="release(${TARGET}): v${VER} (r${N})"
-  BUMP_MSG="release(${TARGET}): bump to v${NEXT_VER}"
+  RELEASE_MSG="release(${TARGET}): v$(get_var VER "$TARGET") (r${N})"
 fi
 TAGS=""
 for p in $PLATFORMS; do TAGS+="$(get_var TAG "$p") "; done
 TAGS="${TAGS% }"
 
-# A version's summary, for the people making the app (INTERNAL included); written by a bump.
-render_consolidated() { # render_consolidated <platform>
-  echo "# $(label "$1") ${VER}"
+# The apps moving on from a version, whose summary the release commit writes: "<app> <old version>" lines.
+FINISHED=""
+for p in $PLATFORMS; do
+  cur=$(get_var CUR "$p")
+  if [ "$(get_var VER "$p")" != "$cur" ] && [ -d "$ROOT/release-notes/$p/v${cur}" ] &&
+    [ ! -e "$ROOT/release-notes/$p/v${cur}.md" ]; then
+    FINISHED+="$p $cur"$'\n'
+  fi
+done
+
+# A version's summary, for the people making the app (INTERNAL included).
+render_consolidated() { # render_consolidated <platform> <version>
+  echo "# $(label "$1") $2"
   echo
-  render_consolidated_lines "$ROOT/release-notes/$1/v${VER}"
+  render_consolidated_lines "$ROOT/release-notes/$1/v$2"
 }
 
 # ---- do it (or, in a dry run, say what would happen) -------------------------------------------------------
@@ -215,15 +290,17 @@ if [ -n "$DRYRUN" ]; then
            echo "────────────────────────────────────────"; mac_notes_html
            echo "────────────────────────────────────────" ;;
     esac
-    echo "[dry run] move the pending notes into release-notes/$p/v${VER}/:"
+    echo "[dry run] $(label "$p"): $(get_var CUR "$p") → $(get_var VER "$p")"
+    echo "[dry run] move the pending notes into release-notes/$p/v$(get_var VER "$p")/:"
     pending=("$ROOT/release-notes/$p/pending"/*.md)
     if [ "${#pending[@]}" -eq 0 ]; then echo "  (none)"; else for f in "${pending[@]}"; do echo "  $(basename "$f")"; done; fi
   done
+  while read -r p old; do
+    [ -n "$p" ] || continue
+    echo "[dry run] write release-notes/$p/v${old}.md, ${old}'s summary"
+  done <<<"$FINISHED"
   echo "[dry run] commit '${RELEASE_MSG}' and tag it ${TAGS// / and }"
-  if has mac; then echo "[dry run] build Hammock ${VER} (${N}) from it, notarize it and make its appcast (scripts/mac-update build)"; fi
-  if [ "$DO_BUMP" = 1 ]; then
-    echo "[dry run] then commit '${BUMP_MSG}', with each app's release-notes/<app>/v${VER}.md"
-  fi
+  if has mac; then echo "[dry run] build Hammock $(get_var VER mac) (${N}) from it, notarize it and make its appcast (scripts/mac-update build)"; fi
   echo "[dry run] push main and ${TAGS// / and } together"
   if has mac; then echo "[dry run] upload the update (scripts/mac-update upload ${N})"; fi
 else
@@ -237,8 +314,13 @@ else
     mac_notes_html >"$MAC_NOTES"
   fi
   for p in $PLATFORMS; do
-    mkdir -p "$ROOT/release-notes/$p/v${VER}"
-    for f in "$ROOT/release-notes/$p/pending"/*.md; do git -C "$ROOT" mv "$f" "$ROOT/release-notes/$p/v${VER}/"; done
+    ver=$(get_var VER "$p")
+    if [ "$ver" != "$(get_var CUR "$p")" ]; then
+      write_version "$ROOT" "$p" "$ver"
+      git -C "$ROOT" add -- "$(version_file "$ROOT")"
+    fi
+    mkdir -p "$ROOT/release-notes/$p/v${ver}"
+    for f in "$ROOT/release-notes/$p/pending"/*.md; do git -C "$ROOT" mv "$f" "$ROOT/release-notes/$p/v${ver}/"; done
     git -C "$ROOT" add -A -- "$ROOT/release-notes/$p"
     if [ "$p" = ios ]; then
       mkdir -p "$IOS_NOTES_DIR"
@@ -246,6 +328,11 @@ else
       git -C "$ROOT" add -A -- "$IOS_NOTES_DIR"
     fi
   done
+  while read -r p old; do
+    [ -n "$p" ] || continue
+    render_consolidated "$p" "$old" >"$ROOT/release-notes/$p/v${old}.md"
+    git -C "$ROOT" add -- "$ROOT/release-notes/$p/v${old}.md"
+  done <<<"$FINISHED"
   # --allow-empty: two maintenance releases in a row change nothing, but each still needs a commit to tag.
   git -C "$ROOT" commit --allow-empty -q -m "$RELEASE_MSG"
   [ "$("$ROOT/scripts/commit-number" "$ROOT")" = "$N" ] ||
@@ -262,19 +349,7 @@ else
   trap undo EXIT
   for t in $TAGS; do git -C "$ROOT" tag "$t"; done
   RELEASE_SHA=$(git -C "$ROOT" rev-parse HEAD)
-  # The Mac update is built from exactly the tagged commit, before the bump moves HEAD on.
   if has mac; then "$MAC_UPDATE" build "$N" "$MAC_NOTES"; fi
-  if [ "$DO_BUMP" = 1 ]; then
-    write_version "$ROOT" "$NEXT_VER"
-    git -C "$ROOT" add -A -- "$(version_file "$ROOT")"
-    # The version is finished for both apps, so each one that had releases of it gets its summary.
-    for p in $PLATFORMS_ALL; do
-      [ -d "$ROOT/release-notes/$p/v${VER}" ] || continue
-      render_consolidated "$p" >"$ROOT/release-notes/$p/v${VER}.md"
-      git -C "$ROOT" add -A -- "$ROOT/release-notes/$p/v${VER}.md"
-    done
-    git -C "$ROOT" commit -q -m "$BUMP_MSG"
-  fi
   # One atomic push, so main and the tags arrive together or not at all.
   refs=()
   for t in $TAGS; do refs+=("refs/tags/$t"); done
@@ -297,14 +372,11 @@ fi
 # ---- summary -----------------------------------------------------------------------------------------------
 echo
 echo "── Release ──────────────────────────────"
-echo "Version:       ${VER}"
+for p in $PLATFORMS; do
+  printf '%-15s%s\n' "$(label "$p"):" "$(get_var VER "$p") (was $(get_var CUR "$p"))"
+done
 echo "Tags:          ${TAGS// / and }"
-for p in $PLATFORMS; do echo "Notes:         release-notes/$p/v${VER}/"; done
-if [ "$DO_BUMP" = 1 ]; then
-  echo "Next version:  ${NEXT_VER} (${VER} is finished)"
-else
-  echo "Next version:  unchanged, still ${VER}"
-fi
+for p in $PLATFORMS; do echo "Notes:         release-notes/$p/v$(get_var VER "$p")/"; done
 for p in $PLATFORMS; do
   case "$p" in
     mac)

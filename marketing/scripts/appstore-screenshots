@@ -127,7 +127,7 @@ if [[ " $devices " == *" duo "* ]] && [ ! -x "$guest" ]; then
   ./helpers/simulator/build.sh >/dev/null
 fi
 
-version=$(sed -nE 's/^MARKETING_VERSION = ([^ ]+).*$/\1/p' apple/iOS/Config/Version.xcconfig)
+version=$(sed -nE 's/^HAMMOCK_IOS_VERSION = ([^ ]+).*$/\1/p' apple/iOS/Config/Version.xcconfig)
 
 # ---- 2. each device's simulator, one at a time ----------------------------------------------------------
 udid=""

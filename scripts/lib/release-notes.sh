@@ -106,24 +106,48 @@ lines_to_html() { # lines_to_html <rendered lines>
   done
 }
 
-# The version, from apple/iOS/Config/Version.xcconfig, which every target includes.
+# Each app's version, from apple/iOS/Config/Version.xcconfig: YYYY.N.P, the year, its Nth joint release of both
+# apps, and a patch (the Mac's releases between joint ones, or an iPhone hotfix).
 version_file() { echo "$1/apple/iOS/Config/Version.xcconfig"; } # version_file <repo-root>
-read_version() { sed -nE 's/^MARKETING_VERSION = ([^ ]+).*$/\1/p' "$(version_file "$1")"; }
-write_version() { # write_version <repo-root> <x.y.z>
+version_key() { case "$1" in mac) echo HAMMOCK_MAC_VERSION ;; ios) echo HAMMOCK_IOS_VERSION ;; esac; }
+read_version() { # read_version <repo-root> <mac|ios>
+  sed -nE "s/^$(version_key "$2") = ([^ ]+).*$/\1/p" "$(version_file "$1")"
+}
+write_version() { # write_version <repo-root> <mac|ios> <x.y.z>
   local f
   f=$(version_file "$1")
-  sed -i.bak -E "s/^MARKETING_VERSION = .*/MARKETING_VERSION = $2/" "$f" && rm -f "$f.bak"
-  [ "$(read_version "$1")" = "$2" ] || { echo "Couldn't set the version in $f." >&2; return 1; }
+  sed -i.bak -E "s/^$(version_key "$2") = .*/$(version_key "$2") = $3/" "$f" && rm -f "$f.bak"
+  [ "$(read_version "$1" "$2")" = "$3" ] || { echo "Couldn't set the $(label "$2") version in $f." >&2; return 1; }
 }
 
 version_ok() { printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; }
 version_gt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n1)" = "$1" ]; }
 
-# The next minor version (0.2.3 → 0.3.0): only a suggestion for the interactive prompt.
-suggest_next() {
-  local maj rest min
-  maj=${1%%.*}; rest=${1#*.}; min=${rest%%.*}
-  echo "${maj}.$((min + 1)).0"
+# A version's family, the joint release it belongs to: 2026.1.3 → 2026.1.
+version_family() { echo "${1%.*}"; }
+# The next patch: 2026.1.3 → 2026.1.4.
+next_patch() { echo "$(version_family "$1").$((${1##*.} + 1))"; }
+# The next joint release after the two apps' versions: this year's next N (2026.1.3 and 2026.1.0 → 2026.2.0), or
+# <year>.1.0 in a new year. HMK_RELEASE_YEAR stands in for the year (the tests).
+next_joint() { # next_joint <mac version> <ios version>
+  local year="${HMK_RELEASE_YEAR:-$(date +%Y)}" n=0 v m
+  for v in "$1" "$2"; do
+    [ "${v%%.*}" = "$year" ] || continue
+    m=${v#*.}; m=${m%%.*}
+    if [ "$m" -gt "$n" ]; then n=$m; fi
+  done
+  echo "$year.$((n + 1)).0"
+}
+# Whether an app has a release of a version: a tag <Label>-v<version>-r<n>.
+is_released() { # is_released <repo-root> <mac|ios> <version>
+  [ -n "$(git -C "$1" tag -l "$(label "$2")-v$3-r*")" ]
+}
+# The note directories of a family's versions, newest first: release-notes/<app>/v2026.1.*/.
+family_dirs() { # family_dirs <repo-root> <mac|ios> <family>
+  local d
+  for d in "$1/release-notes/$2/v$3".*/; do
+    if [ -d "$d" ]; then echo "${d%/}"; fi
+  done | sort -V -r
 }
 
 # The GitHub issue a branch is for, from branch names shaped <name>/<n>-<slug> (alex/44-updates → 44).

@@ -58,7 +58,7 @@ def locales
 end
 
 def marketing_version
-  File.read(VERSION_FILE)[/^MARKETING_VERSION = ([^\s]+)/, 1]
+  File.read(VERSION_FILE)[/^HAMMOCK_IOS_VERSION = ([^\s]+)/, 1]
 end
 
 # The key file appstore-fastlane wrote. Checked here so a missing key fails at once, with the fix in the message,
@@ -104,8 +104,8 @@ def placeholders
 end
 
 # What's New for the editable version, from the release notes: [notes by locale, what to say], or [nil, why not].
-# A first version has none. For the version the project is building, it's composed from the notes cut for it so
-# far and those still pending, so it's right before the version's first build is cut too.
+# A first version has none. For the iPhone's version in the project, or a later one not cut yet, it's composed
+# from the notes cut for it so far and those still pending, so it's right before the version's first build too.
 def whats_new_for(app)
   version = editable_version(app)
   return [nil, "What's New: no editable version, nothing to send."] if version.nil?
@@ -113,7 +113,8 @@ def whats_new_for(app)
     return [nil, "What's New: #{version.version_string} is the first version, which has none. Not sent."]
   end
   v = version.version_string
-  args = v == marketing_version ? [v, "--pending"] : [v]
+  cut = File.directory?(File.join(REPO_ROOT, "release-notes", "ios", "v#{v}"))
+  args = v == marketing_version || !cut ? [v, "--pending"] : [v]
   text, status = Open3.capture2(WHATS_NEW_SCRIPT, *args)
   UI.user_error!("What's New: #{File.basename(WHATS_NEW_SCRIPT)} #{args.join(' ')} failed.") unless status.success?
   text = text.strip

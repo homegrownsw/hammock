@@ -3,6 +3,7 @@
 // ciphertext.
 
 #include "Version.xcconfig"
+MARKETING_VERSION = $(HAMMOCK_IOS_VERSION)
 
 PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock.notify
 SWIFT_VERSION = 5.0

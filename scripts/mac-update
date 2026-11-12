@@ -89,7 +89,7 @@ case "$cmd" in
       { echo "The appcast doesn't offer build $n." >&2; exit 1; }
 
     if [ -z "${HMK_SKIP_LINUX:-}" ]; then
-      ver="$(. "$root/scripts/lib/release-notes.sh" && read_version "$root")"
+      ver="$(. "$root/scripts/lib/release-notes.sh" && read_version "$root" mac)"
       linux="$archives/linux-$n"
       rm -rf "$linux" && mkdir -p "$linux"
       (cd "$root" && HMK_VERSION="$ver-r$n" ./scripts/build-linux.sh amd64 arm64)

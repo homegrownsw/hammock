@@ -68,63 +68,78 @@ one step. A release pushes straight to `main`, so it's the owner's to run, or an
 
 ### Versions and numbers
 
-The version is semver, `x.y.z`, and **one for both apps**: `MARKETING_VERSION` in
-`apple/iOS/Config/Version.xcconfig`, which every target includes and the Mac's own build reads.
-`just version` shows it; `just version 0.3.0` sets it.
+Each app has its own version, `YYYY.N.P`, in `apple/iOS/Config/Version.xcconfig` (`HAMMOCK_MAC_VERSION` and
+`HAMMOCK_IOS_VERSION`, which the targets make their `MARKETING_VERSION`):
+
+- **YYYY** is the year the release ships, and **N** counts the year's joint releases: both apps, cut together
+  with `release-apple`, at `YYYY.N.0`. When the first two numbers match, the apps line up.
+- **P** is a patch. Mac releases cost nothing, so between joint releases the Mac ships `2026.1.1`, `2026.1.2`…,
+  every Mac release a new version. A new iPhone version costs an App Review (TestFlight's too), so the iPhone
+  gets more TestFlight builds of its `YYYY.N.0` instead, and a patch only for a hotfix (it takes the iPhone's
+  own next patch, whatever the Mac's of that number held).
+- A new year starts again at `.1.0`: `2027.1.0` follows `2026.5.x`.
+
+The release commit itself sets the version, so the file holds each app's latest release (or the next one, if
+it was set ahead). `just version` shows both; `just version 2026.2.0` sets both, `just version mac 2026.1.4`
+one, only to release at a version `next` wouldn't choose.
 
 | App | Version shown | Build number |
 | --- | --- | --- |
-| Mac (Sparkle) | `CFBundleShortVersionString`, from Version.xcconfig | `CFBundleVersion`: the release commit's number on `main` (`git rev-list --count`), which Sparkle compares |
-| iOS | `CFBundleShortVersionString`, from Version.xcconfig | `CFBundleVersion`: Xcode Cloud's `CI_BUILD_NUMBER`, written in by `ci_scripts/ci_pre_xcodebuild.sh` |
+| Mac (Sparkle) | `CFBundleShortVersionString`, `HAMMOCK_MAC_VERSION` | `CFBundleVersion`: the release commit's number on `main` (`git rev-list --count`), which Sparkle compares |
+| iOS | `CFBundleShortVersionString`, `HAMMOCK_IOS_VERSION` | `CFBundleVersion`: Xcode Cloud's `CI_BUILD_NUMBER`, written in by `ci_scripts/ci_pre_xcodebuild.sh` |
 
 A release is tagged `Mac-v<x.y.z>-r<n>` or `iOS-v<x.y.z>-r<n>`, where **n is the release commit's number on
-`main`**: so `Mac-v0.2.0-r615` is Mac build 615, and an iOS release cut alongside it is `iOS-v0.2.0-r615`.
-Every cut makes a commit, so no two releases share a number. App Store Connect insists on Xcode Cloud's
-own build number for iOS, so that one doesn't line up; the tag's `r<n>` says which commit (and Mac build)
-it goes with. The committed `CURRENT_PROJECT_VERSION` is **0**, meaning "not a counted build".
+`main`**: so `Mac-v2026.1.0-r1040` is Mac build 1040, and an iOS release cut alongside it is
+`iOS-v2026.1.0-r1040`. Every cut makes a commit, so no two releases share a number. App Store Connect insists
+on Xcode Cloud's own build number for iOS, so that one doesn't line up; the tag's `r<n>` says which commit
+(and Mac build) it goes with. The committed `CURRENT_PROJECT_VERSION` is **0**, meaning "not a counted build".
+
+Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had several releases of each.
 
 ### What it does
 
 1. **Checks** that the tree is clean and exactly level with `origin/main` (the commit and tags are made
    before the push). A detached HEAD on `main` is fine; another branch isn't, unless
    `HMK_RELEASE_BRANCH=<branch>` names it (a worktree level with `main`).
-2. **Freezes the notes**: this release's are the pending NEW and FIXED notes, with the version's earlier
-   releases' after them.
+2. **Chooses the version** for each app (`next`, `build` or the one given, below) and writes it into
+   Version.xcconfig.
+3. **Freezes the notes**: this release's are the pending NEW and FIXED notes, with the earlier releases' of
+   its family (`2026.1.*`) after them, since Sparkle only shows the newest release's notes.
    - Mac: as HTML for Sparkle's window and the GitHub Release (this release's New and Fixed, then
-     `Earlier in <version>`'s);
+     `Earlier in 2026.1`'s);
    - iOS: `apple/iOS/TestFlight/WhatToTest.{en-GB,en-US}.txt`, which Xcode Cloud reads from the tagged
      commit, cut at TestFlight's 4000 characters.
-3. **Files** the pending notes under `release-notes/<app>/v<version>/`, **commits**
+4. **Files** the pending notes under `release-notes/<app>/v<version>/`; an app moving on from a version gets
+   that version's summary, `release-notes/<app>/v<old>.md` (INTERNAL included). It **commits**
    `release(mac): v<version> (r<n>)` (or `release(ios): …`, or for both `release: v<version> (r<n>, Mac and iOS)`)
    and **tags** it.
-4. **Builds the Mac update** from the tagged commit (`scripts/mac-update build`): `UPDATES=1 just share`
+5. **Builds the Mac update** from the tagged commit (`scripts/mac-update build`): `UPDATES=1 just share`
    (Developer ID, notarized; 1Password asks first), then `generate_appcast` signs it with the EdDSA key
    (keychain, account "fika"; backed up in 1Password), makes deltas from earlier releases, and embeds the
    notes. If anything here fails, the release commit and tags are taken back and nothing is published.
-5. **Bumps, if asked**, in a second commit after the tag (`release(mac): bump to v<next>`): sets the next
-   version, and writes each app's `release-notes/<app>/v<version>.md`.
-6. **Pushes** `main` and the tags in one atomic push. If it's rejected, everything is taken back as in 4.
+6. **Pushes** `main` and the tags in one atomic push. If it's rejected, everything is taken back as in 5.
    An `iOS-v*` tag starts Xcode Cloud.
 7. **Uploads the Mac update** (`scripts/mac-update upload <n>`): the zip and deltas, then the appcast, to
    the update server. Installed copies are offered it at their next daily check. A failed upload doesn't
    undo the release; it says how to retry.
 
-`bump` means "this is the **last** release of this version": it's tagged under the current version and the
-version goes up afterwards, for both apps. To start a new version before its first release instead, set it
-in its own commit (`just version 0.3.0`) and cut with `no-bump`.
+`next` is the next patch for the Mac or iOS (`2026.1.0` → `2026.1.1`) and the next joint release for both
+(→ `2026.2.0`, or `2027.1.0` in a new year). An app whose version in the file hasn't been released yet is
+released at that version instead. `build` (iOS only) is another TestFlight build of the iPhone's version.
 
 ```sh
 just release-mac                          # prompts (gum)
-just release-mac no-bump                  # a Mac update, keeping the version
-just release-ios no-bump                  # a TestFlight build
-just release-apple no-bump                # both, in one release commit
-just release-apple bump 0.3.0             # both apps' last 0.2.0 releases, then set 0.3.0
-just release-mac no-bump allow-empty      # a release with no notes for people to read
-HMK_RELEASE_DRYRUN=1 just release-apple no-bump   # print the plan, change nothing
+just release-mac next                     # a Mac update: 2026.1.0 → 2026.1.1
+just release-ios build                    # another TestFlight build of the iPhone's 2026.1.0
+just release-ios next                     # an iPhone hotfix, 2026.1.1 (App Review again)
+just release-apple next                   # both apps' next joint release, 2026.2.0
+just release-apple 2026.3.0               # …or a version of your choosing
+just release-mac next allow-empty         # a release with no notes for people to read
+HMK_RELEASE_DRYRUN=1 just release-apple next   # print the plan, change nothing
 ```
 
 With arguments every confirmation is a yes, and the edge cases fail instead: a release with nothing for
-people to read needs `allow-empty`, and a bump must go up.
+people to read needs `allow-empty`, and a version must go up (the Mac's must be new).
 
 ### Where releases go
 
@@ -158,12 +173,12 @@ Xcode use APNs' sandbox and TestFlight builds its production environment, so the
 - [ ] Check that nothing else archives on every push to `main`.
 
 `ci_pre_xcodebuild.sh` writes `CI_BUILD_NUMBER` into Version.xcconfig and, for an `iOS-v*` tag, fails a
-build whose tag names another version.
+build whose tag names another version than the iPhone's.
 
 ## Tests
 
 `just test-release` runs `scripts/tests/release`: the real scripts against throwaway repos with a bare
 remote (they commit, tag and push for real), with a stand-in for `scripts/mac-update` so nothing is built
-or uploaded. It covers `just note` and `note-check`, the dry run, iOS, Mac and joint cuts, a failed build,
-a failed upload, a rejected push, a bump, the preflight, `ci_pre_xcodebuild.sh`, and that every committed
-note is well formed.
+or uploaded. It covers `just note` and `note-check`, the dry run, choosing versions, iOS, Mac and joint
+cuts, a failed build, a failed upload, a rejected push, the preflight, `ci_pre_xcodebuild.sh`, and that every
+committed note is well formed.
