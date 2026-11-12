@@ -477,6 +477,17 @@ public final class AppModel {
     }
 
     func apply(_ u: Hammock_V1_StateUpdate) {
+        // If the selected tab goes, the tabs beside it (after it first) are
+        // where the selection moves, not the sidebar's first tab. Worked out
+        // before a full update (after a reconnect) empties the Groups.
+        var besideSelected: [String] = []
+        // …and if it was its Group's last, that Group.
+        var selectedTabGroup: String?
+        if let sel = selectedTabID, u.full || u.deletedTabIds.contains(sel), let g = groups.first(where: { $0.tabIds.contains(sel) }),
+           let i = g.tabIds.firstIndex(of: sel) {
+            besideSelected = Array(g.tabIds[(i + 1)...]) + g.tabIds[..<i].reversed()
+            selectedTabGroup = g.id
+        }
         if u.full {
             groups = []
             tabs = [:]
@@ -522,16 +533,6 @@ public final class AppModel {
         }
         if joinRequests.contains(where: { u.resolvedJoinIds.contains($0.id) }) {
             joinRequests.removeAll { u.resolvedJoinIds.contains($0.id) }
-        }
-        // If the selected tab goes, the tabs beside it (after it first) are
-        // where the selection moves, not the sidebar's first tab.
-        var besideSelected: [String] = []
-        // …and if it was its Group's last, that Group.
-        var selectedTabGroup: String?
-        if let sel = selectedTabID, u.deletedTabIds.contains(sel), let g = groups.first(where: { $0.tabIds.contains(sel) }),
-           let i = g.tabIds.firstIndex(of: sel) {
-            besideSelected = Array(g.tabIds[(i + 1)...]) + g.tabIds[..<i].reversed()
-            selectedTabGroup = g.id
         }
         for id in u.deletedTabIds {
             closingTabs[id] = nil
