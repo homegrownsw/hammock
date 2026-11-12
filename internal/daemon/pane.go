@@ -440,9 +440,10 @@ func (p *pane) reconnect(socket, token string) error {
 	if saved && from <= hc.Info.RingEnd {
 		p.resume, p.resumeAt = snap, from
 	}
-	if hc.Info.Exited {
-		p.info.Exited, p.info.ExitStatus = true, hc.Info.ExitStatus
-	}
+	// An exit while the daemon was down isn't copied here: the holder
+	// replays it, and read handles it as it would a live one (a scheduled
+	// run ends, a clean exit closes the pane). One from before, already
+	// in info, read skips.
 	p.info.Cols, p.info.Rows = uint32(hc.Info.Cols), uint32(hc.Info.Rows)
 	p.mu.Unlock()
 	p.attachHolder(hc)
@@ -671,9 +672,16 @@ func (p *pane) holderLost(gen int) {
 	}
 	p.d.log.Warn("the pane's holder is gone", "pane", p.id, "socket", socket)
 	p.mu.Lock()
+	was := p.info.Exited
 	p.info.Exited, p.info.ExitStatus = true, -1
 	p.mu.Unlock()
 	p.d.mu.Lock()
+	if p.d.panes[p.id] == p && !was {
+		// As if its program had failed: a scheduled run in it ends, and
+		// so does its agent.
+		p.d.scheduleCommandExited(p, -1)
+		p.d.agentHub.paneExited(p, -1)
+	}
 	p.d.paneChangedIfLive(p)
 	p.d.mu.Unlock()
 }
@@ -1117,6 +1125,23 @@ func (p *pane) savedSnapshot() ([]byte, uint64, bool) {
 		return nil, 0, false
 	}
 	return b, off, true
+}
+
+// showEnded gives a pane whose program had ended before a reboot its saved
+// screen back, with no process: nothing is run again.
+func (p *pane) showEnded() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.mirror = vt.New(int(p.info.Cols), int(p.info.Rows))
+	if c := p.d.colors.Load(); c != nil {
+		p.mirror.SetColors(*c)
+	}
+	if len(p.seed) > 0 {
+		p.mirror.Write(p.seed)
+		p.seed = nil
+	}
+	p.mirror.Write([]byte("\r\n\x1b[0;2m── ended before restart ──\x1b[0m\r\n"))
+	p.sendSnapshotsLocked()
 }
 
 // loadScrollback queues a saved snapshot to seed the next mirror (a new

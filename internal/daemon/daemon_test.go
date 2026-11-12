@@ -503,6 +503,50 @@ func TestRebootRestoresScrollback(t *testing.T) {
 	call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_CloseTab{CloseTab: &pb.CloseTab{TabId: tid}}})
 }
 
+// A pane whose program had ended (a failed command, a kept scheduled run)
+// isn't run again after a reboot: its screen comes back, its process doesn't.
+func TestRebootDoesntRerunEndedPane(t *testing.T) {
+	dir := shortDir(t)
+	ran := filepath.Join(dir, "ran")
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	sid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "s"}}}))
+	tid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: sid, Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", "echo x >> " + ran + "; echo ended-marker; exit 3"}},
+	}}}))
+	d.mu.Lock()
+	pid := d.tabs[tid].FocusedPaneId
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: pid}}})
+	waitOutput(t, c, pid, "ended-marker")
+	deadline := time.Now().Add(5 * time.Second)
+	for !d.panes[pid].snapshotInfo().Exited {
+		if time.Now().After(deadline) {
+			t.Fatal("pane never exited")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	c.Close()
+	d.Shutdown()
+	_, _ = endHolderAt(filepath.Join(dir, "run", "panes", pid+".sock")) // "reboot" (it may have gone already)
+
+	d2 := startDaemon(t, dir)
+	defer d2.Shutdown()
+	c2 := dial(t, dir)
+	call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: pid}}})
+	out := waitOutput(t, c2, pid, "ended before restart")
+	if !strings.Contains(out, "ended-marker") {
+		t.Fatalf("old screen not restored: %q", out)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if b, _ := os.ReadFile(ran); strings.Count(string(b), "x") != 1 {
+		t.Fatalf("command ran %d times, want 1", strings.Count(string(b), "x"))
+	}
+	if !d2.panes[pid].snapshotInfo().Exited {
+		t.Fatal("restored pane isn't exited")
+	}
+}
+
 func TestMoveTab(t *testing.T) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)

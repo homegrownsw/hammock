@@ -257,7 +257,6 @@ func New(cfg Config) (*Daemon, error) {
 	}
 	d.loadAgentMade()
 	d.mu.Lock()
-	d.loadSchedules()
 	d.loadBootstrap()
 	d.mu.Unlock()
 	return d, nil
@@ -269,6 +268,10 @@ func (d *Daemon) restore() error {
 	// may need d.mu (e.g. a pane whose process exited while we were down).
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	// Schedules first: a reconnected pane's exit (a scheduled command that
+	// finished while we were down) needs its run, or would close as a
+	// plain clean exit.
+	d.loadSchedules()
 	snap, err := d.store.Load()
 	if err != nil {
 		return err
@@ -362,8 +365,14 @@ func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok 
 	if pid, err := endHolderAt(p.socket); err == nil {
 		d.log.Info("ended the holder this pane couldn't reconnect to", "pane", info.Id, "pid", pid)
 	}
-	// Holder gone (reboot/logout): start a fresh process in the same place.
+	// Holder gone (reboot/logout): start a fresh process in the same place,
+	// unless its program had already ended (a failed command, a kept
+	// scheduled run): running that again would repeat it, unasked.
 	p.loadScrollback()
+	if info.Exited {
+		p.showEnded()
+		return
+	}
 	resume := d.agentHub.resumeCommand(info)
 	if err := p.spawn(resume); err != nil {
 		d.log.Error("respawn pane", "pane", info.Id, "err", err)
