@@ -126,9 +126,31 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                     $0.agents = ["claude", "codex"]
                 }
             }
+        case .setSchedulePaused(let p):
+            answer(msg)
+            schedule(p.scheduleID) {
+                $0.paused = p.paused
+                $0.nextRunUnixMs = p.paused ? 0 : Self.nextRun($0)
+            }
+        case .skipScheduleRun(let k):
+            guard let s = state.schedules.first(where: { $0.id == k.scheduleID }), !k.skip || s.nextRunUnixMs > 0 else {
+                answer(msg) { $0.error = .with { $0.message = "It isn’t due to run." } }
+                return
+            }
+            answer(msg)
+            schedule(k.scheduleID) { $0.skipUntilUnixMs = k.skip ? $0.nextRunUnixMs + 1 : 0 }
+        case .moveTab(let m):
+            answer(msg)
+            moveTab(m.tabID, to: m.groupID, index: Int(m.index))
+        case .setGroupIcon(let g):
+            answer(msg)
+            guard let i = state.groups.firstIndex(where: { $0.id == g.groupID }) else { return }
+            state.groups[i].icon = g.icon
+            let group = state.groups[i]
+            update { $0.groups = [group] }
         case .createGroup, .createTab, .createPane, .startAgent, .closeTab, .closeGroup, .closePane, .resumeSession,
              .runSchedule, .saveSchedule, .deleteSchedule, .uploadFile, .createPairing, .createInvite, .linkComputer,
-             .reopenClosed, .renameGroup, .renameTab, .switchAgent:
+             .reopenClosed, .renameGroup, .renameTab, .switchAgent, .setGroupIconImage, .setGroupFolder, .leaveShared:
             answer(msg) { $0.error = .with { $0.message = Self.needsMac } }
         default:
             // Everything else (sizes, focus, presence, lists) is fine as it is.
@@ -171,6 +193,44 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         if status == .ready { state.schedules[si].runs[ri].endedUnixMs = Int64(Date().timeIntervalSince1970 * 1000) }
         let s = state.schedules[si]
         update { $0.schedules = [s] }
+    }
+
+    private func schedule(_ id: String, _ change: (inout Schedule) -> Void) {
+        guard let i = state.schedules.firstIndex(where: { $0.id == id }) else { return }
+        change(&state.schedules[i])
+        let s = state.schedules[i]
+        update { $0.schedules = [s] }
+    }
+
+    /// When a schedule runs next, from now: its time of day, on one of its weekdays (none: every day).
+    private static func nextRun(_ s: Schedule, now: Date = Date()) -> Int64 {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        for days in 0...7 {
+            guard let day = cal.date(byAdding: .day, value: days, to: today),
+                  let at = cal.date(byAdding: .minute, value: Int(s.minuteOfDay), to: day), at > now else { continue }
+            if s.weekdays.isEmpty || s.weekdays.contains(Int32(cal.component(.weekday, from: day) - 1)) {
+                return Int64(at.timeIntervalSince1970 * 1000)
+            }
+        }
+        return 0
+    }
+
+    /// As the daemon does: a tab moved within its Group, or to another.
+    private func moveTab(_ tabID: String, to groupID: String, index: Int) {
+        guard let ti = state.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+        let dest = groupID.isEmpty ? state.tabs[ti].groupID : groupID
+        guard let di = state.groups.firstIndex(where: { $0.id == dest }) else { return }
+        var changed: [WorkspaceGroup] = []
+        if let si = state.groups.firstIndex(where: { $0.id == state.tabs[ti].groupID }) {
+            state.groups[si].tabIds.removeAll { $0 == tabID }
+            if si != di { changed.append(state.groups[si]) }
+        }
+        state.groups[di].tabIds.insert(tabID, at: max(0, min(index, state.groups[di].tabIds.count)))
+        state.tabs[ti].groupID = dest
+        changed.append(state.groups[di])
+        let t = state.tabs[ti]
+        update { $0.groups = changed; $0.tabs = [t] }
     }
 
     // MARK: Agents

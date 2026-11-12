@@ -75,7 +75,8 @@ extension Schedule {
     var upcoming: Bool { nextRunUnixMs > 0 && !paused }
 }
 
-/// What the cockpit's and the list's buttons do, with errors said in a toast.
+/// What the cockpit's and the list's buttons do, with errors said in a toast
+/// (the demo's "needs your Mac" in its alert, which offers to pair one).
 @MainActor
 enum ScheduleActionsIOS {
     /// Runs it now and returns its new tab (to show), if it opened.
@@ -84,21 +85,26 @@ enum ScheduleActionsIOS {
             let tab = try await model.runScheduleNow(s.id)
             return model.tabs[tab] != nil ? tab : nil
         } catch {
-            model.showToast("Couldn’t run “\(s.name)”: \(error.localizedDescription)")
+            failed(model, error, "Couldn’t run “\(s.name)”: ")
             return nil
         }
     }
 
     static func setPaused(_ model: AppModel, _ s: Schedule, _ paused: Bool) {
         Task {
-            do { try await model.setSchedulePaused(s.id, paused) } catch { model.showToast(error.localizedDescription) }
+            do { try await model.setSchedulePaused(s.id, paused) } catch { failed(model, error) }
         }
     }
 
     static func skip(_ model: AppModel, _ s: Schedule, _ skip: Bool) {
         Task {
-            do { try await model.skipNextRun(s.id, skip: skip) } catch { model.showToast(error.localizedDescription) }
+            do { try await model.skipNextRun(s.id, skip: skip) } catch { failed(model, error) }
         }
+    }
+
+    private static func failed(_ model: AppModel, _ error: Error, _ prefix: String = "") {
+        let why = error.localizedDescription
+        if why == DemoMac.needsMac { model.lastError = why } else { model.showToast(prefix + why) }
     }
 
     /// Goes to a run: what to push (its agent's pane, or its tab), or after
