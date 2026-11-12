@@ -336,27 +336,42 @@ func (d *Daemon) restore() error {
 		}
 	}
 	d.endStrayHolders()
-	d.pruneHolderLogs()
+	d.prunePaneFiles()
 	d.restoreAttention()
 	return nil
 }
 
-// pruneHolderLogs removes the holder logs of panes that are no more (closed
-// before panes' logs went with them, or while the daemon couldn't remove
-// them): only holder-<pane id>.log files. Callers hold d.mu, with the
-// restored panes in d.panes.
-func (d *Daemon) pruneHolderLogs() {
-	dir := filepath.Join(d.cfg.Dir, "logs")
-	ents, _ := os.ReadDir(dir)
-	for _, e := range ents {
-		id, ok := strings.CutPrefix(e.Name(), "holder-")
-		if !ok || !e.Type().IsRegular() {
-			continue
-		}
-		if id, ok = strings.CutSuffix(id, ".log"); ok && validID(id, "pn") && d.panes[id] == nil {
-			_ = os.Remove(filepath.Join(dir, e.Name()))
+// prunePaneFiles removes what panes that are no more left behind (closed
+// before their files went with them, or while the daemon couldn't remove
+// them): holder logs, logs/holder-<pane id>.log, and saved screens,
+// scrollback/<pane id>.vt with its .offset (and either's .tmp). Only files
+// named so, of panes not restored. Callers hold d.mu, with the restored
+// panes in d.panes.
+func (d *Daemon) prunePaneFiles() {
+	prune := func(sub string, paneOf func(name string) string) {
+		dir := filepath.Join(d.cfg.Dir, sub)
+		ents, _ := os.ReadDir(dir)
+		for _, e := range ents {
+			if id := paneOf(e.Name()); e.Type().IsRegular() && validID(id, "pn") && d.panes[id] == nil {
+				_ = os.Remove(filepath.Join(dir, e.Name()))
+			}
 		}
 	}
+	prune("logs", func(name string) string {
+		id, ok := strings.CutPrefix(name, "holder-")
+		if id, log := strings.CutSuffix(id, ".log"); ok && log {
+			return id
+		}
+		return ""
+	})
+	prune("scrollback", func(name string) string {
+		name, _ = strings.CutSuffix(name, ".tmp")
+		name, _ = strings.CutSuffix(name, ".offset")
+		if id, ok := strings.CutSuffix(name, ".vt"); ok {
+			return id
+		}
+		return ""
+	})
 }
 
 // restoreHolder reconnects a restored terminal pane to its holder, or

@@ -378,3 +378,34 @@ func TestDaemonRefusesLinkedOrHeldLocks(t *testing.T) {
 		t.Fatalf("daemon.lock kept: %v", err)
 	}
 }
+
+// A save that was under way as its pane closed doesn't write the saved
+// screen back after it was removed; and an offset that isn't the saved
+// screen's (a crash between writing the two) isn't used, while an older
+// daemon's, with no checksum, is.
+func TestSavedScreenFiles(t *testing.T) {
+	dir := shortDir(t)
+	d, _, p := stateTestPane(t, dir)
+	defer d.Shutdown()
+	p.saveScrollback(true)
+	snap, _, ok := p.savedSnapshot()
+	if !ok {
+		t.Fatal("nothing saved")
+	}
+	os.WriteFile(p.snapshotPath(), append(snap, 'x'), 0o600)
+	if _, _, ok := p.savedSnapshot(); ok {
+		t.Error("an offset for another screen was used")
+	}
+	os.WriteFile(p.snapshotPath()+".offset", []byte("3"), 0o600)
+	if _, off, ok := p.savedSnapshot(); !ok || off != 3 {
+		t.Errorf("an older daemon's offset: %d %v", off, ok)
+	}
+
+	p.discardFiles()
+	p.saveScrollback(true) // as one that had taken its snapshot first
+	for _, ext := range []string{"", ".offset"} {
+		if fileExists(p.snapshotPath() + ext) {
+			t.Errorf("%s written after the pane closed", filepath.Base(p.snapshotPath()+ext))
+		}
+	}
+}

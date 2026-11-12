@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"slices"
@@ -69,8 +70,13 @@ type pane struct {
 	resume     []byte    // saved screen to rebuild the mirror from on reconnect…
 	resumeAt   uint64    // …and the holder offset it was saved at
 	savedAt    time.Time // when the scrollback snapshot was last written
-	lastOut    time.Time
-	log        *logPane // set for a log pane: its parsed entries
+	// saveMu orders writing the saved screen against removing it: a save
+	// that took its snapshot before the pane closed mustn't write the
+	// files back after closePane removed them. discarded (under it): gone.
+	saveMu    sync.Mutex
+	discarded bool
+	lastOut   time.Time
+	log       *logPane // set for a log pane: its parsed entries
 	// The --allowedTools rule for the tool its agent last asked to use
 	// (Always Allow for This Schedule, schedules.go).
 	pendingTool string
@@ -1120,13 +1126,22 @@ func (p *pane) discardFiles() {
 		p.log.close(true)
 	}
 	_ = os.Remove(p.holderLogPath())
-	_ = os.Remove(p.snapshotPath())
-	_ = os.Remove(p.snapshotPath() + ".offset")
+	p.saveMu.Lock()
+	defer p.saveMu.Unlock()
+	p.discarded = true
+	for _, ext := range []string{"", ".tmp", ".offset", ".offset.tmp"} {
+		_ = os.Remove(p.snapshotPath() + ext)
+	}
 }
 
 // saveScrollback writes the mirror's VT snapshot to disk if there has been
 // output since the last save, so a reboot can restore the screen.
 func (p *pane) saveScrollback(force bool) {
+	p.saveMu.Lock()
+	defer p.saveMu.Unlock()
+	if p.discarded {
+		return
+	}
 	p.mu.Lock()
 	if p.mirror == nil || p.closed && !force || (!force && !p.lastOut.After(p.savedAt)) {
 		p.mu.Unlock()
@@ -1137,28 +1152,45 @@ func (p *pane) saveScrollback(force bool) {
 	p.savedAt = time.Now()
 	p.mu.Unlock()
 	path := p.snapshotPath()
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err == nil {
-		_ = os.Rename(tmp, path)
-		// The holder offset the snapshot reflects, for resuming the stream.
-		_ = os.WriteFile(path+".offset", []byte(strconv.FormatUint(off, 10)), 0o600)
+	if replaceFile(path, data) == nil {
+		// The holder offset the snapshot reflects, for resuming the stream,
+		// and the snapshot's checksum: a crash between the two renames
+		// leaves an offset that isn't this screen's, which savedSnapshot
+		// then doesn't use (it would replay output the screen has).
+		_ = replaceFile(path+".offset", fmt.Appendf(nil, "%d %08x", off, crc32.ChecksumIEEE(data)))
 	}
 }
 
+// replaceFile writes data to path by way of path.tmp, so path has either
+// its old contents or all of the new.
+func replaceFile(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 // savedSnapshot is the last saved screen and the holder offset it was taken
-// at (written together by saveScrollback).
+// at (written together by saveScrollback). An offset written for another
+// screen (a crash between writing them) isn't used; one with no checksum
+// (an older daemon's) is.
 func (p *pane) savedSnapshot() ([]byte, uint64, bool) {
 	path := p.snapshotPath()
 	ob, err := os.ReadFile(path + ".offset")
 	if err != nil {
 		return nil, 0, false
 	}
-	off, err := strconv.ParseUint(strings.TrimSpace(string(ob)), 10, 64)
+	offs, sum, checked := strings.Cut(strings.TrimSpace(string(ob)), " ")
+	off, err := strconv.ParseUint(offs, 10, 64)
 	if err != nil {
 		return nil, 0, false
 	}
 	b, err := os.ReadFile(path)
 	if err != nil || len(b) == 0 {
+		return nil, 0, false
+	}
+	if checked && sum != fmt.Sprintf("%08x", crc32.ChecksumIEEE(b)) {
 		return nil, 0, false
 	}
 	return b, off, true

@@ -842,8 +842,9 @@ func TestReplacePane(t *testing.T) {
 }
 
 // A pane closed for good takes its holder log with it, and a restarted
-// daemon removes those of panes it no longer has (only holder-<pane>.log).
-func TestHolderLogsGo(t *testing.T) {
+// daemon removes those, and saved screens, of panes it no longer has (only
+// files named for a pane).
+func TestPaneFilesGo(t *testing.T) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	c := dial(t, dir)
@@ -863,16 +864,23 @@ func TestHolderLogsGo(t *testing.T) {
 	}
 	d.Shutdown()
 
-	logs := filepath.Join(dir, "logs")
-	stray := filepath.Join(logs, "holder-"+newID("pn")+".log")
-	others := []string{filepath.Join(logs, "holder-notapane.log"), filepath.Join(logs, "hmkd.log")}
-	for _, f := range append(others, stray) {
+	logs, sb := filepath.Join(dir, "logs"), filepath.Join(dir, "scrollback")
+	gone := newID("pn")
+	strays := []string{filepath.Join(logs, "holder-"+gone+".log")}
+	for _, ext := range []string{".vt", ".vt.offset", ".vt.tmp", ".vt.offset.tmp"} {
+		strays = append(strays, filepath.Join(sb, gone+ext))
+	}
+	others := []string{filepath.Join(logs, "holder-notapane.log"), filepath.Join(logs, "hmkd.log"),
+		filepath.Join(logs, "holder-"+gone), filepath.Join(sb, "notes.txt"), kept.snapshotPath()}
+	for _, f := range append(others, strays...) {
 		os.WriteFile(f, []byte("x\n"), 0o600)
 	}
 	d = startDaemon(t, dir)
 	defer d.Shutdown()
-	if fileExists(stray) {
-		t.Error("a gone pane's holder log survived a restart")
+	for _, f := range strays {
+		if fileExists(f) {
+			t.Errorf("a gone pane's %s survived a restart", filepath.Base(f))
+		}
 	}
 	if !fileExists(kept.holderLogPath()) {
 		t.Error("a restored pane's holder log was removed")
