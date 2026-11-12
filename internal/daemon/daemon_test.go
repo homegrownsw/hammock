@@ -864,14 +864,16 @@ func TestPaneFilesGo(t *testing.T) {
 	}
 	d.Shutdown()
 
-	logs, sb := filepath.Join(dir, "logs"), filepath.Join(dir, "scrollback")
+	logs, sb, pl := filepath.Join(dir, "logs"), filepath.Join(dir, "scrollback"), filepath.Join(dir, "panelogs")
+	os.MkdirAll(pl, 0o700)
 	gone := newID("pn")
-	strays := []string{filepath.Join(logs, "holder-"+gone+".log")}
+	strays := []string{filepath.Join(logs, "holder-"+gone+".log"), filepath.Join(pl, gone+".jsonl"), filepath.Join(pl, gone+".jsonl.tmp")}
 	for _, ext := range []string{".vt", ".vt.offset", ".vt.tmp", ".vt.offset.tmp"} {
 		strays = append(strays, filepath.Join(sb, gone+ext))
 	}
 	others := []string{filepath.Join(logs, "holder-notapane.log"), filepath.Join(logs, "hmkd.log"),
-		filepath.Join(logs, "holder-"+gone), filepath.Join(sb, "notes.txt"), kept.snapshotPath()}
+		filepath.Join(logs, "holder-"+gone), filepath.Join(sb, "notes.txt"), kept.snapshotPath(),
+		filepath.Join(pl, "notapane.jsonl"), filepath.Join(pl, gone+".json"), d.logPath(kept.id)}
 	for _, f := range append(others, strays...) {
 		os.WriteFile(f, []byte("x\n"), 0o600)
 	}

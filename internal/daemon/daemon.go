@@ -344,8 +344,9 @@ func (d *Daemon) restore() error {
 // prunePaneFiles removes what panes that are no more left behind (closed
 // before their files went with them, or while the daemon couldn't remove
 // them): holder logs, logs/holder-<pane id>.log, and saved screens,
-// scrollback/<pane id>.vt with its .offset (and either's .tmp). Only files
-// named so, of panes not restored. Callers hold d.mu, with the restored
+// scrollback/<pane id>.vt with its .offset (and either's .tmp), and log
+// panes' entries, panelogs/<pane id>.jsonl (and its .tmp). Only files named
+// so, of panes not restored. Callers hold d.mu, with the restored
 // panes in d.panes.
 func (d *Daemon) prunePaneFiles() {
 	prune := func(sub string, paneOf func(name string) string) {
@@ -368,6 +369,13 @@ func (d *Daemon) prunePaneFiles() {
 		name, _ = strings.CutSuffix(name, ".tmp")
 		name, _ = strings.CutSuffix(name, ".offset")
 		if id, ok := strings.CutSuffix(name, ".vt"); ok {
+			return id
+		}
+		return ""
+	})
+	prune("panelogs", func(name string) string {
+		name, _ = strings.CutSuffix(name, ".tmp")
+		if id, ok := strings.CutSuffix(name, ".jsonl"); ok {
 			return id
 		}
 		return ""
