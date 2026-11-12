@@ -321,6 +321,69 @@ func TestEndToEndPaneLifecycleAndRestart(t *testing.T) {
 	}
 }
 
+// Needs You survives the daemon restarting: an agent still waiting is
+// there again, and an item dismissed, or one whose agent has moved on,
+// isn't.
+func TestAttentionSurvivesRestart(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "g"}}}))
+	var panes []string
+	for range 3 {
+		tb := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", "echo ready; exec cat"}}}}}))
+		d.mu.Lock()
+		p := d.tabs[tb].FocusedPaneId
+		d.mu.Unlock()
+		panes = append(panes, p)
+		call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: p}}})
+		waitOutput(t, c, p, "ready") // its holder's running (and recorded) before the restart
+	}
+	waiting, dismissed, moved := panes[0], panes[1], panes[2]
+	for _, p := range panes {
+		sendHook(t, dir, HookEvent{PaneID: p, Harness: "claude", Payload: json.RawMessage(
+			`{"hook_event_name":"Notification","session_id":"s-` + p + `","message":"Claude needs your permission to use Bash","notification_type":"permission_prompt"}`)})
+	}
+	attention := func(d *Daemon) []string {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		var ids []string
+		for id := range d.attention {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		return ids
+	}
+	if got := attention(d); len(got) != 3 {
+		t.Fatalf("before the restart: %v", got)
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: "at_" + dismissed}}})
+	// Its agent went back to work, but the item's record is left behind
+	// (as a daemon stopped between the two might).
+	d.mu.Lock()
+	moverItem := proto.CloneOf(d.attention["at_"+moved])
+	d.mu.Unlock()
+	sendHook(t, dir, HookEvent{PaneID: moved, Harness: "claude", Payload: json.RawMessage(
+		`{"hook_event_name":"UserPromptSubmit","session_id":"s-` + moved + `","prompt":"go on"}`)})
+	d.mu.Lock()
+	d.persist(d.store.PutRecord(attentionRecord, moverItem.Id, moverItem))
+	d.mu.Unlock()
+
+	c.Close()
+	d.Shutdown()
+	d2 := startDaemon(t, dir)
+	defer d2.Shutdown()
+	if got, want := attention(d2), []string{"at_" + waiting}; !slices.Equal(got, want) {
+		t.Fatalf("after the restart: %v, want %v", got, want)
+	}
+	c2 := dial(t, dir)
+	full := call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}}).GetState()
+	if len(full.Attention) != 1 || full.Attention[0].PaneId != waiting || full.Attention[0].State != pb.AgentState_AGENT_STATE_NEEDS_INPUT {
+		t.Fatalf("clients are sent %v", full.Attention)
+	}
+}
+
 func sendHook(t *testing.T, dir string, ev HookEvent) {
 	t.Helper()
 	conn, err := net.Dial("unix", HookSocketPath(dir))

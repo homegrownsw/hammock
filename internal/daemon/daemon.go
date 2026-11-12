@@ -336,6 +336,7 @@ func (d *Daemon) restore() error {
 		}
 	}
 	d.endStrayHolders()
+	d.restoreAttention()
 	return nil
 }
 

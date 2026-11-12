@@ -505,16 +505,21 @@ func (d *Daemon) raiseAttention(p *pane, state pb.AgentState, summary string, u 
 	}
 	p.mu.Unlock()
 	d.attention[item.Id] = item
+	d.persist(d.store.PutRecord(attentionRecord, item.Id, item)) // still there after a restart
 	u.Attention = append(u.Attention, proto.CloneOf(item))
 	d.pushAttention(item)
 }
+
+// attentionRecord is the store's kind for an agent's Needs You item, kept
+// so a restarted daemon still has it (restoreAttention).
+const attentionRecord = "attention"
 
 // clearAttentionForPane removes the pane's attention item, recording it in u.
 // Callers hold d.mu.
 func (d *Daemon) clearAttentionForPane(paneID string, u *pb.StateUpdate) {
 	id := "at_" + paneID
 	if _, ok := d.attention[id]; ok {
-		delete(d.attention, id)
+		d.forgetAttention(id)
 		u.ClearedAttentionIds = append(u.ClearedAttentionIds, id)
 	}
 }
@@ -522,8 +527,46 @@ func (d *Daemon) clearAttentionForPane(paneID string, u *pb.StateUpdate) {
 // clearAttention removes an attention item by id. Callers hold d.mu.
 func (d *Daemon) clearAttention(id string) {
 	if _, ok := d.attention[id]; ok {
-		delete(d.attention, id)
+		d.forgetAttention(id)
 		d.publish(&pb.StateUpdate{ClearedAttentionIds: []string{id}})
+	}
+}
+
+// forgetAttention drops an item, and its record if it's an agent's.
+// Callers hold d.mu.
+func (d *Daemon) forgetAttention(id string) {
+	delete(d.attention, id)
+	if strings.HasPrefix(id, "at_") {
+		d.persist(d.store.DeleteRecord(attentionRecord, id))
+	}
+}
+
+// restoreAttention brings back, at startup, the Needs You items agents
+// raised before the daemon stopped, as they were (not pushed again): those
+// whose pane is still here with its agent in the state the item is about.
+// A question can't be waiting in a pane whose program has ended. Callers
+// hold d.mu.
+func (d *Daemon) restoreAttention() {
+	recs, err := d.store.Records(attentionRecord)
+	if err != nil {
+		d.log.Warn("couldn't load Needs You", "err", err)
+		return
+	}
+	for id, b := range recs {
+		item := &pb.AttentionItem{}
+		keep := proto.Unmarshal(b, item) == nil && item.Id == id
+		if p := d.panes[item.PaneId]; keep && p != nil && id == "at_"+p.id {
+			info := p.snapshotInfo()
+			keep = info.Agent.GetState() == item.State &&
+				!(item.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT && info.Exited)
+		} else {
+			keep = false
+		}
+		if !keep {
+			d.persist(d.store.DeleteRecord(attentionRecord, id))
+			continue
+		}
+		d.attention[id] = item
 	}
 }
 
