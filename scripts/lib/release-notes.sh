@@ -45,19 +45,43 @@ render_dir() { # render_dir <dir>
   new_first "$lines"
 }
 
-# The lines of a version's summary (release-notes/<platform>/v<ver>.md): every note in <dir>, INTERNAL
-# included, since the summary is for the people making the app, as "- [TAG] text", NEW then FIXED then
-# INTERNAL, and by file name within a tag.
+# A version's summary (release-notes/<platform>/v<ver>.md): every note in <dir>, INTERNAL included, since
+# the summary is for the people making the app, under "## New", "## Fixed" and "## Internal" headings, by file
+# name within a section, and a section only when it has notes.
 render_consolidated_lines() { # render_consolidated_lines <dir>
-  local t f
+  local t f heading first=1 items
   for t in NEW FIXED INTERNAL; do
+    items=""
     for f in "$1"/*.md; do
       [ -f "$f" ] || continue
-      if [ "$(note_tag "$f")" = "$t" ]; then
-        printf -- '- [%s] %s\n' "$t" "$(note_body "$f")"
-      fi
+      if [ "$(note_tag "$f")" = "$t" ]; then items+="- $(note_body "$f")"$'\n'; fi
     done
+    [ -n "$items" ] || continue
+    heading=$(tag_heading "$t")
+    if [ "$first" = 1 ]; then first=0; else echo; fi
+    printf '## %s\n\n%s' "$heading" "$items"
   done
+}
+
+# The heading a tag's notes go under: New, Fixed, Internal.
+tag_heading() { case "$1" in NEW) echo New ;; FIXED) echo Fixed ;; INTERNAL) echo Internal ;; esac; }
+
+# The texts of the rendered lines ("[NEW] text") with one tag, one per line, without the tag.
+lines_with_tag() { # lines_with_tag <TAG> <rendered lines>
+  printf '%s\n' "$2" | sed -nE "s/^\[$1\] //p"
+}
+
+# Rendered lines as plain text in sections: "New" then its notes as "• text", a blank line, "Fixed" and its
+# notes. A section only when it has notes; no trailing blank line.
+lines_to_text() { # lines_to_text <rendered lines>
+  local t items out=""
+  for t in NEW FIXED; do
+    items=$(lines_with_tag "$t" "$1")
+    [ -n "$items" ] || continue
+    [ -z "$out" ] || out+=$'\n\n'
+    out+="$(tag_heading "$t")"$'\n'"$(printf '%s\n' "$items" | sed 's/^/• /')"
+  done
+  printf '%s' "$out"
 }
 
 # Cuts text to a limit, ending it with … where it's cut. The file it goes into ends in a newline, which
@@ -68,13 +92,18 @@ fit_to_limit() { # fit_to_limit <limit> <text>
 
 html_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# Rendered lines ("[NEW] text") as an HTML list with each tag as a badge, for Sparkle's update window.
+# Rendered lines ("[NEW] text") as HTML for Sparkle's update window (and the GitHub Release): a heading for
+# each tag with notes (<h4>New</h4>, <h4>Fixed</h4>), each followed by its list.
 lines_to_html() { # lines_to_html <rendered lines>
-  [ -n "$1" ] || return 0
-  echo "<ul>"
-  printf '%s\n' "$1" | html_escape |
-    sed -E 's|^\[(NEW\|FIXED)\] (.*)$|<li><b>\1</b> \2</li>|'
-  echo "</ul>"
+  local t items
+  for t in NEW FIXED; do
+    items=$(lines_with_tag "$t" "$1")
+    [ -n "$items" ] || continue
+    echo "<h4>$(tag_heading "$t")</h4>"
+    echo "<ul>"
+    printf '%s\n' "$items" | html_escape | sed -E 's|^(.*)$|<li>\1</li>|'
+    echo "</ul>"
+  done
 }
 
 # The version, from apple/iOS/Config/Version.xcconfig, which every target includes.

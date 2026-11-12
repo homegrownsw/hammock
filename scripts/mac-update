@@ -96,7 +96,7 @@ case "$cmd" in
       cp "$root/dist/linux/hammock-$ver-r$n-linux-"{amd64,arm64}.tar.gz "$linux/"
       # The plugin's CHANGES: the Mac's notes as text (the daemon and hmk are the same).
       changes="### $(date +%Y.%m.%d).$(printf %05d "$n") (Hammock $ver, build $n)
-$(sed -E -e 's|<li><b>([A-Z]+)</b> |- **\1** |' -e 's|<h4>(.*)</h4>|\1:|' -e 's|<[^>]+>||g' -e '/^[[:space:]]*$/d' \
+$(sed -E -e 's|<li>|- |' -e 's|<h[34]>(.*)</h[34]>|\1:|' -e 's|<[^>]+>||g' -e '/^[[:space:]]*$/d' \
         -e 's/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g' "$notes")"
       (cd "$root" && VERSION="$(date +%Y.%m.%d).$(printf %05d "$n")" \
         BASE_URL="https://github.com/$repo/releases/download/$tag" PLUGIN_URL="$site/linux/hammock.plg" \

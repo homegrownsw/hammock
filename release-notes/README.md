@@ -32,7 +32,8 @@ Pane headers no longer flicker while you type.
   can do now, or what no longer goes wrong. One feature gets one note, however many commits built it: merge
   them before the release. INTERNAL can be terse; it never leaves this repo.
 
-Wherever notes are listed, NEW comes before FIXED, and FIXED before INTERNAL where INTERNAL is shown.
+Wherever notes are listed, they're in sections with a heading (New, Fixed, and Internal where INTERNAL is
+shown), in that order, rather than a tag on each note.
 
 ## Adding one: `just note`
 
@@ -89,7 +90,8 @@ it goes with. The committed `CURRENT_PROJECT_VERSION` is **0**, meaning "not a c
    `HMK_RELEASE_BRANCH=<branch>` names it (a worktree level with `main`).
 2. **Freezes the notes**: this release's are the pending NEW and FIXED notes, with the version's earlier
    releases' after them.
-   - Mac: as HTML for Sparkle's window (`This release`, then `Earlier in <version>`);
+   - Mac: as HTML for Sparkle's window and the GitHub Release (this release's New and Fixed, then
+     `Earlier in <version>`'s);
    - iOS: `apple/iOS/TestFlight/WhatToTest.{en-GB,en-US}.txt`, which Xcode Cloud reads from the tagged
      commit, cut at TestFlight's 4000 characters.
 3. **Files** the pending notes under `release-notes/<app>/v<version>/`, **commits**

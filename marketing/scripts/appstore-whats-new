@@ -32,11 +32,5 @@ lines="$(new_first "$lines")"
 # Markdown's emphasis and code marks out, as the store shows them literally.
 # shellcheck disable=SC2016 # sed expressions, not shell ones
 plain() { sed -E 's/\*\*([^*]+)\*\*/\1/g; s/\*([^*]+)\*/\1/g; s/`([^`]+)`/\1/g'; }
-section() { # section <TAG> <heading>
-  local items
-  items="$(printf '%s\n' "$lines" | sed -nE "s/^\[$1\] /• /p" | plain)"
-  if [ -n "$items" ]; then printf '%s\n%s\n\n' "$2" "$items"; fi
-}
-text="$(section NEW New)$(section FIXED Fixed)"
-fit_to_limit 4000 "${text%$'\n'}"
+fit_to_limit 4000 "$(lines_to_text "$lines" | plain)"
 echo

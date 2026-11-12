@@ -120,7 +120,7 @@ d=$(fixture 0.2.0)
 release "$d" ios no-bump
 check "pushed the release commit and tag" "2 iOS-v0.2.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
 wtt=$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-GB.txt")
-check "What to Test, NEW first" "This build:|[NEW] A new thing.|[FIXED] A <thing> & more works now." "$(printf '%s' "$wtt" | tr '\n' '|')"
+check "What to Test, New then Fixed" "This build||New|• A new thing.||Fixed|• A <thing> & more works now." "$(printf '%s' "$wtt" | tr '\n' '|')"
 check "en-US is the same" "$wtt" "$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-US.txt")"
 check "filed the iOS notes" "0 3" "$(ls "$d/release-notes/ios/pending" | wc -l | tr -d ' ') $(ls "$d/release-notes/ios/v0.2.0" | wc -l | tr -d ' ')"
 check "left the Mac's pending" "3" "$(ls "$d/release-notes/mac/pending" | wc -l | tr -d ' ')"
@@ -128,7 +128,7 @@ check "the Mac isn't built" "" "$(calls)"
 check "a second cut needs notes" fails "$(release "$d" ios no-bump && echo passes || echo fails)"
 release "$d" ios no-bump allow-empty
 wtt=$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-GB.txt")
-check "…or allow-empty, listing the earlier build's" yes "$(contains "Earlier 0.2.0 builds:" "$wtt")"
+check "…or allow-empty, listing the earlier build's" yes "$(contains "Earlier 0.2.0 builds" "$wtt")"
 check "…as r3" "iOS-v0.2.0-r2 iOS-v0.2.0-r3" "$(remote_tags "$d")"
 
 echo "Mac release:"
@@ -137,8 +137,8 @@ release "$d" mac no-bump
 check "built, then uploaded, release 2" "build 2|upload 2|" "$(calls | tr '\n' '|')"
 check "pushed the commit and tag" "2 Mac-v0.2.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
 html=$(cat "$tmp/notes.html")
-check "the notes as HTML, escaped" yes "$(contains "<li><b>FIXED</b> A &lt;thing&gt; &amp; more works now.</li>" "$html")"
-check "NEW first" "NEW" "$(printf '%s' "$html" | sed -nE 's/.*<li><b>([A-Z]+)<\/b>.*/\1/p' | head -n1)"
+check "the notes as HTML, escaped" yes "$(contains "<li>A &lt;thing&gt; &amp; more works now.</li>" "$html")"
+check "in sections, New first" "<h4>New</h4>|<ul>|<li>A new thing.</li>|</ul>|<h4>Fixed</h4>|<ul>|<li>A &lt;thing&gt; &amp; more works now.</li>|</ul>" "$(printf '%s' "$html" | tr '\n' '|')"
 
 echo "a failed Mac build takes it all back:"
 d=$(fixture 0.2.0)
@@ -181,7 +181,7 @@ release "$d" apple bump 0.3.0
 check "tagged under the old version" "Mac-v0.2.0-r2 iOS-v0.2.0-r2" "$(remote_tags "$d")"
 check "the tag has the old version" "0.2.0" "$(git -C "$d" show Mac-v0.2.0-r2:apple/iOS/Config/Version.xcconfig | sed -nE 's/^MARKETING_VERSION = (.*)/\1/p')"
 check "main has the new one" "0.3.0" "$(git -C "$d.remote" show main:apple/iOS/Config/Version.xcconfig | sed -nE 's/^MARKETING_VERSION = (.*)/\1/p')"
-check "the summary, INTERNAL included" "# Mac 0.2.0||- [NEW] A new thing.|- [FIXED] A <thing> & more works now.|- [INTERNAL] Plumbing." "$(tr '\n' '|' <"$d/release-notes/mac/v0.2.0.md" | sed 's/|$//')"
+check "the summary, INTERNAL included" "# Mac 0.2.0||## New||- A new thing.||## Fixed||- A <thing> & more works now.||## Internal||- Plumbing." "$(tr '\n' '|' <"$d/release-notes/mac/v0.2.0.md" | sed 's/|$//')"
 check "a bump must go up" fails "$(release "$d" mac bump 0.2.5 allow-empty && echo passes || echo fails)"
 calls >/dev/null
 

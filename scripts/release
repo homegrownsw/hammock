@@ -144,25 +144,27 @@ for p in $PLATFORMS; do
   fi
 done
 
-# iOS: TestFlight's What to Test, as plain text: this build's notes, then the earlier builds' of the version.
+# iOS: TestFlight's What to Test, as plain text: this build's notes, then the earlier builds' of the version,
+# each under New and Fixed headings.
 ios_notes() {
   local this prev
   this=$(get_var THIS ios)
   prev=$(get_var PREV ios)
   fit_to_limit 4000 "$(
-    printf 'This build:\n'
-    if [ -n "$this" ]; then printf '%s\n' "$this"; else printf 'Behind-the-scenes improvements.\n'; fi
-    if [ -n "$prev" ]; then printf '\nEarlier %s builds:\n%s\n' "$VER" "$prev"; fi
+    printf 'This build\n\n'
+    if [ -n "$this" ]; then printf '%s\n' "$(lines_to_text "$this")"; else printf 'Behind-the-scenes improvements.\n'; fi
+    if [ -n "$prev" ]; then printf '\nEarlier %s builds\n\n%s\n' "$VER" "$(lines_to_text "$prev")"; fi
   )"
 }
-# Mac: the same, as HTML for Sparkle's update window (embedded in the appcast by scripts/mac-update).
+# Mac: the same, as HTML for Sparkle's update window (embedded in the appcast by scripts/mac-update, and the
+# GitHub Release's notes).
 mac_notes_html() {
   local this prev
   this=$(get_var THIS mac)
   prev=$(get_var PREV mac)
   if [ -n "$this" ]; then lines_to_html "$this"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
   if [ -n "$prev" ]; then
-    echo "<h4>Earlier in ${VER}</h4>"
+    echo "<h3>Earlier in ${VER}</h3>"
     lines_to_html "$prev"
   fi
 }
