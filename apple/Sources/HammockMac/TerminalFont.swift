@@ -7,13 +7,19 @@ import AppKit
 enum TerminalFont {
     static func resolve() -> (regular: NSFont, bold: NSFont) {
         let family = AppConfig.shared.fontFamily
-        var size = AppConfig.shared.fontSize ?? 13
-        size = max(6, size + UserDefaults.standard.double(forKey: "terminalFontZoom"))
+        let base = AppConfig.shared.fontSize ?? 13
+        let size = base + clampedZoom(UserDefaults.standard.double(forKey: "terminalFontZoom"), base: base)
         var regular = family.flatMap { NSFont(name: $0, size: size) ?? fontFromFamily($0, size: size) }
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         regular = withNerdFallback(regular)
         let bold = withNerdFallback(NSFontManager.shared.convert(regular, toHaveTrait: .boldFontMask))
         return (regular, bold)
+    }
+
+    /// Bigger and Smaller keep the font between 6 and 72pt (or the
+    /// configured size, if that's outside them).
+    static func clampedZoom(_ zoom: Double, base: Double) -> Double {
+        min(max(zoom, min(0, 6 - base)), max(0, 72 - base))
     }
 
     private static func fontFromFamily(_ family: String, size: CGFloat) -> NSFont? {
@@ -40,7 +46,10 @@ extension TerminalFont {
         if delta == 0 {
             d.removeObject(forKey: "terminalFontZoom")
         } else {
-            d.set(d.double(forKey: "terminalFontZoom") + delta, forKey: "terminalFontZoom")
+            let base = AppConfig.shared.fontSize ?? 13
+            // From the zoom shown, so presses past a limit aren't saved up.
+            let shown = clampedZoom(d.double(forKey: "terminalFontZoom"), base: base)
+            d.set(clampedZoom(shown + delta, base: base), forKey: "terminalFontZoom")
         }
         NotificationCenter.default.post(name: changed, object: nil)
     }
