@@ -139,6 +139,28 @@ public final class TerminalMetalRenderer {
         }
     }
 
+    /// A texture to render a frame into and read back (snapshots, the
+    /// bench): in memory the CPU can read.
+    public func readableTexture(width: Int, height: Int) -> MTLTexture? {
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: Self.pixelFormat, width: width, height: height, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .shared
+        return device.makeTexture(descriptor: desc)
+    }
+
+    /// A frame rendered into a readableTexture, as an image (BGRA, sRGB).
+    /// Wait for its command buffer first.
+    public static func image(of texture: MTLTexture) -> CGImage? {
+        let w = texture.width, h = texture.height
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        texture.getBytes(&bytes, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData) else { return nil }
+        return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                       space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                       provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
     /// Encodes a frame into `texture` (its size in pixels is the scene's).
     /// Returns the command buffer, committed; present or wait on it.
     @discardableResult

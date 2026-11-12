@@ -149,7 +149,6 @@ enum RenderBench {
         let warmup = 10
         let session = PaneSession.standalone(paneID: "bench-\(screen.name)", cols: screen.cols, rows: screen.rows)
         let view = TerminalNSView(frame: .zero, metal: true)
-        guard let device = view.metal?.device else { return nil }
         view.session = session
         defer { view.session = nil }
         let size = NSSize(width: CGFloat(screen.cols) * view.cellWidth + view.padding * 2,
@@ -161,10 +160,7 @@ enum RenderBench {
         session.engine.write(Data(screen.setup.utf8))
         if !screen.composing.isEmpty { view.markedText = NSMutableAttributedString(string: screen.composing) }
         let w = Int(size.width * scale), h = Int(size.height * scale)
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: TerminalMetalRenderer.pixelFormat, width: w, height: h, mipmapped: false)
-        desc.usage = [.renderTarget, .shaderRead]
-        desc.storageMode = .shared
-        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+        guard let texture = view.metal?.readableTexture(width: w, height: h) else { return nil }
 
         var frameMs: [Double] = [], cpuMs: [Double] = [], totalMs: [Double] = [], gpuMs: [Double] = []
         TerminalNSView.timing = { f, d in
@@ -181,14 +177,7 @@ enum RenderBench {
             cb.waitUntilCompleted()
             gpuMs.append((cb.gpuEndTime - cb.gpuStartTime) * 1000)
         }
-        // BGRA, as drawn, into a CGImage.
-        var bytes = [UInt8](repeating: 0, count: w * h * 4)
-        texture.getBytes(&bytes, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
-        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
-              let image = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return nil }
+        guard let image = TerminalMetalRenderer.image(of: texture) else { return nil }
         return (Run(frameMs: Stats(frameMs), drawMs: Stats(cpuMs), totalMs: Stats(totalMs), rows: Double(screen.rows), cacheHits: 0), Stats(gpuMs), image)
     }
 

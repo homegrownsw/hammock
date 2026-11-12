@@ -457,27 +457,20 @@ final class TerminalNSView: NSView {
         if let timing { timing(frameTime, CACurrentMediaTime() - start - frameTime) }
     }
 
-    /// A Metal pane drawn by CoreGraphics instead, for the debug snapshots:
-    /// they render the window's layers, which can't see a Metal layer's
-    /// contents. nil for a pane CoreGraphics draws anyway.
+    /// A Metal pane's frame, drawn offscreen and read back, for the debug
+    /// snapshots: they render the window's layers, which can't see a Metal
+    /// layer's contents. nil for a pane CoreGraphics draws (the layers have
+    /// that already).
     func snapshotImage(scale: CGFloat) -> CGImage? {
-        guard metal != nil, bounds.width >= 1, bounds.height >= 1 else { return nil }
-        let w = Int(bounds.width * scale), h = Int(bounds.height * scale)
-        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.translateBy(x: 0, y: CGFloat(h))
-        ctx.scaleBy(x: scale, y: -scale)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-        benchRects = [bounds] // outside a display pass: draw every row
-        draw(bounds)
-        benchRects = nil
-        NSGraphicsContext.restoreGraphicsState()
-        return ctx.makeImage()
+        guard let metal, bounds.width >= 1, bounds.height >= 1,
+              let texture = metal.readableTexture(width: Int((bounds.width * scale).rounded()), height: Int((bounds.height * scale).rounded())),
+              let cb = renderMetal(into: texture, scale: scale) else { return nil }
+        cb.waitUntilCompleted()
+        return TerminalMetalRenderer.image(of: texture)
     }
 
-    /// For a debug snapshot: the pane's CoreGraphics drawing as its layer's
-    /// own contents, and the Metal layer hidden, so a render of the window's
+    /// For a debug snapshot: the pane's Metal frame as its layer's own
+    /// contents, and the Metal layer hidden, so a render of the window's
     /// layers puts it in place, under whatever sits above it (the palette,
     /// a sheet), until endSnapshot().
     func beginSnapshot(scale: CGFloat) {
