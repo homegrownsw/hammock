@@ -755,12 +755,16 @@ struct EditorSettingsSection: View {
     var body: some View {
         Section("Editor panes") {
             Toggle("Wrap long lines", isOn: prefs.boolBinding(.editorWrap))
+                .settingAnchor("editor.wrap")
             Toggle("Line numbers", isOn: prefs.boolBinding(.editorLineNumbers))
+                .settingAnchor("editor.linenumbers")
             Picker("Indent with", selection: prefs.stringBinding(.editorIndent)) {
                 Text("Spaces").tag("spaces")
                 Text("Tabs").tag("tabs")
             }
+            .settingAnchor("editor.indent")
             Stepper("Tab width: \(Int(prefs.double(.editorTabWidth)))", value: prefs.doubleBinding(.editorTabWidth), in: 1...16, step: 1)
+                .settingAnchor("editor.tabwidth")
             HStack {
                 Toggle("Own font size", isOn: Binding(
                     get: { !prefs.string(.editorFontSize).isEmpty },
@@ -769,7 +773,9 @@ struct EditorSettingsSection: View {
                     Stepper("\(Int(prefs.double(.editorFontSize))) pt", value: prefs.doubleBinding(.editorFontSize), in: 6...36, step: 1)
                 }
             }
+            .settingAnchor("editor.fontsize")
             Toggle("Vim keys", isOn: prefs.boolBinding(.editorVim))
+                .settingAnchor("editor.vim")
             Text(".editorconfig and a file's existing indentation take precedence.")
                 .font(.callout)
                 .foregroundStyle(.secondary)

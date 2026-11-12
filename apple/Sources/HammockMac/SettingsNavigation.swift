@@ -317,7 +317,8 @@ enum SettingsIndex {
         ] + HammockTool.allCases.map { e(.tools, "Tools", $0.title, "tools.\($0.rawValue)", $0.keywords) } + [
             e(.editor, "Editor panes", "Wrap long lines", "editor.wrap", "word wrap"),
             e(.editor, "Editor panes", "Line numbers", "editor.linenumbers", "gutter"),
-            e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tab width editorconfig"),
+            e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tabs editorconfig"),
+            e(.editor, "Editor panes", "Tab width", "editor.tabwidth", "indent size spaces editorconfig"),
             e(.editor, "Editor panes", "Editor font size", "editor.fontsize", "text"),
             e(.editor, "Editor panes", "Vim keys", "editor.vim", "vi modal"),
             e(.editor, "Diff panes", "Split or unified layout", "diff.style", "diff review changes side by side one column"),
