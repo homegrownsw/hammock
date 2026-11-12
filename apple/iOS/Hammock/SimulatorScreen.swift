@@ -197,21 +197,24 @@ struct SimulatorScreen: View {
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 14).padding(.vertical, 7)
-                        .glassEffect(.regular, in: Capsule())
+                        .glassEffect(.regular.interactive(), in: Capsule())
+                        // Read it, tap it away.
+                        .onTapGesture { withAnimation { hint = false } }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint("Hides this")
                 }
-                HStack(spacing: 2) {
+                HStack(spacing: 4) {
                     Button("Exit Full Screen", systemImage: "arrow.down.right.and.arrow.up.left") {
                         withAnimation { fullScreen = false; controls = false; hint = false }
                     }
-                    Divider().frame(height: 24).padding(.horizontal, 4)
+                    Divider().frame(height: 24).padding(.horizontal, 2)
                     Group { deviceButtons }.disabled(!canDrive)
                     screenshotButton
                 }
-                .labelStyle(.iconOnly)
+                .labelStyle(TargetIconLabelStyle())
                 .font(.title3)
                 .buttonStyle(.borderless)
-                .frame(minHeight: 44)
-                .padding(.horizontal, 12).padding(.vertical, 4)
+                .padding(.horizontal, 8).padding(.vertical, 4)
                 .glassEffect(.regular.interactive(), in: Capsule())
                 .simultaneousGesture(TapGesture().onEnded { controlsUsed += 1 })
             }
@@ -360,6 +363,15 @@ struct SimulatorScreen: View {
         Task { _ = await model.simulatorCall(paneID, "button", ["name": name]) }
     }
 
+}
+
+/// An icon alone, in a touch target's 44 points (a little less if that's all
+/// there's room for: a foldable's extra button): full screen's controls
+/// spaced as the system's bars space theirs.
+private struct TargetIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.icon.frame(minWidth: 34, maxWidth: 44, minHeight: 44).contentShape(Rectangle())
+    }
 }
 
 /// Three fingers touching (not lifted): a UIKit recognizer, since SwiftUI's
