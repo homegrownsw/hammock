@@ -61,6 +61,17 @@ type Config struct {
 	// it reaps every exited child but the command's.
 	AdoptOrphans bool
 
+	// AwaitSize, with Gate, holds the command back until the first resize
+	// (applied first) or this long, whichever is sooner: a new pane's
+	// program starts at the size its client lays it out at, not a guess
+	// corrected a moment later. Some programs (macOS top) mishandle a
+	// resize that early, and every program redraws for it. Gate is an
+	// executable that runs RunGate when given GateArg (the holder's own):
+	// it's the child from the start, so its PID, session and terminal are
+	// the program's, and it execs the command once let go.
+	AwaitSize time.Duration
+	Gate      string
+
 	// legacy (tests) makes the holder one from before the proof: it closes
 	// a connection whose first frame isn't FrameAttach, and checks Peer and
 	// State of the socket's peer.
@@ -108,6 +119,8 @@ type Server struct {
 	lastDetach time.Time
 	closing    bool
 
+	gate *os.File // the write end of a waiting gate's pipe (AwaitSize); guarded by mu
+
 	inMu   sync.Mutex
 	inCond *sync.Cond
 	inBuf  [][]byte
@@ -140,10 +153,28 @@ func Start(cfg Config) (*Server, error) {
 		becomeSubreaper() // before the child starts: nothing it leaves gets past
 	}
 	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...)
+	var gate, gateR *os.File
+	if cfg.AwaitSize > 0 && cfg.Gate != "" && cmd.Err == nil {
+		// The command is found here, as without a gate, so a missing one
+		// still fails the start.
+		if gateR, gate, err = os.Pipe(); err != nil {
+			ln.Close()
+			os.Remove(cfg.Socket)
+			return nil, err
+		}
+		cmd = exec.Command(cfg.Gate, append([]string{GateArg, cmd.Path}, cfg.Command...)...)
+		cmd.ExtraFiles = []*os.File{gateR} // fd 3
+	}
 	cmd.Dir = cfg.Dir
 	cmd.Env = cfg.Env
 	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: cfg.Cols, Rows: cfg.Rows})
+	if gateR != nil {
+		gateR.Close()
+	}
 	if err != nil {
+		if gate != nil {
+			gate.Close()
+		}
 		ln.Close()
 		os.Remove(cfg.Socket)
 		return nil, fmt.Errorf("holder: start: %w", err)
@@ -152,7 +183,10 @@ func Start(cfg Config) (*Server, error) {
 	s := &Server{
 		cfg: cfg, ln: ln, pty: f, cmd: cmd, done: make(chan struct{}),
 		ring: NewRing(cfg.RingSize), clients: map[*client]struct{}{},
-		cols: cfg.Cols, rows: cfg.Rows, lastDetach: time.Now(),
+		cols: cfg.Cols, rows: cfg.Rows, lastDetach: time.Now(), gate: gate,
+	}
+	if gate != nil {
+		time.AfterFunc(cfg.AwaitSize, func() { s.openGate("no size came") })
 	}
 	s.inCond = sync.NewCond(&s.inMu)
 	if cfg.AdoptOrphans {
@@ -213,6 +247,10 @@ func (s *Server) shutdown(why string) {
 	logf("shutting down (%s); child exited=%v status=%d", why, s.exited, s.exitStatus)
 	clients := s.clients
 	s.clients = map[*client]struct{}{}
+	if s.gate != nil {
+		s.gate.Close() // let go without the go-ahead: it exits, its command never run
+		s.gate = nil
+	}
 	s.mu.Unlock()
 
 	if !exited {
@@ -391,6 +429,7 @@ func (s *Server) serve(conn net.Conn, at PeerProc) {
 				if !exited {
 					_ = pty.Setsize(s.pty, &pty.Winsize{Cols: cols, Rows: rows})
 				}
+				s.openGate("")
 			}
 		case FrameSignal:
 			if len(f.Payload) >= 4 {
@@ -530,4 +569,45 @@ func (s *Server) signal(sig syscall.Signal) {
 // logf writes a timestamped line to stderr (the holder's log file).
 func logf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "%s pane-holder: %s\n", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
+}
+
+// GateArg, first in its arguments, has a holder's executable run RunGate
+// (Config.Gate).
+const GateArg = "--pane-holder-gate"
+
+// openGate lets a waiting gate exec the command (AwaitSize), now that the
+// PTY has its size (why: or not, and why not).
+func (s *Server) openGate(why string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.gate == nil {
+		return
+	}
+	if why != "" {
+		logf("starting the command at %dx%d: %s", s.cols, s.rows, why)
+	}
+	_, _ = s.gate.Write([]byte{1})
+	s.gate.Close()
+	s.gate = nil
+}
+
+// RunGate is a holder's child until the holder lets it go (Config.Gate):
+// args are GateArg's, the command's path and then its argv. It waits on fd
+// 3 for the go-ahead and execs the command in its place, so the command
+// keeps its PID, session and terminal. Without it (the holder went) it
+// exits. It never returns.
+func RunGate(args []string) {
+	if len(args) < 2 {
+		fmt.Fprintln(os.Stderr, "pane-holder: gate: no command")
+		os.Exit(2)
+	}
+	f := os.NewFile(3, "gate")
+	b := make([]byte, 1)
+	if n, _ := f.Read(b); n != 1 {
+		os.Exit(1)
+	}
+	f.Close()
+	err := syscall.Exec(args[0], args[1:], os.Environ())
+	fmt.Fprintf(os.Stderr, "%s: %v\n", args[1], err)
+	os.Exit(127)
 }

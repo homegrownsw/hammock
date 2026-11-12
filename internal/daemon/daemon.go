@@ -799,6 +799,27 @@ func (d *Daemon) splitPane(targetID string, dir pb.Split_Direction, spec *pb.Pan
 	return p, nil
 }
 
+// newPaneSizeWait is how long a new pane's program waits for a client to
+// say the pane's size before it starts anyway, at the size it was made at
+// (pane.awaitSize). Clients make panes at a guess of their size, often a
+// row or column out, and a daemon making one for hmk or an agent knows
+// none: started at the guess, the program is resized a moment later, which
+// some (macOS top) mishandle. The Mac says a shown pane's size 40-140 ms
+// after it's made; a pane in a tab it isn't showing hears nothing, and
+// starts after this.
+var newPaneSizeWait = 250 * time.Millisecond
+
+// hasViewerLocked reports whether a client that shows panes (and so says
+// their size) is connected. Callers hold d.mu.
+func (d *Daemon) hasViewerLocked() bool {
+	for c := range d.conns {
+		if c.subscribed && (c.kind == "mac" || c.kind == "ios" || c.kind == "tui") {
+			return true
+		}
+	}
+	return false
+}
+
 // startPane creates and spawns a pane for tab t (not yet placed in its layout).
 func (d *Daemon) startPane(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	if spec == nil {
@@ -873,6 +894,9 @@ func (d *Daemon) startPane(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	}
 	p := newPane(d, info)
 	p.extraEnv = spec.Env
+	if d.hasViewerLocked() {
+		p.awaitSize = newPaneSizeWait
+	}
 	if logSrc != nil {
 		p.log = d.newLogPane(info.Id)
 	}
