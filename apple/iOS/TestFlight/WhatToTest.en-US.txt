@@ -1,6 +1,26 @@
-This build:
-[NEW] The Hammock Key's approval sheet on iPhone is clearer: it opens at full height, shows the Group and tab asking as the Mac does, and its Approve button shows Touch ID on phones with it.
-[NEW] Agents can be approved for 5 minutes with the Hammock Key: tick the box on the Mac's prompt, or choose Approve for 5 Minutes on your iPhone, so a script's few commits or a burst of SSH commands asks once. An agent's window is its own: your programs in that pane still ask.
-[NEW] Diff panes on your iPhone: review the changes an agent's made, comment on a line or a file, send your comments to it and see its replies.
-[FIXED] Notifications about an agent, a permission, someone asking to join or a Hammock Key request now leave Notification Center once they're dealt with, wherever you dealt with them, instead of piling up (at the latest when you next open Hammock).
-[FIXED] Start an Agent: a gap between the chosen Group's picture or emoji and its name.
+This build
+
+New
+• The terminal draws with Metal, the same way as on the Mac: italics, block characters, box drawing, powerline prompts, Nerd Font icons and images in the terminal now look as they do there.
+• A pane's menu can copy its Claude Code session's Remote Control link, to open it on claude.ai.
+• Simulator panes go full screen: the device fills your iPhone, and a touch with three fingers, or a shake, brings back its controls.
+
+Fixed
+• Terminals keep up better with a flood of output, like a big file printed or a noisy build.
+• A Mac paired from a link while another Mac is shown now sends this iPhone notifications without having to be shown first.
+• A Mac you forget stops sending this iPhone notifications, if it can be reached, instead of sending ones that only say Something needs you.
+• A message sent in the agent view while Hammock is reconnecting is put back in the box instead of being lost.
+• After switching from Wi-Fi to cellular, or coming back to the app after a while, a connection to your Mac that had quietly dropped reconnects in seconds instead of looking connected.
+• Answering a notification from another Mac from the lock screen (Allow, Deny, Let View) no longer changes which Mac the app shows.
+• Dictation in a terminal no longer deletes too much when correcting itself after you’ve used the key bar’s delete or held down a keyboard’s Backspace.
+• Holding Delete while sharing a Mac's screen now keeps deleting, on the on-screen keyboard as on a hardware one.
+• Images a program on your Mac shows by file path, like Claude Code's, now come to your iPhone.
+• Images in the terminal, like Claude Code's, no longer go missing when you open the pane on another device, resize it or reconnect.
+• Images in the terminal, like Claude Code's, show as soon as they arrive, instead of only once you scroll.
+• In the demo, opening a finished agent or scheduled run marks it as seen.
+• In the demo, pausing a scheduled task, skipping its next run, moving a tab and changing a Group’s icon now work, and Run Now and the rest that need a Mac offer to pair one.
+• Screen sharing: two fingers stay scrolling once they start, instead of switching to zooming partway through, and a pinch stays a zoom.
+• Scrolling a picture shown in a terminal back into view no longer stutters.
+• Tapping a notification opens its session again when it launches the app or is from another Mac, and tapping one for the same session twice works.
+• Terminals keep 10,000 lines of scrollback, as the Mac's daemon does: coloured output kept only a few hundred.
+• The agent view no longer goes blank in a long conversation, showing only Working… under an empty screen, when you open it or send a message.
