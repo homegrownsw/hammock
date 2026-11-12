@@ -30,3 +30,25 @@ func TestScheduleDaysNeedsAt(t *testing.T) {
 		}
 	}
 }
+
+func TestScheduleCommandWords(t *testing.T) {
+	for _, c := range []struct {
+		kind string
+		args []string
+		want string
+	}{
+		{"command", []string{"sh", "-c", "echo a; date"}, `sh -c 'echo a; date'`},
+		{"command", []string{"echo a; date"}, "echo a; date"},
+		{"command", []string{"echo", "it's", ""}, `echo 'it'\''s' ''`},
+		{"command", []string{"make", "test"}, "make test"},
+		{"claude", []string{"tidy", "the", "README; then stop"}, "tidy the README; then stop"},
+	} {
+		s := &pb.Schedule{Kind: c.kind}
+		if err := scheduleFlags(&world{}, s, append([]string{"--"}, c.args...), false); err != nil {
+			t.Fatal(err)
+		}
+		if s.Prompt != c.want {
+			t.Errorf("%s -- %q: prompt %q, want %q", c.kind, c.args, s.Prompt, c.want)
+		}
+	}
+}

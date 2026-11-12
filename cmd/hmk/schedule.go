@@ -48,7 +48,9 @@ options:
   --close-on-success | --keep-open          commands: close the tab after a clean exit
   --allow RULE (repeatable)  --no-allow     Claude: tools allowed in every run (--allowedTools rules)
   --sandbox MODE  --approval POLICY         Codex: --sandbox and --ask-for-approval
-  --on COMPUTER                             add it on a linked computer`
+  --on COMPUTER                             add it on a linked computer
+a COMMAND is run by your login shell: one word is the line as written
+(-- 'make && make test'); several are arguments (-- sh -c 'echo a; date')`
 
 func runSchedule(args []string) error {
 	ctx := context.Background()
@@ -191,7 +193,11 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 		}
 		switch a {
 		case "--":
-			s.Prompt = strings.Join(args[i+1:], " ")
+			if s.Kind == "command" {
+				s.Prompt = commandLine(args[i+1:])
+			} else {
+				s.Prompt = strings.Join(args[i+1:], " ")
+			}
 			i = len(args)
 		case "--command":
 			s.Kind = "command"
@@ -288,6 +294,27 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 		return errors.New("give the prompt (or command) after --")
 	}
 	return nil
+}
+
+// commandLine is a command schedule's words after "--" as the line the
+// daemon runs with the login shell's -c. One word is that line as written
+// (-- 'make && make test'); several are each one argument, as the shell
+// handed them to hmk, so a word with spaces or a shell character in it is
+// quoted (-- sh -c 'echo a; date').
+func commandLine(words []string) string {
+	if len(words) == 1 {
+		return words[0]
+	}
+	out := make([]string, len(words))
+	for i, w := range words {
+		out[i] = w
+		if w == "" || strings.ContainsFunc(w, func(r rune) bool {
+			return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/._-+,:@%=", r))
+		}) {
+			out[i] = agents.Quote(w) // fish reads it as one word too
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 func expandTilde(p string) string {
