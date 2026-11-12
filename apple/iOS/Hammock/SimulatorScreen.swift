@@ -36,53 +36,11 @@ struct SimulatorScreen: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            GeometryReader { geo in
-                let fit = fitted(in: geo.size)
-                ZStack {
-                    if let stream, playing {
-                        MediaView(stream: stream)
-                            .frame(width: fit.width, height: fit.height)
-                            .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
-                            .contentShape(Rectangle())
-                            .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive)
-                    } else if let image {
-                        Image(uiImage: image)
-                            .resizable()
-                            .frame(width: fit.width, height: fit.height)
-                            .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
-                            .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive)
-                    } else if failed {
-                        ContentUnavailableView("Can't See This Simulator", systemImage: "iphone.slash",
-                                               description: Text("Its Mac isn't answering, or it's still booting."))
-                    } else {
-                        ProgressView()
-                    }
-                }
-                .frame(width: geo.size.width, height: geo.size.height)
-            }
+            // Left empty while full screen has the video: the stream's
+            // layer can be in only one view, and comes back to a new one.
+            if fullScreen { Color.clear } else { surface }
         }
-        .padding(.horizontal, fullScreen ? 0 : nil)
-        .background { if fullScreen { Color.black.ignoresSafeArea() } }
-        .ignoresSafeArea(edges: fullScreen ? .all : [])
-        .gesture(ThreeFingerTouch(began: { if fullScreen { threeFingers() } }, ended: { settle() }))
-        .overlay(alignment: .bottom) { if fullScreen { fullScreenControls } }
-        // Shaking the phone shows them too.
-        .onReceive(NotificationCenter.default.publisher(for: UIWindow.didShake)) { _ in
-            guard fullScreen, !controls else { return }
-            withAnimation { controls = true }
-            controlsUsed += 1
-        }
-        .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .bottomBar)
-        .statusBarHidden(fullScreen)
-        .persistentSystemOverlays(fullScreen ? .hidden : .automatic)
-        // A swipe up from the bottom is the device's own (its Home), not
-        // this app's: iOS's needs a second.
-        .defersSystemGestures(on: fullScreen ? .all : [])
-        .task(id: controlsUsed) {
-            guard controls else { return }
-            try? await Task.sleep(for: .seconds(hint ? 5 : 4))
-            withAnimation { controls = false; hint = false }
-        }
+        .padding(.horizontal)
         .navigationTitle(pane?.title ?? "Simulator")
         // The system's bar, not one of our own: at the bottom of an iPhone,
         // down the side of iPhone Duo (where it leaves the device its
@@ -97,7 +55,33 @@ struct SimulatorScreen: View {
                 screenshotButton
             }
         }
-        .sheet(item: $shot) { ActivitySheet(items: [$0.image]).ignoresSafeArea() }
+        // Presented over everything, not this screen made bigger: a pushed
+        // screen can't hide the status bar.
+        .fullScreenCover(isPresented: $fullScreen) {
+            surface
+                .ignoresSafeArea()
+                .background(Color.black.ignoresSafeArea())
+                .gesture(ThreeFingerTouch(began: threeFingers, ended: { settle() }))
+                .overlay(alignment: .bottom) { fullScreenControls }
+                // Shaking the phone shows them too.
+                .onReceive(NotificationCenter.default.publisher(for: UIWindow.didShake)) { _ in
+                    guard !controls else { return }
+                    withAnimation { controls = true }
+                    controlsUsed += 1
+                }
+                .task(id: controlsUsed) {
+                    guard controls else { return }
+                    try? await Task.sleep(for: .seconds(hint ? 5 : 4))
+                    withAnimation { controls = false; hint = false }
+                }
+                .statusBarHidden()
+                .persistentSystemOverlays(.hidden)
+                // A swipe up from the bottom is the device's own (its
+                // Home), not this app's: iOS's needs a second.
+                .defersSystemGestures(on: .all)
+                .modifier(Prompts(screen: self, inCover: true))
+        }
+        .modifier(Prompts(screen: self, inCover: false))
         .task(id: active) {
             guard active else { return }
             await withTaskGroup(of: Void.self) { g in
@@ -105,14 +89,59 @@ struct SimulatorScreen: View {
                 g.addTask { await watch() }
             }
         }
-        .alert("Type on the Simulator", isPresented: $typing) {
-            TextField("Text", text: $text)
-            Button("Send") {
-                let t = text
-                text = ""
-                Task { _ = await model.simulatorCall(paneID, "text", ["text": t]) }
+    }
+
+    /// The device: its video, else its screenshots.
+    private var surface: some View {
+        GeometryReader { geo in
+            let fit = fitted(in: geo.size)
+            ZStack {
+                if let stream, playing {
+                    MediaView(stream: stream)
+                        .frame(width: fit.width, height: fit.height)
+                        .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
+                        .contentShape(Rectangle())
+                        .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive)
+                } else if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .frame(width: fit.width, height: fit.height)
+                        .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
+                        .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive)
+                } else if failed {
+                    ContentUnavailableView("Can't See This Simulator", systemImage: "iphone.slash",
+                                           description: Text("Its Mac isn't answering, or it's still booting."))
+                } else {
+                    ProgressView()
+                }
             }
-            Button("Cancel", role: .cancel) { text = "" }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+
+    /// Typing and sharing a screenshot: from whichever is showing, the
+    /// screen or full screen over it (the screen can't present while
+    /// covered).
+    private struct Prompts: ViewModifier {
+        let screen: SimulatorScreen
+
+        let inCover: Bool
+
+        func body(content: Content) -> some View {
+            let s = screen
+            content
+                .sheet(item: Binding(get: { s.fullScreen == inCover ? s.shot : nil }, set: { s.shot = $0 })) {
+                    ActivitySheet(items: [$0.image]).ignoresSafeArea()
+                }
+                .alert("Type on the Simulator", isPresented: Binding(get: { s.typing && s.fullScreen == inCover }, set: { s.typing = $0 })) {
+                    TextField("Text", text: s.$text)
+                    Button("Send") {
+                        let t = s.text
+                        s.text = ""
+                        Task { _ = await s.model.simulatorCall(s.paneID, "text", ["text": t]) }
+                    }
+                    Button("Cancel", role: .cancel) { s.text = "" }
+                }
         }
     }
 
@@ -193,11 +222,9 @@ struct SimulatorScreen: View {
     }
 
     private func enterFullScreen() {
-        withAnimation {
-            fullScreen = true
-            controls = true
-            hint = true
-        }
+        fullScreen = true
+        controls = true
+        hint = true
         controlsUsed += 1
     }
 
