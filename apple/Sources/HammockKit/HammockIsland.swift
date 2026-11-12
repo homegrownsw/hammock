@@ -91,6 +91,9 @@ final class IslandScene {
     private var angle: Float = 0
     private var swingVelocity: Float = 0
     private var bonk: Float = 0
+    // Loops over the top in a row (each within a moment of the last).
+    private var loops = 0
+    private var lastLoop: Float = -10
 
     // The sleeper, who doesn't always stay in it.
     private enum Sleeper {
@@ -492,7 +495,7 @@ final class IslandScene {
         body.angularDamping = 0.6
         sleeper.components.set(body)
         var v = velocity
-        if length(v) > 5 { v = normalize(v) * 5 }
+        if length(v) > 8.5 { v = normalize(v) * 8.5 }
         sleeper.components.set(PhysicsMotionComponent(linearVelocity: v,
                                                       angularVelocity: [Float.random(in: -5...5), Float.random(in: -3...3), Float.random(in: -5...5)]))
         sleeperState = .flying(0)
@@ -514,17 +517,23 @@ final class IslandScene {
     private func updateSleeper(_ dt: Float) {
         switch sleeperState {
         case .napping:
-            // Looped the hammock, or spun the island too hard: off they go.
-            if abs(angle) > 2.6 {
+            // They hang on through one loop of the hammock; a second in a
+            // row, or a really hard spin of the island, and off they go, far.
+            if loops >= 2 {
+                loops = 0
                 let r = sleeper.position(relativeTo: turntable) - pivot.position
-                throwSleeper(swingVelocity * cross([1, 0, 0], r) * 0.8 + [0, 1.6, 0])
+                // Over the top the hammock's slow, so the throw has a
+                // floor: always well out to sea, the way it was going.
+                let along = swingVelocity * cross([1, 0, 0], r)
+                let flat = SIMD3<Float>(0, 0, along.z == 0 ? 1 : along.z)
+                throwSleeper(normalize(flat) * max(4.5, abs(along.z) * 1.4) + [0, 3.2, 0])
                 return
             }
-            if abs(spin) > 4.5 {
+            if abs(spin) > 6 {
                 let r = sleeper.position(relativeTo: turntable)
                 let around = cross(SIMD3<Float>(0, spin > 0 ? 1 : -1, 0), r + [0.001, 0, 0])
                 spin *= 0.5
-                throwSleeper(normalize(around) * 2.6 + normalize(SIMD3(r.x, 0, r.z) + [0.001, 0, 0]) * 1.2 + [0, 2.4, 0])
+                throwSleeper(normalize(around) * 3.8 + normalize(SIMD3(r.x, 0, r.z) + [0.001, 0, 0]) * 2.4 + [0, 3.6, 0])
                 return
             }
             // Z's, while it's calm enough to sleep.
@@ -582,7 +591,7 @@ final class IslandScene {
                 stars.position = [0, 0.14, 0]
                 head.addChild(stars)
                 dazeStars = stars
-            } else if age > 6 {
+            } else if age > 9 {
                 startHop()
             } else {
                 sleeperState = .flying(age)
@@ -606,7 +615,7 @@ final class IslandScene {
             // Back to the island, the head bobbing.
             var p = sleeper.position
             let home = -normalize(SIMD3<Float>(p.x, 0, p.z) + [0.001, 0, 0])
-            p += home * 0.4 * dt
+            p += home * 0.6 * dt
             p.y = seaY - 0.04 + 0.02 * sin(t * 5)
             sleeper.position = p
             sleeper.orientation = simd_quatf(from: [1, 0, 0], to: home) * simd_quatf(angle: 0.15 * sin(t * 5), axis: [1, 0, 0])
@@ -670,7 +679,12 @@ final class IslandScene {
             swingVelocity += (-6 * sin(angle) - damping * swingVelocity + drive) * h
             angle += swingVelocity * h
         }
-        if angle > .pi { angle -= 2 * .pi } else if angle < -.pi { angle += 2 * .pi }
+        var looped = false
+        if angle > .pi { angle -= 2 * .pi; looped = true } else if angle < -.pi { angle += 2 * .pi; looped = true }
+        if looped {
+            loops = t - lastLoop < 2.5 ? loops + 1 : 1
+            lastLoop = t
+        }
         pivot.orientation = simd_quatf(angle: angle, axis: [1, 0, 0])
 
         updateSleeper(dt)
@@ -748,6 +762,7 @@ final class IslandScene {
             (1.0, { self.shakePalm(0) }), (1.4, { self.swing() }), (1.9, { self.swing() }),
             (2.2, { self.shakePalm(1) }), (2.5, { self.swing() }), (3.0, { self.swing() }),
             (3.5, { self.swing() }), (4.0, { self.swing() }), (4.5, { self.swing() }),
+            (5.0, { self.swing() }), (5.4, { self.swing() }), (5.8, { self.swing() }), (6.2, { self.swing() }),
         ]
         while debugStep < take.count, t >= take[debugStep].0 {
             take[debugStep].1()
