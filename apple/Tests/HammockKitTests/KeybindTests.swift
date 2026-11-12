@@ -130,6 +130,17 @@ final class KeybindTests: XCTestCase {
         XCTAssertNil(set["split_right"])
     }
 
+    /// Clearing one of two pane-scoped actions sharing a default (⌘S: an
+    /// editor's Save, a simulator's Screenshot to File) sticks: the other
+    /// keeping it by default doesn't take it from this one.
+    func testClearingASharedDefaultRoundTrips() {
+        var set = KeybindSet.defaults
+        set.assign(nil, to: "editor_save")
+        XCTAssertEqual(set["sim_screenshot_file"], KeyChord("s"))
+        XCTAssertEqual(set.configValues, ["none=editor_save"])
+        XCTAssertEqual(KeybindSet.parse(set.configValues).set, set)
+    }
+
     func testAssignReportsWhatItTookFrom() {
         var set = KeybindSet.defaults
         XCTAssertEqual(set.conflicts(KeyChord("d"), excluding: "zoom_pane"), ["split_right"])

@@ -433,8 +433,12 @@ public struct KeybindSet: Equatable, Sendable {
         var out: [String] = []
         let changed = Keybinds.actions.filter { !isDefault($0.id) }
         for a in changed where chords[a.id] == nil {
-            // Its default isn't simply someone else's now: say so.
-            guard let d = a.defaultChord, !chords.values.contains(where: { $0.overlaps(d) }) else { continue }
+            // Its default isn't simply someone else's now (given it below,
+            // which takes it from this one): say so. One that may share it
+            // (Keybinds.apart) doesn't take it.
+            guard let d = a.defaultChord, !changed.contains(where: { b in
+                b.id != a.id && chords[b.id]?.overlaps(d) == true && !Keybinds.apart(a.id, b.id)
+            }) else { continue }
             out.append("none=\(a.id)")
         }
         for a in changed {
