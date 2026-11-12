@@ -1311,6 +1311,14 @@ func (d *Daemon) moveTab(tabID, groupID string, index int) error {
 	if src := d.groups[t.GroupId]; src != nil {
 		src.TabIds = slices.DeleteFunc(src.TabIds, func(id string) bool { return id == tabID })
 		if src != dst {
+			// The Group it leaves is no longer named after, or starts agents
+			// in, a pane that's gone to another.
+			if slices.Contains(tabPanes(t), src.LastFocusedPaneId) {
+				src.LastFocusedPaneId = d.groupTerminalLocked(src)
+				if lp := d.panes[src.LastFocusedPaneId]; lp != nil && lp.cwd() != "" {
+					src.Folder = lp.cwd()
+				}
+			}
 			d.persist(d.store.PutGroup(src))
 			u.Groups = append(u.Groups, proto.CloneOf(src))
 		}
@@ -1324,6 +1332,27 @@ func (d *Daemon) moveTab(tabID, groupID string, index int) error {
 	u.Tabs = append(u.Tabs, proto.CloneOf(t))
 	d.publish(u)
 	return nil
+}
+
+// groupTerminalLocked is a terminal pane in g to stand for it, preferring
+// the focused one of its first tab that has one, or "" if it has none.
+// Callers hold d.mu.
+func (d *Daemon) groupTerminalLocked(g *pb.Group) string {
+	for _, tid := range g.TabIds {
+		t := d.tabs[tid]
+		if t == nil {
+			continue
+		}
+		if p := d.panes[t.FocusedPaneId]; p != nil && p.isTerminal() {
+			return p.id
+		}
+		for _, id := range tabPanes(t) {
+			if p := d.panes[id]; p != nil && p.isTerminal() {
+				return p.id
+			}
+		}
+	}
+	return ""
 }
 
 // mergeTab moves every pane of tabID, keeping their layout, next to

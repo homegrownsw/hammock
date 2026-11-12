@@ -106,3 +106,31 @@ func TestGroupFolder(t *testing.T) {
 	}
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CloseGroup{CloseGroup: &pb.CloseGroup{GroupId: g}}})
 }
+
+// A tab moved to another Group takes its pane with it: the Group it left is
+// named after, and starts agents in, a terminal it still has.
+func TestMoveTabLeavesGroupItsOwnTerminal(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	stay, _ := filepath.EvalSymlinks(t.TempDir())
+	away, _ := filepath.EvalSymlinks(t.TempDir())
+	g1 := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "one"}}}))
+	g2 := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "two"}}}))
+	t1 := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}, Cwd: stay}}}}))
+	t2 := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g1, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}, Cwd: away}}}}))
+	d.mu.Lock()
+	p1, p2 := d.tabs[t1].FocusedPaneId, d.tabs[t2].FocusedPaneId
+	d.groups[g1].LastFocusedPaneId = p2
+	d.groups[g1].Folder = away
+	err := d.moveTab(t2, g2, 0)
+	last, folder := d.groups[g1].LastFocusedPaneId, d.groups[g1].Folder
+	d.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last != p1 || folder != stay {
+		t.Errorf("Group left behind: last focused %q in %q, want %q in %q", last, folder, p1, stay)
+	}
+}
