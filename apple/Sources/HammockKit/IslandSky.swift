@@ -126,8 +126,7 @@ final class IslandSky {
         // two soft glows, with a ring of rounded rays turning slowly.
         sun.name = "sun"
         sun.components.set(BillboardComponent())
-        sun.addChild(Island.disc(radius: 5.4, Island.unlit(1, 0.93, 0.6, opacity: 0.16), z: -0.3))
-        sun.addChild(Island.disc(radius: 4.0, Island.unlit(1, 0.92, 0.55, opacity: 0.35), z: -0.2))
+        sun.addChild(Island.softGlow(radius: 8, 1, 0.9, 0.55, opacity: 0.7, z: -0.3))
         for k in 0..<12 {
             let ray = ModelEntity(mesh: .generateBox(width: 0.55, height: 1.2, depth: 0.01, cornerRadius: 0.27),
                                   materials: [Island.unlit(1, 0.80, 0.30)])
@@ -160,7 +159,7 @@ final class IslandSky {
         // The moon, with a couple of craters; or, some nights, the icon.
         moon.name = "moon"
         moon.components.set(BillboardComponent())
-        moonPlain.addChild(Island.disc(radius: 3.2, Island.unlit(0.85, 0.92, 1, opacity: 0.15), z: -0.2))
+        moonPlain.addChild(Island.softGlow(radius: 5.5, 0.8, 0.88, 1, opacity: 0.45, z: -0.2))
         moonPlain.addChild(Island.disc(radius: 2.2, Island.unlit(0.97, 0.96, 0.88), z: 0))
         for (x, y, r) in [(Float(0.7), Float(0.6), Float(0.5)), (-0.8, -0.4, 0.35), (0.2, -0.9, 0.25)] {
             moonPlain.addChild(Island.disc(radius: r, Island.unlit(0.87, 0.86, 0.78), z: 0.05, at: [x, y]))

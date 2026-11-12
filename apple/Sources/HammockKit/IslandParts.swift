@@ -44,6 +44,31 @@ enum Island {
         return m
     }
 
+    /// A soft white glow fading to nothing at its edge, drawn once.
+    static let glowTexture: TextureResource? = {
+        let size = 256
+        guard let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                        colors: [CGColor(red: 1, green: 1, blue: 1, alpha: 0.9), CGColor(red: 1, green: 1, blue: 1, alpha: 0.35),
+                                                 CGColor(red: 1, green: 1, blue: 1, alpha: 0.08), CGColor(red: 1, green: 1, blue: 1, alpha: 0)] as CFArray,
+                                        locations: [0, 0.3, 0.65, 1]) else { return nil }
+        let c = CGPoint(x: size / 2, y: size / 2)
+        ctx.drawRadialGradient(gradient, startCenter: c, startRadius: 0, endCenter: c, endRadius: CGFloat(size / 2), options: [])
+        return texture(ctx.makeImage())
+    }()
+
+    /// A soft glow of `radius` behind something on a billboard (the sun, the moon).
+    static func softGlow(radius: Float, _ r: Double, _ g: Double, _ b: Double, opacity: Float, z: Float) -> Entity {
+        guard let glowTexture else { return Entity() }
+        var m = UnlitMaterial(applyPostProcessToneMap: false)
+        m.color = .init(tint: color(r, g, b), texture: .init(glowTexture))
+        m.blending = .transparent(opacity: .init(floatLiteral: opacity))
+        let plane = ModelEntity(mesh: .generatePlane(width: radius * 2, height: radius * 2), materials: [m])
+        plane.position.z = z
+        return plane
+    }
+
     /// A flat disc facing +z (towards the camera, on a billboard), `z` in
     /// front of its parent, at `at` across it.
     static func disc(radius: Float, _ material: UnlitMaterial, z: Float, at: SIMD2<Float> = .zero) -> ModelEntity {
