@@ -1023,7 +1023,14 @@ func todos(v any) string {
 	return b.String()
 }
 
-var ansi = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
+// ansi matches a terminal's escape sequences: CSI (colours, cursor moves),
+// OSC (titles, hyperlinks: their text is outside them, so it stays), DCS and
+// the other string sequences, and the rest (charset selection, keypad modes,
+// save and restore cursor…): ESC, intermediates, a final byte.
+var ansi = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]` +
+	`|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)` +
+	`|\x1b[P^_X][^\x1b]*(?:\x1b\\|$)` +
+	`|\x1b[ -/]*[0-~]`)
 
 func stripANSI(s string) string { return ansi.ReplaceAllString(s, "") }
 
