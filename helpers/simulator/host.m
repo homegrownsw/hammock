@@ -646,10 +646,34 @@ static double lit(id screen) {
     free(msg);
     return;
   }
-  ((void(*)(id, SEL, void *, BOOL, id, id))objc_msgSend)(p.hid, NSSelectorFromString(@"sendWithMessage:freeWhenDone:completionQueue:completion:"), msg, YES,
+  id hid = p.hid;
+  __weak Pane *wp = p;
+  ((void(*)(id, SEL, void *, BOOL, id, id))objc_msgSend)(hid, NSSelectorFromString(@"sendWithMessage:freeWhenDone:completionQueue:completion:"), msg, YES,
                                                         dispatch_get_main_queue(), ^(NSError *e) {
-    if (e) fprintf(stderr, "simulator-host: HID: %s\n", e.description.UTF8String);
+    if (!e) return;
+    fprintf(stderr, "simulator-host: HID: %s\n", e.description.UTF8String);
+    Pane *p = wp;
+    if (p && p.hid == hid) [self reconnectInput:p];
   });
+}
+
+// The device was booted again behind the pane's back (by Xcode, say): the
+// HID client's port died with the old boot, so every touch fails
+// (machPortInvalid). Makes a new client, and follows the new boot's screen.
+// The first touch that failed is lost; the next one goes through.
+- (void)reconnectInput:(Pane *)p {
+  p.hid = nil;
+  if (self.panes[p.pid] != p || !p.device || !booted(p.device)) return;
+  NSError *err = nil;
+  p.hid = ((id(*)(id, SEL, id, NSError **))objc_msgSend)([objc_getClass("_TtC12SimulatorKit24SimDeviceLegacyHIDClient") alloc],
+                                                         NSSelectorFromString(@"initWithDevice:error:"), p.device, &err);
+  if (!p.hid) fprintf(stderr, "simulator-host: no HID for %s: %s\n", p.udid.UTF8String, err.description.UTF8String);
+  if (p.screen && ![screensOf(p.device) containsObject:p.screen]) {
+    // The old boot's screen proxy is gone: don't message it to unregister.
+    p.callbackID = nil;
+    id screen = [self screenFor:p device:p.device];
+    if (screen) [self attach:p screen:screen];
+  }
 }
 
 // How far the picture turns: the screen's interface orientation, as the
