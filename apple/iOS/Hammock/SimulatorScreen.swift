@@ -24,6 +24,13 @@ struct SimulatorScreen: View {
     @State private var pinched = false // the drag that came with a pinch isn't a swipe
     @State private var shot: SimulatorShot? // a screenshot to share
     @State private var shooting = false
+    /// The device filling the phone, the app's bars and the status bar
+    /// hidden; a touch with three fingers shows its controls for a moment.
+    @State private var fullScreen = false
+    @State private var controls = false
+    @State private var controlsUsed = 0 // a press keeps the controls up a little longer
+    @State private var hint = false
+    @State private var threeFingered = false // nor is it a pinch
 
     private var pane: Pane? { model.panes[paneID] }
 
@@ -54,52 +61,34 @@ struct SimulatorScreen: View {
                 .frame(width: geo.size.width, height: geo.size.height)
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, fullScreen ? 0 : nil)
+        .background { if fullScreen { Color.black.ignoresSafeArea() } }
+        .ignoresSafeArea(edges: fullScreen ? .all : [])
+        .gesture(ThreeFingerTouch(began: { if fullScreen { threeFingers() } }, ended: { settle() }))
+        .overlay(alignment: .bottom) { if fullScreen { fullScreenControls } }
+        .toolbar(fullScreen ? .hidden : .automatic, for: .navigationBar, .bottomBar)
+        .statusBarHidden(fullScreen)
+        .persistentSystemOverlays(fullScreen ? .hidden : .automatic)
+        // A swipe up from the bottom is the device's own (its Home), not
+        // this app's: iOS's needs a second.
+        .defersSystemGestures(on: fullScreen ? .all : [])
+        .task(id: controlsUsed) {
+            guard controls else { return }
+            try? await Task.sleep(for: .seconds(hint ? 5 : 4))
+            withAnimation { controls = false; hint = false }
+        }
         .navigationTitle(pane?.title ?? "Simulator")
         // The system's bar, not one of our own: at the bottom of an iPhone,
         // down the side of iPhone Duo (where it leaves the device its
         // height, and keeps out of the fold).
         .toolbar {
-            ToolbarItemGroup(placement: .bottomBar) { Group {
-                Button("Home", systemImage: "house") { button("home") }
-                Button("Lock", systemImage: "lock") { button("lock") }
-                Button("Rotate Left", systemImage: "rotate.left") { model.rotateSimulator(paneID, "left") }
-                Button("Rotate Right", systemImage: "rotate.right") { model.rotateSimulator(paneID, "right") }
-                // Tap to type; hold for the software keyboard.
-                Menu {
-                    Button("Toggle Software Keyboard", systemImage: "keyboard.chevron.compact.down") { model.pressSimulatorButton(paneID, "keyboard") }
-                } label: {
-                    Label("Type", systemImage: "keyboard")
-                } primaryAction: {
-                    typing = true
-                }
-                if pane?.deviceFoldable == true {
-                    // Tap to open or close; hold for half open.
-                    let open = (pane?.deviceHinge ?? 0) > 120
-                    Menu {
-                        Button("Open Phone", systemImage: "book") { model.foldSimulator(paneID, "open") }
-                        Button("Half Open Phone", systemImage: "laptopcomputer") { model.foldSimulator(paneID, "half") }
-                        Button("Close Phone", systemImage: "book.closed") { model.foldSimulator(paneID, "closed") }
-                    } label: {
-                        Label(open ? "Close Phone" : "Open Phone", systemImage: open ? "book.closed" : "book")
-                    } primaryAction: {
-                        model.toggleFold(paneID)
-                    }
-                }
-            }
-            .disabled(!canDrive) }
+            ToolbarItemGroup(placement: .bottomBar) { Group { deviceButtons }.disabled(!canDrive) }
         }
-        // A screenshot in the device's pixels, to save to Photos, copy or send.
+        // Full screen, and a screenshot to share.
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Share Screenshot", systemImage: "camera") {
-                    shooting = true
-                    Task {
-                        if let png = await model.simulatorScreenshot(paneID), let img = UIImage(data: png) { shot = SimulatorShot(image: img) }
-                        shooting = false
-                    }
-                }
-                .disabled(shooting)
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") { enterFullScreen() }
+                screenshotButton
             }
         }
         .sheet(item: $shot) { ActivitySheet(items: [$0.image]).ignoresSafeArea() }
@@ -119,6 +108,104 @@ struct SimulatorScreen: View {
             }
             Button("Cancel", role: .cancel) { text = "" }
         }
+    }
+
+    /// Home, Lock, rotation, typing and folding: in the bottom bar, and in
+    /// full screen's controls.
+    @ViewBuilder private var deviceButtons: some View {
+        Button("Home", systemImage: "house") { button("home") }
+        Button("Lock", systemImage: "lock") { button("lock") }
+        Button("Rotate Left", systemImage: "rotate.left") { model.rotateSimulator(paneID, "left") }
+        Button("Rotate Right", systemImage: "rotate.right") { model.rotateSimulator(paneID, "right") }
+        // Tap to type; hold for the software keyboard.
+        Menu {
+            Button("Toggle Software Keyboard", systemImage: "keyboard.chevron.compact.down") { model.pressSimulatorButton(paneID, "keyboard") }
+        } label: {
+            Label("Type", systemImage: "keyboard")
+        } primaryAction: {
+            typing = true
+        }
+        if pane?.deviceFoldable == true {
+            // Tap to open or close; hold for half open.
+            let open = (pane?.deviceHinge ?? 0) > 120
+            Menu {
+                Button("Open Phone", systemImage: "book") { model.foldSimulator(paneID, "open") }
+                Button("Half Open Phone", systemImage: "laptopcomputer") { model.foldSimulator(paneID, "half") }
+                Button("Close Phone", systemImage: "book.closed") { model.foldSimulator(paneID, "closed") }
+            } label: {
+                Label(open ? "Close Phone" : "Open Phone", systemImage: open ? "book.closed" : "book")
+            } primaryAction: {
+                model.toggleFold(paneID)
+            }
+        }
+    }
+
+    /// A screenshot in the device's pixels, to save to Photos, copy or send.
+    private var screenshotButton: some View {
+        Button("Share Screenshot", systemImage: "camera") {
+            shooting = true
+            Task {
+                if let png = await model.simulatorScreenshot(paneID), let img = UIImage(data: png) { shot = SimulatorShot(image: img) }
+                shooting = false
+            }
+        }
+        .disabled(shooting)
+    }
+
+    /// Full screen's controls, floating over the device while shown: the
+    /// way out, then what the bars had.
+    @ViewBuilder private var fullScreenControls: some View {
+        if controls {
+            VStack(spacing: 10) {
+                if hint {
+                    Text("Touch with three fingers to show these again.")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .glassEffect(.regular, in: Capsule())
+                }
+                HStack(spacing: 2) {
+                    Button("Exit Full Screen", systemImage: "arrow.down.right.and.arrow.up.left") {
+                        withAnimation { fullScreen = false; controls = false; hint = false }
+                    }
+                    Divider().frame(height: 24).padding(.horizontal, 4)
+                    Group { deviceButtons }.disabled(!canDrive)
+                    screenshotButton
+                }
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .buttonStyle(.borderless)
+                .frame(minHeight: 44)
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .simultaneousGesture(TapGesture().onEnded { controlsUsed += 1 })
+            }
+            .padding(.bottom, 24)
+            .padding(.horizontal, 12)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+    }
+
+    private func enterFullScreen() {
+        withAnimation {
+            fullScreen = true
+            controls = true
+            hint = true
+        }
+        controlsUsed += 1
+    }
+
+    /// Three fingers down shows or hides full screen's controls; the touch
+    /// that came with them isn't a tap on the device.
+    private func threeFingers() {
+        pinched = true
+        threeFingered = true
+        withAnimation { controls.toggle(); hint = false }
+        controlsUsed += 1
+    }
+
+    private func settle() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pinched = false; threeFingered = false }
     }
 
     /// Video while this pane is showing; a stream that fails is replaced.
@@ -227,7 +314,7 @@ struct SimulatorScreen: View {
                     // Past the drag's own end, whichever comes first.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pinched = false }
                 }
-                guard let p = pinch, abs(g.magnification - 1) > 0.05 else { return }
+                guard let p = pinch, !threeFingered, abs(g.magnification - 1) > 0.05 else { return }
                 let ms = Int(Date.now.timeIntervalSince(p.start) * 1000)
                 Task {
                     _ = await model.simulatorCall(paneID, "pinch", ["x": p.anchor.x * points.width, "y": p.anchor.y * points.height,
@@ -240,6 +327,38 @@ struct SimulatorScreen: View {
         Task { _ = await model.simulatorCall(paneID, "button", ["name": name]) }
     }
 
+}
+
+/// Three fingers touching (not lifted): a UIKit recognizer, since SwiftUI's
+/// own gestures don't count fingers. Recognized alongside the device's tap,
+/// swipe and pinch, which it marks to be ignored.
+private struct ThreeFingerTouch: UIGestureRecognizerRepresentable {
+    let began: () -> Void
+    let ended: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let g = UILongPressGestureRecognizer()
+        g.numberOfTouchesRequired = 3
+        g.minimumPressDuration = 0
+        g.allowableMovement = 40
+        g.cancelsTouchesInView = false
+        g.delegate = context.coordinator
+        return g
+    }
+
+    func handleUIGestureRecognizerAction(_ g: UILongPressGestureRecognizer, context: Context) {
+        switch g.state {
+        case .began: began()
+        case .ended, .cancelled, .failed: ended()
+        default: break
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
 }
 
 /// A simulator screenshot waiting to be shared.
