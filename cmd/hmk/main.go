@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/homegrownsw/hammock/internal/client"
@@ -1245,7 +1246,7 @@ func printWorld(w *world) {
 					focus = "*"
 				}
 				if p.Kind == pb.PaneKind_PANE_KIND_BROWSER {
-					printfSafe("   %s%s  %-24s browser  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.Url, status)
+					printfSafe("   %s%s  %s browser  %s%s\n", focus, p.Id, cell(p.Title, 24), p.Url, status)
 					continue
 				}
 				if ed := p.GetEditor(); p.Kind == pb.PaneKind_PANE_KIND_EDITOR {
@@ -1255,18 +1256,18 @@ func printWorld(w *world) {
 					if ed.GetConflict() {
 						status += "  (changed on disk)"
 					}
-					printfSafe("   %s%s  %-24s editor  %s%s\n", focus, p.Id, truncate(p.Title, 24), ed.GetPath(), status)
+					printfSafe("   %s%s  %s editor  %s%s\n", focus, p.Id, cell(p.Title, 24), ed.GetPath(), status)
 					continue
 				}
 				if p.Kind == pb.PaneKind_PANE_KIND_DIFF {
-					printfSafe("   %s%s  %-24s diff  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.GetDiff().GetRepo(), status)
+					printfSafe("   %s%s  %s diff  %s%s\n", focus, p.Id, cell(p.Title, 24), p.GetDiff().GetRepo(), status)
 					continue
 				}
 				if p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {
-					printfSafe("   %s%s  %-24s simulator  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.DeviceUdid, status)
+					printfSafe("   %s%s  %s simulator  %s%s\n", focus, p.Id, cell(p.Title, 24), p.DeviceUdid, status)
 					continue
 				}
-				printfSafe("   %s%s  %-24s %dx%d  %s%s\n", focus, p.Id, truncate(p.Title, 24), p.Cols, p.Rows, p.Cwd, status)
+				printfSafe("   %s%s  %s %dx%d  %s%s\n", focus, p.Id, cell(p.Title, 24), p.Cols, p.Rows, p.Cwd, status)
 			}
 		}
 	}
@@ -1362,11 +1363,15 @@ func sendFlags(args []string) (text string, keys []string, enter bool, err error
 	return text, keys, enter, nil
 }
 
-func truncate(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n-1]) + "…"
+// cell is s for a column n terminal cells wide: cut short with "…", or
+// padded with spaces, by how wide it shows (a CJK character or an emoji
+// takes two cells), not by its count of characters as fmt's %-24s does.
+func cell(s string, n int) string {
+	s = termSafe(s) // as printed, so a control character counts as the one cell its U+FFFD takes
+	if ansi.StringWidth(s) > n {
+		s = ansi.Truncate(s, n, "…")
 	}
-	return s
+	return s + strings.Repeat(" ", max(0, n-ansi.StringWidth(s)))
 }
 
 // grantText is what a permission request asks: the daemon's headline (an

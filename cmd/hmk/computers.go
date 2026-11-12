@@ -98,7 +98,7 @@ func printComputers(w *world) {
 		if c.Icon != "" {
 			icon = "  icon " + c.Icon
 		}
-		printfSafe("%s%s  %-20s %-12s %s  %s  %s%s\n", active, c.UserId, truncate(c.Name, 20), truncate(cmp.Or(c.Model, c.Os), 12), c.Tint, c.Fingerprint, state, icon)
+		printfSafe("%s%s  %s %s %s  %s  %s%s\n", active, c.UserId, cell(c.Name, 20), cell(cmp.Or(c.Model, c.Os), 12), c.Tint, c.Fingerprint, state, icon)
 	}
 	fmt.Println("(* the one used last: it notifies)")
 	if w.computers.Note != "" {
