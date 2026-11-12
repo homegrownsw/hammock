@@ -986,7 +986,10 @@ func runCommand(args []string) error {
 		if len(args) < 3 {
 			return fmt.Errorf("usage: hmk approve ID drive|view|decline")
 		}
-		role := map[string]pb.Role{"drive": pb.Role_ROLE_DRIVER, "view": pb.Role_ROLE_VIEWER, "decline": pb.Role_ROLE_UNSPECIFIED}[args[2]]
+		role, ok := map[string]pb.Role{"drive": pb.Role_ROLE_DRIVER, "view": pb.Role_ROLE_VIEWER, "decline": pb.Role_ROLE_UNSPECIFIED}[strings.ToLower(args[2])]
+		if !ok {
+			return fmt.Errorf("hmk approve: %q isn't drive, view or decline", args[2])
+		}
 		id := args[1]
 		for _, j := range w.joins {
 			if strings.HasPrefix(j.Id, id) {
