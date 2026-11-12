@@ -439,7 +439,7 @@ struct AppearanceSettings: View {
                 }
                 .settingAnchor("appearance.cursor")
                 PictureToggle(label: "Blink", caption: "Programs can override this.",
-                              isOn: Binding(get: { config.cursorBlink }, set: { config.set("cursor-style-blink", $0 ? nil : "false") })) {
+                              isOn: Binding(get: { config.cursorBlink }, set: { config.setOverGhostty("cursor-style-blink", $0 ? nil : "false", hammockDefault: "true") })) {
                     CursorPicture(style: config.cursorStyleName, blink: config.cursorBlink)
                 }
                 .settingAnchor("appearance.blink")
@@ -593,7 +593,7 @@ private struct TerminalSettings: View {
         Form {
             SettingsPaneHeader(tab: .terminal)
             Section {
-                Picker("Font", selection: Binding(get: { config.fontFamily ?? "" }, set: { set("font-family", $0.isEmpty ? nil : $0) })) {
+                Picker("Font", selection: Binding(get: { config.fontFamily ?? "" }, set: { set("font-family", $0.isEmpty ? nil : $0, hammockDefault: "") })) {
                     Text("SF Mono").tag("")
                     Divider()
                     ForEach(families, id: \.self) { Text($0).tag($0) }
@@ -604,14 +604,14 @@ private struct TerminalSettings: View {
                 }
                 .settingAnchor("terminal.size")
                 LabeledContent("Line spacing") {
-                    Stepper(lineSpacingLabel, value: Binding(get: { config.cellHeightPercent ?? 0 }, set: { config.set("adjust-cell-height", $0 == 0 ? nil : "\(Int($0))%") }), in: -20...100, step: 5)
+                    Stepper(lineSpacingLabel, value: Binding(get: { config.cellHeightPercent ?? 0 }, set: { config.setOverGhostty("adjust-cell-height", $0 == 0 ? nil : "\(Int($0))%", hammockDefault: "0%") }), in: -20...100, step: 5)
                 }
                 .settingAnchor("terminal.linespacing")
-                Toggle("Thicken text", isOn: Binding(get: { config.fontThicken }, set: { set("font-thicken", $0 ? "true" : nil) }))
+                Toggle("Thicken text", isOn: Binding(get: { config.fontThicken }, set: { set("font-thicken", $0 ? "true" : nil, hammockDefault: "false") }))
                     .settingAnchor("terminal.thicken")
                 Toggle("Copy text when selected", isOn: Binding(get: { config.copyOnSelect }, set: { config.set("copy-on-select", $0 ? "true" : nil) }))
                     .settingAnchor("terminal.copy")
-                Toggle("Ask before pasting text that could run commands", isOn: Binding(get: { config.pasteProtection }, set: { config.set("clipboard-paste-protection", $0 ? nil : "false") }))
+                Toggle("Ask before pasting text that could run commands", isOn: Binding(get: { config.pasteProtection }, set: { config.setOverGhostty("clipboard-paste-protection", $0 ? nil : "false", hammockDefault: "true") }))
                     .settingAnchor("terminal.paste")
                 Text("Unset keys follow your Ghostty config.")
                     .font(.callout)
@@ -631,6 +631,12 @@ private struct TerminalSettings: View {
     private func set(_ key: String, _ value: String?) {
         UserDefaults.standard.removeObject(forKey: "terminalFontZoom")
         config.set(key, value)
+    }
+
+    /// A key that falls back to Ghostty's config (AppConfig.setOverGhostty).
+    private func set(_ key: String, _ value: String?, hammockDefault: String) {
+        UserDefaults.standard.removeObject(forKey: "terminalFontZoom")
+        config.setOverGhostty(key, value, hammockDefault: hammockDefault)
     }
 }
 

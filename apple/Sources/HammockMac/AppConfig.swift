@@ -117,6 +117,9 @@ final class AppConfig {
     private(set) var fontSize: Double?
     /// The font comes from Ghostty's config (not set in Hammock's).
     private(set) var fontFromGhostty = false
+    /// The keys Ghostty's config sets: removing one of them from Hammock's
+    /// brings Ghostty's value back (see setOverGhostty).
+    @ObservationIgnored private var ghosttyKeys: Set<String> = []
     private(set) var fontThicken = false
     /// terminal-renderer: "metal" (the default) draws terminal panes with
     /// Metal (#18); "coretext" with CoreGraphics, as before.
@@ -352,6 +355,7 @@ final class AppConfig {
         let ours = saved.merging(Self.launchOverrides) { _, arg in arg }
         var ghostty: [String: String] = [:]
         for url in ghosttyConfigs { ghostty.merge(Self.read(url)) { first, _ in first } }
+        ghosttyKeys = Set(ghostty.keys)
 
         appearance = ours["appearance"].flatMap(Appearance.init(rawValue:)) ?? .auto
         // Empty values count as unset, as hmkd (hammockconfig) reads them.
@@ -558,6 +562,13 @@ final class AppConfig {
     }
 
     func setCursorStyle(_ name: String) { set("cursor-style", name) }
+
+    /// Sets a key that falls back to Ghostty's config, nil being Hammock's
+    /// default. That's written out as `hammockDefault` while Ghostty's config
+    /// sets the key, since removing it would bring Ghostty's value back.
+    func setOverGhostty(_ key: String, _ value: String?, hammockDefault: String) {
+        set(key, value ?? (ghosttyKeys.contains(key) ? hammockDefault : nil))
+    }
 
     /// `dark:A,light:B` (either order) or a single name for both.
     static func themePair(_ value: String?) -> (light: String, dark: String) {
