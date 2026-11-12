@@ -341,6 +341,7 @@ func (d *Daemon) reopenInLayout(t *pb.Tab, ct *closedTab, p *pane) error {
 				p.kill()
 				delete(d.panes, p.id)
 				d.persist(d.store.DeletePane(p.id))
+				p.discardFiles()
 				return errors.New("its tab has no place for it")
 			}
 		}

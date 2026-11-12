@@ -245,7 +245,7 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 	}
 	args = append(args, "--")
 	args = append(args, command...)
-	logPath := filepath.Join(p.d.cfg.Dir, "logs", "holder-"+p.id+".log")
+	logPath := p.holderLogPath()
 	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	var logAt int64
 	if err == nil {
@@ -1103,17 +1103,23 @@ func (p *pane) refreshProcesses() bool {
 	return changed
 }
 
+// holderLogPath is the file the pane's holders write their stderr to.
+func (p *pane) holderLogPath() string {
+	return filepath.Join(p.d.cfg.Dir, "logs", "holder-"+p.id+".log")
+}
+
 func (p *pane) snapshotPath() string {
 	return filepath.Join(p.d.cfg.Dir, "scrollback", p.id+".vt")
 }
 
 // discardFiles stops a pane closed for good (killed, and out of d.panes)
-// keeping anything: a log pane's log, and its saved screen. Reopen Closed
-// starts a new pane, needing none of them.
+// keeping anything: a log pane's log, its saved screen and its holders'
+// log. Reopen Closed starts a new pane, needing none of them.
 func (p *pane) discardFiles() {
 	if p.log != nil {
 		p.log.close(true)
 	}
+	_ = os.Remove(p.holderLogPath())
 	_ = os.Remove(p.snapshotPath())
 	_ = os.Remove(p.snapshotPath() + ".offset")
 }

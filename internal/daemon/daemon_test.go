@@ -841,6 +841,49 @@ func TestReplacePane(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CloseGroup{CloseGroup: &pb.CloseGroup{GroupId: g}}})
 }
 
+// A pane closed for good takes its holder log with it, and a restarted
+// daemon removes those of panes it no longer has (only holder-<pane>.log).
+func TestHolderLogsGo(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "g"}}}))
+	tb := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	kept := d.panes[d.tabs[tb].FocusedPaneId]
+	d.mu.Unlock()
+	closed := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{SplitPaneId: kept.id, Spec: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	closedLog := filepath.Join(dir, "logs", "holder-"+closed+".log")
+	if !fileExists(closedLog) || !fileExists(kept.holderLogPath()) {
+		t.Fatal("no holder logs")
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: closed}}})
+	if fileExists(closedLog) {
+		t.Fatal("a closed pane's holder log is still there")
+	}
+	d.Shutdown()
+
+	logs := filepath.Join(dir, "logs")
+	stray := filepath.Join(logs, "holder-"+newID("pn")+".log")
+	others := []string{filepath.Join(logs, "holder-notapane.log"), filepath.Join(logs, "hmkd.log")}
+	for _, f := range append(others, stray) {
+		os.WriteFile(f, []byte("x\n"), 0o600)
+	}
+	d = startDaemon(t, dir)
+	defer d.Shutdown()
+	if fileExists(stray) {
+		t.Error("a gone pane's holder log survived a restart")
+	}
+	if !fileExists(kept.holderLogPath()) {
+		t.Error("a restored pane's holder log was removed")
+	}
+	for _, f := range others {
+		if !fileExists(f) {
+			t.Errorf("%s was removed", filepath.Base(f))
+		}
+	}
+}
+
 // A log pane turned into another kind stops keeping its log, and its file
 // goes, as when it closes.
 func TestReplaceLogPane(t *testing.T) {

@@ -336,8 +336,27 @@ func (d *Daemon) restore() error {
 		}
 	}
 	d.endStrayHolders()
+	d.pruneHolderLogs()
 	d.restoreAttention()
 	return nil
+}
+
+// pruneHolderLogs removes the holder logs of panes that are no more (closed
+// before panes' logs went with them, or while the daemon couldn't remove
+// them): only holder-<pane id>.log files. Callers hold d.mu, with the
+// restored panes in d.panes.
+func (d *Daemon) pruneHolderLogs() {
+	dir := filepath.Join(d.cfg.Dir, "logs")
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		id, ok := strings.CutPrefix(e.Name(), "holder-")
+		if !ok || !e.Type().IsRegular() {
+			continue
+		}
+		if id, ok = strings.CutSuffix(id, ".log"); ok && validID(id, "pn") && d.panes[id] == nil {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 // restoreHolder reconnects a restored terminal pane to its holder, or
@@ -736,6 +755,7 @@ func (d *Daemon) splitPane(targetID string, dir pb.Split_Direction, spec *pb.Pan
 		p.kill()
 		delete(d.panes, p.id)
 		d.persist(d.store.DeletePane(p.id))
+		p.discardFiles()
 		return nil, fmt.Errorf("pane %q is not in its tab's layout", targetID)
 	}
 	d.noteFocus(t.Id, targetID)
@@ -824,9 +844,7 @@ func (d *Daemon) startPane(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 		p.log = d.newLogPane(info.Id)
 	}
 	if err := p.spawnAsync(nil); err != nil {
-		if p.log != nil {
-			p.log.close(true)
-		}
+		p.discardFiles()
 		return nil, err
 	}
 	d.panes[info.Id] = p
