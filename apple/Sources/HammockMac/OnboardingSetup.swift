@@ -48,7 +48,8 @@ struct DaemonStep: View {
     /// Off, and can't be turned on, while Hammock runs from outside
     /// Applications (AppMover): the login item would go when it moves.
     @State private var wantDaemon = !AppMover.provisional
-    @State private var wantCLI = true
+    /// Likewise: a link into a copy that's about to move would break.
+    @State private var wantCLI = !AppMover.provisional
     @State private var daemonOn = DaemonService.isEnabled
     @State private var needsApproval = DaemonService.needsApproval
     @State private var cliPath = CommandLineTool.installedPath
@@ -83,7 +84,7 @@ struct DaemonStep: View {
                         if AppMover.provisional {
                             banner(tint: Brand.needsYou) {
                                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.white, Brand.needsYou)
-                                Text("Hammock isn't in your Applications folder, so it can't start at login from where it is.")
+                                Text("Hammock isn't in your Applications folder, so it can't start at login or install **hmk** from where it is.")
                                     .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 8)
                                 Button("Move to Applications") { AppMover.moveAndRelaunch() }
@@ -108,7 +109,7 @@ struct DaemonStep: View {
                         iconBackground: Color(red: 0.12, green: 0.114, blue: 0.106),
                         title: Text("Install the \(Text("hmk").font(.system(size: 14, weight: .semibold, design: .monospaced))) command"),
                         text: Text("Drive Hammock from any shell or script: \(Self.mono("hmk ls")), \(Self.mono("hmk tab new")), \(Self.mono("hmk send"))…"),
-                        detail: cliDetail, isOn: $wantCLI) {
+                        detail: cliDetail, isOn: $wantCLI, disabled: AppMover.provisional) {
                         if wantCLI, let hint = pathHint {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Installed to **\(tilde(hint.dir))**, which isn't on your PATH yet. Add this line to **\(hint.file)**:")
@@ -177,7 +178,9 @@ struct DaemonStep: View {
         daemonOn = DaemonService.isEnabled
         needsApproval = DaemonService.needsApproval
         do {
-            if wantCLI, cliPath == nil {
+            if AppMover.provisional {
+                // Left as it is (the switch is off and disabled there).
+            } else if wantCLI, cliPath == nil {
                 let link = try CommandLineTool.install()
                 cliPath = link
                 pathHint = PathHint.check(link)

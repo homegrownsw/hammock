@@ -484,6 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppConfig.shared.applyAppearance()
         NSApp.activate()
         guard AppMover.offerIfNeeded() else { return } // moving: this copy quits
+        AppMover.finishMove()
         Notifier.shared.setUp()
         AppConfig.shared.followUsageChoice()
         DebugSnapshot.scheduleIfRequested()

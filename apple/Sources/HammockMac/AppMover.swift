@@ -31,7 +31,20 @@ enum AppMover {
         if env["HMK_DEBUG_SNAPSHOT"] != nil || UserDefaults.standard.bool(forKey: dontAskKey) { return false }
         if env["HMK_MOVE_PROMPT"] == "1" { return true }
         guard Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil else { return false }
-        return !AppLocation.isInApplications(Bundle.main.bundlePath)
+        return !AppLocation.isInApplications(originalURL.path)
+    }
+
+    /// The copy that relaunched after moving (`--moved`): Not Now's switch
+    /// was off, so the daemon's login item is registered now.
+    static let movedArgument = "--moved-to-applications"
+
+    /// After a move: register the login item a copy outside Applications
+    /// couldn't (once onboarding's done; onboarding asks itself).
+    static func finishMove() {
+        guard CommandLine.arguments.contains(movedArgument),
+              UserDefaults.standard.bool(forKey: Onboarding.completedKey),
+              !DaemonService.isEnabled, !DaemonService.needsApproval else { return }
+        try? DaemonService.setEnabled(true)
     }
 
     /// At launch: asks, then either starts the app here or moves it and quits
@@ -45,10 +58,14 @@ enum AppMover {
         alert.informativeText = "\(appName) is running from \(whereItIs). From there it can't keep your terminals running in the background or update itself. \(appName) can move itself to your Applications folder and open again from there."
         alert.addButton(withTitle: "Move to Applications")
         alert.addButton(withTitle: "Not Now")
-        alert.showsSuppressionButton = true
+        // Somewhere Hammock could live (not a disk image or a translocated
+        // copy): Don't ask again makes it home.
+        let canStay = diskImage == nil && !AppLocation.isTranslocated(Bundle.main.bundlePath)
+        alert.showsSuppressionButton = canStay
         alert.suppressionButton?.title = "Don't ask again"
-        if alert.runModal() == .alertFirstButtonReturn, moveAndRelaunch() { return false }
-        if alert.suppressionButton?.state == .on {
+        let move = alert.runModal() == .alertFirstButtonReturn
+        if move, moveAndRelaunch() { return false }
+        if !move, canStay, alert.suppressionButton?.state == .on {
             UserDefaults.standard.set(true, forKey: dontAskKey)
         } else {
             provisional = !AppLocation.isInApplications(Bundle.main.bundlePath)
@@ -63,6 +80,10 @@ enum AppMover {
     static func moveAndRelaunch() -> Bool {
         do {
             let dest = try install()
+            // Started from this copy (onboarding's Move, after launch): asked
+            // to exit, panes kept, so the new copy starts its own and the
+            // disk image isn't held open.
+            if deferredStart == nil, provisional { AppModelRegistry.shared?.shutdownDaemon() }
             relaunch(dest)
             return true
         } catch Cancelled.cancelled {
@@ -91,13 +112,14 @@ enum AppMover {
         let path = originalURL.path
         if diskImage != nil { return "its disk image" }
         if AppLocation.isInDownloads(path) { return "your Downloads folder" }
-        return "“\((path as NSString).deletingLastPathComponent.replacingOccurrences(of: NSHomeDirectory(), with: "~"))”"
+        return "“\(((path as NSString).deletingLastPathComponent as NSString).abbreviatingWithTildeInPath)”"
     }
 
     /// The disk image the app is on: a read-only volume under /Volumes.
     private static var diskImage: String? {
-        guard let volume = AppLocation.volume(of: Bundle.main.bundlePath),
-              (try? Bundle.main.bundleURL.resourceValues(forKeys: [.volumeIsReadOnlyKey]))?.volumeIsReadOnly == true else { return nil }
+        let original = originalURL
+        guard let volume = AppLocation.volume(of: original.path),
+              (try? original.resourceValues(forKeys: [.volumeIsReadOnlyKey]))?.volumeIsReadOnly == true else { return nil }
         return volume
     }
 
@@ -125,7 +147,7 @@ enum AppMover {
         // A copy there already: open it, or (an older one) ask first.
         var replacing: URL?
         for copy in [system, user] where fm.fileExists(atPath: copy.path) {
-            let installed = NSDictionary(contentsOf: copy.appendingPathComponent("Contents/Info.plist"))?["CFBundleVersion"] as? String ?? ""
+            let installed = NSDictionary(contentsOf: copy.appendingPathComponent("Contents/Info.plist"))?["CFBundleVersion"] as? String
             switch AppLocation.existing(installed: installed, running: running) {
             case .none: break
             case .useIt: return copy
@@ -146,7 +168,9 @@ enum AppMover {
         }
 
         if let replacing {
-            try copy(to: replacing, privileged: !fm.isWritableFile(atPath: replacing.deletingLastPathComponent().path))
+            // An old copy someone else owns can't be removed without a password,
+            // even from a folder this user can write to.
+            do { try copy(to: replacing, privileged: false) } catch { try copy(to: replacing, privileged: true) }
             trashOriginal()
             return replacing
         }
@@ -171,11 +195,12 @@ enum AppMover {
     /// quarantine, so the copy doesn't run translocated too.
     private static func copy(to dest: URL, privileged: Bool) throws {
         let src = Bundle.main.bundleURL.path
-        let script = "/bin/rm -rf \(shq(dest.path)) && /usr/bin/ditto \(shq(src)) \(shq(dest.path)) && /usr/bin/xattr -dr com.apple.quarantine \(shq(dest.path)); test -d \(shq(dest.path))"
+        let script = "/bin/rm -rf \(shq(dest.path)) && /usr/bin/ditto \(shq(src)) \(shq(dest.path)) && { /usr/bin/xattr -dr com.apple.quarantine \(shq(dest.path)) || true; }"
         if privileged {
             let escaped = script.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
             var error: NSDictionary?
             NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges")?.executeAndReturnError(&error)
+            if (error?[NSAppleScript.errorNumber] as? Int) == -128 { throw Cancelled.cancelled }
             if let error { throw Failed(errorDescription: error[NSAppleScript.errorMessage] as? String ?? "The copy didn't finish.") }
             return
         }
@@ -206,8 +231,11 @@ enum AppMover {
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", """
             while /bin/kill -0 "$1" 2>/dev/null; do /bin/sleep 0.2; done
-            /usr/bin/open "$2"
-            [ -n "$3" ] && /usr/bin/hdiutil detach "$3" -quiet
+            /usr/bin/open "$2" --args \(movedArgument)
+            # Only a mounted disk image, never a read-only drive.
+            if [ -n "$3" ] && /usr/bin/hdiutil info | /usr/bin/awk -F'\t' -v v="$3" '$NF == v { f = 1 } END { exit !f }'; then
+              /usr/bin/hdiutil detach "$3" -quiet
+            fi
             exit 0
             """, "sh", String(getpid()), dest.path, diskImage ?? ""]
         p.standardOutput = FileHandle.nullDevice

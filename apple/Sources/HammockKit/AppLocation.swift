@@ -35,7 +35,8 @@ public enum AppLocation {
     /// What to do about a copy already in Applications, by build number
     /// (CFBundleVersion, which only goes up).
     public enum Existing: Equatable {
-        /// Nothing there: copy this one.
+        /// Nothing there, or a copy too broken to read its Info.plist:
+        /// copy this one over it.
         case none
         /// The same build or a newer one: open that instead.
         case useIt
