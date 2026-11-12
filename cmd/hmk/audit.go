@@ -9,14 +9,25 @@ import (
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
+// auditCount is how many rows `hmk audit [N]` asks for: 30 by default, and
+// N must be a whole number of at least 1.
+func auditCount(args []string) (int, error) {
+	if len(args) == 0 {
+		return 30, nil
+	}
+	n, err := strconv.Atoi(args[0])
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("usage: hmk audit [N]: N is how many to show, 1 or more")
+	}
+	return n, nil
+}
+
 // runAudit prints recent activity (the audit log) in words, newest first:
 // what agents, devices and guests did through Hammock, and permissions.
 func runAudit(args []string) error {
-	n := 30
-	if len(args) > 0 {
-		if v, err := strconv.Atoi(args[0]); err == nil {
-			n = v
-		}
+	n, err := auditCount(args)
+	if err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
