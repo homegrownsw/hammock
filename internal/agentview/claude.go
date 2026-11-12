@@ -406,7 +406,7 @@ func (c *Claude) userText(id, s string, imgs []*pb.AgentImage, ms int64) (out []
 		// A background task (a subagent, a command) reporting back: Claude
 		// Code sends it as a user message, but you didn't write it.
 		return c.taskNotification(id, t, ms)
-	case strings.HasPrefix(t, "<") && strings.Contains(t, "</") && !strings.Contains(t, "\n\n"):
+	case injectedOnly(t):
 		return nil // system-injected reminders and caveats
 	}
 	if t == "" && len(imgs) == 0 {
@@ -418,6 +418,32 @@ func (c *Claude) userText(id, s string, imgs []*pb.AgentImage, ms int64) (out []
 	c.turn = id
 	c.mentions(t)
 	return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_USER, TimeUnixMs: ms, Text: t, Images: imgs, TurnId: id})
+}
+
+// injectedTag opens an element of the kind Claude Code (or a hook, or an
+// IDE) adds to a user message: <system-reminder>, <local-command-caveat>,
+// <ide_selection>. Their names have a hyphen or underscore, as what people
+// type in angle brackets mostly doesn't (<Button>, <div>).
+var injectedTag = regexp.MustCompile(`^<([a-z][a-z0-9]*(?:[-_][a-z0-9]+)+)(?:\s[^<>]*)?>`)
+
+// injectedOnly reports whether t is nothing but injected elements, each
+// closed by its own name, with only space between them: text around one, or
+// a tag that isn't closed, is something you typed.
+func injectedOnly(t string) bool {
+	n := 0
+	for t = strings.TrimSpace(t); t != ""; t = strings.TrimSpace(t) {
+		m := injectedTag.FindStringSubmatch(t)
+		if m == nil {
+			return false
+		}
+		end := strings.Index(t, "</"+m[1]+">")
+		if end < 0 {
+			return false
+		}
+		t = t[end+len("</"+m[1]+">"):]
+		n++
+	}
+	return n > 0
 }
 
 var (
