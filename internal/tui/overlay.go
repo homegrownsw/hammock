@@ -926,6 +926,40 @@ type field struct {
 	label, value string
 	cursor       int  // in runes
 	fresh        bool // prefilled and untouched: shown selected, replaced by typing
+	off          int  // first rune shown: a value wider than the field scrolls to keep the cursor in view
+}
+
+// window returns the part of the value that fits w cells, scrolled so the
+// cursor (and a cell for it at the end) stays in view, and the cursor's
+// column in it.
+func (f *field) window(w int) (string, int) {
+	r := []rune(f.value)
+	f.cursor = max(0, min(f.cursor, len(r)))
+	f.off = max(0, min(f.off, f.cursor))
+	for f.off < f.cursor && textWidth(string(r[f.off:f.cursor])) > w-1 {
+		f.off++
+	}
+	// Scroll back when the text after off no longer fills the field
+	// (deleted from the end, or the cursor moved home).
+	for f.off > 0 && textWidth(string(r[f.off-1:])) <= w-1 {
+		f.off--
+	}
+	return string(r[f.off:]), textWidth(string(r[f.off:f.cursor]))
+}
+
+// runeAt is the rune index under column col of the field as last drawn.
+func (f *field) runeAt(col int) int {
+	r := []rune(f.value)
+	i, x := min(f.off, len(r)), 0
+	for i < len(r) {
+		cw := textWidth(string(r[i]))
+		if x+cw > col {
+			break
+		}
+		x += cw
+		i++
+	}
+	return i
 }
 
 type dialog struct {
@@ -1083,9 +1117,10 @@ func (d *dialog) draw(a *App) {
 		if f.fresh && i == d.focus {
 			vc.BG = mix(a.th.bg, a.th.accent, 0.45)
 		}
-		s.Text(fx+1, y, fw-2, f.value, vc)
+		shown, cx := f.window(fw - 2)
+		s.Text(fx+1, y, fw-2, shown, vc)
 		if i == d.focus {
-			s.Cursor(fx+1+textWidth(string([]rune(f.value)[:f.cursor])), y, true)
+			s.Cursor(fx+1+cx, y, true)
 		}
 		y += 2
 	}
@@ -1199,7 +1234,7 @@ func (d *dialog) mouse(a *App, m mouseEv) {
 			if m.y == y+2*i {
 				d.focus = i
 				f := d.fields[i]
-				f.cursor = max(0, min(len([]rune(f.value)), m.x-(r.x+d.labelWidth()+5)))
+				f.cursor = f.runeAt(max(0, m.x-(r.x+d.labelWidth()+5)))
 			}
 		}
 	}
