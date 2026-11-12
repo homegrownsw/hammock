@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# The repo's About section on GitHub (description, website, topics), kept in marketing/github/.
+#
+#   just github-about        push the files to GitHub: what's there afterwards is exactly what the files say
+#   just github-about-pull   overwrite the files with what GitHub has, for taking in a change made on the website
+#
+# description.txt and homepage.txt are one line each; topics.txt is one topic per line (# starts a comment).
+
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+dir=marketing/github
+repo=homegrownsw/hammock
+
+topics() { sed -e 's/#.*//' -e 's/[[:space:]]//g' "$dir/topics.txt" | grep -v '^$' || true; }
+
+case "${1:-}" in
+  push)
+    description=$(tr -s '\n' ' ' < "$dir/description.txt" | sed -e 's/^ *//' -e 's/ *$//')
+    homepage=$(tr -d '[:space:]' < "$dir/homepage.txt")
+    fail=0
+    # GitHub's limits: a description of 350 characters, 20 topics of lowercase letters, digits and hyphens.
+    if (( ${#description} > 350 )); then echo >&2 "description.txt: ${#description} characters, 350 at most."; fail=1; fi
+    if (( $(topics | wc -l) > 20 )); then echo >&2 "topics.txt: $(topics | wc -l) topics, 20 at most."; fail=1; fi
+    while read -r t; do
+      [[ $t =~ ^[a-z0-9][a-z0-9-]{0,49}$ ]] || { echo >&2 "topics.txt: '$t' isn't a valid topic."; fail=1; }
+    done < <(topics)
+    (( fail == 0 )) || exit 1
+
+    gh repo edit "$repo" --description "$description" --homepage "$homepage"
+    topics | jq -R . | jq -s '{names: .}' | gh api -X PUT "repos/$repo/topics" --input - > /dev/null
+    echo "Updated $repo's About: $description"
+    ;;
+  pull)
+    if ! git diff --quiet -- "$dir" || ! git diff --cached --quiet -- "$dir"; then
+      echo >&2 "$dir/ has uncommitted changes: commit them first."
+      exit 1
+    fi
+    about=$(gh repo view "$repo" --json description,homepageUrl,repositoryTopics)
+    jq -r '.description | gsub("^\\s+|\\s+$"; "")' <<<"$about" > "$dir/description.txt"
+    jq -r .homepageUrl <<<"$about" > "$dir/homepage.txt"
+    { echo "# GitHub topics for the repo, one per line: just github-about pushes them."
+      jq -r '[.repositoryTopics[]?.name] | sort | .[]' <<<"$about"; } > "$dir/topics.txt"
+    echo "Pulled. Review the changes with: git diff -- $dir"
+    ;;
+  *) echo >&2 "usage: github-about push|pull"; exit 2 ;;
+esac

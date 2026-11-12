@@ -1,0 +1,14 @@
+# GitHub topics for the repo, one per line: just github-about pushes them.
+ai-agent
+ai-agents
+ai-coding
+ai-tools
+ghostty
+ios
+macos
+mcp
+swiftui
+terminal
+terminal-multiplexer
+tmux
+tui

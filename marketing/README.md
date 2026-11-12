@@ -32,6 +32,13 @@ cd marketing && for s in 1 2; do out=../apple/Resources/dmg-background$([ $s = 2
     --screenshot="$PWD/$out" "file://$PWD/dmg-background.html"; done
 ```
 
+## The GitHub repo's About
+
+The description, website and topics on the repo's GitHub page live in `marketing/github/` (`description.txt`,
+`homepage.txt`, `topics.txt`, one topic per line). Change them there and run `just github-about`, which makes
+GitHub match the files exactly (a topic removed from the file is removed from GitHub). `just github-about-pull`
+takes in a change someone made on the website.
+
 ## Publish the site
 
 It lives at https://homegrownsw.com/hammock/, part of the Homegrown Software site (`homegrownsw/homegrownsw-site`,

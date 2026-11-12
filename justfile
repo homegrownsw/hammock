@@ -223,6 +223,14 @@ appstore-push-testflight: appstore-check
 appstore-pull:
     marketing/scripts/appstore-pull
 
+# Set the repo's About on GitHub (description, website, topics) from marketing/github/.
+github-about:
+    marketing/scripts/github-about push
+
+# Overwrite marketing/github/ with the About GitHub has, then review it with git diff.
+github-about-pull:
+    marketing/scripts/github-about pull
+
 # Take the App Store screenshots from the demo in the Simulator: [SCENE] [--light|--dark] [--device iphone|ipad|duo].
 appstore-screenshots *args:
     marketing/scripts/appstore-screenshots {{args}}
