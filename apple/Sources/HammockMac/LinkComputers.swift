@@ -670,6 +670,11 @@ func tintName(_ hex: String) -> String {
 /// Settings ▸ Devices ▸ Your Computers.
 struct YourComputersSection: View {
     @Bindable var model: AppModel
+    /// Each row's last column (This Mac, Unlink…, Remove), by computer.
+    @State private var actionWidths: [String: CGFloat] = [:]
+    private var actionWidth: CGFloat {
+        model.computers.compactMap { actionWidths[$0.userID] }.max() ?? 0
+    }
 
     var body: some View {
         Section {
@@ -695,29 +700,36 @@ struct YourComputersSection: View {
                         Spacer()
                         Text(c.fingerprint).font(.caption.monospaced()).foregroundStyle(.secondary)
                         ComputerLookButton(model: model, computer: c, titled: true)
-                        if c.thisComputer {
-                            Text("This Mac").foregroundStyle(.secondary).frame(width: 110, alignment: .trailing)
-                        } else {
-                            if c.needsAttention, let addr = c.addresses.first {
-                                // Link again: the code check, on both (it confirms
-                                // a changed certificate too).
-                                Button("Link Again…") { LinkUI.shared.open(link: addr) }
-                            }
-                            if c.needsLinking {
-                                // Forget it here only; or, for a lost or stolen
-                                // one, unlink it from all of them (asked first).
-                                Menu("Remove") {
-                                    Button("Remove from This Mac") { Task { await model.unlinkComputer(c.userID, forget: true) } }
-                                    Button("Unlink from All Your Computers…") { LinkUI.shared.askUnlink(c, in: .settings) }
-                                }
-                                .fixedSize()
-                                .help(c.suspect
-                                      ? "Removed, it isn't linked again by an introduction: only Link Again (its code checked) brings it back."
-                                      : "Remove forgets it on this Mac only.")
+                        // The last column is as wide as the widest row's, so
+                        // the keys and Icon… buttons line up down the list.
+                        HStack(spacing: 12) {
+                            if c.thisComputer {
+                                Text("This Mac").foregroundStyle(.secondary)
                             } else {
-                                Button("Unlink…") { LinkUI.shared.askUnlink(c, in: .settings) }
+                                if c.needsAttention, let addr = c.addresses.first {
+                                    // Link again: the code check, on both (it confirms
+                                    // a changed certificate too).
+                                    Button("Link Again…") { LinkUI.shared.open(link: addr) }
+                                }
+                                if c.needsLinking {
+                                    // Forget it here only; or, for a lost or stolen
+                                    // one, unlink it from all of them (asked first).
+                                    Menu("Remove") {
+                                        Button("Remove from This Mac") { Task { await model.unlinkComputer(c.userID, forget: true) } }
+                                        Button("Unlink from All Your Computers…") { LinkUI.shared.askUnlink(c, in: .settings) }
+                                    }
+                                    .fixedSize()
+                                    .help(c.suspect
+                                          ? "Removed, it isn't linked again by an introduction: only Link Again (its code checked) brings it back."
+                                          : "Remove forgets it on this Mac only.")
+                                } else {
+                                    Button("Unlink…") { LinkUI.shared.askUnlink(c, in: .settings) }
+                                }
                             }
                         }
+                        .fixedSize()
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { actionWidths[c.userID] = $0 }
+                        .frame(minWidth: actionWidth, alignment: .trailing)
                     }
                 }
             }
