@@ -584,7 +584,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         case .left: mac = 0x7B
         case .right: mac = 0x7C
         case .backspace:
-            onInput?(Data([0x7F]))
+            deleteBackward()
             return
         case .hide:
             resignFirstResponder()
@@ -692,12 +692,19 @@ extension TerminalUIView {
             if key.modifierFlags.contains(.control) { mods.insert(.ctrl) }
             if key.modifierFlags.contains(.alternate) { mods.insert(.alt) }
             if let mac {
-                if mac != 0x33 { forgetTyped() } else if !typed.isEmpty { typed.removeLast() }
+                // Backspace with a modifier deletes more than a character (⌥: a word).
+                let backspace = mac == 0x33 && mods.isEmpty
+                if !backspace { forgetTyped() }
                 if let d = engine.encodeKey(macKeyCode: mac, mods: mods, text: nil, unshifted: 0) {
                     if [0x7E, 0x7D, 0x7B, 0x7C, 0x33].contains(mac) {
                         // UIKit doesn't repeat keys an app takes itself: held, these go
-                        // again until let go.
-                        hardwareRepeats[key.keyCode] = KeyRepeater { [weak self] in self?.onInput?(d) }
+                        // again until let go. Each backspace takes a character off
+                        // what was typed, so dictation's revisions still line up.
+                        hardwareRepeats[key.keyCode] = KeyRepeater { [weak self] in
+                            guard let self else { return }
+                            if backspace, !self.typed.isEmpty { self.typed.removeLast() }
+                            self.onInput?(d)
+                        }
                     } else {
                         onInput?(d)
                     }
