@@ -133,6 +133,11 @@ func (c *Claude) rewind(i int) {
 	for _, b := range c.blocks[i:] {
 		delete(c.byID, b.Id)
 	}
+	for t, id := range c.byTool {
+		if _, ok := c.byID[id]; !ok {
+			delete(c.byTool, t) // its call was in the branch
+		}
+	}
 	c.blocks = c.blocks[:i]
 	for p, j := range c.branchAt {
 		if j >= i {
@@ -735,7 +740,11 @@ func (c *Claude) result(b ccBlock, structured json.RawMessage) []*pb.AgentBlock 
 	if !ok {
 		return nil
 	}
-	old := c.blocks[c.byID[id]]
+	i, ok := c.byID[id]
+	if !ok {
+		return nil
+	}
+	old := c.blocks[i]
 	blk := cloneBlock(old)
 	blk.Pending = false
 	blk.Error = b.IsError

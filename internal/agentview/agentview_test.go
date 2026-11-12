@@ -267,6 +267,27 @@ func TestClaudeInterruptedMessageIsReplaced(t *testing.T) {
 	}
 }
 
+// A tool call's result that comes after its branch was dropped changes
+// nothing (it used to land on the first block).
+func TestClaudeResultForADroppedBranch(t *testing.T) {
+	c := NewClaude("/tmp")
+	c.Feed([]byte(`{"type":"user","uuid":"u0","parentUuid":"p","timestamp":"2026-10-30T17:00:00Z","message":{"role":"user","content":"First"}}`))
+	c.Feed([]byte(`{"type":"assistant","uuid":"a0","parentUuid":"u0","timestamp":"2026-10-30T17:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"Done"}]}}`))
+	c.Feed([]byte(`{"type":"user","uuid":"u1","parentUuid":"a0","timestamp":"2026-10-30T17:01:00Z","message":{"role":"user","content":"List the files"}}`))
+	c.Feed([]byte(`{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-10-30T17:01:01Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}]}}`))
+	c.Feed([]byte(`{"type":"user","uuid":"u2","parentUuid":"a0","timestamp":"2026-10-30T17:01:05Z","message":{"role":"user","content":"List the Go files"}}`))
+	if out := c.Feed([]byte(`{"type":"user","uuid":"r1","parentUuid":"a1","timestamp":"2026-10-30T17:01:06Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"a.go\nb.txt"}]}}`)); len(out) != 0 {
+		t.Fatalf("result changed %v", out)
+	}
+	var texts []string
+	for _, b := range c.Blocks() {
+		texts = append(texts, b.Text+b.Output)
+	}
+	if strings.Join(texts, "|") != "First|Done|List the Go files" {
+		t.Fatalf("blocks %q", texts)
+	}
+}
+
 func TestPromptTakesFullTextFromTheCall(t *testing.T) {
 	screen := "│ How does a guest's Mac reach yours? A shared Group runs on your\n│ Mac, so it needs a path.\n\n❯ 1. Tailscale only\n     Ships now. Colleagues on your tailnet just work; others ne…\n  2. Build a relay now\n     Works with anyone, anywhere, but means building and ho…\n  3. Type something.\n\nEnter to select · Esc to cancel\n"
 	sc := ReadScreen(screen)
