@@ -3,12 +3,16 @@ import SwiftUI
 
 /// Pane transitions (zooming, unzooming, switching the zoomed pane, a pane
 /// floating out of the splits): one animation, and while it runs, terminals
-/// hold still. SwiftUI moves a hosted NSView's frame on every frame of an
+/// resize once. SwiftUI moves a hosted NSView's frame on every frame of an
 /// animation; a terminal that redrew its whole grid with CoreText and told
 /// the daemon (and so its program) about a new size each time is what made
-/// these stutter. Instead a terminal keeps its last drawing pinned to its
-/// top left (the theme's background fills what it uncovers) and resizes
-/// once, when the panes settle.
+/// these stutter. Instead, in an animation run here, a terminal Metal draws
+/// resizes to where it's going as it starts (SwiftUI's layout proposes the
+/// final size from the first frame), and draws at that size pinned to its
+/// top left, so the pane grows over (or shrinks onto) its new layout. Any
+/// other terminal, or in a hold (the sidebar, where each frame proposes a
+/// new size), keeps its last drawing pinned top left (the theme's
+/// background fills what it uncovers) and resizes when the panes settle.
 @MainActor
 final class PaneMotion {
     static let shared = PaneMotion()
@@ -28,8 +32,13 @@ final class PaneMotion {
     nonisolated static let sidebarDuration = 0.35
 
     private var running = 0
+    private var holds = 0
     private var generation = 0
     var isMoving: Bool { running > 0 }
+    /// Panes are moving in an animation run here, and nothing else: the
+    /// size SwiftUI proposes a terminal is where it's going, so it can
+    /// resize to it now.
+    var resizesAhead: Bool { running > 0 && holds == 0 }
 
     /// Runs a pane change in the pane animation (or a quicker one).
     func animate(_ animation: Animation = PaneMotion.animation, _ change: () -> Void) {
@@ -37,10 +46,16 @@ final class PaneMotion {
         withAnimation(animation, completionCriteria: .logicallyComplete, change) { [weak self] in self?.end() }
     }
 
-    /// Marks panes as moving for an animation run elsewhere (FloatMotion).
+    /// Marks panes as moving for an animation run elsewhere (FloatMotion,
+    /// the sidebar): terminals hold still until it's over.
     func hold(for seconds: Double) {
+        holds += 1
         begin()
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in self?.end() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self else { return }
+            self.holds = max(self.holds - 1, 0)
+            self.end()
+        }
     }
 
     private func begin() {
@@ -52,6 +67,7 @@ final class PaneMotion {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration + 0.6) { [weak self] in
             guard let self, self.generation == g, self.running > 0 else { return }
             self.running = 0
+            self.holds = 0
             NotificationCenter.default.post(name: Self.settled, object: nil)
         }
     }

@@ -118,8 +118,45 @@ final class TerminalNSView: NSView {
     /// Asks for a redraw, unless panes are moving or it's folded away: then
     /// once they've settled (or it's back).
     private func redraw() {
-        if PaneMotion.shared.isMoving || folded { pendingDisplay = true } else { needsDisplay = true }
+        if holding { pendingDisplay = true } else { needsDisplay = true }
     }
+
+    /// Not drawing for now: folded away, or panes moving and this pane
+    /// holding its last drawing still until they settle (PaneMotion).
+    private var holding: Bool { folded || (PaneMotion.shared.isMoving && motionTarget == nil) }
+
+    /// The size panes are moving to, while they move (a zoom): the grid is
+    /// already that size, and Metal draws at it, pinned top left and clipped
+    /// by the view as it grows or shrinks, so the program redraws during the
+    /// animation and its new layout is revealed rather than snapping in.
+    private var motionTarget: CGSize?
+    /// The size the grid and drawing are laid out for.
+    private var layoutSize: CGSize { motionTarget ?? bounds.size }
+
+    /// SwiftUI's layout proposing a size (TerminalView.sizeThatFits). Mid
+    /// zoom that's the size the pane is going to, known from the first
+    /// frame while the frame itself moves there a step at a time: resize
+    /// to it now. One layout pass can propose several sizes, so the last
+    /// one is taken, after it.
+    func proposed(_ size: CGSize) {
+        guard metal != nil, PaneMotion.shared.resizesAhead,
+              size.width.isFinite, size.height.isFinite, size.width >= 1, size.height >= 1 else { return }
+        let first = proposedSize == nil
+        proposedSize = size
+        guard first else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let size = self.proposedSize else { return }
+            self.proposedSize = nil
+            guard PaneMotion.shared.resizesAhead, size != self.layoutSize else { return }
+            self.motionTarget = size
+            self.pendingGrid = false
+            self.reportGrid()
+            self.needsLayout = true
+            if !self.folded { self.pendingDisplay = false; self.needsDisplay = true }
+        }
+    }
+
+    private var proposedSize: CGSize?
 
     /// After output: redraws only the rows it changed, and the rows the
     /// cursor left and reached (a keystroke at a full screen of colour costs
@@ -128,10 +165,13 @@ final class TerminalNSView: NSView {
     private func redrawChanges() {
         guard let session else { return }
         let changes = session.changes // asked even when put off, so they don't pile up
-        if PaneMotion.shared.isMoving || folded {
+        if holding {
             pendingDisplay = true
             return
         }
+        // Drawn ahead at the size it's moving to: rows can be past the
+        // view's bounds, where a rect asking for them would be dropped.
+        if motionTarget != nil { needsDisplay = true; return }
         if let rects = rectsToRedraw(changes) { rects.forEach(setNeedsDisplay) } else { needsDisplay = true }
     }
 
@@ -157,7 +197,8 @@ final class TerminalNSView: NSView {
 
     /// Redraws the cursor's row (blinking), unless panes are moving or it's folded away.
     private func redrawCursor() {
-        if PaneMotion.shared.isMoving || folded { pendingDisplay = true; return }
+        if holding { pendingDisplay = true; return }
+        if motionTarget != nil { needsDisplay = true; return }
         if let y = drawnCursorRow { setNeedsDisplay(rowRect(y)) } else { needsDisplay = true }
     }
 
@@ -182,6 +223,12 @@ final class TerminalNSView: NSView {
     private var drawnCursorRow: Int?
 
     private func settle() {
+        if motionTarget != nil {
+            motionTarget = nil
+            needsLayout = true
+            pendingGrid = true // where it landed, should that differ
+            pendingDisplay = true
+        }
         if pendingGrid { pendingGrid = false; reportGrid() }
         if pendingDisplay, !folded { pendingDisplay = false; needsDisplay = true }
     }
@@ -237,10 +284,13 @@ final class TerminalNSView: NSView {
         super.setFrameSize(newSize)
         guard changed else { return }
         // Panes animating: the grid (and the program's idea of its size)
-        // changes once, when they settle, not on every frame (PaneMotion).
+        // changes once, not on every frame (PaneMotion): already, to the
+        // size they're moving to, or when they settle.
         if PaneMotion.shared.isMoving {
-            pendingGrid = true
-            pendingDisplay = true
+            if motionTarget == nil {
+                pendingGrid = true
+                pendingDisplay = true
+            }
             return
         }
         redraw() // the layer only redraws on request (.onSetNeedsDisplay)
@@ -302,8 +352,9 @@ final class TerminalNSView: NSView {
         let cw = Int((cellWidth * scale).rounded()), ch = Int((cellHeight * scale).rounded())
         session?.engine.setCellPixels(width: cw, height: ch)
         onCellSize?(cw, ch)
-        let cols = max(Int((bounds.width - padding * 2) / cellWidth), 2)
-        let rows = max(Int((bounds.height - padding * 2) / cellHeight), 1)
+        let size = layoutSize
+        let cols = max(Int((size.width - padding * 2) / cellWidth), 2)
+        let rows = max(Int((size.height - padding * 2) / cellHeight), 1)
         if cols != lastGrid.cols || rows != lastGrid.rows {
             lastGrid = (cols, rows)
             onResize?(cols, rows)
@@ -437,14 +488,17 @@ final class TerminalNSView: NSView {
 
     override func layout() {
         super.layout()
-        if let metalLayer, metalLayer.frame != bounds { metalLayer.frame = bounds }
+        let frame = CGRect(origin: .zero, size: layoutSize)
+        if let metalLayer, metalLayer.frame != frame { metalLayer.frame = frame }
     }
 
     override func updateLayer() {
         guard metal != nil, let layer = metalLayer else { return }
-        if layer.frame != bounds { layer.frame = bounds }
+        // Mid zoom, the size it's going to (motionTarget), clipped by the view.
+        let frame = CGRect(origin: .zero, size: layoutSize)
+        if layer.frame != frame { layer.frame = frame }
         let scale = window?.backingScaleFactor ?? 2
-        let size = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        let size = CGSize(width: (frame.width * scale).rounded(), height: (frame.height * scale).rounded())
         guard size.width >= 1, size.height >= 1 else { return }
         layer.contentsScale = scale
         if layer.drawableSize != size { layer.drawableSize = size }
@@ -506,13 +560,13 @@ final class TerminalNSView: NSView {
         guard let session else { return nil }
         let theme = session.engine.theme
         guard session.ready else {
-            return (TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: thicken, background: theme.background,
+            return (TerminalMetalRenderer.Scene(size: layoutSize, scale: scale, thicken: thicken, background: theme.background,
                                                 padding: padding, cellHeight: cellHeight), 0)
         }
         let start = CACurrentMediaTime()
         let f = session.engine.frame()
         let frameTime = CACurrentMediaTime() - start
-        var scene = TerminalMetalRenderer.Scene(size: bounds.size, scale: scale, thicken: thicken, background: f.background,
+        var scene = TerminalMetalRenderer.Scene(size: layoutSize, scale: scale, thicken: thicken, background: f.background,
                                                 padding: padding, cellHeight: cellHeight)
         let layout = lineLayout(for: f, theme: theme)
         for (y, row) in f.cells.enumerated() {
@@ -1009,6 +1063,13 @@ struct TerminalView: NSViewRepresentable {
         v.isFocusTarget = isFocused
         v.folded = context.environment.paneFolded
         return v
+    }
+
+    /// Mid zoom, SwiftUI proposes the size the pane is going to before its
+    /// frame gets there: the terminal resizes to it ahead (PaneMotion).
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: TerminalNSView, context: Context) -> CGSize? {
+        if let w = proposal.width, let h = proposal.height { nsView.proposed(CGSize(width: w, height: h)) }
+        return nil
     }
 
     func updateNSView(_ v: TerminalNSView, context: Context) {
