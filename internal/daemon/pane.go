@@ -70,6 +70,14 @@ type pane struct {
 	resume     []byte    // saved screen to rebuild the mirror from on reconnect…
 	resumeAt   uint64    // …and the holder offset it was saved at
 	savedAt    time.Time // when the scrollback snapshot was last written
+
+	// awaitSize, set before a new pane spawns, has its holder hold the
+	// program back until a client says the pane's size (or this long);
+	// awaitingSize until one has, whose first resize then goes to the
+	// holder even if it's the size it started at: it's the go-ahead.
+	awaitSize    time.Duration
+	awaitingSize bool
+
 	// saveMu orders writing the saved screen against removing it: a save
 	// that took its snapshot before the pane closed mustn't write the
 	// files back after closePane removed them. discarded (under it): gone.
@@ -221,6 +229,8 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 		command = info.Command
 	}
 	cols, rows, cwd := info.Cols, info.Rows, info.Cwd
+	await := p.awaitSize
+	p.awaitingSize = await > 0
 	p.mu.Unlock()
 	command = viaLoginShell(command, loginShell())
 
@@ -243,6 +253,9 @@ func (p *pane) startHolder(command []string) (*startedHolder, error) {
 		"--socket", p.socket, "--dir", cwd, "--token-fd", "3",
 		"--daemon", daemonExe(),
 		"--cols", fmt.Sprint(cols), "--rows", fmt.Sprint(rows),
+	}
+	if await > 0 {
+		args = append(args, "--await-size", await.String())
 	}
 	if dir, err := filepath.Abs(p.d.cfg.Dir); err == nil {
 		// Only this daemon, holding its state dir's locks, may attach: not
@@ -806,7 +819,15 @@ func (p *pane) resize(c *conn, cols, rows uint32) bool {
 		}
 		p.driver = c
 	}
-	return p.applySizeLocked(cols, rows)
+	changed := p.applySizeLocked(cols, rows)
+	if c != nil && p.awaitingSize {
+		p.awaitingSize = false
+		if !changed && !p.info.Exited {
+			// Started at the right size: its holder still waits to hear it.
+			p.postLocked(func(hc *holder.Client) { _ = hc.Resize(uint16(cols), uint16(rows)) })
+		}
+	}
+	return changed
 }
 
 func (p *pane) applySizeLocked(cols, rows uint32) bool {

@@ -2,7 +2,11 @@
 // Unix socket. It is spawned by hmkd in its own session so it survives
 // daemon restarts. See internal/holder.
 //
-//	pane-holder --socket /path/p.sock [--dir DIR] [--cols N --rows N] [--token-fd N] [--daemon PATH] -- cmd args...
+//	pane-holder --socket /path/p.sock [--dir DIR] [--cols N --rows N] [--await-size D] [--token-fd N] [--daemon PATH] -- cmd args...
+//
+// With --await-size, the command starts at the first resize or after D,
+// whichever is sooner, so a new pane's program starts at the size it's
+// shown at (internal/holder Config.AwaitSize).
 //
 // With --token-fd, the holder reads a secret from that file descriptor (to
 // EOF) and requires it of every client; the daemon passes it on a pipe so it
@@ -30,6 +34,10 @@ import (
 )
 
 func main() {
+	// A new pane's program, waiting for its size (holder.Config.AwaitSize).
+	if len(os.Args) > 1 && os.Args[1] == holder.GateArg {
+		holder.RunGate(os.Args[2:])
+	}
 	socket := flag.String("socket", "", "Unix socket path to serve on")
 	dir := flag.String("dir", "", "working directory for the child")
 	cols := flag.Uint("cols", 80, "initial columns")
@@ -38,6 +46,7 @@ func main() {
 	tokenFD := flag.Int("token-fd", -1, "read a client secret from this file descriptor")
 	idle := flag.Duration("idle-exit", 24*time.Hour, "exit this long after the child exits with no client attached (0 = never)")
 	orphan := flag.Duration("orphan-exit", time.Hour, "once the app this runs from (or this executable) has been deleted, end the pane after this long with no client attached (0 = never)")
+	awaitSize := flag.Duration("await-size", 0, "start the command at the first resize, or after this long without one (0: at once)")
 	daemon := flag.String("daemon", "", "the daemon starting this holder (its executable): only it, or another hmkd of this install, may attach")
 	state := flag.String("state", "", "the daemon's state directory: only the process holding its locks, which must be the one starting this holder, may attach")
 	// From a development build's daemon that held an fcntl lock on
@@ -100,6 +109,7 @@ func main() {
 		Socket: *socket, Command: flag.Args(), Dir: *dir, Token: token,
 		Cols: uint16(*cols), Rows: uint16(*rows), RingSize: *ring, IdleExit: *idle,
 		Install: installOf(exe), OrphanExit: *orphan, Peer: peer, State: lock, AdoptOrphans: true,
+		AwaitSize: *awaitSize, Gate: exe,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
