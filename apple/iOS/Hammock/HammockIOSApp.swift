@@ -238,23 +238,45 @@ final class Session {
     /// Forgets a Mac (it can be paired again with a new code).
     func forget(_ h: StoredHost) {
         PushKeys.forget(h.id) // it can't send this phone anything readable now
+        let shown = h.id == host?.id ? model : nil
         hosts.removeAll { $0.id == h.id }
         if h.id == host?.id {
-            model?.stop()
-            model = nil
+            model = nil // stopped once it's told the Mac (stopPushes)
             host = nil
             if let next = hosts.first { show(next) }
         }
         persist()
+        stopPushes(from: h, over: shown)
+    }
+
+    /// Asks a Mac being forgotten to stop pushing to this phone (it would
+    /// go on sending notifications nothing here can read), over the
+    /// connection to it if it was shown, else a brief one of its own. Only
+    /// if it can be reached soon: forgetting doesn't wait for it.
+    private func stopPushes(from h: StoredHost, over shown: AppModel?) {
+        guard h.deviceID != nil, shown?.standIn == nil else {
+            shown?.stop()
+            return
+        }
+        let m = shown ?? AppModel(remote: identity(h, secret: nil), clientKind: "ios")
+        if shown == nil { m.start() }
+        Task {
+            for _ in 0..<50 where !m.connected { try? await Task.sleep(for: .milliseconds(200)) }
+            if m.connected { await Push.shared.unregister(m) }
+            m.stop()
+        }
     }
 
     private func persist() { IdentityStore.save(StoredHosts(hosts: hosts, active: host?.id)) }
 
+    private func identity(_ h: StoredHost, secret: Data?) -> RemoteIdentity {
+        RemoteIdentity(address: h.address, addresses: h.addresses ?? [h.address], lanSubnets: h.lanSubnets ?? [],
+                       certSHA256: h.certSHA256, deviceID: h.deviceID, privateKey: h.privateKey,
+                       pairingSecret: secret, deviceName: Self.deviceName, platform: "ios")
+    }
+
     private func connect(_ h: StoredHost, secret: Data?) -> AppModel {
-        let id = RemoteIdentity(address: h.address, addresses: h.addresses ?? [h.address], lanSubnets: h.lanSubnets ?? [],
-                                certSHA256: h.certSHA256, deviceID: h.deviceID, privateKey: h.privateKey,
-                                pairingSecret: secret, deviceName: Self.deviceName, platform: "ios")
-        let m = AppModel(remote: id, clientKind: "ios")
+        let m = AppModel(remote: identity(h, secret: secret), clientKind: "ios")
         m.onPaired = { [weak self, weak m] deviceID in
             guard let self, let m else { return }
             var paired = h
