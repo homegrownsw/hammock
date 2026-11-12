@@ -127,8 +127,7 @@ func Start(cfg Config) (*Server, error) {
 	if cfg.Cols == 0 || cfg.Rows == 0 {
 		cfg.Cols, cfg.Rows = 80, 24
 	}
-	_ = os.Remove(cfg.Socket)
-	ln, err := net.Listen("unix", cfg.Socket)
+	ln, err := listen(cfg.Socket)
 	if err != nil {
 		return nil, fmt.Errorf("holder: listen: %w", err)
 	}
@@ -166,6 +165,30 @@ func Start(cfg Config) (*Server, error) {
 		go s.idleWatch()
 	}
 	return s, nil
+}
+
+// listen listens on path, taking the place of what's there unless it's
+// another holder's live socket: a holder started for the same pane just
+// before (by a daemon that stopped before it answered) would otherwise run
+// on unseen, its program with it, once its socket's path is taken. A
+// socket nothing listens on (its holder was killed) is replaced, as is a
+// link or a second name for a socket (left by whatever copied the state
+// dir: the daemon never reconnects through one), or any other file.
+func listen(path string) (net.Listener, error) {
+	ln, err := net.Listen("unix", path)
+	if err == nil || !errors.Is(err, syscall.EADDRINUSE) && !errors.Is(err, os.ErrExist) {
+		return ln, err
+	}
+	if st, err := os.Lstat(path); err == nil && st.Mode()&os.ModeSocket != 0 {
+		if sys, ok := st.Sys().(*syscall.Stat_t); !ok || uint64(sys.Nlink) == 1 {
+			if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
+				c.Close()
+				return nil, fmt.Errorf("another pane-holder is listening on %s", path)
+			}
+		}
+	}
+	_ = os.Remove(path)
+	return net.Listen("unix", path)
 }
 
 // PID returns the child's process id.

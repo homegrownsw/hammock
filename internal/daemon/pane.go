@@ -323,7 +323,7 @@ func (p *pane) connectHolder(h *startedHolder) error {
 			// Ended before we reached it (it listens, then exits if its
 			// program can't start: a command that isn't found): say how,
 			// and what it logged, rather than that its socket isn't there.
-			_ = os.Remove(p.socket)
+			removeStaleSocket(p.socket)
 			why := "the pane-holder ended before the terminal started (" + h.state.String() + ")"
 			if l := lastLogLine(h.log, h.logAt); l != "" {
 				why += ": " + l
@@ -333,7 +333,7 @@ func (p *pane) connectHolder(h *startedHolder) error {
 		}
 		if time.Now().After(deadline) {
 			_ = proc.Kill() // don't leave an unreachable holder behind
-			_ = os.Remove(p.socket)
+			removeStaleSocket(p.socket)
 			return fmt.Errorf("the pane-holder didn't answer within %v: %w", holderConnectTimeout, err)
 		}
 		time.Sleep(20 * time.Millisecond)

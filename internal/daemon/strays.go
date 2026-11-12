@@ -69,6 +69,21 @@ func endHolderAt(socket string) (int, error) {
 	return pid, nil
 }
 
+// removeStaleSocket removes socket if nothing listens on it: not one a
+// holder other than the one that failed to start has there (a holder
+// listening on a pane's socket can't be reached without its token, so
+// it's ended with endHolderAt, not cut off from it).
+func removeStaleSocket(socket string) {
+	c, err := net.DialTimeout("unix", socket, time.Second)
+	if err == nil {
+		c.Close()
+		return
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		_ = os.Remove(socket)
+	}
+}
+
 // missing reports an error meaning nothing was there to end.
 func missing(err error) bool {
 	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, os.ErrNotExist)

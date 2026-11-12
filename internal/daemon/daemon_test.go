@@ -1153,3 +1153,38 @@ func TestBackgroundProgressDoesNotAlert(t *testing.T) {
 		t.Fatalf("summary %q", sum)
 	}
 }
+
+// A daemon that stops just after making a pane, before its holder answers,
+// leaves the next one a pane that works: reconnected, or started again,
+// never stuck on the first holder's socket.
+func TestRestartWhileHolderStarts(t *testing.T) {
+	for i := 0; i < 20; i++ { // a race: rounds enough to lose it before the fix
+		dir := shortDir(t)
+		d := startDaemon(t, dir)
+		c := dial(t, dir)
+		g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "g"}}}))
+		tb := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g,
+			Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", "stty -echo; exec cat"}}}}}))
+		d.mu.Lock()
+		id := d.tabs[tb].FocusedPaneId
+		d.mu.Unlock()
+		c.Close()
+		d.Shutdown()
+
+		d = startDaemon(t, dir)
+		c = dial(t, dir)
+		call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+		d.mu.Lock()
+		p := d.panes[id]
+		info := proto.Clone(p.info).(*pb.Pane)
+		d.mu.Unlock()
+		if info.Exited || info.StartError != "" {
+			b, _ := os.ReadFile(filepath.Join(dir, "logs", "holder-"+id+".log"))
+			t.Fatalf("round %d: pane didn't come back: exited=%v %q\n%s", i, info.Exited, info.StartError, b)
+		}
+		call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: id}}})
+		call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: id, Data: []byte("still-here\n")}}})
+		waitOutput(t, c, id, "still-here")
+		d.Shutdown()
+	}
+}

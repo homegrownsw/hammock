@@ -409,3 +409,35 @@ func TestBigInputIsSplit(t *testing.T) {
 		t.Fatal("input arrived changed")
 	}
 }
+
+// A holder doesn't take a live holder's socket (it would run on unseen),
+// but replaces a stale one, or a link, at its path.
+func TestStartLeavesLiveSocket(t *testing.T) {
+	_, sock := startHolder(t, "/bin/cat")
+	if _, err := Start(Config{Socket: sock, Command: []string{"/bin/cat"}}); err == nil || !strings.Contains(err.Error(), "another pane-holder") {
+		t.Fatalf("a second holder on a live socket: %v", err)
+	}
+	if c, err := net.Dial("unix", sock); err != nil {
+		t.Fatalf("the first holder lost its socket: %v", err)
+	} else {
+		c.Close()
+	}
+
+	dir := t.TempDir()
+	stale := filepath.Join(dir, "s.sock")
+	ln, err := net.Listen("unix", stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.(*net.UnixListener).SetUnlinkOnClose(false)
+	ln.Close() // the socket file stays, nothing listening: a killed holder's
+	link := filepath.Join(dir, "l.sock")
+	os.Symlink(sock, link) // to a live socket elsewhere
+	for _, path := range []string{stale, link} {
+		s, err := Start(Config{Socket: path, Command: []string{"/bin/cat"}})
+		if err != nil {
+			t.Fatalf("%s: %v", filepath.Base(path), err)
+		}
+		s.Shutdown()
+	}
+}

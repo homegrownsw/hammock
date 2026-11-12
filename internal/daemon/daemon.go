@@ -417,7 +417,17 @@ func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok 
 		return
 	}
 	resume := d.agentHub.resumeCommand(info)
-	if err := p.spawn(resume); err != nil {
+	err := p.spawn(resume)
+	if err != nil {
+		// A holder the last daemon started just before it stopped can
+		// begin listening only now, after the check above, and the new one
+		// then won't take its socket: end it, and start again.
+		if pid, endErr := endHolderAt(p.socket); endErr == nil {
+			d.log.Info("ended a holder that took this pane's socket as it restarted", "pane", info.Id, "pid", pid)
+			err = p.spawn(resume)
+		}
+	}
+	if err != nil {
 		d.log.Error("respawn pane", "pane", info.Id, "err", err)
 		if p.markStartFailed(err) { // on its screen, not only in its info
 			d.startFailedLocked(p)
