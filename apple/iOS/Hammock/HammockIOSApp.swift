@@ -437,6 +437,7 @@ struct PairConfirmSheet: View {
 
 struct RootView: View {
     let session: Session
+    @Environment(\.scenePhase) private var scenePhase
 
     /// The Hammock Key request to show: one waiting, if this phone may approve
     /// it and you haven't closed its sheet.
@@ -459,6 +460,9 @@ struct RootView: View {
                     Text("This is a demo with a made-up Mac. Pair your own to start agents, open tabs and run tasks.")
                 }
                 .onAppear { Push.shared.session = session }
+                // Suspended a while, or moved networks meanwhile: the link
+                // may look up but be dead. Checked, and redialled if so.
+                .onChange(of: scenePhase) { _, phase in if phase == .active { model.checkConnection() } }
                 // Each Mac learns where to push when it's shown, and this
                 // phone's approval key for its Hammock Key.
                 .onChange(of: model.connected, initial: true) { _, on in

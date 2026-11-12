@@ -46,6 +46,10 @@ public final class DaemonConnection: @unchecked Sendable {
     let lastWorkedAddress: String?
     let certSHA256: String?
     var remoteConn: NWConnection?
+    /// When the remote link last brought anything, and whether a check of it
+    /// (checkAlive) is waiting on its pong. Touched only on `queue`.
+    var lastHeard = Date.distantPast
+    var checking = false
     /// The remote connection being raced, until one address wins.
     var dial: RemoteDial?
     private let addressLock = NSLock()
@@ -540,6 +544,11 @@ extension DaemonConnection {
         dial.stop()
         self.dial = nil
         remoteConn = conn
+        checking = false
+        // The network it went over going away (Wi-Fi for cellular) leaves it
+        // "ready" until TCP gives up, minutes later: check it carries.
+        conn.viabilityUpdateHandler = { [weak self] viable in if !viable { self?.probe() } }
+        conn.betterPathUpdateHandler = { [weak self] better in if better { self?.probe() } }
         wire = WireZstd()
         setConnectedAddress(address)
         onStateChange?(true, nil)
@@ -632,10 +641,40 @@ extension DaemonConnection {
         }
     }
 
+    /// Checks the remote link still carries (back in the foreground, or its
+    /// network changed): a WebSocket ping, and if neither its pong nor
+    /// anything else comes back within `timeout`, the link is dropped, and so
+    /// dialled again. A dead one can otherwise look connected for minutes. A
+    /// local socket isn't checked.
+    public func checkAlive(timeout: TimeInterval = 5) {
+        queue.async { [weak self] in self?.probe(timeout: timeout) }
+    }
+
+    /// On `queue`.
+    private func probe(timeout: TimeInterval = 5) {
+        guard let conn = remoteConn, !checking else { return }
+        checking = true
+        let asked = Date()
+        let meta = NWProtocolWebSocket.Metadata(opcode: .ping)
+        meta.setPongHandler(queue) { [weak self] error in
+            if error == nil { self?.lastHeard = Date() }
+        }
+        let ctx = NWConnection.ContentContext(identifier: "ping", metadata: [meta])
+        conn.send(content: Data(), contentContext: ctx, isComplete: true, completion: .contentProcessed { _ in })
+        queue.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            guard let self, conn === self.remoteConn else { return }
+            self.checking = false
+            guard self.lastHeard < asked else { return }
+            Self.log.info("remote link: no answer in \(timeout, privacy: .public)s, reconnecting")
+            conn.cancel()
+        }
+    }
+
     fileprivate func receiveWS() {
         remoteConn?.receiveMessage { [weak self] data, context, isComplete, error in
             guard let self else { return }
             if let error { return self.receiveFailed(error) }
+            self.lastHeard = Date()
             let meta = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
             if meta?.opcode == .close || (isComplete && data == nil) {
                 return self.receiveFailed(DaemonError.closed)

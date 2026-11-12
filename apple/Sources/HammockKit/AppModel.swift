@@ -1841,6 +1841,12 @@ extension AppModel {
 }
 
 extension AppModel {
+    /// Checks a paired Mac's link still carries, and dials again if not
+    /// (DaemonConnection.checkAlive): the iPhone, back in the foreground.
+    public func checkConnection() {
+        if connected { conn?.checkAlive() }
+    }
+
     /// Disconnects for good (no reconnect).
     public func stop() {
         stopped = true
