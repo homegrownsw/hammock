@@ -146,9 +146,21 @@ final class Push: NSObject {
 
     /// Tells the Mac being shown where to push (or, with no events, not to).
     func registerWithMac() async {
-        guard let model = session?.model, let host = session?.host, model.connected, let relayID else { return }
+        guard let model = session?.model, let host = session?.host, model.connected else { return }
+        await register(model, host: host.id)
+    }
+
+    /// Tells a Mac where to push, over a connection signed in to it (one
+    /// just paired, but not shown, too).
+    func register(_ model: AppModel, host: String) async {
+        guard let relayID else { return }
         let events = Self.events.map(\.0).filter { UserDefaults.standard.object(forKey: Self.prefKey($0)) as? Bool ?? true }
-        try? await model.registerPush(relayURL: relayURL, relayID: relayID, key: PushKeys.key(for: host.id), events: events)
+        try? await model.registerPush(relayURL: relayURL, relayID: relayID, key: PushKeys.key(for: host), events: events)
+    }
+
+    /// Tells a Mac to stop pushing to this phone (it's being forgotten).
+    func unregister(_ model: AppModel) async {
+        try? await model.registerPush(relayURL: "", relayID: "", key: Data(), events: [])
     }
 
     /// Debug and ad hoc builds use APNs' sandbox (their provisioning profile says so).

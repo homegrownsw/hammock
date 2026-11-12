@@ -265,9 +265,14 @@ final class Session {
             if self.pending === m {
                 self.pending = nil
                 guard self.pendingSwitches else {
-                    // Added to the list; the Mac shown stays shown.
-                    m.stop()
+                    // Added to the list; the Mac shown stays shown. It
+                    // learns where to push first, while still connected
+                    // (a Mac shown learns as it connects: RootView).
                     self.persist()
+                    Task {
+                        await Push.shared.register(m, host: paired.id)
+                        m.stop()
+                    }
                     return
                 }
                 self.model?.stop()
