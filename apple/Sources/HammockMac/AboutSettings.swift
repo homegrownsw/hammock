@@ -47,6 +47,9 @@ struct AboutSettings: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
+                // Settings' window keeps its views when it closes: leave the
+                // island then, so it reopens on the icon.
+                .background(WindowWillClose { island = false })
             }
             .listRowBackground(Color.clear)
 
@@ -224,5 +227,31 @@ struct AboutSettings: View {
             return
         }
         NSApp.terminate(nil)
+    }
+}
+
+/// Calls `action` when the window this view is in closes (a window that's
+/// only hidden, as Settings' is, keeps its views and their state).
+private struct WindowWillClose: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ nsView: Probe, context: Context) { nsView.action = action }
+
+    final class Probe: NSView {
+        var action: (() -> Void)?
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            guard let window else { return }
+            observer = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.action?() }
+            }
+        }
+
+        deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
     }
 }
