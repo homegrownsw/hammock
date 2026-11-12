@@ -17,6 +17,13 @@ import VideoToolbox
 typealias MediaFrame = Hammock_V1_MediaFrame
 typealias MediaTicket = Hammock_V1_MediaTicket
 public typealias BrowserMenu = Hammock_V1_BrowserMenu
+public typealias AgentAction = Hammock_V1_AgentAction
+
+/// An agent's action on a pane, numbered in the order they came.
+public struct AgentPresenceEvent: Equatable {
+    public let action: AgentAction
+    public let seq: Int
+}
 import CoreMedia
 import CryptoKit
 import Foundation

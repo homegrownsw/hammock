@@ -96,7 +96,8 @@ type Daemon struct {
 	editors      *editorHub
 	diffs        *diffHub
 	screens      *screenHub
-	started      time.Time // when this daemon started (the menu bar's uptime)
+	presence     agentPresence // agents acting on browser and simulator panes, as the apps show it (agentpresence.go)
+	started      time.Time     // when this daemon started (the menu bar's uptime)
 	media        *mediaHub
 	sessions     *sessionFinder
 	agentWatches map[string]*agentWatch // pane id → agent view watch

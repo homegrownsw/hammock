@@ -420,23 +420,26 @@ func (p *pane) isTerminal() bool {
 	return p.info.Kind == pb.PaneKind_PANE_KIND_TERMINAL || p.info.Kind == pb.PaneKind_PANE_KIND_UNSPECIFIED
 }
 
+// simArgs is what a SimulatorCall's args_json may carry.
+type simArgs struct {
+	X, Y, X2, Y2 float64
+	Ms           int
+	Text, Name   string
+	Phase        string   // touch: down, move or up
+	Usage        int      // key: a HID keyboard usage
+	Shift, Cmd   bool     // key: held with it
+	Format       string   // screenshot: "jpeg" for a smaller picture (the phone's view)
+	Pixels       bool     // screenshot: in the device's pixels, not points (for people saving one)
+	Value        string   // rotate: portrait, upside-down, landscape-left, landscape-right, left or right
+	Angle        *float64 // fold: the hinge in degrees (0 closed, 180 flat)
+	Scale        float64
+	Paths        [][]struct{ X, Y, T float64 } // gesture: each finger's path, in points and ms
+}
+
 // simulatorCall runs an agent's (or the CLI's) simulator operation off the
 // read loop and replies when it's done.
 func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error {
-	var args struct {
-		X, Y, X2, Y2 float64
-		Ms           int
-		Text, Name   string
-		Phase        string   // touch: down, move or up
-		Usage        int      // key: a HID keyboard usage
-		Shift, Cmd   bool     // key: held with it
-		Format       string   // screenshot: "jpeg" for a smaller picture (the phone's view)
-		Pixels       bool     // screenshot: in the device's pixels, not points (for people saving one)
-		Value        string   // rotate: portrait, upside-down, landscape-left, landscape-right, left or right
-		Angle        *float64 // fold: the hinge in degrees (0 closed, 180 flat)
-		Scale        float64
-		Paths        [][]struct{ X, Y, T float64 } // gesture: each finger's path, in points and ms
-	}
+	var args simArgs
 	// Your paired phones and guests may watch and touch a simulator; the
 	// rest (the device list, opening one) stays on this Mac.
 	if c.remote && !slices.Contains([]string{"screenshot", "tap", "swipe", "touch", "text", "key", "copy", "button", "rotate", "pinch", "gesture", "fold"}, m.Op) {
@@ -496,10 +499,12 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 		if !slices.Contains([]string{"down", "move", "up"}, args.Phase) {
 			return fmt.Errorf("unknown touch phase %q (down, move, up)", args.Phase)
 		}
+		d.simulatorPresence(c, p.id, m.Op, args, size)
 		touch(args.Phase, args.X, args.Y)
 		return nil
 	}
 	go func() {
+		d.simulatorPresence(c, p.id, m.Op, args, size)
 		switch m.Op {
 		case "shutdown":
 			// Close the pane and shut its device down now (not after a while).

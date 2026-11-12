@@ -840,6 +840,7 @@ struct BrowserPaneView: View {
             } else {
                 BrowserView(paneID: paneID, model: model, isFocused: isFocused && !addressFocused && !findFocused,
                             onCommand: { run($0) }, onFound: { matches = $0; activeMatch = $1 })
+                    .overlay { AgentPresenceOverlay(model: model, paneID: paneID, isSimulator: false) }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: BrowserCommand.notification)) { n in

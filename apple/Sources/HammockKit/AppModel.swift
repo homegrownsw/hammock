@@ -462,6 +462,8 @@ public final class AppModel {
             diffSessions[r.paneID]?.apply(r)
         case .browserMenu(let m):
             browserMenus[m.paneID] = m
+        case .agentAction(let a):
+            showAgentAction(a)
         case .browserClipboard(let c):
             // Only ever in answer to your own copy on a page you watch.
             #if os(iOS)
@@ -1330,6 +1332,25 @@ public final class AppModel {
     /// "reload" or "stop".
     public func navigate(_ paneID: String, _ action: String, url: String = "") {
         conn?.send { $0.browserNavigate = .with { $0.paneID = paneID; $0.action = action; $0.url = url } }
+    }
+
+    /// Each browser and simulator pane's agent's latest action there
+    /// (AgentAction), for the pane to show it: a cursor or finger, a glow
+    /// and a badge. Numbered, so the same action twice shows twice.
+    public private(set) var agentActions: [String: AgentPresenceEvent] = [:]
+    private var agentActionCount = 0
+
+    /// Shows an agent's action on its pane (the daemon's, or a made-up one
+    /// for HMK_DEBUG_AGENT_CURSOR).
+    public func showAgentAction(_ a: AgentAction) {
+        agentActionCount += 1
+        agentActions[a.paneID] = AgentPresenceEvent(action: a, seq: agentActionCount)
+    }
+
+    /// Takes a browser or simulator pane over from agents, or hands it
+    /// back: taken over, agents may look at it but not act on it.
+    public func holdPane(_ paneID: String, _ held: Bool) {
+        conn?.send { $0.holdPane = .with { $0.paneID = paneID; $0.held = held } }
     }
 
     /// Splits a pane: the new one after it (right, or below), or before it

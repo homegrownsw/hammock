@@ -80,6 +80,10 @@ struct ToolsSettings: View {
                     ToolRow(tool: t).settingAnchor("tools.\(t.rawValue)")
                 }
             }
+            Section("Agents") {
+                Toggle("Show what agents do in browsers and simulators", isOn: Prefs.shared.boolBinding(.agentPresence))
+                    .settingAnchor("tools.agentpresence")
+            }
         }
         .formStyle(.grouped)
         .settingsScrollTarget()

@@ -387,6 +387,7 @@ func (d *Daemon) browserCall(c *conn, reqID uint64, m *pb.BrowserCall) error {
 		d.mu.Unlock()
 	}
 	go func() {
+		d.browserPresence(c, p.id, m.Method, params)
 		r, err := d.browsers.call(p.id, m.Method, params, time.Duration(m.TimeoutMs)*time.Millisecond)
 		if err != nil {
 			c.replyErr(reqID, err)

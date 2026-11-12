@@ -152,6 +152,14 @@ struct PaneMenuItems: View {
         if let p = model.panes[paneID], p.kind == .browser, !p.url.hasPrefix("hmk-devtools:"), model.group(ofPane: paneID)?.isRemote != true {
             Button("Show DevTools") { Task { await model.showDevTools(paneID) } }
         }
+        // Agents acting here (AgentPresenceOverlay's badge has the same).
+        if let p = model.panes[paneID], p.kind == .browser || p.kind == .simulator, model.group(ofPane: paneID)?.isRemote != true {
+            if p.agentHeld {
+                Button("Hand Back to Agents") { model.holdPane(paneID, false) }
+            } else {
+                Button("Take Over from Agents") { model.holdPane(paneID, true) }
+            }
+        }
         Button("Close Pane", role: .destructive) { CloseGuard.confirm(model, panes: [paneID]) { Task { await model.closePane(paneID) } } }
     }
 }

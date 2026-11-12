@@ -211,6 +211,10 @@ message Pane {
   // the daemon was down is; one that failed, or that you stopped (Ctrl-C),
   // stays ended.
   bool interrupted = 33;
+  // Browser and simulator panes: the person took it over from agents
+  // (HoldPane), who may still look at it but not act on it until they
+  // hand it back.
+  bool agent_held = 34;
 }
 
 enum AgentState {
@@ -536,6 +540,9 @@ message ClientMessage {
     // The repository a folder is in, to choose what a diff pane compares
     // before opening one (diff.go). Replies RepoInfo.
     ReadRepo read_repo = 133;
+    // Take a browser or simulator pane over from agents, or hand it back
+    // (agentpresence.go). This Mac's apps only. Replies Ok.
+    HoldPane hold_pane = 134;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -814,6 +821,7 @@ message ServerMessage {
     ReviewList review_list = 67;                    // reply to ListReviews
     ReviewReply review_reply = 68;                  // reply to ReviewCommand
     RepoInfo repo_info = 69;                        // reply to ReadRepo
+    AgentAction agent_action = 70;                  // to this Mac's apps: an agent acting on a browser or simulator pane
   }
 }
 
@@ -1389,6 +1397,28 @@ message BrowserLogs {
 }
 
 message BrowserResult { string json = 1; }
+
+// An agent acting on a browser or simulator pane, sent to this Mac's apps
+// so the pane can show it: a cursor or finger where it acts, a glow and a
+// badge (agentpresence.go). Positions are fractions of the page or the
+// device's screen, -1 when the action has none.
+message AgentAction {
+  string pane_id = 1;
+  string agent_pane_id = 2;  // the agent's own pane, when known
+  // move, click, scroll, tap, swipe, pinch, touch (one finger, live),
+  // type, key, look (a screenshot or reading the page), act (anything else
+  // that changes it: a script, a rotation, a navigation)
+  string kind = 3;
+  float x = 4;
+  float y = 5;
+  float x2 = 6;      // swipe: where it ends
+  float y2 = 7;
+  uint32 ms = 8;     // swipe and pinch: how long it takes
+  float scale = 9;   // pinch: above 1 zooms in
+  string label = 10; // key: the key's name; touch: down, move or up
+}
+
+message HoldPane { string pane_id = 1; bool held = 2; }
 
 // Simulator panes (the Hammock Simulator helper). Ops:
 //   devices                       the simulators on this Mac (no pane needed)

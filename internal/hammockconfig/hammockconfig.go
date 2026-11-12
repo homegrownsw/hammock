@@ -381,6 +381,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   active-pane-border-color = accent   (or #RRGGBB, or light:#…,dark:#…)
 #   pane-animations = true         (false: panes open, close, zoom and float at once)
 #   simulator-shutdown = true      (simulators Hammock booted shut down a minute after their last pane closes)
+#   agent-presence = true          (show agents acting in browser and simulator panes: a cursor, a glow and a badge)
 #   ssh-agent-forwarding = true    (panes on your linked computers use the SSH keys of the one you're at)
 #   ssh-upstream-agent = PATH      (the SSH agent Hammock's passes requests on to; default: ~/.ssh/config's IdentityAgent for every host, else SSH_AUTH_SOCK)
 #   screen-sharing = false         (your iPhone and other Macs may see and control this Mac's screen)

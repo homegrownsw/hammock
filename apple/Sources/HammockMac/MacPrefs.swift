@@ -14,6 +14,12 @@ extension Pref {
     /// Simulator panes draw the device around the screen.
     static let simulatorFrame = Pref("simulator-frame", defaults: "simulatorFrame", true)
 
+    /// Agents acting in browser and simulator panes are shown there: a
+    /// cursor or finger, a glow and a badge (AgentPresenceOverlay). hmkd
+    /// reads it too: off, it sends no actions and doesn't wait for the
+    /// cursor.
+    static let agentPresence = Pref("agent-presence", defaults: "agentPresence", true)
+
     /// Sharing Groups with other people: off, the Share Group buttons and
     /// menu items are hidden (SharingUI.canShare). Settings stops every share
     /// when it's turned off.

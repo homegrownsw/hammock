@@ -316,6 +316,8 @@ enum SettingsIndex {
 
             e(.tools, "Tools", "Tools", nil, "features turn off disable hide mcp agents"),
         ] + HammockTool.allCases.map { e(.tools, "Tools", $0.title, "tools.\($0.rawValue)", $0.keywords) } + [
+            e(.tools, "Agents", "Show what agents do in browsers and simulators", "tools.agentpresence",
+              "cursor pointer glow badge take over taps clicks mcp presence"),
             e(.editor, "Editor panes", "Wrap long lines", "editor.wrap", "word wrap"),
             e(.editor, "Editor panes", "Line numbers", "editor.linenumbers", "gutter"),
             e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tabs editorconfig"),

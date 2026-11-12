@@ -761,6 +761,9 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		}
 		return openDevTools(m.ReplacePane.Spec)
 	case *pb.ClientMessage_BrowserNavigate:
+		if d.paneHeld(m.BrowserNavigate.PaneId) {
+			return errTakenOver
+		}
 		return control(page(m.BrowserNavigate.PaneId), "browse")
 	case *pb.ClientMessage_BrowserCall:
 		if p := d.devtoolsPage(m.BrowserCall.PaneId); p != "" {
@@ -787,6 +790,9 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 			}
 			return nil
 		}
+		if d.paneHeld(m.BrowserCall.PaneId) {
+			return errTakenOver
+		}
 		return control(m.BrowserCall.PaneId, "browse")
 	case *pb.ClientMessage_SimulatorCall:
 		switch m.SimulatorCall.Op {
@@ -794,6 +800,9 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 			return nil
 		case "screenshot":
 			return read(m.SimulatorCall.PaneId)
+		}
+		if d.paneHeld(m.SimulatorCall.PaneId) {
+			return errTakenOver
 		}
 		return control(m.SimulatorCall.PaneId, "simulator")
 
