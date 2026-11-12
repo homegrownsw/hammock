@@ -90,7 +90,7 @@ enum DebugSnapshot {
                 let size = NSSize(width: 640, height: 400)
                 let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: 200, y: 200), size: size), styleMask: [.titled], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false
-                window.contentView = NSHostingView(rootView: HammockIslandView().frame(width: size.width, height: size.height))
+                window.contentView = NSHostingView(rootView: HammockIslandView(icon: NSApp.applicationIconImage.cgImage(forProposedRect: nil, context: nil, hints: nil)).frame(width: size.width, height: size.height))
                 window.orderFrontRegardless()
                 try? await Task.sleep(for: .seconds(1))
                 for n in 0..<12 {

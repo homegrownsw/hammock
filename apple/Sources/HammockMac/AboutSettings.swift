@@ -20,7 +20,7 @@ struct AboutSettings: View {
             Section {
                 VStack(spacing: 6) {
                     if island {
-                        HammockIslandView()
+                        HammockIslandView(icon: NSApp.applicationIconImage.cgImage(forProposedRect: nil, context: nil, hints: nil))
                             .frame(height: 340)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .overlay(alignment: .topTrailing) {
