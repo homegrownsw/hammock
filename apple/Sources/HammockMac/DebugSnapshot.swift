@@ -79,6 +79,33 @@ enum DebugSnapshot {
                 } }
             }
         }
+        // HMK_DEBUG_ISLAND=1 (with HMK_DEBUG_SNAPSHOT): Hammock Island in a
+        // window of its own, captured as it's drawn (RealityKit isn't in a
+        // layer render) every half second, to <prefix>-island-NN.png; with
+        // HMK_DEBUG_ISLAND_PLAY=1 it swings and drops coconuts by itself.
+        // (HMK_DEBUG_ISLAND also opens it in Settings ▸ About.)
+        if env["HMK_DEBUG_ISLAND"] != nil, let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                let size = NSSize(width: 640, height: 400)
+                let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: 200, y: 200), size: size), styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = NSHostingView(rootView: HammockIslandView().frame(width: size.width, height: size.height))
+                window.orderFrontRegardless()
+                try? await Task.sleep(for: .seconds(1))
+                for n in 0..<12 {
+                    if let image = await grabWindow(window) {
+                        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                            .write(to: URL(fileURLWithPath: String(format: "%@-island-%02d.png", prefix, n)))
+                    }
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+                // Open a while longer, to capture from outside (screencapture -l)
+                // when this copy has no Screen Recording permission.
+                try? await Task.sleep(for: .seconds(30))
+                window.close()
+            }
+        }
         // HMK_DEBUG_ACKNOWLEDGEMENTS=1, or a component's name, or chromium-credits:
         // the Acknowledgements window opened (on that one); with
         // HMK_DEBUG_SNAPSHOT also rendered to <prefix>-acknowledgements-<light|dark>.png.
@@ -333,6 +360,17 @@ extension DebugSnapshot {
         if let t = v as? TerminalNSView { return t }
         for s in v.subviews { if let t = findTerminal(s) { return t } }
         return nil
+    }
+
+    /// One window as it's drawn on screen, with the app's own Screen Recording permission.
+    @MainActor private static func grabWindow(_ window: NSWindow) async -> CGImage? {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+              let w = content.windows.first(where: { $0.windowID == CGWindowID(window.windowNumber) }) else { return nil }
+        let config = SCStreamConfiguration()
+        config.width = Int(w.frame.width * window.backingScaleFactor)
+        config.height = Int(w.frame.height * window.backingScaleFactor)
+        config.showsCursor = false
+        return try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: w), configuration: config)
     }
 
     @MainActor private static func captureWindow(_ window: NSWindow, prefix: String) async {

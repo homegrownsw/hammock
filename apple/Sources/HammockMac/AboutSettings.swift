@@ -10,6 +10,8 @@ struct AboutSettings: View {
     let model: AppModel
     @State private var uninstalling = false
     @State private var error: String?
+    /// Hammock Island, in place of the icon: clicking the icon opens it.
+    @State private var island = ProcessInfo.processInfo.environment["HMK_DEBUG_ISLAND"] != nil
 
     private var appName: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Hammock" }
 
@@ -17,9 +19,26 @@ struct AboutSettings: View {
         Form {
             Section {
                 VStack(spacing: 6) {
-                    Image(nsImage: NSApp.applicationIconImage)
-                        .resizable()
-                        .frame(width: 112, height: 112)
+                    if island {
+                        HammockIslandView()
+                            .frame(height: 340)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(alignment: .topTrailing) {
+                                Button { withAnimation(.snappy) { island = false } } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.title2).symbolRenderingMode(.hierarchical)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Leave the island")
+                                .padding(10)
+                            }
+                            .transition(.scale(scale: 0.3).combined(with: .opacity))
+                    } else {
+                        Image(nsImage: NSApp.applicationIconImage)
+                            .resizable()
+                            .frame(width: 112, height: 112)
+                            .onTapGesture { withAnimation(.spring(duration: 0.5, bounce: 0.3)) { island = true } }
+                            .transition(.scale(scale: 0.3).combined(with: .opacity))
+                    }
                     Text(appName).font(.largeTitle.bold())
                     Text("Version \(Updater.shared.version)")
                         .font(.callout)
