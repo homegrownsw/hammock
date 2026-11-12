@@ -70,7 +70,7 @@ func TestClineBlocks(t *testing.T) {
 		"TEXT Added --top N: it prints the N biggest files.",
 		"USER Now run it, and write a README",
 		"TOOL Ran `./tally.sh --top 2` and 1 more > sh: ./tally.sh: Permission denied / README.md / tally.sh (error)",
-		"TOOL Wrote README.md | +# tally / +",
+		"TOOL Wrote README.md | +# tally",
 		"NOTE Conversation compacted",
 		"TEXT It needs to be executable.",
 		"TOOL Edited tally.sh | @@ tally.sh / -#!/bin/sh / +#!/bin/bash (pending)",

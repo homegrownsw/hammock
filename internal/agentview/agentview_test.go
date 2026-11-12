@@ -378,6 +378,27 @@ func TestClaudeBashEditShowsItsDiff(t *testing.T) {
 	}
 }
 
+// A file written with its last line ended (as files are) is that many
+// lines, with no blank one added after them.
+func TestClaudeWriteCountsLines(t *testing.T) {
+	c := NewClaude("/work")
+	var content strings.Builder
+	for i := range 10 {
+		fmt.Fprintf(&content, "line %d\n", i+1)
+	}
+	in, _ := json.Marshal(map[string]any{"file_path": "/work/ten.txt", "content": content.String()})
+	c.Feed([]byte(`{"type":"assistant","uuid":"a1","timestamp":"2026-10-31T09:00:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Write","input":` + string(in) + `}]}}`))
+	bs := c.Blocks()
+	if len(bs) != 1 || bs[0].Added != 10 || strings.Count(bs[0].Diff, "\n") != 10 || !strings.HasSuffix(bs[0].Diff, "+line 10\n") {
+		t.Fatalf("blocks %v", bs)
+	}
+	for s, want := range map[string]int{"": 0, "\n": 1, "one": 1, "one\ntwo": 2, "one\ntwo\n": 2, "one\n\n": 2} {
+		if got := lines(s); got != want {
+			t.Errorf("lines(%q) = %d, want %d", s, got, want)
+		}
+	}
+}
+
 // The model and context come from the latest reply's usage; Claude 5's
 // Opus, Sonnet and Fable are on a 1M window, as is a session past 200k, and
 // Claude Code's stand-in replies don't count.

@@ -68,7 +68,7 @@ func TestPiBlocks(t *testing.T) {
 		"TEXT Let me check.",
 		"TOOL Ran `echo hi` → hi",
 		"TEXT Writing it.",
-		"TOOL Wrote notes.txt | +one / +two / +",
+		"TOOL Wrote notes.txt | +one / +two",
 		"TOOL Edited notes.txt | one / -two / +three",
 		"TOOL Read notes.txt → one three",
 		"TOOL Ran `exit 3` → (no output) Command exited with code 3 (failed)",

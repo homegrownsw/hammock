@@ -99,7 +99,7 @@ func TestKimiPending(t *testing.T) {
 	k.Feed([]byte(`{"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"go"}],"toolCalls":[]},"time":1}`))
 	k.Feed([]byte(`{"type":"context.append_loop_event","event":{"type":"tool.call","uuid":"t1","stepUuid":"s1","toolCallId":"c1","name":"Write","args":{"path":"/w/a.txt","content":"hi\n"}},"time":2}`))
 	p := k.Pending()
-	if p == nil || p.Title != "Wrote a.txt" || p.Added != 2 {
+	if p == nil || p.Title != "Wrote a.txt" || p.Added != 1 {
 		t.Fatalf("pending: %+v", p)
 	}
 	k.Feed([]byte(`{"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"c1","result":{"output":"Wrote 3 bytes","isError":false}},"time":3}`))

@@ -45,7 +45,7 @@ func TestDroidBlocks(t *testing.T) {
 		"TEXT Let me look at the script.",
 		"TOOL Show tally.sh → #!/usr/bin/env bash wc -w *.md | sort -rn",
 		`TOOL Edited tally.sh → File edited successfully. | -wc -w *.md | sort -rn / +top="${2:-0}" / +wc -w *.md | sort -rn`,
-		"TOOL Wrote README.md → File created successfully | +# tally / +",
+		"TOOL Wrote README.md → File created successfully | +# tally",
 		"TOOL Edited notes.md → Patch applied | @@ notes.md / -old line / +new line",
 		"TOOL Listed the folder → README.md notes.md tally.sh",
 		"TOOL Updated the to-do list → Todo list updated",

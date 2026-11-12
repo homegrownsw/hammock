@@ -613,7 +613,7 @@ func (c *Claude) toolCall(b ccBlock) *pb.AgentBlock {
 		blk.Title = "Wrote " + blk.Input
 		content := str("content")
 		blk.Diff = clip(addedDiff(content), maxDiff)
-		blk.Added = int32(strings.Count(content, "\n") + 1)
+		blk.Added = int32(lines(content))
 	case "Edit", "MultiEdit", "NotebookEdit":
 		blk.Input = path("file_path")
 		if blk.Input == "" {
@@ -947,31 +947,32 @@ func clip(s string, n int) string {
 	return s[:n] + "\n…"
 }
 
-func lines(s string) int {
+// lines is how many lines s has: a newline ends one, so a file's last
+// newline doesn't start another.
+func lines(s string) int { return len(splitLines(s)) }
+
+// splitLines is s's lines, without their newlines (none for "").
+func splitLines(s string) []string {
 	if s == "" {
-		return 0
+		return nil
 	}
-	return strings.Count(s, "\n") + 1
+	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
 func simpleDiff(old, nw string) string {
 	var b strings.Builder
-	for _, l := range strings.Split(old, "\n") {
-		if old != "" {
-			b.WriteString("-" + l + "\n")
-		}
+	for _, l := range splitLines(old) {
+		b.WriteString("-" + l + "\n")
 	}
-	for _, l := range strings.Split(nw, "\n") {
-		if nw != "" {
-			b.WriteString("+" + l + "\n")
-		}
+	for _, l := range splitLines(nw) {
+		b.WriteString("+" + l + "\n")
 	}
 	return b.String()
 }
 
 func addedDiff(s string) string {
 	var b strings.Builder
-	for _, l := range strings.Split(s, "\n") {
+	for _, l := range splitLines(s) {
 		b.WriteString("+" + l + "\n")
 	}
 	return b.String()
