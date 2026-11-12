@@ -148,6 +148,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             state.groups[i].icon = g.icon
             let group = state.groups[i]
             update { $0.groups = [group] }
+        case .focus(let f):
+            answer(msg)
+            focused(f.paneID)
         case .createGroup, .createTab, .createPane, .startAgent, .closeTab, .closeGroup, .closePane, .resumeSession,
              .runSchedule, .saveSchedule, .deleteSchedule, .uploadFile, .createPairing, .createInvite, .linkComputer,
              .reopenClosed, .renameGroup, .renameTab, .switchAgent, .setGroupIconImage, .setGroupFolder, .leaveShared:
@@ -231,6 +234,18 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         changed.append(state.groups[di])
         let t = state.tabs[ti]
         update { $0.groups = changed; $0.tabs = [t] }
+    }
+
+    /// As the daemon does: looking at a finished agent acknowledges it (its
+    /// checkmark, and its item in Needs You, go away).
+    private func focused(_ paneID: String) {
+        guard let i = state.panes.firstIndex(where: { $0.id == paneID }), state.panes[i].hasAgent,
+              !state.panes[i].agent.seen, state.panes[i].agent.state == .idle else { return }
+        state.panes[i].agent.seen = true
+        let p = state.panes[i]
+        let cleared = state.attention.filter { $0.paneID == paneID && $0.state == .idle }.map(\.id)
+        state.attention.removeAll { cleared.contains($0.id) }
+        update { $0.panes = [p]; $0.clearedAttentionIds = cleared }
     }
 
     // MARK: Agents
