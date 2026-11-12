@@ -278,17 +278,34 @@ public final class TerminalMetalRenderer {
         if let t = imageTextures[img.key] { return t }
         let w = img.source.width, h = img.source.height
         guard w > 0, h > 0, w <= 16384, h <= 16384 else { return nil }
-        // Premultiplied RGBA in sRGB, as the pane's context would draw it.
-        var pixels = [UInt8](repeating: 0, count: w * h * 4)
-        guard let ctx = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(img.source, in: CGRect(x: 0, y: 0, width: w, height: h))
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
         desc.usage = .shaderRead
         guard let t = device.makeTexture(descriptor: desc) else { return nil }
-        t.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: pixels, bytesPerRow: w * 4)
+        let region = MTLRegionMake2D(0, 0, w, h)
+        if let data = Self.imageRGBA(img.source) {
+            // The engine's images are already what the texture holds.
+            t.replace(region: region, mipmapLevel: 0, withBytes: CFDataGetBytePtr(data), bytesPerRow: w * 4)
+        } else {
+            // Premultiplied RGBA in sRGB, as the pane's context would draw it.
+            var pixels = [UInt8](repeating: 0, count: w * h * 4)
+            guard let ctx = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+            ctx.draw(img.source, in: CGRect(x: 0, y: 0, width: w, height: h))
+            t.replace(region: region, mipmapLevel: 0, withBytes: pixels, bytesPerRow: w * 4)
+        }
         imageTextures[img.key] = t
         return t
+    }
+
+    /// An image's bytes, when they're already premultiplied sRGB RGBA with
+    /// rows packed (as TerminalEngine makes Kitty images); nil otherwise.
+    static func imageRGBA(_ image: CGImage) -> CFData? {
+        guard image.bitsPerComponent == 8, image.bitsPerPixel == 32, image.bytesPerRow == image.width * 4,
+              image.alphaInfo == .premultipliedLast,
+              image.byteOrderInfo == .orderDefault || image.byteOrderInfo == .order32Big,
+              image.colorSpace?.name == CGColorSpace.sRGB,
+              let data = image.dataProvider?.data, CFDataGetLength(data) >= image.bytesPerRow * image.height else { return nil }
+        return data
     }
 
     /// The pane now shows another session: its images' keys (programs'

@@ -80,6 +80,31 @@ private func pixel(_ r: (pixels: [UInt8], width: Int), _ x: CGFloat, _ y: CGFloa
     #expect(pixel(above, 60, 9) == red)   // only where it's placed
 }
 
+/// A Kitty image from the engine is uploaded as its bytes are, with no
+/// redraw, and blends as the redraw would have: half-transparent blue
+/// (straight alpha, as programs send it) over red comes out purple.
+@Test func uploadsEngineImagesAsTheyAre() throws {
+    let engine = TerminalEngine(cols: 10, rows: 4)
+    engine.setCellPixels(width: 17, height: 36)
+    let rgba = Data((0..<16).flatMap { _ in [UInt8(0), 0, 255, 128] })
+    engine.write(Data("\u{1b}_Ga=T,f=32,s=4,v=4,i=7,c=4,r=1,q=2;\(rgba.base64EncodedString())\u{1b}\\".utf8))
+    _ = engine.frame()
+    let img = try #require(engine.images().first)
+    let data = try #require(TerminalMetalRenderer.imageRGBA(img.source))
+    #expect(Array(UnsafeBufferPointer(start: CFDataGetBytePtr(data), count: 4)) == [0, 0, 128, 128]) // premultiplied
+
+    let l = layout()
+    var row = [TerminalCell](repeating: TerminalCell(text: ""), count: 10)
+    for i in row.indices { row[i].bg = red }
+    guard let drawn = render({ s in
+        s.rows = [(0, l.line(row))]
+        s.images = [.init(key: img.key, source: img.source, sourceRect: img.sourceRect,
+                          rect: CGRect(x: 0, y: 0, width: 40, height: 18), layer: .aboveText)]
+    }) else { return }
+    let p = pixel(drawn, 20, 9)
+    #expect(abs(Int(p.r) - 127) <= 2 && p.g == 0 && abs(Int(p.b) - 128) <= 2)
+}
+
 @Test func keepsRowsItHasBuilt() throws {
     let l = layout()
     let row = "hello".map { TerminalCell(text: String($0)) }

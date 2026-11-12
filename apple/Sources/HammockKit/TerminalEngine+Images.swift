@@ -1,3 +1,4 @@
+import Accelerate
 import CoreGraphics
 import Foundation
 import GhosttyVt
@@ -151,30 +152,41 @@ extension TerminalEngine {
         ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN, &len)
         guard let ptr, w > 0, h > 0, len > 0 else { return nil }
         let width = Int(w), height = Int(h)
-        // Expand to RGBA.
-        var rgba = [UInt8](repeating: 255, count: width * height * 4)
-        let src = UnsafeBufferPointer(start: ptr, count: len)
         let px = width * height
+        let needed: Int
+        switch format {
+        case GHOSTTY_KITTY_IMAGE_FORMAT_RGBA: needed = px * 4
+        case GHOSTTY_KITTY_IMAGE_FORMAT_RGB: needed = px * 3
+        case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA: needed = px * 2
+        case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY: needed = px
+        default: return nil
+        }
+        guard len >= needed else { return nil }
+        // Expanded to premultiplied RGBA, in one buffer the CGImage keeps:
+        // the Metal renderer uploads these bytes as they are (imageRGBA), so
+        // an image scrolling into view costs a copy, not a redraw.
+        guard let data = CFDataCreateMutable(nil, px * 4) else { return nil }
+        CFDataSetLength(data, px * 4)
+        let rgba = CFDataGetMutableBytePtr(data)!
+        let src = UnsafeBufferPointer(start: ptr, count: len)
         switch format {
         case GHOSTTY_KITTY_IMAGE_FORMAT_RGBA:
-            guard len >= px * 4 else { return nil }
-            rgba.withUnsafeMutableBufferPointer { _ = memcpy($0.baseAddress!, ptr, px * 4) }
+            memcpy(rgba, ptr, px * 4)
         case GHOSTTY_KITTY_IMAGE_FORMAT_RGB:
-            guard len >= px * 3 else { return nil }
-            for i in 0..<px { rgba[i * 4] = src[i * 3]; rgba[i * 4 + 1] = src[i * 3 + 1]; rgba[i * 4 + 2] = src[i * 3 + 2] }
+            for i in 0..<px { rgba[i * 4] = src[i * 3]; rgba[i * 4 + 1] = src[i * 3 + 1]; rgba[i * 4 + 2] = src[i * 3 + 2]; rgba[i * 4 + 3] = 255 }
         case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA:
-            guard len >= px * 2 else { return nil }
             for i in 0..<px { let g = src[i * 2]; rgba[i * 4] = g; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = g; rgba[i * 4 + 3] = src[i * 2 + 1] }
-        case GHOSTTY_KITTY_IMAGE_FORMAT_GRAY:
-            guard len >= px else { return nil }
-            for i in 0..<px { let g = src[i]; rgba[i * 4] = g; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = g }
-        default:
-            return nil
+        default: // gray
+            for i in 0..<px { let g = src[i]; rgba[i * 4] = g; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = g; rgba[i * 4 + 3] = 255 }
         }
-        guard let provider = CGDataProvider(data: Data(rgba) as CFData) else { return nil }
+        if format == GHOSTTY_KITTY_IMAGE_FORMAT_RGBA || format == GHOSTTY_KITTY_IMAGE_FORMAT_GRAY_ALPHA {
+            var buf = vImage_Buffer(data: rgba, height: vImagePixelCount(height), width: vImagePixelCount(width), rowBytes: width * 4)
+            vImagePremultiplyData_RGBA8888(&buf, &buf, vImage_Flags(kvImageNoFlags))
+        }
+        guard let provider = CGDataProvider(data: data) else { return nil }
         return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
                        space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
                        provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
     }
 }
