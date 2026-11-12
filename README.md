@@ -13,7 +13,7 @@
 
 Hammock is a fast, native Mac terminal that never loses your work. A daemon owns your shells, coding agents,
 browsers and simulators, organised into Groups, tabs and panes, so they keep running whatever happens to the
-window. The Mac and iPhone apps, a TUI and the `hmk` CLI all show the same workspace, and agents can drive it
+window: a terminal multiplexer, like tmux or Zellij, as a native app. The Mac and iPhone apps, a TUI and the `hmk` CLI all show the same workspace, and agents can drive it
 too, through MCP.
 
 | | |
