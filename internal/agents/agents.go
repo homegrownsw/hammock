@@ -126,6 +126,10 @@ type Agent struct {
 	// SlashCommands lists what can follow "/" in it, for the agent view's
 	// composer.
 	SlashCommands func(cwd string) []string
+	// StartCommands are those of its SlashCommands that only run at the
+	// start of a message (its built-ins), so the composer doesn't offer them
+	// later in one. Nil: they all run anywhere.
+	StartCommands []string
 	// SessionURL is the web page session id can be opened at (Claude Code's
 	// Remote Control link), "" when it has none now. Nil: never.
 	SessionURL func(id string) string

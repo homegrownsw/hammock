@@ -10,16 +10,40 @@ import (
 	"strings"
 )
 
+// codexBuiltins are Codex's own commands (0.166's), which only run at the
+// start of a message.
+var codexBuiltins = slashed("agents", "app", "approve", "archive", "cd", "compact", "config", "copy", "daemon", "delete", "diff",
+	"experimental", "export", "fork", "goal", "hooks", "ide", "import", "init", "keymap", "mcp", "memories", "mention", "model", "new",
+	"permissions", "plan", "plugins", "presets", "pwd", "raw", "recap", "rename", "resume", "review", "side", "skills", "status",
+	"statusline", "theme", "title", "usage", "vim", "voice", "warnings", "worktree")
+
+// claudeBuiltins are Claude Code's own commands, which only run at the start
+// of a message: elsewhere in one they're sent as text. (Its skills and
+// commands, bundled or yours, run anywhere in one.)
+var claudeBuiltins = slashed("add-dir", "agents", "bashes", "clear", "compact", "config", "context", "cost", "doctor", "effort",
+	"exit", "export", "fast", "feedback", "help", "hooks", "ide", "keybindings", "login", "logout", "mcp", "memory",
+	"model", "output-style", "permissions", "plan", "plugin", "pr-comments", "release-notes", "resume", "review", "rewind",
+	"skills", "status", "statusline", "tasks", "terminal-setup", "theme", "todos", "upgrade", "usage", "vim")
+
+// claudeBundledSkills are the skills that come with Claude Code, and the
+// commands it gives its model as skills (/init, /security-review): they run
+// anywhere in a message.
+var claudeBundledSkills = slashed("claude-api", "code-review", "fewer-permission-prompts", "init", "loop", "schedule",
+	"security-review", "simplify", "update-config")
+
+// slashed is names with a "/" before each.
+func slashed(names ...string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = "/" + n
+	}
+	return out
+}
+
 // codexSlashCommands lists what can follow "/" in Codex (0.166's built-ins)
 // and your saved prompts (~/.codex/prompts, run as /prompts:NAME).
 func codexSlashCommands() []string {
-	out := []string{}
-	for _, c := range []string{"agents", "app", "approve", "archive", "cd", "compact", "config", "copy", "daemon", "delete", "diff",
-		"experimental", "export", "fork", "goal", "hooks", "ide", "import", "init", "keymap", "mcp", "memories", "mention", "model", "new",
-		"permissions", "plan", "plugins", "presets", "pwd", "raw", "recap", "rename", "resume", "review", "side", "skills", "status",
-		"statusline", "theme", "title", "usage", "vim", "voice", "warnings", "worktree"} {
-		out = append(out, "/"+c)
-	}
+	out := slices.Clone(codexBuiltins)
 	home := os.Getenv("CODEX_HOME")
 	if home == "" {
 		h, _ := os.UserHomeDir()
@@ -52,13 +76,8 @@ func slashCommands(cwd string) []string {
 // (~/.claude) given.
 func claudeSlashCommands(config, cwd string) []string {
 	set := map[string]bool{}
-	for _, c := range []string{"add-dir", "agents", "bashes", "clear", "compact", "config", "context", "cost", "doctor", "effort",
-		"exit", "export", "fast", "feedback", "help", "hooks", "ide", "init", "keybindings", "login", "logout", "mcp", "memory",
-		"model", "output-style", "permissions", "plan", "plugin", "pr-comments", "release-notes", "resume", "review", "rewind",
-		"security-review", "skills", "status", "statusline", "tasks", "terminal-setup", "theme", "todos", "upgrade", "usage", "vim",
-		// Bundled skills.
-		"claude-api", "code-review", "fewer-permission-prompts", "loop", "schedule", "simplify", "update-config"} {
-		set[c] = true
+	for _, c := range slices.Concat(claudeBuiltins, claudeBundledSkills) {
+		set[strings.TrimPrefix(c, "/")] = true
 	}
 	add := func(root, prefix string) {
 		for _, c := range commandsIn(filepath.Join(root, "commands")) {
