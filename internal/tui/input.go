@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"strconv"
+	"time"
 	"unicode/utf8"
 )
 
@@ -37,7 +38,25 @@ type event struct {
 // inputParser keeps sequences split across reads.
 type inputParser struct {
 	pending []byte
+	held    time.Time // when pending was kept
 	paste   *bytes.Buffer
+}
+
+// holdFor is how long a sequence cut off at the end of a read waits for the
+// rest before it's passed on as typed: the rest of a terminal's report
+// arrives well within it.
+const holdFor = 50 * time.Millisecond
+
+// stale passes on a held partial sequence that nothing has followed for
+// holdFor, as typed bytes, so it isn't kept forever. A partial paste end
+// marker stays: the paste waits for its end either way.
+func (p *inputParser) stale(now time.Time) []event {
+	if len(p.pending) == 0 || p.paste != nil || now.Sub(p.held) < holdFor {
+		return nil
+	}
+	b := p.pending
+	p.pending = nil
+	return []event{{kind: evBytes, data: b}}
 }
 
 var (
@@ -84,7 +103,7 @@ func (p *inputParser) parse(b []byte) []event {
 			if end < 0 {
 				if len(b) < 32 {
 					flush()
-					p.pending = append([]byte(nil), b...)
+					p.hold(b)
 					return out
 				}
 				plain = append(plain, b[0])
@@ -104,10 +123,11 @@ func (p *inputParser) parse(b []byte) []event {
 			flush()
 			out = append(out, event{kind: evFocus, focus: b[2] == 'I'})
 			b = b[3:]
-		case len(b) < len(pasteStart) && bytes.HasPrefix(pasteStart, b) && len(b) > 2:
-			// A sequence cut off mid-way: wait for the rest.
+		case len(b) < len(pasteStart) && bytes.HasPrefix(pasteStart, b) && len(b) > 1:
+			// A sequence cut off mid-way (from ESC [ on, which may yet be a
+			// mouse report): wait for the rest. A lone ESC is the Escape key.
 			flush()
-			p.pending = append([]byte(nil), b...)
+			p.hold(b)
 			return out
 		default:
 			plain = append(plain, b[0])
@@ -116,6 +136,11 @@ func (p *inputParser) parse(b []byte) []event {
 	}
 	flush()
 	return out
+}
+
+func (p *inputParser) hold(b []byte) {
+	p.pending = append([]byte(nil), b...)
+	p.held = time.Now()
 }
 
 // parseSGRMouse decodes "Cb;Cx;Cy" (1-based cells).

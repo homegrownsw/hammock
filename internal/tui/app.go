@@ -195,6 +195,9 @@ func (a *App) loop(stdin <-chan []byte, initial []byte) error {
 			a.dirty = true
 		case <-tick.C:
 			a.frame++
+			if ev := parser.stale(time.Now()); ev != nil {
+				a.input(ev)
+			}
 			a.pollLive()
 			a.editorTick()
 			a.checkExternal()
