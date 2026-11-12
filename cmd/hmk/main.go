@@ -783,21 +783,9 @@ func runCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		var text string
-		var keys []string
-		enter := false
-		for i := 2; i < len(args); i++ {
-			switch a := args[i]; {
-			case a == "--enter":
-				enter = true
-			case a == "--key" && i+1 < len(args):
-				keys = append(keys, args[i+1])
-				i++
-			case i == 2:
-				text = a
-			default:
-				return fmt.Errorf("usage: hmk send PANE [TEXT] [--key NAME]... [--enter]")
-			}
+		text, keys, enter, err := sendFlags(args[2:])
+		if err != nil {
+			return err
 		}
 		writes, err := typingWrites(text, keys, enter)
 		if err != nil {
@@ -1350,6 +1338,28 @@ func layoutPaneIDs(l *pb.Layout) []string {
 		out = append(out, layoutPaneIDs(c)...)
 	}
 	return out
+}
+
+// sendFlags reads `hmk send PANE`'s [TEXT] [--key NAME]... [--enter]. --key
+// with no name after it is a mistake, not the text "--key".
+func sendFlags(args []string) (text string, keys []string, enter bool, err error) {
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--enter":
+			enter = true
+		case a == "--key":
+			if i+1 >= len(args) {
+				return "", nil, false, fmt.Errorf("--key needs a key name, like --key ctrl-c")
+			}
+			keys = append(keys, args[i+1])
+			i++
+		case i == 0:
+			text = a
+		default:
+			return "", nil, false, fmt.Errorf("usage: hmk send PANE [TEXT] [--key NAME]... [--enter]")
+		}
+	}
+	return text, keys, enter, nil
 }
 
 func truncate(s string, n int) string {

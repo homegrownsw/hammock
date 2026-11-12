@@ -24,3 +24,15 @@ func TestTypingWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestSendFlags(t *testing.T) {
+	text, keys, enter, err := sendFlags([]string{"ls", "--key", "tab", "--enter"})
+	if err != nil || text != "ls" || len(keys) != 1 || keys[0] != "tab" || !enter {
+		t.Errorf("sendFlags = %q, %q, %v, %v", text, keys, enter, err)
+	}
+	for _, args := range [][]string{{"--key"}, {"ls", "--key"}, {"ls", "more"}} {
+		if text, _, _, err := sendFlags(args); err == nil {
+			t.Errorf("sendFlags(%q) = text %q, no error", args, text)
+		}
+	}
+}
