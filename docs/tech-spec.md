@@ -303,7 +303,7 @@ An editor pane shows a text file; the daemon owns its buffer (`editor.go`), and 
 ## 11. Performance and benchmarking
 
 - `just bench` runs Go benchmarks: the keystroke round trip through daemon and holder (`BenchmarkInputEcho`), output throughput (`BenchmarkOutputThroughput`), and the holder's own. Results and notes in [benchmarks.md](benchmarks.md).
-- `just bench-gate` fails if the round trip's p99 exceeds 8 ms or throughput drops under 10 MB/s.
+- `just bench-gate` fails if the round trip's p99 exceeds 8 ms or throughput through the daemon drops under half of the raw PTY's on the same machine.
 - Product budgets (+≤ 8 ms median keystroke-to-photon against Ghostty, ≥ 90% of its throughput, ≤ 1 frame added latency on visual panes) aren't yet measured end to end against Ghostty: a harness driving the app and Ghostty side by side is **planned**.
 - The agent view's smoothness is measured with `scripts/agentreplay` and `HMK_DEBUG_JANK` (AGENTS.md).
 

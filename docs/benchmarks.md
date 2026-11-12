@@ -12,7 +12,7 @@ Run with `just bench` (it takes under a minute; it needs libghostty-vt, which `j
 
 `InputEcho` and `OutputThroughput` are in `internal/daemon/bench_test.go`, the others in `internal/holder/bench_test.go`.
 
-`just bench-gate` fails if the keystroke round trip's p99 goes over 8 ms or output throughput under 10 MB/s (a floor that leaves room for slow CI machines). The CI workflow (`.github/workflows/ci.yml`) runs it on every push to `main` and every pull request once GitHub Actions are switched on for the repository.
+`just bench-gate` fails if the keystroke round trip's p99 goes over 8 ms or output through the daemon falls under half of what a bare read loop gets from a PTY on the same machine (`BenchmarkRawPTY`), each the best of three runs. A fixed MB/s floor didn't work on CI: throughput on the shared runners swings from about 5 to 14 MB/s between runs of the same code. The CI workflow (`.github/workflows/ci.yml`) runs it on every push to `main` and every pull request once GitHub Actions are switched on for the repository.
 
 Notes:
 
