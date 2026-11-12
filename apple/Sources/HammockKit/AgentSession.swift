@@ -280,9 +280,14 @@ public final class AgentSession {
     }
 
     /// Sends a message (with images, attached by path), queued by the agent
-    /// if it's working.
-    public func send(_ text: String, attachments: [(name: String, data: Data)] = [], pending: Bool = true) async {
-        guard let conn = model?.connection else { return }
+    /// if it's working. False if it didn't go (not connected): the caller
+    /// gives the text back.
+    @discardableResult
+    public func send(_ text: String, attachments: [(name: String, data: Data)] = [], pending: Bool = true) async -> Bool {
+        guard let conn = model?.connection else {
+            answerError = "Not connected. Your message wasn't sent."
+            return false
+        }
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if pending {
             if pendingSends.isEmpty { seenUserIDs = Set(blocks.filter { $0.kind == .user }.map(\.id)) }
@@ -302,7 +307,9 @@ public final class AgentSession {
         } catch {
             pendingSends.removeAll { $0 == t }
             answerError = error.localizedDescription
+            return false
         }
+        return true
     }
 
     private static func squashed(_ s: String) -> String {

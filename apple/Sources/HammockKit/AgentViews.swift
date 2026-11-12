@@ -2695,7 +2695,17 @@ struct Composer: View {
         if !session.draft.isEmpty { awaitingClear = true }
         tookDraft = ""
         justSent = (t, .now + 4)
-        Task { await session.send(t, attachments: a) }
+        Task {
+            guard !(await session.send(t, attachments: a)) else { return }
+            // Didn't go (not connected yet): give it back, unless something
+            // new has been typed meanwhile.
+            justSent = nil
+            awaitingClear = false
+            if text.isEmpty && attachments.isEmpty {
+                replaceText(t)
+                attachments = a
+            }
+        }
     }
 }
 
