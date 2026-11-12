@@ -81,6 +81,9 @@ private struct OverviewLayout: View {
                 }
             }
             .disabled(!drive)
+            if let url = pane.sessionURL {
+                Button("Copy Session Link", systemImage: "link") { UIPasteboard.general.url = url }
+            }
         }
         Section {
             Button("Move to New Tab", systemImage: "rectangle.badge.plus") { Task { await model.breakOut(id) } }

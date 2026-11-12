@@ -2,7 +2,9 @@ package agents
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -72,8 +74,49 @@ var Claude = &Agent{
 	},
 	Subagents:     true,
 	SlashCommands: slashCommands,
+	SessionURL:    claudeSessionURL,
 	Usage:         claudeUsage,
 	LiveUsage:     claudeLiveUsage,
+}
+
+// bridgeID is a Remote Control session's id, as claude.ai's links have it.
+var bridgeID = regexp.MustCompile(`^session_[A-Za-z0-9]+$`)
+
+// claudeSessionURL is session id's Remote Control link, from the file each
+// running Claude Code keeps in ~/.claude/sessions (<pid>.json: its session,
+// and bridgeSessionId while Remote Control is on). The newest file wins: a
+// session resumed elsewhere leaves the old process's behind if it crashed.
+func claudeSessionURL(id string) string {
+	if id == "" {
+		return ""
+	}
+	dirs := []string{home(".claude", "sessions")}
+	if d := envOrEmpty("CLAUDE_CONFIG_DIR"); d != "" {
+		dirs = []string{filepath.Join(d, "sessions")}
+	}
+	var best string
+	var bestAt int64
+	for _, dir := range dirs {
+		m, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+		for _, f := range m {
+			b, err := os.ReadFile(f)
+			if err != nil || len(b) > 64<<10 {
+				continue
+			}
+			var s struct {
+				SessionID string `json:"sessionId"`
+				Bridge    string `json:"bridgeSessionId"`
+				UpdatedAt int64  `json:"updatedAt"`
+			}
+			if json.Unmarshal(b, &s) != nil || s.SessionID != id || !bridgeID.MatchString(s.Bridge) {
+				continue
+			}
+			if best == "" || s.UpdatedAt > bestAt {
+				best, bestAt = "https://claude.ai/code/"+s.Bridge, s.UpdatedAt
+			}
+		}
+	}
+	return best
 }
 
 // envOrEmpty is $key when it's an absolute path, else "".

@@ -227,6 +227,9 @@ message Agent {
   int32 shells = 9;                // shells the agent has running (its commands, ! commands, background tasks)
   bool running_command = 10;       // one started after it went idle: a command you ran with ! (show it as at work)
   int32 subagents = 11;            // its subagents still running (background ones go on after its turn)
+  // Where the session can be opened in a browser, when its harness has one
+  // (Claude Code's Remote Control: https://claude.ai/code/session_…).
+  string session_url = 12;
 }
 
 message AttentionItem {

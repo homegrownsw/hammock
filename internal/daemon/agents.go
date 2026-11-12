@@ -247,6 +247,19 @@ func (h *agentHub) handle(ev HookEvent) {
 		return
 	}
 	sid := payload.SessionID
+	// Its web link (Remote Control), looked for as a turn starts and ends:
+	// it comes and goes with Remote Control, which isn't a hook event.
+	var link string
+	findLink := event == "SessionStart" || event == "UserPromptSubmit" || event == "Stop"
+	if findLink {
+		id := sid
+		if id == "" {
+			id = p.snapshotInfo().Agent.GetSessionId()
+		}
+		if ag := agents.Get(harness); ag != nil && ag.SessionURL != nil {
+			link = ag.SessionURL(id)
+		}
+	}
 
 	p.mu.Lock()
 	p.hookAt = time.Now()
@@ -298,9 +311,12 @@ func (h *agentHub) handle(ev HookEvent) {
 		if sid != a.SessionId {
 			// A new session (/clear, or another started here): the old one's
 			// file isn't its (its own may not be written yet).
-			a.TranscriptPath = ""
+			a.TranscriptPath, a.SessionUrl = "", ""
 		}
 		a.SessionId = sid
+	}
+	if findLink {
+		a.SessionUrl = link
 	}
 	if t := safeTranscriptOf(a.Harness, payload.TranscriptPath); t != "" {
 		a.TranscriptPath = t

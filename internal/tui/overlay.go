@@ -406,6 +406,9 @@ func (a *App) paneMenu(id string, x, y int) {
 				}
 			}
 		}
+		if u := p.Agent.SessionUrl; u != "" {
+			items = append(items, menuItem{label: "Copy Session Link", run: func() { a.copyText(u) }})
+		}
 		items = append(items,
 			menuItem{label: "Interrupt (Esc)", run: func() { a.sendTo(id, []byte{0x1b}) }},
 			menuItem{sep: true})
@@ -576,6 +579,9 @@ func (a *App) paletteItems() []paletteItem {
 		act("split-up", "Split Up", "", "pane above", func() { a.splitAt(f, pb.Split_DIRECTION_VERTICAL, "", true) })
 		act("split-right-editor", "Split Right with Editor", "", "pane edit editor text file untitled", func() { a.splitEditor(f, pb.Split_DIRECTION_HORIZONTAL) })
 		act("split-down-editor", "Split Down with Editor", "", "pane edit editor text file untitled below", func() { a.splitEditor(f, pb.Split_DIRECTION_VERTICAL) })
+		if u := a.panes[f].GetAgent().GetSessionUrl(); u != "" {
+			act("copy-session-link", "Copy Session Link", "", "claude code remote control web url share agent conversation", func() { a.copyText(u) })
+		}
 		if p := a.panes[f]; isEditor(p) {
 			for _, it := range a.editorItems(f) {
 				if !it.sep && !it.disabled {

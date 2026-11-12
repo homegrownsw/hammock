@@ -148,6 +148,8 @@ Usage:
                                             or the folder's Group (or a new one); --on a linked computer
                                             (there, DIR is absolute or ~/…, its home; by default ~)
   hmk switch PANE AGENT                    continue a pane's agent session in another agent
+  hmk session-link [PANE]                  print the web link to a pane's agent session (Claude Code's
+                                            Remote Control), by default this pane's
   hmk schedule [ls]                        list scheduled tasks: an agent's prompt, or a command, run
                                             on a schedule, each run a new tab in its Group
   hmk schedule add [NAME] (--at HH:MM [--days weekdays|weekends|mon,tue…] | --cron EXPR)
@@ -850,6 +852,25 @@ func runCommand(args []string) error {
 		if rep := r.GetAgentSwitched().GetReport(); rep != "" {
 			printlnSafe(rep)
 		}
+		return nil
+
+	case "session-link":
+		pid := paneEnv("PANE_ID")
+		if len(args) > 1 {
+			var err error
+			if pid, err = w.resolve(args[1], "pane"); err != nil {
+				return err
+			}
+		}
+		p := w.panes[pid]
+		if p == nil {
+			return fmt.Errorf("usage: hmk session-link PANE (or run it inside a Hammock pane)")
+		}
+		u := p.GetAgent().GetSessionUrl()
+		if u == "" {
+			return fmt.Errorf("no session link: the pane's agent has none (Claude Code's comes with Remote Control)")
+		}
+		fmt.Println(u)
 		return nil
 
 	case "devtools":

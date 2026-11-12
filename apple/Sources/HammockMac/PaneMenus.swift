@@ -186,6 +186,9 @@ struct TabMenuItems: View {
         if ScheduleUI.canSchedule(model, tab) {
             Button("Schedule This…") { ScheduleUI.shared.scheduleThis(model, tab) }
         }
+        if let p = linkedPane {
+            Button("Copy Session Link") { SessionLink.copy(model, p) }
+        }
         Menu("Merge into Tab") {
             mergeTargets(in: group, side: true)
             Divider()
@@ -194,6 +197,12 @@ struct TabMenuItems: View {
         .disabled((group?.tabIds.count ?? 0) < 2 && otherGroups.isEmpty)
         Divider()
         Button("Close Tab", role: .destructive) { CloseGuard.confirm(model, tab: tab) { Task { await model.closeTab(tab.id) } } }
+    }
+
+    /// The tab's agent with a session link: its focused pane's, else the first.
+    private var linkedPane: Hammock_V1_Pane? {
+        let panes = ([tab.focusedPaneID] + AppModel.paneIDs(of: tab)).compactMap { model.panes[$0] }
+        return panes.first { $0.sessionURL != nil }
     }
 
     /// The tabs this one can merge into: its Group's, then other Groups' in submenus.
@@ -319,6 +328,9 @@ struct PaneKindMenu<Label: View>: View {
                             Button("Continue in \(AgentCatalog.shortName(of: k.id))") { model.switchAgent(paneID, to: k.id) }
                                 .disabled(pane.agent.harness == k.id)
                         }
+                    }
+                    if pane.sessionURL != nil {
+                        Button("Copy Session Link") { SessionLink.copy(model, pane) }
                     }
                     Button("Interrupt (Esc)") { model.send(paneID, Data([0x1B])) }
                 }

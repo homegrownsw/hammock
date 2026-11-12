@@ -2582,8 +2582,11 @@ type Agent struct {
 	Shells           int32                  `protobuf:"varint,9,opt,name=shells,proto3" json:"shells,omitempty"`                                        // shells the agent has running (its commands, ! commands, background tasks)
 	RunningCommand   bool                   `protobuf:"varint,10,opt,name=running_command,json=runningCommand,proto3" json:"running_command,omitempty"` // one started after it went idle: a command you ran with ! (show it as at work)
 	Subagents        int32                  `protobuf:"varint,11,opt,name=subagents,proto3" json:"subagents,omitempty"`                                 // its subagents still running (background ones go on after its turn)
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Where the session can be opened in a browser, when its harness has one
+	// (Claude Code's Remote Control: https://claude.ai/code/session_…).
+	SessionUrl    string `protobuf:"bytes,12,opt,name=session_url,json=sessionUrl,proto3" json:"session_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Agent) Reset() {
@@ -2691,6 +2694,13 @@ func (x *Agent) GetSubagents() int32 {
 		return x.Subagents
 	}
 	return 0
+}
+
+func (x *Agent) GetSessionUrl() string {
+	if x != nil {
+		return x.SessionUrl
+	}
+	return ""
 }
 
 type AttentionItem struct {
@@ -23868,7 +23878,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06editor\x18\x1e \x01(\v2\x16.hammock.v1.EditorInfoR\x06editor\x12\x1f\n" +
 	"\vstart_error\x18\x1f \x01(\tR\n" +
 	"startError\x12(\n" +
-	"\x04diff\x18  \x01(\v2\x14.hammock.v1.DiffInfoR\x04diff\"\xf1\x02\n" +
+	"\x04diff\x18  \x01(\v2\x14.hammock.v1.DiffInfoR\x04diff\"\x92\x03\n" +
 	"\x05Agent\x12\x18\n" +
 	"\aharness\x18\x01 \x01(\tR\aharness\x12\x1d\n" +
 	"\n" +
@@ -23882,7 +23892,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06shells\x18\t \x01(\x05R\x06shells\x12'\n" +
 	"\x0frunning_command\x18\n" +
 	" \x01(\bR\x0erunningCommand\x12\x1c\n" +
-	"\tsubagents\x18\v \x01(\x05R\tsubagents\"\xc4\x01\n" +
+	"\tsubagents\x18\v \x01(\x05R\tsubagents\x12\x1f\n" +
+	"\vsession_url\x18\f \x01(\tR\n" +
+	"sessionUrl\"\xc4\x01\n" +
 	"\rAttentionItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\apane_id\x18\x02 \x01(\tR\x06paneId\x12,\n" +

@@ -396,6 +396,12 @@ struct CommandPalette: View {
                     AgentModes.shared.toggle(focused)
                 }
             }
+            if let p = model.panes[focused], p.sessionURL != nil {
+                action("copy-session-link", "Copy Session Link", "link", .orange,
+                       "claude code remote control web url share agent conversation", keys: Keys.copySessionLink) {
+                    SessionLink.copy(model, p)
+                }
+            }
             action("split-right", "Split Right", "rectangle.split.2x1", .teal, "pane", keys: Keys.splitRight) { Task { await model.split(focused, direction: .horizontal) } }
             action("split-browser", "Split Right with Browser", "rectangle.split.2x1", .blue, "pane web", keys: Keys.splitBrowserRight) { Task { await model.splitBrowser(focused, direction: .horizontal) } }
             action("split-down", "Split Down", "rectangle.split.1x2", .teal, "pane", keys: Keys.splitDown) { Task { await model.split(focused, direction: .vertical) } }

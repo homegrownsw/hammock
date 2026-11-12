@@ -841,6 +841,10 @@ public nonisolated struct Hammock_V1_Agent: Sendable {
   /// its subagents still running (background ones go on after its turn)
   public var subagents: Int32 = 0
 
+  /// Where the session can be opened in a browser, when its harness has one
+  /// (Claude Code's Remote Control: https://claude.ai/code/session_…).
+  public var sessionURL: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -10949,7 +10953,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
 
 nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Agent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{3}session_id\0\u{1}state\0\u{3}state_since_unix_ms\0\u{1}summary\0\u{1}heuristic\0\u{3}transcript_path\0\u{1}seen\0\u{1}shells\0\u{3}running_command\0\u{1}subagents\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{3}session_id\0\u{1}state\0\u{3}state_since_unix_ms\0\u{1}summary\0\u{1}heuristic\0\u{3}transcript_path\0\u{1}seen\0\u{1}shells\0\u{3}running_command\0\u{1}subagents\0\u{3}session_url\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -10968,6 +10972,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
       case 9: try { try decoder.decodeSingularInt32Field(value: &self.shells) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.runningCommand) }()
       case 11: try { try decoder.decodeSingularInt32Field(value: &self.subagents) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.sessionURL) }()
       default: break
       }
     }
@@ -11007,6 +11012,9 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
     if self.subagents != 0 {
       try visitor.visitSingularInt32Field(value: self.subagents, fieldNumber: 11)
     }
+    if !self.sessionURL.isEmpty {
+      try visitor.visitSingularStringField(value: self.sessionURL, fieldNumber: 12)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -11022,6 +11030,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
     if lhs.shells != rhs.shells {return false}
     if lhs.runningCommand != rhs.runningCommand {return false}
     if lhs.subagents != rhs.subagents {return false}
+    if lhs.sessionURL != rhs.sessionURL {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

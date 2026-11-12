@@ -14,6 +14,13 @@ extension Hammock_V1_Pane {
         return title.isEmpty ? (command.first.map { ($0 as NSString).lastPathComponent } ?? "shell") : title
     }
 
+    /// Where the pane's agent session opens on the web (Claude Code's
+    /// Remote Control link), when it has one.
+    public var sessionURL: URL? {
+        guard hasAgent, agent.sessionURL.hasPrefix("https://") else { return nil }
+        return URL(string: agent.sessionURL)
+    }
+
     /// The cwd with the home directory abbreviated.
     public var shortCwd: String {
         let home = NSHomeDirectory()

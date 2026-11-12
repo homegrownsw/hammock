@@ -294,6 +294,7 @@ type paneView struct {
 	Agent      string `json:"agent,omitempty"`
 	State      string `json:"agent_state,omitempty"`
 	Summary    string `json:"agent_summary,omitempty"`
+	SessionURL string `json:"agent_session_url,omitempty"` // its session on the web (Claude Code's Remote Control)
 	CreatedBy  string `json:"created_by,omitempty"`
 	Floating   string `json:"floating,omitempty"` // "showing" or "minimised": over its tab's splits
 	You        bool   `json:"is_you,omitempty"`
@@ -341,7 +342,7 @@ func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
 		v.Program = p.Program[0]
 	}
 	if a := p.Agent; a != nil {
-		v.Agent, v.State, v.Summary = a.Harness, strings.ToLower(stateNames[a.State]), a.Summary
+		v.Agent, v.State, v.Summary, v.SessionURL = a.Harness, strings.ToLower(stateNames[a.State]), a.Summary, a.SessionUrl
 	}
 	return v
 }

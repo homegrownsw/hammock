@@ -324,6 +324,9 @@ struct HammockApp: App {
                 }
                     .keyboardShortcut(Keys.toggleAgentView)
                     .disabled(focused.flatMap { model.panes[$0] }.map { !model.supportsAgentView($0) } ?? true)
+                Button("Copy Session Link") { SessionLink.copy(model, focused.flatMap { model.panes[$0] }) }
+                    .keyboardShortcut(Keys.copySessionLink)
+                    .disabled(focused.flatMap { model.panes[$0] }?.sessionURL == nil)
                 if HammockTool.browser.on {
                     Button("Split Right with Browser") {
                         if let id = focused { Task { await model.splitBrowser(id, direction: .horizontal) } }
