@@ -244,7 +244,7 @@ struct SidebarView: View {
                     if let c = model.computer(of: group) {
                         Button("Show Only \(c.name)") { withAnimation(.snappy(duration: 0.25)) { model.computerFilter = c.userID } }
                     }
-                    Button("Delete Group", role: .destructive) { Task { await model.closeGroup(group.id) } }
+                    Button("Delete Group", role: .destructive) { CloseGuard.confirm(model, group: group) { Task { await model.deleteGroup(group.id) } } }
                         .disabled(group.offline)
                 } else if group.isRemote {
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
@@ -268,7 +268,7 @@ struct SidebarView: View {
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                     Button("Change Folder…") { GroupFolder.choose(model, group) }
                     moveButtons(group)
-                    Button("Delete Group", role: .destructive) { Task { await model.closeGroup(group.id) } }
+                    Button("Delete Group", role: .destructive) { CloseGuard.confirm(model, group: group) { Task { await model.deleteGroup(group.id) } } }
                 }
             }
     }

@@ -287,7 +287,7 @@ struct CommandPalette: View {
                 }
             }
             if g.isOnLinkedComputer ? !g.offline : !g.isRemote {
-                action("delete-group", "Delete “\(name)”", "trash", .red, "group close remove") { Task { await model.closeGroup(g.id) } }
+                action("delete-group", "Delete “\(name)”", "trash", .red, "group close remove") { CloseGuard.confirm(model, group: g) { Task { await model.deleteGroup(g.id) } } }
             } else if g.isRemote && !g.isOnLinkedComputer {
                 action("leave-group", "Leave “\(name)”", "rectangle.portrait.and.arrow.right", .red, "shared group exit") { Task { await model.leave(g.id) } }
             }

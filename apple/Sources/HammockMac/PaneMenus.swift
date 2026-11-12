@@ -757,4 +757,10 @@ enum CloseGuard {
     static func confirm(_ model: AppModel, tab: WorkspaceTab, then: @escaping () -> Void) {
         confirm(model, panes: AppModel.paneIDs(of: tab), title: nil, button: "Close Tab", then: then)
     }
+
+    /// Deleting a Group: every pane in its tabs.
+    static func confirm(_ model: AppModel, group: WorkspaceGroup, then: @escaping () -> Void) {
+        let ids = group.tabIds.compactMap { model.tabs[$0] }.flatMap { AppModel.paneIDs(of: $0) }
+        confirm(model, panes: ids, title: nil, button: "Delete Group", then: then)
+    }
 }

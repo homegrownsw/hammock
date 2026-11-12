@@ -1529,6 +1529,12 @@ extension AppModel {
         return true
     }
 
+    /// Deletes a Group from a menu: the one you're on hands the selection to
+    /// its neighbour first, as ⌘W does; another leaves it where it is.
+    public func deleteGroup(_ id: String) async {
+        if currentGroup?.id == id { await closeGroupSelectingNeighbour(id) } else { _ = await closeGroup(id) }
+    }
+
     /// Closes a Group, first selecting the next Group's tab (or, with none,
     /// a Group without tabs).
     func closeGroupSelectingNeighbour(_ id: String) async {
