@@ -3,7 +3,6 @@ package daemon
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"slices"
 	"strings"
@@ -513,12 +512,7 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	// freely; anything more asks you, as for panes in your own Groups.
 	// A pane that's gone (closed, or closed itself when its command ended
 	// cleanly) says so, not "out of scope": there's nothing to ask about.
-	gone := func(target string) error {
-		if target != "" && d.panes[target] == nil && d.routes[target] == nil {
-			return fmt.Errorf("no such pane %q: it has closed", target)
-		}
-		return nil
-	}
+	gone := d.paneGone
 	read := func(target string) error {
 		if err := gone(target); err != nil {
 			return err

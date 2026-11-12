@@ -693,7 +693,7 @@ func (s *mcpServer) ensure(ctx context.Context, allowed bool, action, target, de
 		RequesterPaneId: s.self, TargetPaneId: target, Action: action, Description: description,
 	}}})
 	if err != nil {
-		return fmt.Errorf("permission request failed: %w", err)
+		return err // the daemon's own words: a pane that's gone says it has closed
 	}
 	if d := r.GetGrantDecision(); d == nil || !d.Allowed {
 		reason := "denied"

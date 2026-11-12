@@ -130,6 +130,12 @@ func TestAgentScopeEnforcedByDaemon(t *testing.T) {
 			t.Fatalf("a closed pane: %v", err)
 		}
 	}
+	// Nor does it ask you about one: there's nothing to allow.
+	if _, err := try(agent, &pb.ClientMessage{Msg: &pb.ClientMessage_RequestGrant{RequestGrant: &pb.RequestGrant{
+		TargetPaneId: "no-such-pane", Action: "close",
+	}}}); err == nil || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("asking about a closed pane: %v", err)
+	}
 	// It floats, minimises and docks its own panes, not yours, and leaves
 	// the tab's minimise-all to you.
 	floatAs := func(m *pb.FloatPane) error {

@@ -39,6 +39,11 @@ func grantKey(requester, action, group string) string { return requester + "|" +
 
 // requestGrant handles an MCP server's request to act out of scope. Callers hold d.mu.
 func (d *Daemon) requestGrant(c *conn, replyTo uint64, m *pb.RequestGrant) (*pb.ServerMessage, error) {
+	// Asking about a pane that's gone (you closed it first) would only ask
+	// you to allow nothing: the agent hears it's closed instead.
+	if err := d.paneGone(m.TargetPaneId); err != nil {
+		return nil, err
+	}
 	group := d.groupOfPane(m.RequesterPaneId)
 	headline := d.grantHeadline(m.RequesterPaneId, m.Action, m.TargetPaneId)
 	note := agentNote(m.Description)
@@ -54,6 +59,15 @@ func (d *Daemon) requestGrant(c *conn, replyTo uint64, m *pb.RequestGrant) (*pb.
 		c: c, replyTo: replyTo, group: group,
 	})
 	return nil, errDeferred
+}
+
+// paneGone says a pane has closed: it's neither here nor on another
+// computer. Callers hold d.mu.
+func (d *Daemon) paneGone(target string) error {
+	if target != "" && d.panes[target] == nil && d.routes[target] == nil {
+		return fmt.Errorf("no such pane %q: it has closed", target)
+	}
+	return nil
 }
 
 // openGrant asks you: Needs You on every client (and your other
