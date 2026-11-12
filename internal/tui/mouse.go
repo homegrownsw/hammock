@@ -220,7 +220,8 @@ func (a *App) leftPress(z zone, m mouseEv) {
 	a.lastClick = now
 
 	switch z.kind {
-	case zTab:
+	case zTab, zBarTab:
+		// Selected on release, unless it's dragged to another place.
 		a.drag = &drag{kind: dragTab, id: z.id, startX: m.x, startY: m.y}
 	case zGroup:
 		if g := a.group(z.id); a.horizontal() || g != nil && len(g.TabIds) == 0 {
@@ -228,8 +229,6 @@ func (a *App) leftPress(z zone, m mouseEv) {
 		} else {
 			a.toggleGroup(z.id)
 		}
-	case zBarTab:
-		a.selectTab(z.id)
 	case zBarClose:
 		a.closeTab(z.id)
 	case zNewGroup:
@@ -360,7 +359,7 @@ func (a *App) dragMouse(m mouseEv) {
 		d.dropGroup, d.dropIndex = "", 0
 		if z, ok := a.zoneAt(m.x, m.y); ok {
 			switch z.kind {
-			case zTab:
+			case zTab, zBarTab:
 				d.dropGroup, d.dropIndex = z.group, z.idx
 			case zGroup:
 				d.dropGroup, d.dropIndex = z.id, -1

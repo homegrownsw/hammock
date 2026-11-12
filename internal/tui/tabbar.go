@@ -68,6 +68,10 @@ func (a *App) drawTabBar() {
 		if !selected && i < len(ids)-1 && ids[i+1] != a.selTab {
 			s.Set(x+w-1, y, Cell{Ch: "│", FG: th.faint, HasFG: true, BG: bg, HasBG: true})
 		}
+		// Where a dragged tab will land: an accent bar at the tab it will take.
+		if d := a.drag; d != nil && d.kind == dragTab && d.moved && d.dropGroup == sp.Id && d.dropIndex == first+i {
+			s.Set(x, y, Cell{Ch: "▎", FG: th.accent, HasFG: true, BG: mix(bg, th.accent, 0.18), HasBG: true})
+		}
 		x += w
 	}
 	pbg := mix(barBG, th.hover, a.hoverAmount("btn:bar-new", a.hovered(zButton, "new-tab-bar")))

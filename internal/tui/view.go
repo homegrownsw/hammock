@@ -761,13 +761,18 @@ func (a *App) drawDragGhost() {
 		return
 	}
 	sw := a.sidebarWidth()
-	w := max(sw-4, 12)
+	x, w := 2, max(sw-4, 12)
+	if a.horizontal() {
+		// Dragged in the tab bar: it follows the mouse along it.
+		w = 20
+		x = max(0, min(a.mouseX-2, a.w-w))
+	}
 	y := a.mouseY
 	bg := mix(a.th.pill, a.th.accent, 0.25)
-	a.scr.Fill(2, y, w, 1, Cell{BG: bg, HasBG: true})
+	a.scr.Fill(x, y, w, 1, Cell{BG: bg, HasBG: true})
 	g, _ := a.tabGlyph(t)
-	a.scr.Text(3, y, 1, g.ch, Cell{FG: g.col, HasFG: true, BG: bg, HasBG: true})
-	a.scr.Text(5, y, w-4, truncate(a.tabTitle(t), w-4), Cell{FG: a.th.fg, HasFG: true, BG: bg, HasBG: true, Bold: true})
+	a.scr.Text(x+1, y, 1, g.ch, Cell{FG: g.col, HasFG: true, BG: bg, HasBG: true})
+	a.scr.Text(x+3, y, w-4, truncate(a.tabTitle(t), w-4), Cell{FG: a.th.fg, HasFG: true, BG: bg, HasBG: true, Bold: true})
 }
 
 // ---------- toolbar ----------
