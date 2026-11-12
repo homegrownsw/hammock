@@ -228,6 +228,14 @@ extension Push: UNUserNotificationCenterDelegate {
 private struct Tapped: Sendable {
     let action: String
     let join: String?, grant: String?, key: String?, pane: String?, host: String?
+
+    /// The Mac has what it answers (a connection's state comes just after it connects).
+    @MainActor func asks(_ m: AppModel) -> Bool {
+        if let join { return m.joinRequests.contains { $0.id == join } }
+        if let grant { return m.grants.contains { $0.id == grant } }
+        if let key { return m.hammockKeyRequests.contains { $0.id == key } }
+        return true
+    }
 }
 
 extension Push {
@@ -236,7 +244,13 @@ extension Push {
         // session) may not be up yet.
         for _ in 0..<25 where session == nil { try? await Task.sleep(for: .milliseconds(200)) }
         guard let session else { return }
-        if let host = t.host, host != session.host?.id, let h = session.hosts.first(where: { $0.id == host }) { session.show(h) }
+        // From a Mac that isn't shown: a tap that opens the app shows it; an
+        // answer from the notification (the app stays in the background)
+        // goes over a brief connection of its own, the Mac shown kept.
+        let opens = [UNNotificationDefaultActionIdentifier, "join.drive", "key.approve"].contains(t.action)
+            || UserDefaults.standard.bool(forKey: AppLock.key) // every action opens the app, whose lock asks
+        let other = t.host.flatMap { host in host == session.host?.id ? nil : session.hosts.first { $0.id == host } }
+        if opens, let other { session.show(other) }
         if let key = t.key {
             // Its sheet shows while it waits (RootView); Approve approves at once.
             keyDismissed.remove(key)
@@ -253,12 +267,14 @@ extension Push {
             if t.grant != nil || t.join != nil { openNeedsYou = true }
             return
         }
-        // Answer from the notification: wait (briefly) for the Mac.
+        // Answer from the notification: wait (briefly) for the Mac, and what it asks.
+        let brief = opens ? nil : other.flatMap { session.briefConnection(to: $0) }
+        defer { brief?.stop() }
         for _ in 0..<50 {
-            if self.session?.model?.connected == true { break }
+            if let m = brief ?? self.session?.model, m.connected, t.asks(m) { break }
             try? await Task.sleep(for: .milliseconds(200))
         }
-        guard let model = self.session?.model else { return }
+        guard let model = brief ?? self.session?.model else { return }
         if let join = t.join, let req = model.joinRequests.first(where: { $0.id == join }) {
             model.respond(to: req, role: t.action == "join.view" ? .viewer : nil)
         }

@@ -267,6 +267,17 @@ final class Session {
         }
     }
 
+    /// A connection of its own to a paired Mac, not shown (to answer its
+    /// notification from the lock screen without changing the Mac shown).
+    /// The caller stops it.
+    func briefConnection(to h: StoredHost) -> AppModel? {
+        guard h.deviceID != nil else { return nil }
+        let m = AppModel(remote: identity(h, secret: nil), clientKind: "ios")
+        m.onResolved = { ids in Push.shared.withdraw(ids, host: h.id) }
+        m.start()
+        return m
+    }
+
     private func persist() { IdentityStore.save(StoredHosts(hosts: hosts, active: host?.id)) }
 
     private func identity(_ h: StoredHost, secret: Data?) -> RemoteIdentity {
