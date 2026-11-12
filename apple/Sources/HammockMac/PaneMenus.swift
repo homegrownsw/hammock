@@ -15,6 +15,8 @@ final class SimulatorList {
     var sorted: [AppModel.SimulatorDevice] { devices.sorted { $0.booted && !$1.booted } }
 
     func refresh(_ model: AppModel) {
+        // The README's demo (HMK_DEBUG_DIRECTOR) shows none: they're this Mac's.
+        guard ProcessInfo.processInfo.environment["HMK_DEBUG_DIRECTOR"] == nil else { return }
         Task { devices = await model.simulators() }
     }
 

@@ -93,7 +93,7 @@ public final class PaneSession {
 @Observable
 public final class AppModel {
     public private(set) var connected = false
-    public private(set) var hostName = ""
+    public internal(set) var hostName = ""
     /// Whether the daemon accepts paired devices (local clients only).
     public internal(set) var remoteEnabled = false
     public internal(set) var groups: [WorkspaceGroup] = []

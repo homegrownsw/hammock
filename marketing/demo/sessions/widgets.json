@@ -1,0 +1,10 @@
+[
+  {"user": "The login test fails about one run in ten. Find out why"},
+  {"say": "I'll run it repeatedly to catch a failure.", "dt": 1.5},
+  {"tool": "Bash", "input": {"command": "pnpm test login --repeat 20", "description": "Run the login test 20 times"}, "dt": 1},
+  {"result": " ✗ login › keeps you signed in (2 of 20 failed)\n   Error: timed out waiting for session after 500ms", "dt": 3},
+  {"tool": "Read", "input": {"file_path": "/Users/me/Developer/widgets/tests/login.test.ts"}, "dt": 1.2},
+  {"result": "await signIn(page, user);\nawait page.waitForTimeout(500);\nexpect(await session(page)).toBeDefined();", "dt": 0.8},
+  {"say": "Found it: the test waits a fixed 500 ms for the session, and on a slow run the token refresh takes longer.", "dt": 2},
+  {"tool": "AskUserQuestion", "input": {"questions": [{"question": "How should the test wait for the session?", "header": "Fix", "multiSelect": false, "options": [{"label": "Wait for the session event", "description": "Reliable; adds a small hook to the auth client"}, {"label": "Poll with a timeout", "description": "No app change; slower when it fails"}]}]}, "dt": 1.5}
+]

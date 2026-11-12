@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# Records the README's demo GIF (marketing/demo.gif) from this checkout's β,
+# on a scratch daemon with made-up Groups, agents and a made-up web page
+# (marketing/demo/), so nothing of yours is in it. It directs the window
+# with `hmk` and the app's HMK_DEBUG_DIRECTOR file (DebugDirector.swift):
+# no real clicks or keys. β records its own window (HMK_DEBUG_RECORD) with
+# its Screen Recording permission; the window shows on screen while it does,
+# so leave it be (it's recorded even under other windows).
+#
+#   just readme-demo            # build β first: just mac-dev
+#   KEEP=1 scripts/readme-demo  # keep the scratch dir (movie, logs)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+root=$PWD
+demo=$root/marketing/demo
+eval "$(scripts/beta-identity.sh)"
+app=$beta_app
+[ -d "$app" ] || { echo "no $app: run just mac-dev first" >&2; exit 1; }
+hmk=$app/Contents/Helpers/hmk
+
+scratch=$(mktemp -d)
+mkdir -p "$scratch/state" "$scratch/config" "$scratch/site" "$scratch/home/Developer/"{storefront,widgets,docs,dotfiles}
+# The made-up home as panes report their folders (/private/var/…, not the
+# /var/… symlink), so ~ shortens them. The state dir keeps the short path:
+# its sockets' paths have a length limit.
+home=$(cd "$scratch/home" && pwd -P)
+movie=$scratch/demo.mov
+director=$scratch/director
+go build -o "$scratch/agentreplay" ./scripts/agentreplay
+for s in storefront widgets docs; do
+  jq -c --arg cwd "/Users/me/Developer/$s" -f "$demo/sessions.jq" "$demo/sessions/$s.json" >"$scratch/$s.jsonl"
+done
+cp "$demo/site/"* "$scratch/site/" && cp "$scratch/site/before.html" "$scratch/site/index.html"
+cp "$demo/zshrc" "$home/.zshrc"
+# Settings of its own: the default theme, notices in the window, agents in
+# the agent view.
+printf 'notify-style = in-app\nagent-default-view = agent\n' >"$scratch/config/config"
+
+# A made-up repository for the shell to show.
+(
+  cd "$home/Developer/storefront"
+  export HOME=$home GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=Sam GIT_AUTHOR_EMAIL=sam@example.com \
+    GIT_COMMITTER_NAME=Sam GIT_COMMITTER_EMAIL=sam@example.com
+  git init -q -b main && git config color.ui always
+  d=1794200000
+  for m in "Add the basket page" "Search ranks by popularity" "Add a step indicator to checkout" "Cache product images"; do
+    d=$((d + 5400)); echo "$m" >>CHANGELOG
+    git add -A && GIT_AUTHOR_DATE="@$d +0000" GIT_COMMITTER_DATE="@$d +0000" git commit -qm "$m"
+  done
+)
+
+# Panes get only what they're given: no prompt, name or path of yours.
+unset HMK_SOCKET HMK_PANE_ID HMK_TAB_ID HMK_GROUP_ID HMK_HOOK_SOCKET HMK_CONFIG_DIR
+export HMK_DIR=$scratch/state
+pids=()
+cleanup() {
+  if [ -n "${app_pid:-}" ]; then # first: β restarts a daemon that stops under it
+    kill -TERM "$app_pid" 2>/dev/null || true
+    for _ in $(seq 50); do kill -0 "$app_pid" 2>/dev/null || break; sleep 0.1; done
+  fi
+  "$hmk" stop >/dev/null 2>&1 || true
+  for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
+  pkill -f "$scratch/" 2>/dev/null || true # panes outlive their daemon
+  rm -rf "$HOME/.claude/projects/-hmk-replay" # agentreplay's transcripts
+  if [ -n "${KEEP:-}" ]; then echo "kept $scratch"; else rm -rf "$scratch"; fi
+}
+trap cleanup EXIT
+
+port=$(( 20000 + RANDOM % 20000 ))
+python3 -m http.server "$port" --bind 127.0.0.1 --directory "$scratch/site" >"$scratch/http.log" 2>&1 &
+pids+=($!)
+"$app/Contents/MacOS/hmkd" --dir "$scratch/state" >"$scratch/hmkd.log" 2>&1 &
+pids+=($!)
+for _ in $(seq 50); do "$hmk" ls >/dev/null 2>&1 && break; sleep 0.2; done
+
+# Each pane runs a small script: a zsh that knows nothing of this Mac (the
+# made-up home and its .zshrc), or an agent that starts playing once go-NAME
+# exists, so the scene picks when.
+cat >"$scratch/shell.sh" <<SH
+#!/bin/sh
+exec env -i HOME=$home ZDOTDIR=$home TERM=xterm-256color LANG=en_GB.UTF-8 PATH=/usr/bin:/bin \
+  DEMO_DIR=$demo DEMO_PORT=$port /bin/zsh -i
+SH
+chmod +x "$scratch/shell.sh"
+agent() { # NAME [SPEED]: prints a script playing the NAME session once go-NAME exists
+  local f=$scratch/agent-$1.sh
+  printf "#!/bin/sh\nwhile [ ! -f %s ]; do sleep 0.1; done\n%s -src %s -turns 1 -speed %s -log %s\nexec sleep 100000\n" "$scratch/go-$1" "$scratch/agentreplay" "$scratch/$1.jsonl" "${2:-1}" "$scratch/$1.log" >"$f"
+  chmod +x "$f"; echo "$f"
+}
+group() { # NAME EMOJI
+  local id
+  id=$("$hmk" group new "$1" | tail -1)
+  "$hmk" group icon "$id" "$2" >/dev/null
+  echo "$id"
+}
+pane_of() { # TAB: its pane
+  "$hmk" ls --json | jq -r --arg t "$1" '.groups[].tabs[] | select(.id == $t) | .focused_pane_id'
+}
+tab() { # GROUP NAME DIR CMD...: prints the new tab's pane
+  local g=$1 n=$2 d=$3; shift 3
+  pane_of "$("$hmk" tab new "$g" --name "$n" --cwd "$home/Developer/$d" -- "$@" | tail -1)"
+}
+typein() { # PANE TEXT: typed, a key at a time, then Return
+  local i
+  for ((i = 0; i < ${#2}; i++)); do "$hmk" send "$1" "${2:i:1}"; sleep 0.05; done
+  sleep 0.25; "$hmk" send "$1" --enter
+}
+
+g_store=$(group Storefront 🛒)
+g_widgets=$(group Widgets 📱)
+g_docs=$(group Docs 📚)
+g_dots=$(group dotfiles 🐚)
+p_shell=$(tab "$g_store" "Shell" storefront "$scratch/shell.sh")
+p_store=$(tab "$g_store" "Checkout redesign" storefront "$(agent storefront)")
+p_widgets=$(tab "$g_widgets" "Flaky login test" widgets "$(agent widgets 1.2)") # asks at ~9 s
+tab "$g_widgets" "Shell" widgets "$scratch/shell.sh" >/dev/null
+p_docs=$(tab "$g_docs" "Release notes" docs "$(agent docs)")
+tab "$g_dots" "Shell" dotfiles "$scratch/shell.sh" >/dev/null
+"$hmk" ls >"$scratch/ls-start.txt"
+
+# The window: recording starts once it's settled.
+: >"$director"
+say() { echo "$*" >>"$director"; }
+say "profile Sam|Studio"
+say "focus $p_shell"
+open -n --env HMK_DIR="$scratch/state" --env HMK_CONFIG_DIR="$scratch/config" \
+  --env HMK_DEBUG_RECORD="$movie" --env HMK_DEBUG_DIRECTOR="$director" \
+  --env HMK_DEBUG_HOME="$(cd "$home" && pwd -P)" --env HMK_DEBUG_DELAY=6 --env HMK_DEBUG_RECORD_SECONDS=90 \
+  --stderr "$scratch/app.log" "$app"
+for _ in $(seq 100); do
+  app_pid=$(pgrep -f "$app/Contents/MacOS/Hammock" | head -1 || true)
+  [ -n "$app_pid" ] && break; sleep 0.1
+done
+for _ in $(seq 150); do grep -q "HammockRecord: recording" "$scratch/app.log" 2>/dev/null && break; sleep 0.1; done
+grep -q "HammockRecord: recording" "$scratch/app.log" || { cat "$scratch/app.log" >&2; exit 1; }
+
+# The scene. Times are seconds from the recording's start. Terminals first
+# (a shell, then a browser and a dev server beside it), with the agents
+# working in the sidebar from the start: one asks a question while the
+# terminals are still on screen, and the scene goes to it.
+now() { python3 -c 'import time; print(time.time())'; }
+at() { # SECONDS: waits until then
+  local d; d=$(echo "$1 + $t0 - $(now)" | bc -l)
+  if (( $(echo "$d > 0" | bc -l) )); then sleep "$d"; fi
+}
+t0=$(now)
+touch "$scratch/go-storefront" "$scratch/go-docs" "$scratch/go-widgets"
+at 0.8;  typein "$p_shell" "git log --oneline -4"
+at 2.8;  typein "$p_shell" "pnpm test"
+at 4.8;  p_browser=$("$hmk" browser "http://127.0.0.1:$port/" --split "$p_shell" | tail -1)
+at 6.3;  p_dev=$("$hmk" split "$p_browser" --down --cwd "$home/Developer/storefront" -- "$scratch/shell.sh" | tail -1)
+at 7;    typein "$p_dev" "pnpm dev"
+at 8.4;  say "collapse dotfiles"
+at 9;    say "collapse Docs"
+at 10.5; say "focus $p_widgets"
+at 13.5; say "palette release notes"
+at 15.8; say "palette close"; say "expand Docs"
+at 16.4; say "focus $p_docs"
+at 18.2; say "focus $p_store"
+at 20.4; say "focus $p_shell"
+at 21.2; cp "$scratch/site/after.html" "$scratch/site/index.html"; "$hmk" nav "$p_browser" reload
+at 22.6; say "zoom 2"
+at 24.2; say "zoom 2"
+at 25.6; touch "$movie.stop"
+"$hmk" ls >"$scratch/ls.txt" 2>&1 || true
+for _ in $(seq 100); do [ -f "$movie.done" ] && break; sleep 0.1; done
+# The GIF: 960 wide, 15 fps, one palette for the whole film.
+out=$root/marketing/demo.gif
+ffmpeg -v error -y -i "$movie" -vf "fps=15,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff:max_colors=192[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle" "$out"
+echo "wrote $out ($(du -h "$out" | cut -f1))"

@@ -21,9 +21,11 @@ extension Hammock_V1_Pane {
         return URL(string: agent.sessionURL)
     }
 
-    /// The cwd with the home directory abbreviated.
+    /// The cwd with the home directory abbreviated. HMK_DEBUG_HOME stands in
+    /// for the home directory, for the README's demo (`scripts/readme-demo`),
+    /// whose made-up projects live in a scratch dir.
     public var shortCwd: String {
-        let home = NSHomeDirectory()
+        let home = ProcessInfo.processInfo.environment["HMK_DEBUG_HOME"] ?? NSHomeDirectory()
         return cwd.hasPrefix(home) ? "~" + cwd.dropFirst(home.count) : cwd
     }
 }

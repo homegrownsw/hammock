@@ -489,6 +489,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppConfig.shared.followUsageChoice()
         DebugSnapshot.scheduleIfRequested()
         DebugSnapshot.typeIfRequested()
+        DebugRecord.scheduleIfRequested()
+        DebugDirector.startIfRequested()
         MenuHelper.start()
     }
 

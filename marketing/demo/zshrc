@@ -1,0 +1,22 @@
+# The demo's shells (scripts/readme-demo): a made-up home, a plain prompt,
+# and a pnpm that only pretends.
+PROMPT='%F{magenta}%~%f %F{green}❯%f '
+export GIT_PAGER=cat CLICOLOR=1
+alias ls='ls -G'
+pnpm() {
+  case $1 in
+  test)
+    printf '\n \033[1;46;30m RUN \033[0m \033[36mv3.2.4\033[0m \033[2m~/Developer/storefront\033[0m\n\n'
+    for t in "cart/total.test.ts (6 tests)" "checkout/Summary.test.tsx (10 tests)" \
+      "checkout/bySeller.test.ts (4 tests)" "routes/checkout.test.tsx (8 tests)" "search/rank.test.ts (12 tests)"; do
+      sleep 0.45; printf ' \033[32m✓\033[0m src/%s \033[2m%sms\033[0m\n' "$t" $((RANDOM % 90 + 12))
+    done
+    sleep 0.3
+    printf '\n\033[2m Test Files \033[0m \033[1;32m5 passed\033[0m \033[2m(5)\033[0m\n\033[2m      Tests \033[0m \033[1;32m40 passed\033[0m \033[2m(40)\033[0m\n\033[2m   Duration \033[0m 1.84s\n\n' ;;
+  dev) "$DEMO_DIR/devserver.sh" "$DEMO_PORT" ;;
+  *) echo "pnpm: $1: not in this demo" ;;
+  esac
+}
+# The terminal's title: what's running, else the shell and its folder.
+precmd() { print -Pn '\e]0;zsh in %1~\a'; }
+preexec() { print -n "\e]0;$1\a"; }

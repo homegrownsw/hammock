@@ -243,6 +243,10 @@ appstore-marketing *args:
 appstore-preview-video *args:
     marketing/scripts/appstore-preview-video {{args}}
 
+# Record the README's demo GIF (marketing/demo.gif) from this checkout's β, on a scratch daemon with made-up Groups.
+readme-demo: mac-dev
+    scripts/readme-demo
+
 # What's New for an iPhone version, from its release notes (--pending: with the notes not cut yet).
 appstore-whats-new version *args:
     marketing/scripts/appstore-whats-new {{version}} {{args}}

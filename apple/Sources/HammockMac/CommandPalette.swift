@@ -126,6 +126,7 @@ struct CommandPalette: View {
             .padding(.top, 90)
         }
         .onAppear {
+            DebugDirector.paletteQuery = { query = $0 }
             // The terminal holds the keyboard as an AppKit first responder,
             // which a SwiftUI focus request alone doesn't take over: let it go,
             // then focus the field, again once the palette is laid out.

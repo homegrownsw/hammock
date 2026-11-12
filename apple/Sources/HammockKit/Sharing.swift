@@ -131,6 +131,9 @@ extension AppModel {
                 if let deviceName { $0.deviceName = deviceName }
             }
         }
+        // The daemon tells it only on connecting: show a new name now (the
+        // Mac's own, "", follows on reconnecting).
+        if let deviceName, !deviceName.isEmpty { hostName = deviceName }
     }
 
     // MARK: Joining

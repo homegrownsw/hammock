@@ -17,6 +17,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -92,9 +93,10 @@ func play(sock, pane, id, path string, lines [][]byte, start int, speed float64,
 	for _, l := range lines[:start] {
 		f.Write(append(l, '\n'))
 	}
-	hook(sock, pane, "UserPromptSubmit", map[string]any{"session_id": id, "transcript_path": path, "prompt": "replay"})
+	hook(sock, pane, "UserPromptSubmit", map[string]any{"session_id": id, "transcript_path": path, "prompt": cmp.Or(lastPrompt(lines[:min(start+1, len(lines))]), "replay")})
 	log.Printf("playing %d of %d lines into %s", len(lines)-start, len(lines), pane)
 	var prev time.Time
+	asking := false
 	for i, l := range lines[start:] {
 		t := stamp(l)
 		if !prev.IsZero() && !t.IsZero() {
@@ -110,9 +112,16 @@ func play(sock, pane, id, path string, lines [][]byte, start int, speed float64,
 			prev = t
 		}
 		f.Write(append(l, '\n'))
+		asking = toolHooks(sock, pane, id, path, l)
 		if (i+1)%50 == 0 {
 			log.Printf("line %d", start+i+1)
 		}
+	}
+	if asking {
+		// It ends on a question: it waits for you, as Claude would.
+		log.Printf("waiting on a question")
+		<-stop
+		return false
 	}
 	hook(sock, pane, "Stop", map[string]any{"session_id": id, "transcript_path": path})
 	log.Printf("done")
@@ -195,4 +204,60 @@ func newID() string {
 	rand.Read(b)
 	h := hex.EncodeToString(b)
 	return fmt.Sprintf("%s-%s-%s-%s-%s", h[:8], h[8:12], h[12:16], h[16:20], h[20:])
+}
+
+// toolHooks sends the hooks Claude would around line l: PreToolUse for each
+// tool it calls, PostToolUse for each result, so the sidebar says what it's
+// doing. It reports whether the line asks you a question (AskUserQuestion).
+func toolHooks(sock, pane, id, path string, l []byte) (asking bool) {
+	var v struct {
+		Type    string `json:"type"`
+		Message struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(l, &v) != nil {
+		return false
+	}
+	var blocks []struct {
+		Type      string          `json:"type"`
+		ID        string          `json:"id"`
+		Name      string          `json:"name"`
+		Input     json.RawMessage `json:"input"`
+		ToolUseID string          `json:"tool_use_id"`
+	}
+	if json.Unmarshal(v.Message.Content, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		switch b.Type {
+		case "tool_use":
+			hook(sock, pane, "PreToolUse", map[string]any{"session_id": id, "transcript_path": path, "tool_name": b.Name, "tool_input": b.Input, "tool_use_id": b.ID})
+			asking = b.Name == "AskUserQuestion"
+		case "tool_result":
+			hook(sock, pane, "PostToolUse", map[string]any{"session_id": id, "transcript_path": path, "tool_use_id": b.ToolUseID})
+		}
+	}
+	return asking
+}
+
+// lastPrompt is the last thing you typed in lines, for the turn's summary.
+func lastPrompt(lines [][]byte) string {
+	for i := len(lines) - 1; i >= 0; i-- {
+		var l struct {
+			Type    string `json:"type"`
+			IsMeta  bool   `json:"isMeta"`
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(lines[i], &l) != nil || l.Type != "user" || l.IsMeta {
+			continue
+		}
+		var s string
+		if json.Unmarshal(l.Message.Content, &s) == nil && len(s) > 0 && s[0] != '<' {
+			return s
+		}
+	}
+	return ""
 }

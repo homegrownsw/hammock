@@ -3,6 +3,10 @@
 - `index.html`: the website, https://homegrownsw.com/hammock/. One static page, no build step; the window and
   iPhone in it are drawn in HTML and CSS, so nothing personal ever ends up in a screenshot.
 - `banner.html` → `banner.png`: the banner at the top of the repo's README (also the site's link preview).
+- `demo.gif`: the Mac app in use, under the README's introduction, recorded by `just readme-demo`
+  (`scripts/readme-demo`) from β on a scratch daemon. Everything in it is made up, in `demo/`: the agents' sessions
+  (`sessions/`, made into transcripts by `sessions.jq`), the shop page (`site/`), the shells' `zshrc` and the dev
+  server. Change the scene in the script; check the frames for anything of yours before committing a new one.
 - `dmg-background.html` → `apple/Resources/dmg-background.png` and `@2x`: the window of Hammock.dmg, the download
   (`scripts/make-dmg.sh`; `just dmg` makes one to look at).
 - `appstore/`: the iPhone app's App Store listing and TestFlight test information, pushed with Fastlane (`fastlane/`,

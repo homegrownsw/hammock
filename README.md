@@ -16,6 +16,10 @@ browsers and simulators, organised into Groups, tabs and panes, so they keep run
 window: a terminal multiplexer, like tmux or Zellij, as a native app. The Mac and iPhone apps, a TUI and the
 `hmk` CLI all show the same workspace, and agents can drive it too, through MCP.
 
+<p align="center">
+  <img src="marketing/demo.gif" alt="Hammock on the Mac: a shell running tests, a browser and a dev server split beside it, Groups collapsing, an agent asking a question and the command palette" width="100%">
+</p>
+
 | | |
 |---|---|
 | 🟢 **Always on** | Every pane lives in its own process: quit the app, update it or crash it, and your terminals and agents keep running. After a reboot, agents resume their sessions. |

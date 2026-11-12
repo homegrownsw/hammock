@@ -354,6 +354,12 @@ struct SidebarView: View {
         .onChange(of: collapsed) { _, c in
             UserDefaults.standard.set(c.sorted().joined(separator: ","), forKey: "collapsedGroups")
         }
+        .onReceive(NotificationCenter.default.publisher(for: DebugDirector.collapse)) { n in
+            guard let id = n.object as? String else { return }
+            withAnimation(.snappy(duration: 0.2)) {
+                if n.userInfo?["collapsed"] as? Bool == true { collapsed.insert(id) } else { collapsed.remove(id) }
+            }
+        }
         .onChange(of: PaletteState.shared.isOpen) { _, open in
             if open {
                 hoveredGroup = nil
