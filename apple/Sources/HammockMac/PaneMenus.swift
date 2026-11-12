@@ -400,7 +400,8 @@ final class PaneZoom {
     /// fills its tab, still a card (the daemon's, so every client sees it).
     func toggle(_ paneID: String, model: AppModel) {
         if model.floating(paneID) != nil {
-            withAnimation(.snappy(duration: 0.22)) { model.arrange(paneID, .zoom) }
+            // The same motion as a split pane zooming, terminals held still.
+            PaneMotion.shared.animate { model.arrange(paneID, .zoom) }
             model.focus(paneID)
             return
         }

@@ -1615,6 +1615,10 @@ extension AppModel {
             }
         case .restore, .raise:
             focusedPaneID = paneID
+        case .zoom:
+            // Here first, so the card grows (or shrinks) in the caller's
+            // animation; the daemon's update confirms it.
+            updateFloat(paneID) { $0.zoomed.toggle() }
         default: break
         }
         Task {
