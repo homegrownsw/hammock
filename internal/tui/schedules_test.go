@@ -25,6 +25,7 @@ func TestParseWhen(t *testing.T) {
 		{"sun mon tue wed thu fri sat 00:00", nil, 0, ""},
 		{"cron 0 * * * *", nil, 0, "0 * * * *"},
 		{"*/15 9-17 * * 1-5", nil, 0, "*/15 9-17 * * 1-5"},
+		{"30 8 * jan-mar mon-fri", nil, 0, "30 8 * jan-mar mon-fri"},
 	} {
 		days, minute, cron, err := parseWhen(tc.in)
 		if err != nil || !slices.Equal(days, tc.days) || minute != tc.minute || cron != tc.cron {
@@ -35,6 +36,10 @@ func TestParseWhen(t *testing.T) {
 		if _, _, _, err := parseWhen(bad); err == nil {
 			t.Errorf("%q: no error", bad)
 		}
+	}
+	// Five day names with the time forgotten aren't a cron line.
+	if _, _, cron, err := parseWhen("mon tue wed thu fri"); err == nil || !strings.Contains(err.Error(), "what time") {
+		t.Errorf("mon tue wed thu fri: cron %q, err %v", cron, err)
 	}
 }
 

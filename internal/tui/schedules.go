@@ -119,6 +119,24 @@ func whenField(s *pb.Schedule) string {
 	return fmt.Sprintf("%s %02d:%02d", dayWords(s.Weekdays), s.MinuteOfDay/60, s.MinuteOfDay%60)
 }
 
+// looksCron says whether five words are a cron line without its "cron":
+// minute and hour in numbers, *, lists, ranges and steps; the day and month
+// fields may also use names (mon, jan). Five day names with no time ("mon
+// tue wed thu fri") aren't one: the daemon would read them as numbers.
+func looksCron(f []string) bool {
+	for i, w := range f {
+		for _, r := range w {
+			switch {
+			case r >= '0' && r <= '9', strings.ContainsRune("*?/,-", r):
+			case i >= 2 && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'):
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // parseWhen reads the When field: "every day 08:30", "weekdays 8:30",
 // "weekends at 10:00", "mon,wed,fri 09:00", or a cron line ("cron 0 * * * *",
 // or just its five fields).
@@ -132,7 +150,7 @@ func parseWhen(v string) (days []int32, minute int32, cron string, err error) {
 		}
 		return nil, 0, cron, nil
 	}
-	if f := strings.Fields(v); len(f) == 5 && !strings.Contains(v, ":") {
+	if f := strings.Fields(v); len(f) == 5 && !strings.Contains(v, ":") && looksCron(f) {
 		return nil, 0, v, nil
 	}
 	set := map[int32]bool{}
