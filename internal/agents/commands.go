@@ -21,13 +21,15 @@ var codexBuiltins = slashed("agents", "app", "approve", "archive", "cd", "compac
 // of a message: elsewhere in one they're sent as text. (Its skills and
 // commands, bundled or yours, run anywhere in one.)
 var claudeBuiltins = slashed("add-dir", "agents", "bashes", "clear", "compact", "config", "context", "cost", "doctor", "effort",
-	"exit", "export", "fast", "feedback", "help", "hooks", "ide", "init", "keybindings", "login", "logout", "mcp", "memory",
+	"exit", "export", "fast", "feedback", "help", "hooks", "ide", "keybindings", "login", "logout", "mcp", "memory",
 	"model", "output-style", "permissions", "plan", "plugin", "pr-comments", "release-notes", "resume", "review", "rewind",
-	"security-review", "skills", "status", "statusline", "tasks", "terminal-setup", "theme", "todos", "upgrade", "usage", "vim")
+	"skills", "status", "statusline", "tasks", "terminal-setup", "theme", "todos", "upgrade", "usage", "vim")
 
-// claudeBundledSkills are the skills that come with Claude Code.
-var claudeBundledSkills = slashed("claude-api", "code-review", "fewer-permission-prompts", "loop", "schedule", "simplify",
-	"update-config")
+// claudeBundledSkills are the skills that come with Claude Code, and the
+// commands it gives its model as skills (/init, /security-review): they run
+// anywhere in a message.
+var claudeBundledSkills = slashed("claude-api", "code-review", "fewer-permission-prompts", "init", "loop", "schedule",
+	"security-review", "simplify", "update-config")
 
 // slashed is names with a "/" before each.
 func slashed(names ...string) []string {

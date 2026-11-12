@@ -251,6 +251,12 @@ func TestCodexAgentView(t *testing.T) {
 	if !slices.Contains(first.Commands, "/model") || !slices.Contains(first.Commands, "/review") || slices.Contains(first.Commands, "/rewind") {
 		t.Fatalf("commands: %v", first.Commands)
 	}
+	// Its built-ins only run at a message's start; its saved prompts aren't among them.
+	if !slices.Contains(first.StartCommands, "/model") || slices.ContainsFunc(first.StartCommands, func(c string) bool {
+		return !slices.Contains(first.Commands, c) || strings.HasPrefix(c, "/prompts:")
+	}) {
+		t.Fatalf("start commands: %v", first.StartCommands)
+	}
 	// Codex carries on: its command, edit and reply arrive.
 	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 	f.WriteString(strings.Join(lines[10:], ""))

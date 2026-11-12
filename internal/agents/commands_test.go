@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -102,36 +101,36 @@ func TestClaudeSlashCommands(t *testing.T) {
 	}
 }
 
-// The built-ins, which only run at a message's start, are among the
-// commands offered, and the skills and commands that run anywhere aren't.
-func TestStartCommandsAreBuiltins(t *testing.T) {
-	tmp := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(tmp, "commands"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tmp, "commands", "mine.md"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	got := claudeSlashCommands(tmp, t.TempDir())
-	for _, c := range Get("claude").StartCommands {
-		if !slices.Contains(got, c) {
-			t.Errorf("start command %s isn't offered", c)
+// Claude Code's built-ins only run at a message's start; its skills (bundled
+// or yours), your commands and the commands it gives its model as skills
+// run anywhere, so they aren't start commands. Codex's prompts aren't
+// either.
+func TestStartCommands(t *testing.T) {
+	starts := Get("claude").StartCommands
+	for _, c := range []string{"/clear", "/model", "/cost", "/exit"} {
+		if !slices.Contains(starts, c) {
+			t.Errorf("%s isn't a start command", c)
 		}
 	}
-	for _, c := range []string{"/mine", "/loop", "/simplify"} {
-		if !slices.Contains(got, c) {
-			t.Errorf("%s isn't offered", c)
-		}
-		if slices.Contains(Get("claude").StartCommands, c) {
+	for _, c := range []string{"/loop", "/simplify", "/init", "/security-review"} {
+		if slices.Contains(starts, c) {
 			t.Errorf("%s runs anywhere in a message, but is a start command", c)
 		}
-	}
-	if !slices.Contains(Get("claude").StartCommands, "/clear") || !slices.Contains(Get("codex").StartCommands, "/model") {
-		t.Error("built-ins missing from the start commands")
-	}
-	for _, c := range Get("codex").StartCommands {
-		if strings.HasPrefix(c, "/prompts:") {
-			t.Errorf("Codex's prompt %s is a start command", c)
+		if !slices.Contains(claudeSlashCommands(t.TempDir(), t.TempDir()), c) {
+			t.Errorf("%s isn't offered", c)
 		}
+	}
+
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, "prompts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "prompts", "ship.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(codexSlashCommands(), "/prompts:ship") || slices.Contains(Get("codex").StartCommands, "/prompts:ship") ||
+		!slices.Contains(Get("codex").StartCommands, "/model") {
+		t.Errorf("codex: offered %v, start commands %v", codexSlashCommands(), Get("codex").StartCommands)
 	}
 }

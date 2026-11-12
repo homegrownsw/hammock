@@ -2293,6 +2293,15 @@ enum SlashToken {
         text[..<token.lowerBound].allSatisfy(\.isWhitespace)
     }
 
+    /// The commands to offer for the token: up to eight that it begins,
+    /// leaving out those that only run at the start of a message (built-ins,
+    /// sent as text later in one) when it isn't there.
+    static func suggestions(for token: Range<String.Index>, in text: String, from commands: [String], startOnly: Set<String>) -> [String] {
+        let q = text[token].lowercased()
+        let skip = startsMessage(token, in: text) ? [] : startOnly
+        return Array(commands.filter { !skip.contains($0) && $0.lowercased().hasPrefix(q) }.prefix(8))
+    }
+
     /// The text with that token replaced by a command and a space, and where
     /// the cursor goes: after the space.
     static func complete(_ token: Range<String.Index>, with command: String, in text: String) -> (text: String, cursor: String.Index) {
@@ -2356,10 +2365,7 @@ struct Composer: View {
 
     private var suggestions: [String] {
         guard let r = slashToken else { return [] }
-        let q = text[r].lowercased()
-        // Built-ins only run at the start: later in a message they'd be sent as text.
-        let skip = SlashToken.startsMessage(r, in: text) ? [] : session.startCommands
-        return Array(session.commands.filter { !skip.contains($0) && $0.lowercased().hasPrefix(q) }.prefix(8))
+        return SlashToken.suggestions(for: r, in: text, from: session.commands, startOnly: session.startCommands)
     }
 
     /// Sets the text from code, not typing: the cursor known for the old
