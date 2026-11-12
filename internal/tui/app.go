@@ -195,8 +195,12 @@ func (a *App) loop(stdin <-chan []byte, initial []byte) error {
 			a.dirty = true
 		case <-tick.C:
 			a.frame++
-			if ev := parser.stale(time.Now()); ev != nil {
-				a.input(ev)
+			// Not while a read waits in stdin (a slow frame let the tick
+			// win the select): it may be the rest of what's held.
+			if len(stdin) == 0 {
+				if ev := parser.stale(time.Now()); ev != nil {
+					a.input(ev)
+				}
 			}
 			a.pollLive()
 			a.editorTick()
