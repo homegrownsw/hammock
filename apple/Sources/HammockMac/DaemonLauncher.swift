@@ -31,7 +31,8 @@ enum DaemonLauncher {
         // point at a copy of the app that's gone (a moved or deleted build,
         // launchd saying "Could not find … Contents/MacOS/hmkd" forever).
         // Register it again from this copy, once per run; it starts at load.
-        if DaemonService.isEnabled, !repaired, Date().timeIntervalSince(kickstartedAt) < 60 {
+        // Not from a copy that's run from outside Applications (AppMover).
+        if DaemonService.isEnabled, !repaired, !AppMover.provisional, Date().timeIntervalSince(kickstartedAt) < 60 {
             repaired = true
             NSLog("Hammock: the daemon's login item didn't start it; registering it again from %@", Bundle.main.bundlePath)
             try? DaemonService.service.unregister()

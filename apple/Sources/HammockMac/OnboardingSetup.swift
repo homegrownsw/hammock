@@ -45,8 +45,11 @@ private func tilde(_ path: String) -> String { (path as NSString).abbreviatingWi
 // MARK: - 3 · Keep it running
 
 struct DaemonStep: View {
-    @State private var wantDaemon = true
-    @State private var wantCLI = true
+    /// Off, and can't be turned on, while Hammock runs from outside
+    /// Applications (AppMover): the login item would go when it moves.
+    @State private var wantDaemon = !AppMover.provisional
+    /// Likewise: a link into a copy that's about to move would break.
+    @State private var wantCLI = !AppMover.provisional
     @State private var daemonOn = DaemonService.isEnabled
     @State private var needsApproval = DaemonService.needsApproval
     @State private var cliPath = CommandLineTool.installedPath
@@ -77,8 +80,16 @@ struct DaemonStep: View {
                     row(icon: AnyView(Image(systemName: "macwindow.on.rectangle").font(.system(size: 18)).foregroundStyle(Brand.forest)),
                         title: Text("Run in the background at login"),
                         text: Text("Terminals and agents keep going when the window is closed, and come back after a restart. Runs as you, no admin password."),
-                        detail: nil, isOn: $wantDaemon) {
-                        if wantDaemon && needsApproval {
+                        detail: nil, isOn: $wantDaemon, disabled: AppMover.provisional) {
+                        if AppMover.provisional {
+                            banner(tint: Brand.needsYou) {
+                                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.white, Brand.needsYou)
+                                Text("Hammock isn't in your Applications folder, so it can't start at login or install **hmk** from where it is.")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 8)
+                                Button("Move to Applications") { AppMover.moveAndRelaunch() }
+                            }
+                        } else if wantDaemon && needsApproval {
                             banner(tint: Brand.needsYou) {
                                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.white, Brand.needsYou)
                                 Text("macOS wants you to approve this. Turn on **\(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Hammock")** in Login Items & Extensions, then come back. This updates by itself.")
@@ -98,7 +109,7 @@ struct DaemonStep: View {
                         iconBackground: Color(red: 0.12, green: 0.114, blue: 0.106),
                         title: Text("Install the \(Text("hmk").font(.system(size: 14, weight: .semibold, design: .monospaced))) command"),
                         text: Text("Drive Hammock from any shell or script: \(Self.mono("hmk ls")), \(Self.mono("hmk tab new")), \(Self.mono("hmk send"))…"),
-                        detail: cliDetail, isOn: $wantCLI) {
+                        detail: cliDetail, isOn: $wantCLI, disabled: AppMover.provisional) {
                         if wantCLI, let hint = pathHint {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Installed to **\(tilde(hint.dir))**, which isn't on your PATH yet. Add this line to **\(hint.file)**:")
@@ -157,7 +168,8 @@ struct DaemonStep: View {
             return
         }
         do {
-            if wantDaemon != DaemonService.isEnabled && !(wantDaemon && DaemonService.needsApproval) {
+            // Left as it is from outside Applications (the switch is off and disabled there).
+            if !AppMover.provisional, wantDaemon != DaemonService.isEnabled && !(wantDaemon && DaemonService.needsApproval) {
                 try DaemonService.setEnabled(wantDaemon)
             }
         } catch {
@@ -166,7 +178,9 @@ struct DaemonStep: View {
         daemonOn = DaemonService.isEnabled
         needsApproval = DaemonService.needsApproval
         do {
-            if wantCLI, cliPath == nil {
+            if AppMover.provisional {
+                // Left as it is (the switch is off and disabled there).
+            } else if wantCLI, cliPath == nil {
                 let link = try CommandLineTool.install()
                 cliPath = link
                 pathHint = PathHint.check(link)
@@ -186,7 +200,7 @@ struct DaemonStep: View {
     }
 
     private func row<Extra: View>(icon: AnyView, iconBackground: Color = Brand.mist.opacity(0.35), title: Text, text: Text, detail: String?,
-                                  isOn: Binding<Bool>, @ViewBuilder extra: () -> Extra) -> some View {
+                                  isOn: Binding<Bool>, disabled: Bool = false, @ViewBuilder extra: () -> Extra) -> some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 14) {
                 icon
@@ -204,6 +218,7 @@ struct DaemonStep: View {
                 Toggle(isOn: isOn) { title }
                     .toggleStyle(.switch)
                     .labelsHidden()
+                    .disabled(disabled)
             }
             .padding(.horizontal, 20).padding(.vertical, 18)
             extra()
