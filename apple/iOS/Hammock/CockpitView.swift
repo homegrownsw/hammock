@@ -287,6 +287,19 @@ struct GroupsView: View {
     @State private var editing: WorkspaceGroup?
     @State private var creatingGroup = false
     @State private var deleting: WorkspaceGroup?
+    /// Collapsed Groups, by id: this phone's own, not the Mac's, kept
+    /// between launches.
+    @AppStorage("collapsedGroups") private var collapsedIDs = ""
+
+    private var collapsed: Set<String> { Set(collapsedIDs.split(separator: ",").map(String.init)) }
+
+    private func toggle(_ group: WorkspaceGroup) {
+        var ids = collapsed
+        if ids.remove(group.id) == nil { ids.insert(group.id) }
+        // Forget Groups that have gone, so the list doesn't grow forever.
+        ids.formIntersection(model.groups.map(\.id))
+        withAnimation { collapsedIDs = ids.sorted().joined(separator: ",") }
+    }
 
     var body: some View {
         CockpitSplit(model: model, session: session, path: $path, placeholder: "No Tab Selected") {
@@ -298,9 +311,10 @@ struct GroupsView: View {
                         .listRowBackground(Color.clear)
                 }
                 ForEach(model.shownGroups) { group in
+                    let isCollapsed = collapsed.contains(group.id)
                     Section {
-                        let tabs = model.tabs(in: group)
-                        if group.tabIds.isEmpty {
+                        let tabs = isCollapsed ? [] : model.tabs(in: group)
+                        if group.tabIds.isEmpty, !isCollapsed {
                             EmptyGroupRowIOS(model: model, group: group, newTab: { newTab(in: group) })
                         }
                         ForEach(tabs) { tab in
@@ -321,8 +335,8 @@ struct GroupsView: View {
                             model.moveTab(tabs[i].id, to: group.id, index: to > i ? to - 1 : to)
                         }
                     } header: {
-                        GroupHeader(model: model, group: group, newTab: { newTab(in: group) },
-                                    edit: { editing = group }, delete: { deleting = group })
+                        GroupHeader(model: model, group: group, collapsed: isCollapsed, toggle: { toggle(group) },
+                                    newTab: { newTab(in: group) }, edit: { editing = group }, delete: { deleting = group })
                     }
                 }
             }

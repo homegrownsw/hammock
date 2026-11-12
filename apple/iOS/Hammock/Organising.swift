@@ -76,25 +76,55 @@ struct TabActions: View {
 struct GroupHeader: View {
     let model: AppModel
     let group: WorkspaceGroup
+    /// Collapsed on this phone: its tabs hidden, the header saying what's in them.
+    var collapsed = false
+    var toggle: () -> Void = {}
     let newTab: () -> Void
     let edit: () -> Void
     let delete: () -> Void
 
+    /// What a collapsed Group's agents are doing, the most pressing first.
+    private var agentState: AgentState? {
+        let states = model.tabs(in: group).compactMap { model.agentState(of: $0) }
+        return [AgentState.needsInput, .errored, .working, .idle, .starting].first(where: states.contains)
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            GroupIconView(model: model, group: group, size: 26) { EmptyView() }
-            Text(model.title(of: group))
-            if let c = model.computer(of: group) {
-                // On another of your computers: its badge.
-                ComputerBadge(c, size: 13)
-                if group.offline { Text("asleep").fontWeight(.regular).foregroundStyle(.secondary) }
-            } else if group.isRemote {
-                // Shared with you: whose Mac it's on.
-                Text("· " + model.hostLabel(of: group) + (group.offline ? " · offline" : ""))
-                    .fontWeight(.regular)
-                    .lineLimit(1)
+            // The Group's name collapses and expands it.
+            Button(action: toggle) {
+                HStack(spacing: 6) {
+                    GroupIconView(model: model, group: group, size: 26) { EmptyView() }
+                    Text(model.title(of: group))
+                    if let c = model.computer(of: group) {
+                        // On another of your computers: its badge.
+                        ComputerBadge(c, size: 13)
+                        if group.offline { Text("asleep").fontWeight(.regular).foregroundStyle(.secondary) }
+                    } else if group.isRemote {
+                        // Shared with you: whose Mac it's on.
+                        Text("· " + model.hostLabel(of: group) + (group.offline ? " · offline" : ""))
+                            .fontWeight(.regular)
+                            .lineLimit(1)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .imageScale(.medium)
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    if collapsed {
+                        if let s = agentState { StateGlyph(state: s) }
+                        if !group.tabIds.isEmpty {
+                            Text("\(group.tabIds.count)").fontWeight(.regular).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
+            .accessibilityLabel(model.title(of: group))
+            .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
+            .accessibilityHint(collapsed ? "Shows its tabs" : "Hides its tabs")
             if group.isRemote, !group.isOnLinkedComputer, let host = model.people[group.hostUserID] { AvatarView(person: host, size: 18) }
             Menu {
                 Button("Terminal", systemImage: "apple.terminal", action: newTab)
