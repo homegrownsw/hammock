@@ -103,6 +103,7 @@ struct DiffPaneView: View {
             PaneKindMenu(model: model, paneID: paneID) {
                 Text("Changes").fontWeight(.semibold)
             }
+            .layoutPriority(1) // the folder gives way first
             Text((info.repo as NSString).abbreviatingWithTildeInPath)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

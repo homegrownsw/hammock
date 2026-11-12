@@ -179,7 +179,11 @@ struct SplitView: View {
                     })
                     .environment(\.paneFolded, folded)
                     .allowsHitTesting(!folded)
-                    .frame(width: horizontal ? content : nil, height: horizontal ? nil : content)
+                    // Across the split, exactly the split's size: a child
+                    // that won't fit (a header that can't shrink enough)
+                    // overflows its own place, clipped, never widening the
+                    // stack and pushing its neighbours aside.
+                    .frame(width: horizontal ? content : geo.size.width, height: horizontal ? geo.size.height : content)
                     .frame(width: horizontal ? length : nil, height: horizontal ? nil : length, alignment: folded ? pin : .center)
                     .overlay {
                         if folded {
@@ -325,8 +329,9 @@ struct PaneView: View {
                 ProgramIcon(program: pane.exited ? [] : pane.program, size: 14)
             }
             PaneKindMenu(model: model, paneID: paneID) {
-                Text(pane?.displayName ?? "").fontWeight(.semibold)
+                Text(pane?.displayName ?? "").fontWeight(.semibold).lineLimit(1)
             }
+            .layoutPriority(1) // the folder gives way first
             Text(pane?.shortCwd ?? "")
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

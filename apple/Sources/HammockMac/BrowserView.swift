@@ -844,6 +844,7 @@ struct BrowserPaneView: View {
             PaneKindMenu(model: model, paneID: paneID) {
                 Image(systemName: "globe")
             }
+            .fixedSize() // only an icon: never squeezed away
             .padding(.trailing, 4)
             button("chevron.left", "Back (⌘[)", enabled: pane?.canGoBack == true) { run(.back) }
             button("chevron.right", "Forward (⌘])", enabled: pane?.canGoForward == true) { run(.forward) }

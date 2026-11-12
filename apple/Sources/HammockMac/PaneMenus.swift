@@ -346,7 +346,10 @@ struct PaneKindMenu<Label: View>: View {
             label()
         }
         .menuStyle(.borderlessButton)
-        .fixedSize()
+        // As wide as its label, but shrinking (the label truncating) when
+        // the header is short of room: a long title, such as a command's,
+        // never makes the header wider than its pane.
+        .fixedSize(horizontal: false, vertical: true)
         .tooltip("What this pane shows, and its actions")
         .task { SimulatorList.shared.refresh(model) }
     }

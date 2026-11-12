@@ -260,7 +260,7 @@ struct EditorPaneView: View {
                 .frame(width: 14)
             HStack(spacing: 5) {
                 PaneKindMenu(model: model, paneID: paneID) {
-                    Text(info.name.isEmpty ? "Untitled" : info.name).fontWeight(.semibold)
+                    Text(info.name.isEmpty ? "Untitled" : info.name).fontWeight(.semibold).lineLimit(1)
                 }
                 // Beside the menu, not in its label: a Menu's label draws only
                 // its text and images. `.tooltip`, as `.help` never shows here.
@@ -273,6 +273,7 @@ struct EditorPaneView: View {
                         .accessibilityLabel("Unsaved Changes")
                 }
             }
+            .layoutPriority(1) // the folder gives way first
             Text(shortPath)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
