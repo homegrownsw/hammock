@@ -220,6 +220,9 @@ private struct Tapped: Sendable {
 
 extension Push {
     fileprivate func handle(_ t: Tapped) async {
+        // Tapped to launch the app: its window (which hands over the
+        // session) may not be up yet.
+        for _ in 0..<25 where session == nil { try? await Task.sleep(for: .milliseconds(200)) }
         guard let session else { return }
         if let host = t.host, host != session.host?.id, let h = session.hosts.first(where: { $0.id == host }) { session.show(h) }
         if let key = t.key {

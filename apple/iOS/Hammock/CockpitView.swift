@@ -159,9 +159,12 @@ struct SessionsView: View {
             }
             #endif
             .showsStartedAgents(origin: "sessions", path: $path)
-            .onChange(of: Push.shared.openPane, initial: true) { _, pane in
-                guard let pane, model.panes[pane] != nil else { return }
-                path = [pane]
+            // A notification opened: its pane, once the Mac's state is here
+            // (launched by the tap, or another Mac just shown); dropped if
+            // the pane has gone.
+            .onChange(of: model.connected ? Push.shared.openPane : nil, initial: true) { _, pane in
+                guard let pane else { return }
+                if model.panes[pane] != nil { path = [pane] }
                 Push.shared.openPane = nil
             }
             // A permission or a join: answered here, at the top of Needs You.
