@@ -1107,6 +1107,17 @@ func (p *pane) snapshotPath() string {
 	return filepath.Join(p.d.cfg.Dir, "scrollback", p.id+".vt")
 }
 
+// discardFiles stops a pane closed for good (killed, and out of d.panes)
+// keeping anything: a log pane's log, and its saved screen. Reopen Closed
+// starts a new pane, needing none of them.
+func (p *pane) discardFiles() {
+	if p.log != nil {
+		p.log.close(true)
+	}
+	_ = os.Remove(p.snapshotPath())
+	_ = os.Remove(p.snapshotPath() + ".offset")
+}
+
 // saveScrollback writes the mirror's VT snapshot to disk if there has been
 // output since the last save, so a reboot can restore the screen.
 func (p *pane) saveScrollback(force bool) {

@@ -841,6 +841,34 @@ func TestReplacePane(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CloseGroup{CloseGroup: &pb.CloseGroup{GroupId: g}}})
 }
 
+// A log pane turned into another kind stops keeping its log, and its file
+// goes, as when it closes.
+func TestReplaceLogPane(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "g"}}}))
+	tb := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{
+		Log: &pb.LogSource{Kind: "command", Command: []string{"echo INFO hello; sleep 30"}}}}}}))
+	d.mu.Lock()
+	old := d.panes[d.tabs[tb].FocusedPaneId]
+	d.mu.Unlock()
+	path := d.logPath(old.id)
+	waitFor(t, "the log file", func() bool { return fileExists(path) })
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReplacePane{ReplacePane: &pb.ReplacePane{PaneId: old.id, Spec: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}})
+	select {
+	case <-old.log.stop:
+	default:
+		t.Fatal("the old pane's log still runs")
+	}
+	if fileExists(path) {
+		t.Fatal("the old pane's log file is still there")
+	}
+}
+
 // TestPaneProcesses: a terminal reports what's running under its shell.
 func TestPaneProcesses(t *testing.T) {
 	dir := shortDir(t)

@@ -844,12 +844,8 @@ func (d *Daemon) closePane(id string) error {
 	}
 	p.kill()
 	delete(d.panes, id)
-	if p.log != nil {
-		p.log.close(true)
-	}
 	d.persist(d.store.DeletePane(id))
-	_ = os.Remove(p.snapshotPath())
-	_ = os.Remove(p.snapshotPath() + ".offset")
+	p.discardFiles()
 	u := &pb.StateUpdate{DeletedPaneIds: []string{id}}
 	if t := d.tabs[p.tabID()]; t != nil {
 		if !removeFloat(t, id) {
@@ -895,12 +891,8 @@ func (d *Daemon) closeTab(id string) error {
 		if p := d.panes[pid]; p != nil {
 			p.kill()
 			delete(d.panes, pid)
-			if p.log != nil {
-				p.log.close(true)
-			}
 			d.persist(d.store.DeletePane(pid))
-			_ = os.Remove(p.snapshotPath())
-			_ = os.Remove(p.snapshotPath() + ".offset")
+			p.discardFiles()
 			u.DeletedPaneIds = append(u.DeletedPaneIds, pid)
 			d.clearAttentionForPane(pid, u)
 		}
@@ -1438,8 +1430,7 @@ func (d *Daemon) replacePane(id string, spec *pb.PaneSpec) (*pane, error) {
 	old.kill()
 	delete(d.panes, id)
 	d.persist(d.store.DeletePane(id))
-	_ = os.Remove(old.snapshotPath())
-	_ = os.Remove(old.snapshotPath() + ".offset")
+	old.discardFiles() // a log pane's log too, which once ran on unseen
 	d.persist(d.store.PutTab(t))
 	u := &pb.StateUpdate{Tabs: []*pb.Tab{proto.CloneOf(t)}, Panes: []*pb.Pane{p.snapshotInfo()}, DeletedPaneIds: []string{id}}
 	d.clearAttentionForPane(id, u)
