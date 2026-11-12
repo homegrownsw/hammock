@@ -243,10 +243,16 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
         case "ti":
             hostTextState(m)
         case "unhandled":
-            // A ⌘-key the page didn't want: our menus get it.
+            // A ⌘-key the page didn't want: ⌘← and ⌘→ go back and forward, as
+            // in Chrome (a text field on the page keeps them), and our menus
+            // get the rest.
             if let s = m["cg"] as? String, let d = Data(base64Encoded: s), let cg = CGEvent(withDataAllocator: nil, data: d as CFData),
                let e = NSEvent(cgEvent: cg) {
-                NSApp.mainMenu?.performKeyEquivalent(with: e)
+                if let history = Self.historyCommand(e) {
+                    onCommand?(history)
+                } else {
+                    NSApp.mainMenu?.performKeyEquivalent(with: e)
+                }
             }
         case "menu":
             // After this message: the popup tracks in a nested run loop.
@@ -403,6 +409,17 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     override func keyUp(with e: NSEvent) { fwd(e) }
     override func flagsChanged(with e: NSEvent) { fwd(e) }
 
+    /// Back or forward for ⌘← or ⌘→ (and nothing else held).
+    private static func historyCommand(_ e: NSEvent) -> BrowserCommand? {
+        let flags = e.modifierFlags.intersection([.command, .shift, .option, .control])
+        guard e.type == .keyDown, flags == .command else { return nil }
+        switch e.keyCode {
+        case 123: return .back
+        case 124: return .forward
+        default: return nil
+        }
+    }
+
     /// Text input runs here, in the active app, where dead keys and IMEs work.
     override func keyDown(with e: NSEvent) {
         ops = []
@@ -418,20 +435,22 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     /// the person has them: tabs, Groups, panes, the palette, find) never
     /// reach the page; the simulator's do (they only apply to a simulator), and
     /// so do Bigger, Smaller and Actual Size, which zoom the page there.
+    /// ⌘[ and ⌘] are back and forward only while no shortcut has them: by
+    /// default they're Previous and Next Pane, which must not stop here.
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
         guard window?.firstResponder === self, e.type == .keyDown else { return false }
         let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = e.charactersIgnoringModifiers?.lowercased() ?? ""
+        let action = Keys.action(for: e)
         if flags == .command {
             switch key {
             case "l": onCommand?(.focusAddress); return true
             case "r": onCommand?(.reload); return true
-            case "[": onCommand?(.back); return true
-            case "]": onCommand?(.forward); return true
+            case "[" where action == nil: onCommand?(.back); return true
+            case "]" where action == nil: onCommand?(.forward); return true
             default: break
             }
         }
-        let action = Keys.action(for: e)
         switch action {
         case "find_in_page": onCommand?(.find); return true
         case "find_next": onCommand?(.findNext); return true
@@ -846,8 +865,8 @@ struct BrowserPaneView: View {
             }
             .fixedSize() // only an icon: never squeezed away
             .padding(.trailing, 4)
-            button("chevron.left", "Back (⌘[)", enabled: pane?.canGoBack == true) { run(.back) }
-            button("chevron.right", "Forward (⌘])", enabled: pane?.canGoForward == true) { run(.forward) }
+            button("chevron.left", "Back (⌘←)", enabled: pane?.canGoBack == true) { run(.back) }
+            button("chevron.right", "Forward (⌘→)", enabled: pane?.canGoForward == true) { run(.forward) }
             if pane?.loading == true {
                 button("xmark", "Stop") { model.navigate(paneID, "stop") }
             } else {
