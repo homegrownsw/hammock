@@ -124,6 +124,7 @@ type Server struct {
 	inMu   sync.Mutex
 	inCond *sync.Cond
 	inBuf  [][]byte
+	inHeld bool // a gate waits (AwaitSize): input is kept for its command, not echoed to it or read by it
 
 	proofs   proofs   // connections waiting for their proof (proof.go)
 	proofSvc proofSvc // the Mach service proofs come to
@@ -189,6 +190,7 @@ func Start(cfg Config) (*Server, error) {
 		time.AfterFunc(cfg.AwaitSize, func() { s.openGate("no size came") })
 	}
 	s.inCond = sync.NewCond(&s.inMu)
+	s.inHeld = gate != nil
 	if cfg.AdoptOrphans {
 		go reapOrphans(cmd.Process.Pid, s.done)
 	}
@@ -424,11 +426,12 @@ func (s *Server) serve(conn net.Conn, at PeerProc) {
 				rows := binary.BigEndian.Uint16(f.Payload[2:])
 				s.mu.Lock()
 				s.cols, s.rows = cols, rows
-				exited := s.exited
-				s.mu.Unlock()
-				if !exited {
+				if !s.exited {
+					// Under the lock: a waiting gate's timer, opening it
+					// meanwhile, must find the PTY at the size it says.
 					_ = pty.Setsize(s.pty, &pty.Winsize{Cols: cols, Rows: rows})
 				}
+				s.mu.Unlock()
 				s.openGate("")
 			}
 		case FrameSignal:
@@ -529,7 +532,7 @@ func (s *Server) queueInput(p []byte) {
 func (s *Server) writePTY() {
 	for {
 		s.inMu.Lock()
-		for len(s.inBuf) == 0 {
+		for len(s.inBuf) == 0 || s.inHeld {
 			select {
 			case <-s.done:
 				s.inMu.Unlock()
@@ -550,8 +553,17 @@ func (s *Server) writePTY() {
 }
 
 // signal sends sig to the PTY's foreground process group (the running job,
-// not just the shell), falling back to the child's group.
+// not just the shell), falling back to the child's group. Not to a gate
+// (AwaitSize): its command hasn't started, so there's nothing to interrupt,
+// and the gate mustn't end before it has.
 func (s *Server) signal(sig syscall.Signal) {
+	s.mu.Lock()
+	gated := s.gate != nil
+	s.mu.Unlock()
+	if gated {
+		logf("dropped signal %v: the command hasn't started", sig)
+		return
+	}
 	pgrp := 0
 	if rc, err := s.pty.SyscallConn(); err == nil {
 		_ = rc.Control(func(fd uintptr) {
@@ -589,6 +601,10 @@ func (s *Server) openGate(why string) {
 	_, _ = s.gate.Write([]byte{1})
 	s.gate.Close()
 	s.gate = nil
+	s.inMu.Lock()
+	s.inHeld = false
+	s.inCond.Broadcast() // input sent while it waited goes to the command now
+	s.inMu.Unlock()
 }
 
 // RunGate is a holder's child until the holder lets it go (Config.Gate):

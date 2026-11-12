@@ -810,10 +810,11 @@ func (d *Daemon) splitPane(targetID string, dir pb.Split_Direction, spec *pb.Pan
 var newPaneSizeWait = 250 * time.Millisecond
 
 // hasViewerLocked reports whether a client that shows panes (and so says
-// their size) is connected. Callers hold d.mu.
+// their size) is connected: not one run in a pane (an agent), whatever
+// kind it says it is. Callers hold d.mu.
 func (d *Daemon) hasViewerLocked() bool {
 	for c := range d.conns {
-		if c.subscribed && (c.kind == "mac" || c.kind == "ios" || c.kind == "tui") {
+		if c.subscribed && c.caller == nil && (c.kind == "mac" || c.kind == "ios" || c.kind == "tui") {
 			return true
 		}
 	}

@@ -145,12 +145,15 @@ So panes survive daemon upgrades and crashes (ADR-0003), each terminal pane's PT
 - Listens on `run/panes/<pane>.sock` (0600), and takes only its own daemon with the pane's token (§5.6).
 - Protocol: frames of 1 byte type, 4 byte big-endian length, payload: on macOS first `Prove` and the holder's `Challenge{conn, nonce, service}`, answered over Mach (§5.6), then `Attach{from_offset, token}`, `Info`, `Output{offset, bytes}`, `Input`, `Resize{cols, rows}`, `Signal`, `Exit{status}`, `Close` (`internal/holder/frame.go`).
 - On start the daemon reconnects to each pane's holder from its runtime record in `state.db`, rebuilds the mirror from the saved snapshot and asks the holder for the output after that offset.
+- With `--await-size D` (§4.4), its child starts as a *gate*: the holder's own executable, holding the PTY, its session and the final PID, waiting on a pipe. The holder lets it go on the first `Resize` (applied first) or after D, and it then execs the command in its place. Until then, input is kept for the command, signals are dropped (there's nothing to interrupt), and a holder shut down meanwhile never runs the command.
 
 After a reboot the holders are gone. The daemon restores the layout from `state.db`, seeds each pane with its saved screen, starts a fresh shell in the recorded cwd, and resumes agents (§6.4).
 
 ### 4.4 Size arbitration
 
 A pane's PTY size is the **active driver's**: the client that last focused or typed into it. Other clients render at that size.
+
+A new pane is made at a guess of its size (the client's, or 120×34 for `hmk` and agents), and the client that shows it says the real one 40–140 ms later. So the program isn't resized just after it starts (which some, like macOS `top`, mishandle), while a Mac, iPhone or TUI is connected a new pane's holder runs with `--await-size 250ms` (§4.3): its program starts at the first size a client gives (sent on even if it matches the guess), or after 250 ms for a pane nobody is showing. With no such client connected, it starts at once.
 
 ### 4.5 Local fast path
 
