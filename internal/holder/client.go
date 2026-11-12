@@ -135,8 +135,21 @@ func (c *Client) write(t FrameType, p []byte) error {
 	return WriteFrame(c.conn, t, p)
 }
 
-// Input writes bytes to the PTY.
-func (c *Client) Input(p []byte) error { return c.write(FrameInput, p) }
+// Input writes bytes to the PTY, in as many frames as it takes (a big
+// paste can be more than one may carry), one after another.
+func (c *Client) Input(p []byte) error {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	for {
+		n := min(len(p), MaxFramePayload)
+		if err := WriteFrame(c.conn, FrameInput, p[:n]); err != nil {
+			return err
+		}
+		if p = p[n:]; len(p) == 0 {
+			return nil
+		}
+	}
+}
 
 // Resize changes the PTY size.
 func (c *Client) Resize(cols, rows uint16) error {

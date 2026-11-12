@@ -377,3 +377,35 @@ func TestSleepHelper(t *testing.T) {
 	}
 	time.Sleep(10 * time.Second)
 }
+
+// Input more than a frame can carry (a big paste) goes in several, in
+// order, none too big for the holder to read.
+func TestBigInputIsSplit(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	c := &Client{conn: a}
+	in := make([]byte, 2*MaxFramePayload+10)
+	for i := range in {
+		in[i] = byte(i % 251)
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- c.Input(in) }()
+	var got []byte
+	for frames := 0; len(got) < len(in); frames++ {
+		f, err := ReadFrame(b)
+		if err != nil {
+			t.Fatalf("frame %d: %v", frames, err)
+		}
+		if f.Type != FrameInput {
+			t.Fatalf("frame %d is type %d", frames, f.Type)
+		}
+		got = append(got, f.Payload...)
+	}
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, in) {
+		t.Fatal("input arrived changed")
+	}
+}
