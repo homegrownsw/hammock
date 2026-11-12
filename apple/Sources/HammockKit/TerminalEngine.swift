@@ -109,6 +109,12 @@ public final class TerminalEngine {
             // flags take one cluster's width. Must match the daemon's mirror.
             var cluster = GhosttyTerminalModeConfig(mode: ghostty_mode_new(2027, false), value: true)
             ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_MODE_DEFAULT, &cluster)
+            // As much scrollback as the daemon's mirror keeps (10,000 lines,
+            // vt.newMirror), with no limit in bytes: libghostty's default
+            // kept only a few hundred lines of coloured output.
+            var lines = 10_000
+            ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines)
+            ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, nil)
             KittyGraphicsSetup.enable(terminal)
         }
         if let terminal { applyTheme(theme, to: terminal) }

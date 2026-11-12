@@ -305,3 +305,14 @@ private func cells(_ s: String) -> [TerminalCell] { s.map { TerminalCell(text: $
     let placed = unsized.images(), sizedFirst = first.images()
     #expect(placed.count == 1 && placed.first?.width == sizedFirst.first?.width && placed.first?.height == sizedFirst.first?.height)
 }
+
+@Test func keepsAsMuchScrollbackAsTheDaemon() {
+    // Coloured lines of varying length: libghostty's default byte limit
+    // kept about 600 of these.
+    let t = TerminalEngine(cols: 120, rows: 40)
+    var s = ""
+    for i in 1...3000 { s += "\u{1b}[3\(i % 7 + 1)m\(i)\u{1b}[0m  " + String(repeating: "x", count: 20 + i % 90) + "\r\n" }
+    t.write(Data(s.utf8))
+    t.scroll(by: -100_000)
+    #expect(t.text().hasPrefix("1 "))
+}
