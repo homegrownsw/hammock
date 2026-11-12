@@ -375,20 +375,25 @@ final class SimulatorPaneNSView: NSView {
         return deviceRect.insetBy(dx: edge * s, dy: edge * s)
     }
 
-    /// Told where the screen is (in the view's flipped coordinates, as
-    /// SwiftUI has them), for the agent's overlay (AgentPresenceOverlay).
-    var onScreenRect: ((CGRect) -> Void)?
-    private var reportedScreen = CGRect.null
+    /// Told where the screen and the device are (in the view's flipped
+    /// coordinates, as SwiftUI has them), for the agent's overlay
+    /// (AgentPresenceOverlay).
+    var onPlacement: ((SimulatorPlacement) -> Void)?
+    private var reported: SimulatorPlacement?
 
     override func layout() {
         super.layout()
         let s = fit
         guard s > 0 else { return }
-        let r = screenRect
-        let shown = CGRect(x: r.minX, y: bounds.height - r.maxY, width: r.width, height: r.height)
-        if shown != reportedScreen, let report = onScreenRect {
-            reportedScreen = shown
-            DispatchQueue.main.async { report(shown) }
+        let flip = { (r: CGRect) in CGRect(x: r.minX, y: self.bounds.height - r.maxY, width: r.width, height: r.height) }
+        let screenR = flip(screenRect)
+        // The screen's corners as its mask draws them (near enough), and the
+        // frame's that much rounder again.
+        let corner = min(screenR.width, screenR.height) * 0.125
+        let placed = SimulatorPlacement(screen: screenR, screenRadius: corner, device: flip(deviceRect), deviceRadius: corner + edge * s)
+        if placed != reported, let report = onPlacement {
+            reported = placed
+            DispatchQueue.main.async { report(placed) }
         }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -682,7 +687,7 @@ struct SimulatorView: NSViewRepresentable {
     var isFocused: Bool
     var showsFrame: Bool
     var view: SimulatorRef
-    var onScreenRect: ((CGRect) -> Void)? = nil
+    var onPlacement: ((SimulatorPlacement) -> Void)? = nil
 
     func makeNSView(context: Context) -> SimulatorPaneNSView {
         let isShared = model.group(ofPane: paneID)?.isRemote ?? false
@@ -691,7 +696,7 @@ struct SimulatorView: NSViewRepresentable {
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
         v.showsFrame = showsFrame
         v.isFocusTarget = isFocused
-        v.onScreenRect = onScreenRect
+        v.onPlacement = onPlacement
         view.view = v
         return v
     }
@@ -699,8 +704,17 @@ struct SimulatorView: NSViewRepresentable {
     func updateNSView(_ v: SimulatorPaneNSView, context: Context) {
         v.isFocusTarget = isFocused
         v.showsFrame = showsFrame
-        v.onScreenRect = onScreenRect
+        v.onPlacement = onPlacement
     }
+}
+
+/// Where a simulator pane draws the device and its screen, and their
+/// corners' radii, in SwiftUI's coordinates.
+struct SimulatorPlacement: Equatable {
+    var screen: CGRect
+    var screenRadius: CGFloat
+    var device: CGRect
+    var deviceRadius: CGFloat
 }
 
 /// Lets the pane's toolbar reach its view (for the hardware buttons).
@@ -714,7 +728,7 @@ struct SimulatorPaneView: View {
     let paneID: String
     let isFocused: Bool
     @State private var ref = SimulatorRef()
-    @State private var screenRect = CGRect.zero // where the device's screen is, for the agent's overlay
+    @State private var placement: SimulatorPlacement? // where the device and its screen are, for the agent's overlay
     private var showsFrame: Bool { Prefs.shared.bool(.simulatorFrame) }
 
     private var pane: Pane? { model.panes[paneID] }
@@ -754,12 +768,12 @@ struct SimulatorPaneView: View {
             .contextMenu { PaneMenuItems(model: model, paneID: paneID) }
             .paneSwapHandle(paneID, model: model)
             SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, view: ref,
-                          onScreenRect: { screenRect = $0 })
+                          onPlacement: { placement = $0 })
                 .background(Color(nsColor: .underPageBackgroundColor))
                 .overlay {
-                    if !screenRect.isEmpty {
+                    if let p = placement, !p.screen.isEmpty {
                         AgentPresenceOverlay(model: model, paneID: paneID, isSimulator: true,
-                                             screen: (screenRect, min(screenRect.width, screenRect.height) * 0.125))
+                                             screen: (p.screen, p.screenRadius), device: (p.device, p.deviceRadius))
                     }
                 }
         }

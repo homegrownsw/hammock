@@ -18,6 +18,9 @@ struct AgentPresenceOverlay: View {
     /// Where the page or screen is in this view, and its corners' radius
     /// (nil: the whole view, square).
     var screen: (rect: CGRect, radius: CGFloat)?
+    /// A simulator's whole device, frame and all: its glow rings that, and
+    /// spills out around it.
+    var device: (rect: CGRect, radius: CGFloat)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var active = false
@@ -85,9 +88,7 @@ struct AgentPresenceOverlay: View {
     private func decorations(in area: CGRect) -> some View {
         let at = { (f: CGPoint) in CGPoint(x: area.minX + f.x * area.width, y: area.minY + f.y * area.height) }
         ZStack(alignment: .topLeading) {
-            glow
-                .frame(width: area.width, height: area.height)
-                .offset(x: area.minX, y: area.minY)
+            glow(in: area)
             if let s = sweep {
                 // Looking: one soft band across the page or screen.
                 LinearGradient(colors: [accent.opacity(0), accent.opacity(0.2), accent.opacity(0)], startPoint: .leading, endPoint: .trailing)
@@ -119,15 +120,20 @@ struct AgentPresenceOverlay: View {
         }
     }
 
-    private var glow: some View {
-        let shape = RoundedRectangle(cornerRadius: screen?.radius ?? 0, style: .continuous)
-        return ZStack {
-            shape.strokeBorder(accent, lineWidth: 14).blur(radius: 14).opacity(0.45)
-            shape.strokeBorder(accent.opacity(0.85), lineWidth: 2)
+    /// A page glows in from its edges; a device glows out around its
+    /// frame, and its screen a little in from its edges.
+    private func glow(in area: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            if let device {
+                OuterGlow(color: accent, radius: device.radius)
+                    .frame(width: device.rect.width, height: device.rect.height)
+                    .offset(x: device.rect.minX, y: device.rect.minY)
+            }
+            InnerGlow(color: accent, radius: screen?.radius ?? 0, ring: device == nil, strength: device == nil ? 1 : 0.75)
+                .frame(width: area.width, height: area.height)
+                .offset(x: area.minX, y: area.minY)
         }
-        // A page's glow stays inside it; a device's spills onto its frame.
-        .clipShape(screen == nil ? AnyShape(shape) : AnyShape(Rectangle().inset(by: -40)))
-        .opacity(pulse ? 1 : 0.72)
+        .opacity(pulse ? 1 : 0.75)
         .onAppear {
             guard !reduceMotion else { pulse = true; return }
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) { pulse = true }
@@ -375,6 +381,50 @@ struct AgentCursor: View {
             }
             p.closeSubpath()
             return p
+        }
+    }
+}
+
+/// A glow in from a shape's edges: a ring, then softer layers fading
+/// inwards (the inset shadows of the design).
+private struct InnerGlow: View {
+    let color: Color
+    let radius: CGFloat
+    let ring: Bool
+    let strength: Double
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        // Centred on the edge (half of each is clipped away), so each layer
+        // is brightest there and fades inwards.
+        ZStack {
+            shape.stroke(color, lineWidth: 36).blur(radius: 34).opacity(0.38 * strength)
+            shape.stroke(color, lineWidth: 14).blur(radius: 11).opacity(0.95 * strength)
+            if ring {
+                shape.strokeBorder(color.opacity(0.85), lineWidth: 2)
+            }
+        }
+        .clipShape(shape)
+    }
+}
+
+/// A ring around a shape with a glow spilling out from it, none of it
+/// drawn inside (over a simulator's screen).
+private struct OuterGlow: View {
+    let color: Color
+    let radius: CGFloat
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        ZStack {
+            shape.stroke(color, lineWidth: 44).blur(radius: 44).opacity(0.5)
+            shape.stroke(color, lineWidth: 16).blur(radius: 14).opacity(0.95)
+            shape.inset(by: -1).stroke(color.opacity(0.85), lineWidth: 2)
+        }
+        .mask {
+            Rectangle().padding(-160)
+                .overlay(shape.fill(.black).blendMode(.destinationOut))
+                .compositingGroup()
         }
     }
 }
