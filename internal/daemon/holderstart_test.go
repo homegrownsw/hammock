@@ -176,3 +176,41 @@ func TestLastLogLineFromOffset(t *testing.T) {
 		t.Errorf("last line %q, want this holder's", l)
 	}
 }
+
+// A pane whose terminal can't be started again when the daemon restarts
+// (its holder gone, a new one failing) says so on its screen, as a new
+// pane's does, not a blank one with the reason only in start_error.
+func TestRestoredPaneThatCantStartSaysWhy(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	gid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "s"}}}))
+	tid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: gid, Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", "echo before; exec cat"}},
+	}}}))
+	d.mu.Lock()
+	pid := d.tabs[tid].FocusedPaneId
+	sock := d.panes[pid].socket
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: pid}}})
+	waitOutput(t, c, pid, "before")
+	c.Close()
+	d.Shutdown()
+	if _, err := endHolderAt(sock); err != nil { // as a reboot would
+		t.Fatal(err)
+	}
+
+	d2 := startDaemonWithHolder(t, dir, "echo 'pane-holder: something broke' >&2; exit 2")
+	defer d2.Shutdown()
+	c2 := dial(t, dir)
+	full := call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}}).GetState()
+	i := slices.IndexFunc(full.Panes, func(p *pb.Pane) bool { return p.Id == pid })
+	if i < 0 || !full.Panes[i].Exited || !strings.Contains(full.Panes[i].StartError, "something broke") {
+		t.Fatalf("restored pane: %v", full.Panes[i])
+	}
+	text := call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadPane{ReadPane: &pb.ReadPane{PaneId: pid}}}).GetPaneText().Text
+	if !strings.Contains(text, "couldn't start this pane's terminal") || !strings.Contains(text, "something broke") {
+		t.Fatalf("its screen says %q", text)
+	}
+}

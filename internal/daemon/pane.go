@@ -361,10 +361,22 @@ func lastLogLine(path string, from int64) string {
 // failed, saying why on its screen.
 func (p *pane) connectFailed(err error) {
 	p.d.log.Error("pane's holder didn't start", "pane", p.id, "err", err)
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
+	if !p.markStartFailed(err) {
 		return
+	}
+	p.d.mu.Lock()
+	p.d.startFailedLocked(p)
+	p.d.mu.Unlock()
+}
+
+// markStartFailed marks a pane whose terminal couldn't be started as ended,
+// saying why in red on its screen (under what it showed before, if it's
+// being started again). It reports false for a pane already closed.
+func (p *pane) markStartFailed(err error) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return false
 	}
 	p.connecting = false
 	p.ops = nil // nothing will drain it
@@ -374,18 +386,26 @@ func (p *pane) connectFailed(err error) {
 	if c := p.d.colors.Load(); c != nil {
 		p.mirror.SetColors(*c)
 	}
+	if len(p.seed) > 0 {
+		p.mirror.Write(p.seed)
+		p.mirror.Write([]byte("\r\n"))
+		p.seed = nil
+	}
 	p.mirror.Write([]byte("\x1b[0;31mHammock couldn't start this pane's terminal: " + err.Error() + "\x1b[0m\r\n"))
 	p.sendSnapshotsLocked()
-	p.mu.Unlock()
-	// As if its program had failed (read's exit handling): a scheduled run
-	// in it ends, and so does its agent.
-	p.d.mu.Lock()
-	if p.d.panes[p.id] == p {
-		p.d.scheduleCommandExited(p, -1)
-		p.d.paneChanged(p)
-		p.d.agentHub.paneExited(p, -1)
+	return true
+}
+
+// startFailedLocked tells the rest of the daemon a pane's terminal couldn't
+// start (markStartFailed), as if its program had failed (read's exit
+// handling): a scheduled run in it ends, and so does its agent. Callers
+// hold d.mu.
+func (d *Daemon) startFailedLocked(p *pane) {
+	if d.panes[p.id] == p {
+		d.scheduleCommandExited(p, -1)
+		d.paneChanged(p)
+		d.agentHub.paneExited(p, -1)
 	}
-	p.d.mu.Unlock()
 }
 
 // sendSnapshotsLocked sends the screen to every attached client (one that

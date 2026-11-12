@@ -377,8 +377,9 @@ func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok 
 	resume := d.agentHub.resumeCommand(info)
 	if err := p.spawn(resume); err != nil {
 		d.log.Error("respawn pane", "pane", info.Id, "err", err)
-		info.Exited, info.ExitStatus = true, -1
-		info.StartError = err.Error()
+		if p.markStartFailed(err) { // on its screen, not only in its info
+			d.startFailedLocked(p)
+		}
 	} else {
 		d.log.Info("respawned pane", "pane", info.Id, "resume", resume != nil)
 	}
