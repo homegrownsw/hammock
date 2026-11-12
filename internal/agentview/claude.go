@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
@@ -936,6 +937,12 @@ func firstLine(s string) string {
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s
+	}
+	// Back off to a character's start: half a character is invalid
+	// UTF-8, which proto won't encode, and the daemon would drop the
+	// whole message.
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n] + "\n…"
 }
