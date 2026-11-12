@@ -363,6 +363,12 @@ struct CommandPalette: View {
             action("find-in-page", "Find in Page…", "magnifyingglass", .blue, "search text page browser", keys: Keys.findInPage) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { BrowserCommand.find.post() }
             }
+            action("find-next", "Find Next", "chevron.down", .blue, "search again text page browser", keys: Keys.findNext) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { BrowserCommand.findNext.post() }
+            }
+            action("find-previous", "Find Previous", "chevron.up", .blue, "search again back text page browser", keys: Keys.findPrevious) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { BrowserCommand.findPrevious.post() }
+            }
             if model.panes[f]?.url.hasPrefix("hmk-devtools:") == false {
                 action("devtools", "Show DevTools", "hammer", .blue, "inspect console network elements web inspector", keys: Keys.devTools) {
                     Task { await model.showDevTools(f) }
@@ -426,6 +432,12 @@ struct CommandPalette: View {
                 }
                 action("editor-find", "Find…", "magnifyingglass", .indigo, "search replace", keys: Keys.findInPage) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "find") }
+                }
+                action("editor-find-next", "Find Next", "chevron.down", .indigo, "search again", keys: Keys.findNext) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "findNext") }
+                }
+                action("editor-find-previous", "Find Previous", "chevron.up", .indigo, "search again back", keys: Keys.findPrevious) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "findPrevious") }
                 }
                 if !p.editor.path.isEmpty {
                     action("editor-diff", "Compare with File on Disk", "arrow.left.arrow.right", .indigo, "diff changes conflict merge", keys: Keys.editorShowDiff) { ui.showDiff(model, focused) }
