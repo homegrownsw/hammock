@@ -171,7 +171,9 @@ func cloneSchedule(s *pb.Schedule) *pb.Schedule { return proto.CloneOf(s) }
 // scheduleFlags applies command-line options to s. Everything after "--"
 // is the prompt (or command).
 func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
-	when := false
+	// --days picks days for --at's time; on its own it isn't a time (it
+	// would run at midnight), nor on a schedule that ran by cron.
+	when, at, days, hadCron := false, false, false, s.Cron != ""
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		val := func() (string, error) {
@@ -197,13 +199,13 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 			if v, err = val(); err == nil {
 				var m int32
 				if m, err = parseHHMM(v); err == nil {
-					s.MinuteOfDay, s.Cron, when = m, "", true
+					s.MinuteOfDay, s.Cron, when, at = m, "", true, true
 				}
 			}
 		case "--days":
 			if v, err = val(); err == nil {
 				s.Weekdays, err = parseDays(v)
-				s.Cron, when = "", true
+				s.Cron, days = "", true
 			}
 		case "--cron":
 			if v, err = val(); err == nil {
@@ -275,6 +277,9 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 		if err != nil {
 			return err
 		}
+	}
+	if days && !at && (adding || hadCron) {
+		return errors.New("--days needs a time: --at HH:MM --days …")
 	}
 	if adding && !when {
 		return errors.New("say when: --at HH:MM [--days …] or --cron EXPR")
