@@ -402,7 +402,14 @@ struct HammockApp: App {
         }
     }
 
-    private var focused: String? { model.focusedPaneID ?? model.selectedTab?.focusedPaneID }
+    /// The focused pane of the tab on screen, or none (an empty Group
+    /// shown): the model's focus outlives the tab it was in, and pane
+    /// commands mustn't reach a tab you can't see.
+    private var focused: String? {
+        guard let tab = model.selectedTab else { return nil }
+        if let id = model.focusedPaneID, model.panes[id]?.tabID == tab.id { return id }
+        return tab.focusedPaneID
+    }
 
     private var focusedIsLog: Bool { focused.flatMap { model.panes[$0] }?.isLog == true }
 
