@@ -62,6 +62,8 @@ struct SessionsView: View {
     @State private var path: [String] = []
     /// The session finder is up.
     @State private var finding = false
+    /// Recent shows sessions older than 48 hours too.
+    @State private var showingAllRecent = false
 
     var body: some View {
         CockpitSplit(model: model, session: session, path: $path, placeholder: "No Session Selected") {
@@ -93,7 +95,16 @@ struct SessionsView: View {
                     }
                     if !rows.recent.isEmpty {
                         Section("Recent") {
-                            ForEach(rows.recent, id: \.tab.id) { r in sessionLink(r) }
+                            // The last 48 hours', then the rest on asking (all
+                            // of them when none are that new).
+                            let cutoff = Int64((ctx.date.timeIntervalSince1970 - 48 * 3600) * 1000)
+                            let fresh = rows.recent.filter { $0.pane.agent.stateSinceUnixMs >= cutoff }
+                            let shown = showingAllRecent || fresh.isEmpty ? rows.recent : fresh
+                            ForEach(shown, id: \.tab.id) { r in sessionLink(r) }
+                            if shown.count < rows.recent.count {
+                                Button("Show More…") { withAnimation { showingAllRecent = true } }
+                                    .tint(theme.accent)
+                            }
                         }
                     }
                     if !model.schedules.isEmpty {
