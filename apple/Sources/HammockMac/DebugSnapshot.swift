@@ -131,6 +131,22 @@ enum DebugSnapshot {
                 render(StartAgentSheet(model: model, request: request), size: NSSize(width: 520, height: 600), to: "\(prefix)-start-agent")
             }
         }
+        // HMK_DEBUG_OPEN_DIFF=1: the Open a Diff sheet beside the focused
+        // pane; with HMK_DEBUG_SNAPSHOT also rendered on its own to
+        // <prefix>-open-diff-<light|dark>.png.
+        if env["HMK_DEBUG_OPEN_DIFF"] != nil {
+            Task { @MainActor in
+                for _ in 0..<40 {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    if AppModelRegistry.shared?.selectedTab != nil { break }
+                }
+                guard let model = AppModelRegistry.shared, let pane = model.selectedTab?.focusedPaneID else { return }
+                DiffLauncher.shared.split(model, pane, .horizontal)
+                guard let prefix = env["HMK_DEBUG_SNAPSHOT"], let request = DiffLauncher.shared.request else { return }
+                try? await Task.sleep(for: .seconds(3))
+                render(OpenDiffSheet(model: model, request: request), size: NSSize(width: 520, height: 560), to: "\(prefix)-open-diff")
+            }
+        }
         // HMK_DEBUG_PROMPT=plain|other|preview|tasks: the agent view's question
         // card with a made-up question (PromptCardSample), rendered to
         // <prefix>-prompt-<light|dark>.png.

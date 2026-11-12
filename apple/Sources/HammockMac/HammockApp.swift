@@ -101,6 +101,9 @@ struct HammockApp: App {
                 .sheet(item: Binding(get: { LogUI.shared.request }, set: { LogUI.shared.request = $0 })) {
                     NewLogSheet(model: model, request: $0)
                 }
+                .sheet(item: Binding(get: { DiffLauncher.shared.request }, set: { DiffLauncher.shared.request = $0 })) {
+                    OpenDiffSheet(model: model, request: $0)
+                }
                 .sheet(item: Binding(get: { EditorUI.shared.quickOpen }, set: { EditorUI.shared.quickOpen = $0 })) {
                     QuickOpenSheet(model: model, request: $0)
                 }
@@ -158,6 +161,10 @@ struct HammockApp: App {
                         .disabled(model.currentGroup == nil && model.groups.isEmpty)
                     Button("Open File…") { EditorUI.shared.openFile(model) }.keyboardShortcut(Keys.openFile)
                         .disabled(model.currentGroup == nil && model.groups.isEmpty)
+                }
+                if HammockTool.diff.on {
+                    Button("New Diff Tab…") { DiffLauncher.shared.newTab(model) }.keyboardShortcut(Keys.newDiffTab)
+                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
                 }
                 Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
                 NewGroupMenuItems(model: model)
@@ -341,6 +348,11 @@ struct HammockApp: App {
                 if HammockTool.log.on {
                     Button("Split Right with Log…") { if let id = focused { LogUI.shared.split(model, id, .horizontal) } }
                         .keyboardShortcut(Keys.splitLogRight)
+                        .disabled(focused == nil)
+                }
+                if HammockTool.diff.on {
+                    Button("Split Right with Diff…") { if let id = focused { DiffLauncher.shared.split(model, id, .horizontal) } }
+                        .keyboardShortcut(Keys.splitDiffRight)
                         .disabled(focused == nil)
                 }
                 if HammockTool.editor.on {

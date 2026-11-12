@@ -23,7 +23,7 @@ final class SimulatorList {
     }
 }
 
-/// Terminal, browser or simulator (or a log, right or below), split off a
+/// Terminal, browser or simulator (or a log, editor or diff, right or below), split off a
 /// pane: after it, or before it (left, or above) with before.
 struct SplitMenuItems: View {
     let model: AppModel
@@ -65,6 +65,10 @@ struct SplitMenuItems: View {
                     Button("Editor") { EditorUI.shared.split(model, paneID, direction) }
                         .keyboardShortcut(direction == .horizontal ? Keys.splitEditorRight : Keys.splitEditorDown)
                     Button("File…") { EditorUI.shared.showQuickOpen(model, splitPane: paneID, direction: direction) }
+                }
+                if HammockTool.diff.on {
+                    Button("Diff…") { DiffLauncher.shared.split(model, paneID, direction) }
+                        .keyboardShortcut(direction == .horizontal ? Keys.splitDiffRight : nil)
                 }
             }
         }
@@ -250,6 +254,9 @@ struct NewTabMenuItems: View {
         if HammockTool.editor.on {
             Button("Editor Tab") { EditorUI.shared.open(model, "", groupID: groupID) }.keyboardShortcut(Keys.newEditorTab)
             Button("File…") { EditorUI.shared.quickOpen = QuickOpenRequest(groupID: groupID) }.keyboardShortcut(Keys.quickOpen)
+        }
+        if HammockTool.diff.on {
+            Button("Diff Tab…") { DiffLauncher.shared.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newDiffTab)
         }
     }
 }

@@ -1663,7 +1663,7 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 		*pb.ClientMessage_BrowserInput, *pb.ClientMessage_BrowserMenuChoice, *pb.ClientMessage_BrowserNavigate,
 		*pb.ClientMessage_WatchAgent, *pb.ClientMessage_ReadAgentFile, *pb.ClientMessage_WatchLog, *pb.ClientMessage_ReadLog, *pb.ClientMessage_ClearLog,
 		*pb.ClientMessage_EditorPush, *pb.ClientMessage_EditorSelect, *pb.ClientMessage_EditorCommand, *pb.ClientMessage_ReadEditor, *pb.ClientMessage_ListFiles,
-		*pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand,
+		*pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReadRepo,
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ReviewCommand, *pb.ClientMessage_ListReviews,
 		*pb.ClientMessage_ReadGroupIcon, *pb.ClientMessage_SetGroupIcon, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder, *pb.ClientMessage_RenameGroup, *pb.ClientMessage_CloseGroup,
 		*pb.ClientMessage_ReadPane, *pb.ClientMessage_Resize, *pb.ClientMessage_Focus, *pb.ClientMessage_Input, *pb.ClientMessage_SignalPane,

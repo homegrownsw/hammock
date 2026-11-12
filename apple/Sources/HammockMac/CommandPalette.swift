@@ -200,6 +200,9 @@ struct CommandPalette: View {
         action("review-changes", "Review Changes", "plusminus", .orange, "diff git review pull request branch", keys: Keys.reviewChanges) { DiffUI.review(model) }
         action("review-uncommitted", "Review Uncommitted Changes", "plusminus", .orange, "diff git review working tree staged") { DiffUI.review(model, source: DiffUI.uncommitted) }
         action("review-branch", "Review This Branch", "plusminus", .orange, "diff git review pull request base main") { DiffUI.review(model, source: DiffUI.branch) }
+        action("new-diff-tab", "New Diff Tab…", "plusminus", .orange, "diff git review compare branch commit range uncommitted choose", keys: Keys.newDiffTab) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { DiffLauncher.shared.newTab(model) }
+        }
         action("review-last-commit", "Review the Last Commit", "plusminus", .orange, "diff git review head commit") { DiffUI.review(model, source: DiffUI.lastCommit) }
         action("quick-open", "Quick Open…", "doc.text.magnifyingglass", .indigo, "find file fuzzy go to open editor", keys: Keys.quickOpen) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { EditorUI.shared.showQuickOpen(model) }
@@ -418,6 +421,9 @@ struct CommandPalette: View {
             action("split-browser-up", "Split Up with Browser", "rectangle.split.1x2", .blue, "pane web above") { Task { await model.splitBrowser(focused, direction: .vertical, before: true) } }
             action("split-log", "Split Right with Log…", "list.bullet.rectangle", .blue, "pane console logs logcat tail file stream", keys: Keys.splitLogRight) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { LogUI.shared.split(model, focused, .horizontal) }
+            }
+            action("split-diff", "Split Right with Diff…", "plusminus", .orange, "pane git review changes compare branch commit", keys: Keys.splitDiffRight) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { DiffLauncher.shared.split(model, focused, .horizontal) }
             }
             action("split-editor", "Split Right with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorRight) { EditorUI.shared.split(model, focused, .horizontal) }
             action("split-editor-down", "Split Down with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorDown) { EditorUI.shared.split(model, focused, .vertical) }

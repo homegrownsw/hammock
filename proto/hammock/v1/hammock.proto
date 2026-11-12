@@ -525,6 +525,9 @@ message ClientMessage {
     ReadReview read_review = 130;
     ListReviews list_reviews = 131;
     ReviewCommand review_command = 132;
+    // The repository a folder is in, to choose what a diff pane compares
+    // before opening one (diff.go). Replies RepoInfo.
+    ReadRepo read_repo = 133;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -802,6 +805,7 @@ message ServerMessage {
     Review review = 66;                             // reply to ReadReview; to a diff pane's attached clients as its review changes
     ReviewList review_list = 67;                    // reply to ListReviews
     ReviewReply review_reply = 68;                  // reply to ReviewCommand
+    RepoInfo repo_info = 69;                        // reply to ReadRepo
   }
 }
 
@@ -2487,6 +2491,19 @@ message DiffContent {
   repeated DiffCommit commits = 4;  // HEAD's recent commits, to pick one or a range from
   repeated string branches = 5;     // branches to compare with, the default first
   string default_branch = 6;
+}
+
+// The repository path is in (empty: the Group's folder), on the Group's
+// computer (a shared Group's host, a linked computer's Group there).
+message ReadRepo { string path = 1; string group_id = 2; }
+
+message RepoInfo {
+  string repo = 1;            // its top folder ("" none: error says why)
+  string branch = 2;          // HEAD's branch ("" detached)
+  string default_branch = 3;  // where a pull request would go ("" none found)
+  repeated string branches = 4;     // to compare with, the default first
+  repeated DiffCommit commits = 5;  // HEAD's recent commits
+  string error = 6;
 }
 
 message DiffFile {

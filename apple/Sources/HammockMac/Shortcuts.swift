@@ -37,6 +37,7 @@ enum Keys {
     static var newAgentTab: KeyboardShortcut? { shortcut("new_agent_tab") }
     static var newLogTab: KeyboardShortcut? { shortcut("new_log_tab") }
     static var newEditorTab: KeyboardShortcut? { shortcut("new_editor_tab") }
+    static var newDiffTab: KeyboardShortcut? { shortcut("new_diff_tab") }
     static var quickOpen: KeyboardShortcut? { shortcut("quick_open") }
     static var openFile: KeyboardShortcut? { shortcut("open_file") }
     static var newScheduledTask: KeyboardShortcut? { shortcut("new_scheduled_task") }
@@ -86,6 +87,7 @@ enum Keys {
     static var splitBrowserDown: KeyboardShortcut? { shortcut("split_browser_down") }
     static var devTools: KeyboardShortcut? { shortcut("dev_tools") }
     static var splitLogRight: KeyboardShortcut? { shortcut("split_log_right") }
+    static var splitDiffRight: KeyboardShortcut? { shortcut("split_diff_right") }
     static var splitEditorRight: KeyboardShortcut? { shortcut("split_editor_right") }
     static var splitEditorDown: KeyboardShortcut? { shortcut("split_editor_down") }
     static var showSimulatorLog: KeyboardShortcut? { shortcut("show_simulator_log") }

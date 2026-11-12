@@ -123,6 +123,42 @@ func TestDiffPane(t *testing.T) {
 	}
 }
 
+// ReadRepo: what a diff could compare, before one's open: the branch it's
+// on, the branches to compare with (the default first) and its commits;
+// the Group's folder when no path is given; why not, outside a repository.
+func TestReadRepo(t *testing.T) {
+	dir := shortDir(t)
+	repo := t.TempDir()
+	if r, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = r
+	}
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	gitIn(t, repo, "checkout", "-q", "-b", "feature")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("two\n"), 0o644)
+	gitIn(t, repo, "commit", "-q", "-am", "Second")
+	os.MkdirAll(filepath.Join(repo, "sub"), 0o755)
+
+	startDaemon(t, dir)
+	c := dial(t, dir)
+	r := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadRepo{ReadRepo: &pb.ReadRepo{Path: filepath.Join(repo, "sub")}}}).GetRepoInfo()
+	if r.Repo != repo || r.Branch != "feature" || r.DefaultBranch != "main" || !slices.Equal(r.Branches, []string{"main", "feature"}) ||
+		len(r.Commits) != 2 || r.Commits[0].Subject != "Second" || r.Error != "" {
+		t.Fatalf("repo %v", r)
+	}
+
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetGroupFolder{SetGroupFolder: &pb.SetGroupFolder{GroupId: g, Folder: repo}}})
+	if r := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadRepo{ReadRepo: &pb.ReadRepo{GroupId: g}}}).GetRepoInfo(); r.Repo != repo {
+		t.Fatalf("the Group's folder: %v", r)
+	}
+	if r := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadRepo{ReadRepo: &pb.ReadRepo{Path: t.TempDir()}}}).GetRepoInfo(); r.Repo != "" || !strings.Contains(r.Error, "isn't in a git repository") {
+		t.Fatalf("not a repository: %v", r)
+	}
+}
+
 func TestReviewThreads(t *testing.T) {
 	dir := shortDir(t)
 	repo := t.TempDir()

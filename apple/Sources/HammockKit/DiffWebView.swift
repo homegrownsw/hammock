@@ -462,6 +462,19 @@ extension AppModel {
         }
     }
 
+    /// The repository path is in (empty: the Group's folder), on the
+    /// Group's computer: its branches and commits, to choose what a diff
+    /// compares before opening one. nil: the daemon couldn't be asked.
+    public func readRepo(_ path: String, groupID: String) async -> Hammock_V1_RepoInfo? {
+        guard let conn = connection else { return nil }
+        return try? await conn.call {
+            $0.readRepo = .with {
+                $0.path = path
+                $0.groupID = groupID
+            }
+        }.repoInfo
+    }
+
     /// Opens a diff of the repository dir is in: a new tab just after
     /// afterTab (or a split beside splitPane). source nil: the branch
     /// against its base, else what's uncommitted.

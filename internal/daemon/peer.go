@@ -932,6 +932,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.StartAgent.GroupId
 	case *pb.ClientMessage_ListFolders:
 		return m.ListFolders.GroupId
+	case *pb.ClientMessage_ReadRepo:
+		return m.ReadRepo.GroupId
 	case *pb.ClientMessage_RenameGroup:
 		return m.RenameGroup.GroupId
 	case *pb.ClientMessage_SetGroupIcon:

@@ -345,6 +345,29 @@ func (h *diffHub) read(m *pb.ReadDiff) (*pb.DiffContent, error) {
 	return out, nil
 }
 
+// readRepo answers ReadRepo: what a diff of the repository m.Path is in
+// could compare, before a pane is opened on it. Not under d.mu.
+func (d *Daemon) readRepo(m *pb.ReadRepo) *pb.RepoInfo {
+	dir := m.Path
+	if dir == "" {
+		d.mu.Lock()
+		if g := d.groups[m.GroupId]; g != nil {
+			dir = d.groupFolder(g)
+		}
+		d.mu.Unlock()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	repo, err := gitdiff.TopLevel(ctx, expandHome(dir))
+	if err != nil {
+		return &pb.RepoInfo{Error: err.Error()}
+	}
+	out := &pb.RepoInfo{Repo: repo, Branch: gitdiff.CurrentBranch(ctx, repo), DefaultBranch: gitdiff.DefaultBranch(ctx, repo)}
+	out.Branches = gitdiff.Branches(ctx, repo, out.DefaultBranch)
+	out.Commits = gitdiff.Commits(ctx, repo, 60)
+	return out
+}
+
 // readFile answers ReadDiffFile.
 func (h *diffHub) readFile(m *pb.ReadDiffFile) (*pb.DiffFileText, error) {
 	s, err := h.state(m.PaneId)

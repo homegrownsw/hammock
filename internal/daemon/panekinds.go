@@ -54,7 +54,7 @@ func msgPaneKind(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_ReadEditor, *pb.ClientMessage_EditorCommand, *pb.ClientMessage_EditorSelect,
 		*pb.ClientMessage_EditorPush:
 		return "editor"
-	case *pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand,
+	case *pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReadRepo,
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ListReviews, *pb.ClientMessage_ReviewCommand:
 		return "diff"
 	}

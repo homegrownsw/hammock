@@ -951,6 +951,10 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 	case *pb.ClientMessage_ListFolders:
 		// Drivers can run commands in its folders anyway.
 		return drive(roleOf(m.ListFolders.GroupId))
+	case *pb.ClientMessage_ReadRepo:
+		// To open a diff pane there, which takes driving (and any folder:
+		// drivers can run git in it anyway).
+		return drive(roleOf(m.ReadRepo.GroupId))
 	case *pb.ClientMessage_ReadPane:
 		return view(pane(m.ReadPane.PaneId))
 	case *pb.ClientMessage_Resize:

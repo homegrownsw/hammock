@@ -774,6 +774,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_DiffContent{DiffContent: dc}}, nil
 
+	case *pb.ClientMessage_ReadRepo:
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_RepoInfo{RepoInfo: d.readRepo(m.ReadRepo)}}, nil
+
 	case *pb.ClientMessage_ReadDiffFile:
 		t, err := d.diffs.readFile(m.ReadDiffFile)
 		if err != nil {
