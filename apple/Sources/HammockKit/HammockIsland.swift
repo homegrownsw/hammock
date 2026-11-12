@@ -190,6 +190,7 @@ final class IslandScene {
         let segments = 9
         let length: Float = 0.2
         let tap = CollisionComponent(shapes: [.generateBox(width: 0.2, height: length, depth: 0.2)], mode: .trigger)
+        let target = InputTargetComponent()
         for i in 0..<segments {
             let dir = simd_quatf(angle: tilt, axis: [0, 0, 1]).act([0, 1, 0])
             let radius = 0.075 - Float(i) * 0.004
@@ -198,6 +199,7 @@ final class IslandScene {
             seg.position = point + dir * (length / 2)
             seg.orientation = simd_quatf(from: [0, 1, 0], to: dir)
             seg.components.set(tap)
+            seg.components.set(target)
             root.addChild(seg)
             point += dir * length
             if i == 3 { attach = base + point }
@@ -207,6 +209,7 @@ final class IslandScene {
         let crown = Entity()
         crown.position = point
         crown.components.set(CollisionComponent(shapes: [.generateSphere(radius: 0.45)], mode: .trigger))
+        crown.components.set(InputTargetComponent())
         root.addChild(crown)
         let fronds = 8
         for k in 0..<fronds {
@@ -250,6 +253,8 @@ final class IslandScene {
         // Taps anywhere on it.
         pivot.components.set(CollisionComponent(shapes: [ShapeResource.generateBox(width: hammockHalf * 2, height: sag + 0.2, depth: 0.55)
                 .offsetBy(translation: [0, -sag / 2, 0])], mode: .trigger))
+        // RealityKit only sends taps to entities with one of these.
+        pivot.components.set(InputTargetComponent())
 
         // Spreader bars at the ends, and ropes out to the palms.
         for side: Float in [-1, 1] {
@@ -293,6 +298,7 @@ final class IslandScene {
 
         let shape = ShapeResource.generateBox(width: 0.8, height: 0.2, depth: 0.26).offsetBy(translation: [0, 0.03, 0])
         sleeper.components.set(CollisionComponent(shapes: [shape]))
+        sleeper.components.set(InputTargetComponent())
         sleeper.components.set(PhysicsBodyComponent(shapes: [shape], mass: 0, mode: .kinematic))
     }
 
@@ -350,6 +356,7 @@ final class IslandScene {
         nut.position = world
         let shape = ShapeResource.generateSphere(radius: coconutRadius)
         nut.components.set(CollisionComponent(shapes: [shape]))
+        nut.components.set(InputTargetComponent())
         var body = PhysicsBodyComponent(shapes: [shape], mass: 0.4,
                                         material: .generate(staticFriction: 0.6, dynamicFriction: 0.4, restitution: 0.55), mode: .dynamic)
         body.angularDamping = 0.8
