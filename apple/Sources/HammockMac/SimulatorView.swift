@@ -385,12 +385,17 @@ final class SimulatorPaneNSView: NSView {
         super.layout()
         let s = fit
         guard s > 0 else { return }
-        let flip = { (r: CGRect) in CGRect(x: r.minX, y: self.bounds.height - r.maxY, width: r.width, height: r.height) }
-        let screenR = flip(screenRect)
-        // The screen's corners as its mask draws them (near enough), and the
-        // frame's that much rounder again.
-        let corner = min(screenR.width, screenR.height) * 0.125
-        let placed = SimulatorPlacement(screen: screenR, screenRadius: corner, device: flip(deviceRect), deviceRadius: corner + edge * s)
+        // The screen's and the frame's real outlines (as the layers below
+        // draw them), placed in the view: the screen's shape is in its own
+        // points, y down, from its top left.
+        let r = screenRect
+        let screenTopLeft = CGPoint(x: r.minX, y: bounds.height - r.maxY)
+        let outlineShape = outline ?? CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: size.width * 0.12,
+                                             cornerHeight: size.width * 0.12, transform: nil)
+        var place = CGAffineTransform(translationX: screenTopLeft.x, y: screenTopLeft.y).scaledBy(x: s, y: s)
+        let placed = SimulatorPlacement(screen: CGRect(origin: screenTopLeft, size: r.size),
+                                        screenPath: outlineShape.copy(using: &place) ?? outlineShape,
+                                        devicePath: DeviceChrome.grow(outlineShape, by: edge).copy(using: &place) ?? outlineShape)
         if placed != reported, let report = onPlacement {
             reported = placed
             DispatchQueue.main.async { report(placed) }
@@ -709,12 +714,11 @@ struct SimulatorView: NSViewRepresentable {
 }
 
 /// Where a simulator pane draws the device and its screen, and their
-/// corners' radii, in SwiftUI's coordinates.
+/// shapes, in SwiftUI's coordinates.
 struct SimulatorPlacement: Equatable {
     var screen: CGRect
-    var screenRadius: CGFloat
-    var device: CGRect
-    var deviceRadius: CGFloat
+    var screenPath: CGPath // the screen's shape
+    var devicePath: CGPath // the frame's outline (the screen's, without one)
 }
 
 /// Lets the pane's toolbar reach its view (for the hardware buttons).
@@ -773,7 +777,7 @@ struct SimulatorPaneView: View {
                 .overlay {
                     if let p = placement, !p.screen.isEmpty {
                         AgentPresenceOverlay(model: model, paneID: paneID, isSimulator: true,
-                                             screen: (p.screen, p.screenRadius), device: (p.device, p.deviceRadius))
+                                             screen: (p.screen, Path(p.screenPath)), device: Path(p.devicePath))
                     }
                 }
         }

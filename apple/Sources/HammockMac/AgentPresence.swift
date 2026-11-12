@@ -15,12 +15,12 @@ struct AgentPresenceOverlay: View {
     let model: AppModel
     let paneID: String
     let isSimulator: Bool
-    /// Where the page or screen is in this view, and its corners' radius
-    /// (nil: the whole view, square).
-    var screen: (rect: CGRect, radius: CGFloat)?
-    /// A simulator's whole device, frame and all: its glow rings that, and
-    /// spills out around it.
-    var device: (rect: CGRect, radius: CGFloat)?
+    /// Where a simulator's screen is in this view, and its shape there
+    /// (nil: a page, the whole view).
+    var screen: (rect: CGRect, shape: Path)?
+    /// A simulator's whole device, frame and all, as its outline in this
+    /// view: its glow rings that, and spills out around it.
+    var device: Path?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var active = false
@@ -95,8 +95,9 @@ struct AgentPresenceOverlay: View {
                     .frame(width: area.width * 0.45, height: area.height)
                     .offset(x: area.width * (s * 1.45 - 0.45))
                     .frame(width: area.width, height: area.height, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: screen?.radius ?? 0, style: .continuous))
                     .offset(x: area.minX, y: area.minY)
+                    .frame(width: area.maxX, height: area.maxY, alignment: .topLeading)
+                    .clipShape(screen.map { AnyShape(PathShape(path: $0.shape)) } ?? AnyShape(Rectangle().path(in: area)))
             }
             ForEach(ripples) { r in
                 RippleView(color: accent, size: isSimulator ? 60 : 52, still: reduceMotion)
@@ -124,14 +125,14 @@ struct AgentPresenceOverlay: View {
     /// frame, and its screen a little in from its edges.
     private func glow(in area: CGRect) -> some View {
         ZStack(alignment: .topLeading) {
-            if let device {
-                OuterGlow(color: accent, radius: device.radius)
-                    .frame(width: device.rect.width, height: device.rect.height)
-                    .offset(x: device.rect.minX, y: device.rect.minY)
+            if let device, let screen {
+                OuterGlow(color: accent, shape: PathShape(path: device))
+                InnerGlow(color: accent, shape: PathShape(path: screen.shape), ring: false, strength: 0.75)
+            } else {
+                InnerGlow(color: accent, shape: Rectangle(), ring: true, strength: 1)
+                    .frame(width: area.width, height: area.height)
+                    .offset(x: area.minX, y: area.minY)
             }
-            InnerGlow(color: accent, radius: screen?.radius ?? 0, ring: device == nil, strength: device == nil ? 1 : 0.75)
-                .frame(width: area.width, height: area.height)
-                .offset(x: area.minX, y: area.minY)
         }
         .opacity(pulse ? 1 : 0.75)
         .onAppear {
@@ -387,21 +388,20 @@ struct AgentCursor: View {
 
 /// A glow in from a shape's edges: a ring, then softer layers fading
 /// inwards (the inset shadows of the design).
-private struct InnerGlow: View {
+private struct InnerGlow<S: Shape>: View {
     let color: Color
-    let radius: CGFloat
+    let shape: S
     let ring: Bool
     let strength: Double
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         // Centred on the edge (half of each is clipped away), so each layer
         // is brightest there and fades inwards.
         ZStack {
             shape.stroke(color, lineWidth: 36).blur(radius: 34).opacity(0.38 * strength)
             shape.stroke(color, lineWidth: 14).blur(radius: 11).opacity(0.95 * strength)
             if ring {
-                shape.strokeBorder(color.opacity(0.85), lineWidth: 2)
+                shape.stroke(color.opacity(0.85), lineWidth: 4) // 2 inside
             }
         }
         .clipShape(shape)
@@ -410,16 +410,15 @@ private struct InnerGlow: View {
 
 /// A ring around a shape with a glow spilling out from it, none of it
 /// drawn inside (over a simulator's screen).
-private struct OuterGlow: View {
+private struct OuterGlow<S: Shape>: View {
     let color: Color
-    let radius: CGFloat
+    let shape: S
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         ZStack {
             shape.stroke(color, lineWidth: 20).blur(radius: 22).opacity(0.4)
             shape.stroke(color, lineWidth: 8).blur(radius: 7).opacity(0.9)
-            shape.inset(by: -1).stroke(color.opacity(0.85), lineWidth: 2)
+            shape.stroke(color.opacity(0.85), lineWidth: 4) // 2 outside
         }
         .mask {
             Rectangle().padding(-160)
@@ -427,6 +426,12 @@ private struct OuterGlow: View {
                 .compositingGroup()
         }
     }
+}
+
+/// A path already placed in the view, as a shape.
+private struct PathShape: Shape {
+    let path: Path
+    func path(in rect: CGRect) -> Path { path }
 }
 
 /// A fingertip on a simulator's screen.
