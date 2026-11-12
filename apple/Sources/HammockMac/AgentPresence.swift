@@ -417,8 +417,8 @@ private struct OuterGlow: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         ZStack {
-            shape.stroke(color, lineWidth: 44).blur(radius: 44).opacity(0.5)
-            shape.stroke(color, lineWidth: 16).blur(radius: 14).opacity(0.95)
+            shape.stroke(color, lineWidth: 20).blur(radius: 22).opacity(0.4)
+            shape.stroke(color, lineWidth: 8).blur(radius: 7).opacity(0.9)
             shape.inset(by: -1).stroke(color.opacity(0.85), lineWidth: 2)
         }
         .mask {
