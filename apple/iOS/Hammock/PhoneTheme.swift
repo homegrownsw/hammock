@@ -129,7 +129,7 @@ struct PhoneTheme: Equatable, Sendable {
 
     /// The Mac's window themes with a colour of their own, each an
     /// AgentColor of the same name (WindowTheme.builtIn, without Native).
-    private static let windowTints = ["Graphite", "Hammock", "Ocean", "Forest", "Rose", "Lavender", "Sand"]
+    private static let windowTints = ["Graphite", "Hammock", "Ocean", "Lagoon", "Rose", "Lavender", "Sand", "Apricot", "Cocoa"]
 
     /// A `window-theme` value's AgentColor name (any case, as the Mac reads
     /// it), "" for Native, Match Terminal or one it doesn't know.

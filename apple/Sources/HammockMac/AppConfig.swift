@@ -397,7 +397,9 @@ final class AppConfig {
         copyOnSelect = ["true", "clipboard"].contains(ours["copy-on-select"] ?? "")
         pasteProtection = (ours["clipboard-paste-protection"] ?? ghostty["clipboard-paste-protection"]) != "false"
         pasteBracketedSafe = (ours["clipboard-paste-bracketed-safe"] ?? ghostty["clipboard-paste-bracketed-safe"]) != "false"
-        windowThemeName = ours["window-theme"].flatMap { name in Self.windowThemeNames.first { $0.caseInsensitiveCompare(name) == .orderedSame } } ?? WindowTheme.native
+        // Forest is gone: Hammock's green took its place.
+        windowThemeName = ours["window-theme"].map { $0.caseInsensitiveCompare("Forest") == .orderedSame ? "Hammock" : $0 }
+            .flatMap { name in Self.windowThemeNames.first { $0.caseInsensitiveCompare(name) == .orderedSame } } ?? WindowTheme.native
         sidebarColor = WindowTheme.colorPair(ours["sidebar-color"])
         toolbarColor = WindowTheme.colorPair(ours["toolbar-color"])
         sidebarOpacity = min(max(ours["sidebar-opacity"].flatMap(Double.init) ?? 0, 0), 1)
@@ -763,7 +765,7 @@ final class AppConfig {
     private static let header = """
         # Hammock config (Ghostty syntax). Changes apply automatically.
         #   appearance = auto | light | dark
-        #   app-theme = Hammock            (Hammock, Native, Graphite, Ocean, Forest, Rose, Lavender, Sand, Catppuccin,
+        #   app-theme = Hammock            (Hammock, Native, Graphite, Ocean, Lagoon, Rose, Lavender, Sand, Apricot, Cocoa, Catppuccin,
         #                                   Tokyo Night, Gruvbox, Nord, Rosé Pine, Solarized; or custom: the theme, window-theme,
         #                                   agent-color, active-pane-border-color, sidebar-color and toolbar-color keys apply)
         #   theme = dark:NAME,light:NAME   (Ghostty theme files; see Settings ▸ Appearance)
@@ -774,7 +776,7 @@ final class AppConfig {
         #   copy-on-select = false
         #   clipboard-paste-protection = true   (ask before a paste that could run commands)
         #   clipboard-paste-bracketed-safe = true   (no need to ask when the program takes bracketed pastes)
-        #   window-theme = Native | Graphite | Hammock | Ocean | Forest | Rose | Lavender | Sand | Match Terminal
+        #   window-theme = Native | Graphite | Hammock | Ocean | Lagoon | Rose | Lavender | Sand | Apricot | Cocoa | Match Terminal
         #   agent-color = Ocean            (the agent view's colour: a colour or theme name, or #RRGGBB, light:#…,dark:#…)
         #   sidebar-color = #RRGGBB, toolbar-color = #RRGGBB   (or light:#…,dark:#…; override the theme)
         #   sidebar-opacity = 0 … 1        (0 glassy, 1 opaque)

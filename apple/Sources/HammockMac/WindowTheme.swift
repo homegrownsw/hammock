@@ -22,12 +22,14 @@ struct WindowTheme: Identifiable, Equatable {
     static let builtIn: [WindowTheme] = [
         WindowTheme(name: native, sidebar: nil, toolbar: nil),
         theme("Graphite", "E6E6EA", "F3F3F5", "1C1C1F", "26262A", mark: "6E6E78"),
-        theme("Hammock", "D7F4DF", "E9F9ED", "0C311A", "123A21", mark: "1F7A57"),
+        theme("Hammock", "C5E2CF", "E2F1E7", "102D1C", "173825", mark: "1F7A57"),
         theme("Ocean", "D5E6FA", "EBF3FD", "0F2238", "162D47", mark: "2F7AD9"),
-        theme("Forest", "D6EEDB", "EBF7EE", "11281A", "183423", mark: "2F9A55"),
+        theme("Lagoon", "CDEAEA", "E6F4F4", "0E272A", "153437", mark: "0F828A"),
         theme("Rose", "F9D9E3", "FCEDF2", "331821", "40202B", mark: "D9577E"),
         theme("Lavender", "E4DBFA", "F3EFFD", "221A3A", "2C2349", mark: "7E5BD9"),
         theme("Sand", "F5E8C3", "FBF5E2", "2F2A1C", "3B3524", mark: "C79A2E"),
+        theme("Apricot", "F8DCC3", "FCEEE1", "2C1B11", "392618", mark: "CD641D"),
+        theme("Cocoa", "E3D7CF", "F1ECE7", "251D18", "312721", mark: "7D553B"),
     ]
 
     private static func theme(_ name: String, _ sl: String, _ tl: String, _ sd: String, _ td: String, mark: String) -> WindowTheme {

@@ -90,7 +90,7 @@ public struct AppTheme: Identifiable, Sendable, Equatable {
     public static let all: [AppTheme] = [
         AppTheme(name: "Hammock", lightTerminalName: TerminalTheme.builtInLight, darkTerminalName: TerminalTheme.builtInDark,
                  light: .light, dark: .dark,
-                 sidebar: Pair(0xD7F4DF, 0x0C311A), toolbar: Pair(0xE9F9ED, 0x123A21),
+                 sidebar: Pair(0xC5E2CF, 0x102D1C), toolbar: Pair(0xE2F1E7, 0x173825),
                  accent: Pair(0x1F7A57, 0x3FB88A), bubble: Pair(0x1D6046, 0x1F6A4C), ownTint: true),
         AppTheme(name: native, lightTerminalName: TerminalTheme.builtInLight, darkTerminalName: TerminalTheme.builtInDark,
                  light: .light, dark: .dark, sidebar: nil, toolbar: nil, accent: nil, bubble: nil, ownTint: true),
@@ -98,14 +98,18 @@ public struct AppTheme: Identifiable, Sendable, Equatable {
              accent: Pair(0x3E3E46, 0xE2E2E8), bubble: Pair(0x5E5E68)),
         tint("Ocean", sidebar: Pair(0xD5E6FA, 0x0F2238), toolbar: Pair(0xEBF3FD, 0x162D47),
              accent: Pair(0x2B6CC4, 0x72A8F0), bubble: Pair(0x2B6CC4)),
-        tint("Forest", sidebar: Pair(0xD6EEDB, 0x11281A), toolbar: Pair(0xEBF7EE, 0x183423),
-             accent: Pair(0x2E8B4F, 0x5EC786), bubble: Pair(0x2E8B4F)),
+        plain("Lagoon", sidebar: Pair(0xCDEAEA, 0x0E272A), toolbar: Pair(0xE6F4F4, 0x153437),
+              accent: Pair(0x0F828A, 0x3BCECE), bubble: Pair(0x107884)),
         tint("Rose", sidebar: Pair(0xF9D9E3, 0x331821), toolbar: Pair(0xFCEDF2, 0x40202B),
              accent: Pair(0xCC4A72, 0xEA7398), bubble: Pair(0xCC4A72)),
         tint("Lavender", sidebar: Pair(0xE4DBFA, 0x221A3A), toolbar: Pair(0xF3EFFD, 0x2C2349),
              accent: Pair(0x7352D1, 0xA68EF2), bubble: Pair(0x7352D1)),
         tint("Sand", sidebar: Pair(0xF5E8C3, 0x2F2A1C), toolbar: Pair(0xFBF5E2, 0x3B3524),
              accent: Pair(0xA87A1F, 0xD9A743), bubble: Pair(0xA87A1F)),
+        plain("Apricot", sidebar: Pair(0xF8DCC3, 0x2C1B11), toolbar: Pair(0xFCEEE1, 0x392618),
+              accent: Pair(0xCD641D, 0xF19E55), bubble: Pair(0xB8571E)),
+        plain("Cocoa", sidebar: Pair(0xE3D7CF, 0x251D18), toolbar: Pair(0xF1ECE7, 0x312721),
+              accent: Pair(0x7D553B, 0xC9A487), bubble: Pair(0x724C36)),
         known("Catppuccin",
               lightName: "Catppuccin Latte",
               light: term(bg: 0xEFF1F5, fg: 0x4C4F69, cursor: 0xDC8A78, sel: 0xDC8A78, selFg: 0xEFF1F5,
@@ -176,6 +180,13 @@ public struct AppTheme: Identifiable, Sendable, Equatable {
         d.background = TerminalTheme.hex(mix(0x1E1E20, toolbar.dark, 0.5))
         return AppTheme(name: name, lightTerminalName: "\(name) Light", darkTerminalName: "\(name) Dark",
                         light: l, dark: d, sidebar: sidebar, toolbar: toolbar, accent: accent, bubble: bubble, ownTint: true)
+    }
+
+    /// One of Hammock's tints for the window alone, as Hammock's own is: the
+    /// terminal keeps its plain white and black.
+    private static func plain(_ name: String, sidebar: Pair, toolbar: Pair, accent: Pair, bubble: Pair) -> AppTheme {
+        AppTheme(name: name, lightTerminalName: TerminalTheme.builtInLight, darkTerminalName: TerminalTheme.builtInDark,
+                 light: .light, dark: .dark, sidebar: sidebar, toolbar: toolbar, accent: accent, bubble: bubble, ownTint: true)
     }
 
     /// A well-known terminal theme: the window's tints come from the

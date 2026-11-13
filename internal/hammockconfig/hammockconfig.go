@@ -357,7 +357,7 @@ func replace(lines []string, key, value string) []string {
 // the same), so the file says what it can hold whichever wrote it first.
 const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   appearance = auto | light | dark
-#   app-theme = Hammock            (Hammock, Native, Graphite, Ocean, Forest, Rose, Lavender, Sand, Catppuccin,
+#   app-theme = Hammock            (Hammock, Native, Graphite, Ocean, Lagoon, Rose, Lavender, Sand, Apricot, Cocoa, Catppuccin,
 #                                   Tokyo Night, Gruvbox, Nord, Rosé Pine, Solarized; or custom: the theme, window-theme,
 #                                   agent-color, active-pane-border-color, sidebar-color and toolbar-color keys apply)
 #   theme = dark:NAME,light:NAME   (Ghostty theme files; see Settings ▸ Appearance)
@@ -368,7 +368,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   copy-on-select = false
 #   clipboard-paste-protection = true   (ask before a paste that could run commands)
 #   clipboard-paste-bracketed-safe = true   (no need to ask when the program takes bracketed pastes)
-#   window-theme = Native | Graphite | Hammock | Ocean | Forest | Rose | Lavender | Sand | Match Terminal
+#   window-theme = Native | Graphite | Hammock | Ocean | Lagoon | Rose | Lavender | Sand | Apricot | Cocoa | Match Terminal
 #   agent-color = Ocean            (the agent view's colour: a colour or theme name, or #RRGGBB, light:#…,dark:#…)
 #   sidebar-color = #RRGGBB, toolbar-color = #RRGGBB   (or light:#…,dark:#…; override the theme)
 #   sidebar-opacity = 0 … 1        (0 glassy, 1 opaque)

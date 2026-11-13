@@ -10,7 +10,7 @@ import (
 // as apple/Sources/HammockKit/AppTheme.swift has them (AppTheme.all), which
 // holds their colours.
 var AppThemes = []string{
-	"Hammock", "Native", "Graphite", "Ocean", "Forest", "Rose", "Lavender", "Sand",
+	"Hammock", "Native", "Graphite", "Ocean", "Lagoon", "Rose", "Lavender", "Sand", "Apricot", "Cocoa",
 	"Catppuccin", "Tokyo Night", "Gruvbox", "Nord", "Rosé Pine", "Solarized",
 }
 
@@ -32,10 +32,12 @@ var Curated = []CuratedTheme{
 	{"Native", BuiltInLight, BuiltInDark, true, 0, 0},
 	{"Graphite", "Graphite Light", "Graphite Dark", true, 0x3E3E46, 0xE2E2E8},
 	{"Ocean", "Ocean Light", "Ocean Dark", true, 0x2B6CC4, 0x72A8F0},
-	{"Forest", "Forest Light", "Forest Dark", true, 0x2E8B4F, 0x5EC786},
+	{"Lagoon", BuiltInLight, BuiltInDark, true, 0x0F828A, 0x3BCECE},
 	{"Rose", "Rose Light", "Rose Dark", true, 0xCC4A72, 0xEA7398},
 	{"Lavender", "Lavender Light", "Lavender Dark", true, 0x7352D1, 0xA68EF2},
 	{"Sand", "Sand Light", "Sand Dark", true, 0xA87A1F, 0xD9A743},
+	{"Apricot", BuiltInLight, BuiltInDark, true, 0xCD641D, 0xF19E55},
+	{"Cocoa", BuiltInLight, BuiltInDark, true, 0x7D553B, 0xC9A487},
 	{"Catppuccin", "Catppuccin Latte", "Catppuccin Mocha", false, 0x8839EF, 0xCBA6F7},
 	{"Tokyo Night", "TokyoNight Day", "TokyoNight", false, 0x2E7DE9, 0x7AA2F7},
 	{"Gruvbox", "Gruvbox Light", "Gruvbox Dark", false, 0xAF3A03, 0xFE8019},
