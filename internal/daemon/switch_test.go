@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
@@ -35,8 +37,16 @@ func TestSwitchAgentConvertsAndResumes(t *testing.T) {
 	bin := filepath.Join(dir, "bin")
 	os.MkdirAll(bin, 0o755)
 	// A fake "claude": a copy of sleep, so the daemon sees a process named claude.
-	if out, err := exec.Command("cp", "/bin/sleep", filepath.Join(bin, "claude")).CombinedOutput(); err != nil {
+	// macOS kills a copied system binary (its signature names /bin/sleep), so
+	// the copy is signed again, ad hoc.
+	fake := filepath.Join(bin, "claude")
+	if out, err := exec.Command("cp", "/bin/sleep", fake).CombinedOutput(); err != nil {
 		t.Fatalf("%v %s", err, out)
+	}
+	if runtime.GOOS == "darwin" {
+		if out, err := exec.Command("codesign", "--force", "-s", "-", fake).CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
 	}
 	roots := allowTranscripts(t)
 	transcript := filepath.Join(roots, "t.jsonl")
@@ -58,6 +68,19 @@ func TestSwitchAgentConvertsAndResumes(t *testing.T) {
 	waitPaneStarted(t, d, pid)
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: pid}}})
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pid, Data: []byte(fmt.Sprintf("%s/claude 300\r", bin))}}})
+	// Wait for the shell to start it: switching before then finds no agent to
+	// stop, and the resume command is typed into the fake claude instead.
+	d.mu.Lock()
+	p := d.panes[pid]
+	d.mu.Unlock()
+	p.mu.Lock()
+	shell := p.pid
+	p.mu.Unlock()
+	for deadline := time.Now().Add(10 * time.Second); findAgent(shell) != "claude"; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the fake claude didn't start")
+		}
+	}
 	sendHook(t, dir, HookEvent{PaneID: pid, Harness: "claude", Payload: json.RawMessage(
 		fmt.Sprintf(`{"hook_event_name":"SessionStart","session_id":"src-1","transcript_path":%q}`, transcript))})
 
