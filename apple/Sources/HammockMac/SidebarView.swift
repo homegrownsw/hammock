@@ -26,6 +26,9 @@ struct SidebarView: View {
     @State private var hoveredRows = Set<String>()
     @State private var hoveredTab: String?
     @State private var tracker = SidebarDragTracker()
+    @State private var scroller = SidebarScroller()
+    /// The bottom bar's height: the List scrolls under it.
+    @State private var barHeight: CGFloat = 0
     private var layout: SidebarLayout { .current }
     private var showFinished: Bool { Prefs.shared.bool(FinishedPrefs.pref) }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -389,7 +392,7 @@ struct SidebarView: View {
         // Clicking a tab focuses its pane; if the list took focus first, the
         // selection would flash blue (focused) then grey. So the list never
         // takes keyboard focus; clicks still select.
-        .background(SidebarRefusesFocus())
+        .background(SidebarRefusesFocus(scroller: scroller))
         .scrollEdgeEffectStyle(.hard, for: .bottom)
         // A bar (macOS 26): the list scrolling beneath it fades under, not shows through.
         .safeAreaBar(edge: .bottom, spacing: 0) {
@@ -400,6 +403,7 @@ struct SidebarView: View {
                 HostFooter(model: model)
             }
             .modifier(SlidingBarHeight())
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
             // Needs You's cards come and go over the same curve as the bar's
             // height. Outside SlidingBarHeight, so the whole update moves
             // together: where the content sits in the sliding frame as well
@@ -418,15 +422,21 @@ struct SidebarView: View {
 
     /// Scrolls the list just far enough to show the row `id` (a tab, or
     /// "group:" and a Group's id), or its Group's header when its tabs
-    /// aren't listed (Horizontal Tabs). After this update, once the List
-    /// has the row: a new tab is selected as it's inserted.
+    /// aren't listed (Horizontal Tabs), clear of the bottom bar, which
+    /// SwiftUI's scrollTo puts it under. After this update, once the List
+    /// has the row (a new tab is selected as it's inserted), and again once
+    /// the insertion has settled.
     private func reveal(_ id: String, _ proxy: ScrollViewProxy) {
-        DispatchQueue.main.async {
-            let shown = Set(rows.map(\.id))
+        func go(_ animated: Bool) {
+            let shown = rows.map(\.id)
             let target = shown.contains(id) ? id : model.groups.first(where: { $0.tabIds.contains(id) }).map { "group:" + $0.id }
-            guard let target, shown.contains(target) else { return }
-            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { proxy.scrollTo(target) }
+            guard let target, let i = shown.firstIndex(of: target) else { return }
+            if !scroller.reveal(row: i, of: shown.count, bottomInset: barHeight, animated: animated && !reduceMotion) {
+                proxy.scrollTo(target)
+            }
         }
+        DispatchQueue.main.async { go(true) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { go(false) }
     }
 
     // MARK: Group hover, as in Dia: hovering a Group or any of its tabs puts the
@@ -1015,10 +1025,51 @@ struct HostFooter: View {
     }
 }
 
+/// Scrolls the sidebar's table view (found by SidebarRefusesFocus) to show
+/// a row clear of what covers its edges: the toolbar at the top (the
+/// scroll view's inset) and the bottom bar, whose height the List doesn't
+/// count when SwiftUI's scrollTo shows a row.
+@MainActor
+final class SidebarScroller {
+    weak var table: NSTableView?
+
+    /// Shows row `i` with the least scrolling, or false when the table
+    /// isn't the List's rows one for one (the caller falls back to scrollTo).
+    @discardableResult
+    func reveal(row i: Int, of count: Int, bottomInset: CGFloat, animated: Bool) -> Bool {
+        guard let t = table, let scroll = t.enclosingScrollView, t.numberOfRows == count, i < count else { return false }
+        let clip = scroll.contentView
+        let r = clip.convert(t.rect(ofRow: i), from: t)
+        let b = clip.bounds
+        let insets = scroll.contentInsets
+        let top = b.minY + insets.top, bottom = b.maxY - max(insets.bottom, bottomInset)
+        var y = b.minY
+        if r.minY < top { y -= top - r.minY } else if r.maxY > bottom { y += r.maxY - bottom } else { return true }
+        let docHeight = scroll.documentView?.frame.height ?? 0
+        y = max(-insets.top, min(y, docHeight - b.height + max(insets.bottom, bottomInset)))
+        let to = NSPoint(x: b.minX, y: y)
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.25
+                ctx.allowsImplicitAnimation = true
+                clip.animator().setBoundsOrigin(to)
+            } completionHandler: { scroll.reflectScrolledClipView(clip) }
+        } else {
+            clip.setBoundsOrigin(to)
+        }
+        scroll.reflectScrolledClipView(clip)
+        return true
+    }
+}
+
 /// Makes the sidebar's table view refuse first responder and drop its own
 /// selection highlight (see SidebarView).
 struct SidebarRefusesFocus: NSViewRepresentable {
+    var scroller: SidebarScroller?
+
     final class Probe: NSView {
+        weak var scroller: SidebarScroller?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             // The table is created alongside this view; look once it exists.
@@ -1031,6 +1082,7 @@ struct SidebarRefusesFocus: NSViewRepresentable {
             let root = v?.superview?.superview ?? window?.contentView
             func walk(_ view: NSView) {
                 if let t = view as? NSTableView {
+                    scroller?.table = t
                     t.refusesFirstResponder = true
                     t.selectionHighlightStyle = .none // tabs draw their own (see tabPill)
                     SidebarRefusesFocus.dropContextMenuRing(type(of: t))
@@ -1057,8 +1109,12 @@ struct SidebarRefusesFocus: NSViewRepresentable {
         }
     }
 
-    func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ v: Probe, context: Context) {}
+    func makeNSView(context: Context) -> Probe {
+        let p = Probe()
+        p.scroller = scroller
+        return p
+    }
+    func updateNSView(_ v: Probe, context: Context) { v.scroller = scroller }
 
     /// The table outlines a right-clicked row in blue, ignoring our own pills;
     /// there's no setting for it, so its drawing methods become no-ops (on
