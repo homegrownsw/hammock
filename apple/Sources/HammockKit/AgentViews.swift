@@ -250,8 +250,6 @@ public struct AgentConversationView: View {
         var tailTop: CGFloat?
         /// Tries that didn't bring the rows back, and when to try again:
         /// later each time, so a view that only looks blank (a row drawing
-        /// The top of the marker at the very end, always laid out.
-        var endTop: CGFloat?
         /// nothing) isn't scrolled about. Not keyed on the last row: a run
         /// of tools is one row, its id the same however many it grows by,
         /// so giving up until that changed left it blank through the run.
@@ -391,18 +389,15 @@ public struct AgentConversationView: View {
     /// last row not made, or made above what's in view: the space over the
     /// tail is blank.
     private func rowsMissing(_ s: AgentSession) -> Bool {
-        // Where the rows should end: over the tail, or with nothing in it
-        // (an empty tail isn't measured, so its last top is stale: the rows
-        // above re-measured as you scroll, it said the last row was far
-        // above it, and this scrolled to it and back over and over), the
-        // marker at the end, under the stack's spacing.
-        let tailShowing = s.working || !s.pendingSends.isEmpty
-        let end = tailShowing ? made.tailTop : made.endTop.map { $0 - 14 }
-        guard glide.gap < 60, let last = s.items.last?.id, let tail = end else { return false }
+        guard glide.gap < 60, let last = s.items.last?.id, let tail = made.tailTop else { return false }
         let top = revealer.visible.top
         // What's sent fills the view: no row belongs in it.
         guard tail - top > 60 else { return false }
-        guard let bottom = made.lastBottom, bottom.id == last else { return true }
+        // Where it last said it was, kept while it's out of view: back in
+        // view, the stack can bring back the same row, which, not having
+        // moved, doesn't say again. Forgotten as it went, the row looked
+        // missing at the end, and this scrolled to it and back over and over.
+        guard made.ids.contains(last), let bottom = made.lastBottom, bottom.id == last else { return true }
         // The last row sits just over the tail (the stack's spacing): far
         // above it, or above the view, the stack's laid out from a wrong estimate.
         return bottom.y < top + 8 || bottom.y < tail - 60
@@ -572,7 +567,6 @@ public struct AgentConversationView: View {
                                     }
                                     .onDisappear {
                                         made.ids.remove(item.id)
-                                        if made.lastBottom?.id == item.id { made.lastBottom = nil }
                                         if made.ids.isEmpty { made.emptied?() }
                                     }
                                     // Where the last row is (checkRowsMade); only
@@ -594,11 +588,7 @@ public struct AgentConversationView: View {
                             .jankRow("tail")
                         // The very end, the margin under the last row included,
                         // so scrolling to it shows all of that.
-                        Color.clear.frame(height: 1)
-                            .onGeometryChange(for: CGFloat.self) {
-                                $0.frame(in: .named(RowRevealer.space)).minY
-                            } action: { made.endTop = $0 }
-                            .padding(.bottom, 15).id("bottom")
+                        Color.clear.frame(height: 1).padding(.bottom, 15).id("bottom")
                     }
                     .padding(.horizontal, 18)
                     .padding(.top, 16)
@@ -1465,7 +1455,10 @@ struct TranscriptTail: View {
     let session: AgentSession
 
     var body: some View {
-        Group {
+        // A stack of its own, leading, at the conversation's spacing: a Group
+        // measured (onGeometryChange, where it's used) is put in one SwiftUI
+        // makes, centred, so Working… sat in the middle under what was sent.
+        VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(session.pendingSends.enumerated()), id: \.offset) { _, p in
                 UserBubble(text: p.text, rich: p.rich, attachments: p.attachments, session: session, pending: true)
                     // Sent: up from the message box, growing into place. It goes
