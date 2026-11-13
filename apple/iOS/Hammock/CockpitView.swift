@@ -301,17 +301,18 @@ struct GroupsView: View {
     @State private var creatingGroup = false
     @State private var deleting: WorkspaceGroup?
     /// Collapsed Groups, by id: this phone's own, not the Mac's, kept
-    /// between launches.
-    @AppStorage("collapsedGroups") private var collapsedIDs = ""
-
-    private var collapsed: Set<String> { Set(collapsedIDs.split(separator: ",").map(String.init)) }
+    /// between launches. Plain view state, saved as it changes, so toggling
+    /// animates (@AppStorage's change arrives outside withAnimation).
+    @State private var collapsed = Set(UserDefaults.standard.string(forKey: "collapsedGroups")?
+        .split(separator: ",").map(String.init) ?? [])
 
     private func toggle(_ group: WorkspaceGroup) {
         var ids = collapsed
         if ids.remove(group.id) == nil { ids.insert(group.id) }
         // Forget Groups that have gone, so the list doesn't grow forever.
         ids.formIntersection(model.groups.map(\.id))
-        withAnimation { collapsedIDs = ids.sorted().joined(separator: ",") }
+        withAnimation { collapsed = ids }
+        UserDefaults.standard.set(ids.sorted().joined(separator: ","), forKey: "collapsedGroups")
     }
 
     var body: some View {

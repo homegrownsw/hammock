@@ -117,7 +117,6 @@ struct GroupHeader: View {
                             Text("\(group.tabIds.count)").fontWeight(.regular).foregroundStyle(.secondary).monospacedDigit()
                         }
                     }
-                    Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
             }
@@ -125,6 +124,10 @@ struct GroupHeader: View {
             .accessibilityLabel(model.title(of: group))
             .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
             .accessibilityHint(collapsed ? "Shows its tabs" : "Hides its tabs")
+            // The toggle ends at its chevron (and a collapsed Group's
+            // summary): the space before + is left alone, so aiming for +
+            // doesn't collapse the Group.
+            Spacer(minLength: 0)
             if group.isRemote, !group.isOnLinkedComputer, let host = model.people[group.hostUserID] { AvatarView(person: host, size: 18) }
             Menu {
                 Button("Terminal", systemImage: "apple.terminal", action: newTab)
