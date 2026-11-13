@@ -51,7 +51,7 @@ func TestProofNonces(t *testing.T) {
 	if got, _ := p.take(w.id, w.nonce, now); got != nil {
 		t.Fatal("taken twice")
 	}
-	if got, fresh := p.take(w2.id, w2.nonce, now.Add(ProofFor+time.Millisecond)); got != w2 || fresh {
+	if got, fresh := p.take(w2.id, w2.nonce, now.Add(ProofFor()+time.Millisecond)); got != w2 || fresh {
 		t.Fatal("an expired nonce taken as fresh")
 	}
 	w3 := &proofWait{}
@@ -124,8 +124,7 @@ func clientCount(s *Server) int {
 // is refused, whatever it carries, and a legacy client is not served by the
 // socket's checks instead.
 func TestProofFirst(t *testing.T) {
-	defer func(d time.Duration) { ProofFor = d }(ProofFor)
-	ProofFor = 300 * time.Millisecond
+	defer setProofFor(setProofFor(300 * time.Millisecond))
 	s, sock := proofHolder(t)
 
 	c, _, _, _ := challenged(t, sock)
@@ -171,8 +170,7 @@ func TestProofFirst(t *testing.T) {
 // nonce: a wrong one is ignored and doesn't spend the right one; a replayed
 // one finds nothing; one that comes too late finds its connection gone.
 func TestProofOnceAndFresh(t *testing.T) {
-	defer func(d time.Duration) { ProofFor = d }(ProofFor)
-	ProofFor = 2 * time.Second
+	defer setProofFor(setProofFor(2 * time.Second))
 	_, sock := proofHolder(t)
 
 	c, id, nonce, svc := challenged(t, sock)
@@ -203,7 +201,7 @@ func TestProofOnceAndFresh(t *testing.T) {
 	}
 	c2.Close()
 
-	ProofFor = 200 * time.Millisecond
+	setProofFor(200 * time.Millisecond)
 	c3, id3, nonce3, _ := challenged(t, sock)
 	time.Sleep(400 * time.Millisecond)
 	if a, _ := sendProof(svc, id3, nonce3, time.Second); a == "ok" {
@@ -285,9 +283,10 @@ func TestProofIsTheConnectionsProcess(t *testing.T) {
 	// it happens would).
 	verdict := make(chan error, 1)
 	execd := make(chan struct{})
-	proofHeardHook = func() { <-execd }
-	proofVerdictHook = func(err error) { verdict <- err }
-	defer func() { proofHeardHook, proofVerdictHook = nil, nil }()
+	heard, said := func() { <-execd }, func(err error) { verdict <- err }
+	proofHeardHook.Store(&heard)
+	proofVerdictHook.Store(&said)
+	defer func() { proofHeardHook.Store(nil); proofVerdictHook.Store(nil) }()
 	cmd = exec.Command(exe, "-test.run=^TestHelperProves$")
 	cmd.Env = append(os.Environ(), "HMK_TEST_PROVE_DIAL="+sock)
 	stdout, _ := cmd.StdoutPipe()

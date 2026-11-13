@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"syscall"
@@ -137,7 +138,14 @@ func shortDirTB(t testing.TB) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() {
+		// Holders outlive their daemon by design, so a test's own would each keep a pseudo-terminal until
+		// the suite ends; hundreds of them run the Mac out ("device not configured" from any pty open,
+		// another package's tests' included). This test's go when it does (cleanups run last-first, so
+		// after its daemons have shut down).
+		_ = exec.Command("pkill", "-f", regexp.QuoteMeta(holderBin)+" --socket "+regexp.QuoteMeta(dir+"/")).Run()
+		os.RemoveAll(dir)
+	})
 	return dir
 }
 

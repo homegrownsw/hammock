@@ -10,6 +10,7 @@ import "testing"
 // off; a person links E with D, and E takes K2 (never K). When A is back,
 // D holds K and K2, and so does E.
 func TestMembershipHeldHopWithoutLink(t *testing.T) {
+	t.Parallel()
 	a, d, s := startComputer(t), startComputer(t), startComputer(t)
 	link(t, d, a)
 	link(t, s, a)

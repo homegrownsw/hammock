@@ -44,6 +44,7 @@ const tenYears = 10 * 365 * 24 * int64(time.Hour/time.Millisecond)
 // by asking back on any computer, however old it says its request is, and
 // not again after A is linked again.
 func TestMembershipUnlinkedCantAskBack(t *testing.T) {
+	t.Parallel()
 	a, b, c, d := four(t)
 	unlink(t, a, c.uid)
 	for _, tc := range []*testComputer{b, d} {
@@ -73,6 +74,7 @@ func TestMembershipUnlinkedCantAskBack(t *testing.T) {
 // here): it shows the conflict, A says to link them again, and that
 // relink delivers it. C can't ask about A afterwards either.
 func TestMembershipAskBackOnceAndOnlyInTheRace(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -104,6 +106,7 @@ func TestMembershipAskBackOnceAndOnlyInTheRace(t *testing.T) {
 // takes K from B. When A is back, B and D both hold K as waiting for its
 // code, and A never links it.
 func TestMembershipSuspectPassedOn(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	d := startComputer(t)
 	link(t, d, b)
@@ -137,6 +140,7 @@ func TestMembershipSuspectPassedOn(t *testing.T) {
 // long ago (to have every link A ever introduced checked again): links A
 // introduced before it was in touch aren't touched.
 func TestMembershipForgedAgeBounded(t *testing.T) {
+	t.Parallel()
 	a, b, x := mesh(t) // a and x through b...
 	c := startComputer(t)
 	link(t, c, a) // ...and c introduced to b by a
@@ -155,6 +159,7 @@ func TestMembershipForgedAgeBounded(t *testing.T) {
 // #4: a computer that unlinks X as asked doesn't send anything to the
 // computers it refused at X's request (they may be X's accomplices).
 func TestMembershipNothingSentToRefused(t *testing.T) {
+	t.Parallel()
 	a, b, x := mesh(t)
 	y := startComputer(t)
 	link(t, y, b)
@@ -181,6 +186,7 @@ func TestMembershipNothingSentToRefused(t *testing.T) {
 // #5: Remove on a link waiting for its code (introduced by a computer since
 // unlinked) doesn't let an introduction link it again.
 func TestMembershipRemovedSuspectStaysOut(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))

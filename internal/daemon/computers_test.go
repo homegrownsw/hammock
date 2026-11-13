@@ -46,6 +46,9 @@ func init() {
 	askWindow = 6 * time.Second
 	reintroduceEvery = 2 * time.Second
 	touchSlack = 3 * time.Second
+	// A computer that's off and back again redials within a fraction of a second, not the 1s doubling to
+	// 30s it waits live: most of the membership tests' time was spent in those waits.
+	peerRedial, peerRedialMax = 100*time.Millisecond, time.Second
 }
 
 func setWhoIs(t *testing.T, f func(string) (tsSource, error)) {

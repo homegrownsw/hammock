@@ -53,9 +53,11 @@ func sshForwarding() bool { return hammockconfig.Bool("ssh-agent-forwarding", tr
 // sshHub is the agent socket's listener and what it knows.
 type sshHub struct {
 	d   *Daemon
-	ln  net.Listener
 	own string // this computer's own agent (the daemon's SSH_AUTH_SOCK), "" if none
 
+	mu       sync.Mutex // listen runs from Serve, close from shutdown, which can come first (#61)
+	ln       net.Listener
+	closed   bool
 	signLink string // hmk-ssh-sign, for panes' git ("" if there's no CLI to link)
 
 	// guarded by d.mu
@@ -85,8 +87,15 @@ func (h *sshHub) listen(path string) error {
 		ln.Close()
 		return err
 	}
-	h.ln = ln
-	h.signLink = h.d.makeSSHSignLink()
+	link := h.d.makeSSHSignLink()
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		ln.Close()
+		return nil
+	}
+	h.ln, h.signLink = ln, link
+	h.mu.Unlock()
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -100,6 +109,9 @@ func (h *sshHub) listen(path string) error {
 }
 
 func (h *sshHub) close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.closed = true
 	if h.ln != nil {
 		h.ln.Close()
 	}
@@ -112,11 +124,17 @@ func (h *sshHub) close() {
 // Hammock Key when it can't. GIT_CONFIG_* adds to your git config for the
 // pane's programs only.
 func (h *sshHub) paneEnv() []string {
-	if h == nil || h.ln == nil {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	ln, link := h.ln, h.signLink
+	h.mu.Unlock()
+	if ln == nil {
 		return nil // (no socket: panes keep the daemon's own agent)
 	}
 	env := []string{"SSH_AUTH_SOCK=" + SSHAgentSocketPath(h.d.cfg.Dir)}
-	if link := h.signLink; link != "" {
+	if link != "" {
 		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=gpg.ssh.program", "GIT_CONFIG_VALUE_0="+link)
 	}
 	return env

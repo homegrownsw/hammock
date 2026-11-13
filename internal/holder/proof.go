@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/homegrownsw/hammock/internal/codesign"
@@ -64,9 +65,18 @@ import (
 // no Mach: its holders keep the socket checks (SO_PEERCRED), a speed bump
 // there (peerpid_linux.go).
 
-// ProofFor is how long a nonce is good for, and how long a connection waits
-// for its proof.
-var ProofFor = 5 * time.Second
+// proofFor is how long a nonce is good for, and how long a connection waits
+// for its proof. Atomic, since tests shorten it while an earlier test's
+// connections are still waiting on it (#61).
+var proofFor atomic.Int64
+
+func init() { proofFor.Store(int64(5 * time.Second)) }
+
+// ProofFor is proofFor's value now.
+func ProofFor() time.Duration { return time.Duration(proofFor.Load()) }
+
+// setProofFor changes proofFor (tests), returning what it was.
+func setProofFor(d time.Duration) time.Duration { return time.Duration(proofFor.Swap(int64(d))) }
 
 // proofHello is the daemon's proof's hello (rendezvous.h's magic, 16 bytes):
 // whose it is, and its wire format's version.
@@ -78,10 +88,11 @@ const (
 )
 
 // proofHeardHook and proofVerdictHook (tests) are told when a proof arrives,
-// before it's looked at, and what became of it.
+// before it's looked at, and what became of it. Atomic: set by a test while another
+// test's proof service may be running.
 var (
-	proofHeardHook   func()
-	proofVerdictHook func(error)
+	proofHeardHook   atomic.Pointer[func()]
+	proofVerdictHook atomic.Pointer[func(error)]
 )
 
 // proofs are a holder's nonces issued and not yet proven.
@@ -107,7 +118,7 @@ func (p *proofs) issue(w *proofWait, now time.Time) error {
 	if _, err := rand.Read(w.nonce); err != nil {
 		return err
 	}
-	w.until = now.Add(ProofFor)
+	w.until = now.Add(ProofFor())
 	w.done = make(chan error, 1)
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -189,8 +200,8 @@ func (s *Server) proofSender(w *proofWait, t codesign.Token) error {
 // verdict goes to that connection, and what to answer the sender is
 // returned.
 func (s *Server) proofArrived(body []byte, t codesign.Token) string {
-	if proofHeardHook != nil {
-		proofHeardHook()
+	if h := proofHeardHook.Load(); h != nil {
+		(*h)()
 	}
 	if len(body) != proofBodyLen {
 		return "not a proof"
@@ -205,8 +216,8 @@ func (s *Server) proofArrived(body []byte, t codesign.Token) string {
 		err = s.proofSender(w, t)
 	}
 	w.done <- err
-	if proofVerdictHook != nil {
-		proofVerdictHook(err)
+	if h := proofVerdictHook.Load(); h != nil {
+		(*h)(err)
 	}
 	if err != nil {
 		return err.Error()
@@ -236,7 +247,7 @@ func (s *Server) awaitProof(conn net.Conn, at PeerProc) error {
 		s.proofs.drop(w)
 		return err
 	}
-	t := time.NewTimer(ProofFor)
+	t := time.NewTimer(ProofFor())
 	defer t.Stop()
 	select {
 	case err = <-w.done:

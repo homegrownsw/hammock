@@ -15,6 +15,10 @@ import (
 // clients. These use only what any build has (who's linked, and reachable),
 // so they also run against earlier designs. Checks that must stay true are
 // held (holdComputers), not taken at the first poll.
+//
+// They run side by side (t.Parallel): each has computers of its own and spends nearly all its time waiting
+// on them, so one after another they were most of the package's minutes. A test that changes a package
+// variable (a hook, a timer) affects the others running, so it stays serial (TestMembershipIntroBackOutUndone).
 
 const hold = 1500 * time.Millisecond
 
@@ -101,6 +105,7 @@ func offline(uid string) func(*pb.Computers) bool { return notWith(uid) }
 // A leaves (Unlink This Computer), and a person links A with B again: A
 // gets C back too (leaving isn't an unlink: nobody refuses A's key).
 func TestMembershipLeaveAndRejoin(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	unlink(t, a, a.uid)
 	waitComputers(t, a, "a alone", alone)
@@ -118,6 +123,7 @@ func TestMembershipLeaveAndRejoin(t *testing.T) {
 // again. A links B (a person did the code check there); C was asked to
 // unlink B and refuses it until a person links them there too.
 func TestMembershipRelinkAfterOfflineUnlink(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -175,6 +181,7 @@ func TestMembershipABackBeforeC(t *testing.T) { unlinkedWhileOff(t, true) }
 // An unlinked computer introduced again through new computers: A links F,
 // F links E (linked with B). A and C get F and E, and refuse B.
 func TestMembershipUnlinkedRefusedThroughNew(t *testing.T) {
+	t.Parallel()
 	a, b, c, e := unlinkedWhileOff(t, false)
 	f := startComputer(t)
 	link(t, a, f)
@@ -188,6 +195,7 @@ func TestMembershipUnlinkedRefusedThroughNew(t *testing.T) {
 
 // The same, E restarting before A and C are back.
 func TestMembershipERestartsFirst(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -210,6 +218,7 @@ func TestMembershipERestartsFirst(t *testing.T) {
 // (E restarting partway). B, E and F keep each other; A and C never get any
 // of them.
 func TestMembershipChain(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -235,6 +244,7 @@ func TestMembershipChain(t *testing.T) {
 
 // Unlinked while off: it finds out when it's back, and stays out.
 func TestMembershipUnlinkReachesOffline(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -251,6 +261,7 @@ func TestMembershipUnlinkReachesOffline(t *testing.T) {
 // from a clock run ahead) doesn't come back through the computer that was
 // off. (Clocks themselves: TestInputClockAhead.)
 func TestMembershipRenameDoesntRelink(t *testing.T) {
+	t.Parallel()
 	a, x, d := mesh(t)
 	stop(d)
 	waitComputers(t, a, "d off", offline(d.uid))
@@ -270,6 +281,7 @@ func TestMembershipRenameDoesntRelink(t *testing.T) {
 // others show it as not linking with them any more (never linked and
 // online with nothing), and a person links it again.
 func TestMembershipResetComputer(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, a, "linked", linkedWith(b.uid))
@@ -288,6 +300,7 @@ func TestMembershipResetComputer(t *testing.T) {
 // A leaves while B is off: B, back, drops A (not refusing it: leaving isn't
 // an unlink), and stays so; A is alone.
 func TestMembershipLeaveWhileOtherOff(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, b, "linked", linkedWith(a.uid))
@@ -311,6 +324,7 @@ func TestMembershipLeaveWhileOtherOff(t *testing.T) {
 // Two computers introduce the same pair (P links V1, then V2; both are
 // linked with Q): P and Q link, whichever introduction each heard last.
 func TestMembershipTwoIntroducers(t *testing.T) {
+	t.Parallel()
 	v1, v2, q := startComputer(t), startComputer(t), startComputer(t)
 	link(t, v1, q)
 	link(t, v2, q)
@@ -329,6 +343,7 @@ func TestMembershipTwoIntroducers(t *testing.T) {
 // person, it gets the other back too (its old, refused record there doesn't
 // stand in the way).
 func TestMembershipResetInMeshRelinks(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(c)
 	for _, f := range []string{"state.db", "state.db-wal", "state.db-shm"} {
@@ -339,5 +354,7 @@ func TestMembershipResetInMeshRelinks(t *testing.T) {
 	waitComputers(t, b, "b shows c not linking", refused(c.uid))
 	link(t, c, a)
 	waitComputers(t, c, "c with a and b again", linkedWith(a.uid, b.uid))
+	// b hears of c through a, so it can come a moment after c sees b: wait for it, then hold it.
+	waitComputers(t, b, "b with a and c again", linkedWith(a.uid, c.uid))
 	holdComputers(t, b, "b with a and c", hold, linkedWith(a.uid, c.uid))
 }

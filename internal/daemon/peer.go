@@ -335,13 +335,17 @@ func (l *peerLink) connected(ctx context.Context, wait time.Duration) (*client.C
 	}
 }
 
-// run keeps the link up, reconnecting with backoff.
 // errNotLinkedYet: a link just made isn't made on the other side yet; its
 // link tries again every second (not backing off) until linkGrace is up.
 var errNotLinkedYet = errors.New("not linked there yet")
 
+// peerRedial is run's first wait before dialling again, doubling up to peerRedialMax (variables for
+// tests, whose computers go off and on in seconds).
+var peerRedial, peerRedialMax = time.Second, 30 * time.Second
+
+// run keeps the link up, reconnecting with backoff.
 func (l *peerLink) run() {
-	backoff := time.Second
+	backoff := peerRedial
 	for {
 		select {
 		case <-l.stop:
@@ -350,7 +354,7 @@ func (l *peerLink) run() {
 		}
 		cl, err := l.dial()
 		if err == nil {
-			backoff = time.Second
+			backoff = peerRedial
 			// In no Group there and no join waiting (removed, its Groups
 			// closed or unshared, or left while it was away): the link ends
 			// here, rather than signing in again and again as a stranger.
@@ -368,7 +372,7 @@ func (l *peerLink) run() {
 			return
 		case <-time.After(backoff):
 		}
-		backoff = min(backoff*2, 30*time.Second) // (a link just made, too: its grace is short)
+		backoff = min(backoff*2, peerRedialMax) // (a link just made, too: its grace is short)
 	}
 }
 

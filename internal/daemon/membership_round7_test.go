@@ -74,6 +74,7 @@ func pendingCount(tc *testComputer) int {
 // S), links E, which gets S through B. When A is back, B drops S, and so
 // does E.
 func TestMembershipUnlinkReachesLaterLinks(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -99,6 +100,7 @@ func TestMembershipUnlinkReachesLaterLinks(t *testing.T) {
 // unlinks C. A says B didn't take it; once a person links A and B again,
 // B drops C. (A and B apart: TestMembershipAskBackOnceAndOnlyInTheRace.)
 func TestMembershipStolenCantBlockItsUnlink(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	if err := send(t, strangerTo(t, c, b), &pb.ClientMessage{Msg: &pb.ClientMessage_UnlinkRequest{UnlinkRequest: &pb.UnlinkRequest{UserId: a.uid}}}); err != nil {
 		t.Fatal(err)
@@ -120,6 +122,7 @@ func TestMembershipStolenCantBlockItsUnlink(t *testing.T) {
 // #3: unlink requests are kept until delivered, however long that takes:
 // one a month old, for a computer that's off, still reaches it.
 func TestMembershipUnlinkKeptUntilDelivered(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(c)
 	waitComputers(t, a, "c off", offline(c.uid))
@@ -149,6 +152,13 @@ func TestMembershipUnlinkKeptUntilDelivered(t *testing.T) {
 		}
 	}
 	c = restartComputer(t, c)
+	// Delivered first: until then c may show b offline (c has just restarted, and b redials it), which
+	// notWith takes for dropped, and b back a moment later.
+	for end := time.Now().Add(15 * time.Second); pendingCount(a) > 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("a's request never reached c")
+		}
+	}
 	waitComputers(t, c, "c drops b", notWith(b.uid))
 	holdComputers(t, c, "and stays so", hold, notWith(b.uid))
 }
@@ -157,6 +167,7 @@ func TestMembershipUnlinkKeptUntilDelivered(t *testing.T) {
 // off; S links a key of its own (K); B, back, takes S's introduction of K;
 // when A is back B drops S, and K with it, and A never links K.
 func TestMembershipLinksOfUnlinkedNotPassedOn(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -183,6 +194,7 @@ func TestMembershipLinksOfUnlinkedNotPassedOn(t *testing.T) {
 // #5: an unlinked computer asking for anything says it was unlinked: a
 // link request from it, and a request to join a shared Group.
 func TestMembershipUnlinkedSaysSo(t *testing.T) {
+	t.Parallel()
 	a, x := unlinkedX(t)
 	waitComputers(t, x, "x shows a not linking", refused(a.uid))
 	go func() {
@@ -226,6 +238,7 @@ func TestMembershipUnlinkedSaysSo(t *testing.T) {
 // #6: a computer whose certificate changed (its tls/ made again, same
 // key) shows so, and linking again (the code check) replaces the pin.
 func TestMembershipChangedCertRelinks(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, a, "linked", linkedWith(b.uid))
@@ -276,6 +289,7 @@ func TestMigrateFromFactsRelinked(t *testing.T) {
 // #8: leaving, then linking again at once, works; and a late "drop me"
 // from before (resent, overtaken) doesn't undo the new link.
 func TestMembershipLeaveThenRelinkAtOnce(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, b, "linked", linkedWith(a.uid))
@@ -295,6 +309,7 @@ func TestMembershipLeaveThenRelinkAtOnce(t *testing.T) {
 // #9: an introduction that fails (here: offered while the introducer had
 // asked too much of this one lately) is offered again: the two link.
 func TestMembershipIntroductionRetried(t *testing.T) {
+	t.Parallel()
 	p, v := startComputer(t), startComputer(t)
 	link(t, p, v)
 	waitComputers(t, p, "linked", linkedWith(v.uid))
@@ -317,6 +332,7 @@ func junkUnlink() *pb.ClientMessage {
 // with junk doesn't crowd out another's; and a list of refused keys full
 // (of old ones) doesn't stop an honest unlink.
 func TestMembershipLimitsPerSender(t *testing.T) {
+	t.Parallel()
 	p, v := startComputer(t), startComputer(t)
 	link(t, p, v)
 	waitComputers(t, p, "linked", linkedWith(v.uid))
@@ -360,6 +376,7 @@ func TestMembershipLimitsPerSender(t *testing.T) {
 // #11: dropping a computer drops what was waiting for it: B, unlinked,
 // isn't told of A's other unlinks (here, of C) when it's back.
 func TestMembershipDroppedHearsNothing(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	waitComputers(t, a, "b off", offline(b.uid))
@@ -435,6 +452,7 @@ func TestLinkFromWildcardListen(t *testing.T) {
 // future (the clock moved back since) is shown as not linking once the
 // other says so, not retried for ever.
 func TestMembershipGraceAfterRestart(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, a, "linked", linkedWith(b.uid))
@@ -459,6 +477,7 @@ func TestMembershipGraceAfterRestart(t *testing.T) {
 // #14: Remove (on one that doesn't link with this one any more) forgets it
 // here only: nobody is asked to refuse it.
 func TestMembershipRemoveForgetsHereOnly(t *testing.T) {
+	t.Parallel()
 	a, b, c := mesh(t)
 	stop(b)
 	for _, f := range []string{"state.db", "state.db-wal", "state.db-shm"} {

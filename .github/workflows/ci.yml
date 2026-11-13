@@ -37,6 +37,12 @@ jobs:
           just deps
           export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig
           just vet test
+      # The race detector on the pane holder (quick, and what panes' input and proofs run through). The
+      # daemon's whole suite under -race takes too long to run on every push.
+      - name: Race (holder)
+        run: |
+          export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig
+          just race ./internal/holder/
       - name: Benchmark gate
         run: |
           export PKG_CONFIG_PATH=$PWD/third_party/ghostty/out/share/pkgconfig

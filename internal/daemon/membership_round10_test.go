@@ -16,6 +16,7 @@ func onlineWith(uid string) func(*pb.Computers) bool {
 // #1: S's hostile key K reaches B through D (D took it from S after the
 // unlink), and D stays off: B holds K anyway, and A never links it.
 func TestMembershipChainTwoHops(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	d := startComputer(t)
 	link(t, d, b)
@@ -44,6 +45,7 @@ func TestMembershipChainTwoHops(t *testing.T) {
 // #1, three hops: K went S → D → E → B, all after S's unlink, and none of
 // them is on when B hears it.
 func TestMembershipChainThreeHops(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	d := startComputer(t)
 	link(t, d, b)
@@ -77,6 +79,7 @@ func TestMembershipChainThreeHops(t *testing.T) {
 // #2: D hears of S's unlink only from B, linked (by a person) after it was
 // asked: K, which S introduced to D in between, is still held for its code.
 func TestMembershipRelayerLinkedLater(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	unlink(t, a, s.uid)
 	waitComputers(t, b, "b refuses s", notWith(s.uid))

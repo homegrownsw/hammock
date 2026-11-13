@@ -63,7 +63,7 @@ func attach(conn net.Conn, from uint64, token []byte, prove bool) (*Client, erro
 	}
 	// Something that isn't a holder (put at its path) mustn't hold the
 	// caller up for ever.
-	_ = conn.SetDeadline(time.Now().Add(2*ProofFor + 5*time.Second))
+	_ = conn.SetDeadline(time.Now().Add(2*ProofFor() + 5*time.Second))
 	if prove {
 		if err := WriteFrame(conn, FrameProve, nil); err != nil {
 			return fail(err)
@@ -82,7 +82,7 @@ func attach(conn net.Conn, from uint64, token []byte, prove bool) (*Client, erro
 		if err != nil {
 			return fail(err)
 		}
-		answer, err := sendProof(svc, id, nonce, ProofFor)
+		answer, err := sendProof(svc, id, nonce, ProofFor())
 		if err != nil {
 			return fail(err)
 		}

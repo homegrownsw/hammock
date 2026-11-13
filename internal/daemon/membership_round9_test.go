@@ -20,6 +20,7 @@ func heldFor(uid string) func(*pb.Computers) bool {
 // key K reached D from S after the unlink: D holds K for its code, and so
 // does B (which took K from D), however late A's own request comes.
 func TestMembershipRelayMarks(t *testing.T) {
+	t.Parallel()
 	a, b, s := mesh(t)
 	d := startComputer(t)
 	link(t, d, b)
@@ -52,6 +53,7 @@ func TestMembershipRelayMarks(t *testing.T) {
 
 // #1, on a full mesh: B's relay reaches D before A's own request does.
 func TestMembershipRelayFirstMarks(t *testing.T) {
+	t.Parallel()
 	a, b, s, d := four(t)
 	stop(d)
 	waitComputers(t, a, "d off", offline(d.uid))
@@ -73,6 +75,7 @@ func TestMembershipRelayFirstMarks(t *testing.T) {
 // #2: a stolen computer that was off when you unlinked it can't, back,
 // have the computer you unlinked it from refused anywhere.
 func TestMembershipNoAskBack(t *testing.T) {
+	t.Parallel()
 	a, b, c, d := four(t)
 	stop(c)
 	waitComputers(t, a, "c off", offline(c.uid))

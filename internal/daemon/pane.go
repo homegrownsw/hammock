@@ -202,8 +202,10 @@ func (p *pane) spawnAsync(command []string) error {
 	return nil
 }
 
-// holderConnectTimeout is how long a new holder has to start listening.
-var holderConnectTimeout = 5 * time.Second
+// holderConnectTimeout is how long a new holder has to start listening. Generous: one that ends before it
+// listens is noticed at once (startedHolder.exited), so this only bounds one that's slow to start, which a
+// loaded Mac (or a CI runner) can make a holder take more than 5s to do (#36).
+var holderConnectTimeout = 15 * time.Second
 
 // holderOpsQueue bounds the writes queued for a holder.
 const holderOpsQueue = 4096

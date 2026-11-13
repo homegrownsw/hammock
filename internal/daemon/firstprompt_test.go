@@ -38,7 +38,9 @@ func TestFirstPromptTypedOnceIdle(t *testing.T) {
 	p.mu.Lock()
 	p.info.Agent.State = pb.AgentState_AGENT_STATE_IDLE
 	p.mu.Unlock()
-	deadline := time.Now().Add(5 * time.Second)
+	// Generous: typing waits for its next look (every 500ms) and the input box (700ms), each of which a
+	// loaded runner stretches; it only takes this long when something's wrong.
+	deadline := time.Now().Add(15 * time.Second)
 	for !strings.Contains(p.text(false), "tidy the hangar") {
 		if time.Now().After(deadline) {
 			t.Fatalf("never typed; screen:\n%s", p.text(false))

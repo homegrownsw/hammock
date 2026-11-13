@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -235,6 +236,14 @@ func TestRaceDial(t *testing.T) {
 	})
 	if err == nil || len(errs) != 2 {
 		t.Fatalf("none: %v %v", err, errs)
+	}
+	// None connect, each saying it was cancelled (not by this call): still an error, never a zero conn
+	// taken for a connection (a peer link sent on that nil client and the daemon crashed).
+	v, _, err, _ = raceDial(context.Background(), []string{"a", "b"}, time.Second, func(ctx context.Context, a string) (fakeConn, error) {
+		return fakeConn{}, fmt.Errorf("sign in: %w", context.Canceled)
+	})
+	if err == nil || v.closed != nil {
+		t.Fatalf("all cancelled: %v %v", err, v)
 	}
 	// Two connect (both under way when the first does): the later one is closed.
 	dialStagger = 0

@@ -119,6 +119,17 @@ func raceDial[T interface{ Close() error }](ctx context.Context, addrs []string,
 	if first == nil {
 		first = ctx.Err()
 	}
+	// Every try failed and each said it was cancelled, though not by our ctx (a cancelled sign-in on the
+	// other side, say): still a failure. Returning no error here gave the caller a nil client as if it had
+	// connected, and the link's first send crashed the daemon.
+	for _, a := range addrs {
+		if first == nil {
+			first = errs[a]
+		}
+	}
+	if first == nil {
+		first = errors.New("no address connected")
+	}
 	return zero, "", first, errs
 }
 

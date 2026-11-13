@@ -66,6 +66,7 @@ func unlinkedX(t *testing.T) (a, x *testComputer) {
 // key of its own (K, a person's code check between two of X's), then
 // introduces K to A, and K asks A to link because X introduced it: refused.
 func TestMembershipMintedKeyNotRelayedIn(t *testing.T) {
+	t.Parallel()
 	a, x := unlinkedX(t)
 	k := startComputer(t)
 	link(t, x, k)
@@ -92,6 +93,7 @@ func TestMembershipMintedKeyNotRelayedIn(t *testing.T) {
 // then links C. X, connecting, learns nothing of A's computers, and its
 // request to unlink C is ignored.
 func TestMembershipUnlinkedCantLearnOrVeto(t *testing.T) {
+	t.Parallel()
 	a, x := unlinkedX(t)
 	c := startComputer(t)
 	link(t, a, c)
@@ -118,6 +120,7 @@ func TestMembershipUnlinkedCantLearnOrVeto(t *testing.T) {
 // C claiming A introduced it, and "leaves" (to clear its refusal): A and C
 // still refuse it.
 func TestMembershipUnlinkedCantUndoItsUnlink(t *testing.T) {
+	t.Parallel()
 	a, x, c := startComputer(t), startComputer(t), startComputer(t)
 	link(t, a, x)
 	link(t, c, a)
@@ -146,6 +149,7 @@ func TestMembershipUnlinkedCantUndoItsUnlink(t *testing.T) {
 // Round 6 #4: flooding with junk unlinks. A stranger's are all refused and
 // none kept; a linked computer's are taken a few a minute.
 func TestMembershipUnlinkFloodLimited(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	link(t, a, b)
 	waitComputers(t, a, "linked", linkedWith(b.uid))
@@ -180,6 +184,7 @@ func TestMembershipUnlinkFloodLimited(t *testing.T) {
 // the answer) resolves: the other shows it doesn't link with it any more,
 // and never as linked and online.
 func TestMembershipOneSidedResolves(t *testing.T) {
+	t.Parallel()
 	a, b := startComputer(t), startComputer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -322,6 +327,7 @@ func TestMigrateFromFacts(t *testing.T) {
 // offered K by A, then C unlinks A; K's link because "A introduced us" is
 // refused. (And, as a check, the same while A is linked is taken.)
 func TestMembershipIntroducerUnlinkedFirst(t *testing.T) {
+	t.Parallel()
 	a, c := startComputer(t), startComputer(t)
 	link(t, a, c)
 	waitComputers(t, c, "linked", linkedWith(a.uid))

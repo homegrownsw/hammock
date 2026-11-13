@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -31,8 +32,11 @@ type HookEvent struct {
 
 // agentHub tracks agent state from hook events and maintains the attention queue.
 type agentHub struct {
-	d  *Daemon
-	ln net.Listener
+	d *Daemon
+
+	mu     sync.Mutex // listen runs from Serve, close from shutdown, which can come first (#61)
+	ln     net.Listener
+	closed bool
 }
 
 func newAgentHub(d *Daemon) *agentHub { return &agentHub{d: d} }
@@ -47,7 +51,14 @@ func (h *agentHub) listen(path string) error {
 		ln.Close()
 		return err
 	}
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		ln.Close()
+		return nil
+	}
 	h.ln = ln
+	h.mu.Unlock()
 	go func() {
 		for {
 			c, err := ln.Accept()
@@ -61,6 +72,9 @@ func (h *agentHub) listen(path string) error {
 }
 
 func (h *agentHub) close() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.closed = true
 	if h.ln != nil {
 		h.ln.Close()
 	}

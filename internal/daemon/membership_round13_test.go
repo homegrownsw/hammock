@@ -14,6 +14,7 @@ import (
 // A: A and B, which vouched for H all along (their own clean links), take
 // it again; they never recorded it as held.
 func TestMembershipVouchedNoticeChangesNothing(t *testing.T) {
+	t.Parallel()
 	a, b, h, _ := noticeAboutHonest(t)
 	for _, tc := range []*testComputer{a, b} {
 		tc.d.mu.Lock()
@@ -36,6 +37,7 @@ func TestMembershipVouchedNoticeChangesNothing(t *testing.T) {
 // only K3, from D, with K and K2 off. When A is back, E holds K3 and never
 // links K or K2.
 func TestMembershipHostileChainOfThree(t *testing.T) {
+	t.Parallel()
 	a, d, s := startComputer(t), startComputer(t), startComputer(t)
 	link(t, d, a)
 	link(t, s, a)
