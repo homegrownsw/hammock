@@ -2310,7 +2310,15 @@ type Pane struct {
 	// the two apart (a program killed by a signal also ends -1).
 	StartError string `protobuf:"bytes,31,opt,name=start_error,json=startError,proto3" json:"start_error,omitempty"`
 	// Diff panes: what it compares, and whether that's changed since.
-	Diff          *DiffInfo `protobuf:"bytes,32,opt,name=diff,proto3" json:"diff,omitempty"`
+	Diff *DiffInfo `protobuf:"bytes,32,opt,name=diff,proto3" json:"diff,omitempty"`
+	// Terminal panes: set with exited when its program was ended from
+	// outside rather than ending itself: killed by SIGTERM, SIGHUP or
+	// SIGKILL (as macOS does to everything as it shuts down or logs out), or
+	// its pane-holder went away under it. The next time the daemon starts
+	// it's started again (an agent resumed), as a pane whose holder went while
+	// the daemon was down is; one that failed, or that you stopped (Ctrl-C),
+	// stays ended.
+	Interrupted   bool `protobuf:"varint,33,opt,name=interrupted,proto3" json:"interrupted,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2567,6 +2575,13 @@ func (x *Pane) GetDiff() *DiffInfo {
 		return x.Diff
 	}
 	return nil
+}
+
+func (x *Pane) GetInterrupted() bool {
+	if x != nil {
+		return x.Interrupted
+	}
+	return false
 }
 
 type Agent struct {
@@ -24018,7 +24033,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tDirection\x12\x19\n" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14DIRECTION_HORIZONTAL\x10\x01\x12\x16\n" +
-	"\x12DIRECTION_VERTICAL\x10\x02\"\x8b\b\n" +
+	"\x12DIRECTION_VERTICAL\x10\x02\"\xad\b\n" +
 	"\x04Pane\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06tab_id\x18\x02 \x01(\tR\x05tabId\x12(\n" +
@@ -24058,7 +24073,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06editor\x18\x1e \x01(\v2\x16.hammock.v1.EditorInfoR\x06editor\x12\x1f\n" +
 	"\vstart_error\x18\x1f \x01(\tR\n" +
 	"startError\x12(\n" +
-	"\x04diff\x18  \x01(\v2\x14.hammock.v1.DiffInfoR\x04diff\"\x92\x03\n" +
+	"\x04diff\x18  \x01(\v2\x14.hammock.v1.DiffInfoR\x04diff\x12 \n" +
+	"\vinterrupted\x18! \x01(\bR\vinterrupted\"\x92\x03\n" +
 	"\x05Agent\x12\x18\n" +
 	"\aharness\x18\x01 \x01(\tR\aharness\x12\x1d\n" +
 	"\n" +

@@ -798,6 +798,18 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
   /// Clears the value of `diff`. Subsequent reads from it will return its default value.
   public mutating func clearDiff() {_uniqueStorage()._diff = nil}
 
+  /// Terminal panes: set with exited when its program was ended from
+  /// outside rather than ending itself: killed by SIGTERM, SIGHUP or
+  /// SIGKILL (as macOS does to everything as it shuts down or logs out), or
+  /// its pane-holder went away under it. The next time the daemon starts
+  /// it's started again (an agent resumed), as a pane whose holder went while
+  /// the daemon was down is; one that failed, or that you stopped (Ctrl-C),
+  /// stays ended.
+  public var interrupted: Bool {
+    get {_storage._interrupted}
+    set {_uniqueStorage()._interrupted = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -10739,7 +10751,7 @@ nonisolated extension Hammock_V1_Split.Direction: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pane"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -10774,6 +10786,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _editor: Hammock_V1_EditorInfo? = nil
     var _startError: String = String()
     var _diff: Hammock_V1_DiffInfo? = nil
+    var _interrupted: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -10816,6 +10829,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _editor = source._editor
       _startError = source._startError
       _diff = source._diff
+      _interrupted = source._interrupted
     }
   }
 
@@ -10866,6 +10880,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 30: try { try decoder.decodeSingularMessageField(value: &_storage._editor) }()
         case 31: try { try decoder.decodeSingularStringField(value: &_storage._startError) }()
         case 32: try { try decoder.decodeSingularMessageField(value: &_storage._diff) }()
+        case 33: try { try decoder.decodeSingularBoolField(value: &_storage._interrupted) }()
         default: break
         }
       }
@@ -10974,6 +10989,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       try { if let v = _storage._diff {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 32)
       } }()
+      if _storage._interrupted != false {
+        try visitor.visitSingularBoolField(value: _storage._interrupted, fieldNumber: 33)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -11015,6 +11033,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._editor != rhs_storage._editor {return false}
         if _storage._startError != rhs_storage._startError {return false}
         if _storage._diff != rhs_storage._diff {return false}
+        if _storage._interrupted != rhs_storage._interrupted {return false}
         return true
       }
       if !storagesAreEqual {return false}

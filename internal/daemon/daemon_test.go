@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -607,6 +608,131 @@ func TestRebootDoesntRerunEndedPane(t *testing.T) {
 	}
 	if !d2.panes[pid].snapshotInfo().Exited {
 		t.Fatal("restored pane isn't exited")
+	}
+}
+
+// A pane whose program macOS ended as it shut down, while the daemon was
+// still up to see it (killed by SIGTERM, or its holder gone first), is
+// started again after the reboot, like one whose holder went while the
+// daemon was down: it isn't a failed command. One stopped with Ctrl-C
+// (SIGINT) stays ended.
+func TestRebootRestartsPaneEndedAtShutdown(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		end     func(t *testing.T, p *pane, socket string)
+		restart bool
+	}{
+		{"SIGTERM", func(t *testing.T, p *pane, _ string) { signalChild(t, p, syscall.SIGTERM) }, true},
+		{"holder gone", func(t *testing.T, _ *pane, socket string) {
+			if _, err := endHolderAt(socket); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
+		{"SIGINT", func(t *testing.T, p *pane, _ string) { signalChild(t, p, syscall.SIGINT) }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := shortDir(t)
+			ran := filepath.Join(dir, "ran")
+			d := startDaemon(t, dir)
+			c := dial(t, dir)
+			sid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "s"}}}))
+			tid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+				GroupId: sid, Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", "echo x >> " + ran + "; echo up-marker; exec sleep 600"}},
+			}}}))
+			d.mu.Lock()
+			pid := d.tabs[tid].FocusedPaneId
+			p := d.panes[pid]
+			d.mu.Unlock()
+			call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: pid}}})
+			waitOutput(t, c, pid, "up-marker")
+
+			socket := filepath.Join(dir, "run", "panes", pid+".sock")
+			tc.end(t, p, socket)
+			for deadline := time.Now().Add(5 * time.Second); !p.snapshotInfo().Exited; {
+				if time.Now().After(deadline) {
+					t.Fatal("pane never exited")
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if got := p.snapshotInfo().Interrupted; got != tc.restart {
+				t.Fatalf("interrupted = %v, want %v", got, tc.restart)
+			}
+			c.Close()
+			d.Shutdown()
+			_, _ = endHolderAt(socket) // the rest of the "reboot" (it may have gone already)
+
+			d2 := startDaemon(t, dir)
+			defer d2.Shutdown()
+			runs := func() int { b, _ := os.ReadFile(ran); return strings.Count(string(b), "x") }
+			if tc.restart {
+				for deadline := time.Now().Add(5 * time.Second); runs() < 2; {
+					if time.Now().After(deadline) {
+						t.Fatal("not started again")
+					}
+					time.Sleep(20 * time.Millisecond)
+				}
+			} else {
+				time.Sleep(300 * time.Millisecond)
+				if n := runs(); n != 1 {
+					t.Fatalf("command ran %d times, want 1", n)
+				}
+			}
+			if info := d2.panes[pid].snapshotInfo(); info.Exited == tc.restart || info.Interrupted {
+				t.Fatalf("restored pane: exited %v interrupted %v", info.Exited, info.Interrupted)
+			}
+			c2 := dial(t, dir)
+			call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_CloseTab{CloseTab: &pb.CloseTab{TabId: tid}}})
+		})
+	}
+}
+
+// An agent ended at shutdown comes back starting (to be resumed), not
+// errored, so its "exited with status -1" leaves Needs You; a scheduled
+// run's pane, or one that never started, stays ended.
+func TestReviveInterrupted(t *testing.T) {
+	d := startDaemon(t, shortDir(t))
+	defer d.Shutdown()
+	ended := func(mod func(*pb.Pane)) *pane {
+		info := &pb.Pane{Id: "pn_revive", Exited: true, ExitStatus: -1, Interrupted: true, Agent: &pb.Agent{
+			Harness: "claude", SessionId: "s1", State: pb.AgentState_AGENT_STATE_ERRORED, Summary: "exited with status -1",
+		}}
+		if mod != nil {
+			mod(info)
+		}
+		return newPane(d, info)
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	p := ended(nil)
+	if !d.reviveInterrupted(p) {
+		t.Fatal("not revived")
+	}
+	info := p.snapshotInfo()
+	if info.Exited || info.Interrupted || info.Agent.State != pb.AgentState_AGENT_STATE_STARTING || info.Agent.Summary != "" {
+		t.Fatalf("revived pane: %v", info)
+	}
+	if d.agentHub.resumeCommand(info) == nil {
+		t.Fatal("no resume command")
+	}
+	for name, mod := range map[string]func(*pb.Pane){
+		"failed":        func(i *pb.Pane) { i.Interrupted = false },
+		"scheduled run": func(i *pb.Pane) { i.ScheduleRunId = "run1" },
+		"never started": func(i *pb.Pane) { i.StartError = "no holder" },
+	} {
+		if p := ended(mod); d.reviveInterrupted(p) || !p.snapshotInfo().Exited {
+			t.Errorf("%s: revived", name)
+		}
+	}
+}
+
+// signalChild sends sig to the program a pane's holder runs.
+func signalChild(t *testing.T, p *pane, sig syscall.Signal) {
+	t.Helper()
+	p.mu.Lock()
+	child := int(p.hc.Info.PID)
+	p.mu.Unlock()
+	if err := syscall.Kill(child, sig); err != nil {
+		t.Fatal(err)
 	}
 }
 

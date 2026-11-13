@@ -23,7 +23,8 @@ type Event struct {
 	Output     []byte
 	Offset     uint64 // offset of Output[0]
 	Exited     bool
-	ExitStatus int32
+	ExitStatus int32 // -1 if a signal ended it
+	ExitSignal int32 // the signal that ended it, 0 if it exited itself (or the holder is from before it said)
 }
 
 // Dial connects to the holder at socket and attaches from offset from,
@@ -124,7 +125,11 @@ func (c *Client) Next() (Event, error) {
 			if len(f.Payload) < 4 {
 				return Event{}, errors.New("holder: short exit frame")
 			}
-			return Event{Exited: true, ExitStatus: int32(binary.BigEndian.Uint32(f.Payload))}, nil
+			ev := Event{Exited: true, ExitStatus: int32(binary.BigEndian.Uint32(f.Payload))}
+			if len(f.Payload) >= 8 {
+				ev.ExitSignal = int32(binary.BigEndian.Uint32(f.Payload[4:]))
+			}
+			return ev, nil
 		}
 	}
 }

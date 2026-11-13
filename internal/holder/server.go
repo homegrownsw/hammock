@@ -116,6 +116,7 @@ type Server struct {
 	cols, rows uint16
 	exited     bool
 	exitStatus int32
+	exitSignal int32 // the signal that ended the child, 0 if it exited itself
 	lastDetach time.Time
 	closing    bool
 
@@ -286,11 +287,14 @@ func (s *Server) readPTY() {
 			break
 		}
 	}
-	status := int32(0)
+	status, sig := int32(0), int32(0)
 	if err := s.cmd.Wait(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
 			status = int32(ee.ExitCode())
+			if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+				sig = int32(ws.Signal())
+			}
 		} else {
 			status = -1
 		}
@@ -298,7 +302,7 @@ func (s *Server) readPTY() {
 	logf("child exited, status %d (%v)", status, s.cmd.ProcessState)
 	s.pty.Close()
 	s.mu.Lock()
-	s.exited, s.exitStatus = true, status
+	s.exited, s.exitStatus, s.exitSignal = true, status, sig
 	for c := range s.clients {
 		c.notify()
 	}
@@ -453,7 +457,7 @@ func (s *Server) write(c *client) {
 		s.mu.Lock()
 		data, at := s.ring.ReadFromMax(c.offset, maxChunk)
 		c.offset = at + uint64(len(data))
-		exited, status := s.exited, s.exitStatus
+		exited, status, sig := s.exited, s.exitStatus, s.exitSignal
 		s.mu.Unlock()
 
 		switch {
@@ -463,7 +467,9 @@ func (s *Server) write(c *client) {
 			}
 			continue
 		case exited && !sentExit:
-			if WriteFrame(c.conn, FrameExit, i32(status)) != nil {
+			// The signal after the status: a daemon from before it reads
+			// only the status.
+			if WriteFrame(c.conn, FrameExit, append(i32(status), i32(sig)...)) != nil {
 				return
 			}
 			sentExit = true

@@ -608,6 +608,7 @@ func (p *pane) read(hc *holder.Client, gen int) {
 			stale := p.gen != gen || p.closed || p.info.Exited
 			if !stale {
 				p.info.Exited, p.info.ExitStatus = true, ev.ExitStatus
+				p.info.Interrupted = endedFromOutside(ev.ExitSignal)
 			}
 			p.mu.Unlock()
 			if !stale {
@@ -678,6 +679,18 @@ func (p *pane) read(hc *holder.Client, gen int) {
 	}
 }
 
+// endedFromOutside reports whether a program ended by signal sig was ended
+// from outside, as macOS ends everything when it shuts down or logs out
+// (SIGTERM, then SIGKILL for what's left; SIGHUP as its terminal goes),
+// rather than failing or being stopped from its own terminal (SIGINT).
+func endedFromOutside(sig int32) bool {
+	switch syscall.Signal(sig) {
+	case syscall.SIGTERM, syscall.SIGHUP, syscall.SIGKILL:
+		return true
+	}
+	return false
+}
+
 // holderLost handles the holder connection dropping unexpectedly.
 func (p *pane) holderLost(gen int) {
 	p.mu.Lock()
@@ -712,7 +725,11 @@ func (p *pane) holderLost(gen int) {
 	p.d.log.Warn("the pane's holder is gone", "pane", p.id, "socket", socket)
 	p.mu.Lock()
 	was := p.info.Exited
-	p.info.Exited, p.info.ExitStatus = true, -1
+	if !was {
+		// Cut short, not failed: what macOS shutting down looks like when
+		// the daemon outlasts the holders by a moment.
+		p.info.Exited, p.info.ExitStatus, p.info.Interrupted = true, -1, true
+	}
 	p.mu.Unlock()
 	p.d.mu.Lock()
 	if p.d.panes[p.id] == p && !was {

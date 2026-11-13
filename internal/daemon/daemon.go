@@ -410,9 +410,11 @@ func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok 
 	}
 	// Holder gone (reboot/logout): start a fresh process in the same place,
 	// unless its program had already ended (a failed command, a kept
-	// scheduled run): running that again would repeat it, unasked.
+	// scheduled run): running that again would repeat it, unasked. One
+	// ended from outside (macOS ending it as it shut down, seen by a daemon
+	// that outlasted it) is started again like the rest.
 	p.loadScrollback()
-	if info.Exited {
+	if info.Exited && !d.reviveInterrupted(p) {
 		p.showEnded()
 		return
 	}
@@ -435,6 +437,28 @@ func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok 
 	} else {
 		d.log.Info("respawned pane", "pane", info.Id, "resume", resume != nil)
 	}
+}
+
+// reviveInterrupted readies a restored pane whose program was ended from
+// outside (pb.Pane.interrupted) to start again: no longer exited, and its
+// agent, which ended errored, starting (to be resumed), so its "exited with
+// status -1" in Needs You goes. A scheduled run's isn't: the run has ended,
+// failed, and starting it again would be a run nobody scheduled. Callers
+// hold d.mu.
+func (d *Daemon) reviveInterrupted(p *pane) bool {
+	p.mu.Lock()
+	info := p.info
+	if !info.Interrupted || info.StartError != "" || info.ScheduleRunId != "" {
+		p.mu.Unlock()
+		return false
+	}
+	info.Exited, info.ExitStatus, info.Interrupted = false, 0, false
+	if a := info.Agent; a != nil && a.State == pb.AgentState_AGENT_STATE_ERRORED {
+		a.State, a.StateSinceUnixMs, a.Summary = pb.AgentState_AGENT_STATE_STARTING, time.Now().UnixMilli(), ""
+	}
+	p.mu.Unlock()
+	d.persist(d.store.PutPane(p.snapshotInfo()))
+	return true
 }
 
 // Serve listens on the client socket and blocks until Shutdown.

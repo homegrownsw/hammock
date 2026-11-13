@@ -203,6 +203,14 @@ message Pane {
   string start_error = 31;
   // Diff panes: what it compares, and whether that's changed since.
   DiffInfo diff = 32;
+  // Terminal panes: set with exited when its program was ended from
+  // outside rather than ending itself: killed by SIGTERM, SIGHUP or
+  // SIGKILL (as macOS does to everything as it shuts down or logs out), or
+  // its pane-holder went away under it. The next time the daemon starts
+  // it's started again (an agent resumed), as a pane whose holder went while
+  // the daemon was down is; one that failed, or that you stopped (Ctrl-C),
+  // stays ended.
+  bool interrupted = 33;
 }
 
 enum AgentState {
