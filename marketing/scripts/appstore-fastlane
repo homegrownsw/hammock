@@ -36,7 +36,9 @@
 set -euo pipefail
 
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-start_dir="$PWD"
+# The caller's directory, kept across the rerun under `op run` (which starts from marketing/).
+start_dir="${HMK_APPSTORE_START_DIR:-$PWD}"
+export HMK_APPSTORE_START_DIR="$start_dir"
 cd "$(dirname "$0")/.."
 
 if [ "$#" -eq 0 ]; then

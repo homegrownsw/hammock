@@ -126,7 +126,7 @@ if [ -z "$DRYRUN" ]; then
   # appstore-fastlane --exec, which resolves it once and keeps it (in 0600 temporary files) until it ends.
   if has ios && [ "$IOS_TESTFLIGHT" = "$ROOT/scripts/ios-testflight" ] && [ -z "${ASC_KEY_P8_PATH:-}" ]; then
     echo "1Password: the App Store Connect API key, for the iPhone's build and upload"
-    exec "$ROOT/marketing/scripts/appstore-fastlane" --exec "$0" "$TARGET" "$@"
+    exec "$ROOT/marketing/scripts/appstore-fastlane" --exec "$ROOT/scripts/release" "$TARGET" "$@"
   fi
   # Mac: notarization's Apple ID and app-specific password, unless there's a notarytool profile, which needs
   # nobody (just share).
