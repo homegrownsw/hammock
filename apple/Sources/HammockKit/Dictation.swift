@@ -73,10 +73,18 @@ public enum DictationText {
         }
         let ns = text as NSString
         var out = ""
-        var at = 0
-        for m in slashPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+        var at = 0          // copied into out up to here
+        var searchFrom = 0  // where to look for the next slash
+        var changed = false
+        while searchFrom < ns.length,
+              let m = slashPattern.firstMatch(in: text, range: NSRange(location: searchFrom, length: ns.length - searchFrom)) {
             let marker = m.range(at: 1), wordsRange = m.range(at: 2)
-            let words = wordPattern.matches(in: text, range: wordsRange).map(\.range)
+            // The words after it, up to another "slash" (that's the next command).
+            var words: [NSRange] = []
+            for w in wordPattern.matches(in: text, range: wordsRange).map(\.range) {
+                if ns.substring(with: w).lowercased() == "slash" { break }
+                words.append(w)
+            }
             // The longest run of words (up to four) that names a command.
             var hit: (command: String, end: Int)?
             for n in stride(from: min(4, words.count), through: 1, by: -1) {
@@ -86,14 +94,19 @@ public enum DictationText {
                     break
                 }
             }
-            guard let hit else { continue }
+            guard let hit else {
+                searchFrom = NSMaxRange(marker)
+                continue
+            }
             out += ns.substring(with: NSRange(location: at, length: marker.location - at))
             // Its own word: a space before it unless at the start or after one.
             if let last = out.last, !last.isWhitespace { out += " " }
             out += hit.command
             at = hit.end
+            searchFrom = hit.end
+            changed = true
         }
-        guard at > 0 else { return text }
+        guard changed else { return text }
         return out + ns.substring(from: at)
     }
 
@@ -164,7 +177,10 @@ final class AppleDictation: DictationEngine {
 
     func start(vocabulary: [String], events: @escaping @MainActor (DictationEvent) -> Void) async throws {
         guard await Self.microphoneAllowed() else { throw DictationError.microphoneDenied }
-        var found = await DictationTranscriber.supportedLocale(equivalentTo: Locale.current)
+        // The system's language (Locale.current follows the app's own
+        // localisations, English only), else English.
+        let system = Locale(identifier: Locale.preferredLanguages.first ?? "en-US")
+        var found = await DictationTranscriber.supportedLocale(equivalentTo: system)
         if found == nil { found = await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: "en-US")) }
         guard let locale = found else { throw DictationError.unsupportedLanguage }
         let transcriber = DictationTranscriber(locale: locale, contentHints: [], transcriptionOptions: [.punctuation],
@@ -185,6 +201,7 @@ final class AppleDictation: DictationEngine {
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             throw DictationError.unsupportedLanguage
         }
+        if stopped { return }
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         self.analyzer = analyzer
         try await analyzer.prepareToAnalyze(in: format)
@@ -193,7 +210,11 @@ final class AppleDictation: DictationEngine {
             context.contextualStrings[.general] = vocabulary
             try? await analyzer.setContext(context)
         }
-        if stopped { return }
+        // Stopped while it was getting ready: nothing to hear.
+        if stopped {
+            await analyzer.cancelAndFinishNow()
+            return
+        }
 
         results = Task { @MainActor [weak self] in
             do {
@@ -214,25 +235,62 @@ final class AppleDictation: DictationEngine {
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         input = continuation
         #if os(iOS)
+        // Recording only while dictating; the app's audio as it was after
+        // (a video attachment plays through the same session).
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .default, options: [.duckOthers])
+        previousAudio = (session.category, session.mode, session.categoryOptions)
+        try session.setCategory(.record, mode: .default)
         try session.setActive(true)
         #endif
-        let mic = try MicrophoneTap(format: format, input: continuation) { level in
-            Task { @MainActor in events(.level(level)) }
+        do {
+            let mic = try MicrophoneTap(format: format, input: continuation) { level in
+                Task { @MainActor in events(.level(level)) }
+            }
+            self.mic = mic
+            try await analyzer.start(inputSequence: stream)
+        } catch {
+            cancel()
+            throw error
         }
-        self.mic = mic
-        try await analyzer.start(inputSequence: stream)
-        events(.listening)
+        if !stopped { events(.listening) }
     }
+
+    #if os(iOS)
+    private var previousAudio: (AVAudioSession.Category, AVAudioSession.Mode, AVAudioSession.CategoryOptions)?
+    #endif
+
+    /// How long to wait for the last words to settle before keeping them as heard.
+    private static let settleTimeout: Duration = .seconds(2)
 
     func finish() async -> String {
         guard !stopped else { return DictationText.join(finalText, volatileText) }
         stopped = true
         stopAudio()
         if let analyzer {
-            try? await analyzer.finalizeAndFinishThroughEndOfInput()
-            await results?.value
+            // The last words, but not for long: they're kept as heard if the
+            // model doesn't settle them in time (or hadn't started).
+            let results = self.results
+            let settled = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                var resumed = false
+                func resume(_ v: Bool) {
+                    guard !resumed else { return }
+                    resumed = true
+                    done.resume(returning: v)
+                }
+                Task { @MainActor in
+                    try? await analyzer.finalizeAndFinishThroughEndOfInput()
+                    await results?.value
+                    resume(true)
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(for: Self.settleTimeout)
+                    resume(false)
+                }
+            }
+            if !settled {
+                results?.cancel()
+                Task { await analyzer.cancelAndFinishNow() }
+            }
         }
         // Anything still unsettled is kept as heard.
         let all = DictationText.join(finalText, volatileText)
@@ -255,7 +313,12 @@ final class AppleDictation: DictationEngine {
         input?.finish()
         input = nil
         #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if let (category, mode, options) = previousAudio {
+            let session = AVAudioSession.sharedInstance()
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            try? session.setCategory(category, mode: mode, options: options)
+            previousAudio = nil
+        }
         #endif
     }
 
@@ -404,6 +467,8 @@ final class ComposerDictation {
                 problemIsPermission = (error as? DictationError).map { if case .microphoneDenied = $0 { true } else { false } } ?? false
                 problem = (error as? LocalizedError)?.errorDescription ?? "Couldn't start dictation: \(error.localizedDescription)"
                 engine.cancel()
+                // Nothing was heard: the text as it was, selection and all.
+                text.cancelDictation()
                 end()
             }
         }
@@ -426,7 +491,7 @@ final class ComposerDictation {
         }
         finishing = task
         await task.value
-        finishing = nil
+        if finishing == task { finishing = nil }
     }
 
     /// Debug (HMK_DEBUG_DICTATION): listening, with these words heard, and
@@ -497,6 +562,8 @@ final class ComposerDictation {
     }
 
     private func cleanUp() {
+        // A finish still waiting on an engine that's gone isn't this one's.
+        finishing = nil
         watchdog?.cancel()
         watchdog = nil
         level = 0
@@ -512,7 +579,8 @@ final class ComposerDictation {
         watchdog = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
-                guard let self, self.state == .listening else { continue }
+                guard let self else { return }
+                guard self.state == .listening else { continue }
                 if ContinuousClock.now - self.lastHeard > Self.quietTimeout { await self.finish() }
             }
         }
@@ -524,7 +592,12 @@ final class ComposerDictation {
         #endif
         observers = names.map { name in
             nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { Task { await self?.finish() } }
+                // Only once listening: asking for the microphone puts up the
+                // system's prompt, and the app resigns active for it.
+                MainActor.assumeIsolated {
+                    guard let self, self.state == .listening else { return }
+                    Task { await self.finish() }
+                }
             }
         }
     }

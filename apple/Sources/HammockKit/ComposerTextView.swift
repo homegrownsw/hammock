@@ -171,8 +171,13 @@ final class ComposerTextController: NSObject {
     private var dictAnchor = 0
     private var dictLength = 0
     private var dictVolatile = 0
+    /// The space it put after its words (going in before a word), if any.
+    private var dictTrailing = 0
     /// What the selection held when dictation started (it replaces it), for undo.
     private var dictReplaced = NSAttributedString()
+    /// Where the cursor sits while dictating: after the words, before any
+    /// space it added after them.
+    private var dictCaret: Int { dictAnchor + dictLength - dictTrailing }
     /// The dictation itself is changing the text or cursor: not you typing.
     private var applying = false
 
@@ -187,6 +192,7 @@ final class ComposerTextController: NSObject {
         dictAnchor = safe.location
         dictLength = 0
         dictVolatile = 0
+        dictTrailing = 0
         dictating = true
         select(NSRange(location: dictAnchor, length: 0))
         applying = false
@@ -198,18 +204,24 @@ final class ComposerTextController: NSObject {
         guard dictating, let v = view else { return }
         let st = storage(v)
         guard dictAnchor + dictLength <= st.length else { return }
-        // All of it, settled words first (join keeps `final` as its start).
+        // All of it, settled words first (join keeps `final` as its start),
+        // with a space before it after a word, and after it before one.
         let body = DictationText.join(final, volatile)
-        let before = dictAnchor > 0 ? (st.string as NSString).substring(with: NSRange(location: dictAnchor - 1, length: 1)).first : nil
+        let ns = st.string as NSString
+        let before = dictAnchor > 0 ? ns.substring(with: NSRange(location: dictAnchor - 1, length: 1)).first : nil
+        let afterAt = dictAnchor + dictLength
+        let after = afterAt < ns.length ? ns.substring(with: NSRange(location: afterAt, length: 1)).first : nil
         let space = DictationText.needsSpace(after: before, for: body) ? " " : ""
-        let heard = space + body
-        let unsettled = volatile.isEmpty ? 0 : (heard as NSString).length - ((space + final) as NSString).length
+        let trailing = !body.isEmpty && after.map { !$0.isWhitespace && !$0.isPunctuation } == true ? " " : ""
+        let heard = space + body + trailing
+        let unsettled = volatile.isEmpty ? 0 : ((space + body) as NSString).length - ((space + final) as NSString).length
         applying = true
         st.replaceCharacters(in: NSRange(location: dictAnchor, length: dictLength), with: NSAttributedString(string: heard, attributes: typing()))
         dictLength = (heard as NSString).length
-        dictVolatile = max(0, min(unsettled, dictLength))
-        select(NSRange(location: dictAnchor + dictLength, length: 0))
-        v.scrollRangeToVisible(NSRange(location: dictAnchor + dictLength, length: 0))
+        dictTrailing = (trailing as NSString).length
+        dictVolatile = max(0, min(unsettled, dictLength - dictTrailing))
+        select(NSRange(location: dictCaret, length: 0))
+        v.scrollRangeToVisible(NSRange(location: dictCaret, length: 0))
         applying = false
         restyle()
         report()
@@ -226,6 +238,32 @@ final class ComposerTextController: NSObject {
         dictReplaced = NSAttributedString()
         restyle()
         report()
+    }
+
+    /// Dictation couldn't start: the text goes back to how it was (a
+    /// selection it replaced included), with nothing to undo.
+    func cancelDictation() {
+        guard dictating, let v = view else { return }
+        let st = storage(v)
+        dictating = false
+        dictVolatile = 0
+        applying = true
+        if dictAnchor + dictLength <= st.length {
+            st.replaceCharacters(in: NSRange(location: dictAnchor, length: dictLength), with: dictReplaced)
+        }
+        if dictReplaced.length > 0 {
+            #if os(macOS)
+            v.setSelectedRange(NSRange(location: dictAnchor, length: dictReplaced.length))
+            #else
+            v.selectedRange = NSRange(location: dictAnchor, length: dictReplaced.length)
+            #endif
+        } else {
+            select(NSRange(location: dictAnchor, length: 0))
+        }
+        applying = false
+        dictLength = 0
+        dictReplaced = NSAttributedString()
+        textChanged()
     }
 
     /// Undo (and redo) for a dictation: puts back what that range held.
@@ -258,7 +296,7 @@ final class ComposerTextController: NSObject {
     /// The cursor moved: by you (dictation stops) or by the dictation.
     fileprivate func userMovedCursor(to r: NSRange) {
         guard dictating, !applying else { return }
-        if r.length == 0, r.location == dictAnchor + dictLength { return }
+        if r.length == 0, r.location == dictCaret { return }
         userEditing()
     }
 
@@ -395,7 +433,7 @@ final class ComposerTextController: NSObject {
         }
         // Dictated words the recogniser may still change: dimmed.
         if dictating, dictVolatile > 0 {
-            let r = NSRange(location: dictAnchor + dictLength - dictVolatile, length: dictVolatile)
+            let r = NSRange(location: dictCaret - dictVolatile, length: dictVolatile)
             #if os(macOS)
             if NSMaxRange(r) <= st.length { st.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: r) }
             #else
@@ -472,6 +510,23 @@ final class ComposerNSTextView: NSTextView {
         let op = super.draggingEntered(sender)
         if sender.draggingSource as? NSTextView !== self, sender.draggingPasteboard.types?.contains(.fileURL) == true { return .copy }
         return op
+    }
+}
+
+extension ComposerTextController {
+    /// Tests: a text view of its own, made as the composer makes one, with
+    /// undo (its window's, which the test keeps).
+    func attachTestView() -> (window: NSWindow, view: NSTextView) {
+        let tv = ComposerNSTextView(usingTextLayoutManager: false)
+        tv.controller = self
+        tv.delegate = self
+        tv.isRichText = true
+        tv.allowsUndo = true
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+        w.isReleasedWhenClosed = false
+        w.contentView = tv
+        view = tv
+        return (w, tv)
     }
 }
 
