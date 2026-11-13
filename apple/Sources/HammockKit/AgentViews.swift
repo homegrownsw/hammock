@@ -244,9 +244,17 @@ public struct AgentConversationView: View {
     private final class MadeRows {
         var ids = Set<String>()
         var checking = false
-        /// The last row when passes last made none: none are going to be
-        /// made (what's sent fills the view), so not again until there's more.
-        var gaveUpAt: String?
+        /// The last row's bottom, in the content's coordinates, while it's made.
+        var lastBottom: (id: String, y: CGFloat)?
+        /// The top of the tail (what's sent, Working…), in the content's coordinates.
+        var tailTop: CGFloat?
+        /// Tries that didn't bring the rows back, and when to try again:
+        /// later each time, so a view that only looks blank (a row drawing
+        /// nothing) isn't scrolled about. Not keyed on the last row: a run
+        /// of tools is one row, its id the same however many it grows by,
+        /// so giving up until that changed left it blank through the run.
+        var failures = 0
+        var retryAt = Date.distantPast
         /// Called when the last made row goes.
         var emptied: (() -> Void)?
     }
@@ -379,31 +387,55 @@ public struct AgentConversationView: View {
         }
     }
 
-    /// At the end of the conversation with none of its rows made: has the
-    /// lazy stack go over them until it makes the ones in view. Following the
-    /// end to the marker under the rows (a long conversation opened, or a
-    /// message sent in one), the stack can be left making no rows: its
-    /// estimate of where they are, far too tall, still says they're past
-    /// what's in view, and nothing asks it again, so all that showed was the
-    /// tail (Working…) under a blank screen until the keyboard went or you
-    /// scrolled. Each pass corrects the estimate a step.
+    /// At the end of the conversation, with room above the tail, but the
+    /// last row not made, or made above what's in view: the space over the
+    /// tail is blank.
+    private func rowsMissing(_ s: AgentSession) -> Bool {
+        guard glide.gap < 60, let last = s.items.last?.id, let tail = made.tailTop else { return false }
+        let top = revealer.visible.top
+        // What's sent fills the view: no row belongs in it.
+        guard tail - top > 60 else { return false }
+        guard let bottom = made.lastBottom, bottom.id == last else { return true }
+        // The last row sits just over the tail (the stack's spacing): far
+        // above it, or above the view, the stack's laid out from a wrong estimate.
+        return bottom.y < top + 8 || bottom.y < tail - 60
+    }
+
+    /// At the end of the conversation with its last rows not showing: has
+    /// the lazy stack make them. Following the end to the marker under the
+    /// rows (a long conversation opened, or a message sent in one), the
+    /// stack can be left making no rows, or making them where its estimate,
+    /// far too tall, puts them, above what's in view, and nothing asks it
+    /// again: all that showed was the tail (Working…) under a blank screen
+    /// until you scrolled. Scrolling to the last row makes it, measured,
+    /// and the ones above it from there; a pass has the stack go over its
+    /// rows again; then back to the end.
     private func checkRowsMade(_ s: AgentSession, _ proxy: ScrollViewProxy) {
-        guard made.ids.isEmpty, !made.checking, let last = s.items.last?.id, made.gaveUpAt != last else { return }
+        guard !made.checking else { return }
+        guard rowsMissing(s) else { made.failures = 0; return }
+        guard Date.now >= made.retryAt else { return }
         made.checking = true
         Task { @MainActor in
             defer { made.checking = false }
             // Rows on their way (scrolled to, or new) are made in a moment.
             try? await Task.sleep(for: .milliseconds(100))
-            for _ in 0..<12 {
-                guard made.ids.isEmpty, !s.items.isEmpty, glide.gap < 60 else { break }
+            for _ in 0..<6 {
+                guard rowsMissing(s), let last = s.items.last?.id else { break }
                 rowsPass += 1
-                try? await Task.sleep(for: .milliseconds(20))
-            }
-            if made.ids.isEmpty {
-                made.gaveUpAt = last
-            } else if glide.gap < 60 {
+                proxy.scrollTo(last, anchor: .bottom)
+                try? await Task.sleep(for: .milliseconds(30))
                 proxy.scrollTo("bottom", anchor: .bottom)
+                try? await Task.sleep(for: .milliseconds(50))
             }
+            guard rowsMissing(s) else { made.failures = 0; return }
+            // Again later, by itself: nothing else may come to ask.
+            made.failures += 1
+            guard made.failures <= 4 else { return }
+            let wait = Double(1 << made.failures) / 2
+            made.retryAt = .now + wait
+            try? await Task.sleep(for: .seconds(wait))
+            made.checking = false
+            checkRowsMade(s, proxy)
         }
     }
 
@@ -516,6 +548,7 @@ public struct AgentConversationView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             ForEach(s.items) { item in
+                                let isLast = item.id == s.items.last?.id
                                 // Equatable: a row only re-renders when its own
                                 // blocks change, not whenever the session does.
                                 AgentItemView(item: item, session: s)
@@ -532,12 +565,25 @@ public struct AgentConversationView: View {
                                     }
                                     .onDisappear {
                                         made.ids.remove(item.id)
+                                        if made.lastBottom?.id == item.id { made.lastBottom = nil }
                                         if made.ids.isEmpty { made.emptied?() }
+                                    }
+                                    // Where the last row is (checkRowsMade); only
+                                    // it, so the others don't report their frames.
+                                    .background {
+                                        if isLast {
+                                            Color.clear.onGeometryChange(for: CGFloat.self) {
+                                                $0.frame(in: .named(RowRevealer.space)).maxY
+                                            } action: { made.lastBottom = (item.id, $0) }
+                                        }
                                     }
                                     .jankRow(item.id)
                             }
                         }
                         TranscriptTail(session: s)
+                            .onGeometryChange(for: CGFloat.self) {
+                                $0.frame(in: .named(RowRevealer.space)).minY
+                            } action: { made.tailTop = $0 }
                             .jankRow("tail")
                         // The very end, the margin under the last row included,
                         // so scrolling to it shows all of that.
@@ -634,6 +680,8 @@ public struct AgentConversationView: View {
                 .onAppear {
                     revealer.proxy = proxy
                     made.emptied = { [s] in if glide.gap < 60 { checkRowsMade(s, proxy) } }
+                    made.failures = 0
+                    made.retryAt = .distantPast
                     if !s.items.isEmpty { landAtLatest() }
                     proxy.scrollTo("bottom", anchor: .bottom)
                     Task { @MainActor in
