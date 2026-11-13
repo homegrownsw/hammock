@@ -34,7 +34,9 @@ import SwiftUI
 ///     keep-empty-groups = true         (⌘W on a Group's last tab keeps the Group; false: closes it too)
 ///     notify-needs-input = true        (and notify-permission, notify-finished, notify-error, notify-review-replies: which agent events notify)
 ///     notify-style = auto              (or system, in-app: where notifications show)
-///     notify-sound = true              (notify-current-tab = false: also for the tab you're looking at; dock-badge = true)
+///     notify-current-tab = false       (also for the tab you're looking at; dock-badge = true)
+///     notify-sound-needs-input = Hammock Chime  (and notify-sound-permission, -finished, -error, -other: each kind's sound,
+///                                       Hammock Kalimba, Chime, Low, Marimba or Bell, a macOS sound like Glass, or none)
 ///     sidebar-layout = vertical        (or compact, horizontal: the Group's tabs in a tab bar)
 ///     sidebar-finished = true          (finished agents listed at the bottom of the sidebar)
 ///     collapsed-group-agents = false   (collapsed Groups still show tabs with an active agent)
@@ -444,6 +446,20 @@ final class AppConfig {
             prefsMigrationTried = true
             migratePrefs(saved)
         }
+        migrateSoundSwitch()
+    }
+
+    /// `notify-sound = false` (Settings' "Play a sound with notifications",
+    /// before each kind had its own sound): every kind's sound none, unless
+    /// the file picks one, and the switch gone.
+    private func migrateSoundSwitch() {
+        let file = Self.read(fileURL)
+        guard let v = file[NotifyPrefs.sound.key] else { return }
+        var changes: [(String, String?)] = [(NotifyPrefs.sound.key, nil)]
+        if v == "false" {
+            changes += NotifyPrefs.sounds.filter { file[$0.key] == nil }.map { ($0.key, AlertSound.none) }
+        }
+        set(changes)
     }
 
     @ObservationIgnored private var prefsMigrationTried = false
@@ -767,7 +783,8 @@ final class AppConfig {
         #   keep-empty-groups = true       (⌘W on a Group's last tab keeps the Group; false: closes it too)
         #   notify-needs-input = true      (notify me when an agent waits for my input; and notify-permission, notify-finished, notify-error; notify-review-replies = false: an agent answering my diff comments)
         #   notify-style = auto | system | in-app   (auto: in the window while it's in front, else as macOS notifications)
-        #   notify-sound = true, notify-current-tab = false, dock-badge = true   (current tab: also for the tab I'm looking at)
+        #   notify-current-tab = false, dock-badge = true   (current tab: also for the tab I'm looking at)
+        #   notify-sound-needs-input = Hammock Chime   (each kind's sound; and notify-sound-permission = Hammock Chime, notify-sound-finished = Hammock Kalimba, notify-sound-error = Hammock Low, notify-sound-other = Hammock Kalimba. Also Hammock Marimba, Hammock Bell, a macOS sound like Glass, or none)
         #   sidebar-layout = vertical | compact | horizontal   (horizontal: the Group's tabs in a tab bar along the top)
         #   sidebar-finished = true        (finished agents get their own list at the bottom of the sidebar)
         #   collapsed-group-agents = false (true: a collapsed Group still shows its tabs with an active agent)

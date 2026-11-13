@@ -11,6 +11,9 @@ enum NotifyPrefs {
     /// An agent answering your comments on a diff (off: an agent fixing ten
     /// comments would send ten, and you hear when it finishes anyway).
     static let reviewReplies = Pref("notify-review-replies", defaults: "notify.reviewReplies", false)
+    /// Retired: off, AppConfig sets each kind's sound to none instead
+    /// (migrateSoundSwitch). Still read from UserDefaults (Pref.mac) and the
+    /// config file for that.
     static let sound = Pref("notify-sound", defaults: "notify.sound", true)
     /// Also for the tab you're looking at.
     static let whenVisible = Pref("notify-current-tab", defaults: "notify.whenVisible", false)
@@ -19,34 +22,20 @@ enum NotifyPrefs {
     /// Where they show: a NotifyStyle.
     static let style = Pref("notify-style", defaults: "notify.style", .string, NotifyStyle.auto.rawValue, renamed: ["inApp": NotifyStyle.inApp.rawValue])
 
-    /// The sound for agents (needing you, finishing, erroring) and requests: a soft kalimba note
-    /// (NeedsYou.caf, in the app's Resources, made by scripts/needs-you-sound.py).
-    @MainActor static var needsYouSound: UNNotificationSound? {
-        on(sound) ? UNNotificationSound(named: UNNotificationSoundName(installedSound ?? "NeedsYou.caf")) : nil
-    }
+    /// The sound each kind of notification plays: an AlertSound's name.
+    static let soundNeedsInput = Pref("notify-sound-needs-input", defaults: "notify.sound.needsInput", .string, AlertSound.chime)
+    static let soundPermission = Pref("notify-sound-permission", defaults: "notify.sound.permission", .string, AlertSound.chime)
+    static let soundFinished = Pref("notify-sound-finished", defaults: "notify.sound.finished", .string, AlertSound.kalimba)
+    static let soundError = Pref("notify-sound-error", defaults: "notify.sound.error", .string, AlertSound.low)
+    static let soundOther = Pref("notify-sound-other", defaults: "notify.sound.other", .string, AlertSound.kalimba)
+    static let sounds = [soundNeedsInput, soundPermission, soundFinished, soundError, soundOther]
 
-    /// Notification Center didn't find the sound in the app's Resources (it
-    /// played the default instead), so it's also put in ~/Library/Sounds,
-    /// where it always looks, under a name of its own. Its file name there,
-    /// or nil if that couldn't be written.
-    static let installedSound: String? = {
-        let name = "Hammock Needs You.caf"
-        guard let src = Bundle.main.url(forResource: "NeedsYou", withExtension: "caf"),
-              let lib = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else { return nil }
-        let dir = lib.appendingPathComponent("Sounds")
-        let dst = dir.appendingPathComponent(name)
-        let fm = FileManager.default
-        if fm.contentsEqual(atPath: src.path, andPath: dst.path) { return name }
-        do {
-            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
-            try fm.copyItem(at: src, to: dst)
-            return name
-        } catch {
-            NSLog("Hammock: couldn't put the notification sound in %@: %@", dir.path, error.localizedDescription)
-            return nil
-        }
-    }()
+    /// The sound a notification of this kind plays: its own setting, or its
+    /// default if that names a sound that's gone.
+    @MainActor static func soundName(_ kind: Pref) -> String {
+        let name = Prefs.shared.string(kind)
+        return AlertSound.exists(name) ? name : kind.fallback
+    }
 
     @MainActor static func on(_ pref: Pref) -> Bool { Prefs.shared.bool(pref) }
 }
@@ -65,7 +54,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     func setUp() {
         guard let center else { return }
         center.delegate = self
-        _ = NotifyPrefs.installedSound // in place before the first notification
+        // In place before the first notification.
+        NotifyPrefs.sounds.forEach { AlertSound.prepare(Prefs.shared.string($0)) }
     }
 
     /// Posts a notification, asking macOS for permission the first time:
@@ -85,23 +75,30 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// Shows a notification where Settings says: in the window (playing its
-    /// sound here, as Notification Center would) or as a macOS notification.
+    /// sound here, as Notification Center would) or as a macOS notification,
+    /// with the sound Settings picks for its kind (a NotifyPrefs sound).
     /// `open` is what clicking the card does.
-    private func deliver(_ request: UNNotificationRequest, icon: InAppNotice.Icon, open: (@MainActor () -> Void)? = nil) {
-        guard NotifyStyle.current.showsInAppNow else { return post(request) }
+    private func deliver(_ request: UNNotificationRequest, sound kind: Pref, icon: InAppNotice.Icon, open: (@MainActor () -> Void)? = nil) {
+        let sound = NotifyPrefs.soundName(kind)
+        guard NotifyStyle.current.showsInAppNow else {
+            let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
+            content.sound = AlertSound.notification(sound)
+            return post(UNNotificationRequest(identifier: request.identifier, content: content, trigger: request.trigger))
+        }
         let c = request.content
         InAppNotices.shared.post(InAppNotice(id: request.identifier, icon: icon, title: c.title, subtitle: c.subtitle, body: c.body,
                                              live: c.userInfo[Self.live] != nil, open: open))
-        if c.sound != nil { Self.playSound() }
+        AlertSound.play(sound)
     }
 
-    private static let sound: NSSound? = Bundle.main.url(forResource: "NeedsYou", withExtension: "caf")
-        .flatMap { NSSound(contentsOf: $0, byReference: true) }
-
-    private static func playSound() {
-        guard let s = sound ?? NSSound(named: "Glass") else { return }
-        s.stop()
-        s.play()
+    /// An agent's notification's sound, by what it's doing.
+    private static func sound(for state: AgentState) -> Pref {
+        switch state {
+        case .needsInput: NotifyPrefs.soundNeedsInput
+        case .idle: NotifyPrefs.soundFinished
+        case .errored: NotifyPrefs.soundError
+        default: NotifyPrefs.soundOther
+        }
     }
 
     /// Clicking a card about a pane: as clicking its macOS notification does.
@@ -140,10 +137,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         case .errored: content.body = "\(who) \(item.summary)"
         default: content.body = item.summary
         }
-        content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["paneID": item.paneID, Self.live: true]
         content.threadIdentifier = item.paneID
-        deliver(UNNotificationRequest(identifier: item.id, content: content, trigger: nil), icon: .agent(item.state), open: Self.reveal(item.paneID))
+        deliver(UNNotificationRequest(identifier: item.id, content: content, trigger: nil), sound: Self.sound(for: item.state), icon: .agent(item.state), open: Self.reveal(item.paneID))
     }
 
     /// An agent replied in, or started, threads on a diff you're reviewing,
@@ -157,10 +153,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.subtitle = pane.diff.title
         let who = model.panes[pane.diff.targetPaneID].map { AgentCatalog.shortName(of: $0.agent.harness) } ?? "The agent"
         content.body = new == 1 ? "\(who) replied to your review" : "\(who) replied to your review (\(new) new)"
-        content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["paneID": pane.id]
         content.threadIdentifier = pane.id
-        deliver(UNNotificationRequest(identifier: "review-" + pane.id, content: content, trigger: nil), icon: .agent(.idle),
+        deliver(UNNotificationRequest(identifier: "review-" + pane.id, content: content, trigger: nil), sound: NotifyPrefs.soundOther, icon: .agent(.idle),
                 open: Self.reveal(pane.id))
     }
 
@@ -181,11 +176,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             let why = !run.note.isEmpty ? run.note : s.kind == "command" ? "exit code \(run.exitCode)" : "it hit an error"
             content.body = "Failed: " + why
         }
-        content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["scheduleID": s.id, "scheduleRunID": run.id]
         content.threadIdentifier = "schedule-" + s.id
         let state: AgentState = run.status == .ready ? .idle : .errored
-        deliver(UNNotificationRequest(identifier: "run-" + run.id, content: content, trigger: nil), icon: .agent(state)) {
+        deliver(UNNotificationRequest(identifier: "run-" + run.id, content: content, trigger: nil),
+                sound: run.status == .ready ? NotifyPrefs.soundFinished : NotifyPrefs.soundError, icon: .agent(state)) {
             Self.openRun(scheduleID: s.id, runID: run.id)
         }
     }
@@ -214,9 +209,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             content.subtitle = model.title(of: tab)
         }
         content.body = grant.headlineText
-        content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["paneID": grant.requesterPaneID, Self.live: true]
-        deliver(UNNotificationRequest(identifier: grant.id, content: content, trigger: nil), icon: .agent(.needsInput), open: Self.reveal(grant.requesterPaneID))
+        deliver(UNNotificationRequest(identifier: grant.id, content: content, trigger: nil), sound: NotifyPrefs.soundPermission, icon: .agent(.needsInput), open: Self.reveal(grant.requesterPaneID))
     }
 
     /// Someone asks to join a Group you share: let them view or decline from
@@ -234,10 +228,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.body = [who.map { "From \($0.deviceName)." }, req.keyWarning(name: who?.name).map { $0 + "." }]
             .compactMap { $0 }.joined(separator: " ")
         content.categoryIdentifier = "join"
-        content.sound = NotifyPrefs.needsYouSound
         content.userInfo = ["joinID": req.id, Self.live: true]
         // As a card, a click opens Hammock, where the join card in Needs You decides.
-        deliver(UNNotificationRequest(identifier: req.id, content: content, trigger: nil), icon: .symbol("person.badge.plus"), open: { NSApp.activate() })
+        deliver(UNNotificationRequest(identifier: req.id, content: content, trigger: nil), sound: NotifyPrefs.soundOther, icon: .symbol("person.badge.plus"), open: { NSApp.activate() })
     }
 
     /// Another computer of yours asks to link: its code, to check on both.
@@ -246,9 +239,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = "\(req.name) wants to link"
         content.body = "Check the code on both computers: \(req.code)"
-        content.sound = NotifyPrefs.on(NotifyPrefs.sound) ? .default : nil
         content.userInfo = [Self.live: true]
-        deliver(UNNotificationRequest(identifier: req.id, content: content, trigger: nil), icon: .symbol("link"))
+        deliver(UNNotificationRequest(identifier: req.id, content: content, trigger: nil), sound: NotifyPrefs.soundOther, icon: .symbol("link"))
     }
 
     /// A device paired with this Mac: worth knowing even when you did it,
@@ -257,8 +249,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = "\(device.isEmpty ? "A device" : device) paired"
         content.body = "It can now reach this Mac’s Groups. Revoke it in Settings ▸ Devices."
-        content.sound = NotifyPrefs.on(NotifyPrefs.sound) ? .default : nil
-        deliver(UNNotificationRequest(identifier: "paired-\(Date().timeIntervalSince1970)", content: content, trigger: nil), icon: .symbol("iphone"))
+        deliver(UNNotificationRequest(identifier: "paired-\(Date().timeIntervalSince1970)", content: content, trigger: nil), sound: NotifyPrefs.soundOther,
+                icon: .symbol("iphone"))
     }
 
     /// Marks a notification about something that can still need you (an
@@ -324,8 +316,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         content.body = NotifyStyle.current.showsInAppNow
             ? "Notifications are working. Agents that need you show up here."
             : "Notifications are working. You'll hear about agents that need you here."
-        content.sound = NotifyPrefs.needsYouSound
-        deliver(UNNotificationRequest(identifier: "test-\(Date().timeIntervalSince1970)", content: content, trigger: nil), icon: .symbol("bell"))
+        deliver(UNNotificationRequest(identifier: "test-\(Date().timeIntervalSince1970)", content: content, trigger: nil), sound: NotifyPrefs.soundNeedsInput,
+                icon: .symbol("bell"))
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

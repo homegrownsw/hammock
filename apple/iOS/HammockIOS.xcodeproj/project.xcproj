@@ -79,6 +79,18 @@
             "HammockMacApp/resources",
           ],
         }, {
+          "path": "Bell.caf",
+          "target-membership": [ "HammockMacApp/resources" ],
+        }, {
+          "path": "Chime.caf",
+          "target-membership": [ "HammockMacApp/resources" ],
+        }, {
+          "path": "Low.caf",
+          "target-membership": [ "HammockMacApp/resources" ],
+        }, {
+          "path": "Marimba.caf",
+          "target-membership": [ "HammockMacApp/resources" ],
+        }, {
           "path": "editor.html",
           "target-membership": [
             "Hammock/resources",
