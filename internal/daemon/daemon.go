@@ -33,9 +33,10 @@ import (
 	"github.com/homegrownsw/hammock/internal/vt"
 )
 
-// ProductVersion is Hammock's release version, as programs in panes see
-// it (TERM_PROGRAM_VERSION).
-const ProductVersion = "0.1.0"
+// ProductVersion is Hammock's release version (the Mac app's, scripts/mac-version),
+// as programs in panes see it (TERM_PROGRAM_VERSION). Builds set it with
+// -ldflags -X; a plain go build says dev.
+var ProductVersion = "dev"
 
 // Version is the daemon version reported to clients.
 var Version = "0.1.0-dev"

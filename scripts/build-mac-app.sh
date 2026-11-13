@@ -74,7 +74,7 @@ CONFIG="$config" "$root/scripts/build-menu-app.sh" >/dev/null
 # which a release's tag carries too (Mac-v2026.1.0-r615 is build 615). The
 # version people see is the Mac's (HAMMOCK_MAC_VERSION in apple/iOS/Config/Version.xcconfig).
 build="${BUILD_NUMBER:-$("$root/scripts/commit-number" "$root" 2>/dev/null || echo 0)}"
-short="$(sed -nE 's/^HAMMOCK_MAC_VERSION = ([^ ]+).*$/\1/p' "$root/apple/iOS/Config/Version.xcconfig")"
+short="$("$root/scripts/mac-version")"
 # Release builds check FEED_URL for updates, which must be signed with the
 # key whose public half is SUPublicEDKey (private half: the login keychain,
 # account "fika", backed up in 1Password).

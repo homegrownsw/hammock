@@ -67,7 +67,7 @@ for arch in "${archs[@]}"; do
   PKG_CONFIG_PATH="$lib/share/pkgconfig" CGO_ENABLED=1 GOOS=linux GOARCH="$arch" \
     CC="zig cc -target $zt.$glibc" CXX="zig c++ -target $zt.$glibc" \
     go build -tags ghostty -trimpath \
-      -ldflags "-s -w -X github.com/homegrownsw/hammock/internal/daemon.Version=$version" \
+      -ldflags "-s -w -X github.com/homegrownsw/hammock/internal/daemon.Version=$version -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$("$root/scripts/mac-version")" \
       -o "$bin/" ./cmd/...
 
   name="hammock-$version-linux-$arch"

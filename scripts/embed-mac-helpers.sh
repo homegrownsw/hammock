@@ -15,6 +15,16 @@ if [ -z "$statedir" ]; then
   case "$label" in *.beta) statedir="Hammock Beta" ;; *) statedir="Hammock" ;; esac
 fi
 bin="${HMK_BIN:-$root/bin}"
+# Every helper reports the app's own version (scripts/mac-version), not its
+# build script's placeholder: tools that name the terminal from a pane's
+# parent process (fastfetch) show the Pane's, System Settings the others'.
+version="$("$root/scripts/mac-version")"
+set_version() { # set_version BUNDLE…
+  local b
+  for b in "$@"; do
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$b/Contents/Info.plist"
+  done
+}
 
 for f in hmkd hmk pane-holder; do
   [ -x "$bin/$f" ] || { echo "error: $bin/$f isn't built (just build, or scripts/build-mac-payloads.sh)" >&2; exit 1; }
@@ -44,7 +54,7 @@ cat > "$helper/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>$id.terminal</string>
   <key>CFBundleExecutable</key><string>Hammock Pane</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
   <key>LSUIElement</key><true/>
 </dict>
 </plist>
@@ -55,6 +65,7 @@ browser="$bin/Hammock Browser.app"
 rm -rf "$app/Contents/Helpers/Hammock Browser.app"
 if [ -d "$browser" ]; then
   cp -cR "$browser" "$app/Contents/Helpers/"
+  set_version "$app/Contents/Helpers/Hammock Browser.app" "$app/Contents/Helpers/Hammock Browser.app/Contents/Frameworks/"*.app
 else
   echo "warning: $browser not built; browser panes won't work (just browser)" >&2
 fi
@@ -63,6 +74,7 @@ simulator="$bin/Hammock Simulator.app"
 rm -rf "$app/Contents/Helpers/Hammock Simulator.app"
 if [ -d "$simulator" ]; then
   cp -R "$simulator" "$app/Contents/Helpers/"
+  set_version "$app/Contents/Helpers/Hammock Simulator.app"
 else
   echo "warning: $simulator not built; simulator panes won't work (just simulator)" >&2
 fi
@@ -71,6 +83,7 @@ screen="$bin/Hammock Screen.app"
 rm -rf "$app/Contents/Helpers/Hammock Screen.app"
 if [ -d "$screen" ]; then
   cp -R "$screen" "$app/Contents/Helpers/"
+  set_version "$app/Contents/Helpers/Hammock Screen.app"
   # Named for this variant (β's com.homegrownsw.hammock.beta.screen), as
   # the Key's helper is: Accessibility is granted to the helper itself, so
   # with one id β and prod would share that grant, and resetting one would
@@ -88,6 +101,7 @@ keyapp="$bin/Hammock Key.app"
 rm -rf "$app/Contents/Helpers/Hammock Key.app"
 if [ -d "$keyapp" ]; then
   cp -R "$keyapp" "$app/Contents/Helpers/"
+  set_version "$app/Contents/Helpers/Hammock Key.app"
   # Named for this variant (β's com.homegrownsw.hammock.beta.key): its
   # signature's identifier is what the Hammock Key's keychain item trusts, so
   # β's helper can't silently read the real one's.
@@ -117,7 +131,7 @@ elif [ -x "$menu/Contents/MacOS/Hammock Menu" ]; then
   <key>CFBundleIdentifier</key><string>$id.menu</string>
   <key>CFBundleExecutable</key><string>Hammock Menu</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
   <key>LSUIElement</key><true/>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>HammockStateDir</key><string>$statedir</string>

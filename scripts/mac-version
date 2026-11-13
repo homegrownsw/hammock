@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Prints the Mac app's version (HAMMOCK_MAC_VERSION in
+# apple/iOS/Config/Version.xcconfig): what the Mac app, its helper bundles and
+# TERM_PROGRAM_VERSION in panes all report.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/release-notes.sh
+. "$ROOT/scripts/lib/release-notes.sh"
+read_version "$ROOT" mac
