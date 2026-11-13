@@ -289,7 +289,7 @@ public final class AgentSession {
     /// show the message with until the transcript does. False if it didn't
     /// go (not connected): the caller gives the text back.
     @discardableResult
-    func send(_ text: String, attachments: [(name: String, data: Data)], inline: Bool = false, local: [BubbleAttachment] = [], pending: Bool = true) async -> Bool {
+    func send(_ text: String, attachments: [(name: String, data: Data, path: String?)], inline: Bool = false, local: [BubbleAttachment] = [], pending: Bool = true) async -> Bool {
         guard let conn = model?.connection else {
             answerError = "Not connected. Your message wasn't sent."
             return false
@@ -308,6 +308,7 @@ public final class AgentSession {
                     $0.text = text
                     $0.inline = inline
                     $0.attachments = attachments.map { a in
+                        if let path = a.path { return .with { $0.name = a.name; $0.path = path } }
                         let (name, data) = claudeReadable(a.name, a.data)
                         return .with { $0.name = name; $0.data = data }
                     }

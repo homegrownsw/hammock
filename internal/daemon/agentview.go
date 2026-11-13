@@ -808,6 +808,9 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 	}
 	var paths []string
 	for _, a := range m.Attachments {
+		if a.Path != "" && !c.isOwnApp() {
+			return errors.New("only the Hammock app on this computer can attach a file by its path")
+		}
 		path, err := saveAttachment(a)
 		if err != nil {
 			return err
@@ -826,6 +829,15 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 		c.send(&pb.ServerMessage{ReplyTo: id, Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}})
 	}()
 	return errDeferred
+}
+
+// isOwnApp is whether c is the Hammock app on this computer, the person
+// at it: not a phone, a linked computer or guest, or an agent.
+func (c *conn) isOwnApp() bool {
+	c.d.mu.Lock()
+	peer := c.peer
+	c.d.mu.Unlock()
+	return !c.remote && peer == "" && c.kind == "mac" && c.personOK.Load()
 }
 
 // attachMark is where an attachment goes in an inline AgentSend's text.
@@ -916,8 +928,17 @@ func typeParts(p *pane, c *conn, parts []sendPart) error {
 
 // saveAttachment writes an attachment where its path needs no quoting (the
 // state dir has a space in it), for pasting as a path.
+// One given by its path (a file on this computer) is cloned there, as it is.
 func saveAttachment(a *pb.AgentAttachment) (string, error) {
-	if len(a.Data) == 0 || len(a.Data) > agentFileLimit {
+	if a.Path != "" {
+		fi, err := os.Stat(a.Path)
+		if err != nil {
+			return "", err
+		}
+		if !fi.Mode().IsRegular() || fi.Size() == 0 {
+			return "", fmt.Errorf("%s isn't a file to attach", filepath.Base(a.Path))
+		}
+	} else if len(a.Data) == 0 || len(a.Data) > agentFileLimit {
 		return "", errors.New("attachment is empty or too large")
 	}
 	ext := strings.ToLower(filepath.Ext(a.Name))
@@ -926,16 +947,88 @@ func saveAttachment(a *pb.AgentAttachment) (string, error) {
 	}
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
+	sub, err := attachmentsDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		return "", err
+	}
+	pruneAttachments(sub, time.Now())
+	path := filepath.Join(sub, time.Now().Format(attachmentStamp)+"-"+hex.EncodeToString(b)+ext)
+	if a.Path != "" {
+		if cloneFile(a.Path, path) {
+			return path, nil
+		}
+		return path, copyFile(a.Path, path)
+	}
+	return path, os.WriteFile(path, a.Data, 0o600)
+}
+
+// attachmentStamp starts an attachment's name: when it was sent (its
+// modification time is the original's, for a clone).
+const attachmentStamp = "20060102-150405"
+
+// attachmentKeep is how long an attachment is kept: a sent video's tile and
+// the agent's reading it again need it (a picture's tile comes from the
+// session itself), but not for long.
+const attachmentKeep = 7 * 24 * time.Hour
+
+func attachmentsDir() (string, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	sub := filepath.Join(cache, "hammock", "attachments")
-	if err := os.MkdirAll(sub, 0o700); err != nil {
-		return "", err
+	return filepath.Join(cache, "hammock", "attachments"), nil
+}
+
+var attachmentsPruned struct {
+	sync.Mutex
+	at time.Time
+}
+
+// pruneAttachments removes attachments sent more than attachmentKeep ago
+// (by their names), at most once an hour.
+func pruneAttachments(dir string, now time.Time) {
+	attachmentsPruned.Lock()
+	if now.Sub(attachmentsPruned.at) < time.Hour {
+		attachmentsPruned.Unlock()
+		return
 	}
-	path := filepath.Join(sub, time.Now().Format("20060102-150405")+"-"+hex.EncodeToString(b)+ext)
-	return path, os.WriteFile(path, a.Data, 0o600)
+	attachmentsPruned.at = now
+	attachmentsPruned.Unlock()
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if len(e.Name()) < len(attachmentStamp) || !e.Type().IsRegular() {
+			continue
+		}
+		t, err := time.ParseInLocation(attachmentStamp, e.Name()[:len(attachmentStamp)], time.Local)
+		if err == nil && now.Sub(t) > attachmentKeep {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
+// copyFile copies src to a new file dst (removed again if it fails).
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err == nil {
+		err = out.Close()
+	} else {
+		out.Close()
+	}
+	if err != nil {
+		os.Remove(dst)
+	}
+	return err
 }
 
 // readAgentFile serves an image from the session, or a file the session

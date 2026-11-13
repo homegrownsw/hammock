@@ -5581,6 +5581,9 @@ public nonisolated struct Hammock_V1_AgentSend: Sendable {
   public init() {}
 }
 
+/// path, in place of data: a file on the daemon's own computer, cloned into
+/// the attachments folder (a video to an agent on this Mac goes as it is,
+/// whatever its size). Only from the Hammock app on that computer.
 public nonisolated struct Hammock_V1_AgentAttachment: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -5589,6 +5592,8 @@ public nonisolated struct Hammock_V1_AgentAttachment: Sendable {
   public var name: String = String()
 
   public var data: Data = Data()
+
+  public var path: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -19219,7 +19224,7 @@ nonisolated extension Hammock_V1_AgentSend: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_AgentAttachment: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentAttachment"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}data\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}data\0\u{1}path\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -19229,6 +19234,7 @@ nonisolated extension Hammock_V1_AgentAttachment: SwiftProtobuf.Message, SwiftPr
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
       case 2: try { try decoder.decodeSingularBytesField(value: &self.data) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.path) }()
       default: break
       }
     }
@@ -19241,12 +19247,16 @@ nonisolated extension Hammock_V1_AgentAttachment: SwiftProtobuf.Message, SwiftPr
     if !self.data.isEmpty {
       try visitor.visitSingularBytesField(value: self.data, fieldNumber: 2)
     }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_AgentAttachment, rhs: Hammock_V1_AgentAttachment) -> Bool {
     if lhs.name != rhs.name {return false}
     if lhs.data != rhs.data {return false}
+    if lhs.path != rhs.path {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -12687,10 +12687,14 @@ func (x *AgentSend) GetInline() bool {
 	return false
 }
 
+// path, in place of data: a file on the daemon's own computer, cloned into
+// the attachments folder (a video to an agent on this Mac goes as it is,
+// whatever its size). Only from the Hammock app on that computer.
 type AgentAttachment struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12737,6 +12741,13 @@ func (x *AgentAttachment) GetData() []byte {
 		return x.Data
 	}
 	return nil
+}
+
+func (x *AgentAttachment) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
 }
 
 // Fetches an image or a file the session referenced.
@@ -25189,10 +25200,11 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12=\n" +
 	"\vattachments\x18\x03 \x03(\v2\x1b.hammock.v1.AgentAttachmentR\vattachments\x12\x16\n" +
-	"\x06inline\x18\x04 \x01(\bR\x06inline\"9\n" +
+	"\x06inline\x18\x04 \x01(\bR\x06inline\"M\n" +
 	"\x0fAgentAttachment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\":\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\":\n" +
 	"\rReadAgentFile\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x10\n" +
 	"\x03ref\x18\x02 \x01(\tR\x03ref\"P\n" +

@@ -78,6 +78,40 @@ final class ComposerAttachmentTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: ComposerDrafts.dir(pane).path))
     }
 
+    /// A file on this Mac goes by its path: a video always, a picture only
+    /// when it isn't made smaller (and Claude reads its format).
+    func testPathAtSize() throws {
+        let file = URL(fileURLWithPath: "/Users/me/Desktop/shot.png")
+        let big = ComposerAttachment(number: 1, name: "shot.png", data: png(2000, 1000), file: file)
+        XCTAssertNil(big.path(at: .large))
+        XCTAssertEqual(big.path(at: .original), file.path)
+        let small = ComposerAttachment(number: 1, name: "shot.png", data: png(800, 600), file: file)
+        XCTAssertEqual(small.path(at: .medium), file.path)
+        XCTAssertNil(ComposerAttachment(number: 1, name: "shot.tiff", data: png(10, 10), file: file).path(at: .original))
+        XCTAssertNil(ComposerAttachment(number: 1, name: "shot.png", data: png(10, 10)).path(at: .original))
+        let video = URL(fileURLWithPath: "/Users/me/Movies/clip.mov")
+        XCTAssertEqual(ComposerAttachment(number: 1, name: "clip.mov", data: Data(), file: video).path(at: .small), video.path)
+    }
+
+    /// A draft's file-backed attachment stays where it is, not copied.
+    @MainActor func testDraftKeepsFileByPath() throws {
+        let pane = "pn_test_\(UUID().uuidString.prefix(8))"
+        defer { ComposerDrafts.remove(pane) }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let clip = dir.appendingPathComponent("clip.mov")
+        try Data("video".utf8).write(to: clip)
+        let a = ComposerAttachment(number: 1, name: "clip.mov", data: Data(), file: clip)
+        ComposerDrafts.save(pane, doc: ComposerDoc(text: "\u{FFFC}", chips: [a.id]), attachments: [a])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: ComposerDrafts.dir(pane).path), ["manifest.json"])
+        let (_, atts) = try XCTUnwrap(ComposerDrafts.load(pane))
+        XCTAssertEqual(atts.first?.file?.path, clip.path)
+        // The file gone: so is the attachment.
+        try FileManager.default.removeItem(at: clip)
+        XCTAssertEqual(try XCTUnwrap(ComposerDrafts.load(pane)).1.count, 0)
+    }
+
     func testHighlights() {
         let cmds: Set = ["/model", "/clear", "/review"]
         let t = "/model then /review and /nope and a/model"

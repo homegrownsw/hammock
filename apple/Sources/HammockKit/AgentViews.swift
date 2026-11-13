@@ -2882,11 +2882,11 @@ struct Composer: View {
     }
 
     private var trayGroup: [PreviewItem] {
-        attachments.map { a in PreviewItem(key: a.id.uuidString, name: a.name) { a.data } }
+        attachments.map { a in PreviewItem(key: a.id.uuidString, name: a.name, file: a.file) { a.data } }
     }
 
     private func openTray(_ a: ComposerAttachment) {
-        openAttachment(PreviewItem(key: a.id.uuidString, name: a.name) { a.data }, group: trayGroup,
+        openAttachment(PreviewItem(key: a.id.uuidString, name: a.name, file: a.file) { a.data }, group: trayGroup,
                        image: a.isVideo ? thumbs[a.id] : PlatformImage(data: a.data), video: a.isVideo, open: open)
     }
 
@@ -2899,20 +2899,25 @@ struct Composer: View {
     private func remove(_ id: UUID) {
         withAnimation(.snappy) { attachments.removeAll { $0.id == id } }
         thumbs[id] = nil
-        // Its chips go: the text view drops chips it has no picture for.
+        // Its chips go, each with the space after it (put in with it).
         let st = doc.text
         if doc.chips.contains(id) {
             var d = ComposerDoc()
             var k = 0
+            var dropSpace = false
             for ch in st {
                 if ch == attachMark {
                     if k < doc.chips.count, doc.chips[k] != id {
                         d.text.append(ch)
                         d.chips.append(doc.chips[k])
+                        dropSpace = false
+                    } else {
+                        dropSpace = true
                     }
                     k += 1
                 } else {
-                    d.text.append(ch)
+                    if !(dropSpace && ch == " ") { d.text.append(ch) }
+                    dropSpace = false
                 }
             }
             setDoc(d)
@@ -2923,38 +2928,37 @@ struct Composer: View {
     // MARK: Attaching
 
     /// Attaches a file's contents, numbered next, with its chip at the cursor.
-    private func attach(name: String, data: Data) {
-        let a = ComposerAttachment(number: (attachments.map(\.number).max() ?? 0) + 1, name: name, data: data)
+    private func attach(name: String, data: Data, file: URL? = nil) {
+        let a = ComposerAttachment(number: (attachments.map(\.number).max() ?? 0) + 1, name: name, data: data, file: file)
         attachments.append(a)
         // Its picture for the chip, now: the text view asks for it as it's put in.
         _ = configured()
         controller.insertChip(a.id)
         Task {
-            if let t = await ImageResize.thumbnail(data, name: name) { thumbs[a.id] = t }
+            if let t = await a.thumbnail() { thumbs[a.id] = t }
         }
     }
 
     private func attachFiles(_ urls: [URL], scoped: Bool = false) async {
+        // Files that stay where they are, for this Mac's own agent.
+        let local = !isRemote && !scoped
         for url in urls {
             let ok = scoped && url.startAccessingSecurityScopedResource()
             defer { if ok { url.stopAccessingSecurityScopedResource() } }
             if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
-                // To this Mac's own agent, a video small enough goes as it is.
-                if !isRemote, isVideoName(url.lastPathComponent),
-                   let n = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, n <= videoAsIs,
-                   let d = try? Data(contentsOf: url) {
-                    attach(name: url.lastPathComponent, data: d)
+                // To this Mac's own agent, a video goes as it is, by its
+                // path (the daemon clones it).
+                if local, isVideoName(url.lastPathComponent) {
+                    attach(name: url.lastPathComponent, data: Data(), file: url)
                     continue
                 }
                 await attachVideo(url, name: url.deletingPathExtension().lastPathComponent + ".mp4")
             } else if let d = try? Data(contentsOf: url) {
-                attach(name: url.lastPathComponent, data: d)
+                // A picture can go by its path too, when it's not made smaller.
+                attach(name: url.lastPathComponent, data: d, file: local ? url : nil)
             }
         }
     }
-
-    /// The largest video sent unshrunk (the daemon's limit for a file).
-    private let videoAsIs = 30 << 20
 
     /// Attaches a video, made small enough to send (540p H.264): a phone's
     /// own is usually too big for a message to the Mac.
@@ -3020,7 +3024,7 @@ struct Composer: View {
         if let (d, atts) = ComposerDrafts.load(session.paneID) {
             attachments = atts
             for a in atts {
-                Task { if let t = await ImageResize.thumbnail(a.data, name: a.name) { thumbs[a.id] = t } }
+                Task { if let t = await a.thumbnail() { thumbs[a.id] = t } }
             }
             _ = configured()
             setDoc(d)
@@ -3079,13 +3083,17 @@ struct Composer: View {
         if !session.draft.isEmpty { awaitingClear = true }
         tookDraft = ""
         justSent = (d.plain, .now + 4)
-        let local = sent.map { BubbleAttachment.local(id: $0.id, name: $0.name, data: $0.data) }
+        let local = sent.map { BubbleAttachment.local(id: $0.id, name: $0.name, data: $0.data, file: $0.file) }
         Task {
             // Pictures at the size they go at (videos are already small).
             let files = await Task.detached(priority: .userInitiated) {
-                sent.map { a in a.isVideo ? (name: a.name, data: a.data) : ImageResize.resized(name: a.name, data: a.data, maxEdge: (a.size ?? size).maxEdge) }
+                sent.map { a -> (name: String, data: Data, path: String?) in
+                    if let path = a.path(at: a.size ?? size) { return (a.name, Data(), path) }
+                    let (n, d) = ImageResize.resized(name: a.name, data: a.data, maxEdge: (a.size ?? size).maxEdge)
+                    return (n, d, nil)
+                }
             }.value
-            guard !(await session.send(d.text, attachments: files.map { (name: $0.0, data: $0.1) }, inline: true, local: local)) else { return }
+            guard !(await session.send(d.text, attachments: files, inline: true, local: local)) else { return }
             // Didn't go (not connected yet): give it back, unless something
             // new has been typed meanwhile.
             justSent = nil
@@ -3095,7 +3103,7 @@ struct Composer: View {
                 for i in back.indices { back[i].number = i + 1 }
                 for i in attachments.indices { attachments[i].number = back.count + i + 1 }
                 attachments = back + attachments
-                for a in back { Task { if let t = await ImageResize.thumbnail(a.data, name: a.name) { thumbs[a.id] = t } } }
+                for a in back { Task { if let t = await a.thumbnail() { thumbs[a.id] = t } } }
                 _ = configured()
                 setDoc(d)
             }
@@ -3520,8 +3528,6 @@ struct TrayThumb: View {
     @ViewBuilder private var menu: some View {
         if greyed {
             Button { onInsert() } label: { Label("Put Back in Message", systemImage: "text.insert") }
-        } else {
-            Button { onOpen() } label: { Label("Look at It", systemImage: "eye") }
         }
         if let px = attachment.pixels {
             Section("Send at") {

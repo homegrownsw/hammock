@@ -338,6 +338,9 @@ func (d *Daemon) restore() error {
 	}
 	d.endStrayHolders()
 	d.prunePaneFiles()
+	if dir, err := attachmentsDir(); err == nil {
+		go pruneAttachments(dir, time.Now())
+	}
 	d.restoreAttention()
 	return nil
 }

@@ -83,21 +83,40 @@ struct ComposerAttachment: Identifiable {
     var number: Int
     var name: String
     var data: Data
+    /// A file on this Mac, which can go by its path (the daemon clones it)
+    /// to this Mac's own agent: a video always (data empty), however big; a
+    /// picture when it goes as it is (not made smaller).
+    var file: URL?
     /// Chosen for this one; nil: the default.
     var size: AttachmentSize?
     /// Its pixels, read once (nil: not a picture).
     let pixels: CGSize?
 
-    init(id: UUID = UUID(), number: Int, name: String, data: Data, size: AttachmentSize? = nil) {
+    init(id: UUID = UUID(), number: Int, name: String, data: Data, file: URL? = nil, size: AttachmentSize? = nil) {
         self.id = id
         self.number = number
         self.name = name
         self.data = data
+        self.file = file
         self.size = size
         pixels = isVideoName(name) ? nil : ImageResize.pixelSize(data)
     }
 
     var isVideo: Bool { isVideoName(name) }
+
+    /// The path it goes by, at size (nil: it goes as data).
+    func path(at size: AttachmentSize) -> String? {
+        guard let file else { return nil }
+        if isVideo { return file.path }
+        let ext = (name as NSString).pathExtension.lowercased()
+        guard ["png", "jpg", "jpeg", "gif", "webp"].contains(ext), let pixels else { return nil }
+        guard let edge = size.maxEdge else { return file.path }
+        return max(pixels.width, pixels.height) <= CGFloat(edge) ? file.path : nil
+    }
+
+    func thumbnail(maxPixels: Int = 256) async -> PlatformImage? {
+        await ImageResize.thumbnail(data, name: name, file: file, maxPixels: maxPixels)
+    }
 }
 
 func isVideoName(_ name: String) -> Bool {
@@ -166,7 +185,8 @@ enum ImageResize {
 
     /// A small picture of an image or a video's first frame, for chips and
     /// the tray.
-    static func thumbnail(_ data: Data, name: String, maxPixels: Int = 256) async -> PlatformImage? {
+    static func thumbnail(_ data: Data, name: String, file: URL? = nil, maxPixels: Int = 256) async -> PlatformImage? {
+        if let file, isVideoName(name) { return await VideoPoster.image(url: file, maxPixels: maxPixels) }
         if isVideoName(name) { return await VideoPoster.image(data: data, name: name, maxPixels: maxPixels) }
         return await Task.detached(priority: .userInitiated) {
             guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
@@ -204,6 +224,8 @@ enum ComposerDrafts {
             var number: Int
             var name: String
             var size: String?
+            /// Sent by its path: kept there, not copied.
+            var file: String?
         }
     }
 
@@ -234,6 +256,7 @@ enum ComposerDrafts {
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         var keep: Set<String> = ["manifest.json"]
         for a in attachments {
+            if a.file != nil { continue }
             let f = file(dir, a)
             keep.insert(f.lastPathComponent)
             if !fm.fileExists(atPath: f.path) { try? a.data.write(to: f, options: .atomic) }
@@ -241,7 +264,7 @@ enum ComposerDrafts {
         for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where !keep.contains(name) {
             try? fm.removeItem(at: dir.appendingPathComponent(name))
         }
-        let m = Manifest(doc: doc, items: attachments.map { .init(id: $0.id, number: $0.number, name: $0.name, size: $0.size?.rawValue) })
+        let m = Manifest(doc: doc, items: attachments.map { .init(id: $0.id, number: $0.number, name: $0.name, size: $0.size?.rawValue, file: $0.file?.path) })
         if let d = try? JSONEncoder().encode(m) { try? d.write(to: dir.appendingPathComponent("manifest.json"), options: .atomic) }
     }
 
@@ -253,6 +276,15 @@ enum ComposerDrafts {
         var out: [ComposerAttachment] = []
         for i in m.items {
             let a = ComposerAttachment(id: i.id, number: i.number, name: i.name, data: Data(), size: i.size.flatMap(AttachmentSize.init))
+            if let f = i.file {
+                let url = URL(fileURLWithPath: f)
+                if isVideoName(i.name), FileManager.default.fileExists(atPath: f) {
+                    out.append(ComposerAttachment(id: i.id, number: i.number, name: i.name, data: Data(), file: url, size: a.size))
+                } else if let data = try? Data(contentsOf: url) {
+                    out.append(ComposerAttachment(id: i.id, number: i.number, name: i.name, data: data, file: url, size: a.size))
+                }
+                continue
+            }
             guard let data = try? Data(contentsOf: file(dir, a)) else { continue }
             out.append(ComposerAttachment(id: i.id, number: i.number, name: i.name, data: data, size: a.size))
         }

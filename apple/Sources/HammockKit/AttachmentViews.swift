@@ -150,6 +150,8 @@ struct PreviewItem {
     let key: String
     /// A file name for it (its extension says what it is).
     let name: String
+    /// A file on this Mac, shown where it is (load isn't used).
+    var file: URL? = nil
     let load: @MainActor () async -> Data?
 }
 
@@ -175,7 +177,7 @@ final class QuickLook: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegat
         var urls: [URL] = []
         var at = 0
         for (i, item) in items.enumerated() {
-            guard let d = await item.load(), let url = PreviewFiles.write(d, name: item.name) else { continue }
+            guard let url = await previewURL(item) else { continue }
             if i == index { at = urls.count }
             urls.append(url)
         }
@@ -203,6 +205,14 @@ final class QuickLook: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegat
 }
 #endif
 
+/// A file to show an item from: its own, or one written from its data.
+@MainActor
+private func previewURL(_ item: PreviewItem) async -> URL? {
+    if let file = item.file { return file }
+    guard let d = await item.load() else { return nil }
+    return PreviewFiles.write(d, name: item.name)
+}
+
 /// Opens an attachment: QuickLook on the Mac (among its group), the
 /// viewer on the iPhone.
 @MainActor
@@ -214,7 +224,7 @@ func openAttachment(_ item: PreviewItem, group: [PreviewItem]?, image: PlatformI
     #else
     Task {
         if video {
-            guard let d = await item.load(), let url = PreviewFiles.write(d, name: item.name) else { return }
+            guard let url = await previewURL(item) else { return }
             open?(ViewedImage(ref: item.key, image: image ?? PlatformImage(), video: url))
         } else if let image {
             open?(ViewedImage(ref: item.key, image: image))
@@ -229,19 +239,19 @@ func openAttachment(_ item: PreviewItem, group: [PreviewItem]?, image: PlatformI
 /// its way (the composer's own data).
 enum BubbleAttachment: Identifiable {
     case remote(Hammock_V1_AgentImage)
-    case local(id: UUID, name: String, data: Data)
+    case local(id: UUID, name: String, data: Data, file: URL? = nil)
 
     var id: String {
         switch self {
         case .remote(let i): i.ref
-        case .local(let id, _, _): id.uuidString
+        case .local(let id, _, _, _): id.uuidString
         }
     }
 
     var isVideo: Bool {
         switch self {
         case .remote(let i): i.mediaType.hasPrefix("video/")
-        case .local(_, let name, _): isVideoName(name)
+        case .local(_, let name, _, _): isVideoName(name)
         }
     }
 
@@ -250,14 +260,14 @@ enum BubbleAttachment: Identifiable {
         case .remote(let i):
             let last = (i.ref as NSString).lastPathComponent
             return (last as NSString).pathExtension.isEmpty ? "attachment." + PreviewFiles.ext(i.mediaType) : last
-        case .local(_, let name, _): return name
+        case .local(_, let name, _, _): return name
         }
     }
 
     @MainActor func preview(_ session: AgentSession) -> PreviewItem {
         switch self {
         case .remote(let i): PreviewItem(key: i.ref, name: name) { await session.file(i.ref) }
-        case .local(let id, let name, let data): PreviewItem(key: id.uuidString, name: name) { data }
+        case .local(let id, let name, let data, let file): PreviewItem(key: id.uuidString, name: name, file: file) { data }
         }
     }
 
@@ -269,8 +279,8 @@ enum BubbleAttachment: Identifiable {
                 return await VideoPoster.image(data: d, name: name, maxPixels: 128)
             }
             return await session.image(i.ref)
-        case .local(_, let name, let data):
-            return await ImageResize.thumbnail(data, name: name, maxPixels: 128)
+        case .local(_, let name, let data, let file):
+            return await ImageResize.thumbnail(data, name: name, file: file, maxPixels: 128)
         }
     }
 }
@@ -287,8 +297,8 @@ struct AttachmentTile: View {
             switch attachment {
             case .remote(let i):
                 AgentImageView(ref: i.ref, session: session, maxHeight: maxHeight, mediaType: i.mediaType)
-            case .local(let id, let name, let data):
-                LocalAttachmentView(id: id, name: name, data: data, maxHeight: maxHeight)
+            case .local(let id, let name, let data, let file):
+                LocalAttachmentView(id: id, name: name, data: data, file: file, maxHeight: maxHeight)
             }
         }
         .overlay(alignment: .bottomLeading) { NumberBadge(number: number).padding(5).allowsHitTesting(false) }
@@ -314,6 +324,7 @@ struct LocalAttachmentView: View {
     let id: UUID
     let name: String
     let data: Data
+    var file: URL? = nil
     var maxHeight: CGFloat = 220
     @State private var image: PlatformImage?
     @Environment(\.openAgentImage) private var open
@@ -334,10 +345,10 @@ struct LocalAttachmentView: View {
         .frame(maxHeight: maxHeight)
         .overlay { if isVideoName(name) { PlayBadge() } }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .task(id: id) { image = await ImageResize.thumbnail(data, name: name, maxPixels: 800) }
+        .task(id: id) { image = await ImageResize.thumbnail(data, name: name, file: file, maxPixels: 800) }
         .contentShape(Rectangle())
         .onTapGesture {
-            openAttachment(PreviewItem(key: id.uuidString, name: name) { data }, group: group, image: image, video: isVideoName(name), open: open)
+            openAttachment(PreviewItem(key: id.uuidString, name: name, file: file) { data }, group: group, image: image, video: isVideoName(name), open: open)
         }
     }
 }

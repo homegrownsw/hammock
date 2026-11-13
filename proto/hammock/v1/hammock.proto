@@ -1299,7 +1299,10 @@ message AgentAnswer {
 // inline: text holds U+FFFC where each attachment goes, in order (the
 // composer's chips), and they're pasted there; otherwise they go first.
 message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachment attachments = 3; bool inline = 4; }
-message AgentAttachment { string name = 1; bytes data = 2; }
+// path, in place of data: a file on the daemon's own computer, cloned into
+// the attachments folder (a video to an agent on this Mac goes as it is,
+// whatever its size). Only from the Hammock app on that computer.
+message AgentAttachment { string name = 1; bytes data = 2; string path = 3; }
 
 // Fetches an image or a file the session referenced.
 message ReadAgentFile { string pane_id = 1; string ref = 2; }

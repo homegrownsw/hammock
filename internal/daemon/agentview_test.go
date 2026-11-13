@@ -375,3 +375,41 @@ func TestSendParts(t *testing.T) {
 		}
 	}
 }
+
+func TestSaveAttachmentByPath(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	src := filepath.Join(t.TempDir(), "clip.mov")
+	if err := os.WriteFile(src, []byte("not really a video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, err := saveAttachment(&pb.AgentAttachment{Name: "clip.mov", Path: src})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "not really a video" || filepath.Ext(path) != ".mov" {
+		t.Fatalf("saved %q as %q", got, path)
+	}
+	if _, err := saveAttachment(&pb.AgentAttachment{Name: "x.png", Path: filepath.Dir(src)}); err == nil {
+		t.Fatal("a folder was attached")
+	}
+}
+
+func TestPruneAttachments(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	old := now.Add(-attachmentKeep - time.Hour).Format(attachmentStamp) + "-aaaaaaaaaaaa.png"
+	recent := now.Add(-time.Hour).Format(attachmentStamp) + "-bbbbbbbbbbbb.png"
+	for _, n := range []string{old, recent, "other.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	attachmentsPruned.at = time.Time{}
+	pruneAttachments(dir, now)
+	for n, want := range map[string]bool{old: false, recent: true, "other.txt": true} {
+		if _, err := os.Stat(filepath.Join(dir, n)); (err == nil) != want {
+			t.Errorf("%s kept: %v, want %v", n, err == nil, want)
+		}
+	}
+}
