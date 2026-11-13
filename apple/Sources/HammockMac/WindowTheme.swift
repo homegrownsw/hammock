@@ -29,7 +29,7 @@ struct WindowTheme: Identifiable, Equatable {
         theme("Lavender", "E4DBFA", "F3EFFD", "221A3A", "2C2349", mark: "7E5BD9"),
         theme("Sand", "F5E8C3", "FBF5E2", "2F2A1C", "3B3524", mark: "C79A2E"),
         theme("Apricot", "F8DCC3", "FCEEE1", "2C1B11", "392618", mark: "CD641D"),
-        theme("Cocoa", "E3D7CF", "F1ECE7", "251D18", "312721", mark: "7D553B"),
+        theme("Cocoa", "E3CFBF", "F1E7DF", "2D1E16", "38281E", mark: "845433"),
     ]
 
     private static func theme(_ name: String, _ sl: String, _ tl: String, _ sd: String, _ td: String, mark: String) -> WindowTheme {

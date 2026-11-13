@@ -37,7 +37,7 @@ var Curated = []CuratedTheme{
 	{"Lavender", "Lavender Light", "Lavender Dark", true, 0x7352D1, 0xA68EF2},
 	{"Sand", "Sand Light", "Sand Dark", true, 0xA87A1F, 0xD9A743},
 	{"Apricot", BuiltInLight, BuiltInDark, true, 0xCD641D, 0xF19E55},
-	{"Cocoa", BuiltInLight, BuiltInDark, true, 0x7D553B, 0xC9A487},
+	{"Cocoa", BuiltInLight, BuiltInDark, true, 0x845433, 0xD0A380},
 	{"Catppuccin", "Catppuccin Latte", "Catppuccin Mocha", false, 0x8839EF, 0xCBA6F7},
 	{"Tokyo Night", "TokyoNight Day", "TokyoNight", false, 0x2E7DE9, 0x7AA2F7},
 	{"Gruvbox", "Gruvbox Light", "Gruvbox Dark", false, 0xAF3A03, 0xFE8019},

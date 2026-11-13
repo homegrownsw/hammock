@@ -124,7 +124,7 @@ public enum AgentColor {
         ("Sand", rgb(0xA87A1F, dark: 0xD9A743), rgb(0xA87A1F)),
         ("Lagoon", rgb(0x0F828A, dark: 0x3BCECE), rgb(0x107884)),
         ("Apricot", rgb(0xCD641D, dark: 0xF19E55), rgb(0xB8571E)),
-        ("Cocoa", rgb(0x7D553B, dark: 0xC9A487), rgb(0x724C36)),
+        ("Cocoa", rgb(0x845433, dark: 0xD0A380), rgb(0x794A2F)),
         ("Graphite", rgb(0x3E3E46, dark: 0xE2E2E8), rgb(0x5E5E68)),
     ]
 
