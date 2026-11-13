@@ -69,11 +69,14 @@ struct WindowTheme: Identifiable, Equatable {
 /// The sidebar's tint over its glass, from the window theme, as opaque as
 /// `sidebar-opacity` says.
 struct SidebarTint: View {
+    /// Over the window's tinted Liquid Glass (the sidebar column, the detail),
+    /// not plain glass (the peek panel's).
+    var onTintedGlass = false
     @Environment(\.colorScheme) private var scheme
     private var config: AppConfig { .shared }
 
     var body: some View {
-        if let tint = config.sidebarTint(dark: scheme == .dark) {
+        if let tint = onTintedGlass ? config.tintOverTintedGlass(dark: scheme == .dark) : config.sidebarTint(dark: scheme == .dark) {
             Color(nsColor: tint.color).opacity(tint.alpha)
         }
     }
