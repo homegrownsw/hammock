@@ -11820,6 +11820,7 @@ type AgentView struct {
 	Tasks         *AgentTaskList         `protobuf:"bytes,21,opt,name=tasks,proto3" json:"tasks,omitempty"`                                       // the session's task list (sent when it changes; unset: unchanged)
 	Links         *AgentLinks            `protobuf:"bytes,22,opt,name=links,proto3" json:"links,omitempty"`                                       // its pull requests and artifacts (sent when they change)
 	StartCommands []string               `protobuf:"bytes,23,rep,name=start_commands,json=startCommands,proto3" json:"start_commands,omitempty"`  // those of commands that only run at the start of a message (built-ins): not offered later in one
+	Effort        string                 `protobuf:"bytes,24,opt,name=effort,proto3" json:"effort,omitempty"`                                     // the effort level of the latest reply (Claude Code: low, medium, high, xhigh, max); "" unknown
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12013,6 +12014,13 @@ func (x *AgentView) GetStartCommands() []string {
 		return x.StartCommands
 	}
 	return nil
+}
+
+func (x *AgentView) GetEffort() string {
+	if x != nil {
+		return x.Effort
+	}
+	return ""
 }
 
 // An agent's task list: Claude Code's (TodoWrite, or TaskCreate and
@@ -25104,7 +25112,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tKIND_NONE\x10\x00\x12\x11\n" +
 	"\rKIND_QUESTION\x10\x01\x12\x13\n" +
 	"\x0fKIND_PERMISSION\x10\x02\x12\r\n" +
-	"\tKIND_PLAN\x10\x03\"\x9b\x06\n" +
+	"\tKIND_PLAN\x10\x03\"\xb3\x06\n" +
 	"\tAgentView\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x18\n" +
 	"\areplace\x18\x02 \x01(\bR\areplace\x12.\n" +
@@ -25131,7 +25139,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\fshell_output\x18\x14 \x01(\tR\vshellOutput\x12/\n" +
 	"\x05tasks\x18\x15 \x01(\v2\x19.hammock.v1.AgentTaskListR\x05tasks\x12,\n" +
 	"\x05links\x18\x16 \x01(\v2\x16.hammock.v1.AgentLinksR\x05links\x12%\n" +
-	"\x0estart_commands\x18\x17 \x03(\tR\rstartCommands\"<\n" +
+	"\x0estart_commands\x18\x17 \x03(\tR\rstartCommands\x12\x16\n" +
+	"\x06effort\x18\x18 \x01(\tR\x06effort\"<\n" +
 	"\rAgentTaskList\x12+\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x15.hammock.v1.AgentTaskR\x05tasks\"\xd8\x01\n" +
 	"\tAgentTask\x12\x0e\n" +

@@ -484,6 +484,29 @@ func TestClaudeContext(t *testing.T) {
 	}
 }
 
+// The effort level is the latest reply's that says one (/effort changes it
+// from the next reply); stand-in replies and ones without it leave it be.
+func TestClaudeEffort(t *testing.T) {
+	c := NewClaude("/work")
+	reply := func(id, model, extra string) {
+		c.Feed([]byte(fmt.Sprintf(`{"type":"assistant","uuid":"%s","timestamp":"2026-10-31T09:00:00Z"%s,"message":{"role":"assistant","model":"%s","content":[{"type":"text","text":"hi"}]}}`, id, extra, model)))
+	}
+	reply("a1", "claude-opus-5-5", "")
+	if e := c.Effort(); e != "" {
+		t.Fatalf("effort %q before any reply said", e)
+	}
+	reply("a2", "claude-opus-5-5", `,"effort":"medium","perTurnEffort":"medium"`)
+	reply("a3", "<synthetic>", `,"effort":"low"`)
+	if e := c.Effort(); e != "medium" {
+		t.Fatalf("effort %q, want medium", e)
+	}
+	reply("a4", "claude-opus-5-5", `,"effort":"xhigh"`)
+	reply("a5", "claude-opus-5-5", "")
+	if e := c.Effort(); e != "xhigh" {
+		t.Fatalf("effort %q, want xhigh", e)
+	}
+}
+
 // TestClaudeBackgroundShells: a Bash call run in the background is listed
 // with where its output goes, until its task notification says it ended.
 func TestClaudeBackgroundShells(t *testing.T) {

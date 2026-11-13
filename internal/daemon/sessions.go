@@ -409,6 +409,7 @@ func (d *Daemon) readSession(m *pb.ReadSession) (*pb.AgentView, error) {
 	from := windowStart(blocks, to)
 	v := &pb.AgentView{SessionId: s.ID, Blocks: blocks[from:to], HasMore: from > 0, Older: m.BeforeBlockId != "", Replace: m.BeforeBlockId == ""}
 	v.Model, v.ContextTokens, v.ContextWindow = parser.Context()
+	v.Effort = parserEffort(parser)
 	return v, nil
 }
 

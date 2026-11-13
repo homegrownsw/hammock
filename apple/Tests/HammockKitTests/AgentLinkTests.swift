@@ -43,3 +43,9 @@ import Testing
     #expect(AgentStatusBar.displayName("claude-haiku-5-5[1m]") == "Haiku 5.5")
     #expect(AgentStatusBar.displayName("gpt-5") == "GPT-5")
 }
+
+@Test func effortNames() {
+    #expect(AgentStatusBar.effortName("xhigh") == "Extra high")
+    #expect(AgentStatusBar.effortName("max") == "Max")
+    #expect(AgentStatusBar.effortName("turbo") == "Turbo")
+}

@@ -48,6 +48,9 @@ public final class AgentSession {
     /// The model of the latest reply (e.g. claude-opus-5-5), the context it
     /// took, and the window that counts against.
     public private(set) var agentModel = ""
+    /// The effort level of the latest reply (Claude's: low, medium, high,
+    /// xhigh, max), "" unknown.
+    public private(set) var agentEffort = ""
     public private(set) var contextTokens: Int64 = 0
     public private(set) var contextWindow: Int64 = 0
     public private(set) var error = ""
@@ -198,6 +201,7 @@ public final class AgentSession {
         }
         if !v.older {
             set(\.agentModel, v.model)
+            set(\.agentEffort, v.effort)
             set(\.contextTokens, v.contextTokens)
             set(\.contextWindow, v.contextWindow)
             set(\.prompt, v.prompt)
@@ -235,6 +239,12 @@ public final class AgentSession {
     /// "opus" or "sonnet[1m]").
     public func switchModel(to alias: String) {
         Task { await send("/model " + alias, pending: false) }
+    }
+
+    /// Sets Claude's effort level (/effort, with "low" to "max"): it shows
+    /// from the next reply.
+    public func switchEffort(to level: String) {
+        Task { await send("/effort " + level, pending: false) }
     }
 
     /// Pages in older turns.

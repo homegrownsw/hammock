@@ -73,6 +73,8 @@ type Claude struct {
 	model         string
 	contextTokens int64
 	mostContext   int64
+	// The effort level of the latest reply that says ("high"; /effort).
+	effort string
 
 	// Its task list, and the pull requests and artifacts it made (Extras).
 	tasks taskList
@@ -84,6 +86,11 @@ func (c *Claude) Tasks() *pb.AgentTaskList { return c.tasks.list() }
 
 // Links is the session's pull requests and artifacts (Extras).
 func (c *Claude) Links() []*pb.AgentLink { return c.links.clone() }
+
+// Effort is the effort level of the session's latest reply ("low" to
+// "max"), "" if none has said: a model without effort levels, or an older
+// Claude Code.
+func (c *Claude) Effort() string { return c.effort }
 
 // Context is the session's model, the tokens of context its latest reply
 // took, and the context window. The transcript doesn't record the window
@@ -183,6 +190,7 @@ type ccLine struct {
 	SessionID   string          `json:"sessionId"`
 	Content     string          `json:"content"`    // system lines
 	DurationMs  int64           `json:"durationMs"` // a turn_duration line: how long the turn worked
+	Effort      string          `json:"effort"`     // an assistant line: the effort level it replied at
 	Message     *ccMsg          `json:"message"`
 	ToolResult  json.RawMessage `json:"toolUseResult"`
 	// A pull request the session opened or pushed to ("pr-link" lines).
@@ -585,6 +593,9 @@ func (c *Claude) assistant(l ccLine, ms int64) []*pb.AgentBlock {
 	// "<synthetic>": not a model, and no context.
 	if m := l.Message.Model; m != "" && m != "<synthetic>" {
 		c.model = m
+		if l.Effort != "" {
+			c.effort = l.Effort
+		}
 		if u := l.Message.Usage; u != nil {
 			if n := u.Input + u.CacheCreation + u.CacheRead; n > 0 {
 				c.contextTokens = n

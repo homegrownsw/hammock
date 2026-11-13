@@ -300,10 +300,21 @@ func (w *agentWatch) guessed(path string) string {
 	return path
 }
 
-// ctxInfo is a session's model and how full its context is.
+// ctxInfo is a session's model, its effort level and how full its context is.
 type ctxInfo struct {
-	model          string
+	model, effort  string
 	tokens, window int64
+}
+
+// efforter is a parser that knows the session's effort level (Claude's).
+type efforter interface{ Effort() string }
+
+// parserEffort is p's effort level, "" when it doesn't know one.
+func parserEffort(p agentview.Parser) string {
+	if e, ok := p.(efforter); ok {
+		return e.Effort()
+	}
+	return ""
 }
 
 func (w *agentWatch) context() ctxInfo {
@@ -311,11 +322,11 @@ func (w *agentWatch) context() ctxInfo {
 		return ctxInfo{}
 	}
 	m, t, win := w.parser.Context()
-	return ctxInfo{m, t, win}
+	return ctxInfo{m, parserEffort(w.parser), t, win}
 }
 
 func (v *ctxInfo) set(u *pb.AgentView) {
-	u.Model, u.ContextTokens, u.ContextWindow = v.model, v.tokens, v.window
+	u.Model, u.Effort, u.ContextTokens, u.ContextWindow = v.model, v.effort, v.tokens, v.window
 }
 
 // refresh reads what's new and returns the update to send (nil: nothing

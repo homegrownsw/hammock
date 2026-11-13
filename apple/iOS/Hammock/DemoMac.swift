@@ -259,6 +259,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 $0.blocks = blocks ?? transcripts[paneID] ?? []
                 $0.sessionID = "demo-" + paneID
                 $0.model = "claude-opus-5-5"
+                $0.effort = "high"
                 if let p = prompts[paneID] { $0.prompt = p }
                 if let w = working[paneID] { $0.working = true; $0.status = w }
             }

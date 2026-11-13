@@ -3114,7 +3114,8 @@ struct Composer: View {
 
 // MARK: - Status bar
 
-/// The agent's model (a menu to switch it) and how full its context is.
+/// The agent's model and effort level (a menu to switch them) and how full
+/// its context is.
 struct AgentStatusBar: View {
     let session: AgentSession
     let canDrive: Bool
@@ -3131,6 +3132,16 @@ struct AgentStatusBar: View {
         ("Sonnet", "sonnet"), ("Sonnet (1M context)", "sonnet[1m]"),
         ("Haiku", "haiku"), ("Default", "default"),
     ]
+
+    /// Claude's /effort levels, lowest first.
+    static let efforts: [(label: String, level: String)] = [
+        ("Low", "low"), ("Medium", "medium"), ("High", "high"), ("Extra high", "xhigh"), ("Max", "max"),
+    ]
+
+    /// "xhigh" as "Extra high"; one it doesn't know as it is.
+    static func effortName(_ level: String) -> String {
+        efforts.first { $0.level == level }?.label ?? level.capitalized
+    }
 
     /// "claude-opus-5-5" as "Opus 5.5" (a date suffix dropped); "gpt-6-luna"
     /// as "GPT-6 Luna".
@@ -3159,17 +3170,30 @@ struct AgentStatusBar: View {
     var body: some View {
         HStack(spacing: 10) {
             if harness == "claude" {
+                // The model, and its effort level in a submenu, as Claude's
+                // own apps have it.
                 Menu {
-                    ForEach(Self.choices, id: \.alias) { c in
-                        Button(c.label) { session.switchModel(to: c.alias) }
+                    Section("Model") {
+                        ForEach(Self.choices, id: \.alias) { c in
+                            Button(c.label) { session.switchModel(to: c.alias) }
+                        }
+                    }
+                    // Once a reply has said (models without effort levels don't).
+                    if !session.agentEffort.isEmpty {
+                        Divider()
+                        Picker("Effort", selection: Binding(get: { session.agentEffort }, set: { session.switchEffort(to: $0) })) {
+                            ForEach(Self.efforts, id: \.level) { e in Text(e.label).tag(e.level) }
+                        }
+                        .pickerStyle(.menu)
                     }
                 } label: {
-                    Text(Self.displayName(session.agentModel))
+                    // One string: the menu button drops styling within its label.
+                    Text(Self.displayName(session.agentModel) + (session.agentEffort.isEmpty ? "" : "  " + Self.effortName(session.agentEffort)))
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .disabled(!canDrive)
-                .help("Switch model (/model)")
+                .help(session.agentEffort.isEmpty ? "Switch model (/model)" : "Switch model or effort (/model, /effort)")
             } else {
                 // Codex picks a model (and its reasoning) in a picker of its
                 // own: it shows here as a prompt to answer.
@@ -3572,6 +3596,10 @@ public struct ComposerSample: View {
         } : []
         var v = Hammock_V1_AgentView()
         v.replace = true
+        v.model = "claude-opus-5-5"
+        v.effort = "xhigh"
+        v.contextTokens = 84_000
+        v.contextWindow = 1_000_000
         v.blocks = [
             .with { $0.id = "u1"; $0.kind = .user; $0.text = "What changed on this branch?"; $0.turnID = "u1" },
             .with { $0.id = "b1"; $0.kind = .tool; $0.tool = "Bash"; $0.title = "Ran `git status --short`"; $0.input = "git status --short"

@@ -5247,6 +5247,12 @@ public nonisolated struct Hammock_V1_AgentView: @unchecked Sendable {
     set {_uniqueStorage()._startCommands = newValue}
   }
 
+  /// the effort level of the latest reply (Claude Code: low, medium, high, xhigh, max); "" unknown
+  public var effort: String {
+    get {_storage._effort}
+    set {_uniqueStorage()._effort = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -18558,7 +18564,7 @@ nonisolated extension Hammock_V1_AgentPrompt.Kind: SwiftProtobuf._ProtoNameProvi
 
 nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentView"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}replace\0\u{1}blocks\0\u{1}older\0\u{3}has_more\0\u{1}prompt\0\u{1}working\0\u{1}status\0\u{1}commands\0\u{3}session_id\0\u{1}error\0\u{1}subagents\0\u{3}subagent_id\0\u{1}model\0\u{3}context_tokens\0\u{3}context_window\0\u{1}draft\0\u{1}shells\0\u{3}shell_id\0\u{3}shell_output\0\u{1}tasks\0\u{1}links\0\u{3}start_commands\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}replace\0\u{1}blocks\0\u{1}older\0\u{3}has_more\0\u{1}prompt\0\u{1}working\0\u{1}status\0\u{1}commands\0\u{3}session_id\0\u{1}error\0\u{1}subagents\0\u{3}subagent_id\0\u{1}model\0\u{3}context_tokens\0\u{3}context_window\0\u{1}draft\0\u{1}shells\0\u{3}shell_id\0\u{3}shell_output\0\u{1}tasks\0\u{1}links\0\u{3}start_commands\0\u{1}effort\0")
 
   fileprivate class _StorageClass {
     var _paneID: String = String()
@@ -18584,6 +18590,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
     var _tasks: Hammock_V1_AgentTaskList? = nil
     var _links: Hammock_V1_AgentLinks? = nil
     var _startCommands: [String] = []
+    var _effort: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -18617,6 +18624,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
       _tasks = source._tasks
       _links = source._links
       _startCommands = source._startCommands
+      _effort = source._effort
     }
   }
 
@@ -18658,6 +18666,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
         case 21: try { try decoder.decodeSingularMessageField(value: &_storage._tasks) }()
         case 22: try { try decoder.decodeSingularMessageField(value: &_storage._links) }()
         case 23: try { try decoder.decodeRepeatedStringField(value: &_storage._startCommands) }()
+        case 24: try { try decoder.decodeSingularStringField(value: &_storage._effort) }()
         default: break
         }
       }
@@ -18739,6 +18748,9 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
       if !_storage._startCommands.isEmpty {
         try visitor.visitRepeatedStringField(value: _storage._startCommands, fieldNumber: 23)
       }
+      if !_storage._effort.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._effort, fieldNumber: 24)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -18771,6 +18783,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
         if _storage._tasks != rhs_storage._tasks {return false}
         if _storage._links != rhs_storage._links {return false}
         if _storage._startCommands != rhs_storage._startCommands {return false}
+        if _storage._effort != rhs_storage._effort {return false}
         return true
       }
       if !storagesAreEqual {return false}

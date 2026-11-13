@@ -1217,6 +1217,7 @@ message AgentView {
   AgentTaskList tasks = 21;          // the session's task list (sent when it changes; unset: unchanged)
   AgentLinks links = 22;             // its pull requests and artifacts (sent when they change)
   repeated string start_commands = 23; // those of commands that only run at the start of a message (built-ins): not offered later in one
+  string effort = 24;                // the effort level of the latest reply (Claude Code: low, medium, high, xhigh, max); "" unknown
 }
 
 // An agent's task list: Claude Code's (TodoWrite, or TaskCreate and
