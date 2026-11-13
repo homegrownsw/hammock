@@ -357,14 +357,14 @@ private struct AlertSoundPicker: View {
             AlertSound.prepare(name)
             AlertSound.play(name)
         })) {
+            Text("None").tag(AlertSound.none)
+            Divider()
             Section("Hammock") {
                 ForEach(AlertSound.own, id: \.name) { Text($0.title).tag($0.name) }
             }
             Section("macOS") {
                 ForEach(system, id: \.self) { Text($0).tag($0) }
             }
-            Divider()
-            Text("None").tag(AlertSound.none)
         }
     }
 }
