@@ -29,7 +29,7 @@ func TestDrawAsleep(t *testing.T) {
 		rows = append(rows, b.String())
 	}
 	screen := strings.Join(rows, "\n")
-	if !strings.Contains(screen, "☾  Wake Agent") || !strings.Contains(screen, "Asleep to save memory") {
+	if !strings.Contains(screen, "☾  Wake Agent") {
 		t.Fatalf("screen:\n%s", screen)
 	}
 	z, ok := a.zoneAt(30, body.y+(body.h-4)/2+1)

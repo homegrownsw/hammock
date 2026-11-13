@@ -1037,7 +1037,7 @@ func (a *App) drawPaneHeader(id string, p *pb.Pane, r rect, focused bool) {
 }
 
 // drawAsleep dims a sleeping agent's pane under a Wake button: an accent
-// pill, three rows high, with what it is beneath it (sleep.go).
+// pill, three rows high (sleep.go).
 func (a *App) drawAsleep(id string, body rect) {
 	th, s := a.th, a.scr
 	a.dimRect(body, 0.85)
@@ -1056,11 +1056,6 @@ func (a *App) drawAsleep(id string, body rect) {
 		}
 	}
 	a.addZone(zone{r: rect{bx, by, bw, min(3, body.h)}, kind: zWake, id: id})
-	if note := "  Asleep to save memory · or just type  "; by+4 < body.y+body.h && textWidth(note) <= body.w {
-		// On a strip of the dimmed pane's own background, clear of its text.
-		under := s.cells[(by+4)*s.W+max(body.x, 0)].BG
-		s.Text(body.x+(body.w-textWidth(note))/2, by+4, textWidth(note), note, Cell{FG: th.dim, HasFG: true, BG: under, HasBG: true, Italic: true})
-	}
 }
 
 func (a *App) drawBrowserPlaceholder(p *pb.Pane, r rect) {

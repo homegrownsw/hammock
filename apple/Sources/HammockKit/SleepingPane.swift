@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Over a pane whose agent is asleep (Pane.asleep: its process ended to
 /// free memory, its screen kept): the pane faded towards its own
-/// background, and a card in the middle with a big Wake Agent button, in
+/// background, and a card in the middle with a moon and a Wake Agent button, in
 /// the theme's colour. Focusing the pane doesn't wake it; typing in it,
 /// sending its agent a message, or this button does.
 ///
@@ -65,18 +65,7 @@ public struct SleepingPaneOverlay: View {
             }
             .frame(width: 54, height: 54)
             .accessibilityHidden(true)
-            VStack(spacing: 4) {
-                Text("Asleep")
-                    .font(.headline)
-                Text("Stopped to save memory.\nTyping here wakes it too.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: 260)
             WakeButton(fill: fill, iconOnly: false, action: wake)
-                .padding(.top, 2)
         }
         .padding(.horizontal, 26)
         .padding(.top, 22)
