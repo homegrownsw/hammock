@@ -365,6 +365,9 @@ struct ComposerTextView: NSViewRepresentable {
     let controller: ComposerTextController
     /// Changes when the chips' pictures do (numbers, thumbnails, appearance).
     let chipsKey: String
+    /// What it says, so SwiftUI measures it again (sizeThatFits) as it
+    /// grows: typing changes nothing else it's given.
+    let text: String
 
     func makeCoordinator() -> ComposerTextController { controller }
 
@@ -492,6 +495,9 @@ final class ComposerUITextView: UITextView {
 struct ComposerTextView: UIViewRepresentable {
     let controller: ComposerTextController
     let chipsKey: String
+    /// What it says, so SwiftUI measures it again (sizeThatFits) as it
+    /// grows: typing changes nothing else it's given.
+    let text: String
 
     func makeCoordinator() -> ComposerTextController { controller }
 

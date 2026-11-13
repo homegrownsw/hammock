@@ -2696,7 +2696,7 @@ struct Composer: View {
                         .padding(.bottom, -6)
                         .transition(.opacity)
                 }
-                ComposerTextView(controller: configured(), chipsKey: chipsKey)
+                ComposerTextView(controller: configured(), chipsKey: chipsKey, text: text)
                     .overlay(alignment: .topLeading) {
                         if text.isEmpty {
                             Text("Message \(session.agentName)…")
