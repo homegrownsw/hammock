@@ -53,6 +53,7 @@ import SwiftUI
 ///     dim-inactive-panes = false       (true: panes other than the focused one are dimmed a little)
 ///     active-pane-border = false       (true: a border around the focused pane)
 ///     active-pane-border-color = accent  (or #RRGGBB, light:#…,dark:#…)
+///     pane-animations = true           (false: panes open, close, zoom and float at once, without animating)
 ///     browser-open-schemes = obsidian,zoommtg  (links a browser pane opens in their app without asking)
 ///     browser-new-tab = external       (hammock: links a page opens in a new tab open as a browser tab, not in your browser; read by hmkd)
 ///     keybind = cmd+shift+b=new_browser_tab    (repeatable: a shortcut for an action, taking it from any other;
@@ -200,6 +201,9 @@ final class AppConfig {
     private(set) var paneSpacing = PaneSpacing.compact
     /// Panes other than the focused one dimmed a little.
     private(set) var dimInactivePanes = false
+    /// Panes animate opening, closing, zooming and floating; off, they
+    /// change at once.
+    private(set) var paneAnimations = true
     /// A close button on the tab under the pointer (sidebar and tab bar).
     private(set) var tabCloseButton = true
     /// How terminals show their program: plain, colorful, or off.
@@ -408,6 +412,7 @@ final class AppConfig {
         // "comfortable": Spacious's name before 0.3.1.
         paneSpacing = ours["pane-spacing"].flatMap { PaneSpacing(rawValue: $0 == "comfortable" ? "spacious" : $0) } ?? .compact
         dimInactivePanes = ours["dim-inactive-panes"] == "true"
+        paneAnimations = ours["pane-animations"] != "false"
         tabCloseButton = ours["tab-close-button"] != "false"
         activePaneBorder = ours["active-pane-border"] == "true"
         activePaneBorderColorValue = ours["active-pane-border-color"].flatMap { $0.isEmpty || $0 == "accent" ? nil : $0 }
@@ -755,6 +760,7 @@ final class AppConfig {
         #   dim-inactive-panes = false     (true: dim the panes you're not typing in, a little)
         #   active-pane-border = false     (true: a border around the focused pane)
         #   active-pane-border-color = accent   (or #RRGGBB, or light:#…,dark:#…)
+        #   pane-animations = true         (false: panes open, close, zoom and float at once)
         #   simulator-shutdown = true      (simulators Hammock booted shut down a minute after their last pane closes)
         #   ssh-agent-forwarding = true    (panes on your linked computers use the SSH keys of the one you're at)
         #   ssh-upstream-agent = PATH      (the SSH agent Hammock's passes requests on to; default: ~/.ssh/config's IdentityAgent for every host, else SSH_AUTH_SOCK)

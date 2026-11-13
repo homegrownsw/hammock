@@ -30,6 +30,7 @@ struct HammockApp: App {
         }
         m.onScheduleRun = { s, run in Notifier.shared.notifyRun(run, of: s, model: m) }
         m.onReviewReplies = { p, n in Notifier.shared.notifyReview(p, new: n, model: m) }
+        m.onPanesOpenClose = { closing, apply in PaneMotion.shared.openClose(closing: closing, apply) }
         m.onLinkRequest = { req in Notifier.shared.notifyLink(req) }
         m.onGrant = { grant in Notifier.shared.notifyGrant(grant, model: m) }
         m.onJoinRequest = { req in Notifier.shared.notifyJoin(req, model: m) }

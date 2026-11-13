@@ -188,6 +188,9 @@ public final class AppModel {
     @ObservationIgnored public var onScheduleRun: ((Schedule, ScheduleRun) -> Void)?
     /// An agent answered review comments on a diff pane: how many new.
     @ObservationIgnored public var onReviewReplies: ((Pane, Int) -> Void)?
+    /// Applies an update that opens or closes panes in a tab already showing,
+    /// given the closing panes: the Mac animates it (PaneMotion).
+    @ObservationIgnored public var onPanesOpenClose: ((_ closing: [Pane], _ apply: () -> Void) -> Void)?
     /// Called when an agent asks for permission.
     @ObservationIgnored public var onGrant: ((GrantRequest) -> Void)?
     /// Called when someone asks to join a Group you share.
@@ -563,8 +566,32 @@ public final class AppModel {
             for id in u.deletedTabIds where self.tabs[id] != nil { self.tabs[id] = nil }
             for (id, t) in self.openingTabs where self.tabs[id] == nil { self.tabs[id] = t } // after a full update
         }
+        // Panes opening or closing in the tab showing (not floated out or
+        // docked: their pane stays in the tab; not a new tab's first).
+        var opened: [String] = [], closed: [String] = []
+        if !u.full, onPanesOpenClose != nil {
+            for t in u.tabs where t.id == selectedTabID {
+                guard let old = tabs[t.id], old.layout != t.layout, closingTabs[t.id] == nil else { continue }
+                let was = Set(Self.paneIDs(old.layout)), now = Set(Self.paneIDs(t.layout))
+                guard !was.isEmpty else { continue }
+                let floats = Set(old.floating.map(\.paneID)).union(t.floating.map(\.paneID))
+                opened += now.subtracting(was).subtracting(floats)
+                closed += was.subtracting(now).subtracting(floats)
+            }
+        }
         if structural {
             withAnimation(.snappy(duration: 0.25)) { applyGroupsAndTabs() }
+        } else if !opened.isEmpty || !closed.isEmpty, let animate = onPanesOpenClose {
+            animate(closed.compactMap { panes[$0] }) {
+                applyGroupsAndTabs()
+                // The closed panes go in the same transaction, so their views
+                // leave with the animation rather than at once.
+                for id in u.deletedPaneIds where self.panes[id] != nil || self.sessions[id] != nil {
+                    self.panes[id] = nil
+                    self.sessions[id] = nil
+                }
+                if let f = self.focusedPaneID, self.panes[f] == nil { self.focusedPaneID = nil }
+            }
         } else {
             applyGroupsAndTabs()
         }

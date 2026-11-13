@@ -597,7 +597,7 @@ final class PaneSwap {
               model.panes[b]?.tabID == tab.id else { return }
         let splits = AppModel.paneIDs(tab.layout)
         guard splits.contains(a), splits.contains(b) else { return }
-        withAnimation(.snappy(duration: 0.22)) { model.setLayout(tab.id, Self.swapping(tab.layout, a, b)) }
+        withAnimation(PaneMotion.when(.snappy(duration: 0.22))) { model.setLayout(tab.id, Self.swapping(tab.layout, a, b)) }
     }
 
     /// A layout with two panes' places exchanged.
