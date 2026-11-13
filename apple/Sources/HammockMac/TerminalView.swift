@@ -813,6 +813,9 @@ final class TerminalNSView: NSView {
             onOpenLink?(url, event.modifierFlags.contains(.shift))
             return
         }
+        // ⌃-click is the Mac's right-click: on a link, its menu, as for a
+        // right-click. Elsewhere the program still gets it, ⌃ and all.
+        if event.modifierFlags.contains(.control), showLinkMenu(event) { return }
         if reportMouse(.press, event) { return }
         selectionGesture(.press, event)
     }
@@ -1285,7 +1288,13 @@ extension TerminalNSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
-        // On a link: what to do with it (before the program's own right-click).
+        if showLinkMenu(event) { return }
+        if !reportMouse(.press, event, button: .right) { super.rightMouseDown(with: event) }
+    }
+
+    /// On a link: a menu of what to do with it (before the program's own
+    /// right-click, or ⌃-click). Returns whether there was one.
+    private func showLinkMenu(_ event: NSEvent) -> Bool {
         if let link = link(at: event), let url = URL(string: link.url) {
             let menu = NSMenu()
             // Where it really goes: a program's link can say one thing and go elsewhere.
@@ -1305,9 +1314,9 @@ extension TerminalNSView {
                 NSPasteboard.general.setString(link.url, forType: .string)
             })
             NSMenu.popUpContextMenu(menu, with: event, for: self)
-            return
+            return true
         }
-        if !reportMouse(.press, event, button: .right) { super.rightMouseDown(with: event) }
+        return false
     }
 
     // MARK: Links
