@@ -353,6 +353,12 @@ final class TerminalNSView: NSView {
         session?.engine.setCellPixels(width: cw, height: ch)
         onCellSize?(cw, ch)
         let size = layoutSize
+        // No room for a grid yet (a pane opening, at no size as it starts):
+        // the size it reaches, not this, is the one to tell.
+        guard size.width >= padding * 2 + cellWidth * 2, size.height >= padding * 2 + cellHeight else {
+            pendingGrid = true
+            return
+        }
         let cols = max(Int((size.width - padding * 2) / cellWidth), 2)
         let rows = max(Int((size.height - padding * 2) / cellHeight), 1)
         if cols != lastGrid.cols || rows != lastGrid.rows {

@@ -274,7 +274,10 @@ enum DebugSnapshot {
             // the sidebar, live layers), captured by the app itself with its
             // own Screen Recording permission, to <prefix>-window-<light|dark>.png.
             // HMK_DEBUG_CAPTURE_ZOOM=N then zooms the tab's Nth pane (and
-            // back) and captures frames as it animates, <prefix>-zoom-NN.png.
+            // back) and captures frames as it animates, <prefix>-zoom-NN.png;
+            // HMK_DEBUG_CAPTURE_SPLIT=N splits it right (down, with
+            // HMK_DEBUG_CAPTURE_SPLIT_DOWN=1) and closes the new pane,
+            // to <prefix>-split-NN.png.
             if ProcessInfo.processInfo.environment["HMK_DEBUG_CAPTURE"] == "1" {
                 Task { @MainActor in await captureWindow(window, prefix: prefix) }
             }
@@ -392,6 +395,45 @@ extension DebugSnapshot {
             NSApp.appearance = NSAppearance(named: appearance)
             try? await Task.sleep(for: .seconds(1))
             write(await grab(), "window-\(name)")
+        }
+        // Filmed in dark, as the window was left, or light.
+        if env["HMK_DEBUG_CAPTURE_LIGHT"] != nil { NSApp.appearance = NSAppearance(named: .aqua) }
+        if let n = env["HMK_DEBUG_CAPTURE_SPLIT"].flatMap(Int.init), let m = AppModelRegistry.shared,
+           let tab = m.selectedTabID.flatMap({ m.tabs[$0] }) {
+            let ids = AppModel.paneIDs(tab.layout)
+            guard n >= 1, n <= ids.count else { return }
+            var frame = 0
+            func film() async {
+                let start = Date()
+                while Date().timeIntervalSince(start) < PaneMotion.duration + 1 {
+                    write(await grab(), String(format: "split-%02d", frame))
+                    frame += 1
+                }
+            }
+            let down = env["HMK_DEBUG_CAPTURE_SPLIT_DOWN"] != nil
+            guard let new = await m.split(ids[n - 1], direction: down ? .vertical : .horizontal) else { return }
+            await film()
+            Task { await m.closePane(new) } // filmed from before the daemon answers
+            await film()
+            return
+        }
+        if let n = env["HMK_DEBUG_CAPTURE_FLOAT"].flatMap(Int.init), let m = AppModelRegistry.shared,
+           let tab = m.selectedTabID.flatMap({ m.tabs[$0] }) {
+            let ids = AppModel.paneIDs(tab.layout)
+            guard n >= 1, n <= ids.count else { return }
+            var frame = 0
+            func film() async {
+                let start = Date()
+                while Date().timeIntervalSince(start) < PaneMotion.duration + 1 {
+                    write(await grab(), String(format: "float-%02d", frame))
+                    frame += 1
+                }
+            }
+            FloatMotion.shared.float(m, ids[n - 1])
+            await film()
+            FloatMotion.shared.dock(m, ids[n - 1])
+            await film()
+            return
         }
         guard let n = env["HMK_DEBUG_CAPTURE_ZOOM"].flatMap(Int.init), let m = AppModelRegistry.shared,
               let tab = m.selectedTabID.flatMap({ m.tabs[$0] }) else { return }

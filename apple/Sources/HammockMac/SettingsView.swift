@@ -431,6 +431,8 @@ struct AppearanceSettings: View {
                     FocusPicture(dim: false, border: config.activePaneBorder)
                 }
                 .settingAnchor("appearance.border")
+                Toggle("Pane animations", isOn: Binding(get: { config.paneAnimations }, set: { config.set("pane-animations", $0 ? nil : "false") }))
+                    .settingAnchor("appearance.paneanimations")
             }
             Section("Cursor") {
                 PicturePicker(label: "Shape", options: AppConfig.cursorStyleNames.map { ($0.1, $0.2) },

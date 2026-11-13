@@ -302,6 +302,7 @@ enum SettingsIndex {
             e(.appearance, "Panes", "Pane spacing", "appearance.spacing", "compact spacious gap"),
             e(.appearance, "Panes", "Dim inactive panes", "appearance.dim", "fade focus"),
             e(.appearance, "Panes", "Border around the active pane", "appearance.border", "focus outline show"),
+            e(.appearance, "Panes", "Pane animations", "appearance.paneanimations", "motion animate transitions instant zoom split close reduce"),
             e(.appearance, "Cursor", "Cursor shape", "appearance.cursor", "block bar underline caret"),
             e(.appearance, "Cursor", "Cursor blink", "appearance.blink", "caret"),
             e(.appearance, "Config", "Edit config file", "appearance.config", "themes folder ghostty"),

@@ -90,6 +90,7 @@ final class FloatMotion {
 
     func float(_ model: AppModel, _ id: String) {
         guard model.canFloat(id) else { return }
+        guard PaneMotion.enabled else { return model.arrange(id, .float) }
         from[id] = PaneSwap.shared.frames[id]
         animatesLayout = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.animatesLayout = false }
@@ -121,7 +122,7 @@ final class FloatMotion {
         let shown = tab.floating.filter { !$0.minimised }.map(\.paneID)
         if shown.isEmpty {
             for f in tab.floating where f.minimisedByAll { restoring[f.paneID] = chips[f.paneID] }
-            withAnimation(.snappy(duration: 0.2)) { model.toggleFloats(tab.id) }
+            withAnimation(PaneMotion.when(.snappy(duration: 0.2))) { model.toggleFloats(tab.id) }
             return
         }
         model.focusAway(from: Set(shown))
@@ -130,7 +131,7 @@ final class FloatMotion {
 
     /// Brings a float back off the shelf, growing out of its chip.
     func restore(_ model: AppModel, _ id: String) {
-        restoring[id] = chips[id]
+        if PaneMotion.enabled { restoring[id] = chips[id] }
         model.arrange(id, .restore)
     }
 
@@ -139,7 +140,7 @@ final class FloatMotion {
 
     /// Shrinks ids' cards into where their chips will be, then runs commit.
     private func shrink(_ model: AppModel, _ tab: WorkspaceTab, _ ids: [String], commit: @escaping () -> Void) {
-        guard let area = FloatDrag.shared.areas[tab.id] else {
+        guard PaneMotion.enabled, let area = FloatDrag.shared.areas[tab.id] else {
             DispatchQueue.main.async { commit() }
             return
         }
@@ -187,7 +188,7 @@ final class FloatMotion {
                        before: edge == .leading || edge == .top)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.docking[id] = nil }
         }
-        guard let r = PaneSwap.shared.frames[target] else { commit(); return }
+        guard PaneMotion.enabled, let r = PaneSwap.shared.frames[target] else { commit(); return }
         withAnimation(.snappy(duration: Self.duration)) { docking[id] = FloatGeometry.half(r, edge) }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration) { commit() }
     }
@@ -251,21 +252,34 @@ struct FloatLayer: View {
                 // it) mustn't rebuild the cards, or the click is lost.
                 ForEach(shown.sorted { $0.paneID < $1.paneID }, id: \.paneID) { f in
                     let z = shown.firstIndex { $0.paneID == f.paneID } ?? 0
-                    let moving = FloatMotion.shared.docking[f.paneID] != nil || FloatMotion.shared.minimising[f.paneID] != nil
                     FloatCard(model: model, float: f, area: geo.size, isFocused: f.paneID == focusedPaneID,
                               isFront: z == shown.count - 1)
                         .zIndex(Double(z))
-                        // Docked or minimised: it's already where its split
-                        // pane or its chip appears.
-                        .transition(moving ? .identity : .scale(scale: 0.9, anchor: .bottom).combined(with: .opacity))
+                        .transition(CardTransition(id: f.paneID))
                 }
             }
             .onChange(of: geo.size, initial: true) { _, s in drag.areas[tab.id] = s }
         }
-        .animation(.snappy(duration: 0.2), value: shown.map(\.paneID))
+        .animation(PaneMotion.when(.snappy(duration: 0.2)), value: shown.map(\.paneID))
     }
 
     private var shown: [FloatingPane] { tab.floating.filter { !$0.minimised } }
+}
+
+/// A card coming or going: it grows in, or shrinks away. Docked or
+/// minimised, it goes at once: it's already where its split pane or its
+/// chip appears. Decided as it goes, not as it came: a transition chosen in
+/// the view's body is the one it was shown with.
+private struct CardTransition: Transition {
+    let id: String
+    func body(content: Content, phase: TransitionPhase) -> some View {
+        let motion = FloatMotion.shared
+        let moving = motion.docking[id] != nil || motion.minimising[id] != nil
+        let shown = phase.isIdentity || moving
+        content
+            .scaleEffect(shown ? 1 : 0.9, anchor: .bottom)
+            .opacity(shown ? 1 : 0)
+    }
 }
 
 /// Where a docking float would go.
