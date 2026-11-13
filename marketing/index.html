@@ -88,13 +88,13 @@
   .fine { color: var(--faint); font-size: 14px; margin-top: 14px; }
   .fine a { color: var(--muted); text-underline-offset: 3px; }
 
-  /* The app, drawn: dark appearance, the Hammock window theme (sidebar 0C311A, toolbar 123A21), status
+  /* The app, drawn: dark appearance, the Hammock window theme (sidebar 0D2A20, toolbar 133528), status
      icons as StatusIcon.swift draws them ("Orbit"). */
   .stage { position: relative; margin: 34px auto 0; max-width: 1040px; }
   .stage::before { content: ""; position: absolute; inset: 8% 6% -4%; background: var(--spectrum); filter: blur(90px); opacity: .16; border-radius: 50%; z-index: -1; }
   .window {
     position: relative; text-align: left; border-radius: 18px; overflow: hidden;
-    background: #123a21; border: 1px solid rgba(255,255,255,.14);
+    background: #133528; border: 1px solid rgba(255,255,255,.14);
     box-shadow: 0 40px 100px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
     display: grid; grid-template-columns: 236px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 540px;
     font: 13px/1.35 -apple-system, BlinkMacSystemFont, Inter, sans-serif; color: #e9f2ed;
@@ -102,7 +102,7 @@
   }
   /* The sidebar hides by its column closing; its contents keep their width and are clipped. */
   .window.nosb { grid-template-columns: 0 minmax(0, 1fr); }
-  .side { background: #0c311a; border-right: 1px solid rgba(0,0,0,.35); min-width: 0; overflow: hidden; transition: border-color .3s; }
+  .side { background: #0d2a20; border-right: 1px solid rgba(0,0,0,.35); min-width: 0; overflow: hidden; transition: border-color .3s; }
   .window.nosb .side { border-right-color: transparent; }
   .side-in { width: 236px; height: 100%; padding: 12px 8px 10px; display: flex; flex-direction: column; }
   .side-top { display: flex; align-items: center; gap: 8px; padding: 2px 6px 12px; }
@@ -136,7 +136,7 @@
   .host small { display: block; color: #8fa89b; font-size: 11px; }
 
   .main { display: grid; grid-template-rows: 52px minmax(0,1fr); min-width: 0; min-height: 0; }
-  .toolbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 0 18px; background: #123a21; border-bottom: 1px solid rgba(0,0,0,.3); min-width: 0; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 0 12px 0 18px; background: #133528; border-bottom: 1px solid rgba(0,0,0,.3); min-width: 0; }
   .toolbar .ti { margin-right: auto; min-width: 0; white-space: nowrap; overflow: hidden; }
   .toolbar .ti b { display: block; font-size: 13.5px; }
   .toolbar .ti small { color: #8fa89b; font-size: 11.5px; }

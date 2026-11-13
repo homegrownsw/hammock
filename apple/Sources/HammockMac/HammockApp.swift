@@ -646,6 +646,7 @@ struct WorkspaceWindow: NSViewRepresentable {
             // No hairline under the toolbar: it overhung the sidebar's divider,
             // and the pane headers already mark where the toolbar ends.
             window.titlebarSeparatorStyle = .none
+            ToolbarTitleInk.follow(window)
             // Again after SwiftUI's sizing passes, which come after this; only
             // then do moves and resizes count as yours.
             restore(window)
@@ -677,6 +678,45 @@ struct WorkspaceWindow: NSViewRepresentable {
 
     func makeNSView(context: Context) -> Marker { Marker() }
     func updateNSView(_ v: Marker, context: Context) {}
+}
+
+/// The toolbar's title (the tab's name) in the same solid ink as the tab
+/// names in the sidebar: AppKit draws it vibrant, blended with the glass, a
+/// grey a shade lighter than the sidebar's. Its own text field, found by
+/// AppKit's class name (if that changes, the title is just a shade lighter
+/// again); set again whenever the window updates, as AppKit makes it anew.
+@MainActor
+enum ToolbarTitleInk {
+    private static var observers: [NSObjectProtocol] = []
+    /// Solid, not the vibrant labelColor: black in light, white in dark.
+    private static let ink = NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .white : .black }
+
+    static func follow(_ window: NSWindow) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { apply(window) }
+        for name in [NSWindow.didUpdateNotification, NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak window] _ in
+                MainActor.assumeIsolated { if let window { apply(window) } }
+            })
+        }
+    }
+
+    private static func apply(_ window: NSWindow) {
+        guard let frame = window.contentView?.superview else { return }
+        func visit(_ v: NSView, _ depth: Int) {
+            if "\(type(of: v))" == "NSToolbarPrimaryTitleContainerView" {
+                // In the background, AppKit's own, dimmed as the sidebar's are.
+                let color = window.isMainWindow ? Self.ink : .labelColor
+                func ink(_ v: NSView) {
+                    if let f = v as? NSTextField, f.textColor != color { f.textColor = color }
+                    v.subviews.forEach(ink)
+                }
+                ink(v)
+                return
+            }
+            if depth < 14 { v.subviews.forEach { visit($0, depth + 1) } }
+        }
+        visit(frame, 0)
+    }
 }
 
 /// The detail, a tab or none, on what the sidebar beside it is drawn on: its
