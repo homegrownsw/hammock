@@ -375,10 +375,18 @@ else
     { echo "The release commit isn't number $N on main; stopping." >&2; git -C "$ROOT" reset -q --hard "$START"; exit 1; }
   # Until the push lands, any failure takes the release back: the local tags (one left behind would block
   # the next run) and the release commit, leaving the checkout where it started.
+  RELEASE_SHA=$(git -C "$ROOT" rev-parse HEAD)
+  # Only ever undoes its own commit: if something was committed on top of it in this checkout (another session
+  # sharing it), resetting would throw that away, so it's left for a person to sort out.
   undo() {
     local t
     for t in $TAGS; do git -C "$ROOT" tag -d "$t" >/dev/null 2>&1 || true; done
-    git -C "$ROOT" reset -q --hard "$START"
+    if [ "$(git -C "$ROOT" rev-parse HEAD)" = "$RELEASE_SHA" ]; then
+      git -C "$ROOT" reset -q --hard "$START"
+    else
+      echo "HEAD moved past the release commit (${RELEASE_SHA:0:7}) while it built: something else committed in this" >&2
+      echo "checkout. Left as it is; drop the release commit by hand. Cut releases from a worktree of their own." >&2
+    fi
     if has mac; then "$MAC_UPDATE" discard "$N" || true; fi
     if has ios; then "$IOS_TESTFLIGHT" discard "$N" || true; fi
     echo "Nothing was published; the release commit and tags (${TAGS}) are gone." >&2
@@ -387,10 +395,15 @@ else
   for t in $TAGS; do git -C "$ROOT" tag "$t"; done
   if has mac; then "$MAC_UPDATE" build "$N" "$MAC_NOTES"; fi
   if has ios; then "$IOS_TESTFLIGHT" build "$N"; fi
-  # One atomic push, so main and the tags arrive together or not at all.
+  if [ "$(git -C "$ROOT" rev-parse HEAD)" != "$RELEASE_SHA" ]; then
+    echo "Something was committed on top of the release commit while it built; stopping before the push." >&2
+    exit 1
+  fi
+  # One atomic push, so main and the tags arrive together or not at all: the release commit itself, never
+  # whatever HEAD has become.
   refs=()
   for t in $TAGS; do refs+=("refs/tags/$t"); done
-  if ! git -C "$ROOT" push --atomic origin HEAD:main "${refs[@]}"; then
+  if ! git -C "$ROOT" push --atomic origin "$RELEASE_SHA:refs/heads/main" "${refs[@]}"; then
     echo "The push was rejected (did main move?)." >&2
     exit 1
   fi

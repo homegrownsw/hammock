@@ -100,6 +100,9 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
 1. **Checks** that the tree is clean and exactly level with `origin/main` (the commit and tags are made
    before the push). A detached HEAD on `main` is fine; another branch isn't, unless
    `HMK_RELEASE_BRANCH=<branch>` names it (a worktree level with `main`).
+   Cut it from a checkout nothing else commits to while it builds (a detached worktree at `origin/main`
+   does: `git worktree add --detach .claude/worktrees/release origin/main`): a commit on top of the release
+   commit stops it before the push, and is left for a person to sort out.
 2. **Chooses the version** for each app (`next`, `build` or the one given, below) and writes it into
    Version.xcconfig.
 3. **Freezes the notes**: this release's are the pending NEW and FIXED notes, with the earlier releases' of

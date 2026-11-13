@@ -249,6 +249,19 @@ check "…no tags published or kept" "|" "$(remote_tags "$d")|$(git -C "$d" tag 
 check "…back where it started" "$start" "$(git -C "$d" rev-parse HEAD)"
 check "…both builds discarded, never uploaded" "build 3|ios build 3|discard 3|ios discard 3|" "$(calls | tr '\n' '|')"
 
+echo "a commit on top of the release while it builds:"
+d=$(fixture 2026.1.0)
+cat >"$tmp/mac-update-sneak" <<EOF
+#!/usr/bin/env bash
+echo "\$1 \$2" >>"$tmp/mac-update.log"
+if [ "\$1" = build ]; then git -C "$d" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m sneaked; fi
+EOF
+chmod +x "$tmp/mac-update-sneak"
+check "fails" fails "$( (cd "$d" && HMK_RELEASE_MAC_UPDATE="$tmp/mac-update-sneak" ./scripts/release mac next >/dev/null 2>&1) && echo passes || echo fails)"
+check "…publishing nothing" "1 " "$(count "$d.remote" main) $(remote_tags "$d")"
+check "…keeping the other commit" "sneaked" "$(git -C "$d" log -1 --format=%s)"
+calls >/dev/null
+
 echo "joint release:"
 d=$(fixture 0.4.0)
 mark_released "$d" Mac 0.4.0
