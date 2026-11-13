@@ -451,18 +451,24 @@ final class AppConfig {
 
     /// `notify-sound = false` (Settings' "Play a sound with notifications",
     /// before each kind had its own sound): every kind's sound none, unless
-    /// the file picks one, and the switch gone.
+    /// the file picks one, and the switch gone, from UserDefaults too (from
+    /// before 0.3.1: migratePrefs would leave it there, as the file doesn't
+    /// keep it, and it would come back every launch).
     private func migrateSoundSwitch() {
         let file = Self.read(fileURL)
-        guard let v = file[NotifyPrefs.sound.key] else { return }
+        // Once a launch: if the file can't be written, the next load would find it again, and again.
+        guard !soundSwitchMigrationTried, let v = file[NotifyPrefs.sound.key] else { return }
+        soundSwitchMigrationTried = true
         var changes: [(String, String?)] = [(NotifyPrefs.sound.key, nil)]
         if v == "false" {
             changes += NotifyPrefs.sounds.filter { file[$0.key] == nil }.map { ($0.key, AlertSound.none) }
         }
+        UserDefaults.standard.removeObject(forKey: NotifyPrefs.sound.defaultsKey)
         set(changes)
     }
 
     @ObservationIgnored private var prefsMigrationTried = false
+    @ObservationIgnored private var soundSwitchMigrationTried = false
 
     // MARK: Settings that were in UserDefaults (Prefs)
 

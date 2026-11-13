@@ -45,8 +45,19 @@ enum AlertSound {
     private static let soundTypes: Set<String> = ["aiff", "aif", "aifc", "caf", "wav", "m4a", "mp3"]
 
     /// macOS's sounds and yours, by name: each one's file. Not Hammock's own
-    /// copies in ~/Library/Sounds, which are listed as Hammock's.
-    static func system() -> [String: URL] {
+    /// copies in ~/Library/Sounds, which are listed as Hammock's. Read again
+    /// after a moment, so Settings' pickers redrawing don't each list the
+    /// folders, and a sound added since is found.
+    @MainActor static func system() -> [String: URL] {
+        if let (at, found) = systemRead, Date().timeIntervalSince(at) < 2 { return found }
+        let found = listSystem()
+        systemRead = (Date(), found)
+        return found
+    }
+
+    @MainActor private static var systemRead: (Date, [String: URL])?
+
+    private static func listSystem() -> [String: URL] {
         var found: [String: URL] = [:]
         for dir in folders {
             let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
@@ -61,7 +72,7 @@ enum AlertSound {
 
     /// Whether a name is one to play: "none", Hammock's own, or a sound in
     /// a Sounds folder still.
-    static func exists(_ name: String) -> Bool {
+    @MainActor static func exists(_ name: String) -> Bool {
         name == none || own.contains { $0.name == name } || system()[name] != nil
     }
 
