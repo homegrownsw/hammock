@@ -1,26 +1,21 @@
 This build
 
 New
-• The terminal draws with Metal, the same way as on the Mac: italics, block characters, box drawing, powerline prompts, Nerd Font icons and images in the terminal now look as they do there.
-• A pane's menu can copy its Claude Code session's Remote Control link, to open it on claude.ai.
-• Simulator panes go full screen: the device fills your iPhone, and a touch with three fingers, or a shake, brings back its controls.
+• The agent view says how long the agent worked on each longer turn, and when it finished, as Claude Code does: “Worked for 30m 31s · done 9:47 AM”. For Claude and Codex.
+• Agent view: the model menu also sets Claude's effort level (/effort), and both show as soon as Claude starts, not after its first reply.
+• Attachments in the agent view get a number and a chip, with their thumbnail, where the cursor is in your message: move it with the text, or delete it and the attachment waits greyed out in the tray above the message, to click back in.
+• Commands Claude Code knows are coloured as you type them in the agent view, as they are in Claude Code.
+• Groups collapse and expand: tap a Group's name in the Groups tab. A collapsed Group shows how many tabs it has and what its agents are up to, and stays collapsed next time you open Hammock.
+• Messages you've sent show their attachments' numbered chips where they were, and a video you sent shows as a video, not its path.
+• New themes: Apricot, Cocoa and Lagoon, which tint the window but leave the terminal plain white or black. Forest is gone: Hammock's green is a forest green now, and Forest moves to it.
+• Pictures you attach are sent smaller, so they cost fewer tokens: Large (1568 px) on this Mac and Medium (1024 px) to other computers and from the iPhone, in Settings ▸ Agent View. Right-click (or touch and hold) one to send it at another size.
+• Sessions' Recent list shows the last 48 hours' sessions, with Show More… and Show Less for older ones.
 
 Fixed
-• Terminals keep up better with a flood of output, like a big file printed or a noisy build.
-• A Mac paired from a link while another Mac is shown now sends this iPhone notifications without having to be shown first.
-• A Mac you forget stops sending this iPhone notifications, if it can be reached, instead of sending ones that only say Something needs you.
-• A message sent in the agent view while Hammock is reconnecting is put back in the box instead of being lost.
-• After switching from Wi-Fi to cellular, or coming back to the app after a while, a connection to your Mac that had quietly dropped reconnects in seconds instead of looking connected.
-• Answering a notification from another Mac from the lock screen (Allow, Deny, Let View) no longer changes which Mac the app shows.
-• Dictation in a terminal no longer deletes too much when correcting itself after you’ve used the key bar’s delete or held down a keyboard’s Backspace.
-• Holding Delete while sharing a Mac's screen now keeps deleting, on the on-screen keyboard as on a hardware one.
-• Images a program on your Mac shows by file path, like Claude Code's, now come to your iPhone.
-• Images in the terminal, like Claude Code's, no longer go missing when you open the pane on another device, resize it or reconnect.
-• Images in the terminal, like Claude Code's, show as soon as they arrive, instead of only once you scroll.
-• In the demo, opening a finished agent or scheduled run marks it as seen.
-• In the demo, pausing a scheduled task, skipping its next run, moving a tab and changing a Group’s icon now work, and Run Now and the rest that need a Mac offer to pair one.
-• Screen sharing: two fingers stay scrolling once they start, instead of switching to zooming partway through, and a pinch stays a zoom.
-• Scrolling a picture shown in a terminal back into view no longer stutters.
-• Tapping a notification opens its session again when it launches the app or is from another Mac, and tapping one for the same session twice works.
-• Terminals keep 10,000 lines of scrollback, as the Mac's daemon does: coloured output kept only a few hundred.
-• The agent view no longer goes blank in a long conversation, showing only Working… under an empty screen, when you open it or send a message.
+• The agent view's composer no longer suggests Claude Code's and Codex's built-in commands, like /clear, partway through a message, where they'd be sent as text. Your skills and commands are still offered there.
+• Screen sharing on iPhone: zoomed in with the phone upright, a Mac's screen is sharp as soon as its height fills the phone, not blurry until you zoom further.
+• Scrolling to the end of an agent's conversation no longer leaves it jumping up and down a line.
+• Sending a video no longer briefly shows its file's path as a message of yours.
+• The agent view no longer stays blank, showing only Working…, while an agent's first tools run after you send a message.
+• The message box in the agent view grows as you type again, instead of scrolling a single line.
+• Working… stays at the left under a message you've just sent, instead of moving to the middle.
