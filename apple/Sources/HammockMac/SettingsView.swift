@@ -264,6 +264,8 @@ struct NotificationSettings: View {
     private var prefs: Prefs { .shared }
     private var style: NotifyStyle { .current }
     @State private var status: UNAuthorizationStatus?
+    /// macOS's sounds and yours, read when the pane opens.
+    @State private var systemSounds = AlertSound.system().keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
 
     var body: some View {
         Form {
@@ -289,8 +291,6 @@ struct NotificationSettings: View {
                 .pickerStyle(.radioGroup)
                 .themeTint()
                 .settingAnchor("notify.style")
-                Toggle("Play a sound with notifications", isOn: prefs.boolBinding(NotifyPrefs.sound))
-                    .settingAnchor("notify.sound")
                 Toggle("Also notify for the tab I'm looking at", isOn: prefs.boolBinding(NotifyPrefs.whenVisible))
                     .settingAnchor("notify.visible")
                 Toggle("Show a count on the Dock icon", isOn: prefs.boolBinding(NotifyPrefs.badge))
@@ -299,6 +299,18 @@ struct NotificationSettings: View {
                 Button("Send a Test Notification") { Notifier.shared.sendTest() }
                     .disabled(style == .system && status == .denied)
                     .settingAnchor("notify.test")
+            }
+            Section("Sounds") {
+                AlertSoundPicker(label: "Waiting for my input", pref: NotifyPrefs.soundNeedsInput, system: systemSounds)
+                    .settingAnchor("notify.sound.needsInput")
+                AlertSoundPicker(label: "Asking for permission", pref: NotifyPrefs.soundPermission, system: systemSounds)
+                    .settingAnchor("notify.sound.permission")
+                AlertSoundPicker(label: "Finished", pref: NotifyPrefs.soundFinished, system: systemSounds)
+                    .settingAnchor("notify.sound.finished")
+                AlertSoundPicker(label: "Error", pref: NotifyPrefs.soundError, system: systemSounds)
+                    .settingAnchor("notify.sound.error")
+                AlertSoundPicker(label: "Other notifications", pref: NotifyPrefs.soundOther, system: systemSounds)
+                    .settingAnchor("notify.sound.other")
             }
             if style.usesSystem {
                 Section("macOS") {
@@ -327,6 +339,32 @@ struct NotificationSettings: View {
         case .denied: return "Turned off in System Settings"
         case .notDetermined: return "Not asked yet"
         default: return "…"
+        }
+    }
+}
+
+/// Which sound a kind of notification plays: Hammock's own, macOS's (and
+/// any in your Sounds folder), or none. Picking one plays it.
+private struct AlertSoundPicker: View {
+    let label: String
+    let pref: Pref
+    let system: [String]
+    private var prefs: Prefs { .shared }
+
+    var body: some View {
+        Picker(label, selection: Binding(get: { NotifyPrefs.soundName(pref) }, set: { name in
+            prefs.set(pref, name)
+            AlertSound.prepare(name)
+            AlertSound.play(name)
+        })) {
+            Text("None").tag(AlertSound.none)
+            Divider()
+            Section("Hammock") {
+                ForEach(AlertSound.own, id: \.name) { Text($0.title).tag($0.name) }
+            }
+            Section("macOS") {
+                ForEach(system, id: \.self) { Text($0).tag($0) }
+            }
         }
     }
 }

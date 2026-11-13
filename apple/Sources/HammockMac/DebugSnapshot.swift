@@ -59,7 +59,7 @@ enum DebugSnapshot {
                     ? AnyView(AboutSettings(model: model))
                     : AnyView(NotificationSettings(model: model))
                 // Appearance is long: all of it, to see its middle sections.
-                let height: CGFloat = pane == "appearance" ? (AppConfig.shared.isCustomTheme ? 2900 : 2000) : pane == "workspace" ? 480 : pane == "devices" || pane == "ssh" ? 1400 : pane == "about" ? 1150 : pane == "window" ? 720 : 640
+                let height: CGFloat = pane == "appearance" ? (AppConfig.shared.isCustomTheme ? 2900 : 2000) : pane == "workspace" ? 480 : pane == "devices" || pane == "ssh" ? 1400 : pane == "about" ? 1150 : pane == "window" ? 720 : pane == "notifications" ? 1100 : 640
                 let width: CGFloat = pane == "workspace" ? 1200 : pane == "window" ? 920 : 680
                 let host = NSHostingView(rootView: content.frame(width: width, height: height).background(Color(nsColor: .windowBackgroundColor)))
                 let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height), styleMask: [.titled], backing: .buffered, defer: false)

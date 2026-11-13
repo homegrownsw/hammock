@@ -52,7 +52,8 @@ cp -R "$bin/Sparkle.framework" "$app/Contents/Frameworks/"
 otool -l "$app/Contents/MacOS/Hammock" | grep -q '@executable_path/../Frameworks' ||
   install_name_tool -add_rpath @executable_path/../Frameworks "$app/Contents/MacOS/Hammock"
 cp "$root/apple/Resources/$icon" "$app/Contents/Resources/AppIcon.icns"
-cp "$root/apple/Resources/NeedsYou.caf" "$app/Contents/Resources/"
+# Alert sounds (scripts/alert-sounds.py; AlertSound.own lists them, as does the Xcode project).
+for s in NeedsYou Chime Low Marimba Bell; do cp "$root/apple/Resources/$s.caf" "$app/Contents/Resources/"; done
 # Editor and diff panes' pages (CodeMirror, built by `just editor-js`).
 cp "$root/apple/Resources/editor.html" "$root/apple/Resources/diff.html" "$app/Contents/Resources/"
 # Third-party software and its licences (Settings ▸ About ▸ Acknowledgements;
