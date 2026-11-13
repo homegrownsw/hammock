@@ -534,7 +534,7 @@ struct ContentView: View {
                             .help(newGroupHelp)
                     }
                 }
-                // The window theme's tint, over the column's own material.
+                // The window theme's tint, over the column's own glass.
                 .background { SidebarTint().ignoresSafeArea() }
         } detail: {
             if let tab = model.selectedTab {
@@ -679,17 +679,34 @@ struct WorkspaceWindow: NSViewRepresentable {
     func updateNSView(_ v: Marker, context: Context) {}
 }
 
-/// The detail, a tab or none, on the sidebar's colour (its glass and tint),
-/// not the window's, so the window and its toolbar read as one surface. Not
-/// under the sidebar, which floats over the detail (macOS 26): seen through
-/// its glass, it made the sidebar more saturated than the toolbar beside it.
+/// The detail, a tab or none, on what the sidebar beside it is drawn on: its
+/// glass, with the window theme's tint over it, so the window, toolbar and
+/// all, reads as one surface with no edge where the sidebar ends. (Any other
+/// glass, NSVisualEffectView's or plain Liquid Glass, came out a shade apart.)
+/// Not under the sidebar, which has its own.
 extension View {
     func emptyDetailBackground() -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                ZStack { SidebarGlass(); SidebarTint() }.ignoresSafeArea(edges: [.top, .bottom, .trailing])
+                ZStack { ColumnGlass(); SidebarTint() }.ignoresSafeArea(edges: [.top, .bottom, .trailing])
             }
     }
+}
+
+/// Liquid Glass as AppKit draws behind the sidebar column on macOS 26: an
+/// NSGlassEffectView in the sidebar's own variant, which isn't public. Set
+/// only if AppKit still has it; otherwise plain glass, a shade off.
+struct ColumnGlass: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let v = NSGlassEffectView()
+        v.cornerRadius = 0
+        for (key, value) in [("_variant", 17), ("_adaptiveAppearance", 1)] where v.responds(to: NSSelectorFromString(key)) {
+            v.setValue(value, forKey: key)
+        }
+        return v
+    }
+
+    func updateNSView(_ v: NSGlassEffectView, context: Context) {}
 }
 
 /// AppKit's sidebar material, blending with the desktop behind the window

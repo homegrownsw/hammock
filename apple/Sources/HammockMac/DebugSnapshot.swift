@@ -293,6 +293,13 @@ enum DebugSnapshot {
                     let extra = (v as? NSSplitView).map { " divider=\($0.dividerThickness)" } ?? ""
                     lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height)\(extra)")
                 }
+                if let g = v as? NSGlassEffectView {
+                    lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height) style=\(g.style.rawValue) radius=\(g.cornerRadius)")
+                }
+                // The glass: which material where, blending with what.
+                if let e = v as? NSVisualEffectView {
+                    lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height) material=\(e.material.rawValue) blending=\(e.blendingMode == .behindWindow ? "behind" : "within") hidden=\(e.isHidden) alpha=\(e.alphaValue)")
+                }
                 if v is TerminalNSView || depth < 3 {
                     let renderer = (v as? TerminalNSView).map { $0.metal == nil ? " renderer=coretext" : " renderer=metal" } ?? ""
                     lines.append(String(repeating: "  ", count: depth) + "\(type(of: v)) \(Int(r.minX)),\(Int(r.minY)) \(Int(r.width))x\(Int(r.height)) hidden=\(v.isHidden)\(renderer)")
