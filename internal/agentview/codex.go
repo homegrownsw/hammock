@@ -115,8 +115,9 @@ type cxPayload struct {
 		} `json:"last_token_usage"`
 		Window int64 `json:"model_context_window"`
 	} `json:"info"`
-	Window   int64 `json:"model_context_window"`
-	Settings *struct {
+	Window     int64 `json:"model_context_window"`
+	DurationMs int64 `json:"duration_ms"` // task_complete: how long the turn worked
+	Settings   *struct {
 		Model string `json:"model"`
 	} `json:"thread_settings"`
 }
@@ -226,6 +227,11 @@ func (c *Codex) event(p cxPayload, ms int64) []*pb.AgentBlock {
 			if p.Info.Window > 0 {
 				c.window = p.Info.Window
 			}
+		}
+	case "task_complete":
+		// The turn's end, and how long it worked.
+		if p.DurationMs > 0 {
+			return c.add(&pb.AgentBlock{Id: fmt.Sprintf("cx%d", c.n), Kind: pb.AgentBlock_KIND_DONE, TimeUnixMs: ms, DurationMs: p.DurationMs})
 		}
 	case "turn_aborted":
 		return c.add(&pb.AgentBlock{Id: fmt.Sprintf("cx%d", c.n), Kind: pb.AgentBlock_KIND_NOTE, TimeUnixMs: ms, Text: "Interrupted"})

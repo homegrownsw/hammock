@@ -1128,6 +1128,7 @@ message AgentBlock {
     KIND_PLAN = 6;      // a plan presented for approval
     KIND_SUBAGENT = 7;  // a subagent run (Agent/Task tool)
     KIND_NOTE = 8;      // compaction markers, interruptions, system notes
+    KIND_DONE = 9;      // a turn finished: time_unix_ms when, duration_ms how long it worked
   }
   string id = 1;                     // stable across updates
   Kind kind = 2;
@@ -1145,6 +1146,7 @@ message AgentBlock {
   repeated AgentQuestion questions = 14;
   repeated AgentImage images = 15;
   string turn_id = 16;               // the user block that started this turn
+  int64 duration_ms = 17;            // KIND_DONE: how long the turn worked, as the agent timed it
 }
 
 message AgentQuestion {

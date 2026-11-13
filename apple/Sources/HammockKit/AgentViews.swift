@@ -875,6 +875,9 @@ public struct AgentItem: Identifiable, Equatable {
     var tools: [AgentBlock] = []
     var thoughtSeconds: Int?
 
+    /// A turn shorter than this ends without a "Worked for" line.
+    static let doneShownFromMs: Int64 = 30_000
+
     static func group(_ blocks: [AgentBlock]) -> [AgentItem] {
         var out: [AgentItem] = []
         var run: [AgentBlock] = []
@@ -903,6 +906,9 @@ public struct AgentItem: Identifiable, Equatable {
                 // between tool calls.
                 flush()
                 out.append(AgentItem(id: b.id, block: b))
+            case .done where b.durationMs < doneShownFromMs:
+                // A quick reply doesn't need to say how long it took.
+                continue
             case .thinking:
                 // Silent thinking between tool calls folds into the run.
                 if !run.isEmpty { continue }
@@ -949,6 +955,8 @@ struct AgentItemView: View, Equatable {
                 SubagentCard(block: b, session: session)
             case .note:
                 NoteRow(block: b, session: session)
+            case .done:
+                DoneRow(block: b)
             default:
                 EmptyView()
             }
@@ -1449,6 +1457,41 @@ struct TranscriptTail: View {
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.72), value: session.pendingSends.count)
         .animation(.easeOut(duration: 0.25), value: session.working)
+    }
+}
+
+/// A turn's end, as Claude Code says it: "Worked for 30m 31s · done 9:47 AM".
+struct DoneRow: View {
+    let block: AgentBlock
+    @Environment(\.agentFonts) private var fonts
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkle")
+            Text(Self.words(durationMs: block.durationMs, doneUnixMs: block.timeUnixMs))
+        }
+        .font(fonts.body(0.88))
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Worked for 30m 31s · done 9:47 AM", with the day too when it wasn't today.
+    static func words(durationMs: Int64, doneUnixMs: Int64, now: Date = .now) -> String {
+        var s = "Worked for " + duration(ms: durationMs)
+        if doneUnixMs > 0 {
+            let done = Date(timeIntervalSince1970: TimeInterval(doneUnixMs) / 1000)
+            let same = Calendar.current.isDate(done, inSameDayAs: now)
+            s += " · done " + done.formatted(date: same ? .omitted : .abbreviated, time: .shortened)
+        }
+        return s
+    }
+
+    /// "45s", "30m 31s", "2h 5m".
+    static func duration(ms: Int64) -> String {
+        let s = max(Int(ms / 1000), 0)
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s / 60)m \(s % 60)s" }
+        return "\(s / 3600)h \((s % 3600) / 60)m"
     }
 }
 

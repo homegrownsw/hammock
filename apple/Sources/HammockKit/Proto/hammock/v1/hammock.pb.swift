@@ -4750,51 +4750,105 @@ public nonisolated struct Hammock_V1_SessionResumed: Sendable {
   public init() {}
 }
 
-public nonisolated struct Hammock_V1_AgentBlock: Sendable {
+public nonisolated struct Hammock_V1_AgentBlock: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   /// stable across updates
-  public var id: String = String()
+  public var id: String {
+    get {_storage._id}
+    set {_uniqueStorage()._id = newValue}
+  }
 
-  public var kind: Hammock_V1_AgentBlock.Kind = .unspecified
+  public var kind: Hammock_V1_AgentBlock.Kind {
+    get {_storage._kind}
+    set {_uniqueStorage()._kind = newValue}
+  }
 
-  public var timeUnixMs: Int64 = 0
+  public var timeUnixMs: Int64 {
+    get {_storage._timeUnixMs}
+    set {_uniqueStorage()._timeUnixMs = newValue}
+  }
 
   /// markdown, thinking text, or the plan
-  public var text: String = String()
+  public var text: String {
+    get {_storage._text}
+    set {_uniqueStorage()._text = newValue}
+  }
 
   /// native tool name
-  public var tool: String = String()
+  public var tool: String {
+    get {_storage._tool}
+    set {_uniqueStorage()._tool = newValue}
+  }
 
   /// one line: "Ran `go test ./...`", "Edited AppModel.swift"
-  public var title: String = String()
+  public var title: String {
+    get {_storage._title}
+    set {_uniqueStorage()._title = newValue}
+  }
 
   /// the call's main input (command, path, pattern, prompt)
-  public var input: String = String()
+  public var input: String {
+    get {_storage._input}
+    set {_uniqueStorage()._input = newValue}
+  }
 
   /// result text, clipped
-  public var output: String = String()
+  public var output: String {
+    get {_storage._output}
+    set {_uniqueStorage()._output = newValue}
+  }
 
-  public var error: Bool = false
+  public var error: Bool {
+    get {_storage._error}
+    set {_uniqueStorage()._error = newValue}
+  }
 
   /// called, no result yet
-  public var pending: Bool = false
+  public var pending: Bool {
+    get {_storage._pending}
+    set {_uniqueStorage()._pending = newValue}
+  }
 
   /// unified diff for edits and writes
-  public var diff: String = String()
+  public var diff: String {
+    get {_storage._diff}
+    set {_uniqueStorage()._diff = newValue}
+  }
 
-  public var added: Int32 = 0
+  public var added: Int32 {
+    get {_storage._added}
+    set {_uniqueStorage()._added = newValue}
+  }
 
-  public var removed: Int32 = 0
+  public var removed: Int32 {
+    get {_storage._removed}
+    set {_uniqueStorage()._removed = newValue}
+  }
 
-  public var questions: [Hammock_V1_AgentQuestion] = []
+  public var questions: [Hammock_V1_AgentQuestion] {
+    get {_storage._questions}
+    set {_uniqueStorage()._questions = newValue}
+  }
 
-  public var images: [Hammock_V1_AgentImage] = []
+  public var images: [Hammock_V1_AgentImage] {
+    get {_storage._images}
+    set {_uniqueStorage()._images = newValue}
+  }
 
   /// the user block that started this turn
-  public var turnID: String = String()
+  public var turnID: String {
+    get {_storage._turnID}
+    set {_uniqueStorage()._turnID = newValue}
+  }
+
+  /// KIND_DONE: how long the turn worked, as the agent timed it
+  public var durationMs: Int64 {
+    get {_storage._durationMs}
+    set {_uniqueStorage()._durationMs = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4823,6 +4877,9 @@ public nonisolated struct Hammock_V1_AgentBlock: Sendable {
 
     /// compaction markers, interruptions, system notes
     case note // = 8
+
+    /// a turn finished: time_unix_ms when, duration_ms how long it worked
+    case done // = 9
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -4840,6 +4897,7 @@ public nonisolated struct Hammock_V1_AgentBlock: Sendable {
       case 6: self = .plan
       case 7: self = .subagent
       case 8: self = .note
+      case 9: self = .done
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -4855,6 +4913,7 @@ public nonisolated struct Hammock_V1_AgentBlock: Sendable {
       case .plan: return 6
       case .subagent: return 7
       case .note: return 8
+      case .done: return 9
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -4870,11 +4929,14 @@ public nonisolated struct Hammock_V1_AgentBlock: Sendable {
       .plan,
       .subagent,
       .note,
+      .done,
     ]
 
   }
 
   public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Hammock_V1_AgentQuestion: Sendable {
@@ -18071,111 +18133,184 @@ nonisolated extension Hammock_V1_SessionResumed: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Hammock_V1_AgentBlock: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentBlock"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}kind\0\u{3}time_unix_ms\0\u{1}text\0\u{1}tool\0\u{1}title\0\u{1}input\0\u{1}output\0\u{1}error\0\u{1}pending\0\u{1}diff\0\u{1}added\0\u{1}removed\0\u{1}questions\0\u{1}images\0\u{3}turn_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}kind\0\u{3}time_unix_ms\0\u{1}text\0\u{1}tool\0\u{1}title\0\u{1}input\0\u{1}output\0\u{1}error\0\u{1}pending\0\u{1}diff\0\u{1}added\0\u{1}removed\0\u{1}questions\0\u{1}images\0\u{3}turn_id\0\u{3}duration_ms\0")
+
+  fileprivate class _StorageClass {
+    var _id: String = String()
+    var _kind: Hammock_V1_AgentBlock.Kind = .unspecified
+    var _timeUnixMs: Int64 = 0
+    var _text: String = String()
+    var _tool: String = String()
+    var _title: String = String()
+    var _input: String = String()
+    var _output: String = String()
+    var _error: Bool = false
+    var _pending: Bool = false
+    var _diff: String = String()
+    var _added: Int32 = 0
+    var _removed: Int32 = 0
+    var _questions: [Hammock_V1_AgentQuestion] = []
+    var _images: [Hammock_V1_AgentImage] = []
+    var _turnID: String = String()
+    var _durationMs: Int64 = 0
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _id = source._id
+      _kind = source._kind
+      _timeUnixMs = source._timeUnixMs
+      _text = source._text
+      _tool = source._tool
+      _title = source._title
+      _input = source._input
+      _output = source._output
+      _error = source._error
+      _pending = source._pending
+      _diff = source._diff
+      _added = source._added
+      _removed = source._removed
+      _questions = source._questions
+      _images = source._images
+      _turnID = source._turnID
+      _durationMs = source._durationMs
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
-      case 2: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
-      case 3: try { try decoder.decodeSingularInt64Field(value: &self.timeUnixMs) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.text) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.tool) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.title) }()
-      case 7: try { try decoder.decodeSingularStringField(value: &self.input) }()
-      case 8: try { try decoder.decodeSingularStringField(value: &self.output) }()
-      case 9: try { try decoder.decodeSingularBoolField(value: &self.error) }()
-      case 10: try { try decoder.decodeSingularBoolField(value: &self.pending) }()
-      case 11: try { try decoder.decodeSingularStringField(value: &self.diff) }()
-      case 12: try { try decoder.decodeSingularInt32Field(value: &self.added) }()
-      case 13: try { try decoder.decodeSingularInt32Field(value: &self.removed) }()
-      case 14: try { try decoder.decodeRepeatedMessageField(value: &self.questions) }()
-      case 15: try { try decoder.decodeRepeatedMessageField(value: &self.images) }()
-      case 16: try { try decoder.decodeSingularStringField(value: &self.turnID) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._id) }()
+        case 2: try { try decoder.decodeSingularEnumField(value: &_storage._kind) }()
+        case 3: try { try decoder.decodeSingularInt64Field(value: &_storage._timeUnixMs) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._text) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._tool) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._input) }()
+        case 8: try { try decoder.decodeSingularStringField(value: &_storage._output) }()
+        case 9: try { try decoder.decodeSingularBoolField(value: &_storage._error) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._pending) }()
+        case 11: try { try decoder.decodeSingularStringField(value: &_storage._diff) }()
+        case 12: try { try decoder.decodeSingularInt32Field(value: &_storage._added) }()
+        case 13: try { try decoder.decodeSingularInt32Field(value: &_storage._removed) }()
+        case 14: try { try decoder.decodeRepeatedMessageField(value: &_storage._questions) }()
+        case 15: try { try decoder.decodeRepeatedMessageField(value: &_storage._images) }()
+        case 16: try { try decoder.decodeSingularStringField(value: &_storage._turnID) }()
+        case 17: try { try decoder.decodeSingularInt64Field(value: &_storage._durationMs) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.id.isEmpty {
-      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
-    }
-    if self.kind != .unspecified {
-      try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 2)
-    }
-    if self.timeUnixMs != 0 {
-      try visitor.visitSingularInt64Field(value: self.timeUnixMs, fieldNumber: 3)
-    }
-    if !self.text.isEmpty {
-      try visitor.visitSingularStringField(value: self.text, fieldNumber: 4)
-    }
-    if !self.tool.isEmpty {
-      try visitor.visitSingularStringField(value: self.tool, fieldNumber: 5)
-    }
-    if !self.title.isEmpty {
-      try visitor.visitSingularStringField(value: self.title, fieldNumber: 6)
-    }
-    if !self.input.isEmpty {
-      try visitor.visitSingularStringField(value: self.input, fieldNumber: 7)
-    }
-    if !self.output.isEmpty {
-      try visitor.visitSingularStringField(value: self.output, fieldNumber: 8)
-    }
-    if self.error != false {
-      try visitor.visitSingularBoolField(value: self.error, fieldNumber: 9)
-    }
-    if self.pending != false {
-      try visitor.visitSingularBoolField(value: self.pending, fieldNumber: 10)
-    }
-    if !self.diff.isEmpty {
-      try visitor.visitSingularStringField(value: self.diff, fieldNumber: 11)
-    }
-    if self.added != 0 {
-      try visitor.visitSingularInt32Field(value: self.added, fieldNumber: 12)
-    }
-    if self.removed != 0 {
-      try visitor.visitSingularInt32Field(value: self.removed, fieldNumber: 13)
-    }
-    if !self.questions.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.questions, fieldNumber: 14)
-    }
-    if !self.images.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.images, fieldNumber: 15)
-    }
-    if !self.turnID.isEmpty {
-      try visitor.visitSingularStringField(value: self.turnID, fieldNumber: 16)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      if !_storage._id.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._id, fieldNumber: 1)
+      }
+      if _storage._kind != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._kind, fieldNumber: 2)
+      }
+      if _storage._timeUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._timeUnixMs, fieldNumber: 3)
+      }
+      if !_storage._text.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._text, fieldNumber: 4)
+      }
+      if !_storage._tool.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._tool, fieldNumber: 5)
+      }
+      if !_storage._title.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 6)
+      }
+      if !_storage._input.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._input, fieldNumber: 7)
+      }
+      if !_storage._output.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._output, fieldNumber: 8)
+      }
+      if _storage._error != false {
+        try visitor.visitSingularBoolField(value: _storage._error, fieldNumber: 9)
+      }
+      if _storage._pending != false {
+        try visitor.visitSingularBoolField(value: _storage._pending, fieldNumber: 10)
+      }
+      if !_storage._diff.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._diff, fieldNumber: 11)
+      }
+      if _storage._added != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._added, fieldNumber: 12)
+      }
+      if _storage._removed != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._removed, fieldNumber: 13)
+      }
+      if !_storage._questions.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._questions, fieldNumber: 14)
+      }
+      if !_storage._images.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._images, fieldNumber: 15)
+      }
+      if !_storage._turnID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._turnID, fieldNumber: 16)
+      }
+      if _storage._durationMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._durationMs, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_AgentBlock, rhs: Hammock_V1_AgentBlock) -> Bool {
-    if lhs.id != rhs.id {return false}
-    if lhs.kind != rhs.kind {return false}
-    if lhs.timeUnixMs != rhs.timeUnixMs {return false}
-    if lhs.text != rhs.text {return false}
-    if lhs.tool != rhs.tool {return false}
-    if lhs.title != rhs.title {return false}
-    if lhs.input != rhs.input {return false}
-    if lhs.output != rhs.output {return false}
-    if lhs.error != rhs.error {return false}
-    if lhs.pending != rhs.pending {return false}
-    if lhs.diff != rhs.diff {return false}
-    if lhs.added != rhs.added {return false}
-    if lhs.removed != rhs.removed {return false}
-    if lhs.questions != rhs.questions {return false}
-    if lhs.images != rhs.images {return false}
-    if lhs.turnID != rhs.turnID {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._id != rhs_storage._id {return false}
+        if _storage._kind != rhs_storage._kind {return false}
+        if _storage._timeUnixMs != rhs_storage._timeUnixMs {return false}
+        if _storage._text != rhs_storage._text {return false}
+        if _storage._tool != rhs_storage._tool {return false}
+        if _storage._title != rhs_storage._title {return false}
+        if _storage._input != rhs_storage._input {return false}
+        if _storage._output != rhs_storage._output {return false}
+        if _storage._error != rhs_storage._error {return false}
+        if _storage._pending != rhs_storage._pending {return false}
+        if _storage._diff != rhs_storage._diff {return false}
+        if _storage._added != rhs_storage._added {return false}
+        if _storage._removed != rhs_storage._removed {return false}
+        if _storage._questions != rhs_storage._questions {return false}
+        if _storage._images != rhs_storage._images {return false}
+        if _storage._turnID != rhs_storage._turnID {return false}
+        if _storage._durationMs != rhs_storage._durationMs {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 nonisolated extension Hammock_V1_AgentBlock.Kind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KIND_UNSPECIFIED\0\u{1}KIND_USER\0\u{1}KIND_TEXT\0\u{1}KIND_THINKING\0\u{1}KIND_TOOL\0\u{1}KIND_QUESTION\0\u{1}KIND_PLAN\0\u{1}KIND_SUBAGENT\0\u{1}KIND_NOTE\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KIND_UNSPECIFIED\0\u{1}KIND_USER\0\u{1}KIND_TEXT\0\u{1}KIND_THINKING\0\u{1}KIND_TOOL\0\u{1}KIND_QUESTION\0\u{1}KIND_PLAN\0\u{1}KIND_SUBAGENT\0\u{1}KIND_NOTE\0\u{1}KIND_DONE\0")
 }
 
 nonisolated extension Hammock_V1_AgentQuestion: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

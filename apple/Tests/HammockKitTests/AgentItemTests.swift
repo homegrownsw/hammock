@@ -30,6 +30,26 @@ final class AgentItemTests: XCTestCase {
         let items = AgentItem.group([tool("a"), think("s", ""), tool("b"), think("n", "Committing now."), tool("c")])
         XCTAssertEqual(items.map(\.id), ["g:a", "n", "g:c"])
     }
+
+    func testOnlyLongTurnsSayHowLongTheyWorked() {
+        let done: (String, Int64) -> AgentBlock = { id, ms in .with { $0.id = id; $0.kind = .done; $0.durationMs = ms } }
+        let text: (String) -> AgentBlock = { id in .with { $0.id = id; $0.kind = .text; $0.text = "Done." } }
+        let items = AgentItem.group([text("a"), done("quick", 4_000), text("b"), done("long", 1_831_000)])
+        XCTAssertEqual(items.map(\.id), ["a", "b", "long"])
+    }
+
+    func testDoneRowWords() {
+        XCTAssertEqual(DoneRow.duration(ms: 45_900), "45s")
+        XCTAssertEqual(DoneRow.duration(ms: 1_831_000), "30m 31s")
+        XCTAssertEqual(DoneRow.duration(ms: 7_500_000), "2h 5m")
+        let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 13, hour: 12, minute: 30))!
+        let ms = Int64(now.timeIntervalSince1970 * 1000)
+        XCTAssertEqual(DoneRow.words(durationMs: 1_831_000, doneUnixMs: ms, now: now),
+                       "Worked for 30m 31s · done " + now.formatted(date: .omitted, time: .shortened))
+        let earlier = now.addingTimeInterval(-3 * 86_400)
+        XCTAssertEqual(DoneRow.words(durationMs: 60_000, doneUnixMs: Int64(earlier.timeIntervalSince1970 * 1000), now: now),
+                       "Worked for 1m 0s · done " + earlier.formatted(date: .abbreviated, time: .shortened))
+    }
 }
 
 final class AttachmentTests: XCTestCase {

@@ -181,7 +181,8 @@ type ccLine struct {
 	IsSidechain bool            `json:"isSidechain"`
 	PasteIDs    []int           `json:"imagePasteIds"`
 	SessionID   string          `json:"sessionId"`
-	Content     string          `json:"content"` // system lines
+	Content     string          `json:"content"`    // system lines
+	DurationMs  int64           `json:"durationMs"` // a turn_duration line: how long the turn worked
 	Message     *ccMsg          `json:"message"`
 	ToolResult  json.RawMessage `json:"toolUseResult"`
 	// A pull request the session opened or pushed to ("pr-link" lines).
@@ -246,6 +247,10 @@ func (c *Claude) Feed(line []byte) []*pb.AgentBlock {
 	case "system":
 		if l.Subtype == "compact_boundary" {
 			return c.add(&pb.AgentBlock{Id: l.UUID, Kind: pb.AgentBlock_KIND_NOTE, TimeUnixMs: ms, Text: "Conversation compacted"})
+		}
+		// The turn's end, and how long it worked: Claude Code's "Worked for".
+		if l.Subtype == "turn_duration" && l.DurationMs > 0 {
+			return c.add(&pb.AgentBlock{Id: l.UUID, Kind: pb.AgentBlock_KIND_DONE, TimeUnixMs: ms, DurationMs: l.DurationMs})
 		}
 		return nil
 	case "user":

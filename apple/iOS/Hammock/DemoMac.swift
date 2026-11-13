@@ -592,6 +592,13 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         }
     }
 
+    /// A turn's end: how long it worked, done `minutesAgo`.
+    static func done(_ id: String, workedMinutes: Double, minutesAgo: Double) -> AgentBlock {
+        var b = block(id, .done, minutesAgo: minutesAgo)
+        b.durationMs = Int64(workedMinutes * 60_000)
+        return b
+    }
+
     /// Each agent's conversation so far.
     static func transcripts(now: Date) -> [String: [AgentBlock]] {
         [
@@ -602,12 +609,14 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 block("b4", .tool, title: "Wrote briefing.html", tool: "Write", input: "/Users/me/Notes/briefing.html", added: 86, minutesAgo: 97),
                 block("b5", .tool, title: "Showed briefing.html", tool: "mcp__hammock__show_output", input: "briefing.html", output: "Opened in a browser pane", minutesAgo: 96),
                 block("b6", .text, text: "Today’s briefing is in **briefing.html**:\n\n- **3 meetings.** The 1:1 with Sam moved to 15:00.\n- **2 Slack threads** need you: the launch checklist and Priya’s question about the API.\n- Nothing urgent in email.", minutesAgo: 95),
+                done("b7", workedMinutes: 4.6, minutesAgo: 95),
             ],
             "p_inbox": [
                 block("b1", .user, text: "Clear out my inbox: archive the newsletters, and draft replies to anything that needs one.", minutesAgo: 250),
                 block("b2", .tool, title: "Searched mail", tool: "mcp__mail__search", input: "in:inbox", output: "58 messages", minutesAgo: 249),
                 block("b3", .tool, title: "Archived 41 newsletters", tool: "mcp__mail__archive", input: "41 messages", minutesAgo: 246),
                 block("b4", .text, text: "Archived 41 newsletters and drafted two replies, to Priya about Thursday and to the landlord about the boiler. They’re in Drafts for you to check before they go.", minutesAgo: 240),
+                done("b5", workedMinutes: 9.8, minutesAgo: 240),
             ],
             "p_triage": [
                 block("b1", .user, text: "Label and prioritise new GitHub issues.", minutesAgo: 6),
@@ -627,6 +636,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 block("b2", .tool, title: "Ran `gh pr list`", input: "gh pr list --state merged --limit 50", output: "15 pull requests", minutesAgo: 57),
                 block("b3", .tool, title: "Wrote RELEASE_NOTES.md", tool: "Write", input: "RELEASE_NOTES.md", added: 34, minutesAgo: 52),
                 block("b4", .text, text: "Release notes for 1.8 are ready in **RELEASE_NOTES.md**: 12 fixes and 3 features, with the new offline mode first. I’ve opened a draft release for you to review.", minutesAgo: 51),
+                done("b5", workedMinutes: 6.9, minutesAgo: 51),
             ],
         ]
     }

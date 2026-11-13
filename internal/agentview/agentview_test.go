@@ -630,3 +630,20 @@ func TestClaudeBangCommandIsATool(t *testing.T) {
 		t.Fatalf("one line, interrupted: %v", bs)
 	}
 }
+
+// A turn's end, with how long it worked: Claude Code's "Worked for 30m 31s".
+func TestClaudeTurnDurationEndsTheTurn(t *testing.T) {
+	c := NewClaude("/tmp")
+	c.Feed([]byte(`{"type":"user","uuid":"u1","timestamp":"2026-11-13T09:16:00Z","message":{"role":"user","content":"Fix it"}}`))
+	c.Feed([]byte(`{"type":"system","subtype":"turn_duration","uuid":"d1","durationMs":1831000,"messageCount":32,"timestamp":"2026-11-13T09:47:00Z"}`))
+	c.Feed([]byte(`{"type":"system","subtype":"turn_duration","uuid":"d2","timestamp":"2026-11-13T09:48:00Z"}`)) // no duration: nothing
+	bs := c.Blocks()
+	if len(bs) != 2 {
+		t.Fatalf("got %d blocks: %v", len(bs), bs)
+	}
+	d := bs[1]
+	if d.Kind != pb.AgentBlock_KIND_DONE || d.DurationMs != 1831000 || d.TurnId != "u1" ||
+		d.TimeUnixMs != time.Date(2026, 11, 13, 9, 47, 0, 0, time.UTC).UnixMilli() {
+		t.Fatalf("got %v", d)
+	}
+}
