@@ -203,8 +203,12 @@ func (s *mcpServer) waitLoaded(ctx context.Context, pane string, timeout time.Du
 	}
 }
 
+// markPage marks the page, so waitLoaded knows it's gone once another loads.
+// Going back or forward can bring a page back from Chromium's back/forward
+// cache as it was, mark and all, and without loading it: its pageshow
+// (persisted) unmarks it, or waitLoaded took it for the page it left.
 func (s *mcpServer) markPage(ctx context.Context, pane string) {
-	_ = s.eval(ctx, pane, `window.__hammockNav = 1`, nil)
+	_ = s.eval(ctx, pane, `window.__hammockNav || addEventListener('pageshow', e => { if (e.persisted) window.__hammockNav = 0 }); window.__hammockNav = 1`, nil)
 }
 
 // settle gives a click or key press a moment to start a navigation, and
