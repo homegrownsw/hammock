@@ -767,6 +767,8 @@ enum CloseGuard {
         alert.addButton(withTitle: button)
         alert.addButton(withTitle: "Cancel")
         alert.buttons[0].hasDestructiveAction = true
+        // A destructive button loses Return; this one is what Close asked for.
+        alert.buttons[0].keyEquivalent = "\r"
         let done: (NSApplication.ModalResponse) -> Void = { r in
             if alert.suppressionButton?.state == .on { Prefs.shared.set(pref, false) }
             if r == .alertFirstButtonReturn { then() }
