@@ -88,8 +88,8 @@ struct MiniWindow: View {
             HStack(spacing: 0) {
                 sidebar.frame(width: max(w * 0.3, 30))
                 VStack(spacing: 0) {
-                    // Spacious: the whole tab, toolbar too, the sidebar's colour.
-                    (options.spacious ? look.sidebar.opacity(look.sidebarAlpha) : look.toolbar).frame(height: 9)
+                    // The whole tab, toolbar too, the sidebar's colour, compact or spacious.
+                    look.sidebar.opacity(look.sidebarAlpha).frame(height: 9)
                     if options.layout == .horizontal { tabBar }
                     panes
                 }

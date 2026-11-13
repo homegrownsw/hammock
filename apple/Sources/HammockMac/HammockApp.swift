@@ -129,8 +129,8 @@ struct HammockApp: App {
         }
         .handlesExternalEvents(matching: ["*"])
         .windowToolbarStyle(.unified)
-        // The toolbar's empty space drags the window (ToolbarBand lets clicks
-        // through to it).
+        // The toolbar's empty space drags the window (the views under it let
+        // clicks through).
         .windowBackgroundDragBehavior(.enabled)
         .commands {
             // Shortcuts are Keys' (Shortcuts.swift), which the palette shows too.
@@ -545,11 +545,12 @@ struct ContentView: View {
                     TabDetailView(model: model, tab: tab)
                         .id(tab.id)
                 }
-                // Spacious spacing: the whole tab, toolbar and all, on an
-                // empty Group's background (the sidebar's glass and tint),
-                // the panes as cards on it. Compact: the panes fill the tab,
-                // under a toolbar band.
-                .modifier(TabBackground(spacious: PaneLook.spacious))
+                // The whole tab, toolbar and all, on an empty Group's
+                // background (the sidebar's glass and tint), whatever the
+                // pane spacing: compact's panes cover it below the toolbar,
+                // spacious's sit on it as cards. The toolbar, and the sidebar
+                // over it, look the same either way.
+                .emptyDetailBackground()
             } else if let group = model.selectedEmptyGroup {
                 EmptyGroupView(model: model, group: group)
                     .id(group.id)
@@ -568,7 +569,7 @@ struct ContentView: View {
         }
         // AppKit's toolbar background stays on: on macOS 26 it's what blurs the
         // sidebar's rows as they scroll under the window's buttons (hidden,
-        // the whole window lost it). ToolbarBand draws over it above the panes.
+        // the whole window lost it).
         // Hidden, it comes in from the window's left edge.
         .overlay(alignment: .leading) {
             if sidebarHidden { SidebarPeek(model: model) }
@@ -678,27 +679,16 @@ struct WorkspaceWindow: NSViewRepresentable {
     func updateNSView(_ v: Marker, context: Context) {}
 }
 
-/// With no tab selected, the detail is the sidebar's colour (its glass and
-/// tint), not the window's, so the window reads as one surface until a tab opens.
+/// The detail, a tab or none, on the sidebar's colour (its glass and tint),
+/// not the window's, so the window and its toolbar read as one surface. The
+/// tint twice: the sidebar's glass floats over this, so it's tinted twice
+/// too, and with it once the toolbar came out paler (in dark mode, clearly).
 extension View {
     func emptyDetailBackground() -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                ZStack { SidebarGlass(); SidebarTint() }.ignoresSafeArea()
+                ZStack { SidebarGlass(); SidebarTint(); SidebarTint() }.ignoresSafeArea()
             }
-    }
-}
-
-/// A selected tab's backdrop: see the detail column above.
-struct TabBackground: ViewModifier {
-    let spacious: Bool
-
-    func body(content: Content) -> some View {
-        if spacious {
-            content.emptyDetailBackground()
-        } else {
-            content.overlay(alignment: .top) { ToolbarBand() }
-        }
     }
 }
 
@@ -706,29 +696,10 @@ struct TabBackground: ViewModifier {
 /// (or, floating over the panes, with them: the peek sidebar).
 struct SidebarGlass: NSViewRepresentable {
     var blending: NSVisualEffectView.BlendingMode = .behindWindow
-
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
         v.material = .sidebar
         v.blendingMode = blending
-        v.state = .followsWindowActiveState
-        return v
-    }
-
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
-}
-
-/// AppKit's own titlebar material, so the band matches a native toolbar.
-struct TitlebarMaterial: NSViewRepresentable {
-    /// Only drawn: clicks pass to the window's background, which drags it.
-    final class Band: NSVisualEffectView {
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    }
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = Band()
-        v.material = .titlebar
-        v.blendingMode = .withinWindow
         v.state = .followsWindowActiveState
         return v
     }
@@ -751,28 +722,6 @@ private struct SharingHooks: ViewModifier {
         content
             .onChange(of: model.focusedPaneID) { presence() }
             .onChange(of: model.myUserID, initial: true) { seed() }
-    }
-}
-
-/// The toolbar's band over the detail column, drawn over AppKit's: its
-/// titlebar material, the toolbar's height, with a hairline under it,
-/// starting exactly where the panes do.
-struct ToolbarBand: View {
-    @Environment(\.displayScale) private var scale
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        GeometryReader { g in
-            TitlebarMaterial()
-                // The window theme's toolbar colour, nearly solid over it.
-                .overlay { AppConfig.shared.toolbarTint(dark: scheme == .dark).map { Color(nsColor: $0).opacity(0.9) } }
-                .frame(height: g.safeAreaInsets.top)
-                .overlay(alignment: .bottom) {
-                    Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / scale)
-                }
-                .ignoresSafeArea(edges: .top)
-        }
-        .allowsHitTesting(false)
     }
 }
 

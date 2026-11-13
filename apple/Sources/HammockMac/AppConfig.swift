@@ -656,7 +656,7 @@ final class AppConfig {
         return (.windowBackgroundColor, opacity)
     }
 
-    /// The toolbar band's tint over its material, if any.
+    /// The theme's toolbar colour, if any: toasts' and notification cards' surface.
     func toolbarTint(dark: Bool) -> NSColor? {
         (toolbarColor ?? windowTheme.toolbar).map { dark ? $0.dark : $0.light }
     }

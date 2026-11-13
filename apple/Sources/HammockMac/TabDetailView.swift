@@ -30,7 +30,8 @@ struct TabDetailView: View {
         .onChange(of: model.focusedPaneID) { _, id in if let id { PaneZoom.shared.follow(id, in: tab) } }
             // Compact: the hairlines between panes. Spacious: the panes sit
             // on the tab's background (HammockApp's detail: an empty Group's).
-            .background(PaneLook.spacious ? Color.clear : Color(nsColor: .separatorColor))
+            // Not under the toolbar, which shows that background either way.
+            .background(PaneLook.spacious ? Color.clear : Color(nsColor: .separatorColor), ignoresSafeAreaEdges: [])
             .navigationTitle(model.title(of: tab))
             .navigationSubtitle(subtitle)
             .toolbar {

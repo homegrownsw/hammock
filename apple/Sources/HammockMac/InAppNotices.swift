@@ -167,7 +167,7 @@ private struct InAppNoticeCard: View {
     let notice: InAppNotice
     @State private var hovering = false
     @Environment(\.colorScheme) private var scheme
-    /// The theme's toolbar colour over the material, as the toolbar band has it,
+    /// The theme's toolbar colour over the material,
     /// so the card looks like part of the window.
     private var tint: Color? { AppConfig.shared.toolbarTint(dark: scheme == .dark).map { Color(nsColor: $0).opacity(0.9) } }
     private static let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)

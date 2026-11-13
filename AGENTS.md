@@ -45,7 +45,7 @@ Open work, follow-ups and bugs are GitHub issues on `homegrownsw/hammock` (use `
 ## SwiftUI on the Mac
 
 - **List rows:** `.listRowBackground` and `.listRowInsets` go outermost on a row; wrapped by later modifiers (gestures, `onGeometryChange`), the List stops seeing them. A gesture on a row must not take the List's click (selection): select explicitly or use `simultaneousGesture`. The List doesn't animate rows changing place, and doesn't draw a row outside its own bounds.
-- **The toolbar band** is Hammock's own (`ToolbarBand`, AppKit's titlebar background is off): views under the toolbar must let clicks through, so the window still drags from there.
+- **Under the toolbar** is the detail's own backdrop (the sidebar's glass and tint, `emptyDetailBackground`), the same for either pane spacing: views under the toolbar must let clicks through, so the window still drags from there.
 
 ## Checking UI without a person
 
