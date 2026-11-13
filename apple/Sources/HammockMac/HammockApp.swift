@@ -680,14 +680,14 @@ struct WorkspaceWindow: NSViewRepresentable {
 }
 
 /// The detail, a tab or none, on the sidebar's colour (its glass and tint),
-/// not the window's, so the window and its toolbar read as one surface. The
-/// tint twice: the sidebar's glass floats over this, so it's tinted twice
-/// too, and with it once the toolbar came out paler (in dark mode, clearly).
+/// not the window's, so the window and its toolbar read as one surface. Not
+/// under the sidebar, which floats over the detail (macOS 26): seen through
+/// its glass, it made the sidebar more saturated than the toolbar beside it.
 extension View {
     func emptyDetailBackground() -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                ZStack { SidebarGlass(); SidebarTint(); SidebarTint() }.ignoresSafeArea()
+                ZStack { SidebarGlass(); SidebarTint() }.ignoresSafeArea(edges: [.top, .bottom, .trailing])
             }
     }
 }
