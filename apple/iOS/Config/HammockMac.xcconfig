@@ -1,5 +1,5 @@
-// The Mac app's build settings (both configurations), for Xcode Cloud and
-// archiving in Xcode. Day to day the Mac app is built by `just mac-app` and
+// The Mac app's build settings (both configurations), for building and
+// archiving it in Xcode. Day to day the Mac app is built by `just mac-app` and
 // `just mac-dev` (scripts/build-mac-app.sh), which make the same bundle.
 
 #include "Version.xcconfig"

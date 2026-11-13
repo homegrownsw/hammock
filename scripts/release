@@ -22,29 +22,32 @@
 #          notarizes it, and makes the appcast with the notes in it (scripts/mac-update build); a failure
 #          there takes the release commit and tag back. After the push it publishes the update as a GitHub
 #          Release (scripts/mac-update upload), where Sparkle finds it.
-#   ios    apple/iOS/TestFlight/WhatToTest.<locale>.txt (Xcode Cloud reads it from the tagged commit), tag
-#          iOS-v<x.y.z>-r<n>; the tag starts Xcode Cloud's TestFlight build.
+#   ios    apple/iOS/TestFlight/WhatToTest.<locale>.txt, tag iOS-v<x.y.z>-r<n>. Before anything is pushed it
+#          archives the tagged commit and exports it signed for App Store Connect (scripts/ios-testflight
+#          build); a failure there takes the release back. After the push it uploads the build to TestFlight
+#          with What to Test (scripts/ios-testflight upload).
 #   apple  both, in one release commit carrying both tags.
 #
 # An app moving on from a version gets that version's summary, release-notes/<app>/v<old>.md, in the commit.
 #
 # n in r<n> is the release commit's number on main (scripts/commit-number), which is also the Mac build's
-# CFBundleVersion: Mac-v2026.1.0-r615 is build 615, and an iOS release cut alongside it is r615 too. Each cut
-# makes a commit, so no two releases share a number. The iOS build number is still Xcode Cloud's
-# CI_BUILD_NUMBER, which App Store Connect insists on.
+# CFBundleVersion, the Mac's and the iPhone's: Mac-v2026.1.0-r615 is build 615, and an iOS release cut
+# alongside it is r615 too. Each cut makes a commit, so no two releases share a number.
 #
 # With arguments, every confirmation counts as yes and the edge cases fail instead of asking. Runs from a
 # clean checkout exactly level with origin/main (require_level_with_origin_main).
 #
 # HMK_RELEASE_DRYRUN=1 prints the plan (the notes each release would carry, the notes it would move, the
 # tags, the versions) and changes nothing, skipping the preflight so it runs anywhere.
-# HMK_RELEASE_MAC_UPDATE names a stand-in for scripts/mac-update (the tests use one); HMK_RELEASE_YEAR the year.
+# HMK_RELEASE_MAC_UPDATE and HMK_RELEASE_IOS_TESTFLIGHT name stand-ins for scripts/mac-update and
+# scripts/ios-testflight (the tests use them); HMK_RELEASE_YEAR the year.
 set -euo pipefail
 shopt -s nullglob
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRYRUN="${HMK_RELEASE_DRYRUN:-}"
 MAC_UPDATE="${HMK_RELEASE_MAC_UPDATE:-$ROOT/scripts/mac-update}"
+IOS_TESTFLIGHT="${HMK_RELEASE_IOS_TESTFLIGHT:-$ROOT/scripts/ios-testflight}"
 
 # shellcheck source=lib/release-notes.sh
 . "$ROOT/scripts/lib/release-notes.sh"
@@ -60,8 +63,8 @@ esac
 shift
 has() { [[ " $PLATFORMS " == *" $1 "* ]]; }
 
-# iOS: Xcode Cloud reads TestFlight/WhatToTest.<locale>.txt next to the project, one per TestFlight
-# language, and takes 4000 characters. Sparkle takes HTML, with no limit to speak of.
+# iOS: TestFlight/WhatToTest.<locale>.txt next to the project, one per TestFlight language (the upload sends
+# each), at most 4000 characters. Sparkle takes HTML, with no limit to speak of.
 IOS_NOTES_DIR="$ROOT/apple/iOS/TestFlight"
 IOS_NOTES_LOCALES="en-GB en-US"
 
@@ -279,6 +282,7 @@ render_consolidated() { # render_consolidated <platform> <version>
 
 # ---- do it (or, in a dry run, say what would happen) -------------------------------------------------------
 UPLOAD_RESULT=""
+IOS_RESULT=""
 if [ -n "$DRYRUN" ]; then
   for p in $PLATFORMS; do
     echo
@@ -301,11 +305,16 @@ if [ -n "$DRYRUN" ]; then
   done <<<"$FINISHED"
   echo "[dry run] commit '${RELEASE_MSG}' and tag it ${TAGS// / and }"
   if has mac; then echo "[dry run] build Hammock $(get_var VER mac) (${N}) from it, notarize it and make its appcast (scripts/mac-update build)"; fi
+  if has ios; then echo "[dry run] archive the iPhone's $(get_var VER ios) (${N}) from it, signed for App Store Connect (scripts/ios-testflight build)"; fi
   echo "[dry run] push main and ${TAGS// / and } together"
   if has mac; then echo "[dry run] upload the update (scripts/mac-update upload ${N})"; fi
+  if has ios; then echo "[dry run] upload the iPhone's build to TestFlight (scripts/ios-testflight upload ${N})"; fi
 else
   if [ "$NONINTERACTIVE" != 1 ]; then
-    gum confirm "Freeze the notes, commit, tag ${TAGS// / and }$(has mac && echo ", build the Mac app") and push?" ||
+    building=""
+    if has mac; then building+=", build the Mac app"; fi
+    if has ios; then building+=", build the iPhone app"; fi
+    gum confirm "Freeze the notes, commit, tag ${TAGS// / and }${building} and push?" ||
       { echo "Stopped."; exit 1; }
   fi
   START=$(git -C "$ROOT" rev-parse HEAD)
@@ -344,12 +353,13 @@ else
     for t in $TAGS; do git -C "$ROOT" tag -d "$t" >/dev/null 2>&1 || true; done
     git -C "$ROOT" reset -q --hard "$START"
     if has mac; then "$MAC_UPDATE" discard "$N" || true; fi
+    if has ios; then "$IOS_TESTFLIGHT" discard "$N" || true; fi
     echo "Nothing was published; the release commit and tags (${TAGS}) are gone." >&2
   }
   trap undo EXIT
   for t in $TAGS; do git -C "$ROOT" tag "$t"; done
-  RELEASE_SHA=$(git -C "$ROOT" rev-parse HEAD)
   if has mac; then "$MAC_UPDATE" build "$N" "$MAC_NOTES"; fi
+  if has ios; then "$IOS_TESTFLIGHT" build "$N"; fi
   # One atomic push, so main and the tags arrive together or not at all.
   refs=()
   for t in $TAGS; do refs+=("refs/tags/$t"); done
@@ -365,6 +375,13 @@ else
       UPLOAD_RESULT="uploaded; installed copies will be offered it"
     else
       UPLOAD_RESULT="NOT uploaded (see above); the release is cut. Retry: scripts/mac-update upload ${N}"
+    fi
+  fi
+  if has ios; then
+    if "$IOS_TESTFLIGHT" upload "$N"; then
+      IOS_RESULT="uploaded to TestFlight"
+    else
+      IOS_RESULT="NOT uploaded (see above); the release is cut. Retry: scripts/ios-testflight upload ${N}"
     fi
   fi
 fi
@@ -384,8 +401,8 @@ for p in $PLATFORMS; do
       if [ -n "$UPLOAD_RESULT" ]; then echo "Mac update:    ${UPLOAD_RESULT}"; fi
       ;;
     ios)
-      echo "iOS build:     Xcode Cloud's number, when it builds"
-      if [ -z "$DRYRUN" ]; then echo "  → in App Store Connect, the build of commit $(git -C "$ROOT" rev-parse --short "$RELEASE_SHA")"; fi
+      echo "iOS build:     ${N}"
+      if [ -n "$IOS_RESULT" ]; then echo "TestFlight:    ${IOS_RESULT}"; fi
       ;;
   esac
 done

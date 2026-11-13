@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# The iPhone app's TestFlight builds, for scripts/release (release-notes/README.md), made on this Mac:
+#
+#   scripts/ios-testflight build <n>     archive the iPhone app at HEAD (build number n, which must be HEAD's
+#                                        number on main, tagged iOS-v<x.y.z>-r<n>), and export it signed for
+#                                        App Store Connect, to dist/testflight/<n>/Hammock.ipa
+#   scripts/ios-testflight upload <n>    upload that build to TestFlight, with What to Test from
+#                                        apple/iOS/TestFlight/WhatToTest.<locale>.txt
+#   scripts/ios-testflight discard <n>   forget a build n that was made but never uploaded
+#
+# The build number is the release's r<n>, main's commit count, as for the Mac: App Store Connect only asks
+# that it goes up within a version, and the count only goes up. An upload that fails can be retried as it is;
+# one App Store Connect took can't be taken back, so release builds and checks before the push, and uploads
+# after it.
+#
+# Signing: the archive is signed for development (Apple Development, with automatic signing) and the export
+# re-signs it for distribution with Xcode's cloud-managed certificate, so this Mac needs no Apple Distribution
+# certificate. Both talk to Apple with the App Store Connect API key (marketing/scripts/appstore-fastlane
+# --exec), which therefore needs the Admin role, or App Manager with access to cloud-managed distribution
+# certificates. The upload goes through Fastlane (the `upload_build` lane) with the same key.
+#
+# HMK_PUSH_RELAY is the push relay's URL (relay/push), defaulting to ours, as for `just ios-device`. HMK_TEAM
+# the team.
+set -euo pipefail
+shopt -s nullglob
+root="$(cd "$(dirname "$0")/.." && pwd)"
+relay="${HMK_PUSH_RELAY:-https://hmk-push.homegrownsw.workers.dev}"
+team="${HMK_TEAM:-2G974K78BH}"
+asc="$root/marketing/scripts/appstore-fastlane"
+
+cmd="${1:-}"
+n="${2:-}"
+[[ "$n" =~ ^[0-9]+$ ]] || { echo "usage: scripts/ios-testflight build <n> | upload <n> | discard <n>" >&2; exit 2; }
+out="$root/dist/testflight/$n"
+ipa="$out/Hammock.ipa"
+
+# Release n's tag, made by scripts/release before build runs.
+release_tag() {
+  local t
+  t="$(git -C "$root" tag --list "iOS-v*-r$n")"
+  [ -n "$t" ] && [ "$(wc -l <<<"$t")" -eq 1 ] || { echo "No single iOS-v*-r$n tag (found: ${t:-none})." >&2; exit 1; }
+  echo "$t"
+}
+
+case "$cmd" in
+  build)
+    # The whole build under the App Store Connect API key (one 1Password approval), which appstore-fastlane
+    # --exec resolves into ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8_PATH, deleting the key file afterwards.
+    [ -n "${ASC_KEY_P8_PATH:-}" ] || exec "$asc" --exec "$0" "$@"
+    [ "$("$root/scripts/commit-number" "$root")" = "$n" ] ||
+      { echo "HEAD is commit $("$root/scripts/commit-number" "$root") on main, not $n." >&2; exit 1; }
+    tag="$(release_tag)"
+    version="$(sed -nE 's/^HAMMOCK_IOS_VERSION = ([^ ]+).*$/\1/p' "$root/apple/iOS/Config/Version.xcconfig")"
+    [ "$tag" = "iOS-v${version}-r${n}" ] ||
+      { echo "$tag doesn't match the iPhone's version, $version: it would upload under the wrong one." >&2; exit 1; }
+
+    (cd "$root" && just deps)
+    rm -rf "$out"
+    mkdir -p "$out"
+    cat >"$out/ExportOptions.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>teamID</key>
+	<string>$team</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>
+EOF
+    echo "archiving Hammock $version ($n) for TestFlight…"
+    auth=(-allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_P8_PATH"
+      -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+    xcodebuild -project "$root/apple/iOS/HammockIOS.xcodeproj" -scheme Hammock -configuration Release \
+      -destination generic/platform=iOS -archivePath "$out/Hammock.xcarchive" \
+      -derivedDataPath "$root/dist/testflight/DerivedData" "${auth[@]}" archive \
+      DEVELOPMENT_TEAM="$team" CURRENT_PROJECT_VERSION="$n" HMK_PUSH_RELAY="$relay"
+    echo "exporting it signed for App Store Connect…"
+    xcodebuild -exportArchive -archivePath "$out/Hammock.xcarchive" \
+      -exportOptionsPlist "$out/ExportOptions.plist" -exportPath "$out" "${auth[@]}"
+    [ -f "$ipa" ] || { echo "The export made no $ipa." >&2; exit 1; }
+
+    # What App Store Connect will see, checked before anything is pushed.
+    app="$out/Hammock.xcarchive/Products/Applications/Hammock.app"
+    plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$app/Info.plist"; }
+    [ "$(plist CFBundleVersion)" = "$n" ] || { echo "The build is number $(plist CFBundleVersion), not $n." >&2; exit 1; }
+    [ "$(plist CFBundleShortVersionString)" = "$version" ] ||
+      { echo "The build is version $(plist CFBundleShortVersionString), not $version." >&2; exit 1; }
+    [ "$(plist HammockPushRelay)" = "$relay" ] || { echo "The build's push relay is '$(plist HammockPushRelay)', not $relay." >&2; exit 1; }
+    for ext in "$app"/PlugIns/*.appex; do
+      v="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ext/Info.plist")"
+      [ "$v" = "$n" ] || { echo "$(basename "$ext") is build $v, not $n." >&2; exit 1; }
+    done
+    echo "built $ipa: Hammock $version ($n)"
+    ;;
+  upload)
+    [ -f "$ipa" ] || { echo "No build $n to upload ($ipa): scripts/ios-testflight build $n first." >&2; exit 1; }
+    tag="$(release_tag)"
+    git -C "$root" ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null ||
+      { echo "$tag isn't pushed: TestFlight only gets released builds." >&2; exit 1; }
+    # What to Test as the tag has it, not the checkout.
+    notes="$out/WhatToTest"
+    rm -rf "$notes"
+    mkdir -p "$notes"
+    for f in $(git -C "$root" ls-tree --name-only "$tag" apple/iOS/TestFlight/); do
+      case "$f" in */WhatToTest.*.txt) git -C "$root" show "$tag:$f" >"$notes/$(basename "$f")" ;; esac
+    done
+    "$asc" ios upload_build "ipa:$ipa" "notes:$notes"
+    ;;
+  discard)
+    rm -rf "$out"
+    ;;
+  *)
+    echo "usage: scripts/ios-testflight build <n> | upload <n> | discard <n>" >&2
+    exit 2
+    ;;
+esac

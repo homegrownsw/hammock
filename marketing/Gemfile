@@ -1,6 +1,7 @@
 # Fastlane, for the App Store listing and nothing else (marketing/appstore/README.md): `deliver` pushes the
 # listing text, and later its screenshots, to App Store Connect, and the push also writes TestFlight's test
-# information. Builds never go through Fastlane: Xcode Cloud makes and uploads them (release-notes/README.md).
+# information. It also uploads the TestFlight builds scripts/ios-testflight makes (release-notes/README.md); it never
+# builds or signs one.
 #
 #   just appstore-install     # bundle install into marketing/vendor/bundle, once per machine
 

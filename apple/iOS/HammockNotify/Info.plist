@@ -14,8 +14,8 @@
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
-	<!-- The version and build number from the build settings, so Xcode Cloud's
-	     build numbers reach the app. -->
+	<!-- The version and build number from the build settings (Version.xcconfig),
+	     so a release's build number reaches the app. -->
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>

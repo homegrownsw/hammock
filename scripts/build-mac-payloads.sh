@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds what the Mac app embeds besides its Swift code, into bin/, as
 # `just build apple-deps browser simulator` does (for where there's no
-# just: Xcode Cloud, and the Xcode project's HammockMac target):
+# just: the Xcode project's HammockMac target):
 #   - libghostty-vt (third_party/ghostty/out) and its xcframework
 #     (apple/Frameworks), from the shared build (ghostty-deps.sh);
 #   - hmkd, hmk and pane-holder (Go);

@@ -22,9 +22,11 @@ marketing/
   package.json                for the Node scripts
 ```
 
-**Nothing here builds or uploads the app.** Builds come from Xcode Cloud (`just release-ios`,
-release-notes/README.md). Fastlane is here for `deliver` and App Store Connect's API, nothing else: no
-`build_app`, no `match`, no signing.
+**Nothing here builds the app.** `just release-ios` builds it on this Mac (`scripts/ios-testflight`,
+release-notes/README.md) and uploads it to TestFlight through this Fastlane (the `upload_build` lane), with the
+same API key. Otherwise Fastlane is here for `deliver` and App Store Connect's API: no `build_app`, no `match`,
+no signing. The key needs the Admin role (or App Manager with access to cloud-managed distribution
+certificates): the release build's export signs with Xcode's cloud-managed distribution certificate.
 
 ## The commands
 

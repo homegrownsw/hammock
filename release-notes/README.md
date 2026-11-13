@@ -86,13 +86,12 @@ one, only to release at a version `next` wouldn't choose.
 | App | Version shown | Build number |
 | --- | --- | --- |
 | Mac (Sparkle) | `CFBundleShortVersionString`, `HAMMOCK_MAC_VERSION` | `CFBundleVersion`: the release commit's number on `main` (`git rev-list --count`), which Sparkle compares |
-| iOS | `CFBundleShortVersionString`, `HAMMOCK_IOS_VERSION` | `CFBundleVersion`: Xcode Cloud's `CI_BUILD_NUMBER`, written in by `ci_scripts/ci_pre_xcodebuild.sh` |
+| iOS | `CFBundleShortVersionString`, `HAMMOCK_IOS_VERSION` | `CFBundleVersion`: the same, the release commit's number, which App Store Connect asks only to go up |
 
 A release is tagged `Mac-v<x.y.z>-r<n>` or `iOS-v<x.y.z>-r<n>`, where **n is the release commit's number on
 `main`**: so `Mac-v2026.1.0-r1040` is Mac build 1040, and an iOS release cut alongside it is
-`iOS-v2026.1.0-r1040`. Every cut makes a commit, so no two releases share a number. App Store Connect insists
-on Xcode Cloud's own build number for iOS, so that one doesn't line up; the tag's `r<n>` says which commit
-(and Mac build) it goes with. The committed `CURRENT_PROJECT_VERSION` is **0**, meaning "not a counted build".
+`iOS-v2026.1.0-r1040`, iPhone build 1040. Every cut makes a commit, so no two releases share a number.
+(Earlier TestFlight builds came from Xcode Cloud, with its own, lower, build numbers.) The committed `CURRENT_PROJECT_VERSION` is **0**, meaning "not a counted build".
 
 Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had several releases of each.
 
@@ -107,7 +106,7 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
    its family (`2026.1.*`) after them, since Sparkle only shows the newest release's notes.
    - Mac: as HTML for Sparkle's window and the GitHub Release (this release's New and Fixed, then
      `Earlier in 2026.1`'s);
-   - iOS: `apple/iOS/TestFlight/WhatToTest.{en-GB,en-US}.txt`, which Xcode Cloud reads from the tagged
+   - iOS: `apple/iOS/TestFlight/WhatToTest.{en-GB,en-US}.txt`, which the upload sends from the tagged
      commit, cut at TestFlight's 4000 characters.
 4. **Files** the pending notes under `release-notes/<app>/v<version>/`; an app moving on from a version gets
    that version's summary, `release-notes/<app>/v<old>.md` (INTERNAL included). It **commits**
@@ -116,12 +115,16 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
 5. **Builds the Mac update** from the tagged commit (`scripts/mac-update build`): `UPDATES=1 just share`
    (Developer ID, notarized; 1Password asks first), then `generate_appcast` signs it with the EdDSA key
    (keychain, account "fika"; backed up in 1Password), makes deltas from earlier releases, and embeds the
-   notes. If anything here fails, the release commit and tags are taken back and nothing is published.
+   notes. **Builds the iPhone's** (`scripts/ios-testflight build`): archives it with the release's build
+   number and exports it signed for App Store Connect, to `dist/testflight/<n>/Hammock.ipa`, checking its
+   version, build number and push relay. If anything here fails, the release commit and tags are taken back
+   and nothing is published.
 6. **Pushes** `main` and the tags in one atomic push. If it's rejected, everything is taken back as in 5.
-   An `iOS-v*` tag starts Xcode Cloud.
 7. **Uploads the Mac update** (`scripts/mac-update upload <n>`): the zip and deltas, then the appcast, to
    the update server. Installed copies are offered it at their next daily check. A failed upload doesn't
    undo the release; it says how to retry.
+8. **Uploads the iPhone's build to TestFlight** (`scripts/ios-testflight upload <n>`), with What to Test from
+   the tag, and waits for App Store Connect to process it. A failed upload doesn't undo the release either.
 
 `next` is the next patch for the Mac or iOS (`2026.1.0` → `2026.1.1`) and the next joint release for both
 (→ `2026.2.0`, or `2027.1.0` in a new year). An app whose version in the file hasn't been released yet is
@@ -153,32 +156,30 @@ means changing those redirects, not the app. Every released zip is also kept in 
 few fetched from GitHub when missing) so deltas can be made from them. Uploading needs `gh`, signed in with
 access to the repo.
 
-### Xcode Cloud
+### TestFlight builds
 
-The project's shared schemes are `Hammock` (iOS) and `Hammock Mac` (the `HammockMacApp` target: the same bundle as
-`just mac-app`, its helpers embedded and signed by a build phase from `bin/`). `apple/iOS/ci_scripts/ci_post_clone.sh`
-builds what a clone lacks (libghostty-vt's xcframework; for the Mac, the Go binaries, the browser host and the
-simulator host via `scripts/build-mac-payloads.sh`), and `ci_post_xcodebuild.sh` fails a notarized Mac build whose
-Developer ID export lost a helper's entitlements. Packages resolve only from `apple/Package.resolved`. Day to day the
-Mac is built with `just mac-app` / `just mac-dev`.
+`scripts/ios-testflight` builds the iPhone app on this Mac: `xcodebuild archive` of the `Hammock` scheme
+(Release, signed for development with automatic signing), then `-exportArchive` for App Store Connect, which
+re-signs it with Xcode's cloud-managed distribution certificate, so no Apple Distribution certificate is needed
+here. Both, and the upload (Fastlane's `upload_to_testflight`, the `upload_build` lane), authenticate with the
+App Store Connect API key in `marketing/.env.appstore` (marketing/appstore/README.md): 1Password asks once for
+the build and once for the upload, so run releases outside an agent's sandbox. The key needs the Admin role, or
+App Manager with access to cloud-managed distribution certificates. `HMK_TESTFLIGHT_GROUPS=Group,Other` also
+sends the build to those external testers' groups; internal groups get it as App Store Connect is set up to.
 
-The push relay (`relay/push`, a Cloudflare Worker) is at https://hmk-push.homegrownsw.workers.dev. Phones built from
-Xcode use APNs' sandbox and TestFlight builds its production environment, so the relay's APNs key must allow both
-(Apple turns a key down for the wrong one with `BadEnvironmentKeyInToken`, which the daemon log shows).
+The push relay (`relay/push`, a Cloudflare Worker) is at https://hmk-push.homegrownsw.workers.dev, built into
+the app (`HMK_PUSH_RELAY` overrides it). Phones built from Xcode use APNs' sandbox and TestFlight builds its
+production environment, so the relay's APNs key must allow both (Apple turns a key down for the wrong one with
+`BadEnvironmentKeyInToken`, which the daemon log shows).
 
-### Xcode Cloud setup (the owner, once, in App Store Connect)
-
-- [ ] In the iOS release workflow's start conditions, start on a **tag** matching `iOS-v*`, with the
-      Archive action and TestFlight deployment.
-- [ ] Check that nothing else archives on every push to `main`.
-
-`ci_pre_xcodebuild.sh` writes `CI_BUILD_NUMBER` into Version.xcconfig and, for an `iOS-v*` tag, fails a
-build whose tag names another version than the iPhone's.
+The Xcode project's `Hammock Mac` scheme (the `HammockMacApp` target: the same bundle as `just mac-app`, its
+helpers embedded and signed by a build phase from `bin/`, built by `scripts/build-mac-payloads.sh`) is for
+archiving the Mac app in Xcode; releases are built with `just share`.
 
 ## Tests
 
 `just test-release` runs `scripts/tests/release`: the real scripts against throwaway repos with a bare
-remote (they commit, tag and push for real), with a stand-in for `scripts/mac-update` so nothing is built
-or uploaded. It covers `just note` and `note-check`, the dry run, choosing versions, iOS, Mac and joint
-cuts, a failed build, a failed upload, a rejected push, the preflight, `ci_pre_xcodebuild.sh`, and that every
-committed note is well formed.
+remote (they commit, tag and push for real), with stand-ins for `scripts/mac-update` and
+`scripts/ios-testflight` so nothing is built or uploaded. It covers `just note` and `note-check`, the dry run,
+choosing versions, iOS, Mac and joint cuts, a failed build and a failed upload of each app, a rejected push,
+the preflight, and that every committed note is well formed.

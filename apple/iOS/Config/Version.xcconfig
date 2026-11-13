@@ -7,8 +7,8 @@
 HAMMOCK_MAC_VERSION = 2026.1.0
 HAMMOCK_IOS_VERSION = 2026.1.0
 
-// The build number is the build service's: Xcode Cloud's CI_BUILD_NUMBER,
-// written in by ci_scripts/ci_pre_xcodebuild.sh; for the Mac's Sparkle
-// builds, main's commit count (build-mac-app.sh). 0 says "not a counted
-// build", so a local Xcode build reports 2026.1.0 (0).
+// The build number is a release's: main's commit count, the r<n> in its
+// tag, passed to the build (build-mac-app.sh for the Mac's Sparkle builds,
+// scripts/ios-testflight for the iPhone's TestFlight ones). 0 says "not a
+// counted build", so a local Xcode build reports 2026.1.0 (0).
 CURRENT_PROJECT_VERSION = 0

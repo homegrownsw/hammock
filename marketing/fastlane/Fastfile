@@ -8,8 +8,9 @@
 #   just appstore-push-testflight  # only TestFlight's test information
 #   just appstore-pull             # overwrite marketing/appstore/metadata with what App Store Connect holds
 #
-# THIS FASTFILE NEVER TOUCHES A BINARY. Builds come from Xcode Cloud (`just release-ios`): `skip_binary_upload`
-# is set, and there's no build_app, match or upload_to_testflight here.
+# The listing lanes never touch a binary (`skip_binary_upload` is set). The one lane that does, upload_build,
+# uploads a TestFlight build that scripts/ios-testflight made on this Mac (`just release-ios`); nothing here
+# builds or signs one.
 
 fastlane_version "2.238.0"
 
@@ -655,6 +656,32 @@ platform :ios do
     sync_asset_library!(app, version)
     push_testflight!(app)
     UI.success("Uploaded. Saved in App Store Connect, NOT submitted for review.")
+  end
+
+  # scripts/ios-testflight upload runs this, after the release is pushed: `ipa:` its build, `notes:` a directory
+  # of WhatToTest.<locale>.txt from the release's tag. Waits for App Store Connect to process the build, since
+  # What to Test can only be set on a processed one. Internal testers' groups get it as they're set to in App
+  # Store Connect; HMK_TESTFLIGHT_GROUPS (comma-separated) also sends it to those external groups.
+  desc "Upload a TestFlight build made by scripts/ios-testflight, with What to Test"
+  lane :upload_build do |options|
+    ipa = options[:ipa].to_s
+    UI.user_error!("No build at '#{ipa}'.") unless File.file?(ipa)
+    notes = Dir[File.join(options[:notes].to_s, "WhatToTest.*.txt")].to_h do |path|
+      [File.basename(path)[/^WhatToTest\.(.+)\.txt$/, 1], { whats_new: File.read(path).strip }]
+    end
+    UI.user_error!("No WhatToTest.<locale>.txt in '#{options[:notes]}'.") if notes.empty?
+    groups = ENV["HMK_TESTFLIGHT_GROUPS"].to_s.split(",").map(&:strip).reject(&:empty?)
+    upload_to_testflight(
+      api_key_path: asc_api_key_path,
+      app_identifier: APP_IDENTIFIER,
+      ipa: ipa,
+      localized_build_info: notes,
+      skip_waiting_for_build_processing: false,
+      distribute_external: !groups.empty?,
+      groups: groups.empty? ? nil : groups,
+      notify_external_testers: !groups.empty?,
+    )
+    UI.success("Uploaded to TestFlight, with What to Test in #{notes.keys.sort.join(', ')}.")
   end
 
   desc "Upload only TestFlight's test information (descriptions, feedback email, Beta App Review details)"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The Mac app target's "Embed and sign helpers" build phase (Xcode builds:
-# Xcode Cloud, archiving): puts hmkd, the CLI, the pane holder and the
+# The Mac app target's "Embed and sign helpers" build phase (Xcode builds and
+# archives): puts hmkd, the CLI, the pane holder and the
 # browser and simulator hosts from bin/ (scripts/build-mac-payloads.sh) into
 # the app, and signs them inside out, before Xcode signs the app itself.
 # Reads Xcode's build environment.

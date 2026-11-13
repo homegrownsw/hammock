@@ -5,6 +5,11 @@
 #   marketing/scripts/appstore-fastlane ios preview
 #   marketing/scripts/appstore-fastlane ios push
 #   marketing/scripts/appstore-fastlane deliver download_metadata --metadata_path …
+#   marketing/scripts/appstore-fastlane --exec <command…>
+#
+# --exec runs a command instead of Fastlane, with the key as xcodebuild's -authenticationKey* options take it:
+# ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_P8_PATH, the .p8 in a 0600 temporary file deleted on exit
+# (scripts/ios-testflight builds this way).
 #
 # `just appstore-preview|push|pull` drive it. Everything that talks to Apple goes through here, so there's one
 # credential path to reason about, and it's an API key, never an Apple ID: an Apple ID means a two-factor code
@@ -97,6 +102,22 @@ if [ -z "${ASC_API_KEY_PATH:-}" ]; then
     '{key_id: $key_id, issuer_id: $issuer_id, key: $key, duration: 1200, in_house: false}' >"$key_file"
   export ASC_API_KEY_PATH="$key_file"
 fi
+if [ "$1" = --exec ]; then
+  shift
+  [ "$#" -gt 0 ] || { echo "usage: $(basename "$0") --exec <command...>" >&2; exit 2; }
+  ASC_KEY_ID="$(jq -r .key_id "$ASC_API_KEY_PATH")"
+  ASC_ISSUER_ID="$(jq -r .issuer_id "$ASC_API_KEY_PATH")"
+  p8="$(mktemp -t hammock-asc-p8)"
+  chmod 600 "$p8"
+  # The key file too, when this script wrote one (not a ready-made ASC_API_KEY_PATH).
+  if [ -n "$key_file" ]; then trap 'rm -f "$key_file" "$p8"' EXIT INT TERM; else trap 'rm -f "$p8"' EXIT INT TERM; fi
+  jq -r .key "$ASC_API_KEY_PATH" >"$p8"
+  export ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_PATH="$p8"
+  status=0
+  "$@" || status=$?
+  exit "$status"
+fi
+
 # The same path under the name deliver's own option reads, for the `deliver download_*` subcommands.
 export DELIVER_API_KEY_PATH="$ASC_API_KEY_PATH"
 export ASC_REVIEW_FIRST_NAME="${ASC_REVIEW_FIRST_NAME:-}" ASC_REVIEW_LAST_NAME="${ASC_REVIEW_LAST_NAME:-}"

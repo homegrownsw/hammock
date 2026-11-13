@@ -185,7 +185,7 @@ version *args:
 release-mac *args:
     scripts/release mac "$@"
 
-# Cut a TestFlight build (the iOS-v* tag starts Xcode Cloud): `just release-ios build` (another build of the
+# Cut a TestFlight build, built here and uploaded (scripts/ios-testflight): `just release-ios build` (another build of the
 # iPhone's version), `next` (a hotfix's new patch, which App Review sees again) or a version (+ allow-empty).
 [positional-arguments]
 release-ios *args:

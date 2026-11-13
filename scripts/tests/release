@@ -5,10 +5,10 @@
 #   scripts/release                    freezing the notes into a release, its tags and number, each app's
 #                                      version, and taking everything back when a step fails
 #   scripts/version                    showing and setting the versions
-#   ci_pre_xcodebuild.sh               Xcode Cloud's build number and the tag's version
 #
 # The release script runs for real, against throwaway repos with a bare remote (it commits, tags and
-# pushes), with a stand-in for scripts/mac-update so nothing is built, notarized or uploaded.
+# pushes), with stand-ins for scripts/mac-update and scripts/ios-testflight so nothing is built, notarized
+# or uploaded.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -27,6 +27,17 @@ exit 0
 EOF
 chmod +x "$tmp/mac-update"
 export HMK_RELEASE_MAC_UPDATE="$tmp/mac-update"
+# The same for scripts/ios-testflight, into the same log as "ios <step> <n>": FAKE_IOS_BUILD_FAIL=1 fails a
+# build, FAKE_IOS_UPLOAD_FAIL=1 an upload.
+cat >"$tmp/ios-testflight" <<EOF
+#!/usr/bin/env bash
+echo "ios \$1 \$2" >>"$tmp/mac-update.log"
+if [ "\$1" = build ]; then [ "\${FAKE_IOS_BUILD_FAIL:-}" != 1 ] || exit 1; fi
+if [ "\$1" = upload ]; then [ "\${FAKE_IOS_UPLOAD_FAIL:-}" != 1 ] || exit 1; fi
+exit 0
+EOF
+chmod +x "$tmp/ios-testflight"
+export HMK_RELEASE_IOS_TESTFLIGHT="$tmp/ios-testflight"
 export HMK_RELEASE_YEAR=2026
 calls() { cat "$tmp/mac-update.log" 2>/dev/null || true; rm -f "$tmp/mac-update.log"; }
 
@@ -47,11 +58,10 @@ contains() { if printf '%s' "$2" | grep -qF -- "$1"; then echo yes; else echo no
 # each app (one for people to read, one INTERNAL).
 fixture() { # fixture <version> [ios version]
   local dir="$tmp/repo-$RANDOM$RANDOM"
-  mkdir -p "$dir"/{scripts/lib,apple/iOS/Config,apple/iOS/ci_scripts,release-notes/mac/pending,release-notes/ios/pending}
+  mkdir -p "$dir"/{scripts/lib,apple/iOS/Config,release-notes/mac/pending,release-notes/ios/pending}
   cp "$REPO"/scripts/{release,note,note-check,version,commit-number} "$dir/scripts/"
   echo 0 >"$dir/scripts/history-commits"
   cp "$REPO/scripts/lib/release-notes.sh" "$dir/scripts/lib/"
-  cp "$REPO/apple/iOS/ci_scripts/ci_pre_xcodebuild.sh" "$dir/apple/iOS/ci_scripts/"
   printf 'HAMMOCK_MAC_VERSION = %s\nHAMMOCK_IOS_VERSION = %s\nCURRENT_PROJECT_VERSION = 0\n' "$1" "${2:-$1}" \
     >"$dir/apple/iOS/Config/Version.xcconfig"
   for p in mac ios; do
@@ -157,7 +167,7 @@ check "What to Test, New then Fixed" "This build||New|• A new thing.||Fixed|�
 check "en-US is the same" "$wtt" "$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-US.txt")"
 check "filed the iOS notes" "0 3" "$(ls "$d/release-notes/ios/pending" | wc -l | tr -d ' ') $(ls "$d/release-notes/ios/v2026.1.0" | wc -l | tr -d ' ')"
 check "left the Mac's pending" "3" "$(ls "$d/release-notes/mac/pending" | wc -l | tr -d ' ')"
-check "the Mac isn't built" "" "$(calls)"
+check "built, then uploaded, the iPhone's alone" "ios build 2|ios upload 2|" "$(calls | tr '\n' '|')"
 check "a second cut needs notes" fails "$(release "$d" ios build && echo passes || echo fails)"
 release "$d" ios build allow-empty
 wtt=$(cat "$d/apple/iOS/TestFlight/WhatToTest.en-GB.txt")
@@ -168,6 +178,21 @@ check "a hotfix is the next patch" "iOS-v2026.1.0-r2 iOS-v2026.1.0-r3 iOS-v2026.
 check "…set in the tagged commit" "2026.1.1" "$(ver "$d" IOS iOS-v2026.1.1-r4)"
 check "…leaving the Mac's alone" "2026.1.0" "$(ver "$d" MAC iOS-v2026.1.1-r4)"
 check "…with 2026.1.0's summary" "yes" "$([ -e "$d/release-notes/ios/v2026.1.0.md" ] && echo yes)"
+calls >/dev/null
+
+echo "a failed iPhone build takes it all back:"
+d=$(fixture 2026.1.0)
+check "fails" fails "$( (cd "$d" && FAKE_IOS_BUILD_FAIL=1 ./scripts/release ios next >/dev/null 2>&1) && echo passes || echo fails)"
+check "…publishing nothing" "1 " "$(count "$d.remote" main) $(remote_tags "$d")"
+check "…back where it started, the notes still pending" "1 3" "$(count "$d") $(ls "$d/release-notes/ios/pending" | wc -l | tr -d ' ')"
+check "…and the build discarded" "ios build 2|ios discard 2|" "$(calls | tr '\n' '|')"
+
+echo "a failed TestFlight upload keeps the release:"
+d=$(fixture 2026.1.0)
+out=$(cd "$d" && FAKE_IOS_UPLOAD_FAIL=1 ./scripts/release ios next 2>&1) || true
+check "pushed anyway" "iOS-v2026.1.0-r2" "$(remote_tags "$d")"
+check "and says how to retry" yes "$(contains "scripts/ios-testflight upload 2" "$out")"
+calls >/dev/null
 
 echo "Mac release:"
 d=$(fixture 2026.1.0)
@@ -222,7 +247,7 @@ start=$(git -C "$d" rev-parse HEAD)
 check "fails" fails "$( (cd "$d" && HMK_RELEASE_MAC_UPDATE="$tmp/mac-update-push" ./scripts/release apple next >/dev/null 2>&1) && echo passes || echo fails)"
 check "…no tags published or kept" "|" "$(remote_tags "$d")|$(git -C "$d" tag -l)"
 check "…back where it started" "$start" "$(git -C "$d" rev-parse HEAD)"
-check "…the build discarded, never uploaded" "build 3|discard 3|" "$(calls | tr '\n' '|')"
+check "…both builds discarded, never uploaded" "build 3|ios build 3|discard 3|ios discard 3|" "$(calls | tr '\n' '|')"
 
 echo "joint release:"
 d=$(fixture 0.4.0)
@@ -245,16 +270,6 @@ check "a dirty tree is refused" fails "$(release "$d" ios next && echo passes ||
 rm "$d/x"
 git -C "$d" commit -q --allow-empty -m unpushed
 check "unpushed commits are refused" fails "$(release "$d" ios next && echo passes || echo fails)"
-
-echo "ci_pre_xcodebuild.sh:"
-d=$(fixture 2026.2.3 2026.2.0)
-ci() { (cd "$d" && CI_PRIMARY_REPOSITORY_PATH="$d" "$@" ./apple/iOS/ci_scripts/ci_pre_xcodebuild.sh >/dev/null 2>&1) && echo passes || echo fails; }
-check "a branch build" passes "$(ci env CI_BUILD_NUMBER=42)"
-check "stamps the build number" "42" "$(sed -nE 's/^CURRENT_PROJECT_VERSION = (.*)/\1/p' "$d/apple/iOS/Config/Version.xcconfig")"
-check "a tag matching the iPhone's version" passes "$(ci env CI_BUILD_NUMBER=43 CI_TAG=iOS-v2026.2.0-r615)"
-check "a tag for the Mac's" fails "$(ci env CI_BUILD_NUMBER=44 CI_TAG=iOS-v2026.2.3-r615)"
-check "a malformed tag" fails "$(ci env CI_BUILD_NUMBER=45 CI_TAG=iOS-v2026.2-r1)"
-check "Mac tags aren't checked" passes "$(ci env CI_BUILD_NUMBER=46 CI_TAG=Mac-v9.9.9-r1)"
 
 echo "the committed notes:"
 bad=""
