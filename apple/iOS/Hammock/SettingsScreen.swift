@@ -9,6 +9,8 @@ struct SettingsScreen: View {
     @AppStorage(AgentViewPrefs.fontSize) private var fontSize = AgentViewPrefs.defaultSize
     @AppStorage(AgentViewPrefs.codeFontSize) private var codeFontSize = AgentViewPrefs.defaultSize - 1
     @AppStorage(AgentViewPrefs.codeWrap) private var codeWrap = "prose"
+    /// Everything the iPhone sends goes over the network: the remote size.
+    @AppStorage(AgentViewPrefs.imageSizeRemote) private var imageSize = AttachmentSize.medium.rawValue
     @AppStorage(AgentViewPrefs.lineSpacing) private var lineSpacing = AgentViewPrefs.defaultSpacing
     @AppStorage(PhoneTheme.prefKey) private var themePref = ""
     @Environment(\.phoneTheme) private var theme
@@ -80,6 +82,11 @@ struct SettingsScreen: View {
                         Text("Markdown and Text").tag("prose")
                         Text("Every Block").tag("always")
                         Text("Never").tag("never")
+                    }
+                }
+                Section("Attachments") {
+                    Picker("Picture size", selection: $imageSize) {
+                        ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
                     }
                 }
                 Section("Preview") {

@@ -343,3 +343,35 @@ func TestScreenAsksWhileHooksFlow(t *testing.T) {
 		return false
 	})
 }
+
+func TestSendParts(t *testing.T) {
+	show := func(ps []sendPart) string {
+		var s []string
+		for _, p := range ps {
+			if p.path != "" {
+				s = append(s, "<"+p.path+">")
+			} else {
+				s = append(s, p.text)
+			}
+		}
+		return strings.Join(s, "|")
+	}
+	for _, tc := range []struct {
+		name, text string
+		paths      []string
+		inline     bool
+		want       string
+	}{
+		{"paths first", "  hello ", []string{"a", "b"}, false, "<a>|<b>|hello"},
+		{"inline", "compare ￼ with ￼ please", []string{"a", "b"}, true, "compare |<a>| with |<b>| please"},
+		{"inline at start", "￼ what's this?", []string{"a"}, true, "<a>| what's this?"},
+		{"inline, only attachments", " ￼ ￼ ", []string{"a", "b"}, true, "<a>| |<b>"},
+		{"more paths than marks", "see ￼", []string{"a", "b"}, true, "see |<a>|<b>"},
+		{"more marks than paths", "￼ and ￼", []string{"a"}, true, "<a>| and "},
+		{"nothing", "  ￼ ", nil, true, ""},
+	} {
+		if got := show(sendParts(tc.text, tc.paths, tc.inline)); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

@@ -678,7 +678,12 @@ public final class AppModel {
         }
         let resolved = u.clearedAttentionIds + u.resolvedGrantIds + u.resolvedJoinIds + u.resolvedLinkIds + u.resolvedHammockKeyIds
         if !resolved.isEmpty { onResolved?(resolved) }
-        if u.full { onFullState?() }
+        if u.full {
+            // The panes are known: drafts' attachments for those gone are swept.
+            ComposerDrafts.pruneStale(livePanes: Set(panes.keys))
+            PreviewFiles.sweep()
+            onFullState?()
+        }
     }
 
     /// The ids of what can still need you (attention items, grants, join and

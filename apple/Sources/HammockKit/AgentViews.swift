@@ -304,10 +304,8 @@ public struct AgentConversationView: View {
         #if os(iOS)
         .fullScreenCover(item: $viewedImage) { v in
             // Grows out of its picture; drag it down to shrink it back there.
-            ImageViewer(image: v.image).navigationTransition(.zoom(sourceID: v.ref, in: imageZoom))
+            ImageViewer(image: v.image, video: v.video).navigationTransition(.zoom(sourceID: v.ref, in: imageZoom))
         }
-        #else
-        .sheet(item: $viewedImage) { v in ImageViewer(image: v.image) }
         #endif
         .tint(automaticColor)
         .alert("Open this link?", isPresented: Binding(get: { askingToOpen != nil }, set: { if !$0 { askingToOpen = nil } }), presenting: askingToOpen) { url in
@@ -941,7 +939,7 @@ struct AgentItemView: View, Equatable {
         if let b = item.block {
             switch b.kind {
             case .user:
-                UserBubble(text: b.text, images: b.images, session: session)
+                UserBubble(text: b.text, rich: b.richText, attachments: b.images.map { .remote($0) }, session: session)
             case .text:
                 MarkdownView(text: b.text)
             case .thinking:
@@ -1025,7 +1023,10 @@ public enum AgentLink {
 struct UserBubble: View {
     @Environment(\.agentBubble) private var accent
     let text: String
-    let images: [Hammock_V1_AgentImage]
+    /// The text with a mark where each attachment sat (AgentBlock.richText):
+    /// shown with their chips there. "": no chips.
+    var rich = ""
+    let attachments: [BubbleAttachment]
     let session: AgentSession
     var pending = false
     @Environment(\.agentFonts) private var fonts
@@ -1034,21 +1035,28 @@ struct UserBubble: View {
         HStack {
             Spacer(minLength: 60)
             VStack(alignment: .trailing, spacing: 6) {
-                ForEach(images, id: \.ref) { img in
-                    AgentImageView(ref: img.ref, session: session, maxHeight: 220)
+                ForEach(Array(attachments.enumerated()), id: \.element.id) { i, a in
+                    AttachmentTile(attachment: a, number: i + 1, session: session)
                 }
-                if !text.isEmpty {
-                    LinkedText(markdown: text)
-                        .font(fonts.body())
-                        .lineSpacing(fonts.spacing)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.white)
-                        .tint(.white)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 10)
-                        .background(accent.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                if !rich.isEmpty || !text.isEmpty {
+                    Group {
+                        if rich.isEmpty {
+                            LinkedText(markdown: text)
+                        } else {
+                            RichBubbleText(rich: rich, attachments: attachments, session: session)
+                        }
+                    }
+                    .font(fonts.body())
+                    .lineSpacing(fonts.spacing)
+                    .textSelection(.enabled)
+                    .foregroundStyle(.white)
+                    .tint(.white)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 10)
+                    .background(accent.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
             }
+            .environment(\.previewGroup, attachments.map { $0.preview(session) })
             .opacity(pending ? 0.7 : 1)
         }
     }
@@ -1445,8 +1453,8 @@ struct TranscriptTail: View {
 
     var body: some View {
         Group {
-            ForEach(Array(session.pendingSends.enumerated()), id: \.offset) { _, text in
-                UserBubble(text: text, images: [], session: session, pending: true)
+            ForEach(Array(session.pendingSends.enumerated()), id: \.offset) { _, p in
+                UserBubble(text: p.text, rich: p.rich, attachments: p.attachments, session: session, pending: true)
                     // Sent: up from the message box, growing into place. It goes
                     // at once when the transcript shows it (in the same place).
                     .transition(.asymmetric(
@@ -1875,18 +1883,30 @@ struct AgentImageView: View {
     let ref: String
     let session: AgentSession
     var maxHeight: CGFloat = 260
+    /// A video's ("video/…"): shown by its first frame.
+    var mediaType = ""
     @State private var image: PlatformImage?
+    @State private var failed = false
 
-    init(ref: String, session: AgentSession, maxHeight: CGFloat = 260) {
+    init(ref: String, session: AgentSession, maxHeight: CGFloat = 260, mediaType: String = "") {
         self.ref = ref
         self.session = session
         self.maxHeight = maxHeight
+        self.mediaType = mediaType
         _image = State(initialValue: session.decodedImage(ref))
     }
     /// Opens it in the conversation's viewer (which outlives this row: new
-    /// messages regroup rows, and the viewer stays open through that).
+    /// messages regroup rows, and the viewer stays open through that); on
+    /// the Mac, QuickLook, among the message's other attachments.
     @Environment(\.openAgentImage) private var open
     @Environment(\.agentImageZoom) private var zoom
+    @Environment(\.previewGroup) private var group
+
+    private var isVideo: Bool { mediaType.hasPrefix("video/") }
+    private var name: String {
+        let last = (ref as NSString).lastPathComponent
+        return (last as NSString).pathExtension.isEmpty ? "attachment." + PreviewFiles.ext(mediaType.isEmpty ? "image/png" : mediaType) : last
+    }
 
     var body: some View {
         Group {
@@ -1898,19 +1918,35 @@ struct AgentImageView: View {
                 #endif
             } else {
                 RoundedRectangle(cornerRadius: 10).fill(.quaternary).frame(width: 120, height: 80)
-                    .overlay { ProgressView().controlSize(.small) }
+                    .overlay {
+                        if failed {
+                            Image(systemName: isVideo ? "film" : "photo").foregroundStyle(.secondary)
+                        } else {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
             }
         }
         .frame(maxHeight: maxHeight)
+        .overlay { if isVideo, image != nil { PlayBadge() } }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         #if os(iOS)
         .modifier(ZoomSource(id: ref, in: zoom))
         #endif
         .task(id: ref) {
-            if image == nil { image = await session.image(ref) }
+            guard image == nil else { return }
+            if isVideo {
+                if let d = await session.file(ref) { image = await VideoPoster.image(data: d, name: name, maxPixels: 800) }
+            } else {
+                image = await session.image(ref)
+            }
+            failed = image == nil
         }
         .contentShape(Rectangle())
-        .onTapGesture { if let image { open?(ViewedImage(ref: ref, image: image)) } }
+        .onTapGesture {
+            guard image != nil || isVideo else { return }
+            openAttachment(PreviewItem(key: ref, name: name) { await session.file(ref) }, group: group, image: image, video: isVideo, open: open)
+        }
     }
 }
 
@@ -1918,6 +1954,8 @@ struct AgentImageView: View {
 struct ViewedImage: Identifiable {
     let ref: String
     let image: PlatformImage
+    /// A video's file, to play (its first frame is image).
+    var video: URL?
     var id: String { ref }
 }
 
@@ -2396,6 +2434,27 @@ enum SlashToken {
         return Array(commands.filter { !skip.contains($0) && $0.lowercased().hasPrefix(q) }.prefix(8))
     }
 
+    /// The commands in the text it knows, to colour as Claude Code does
+    /// (UTF-16 ranges): each a word of its own, those that only run at the
+    /// start of a message only there.
+    static func highlights(in text: String, commands: Set<String>, startOnly: Set<String>) -> [NSRange] {
+        guard text.contains("/"), !commands.isEmpty else { return [] }
+        let ns = text as NSString
+        var out: [NSRange] = []
+        for m in commandWord.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            let word = ns.substring(with: m.range)
+            guard commands.contains(word) || commands.contains(word.lowercased()) else { continue }
+            if startOnly.contains(word) {
+                let before = ns.substring(to: m.range.location)
+                guard before.allSatisfy(\.isWhitespace) else { continue }
+            }
+            out.append(m.range)
+        }
+        return out
+    }
+
+    private static let commandWord = try! NSRegularExpression(pattern: "(?<![^\\s])/[^\\s\u{FFFC}]+")
+
     /// The text with that token replaced by a command and a space, and where
     /// the cursor goes: after the space.
     static func complete(_ token: Range<String.Index>, with command: String, in text: String) -> (text: String, cursor: String.Index) {
@@ -2412,15 +2471,25 @@ enum SlashToken {
 struct Composer: View {
     @Environment(\.agentBubble) private var bubble
     @Environment(\.agentAccent) private var accent
+    @Environment(\.colorScheme) private var scheme
     let session: AgentSession
     /// claude or codex, for its model switcher.
     var harness = "claude"
     /// Typed already (ComposerSample), in place of the saved draft.
     var initialText: String?
-    @State private var text = ""
-    /// Where the cursor is in it, for completing the "/command" there.
-    @State private var selection: TextSelection?
-    @State private var attachments: [(name: String, data: Data)] = []
+    /// Attached already (ComposerSample): "{n}" in initialText is the nth's
+    /// chip; those without one are greyed out.
+    var initialAttachments: [(name: String, data: Data)] = []
+    /// The text, with a mark where each attachment's chip is.
+    @State private var doc = ComposerDoc()
+    /// Where the cursor is in it (UTF-16), for completing the "/command"
+    /// there; nil while a range is selected.
+    @State private var cursor: Int?
+    /// Everything attached, in the tray: those whose chip is in the text
+    /// go; the others are greyed out, to put back.
+    @State private var attachments: [ComposerAttachment] = []
+    @State private var thumbs: [UUID: PlatformImage] = [:]
+    @State private var controller = ComposerTextController()
     @State private var photos: [PhotosPickerItem] = []
     @State private var importing = false
     @State private var pickingPhotos = false
@@ -2436,25 +2505,27 @@ struct Composer: View {
     @State private var justSent: (text: String, until: Date)?
     /// A video being made smaller to send.
     @State private var shrinking = 0
-    @FocusState private var focused: Bool
+    @State private var focused = false
     @Environment(\.agentFonts) private var fonts
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openAgentImage) private var open
+    @Environment(\.agentImageZoom) private var zoom
 
     /// What you've typed but not sent, kept per pane: through leaving the
     /// screen, and the app quitting or being killed.
     private var draftKey: String { "agentDraft." + session.paneID }
 
+    private var text: String { doc.text }
+
     /// The "/command" being typed: at the cursor, or the end before the box
     /// has one.
     private var slashToken: Range<String.Index>? {
-        var cursor = text.endIndex
-        if let selection {
-            guard case .selection(let r) = selection.indices, r.isEmpty else { return nil }
-            cursor = r.lowerBound
+        var at = text.endIndex
+        if let cursor {
+            guard cursor <= text.utf16.count, let i = String.Index(String.Index(utf16Offset: cursor, in: text), within: text) else { return nil }
+            at = i
         }
-        // An index from before the text last changed can be stale.
-        guard cursor <= text.endIndex, let cursor = String.Index(cursor, within: text) else { return nil }
-        return SlashToken.at(cursor, in: text)
+        return SlashToken.at(at, in: text)
     }
 
     private var suggestions: [String] {
@@ -2462,39 +2533,100 @@ struct Composer: View {
         return SlashToken.suggestions(for: r, in: text, from: session.commands, startOnly: session.startCommands)
     }
 
-    /// Sets the text from code, not typing: the cursor known for the old
-    /// text means nothing in it.
-    private func replaceText(_ t: String) {
-        text = t
-        selection = nil
+    /// Sets the text from code, not typing.
+    private func setDoc(_ d: ComposerDoc) {
+        doc = d
+        cursor = nil
+        controller.set(d)
     }
+
+    private func replaceText(_ t: String) { setDoc(ComposerDoc(plain: t)) }
 
     private func complete(_ command: String) {
         guard let r = slashToken else { return }
-        let done = SlashToken.complete(r, with: command, in: text)
-        text = done.text
-        selection = TextSelection(insertionPoint: done.cursor)
+        let spaced = text[r.upperBound...].first.map { $0 == " " || $0 == "\t" } ?? false
+        let ns = NSRange(r, in: text)
+        controller.replace(ns, with: spaced ? command : command + " ")
+        if spaced { controller.replace(NSRange(location: ns.location + (command as NSString).length, length: 1), with: " ") }
     }
 
     /// The terminal has typed text this box doesn't (you'd typed something else).
     private var showsTerminalDraft: Bool {
-        !awaitingClear && !session.draft.isEmpty && text != tookDraft && !text.contains(session.draft)
+        !awaitingClear && !session.draft.isEmpty && text != tookDraft && !text.contains(session.draft) && !isGhost(session.draft)
     }
 
     /// A message starting with "!" runs as a shell command in agents that
     /// have a shell mode (Claude Code's bash mode): the box says so, as
     /// Claude Code's own prompt does, in its colour.
-    /// As sent: leading space trimmed, and attachments' paths go first (it
-    /// isn't one then).
+    /// As sent: leading space trimmed; not with an attachment in it.
     private var shellCommand: Bool {
-        attachments.isEmpty && AgentCatalog.hasShellMode(harness)
+        doc.chips.isEmpty && AgentCatalog.hasShellMode(harness)
             && text.drop(while: { $0.isWhitespace }).hasPrefix("!")
     }
     private static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
 
-    private var canSend: Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty }
+    private var canSend: Bool { !doc.plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !doc.chips.isEmpty }
     /// While the agent works and nothing's typed, the round button stops it.
-    private var stops: Bool { session.working && text.isEmpty && attachments.isEmpty }
+    private var stops: Bool { session.working && text.isEmpty }
+
+    /// Pictures go small over the network: to a pane on a linked computer,
+    /// and from the iPhone.
+    private var defaultSize: AttachmentSize {
+        #if os(macOS)
+        let remote = session.model?.group(ofPane: session.paneID)?.isRemote == true
+        #else
+        let remote = true
+        #endif
+        return AttachmentSize(rawValue: Prefs.shared.string(remote ? .agentImageSizeRemote : .agentImageSize)) ?? .large
+    }
+
+    private func greyed(_ a: ComposerAttachment) -> Bool { !doc.chips.contains(a.id) }
+
+    /// The text view's settings, from the composer's state.
+    private func configured() -> ComposerTextController {
+        let c = controller
+        c.font = platformFont(code: shellCommand)
+        c.lineSpacing = CGFloat(fonts.spacing)
+        c.highlight = PlatformColor(shellCommand ? Self.shellTint : accent)
+        let commands = Set(session.commands), startOnly = session.startCommands
+        c.highlighted = { SlashToken.highlights(in: $0, commands: commands, startOnly: startOnly) }
+        let info = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, ($0.number, $0.isVideo)) })
+        let thumbs = thumbs, size = CGFloat(fonts.size), accent = accent, dark = scheme == .dark
+        c.chipImage = { id in
+            guard let (n, video) = info[id] else { return nil }
+            return ChipRenderer.image(number: n, thumbnail: thumbs[id], thumbKey: id.uuidString, isVideo: video, onBubble: false,
+                                      fontSize: size, accent: accent, dark: dark)
+        }
+        c.onChange = { d, at in
+            doc = d
+            cursor = at
+        }
+        c.onSubmit = send
+        c.onTab = {
+            guard let s = suggestions.first else { return false }
+            complete(s)
+            return true
+        }
+        c.onFiles = { urls in Task { await attachFiles(urls) } }
+        c.onImages = { images in for d in images { attach(name: "pasted-\(attachments.count + 1).png", data: d) } }
+        c.onFocus = { focused = $0 }
+        return c
+    }
+
+    private func platformFont(code: Bool) -> PlatformFont {
+        if code {
+            let s = CGFloat(fonts.codeSize)
+            return fonts.codeName.isEmpty ? .monospacedSystemFont(ofSize: s, weight: .regular) : PlatformFont(name: fonts.codeName, size: s) ?? .monospacedSystemFont(ofSize: s, weight: .regular)
+        }
+        let s = CGFloat(fonts.size)
+        return fonts.name.isEmpty ? .systemFont(ofSize: s) : PlatformFont(name: fonts.name, size: s) ?? .systemFont(ofSize: s)
+    }
+
+    /// What the chips look like now: they're drawn again when it changes.
+    private var chipsKey: String {
+        attachments.map { "\($0.id.uuidString.prefix(8))\($0.number)\(thumbs[$0.id] != nil)" }.joined()
+            + "|\(scheme == .dark)|\(fonts.size)|\(shellCommand)|\(accent.description)"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2534,7 +2666,7 @@ struct Composer: View {
                     Text("Typed in the terminal: \(session.draft)").lineLimit(1).truncationMode(.tail).foregroundStyle(.secondary)
                     Spacer(minLength: 4)
                     Button("Add") {
-                        replaceText(session.draft + (text.isEmpty ? "" : " " + text))
+                        replaceText(session.draft + (text.isEmpty ? "" : " " + doc.plain))
                         tookDraft = ""
                     }
                     .agentGlassButton()
@@ -2545,9 +2677,13 @@ struct Composer: View {
                 .help("Sending replaces what's typed in the terminal: add it to keep it")
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            // One box, as Claude's and ChatGPT's: the message the full width,
-            // and under it a row of controls (attach, what's attached, send).
+            // One box, as Claude's and ChatGPT's: what's attached along the
+            // top, the message the full width, and under it a row of
+            // controls (attach, the model, send).
             VStack(alignment: .leading, spacing: 2) {
+                if !attachments.isEmpty {
+                    tray.transition(.move(edge: .top).combined(with: .opacity))
+                }
                 if shellCommand {
                     Label("Shell command", systemImage: "apple.terminal")
                         .font(.caption.weight(.medium))
@@ -2557,35 +2693,15 @@ struct Composer: View {
                         .padding(.bottom, -6)
                         .transition(.opacity)
                 }
-                TextField("Message \(session.agentName)…", text: $text, selection: $selection, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(shellCommand ? fonts.code() : fonts.body())
-                    .lineLimit(1...10)
-                    .focused($focused)
-                    .onSubmit(send)
-                    // Tab completes the top suggestion (and otherwise moves
-                    // focus on, as usual).
-                    .onKeyPress(.tab) {
-                        guard let s = suggestions.first else { return .ignored }
-                        complete(s)
-                        return .handled
-                    }
-                    #if os(iOS)
-                    // Paste a photo here: it's attached, as from Photos.
-                    .background {
-                        ImagePasteProbe { images in
-                            for img in images {
-                                // PNG while it has transparency (a JPEG's would be black).
-                                let alpha = img.cgImage.map { ![.none, .noneSkipFirst, .noneSkipLast].contains($0.alphaInfo) } ?? false
-                                if alpha, let d = img.pngData() {
-                                    attachments.append(("pasted-\(attachments.count + 1).png", d))
-                                } else if let d = img.jpegData(compressionQuality: 0.85) {
-                                    attachments.append(("pasted-\(attachments.count + 1).jpg", d))
-                                }
-                            }
+                ComposerTextView(controller: configured(), chipsKey: chipsKey)
+                    .overlay(alignment: .topLeading) {
+                        if text.isEmpty {
+                            Text("Message \(session.agentName)…")
+                                .font(shellCommand ? fonts.code() : fonts.body())
+                                .foregroundStyle(.tertiary)
+                                .allowsHitTesting(false)
                         }
                     }
-                    #endif
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.top, 13)
@@ -2606,25 +2722,13 @@ struct Composer: View {
                     .buttonBorderShape(.circle)
                     .fixedSize()
                     .help("Attach images")
-                    if !attachments.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(Array(attachments.enumerated()), id: \.offset) { i, a in
-                                    AttachmentThumb(name: a.name, data: a.data) {
-                                        withAnimation(.snappy) { _ = attachments.remove(at: i) }
-                                    }
-                                    .transition(.scale(scale: 0.7).combined(with: .opacity))
-                                }
-                            }
-                        }
-                    }
                     if shrinking > 0 {
                         ProgressView().controlSize(.small)
                         Text("Preparing video…").font(.caption).foregroundStyle(.secondary)
                     }
                     // The model and how full its context is, beside the attach
-                    // button; what's attached takes the room when there is some.
-                    if attachments.isEmpty, shrinking == 0, !session.agentModel.isEmpty {
+                    // button.
+                    if shrinking == 0, !session.agentModel.isEmpty {
                         AgentStatusBar(session: session, canDrive: true, harness: harness, inline: true)
                             .transition(.opacity)
                     }
@@ -2650,7 +2754,7 @@ struct Composer: View {
                 .padding(.bottom, 8)
             }
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .onTapGesture { focused = true }
+            .onTapGesture { controller.focus() }
             .agentGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -2670,25 +2774,15 @@ struct Composer: View {
                 if d.isEmpty { awaitingClear = false }
                 return
             }
-            if text.isEmpty || text == tookDraft {
+            if (text.isEmpty || text == tookDraft) && doc.chips.isEmpty {
                 replaceText(d)
                 tookDraft = d
             }
         }
-        .animation(.snappy(duration: 0.25), value: attachments.count)
+        .animation(.snappy(duration: 0.25), value: attachments.map(\.id))
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image, .movie], allowsMultipleSelection: true) { result in
             let urls = (try? result.get()) ?? []
-            Task {
-                for url in urls {
-                    let scoped = url.startAccessingSecurityScopedResource()
-                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                    if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
-                        await attachVideo(url, name: url.deletingPathExtension().lastPathComponent + ".mp4")
-                    } else if let d = try? Data(contentsOf: url) {
-                        attachments.append((url.lastPathComponent, d))
-                    }
-                }
-            }
+            Task { await attachFiles(urls, scoped: true) }
         }
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 4, matching: .any(of: [.images, .videos]))
         .onChange(of: photos) {
@@ -2704,7 +2798,7 @@ struct Composer: View {
                             sendError = "Couldn't load that video."
                         }
                     } else if let d = try? await item.loadTransferable(type: Data.self) {
-                        attachments.append(("photo-\(attachments.count + 1).jpg", d))
+                        attach(name: "photo-\(attachments.count + 1).jpg", data: d)
                     }
                 }
             }
@@ -2715,10 +2809,15 @@ struct Composer: View {
             Text(sendError ?? "")
         }
         .dropDestination(for: Data.self) { items, _ in
-            for d in items where PlatformImage(data: d) != nil { attachments.append(("dropped-\(attachments.count + 1).png", d)) }
+            for d in items where PlatformImage(data: d) != nil { attach(name: "dropped-\(attachments.count + 1).png", data: d) }
             return true
         }
-        .onAppear { if text.isEmpty { replaceText(initialText ?? UserDefaults.standard.string(forKey: draftKey) ?? "") } }
+        .onAppear {
+            if text.isEmpty && attachments.isEmpty {
+                if let initialText { sample(initialText) } else { loadDraft() }
+            }
+            ComposerDrafts.pruneStale(livePanes: nil)
+        }
         #if os(iOS)
         // A new chat (a Claude tab just started): straight to typing, without
         // a tap on the box first. Once it's arrived, not while it loads.
@@ -2726,17 +2825,19 @@ struct Composer: View {
             guard session.heard, session.blocks.isEmpty, session.pastSession == nil else { return }
             // After the push into the view: focus taken mid-transition is lost.
             try? await Task.sleep(for: .milliseconds(350))
-            if !Task.isCancelled, session.blocks.isEmpty { focused = true }
+            if !Task.isCancelled, session.blocks.isEmpty { controller.focus() }
         }
         #endif
         .onChange(of: session.paneID) { old, _ in
-            saveDraft(text, key: "agentDraft." + old)
-            replaceText(UserDefaults.standard.string(forKey: draftKey) ?? "")
+            saveDraft(key: "agentDraft." + old, pane: old)
+            attachments = []
+            thumbs = [:]
+            loadDraft()
         }
         .onChange(of: text) { old, t in
             // The keyboard putting (part of) the sent message back in one go;
             // you typing starts with one character.
-            if old.isEmpty, t.count > 1, isGhost(t) {
+            if old.isEmpty, t.count > 1, doc.chips.isEmpty, isGhost(t) {
                 replaceText("")
                 return
             }
@@ -2744,23 +2845,101 @@ struct Composer: View {
         // Saved once typing pauses, not on each key: every default written
         // tells everything watching UserDefaults (the terminal behind this
         // view redrew for each), and the keyboard lagged.
-        .task(id: text) {
+        .task(id: draftSignature) {
             try? await Task.sleep(for: .milliseconds(400))
-            if !Task.isCancelled { saveDraft(text, key: draftKey) }
+            if !Task.isCancelled { saveDraft(key: draftKey, pane: session.paneID) }
         }
-        .onDisappear { saveDraft(text, key: draftKey) }
+        .onDisappear { saveDraft(key: draftKey, pane: session.paneID) }
         .onChange(of: scenePhase) { _, phase in
             // Before the app can be killed in the background.
-            if phase != .active { saveDraft(text, key: draftKey) }
+            if phase != .active { saveDraft(key: draftKey, pane: session.paneID) }
         }
     }
 
-    private func saveDraft(_ t: String, key: String) {
-        let d = UserDefaults.standard
-        if t.isEmpty {
-            if d.object(forKey: key) != nil { d.removeObject(forKey: key) }
-        } else if d.string(forKey: key) != t {
-            d.set(t, forKey: key)
+    // MARK: The tray
+
+    /// What's attached, along the top of the box: numbered, greyed out
+    /// while its chip isn't in the text (click to put it back).
+    private var tray: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(attachments) { a in
+                    TrayThumb(attachment: a, thumbnail: thumbs[a.id], greyed: greyed(a), defaultSize: defaultSize,
+                              onOpen: { openTray(a) },
+                              onInsert: { controller.insertChip(a.id); controller.focus() },
+                              onSize: { s in setSize(a.id, s) },
+                              onRemove: { remove(a.id) })
+                        .transition(.scale(scale: 0.7).combined(with: .opacity))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 2)
+        }
+    }
+
+    private var trayGroup: [PreviewItem] {
+        attachments.map { a in PreviewItem(key: a.id.uuidString, name: a.name) { a.data } }
+    }
+
+    private func openTray(_ a: ComposerAttachment) {
+        openAttachment(PreviewItem(key: a.id.uuidString, name: a.name) { a.data }, group: trayGroup,
+                       image: a.isVideo ? thumbs[a.id] : PlatformImage(data: a.data), video: a.isVideo, open: open)
+    }
+
+    private func setSize(_ id: UUID, _ s: AttachmentSize?) {
+        guard let i = attachments.firstIndex(where: { $0.id == id }) else { return }
+        attachments[i].size = s
+    }
+
+    /// Takes an attachment off for good: from the tray and the text.
+    private func remove(_ id: UUID) {
+        withAnimation(.snappy) { attachments.removeAll { $0.id == id } }
+        thumbs[id] = nil
+        // Its chips go: the text view drops chips it has no picture for.
+        let st = doc.text
+        if doc.chips.contains(id) {
+            var d = ComposerDoc()
+            var k = 0
+            for ch in st {
+                if ch == attachMark {
+                    if k < doc.chips.count, doc.chips[k] != id {
+                        d.text.append(ch)
+                        d.chips.append(doc.chips[k])
+                    }
+                    k += 1
+                } else {
+                    d.text.append(ch)
+                }
+            }
+            setDoc(d)
+        }
+        if attachments.isEmpty { ComposerDrafts.remove(session.paneID) }
+    }
+
+    // MARK: Attaching
+
+    /// Attaches a file's contents, numbered next, with its chip at the cursor.
+    private func attach(name: String, data: Data) {
+        let a = ComposerAttachment(number: (attachments.map(\.number).max() ?? 0) + 1, name: name, data: data)
+        attachments.append(a)
+        // Its picture for the chip, now: the text view asks for it as it's put in.
+        _ = configured()
+        controller.insertChip(a.id)
+        Task {
+            if let t = await ImageResize.thumbnail(data, name: name) { thumbs[a.id] = t }
+        }
+    }
+
+    private func attachFiles(_ urls: [URL], scoped: Bool = false) async {
+        for url in urls {
+            let ok = scoped && url.startAccessingSecurityScopedResource()
+            defer { if ok { url.stopAccessingSecurityScopedResource() } }
+            if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
+                await attachVideo(url, name: url.deletingPathExtension().lastPathComponent + ".mp4")
+            } else if let d = try? Data(contentsOf: url) {
+                attach(name: url.lastPathComponent, data: d)
+            }
         }
     }
 
@@ -2775,48 +2954,142 @@ struct Composer: View {
                 sendError = "That video is too long to send (\(data.count >> 20) MB after shrinking it; 30 MB at most)."
                 return
             }
-            attachments.append((name, data))
+            attach(name: name, data: data)
         } catch {
             sendError = "Couldn't prepare that video: \(error.localizedDescription)"
+        }
+    }
+
+    /// ComposerSample's text and attachments.
+    private func sample(_ t: String) {
+        attachments = initialAttachments.enumerated().map { ComposerAttachment(number: $0.offset + 1, name: $0.element.name, data: $0.element.data) }
+        var d = ComposerDoc()
+        var rest = Substring(t)
+        while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}"),
+              let n = Int(rest[rest.index(after: open)..<close]), attachments.indices.contains(n - 1) {
+            d.text += rest[..<open]
+            d.text.append(attachMark)
+            d.chips.append(attachments[n - 1].id)
+            rest = rest[rest.index(after: close)...]
+        }
+        d.text += rest
+        for a in attachments {
+            thumbs[a.id] = PlatformImage(data: a.data)
+        }
+        _ = configured()
+        setDoc(d)
+    }
+
+    // MARK: Drafts
+
+    /// What a saved draft depends on: saved again when it changes.
+    private var draftSignature: String {
+        doc.text + "|" + doc.chips.map(\.uuidString).joined() + "|" + attachments.map { "\($0.id)\($0.size?.rawValue ?? "")" }.joined()
+    }
+
+    private func saveDraft(key: String, pane: String) {
+        let d = UserDefaults.standard
+        if attachments.isEmpty {
+            ComposerDrafts.remove(pane)
+            let t = doc.plain.isEmpty ? "" : doc.text
+            if t.isEmpty {
+                if d.object(forKey: key) != nil { d.removeObject(forKey: key) }
+            } else if d.string(forKey: key) != t {
+                d.set(t, forKey: key)
+            }
+        } else {
+            if d.object(forKey: key) != nil { d.removeObject(forKey: key) }
+            ComposerDrafts.save(pane, doc: doc, attachments: attachments)
+        }
+    }
+
+    private func loadDraft() {
+        if let (d, atts) = ComposerDrafts.load(session.paneID) {
+            attachments = atts
+            for a in atts {
+                Task { if let t = await ImageResize.thumbnail(a.data, name: a.name) { thumbs[a.id] = t } }
+            }
+            _ = configured()
+            setDoc(d)
+        } else {
+            replaceText(UserDefaults.standard.string(forKey: draftKey) ?? "")
         }
     }
 
     /// Text that's only (part of) the message just sent, while that's recent.
     /// Spacing doesn't count: the terminal wraps a long message over lines
     /// (the draft has line breaks where it had spaces), and shows a long
-    /// paste as "[Pasted text …]".
+    /// paste as "[Pasted text …]". Nor do its attachments, as the terminal
+    /// shows them while they're pasted: "[Image #3]", or a video's path.
     private func isGhost(_ s: String) -> Bool {
         guard let j = justSent, Date.now < j.until else { return false }
+        if s.contains("[Image #") || s.contains("/hammock/attachments/") { return true }
         func bare(_ t: String) -> String { String(String.UnicodeScalarView(t.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) })) }
         let a = bare(s), b = bare(j.text)
         if a.isEmpty { return false }
         return b.contains(a) || a.hasPrefix(b) || s.hasPrefix("[Pasted text")
     }
 
+    // MARK: Sending
+
     private func send() {
-        let t = text, a = attachments
-        guard !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !a.isEmpty else { return }
-        replaceText("")
-        attachments = []
+        guard canSend else { return }
+        // A chip pasted in twice goes once, where it first is.
+        var d = ComposerDoc()
+        var k = 0
+        for ch in doc.text {
+            if ch == attachMark {
+                if k < doc.chips.count, !d.chips.contains(doc.chips[k]) {
+                    d.text.append(ch)
+                    d.chips.append(doc.chips[k])
+                }
+                k += 1
+            } else {
+                d.text.append(ch)
+            }
+        }
+        let byID = Dictionary(uniqueKeysWithValues: attachments.map { ($0.id, $0) })
+        let sent = d.chips.compactMap { byID[$0] }
+        let size = defaultSize
+        // Those left out stay, greyed, numbered again for the next message.
+        let kept = attachments.filter { !d.chips.contains($0.id) }
+        var renumbered = kept
+        for i in renumbered.indices { renumbered[i].number = i + 1 }
+        let keptThumbs = thumbs.filter { id, _ in kept.contains { $0.id == id } }
+        attachments = renumbered
+        thumbs = keptThumbs
+        setDoc(ComposerDoc())
         UserDefaults.standard.removeObject(forKey: draftKey)
+        if renumbered.isEmpty { ComposerDrafts.remove(session.paneID) }
         // The terminal's box is emptied as this goes: don't take its old text
         // back meanwhile.
         if !session.draft.isEmpty { awaitingClear = true }
         tookDraft = ""
-        justSent = (t, .now + 4)
+        justSent = (d.plain, .now + 4)
+        let local = sent.map { BubbleAttachment.local(id: $0.id, name: $0.name, data: $0.data) }
         Task {
-            guard !(await session.send(t, attachments: a)) else { return }
+            // Pictures at the size they go at (videos are already small).
+            let files = await Task.detached(priority: .userInitiated) {
+                sent.map { a in a.isVideo ? (name: a.name, data: a.data) : ImageResize.resized(name: a.name, data: a.data, maxEdge: (a.size ?? size).maxEdge) }
+            }.value
+            guard !(await session.send(d.text, attachments: files.map { (name: $0.0, data: $0.1) }, inline: true, local: local)) else { return }
             // Didn't go (not connected yet): give it back, unless something
             // new has been typed meanwhile.
             justSent = nil
             awaitingClear = false
-            if text.isEmpty && attachments.isEmpty {
-                replaceText(t)
-                attachments = a
+            if text.isEmpty {
+                var back = sent
+                for i in back.indices { back[i].number = i + 1 }
+                for i in attachments.indices { attachments[i].number = back.count + i + 1 }
+                attachments = back + attachments
+                for a in back { Task { if let t = await ImageResize.thumbnail(a.data, name: a.name) { thumbs[a.id] = t } } }
+                _ = configured()
+                setDoc(d)
             }
         }
     }
 }
+
 
 // MARK: - Status bar
 
@@ -3163,42 +3436,59 @@ public struct AgentColorPreview: View {
     }
 }
 
-/// An attachment waiting in the composer: a thumbnail (a film tile for a
-/// video), tap to look at it in the viewer, ✕ to take it off.
-struct AttachmentThumb: View {
-    let name: String
-    let data: Data
+/// An attachment in the composer's tray: its thumbnail and number, greyed
+/// out while its chip isn't in the text. Click to look at it (or, greyed,
+/// to put it back); its menu sets the size it's sent at.
+struct TrayThumb: View {
+    let attachment: ComposerAttachment
+    let thumbnail: PlatformImage?
+    let greyed: Bool
+    let defaultSize: AttachmentSize
+    let onOpen: () -> Void
+    let onInsert: () -> Void
+    let onSize: (AttachmentSize?) -> Void
     let onRemove: () -> Void
-    @Environment(\.openAgentImage) private var open
     @Environment(\.agentImageZoom) private var zoom
-    @State private var image: PlatformImage?
 
-    private var ref: String { "attachment:\(name):\(data.count)" }
+    private var name: String { attachment.name }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Group {
-                if let image {
+                if let thumbnail {
                     #if canImport(AppKit)
-                    Image(nsImage: image).resizable().scaledToFill()
+                    Image(nsImage: thumbnail).resizable().scaledToFill()
                     #else
-                    Image(uiImage: image).resizable().scaledToFill()
+                    Image(uiImage: thumbnail).resizable().scaledToFill()
                     #endif
                 } else {
-                    Image(systemName: name.hasSuffix(".mp4") ? "film" : "photo")
+                    Image(systemName: attachment.isVideo ? "film" : "photo")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(.quaternary.opacity(0.7))
                 }
             }
-            .frame(width: 52, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(width: 64, height: 64)
+            .overlay { if attachment.isVideo, thumbnail != nil { Image(systemName: "play.fill").foregroundStyle(.white).shadow(radius: 2) } }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(alignment: .bottomLeading) { NumberBadge(number: attachment.number).padding(4) }
+            .overlay(alignment: .center) {
+                if greyed {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.5))
+                }
+            }
+            .saturation(greyed ? 0 : 1)
+            .opacity(greyed ? 0.45 : 1)
             #if os(iOS)
-            .modifier(ZoomSource(id: ref, in: zoom))
+            .modifier(ZoomSource(id: attachment.id.uuidString, in: zoom))
             #endif
             .contentShape(Rectangle())
-            .onTapGesture { if let image { open?(ViewedImage(ref: ref, image: image)) } }
-            .help(name)
+            .onTapGesture { greyed ? onInsert() : onOpen() }
+            .help(greyed ? "\(name): not in the message. Click to put it back at the cursor" : name)
+            .contextMenu { menu }
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
                     .symbolRenderingMode(.palette)
@@ -3210,12 +3500,35 @@ struct AttachmentThumb: View {
             .accessibilityLabel("Remove \(name)")
         }
         .padding(.top, 6).padding(.trailing, 6) // room for the ✕
-        .task(id: data.count) {
-            // Decoded once, off the main thread: a photo can be large.
-            let d = data
-            image = await Task.detached(priority: .userInitiated) { PlatformImage(data: d) }.value
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Attachment \(attachment.number)\(greyed ? ", not in the message" : "")")
+    }
+
+    @ViewBuilder private var menu: some View {
+        if greyed {
+            Button { onInsert() } label: { Label("Put Back in Message", systemImage: "text.insert") }
+        } else {
+            Button { onOpen() } label: { Label("Look at It", systemImage: "eye") }
+        }
+        if let px = attachment.pixels {
+            Section("Send at") {
+                sizeButton(nil, "Default: \(defaultSize.name) (\(dims(defaultSize.scaled(px))))")
+                ForEach(AttachmentSize.allCases) { s in
+                    sizeButton(s, "\(s.name) (\(dims(s.scaled(px))))")
+                }
+            }
+        }
+        Divider()
+        Button(role: .destructive) { onRemove() } label: { Label("Remove", systemImage: "trash") }
+    }
+
+    private func sizeButton(_ s: AttachmentSize?, _ title: String) -> some View {
+        Button { onSize(s) } label: {
+            if attachment.size == s { Label(title, systemImage: "checkmark") } else { Text(title) }
         }
     }
+
+    private func dims(_ s: CGSize) -> String { "\(Int(s.width)) × \(Int(s.height))" }
 }
 
 /// Debug: "!" commands as the agent view shows them, over the composer with
@@ -3223,10 +3536,21 @@ struct AttachmentThumb: View {
 public struct ComposerSample: View {
     let session: AgentSession
     let text: String
+    /// Made-up pictures, when the text has "{n}" chips in it.
+    let pictures: [(name: String, data: Data)]
 
     public init(model: AppModel, text: String) {
         session = AgentSession(paneID: "pn_debug", model: model)
         self.text = text
+        pictures = text.contains("{") ? [Color.orange, .teal, .purple].enumerated().compactMap { i, c in
+            let r = ImageRenderer(content: LinearGradient(colors: [c, c.opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing).frame(width: 160, height: 120))
+            #if os(macOS)
+            guard let tiff = r.nsImage?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return nil }
+            #else
+            guard let png = r.uiImage?.pngData() else { return nil }
+            #endif
+            return ("picture-\(i + 1).png", png)
+        } : []
         var v = Hammock_V1_AgentView()
         v.replace = true
         v.blocks = [
@@ -3243,11 +3567,17 @@ public struct ComposerSample: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(session.blocks, id: \.id) { b in
-                if b.kind == .tool { ToolRow(block: b, session: session) } else { UserBubble(text: b.text, images: [], session: session).frame(maxWidth: .infinity, alignment: .trailing) }
+            if pictures.isEmpty {
+                ForEach(session.blocks, id: \.id) { b in
+                    if b.kind == .tool { ToolRow(block: b, session: session) } else { UserBubble(text: b.text, attachments: [], session: session).frame(maxWidth: .infinity, alignment: .trailing) }
+                }
+            } else {
+                // A sent message with its chips, as from the composer.
+                let sent = pictures.prefix(2).enumerated().map { BubbleAttachment.local(id: UUID(uuidString: "00000000-0000-0000-0000-00000000000\($0.offset)")!, name: $0.element.name, data: $0.element.data) }
+                UserBubble(text: "Compare with", rich: "Compare \u{FFFC} with \u{FFFC}: which has the bug?", attachments: sent, session: session)
             }
             Spacer(minLength: 0)
-            Composer(session: session, harness: "claude", initialText: text)
+            Composer(session: session, harness: "claude", initialText: text, initialAttachments: pictures)
         }
         .padding(16)
     }

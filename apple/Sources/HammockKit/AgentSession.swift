@@ -56,7 +56,7 @@ public final class AgentSession {
     /// no blocks after this is an empty chat, not one still loading.
     public private(set) var heard = false
     /// Messages sent from here that the transcript hasn't shown yet.
-    public private(set) var pendingSends: [String] = []
+    public private(set) var pendingSends: [PendingSend] = []
     /// Your messages already in the transcript when the pending ones were sent.
     private var seenUserIDs: Set<String> = []
     /// Set while an answer is being typed, and the error if it didn't match.
@@ -217,7 +217,7 @@ public final class AgentSession {
             for b in blocks where b.kind == .user && !seenUserIDs.contains(b.id) {
                 seenUserIDs.insert(b.id)
                 let n = Self.squashed(b.text)
-                if let i = pendingSends.firstIndex(where: { let p = Self.squashed($0); return n.contains(p) || p.contains(n) }) {
+                if let i = pendingSends.firstIndex(where: { let p = Self.squashed($0.text); return n.contains(p) || p.contains(n) }) {
                     pendingSends.remove(at: i)
                 } else if !pendingSends.isEmpty {
                     pendingSends.removeFirst()
@@ -284,24 +284,29 @@ public final class AgentSession {
     }
 
     /// Sends a message (with images, attached by path), queued by the agent
-    /// if it's working. False if it didn't go (not connected): the caller
-    /// gives the text back.
+    /// if it's working. Inline: text has a mark (U+FFFC) where each
+    /// attachment goes. local: the attachments as the composer has them, to
+    /// show the message with until the transcript does. False if it didn't
+    /// go (not connected): the caller gives the text back.
     @discardableResult
-    public func send(_ text: String, attachments: [(name: String, data: Data)] = [], pending: Bool = true) async -> Bool {
+    func send(_ text: String, attachments: [(name: String, data: Data)], inline: Bool = false, local: [BubbleAttachment] = [], pending: Bool = true) async -> Bool {
         guard let conn = model?.connection else {
             answerError = "Not connected. Your message wasn't sent."
             return false
         }
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let p = PendingSend(text: ComposerDoc(text: text).plain.trimmingCharacters(in: .whitespacesAndNewlines),
+                            rich: inline && !local.isEmpty ? text.trimmingCharacters(in: .whitespacesAndNewlines) : "",
+                            attachments: local)
         if pending {
             if pendingSends.isEmpty { seenUserIDs = Set(blocks.filter { $0.kind == .user }.map(\.id)) }
-            if !t.isEmpty { pendingSends.append(t) }
+            if !p.text.isEmpty || !p.attachments.isEmpty { pendingSends.append(p) }
         }
         do {
             _ = try await conn.call {
                 $0.agentSend = .with {
                     $0.paneID = self.paneID
                     $0.text = text
+                    $0.inline = inline
                     $0.attachments = attachments.map { a in
                         let (name, data) = claudeReadable(a.name, a.data)
                         return .with { $0.name = name; $0.data = data }
@@ -309,11 +314,17 @@ public final class AgentSession {
                 }
             }
         } catch {
-            pendingSends.removeAll { $0 == t }
+            pendingSends.removeAll { $0.id == p.id }
             answerError = error.localizedDescription
             return false
         }
         return true
+    }
+
+    /// Sends text as typed, with nothing attached.
+    @discardableResult
+    public func send(_ text: String, pending: Bool = true) async -> Bool {
+        await send(text, attachments: [], pending: pending)
     }
 
     private static func squashed(_ s: String) -> String {
@@ -402,6 +413,16 @@ func claudeReadable(_ name: String, _ data: Data) -> (String, Data) {
           let jpg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { return (name, data) }
     #endif
     return ((name as NSString).deletingPathExtension + ".jpg", jpg)
+}
+
+/// A message sent from here, until the transcript shows it.
+public struct PendingSend: Identifiable {
+    public let id = UUID()
+    /// As the transcript will show it (no chips), to know it there by.
+    public let text: String
+    /// With its chips' marks (none: "").
+    let rich: String
+    let attachments: [BubbleAttachment]
 }
 
 /// A view's hold on an agent session (AppModel.acquireAgent): released when

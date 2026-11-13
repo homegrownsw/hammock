@@ -814,12 +814,12 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 		}
 		paths = append(paths, path)
 	}
-	text := strings.TrimSpace(m.Text)
-	if text == "" && len(paths) == 0 {
+	parts := sendParts(m.Text, paths, m.Inline)
+	if len(parts) == 0 {
 		return errors.New("nothing to send")
 	}
 	go func() {
-		if err := typeToAgent(p, c, text, paths); err != nil {
+		if err := typeParts(p, c, parts); err != nil {
 			c.replyErr(id, err)
 			return
 		}
@@ -828,10 +828,64 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 	return errDeferred
 }
 
-// typeToAgent types a message (and files' paths) into an agent's pane as
-// the composer does, and presses Enter. It takes a moment: not under d.mu.
-// c is who's typing (nil: Hammock itself, as for review comments).
+// attachMark is where an attachment goes in an inline AgentSend's text.
+const attachMark = "\uFFFC"
+
+// sendPart is one paste into an agent's input: text, or a file's path.
+type sendPart struct {
+	text, path string
+}
+
+// sendParts orders a message's text and attachments' paths as they're
+// pasted: inline, each path where its mark is (marks past the last path are
+// dropped, and paths past the last mark go at the end); otherwise the paths
+// first. The message is trimmed as a whole, not around each path.
+func sendParts(text string, paths []string, inline bool) []sendPart {
+	var parts []sendPart
+	addText := func(t string) {
+		if t != "" {
+			parts = append(parts, sendPart{text: t})
+		}
+	}
+	if !inline {
+		text = strings.ReplaceAll(text, attachMark, "")
+		for _, p := range paths {
+			parts = append(parts, sendPart{path: p})
+		}
+		addText(strings.TrimSpace(text))
+		return parts
+	}
+	segs := strings.Split(strings.TrimSpace(text), attachMark)
+	for i, seg := range segs {
+		if i == 0 {
+			seg = strings.TrimLeft(seg, " \t\n")
+		}
+		addText(seg)
+		if i < len(segs)-1 && i < len(paths) {
+			parts = append(parts, sendPart{path: paths[i]})
+		}
+	}
+	for _, p := range paths[min(len(paths), len(segs)-1):] {
+		parts = append(parts, sendPart{path: p})
+	}
+	// Only spaces left between the attachments: nothing typed.
+	if !slices.ContainsFunc(parts, func(p sendPart) bool { return p.path != "" || strings.TrimSpace(p.text) != "" }) {
+		return nil
+	}
+	return parts
+}
+
+// typeToAgent types a message (and files' paths, first) into an agent's
+// pane as the composer does, and presses Enter. It takes a moment: not
+// under d.mu. c is who's typing (nil: Hammock itself, as for review
+// comments).
 func typeToAgent(p *pane, c *conn, text string, paths []string) error {
+	return typeParts(p, c, sendParts(text, paths, false))
+}
+
+// typeParts pastes each part in turn into an agent's input, and presses
+// Enter.
+func typeParts(p *pane, c *conn, parts []sendPart) error {
 	// As pastes (bracketed when the program asked, which Claude Code
 	// does): a pasted image path becomes [Image #n], and newlines stay in
 	// the message instead of sending it line by line.
@@ -841,11 +895,12 @@ func typeToAgent(p *pane, c *conn, text string, paths []string) error {
 	// the message goes in alone.
 	steps = append(steps, agentview.Step{Keys: agentview.ClearInput(agentview.InputLines(p.text(false))), What: "clear"})
 	// Each separately, so each pasted path is taken as a file.
-	for _, path := range paths {
-		steps = append(steps, agentview.Step{Keys: paste(path + " "), What: "attachment"})
-	}
-	if text != "" {
-		steps = append(steps, agentview.Step{Keys: paste(text), What: "message"})
+	for _, part := range parts {
+		if part.path != "" {
+			steps = append(steps, agentview.Step{Keys: paste(part.path + " "), What: "attachment"})
+		} else {
+			steps = append(steps, agentview.Step{Keys: paste(part.text), What: "message"})
+		}
 	}
 	steps = append(steps, agentview.Step{Keys: agentview.Enter(p.kittyKeys()), What: "enter"})
 	for i, s := range steps {

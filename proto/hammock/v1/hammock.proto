@@ -1147,6 +1147,10 @@ message AgentBlock {
   repeated AgentImage images = 15;
   string turn_id = 16;               // the user block that started this turn
   int64 duration_ms = 17;            // KIND_DONE: how long the turn worked, as the agent timed it
+  // A message you sent with attachments: text with U+FFFC where each of
+  // images sits, in order (images past the last one have no place). Text
+  // is the same without them, for clients from before.
+  string rich_text = 18;
 }
 
 message AgentQuestion {
@@ -1292,7 +1296,9 @@ message AgentAnswer {
 }
 
 // Sends a message to the agent (queued by it while it works).
-message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachment attachments = 3; }
+// inline: text holds U+FFFC where each attachment goes, in order (the
+// composer's chips), and they're pasted there; otherwise they go first.
+message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachment attachments = 3; bool inline = 4; }
 message AgentAttachment { string name = 1; bytes data = 2; }
 
 // Fetches an image or a file the session referenced.

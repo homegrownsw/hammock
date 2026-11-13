@@ -172,7 +172,8 @@ extension Pref {
 
     /// The settings HammockKit knows (the Mac app adds its own).
     public static var shared: [Pref] {
-        [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentCodeWrap, agentDefaultView]
+        [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentCodeWrap, agentDefaultView,
+         agentImageSize, agentImageSizeRemote]
             + AgentCatalog.known.keys.sorted().map { usageLimits($0) }
             + editor
             + diff

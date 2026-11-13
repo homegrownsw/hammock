@@ -171,12 +171,13 @@ func (c *Codex) Feed(line []byte) []*pb.AgentBlock {
 		case p.Role == "user" && !thread.CodexInjected(text):
 			// Codex sometimes records a message twice, back to back; it shows
 			// it once.
-			if n := len(c.blocks); n > 0 && c.blocks[n-1].Kind == pb.AgentBlock_KIND_USER && c.blocks[n-1].Text == text {
+			c.mentions(text)
+			plain, rich, files := PlaceAttachments(text, nil)
+			if n := len(c.blocks); n > 0 && c.blocks[n-1].Kind == pb.AgentBlock_KIND_USER && c.blocks[n-1].Text == plain {
 				return nil
 			}
 			c.turn = id
-			c.mentions(text)
-			return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_USER, TimeUnixMs: ms, Text: text, TurnId: id})
+			return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_USER, TimeUnixMs: ms, Text: plain, RichText: rich, Images: files, TurnId: id})
 		case p.Role == "assistant":
 			c.mentions(text)
 			return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_TEXT, TimeUnixMs: ms, Text: text})

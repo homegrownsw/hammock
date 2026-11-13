@@ -11277,24 +11277,28 @@ func (x *SessionResumed) GetReport() string {
 }
 
 type AgentBlock struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // stable across updates
-	Kind          AgentBlock_Kind        `protobuf:"varint,2,opt,name=kind,proto3,enum=hammock.v1.AgentBlock_Kind" json:"kind,omitempty"`
-	TimeUnixMs    int64                  `protobuf:"varint,3,opt,name=time_unix_ms,json=timeUnixMs,proto3" json:"time_unix_ms,omitempty"`
-	Text          string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`     // markdown, thinking text, or the plan
-	Tool          string                 `protobuf:"bytes,5,opt,name=tool,proto3" json:"tool,omitempty"`     // native tool name
-	Title         string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`   // one line: "Ran `go test ./...`", "Edited AppModel.swift"
-	Input         string                 `protobuf:"bytes,7,opt,name=input,proto3" json:"input,omitempty"`   // the call's main input (command, path, pattern, prompt)
-	Output        string                 `protobuf:"bytes,8,opt,name=output,proto3" json:"output,omitempty"` // result text, clipped
-	Error         bool                   `protobuf:"varint,9,opt,name=error,proto3" json:"error,omitempty"`
-	Pending       bool                   `protobuf:"varint,10,opt,name=pending,proto3" json:"pending,omitempty"` // called, no result yet
-	Diff          string                 `protobuf:"bytes,11,opt,name=diff,proto3" json:"diff,omitempty"`        // unified diff for edits and writes
-	Added         int32                  `protobuf:"varint,12,opt,name=added,proto3" json:"added,omitempty"`
-	Removed       int32                  `protobuf:"varint,13,opt,name=removed,proto3" json:"removed,omitempty"`
-	Questions     []*AgentQuestion       `protobuf:"bytes,14,rep,name=questions,proto3" json:"questions,omitempty"`
-	Images        []*AgentImage          `protobuf:"bytes,15,rep,name=images,proto3" json:"images,omitempty"`
-	TurnId        string                 `protobuf:"bytes,16,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"`              // the user block that started this turn
-	DurationMs    int64                  `protobuf:"varint,17,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"` // KIND_DONE: how long the turn worked, as the agent timed it
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // stable across updates
+	Kind       AgentBlock_Kind        `protobuf:"varint,2,opt,name=kind,proto3,enum=hammock.v1.AgentBlock_Kind" json:"kind,omitempty"`
+	TimeUnixMs int64                  `protobuf:"varint,3,opt,name=time_unix_ms,json=timeUnixMs,proto3" json:"time_unix_ms,omitempty"`
+	Text       string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`     // markdown, thinking text, or the plan
+	Tool       string                 `protobuf:"bytes,5,opt,name=tool,proto3" json:"tool,omitempty"`     // native tool name
+	Title      string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`   // one line: "Ran `go test ./...`", "Edited AppModel.swift"
+	Input      string                 `protobuf:"bytes,7,opt,name=input,proto3" json:"input,omitempty"`   // the call's main input (command, path, pattern, prompt)
+	Output     string                 `protobuf:"bytes,8,opt,name=output,proto3" json:"output,omitempty"` // result text, clipped
+	Error      bool                   `protobuf:"varint,9,opt,name=error,proto3" json:"error,omitempty"`
+	Pending    bool                   `protobuf:"varint,10,opt,name=pending,proto3" json:"pending,omitempty"` // called, no result yet
+	Diff       string                 `protobuf:"bytes,11,opt,name=diff,proto3" json:"diff,omitempty"`        // unified diff for edits and writes
+	Added      int32                  `protobuf:"varint,12,opt,name=added,proto3" json:"added,omitempty"`
+	Removed    int32                  `protobuf:"varint,13,opt,name=removed,proto3" json:"removed,omitempty"`
+	Questions  []*AgentQuestion       `protobuf:"bytes,14,rep,name=questions,proto3" json:"questions,omitempty"`
+	Images     []*AgentImage          `protobuf:"bytes,15,rep,name=images,proto3" json:"images,omitempty"`
+	TurnId     string                 `protobuf:"bytes,16,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"`              // the user block that started this turn
+	DurationMs int64                  `protobuf:"varint,17,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"` // KIND_DONE: how long the turn worked, as the agent timed it
+	// A message you sent with attachments: text with U+FFFC where each of
+	// images sits, in order (images past the last one have no place). Text
+	// is the same without them, for clients from before.
+	RichText      string `protobuf:"bytes,18,opt,name=rich_text,json=richText,proto3" json:"rich_text,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11446,6 +11450,13 @@ func (x *AgentBlock) GetDurationMs() int64 {
 		return x.DurationMs
 	}
 	return 0
+}
+
+func (x *AgentBlock) GetRichText() string {
+	if x != nil {
+		return x.RichText
+	}
+	return ""
 }
 
 type AgentQuestion struct {
@@ -12606,11 +12617,14 @@ func (x *AgentAnswer) GetDecision() AgentAnswer_Decision {
 }
 
 // Sends a message to the agent (queued by it while it works).
+// inline: text holds U+FFFC where each attachment goes, in order (the
+// composer's chips), and they're pasted there; otherwise they go first.
 type AgentSend struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
 	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	Attachments   []*AgentAttachment     `protobuf:"bytes,3,rep,name=attachments,proto3" json:"attachments,omitempty"`
+	Inline        bool                   `protobuf:"varint,4,opt,name=inline,proto3" json:"inline,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12664,6 +12678,13 @@ func (x *AgentSend) GetAttachments() []*AgentAttachment {
 		return x.Attachments
 	}
 	return nil
+}
+
+func (x *AgentSend) GetInline() bool {
+	if x != nil {
+		return x.Inline
+	}
+	return false
 }
 
 type AgentAttachment struct {
@@ -25003,7 +25024,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06tab_id\x18\x01 \x01(\tR\x05tabId\x12\x17\n" +
 	"\apane_id\x18\x02 \x01(\tR\x06paneId\x12!\n" +
 	"\falready_open\x18\x03 \x01(\bR\valreadyOpen\x12\x16\n" +
-	"\x06report\x18\x04 \x01(\tR\x06report\"\xa4\x05\n" +
+	"\x06report\x18\x04 \x01(\tR\x06report\"\xc1\x05\n" +
 	"\n" +
 	"AgentBlock\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12/\n" +
@@ -25025,7 +25046,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06images\x18\x0f \x03(\v2\x16.hammock.v1.AgentImageR\x06images\x12\x17\n" +
 	"\aturn_id\x18\x10 \x01(\tR\x06turnId\x12\x1f\n" +
 	"\vduration_ms\x18\x11 \x01(\x03R\n" +
-	"durationMs\"\xaf\x01\n" +
+	"durationMs\x12\x1b\n" +
+	"\trich_text\x18\x12 \x01(\tR\brichText\"\xaf\x01\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tKIND_USER\x10\x01\x12\r\n" +
@@ -25162,11 +25184,12 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x14DECISION_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eDECISION_ALLOW\x10\x01\x12\x11\n" +
 	"\rDECISION_DENY\x10\x02\x12\x1b\n" +
-	"\x17DECISION_ALLOW_SCHEDULE\x10\x03\"w\n" +
+	"\x17DECISION_ALLOW_SCHEDULE\x10\x03\"\x8f\x01\n" +
 	"\tAgentSend\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12=\n" +
-	"\vattachments\x18\x03 \x03(\v2\x1b.hammock.v1.AgentAttachmentR\vattachments\"9\n" +
+	"\vattachments\x18\x03 \x03(\v2\x1b.hammock.v1.AgentAttachmentR\vattachments\x12\x16\n" +
+	"\x06inline\x18\x04 \x01(\bR\x06inline\"9\n" +
 	"\x0fAgentAttachment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\":\n" +

@@ -231,6 +231,16 @@ struct AgentViewSettings: View {
                 }
                 .settingAnchor("agentview.codewrap")
             }
+            Section("Attachments") {
+                Picker("Picture size", selection: prefs.stringBinding(.agentImageSize)) {
+                    ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                .settingAnchor("agentview.imagesize")
+                Picker("Picture size on other computers", selection: prefs.stringBinding(.agentImageSizeRemote)) {
+                    ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                .settingAnchor("agentview.imagesizeremote")
+            }
             Section("Preview") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Here's the plan: **two** small changes, then a test run.")

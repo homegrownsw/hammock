@@ -422,12 +422,12 @@ func (c *Claude) userText(id, s string, imgs []*pb.AgentImage, ms int64) (out []
 	if t == "" && len(imgs) == 0 {
 		return nil
 	}
-	if len(imgs) > 0 {
-		t = strings.TrimSpace(imageRef.ReplaceAllString(t, ""))
-	}
-	c.turn = id
+	// Before the attachments' paths are taken out: they're files it
+	// referenced, served to the agent view.
 	c.mentions(t)
-	return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_USER, TimeUnixMs: ms, Text: t, Images: imgs, TurnId: id})
+	plain, rich, all := PlaceAttachments(t, imgs)
+	c.turn = id
+	return c.add(&pb.AgentBlock{Id: id, Kind: pb.AgentBlock_KIND_USER, TimeUnixMs: ms, Text: plain, RichText: rich, Images: all, TurnId: id})
 }
 
 // injectedTag opens an element of the kind Claude Code (or a hook, or an
