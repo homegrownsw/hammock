@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Over a pane whose agent is asleep (Pane.asleep: its process ended to
 /// free memory, its screen kept): the pane faded towards its own
-/// background, and a card in the middle with a moon and a Wake Agent button, in
+/// background, and a card in the middle: a moon, "Asleep" and a Wake Agent button, in
 /// the theme's colour. Focusing the pane doesn't wake it; typing in it,
 /// sending its agent a message, or this button does.
 ///
@@ -22,6 +22,11 @@ public struct SleepingPaneOverlay: View {
     let animated: Bool
     let wake: () -> Void
     @State private var shown = false
+    @Environment(\.colorScheme) private var scheme
+
+    /// The theme's colour can be too pale on a light card: there, the
+    /// button's deeper one.
+    private var moon: Color { scheme == .light ? fill : tint }
 
     public init(backdrop: Color, fill: Color, tint: Color, animated: Bool = true, wake: @escaping () -> Void) {
         self.backdrop = backdrop
@@ -56,16 +61,19 @@ public struct SleepingPaneOverlay: View {
     private var card: some View {
         VStack(spacing: 14) {
             ZStack {
-                Circle().fill(tint.opacity(0.16))
-                Circle().strokeBorder(tint.opacity(0.28), lineWidth: 1)
+                Circle().fill(moon.opacity(0.16))
+                Circle().strokeBorder(moon.opacity(0.28), lineWidth: 1)
                 Image(systemName: "moon.zzz.fill")
                     .font(.system(size: 23, weight: .medium))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(moon)
                     .symbolRenderingMode(.hierarchical)
             }
             .frame(width: 54, height: 54)
             .accessibilityHidden(true)
+            Text("Asleep")
+                .font(.headline)
             WakeButton(fill: fill, iconOnly: false, action: wake)
+                .padding(.top, 2)
         }
         .padding(.horizontal, 26)
         .padding(.top, 22)

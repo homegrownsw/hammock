@@ -241,7 +241,7 @@ public struct SleepMark: View {
     public var body: some View {
         Image(systemName: "moon.zzz.fill")
             .font(.system(size: size * 0.78, weight: .medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.secondary) // not relative to a dimmed parent's style
             .frame(width: size, height: size)
             .accessibilityLabel("Asleep")
     }
