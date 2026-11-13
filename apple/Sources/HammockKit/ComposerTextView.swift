@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
+import Quartz
 typealias PlatformFont = NSFont
 typealias PlatformColor = NSColor
 #else
@@ -339,6 +340,10 @@ final class ComposerTextController: NSObject {
 final class ComposerNSTextView: NSTextView {
     weak var controller: ComposerTextController?
 
+    /// NSTextView would take QuickLook's panel over for its own selected
+    /// attachments (none: "No items selected"), from the attachments tray's.
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { false }
+
     override func paste(_ sender: Any?) {
         if controller?.takeFiles(.general) == true { return }
         super.paste(sender)
@@ -375,6 +380,8 @@ struct ComposerTextView: NSViewRepresentable {
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
+        // No Writing Tools button beside the text: it's a message to an agent.
+        tv.writingToolsBehavior = .none
         tv.textContainerInset = .zero
         tv.textContainer?.lineFragmentPadding = 0
         tv.textContainer?.widthTracksTextView = true
@@ -497,6 +504,7 @@ struct ComposerTextView: UIViewRepresentable {
         tv.textContainer.lineFragmentPadding = 0
         tv.isScrollEnabled = true
         tv.allowsEditingTextAttributes = false
+        tv.writingToolsBehavior = .none
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         controller.view = tv
         tv.typingAttributes = controller.typing()

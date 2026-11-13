@@ -2572,12 +2572,15 @@ struct Composer: View {
     /// Pictures go small over the network: to a pane on a linked computer,
     /// and from the iPhone.
     private var defaultSize: AttachmentSize {
+        AttachmentSize(rawValue: Prefs.shared.string(isRemote ? .agentImageSizeRemote : .agentImageSize)) ?? .large
+    }
+
+    private var isRemote: Bool {
         #if os(macOS)
-        let remote = session.model?.group(ofPane: session.paneID)?.isRemote == true
+        session.model?.group(ofPane: session.paneID)?.isRemote == true
         #else
-        let remote = true
+        true
         #endif
-        return AttachmentSize(rawValue: Prefs.shared.string(remote ? .agentImageSizeRemote : .agentImageSize)) ?? .large
     }
 
     private func greyed(_ a: ComposerAttachment) -> Bool { !doc.chips.contains(a.id) }
@@ -2936,12 +2939,22 @@ struct Composer: View {
             let ok = scoped && url.startAccessingSecurityScopedResource()
             defer { if ok { url.stopAccessingSecurityScopedResource() } }
             if UTType(filenameExtension: url.pathExtension)?.conforms(to: .movie) == true {
+                // To this Mac's own agent, a video small enough goes as it is.
+                if !isRemote, isVideoName(url.lastPathComponent),
+                   let n = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, n <= videoAsIs,
+                   let d = try? Data(contentsOf: url) {
+                    attach(name: url.lastPathComponent, data: d)
+                    continue
+                }
                 await attachVideo(url, name: url.deletingPathExtension().lastPathComponent + ".mp4")
             } else if let d = try? Data(contentsOf: url) {
                 attach(name: url.lastPathComponent, data: d)
             }
         }
     }
+
+    /// The largest video sent unshrunk (the daemon's limit for a file).
+    private let videoAsIs = 30 << 20
 
     /// Attaches a video, made small enough to send (540p H.264): a phone's
     /// own is usually too big for a message to the Mac.
