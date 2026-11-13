@@ -507,6 +507,9 @@ func TestAgentSchedulesAsk(t *testing.T) {
 	d.mu.Lock()
 	self := d.tabs[tid].FocusedPaneId
 	d.mu.Unlock()
+	// An agent is known by its pane's process: saved before the pane has
+	// started, its schedule has no maker to match, and pausing it would ask.
+	waitPaneStarted(t, d, self)
 	agent := dialAs(t, dir, &caller{pane: self, agent: true}, "mcp")
 
 	type res struct {
