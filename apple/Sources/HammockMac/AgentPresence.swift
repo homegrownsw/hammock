@@ -4,7 +4,7 @@ import SwiftUI
 /// An agent at work in a browser or simulator pane, drawn over it: a
 /// cursor (a finger on a simulator) that glides to where it acts and
 /// ripples when it clicks or taps, a soft glow around the page or screen,
-/// and a badge saying what it's doing, with Take over. The pointer fades a
+/// and a badge saying an agent is working there, with Take over. The pointer fades a
 /// couple of seconds after the agent's last action; the glow and badge stay
 /// while the agent is still working (its turn, as its hooks tell Hammock),
 /// so they don't blink out while it thinks between actions, and go when it
@@ -30,8 +30,6 @@ struct AgentPresenceOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var active = false
     @State private var agentPane = ""
-    @State private var status = Status.using
-    @State private var statusAt = Date.distantPast
     @State private var cursor: CGPoint? // a fraction of the page or screen
     @State private var finger: CGPoint?
     @State private var pinch: (center: CGPoint, spread: CGFloat)?
@@ -181,9 +179,9 @@ struct AgentPresenceOverlay: View {
                         } else {
                             Image(systemName: "sparkle").foregroundStyle(accent)
                         }
-                        Text(status.text(agent: agentName, simulator: isSimulator))
+                        // The same throughout: what it does shows on the pane.
+                        Text("\(agentName) is working")
                             .fontWeight(.medium)
-                            .contentTransition(.opacity)
                     }
                 }
                 .buttonStyle(.plain)
@@ -204,7 +202,6 @@ struct AgentPresenceOverlay: View {
         .background(Capsule().fill(Color(white: 0.11).opacity(0.92)))
         .overlay(Capsule().strokeBorder(held ? Color.white.opacity(0.15) : accent.opacity(0.6), lineWidth: 1))
         .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-        .animation(.easeOut(duration: 0.2), value: status)
     }
 
     private var harness: String? {
@@ -223,7 +220,6 @@ struct AgentPresenceOverlay: View {
         let end: CGPoint? = a.x2 >= 0 && a.y2 >= 0 ? CGPoint(x: CGFloat(a.x2), y: CGFloat(a.y2)) : nil
         // Eased, not a spring: it arrives when the daemon lets the click go.
         let glide: Animation? = reduceMotion ? nil : .easeInOut(duration: Self.glide)
-        set(Status(a))
         withAnimation(.easeOut(duration: 0.2)) { active = true }
         switch a.kind {
         case "move", "scroll":
@@ -291,7 +287,6 @@ struct AgentPresenceOverlay: View {
             withAnimation(.easeOut(duration: 0.6)) {
                 cursor = nil
                 finger = nil
-                status = .using
             }
             try? await Task.sleep(for: Self.staysWorking - Self.linger)
             guard !Task.isCancelled else { return }
@@ -306,15 +301,6 @@ struct AgentPresenceOverlay: View {
             cursor = nil
             finger = nil
         }
-    }
-
-    /// What the badge says: a look or a pointer's move (part of finding
-    /// what to click) doesn't replace what it said a moment ago.
-    private func set(_ s: Status) {
-        let now = Date()
-        if s == .looking || s == .using, status != s, now.timeIntervalSince(statusAt) < 1.5 { return }
-        status = s
-        statusAt = now
     }
 
     private func ripple(at p: CGPoint, after delay: Double = 0) {
@@ -335,60 +321,6 @@ struct AgentPresenceOverlay: View {
     }
 
     // MARK: Pieces
-
-    enum Status: Equatable {
-        case using, clicking, scrolling, tapping, swiping, pinching, typing, looking
-        case pressed(String)
-
-        init(_ a: AgentAction) {
-            switch a.kind {
-            case "click": self = .clicking
-            case "scroll": self = .scrolling
-            case "tap": self = .tapping
-            case "swipe", "touch": self = .swiping
-            case "pinch": self = .pinching
-            case "type": self = .typing
-            case "look": self = .looking
-            case "key": self = .pressed(Self.keyName(a.label))
-            default: self = .using
-            }
-        }
-
-        func text(agent: String, simulator: Bool) -> String {
-            switch self {
-            case .using: "\(agent) is using this \(simulator ? "simulator" : "browser")"
-            case .clicking: "\(agent) is clicking"
-            case .scrolling: "\(agent) is scrolling"
-            case .tapping: "\(agent) is tapping"
-            case .swiping: "\(agent) is swiping"
-            case .pinching: "\(agent) is pinching"
-            case .typing: "\(agent) is typing"
-            case .looking: "\(agent) is looking"
-            case .pressed(let key): "\(agent) pressed \(key)"
-            }
-        }
-
-        /// A key or button as the Mac names it.
-        static func keyName(_ key: String) -> String {
-            switch key.lowercased() {
-            case "": "a key"
-            case "enter": "Return"
-            case "escape": "Escape"
-            case "backspace": "Delete"
-            case "delete": "Forward Delete"
-            case "arrowup": "↑"
-            case "arrowdown": "↓"
-            case "arrowleft": "←"
-            case "arrowright": "→"
-            case "home": "Home"
-            case "lock": "Lock"
-            case "side": "the side button"
-            case "siri": "Siri"
-            case "keyboard": "the keyboard button"
-            default: key
-            }
-        }
-    }
 
     struct Ripple: Identifiable {
         let id = UUID()
