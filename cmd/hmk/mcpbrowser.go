@@ -14,6 +14,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/browserjs"
 	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/daemon"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -228,12 +229,15 @@ type point struct {
 	Error string
 }
 
-// locate scrolls the target element into view and returns its centre.
+// locate scrolls the target element into view, if it isn't already, and
+// returns its centre. With agent presence on, the person is watching: the
+// page scrolls there smoothly, as if they had.
 func (s *mcpServer) locate(ctx context.Context, t browserTarget) (point, error) {
 	if t.Ref == 0 && t.Selector == "" && t.Text == "" {
 		return point{}, errors.New("give a ref (from browser_snapshot), a selector or the element's text")
 	}
-	args, _ := json.Marshal([]any{t.Ref, t.Selector, t.Text})
+	smooth := hammockconfig.Bool("agent-presence", true)
+	args, _ := json.Marshal([]any{t.Ref, t.Selector, t.Text, smooth})
 	var p point
 	if err := s.eval(ctx, t.PaneID, "("+locateJS+")(..."+string(args)+")", &p); err != nil {
 		return p, err
@@ -653,8 +657,11 @@ func (s *mcpServer) browserLog(ctx context.Context, a browserLogArgs, kind strin
 }
 
 // locateJS finds an element by snapshot ref, selector or text, scrolls it
-// into view and returns its centre in the top page's CSS pixels.
-const locateJS = `(ref, sel, text) => {
+// into view (unless it's all there already: the page doesn't lurch before
+// every click) and returns its centre in the top page's CSS pixels. smooth
+// scrolls there smoothly (but not with Reduce Motion), measuring it once
+// it's arrived.
+const locateJS = `async (ref, sel, text, smooth) => {
   let el = null;
   if (ref) {
     el = (window.__hammockEls || [])[ref - 1];
@@ -668,7 +675,36 @@ const locateJS = `(ref, sel, text) => {
     el = all.find(e => label(e) === text) || all.find(e => label(e).includes(text));
     if (!el) return {Error: 'no element with text ' + JSON.stringify(text)};
   }
-  el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  const seen = () => {
+    if (el.ownerDocument !== document) return false; // in a frame: always scrolled to
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return false;
+    if (r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth) return false;
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+  };
+  if (!seen()) {
+    // Jump there to learn where each scroller ends up (nothing's drawn
+    // till this script waits), then, smoothly, go back and glide there:
+    // done here, step by step, it's over when the script says, and runs
+    // in a pane out of sight too (the page's own smooth scrolls don't).
+    const scrollers = [];
+    for (let n = el.parentElement; n; n = n.parentElement) scrollers.push(n);
+    const from = scrollers.map(n => [n.scrollLeft, n.scrollTop]);
+    el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+    if (smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const moves = scrollers.map((n, i) => [n, from[i], [n.scrollLeft, n.scrollTop]])
+        .filter(([, f, t]) => f[0] !== t[0] || f[1] !== t[1]);
+      const go = e => moves.forEach(([n, f, t]) => n.scrollTo({left: f[0] + (t[0] - f[0]) * e, top: f[1] + (t[1] - f[1]) * e, behavior: 'instant'}));
+      go(0);
+      const start = performance.now(), ms = 450;
+      for (let k = 0; k < 1;) {
+        await new Promise(f => setTimeout(f, 16));
+        k = Math.min(1, (performance.now() - start) / ms);
+        go(k < 0.5 ? 2 * k * k : 1 - (2 - 2 * k) ** 2 / 2);
+      }
+    }
+  }
   const r = el.getBoundingClientRect();
   let x = r.left + r.width / 2, y = r.top + r.height / 2;
   for (let w = el.ownerDocument.defaultView; w && w.frameElement; w = w.parent) {
