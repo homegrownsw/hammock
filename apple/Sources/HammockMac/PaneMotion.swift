@@ -189,10 +189,10 @@ final class OpenCloseMotion {
         let after = PanePlan(layout, in: area, zoomed: nil, gap: gap)
         var opened: [String: PanePlan.Tile] = [:]
         for id in now.subtracting(was) {
-            if let g = Self.ghost(id, in: layout, placedBy: before, gap: gap) { opened[id] = g } else { motion.fade(id) }
+            if let g = Self.ghost(id, in: layout, placedBy: before) { opened[id] = g } else { motion.fade(id) }
         }
         for id in was.subtracting(now) where motion.departing[id] != nil {
-            if let g = Self.ghost(id, in: old, placedBy: after, gap: gap) { closing[id] = g } else { motion.fade(id) }
+            if let g = Self.ghost(id, in: old, placedBy: after) { closing[id] = g } else { motion.fade(id) }
         }
         guard !opened.isEmpty else { return }
         opening.merge(opened) { a, _ in a }
@@ -212,15 +212,16 @@ final class OpenCloseMotion {
 
     /// A pane of no size where pane id meets its neighbour in layout (the
     /// next child of its split, else the one before), at that neighbour's
-    /// edge as plan places it.
-    static func ghost(_ id: String, in layout: PaneLayout, placedBy plan: PanePlan, gap: CGFloat) -> PanePlan.Tile? {
+    /// edge as plan places it (flush with it: past it, a pane at the tab's
+    /// edge would start out of sight).
+    static func ghost(_ id: String, in layout: PaneLayout, placedBy plan: PanePlan) -> PanePlan.Tile? {
         guard let (sibling, after, horizontal) = neighbour(id, in: layout) else { return nil }
         let ids = Set(AppModel.paneIDs(sibling))
         let rects = plan.tiles.filter { ids.contains($0.id) && !$0.folded }.map(\.clip)
         guard var r = rects.first else { return nil }
         for x in rects.dropFirst() { r = r.union(x) }
-        let g = horizontal ? CGRect(x: after ? r.maxX + gap : r.minX, y: r.minY, width: 0, height: r.height)
-            : CGRect(x: r.minX, y: after ? r.maxY + gap : r.minY, width: r.width, height: 0)
+        let g = horizontal ? CGRect(x: after ? r.maxX : r.minX, y: r.minY, width: 0, height: r.height)
+            : CGRect(x: r.minX, y: after ? r.maxY : r.minY, width: r.width, height: 0)
         return PanePlan.Tile(id: id, rect: g, clip: g, folded: false, horizontal: horizontal)
     }
 
