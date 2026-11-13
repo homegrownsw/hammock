@@ -299,7 +299,7 @@ struct SessionRowView: View {
     var body: some View {
         let a = row.pane.agent
         HStack(alignment: .sessionTitle, spacing: 12) {
-            StateGlyph(state: a.state == .idle && a.seen ? nil : a.state, resting: a.state == .idle && a.seen)
+            StateGlyph(state: a.state == .idle && a.seen ? nil : a.state, resting: a.state == .idle && a.seen, asleep: row.pane.asleep)
                 .symbolRenderingMode(.palette)
                 .alignmentGuide(.sessionTitle) { $0[VerticalAlignment.center] }
             VStack(alignment: .leading, spacing: 3) {
@@ -312,7 +312,7 @@ struct SessionRowView: View {
                     }
                 }
                 .alignmentGuide(.sessionTitle) { $0[VerticalAlignment.center] }
-                Text(Markdown.inlineText(a.summary.isEmpty ? a.state.label : a.summary))
+                Text(Markdown.inlineText(a.summary.isEmpty ? row.pane.agentStatusLabel : a.summary))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -561,8 +561,10 @@ struct StateGlyph: View {
     var shells = false
     /// With no agent state: the program running.
     var program: [String] = []
+    /// Its agent asleep: a moon.
+    var asleep = false
     var body: some View {
-        StatusIcon(state: state, resting: resting, shells: shells, size: 17, program: program)
+        StatusIcon(state: state, resting: resting, shells: shells, size: 17, program: program, asleep: asleep)
     }
 }
 
@@ -572,7 +574,7 @@ struct TabRowIOS: View {
     var body: some View {
         HStack {
             StateGlyph(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab),
-                       program: model.focusedProgram(of: tab))
+                       program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab))
             VStack(alignment: .leading) {
                 HStack(spacing: 5) {
                     Text(model.title(of: tab))
@@ -812,8 +814,11 @@ struct PaneScreen: View {
     @State private var logRaw = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.phoneTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var pane: Pane? { model.panes[paneID] }
+    private var asleep: Bool { pane?.asleep == true }
     private var agentMode: Bool { showsAgent ?? AgentViewPrefs.showsAgent(paneID) }
 
     private func setMode(_ on: Bool) {
@@ -881,6 +886,17 @@ struct PaneScreen: View {
                 }
             }
         }
+        // Its agent asleep: faded, with a button to wake it (opening it
+        // doesn't; typing in it or sending its agent a message does).
+        .overlay {
+            if asleep {
+                SleepingPaneOverlay(backdrop: theme.terminalBackground, fill: theme.bubble, tint: theme.accent, animated: !reduceMotion) {
+                    model.sleepPane(paneID, wake: true)
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: asleep)
         // Still while swiped back (with the keyboard up, it scrolled down
         // as the swipe went).
         .steadyWhilePopped()

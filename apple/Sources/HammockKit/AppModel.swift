@@ -597,7 +597,8 @@ public final class AppModel {
         } else {
             applyGroupsAndTabs()
         }
-        for p in u.panes {
+        for var p in u.panes {
+            if Self.debugAsleep { Self.debugPutToSleep(&p) }
             let old = panes[p.id]
             if old == p { continue }
             panes[p.id] = p
@@ -819,6 +820,11 @@ public final class AppModel {
         }
         if let best = shown.min(by: { ($0.rank, focusRank($0.pane)) < ($1.rank, focusRank($1.pane)) }) { return best.pane }
         return agents.filter { !$0.exited && $0.agent.shownState == .idle && $0.agent.seen }.min { focusRank($0) < focusRank($1) }
+    }
+
+    /// The agent a tab's row stands for (`shownAgentPane(of:)`) is asleep.
+    public func hasSleepingAgent(_ tab: WorkspaceTab) -> Bool {
+        shownAgentPane(of: tab)?.asleep == true
     }
 
     /// The harness ("claude", "codex", …) of `shownAgentPane(of:)`.
@@ -1924,6 +1930,34 @@ extension AppModel {
             }
             // What came across (the carry-over report).
             if !r.agentSwitched.report.isEmpty { showToast(r.agentSwitched.report) }
+        }
+    }
+
+    /// HMK_DEBUG_ASLEEP=1: every terminal pane shown as an agent put to
+    /// sleep (a made-up idle Claude where there's no agent), for snapshots
+    /// of the moon and the pane's Wake button without a real idle agent.
+    nonisolated static let debugAsleep = ProcessInfo.processInfo.environment["HMK_DEBUG_ASLEEP"] == "1"
+
+    nonisolated static func debugPutToSleep(_ p: inout Pane) {
+        guard p.kind == .terminal || p.kind == .unspecified, !p.isLog, !p.exited else { return }
+        if !p.hasAgent || p.agent.state == .unspecified || p.agent.state == .exited {
+            p.agent = .with { $0.harness = "claude"; $0.state = .idle; $0.seen = true }
+        }
+        p.asleep = true
+    }
+
+    /// Puts a pane's agent to sleep: the daemon ends its process to free
+    /// its memory, keeping its screen, and resumes its session when it's
+    /// woken: typed in, messaged, or with wake (now). What
+    /// the daemon says when it can't ("its agent can't sleep now: it's
+    /// working") shows as a toast.
+    public func sleepPane(_ paneID: String, wake: Bool = false) {
+        Task {
+            guard await run({ $0.sleepPane = .with { $0.paneID = paneID; $0.wake = wake } }) != nil else {
+                let why = lastError ?? "unknown error"
+                showToast(wake ? "Couldn't wake the agent: \(why)" : why.prefix(1).uppercased() + why.dropFirst())
+                return
+            }
         }
     }
 

@@ -160,7 +160,22 @@ struct PaneMenuItems: View {
                 Button("Take Over from Agents") { model.holdPane(paneID, true) }
             }
         }
+        if let p = model.panes[paneID], p.asleep || p.canSleep {
+            SleepAgentButton(model: model, pane: p)
+        }
         Button("Close Pane", role: .destructive) { CloseGuard.confirm(model, panes: [paneID]) { Task { await model.closePane(paneID) } } }
+    }
+}
+
+/// Put Agent to Sleep, or on one asleep, Wake Agent: the Pane menu's
+/// command (Keys.sleepAgent), in a pane's menus.
+struct SleepAgentButton: View {
+    let model: AppModel
+    let pane: Pane
+
+    var body: some View {
+        Button(pane.asleep ? "Wake Agent" : "Put Agent to Sleep") { model.sleepPane(pane.id, wake: pane.asleep) }
+            .keyboardShortcut(Keys.sleepAgent)
     }
 }
 
@@ -202,6 +217,10 @@ struct TabMenuItems: View {
         }
         if let p = linkedPane {
             Button("Copy Session Link") { SessionLink.copy(model, p) }
+        }
+        // The agent the row stands for, at rest or asleep.
+        if let p = model.shownAgentPane(of: tab), p.asleep || p.canSleep {
+            SleepAgentButton(model: model, pane: p)
         }
         Menu("Merge into Tab") {
             mergeTargets(in: group, side: true)
@@ -350,6 +369,9 @@ struct PaneKindMenu<Label: View>: View {
                         Button("Copy Session Link") { SessionLink.copy(model, pane) }
                     }
                     Button("Interrupt (Esc)") { model.send(paneID, Data([0x1B])) }
+                    if pane.asleep || pane.canSleep {
+                        SleepAgentButton(model: model, pane: pane)
+                    }
                 }
             }
             Divider()
@@ -566,7 +588,7 @@ private struct FoldedPane: View {
         case .diff: Image(systemName: "plusminus")
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
-                StatusIcon(state: p.agent.shownState, size: 13)
+                StatusIcon(state: p.agent.shownState, size: 13, asleep: p.asleep)
             } else {
                 ProgramIcon(program: pane?.exited == false ? pane?.program ?? [] : [], size: 13)
             }

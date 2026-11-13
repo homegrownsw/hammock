@@ -66,6 +66,14 @@ struct TabActions: View {
                 }
             }
         }
+        // The agent the row stands for, at rest or asleep.
+        if let p = model.shownAgentPane(of: tab), p.asleep || p.canSleep, model.group(of: tab)?.canDrive != false {
+            if p.asleep {
+                Button("Wake Agent", systemImage: "sun.max") { model.sleepPane(p.id, wake: true) }
+            } else {
+                Button("Put Agent to Sleep", systemImage: "moon.zzz") { model.sleepPane(p.id) }
+            }
+        }
         Divider()
         Button("Close Tab", systemImage: "xmark", role: .destructive) { Task { await model.closeTab(tab.id) } }
     }

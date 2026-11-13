@@ -67,6 +67,12 @@ type Agent struct {
 	// ResumeID is the session a command line that runs it resumes, if any
 	// (`codex resume ID`): known before its hooks say.
 	ResumeID func(argv []string) string
+	// ResumeFlags are the options of the command line argv that ran it to
+	// keep when its session is resumed in a new process (an agent put to
+	// sleep, sleep.go): its model and permission mode, say, not its first
+	// message or the session it was told to start or resume. Nil: none
+	// are kept (Resume alone).
+	ResumeFlags func(argv []string) []string
 	// Schedule is a scheduled run's command line, with the agent's own
 	// options from s. Nil: Start(s.Prompt). Schedulable must be set too.
 	Schedule    func(s *pb.Schedule) string
@@ -206,6 +212,18 @@ func (a *Agent) ScheduleCommand(s *pb.Schedule) string {
 func (a *Agent) Codec() thread.Codec {
 	c, _ := thread.CodecFor(a.ID)
 	return c
+}
+
+// ResumeWith is the command line that resumes session id with the options
+// argv (the command line it ran with) had that ResumeFlags keeps.
+func (a *Agent) ResumeWith(id string, argv []string) string {
+	cmd := a.Resume(id)
+	if a.ResumeFlags != nil && len(argv) > 1 {
+		for _, f := range a.ResumeFlags(argv[1:]) {
+			cmd += " " + Quote(f)
+		}
+	}
+	return cmd
 }
 
 // CanSwitch: a conversation can be continued in a (and from it).

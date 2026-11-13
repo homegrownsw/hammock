@@ -691,6 +691,12 @@ private struct AgentSettings: View {
     @State private var output = ""
     @State private var running = false
 
+    /// agent-sleep's choices, in hours.
+    private static let sleepHours = [3, 6, 12, 24, 48]
+    private static var sleepChoices: [String] { ["off"] + sleepHours.map { "\($0)h" } }
+
+    private var agentSleep: Binding<String> { Prefs.shared.stringBinding(.agentSleep) }
+
     /// What turning on usage-live does.
     private var liveUsageNote: String {
         var note = "Checks every 5 minutes with each agent's own sign-in, which never leaves this Mac. macOS may ask for Keychain access."
@@ -706,6 +712,19 @@ private struct AgentSettings: View {
             Section {
                 Toggle("Warn before closing an agent that's at work", isOn: Prefs.shared.boolBinding(CloseGuard.pref))
                     .settingAnchor("agents.closeguard")
+            }
+            Section("Idle Agents") {
+                Picker("Put idle agents to sleep", selection: agentSleep) {
+                    Text("Off").tag("off")
+                    ForEach(Self.sleepHours, id: \.self) { h in
+                        Text(h == Self.sleepHours.first ? "After \(h) hours" : "\(h) hours").tag("\(h)h")
+                    }
+                    // Something else written in the file by hand, kept as it is.
+                    if !Self.sleepChoices.contains(agentSleep.wrappedValue) {
+                        Text(agentSleep.wrappedValue).tag(agentSleep.wrappedValue)
+                    }
+                }
+                .settingAnchor("agents.sleep")
             }
             Section("Usage Limits in the Sidebar") {
                 ForEach(UsageLimitsPrefs.agents, id: \.harness) { a in

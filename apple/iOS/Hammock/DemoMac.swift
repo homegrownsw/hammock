@@ -160,6 +160,16 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         case .focus(let f):
             answer(msg)
             focused(f.paneID)
+        case .sleepPane(let sp):
+            // As the Mac would: only an agent at rest sleeps.
+            guard let i = state.panes.firstIndex(where: { $0.id == sp.paneID }), sp.wake || state.panes[i].canSleep else {
+                answer(msg) { $0.error = .with { $0.message = "its agent can't sleep now: it's working" } }
+                return
+            }
+            answer(msg)
+            state.panes[i].asleep = !sp.wake
+            let p = state.panes[i]
+            update { $0.panes = [p] }
         case .createGroup, .createTab, .createPane, .startAgent, .closeTab, .closeGroup, .closePane, .resumeSession,
              .runSchedule, .saveSchedule, .deleteSchedule, .uploadFile, .createPairing, .createInvite, .linkComputer,
              .reopenClosed, .renameGroup, .renameTab, .switchAgent, .setGroupIconImage, .setGroupFolder, .leaveShared:

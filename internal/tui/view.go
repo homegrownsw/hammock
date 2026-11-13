@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
@@ -33,6 +34,7 @@ const (
 	zBrowserOpen
 	zEmpty
 	zEmptyAgent // an empty Group's Start an Agent… button
+	zWake       // a sleeping agent's Wake button
 	zBarTab     // a tab in the Horizontal Tabs bar
 	zBarClose   // its close button
 	zLive       // a browser or simulator pane's picture
@@ -175,6 +177,10 @@ type glyph struct {
 // slower while starting), "!" waiting for you, a check when finished (until
 // looked at), a cross on error. Only work moves; the rest sit still.
 func (a *App) agentGlyph(p *pb.Pane) (glyph, bool) {
+	if p != nil && p.Asleep && p.Agent != nil {
+		// Its process ended to free memory: looking at it wakes it.
+		return glyph{"☾", a.th.dim, false}, true
+	}
 	if p == nil || p.Agent == nil || (shownState(p.Agent) == pb.AgentState_AGENT_STATE_IDLE && p.Agent.Seen) {
 		return glyph{}, false
 	}
@@ -920,6 +926,10 @@ func (a *App) drawPanes() {
 			continue
 		}
 		cx, cy, vis := pt.draw(s, body.x, body.y, body.w, body.h)
+		if p.GetAsleep() {
+			a.drawAsleep(id, body)
+			continue
+		}
 		if focused && vis {
 			curX, curY, curShow = cx, cy, true
 		}
@@ -1008,6 +1018,9 @@ func (a *App) drawPaneHeader(id string, p *pb.Pane, r rect, focused bool) {
 			pb.AgentState_AGENT_STATE_STARTING: "Starting", pb.AgentState_AGENT_STATE_IDLE: "Finished", pb.AgentState_AGENT_STATE_ERRORED: "Errored",
 		}
 		status, scol = g.ch+" "+labels[p.Agent.State], g.col
+		if p.Asleep {
+			status = g.ch + " Asleep"
+		}
 	} else if editorStatus != "" {
 		status, scol = editorStatus, th.dim
 	}
@@ -1020,6 +1033,33 @@ func (a *App) drawPaneHeader(id string, p *pb.Pane, r rect, focused bool) {
 	}
 	if right-x > 4 {
 		s.Text(x, r.y, right-x, truncate(detail, right-x), Cell{FG: th.dim, HasFG: true, BG: bg, HasBG: true})
+	}
+}
+
+// drawAsleep dims a sleeping agent's pane under a Wake button: an accent
+// pill, three rows high, with what it is beneath it (sleep.go).
+func (a *App) drawAsleep(id string, body rect) {
+	th, s := a.th, a.scr
+	a.dimRect(body, 0.85)
+	label := "☾  Wake Agent"
+	bw := min(textWidth(label)+8, body.w)
+	bx, by := body.x+(body.w-bw)/2, body.y+max(0, (body.h-4)/2)
+	bg := mix(th.accent, RGB{255, 255, 255}, 0.18*a.hoverAmount("wake:"+id, a.hovered(zWake, id)))
+	fg := RGB{255, 255, 255}
+	for row := range 3 {
+		if by+row >= body.y+body.h {
+			break
+		}
+		s.Text(bx, by+row, bw, strings.Repeat(" ", bw), Cell{BG: bg, HasBG: true})
+		if row == 1 || body.h < 3 {
+			s.Text(bx+(bw-textWidth(label))/2, by+row, bw, label, Cell{FG: fg, HasFG: true, BG: bg, HasBG: true, Bold: true})
+		}
+	}
+	a.addZone(zone{r: rect{bx, by, bw, min(3, body.h)}, kind: zWake, id: id})
+	if note := "  Asleep to save memory · or just type  "; by+4 < body.y+body.h && textWidth(note) <= body.w {
+		// On a strip of the dimmed pane's own background, clear of its text.
+		under := s.cells[(by+4)*s.W+max(body.x, 0)].BG
+		s.Text(body.x+(body.w-textWidth(note))/2, by+4, textWidth(note), note, Cell{FG: th.dim, HasFG: true, BG: under, HasBG: true, Italic: true})
 	}
 }
 

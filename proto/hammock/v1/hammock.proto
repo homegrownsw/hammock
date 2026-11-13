@@ -215,6 +215,12 @@ message Pane {
   // (HoldPane), who may still look at it but not act on it until they
   // hand it back.
   bool agent_held = 34;
+  // Terminal panes: its agent was put to sleep (sleep.go): idle for the
+  // config file's agent-sleep, or by hand, its process ended to free its
+  // memory, its screen kept. The apps dim it under a Wake button
+  // (SleepPane with wake); typing in it or sending its agent a message
+  // also resumes the session in a new process. Focusing it doesn't.
+  bool asleep = 35;
 }
 
 enum AgentState {
@@ -543,6 +549,8 @@ message ClientMessage {
     // Take a browser or simulator pane over from agents, or hand it back
     // (agentpresence.go). This Mac's apps only. Replies Ok.
     HoldPane hold_pane = 134;
+    // Put a pane's idle agent to sleep, or wake it (sleep.go). Replies Ok.
+    SleepPane sleep_pane = 135;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -1431,6 +1439,10 @@ message AgentAction {
 }
 
 message HoldPane { string pane_id = 1; bool held = 2; }
+
+// Put the pane's agent to sleep (its process ended, its session resumed
+// when it's woken), or with wake, wake it now.
+message SleepPane { string pane_id = 1; bool wake = 2; }
 
 // Simulator panes (the Hammock Simulator helper). Ops:
 //   devices                       the simulators on this Mac (no pane needed)

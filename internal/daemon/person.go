@@ -116,7 +116,7 @@ func agentReachable(msg *pb.ClientMessage) bool {
 		*pb.ClientMessage_RunSchedule, *pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun,
 		*pb.ClientMessage_ShowOutput, *pb.ClientMessage_Input, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_Resize, *pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend,
-		*pb.ClientMessage_SwitchAgent, *pb.ClientMessage_BreakOutPane, *pb.ClientMessage_ClosePane,
+		*pb.ClientMessage_SwitchAgent, *pb.ClientMessage_SleepPane, *pb.ClientMessage_BreakOutPane, *pb.ClientMessage_ClosePane,
 		*pb.ClientMessage_ReplacePane, *pb.ClientMessage_BrowserNavigate, *pb.ClientMessage_BrowserCall,
 		*pb.ClientMessage_SimulatorCall, *pb.ClientMessage_RenameTab, *pb.ClientMessage_SetLayout,
 		*pb.ClientMessage_FloatPane, *pb.ClientMessage_MoveTab, *pb.ClientMessage_RenameGroup,

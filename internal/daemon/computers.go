@@ -1667,7 +1667,7 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ReviewCommand, *pb.ClientMessage_ListReviews,
 		*pb.ClientMessage_ReadGroupIcon, *pb.ClientMessage_SetGroupIcon, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder, *pb.ClientMessage_RenameGroup, *pb.ClientMessage_CloseGroup,
 		*pb.ClientMessage_ReadPane, *pb.ClientMessage_Resize, *pb.ClientMessage_Focus, *pb.ClientMessage_Input, *pb.ClientMessage_SignalPane,
-		*pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_SwitchAgent,
+		*pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_SwitchAgent, *pb.ClientMessage_SleepPane,
 		*pb.ClientMessage_ClosePane, *pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab, *pb.ClientMessage_CloseTab, *pb.ClientMessage_RenameTab,
 		*pb.ClientMessage_SetLayout, *pb.ClientMessage_BreakOutPane, *pb.ClientMessage_ReplacePane, *pb.ClientMessage_ClearAttention:
 		return false, nil

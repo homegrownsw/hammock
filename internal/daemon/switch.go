@@ -25,6 +25,9 @@ func (d *Daemon) switchAgent(paneID, target string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("no such pane %q", paneID)
 	}
+	if err := d.wakeAndWait(p, "user"); err != nil { // asleep: its process is needed to stop
+		return "", err
+	}
 	p.mu.Lock()
 	a := p.info.Agent
 	var harness, transcript, cwd, sessionID string

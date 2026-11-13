@@ -21,6 +21,11 @@ extension Pref {
     /// cursor.
     static let agentPresence = Pref("agent-presence", defaults: "agentPresence", true)
 
+    /// How long an agent rests before hmkd puts it to sleep (ends its
+    /// process to free its memory; waking it resumes it): off, or
+    /// one of AgentSleepChoice's. hmkd reads it from the file itself.
+    static let agentSleep = Pref("agent-sleep", defaults: "agentSleep", .string, "off")
+
     /// Sharing Groups with other people: off, the Share Group buttons and
     /// menu items are hidden (SharingUI.canShare). Settings stops every share
     /// when it's turned off.

@@ -272,6 +272,9 @@ func (a *App) leftPress(z zone, m mouseEv) {
 		a.paneMenu(z.id, m.x, m.y+1)
 	case zPaneClose:
 		a.closePane(z.id)
+	case zWake:
+		a.setFocus(z.id)
+		a.sleepPane(z.id, true)
 	case zFloatEdge:
 		a.setFocus(z.id)
 		a.startFloatDrag(z.id, z.idx, m.x, m.y)

@@ -78,7 +78,7 @@ extension SettingsTab: Identifiable {
         case .tools: "What Hammock can open beside your terminals. If you already do one of these your own way, turn it off and neither Hammock nor its agents will offer it."
         case .editor: "Editor and diff panes: wrapping, line numbers, indents, font, Vim keys and how diffs are laid out."
         case .keyboard: "Change any shortcut. Search by name or keys."
-        case .agents: "Closing agents at work, usage limits in the sidebar, and Hammock's hooks and tools for agents."
+        case .agents: "Closing agents at work, putting idle ones to sleep, usage limits in the sidebar, and Hammock's hooks and tools for agents."
         case .agentView: "How agent panes open, and the agent view's colour and fonts."
         case .notifications: "Hear about agents that need you, in the Hammock window or as macOS notifications."
         case .sharing: "Your name and picture, and the Groups you share with other people."
@@ -330,6 +330,7 @@ enum SettingsIndex {
             e(.editor, "Diff panes", "Wrap long lines", "diff.wrap", "diff review changes word wrap"),
 
             e(.agents, "Closing", "Warn before closing an agent that's at work", "agents.closeguard", "quit confirm"),
+            e(.agents, "Idle Agents", "Put idle agents to sleep", "agents.sleep", "sleep suspend wake resume memory ram free idle hours agent-sleep"),
             e(.agents, "Usage Limits in the Sidebar", "Usage limits in the sidebar", "agents.usage", "claude codex gemini cursor copilot limit 5 hours week"),
             e(.agents, "Usage Limits in the Sidebar", "Ask each agent's service for its usage", "agents.usagelive", "claude.ai anthropic live limit sign-in"),
             e(.agents, "Hooks and tools", "Install hooks and tools", "agents.hooks", "mcp claude codex settings.json resume"),

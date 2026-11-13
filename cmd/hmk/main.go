@@ -149,6 +149,11 @@ Usage:
                                             or the folder's Group (or a new one); --on a linked computer
                                             (there, DIR is absolute or ~/…, its home; by default ~)
   hmk switch PANE AGENT                    continue a pane's agent session in another agent
+  hmk sleep [PANE]                         put a pane's idle agent to sleep, by default this pane's:
+                                            its process ends, freeing its memory, until it's woken (the
+                                            apps' Wake button, typing in it, or hmk wake); agent-sleep in
+                                            the config file does it by itself
+  hmk wake [PANE]                          wake a sleeping agent now
   hmk session-link [PANE]                  print the web link to a pane's agent session (Claude Code's
                                             Remote Control), by default this pane's
   hmk schedule [ls]                        list scheduled tasks: an agent's prompt, or a command, run
@@ -843,6 +848,20 @@ func runCommand(args []string) error {
 		}
 		return nil
 
+	case "sleep", "wake":
+		pid := paneEnv("PANE_ID")
+		if len(args) > 1 {
+			var err error
+			if pid, err = w.resolve(args[1], "pane"); err != nil {
+				return err
+			}
+		}
+		if pid == "" {
+			return fmt.Errorf("usage: hmk %s PANE (or run it inside a Hammock pane)", args[0])
+		}
+		_, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_SleepPane{SleepPane: &pb.SleepPane{PaneId: pid, Wake: args[0] == "wake"}}})
+		return err
+
 	case "session-link":
 		pid := paneEnv("PANE_ID")
 		if len(args) > 1 {
@@ -1428,6 +1447,8 @@ func grantFor(m *pb.ClientMessage) (action, target string) {
 		return "send", x.SignalPane.PaneId
 	case *pb.ClientMessage_SwitchAgent:
 		return "send", x.SwitchAgent.PaneId
+	case *pb.ClientMessage_SleepPane:
+		return "send", x.SleepPane.PaneId
 	case *pb.ClientMessage_AgentSend:
 		return "send", x.AgentSend.PaneId
 	case *pb.ClientMessage_AgentAnswer:

@@ -419,6 +419,12 @@ struct CommandPalette: View {
                     SessionLink.copy(model, p)
                 }
             }
+            if let p = model.panes[focused], p.asleep || p.canSleep {
+                action("sleep-agent", p.asleep ? "Wake Agent" : "Put Agent to Sleep", p.asleep ? "sun.max" : "moon.zzz", .indigo,
+                       "sleep wake resume suspend idle memory ram free claude codex agent", keys: Keys.sleepAgent) {
+                    model.sleepPane(focused, wake: p.asleep)
+                }
+            }
             action("split-right", "Split Right", "rectangle.split.2x1", .teal, "pane", keys: Keys.splitRight) { Task { await model.split(focused, direction: .horizontal) } }
             action("split-browser", "Split Right with Browser", "rectangle.split.2x1", .blue, "pane web", keys: Keys.splitBrowserRight) { Task { await model.splitBrowser(focused, direction: .horizontal) } }
             action("split-down", "Split Down", "rectangle.split.1x2", .teal, "pane", keys: Keys.splitDown) { Task { await model.split(focused, direction: .vertical) } }

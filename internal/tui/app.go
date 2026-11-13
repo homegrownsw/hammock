@@ -682,6 +682,26 @@ func (a *App) switchAgent(pane, harness string) {
 	})
 }
 
+// sleepPane puts a pane's idle agent to sleep (its process ended, to free
+// memory, until it's woken), or with wake, wakes it.
+func (a *App) sleepPane(pane string, wake bool) {
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_SleepPane{SleepPane: &pb.SleepPane{PaneId: pane, Wake: wake}}}, func(*pb.ServerMessage) {
+		if !wake {
+			a.flash("☾ Asleep: Wake Agent, or type in it, brings it back")
+		}
+	})
+}
+
+// canSleep: the pane's agent is at rest, so it may be put to sleep (the
+// daemon says if it can't, and why).
+func canSleep(p *pb.Pane) bool {
+	if p == nil || p.Asleep || p.Exited || p.Agent == nil || p.Agent.SessionId == "" {
+		return false
+	}
+	s := p.Agent.State
+	return (s == pb.AgentState_AGENT_STATE_IDLE || s == pb.AgentState_AGENT_STATE_ERRORED) && !p.Agent.RunningCommand
+}
+
 func (a *App) respondGrant(g *pb.GrantRequest, d pb.RespondGrant_Decision) {
 	a.grants = slices.DeleteFunc(a.grants, func(x *pb.GrantRequest) bool { return x.Id == g.Id })
 	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_RespondGrant{RespondGrant: &pb.RespondGrant{Id: g.Id, Decision: d}}}, nil)

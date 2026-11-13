@@ -10,8 +10,9 @@ import UIKit
 /// indigo arc going round while it works, green with a check when it has
 /// finished. Filled when it needs you: amber with ! for input, red with ×
 /// for an error. Those three arrive with one small pop (the check is drawn
-/// in), then sit still. No agent: the program running, else the
-/// terminal glyph.
+/// in), then sit still. Asleep (its process ended to free memory, resumed
+/// when it's woken), a grey moon where it would rest or show
+/// its check. No agent: the program running, else the terminal glyph.
 ///
 /// Drawn on a 20-point grid and scaled to `size`.
 public struct StatusIcon: View {
@@ -25,19 +26,28 @@ public struct StatusIcon: View {
     var quietAtRest: Bool
     /// With no agent state: the program to show, else the terminal glyph.
     var program: [String]
+    /// The agent is asleep (Pane.asleep): a moon instead of its rest or check.
+    var asleep: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(state: AgentState?, resting: Bool = false, shells: Bool = false, size: CGFloat = 15, quietAtRest: Bool = false, program: [String] = []) {
+    public init(state: AgentState?, resting: Bool = false, shells: Bool = false, size: CGFloat = 15, quietAtRest: Bool = false, program: [String] = [],
+                asleep: Bool = false) {
         self.state = state
         self.resting = resting
         self.shells = shells
         self.size = size
         self.quietAtRest = quietAtRest
         self.program = program
+        self.asleep = asleep
+    }
+
+    /// Asleep, and nothing more pressing to show (an error stays).
+    private var sleeping: Bool {
+        asleep && !(state.map { [AgentState.needsInput, .working, .starting, .errored].contains($0) } ?? false)
     }
 
     private var blank: Bool {
-        quietAtRest && !shells && !(state.map { [AgentState.needsInput, .working, .starting, .idle, .errored].contains($0) } ?? false)
+        !sleeping && quietAtRest && !shells && !(state.map { [AgentState.needsInput, .working, .starting, .idle, .errored].contains($0) } ?? false)
     }
 
     public var body: some View {
@@ -62,6 +72,15 @@ public struct StatusIcon: View {
 
     @ViewBuilder
     private var icon: some View {
+        if sleeping {
+            SleepMark(size: size)
+        } else {
+            stateIcon
+        }
+    }
+
+    @ViewBuilder
+    private var stateIcon: some View {
         switch state {
         case .needsInput:
             StatusBadge(fill: StatusPalette.amber, glyph: .bang, size: size)
@@ -213,6 +232,21 @@ struct FinishedMark: View {
 
 /// An agent at rest: a grey ring; while its shells run, a dot goes slowly
 /// round it (once every 10 s). The ring stays as strong as without shells.
+/// An agent asleep: a grey moon, as quiet as the ring of one at rest.
+public struct SleepMark: View {
+    var size: CGFloat
+
+    public init(size: CGFloat = 15) { self.size = size }
+
+    public var body: some View {
+        Image(systemName: "moon.zzz.fill")
+            .font(.system(size: size * 0.78, weight: .medium))
+            .foregroundStyle(.secondary)
+            .frame(width: size, height: size)
+            .accessibilityLabel("Asleep")
+    }
+}
+
 struct RestingRing: View {
     let shells: Bool
     let size: CGFloat

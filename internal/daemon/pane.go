@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -70,6 +71,7 @@ type pane struct {
 	cellW      int                       // the last cell size a client gave (setCellSize)
 	cellH      int
 	seed       []byte    // saved screen to replay into the next mirror (reboot restore)
+	seedNote   string    // the line under it ("" for "restored after restart")
 	resume     []byte    // saved screen to rebuild the mirror from on reconnect…
 	resumeAt   uint64    // …and the holder offset it was saved at
 	savedAt    time.Time // when the scrollback snapshot was last written
@@ -94,6 +96,17 @@ type pane struct {
 	askedFor    string    // Claude's own words for its permission prompt ("…permission to use Bash")
 	askedRule   string    // pendingTool as it was when that prompt came (later tool calls don't change it)
 	typedBy     paneInput // who typed into it lately (inputsource.go)
+	lastIn      time.Time // when someone last typed in it
+
+	// A sleeping agent (sleep.go): the command that wakes it; sleepBusy
+	// while it's being put to sleep; waking from when it's woken until it's
+	// at its prompt, with what's typed meanwhile (wakeQueue) and awake,
+	// closed then.
+	wakeCmd   string
+	sleepBusy bool
+	waking    bool
+	wakeQueue [][]byte
+	awake     chan struct{}
 }
 
 func newPane(d *Daemon, info *pb.Pane) *pane {
@@ -519,8 +532,8 @@ func (p *pane) attachHolderLocked(hc *holder.Client) int {
 	if len(p.seed) > 0 {
 		// Scrollback saved before a reboot: replay it ahead of the new process.
 		p.mirror.Write(p.seed)
-		p.mirror.Write([]byte("\r\n\x1b[0;2m── restored after restart ──\x1b[0m\r\n"))
-		p.seed = nil
+		p.mirror.Write([]byte("\r\n\x1b[0;2m── " + cmp.Or(p.seedNote, "restored after restart") + " ──\x1b[0m\r\n"))
+		p.seed, p.seedNote = nil, ""
 	}
 	p.osc = vt.OSC{}
 	p.kitty = vt.KittyFiles{}
@@ -796,12 +809,21 @@ func (p *pane) detach(c *conn) {
 func (p *pane) input(c *conn, data []byte) (resized bool, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.info.Asleep {
+		return false, errors.New("the pane's agent is asleep")
+	}
 	if p.ops == nil || p.info.Exited { // no holder, nor one starting
 		return false, errors.New("pane is not running")
 	}
 	resized = p.setDriverLocked(c)
 	p.typedBy.noteLocked(inputSourceOf(c), time.Now())
+	p.lastIn = time.Now()
 	data = append([]byte(nil), data...)
+	if p.waking {
+		// Its agent is starting: typed once it's at its prompt (wakeDone).
+		p.wakeQueue = append(p.wakeQueue, data)
+		return resized, nil
+	}
 	if !p.postLocked(func(hc *holder.Client) { _ = hc.Input(data) }) {
 		return resized, errors.New("pane input queue is full")
 	}
@@ -1012,7 +1034,11 @@ func (p *pane) refreshSubagents() bool {
 	if a != nil && !p.info.Exited {
 		path = a.TranscriptPath
 	}
+	asleep := p.info.Asleep
 	p.mu.Unlock()
+	if asleep {
+		return false
+	}
 	n := 0
 	if path != "" {
 		n = runningSubagents(filepath.Join(strings.TrimSuffix(path, ".jsonl"), "subagents"))
@@ -1094,12 +1120,16 @@ func (p *pane) refreshProcesses() bool {
 		return false
 	}
 	p.mu.Lock()
-	pid, exited, cmd := p.pid, p.info.Exited, p.info.Command
+	pid, exited, cmd, asleep := p.pid, p.info.Exited, p.info.Command, p.info.Asleep
 	p.mu.Unlock()
+	if asleep {
+		return false // what it ran, as it was (sleep.go)
+	}
 	var names []string
 	// An agent's own shells (its commands, ! commands, background tasks):
 	// how many, and when the newest began. MCP servers and the like aren't shells.
 	agentShells, newest, agentStart := 0, time.Time{}, time.Time{}
+	agentPID := 0
 	if !exited && pid != 0 {
 		if len(cmd) > 0 && !shells[strings.TrimPrefix(filepath.Base(cmd[0]), "-")] {
 			names = []string{filepath.Base(cmd[0])}
@@ -1120,7 +1150,7 @@ func (p *pane) refreshProcesses() bool {
 					continue
 				}
 				if st, err := procinfo.StartTime(c); err == nil {
-					agentStart = st
+					agentStart, agentPID = st, c
 				}
 				for _, cc := range procinfo.Children(c) {
 					if n, err := procinfo.Name(cc); err == nil && shells[strings.TrimPrefix(n, "-")] {
@@ -1134,6 +1164,13 @@ func (p *pane) refreshProcesses() bool {
 		}
 	}
 	p.mu.Lock()
+	if agentPID != 0 && !agentStart.Equal(p.agentStart) {
+		// A new agent process: its command line, for resuming it with the
+		// same options after a reboot (resumeCommand).
+		p.mu.Unlock()
+		p.d.saveAgentArgs(p.id, procinfo.Args(agentPID))
+		p.mu.Lock()
+	}
 	defer p.mu.Unlock()
 	p.agentStart = agentStart
 	changed := false
@@ -1169,6 +1206,8 @@ func (p *pane) discardFiles() {
 		p.log.close(true)
 	}
 	_ = os.Remove(p.holderLogPath())
+	_ = p.d.store.DeleteRecord(sleepRecord, p.id)
+	_ = p.d.store.DeleteRecord(agentArgsRecord, p.id)
 	p.saveMu.Lock()
 	defer p.saveMu.Unlock()
 	p.discarded = true

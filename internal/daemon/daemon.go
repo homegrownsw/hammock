@@ -390,6 +390,14 @@ func (d *Daemon) prunePaneFiles() {
 // restoreHolder reconnects a restored terminal pane to its holder, or
 // starts its program again if it can't be. Callers hold d.mu.
 func (d *Daemon) restoreHolder(p *pane, info *pb.Pane, rt state.PaneRuntime, ok bool) {
+	if info.Asleep && !info.Exited {
+		// Its agent sleeps on: woken when it's next looked at (sleep.go).
+		if ok {
+			_, _ = endHolderAt(rt.Socket)
+		}
+		d.restoreAsleep(p)
+		return
+	}
 	if ok && !d.ownSocket(rt.Socket, info.Id) {
 		// Another state dir's (this state copied, and hmkd started on
 		// the copy), or a link to one: never reconnected to, nor ended,
@@ -1201,6 +1209,9 @@ func (d *Daemon) pollCwds() {
 		}
 		d.detectAgents()
 		d.refreshTabNames()
+		if ticks%sleepEvery == 0 {
+			d.sleepIdleAgents()
+		}
 		if ticks%15 == 0 { // every 30s
 			for _, p := range d.panes {
 				go p.saveScrollback(false)

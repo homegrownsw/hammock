@@ -530,6 +530,7 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	if open := d.prepareDiff(msg); open != nil {
 		defer d.diffs.takePrepared(open)
 	}
+	c.wakeFor(msg) // a sleeping agent talked to (sleep.go)
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello:
 		d.mu.Lock()
@@ -776,6 +777,18 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 
 	case *pb.ClientMessage_ReadRepo:
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_RepoInfo{RepoInfo: d.readRepo(m.ReadRepo)}}, nil
+
+	case *pb.ClientMessage_SleepPane:
+		// Waits for the agent's process to be found and ended: reply then.
+		id, sp := msg.Id, m.SleepPane
+		go func() {
+			if err := d.setPaneAsleep(c, sp); err != nil {
+				c.replyErr(id, err)
+				return
+			}
+			c.send(&pb.ServerMessage{ReplyTo: id, Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}})
+		}()
+		return nil, errDeferred
 
 	case *pb.ClientMessage_HoldPane:
 		// The person taking a pane over from agents (agentpresence.go);

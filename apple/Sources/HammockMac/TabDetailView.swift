@@ -428,6 +428,7 @@ struct PaneView: View {
     private var showsAgent: Bool { agentCapable && AgentModes.shared.showsAgent(paneID) }
     private var isLog: Bool { pane?.isLog == true }
     private var needsInput: Bool { pane?.hasAgent == true && pane?.agent.state == .needsInput }
+    private var asleep: Bool { pane?.asleep == true }
 
     /// The terminal theme's background, so the header and gaps match the terminal.
     private var themeBackground: Color { PaneLook.background(dark: colorScheme == .dark) }
@@ -447,18 +448,31 @@ struct PaneView: View {
                     header
                         .contextMenu { PaneMenuItems(model: model, paneID: paneID) }
                         .paneSwapHandle(paneID, model: model)
-                    if isLog, !LogUI.shared.showsRaw(paneID) {
-                        LogConsoleView(model: model, paneID: paneID)
-                            .background(Color(nsColor: .textBackgroundColor))
-                            .simultaneousGesture(TapGesture().onEnded { model.focus(paneID) })
-                            .focusesWhenTarget(isFocused, paneID: paneID, model: model)
-                    } else if showsAgent {
-                        AgentPaneView(model: model, paneID: paneID)
-                            .simultaneousGesture(TapGesture().onEnded { model.focus(paneID) })
-                            .focusesWhenTarget(isFocused, paneID: paneID, model: model)
-                    } else {
-                        TerminalView(paneID: paneID, model: model, isFocused: isFocused)
+                    Group {
+                        if isLog, !LogUI.shared.showsRaw(paneID) {
+                            LogConsoleView(model: model, paneID: paneID)
+                                .background(Color(nsColor: .textBackgroundColor))
+                                .simultaneousGesture(TapGesture().onEnded { model.focus(paneID) })
+                                .focusesWhenTarget(isFocused, paneID: paneID, model: model)
+                        } else if showsAgent {
+                            AgentPaneView(model: model, paneID: paneID)
+                                .simultaneousGesture(TapGesture().onEnded { model.focus(paneID) })
+                                .focusesWhenTarget(isFocused, paneID: paneID, model: model)
+                        } else {
+                            TerminalView(paneID: paneID, model: model, isFocused: isFocused)
+                        }
                     }
+                    // Its agent asleep: faded, with a button to wake it
+                    // (focusing it doesn't). Under the header, which still
+                    // drags, zooms and has its menus.
+                    .overlay {
+                        if asleep {
+                            SleepingPaneOverlay(backdrop: themeBackground, fill: AgentAutomatic.bubble, tint: AgentAutomatic.color,
+                                                animated: PaneMotion.enabled) { model.sleepPane(paneID, wake: true) }
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(PaneMotion.when(.easeInOut(duration: 0.25)), value: asleep)
                 }
             }
         }
@@ -512,6 +526,8 @@ struct PaneView: View {
             if let pane, pane.exited {
                 Text("Exited \(pane.exitStatus)")
                     .foregroundStyle(.secondary)
+            } else if let pane, pane.asleep {
+                SleepBadge(model: model, paneID: paneID)
             } else if let pane, pane.hasAgent, pane.agent.state != .unspecified, !(pane.agent.shownState == .idle && pane.agent.seen) {
                 HStack(spacing: 5) {
                     StatusIcon(state: pane.agent.shownState, size: 12)
@@ -528,5 +544,29 @@ struct PaneView: View {
         .padding(.trailing, 12)
         .frame(height: 28)
         .background(isFocused ? Color.themeAccent.opacity(0.06) : Color.clear)
+    }
+}
+
+/// A pane header's mark for an agent asleep (its process ended to free
+/// memory): a moon and "Asleep". Clicking it wakes the agent, as the
+/// pane's Wake Agent button does (SleepingPaneOverlay).
+private struct SleepBadge: View {
+    let model: AppModel
+    let paneID: String
+    @State private var hover = false
+
+    var body: some View {
+        Button { model.sleepPane(paneID, wake: true) } label: {
+            HStack(spacing: 5) {
+                SleepMark(size: 12)
+                Text("Asleep")
+            }
+            .foregroundStyle(hover ? .primary : .secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .tooltip("Asleep, to free its memory: click to wake it")
+        .accessibilityLabel("Asleep")
     }
 }

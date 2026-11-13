@@ -1037,6 +1037,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.ListFiles.PaneId
 	case *pb.ClientMessage_SwitchAgent:
 		return m.SwitchAgent.PaneId
+	case *pb.ClientMessage_SleepPane:
+		return m.SleepPane.PaneId
 	case *pb.ClientMessage_UploadFile:
 		return m.UploadFile.PaneId
 	case *pb.ClientMessage_ClearAttention:

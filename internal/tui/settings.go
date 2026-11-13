@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
 )
@@ -72,6 +73,41 @@ func editorSettings() []setting {
 		toggle("Editor: open in $EDITOR", "editor-tui-external", func() bool { return editorPrefs.TUIExternal },
 			"Edits from your other devices show in $EDITOR only when it reloads the file."),
 	}
+}
+
+// agentSleepChoices are agent-sleep's values the Settings offer.
+var agentSleepChoices = []string{"off", "3h", "6h", "12h", "24h", "48h"}
+
+// agentSleepSetting is the config file's agent-sleep (shared with the
+// Mac's Settings): how long an agent rests before it's put to sleep.
+func agentSleepSetting() setting {
+	cur := func() int {
+		v, _ := hammockconfig.Value("agent-sleep")
+		for i, c := range agentSleepChoices {
+			if c == strings.ToLower(strings.TrimSpace(v)) {
+				return i
+			}
+		}
+		return 0
+	}
+	return setting{"Put idle agents to sleep", func(*App) string {
+		if i := cur(); i > 0 {
+			return "After " + strings.TrimSuffix(agentSleepChoices[i], "h") + " hours"
+		}
+		return "Off"
+	}, func(a *App, d int) {
+		if d == 0 {
+			d = 1
+		}
+		n := len(agentSleepChoices)
+		v := agentSleepChoices[((cur()+d)%n+n)%n]
+		if v == "off" {
+			v = "" // off is the default
+		}
+		if err := hammockconfig.Set("agent-sleep", v); err != nil {
+			a.flash("⚠ " + err.Error())
+		}
+	}, "Ends an idle agent's process to free memory; focusing its pane resumes it."}
 }
 
 // toolSettings turn Hammock's tools on and off (the <kind>-enabled keys,
@@ -156,6 +192,7 @@ func (a *App) openSettings() {
 			a.sizes = map[string][2]int{}
 		}, ""},
 	}}
+	v.items = append(v.items, agentSleepSetting())
 	v.items = append(v.items, editorSettings()...)
 	v.items = append(v.items, toolSettings()...)
 	v.open.from(0)

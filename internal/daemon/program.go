@@ -84,8 +84,11 @@ func (p *pane) refreshProgram() bool {
 		return false
 	}
 	p.mu.Lock()
-	pid, exited := p.pid, p.info.Exited
+	pid, exited, asleep := p.pid, p.info.Exited, p.info.Asleep
 	p.mu.Unlock()
+	if asleep {
+		return false // what it ran, as it was (sleep.go)
+	}
 	var names []string
 	if !exited && pid != 0 {
 		names = foregroundProgram(pid)

@@ -347,6 +347,14 @@ struct HammockApp: App {
                     .keyboardShortcut(Keys.dictate)
                     .disabled(!DictateAction.available(model, focused))
                 }
+                // An agent at rest: its process ended to free memory, its
+                // session resumed when it's woken (here, its pane's button, or typing in it).
+                let focusedPane = focused.flatMap { model.panes[$0] }
+                Button(focusedPane?.asleep == true ? "Wake Agent" : "Put Agent to Sleep") {
+                    if let p = focusedPane { model.sleepPane(p.id, wake: p.asleep) }
+                }
+                    .keyboardShortcut(Keys.sleepAgent)
+                    .disabled(!(focusedPane.map { $0.asleep || $0.canSleep } ?? false))
                 if HammockTool.browser.on {
                     Button("Split Right with Browser") {
                         if let id = focused { Task { await model.splitBrowser(id, direction: .horizontal) } }

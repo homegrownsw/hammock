@@ -84,6 +84,7 @@ enum Keys {
     static var toggleAgentView: KeyboardShortcut? { shortcut("toggle_agent_view") }
     static var copySessionLink: KeyboardShortcut? { shortcut("copy_session_link") }
     static var dictate: KeyboardShortcut? { shortcut("dictate") }
+    static var sleepAgent: KeyboardShortcut? { shortcut("sleep_agent") }
     static var splitBrowserRight: KeyboardShortcut? { shortcut("split_browser_right") }
     static var splitBrowserDown: KeyboardShortcut? { shortcut("split_browser_down") }
     static var devTools: KeyboardShortcut? { shortcut("dev_tools") }

@@ -96,6 +96,7 @@ Not built: a notification when a long-running command that isn't an agent finish
 
 - Processes survive client disconnects, the Mac app quitting, and **daemon upgrades and crashes**: each PTY lives in its own holder process.
 - After a **reboot or logout**, Hammock restores every Group, tab and pane with its folder and a scrollback snapshot, starts the shells again, and **resumes each agent's session** (`claude --resume`, `codex resume` and the like). Browser pages come back at their URL.
+- **Sleeping agents** (off by default; Settings, or `agent-sleep = 3h` … `48h` in the config file): an agent idle that long, with nothing running and not waiting for you, has its process ended to free memory. Its pane keeps its screen, dimmed under a big **Wake** button; that button (on any device), typing in it or messaging its agent resumes the session where it was, with the options it was started with. Only clicking into it doesn't, as that's easy to do by accident. **Put Agent to Sleep** (and `hmk sleep`) does it by hand. Sleeping agents stay asleep through a restart.
 
 ### 6.5 Templates (not built)
 

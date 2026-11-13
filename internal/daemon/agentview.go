@@ -863,6 +863,11 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 		return errors.New("nothing to send")
 	}
 	go func() {
+		// A sleeping agent wakes, and takes it once it's at its prompt.
+		if err := d.wakeAndWait(p, auditActorOf(c)); err != nil {
+			c.replyErr(id, err)
+			return
+		}
 		if err := typeParts(p, c, parts); err != nil {
 			c.replyErr(id, err)
 			return

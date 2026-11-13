@@ -21,6 +21,20 @@ extension Hammock_V1_Pane {
         return URL(string: agent.sessionURL)
     }
 
+    /// Its agent could be put to sleep (SleepPane): a terminal's, at rest
+    /// (finished, or ended its turn on an error), not asleep already. The
+    /// daemon has the last word (no shells or subagents, a known session),
+    /// and says why not.
+    public var canSleep: Bool {
+        (kind == .terminal || kind == .unspecified) && hasAgent && !exited && !asleep
+            && (agent.state == .idle || agent.state == .errored) && !agent.runningCommand
+    }
+
+    /// Its agent's state in words: "Asleep" for one put to sleep.
+    public var agentStatusLabel: String {
+        asleep ? "Asleep" : agent.state.label
+    }
+
     /// The cwd with the home directory abbreviated. HMK_DEBUG_HOME stands in
     /// for the home directory, for the README's demo (`scripts/readme-demo`),
     /// whose made-up projects live in a scratch dir.

@@ -67,4 +67,19 @@ func TestAgentGlyphOrbit(t *testing.T) {
 	if _, ok := a.agentGlyph(done); ok {
 		t.Error("a finished agent that was seen still shows a glyph")
 	}
+
+	// Asleep: a moon, whatever it was doing when it went to sleep.
+	done.Asleep = true
+	if g, ok := a.agentGlyph(done); !ok || g.ch != "☾" {
+		t.Errorf("asleep: %+v, %v", g, ok)
+	}
+	idle := pane(pb.AgentState_AGENT_STATE_IDLE)
+	idle.Agent.SessionId = "s"
+	if !canSleep(idle) || canSleep(done) {
+		t.Errorf("canSleep: idle %v, asleep %v", canSleep(idle), canSleep(done))
+	}
+	idle.Agent.State = pb.AgentState_AGENT_STATE_WORKING
+	if canSleep(idle) {
+		t.Error("a working agent can be put to sleep")
+	}
 }

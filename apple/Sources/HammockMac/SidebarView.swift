@@ -860,7 +860,7 @@ struct TabRow: View {
                 StatusIcon(state: nil, size: compact ? 16 : 17, program: model.focusedProgram(of: tab))
             } else {
                 StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), size: compact ? 16 : 17,
-                           program: model.focusedProgram(of: tab))
+                           program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab))
             }
             Text(model.title(of: tab))
                 .font(.system(size: compact ? 13.5 : 14)) // 1pt under the large sidebar row size; compact, a little smaller
@@ -918,13 +918,14 @@ struct TabRow: View {
     }
 
     /// With `tab-status = trailing`: the agent's state after the time; an
-    /// agent at rest shows nothing, unless its shells still run. The icon
+    /// agent at rest shows nothing, unless its shells still run (or it's
+    /// asleep: a moon). The icon
     /// stays in the row while there's an agent, so a state arriving pops in.
     @ViewBuilder
     private var trailingStatus: some View {
         if model.shownAgentPane(of: tab) != nil {
             StatusIcon(state: model.agentState(of: tab), resting: true, shells: model.hasRestingAgentWithWork(tab),
-                       size: compact ? 13 : 14, quietAtRest: true)
+                       size: compact ? 13 : 14, quietAtRest: true, asleep: model.hasSleepingAgent(tab))
         }
     }
 

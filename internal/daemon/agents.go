@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/homegrownsw/hammock/internal/agents"
 	"github.com/homegrownsw/hammock/internal/agentview"
@@ -247,7 +248,9 @@ func firstLine(s string) string {
 // handle applies a hook event. Callers hold d.mu.
 func (h *agentHub) handle(ev HookEvent) {
 	p, ok := h.d.panes[ev.PaneID]
-	if !ok {
+	if !ok || p.isAsleep() {
+		// Asleep: its agent's last words as it was ended (SessionEnd)
+		// don't end it here (sleep.go).
 		return
 	}
 	harness := ev.Harness
@@ -547,7 +550,36 @@ func (h *agentHub) resumeCommand(info *pb.Pane) []string {
 	if ag == nil || ag.Resume == nil {
 		return nil
 	}
-	return agentShellCommand(ag.Resume(a.SessionId))
+	return agentShellCommand(ag.ResumeWith(a.SessionId, h.d.agentArgs(info.Id)))
+}
+
+// agentArgsRecord is the store's kind for the command line a pane's agent
+// was last seen running with (JSON, wrapperspb.StringValue), so it resumes
+// with the same options after a reboot (agents.Agent.ResumeFlags).
+const agentArgsRecord = "agentargs"
+
+func (d *Daemon) saveAgentArgs(paneID string, argv []string) {
+	if len(argv) == 0 {
+		return
+	}
+	b, err := json.Marshal(argv)
+	if err == nil {
+		d.persist(d.store.PutRecord(agentArgsRecord, paneID, wrapperspb.String(string(b))))
+	}
+}
+
+// agentArgs is the command line saveAgentArgs kept for the pane's agent.
+func (d *Daemon) agentArgs(paneID string) []string {
+	recs, err := d.store.Records(agentArgsRecord)
+	if err != nil {
+		return nil
+	}
+	var v wrapperspb.StringValue
+	var argv []string
+	if b, ok := recs[paneID]; !ok || proto.Unmarshal(b, &v) != nil || json.Unmarshal([]byte(v.GetValue()), &argv) != nil {
+		return nil
+	}
+	return argv
 }
 
 // agentShellCommand is a pane's command that runs typed (a command line

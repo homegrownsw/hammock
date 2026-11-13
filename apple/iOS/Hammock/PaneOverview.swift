@@ -79,6 +79,11 @@ private struct OverviewLayout: View {
                             .disabled(pane.agent.harness == k.id)
                     }
                 }
+                if pane.asleep {
+                    Button("Wake Agent", systemImage: "sun.max") { model.sleepPane(id, wake: true) }
+                } else if pane.canSleep {
+                    Button("Put Agent to Sleep", systemImage: "moon.zzz") { model.sleepPane(id) }
+                }
             }
             .disabled(!drive)
             if let url = pane.sessionURL {
@@ -166,7 +171,7 @@ private struct PaneCard: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
             }
             if let a = pane?.agent, pane?.hasAgent == true {
-                Text(a.summary.isEmpty ? a.state.label : a.summary)
+                Text(a.summary.isEmpty ? pane?.agentStatusLabel ?? a.state.label : a.summary)
                     .font(.footnote)
                     .foregroundStyle(a.state == .needsInput ? Color.orange : .primary)
                     .lineLimit(6)
@@ -206,7 +211,7 @@ private struct PaneCard: View {
         case .diff: Image(systemName: "plusminus").foregroundStyle(.secondary)
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
-                StateGlyph(state: p.agent.shownState)
+                StateGlyph(state: p.agent.shownState, asleep: p.asleep)
             } else {
                 ProgramIcon(program: pane?.exited == false ? pane?.program ?? [] : [], size: 17)
             }

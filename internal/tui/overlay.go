@@ -30,25 +30,32 @@ func (a *App) closeOverlay() {
 // dimBehind fades everything already drawn toward the background, as a
 // sheet's scrim does.
 func (a *App) dimBehind(amount float64) {
+	a.dimRect(rect{0, 0, a.scr.W, a.scr.H}, amount)
+}
+
+// dimRect fades what's already drawn in r toward the background.
+func (a *App) dimRect(r rect, amount float64) {
 	if amount <= 0 {
 		return
 	}
 	s := a.scr
-	for i := range s.cells {
-		c := &s.cells[i]
-		fg, bg := a.th.fg, a.th.bg
-		if c.HasFG {
-			fg = c.FG
+	for y := max(r.y, 0); y < min(r.y+r.h, s.H); y++ {
+		for x := max(r.x, 0); x < min(r.x+r.w, s.W); x++ {
+			c := &s.cells[y*s.W+x]
+			fg, bg := a.th.fg, a.th.bg
+			if c.HasFG {
+				fg = c.FG
+			}
+			if c.HasBG {
+				bg = c.BG
+			}
+			target := mix(a.th.bg, RGB{0, 0, 0}, 0.25)
+			if !a.th.dark {
+				target = mix(a.th.bg, RGB{0, 0, 0}, 0.12)
+			}
+			c.FG, c.HasFG = mix(fg, target, 0.55*amount), true
+			c.BG, c.HasBG = mix(bg, target, 0.6*amount), true
 		}
-		if c.HasBG {
-			bg = c.BG
-		}
-		target := mix(a.th.bg, RGB{0, 0, 0}, 0.25)
-		if !a.th.dark {
-			target = mix(a.th.bg, RGB{0, 0, 0}, 0.12)
-		}
-		c.FG, c.HasFG = mix(fg, target, 0.55*amount), true
-		c.BG, c.HasBG = mix(bg, target, 0.6*amount), true
 	}
 }
 
@@ -409,6 +416,11 @@ func (a *App) paneMenu(id string, x, y int) {
 		if u := p.Agent.SessionUrl; u != "" {
 			items = append(items, menuItem{label: "Copy Session Link", run: func() { a.copyText(u) }})
 		}
+		if p.Asleep {
+			items = append(items, menuItem{label: "Wake Agent", run: func() { a.sleepPane(id, true) }})
+		} else if canSleep(p) {
+			items = append(items, menuItem{label: "Put Agent to Sleep", run: func() { a.sleepPane(id, false) }})
+		}
 		items = append(items,
 			menuItem{label: "Interrupt (Esc)", run: func() { a.sendTo(id, []byte{0x1b}) }},
 			menuItem{sep: true})
@@ -579,6 +591,11 @@ func (a *App) paletteItems() []paletteItem {
 		act("split-up", "Split Up", "", "pane above", func() { a.splitAt(f, pb.Split_DIRECTION_VERTICAL, "", true) })
 		act("split-right-editor", "Split Right with Editor", "", "pane edit editor text file untitled", func() { a.splitEditor(f, pb.Split_DIRECTION_HORIZONTAL) })
 		act("split-down-editor", "Split Down with Editor", "", "pane edit editor text file untitled below", func() { a.splitEditor(f, pb.Split_DIRECTION_VERTICAL) })
+		if p := a.panes[f]; p.GetAsleep() {
+			act("wake-agent", "Wake Agent", "", "sleep sleeping asleep resume agent claude", func() { a.sleepPane(f, true) })
+		} else if canSleep(p) {
+			act("sleep-agent", "Put Agent to Sleep", "", "sleep suspend idle memory ram free agent claude", func() { a.sleepPane(f, false) })
+		}
 		if u := a.panes[f].GetAgent().GetSessionUrl(); u != "" {
 			act("copy-session-link", "Copy Session Link", "", "claude code remote control web url share agent conversation", func() { a.copyText(u) })
 		}
