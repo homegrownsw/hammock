@@ -1104,3 +1104,34 @@ func plural(n int, word string) string {
 	}
 	return fmt.Sprintf("%d %ss", n, word)
 }
+
+// Claude Code's start screen says the model and effort level before any
+// reply does:
+//
+//	 ▐▛███▜▌   Claude Code v2.1.323
+//	▝▜█████▛▘  Opus 5.5 · Claude Team
+//	  ▘▘ ▝▝    ~/Developer/app
+//	◐ medium · /effort
+var (
+	claudeBanner = regexp.MustCompile(`Claude Code v\d`)
+	claudeLogo   = regexp.MustCompile(`^[\s\x{2580}-\x{259F}]*`)
+	effortNotice = regexp.MustCompile(`^\s*\S?\s*(low|medium|high|xhigh|max) · /effort\b`)
+)
+
+// ClaudeScreenModel reads the model ("Opus 5.5") and effort level
+// ("medium") off Claude Code's start screen, "" for what isn't showing.
+func ClaudeScreenModel(text string) (model, effort string) {
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		if model == "" && claudeBanner.MatchString(l) && i+1 < len(lines) {
+			next := claudeLogo.ReplaceAllString(lines[i+1], "")
+			if m, _, ok := strings.Cut(next, " · "); ok && m != "" && m[0] >= 'A' && m[0] <= 'Z' {
+				model = strings.TrimSpace(m)
+			}
+		}
+		if m := effortNotice.FindStringSubmatch(l); m != nil {
+			effort = m[1]
+		}
+	}
+	return model, effort
+}

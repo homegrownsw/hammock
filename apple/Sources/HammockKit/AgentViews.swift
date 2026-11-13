@@ -3155,6 +3155,8 @@ struct AgentStatusBar: View {
     /// "claude-opus-5-5" as "Opus 5.5" (a date suffix dropped); "gpt-6-luna"
     /// as "GPT-6 Luna".
     static func displayName(_ id: String) -> String {
+        // Already a name (off Claude's start screen, before a reply says).
+        if id.contains(" ") { return id }
         if id.hasPrefix("gpt-") {
             let parts = id.dropFirst(4).split(separator: "-").map(String.init)
             guard let version = parts.first else { return id }

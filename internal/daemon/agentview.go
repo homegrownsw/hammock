@@ -78,6 +78,9 @@ type agentWatch struct {
 	status   string
 	draft    string  // what's typed in its input box in the terminal
 	ctx      ctxInfo // the model and context last sent
+	// Claude's model and effort level as its start screen says, for before
+	// its transcript does (its first reply).
+	screenModel, screenEffort string
 	errText  string
 	commands []string
 	starts   []string // those of commands that only run at a message's start
@@ -325,6 +328,24 @@ func (w *agentWatch) context() ctxInfo {
 	return ctxInfo{m, parserEffort(w.parser), t, win}
 }
 
+// readScreenModel notes the model and effort level Claude's start screen
+// shows (the main view's; the banner scrolls away, so it's kept).
+func (w *agentWatch) readScreenModel(text string) {
+	if w.sub != "" || w.harness != "claude" {
+		return
+	}
+	m, e := agentview.ClaudeScreenModel(text)
+	w.screenModel, w.screenEffort = cmp.Or(m, w.screenModel), cmp.Or(e, w.screenEffort)
+}
+
+// withScreen is c, or what the screen said while no reply has said a model.
+func (w *agentWatch) withScreen(c ctxInfo) ctxInfo {
+	if c.model == "" {
+		c.model, c.effort = w.screenModel, w.screenEffort
+	}
+	return c
+}
+
 func (v *ctxInfo) set(u *pb.AgentView) {
 	u.Model, u.Effort, u.ContextTokens, u.ContextWindow = v.model, v.effort, v.tokens, v.window
 }
@@ -338,11 +359,17 @@ func (w *agentWatch) refresh() *pb.AgentView {
 	u := &pb.AgentView{PaneId: w.p.id, SubagentId: w.sub}
 	path, err := w.sessionPath()
 	if err != nil {
-		if w.errText == err.Error() {
+		// No transcript yet (nothing sent): the screen says the model.
+		if w.sub == "" {
+			w.readScreenModel(w.p.text(false))
+		}
+		ctx := w.withScreen(ctxInfo{})
+		if w.errText == err.Error() && ctx == w.ctx {
 			return nil
 		}
-		w.errText = err.Error()
+		w.errText, w.ctx = err.Error(), ctx
 		u.Error = w.errText
+		ctx.set(u)
 		return u
 	}
 	if w.errText != "" {
@@ -372,7 +399,9 @@ func (w *agentWatch) refresh() *pb.AgentView {
 	draft := ""
 	working := false
 	if w.sub == "" {
-		sc = agentview.ReadScreen(w.p.text(false))
+		text := w.p.text(false)
+		sc = agentview.ReadScreen(text)
+		w.readScreenModel(text)
 		if len(sc.Options) == 0 {
 			// A menu hides the input box: its ❯ line isn't a draft.
 			draft = agentview.InputDraft(w.p.bottomText(20))
@@ -405,7 +434,7 @@ func (w *agentWatch) refresh() *pb.AgentView {
 		// working until its record says it finished.
 		working = !w.subFinished()
 	}
-	ctx := w.context()
+	ctx := w.withScreen(w.context())
 	if u.Replace {
 		snap := w.snapshot()
 		w.prompt, w.working, w.status, w.ctx = prompt, working, sc.Status, ctx
@@ -649,6 +678,7 @@ func (w *agentWatch) snapshot() *pb.AgentView {
 	v := &pb.AgentView{PaneId: w.p.id, SubagentId: w.sub, Replace: true, Prompt: w.prompt, Working: w.working, Status: w.status,
 		Commands: w.commands, StartCommands: w.starts, Error: w.errText, Subagents: w.subs, Shells: w.shells, Draft: w.draft}
 	if w.parser == nil {
+		w.ctx.set(v)
 		return v
 	}
 	blocks := w.parser.Blocks()
@@ -659,7 +689,7 @@ func (w *agentWatch) snapshot() *pb.AgentView {
 		v.Tasks = cmp.Or(t, &pb.AgentTaskList{})
 		v.Links = &pb.AgentLinks{Links: l}
 	}
-	ctx := w.context()
+	ctx := w.withScreen(w.context())
 	ctx.set(v)
 	if a := w.p.snapshotInfo().Agent; a != nil {
 		v.SessionId = a.SessionId

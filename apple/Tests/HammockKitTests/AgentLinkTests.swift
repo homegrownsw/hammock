@@ -42,6 +42,7 @@ import Testing
     #expect(AgentStatusBar.displayName("gpt-5.2-codex") == "GPT-5.2 Codex")
     #expect(AgentStatusBar.displayName("claude-haiku-5-5[1m]") == "Haiku 5.5")
     #expect(AgentStatusBar.displayName("gpt-5") == "GPT-5")
+    #expect(AgentStatusBar.displayName("Opus 5.5 (1M context)") == "Opus 5.5 (1M context)")
 }
 
 @Test func effortNames() {

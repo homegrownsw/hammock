@@ -1,3 +1,3 @@
 tag: NEW
 date: 2026-11-13
-Agent view: the model menu also sets Claude's effort level (/effort).
+Agent view: the model menu also sets Claude's effort level (/effort), and both show as soon as Claude starts, not after its first reply.

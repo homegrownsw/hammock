@@ -484,6 +484,17 @@ func TestClaudeContext(t *testing.T) {
 	}
 }
 
+// Before its first reply, the model and effort come from the start screen.
+func TestClaudeScreenModel(t *testing.T) {
+	screen := " ▐▛███▜▌   Claude Code v2.1.323\n▝▜█████▛▘  Opus 5.5 (1M context) · Claude Max\n  ▘▘ ▝▝    ~/Developer/app\n\n◐ medium · /effort\n────\n❯ \n────\n"
+	if m, e := ClaudeScreenModel(screen); m != "Opus 5.5 (1M context)" || e != "medium" {
+		t.Fatalf("%q %q", m, e)
+	}
+	if m, e := ClaudeScreenModel("> run the tests\n\n⏺ Ran 3 tests · /effort\n❯ \n"); m != "" || e != "" {
+		t.Fatalf("read %q %q off a conversation", m, e)
+	}
+}
+
 // The effort level is the latest reply's that says one (/effort changes it
 // from the next reply); stand-in replies and ones without it leave it be.
 func TestClaudeEffort(t *testing.T) {
