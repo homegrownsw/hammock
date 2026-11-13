@@ -676,7 +676,21 @@ const locateJS = `async (ref, sel, text, smooth) => {
   } else {
     const all = [...document.querySelectorAll('a,button,input,select,textarea,summary,label,[role],[onclick],[tabindex],[contenteditable]')];
     const label = e => (e.innerText || e.value || e.getAttribute('aria-label') || e.getAttribute('placeholder') || '').trim();
-    el = all.find(e => label(e) === text) || all.find(e => label(e).includes(text));
+    // The first, in the page's order, whose label is the text or starts
+    // with it as a line (a search result's link: its title, then its site),
+    // then one with it as a line, then one with it anywhere (the innermost:
+    // not the page's whole main); something that's showing before not.
+    const lines = e => label(e).split('\n').map(l => l.trim()).filter(Boolean);
+    const shown = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    const tests = [e => label(e) === text || lines(e)[0] === text, e => lines(e).includes(text), e => label(e).includes(text)];
+    for (const only of [shown, () => true]) {
+      for (const t of tests) {
+        const m = all.filter(e => only(e) && t(e));
+        el = m.find(e => !m.some(o => o !== e && e.contains(o)));
+        if (el) break;
+      }
+      if (el) break;
+    }
     if (!el) return {Error: 'no element with text ' + JSON.stringify(text)};
   }
   const seen = () => {
