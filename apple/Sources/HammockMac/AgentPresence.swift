@@ -4,8 +4,13 @@ import SwiftUI
 /// An agent at work in a browser or simulator pane, drawn over it: a
 /// cursor (a finger on a simulator) that glides to where it acts and
 /// ripples when it clicks or taps, a soft glow around the page or screen,
-/// and a badge saying what it's doing, with Take over. It all fades a
-/// couple of seconds after the agent's last action. The daemon sends the
+/// and a badge saying what it's doing, with Take over. The pointer fades a
+/// couple of seconds after the agent's last action; the glow and badge stay
+/// while the agent is still working (its turn, as its hooks tell Hammock),
+/// so they don't blink out while it thinks between actions, and go when it
+/// finishes, asks something or exits, or a minute after its last action
+/// here (it's moved on to other work). An agent Hammock doesn't know the
+/// state of gets the pointer's couple of seconds. The daemon sends the
 /// actions (AgentAction, agentpresence.go) and holds the agent's pointer
 /// back while the cursor glides (agentGlide there; `glide` here).
 ///
@@ -35,19 +40,30 @@ struct AgentPresenceOverlay: View {
     @State private var sweptAt = Date.distantPast
     @State private var pulse = false
     @State private var fade: Task<Void, Never>?
+    @State private var lastAction = Date.distantPast
 
     /// HMK_DEBUG_AGENT_CURSOR=1: a made-up click (or tap) in every pane,
     /// kept showing, for snapshots.
     static let debug = ProcessInfo.processInfo.environment["HMK_DEBUG_AGENT_CURSOR"] != nil
     /// The cursor's glide: as long as the daemon holds the pointer back.
     static let glide = 0.22
-    /// How long it shows after the agent's last action.
+    /// How long the pointer shows after the agent's last action (and
+    /// everything, for an agent whose state Hammock doesn't know).
     static let linger: Duration = .seconds(2)
+    /// How long the glow and badge stay after the agent's last action here
+    /// while it's still working.
+    static let staysWorking: Duration = .seconds(60)
 
     private var pane: Pane? { model.panes[paneID] }
     private var held: Bool { pane?.agentHeld == true }
     private var on: Bool { Prefs.shared.bool(.agentPresence) }
     private var accent: Color { AgentAutomatic.color }
+
+    /// Whether the acting agent is mid-turn: the glow stays between its actions.
+    private var agentWorking: Bool {
+        guard let p = model.panes[agentPane], p.hasAgent, !p.exited else { return false }
+        return p.agent.shownState == .working
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -78,6 +94,11 @@ struct AgentPresenceOverlay: View {
             a.x = isSimulator ? 0.5 : 0.62
             a.y = isSimulator ? 0.42 : 0.55
             apply(a)
+        }
+        .onChange(of: agentWorking) { _, working in
+            // Its turn over: gone, unless it acted just now (the pointer's
+            // linger ends it then).
+            if !working, active, !Self.debug, Date().timeIntervalSince(lastAction) >= 2 { hide() }
         }
         .onDisappear { fade?.cancel() }
     }
@@ -259,16 +280,31 @@ struct AgentPresenceOverlay: View {
         default:
             break
         }
+        lastAction = Date()
         fade?.cancel()
         guard !Self.debug else { return }
         fade = Task { @MainActor in
             try? await Task.sleep(for: Self.linger)
             guard !Task.isCancelled else { return }
+            guard agentWorking else { return hide() }
+            // Between actions: the pointer goes, the glow and badge stay.
             withAnimation(.easeOut(duration: 0.6)) {
-                active = false
                 cursor = nil
                 finger = nil
+                status = .using
             }
+            try? await Task.sleep(for: Self.staysWorking - Self.linger)
+            guard !Task.isCancelled else { return }
+            hide()
+        }
+    }
+
+    private func hide() {
+        fade?.cancel()
+        withAnimation(.easeOut(duration: 0.6)) {
+            active = false
+            cursor = nil
+            finger = nil
         }
     }
 
