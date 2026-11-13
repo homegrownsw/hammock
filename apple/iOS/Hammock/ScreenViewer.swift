@@ -330,6 +330,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
     private var crop = CGRect(x: 0, y: 0, width: 1, height: 1)
     private var sentView = CGRect.null
     private var sentAspect: CGFloat = 0
+    private var detailPixels = CGSize.zero // the detail's frames' size: how much it can spare round the view
     private var viewPending = false
     /// Fingers are down (panning, pinching): the detail isn't asked to move
     /// unless the view leaves what it has, so it glides with the page and
@@ -461,6 +462,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
             self.shown.append(picture)
             if self.shown.count > 2 { self.shown.removeFirst() }
         }
+        s.onSize = { [weak self] px in self?.detailPixels = px }
         s.onState = { [weak self] st in self?.onState?(st) }
         s.start()
     }
@@ -469,6 +471,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
         stopMomentum()
         stream?.onState = nil
         baseStream?.onSize = nil
+        stream?.onSize = nil
         stream?.onPicture = nil
         stream?.onCursor = nil
         stream?.onLocked = nil
@@ -619,10 +622,17 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
                 v.origin.x = min(max(v.minX, 0), 1 - v.width)
                 v.origin.y = min(max(v.minY, 0), 1 - v.height)
             }
-            // A tenth to spare all round, so a small pan stays sharp (the
-            // detail stream's pixels, in this screen's shape, cover that
-            // and this screen's own one to one).
-            if v.width < 1 { v = v.insetBy(dx: -v.width * 0.1, dy: -v.height * 0.1) }
+            // Some to spare all round, so a pan stays sharp: as much as the
+            // detail's frames cover with this screen's pixels one to one, a
+            // tenth to 15% a side (a tenth once the link has made them
+            // smaller: more would soften what's seen).
+            if v.width < 1 {
+                let screen = self.bounds.width * self.bounds.height * pow(self.window?.screen.scale ?? 3, 2)
+                let frame = self.detailPixels.width * self.detailPixels.height
+                let fits = screen > 0 && frame > 0 ? (sqrt(frame / screen) - 1) / 2 : 0
+                let spare = min(max(fits, 0.1), 0.15)
+                v = v.insetBy(dx: -v.width * spare, dy: -v.height * spare)
+            }
             // Frames in this screen's shape, not the display's: upright, a
             // display's whole height filling it is sharp, not stretched
             // from a landscape frame's.
