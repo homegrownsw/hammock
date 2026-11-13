@@ -119,6 +119,9 @@ func printView(v *pb.AgentView) {
 		if line == "" {
 			line = b.Text
 		}
+		if b.Kind == pb.AgentBlock_KIND_DONE {
+			line = fmt.Sprintf("worked %s", time.Duration(b.DurationMs)*time.Millisecond)
+		}
 		line = strings.ReplaceAll(line, "\n", " ⏎ ")
 		if len(line) > 110 {
 			line = line[:110] + "…"

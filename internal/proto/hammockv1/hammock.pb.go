@@ -448,6 +448,7 @@ const (
 	AgentBlock_KIND_PLAN        AgentBlock_Kind = 6 // a plan presented for approval
 	AgentBlock_KIND_SUBAGENT    AgentBlock_Kind = 7 // a subagent run (Agent/Task tool)
 	AgentBlock_KIND_NOTE        AgentBlock_Kind = 8 // compaction markers, interruptions, system notes
+	AgentBlock_KIND_DONE        AgentBlock_Kind = 9 // a turn finished: time_unix_ms when, duration_ms how long it worked
 )
 
 // Enum value maps for AgentBlock_Kind.
@@ -462,6 +463,7 @@ var (
 		6: "KIND_PLAN",
 		7: "KIND_SUBAGENT",
 		8: "KIND_NOTE",
+		9: "KIND_DONE",
 	}
 	AgentBlock_Kind_value = map[string]int32{
 		"KIND_UNSPECIFIED": 0,
@@ -473,6 +475,7 @@ var (
 		"KIND_PLAN":        6,
 		"KIND_SUBAGENT":    7,
 		"KIND_NOTE":        8,
+		"KIND_DONE":        9,
 	}
 )
 
@@ -11290,7 +11293,8 @@ type AgentBlock struct {
 	Removed       int32                  `protobuf:"varint,13,opt,name=removed,proto3" json:"removed,omitempty"`
 	Questions     []*AgentQuestion       `protobuf:"bytes,14,rep,name=questions,proto3" json:"questions,omitempty"`
 	Images        []*AgentImage          `protobuf:"bytes,15,rep,name=images,proto3" json:"images,omitempty"`
-	TurnId        string                 `protobuf:"bytes,16,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"` // the user block that started this turn
+	TurnId        string                 `protobuf:"bytes,16,opt,name=turn_id,json=turnId,proto3" json:"turn_id,omitempty"`              // the user block that started this turn
+	DurationMs    int64                  `protobuf:"varint,17,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"` // KIND_DONE: how long the turn worked, as the agent timed it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -11435,6 +11439,13 @@ func (x *AgentBlock) GetTurnId() string {
 		return x.TurnId
 	}
 	return ""
+}
+
+func (x *AgentBlock) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
 }
 
 type AgentQuestion struct {
@@ -24992,7 +25003,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06tab_id\x18\x01 \x01(\tR\x05tabId\x12\x17\n" +
 	"\apane_id\x18\x02 \x01(\tR\x06paneId\x12!\n" +
 	"\falready_open\x18\x03 \x01(\bR\valreadyOpen\x12\x16\n" +
-	"\x06report\x18\x04 \x01(\tR\x06report\"\xf4\x04\n" +
+	"\x06report\x18\x04 \x01(\tR\x06report\"\xa4\x05\n" +
 	"\n" +
 	"AgentBlock\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12/\n" +
@@ -25012,7 +25023,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\aremoved\x18\r \x01(\x05R\aremoved\x127\n" +
 	"\tquestions\x18\x0e \x03(\v2\x19.hammock.v1.AgentQuestionR\tquestions\x12.\n" +
 	"\x06images\x18\x0f \x03(\v2\x16.hammock.v1.AgentImageR\x06images\x12\x17\n" +
-	"\aturn_id\x18\x10 \x01(\tR\x06turnId\"\xa0\x01\n" +
+	"\aturn_id\x18\x10 \x01(\tR\x06turnId\x12\x1f\n" +
+	"\vduration_ms\x18\x11 \x01(\x03R\n" +
+	"durationMs\"\xaf\x01\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tKIND_USER\x10\x01\x12\r\n" +
@@ -25022,7 +25035,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\rKIND_QUESTION\x10\x05\x12\r\n" +
 	"\tKIND_PLAN\x10\x06\x12\x11\n" +
 	"\rKIND_SUBAGENT\x10\a\x12\r\n" +
-	"\tKIND_NOTE\x10\b\"\xc7\x01\n" +
+	"\tKIND_NOTE\x10\b\x12\r\n" +
+	"\tKIND_DONE\x10\t\"\xc7\x01\n" +
 	"\rAgentQuestion\x12\x1a\n" +
 	"\bquestion\x18\x01 \x01(\tR\bquestion\x12\x16\n" +
 	"\x06header\x18\x02 \x01(\tR\x06header\x121\n" +
