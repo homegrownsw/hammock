@@ -212,18 +212,42 @@ func (s *mcpServer) markPage(ctx context.Context, pane string) {
 }
 
 // settle gives a click or key press a moment to start a navigation, and
-// waits for it if it did.
+// waits for it if it did. A link can take a while to start one (a search
+// result's goes through a redirect, after its script): an agent told it
+// didn't, going back, went back from the page it was on. So it watches
+// for a second, and while the pane says it's loading, until it's done.
 func (s *mcpServer) settle(ctx context.Context, pane string) string {
-	time.Sleep(300 * time.Millisecond)
-	var st struct {
-		Marked bool   `json:"marked"`
-		Ready  string `json:"ready"`
-	}
-	if err := s.eval(ctx, pane, `({marked: !!window.__hammockNav, ready: document.readyState})`, &st); err == nil && st.Marked && st.Ready == "complete" {
-		return ""
+	start := time.Now()
+	for {
+		time.Sleep(100 * time.Millisecond)
+		var st struct {
+			Marked bool   `json:"marked"`
+			Ready  string `json:"ready"`
+		}
+		err := s.eval(ctx, pane, `({marked: !!window.__hammockNav, ready: document.readyState})`, &st)
+		if err != nil || !st.Marked || st.Ready != "complete" {
+			break // a new page coming
+		}
+		loading := false
+		if p := s.browserState(ctx, pane); p != nil {
+			loading = p.Loading
+		}
+		if !loading && time.Since(start) >= time.Second || time.Since(start) >= 15*time.Second || ctx.Err() != nil {
+			return ""
+		}
 	}
 	msg, _ := s.waitLoaded(ctx, pane, 15*time.Second)
 	return msg
+}
+
+// browserState is a browser pane as the daemon has it (loading, where it
+// can go), nil if that can't be had.
+func (s *mcpServer) browserState(ctx context.Context, pane string) *pb.Pane {
+	w, err := s.world(ctx)
+	if err != nil {
+		return nil
+	}
+	return w.panes[pane]
 }
 
 type point struct {
@@ -386,6 +410,18 @@ func (s *mcpServer) registerBrowser(server *mcp.Server) {
 		}
 		if err := s.browserPane(ctx, a.PaneID, true, "load "+a.URL+a.Action); err != nil {
 			return nil, nil, err
+		}
+		// Back with nowhere to go back to does nothing: say so, rather than
+		// wait for a page that won't come.
+		if action == "back" || action == "forward" {
+			if p := s.browserState(ctx, a.PaneID); p != nil {
+				if action == "back" && !p.CanGoBack {
+					return nil, nil, fmt.Errorf("nothing to go back to: %s is the first page in this pane's history", p.Url)
+				}
+				if action == "forward" && !p.CanGoForward {
+					return nil, nil, fmt.Errorf("nothing to go forward to from %s", p.Url)
+				}
+			}
 		}
 		s.markPage(ctx, a.PaneID)
 		if _, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserNavigate{BrowserNavigate: &pb.BrowserNavigate{
@@ -679,14 +715,26 @@ const locateJS = `async (ref, sel, text, smooth) => {
     // The first, in the page's order, whose label is the text or starts
     // with it as a line (a search result's link: its title, then its site),
     // then one with it as a line, then one with it anywhere (the innermost:
-    // not the page's whole main); something that's showing before not.
+    // not the page's whole main). One a click would reach first: showing,
+    // and not under something else once scrolled to (a carousel's card
+    // stacked under another), tried by scrolling there and back before
+    // anything's drawn.
     const lines = e => label(e).split('\n').map(l => l.trim()).filter(Boolean);
     const shown = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    const reachable = e => {
+      const back = [];
+      for (let n = e.parentElement; n; n = n.parentElement) back.push([n, n.scrollLeft, n.scrollTop]);
+      e.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+      const r = e.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      back.forEach(([n, l, t]) => n.scrollTo({left: l, top: t, behavior: 'instant'}));
+      return !!hit && (hit === e || e.contains(hit) || hit.contains(e));
+    };
     const tests = [e => label(e) === text || lines(e)[0] === text, e => lines(e).includes(text), e => label(e).includes(text)];
-    for (const only of [shown, () => true]) {
+    for (const [only, ok] of [[shown, reachable], [shown, () => true], [() => true, () => true]]) {
       for (const t of tests) {
         const m = all.filter(e => only(e) && t(e));
-        el = m.find(e => !m.some(o => o !== e && e.contains(o)));
+        el = m.filter(e => !m.some(o => o !== e && e.contains(o))).find(ok);
         if (el) break;
       }
       if (el) break;
