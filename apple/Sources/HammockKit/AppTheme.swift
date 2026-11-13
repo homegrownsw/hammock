@@ -90,7 +90,7 @@ public struct AppTheme: Identifiable, Sendable, Equatable {
     public static let all: [AppTheme] = [
         AppTheme(name: "Hammock", lightTerminalName: TerminalTheme.builtInLight, darkTerminalName: TerminalTheme.builtInDark,
                  light: .light, dark: .dark,
-                 sidebar: Pair(0xD5EBE0, 0x0D2A20), toolbar: Pair(0xEBF5F0, 0x133528),
+                 sidebar: Pair(0xD7F4DF, 0x0C311A), toolbar: Pair(0xE9F9ED, 0x123A21),
                  accent: Pair(0x1F7A57, 0x3FB88A), bubble: Pair(0x1D6046, 0x1F6A4C), ownTint: true),
         AppTheme(name: native, lightTerminalName: TerminalTheme.builtInLight, darkTerminalName: TerminalTheme.builtInDark,
                  light: .light, dark: .dark, sidebar: nil, toolbar: nil, accent: nil, bubble: nil, ownTint: true),

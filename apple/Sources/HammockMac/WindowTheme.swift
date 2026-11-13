@@ -22,7 +22,7 @@ struct WindowTheme: Identifiable, Equatable {
     static let builtIn: [WindowTheme] = [
         WindowTheme(name: native, sidebar: nil, toolbar: nil),
         theme("Graphite", "E6E6EA", "F3F3F5", "1C1C1F", "26262A", mark: "6E6E78"),
-        theme("Hammock", "D5EBE0", "EBF5F0", "0D2A20", "133528", mark: "1F7A57"),
+        theme("Hammock", "D7F4DF", "E9F9ED", "0C311A", "123A21", mark: "1F7A57"),
         theme("Ocean", "D5E6FA", "EBF3FD", "0F2238", "162D47", mark: "2F7AD9"),
         theme("Forest", "D6EEDB", "EBF7EE", "11281A", "183423", mark: "2F9A55"),
         theme("Rose", "F9D9E3", "FCEDF2", "331821", "40202B", mark: "D9577E"),
