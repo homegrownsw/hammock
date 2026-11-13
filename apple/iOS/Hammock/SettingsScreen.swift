@@ -12,6 +12,7 @@ struct SettingsScreen: View {
     /// Everything the iPhone sends goes over the network: the remote size.
     @AppStorage(AgentViewPrefs.imageSizeRemote) private var imageSize = AttachmentSize.medium.rawValue
     @AppStorage(AgentViewPrefs.lineSpacing) private var lineSpacing = AgentViewPrefs.defaultSpacing
+    @AppStorage(AgentViewPrefs.dictation) private var dictation = true
     @AppStorage(PhoneTheme.prefKey) private var themePref = ""
     @Environment(\.phoneTheme) private var theme
     #if DEBUG
@@ -88,6 +89,9 @@ struct SettingsScreen: View {
                     Picker("Picture size", selection: $imageSize) {
                         ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
                     }
+                }
+                Section("Dictation") {
+                    Toggle("Dictation Button", isOn: $dictation)
                 }
                 Section("Preview") {
                     VStack(alignment: .leading, spacing: 8) {

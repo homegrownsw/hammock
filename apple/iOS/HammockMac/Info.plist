@@ -56,6 +56,12 @@
 	<array>
 		<string>_hammock._tcp</string>
 	</array>
+	<!-- The agent view's dictation button (Dictation.swift): on-device speech recognition.
+	     The microphone also needs the audio-input entitlement (scripts/entitlements/app.plist). -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Dictate messages to your agents when you click the microphone.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn what you say into text, on this Mac, when you dictate a message.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

@@ -406,6 +406,13 @@ struct CommandPalette: View {
                     AgentModes.shared.toggle(focused)
                 }
             }
+            if DictationRequests.enabled, let p = model.panes[focused], !p.isLog, model.supportsAgentView(p), AgentModes.shared.showsAgent(focused) {
+                let on = DictationRequests.shared.listening.contains(focused)
+                action("dictate", on ? "Stop Dictating" : "Dictate", on ? "mic.slash" : "mic", .orange,
+                       "dictation voice speech microphone mic talk speak transcribe", keys: Keys.dictate) {
+                    DictationRequests.shared.toggle(focused)
+                }
+            }
             if let p = model.panes[focused], p.sessionURL != nil {
                 action("copy-session-link", "Copy Session Link", "link", .orange,
                        "claude code remote control web url share agent conversation", keys: Keys.copySessionLink) {

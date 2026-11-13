@@ -337,6 +337,14 @@ struct HammockApp: App {
                 Button("Copy Session Link") { SessionLink.copy(model, focused.flatMap { model.panes[$0] }) }
                     .keyboardShortcut(Keys.copySessionLink)
                     .disabled(focused.flatMap { model.panes[$0] }?.sessionURL == nil)
+                if DictationRequests.enabled {
+                    // The focused agent view's composer: start or stop.
+                    Button(focused.map { DictationRequests.shared.listening.contains($0) } == true ? "Stop Dictating" : "Dictate") {
+                        if let id = focused { DictationRequests.shared.toggle(id) }
+                    }
+                    .keyboardShortcut(Keys.dictate)
+                    .disabled(!focusedShowsAgentView)
+                }
                 if HammockTool.browser.on {
                     Button("Split Right with Browser") {
                         if let id = focused { Task { await model.splitBrowser(id, direction: .horizontal) } }
@@ -430,6 +438,12 @@ struct HammockApp: App {
 
     private var focusedIsEditor: Bool { focused.flatMap { model.panes[$0] }?.isEditor == true }
 
+    /// The focused pane shows its agent view (its composer can dictate).
+    private var focusedShowsAgentView: Bool {
+        guard let id = focused, let p = model.panes[id], !p.isLog, model.supportsAgentView(p) else { return false }
+        return AgentModes.shared.showsAgent(id)
+    }
+
     /// The focused pane is a page on this Mac (find in page works there).
     private var focusedIsBrowser: Bool {
         guard let id = focused, let p = model.panes[id] else { return false }
@@ -487,6 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard AppMover.offerIfNeeded() else { return } // moving: this copy quits
         AppMover.finishMove()
         Notifier.shared.setUp()
+        DictationRequests.shortcutLabel = { Keys.label("dictate") }
         AppConfig.shared.followUsageChoice()
         DebugSnapshot.scheduleIfRequested()
         DebugSnapshot.typeIfRequested()

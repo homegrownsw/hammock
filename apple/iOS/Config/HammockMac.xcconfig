@@ -11,6 +11,8 @@ SWIFT_VERSION = 5.0
 // CEF and the Go binaries are arm64 only.
 ARCHS = arm64
 ENABLE_HARDENED_RUNTIME = YES
+// The microphone, for the agent view's dictation (the same file sign-mac-app.sh uses).
+CODE_SIGN_ENTITLEMENTS = ../../scripts/entitlements/app.plist
 // The embed-and-sign build phase reads bin/ and writes into the app.
 ENABLE_USER_SCRIPT_SANDBOXING = NO
 GENERATE_INFOPLIST_FILE = NO

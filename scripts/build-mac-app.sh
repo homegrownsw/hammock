@@ -114,6 +114,10 @@ cat > "$app/Contents/Info.plist" <<PLIST
        Hammock on your other computers there (hmkd's _hammock._tcp). -->
   <key>NSLocalNetworkUsageDescription</key><string>Hammock connects to your other computers and your iPhone over your local network, when you choose it for remote access.</string>
   <key>NSBonjourServices</key><array><string>_hammock._tcp</string></array>
+  <!-- The agent view's dictation button: on-device speech recognition. The microphone also
+       needs the audio-input entitlement (scripts/entitlements/app.plist). -->
+  <key>NSMicrophoneUsageDescription</key><string>Dictate messages to your agents when you click the microphone.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Turn what you say into text, on this Mac, when you dictate a message.</string>
   <!-- hammock:// links (invites: hammock://join/…) open the app. -->
 $url_types
 $updates

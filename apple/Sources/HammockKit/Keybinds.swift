@@ -271,6 +271,8 @@ public enum Keybinds {
             .init("split_up", "Split Up", "Pane", nil, "divide horizontal above"),
             .init("toggle_agent_view", "Toggle Agent View", "Pane", c("a", cs), "terminal log raw claude"),
             .init("copy_session_link", "Copy Session Link", "Pane", c("c", co), "claude code remote control web url share agent conversation"),
+            // ⇧⌘M: free in macOS and here (⇧⌘D is Split Down).
+            .init("dictate", "Dictate", "Pane", c("m", cs), "dictation voice speech microphone mic talk speak transcribe agent view"),
             .init("split_browser_right", "Split Right with Browser", "Pane", c("b", co), "web divide"),
             .init("split_browser_down", "Split Down with Browser", "Pane", c("b", cos), "web divide"),
             .init("dev_tools", "Show DevTools", "Pane", c("i", co), "inspector developer browser console"),

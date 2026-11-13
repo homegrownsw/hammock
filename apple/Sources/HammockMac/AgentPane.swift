@@ -241,6 +241,10 @@ struct AgentViewSettings: View {
                 }
                 .settingAnchor("agentview.imagesizeremote")
             }
+            Section("Dictation") {
+                Toggle("Dictation button", isOn: prefs.boolBinding(.agentDictation))
+                    .settingAnchor("agentview.dictation")
+            }
             Section("Preview") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Here's the plan: **two** small changes, then a test run.")

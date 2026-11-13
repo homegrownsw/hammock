@@ -23,6 +23,9 @@ INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPort
 INFOPLIST_KEY_NSCameraUsageDescription = Scan the pairing code shown on your Mac.
 INFOPLIST_KEY_NSLocalNetworkUsageDescription = Connect to Hammock on your Mac over your local network or VPN.
 INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = Save simulator screenshots to your photos.
+// The agent view's dictation button (Dictation.swift): on-device speech recognition.
+INFOPLIST_KEY_NSMicrophoneUsageDescription = Dictate messages to your agents when you tap the microphone.
+INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = Turn what you say into text, on this iPhone, when you dictate a message.
 // Settings ▸ Privacy ▸ Require Face ID (AppLock.swift) asks before opening the app.
 INFOPLIST_KEY_NSFaceIDUsageDescription = Make sure it's you before opening Hammock (Settings ▸ Privacy).
 // The push relay (relay/push), read into Info.plist's HammockPushRelay. Empty

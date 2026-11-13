@@ -340,6 +340,7 @@ enum SettingsIndex {
             e(.agentView, "Code", "Wrap long lines in code blocks", "agentview.codewrap", "wrap line wrapping markdown"),
             e(.agentView, "Attachments", "Picture size", "agentview.imagesize", "image screenshot attachment resize scale tokens"),
             e(.agentView, "Attachments", "Picture size on other computers", "agentview.imagesizeremote", "image screenshot attachment resize remote linked network tokens"),
+            e(.agentView, "Dictation", "Dictation button", "agentview.dictation", "dictate microphone mic voice speech talk speak transcribe"),
 
             e(.notifications, "Notify me when an agent", "Is waiting for my input", "notify.input", "alert"),
             e(.notifications, "Notify me when an agent", "Asks for permission", "notify.grants", "alert approve"),

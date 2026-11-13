@@ -2444,6 +2444,8 @@ struct Composer: View {
     /// Attached already (ComposerSample): "{n}" in initialText is the nth's
     /// chip; those without one are greyed out.
     var initialAttachments: [(name: String, data: Data)] = []
+    /// initialText as if being dictated (ComposerSample, HMK_DEBUG_DICTATION).
+    var debugDictating = false
     /// The text, with a mark where each attachment's chip is.
     @State private var doc = ComposerDoc()
     /// Where the cursor is in it (UTF-16), for completing the "/command"
@@ -2470,6 +2472,8 @@ struct Composer: View {
     /// A video being made smaller to send.
     @State private var shrinking = 0
     @State private var focused = false
+    /// Words going in as you say them (the mic button).
+    @State private var dictation = ComposerDictation()
     @Environment(\.agentFonts) private var fonts
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openAgentImage) private var open
@@ -2530,8 +2534,16 @@ struct Composer: View {
     private static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
 
     private var canSend: Bool { !doc.plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !doc.chips.isEmpty }
-    /// While the agent works and nothing's typed, the round button stops it.
-    private var stops: Bool { session.working && text.isEmpty }
+    /// While the agent works and nothing's typed, the round button stops it
+    /// (not while dictating: it sends what you say).
+    private var stops: Bool { session.working && text.isEmpty && !dictation.active }
+
+    /// The mic button, unless turned off in Settings.
+    private var dictationOn: Bool { Prefs.shared.bool(.agentDictation) }
+
+    private func toggleDictation() {
+        dictation.toggle(into: controller, commands: session.commands)
+    }
 
     /// Pictures go small over the network: to a pane on a linked computer,
     /// and from the iPhone.
@@ -2577,6 +2589,11 @@ struct Composer: View {
         c.onFiles = { urls in Task { await attachFiles(urls) } }
         c.onImages = { images in for d in images { attach(name: "pasted-\(attachments.count + 1).png", data: d) } }
         c.onFocus = { focused = $0 }
+        c.onCancel = {
+            guard dictation.active else { return false }
+            Task { await dictation.finish() }
+            return true
+        }
         return c
     }
 
@@ -2626,6 +2643,10 @@ struct Composer: View {
                 .padding(.vertical, 6)
                 .agentGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if dictation.problem != nil || dictation.installing != nil {
+                DictationNotice(dictation: dictation, openSettings: openMicrophoneSettings)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if showsTerminalDraft {
                 HStack(spacing: 8) {
@@ -2700,6 +2721,9 @@ struct Composer: View {
                             .transition(.opacity)
                     }
                     Spacer(minLength: 0)
+                    if dictationOn || dictation.active {
+                        DictationButton(dictation: dictation, action: toggleDictation)
+                    }
                     Button(action: stops ? session.interrupt : send) {
                         Image(systemName: stops ? "stop.fill" : "arrow.up")
                             .font(.body.weight(.bold))
@@ -2733,9 +2757,19 @@ struct Composer: View {
         }
         .animation(.snappy(duration: 0.25), value: suggestions)
         .animation(.snappy(duration: 0.25), value: showsTerminalDraft)
+        .animation(.snappy(duration: 0.25), value: dictation.problem)
+        .animation(.snappy(duration: 0.25), value: dictation.installing == nil)
+        // The menu bar's and the palette's Dictate, for this pane.
+        .onChange(of: DictationRequests.shared.toggle?.id) {
+            guard let r = DictationRequests.shared.toggle, r.pane == session.paneID, dictationOn || dictation.active else { return }
+            toggleDictation()
+        }
+        .onChange(of: dictation.active) { _, on in DictationRequests.shared.set(session.paneID, listening: on) }
+        .onChange(of: dictationOn) { _, on in if !on { dictation.stopNow() } }
         // What's typed in the terminal comes into the box while it's empty (or
         // still just that), so sending, which replaces it there, loses nothing.
         .onChange(of: session.draft, initial: true) { _, d in
+            if dictation.active { return }
             if !d.isEmpty, isGhost(d) { return }
             if awaitingClear {
                 if d.isEmpty { awaitingClear = false }
@@ -2808,6 +2842,9 @@ struct Composer: View {
         }
         #endif
         .onChange(of: session.paneID) { old, _ in
+            // What was being said stays in the pane it was said in.
+            dictation.stopNow()
+            DictationRequests.shared.set(old, listening: false)
             saveDraft(key: "agentDraft." + old, pane: old)
             attachments = []
             thumbs = [:]
@@ -2815,8 +2852,9 @@ struct Composer: View {
         }
         .onChange(of: text) { old, t in
             // The keyboard putting (part of) the sent message back in one go;
-            // you typing starts with one character.
-            if old.isEmpty, t.count > 1, doc.chips.isEmpty, isGhost(t) {
+            // you typing starts with one character. (Dictation's words come
+            // several at once too.)
+            if old.isEmpty, t.count > 1, doc.chips.isEmpty, !dictation.active, isGhost(t) {
                 replaceText("")
                 return
             }
@@ -2828,7 +2866,11 @@ struct Composer: View {
             try? await Task.sleep(for: .milliseconds(400))
             if !Task.isCancelled { saveDraft(key: draftKey, pane: session.paneID) }
         }
-        .onDisappear { saveDraft(key: draftKey, pane: session.paneID) }
+        .onDisappear {
+            dictation.stopNow()
+            DictationRequests.shared.set(session.paneID, listening: false)
+            saveDraft(key: draftKey, pane: session.paneID)
+        }
         .onChange(of: scenePhase) { _, phase in
             // Before the app can be killed in the background.
             if phase != .active { saveDraft(key: draftKey, pane: session.paneID) }
@@ -2970,6 +3012,13 @@ struct Composer: View {
             thumbs[a.id] = PlatformImage(data: a.data)
         }
         _ = configured()
+        // Dictating (HMK_DEBUG_DICTATION): what's after "|" not settled yet.
+        if debugDictating {
+            setDoc(ComposerDoc())
+            let parts = t.split(separator: "|", maxSplits: 1).map(String.init)
+            dictation.debugShow(into: controller, final: parts.first ?? "", volatile: parts.count > 1 ? parts[1] : "")
+            return
+        }
         setDoc(d)
     }
 
@@ -3031,6 +3080,14 @@ struct Composer: View {
     #endif
 
     private func send() {
+        // Dictating: the last words settle first, then it all goes.
+        if dictation.active {
+            Task {
+                await dictation.finish()
+                if !dictation.active { send() }
+            }
+            return
+        }
         guard canSend else { return }
         // A chip pasted in twice goes once, where it first is.
         var d = ComposerDoc()
@@ -3564,10 +3621,12 @@ public struct ComposerSample: View {
     let text: String
     /// Made-up pictures, when the text has "{n}" chips in it.
     let pictures: [(name: String, data: Data)]
+    let dictating: Bool
 
-    public init(model: AppModel, text: String) {
+    public init(model: AppModel, text: String, dictating: Bool = false) {
         session = AgentSession(paneID: "pn_debug", model: model)
         self.text = text
+        self.dictating = dictating
         pictures = text.contains("{") ? [Color.orange, .teal, .purple].enumerated().compactMap { i, c in
             let r = ImageRenderer(content: LinearGradient(colors: [c, c.opacity(0.4)], startPoint: .topLeading, endPoint: .bottomTrailing).frame(width: 160, height: 120))
             #if os(macOS)
@@ -3607,7 +3666,7 @@ public struct ComposerSample: View {
                 UserBubble(text: "Compare with", rich: "Compare \u{FFFC} with \u{FFFC}: which has the bug?", attachments: sent, session: session)
             }
             Spacer(minLength: 0)
-            Composer(session: session, harness: "claude", initialText: text, initialAttachments: pictures)
+            Composer(session: session, harness: "claude", initialText: text, initialAttachments: pictures, debugDictating: dictating)
         }
         .padding(16)
     }

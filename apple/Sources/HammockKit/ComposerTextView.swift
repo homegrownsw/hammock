@@ -85,6 +85,11 @@ final class ComposerTextController: NSObject {
     var onFiles: ([URL]) -> Void = { _ in }
     var onImages: ([Data]) -> Void = { _ in }
     var onFocus: (Bool) -> Void = { _ in }
+    /// Esc (the Mac): true if it was used (dictation stopped).
+    var onCancel: () -> Bool = { false }
+    /// Typing or clicking in the text while dictating: the dictation stops,
+    /// keeping what it's put in.
+    var onDictationInterrupted: () -> Void = {}
     var maxLines = 10
     /// What the view last reported, so a change from outside is told apart.
     fileprivate(set) var doc = ComposerDoc()
@@ -155,6 +160,106 @@ final class ComposerTextController: NSObject {
         #else
         if !v.isFirstResponder { v.becomeFirstResponder() }
         #endif
+    }
+
+    // MARK: Dictation
+
+    /// Words going in as they're heard, where the cursor was: from the
+    /// anchor, `dictLength` long, the last `dictVolatile` of it not settled
+    /// yet (drawn dimmed). One undo takes the whole of it back.
+    private(set) var dictating = false
+    private var dictAnchor = 0
+    private var dictLength = 0
+    private var dictVolatile = 0
+    /// What the selection held when dictation started (it replaces it), for undo.
+    private var dictReplaced = NSAttributedString()
+    /// The dictation itself is changing the text or cursor: not you typing.
+    private var applying = false
+
+    func beginDictation() {
+        guard let v = view, !dictating else { return }
+        let st = storage(v)
+        let r = selected(v)
+        let safe = NSRange(location: min(r.location, st.length), length: min(r.length, st.length - min(r.location, st.length)))
+        dictReplaced = st.attributedSubstring(from: safe)
+        applying = true
+        if safe.length > 0 { st.replaceCharacters(in: safe, with: "") }
+        dictAnchor = safe.location
+        dictLength = 0
+        dictVolatile = 0
+        dictating = true
+        select(NSRange(location: dictAnchor, length: 0))
+        applying = false
+        if safe.length > 0 { textChanged() }
+    }
+
+    /// What's been heard so far: replaces what the dictation put in before.
+    func dictate(final: String, volatile: String) {
+        guard dictating, let v = view else { return }
+        let st = storage(v)
+        guard dictAnchor + dictLength <= st.length else { return }
+        // All of it, settled words first (join keeps `final` as its start).
+        let body = DictationText.join(final, volatile)
+        let before = dictAnchor > 0 ? (st.string as NSString).substring(with: NSRange(location: dictAnchor - 1, length: 1)).first : nil
+        let space = DictationText.needsSpace(after: before, for: body) ? " " : ""
+        let heard = space + body
+        let unsettled = volatile.isEmpty ? 0 : (heard as NSString).length - ((space + final) as NSString).length
+        applying = true
+        st.replaceCharacters(in: NSRange(location: dictAnchor, length: dictLength), with: NSAttributedString(string: heard, attributes: typing()))
+        dictLength = (heard as NSString).length
+        dictVolatile = max(0, min(unsettled, dictLength))
+        select(NSRange(location: dictAnchor + dictLength, length: 0))
+        v.scrollRangeToVisible(NSRange(location: dictAnchor + dictLength, length: 0))
+        applying = false
+        restyle()
+        report()
+    }
+
+    /// Dictation's over: its words stay, as one thing to undo.
+    func endDictation() {
+        guard dictating else { return }
+        dictating = false
+        dictVolatile = 0
+        if dictLength > 0 || dictReplaced.length > 0 {
+            registerSwap(at: NSRange(location: dictAnchor, length: dictLength), restoring: dictReplaced)
+        }
+        dictReplaced = NSAttributedString()
+        restyle()
+        report()
+    }
+
+    /// Undo (and redo) for a dictation: puts back what that range held.
+    private func registerSwap(at r: NSRange, restoring old: NSAttributedString) {
+        guard let v = view, let um = v.undoManager else { return }
+        #if os(macOS)
+        v.breakUndoCoalescing()
+        #endif
+        um.registerUndo(withTarget: self) { c in
+            guard let v = c.view else { return }
+            let st = c.storage(v)
+            guard NSMaxRange(r) <= st.length else { return }
+            let current = st.attributedSubstring(from: r)
+            st.replaceCharacters(in: r, with: old)
+            let back = NSRange(location: r.location, length: old.length)
+            c.registerSwap(at: back, restoring: current)
+            c.select(NSRange(location: NSMaxRange(back), length: 0))
+            c.textChanged()
+        }
+        um.setActionName("Dictation")
+    }
+
+    /// You typed or clicked while it was dictating: it stops, keeping its words.
+    fileprivate func userEditing() {
+        guard dictating, !applying else { return }
+        endDictation()
+        onDictationInterrupted()
+    }
+
+    /// The cursor moved: by you (dictation stops) or by the dictation.
+    fileprivate func userMovedCursor(to r: NSRange) {
+        guard dictating, !applying else { return }
+        if r.length == 0, r.location == dictAnchor + dictLength { return }
+        userEditing()
     }
 
     /// Settings changed (font, colours, chips' pictures): restyles the text.
@@ -287,6 +392,15 @@ final class ComposerTextController: NSObject {
         for (k, val) in typing() { st.addAttribute(k, value: val, range: all) }
         for r in highlighted(st.string) where NSMaxRange(r) <= st.length {
             st.addAttribute(.foregroundColor, value: highlight, range: r)
+        }
+        // Dictated words the recogniser may still change: dimmed.
+        if dictating, dictVolatile > 0 {
+            let r = NSRange(location: dictAnchor + dictLength - dictVolatile, length: dictVolatile)
+            #if os(macOS)
+            if NSMaxRange(r) <= st.length { st.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: r) }
+            #else
+            if NSMaxRange(r) <= st.length { st.addAttribute(.foregroundColor, value: UIColor.tertiaryLabel, range: r) }
+            #endif
         }
         st.endEditing()
     }
@@ -426,7 +540,14 @@ extension ComposerTextController: NSTextViewDelegate {
     func textViewDidChangeSelection(_ notification: Notification) {
         guard let v = view else { return }
         let r = v.selectedRange()
+        userMovedCursor(to: r)
         onChange(doc, r.length == 0 ? r.location : nil)
+    }
+
+    func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+        // Typing while dictating stops it, and then types as usual.
+        userEditing()
+        return true
     }
 
     func textDidBeginEditing(_ notification: Notification) { onFocus(true) }
@@ -449,6 +570,9 @@ extension ComposerTextController: NSTextViewDelegate {
         case #selector(NSResponder.insertBacktab(_:)):
             textView.window?.selectPreviousKeyView(nil)
             return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            // Esc stops dictating, before anything else it does.
+            return onCancel()
         default:
             return false
         }
@@ -535,7 +659,14 @@ extension ComposerTextController: UITextViewDelegate {
 
     func textViewDidChangeSelection(_ textView: UITextView) {
         let r = textView.selectedRange
+        userMovedCursor(to: r)
         onChange(doc, r.length == 0 ? r.location : nil)
+    }
+
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        // Typing while dictating stops it, and then types as usual.
+        userEditing()
+        return true
     }
 
     func textViewDidBeginEditing(_ textView: UITextView) { onFocus(true) }

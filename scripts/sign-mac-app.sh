@@ -107,6 +107,7 @@ sign "$app/Contents/MacOS/hmkd"
 # build phases (the HammockMacApp target in apple/iOS/HammockIOS.xcodeproj).
 [ "${NESTED_ONLY:-}" = 1 ] && exit 0
 # Ad hoc, the app can only load Sparkle with library validation off (as
-# for Chromium above); a real identity keeps it.
-sign_cef "" "$app"
+# for Chromium above); a real identity keeps it. The app's own entitlements
+# (app.plist): the microphone, for dictation.
+sign_cef app "$app"
 codesign --verify --deep --strict "$app"

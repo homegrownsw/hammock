@@ -406,6 +406,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   agent-code-font-family = NAME, agent-code-font-size = 13   (its code; unset: the terminal's font)
 #   agent-code-wrap = prose | always | never   (which code blocks wrap long lines; prose: Markdown, text and tool calls)
 #   agent-image-size = large, agent-image-size-remote = medium   (pictures attached in the agent view: original | large | medium | small; remote: on a linked computer)
+#   agent-dictation = true         (false: no dictation button in the agent view, nor Dictate in the menus)
 #   usage-limits-claude = false, usage-limits-codex = false   (an agent's usage limits in the sidebar)
 #   browser-open-schemes = obsidian,zoommtg   (links a browser pane opens in their app without asking)
 #   browser-new-tab = external | hammock   (links a page opens in a new tab: your default browser, or a Hammock browser tab)
