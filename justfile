@@ -139,7 +139,10 @@ share: build apple-deps browser simulator screen key
     set -euo pipefail
     OUT="{{justfile_directory()}}/dist/share" ./scripts/build-mac-app.sh
     export NOTARY_PROFILE="${NOTARY_PROFILE:-fika-notary}"
-    if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+    if [ -n "${APPLE_ID:-}" ] && [ -n "${APP_PASSWORD:-}" ]; then
+        # Read already (scripts/release asks for them up front).
+        unset NOTARY_PROFILE
+    elif ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
         echo "no notarytool profile $NOTARY_PROFILE; reading the credentials from 1Password" >&2
         if [ -z "{{share_op_item}}" ] || [ -z "{{share_op_account}}" ]; then
             echo "set HMK_SHARE_OP_ITEM and HMK_SHARE_OP_ACCOUNT (in .release.env, see the justfile), or make the notarytool profile" >&2

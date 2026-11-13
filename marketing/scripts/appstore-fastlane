@@ -9,7 +9,7 @@
 #
 # --exec runs a command instead of Fastlane, with the key as xcodebuild's -authenticationKey* options take it:
 # ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_P8_PATH, the .p8 in a 0600 temporary file deleted on exit
-# (scripts/ios-testflight builds this way).
+# (scripts/ios-testflight builds this way, and scripts/release runs under it so 1Password asks only once).
 #
 # `just appstore-preview|push|pull` drive it. Everything that talks to Apple goes through here, so there's one
 # credential path to reason about, and it's an API key, never an Apple ID: an Apple ID means a two-factor code
@@ -36,6 +36,7 @@
 set -euo pipefail
 
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+start_dir="$PWD"
 cd "$(dirname "$0")/.."
 
 if [ "$#" -eq 0 ]; then
@@ -113,6 +114,9 @@ if [ "$1" = --exec ]; then
   if [ -n "$key_file" ]; then trap 'rm -f "$key_file" "$p8"' EXIT INT TERM; else trap 'rm -f "$p8"' EXIT INT TERM; fi
   jq -r .key "$ASC_API_KEY_PATH" >"$p8"
   export ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_PATH="$p8"
+  # Run by the caller's directory, not marketing/. Anything it runs through this script again (scripts/release
+  # does) finds HMK_OP_RESOLVED and ASC_API_KEY_PATH set, and asks 1Password for nothing more.
+  cd "$start_dir"
   status=0
   "$@" || status=$?
   exit "$status"

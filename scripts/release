@@ -117,6 +117,33 @@ else
   git -C "$ROOT" fetch --tags --quiet 2>/dev/null || true
 fi
 
+# ---- credentials, up front ---------------------------------------------------------------------------------
+# Everything 1Password holds for this release is asked for now, before anything is built, rather than as each
+# step reaches it (an unanswered prompt an hour in times out and takes the release back). Only with the real
+# scripts/mac-update and scripts/ios-testflight; the tests' stand-ins need nothing.
+if [ -z "$DRYRUN" ]; then
+  # iOS: the App Store Connect API key, for the build and the upload. The release reruns itself under
+  # appstore-fastlane --exec, which resolves it once and keeps it (in 0600 temporary files) until it ends.
+  if has ios && [ "$IOS_TESTFLIGHT" = "$ROOT/scripts/ios-testflight" ] && [ -z "${ASC_KEY_P8_PATH:-}" ]; then
+    echo "1Password: the App Store Connect API key, for the iPhone's build and upload"
+    exec "$ROOT/marketing/scripts/appstore-fastlane" --exec "$0" "$TARGET" "$@"
+  fi
+  # Mac: notarization's Apple ID and app-specific password, unless there's a notarytool profile, which needs
+  # nobody (just share).
+  if has mac && [ "$MAC_UPDATE" = "$ROOT/scripts/mac-update" ] && [ -z "${APP_PASSWORD:-}" ] &&
+    ! xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-fika-notary}" >/dev/null 2>&1; then
+    if [ -z "${HMK_SHARE_OP_ITEM:-}" ] || [ -z "${HMK_SHARE_OP_ACCOUNT:-}" ]; then
+      echo "Notarizing needs the notarytool profile, or HMK_SHARE_OP_ITEM and HMK_SHARE_OP_ACCOUNT (.release.env)." >&2
+      exit 1
+    fi
+    echo "1Password: notarization's Apple ID and password"
+    export OP_BIOMETRIC_UNLOCK_ENABLED=true
+    APPLE_ID="$(op read "$HMK_SHARE_OP_ITEM/username" --account "$HMK_SHARE_OP_ACCOUNT")"
+    APP_PASSWORD="$(op read "$HMK_SHARE_OP_ITEM/password" --account "$HMK_SHARE_OP_ACCOUNT")"
+    export APPLE_ID APP_PASSWORD
+  fi
+fi
+
 # ---- the versions and number -------------------------------------------------------------------------------
 # Per app, in variables named after it (CUR_mac, VER_ios, TAG_mac, THIS_ios, …), since macOS's bash has no maps.
 set_var() { printf -v "$1_$2" '%s' "$3"; }

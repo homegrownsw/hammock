@@ -162,8 +162,10 @@ access to the repo.
 (Release, signed for development with automatic signing), then `-exportArchive` for App Store Connect, which
 re-signs it with Xcode's cloud-managed distribution certificate, so no Apple Distribution certificate is needed
 here. Both, and the upload (Fastlane's `upload_to_testflight`, the `upload_build` lane), authenticate with the
-App Store Connect API key in `marketing/.env.appstore` (marketing/appstore/README.md): 1Password asks once for
-the build and once for the upload, so run releases outside an agent's sandbox. The key needs the Admin role, or
+App Store Connect API key in `marketing/.env.appstore` (marketing/appstore/README.md). A release asks
+1Password for everything it needs at the start, before building anything: this key for the iPhone, and
+notarization's Apple ID and password for the Mac (unless there's a notarytool profile), then holds them until
+it ends, so nothing is left to time out an hour in. Run releases outside an agent's sandbox. The key needs the Admin role, or
 App Manager with access to cloud-managed distribution certificates. `HMK_TESTFLIGHT_GROUPS=Group,Other` also
 sends the build to those external testers' groups; internal groups get it as App Store Connect is set up to.
 
