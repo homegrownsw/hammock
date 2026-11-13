@@ -115,6 +115,7 @@ enum { kGridW = 32, kGridH = 18, kCells = kGridW * kGridH };
 @property int encW, encH;
 @property int maxPixels;
 @property CGRect view;  // the part of the display the viewer last said it shows (fractions; zero: all)
+@property double aspect;  // the shape the viewer shows frames in (0: the display's)
 @property CFTimeInterval last;
 @property BOOL scheduled, held, dirty, lost;
 // Crisp frames (the sharp tier): when one was last sent, and whether a
@@ -902,9 +903,11 @@ static const int kRefineFrames = 6;
 }
 
 // A viewer zoomed in: send the part it shows (fractions of the display).
-// It's grown to the display's shape (frames keep their size) and never to
-// less than the encoded size in the display's own pixels (no detail is
-// gained past that), and kept on the display.
+// It's grown to the frames' shape (the viewer's: they keep their size) and
+// never to less than the encoded size in the display's own pixels (no
+// detail is gained past that), and kept on the display: at its edge, a
+// part of another shape is stretched to fill the frames, and put back by
+// the viewer (which draws each frame over the part it shows).
 - (void)view:(Session *)s x:(double)x y:(double)y w:(double)w h:(double)h {
   CVPixelBufferRef pb = s.capture.latest;
   int ew = s.encW, eh = s.encH;
@@ -913,7 +916,7 @@ static const int kRefineFrames = 6;
     crop = CGRectZero;
   } else {
     double fw = CVPixelBufferGetWidth(pb), fh = CVPixelBufferGetHeight(pb);
-    double aspect = (fw / fh);  // the crop's width over height, in the display's terms
+    double aspect = (double)ew / eh;  // the frames' width over height, in the display's pixels
     double cw = w, ch = h;
     if (cw * fw / (ch * fh) < aspect) cw = ch * fh * aspect / fw; else ch = cw * fw / (aspect * fh);
     double least = MIN(1, ew / fw);  // a crop narrower than this is upscaled
@@ -1118,6 +1121,18 @@ static const int kRefineFrames = 6;
     else s.dirty = YES;
   } else if ([t isEqualToString:@"view"]) {
     s.view = CGRectMake([m[@"x"] doubleValue], [m[@"y"] doubleValue], [m[@"w"] doubleValue], [m[@"h"] doubleValue]);
+    // Frames in the viewer's shape: a phone held upright, zoomed till the
+    // display's height fills it, got that height at a landscape frame's
+    // (about 1700 pixels, over its 2500 or so: blurry). A new shape (it was
+    // turned) starts the encoder again; its first frame works out the crop.
+    double aspect = MIN(MAX([m[@"aspect"] doubleValue], 0), 8);
+    if (fabs(aspect - s.aspect) > 0.02 * MAX(aspect, s.aspect)) {
+      s.aspect = aspect;
+      s.encW = s.encH = 0;
+      [s use:^(HammockEncoder *e) { e.frameAspect = aspect; }];
+      [self encode:s];
+      return;
+    }
     [self view:s x:s.view.origin.x y:s.view.origin.y w:s.view.size.width h:s.view.size.height];
   } else if ([t isEqualToString:@"size"]) {
     // The link's changed: frames at this size from now on (a keyframe),

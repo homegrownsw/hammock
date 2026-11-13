@@ -175,7 +175,7 @@ func TestScreenTiers(t *testing.T) {
 	}
 }
 
-func (e *sharpEncoder) setView(sid string, x, y, w, h float32) {}
+func (e *sharpEncoder) setView(sid string, x, y, w, h, aspect float32) {}
 
 func (e *sharpEncoder) setSize(sid string, maxPixels int) {
 	e.mu.Lock()

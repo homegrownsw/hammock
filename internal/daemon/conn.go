@@ -909,7 +909,7 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_SetMediaView:
 		v := m.SetMediaView
 		if s := d.media.session(c, v.SessionId); s != nil {
-			s.view(v.X, v.Y, v.W, v.H)
+			s.view(v.X, v.Y, v.W, v.H, v.Aspect)
 		} else if r := d.media.relay(c, v.SessionId); r != nil {
 			r.setView(v)
 		}

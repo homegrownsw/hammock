@@ -329,6 +329,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
     private var baseStream: MediaStream?
     private var crop = CGRect(x: 0, y: 0, width: 1, height: 1)
     private var sentView = CGRect.null
+    private var sentAspect: CGFloat = 0
     private var viewPending = false
     /// Fingers are down (panning, pinching): the detail isn't asked to move
     /// unless the view leaves what it has, so it glides with the page and
@@ -431,6 +432,13 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
         baseStream = base
         baseVideo.hosted = base.layer
         base.layer.videoGravity = .resize
+        // The display's shape, from the base: the detail's frames come in
+        // this screen's shape (SetMediaView's aspect), whatever they show.
+        base.onSize = { [weak self] px in
+            guard let self, px != self.pixels else { return }
+            self.pixels = px
+            self.setNeedsLayout()
+        }
         base.start()
         stream = s
         video.isUserInteractionEnabled = false
@@ -453,11 +461,6 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
             self.shown.append(picture)
             if self.shown.count > 2 { self.shown.removeFirst() }
         }
-        s.onSize = { [weak self] px in
-            guard let self else { return }
-            self.pixels = px
-            self.setNeedsLayout()
-        }
         s.onState = { [weak self] st in self?.onState?(st) }
         s.start()
     }
@@ -465,7 +468,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
     func stop() {
         stopMomentum()
         stream?.onState = nil
-        stream?.onSize = nil
+        baseStream?.onSize = nil
         stream?.onPicture = nil
         stream?.onCursor = nil
         stream?.onLocked = nil
@@ -617,12 +620,18 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
                 v.origin.y = min(max(v.minY, 0), 1 - v.height)
             }
             // A tenth to spare all round, so a small pan stays sharp (the
-            // detail stream's 3072 pixels cover that and this screen's own
-            // 2556 one to one).
+            // detail stream's pixels, in this screen's shape, cover that
+            // and this screen's own one to one).
             if v.width < 1 { v = v.insetBy(dx: -v.width * 0.1, dy: -v.height * 0.1) }
-            if !self.sentView.isNull, abs(v.minX - self.sentView.minX) < 0.01, abs(v.minY - self.sentView.minY) < 0.01, abs(v.width - self.sentView.width) < 0.01 { return }
+            // Frames in this screen's shape, not the display's: upright, a
+            // display's whole height filling it is sharp, not stretched
+            // from a landscape frame's.
+            let aspect = self.bounds.height > 0 ? self.bounds.width / self.bounds.height : 0
+            if !self.sentView.isNull, abs(v.minX - self.sentView.minX) < 0.01, abs(v.minY - self.sentView.minY) < 0.01, abs(v.width - self.sentView.width) < 0.01,
+               abs(aspect - self.sentAspect) < 0.01 { return }
             self.sentView = v
-            self.stream?.setView(v.width >= 1 ? .zero : v)
+            self.sentAspect = aspect
+            self.stream?.setView(v.width >= 1 ? .zero : v, aspect: aspect)
         }
     }
 

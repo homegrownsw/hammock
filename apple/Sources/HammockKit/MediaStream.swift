@@ -83,6 +83,7 @@ public final class MediaStream: @unchecked Sendable {
     private let forceInBand: Bool
     private let queue = DispatchQueue(label: "hammock.media")
     private var sessionID = ""
+    private var view: (CGRect, CGFloat)? // the screen viewer's (setView), on queue
     private var group: NWConnectionGroup?
     private var control: NWConnection?
     private var stopped = false
@@ -119,12 +120,26 @@ public final class MediaStream: @unchecked Sendable {
 
     /// A screen viewer zoomed in: the part of the display it shows
     /// (fractions; the whole display for none). The host sends that part at
-    /// this stream's size.
-    public func setView(_ r: CGRect) {
+    /// this stream's size, in frames of the shape given (the viewer's
+    /// width over height; 0: the display's), stretched to it when the part's
+    /// shape differs: draw each frame over the part it shows.
+    public func setView(_ r: CGRect, aspect: CGFloat = 0) {
         queue.async {
-            guard !self.sessionID.isEmpty, !self.stopped else { return }
-            let sid = self.sessionID
-            self.conn.send { $0.setMediaView = .with { $0.sessionID = sid; $0.x = Float(r.minX); $0.y = Float(r.minY); $0.w = Float(r.width); $0.h = Float(r.height) } }
+            // Kept, for a session that's still opening (or opens again).
+            self.view = (r, aspect)
+            self.sendView()
+        }
+    }
+
+    private func sendView() {
+        guard let (r, aspect) = view, !sessionID.isEmpty, !stopped else { return }
+        let sid = sessionID
+        conn.send {
+            $0.setMediaView = .with {
+                $0.sessionID = sid
+                $0.x = Float(r.minX); $0.y = Float(r.minY); $0.w = Float(r.width); $0.h = Float(r.height)
+                $0.aspect = Float(aspect)
+            }
         }
     }
 
@@ -200,6 +215,7 @@ public final class MediaStream: @unchecked Sendable {
                         return
                     }
                     self.sessionID = t.sessionID
+                    self.sendView()
                     self.listenForPointer(t.sessionID)
                     if inBand {
                         self.startInBand(t.sessionID)

@@ -1705,6 +1705,11 @@ message SetMediaView {
   float y = 3;
   float w = 4;
   float h = 5;
+  // The shape the viewer shows frames in (its screen's width over height):
+  // frames come in that shape, so a phone held upright gets the display's
+  // full height in detail, not squeezed into a landscape frame. A change
+  // starts the encoder again (a keyframe). 0: the display's own shape.
+  float aspect = 6;
 }
 message MediaEnded { string session_id = 1; string reason = 2; }
 

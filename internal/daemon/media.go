@@ -70,7 +70,7 @@ type mediaFrame struct {
 // viewSource is a frameSource that sends part of a display when zoomed
 // into (SetMediaView), and at a size that follows the link: the screen host.
 type viewSource interface {
-	setView(sid string, x, y, w, h float32)
+	setView(sid string, x, y, w, h, aspect float32)
 	setSize(sid string, maxPixels int)
 }
 
@@ -228,7 +228,7 @@ type mediaSession struct {
 	sizeSince time.Time
 	viewMu    sync.Mutex
 	viewAt    time.Time
-	viewNext  *[4]float32
+	viewNext  *[5]float32
 	viewTimer *time.Timer
 	sentShape map[uint32]bool // pointer shapes this viewer has the image of
 	inputAt   time.Time       // when its viewer last gave the screen input (it's controlling)
@@ -277,7 +277,7 @@ func (s *mediaSession) shareLink() {
 
 // view passes a viewer's view to the source: at once on a good link, at
 // most once a second on a slow one (the latest wins).
-func (s *mediaSession) view(x, y, w, h float32) {
+func (s *mediaSession) view(x, y, w, h, aspect float32) {
 	vs, ok := s.src.(viewSource)
 	if !ok {
 		return
@@ -290,10 +290,10 @@ func (s *mediaSession) view(x, y, w, h float32) {
 	wait := mediaViewsEvery - time.Since(s.viewAt)
 	if !slow || wait <= 0 {
 		s.viewAt, s.viewNext = time.Now(), nil
-		vs.setView(s.id, x, y, w, h)
+		vs.setView(s.id, x, y, w, h, aspect)
 		return
 	}
-	s.viewNext = &[4]float32{x, y, w, h}
+	s.viewNext = &[5]float32{x, y, w, h, aspect}
 	if s.viewTimer == nil {
 		s.viewTimer = time.AfterFunc(wait, func() {
 			s.viewMu.Lock()
@@ -301,7 +301,7 @@ func (s *mediaSession) view(x, y, w, h float32) {
 			s.viewNext, s.viewTimer, s.viewAt = nil, nil, time.Now()
 			s.viewMu.Unlock()
 			if v != nil {
-				vs.setView(s.id, v[0], v[1], v[2], v[3])
+				vs.setView(s.id, v[0], v[1], v[2], v[3], v[4])
 			}
 		})
 	}

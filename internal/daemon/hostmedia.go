@@ -77,8 +77,8 @@ func (h *hostMedia) setCodec(sid, codec string) {
 	h.send(map[string]any{"t": "codec", "sid": sid, "codec": codec})
 }
 
-func (h *hostMedia) setView(sid string, x, y, w, h2 float32) {
-	h.send(map[string]any{"t": "view", "sid": sid, "x": x, "y": y, "w": w, "h": h2})
+func (h *hostMedia) setView(sid string, x, y, w, h2, aspect float32) {
+	h.send(map[string]any{"t": "view", "sid": sid, "x": x, "y": y, "w": w, "h": h2, "aspect": aspect})
 }
 
 func (h *hostMedia) setSize(sid string, maxPixels int) {

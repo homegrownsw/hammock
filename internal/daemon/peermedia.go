@@ -198,7 +198,7 @@ func (r *mediaRelay) setView(m *pb.SetMediaView) {
 		defer cancel()
 		if cl, err := r.link.connected(ctx, time.Second); err == nil {
 			_ = cl.Send(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMediaView{SetMediaView: &pb.SetMediaView{
-				SessionId: r.hostID, X: m.X, Y: m.Y, W: m.W, H: m.H}}})
+				SessionId: r.hostID, X: m.X, Y: m.Y, W: m.W, H: m.H, Aspect: m.Aspect}}})
 		}
 	}()
 }

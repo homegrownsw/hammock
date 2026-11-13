@@ -16076,12 +16076,17 @@ func (x *ScreenState) GetLocked() bool {
 // cut from the display at full resolution, at the session's size: sharp
 // however far you zoom, and no bigger.
 type SetMediaView struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	X             float32                `protobuf:"fixed32,2,opt,name=x,proto3" json:"x,omitempty"`
-	Y             float32                `protobuf:"fixed32,3,opt,name=y,proto3" json:"y,omitempty"`
-	W             float32                `protobuf:"fixed32,4,opt,name=w,proto3" json:"w,omitempty"`
-	H             float32                `protobuf:"fixed32,5,opt,name=h,proto3" json:"h,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	X         float32                `protobuf:"fixed32,2,opt,name=x,proto3" json:"x,omitempty"`
+	Y         float32                `protobuf:"fixed32,3,opt,name=y,proto3" json:"y,omitempty"`
+	W         float32                `protobuf:"fixed32,4,opt,name=w,proto3" json:"w,omitempty"`
+	H         float32                `protobuf:"fixed32,5,opt,name=h,proto3" json:"h,omitempty"`
+	// The shape the viewer shows frames in (its screen's width over height):
+	// frames come in that shape, so a phone held upright gets the display's
+	// full height in detail, not squeezed into a landscape frame. A change
+	// starts the encoder again (a keyframe). 0: the display's own shape.
+	Aspect        float32 `protobuf:"fixed32,6,opt,name=aspect,proto3" json:"aspect,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16147,6 +16152,13 @@ func (x *SetMediaView) GetW() float32 {
 func (x *SetMediaView) GetH() float32 {
 	if x != nil {
 		return x.H
+	}
+	return 0
+}
+
+func (x *SetMediaView) GetAspect() float32 {
+	if x != nil {
+		return x.Aspect
 	}
 	return 0
 }
@@ -25487,14 +25499,15 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vScreenState\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
-	"\x06locked\x18\x02 \x01(\bR\x06locked\"e\n" +
+	"\x06locked\x18\x02 \x01(\bR\x06locked\"}\n" +
 	"\fSetMediaView\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\f\n" +
 	"\x01x\x18\x02 \x01(\x02R\x01x\x12\f\n" +
 	"\x01y\x18\x03 \x01(\x02R\x01y\x12\f\n" +
 	"\x01w\x18\x04 \x01(\x02R\x01w\x12\f\n" +
-	"\x01h\x18\x05 \x01(\x02R\x01h\"C\n" +
+	"\x01h\x18\x05 \x01(\x02R\x01h\x12\x16\n" +
+	"\x06aspect\x18\x06 \x01(\x02R\x06aspect\"C\n" +
 	"\n" +
 	"MediaEnded\x12\x1d\n" +
 	"\n" +

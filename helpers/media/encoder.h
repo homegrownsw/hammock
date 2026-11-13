@@ -57,13 +57,19 @@ typedef void (^HammockEncoderOutput)(NSData *avcc, HammockFrameInfo info);
 // The most pixels frames are encoded at (0: the source's own); a change
 // starts the session again, with a keyframe.
 @property(nonatomic) int maxPixels;
+// The shape frames are encoded in (width over height; 0: the source's):
+// a screen's viewer's own, so its crops (any shape) fill what it shows
+// without being squeezed into the display's. A change starts the session
+// again, with a keyframe.
+@property(nonatomic) double frameAspect;
 // Where it asks itself again for a dropped keyframe or refresh: the queue
 // it's used on (main unless set).
 @property(nonatomic, strong) dispatch_queue_t workQueue;
 // Only this part of each frame (fractions of it; CGRectZero: all of it),
 // scaled to the encoded size, which doesn't change: zooming in on a screen
-// sends its detail at full resolution, without a new session. Give it the
-// source's aspect, or it's stretched.
+// sends its detail at full resolution, without a new session. A crop of
+// another shape than the frames is stretched to fit them: the viewer puts
+// it back by drawing each frame over the part it shows.
 @property(nonatomic) CGRect crop;
 // The size frames are encoded at (0 until the first frame).
 @property(nonatomic, readonly) int encodedWidth, encodedHeight;

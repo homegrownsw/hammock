@@ -30,6 +30,7 @@ static uint64_t hostMicros(void) {
   int _width, _height;  // encoded size
   int _srcW, _srcH;     // source size the session was made for
   int _maxPixels;
+  double _frameAspect;  // 0: the source's
   BOOL _wantKey, _wantRefresh;
   BOOL _sharp;  // the session running is the sharp tier (HEVC 4:4:4)
   BOOL _ltr;       // the session does LTR
@@ -121,6 +122,18 @@ static uint64_t hostMicros(void) {
   _wantKey = YES;
 }
 
+- (double)frameAspect {
+  return _frameAspect;
+}
+
+- (void)setFrameAspect:(double)frameAspect {
+  if (fabs(frameAspect - _frameAspect) < 0.001) return;
+  _frameAspect = frameAspect;
+  [self invalidate];  // made again, in this shape, with the next frame
+  _srcW = _srcH = 0;
+  _wantKey = YES;
+}
+
 - (void)setHevc:(BOOL)hevc {
   if (hevc == _hevc) return;
   _hevc = hevc;
@@ -176,7 +189,13 @@ static void outputCallback(void *refcon, void *frameRefcon, OSStatus status, VTE
   _height = srcH;
   int maxPx = _maxPixels;
   if (!_hevc && _lowLatencyMaxPixels > 0) maxPx = maxPx > 0 ? MIN(maxPx, _lowLatencyMaxPixels) : _lowLatencyMaxPixels;
-  if (maxPx > 0 && (long)srcW * srcH > maxPx) {
+  if (_frameAspect > 0) {
+    // The viewer's shape, with as many pixels as the source's own (or
+    // fewer, as maxPixels says).
+    double area = maxPx > 0 ? MIN((double)maxPx, (double)srcW * srcH) : (double)srcW * srcH;
+    _width = ((int)sqrt(area * _frameAspect)) & ~1;
+    _height = ((int)sqrt(area / _frameAspect)) & ~1;
+  } else if (maxPx > 0 && (long)srcW * srcH > maxPx) {
     double k = sqrt((double)maxPx / ((double)srcW * srcH));
     _width = ((int)(srcW * k)) & ~1;
     _height = ((int)(srcH * k)) & ~1;

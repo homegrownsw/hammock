@@ -6656,6 +6656,12 @@ public nonisolated struct Hammock_V1_SetMediaView: Sendable {
 
   public var h: Float = 0
 
+  /// The shape the viewer shows frames in (its screen's width over height):
+  /// frames come in that shape, so a phone held upright gets the display's
+  /// full height in detail, not squeezed into a landscape frame. A change
+  /// starts the encoder again (a keyframe). 0: the display's own shape.
+  public var aspect: Float = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -21380,7 +21386,7 @@ nonisolated extension Hammock_V1_ScreenState: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SetMediaView"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}x\0\u{1}y\0\u{1}w\0\u{1}h\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}x\0\u{1}y\0\u{1}w\0\u{1}h\0\u{1}aspect\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -21393,6 +21399,7 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
       case 3: try { try decoder.decodeSingularFloatField(value: &self.y) }()
       case 4: try { try decoder.decodeSingularFloatField(value: &self.w) }()
       case 5: try { try decoder.decodeSingularFloatField(value: &self.h) }()
+      case 6: try { try decoder.decodeSingularFloatField(value: &self.aspect) }()
       default: break
       }
     }
@@ -21414,6 +21421,9 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
     if self.h.bitPattern != 0 {
       try visitor.visitSingularFloatField(value: self.h, fieldNumber: 5)
     }
+    if self.aspect.bitPattern != 0 {
+      try visitor.visitSingularFloatField(value: self.aspect, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -21423,6 +21433,7 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
     if lhs.y != rhs.y {return false}
     if lhs.w != rhs.w {return false}
     if lhs.h != rhs.h {return false}
+    if lhs.aspect != rhs.aspect {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
