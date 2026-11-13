@@ -54,7 +54,7 @@ import SwiftUI
 ///     group-headings = prominent       (or subtle: Group headings in the sidebar smaller and dimmer than its tabs)
 ///     group-icons = true               (false: no icons on Group headings in the sidebar)
 ///     tab-status = icon                (or trailing: sidebar rows show which agent on the left, status at the end)
-///     pane-spacing = compact           (or spacious: panes spaced apart, with rounded corners)
+///     pane-spacing = spacious          (panes spaced apart, with rounded corners; or compact)
 ///     dim-inactive-panes = false       (true: panes other than the focused one are dimmed a little)
 ///     active-pane-border = false       (true: a border around the focused pane)
 ///     active-pane-border-color = accent  (or #RRGGBB, light:#…,dark:#…)
@@ -203,7 +203,7 @@ final class AppConfig {
     /// How a tab's split panes sit: hairlines between them (compact), or
     /// spaced apart as rounded cards on an empty Group's background (spacious).
     enum PaneSpacing: String { case compact, spacious }
-    private(set) var paneSpacing = PaneSpacing.compact
+    private(set) var paneSpacing = PaneSpacing.spacious
     /// Panes other than the focused one dimmed a little.
     private(set) var dimInactivePanes = false
     /// Panes animate opening, closing, zooming and floating; off, they
@@ -415,7 +415,7 @@ final class AppConfig {
         groupHeadings = ours["group-headings"].flatMap(GroupHeadings.init(rawValue:)) ?? .prominent
         groupIcons = ours["group-icons"] != "false"
         // "comfortable": Spacious's name before 0.3.1.
-        paneSpacing = ours["pane-spacing"].flatMap { PaneSpacing(rawValue: $0 == "comfortable" ? "spacious" : $0) } ?? .compact
+        paneSpacing = ours["pane-spacing"].flatMap { PaneSpacing(rawValue: $0 == "comfortable" ? "spacious" : $0) } ?? .spacious
         dimInactivePanes = ours["dim-inactive-panes"] == "true"
         paneAnimations = ours["pane-animations"] != "false"
         tabCloseButton = ours["tab-close-button"] != "false"
@@ -733,7 +733,7 @@ final class AppConfig {
     func setAppearance(_ a: Appearance) { set("appearance", a == .auto ? nil : a.rawValue) }
     func setTabStatus(_ s: TabStatus) { set("tab-status", s == .icon ? nil : s.rawValue) }
     func setGroupHeadings(_ h: GroupHeadings) { set("group-headings", h == .prominent ? nil : h.rawValue) }
-    func setPaneSpacing(_ s: PaneSpacing) { set("pane-spacing", s == .compact ? nil : s.rawValue) }
+    func setPaneSpacing(_ s: PaneSpacing) { set("pane-spacing", s == .spacious ? nil : s.rawValue) }
     /// The focused pane's border colour: nil is the accent colour.
     func setActivePaneBorderColor(_ c: NSColor?) {
         guard let c = c?.usingColorSpace(.sRGB) else { return set("active-pane-border-color", nil) }
@@ -781,7 +781,7 @@ final class AppConfig {
         #   group-headings = prominent | subtle   (subtle: Group headings in the sidebar smaller and dimmer than its tabs)
         #   group-icons = true             (false: no icons on Group headings in the sidebar)
         #   tab-status = icon | trailing   (agent status in a sidebar row's icon, or at its end with the agent's logo as the icon)
-        #   pane-spacing = compact | spacious   (spacious: split panes spaced apart, with rounded corners)
+        #   pane-spacing = spacious | compact   (spacious, the default: split panes spaced apart, with rounded corners)
         #   dim-inactive-panes = false     (true: dim the panes you're not typing in, a little)
         #   active-pane-border = false     (true: a border around the focused pane)
         #   active-pane-border-color = accent   (or #RRGGBB, or light:#…,dark:#…)
