@@ -664,7 +664,7 @@ func (s *mcpServer) browserLog(ctx context.Context, a browserLogArgs, kind strin
 // into view (unless it's all there already: the page doesn't lurch before
 // every click) and returns its centre in the top page's CSS pixels. smooth
 // scrolls there smoothly (but not with Reduce Motion), measuring it once
-// it's arrived.
+// it's arrived and the page has stopped moving it.
 const locateJS = `async (ref, sel, text, smooth) => {
   let el = null;
   if (ref) {
@@ -707,6 +707,21 @@ const locateJS = `async (ref, sel, text, smooth) => {
         k = Math.min(1, (performance.now() - start) / ms);
         go(k < 0.5 ? 2 * k * k : 1 - (2 - 2 * k) ** 2 / 2);
       }
+    }
+    // The page can change as it scrolls (lazy images, more results loading,
+    // often set off by the scroll itself) and move the element away: once
+    // it holds still, if it isn't in view it's put there outright, again,
+    // till it stays.
+    const at = () => { const r = el.getBoundingClientRect(); return r.left + ',' + r.top + ',' + r.width + ',' + r.height; };
+    for (let tries = 0; tries < 5; tries++) {
+      for (let last = at(), still = 0, t = performance.now(); still < 3 && performance.now() - t < 500;) {
+        await new Promise(f => setTimeout(f, 16));
+        const now = at();
+        still = now === last ? still + 1 : 0;
+        last = now;
+      }
+      if (seen()) break;
+      el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
     }
   }
   const r = el.getBoundingClientRect();
