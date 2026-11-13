@@ -656,23 +656,6 @@ final class AppConfig {
         return (.windowBackgroundColor, opacity)
     }
 
-    /// The theme's colour for the window's Liquid Glass itself (the sidebar's
-    /// and the detail's), so it's coloured, not grey, at its glassiest.
-    /// Native's glass stays untinted.
-    func glassTint(dark: Bool) -> NSColor? {
-        (sidebarColor ?? windowTheme.sidebar).map { (dark ? $0.dark : $0.light).withAlphaComponent(0.8) }
-    }
-
-    /// The tint over that tinted glass: lighter than over plain glass
-    /// (sidebarTint), as the glass already carries the colour, so it stays
-    /// glassy at its glassiest.
-    func tintOverTintedGlass(dark: Bool) -> (color: NSColor, alpha: Double)? {
-        if let c = sidebarColor ?? windowTheme.sidebar {
-            return (dark ? c.dark : c.light, 0.3 + 0.7 * sidebarOpacity)
-        }
-        return sidebarTint(dark: dark)
-    }
-
     /// The theme's toolbar colour, if any: toasts' and notification cards' surface.
     func toolbarTint(dark: Bool) -> NSColor? {
         (toolbarColor ?? windowTheme.toolbar).map { dark ? $0.dark : $0.light }

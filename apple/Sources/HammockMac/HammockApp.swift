@@ -534,9 +534,8 @@ struct ContentView: View {
                             .help(newGroupHelp)
                     }
                 }
-                // The window theme's tint, over the column's own glass
-                // (tinted too: SidebarGlassTint).
-                .background { SidebarTint(onTintedGlass: true).ignoresSafeArea() }
+                // The window theme's tint, over the column's own glass.
+                .background { SidebarTint().ignoresSafeArea() }
         } detail: {
             if let tab = model.selectedTab {
                 VStack(spacing: 0) {
@@ -647,7 +646,6 @@ struct WorkspaceWindow: NSViewRepresentable {
             // No hairline under the toolbar: it overhung the sidebar's divider,
             // and the pane headers already mark where the toolbar ends.
             window.titlebarSeparatorStyle = .none
-            SidebarGlassTint.follow(window)
             // Again after SwiftUI's sizing passes, which come after this; only
             // then do moves and resizes count as yours.
             restore(window)
@@ -690,7 +688,7 @@ extension View {
     func emptyDetailBackground() -> some View {
         frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
-                ZStack { ColumnGlass(); SidebarTint(onTintedGlass: true) }.ignoresSafeArea(edges: [.top, .bottom, .trailing])
+                ZStack { ColumnGlass(); SidebarTint() }.ignoresSafeArea(edges: [.top, .bottom, .trailing])
             }
     }
 }
@@ -699,8 +697,6 @@ extension View {
 /// NSGlassEffectView in the sidebar's own variant, which isn't public. Set
 /// only if AppKit still has it; otherwise plain glass, a shade off.
 struct ColumnGlass: NSViewRepresentable {
-    @Environment(\.colorScheme) private var scheme
-
     func makeNSView(context: Context) -> NSGlassEffectView {
         let v = NSGlassEffectView()
         v.cornerRadius = 0
@@ -710,44 +706,7 @@ struct ColumnGlass: NSViewRepresentable {
         return v
     }
 
-    func updateNSView(_ v: NSGlassEffectView, context: Context) {
-        let tint = AppConfig.shared.glassTint(dark: scheme == .dark)
-        if v.tintColor != tint { v.tintColor = tint }
-    }
-}
-
-/// The sidebar column's own Liquid Glass (AppKit's NSGlassEffectView around
-/// it), tinted with the theme's colour as ColumnGlass is, so the two still
-/// match. Again whenever the window updates: the column's views come and go
-/// with the sidebar, and the theme and appearance change.
-@MainActor
-enum SidebarGlassTint {
-    private static var observers: [NSObjectProtocol] = []
-    private static var appearance: NSKeyValueObservation?
-
-    static func follow(_ window: NSWindow) {
-        apply(window)
-        observers.append(NotificationCenter.default.addObserver(forName: NSWindow.didUpdateNotification, object: window, queue: .main) { [weak window] _ in
-            MainActor.assumeIsolated { if let window { apply(window) } }
-        })
-        appearance = window.observe(\.effectiveAppearance) { window, _ in
-            DispatchQueue.main.async { MainActor.assumeIsolated { apply(window) } }
-        }
-    }
-
-    static func apply(_ window: NSWindow) {
-        guard let root = window.contentView else { return }
-        let dark = window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let tint = AppConfig.shared.glassTint(dark: dark)
-        func visit(_ v: NSView, _ depth: Int) {
-            if let g = v as? NSGlassEffectView, v.superview?.superview is NSSplitView {
-                if g.tintColor != tint { g.tintColor = tint }
-                return
-            }
-            if depth < 8 { v.subviews.forEach { visit($0, depth + 1) } }
-        }
-        visit(root, 0)
-    }
+    func updateNSView(_ v: NSGlassEffectView, context: Context) {}
 }
 
 /// AppKit's sidebar material, blending with the desktop behind the window
