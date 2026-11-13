@@ -318,6 +318,7 @@ struct SidebarView: View {
         // shows it (the list never has the keyboard). On macOS 26 the list
         // moved its selection when collapsing a Group took rows away, and
         // selectable rows wouldn't drag.
+        ScrollViewReader { proxy in
         List {
             Group {
                 ForEach(rows) { row in
@@ -406,6 +407,25 @@ struct SidebarView: View {
             // twice, the content having jumped to its new place). Under
             // Reduce Motion, at once, as before.
             .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: NeedsYouView.animationKey(model, finished: showFinished))
+        }
+        // A new Group (⌘N), or a tab picked from the keyboard or a
+        // notification, may be scrolled out of sight: bring it into view.
+        .onChange(of: model.selectedTabID ?? model.selectedGroupID.map { "group:" + $0 }) { _, id in
+            if let id { reveal(id, proxy) }
+        }
+        }
+    }
+
+    /// Scrolls the list just far enough to show the row `id` (a tab, or
+    /// "group:" and a Group's id), or its Group's header when its tabs
+    /// aren't listed (Horizontal Tabs). After this update, once the List
+    /// has the row: a new tab is selected as it's inserted.
+    private func reveal(_ id: String, _ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            let shown = Set(rows.map(\.id))
+            let target = shown.contains(id) ? id : model.groups.first(where: { $0.tabIds.contains(id) }).map { "group:" + $0.id }
+            guard let target, shown.contains(target) else { return }
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { proxy.scrollTo(target) }
         }
     }
 
