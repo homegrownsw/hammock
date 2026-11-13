@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# hmk against a verify run's scratch daemon, never the one this shell is in.
+#   hmk RUN ARGS...      e.g. .claude/skills/verify-hammock/scripts/hmk "$RUN" ls --json
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+. "$here/lib.sh"
+load_run "${1:-}"
+shift
+exec "$HMK" "$@"
