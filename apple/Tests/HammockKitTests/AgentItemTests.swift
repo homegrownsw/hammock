@@ -36,6 +36,15 @@ final class AgentItemTests: XCTestCase {
         let text: (String) -> AgentBlock = { id in .with { $0.id = id; $0.kind = .text; $0.text = "Done." } }
         let items = AgentItem.group([text("a"), done("quick", 4_000), text("b"), done("long", 1_831_000)])
         XCTAssertEqual(items.map(\.id), ["a", "b", "long"])
+        let tool: (String) -> AgentBlock = { id in .with { $0.id = id; $0.kind = .tool } }
+        XCTAssertEqual(AgentItem.group([tool("a"), tool("b"), done("long", 60_000)]).map(\.id), ["g:a", "long"])
+        XCTAssertEqual(AgentItem.group([tool("a"), done("quick", 4_000), tool("b")]).map(\.id), ["g:a"])
+    }
+
+    func testKindsFromANewerDaemonGetNoRow() {
+        let text: (String) -> AgentBlock = { id in .with { $0.id = id; $0.kind = .text; $0.text = "Hi." } }
+        let unknown: AgentBlock = .with { $0.id = "x"; $0.kind = .UNRECOGNIZED(99) }
+        XCTAssertEqual(AgentItem.group([text("a"), unknown, text("b")]).map(\.id), ["a", "b"])
     }
 
     func testDoneRowWords() {

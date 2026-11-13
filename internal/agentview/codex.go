@@ -115,8 +115,10 @@ type cxPayload struct {
 		} `json:"last_token_usage"`
 		Window int64 `json:"model_context_window"`
 	} `json:"info"`
-	Window     int64 `json:"model_context_window"`
-	DurationMs int64 `json:"duration_ms"` // task_complete: how long the turn worked
+	Window     int64  `json:"model_context_window"`
+	DurationMs int64  `json:"duration_ms"` // task_complete: how long the turn worked
+	TurnID     string `json:"turn_id"`
+	RootTurnID string `json:"root_turn_id"`
 	Settings   *struct {
 		Model string `json:"model"`
 	} `json:"thread_settings"`
@@ -229,8 +231,9 @@ func (c *Codex) event(p cxPayload, ms int64) []*pb.AgentBlock {
 			}
 		}
 	case "task_complete":
-		// The turn's end, and how long it worked.
-		if p.DurationMs > 0 {
+		// The turn's end, and how long it worked: the turn you started, not
+		// one nested in it.
+		if p.DurationMs > 0 && (p.RootTurnID == "" || p.RootTurnID == p.TurnID) {
 			return c.add(&pb.AgentBlock{Id: fmt.Sprintf("cx%d", c.n), Kind: pb.AgentBlock_KIND_DONE, TimeUnixMs: ms, DurationMs: p.DurationMs})
 		}
 	case "turn_aborted":

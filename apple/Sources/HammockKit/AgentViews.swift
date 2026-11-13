@@ -917,6 +917,9 @@ public struct AgentItem: Identifiable, Equatable {
                     item.thoughtSeconds = Int((blocks[i + 1].timeUnixMs - b.timeUnixMs) / 1000)
                 }
                 out.append(item)
+            case .UNRECOGNIZED:
+                // A kind from a newer daemon: no row, rather than an empty one.
+                continue
             default:
                 flush()
                 out.append(AgentItem(id: b.id, block: b))
@@ -1467,7 +1470,7 @@ struct DoneRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "sparkle")
+            Image(systemName: "sparkle").accessibilityHidden(true)
             Text(Self.words(durationMs: block.durationMs, doneUnixMs: block.timeUnixMs))
         }
         .font(fonts.body(0.88))

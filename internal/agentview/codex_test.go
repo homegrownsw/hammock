@@ -106,7 +106,8 @@ func TestCodexUserShellCommand(t *testing.T) {
 func TestCodexTaskCompleteEndsTheTurn(t *testing.T) {
 	c := NewCodex("")
 	c.Feed([]byte(`{"timestamp":"2026-11-01T09:54:40.437Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1","duration_ms":6101}}`))
-	c.Feed([]byte(`{"timestamp":"2026-11-01T09:55:40.437Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t2"}}`)) // no duration: nothing
+	c.Feed([]byte(`{"timestamp":"2026-11-01T09:55:40.437Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t2"}}`))                                       // no duration: nothing
+	c.Feed([]byte(`{"timestamp":"2026-11-01T09:56:40.437Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t3","root_turn_id":"t1","duration_ms":900}}`)) // nested: nothing
 	bs := c.Blocks()
 	if len(bs) != 1 || bs[0].Kind != pb.AgentBlock_KIND_DONE || bs[0].DurationMs != 6101 ||
 		bs[0].TimeUnixMs != time.Date(2026, 11, 1, 9, 54, 40, 437e6, time.UTC).UnixMilli() {
