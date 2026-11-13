@@ -398,7 +398,7 @@ func TestSaveAttachmentByPath(t *testing.T) {
 func TestPruneAttachments(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Now()
-	old := now.Add(-attachmentKeep - time.Hour).Format(attachmentStamp) + "-aaaaaaaaaaaa.png"
+	old := now.Add(-attachmentKeep-time.Hour).Format(attachmentStamp) + "-aaaaaaaaaaaa.png"
 	recent := now.Add(-time.Hour).Format(attachmentStamp) + "-bbbbbbbbbbbb.png"
 	for _, n := range []string{old, recent, "other.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o600); err != nil {

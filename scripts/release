@@ -122,6 +122,13 @@ fi
 # step reaches it (an unanswered prompt an hour in times out and takes the release back). Only with the real
 # scripts/mac-update and scripts/ios-testflight; the tests' stand-ins need nothing.
 if [ -z "$DRYRUN" ]; then
+  # A locked screen, or an agent's sandbox hiding the keychain, fails here in seconds rather than at
+  # notarizing or on an unanswered 1Password prompt after the build (scripts/preflight).
+  if { has mac && [ "$MAC_UPDATE" = "$ROOT/scripts/mac-update" ]; } ||
+    { has ios && [ "$IOS_TESTFLIGHT" = "$ROOT/scripts/ios-testflight" ]; }; then
+    "$ROOT/scripts/preflight" screen
+  fi
+  if has mac && [ "$MAC_UPDATE" = "$ROOT/scripts/mac-update" ]; then "$ROOT/scripts/preflight" notary; fi
   # iOS: the App Store Connect API key, for the build and the upload. The release reruns itself under
   # appstore-fastlane --exec, which resolves it once and keeps it (in 0600 temporary files) until it ends.
   if has ios && [ "$IOS_TESTFLIGHT" = "$ROOT/scripts/ios-testflight" ] && [ -z "${ASC_KEY_P8_PATH:-}" ]; then
@@ -345,6 +352,11 @@ else
       { echo "Stopped."; exit 1; }
   fi
   START=$(git -C "$ROOT" rev-parse HEAD)
+  # While the release commit sits on main unpushed, the pre-push hook (.githooks/pre-push) keeps everyone
+  # else from pushing main, and from pushing that commit; this script's own push says it's the release.
+  RELEASE_LOCK="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/hammock-release.lock"
+  echo $$ >"$RELEASE_LOCK"
+  export HMK_RELEASING=1
   if has mac; then
     MAC_NOTES="$(mktemp -d)/notes.html"
     mac_notes_html >"$MAC_NOTES"
@@ -372,7 +384,7 @@ else
   # --allow-empty: two maintenance releases in a row change nothing, but each still needs a commit to tag.
   git -C "$ROOT" commit --allow-empty -q -m "$RELEASE_MSG"
   [ "$("$ROOT/scripts/commit-number" "$ROOT")" = "$N" ] ||
-    { echo "The release commit isn't number $N on main; stopping." >&2; git -C "$ROOT" reset -q --hard "$START"; exit 1; }
+    { echo "The release commit isn't number $N on main; stopping." >&2; git -C "$ROOT" reset -q --hard "$START"; rm -f "$RELEASE_LOCK"; exit 1; }
   # Until the push lands, any failure takes the release back: the local tags (one left behind would block
   # the next run) and the release commit, leaving the checkout where it started.
   RELEASE_SHA=$(git -C "$ROOT" rev-parse HEAD)
@@ -390,6 +402,7 @@ else
     if has mac; then "$MAC_UPDATE" discard "$N" || true; fi
     if has ios; then "$IOS_TESTFLIGHT" discard "$N" || true; fi
     echo "Nothing was published; the release commit and tags (${TAGS}) are gone." >&2
+    rm -f "$RELEASE_LOCK"
   }
   trap undo EXIT
   for t in $TAGS; do git -C "$ROOT" tag "$t"; done
@@ -408,6 +421,7 @@ else
     exit 1
   fi
   trap - EXIT
+  rm -f "$RELEASE_LOCK"
 
   # Pushed, so from here nothing fails the release: an upload that doesn't go through says how to retry.
   if has mac; then

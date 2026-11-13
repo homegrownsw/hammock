@@ -89,7 +89,10 @@ case "${1:-info}" in
     # The pane you run in sets HMK_SOCKET (its own daemon, often prod),
     # which beats HMK_DIR: eval "$(just beta-env)" points hmk at this β.
     # β's config is in its state dir too (hammockconfig.Dir).
-    printf 'unset HMK_SOCKET HMK_HOOK_SOCKET HMK_PANE_ID\nexport HMK_DIR=%q HMK_CONFIG_DIR=%q\nalias hmk=%q\n' "$state" "$state" "$app/Contents/Helpers/hmk"
+    # β's hmk first on PATH, not an alias: an alias doesn't take in the same command line, or in an
+    # agent's non-interactive shell, so `hmk` there would still be the installed one.
+    # shellcheck disable=SC2016 # $PATH is for the eval, not here
+    printf 'unset HMK_SOCKET HMK_HOOK_SOCKET HMK_PANE_ID HMK_PERSON_KEY\nexport HMK_DIR=%q HMK_CONFIG_DIR=%q\nexport PATH=%q:"$PATH"\n' "$state" "$state" "$app/Contents/Helpers"
     ;;
   clean)
     if [ -z "$beta_slug" ]; then

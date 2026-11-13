@@ -21,6 +21,7 @@ ghostty:
 # libghostty-vt where this checkout's builds want it: linked from the shared
 # build in ~/Library/Caches/hammock/ghostty (made the first time for a commit).
 deps:
+    @git config core.hooksPath .githooks
     ./scripts/ghostty-deps.sh
 
 # A worktree in .claude/worktrees/NAME on a new branch NAME (from main),
@@ -28,6 +29,7 @@ deps:
 # would be signed ad hoc and lose macOS privacy grants on every rebuild.
 worktree name:
     git worktree add .claude/worktrees/{{name}} -b {{name}} main
+    git config core.hooksPath .githooks
     [ ! -f .signing-identity ] || cp .signing-identity .claude/worktrees/{{name}}/
     [ ! -f AGENTS.local.md ] || cp AGENTS.local.md .claude/worktrees/{{name}}/
     cd .claude/worktrees/{{name}} && ./scripts/ghostty-deps.sh
@@ -36,14 +38,34 @@ worktree name:
 build: deps
     go build -tags {{tags}} -ldflags "-X github.com/homegrownsw/hammock/internal/daemon.Version=$(git describe --always --dirty)+$(date +%Y%m%d%H%M%S) -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$(scripts/mac-version)" -o bin/ ./cmd/...
 
+# Go tests, everything or what's named: `just test -run TestX ./internal/agents/` runs that package only
+# (flags alone, `just test -run TestX`, still mean every package). The full suite takes minutes, most of it
+# internal/daemon: iterate on one package or `test-quick`, and run the whole once before committing.
+[positional-arguments]
 test *args: deps
-    go test -tags {{tags}} {{args}} ./...
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkgs=(./...)
+    for a in "$@"; do case "$a" in ./*|../*|github.com/*) pkgs=() ;; esac; done
+    go test -tags {{tags}} "$@" ${pkgs[@]+"${pkgs[@]}"}
 
-race: deps
-    go test -tags {{tags}} -race ./...
+# Every Go package but internal/daemon (the slow one): `just test-quick -run TestX`.
+[positional-arguments]
+test-quick *args: deps
+    go test -tags {{tags}} "$@" $(go list ./... | grep -v '/internal/daemon$')
 
+[positional-arguments]
+race *args: deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkgs=(./...)
+    for a in "$@"; do case "$a" in ./*|../*|github.com/*) pkgs=() ;; esac; done
+    go test -tags {{tags}} -race "$@" ${pkgs[@]+"${pkgs[@]}"}
+
+# go vet, and gofmt: a file gofmt would change fails it (`gofmt -w cmd internal` fixes them).
 vet: deps
     go vet -tags {{tags}} ./...
+    @files="$(gofmt -l cmd internal)"; [ -z "$files" ] || { echo "gofmt would change:"; echo "$files"; exit 1; } >&2
 
 proto:
     PATH="$PATH:$(go env GOPATH)/bin" protoc -I proto --go_out=. --go_opt=module=github.com/homegrownsw/hammock proto/hammock/v1/hammock.proto
@@ -119,6 +141,12 @@ mac-app: build apple-deps browser simulator screen key
 prod: mac-app
     ./scripts/update-prod.sh
 
+# share's first step: a locked screen, or an agent's sandbox hiding the keychain, fails before the build
+# (scripts/preflight).
+[private]
+share-preflight:
+    scripts/preflight screen notary
+
 # A notarized Hammock.app to send to someone: built into dist/share, signed
 # with Developer ID, notarized and stapled, zipped as dist/share/Hammock.zip,
 # and in dist/share/Hammock.dmg, the first-install download (also notarized).
@@ -134,7 +162,7 @@ prod: mac-app
 # HMK_SHARE_OP_ITEM=op://<vault>/<item>, HMK_SHARE_OP_ACCOUNT=<you>.1password.com.
 share_op_item := env("HMK_SHARE_OP_ITEM", "")
 share_op_account := env("HMK_SHARE_OP_ACCOUNT", "")
-share: build apple-deps browser simulator screen key
+share: share-preflight build apple-deps browser simulator screen key
     #!/usr/bin/env bash
     set -euo pipefail
     OUT="{{justfile_directory()}}/dist/share" ./scripts/build-mac-app.sh
@@ -305,6 +333,11 @@ beta-clean:
 # Remove β state dirs left by worktrees removed without beta-clean.
 beta-prune:
     ./scripts/beta.sh prune
+
+# Land .claude/worktrees/NAME's branch on main (rebased, fast-forwarded, pushed) and tear the worktree down,
+# from any checkout; stops while a release runs (scripts/land). Run the tests first.
+land name:
+    scripts/land {{name}}
 
 # Tear down .claude/worktrees/NAME: its own β (beta-clean), then the
 # worktree, then its branch if it's merged. Stops if anything still runs

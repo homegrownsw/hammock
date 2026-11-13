@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Turns a screen recording, or a folder of captured frames (HMK_DEBUG_CAPTURE_ZOOM's zoom-NN.png, say), into
+# a few distinct frames and one contact sheet to look at, instead of reading every full-size frame:
+#   scripts/frames <movie.mp4|dir> <out dir> [fps (movies, default 10)] [width (default 480)]
+# Writes <out>/NNN.png (consecutive duplicates dropped, scaled to width) and <out>/sheet.png (all of them,
+# numbered, in a grid). Needs ffmpeg (for movies) and ImageMagick.
+set -euo pipefail
+src="${1:?usage: scripts/frames <movie|dir> <out dir> [fps] [width]}"
+out="${2:?usage: scripts/frames <movie|dir> <out dir> [fps] [width]}"
+fps="${3:-10}"
+width="${4:-480}"
+mkdir -p "$out"
+raw="$(mktemp -d)"
+trap 'rm -rf "$raw"' EXIT
+
+if [ -d "$src" ]; then
+  i=0
+  for f in "$src"/*.png; do
+    [ -e "$f" ] || { echo "frames: no .png files in $src" >&2; exit 1; }
+    i=$((i + 1))
+    magick "$f" -resize "${width}x" "$raw/$(printf %05d "$i").png"
+  done
+else
+  ffmpeg -loglevel error -i "$src" -vf "fps=$fps,scale=$width:-2" "$raw/%05d.png"
+fi
+
+# Drop a frame identical to the one before it (an animation's still start and end, a paused recording).
+n=0
+prev=""
+for f in "$raw"/*.png; do
+  sum="$(magick "$f" -depth 8 rgba:- | md5 -q)"
+  [ "$sum" = "$prev" ] && continue
+  prev="$sum"
+  n=$((n + 1))
+  cp "$f" "$out/$(printf %03d "$n").png"
+done
+
+# The sheet: every kept frame, labelled with its number. An explicit font: ImageMagick has no default one here.
+magick montage "$out"/[0-9][0-9][0-9].png -font /System/Library/Fonts/Supplemental/Arial.ttf -pointsize 14 \
+  -label '%t' -tile 6x -geometry +4+4 -background '#222' -fill white "$out/sheet.png"
+echo "$n distinct frames in $out; the contact sheet is $out/sheet.png"

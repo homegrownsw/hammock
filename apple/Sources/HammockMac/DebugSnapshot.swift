@@ -383,7 +383,32 @@ extension DebugSnapshot {
         return try? await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: w), configuration: config)
     }
 
+    /// Why a capture can't work now, or nil: said up front rather than writing nothing, so whoever asked
+    /// (often an agent) stops and asks the person instead of retrying or working blind.
+    private static func captureBlocker() -> String? {
+        if let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+           (session["CGSSessionScreenIsLocked"] as? Bool) == true {
+            return "the screen is locked: unlock it and try again"
+        }
+        if CGDisplayIsAsleep(CGMainDisplayID()) != 0 {
+            return "the display is asleep: wake it (caffeinate -u -t 2) and try again"
+        }
+        if !CGPreflightScreenCaptureAccess() {
+            return "this app hasn't Screen Recording permission (System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording)"
+        }
+        return nil
+    }
+
+    private static func captureFailed(_ reason: String, prefix: String) {
+        FileHandle.standardError.write(Data("HMK_DEBUG_CAPTURE: can't capture: \(reason)\n".utf8))
+        try? "\(reason)\n".write(toFile: "\(prefix)-capture-error.txt", atomically: true, encoding: .utf8)
+    }
+
     @MainActor private static func captureWindow(_ window: NSWindow, prefix: String) async {
+        if let reason = captureBlocker() {
+            captureFailed(reason, prefix: prefix)
+            return
+        }
         func grab() async -> CGImage? {
             guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
                   let w = content.windows.first(where: { $0.windowID == CGWindowID(window.windowNumber) }) else { return nil }
@@ -401,7 +426,11 @@ extension DebugSnapshot {
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             NSApp.appearance = NSAppearance(named: appearance)
             try? await Task.sleep(for: .seconds(1))
-            write(await grab(), "window-\(name)")
+            let image = await grab()
+            if image == nil {
+                captureFailed("ScreenCaptureKit gave no image of the window (off screen, or on another Space?)", prefix: prefix)
+            }
+            write(image, "window-\(name)")
         }
         // Filmed in dark, as the window was left, or light.
         if env["HMK_DEBUG_CAPTURE_LIGHT"] != nil { NSApp.appearance = NSAppearance(named: .aqua) }

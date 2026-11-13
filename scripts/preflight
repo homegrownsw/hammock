@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Checks, in seconds, what a release, `just share` or an App Store push needs from this Mac before it spends
+# a build on it, rather than failing at notarizing or timing out on 1Password an hour later:
+#   scripts/preflight screen   the screen is unlocked (the keychain, 1Password and Touch ID need it)
+#   scripts/preflight notary   the notarytool keychain profile (NOTARY_PROFILE, fika-notary) can be read, or
+#                              APPLE_ID and APP_PASSWORD are set; otherwise says why it might not be
+# With no arguments, both. Exits 1 with the reason on the first that fails.
+set -euo pipefail
+
+screen_locked() {
+  # IOConsoleUsers' CGSSessionScreenIsLocked is there (true) only while the screen is locked.
+  [ "$(ioreg -n Root -d1 -a 2>/dev/null |
+    plutil -extract IOConsoleUsers.0.CGSSessionScreenIsLocked raw - 2>/dev/null)" = true ]
+}
+
+check_screen() {
+  if screen_locked; then
+    echo "The Mac's screen is locked: the keychain, 1Password and Touch ID can't answer until it's unlocked." >&2
+    echo "Unlock it, keep it awake (caffeinate -d) and run this again." >&2
+    exit 1
+  fi
+}
+
+check_notary() {
+  [ -n "${APPLE_ID:-}" ] && [ -n "${APP_PASSWORD:-}" ] && return 0
+  local profile="${NOTARY_PROFILE:-fika-notary}"
+  xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1 && return 0
+  # An agent's sandbox hides the login keychain, so the profile looks missing there although it isn't.
+  if [ -n "${CLAUDECODE:-}${AI_AGENT:-}" ]; then
+    echo "The notarytool profile $profile can't be read from here. An agent's sandbox hides the keychain, so" >&2
+    echo "this doesn't mean it's missing: run the command outside the sandbox (and don't recreate the profile)." >&2
+    exit 1
+  fi
+  # A person without the profile falls back to 1Password (HMK_SHARE_OP_ITEM), which the caller handles.
+  return 0
+}
+
+[ $# -gt 0 ] || set -- screen notary
+for c in "$@"; do
+  case "$c" in
+    screen) check_screen ;;
+    notary) check_notary ;;
+    *) echo "usage: scripts/preflight [screen] [notary]" >&2; exit 2 ;;
+  esac
+done

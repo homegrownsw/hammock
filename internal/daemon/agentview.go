@@ -64,27 +64,27 @@ type agentWatch struct {
 	tasks *pb.AgentTaskList
 	links []*pb.AgentLink
 
-	mu       sync.Mutex
-	conns    map[*conn]bool
-	path     string
-	off      int64
-	mod      time.Time // a whole-read session's, when last read
-	partial  []byte
-	parser   agentview.Parser
-	harness  string // whose session file path is (claude, codex)
-	reread   bool   // a compressed session changed: read again, and replace what clients show
-	prompt   *pb.AgentPrompt
-	working  bool
-	status   string
-	draft    string  // what's typed in its input box in the terminal
-	ctx      ctxInfo // the model and context last sent
+	mu      sync.Mutex
+	conns   map[*conn]bool
+	path    string
+	off     int64
+	mod     time.Time // a whole-read session's, when last read
+	partial []byte
+	parser  agentview.Parser
+	harness string // whose session file path is (claude, codex)
+	reread  bool   // a compressed session changed: read again, and replace what clients show
+	prompt  *pb.AgentPrompt
+	working bool
+	status  string
+	draft   string  // what's typed in its input box in the terminal
+	ctx     ctxInfo // the model and context last sent
 	// Claude's model and effort level as its start screen says, for before
 	// its transcript does (its first reply).
 	screenModel, screenEffort string
-	errText  string
-	commands []string
-	starts   []string // those of commands that only run at a message's start
-	stop     chan struct{}
+	errText                   string
+	commands                  []string
+	starts                    []string // those of commands that only run at a message's start
+	stop                      chan struct{}
 }
 
 // watchAgent starts (or with before set, pages) c's view of a pane.

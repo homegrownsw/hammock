@@ -88,7 +88,8 @@ func randChanges(r *rand.Rand, n int) ChangeSet {
 func TestMapConverges(t *testing.T) {
 	r := rand.New(rand.NewSource(1))
 	for i := 0; i < 20000; i++ {
-		src := strings.Repeat("0123456789", 3); doc := FromString(src[:1+r.Intn(25)])
+		src := strings.Repeat("0123456789", 3)
+		doc := FromString(src[:1+r.Intn(25)])
 		a, b := randChanges(r, len(doc)), randChanges(r, len(doc))
 		da, _ := a.Apply(doc)
 		x, err := b.Map(a, true).Apply(da)

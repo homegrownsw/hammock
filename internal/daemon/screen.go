@@ -5,7 +5,7 @@ package daemon
 // Screen", helpers/screen) captures a display while someone watches it and
 // posts their input; video goes through the media hub like a pane's
 // (media.go), as session "screen:<display id>". Never guests or agents:
-// checkGuest refuses it outright, agentCheck has no case for it, and
+// peerCheck refuses it outright, agentCheck has no case for it, and
 // OpenMedia of a screen is checked again here.
 
 import (

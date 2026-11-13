@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Lands a worktree's branch on main and tears the worktree down: `just land NAME` (from any checkout).
+#   1. stops if a release is running (its commit sits on main unpushed: .githooks/pre-push), or main has
+#      commits origin doesn't;
+#   2. rebases NAME onto origin/main in its worktree (stops on a conflict, for you to resolve and rerun);
+#   3. fast-forwards the main checkout's main to it and pushes (main stays linear: AGENTS.md);
+#   4. removes the worktree (just worktree-remove: its β, daemon and state too) and the branch, here and on
+#      origin if it was pushed there.
+# Run the tests first: this only moves commits.
+set -euo pipefail
+name="${1:?usage: just land NAME}"
+main="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
+wt="$main/.claude/worktrees/$name"
+[ -d "$wt" ] || { echo "land: no worktree at $wt" >&2; exit 1; }
+
+lock="$main/.git/hammock-release.lock"
+if [ -f "$lock" ] && kill -0 "$(cat "$lock" 2>/dev/null || echo 0)" 2>/dev/null; then
+  echo "land: a release is running (scripts/release, PID $(cat "$lock")); land once it's done." >&2
+  exit 1
+fi
+[ "$(git -C "$main" symbolic-ref --short -q HEAD || true)" = main ] ||
+  { echo "land: the main checkout ($main) isn't on main." >&2; exit 1; }
+branch="$(git -C "$wt" symbolic-ref --short -q HEAD || true)"
+[ -n "$branch" ] || { echo "land: $wt has no branch checked out." >&2; exit 1; }
+if [ -n "$(git -C "$wt" status --porcelain --untracked-files=no)" ]; then
+  echo "land: $wt has uncommitted changes; commit them first." >&2
+  exit 1
+fi
+
+git -C "$main" fetch -q origin main
+ahead="$(git -C "$main" log --format='%h %s' origin/main..main)"
+if [ -n "$ahead" ]; then
+  echo "land: main has commits origin doesn't (a release in progress, or someone's unpushed work):" >&2
+  echo "$ahead" | sed 's/^/  /' >&2
+  exit 1
+fi
+git -C "$main" merge -q --ff-only origin/main
+
+git -C "$wt" rebase -q origin/main || {
+  echo "land: rebasing $branch onto origin/main stopped on a conflict: resolve it in $wt, then rerun." >&2
+  exit 1
+}
+rel="$(git -C "$wt" log --format='%h %s' origin/main..HEAD | grep -E '^[0-9a-f]+ release: ' || true)"
+[ -z "$rel" ] || { echo "land: $branch carries a release commit; drop it first:" >&2; echo "  $rel" >&2; exit 1; }
+commits="$(git -C "$wt" log --oneline origin/main..HEAD)"
+[ -n "$commits" ] || echo "land: $branch has nothing that main hasn't; just removing it."
+
+if [ -n "$commits" ]; then
+  echo "$commits"
+  git -C "$main" merge -q --ff-only "$branch"
+  git -C "$main" push -q origin main
+fi
+
+cd "$main"
+just worktree-remove "$name"
+git branch -q -D "$branch" 2>/dev/null || true # rebased, so -d may not see it merged; its commits are on main
+if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+  git push -q origin --delete "$branch"
+fi
+echo "Landed $branch on main and removed its worktree."

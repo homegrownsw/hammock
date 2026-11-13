@@ -69,6 +69,8 @@ if [ -f "$env_file" ] && [ -z "${HMK_OP_RESOLVED:-}" ] && grep -q "op://" "$env_
     echo >&2 "appstore-fastlane: $env_file has op:// references, but the 1Password CLI (op) isn't installed."
     exit 1
   fi
+  # 1Password can't be unlocked on a locked screen: say so now, not after op times out.
+  "$(git rev-parse --show-toplevel)/scripts/preflight" screen
   # Only this file's references: `op run` resolves every op:// value it inherits too, and others may be in the
   # environment for other jobs (the justfile loads .release.env, whose 1Password item has no field on purpose).
   others=()

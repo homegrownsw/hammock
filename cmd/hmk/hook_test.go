@@ -54,9 +54,9 @@ func TestSlimJSONTruncated(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"hook_event_name":"PreToolUse","tool_input":{"file_path":"/a","content":"abc`: `{"hook_event_name":"PreToolUse","tool_input":{"file_path":"/a"}}`,
 		`{"a":[1,2,{"b":`: `{"a":[1,2,{}]}`,
-		`{"a":"x","b"`:     `{"a":"x"}`,
-		`[`:                `[]`,
-		``:                 ``,
+		`{"a":"x","b"`:    `{"a":"x"}`,
+		`[`:               `[]`,
+		``:                ``,
 	} {
 		if got := string(slimJSON(strings.NewReader(in), 10)); got != want {
 			t.Errorf("slimJSON(%q) = %s, want %s", in, got, want)
