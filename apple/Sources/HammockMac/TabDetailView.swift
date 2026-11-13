@@ -5,13 +5,17 @@ struct TabDetailView: View {
     let model: AppModel
     let tab: WorkspaceTab
 
+    @AppStorage(SidebarHiding.key) private var sidebarHidden = false
+
     var body: some View {
         VStack(spacing: 0) {
             LayoutView(model: model, layout: tab.layout, focusedPaneID: currentFocus, zoomed: PaneZoom.shared.zoomed(in: tab)) { newLayout in
                 model.setLayout(tab.id, newLayout)
             }
-            // Spacious spacing: the panes stand off the tab's edges too.
-            .padding(PaneLook.inset)
+            // Spacious spacing: the panes stand off the window's edges (right,
+            // bottom, and left with the sidebar hidden), not the toolbar's or
+            // the sidebar's: those meet them, as compact's do.
+            .padding(EdgeInsets(top: 0, leading: sidebarHidden ? PaneLook.inset : 0, bottom: PaneLook.inset, trailing: PaneLook.inset))
             // A pane floating: the splits close up around it as its card grows out.
             // (Only then: an animation(nil) here would take the pane
             // animation off panes opening and closing.)
@@ -109,6 +113,7 @@ struct LayoutView: View {
     @State private var openClose = OpenCloseMotion()
     @State private var redraws = 0
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(SidebarHiding.key) private var sidebarHidden = false
 
     var body: some View {
         GeometryReader { geo in
@@ -133,12 +138,13 @@ struct LayoutView: View {
                 }
                 // In order, explicitly: a pane leaving stays over the background
                 // (SwiftUI draws a removed view of a ZStack at the back otherwise).
-                ForEach(tiles) { tile($0).zIndex(1) }
+                ForEach(tiles) { tile($0, in: area).zIndex(1) }
                 ForEach(tiles.filter { !$0.folded }) { t in
-                    PaneFocusRing(rect: t.clip, on: t.id == focusedPaneID && sharesTab(t.id) && AppConfig.shared.activePaneBorder)
+                    PaneFocusRing(rect: t.clip, on: t.id == focusedPaneID && sharesTab(t.id) && AppConfig.shared.activePaneBorder,
+                                  shape: PaneLook.shape(at: t.clip, in: area, sidebarHidden: sidebarHidden))
                         .zIndex(1.5)
                 }
-                ForEach(plan.bars) { bar($0).zIndex(2) }
+                ForEach(plan.bars) { bar($0, in: area).zIndex(2) }
                 ForEach(plan.dividers) { DividerHandle(d: $0, drag: $drag, layout: layout, update: update).zIndex(3) }
             }
             // A hairline beside a pane of no size at the tab's edge stays in it.
@@ -149,10 +155,11 @@ struct LayoutView: View {
         }
     }
 
-    private func tile(_ t: PanePlan.Tile) -> some View {
-        PaneView(model: model, paneID: t.id, isFocused: t.id == focusedPaneID)
-            .clipShape(PaneLook.shape)
-            .modifier(PaneFocusLook(isFocused: t.id == focusedPaneID, among: sharesTab(t.id)))
+    private func tile(_ t: PanePlan.Tile, in area: CGRect) -> some View {
+        let shape = PaneLook.shape(at: t.clip, in: area, sidebarHidden: sidebarHidden)
+        return PaneView(model: model, paneID: t.id, isFocused: t.id == focusedPaneID)
+            .clipShape(shape)
+            .modifier(PaneFocusLook(isFocused: t.id == focusedPaneID, among: sharesTab(t.id), shape: shape))
             .environment(\.paneFolded, t.folded)
             .allowsHitTesting(!t.folded)
             // Folded under a zoomed pane: at its own size, clipped to its
@@ -161,7 +168,7 @@ struct LayoutView: View {
             .frame(width: t.rect.width, height: t.rect.height)
             .offset(x: t.rect.minX - t.clip.minX, y: t.rect.minY - t.clip.minY)
             .frame(width: t.clip.width, height: t.clip.height, alignment: .topLeading)
-            .clipShape(PaneLook.shape)
+            .clipShape(shape)
             .offset(x: t.clip.minX, y: t.clip.minY)
             // Opened or closed, it grows from or shrinks to no size at its
             // neighbour's edge (OpenCloseMotion); floated or docked, its card
@@ -169,10 +176,10 @@ struct LayoutView: View {
             .transition(PaneMotion.Fade(id: t.id))
     }
 
-    private func bar(_ b: PanePlan.Bar) -> some View {
+    private func bar(_ b: PanePlan.Bar, in area: CGRect) -> some View {
         FoldedPanes(model: model, layout: b.layout, vertical: b.vertical, towardZoomed: b.toward)
             .frame(width: b.rect.width, height: b.rect.height)
-            .clipShape(PaneLook.shape)
+            .clipShape(PaneLook.shape(at: b.rect, in: area, sidebarHidden: sidebarHidden))
             .offset(x: b.rect.minX, y: b.rect.minY)
             .transition(.opacity)
     }

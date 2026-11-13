@@ -263,6 +263,23 @@ enum PaneLook {
     static var radius: CGFloat { spacious ? 8 : 0 }
     static var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
 
+    /// The window's own corner radius on macOS 26 (continuous), measured
+    /// off its edge: AppKit doesn't say.
+    static let windowCornerRadius: CGFloat = 16
+
+    /// A split pane's shape at `rect` in its tab's `area`: spacious, a pane
+    /// in one of the window's bottom corners rounds that corner with the
+    /// window, concentric with it (the window's radius less the inset), the
+    /// rest as any pane. The bottom left is the window's only with the
+    /// sidebar hidden.
+    static func shape(at rect: CGRect, in area: CGRect, sidebarHidden: Bool) -> UnevenRoundedRectangle {
+        let bottom = rect.maxY >= area.maxY - 0.5
+        let outer = spacious ? windowCornerRadius - inset : radius
+        let bl = bottom && sidebarHidden && rect.minX <= area.minX + 0.5 ? outer : radius
+        let br = bottom && rect.maxX >= area.maxX - 0.5 ? outer : radius
+        return UnevenRoundedRectangle(topLeadingRadius: radius, bottomLeadingRadius: bl, bottomTrailingRadius: br, topTrailingRadius: radius, style: .continuous)
+    }
+
     /// The terminal theme's background.
     static func background(dark: Bool) -> Color {
         let c = config.theme(isDark: dark).background
@@ -287,6 +304,8 @@ struct PaneFocusLook: ViewModifier {
     let isFocused: Bool
     /// Only panes that share their tab with another dim.
     let among: Bool
+    /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:)).
+    var shape = UnevenRoundedRectangle(cornerRadii: .init(), style: .continuous)
     @Environment(\.colorScheme) private var colorScheme
     private var config: AppConfig { .shared }
 
@@ -294,7 +313,7 @@ struct PaneFocusLook: ViewModifier {
         let dim = among && config.dimInactivePanes && !isFocused
         content
             .overlay {
-                PaneLook.shape
+                shape
                     .fill(Color.black.opacity(colorScheme == .dark ? 0.22 : 0.07))
                     .animation(PaneMotion.shared.openingOrClosing ? nil : PaneLook.fade) { $0.opacity(dim ? 1 : 0) }
                     .allowsHitTesting(false)
@@ -314,17 +333,20 @@ struct PaneFocusLook: ViewModifier {
 struct PaneFocusRing: View {
     let rect: CGRect
     let on: Bool
+    /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:)).
+    var shape = UnevenRoundedRectangle(cornerRadii: .init(), style: .continuous)
     @Environment(\.colorScheme) private var colorScheme
     @State private var shown: Bool
 
-    init(rect: CGRect, on: Bool) {
+    init(rect: CGRect, on: Bool, shape: UnevenRoundedRectangle) {
         self.rect = rect
         self.on = on
+        self.shape = shape
         _shown = State(initialValue: on)
     }
 
     var body: some View {
-        PaneLook.shape
+        shape
             .strokeBorder(PaneLook.borderColor(dark: colorScheme == .dark), lineWidth: PaneLook.borderWidth)
             .opacity(shown ? 1 : 0)
             .frame(width: rect.width, height: rect.height)
