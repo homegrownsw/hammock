@@ -62,7 +62,7 @@ struct SessionsView: View {
     @State private var path: [String] = []
     /// The session finder is up.
     @State private var finding = false
-    /// Recent shows sessions older than 48 hours too.
+    /// Recent shows sessions older than 48 hours too, until Show Less.
     @State private var showingAllRecent = false
 
     var body: some View {
@@ -101,9 +101,11 @@ struct SessionsView: View {
                             let fresh = rows.recent.filter { $0.pane.agent.stateSinceUnixMs >= cutoff }
                             let shown = showingAllRecent || fresh.isEmpty ? rows.recent : fresh
                             ForEach(shown, id: \.tab.id) { r in sessionLink(r) }
-                            if shown.count < rows.recent.count {
-                                Button("Show More…") { withAnimation { showingAllRecent = true } }
-                                    .tint(theme.accent)
+                            if !fresh.isEmpty, fresh.count < rows.recent.count {
+                                Button(showingAllRecent ? "Show Less" : "Show More…") {
+                                    withAnimation { showingAllRecent.toggle() }
+                                }
+                                .tint(theme.accent)
                             }
                         }
                     }
