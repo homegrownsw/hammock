@@ -150,6 +150,7 @@ private struct GeneralSettings: View {
     @State private var daemonAtLogin = DaemonService.isEnabled
     @State private var cliPath = CommandLineTool.installedPath
     @State private var error: String?
+    @State private var diskAccess = FullDiskAccess.isGranted
 
     var body: some View {
         Form {
@@ -199,6 +200,18 @@ private struct GeneralSettings: View {
                 Text("Control Hammock from any terminal.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+            Section("Full Disk Access") {
+                LabeledContent("Full Disk Access for programs in panes") {
+                    HStack {
+                        Text(diskAccess ? "On" : "Off").foregroundStyle(.secondary)
+                        Button("Open System Settings…") { FullDiskAccess.openSettingsWithGuide() }
+                    }
+                }
+                .settingAnchor("general.fulldiskaccess")
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    diskAccess = FullDiskAccess.isGranted
+                }
             }
             Section("Browser panes") {
                 Picker("Links that open a new tab", selection: Binding(

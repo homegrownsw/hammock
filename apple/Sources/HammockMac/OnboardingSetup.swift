@@ -294,7 +294,155 @@ struct CodeLine: View {
     }
 }
 
-// MARK: - 4 · Agents
+// MARK: - 4 · Full Disk Access
+
+struct AccessStep: View {
+    @State private var granted = FullDiskAccess.isGranted
+    /// System Settings was opened from here, so a grant still waiting on a
+    /// relaunch gets a word once Hammock is back in front.
+    @State private var opened = false
+    /// Hammock came back to the front after that.
+    @State private var returned = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(LinearGradient(colors: [Brand.fern, Brand.pine], startPoint: .top, endPoint: .bottom))
+                    Image(systemName: "lock.open.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(Brand.mist)
+                }
+                .frame(width: 64, height: 64)
+                .shadow(color: Brand.forest.opacity(0.25), radius: 12, y: 10)
+                .accessibilityHidden(true)
+                StepHeading(title: "Let your terminals reach everything",
+                            subtitle: "Like other terminals, Hammock works best with Full Disk Access. Without it, macOS can quietly stop programs in your panes from reaching your files and other apps' data.",
+                            centered: true)
+                    .frame(maxWidth: 580)
+                    .padding(.top, 18)
+
+                VStack(spacing: 0) {
+                    HStack(alignment: .center, spacing: 28) {
+                        VStack(spacing: 10) {
+                            AppIconDragSource(size: 88)
+                                .frame(width: 120, height: 120)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                        .strokeBorder(Brand.fern.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                }
+                                .help("Drag into the Full Disk Access list")
+                                .accessibilityLabel("Hammock, to drag into the Full Disk Access list")
+                            Text("Drag me")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 14) {
+                            instruction(1, Text("Open **Full Disk Access** in System Settings.")) {
+                                if !granted {
+                                    Button("Open System Settings") {
+                                        opened = true
+                                        FullDiskAccess.openSettingsWithGuide()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.large)
+                                }
+                            }
+                            instruction(2, Text("Drag Hammock's icon into the list. A little window with it waits beside System Settings."))
+                            instruction(3, Text("Make sure Hammock's switch is on."))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 24).padding(.vertical, 22)
+
+                    if granted {
+                        banner(tint: Brand.done) {
+                            DoneCheck()
+                            Text("Hammock has Full Disk Access").foregroundStyle(Brand.done)
+                            Spacer()
+                        }
+                    } else if returned {
+                        banner(tint: Brand.needsYou) {
+                            Image(systemName: "info.circle.fill").foregroundStyle(.white, Brand.needsYou)
+                            Text("Turned it on, but it still says off? Choose **Quit & Reopen** if macOS asks: Hammock picks up where you left off.")
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .background(.background.opacity(0.85))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                .shadow(color: Brand.pine.opacity(0.05), radius: 10, y: 6)
+                .frame(width: 640)
+                .padding(.top, 30)
+                .animation(.smooth, value: granted)
+                .animation(.smooth, value: returned)
+
+                Text("Everything you run in Hammock gets it too, agents included. Change it any time in System Settings.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 14)
+            }
+            .padding(.top, 20)
+            .frame(maxHeight: .infinity, alignment: .top)
+
+            StepFooter {
+                if granted {
+                    Button("Continue") { Onboarding.shared.next() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Skip") { Onboarding.shared.next() }
+                        .controlSize(.large)
+                }
+            }
+        }
+        .task {
+            // Follow the switch in System Settings while this step is open.
+            while !Task.isCancelled {
+                let now = FullDiskAccess.isGranted
+                if now != granted { withAnimation(.smooth) { granted = now } }
+                Onboarding.shared.diskAccess = now
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if opened { withAnimation(.smooth) { returned = true } }
+        }
+        .onDisappear { FullDiskAccessGuide.shared.close() }
+    }
+
+    private func instruction(_ n: Int, _ text: Text) -> some View {
+        instruction(n, text) { EmptyView() }
+    }
+
+    private func instruction<Extra: View>(_ n: Int, _ text: Text, @ViewBuilder extra: () -> Extra) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("\(n)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Brand.mist)
+                .frame(width: 20, height: 20)
+                .background(Brand.fern, in: Circle())
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            VStack(alignment: .leading, spacing: 8) {
+                text.font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                extra()
+            }
+        }
+    }
+
+    private func banner<C: View>(tint: Color, @ViewBuilder _ content: () -> C) -> some View {
+        HStack(spacing: 12) { content() }
+            .font(.system(size: 13))
+            .padding(.horizontal, 20).padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.1))
+            .overlay(alignment: .top) { Rectangle().fill(tint.opacity(0.25)).frame(height: 1) }
+    }
+}
+
+// MARK: - 5 · Agents
 
 /// `hmk hooks install --dry-run --json`.
 struct HooksPlan: Decodable {
@@ -710,7 +858,7 @@ private struct NoAgents: View {
     }
 }
 
-// MARK: - 5 · Finish
+// MARK: - 6 · Finish
 
 struct FinishStep: View {
     let model: AppModel
@@ -839,6 +987,7 @@ struct FinishStep: View {
     private var done: [String] {
         var out: [String] = []
         if flow.daemonOn { out.append("Running in the background") }
+        if flow.diskAccess { out.append("Full Disk Access on") }
         if flow.cliPath != nil { out.append("\(CommandLineTool.linkName) command installed") }
         if !flow.connected.isEmpty { out.append(flow.connected.joined(separator: " and ") + " connected") }
         return out

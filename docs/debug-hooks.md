@@ -18,6 +18,7 @@ titlebar geometry. With it:
 | `HMK_DEBUG_SIDEBAR_SCROLL=<pt>` | Start with the sidebar scrolled. |
 | `HMK_DEBUG_PEEK=1` | The hidden sidebar's peek panel open; pass `--args -sidebarHidden YES`. |
 | `HMK_DEBUG_NOTICES=1` | Sample notification cards in the window. |
+| `HMK_DEBUG_DISK_ACCESS=0` (or `1`) | Pretend Hammock hasn't (or has) Full Disk Access, for onboarding's Full Disk Access step (`HMK_ONBOARDING=1 HMK_ONBOARDING_STEP=access`) and Settings ▸ General. |
 | `HMK_DEBUG_AGENT_CURSOR=1` | A made-up agent click in every browser pane and tap in every simulator pane, with its glow and badge, kept showing. |
 | `HMK_DEBUG_ASLEEP=1` | Every terminal pane shown as an agent put to sleep, a made-up idle Claude where there's none: the moon in the sidebar and the pane's header, and the faded pane with its Wake Agent button; on the iPhone too, with the demo. |
 | `HMK_DEBUG_SETTINGS=<pane>` | That Settings pane to `<prefix>-settings-<light\|dark>.png`: `notifications`, `keyboard`, `appearance`, `agentview`, `workspace` (onboarding's drawing of the window, both layouts), `devices`, `editor`, `tools`, `window` (the whole Settings window, sidebar included, on the pane given by `--args -settingsTab <name>`). Search it with `HMK_DEBUG_SETTINGS_QUERY=<text>`. Pick the notification style with `--args -notify-style in-app`: any config key given as a launch argument beats the file's. |

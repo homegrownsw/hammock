@@ -3,9 +3,11 @@ import HammockKit
 import SwiftUI
 
 /// First-run setup, shown in place of the workspace in the main window:
-/// Welcome → Look & feel → Keep it running → Agents → Finish. Every step can
-/// be skipped ("Set up later" jumps to the finish). It shows while
-/// `onboarding.completed` is unset, and again from Help ▸ Welcome to Hammock….
+/// Welcome → Look & feel → Keep it running → Full Disk Access → Agents →
+/// Finish. Every step can be skipped ("Set up later" jumps to the finish).
+/// It shows while `onboarding.completed` is unset, and again from Help ▸
+/// Welcome to Hammock…. Quit on the Full Disk Access step (macOS asks to
+/// Quit & Reopen once it's granted), it opens on that step again.
 /// `HMK_ONBOARDING=1` forces it; `HMK_ONBOARDING_STEP=agents` opens on a
 /// step (for screenshots).
 @MainActor
@@ -13,9 +15,12 @@ import SwiftUI
 final class Onboarding {
     static let shared = Onboarding()
     static let completedKey = "onboarding.completed"
+    /// The step to open on next launch: only Full Disk Access, which macOS
+    /// may relaunch Hammock from.
+    static let resumeKey = "onboarding.resume"
 
     enum Step: Int, CaseIterable {
-        case welcome, look, daemon, agents, finish
+        case welcome, look, daemon, access, agents, finish
     }
 
     var isShowing: Bool
@@ -23,6 +28,7 @@ final class Onboarding {
 
     // What got set up, for the finish screen.
     var daemonOn = false
+    var diskAccess = false
     var cliPath: String?
     var connected: [String] = []
     /// Where claude was found (from the agents step), so the finish can offer it.
@@ -33,6 +39,8 @@ final class Onboarding {
         isShowing = env["HMK_ONBOARDING"] == "1" || !UserDefaults.standard.bool(forKey: Self.completedKey)
         if let s = env["HMK_ONBOARDING_STEP"], let step = Step.allCases.first(where: { "\($0)" == s }) {
             self.step = step
+        } else if isShowing, UserDefaults.standard.string(forKey: Self.resumeKey) == "\(Step.access)" {
+            step = .access
         }
     }
 
@@ -42,6 +50,11 @@ final class Onboarding {
     }
 
     func go(_ s: Step) {
+        if s == .access {
+            UserDefaults.standard.set("\(Step.access)", forKey: Self.resumeKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.resumeKey)
+        }
         withAnimation(.smooth(duration: 0.35)) { step = s }
     }
 
@@ -54,6 +67,7 @@ final class Onboarding {
     }
 
     func finish() {
+        UserDefaults.standard.removeObject(forKey: Self.resumeKey)
         UserDefaults.standard.set(true, forKey: Self.completedKey)
         withAnimation(.smooth) { isShowing = false }
     }
@@ -87,6 +101,7 @@ struct OnboardingView: View {
                 case .welcome: WelcomeStep()
                 case .look: LookStep()
                 case .daemon: DaemonStep()
+                case .access: AccessStep()
                 case .agents: AgentsStep()
                 case .finish: FinishStep(model: model)
                 }
