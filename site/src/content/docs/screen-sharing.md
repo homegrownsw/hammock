@@ -20,7 +20,7 @@ In System Settings, Screen Recording lists the helper as **Hammock**, and Access
 
 ## Viewing from your iPhone
 
-Your iPhone must be [paired](/hammock/docs/remote/) with the Mac. In the **Devices** tab, tap the Mac under **Show Screen**. It's best in landscape. If a Mac isn't listed, check that screen sharing is on there and both permissions are allowed.
+Your iPhone must be [paired](/hammock/docs/remote/) with the Mac. In the **Devices** tab, tap the Mac under **Show Screen**. If a Mac isn't listed, check that screen sharing is on there and both permissions are allowed.
 
 - **Trackpad** (the default): drag to move the pointer, tap to click, two fingers to scroll or right-click, pinch to zoom.
 - **Touch**: tap where you mean to click.

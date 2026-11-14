@@ -29,7 +29,7 @@ hmk remote on
 ```
 
 :::caution
-A network chosen by its subnet also matches any other network with the same subnet, such as a café's Wi-Fi. Anyone there still needs a paired key, but if you'd rather not take that chance, use Tailscale.
+A network chosen by its subnet also matches any other network with the same subnet, such as a café's Wi-Fi. Anyone there still needs a paired key, but if you'd rather not take that chance, use Tailscale or another VPN of your choice.
 :::
 
 ## Pairing devices

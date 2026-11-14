@@ -77,7 +77,7 @@ When a program changes the file on disk, the pane reloads it, or offers to if yo
 
 ## Diff
 
-A diff pane shows a git diff like a pull request's Files Changed, and sends your comments to an agent.
+A diff pane shows a git diff like a pull request's Files Changed, and lets you add comments to send to an agent.
 
 View ▸ Review Changes (⌥⌘R) shows what a pull request from this branch would, uncommitted changes included. File ▸ New Diff Tab… compares a branch, uncommitted changes, a commit or a range:
 

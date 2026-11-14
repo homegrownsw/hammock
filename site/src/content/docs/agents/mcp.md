@@ -9,7 +9,7 @@ Your agents can work in Hammock as you do: run a dev server in a pane of its own
 
 ## What `hmk mcp` gives an agent
 
-The [MCP reference](/hammock/docs/reference/mcp/) lists every tool and its parameters, in these groups: [panes](/hammock/docs/reference/mcp/#panes), [browser panes](/hammock/docs/reference/mcp/#browser-panes), [simulator panes](/hammock/docs/reference/mcp/#simulator-panes), [log panes](/hammock/docs/reference/mcp/#log-panes), [editor panes](/hammock/docs/reference/mcp/#editor-panes), [diff panes and reviews](/hammock/docs/reference/mcp/#diff-panes-and-reviews), [agent sessions](/hammock/docs/reference/mcp/#agent-sessions) and [scheduled tasks](/hammock/docs/reference/mcp/#scheduled-tasks). [Agent recipes](/hammock/docs/agents/recipes/) shows them at work.
+The [MCP reference](/hammock/docs/reference/mcp/) lists every tool and its parameters, in these groups: [panes](/hammock/docs/reference/mcp/#panes), [browser panes](/hammock/docs/reference/mcp/#browser-panes), [simulator panes](/hammock/docs/reference/mcp/#simulator-panes), [log panes](/hammock/docs/reference/mcp/#log-panes), [editor panes](/hammock/docs/reference/mcp/#editor-panes), [diff panes and reviews](/hammock/docs/reference/mcp/#diff-panes-and-reviews), [agent sessions](/hammock/docs/reference/mcp/#agent-sessions) and [scheduled tasks](/hammock/docs/reference/mcp/#scheduled-tasks). [Examples of controlling Hammock from agents](/hammock/docs/agents/examples/) shows them at work.
 
 ## What agents may do
 

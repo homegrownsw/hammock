@@ -54,5 +54,28 @@ h1, h2, h3, h4, .site-title, .hero h1 {
 	white-space: nowrap;
 }
 
+/* Quotes (what you say to an agent, what the MCP server tells it): a box, not a faint rule. */
+.sl-markdown-content blockquote {
+	position: relative;
+	margin-inline: 0;
+	padding: 0.9rem 1.1rem 0.9rem 2.9rem;
+	border: 1px solid var(--sl-color-gray-5);
+	border-inline-start: 4px solid var(--sl-color-accent);
+	border-radius: 12px;
+	background: var(--sl-color-gray-6);
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-lg);
+	font-style: normal;
+}
+.sl-markdown-content blockquote::before {
+	content: '“';
+	position: absolute;
+	inset-inline-start: 0.85rem;
+	top: 0.2rem;
+	font: 700 2.4rem/1 var(--hmk-display);
+	color: var(--sl-color-accent);
+}
+.sl-markdown-content blockquote p { margin: 0; }
+
 /* Reference tables: let long descriptions breathe, keep names on one line. */
 .sl-markdown-content table td:first-child code { white-space: nowrap; }

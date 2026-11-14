@@ -1,5 +1,5 @@
 ---
-title: Agent recipes
+title: Examples of controlling Hammock from agents
 description: Things to ask a coding agent in Hammock, and the tools it uses to do them.
 sidebar:
   order: 4

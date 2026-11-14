@@ -60,7 +60,7 @@ export default defineConfig({
 				{ label: 'Configuration', items: ['configuration'] },
 				{
 					label: 'Agents',
-					items: ['agents/overview', 'agents/setup', 'agents/mcp', 'agents/recipes'],
+					items: ['agents/overview', 'agents/setup', 'agents/mcp', 'agents/examples'],
 				},
 				{ label: 'The CLI', items: ['cli'] },
 				{ label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },

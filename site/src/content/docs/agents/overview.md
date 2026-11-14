@@ -75,5 +75,5 @@ Hammock can show your agents' usage limits (Claude Code's five-hour and weekly o
 
 - [Setting up agents](/hammock/docs/agents/setup/): hooks, the MCP server and agent settings.
 - [Controlling Hammock from agents](/hammock/docs/agents/mcp/): what agents can do with your workspace.
-- [Agent recipes](/hammock/docs/agents/recipes/): things to ask your agent.
+- [Examples of controlling Hammock from agents](/hammock/docs/agents/examples/): things to ask your agent.
 - [Scheduled tasks](/hammock/docs/scheduled-tasks/): agents that run on a schedule.
