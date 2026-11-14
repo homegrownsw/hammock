@@ -16,6 +16,7 @@ demo=$root/marketing/demo
 eval "$(scripts/beta-identity.sh)"
 app=$beta_app
 [ -d "$app" ] || { echo "no $app: run just mac-dev first" >&2; exit 1; }
+for t in ffmpeg gifsicle; do command -v $t >/dev/null || { echo "needs $t: brew install $t" >&2; exit 1; }; done
 hmk=$app/Contents/Helpers/hmk
 
 scratch=$(mktemp -d)
@@ -164,7 +165,13 @@ at 24.2; say "zoom 2"
 at 25.6; touch "$movie.stop"
 "$hmk" ls >"$scratch/ls.txt" 2>&1 || true
 for _ in $(seq 100); do [ -f "$movie.done" ] && break; sleep 0.1; done
-# The GIF: 960 wide, 15 fps, one palette for the whole film.
+# The GIF: 960 wide, 15 fps, one palette for the whole film. The movie has
+# black outside the window's rounded corners: they're made transparent
+# (a corner's radius is 16 points of the 1280 the window is wide, so W/80),
+# trimming the half-black pixels on the curve. With transparency, ffmpeg
+# writes every frame whole; gifsicle keeps only what changes.
 out=$root/marketing/demo.gif
-ffmpeg -v error -y -i "$movie" -vf "fps=15,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff:max_colors=192[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle" "$out"
+corners='st(2,W/80);st(0,max(0,max(ld(2)-X-0.5,X+0.5-W+ld(2))));st(1,max(0,max(ld(2)-Y-0.5,Y+0.5-H+ld(2))));if(eq(ld(0),0)+eq(ld(1),0)+lte(ld(0)*ld(0)+ld(1)*ld(1),(ld(2)-0.6)*(ld(2)-0.6)),255,0)'
+ffmpeg -v error -y -i "$movie" -vf "fps=15,scale=960:-1:flags=lanczos,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='$corners',split[a][b];[a]palettegen=stats_mode=diff:max_colors=192:reserve_transparent=1[p];[b][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle:alpha_threshold=128" "$scratch/demo.gif"
+gifsicle --no-warnings -O3 "$scratch/demo.gif" -o "$out"
 echo "wrote $out ($(du -h "$out" | cut -f1))"
