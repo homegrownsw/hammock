@@ -1,6 +1,6 @@
 ---
 name: verify-hammock
-description: Drive a real, isolated Hammock (the hmkd daemon, the hmk CLI, the TUI, and the Mac app's window rendered headless) to prove a change works the way a user would see it. Starts a scratch daemon that can't touch the installed Hammock, β or your config, drives Groups, tabs, panes, the TUI and the Mac window, captures evidence to dist/verify/, and tears it down. Use when verifying a Hammock change end to end, reproducing a bug against a live daemon, or capturing proof (transcripts, window PNGs) for a commit or PR.
+description: Drive a real, isolated Hammock (the hmkd daemon, the hmk CLI and MCP tools, every pane kind (terminal, browser, editor, diff, simulator, log), the TUI, and the Mac app's window rendered headless) to prove a change works the way a user would see it. Starts a scratch daemon that can't touch the installed Hammock, β or your config, drives Groups, tabs, panes, the TUI and the Mac window, captures evidence to dist/verify/, and tears it down. Use when verifying a Hammock change end to end, reproducing a bug against a live daemon, or capturing proof (transcripts, window PNGs) for a commit or PR.
 ---
 
 # Verify Hammock
@@ -56,6 +56,16 @@ $S/hmk "$RUN" read pn_xxxx                          # the screen as text: shows 
 
 Run panes with an explicit command (`-- /bin/sh`, `-- /bin/zsh -f`). Without one, a pane runs the person's login shell and rc files, so its screen shows their prompt, paths and whatever their rc prints. That isn't reproducible, and it's private.
 
+**MCP** (how agents drive browser and simulator panes, and the agent side of editor, diff, log and review). `hmk mcp` offers tools only to a process inside a Hammock pane, so `mcp.sh` runs the calls inside one. The first call makes a Group `verify-agent` with a tab `agent` running `/bin/sh` in `RUN`, and every call goes through that pane. Panes opened through MCP therefore belong to that agent, and later calls can drive them without approval.
+
+```sh
+$S/mcp.sh "$RUN" tools --list                       # every tool: name(args, * required)  description
+$S/mcp.sh "$RUN" 01-open browser_open '{"url":"data:text/html,<h1>hi</h1>"}'
+$S/mcp.sh "$RUN" 02-look browser_snapshot '{"pane_id":"pn_…"}' browser_screenshot '{"pane_id":"pn_…"}'
+```
+
+Each call's text is printed as `[n] …`, and `ERROR …` makes the script exit 1. Image results (`browser_screenshot`, `sim_screenshot`) are saved as `RUN/NAME-<n>-<i>.png`. `RUN/NAME.calls` and `RUN/NAME.mcp.jsonl` keep the requests and raw responses.
+
 **TUI**: run it in a tmux session of your own, with the run's env:
 
 ```sh
@@ -69,7 +79,9 @@ tmux kill-session -t "hmk-verify-$$"
 
 **Mac window**: `snapshot.sh RUN NAME [KEY=VALUE …]` runs a throwaway copy of this checkout's β on the run's daemon, with `HMK_DEBUG_SNAPSHOT`. After `HMK_DEBUG_DELAY` seconds (4 by default) it renders the 1280×800 window to `RUN/NAME-light.png` and `RUN/NAME-dark.png`, and dumps the view tree to `RUN/NAME-views.txt`, including the last lines of every terminal pane's text. Then it quits that copy. KEY=VALUE pairs are AGENTS.md's other debug hooks, such as `HMK_DEBUG_TAB=<tab name>`, `HMK_DEBUG_PALETTE=<text>` and `HMK_DEBUG_SETTINGS=<pane>`. The window shows on screen for a few seconds, so tell the person first if they're at this Mac. The first launch after a rebuild is slower: pass `HMK_DEBUG_DELAY=10`.
 
-**Not covered here:** the iPhone app (use AGENTS.md's simulator demo, `SIMCTL_CHILD_HMK_DEBUG_SAMPLE=1`), real clicks and drags in the Mac app (ask the person to try it in β), and browser and simulator panes' live content (snapshots don't render CALayerHost; AGENTS.md's `HMK_DEBUG_CAPTURE=1` does, with Screen Recording permission).
+**What a snapshot shows.** Terminal panes render, text included. Browser, editor, diff and simulator panes render only their header (URL bar, file name, `3 new replies` badge) over a blank area: web views and live layers aren't in a layer render. Prove their content from the daemon (`browser_screenshot`, `sim_screenshot`, `edit --read`, review threads), as the pane recipes do. `HMK_DEBUG_CAPTURE=1` (snapshot.sh waits for its `NAME-window-*.png`) captures the real window, but needs β to have Screen Recording and an awake, unlocked screen. In this skill's first runs it produced nothing, even launched with `open -n`, so treat it as optional and say so when it's missing.
+
+**Not covered here:** the iPhone app (use AGENTS.md's simulator demo, `SIMCTL_CHILD_HMK_DEBUG_SAMPLE=1`), and real clicks and drags in the Mac app (ask the person to try it in β).
 
 ## Evidence
 
@@ -92,7 +104,7 @@ Proof standards:
 .claude/skills/verify-hammock/scripts/down.sh "$RUN"
 ```
 
-It quits the app copy `snapshot.sh` opened (if one is still running), runs `hmk stop --panes`, then stops `DAEMON_PID`. It also stops any process whose command line holds the run's scratch path (pane holders, helper hosts) and deletes the scratch dir. `RUN` and its evidence stay. Kill your own tmux session separately. Run `down.sh` after every run, failed ones included, and `doctor.sh` with no argument to find any you missed. Delete old `dist/verify/*` dirs yourself when they're no longer needed.
+It stops a web server registered in `RUN/http.pid`, shuts down and deletes a simulator registered in `RUN/sim.udid`, quits the app copy `snapshot.sh` opened (if one is still running), runs `hmk stop --panes`, then stops `DAEMON_PID`. It also stops any process whose command line holds the run's scratch path (pane holders, helper hosts) and deletes the scratch dir. `RUN` and its evidence stay. Kill your own tmux session separately. Run `down.sh` after every run, failed ones included, and `doctor.sh` with no argument to find any you missed. Delete old `dist/verify/*` dirs yourself when they're no longer needed.
 
 ## Feature map
 

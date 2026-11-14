@@ -9,6 +9,15 @@ load_run "${1:-}"
 
 wait_gone() { for _ in $(seq 50); do kill -0 "$@" 2>/dev/null || return 0; sleep 0.1; done; return 1; }
 
+# What recipes registered in RUN: a local web server (http.pid) and a
+# simulator they created (sim.udid), shut down and deleted.
+if [ -f "$run/http.pid" ]; then kill -TERM "$(cat "$run/http.pid")" 2>/dev/null; rm -f "$run/http.pid"; fi
+if [ -f "$run/sim.udid" ]; then
+  udid="$(cat "$run/sim.udid")"
+  xcrun simctl shutdown "$udid" >/dev/null 2>&1
+  xcrun simctl delete "$udid" >/dev/null 2>&1 && echo "deleted simulator $udid"
+  rm -f "$run/sim.udid"
+fi
 # The app first: it restarts a daemon that stops under it.
 if [ -f "$run/app.pid" ]; then
   apid="$(cat "$run/app.pid")"

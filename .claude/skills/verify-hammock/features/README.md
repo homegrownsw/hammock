@@ -12,6 +12,8 @@ The maintained recipes for proving Hammock's user-facing behaviour against a scr
 ## Driving conventions
 
 - Every `hmk` call goes through `$S/hmk "$RUN" …`, or `$S/record.sh "$RUN" NN-name …` when it's proof.
+- MCP tools (browser, simulator, and the agent side of editor and diff panes) go through `$S/mcp.sh "$RUN" NN-name TOOL 'JSON' …`, which calls them from the run's agent pane. `$S/mcp.sh "$RUN" tools --list` lists every tool and its arguments.
+- Anything a recipe starts outside the daemon is registered in `RUN` for `down.sh`: a web server's pid in `http.pid`, a simulator it created in `sim.udid`. Files go in the run's `$SCRATCH` (from `run.env`).
 - Address things by the IDs commands print (`gp_…`, `tb_…`, `pn_…`) or by `verify-` names, never by position in `hmk ls`.
 - Panes run an explicit, rc-free command (`-- /bin/sh`, `-- /bin/zsh -f`) so their screens are reproducible and private.
 - Wait for output by polling `hmk read` for an expected string (up to a few seconds), not with a fixed sleep.
@@ -31,7 +33,18 @@ Each file has an H1, one paragraph on what a user sees, then exactly these H2s i
 ## Features
 
 - [Groups, tabs and panes](./groups-tabs-panes.md): create, rename, split, float, close and reopen the workspace's structure.
-- [Pane input and output](./pane-io.md): type into a pane and read its screen and scrollback.
+
+Pane kinds: each has its own recipe, and a change to one is proved with it.
+
+- [Terminal panes](./terminal-panes.md): type into a pane, read its screen and scrollback, see it drawn in the window.
+- [Browser panes](./browser-panes.md): open a page, read it, click, run JavaScript, screenshot (MCP).
+- [Editor panes](./editor-panes.md): open a file at a line, read and select, reload after a change on disk.
+- [Diff panes](./diff-panes.md): open a diff of a throwaway repo, comment on a line, reply, address.
+- [Simulator panes](./simulator-panes.md): a simulator of your own, a local page in Safari, screenshot, buttons, logs, shut down.
+- [Log panes](./log-panes.md): follow a file, parsed entries, filter by level.
+
+Elsewhere:
+
 - [The TUI](./tui.md): `hmk tui` in a terminal, its sidebar and Ctrl-B keys.
 - [The Mac window](./mac-window.md): the sidebar, tabs and terminal panes as the app draws them, plus its command palette and Settings.
 - [Scheduled tasks](./scheduled-tasks.md): a command on a schedule, run now, landing as a tab in its Group.

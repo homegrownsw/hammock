@@ -27,6 +27,7 @@ for kv in "$@"; do case "$kv" in HMK_DEBUG_DELAY=*) delay="${kv#*=}";; esac; don
 # β shares one bundle id, so nothing else's copy is touched.
 env "$@" HMK_DEBUG_SNAPSHOT="$prefix" "$APP/Contents/MacOS/Hammock" >"$run/$name-app.log" 2>&1 &
 apid=$!
+disown "$apid" 2>/dev/null || true # no "Terminated" job notice when we stop it
 echo "$apid" >"$run/app.pid"
 
 # The views file is written last, after both PNGs (and any capture).
@@ -37,10 +38,16 @@ while [ ! -s "$prefix-views.txt" ]; do
   sleep 0.5
 done
 sleep 1 # extra renders (settings, palette sheets) land beside it
+# HMK_DEBUG_CAPTURE=1: ScreenCaptureKit frames come after the views file;
+# wait for the last (NAME-window-dark.png), 30 s at most.
+case " $* " in *" HMK_DEBUG_CAPTURE=1 "*)
+  for _ in $(seq 60); do [ -s "$prefix-window-dark.png" ] && break; kill -0 "$apid" 2>/dev/null || break; sleep 0.5; done
+  [ -s "$prefix-window-dark.png" ] || echo "warn: no $prefix-window-dark.png: β needs Screen Recording permission and an awake, unlocked screen" >&2
+  sleep 1;;
+esac
 kill -TERM "$apid" 2>/dev/null || true
 for _ in $(seq 50); do kill -0 "$apid" 2>/dev/null || break; sleep 0.1; done
 kill -KILL "$apid" 2>/dev/null || true
-wait "$apid" 2>/dev/null || true # reap it quietly (no "Terminated" notice)
 rm -f "$run/app.pid"
 
 # The app must not have replaced our daemon.

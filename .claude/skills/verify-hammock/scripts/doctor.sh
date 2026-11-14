@@ -41,10 +41,18 @@ case "$dir" in
   *) bad "hmk talks to $dir, not $STATE";;
 esac
 
-# 4. The build is the checkout's current one (rebuilt since the last commit?).
+# 4. The build has the checkout's code: no code changed since the commit it
+# was built from (docs, and this skill, don't count).
 built="$(cut -d+ -f1 "$run/version.txt" 2>/dev/null)"
-head="$(git -C "$repo" describe --always --dirty)"
-[ "$built" = "$head" ] && ok "build $built matches the checkout" || echo "warn: build is $built, checkout is $head: rebuild (just build / just mac-dev) if you changed code"
+case "$built" in
+  *-dirty) echo "warn: built from a checkout with uncommitted changes ($built): can't tell if it's current; rebuild if unsure";;
+  "") bad "no $run/version.txt";;
+  *) if git -C "$repo" diff --quiet "$built" -- . ':(exclude).claude' ':(exclude)*.md' 2>/dev/null; then
+       ok "build $built has the checkout's code"
+     else
+       echo "warn: code changed since the build ($built): rebuild (just build / just mac-dev), then start a new run"
+     fi;;
+esac
 
 # 5. If an app copy was launched against it, it's alive.
 if [ -f "$run/app.pid" ]; then

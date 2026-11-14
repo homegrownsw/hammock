@@ -20,7 +20,7 @@ Preconditions:
 
 - `just mac-dev` built this checkout's β. The run was started with `up.sh --beta`.
 - The person knows a β window will flash up for a few seconds.
-- A Group `verify-mac` with a tab `shell` running `/bin/sh` that has printed `verify-42` (see [pane-io.md](./pane-io.md)).
+- A Group `verify-mac` with a tab `shell` running `/bin/sh` that has printed `verify-42` (see [terminal-panes.md](./terminal-panes.md)).
 
 - **Render the tab.** `$S/snapshot.sh "$RUN" 01-tab HMK_DEBUG_TAB=shell HMK_DEBUG_DELAY=8`. It lists `01-tab-light.png`, `01-tab-dark.png` and `01-tab-views.txt`, and exits 0.
 - **Assert.** `01-tab-views.txt` has a `TerminalNSView … hidden=false renderer=…` line followed by terminal text containing `verify-42`. Look at both PNGs: the pane shows `verify-42`.
