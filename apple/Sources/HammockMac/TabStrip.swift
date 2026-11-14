@@ -92,7 +92,7 @@ struct TabStrip: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
                             ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
-                                tabView(tab, width: width)
+                                tabView(tab, width: width, divider: divides(after: i, in: tabs))
                                     .offset(x: dragging == tab.id ? dragX - CGFloat(i) * width : 0)
                                     .zIndex(dragging == tab.id ? 1 : 0)
                                     // The dragged tab stays under the pointer; the rest slide.
@@ -154,7 +154,7 @@ struct TabStrip: View {
     private var pillColor: Color { dark ? Color.white.opacity(0.14) : Color(nsColor: .windowBackgroundColor) }
 
     @ViewBuilder
-    private func tabView(_ tab: WorkspaceTab, width: CGFloat) -> some View {
+    private func tabView(_ tab: WorkspaceTab, width: CGFloat, divider: Bool) -> some View {
         let selected = model.selectedTabID == tab.id
         let hover = hovered == tab.id && dragging == nil
         ZStack {
@@ -198,12 +198,29 @@ struct TabStrip: View {
                 Capsule().fill(Color.primary.opacity(0.05))
             }
         }
+        // A short line before the next tab, between two unselected ones.
+        .overlay(alignment: .trailing) {
+            Capsule().fill(Color.primary.opacity(dark ? 0.2 : 0.16))
+                .frame(width: 1, height: 14)
+                .offset(x: 0.5)
+                .opacity(divider ? 1 : 0)
+        }
         .contentShape(Capsule())
         .onTapGesture { model.selectedTabID = tab.id }
         .onHover { hovered = $0 && dragging == nil ? tab.id : (hovered == tab.id ? nil : hovered) }
         .tooltip(model.title(of: tab))
         .contextMenu {
             TabMenuItems(model: model, tab: tab)
+        }
+    }
+
+    /// Whether a line separates the tab at `i` from the next: as in
+    /// Terminal, only between two tabs that aren't selected, nor hovered or
+    /// being dragged, whose pills would show the gap anyway.
+    private func divides(after i: Int, in tabs: [WorkspaceTab]) -> Bool {
+        guard i + 1 < tabs.count else { return false }
+        return [tabs[i].id, tabs[i + 1].id].allSatisfy { id in
+            id != model.selectedTabID && id != dragging && (id != hovered || dragging != nil)
         }
     }
 

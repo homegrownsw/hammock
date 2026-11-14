@@ -773,6 +773,9 @@ private struct MiniWorkspace: View {
                     .foregroundStyle(on ? .primary : .secondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 18)
+                    .overlay(alignment: .trailing) {
+                        if i == 1 { Capsule().fill(Color.primary.opacity(dark ? 0.2 : 0.16)).frame(width: 1, height: 10) }
+                    }
                     .background {
                         if on {
                             Capsule().fill(dark ? Color.white.opacity(0.14) : Color(nsColor: .windowBackgroundColor))

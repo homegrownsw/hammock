@@ -196,6 +196,9 @@ struct MiniWindow: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 6)
                     .background(i == 0 ? (look.dark ? Color.white.opacity(0.16) : .white) : .clear, in: Capsule())
+                    .overlay(alignment: .trailing) {
+                        if i == 1 { Rectangle().fill(ink.opacity(0.2)).frame(width: 0.5, height: 4) }
+                    }
                 }
             }
             .padding(1)
