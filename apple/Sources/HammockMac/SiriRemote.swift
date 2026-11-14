@@ -21,19 +21,19 @@ struct SiriRemote: View {
             let w = min(geo.size.width, geo.size.height * Self.aspect)
             let u = w / 100
             ZStack(alignment: .top) {
-                RoundedRectangle(cornerRadius: 26 * u, style: .continuous)
+                RoundedRectangle(cornerRadius: 19 * u, style: .continuous)
                     .fill(LinearGradient(colors: [Color(white: 0.86), Color(white: 0.7), Color(white: 0.78)],
                                          startPoint: .leading, endPoint: .trailing))
-                    .overlay(RoundedRectangle(cornerRadius: 26 * u, style: .continuous).strokeBorder(Color.black.opacity(0.18), lineWidth: max(0.5, u * 0.6)))
+                    .overlay(RoundedRectangle(cornerRadius: 19 * u, style: .continuous).strokeBorder(Color.black.opacity(0.18), lineWidth: max(0.5, u * 0.6)))
                     .frame(width: 88 * u)
                 VStack(spacing: 7 * u) {
                     Clickpad(size: 76 * u, press: press)
-                        .padding(.top, 8 * u)
+                        .padding(.top, 15 * u)
                     HStack(alignment: .top, spacing: 10 * u) {
                         VStack(spacing: 7 * u) {
                             RoundButton(name: "menu", symbol: "chevron.left", help: "Back (Esc)", size: 30 * u, press: press)
-                            RoundButton(name: "play_pause", symbol: "playpause.fill", help: Keys.hint("Play/Pause (Space)", "sim_play_pause"), size: 30 * u, press: press)
-                            RoundButton(name: "mute", symbol: "speaker.slash.fill", help: Keys.hint("Mute", "sim_mute"), size: 30 * u, press: press)
+                            RoundButton(name: "play_pause", symbol: "playpause", help: Keys.hint("Play/Pause (Space)", "sim_play_pause"), size: 30 * u, press: press)
+                            RoundButton(name: "mute", symbol: "speaker.slash", help: Keys.hint("Mute", "sim_mute"), size: 30 * u, press: press)
                         }
                         VStack(spacing: 7 * u) {
                             RoundButton(name: "home", symbol: "tv", help: Keys.hint("TV", "sim_home"), size: 30 * u, press: press)
@@ -44,7 +44,7 @@ struct SiriRemote: View {
                 .frame(width: 88 * u)
                 // Siri, on the right side.
                 SideButton(width: 5 * u, height: 22 * u, press: press)
-                    .offset(x: 46.5 * u, y: 56 * u)
+                    .offset(x: 46.5 * u, y: 63 * u)
             }
             .frame(width: w, height: w / Self.aspect)
             .position(x: geo.size.width / 2, y: geo.size.height / 2)
