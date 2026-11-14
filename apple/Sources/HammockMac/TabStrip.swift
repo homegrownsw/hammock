@@ -67,6 +67,10 @@ struct TabStrip: View {
     @State private var dragStart = 0
     @State private var dragX: CGFloat = 0
     @State private var order: [String]?
+    /// Where the tabs in view start, for pinning the selected one: how far
+    /// they're scrolled, past the leading inset the scroll view is given
+    /// (the sidebar's width), which its offset counts from.
+    @State private var scrollX: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(SidebarHiding.key) private var sidebarHidden = false
 
@@ -87,14 +91,19 @@ struct TabStrip: View {
             // The tabs share the capsule equally, one filling it; at 130pt
             // each it scrolls instead.
             let width = max(130, (track - inset * 2) / CGFloat(max(tabs.count, 1)))
+            let selected = tabs.firstIndex { $0.id == model.selectedTabID }
+            let pinned = selected.map { pinnedX(of: $0, width: width, track: track) }
             HStack(spacing: gap) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
                             ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
                                 tabView(tab, width: width, divider: divides(after: i, in: tabs))
-                                    .offset(x: dragging == tab.id ? dragX - CGFloat(i) * width : 0)
-                                    .zIndex(dragging == tab.id ? 1 : 0)
+                                    // Under the selected tab pinned to an edge: faded out.
+                                    .opacity(i == selected || dragging != nil ? 1 : pinned.map { min(1, abs($0 - CGFloat(i) * width) / width) } ?? 1)
+                                    .offset(x: dragging == tab.id ? dragX - CGFloat(i) * width
+                                        : i == selected && dragging == nil ? (pinned ?? 0) - CGFloat(i) * width : 0)
+                                    .zIndex(dragging == tab.id ? 2 : i == selected ? 1 : 0)
                                     // The dragged tab stays under the pointer; the rest slide.
                                     .transaction { if dragging == tab.id { $0.animation = nil } }
                                     .gesture(
@@ -110,6 +119,7 @@ struct TabStrip: View {
                         // takes each new place, which threw the pointer off it.
                         .coordinateSpace(.named("tabStrip"))
                     }
+                    .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.x + $0.contentInsets.leading }) { _, x in scrollX = x }
                     .frame(width: track, height: height)
                     .background(Capsule().fill(trackColor))
                     .clipShape(Capsule())
@@ -214,6 +224,15 @@ struct TabStrip: View {
         }
     }
 
+    /// Where the selected tab (the `i`th) shows, measured as dragX is: in
+    /// its place, or scrolled out of sight, pinned to the edge it went past,
+    /// over the tabs there, so it's always in view.
+    private func pinnedX(of i: Int, width: CGFloat, track: CGFloat) -> CGFloat {
+        let x = CGFloat(i) * width
+        let lo = scrollX, hi = scrollX + track - inset * 2 - width
+        return hi < lo ? x : min(max(x, lo), hi)
+    }
+
     /// Whether a line separates the tab at `i` from the next: as in
     /// Terminal, only between two tabs that aren't selected, nor hovered or
     /// being dragged, whose pills would show the gap anyway.
@@ -264,3 +283,4 @@ struct TabStrip: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if dragging == nil, order == o { order = nil } }
     }
 }
+
