@@ -1,0 +1,48 @@
+# Weekly: opens an issue when a newer stable CEF (Chromium for browser panes) is out than the one
+# pinned in third_party/cef/VERSION. Chromium ships security fixes about weekly; `just cef-bump`
+# moves to the new build.
+name: cef-check
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for a newer CEF
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if out="$(scripts/cef-bump --check)"; then
+            echo "Up to date: $out"
+            exit 0
+          fi
+          latest="$(sed -n 's/^latest: //p' <<<"$out")"
+          pinned="$(sed -n 's/^pinned: //p' <<<"$out")"
+          chromium="${latest##*chromium-}"
+          title="Update CEF to Chromium $chromium"
+          if gh issue list --state open --search "\"Update CEF to Chromium\" in:title" --json title -q '.[].title' | grep -qxF "$title"; then
+            echo "Already open: $title"
+            exit 0
+          fi
+          body="$(printf '%s\n' \
+            "A newer stable CEF build is out for browser panes." \
+            "" \
+            "- Pinned: \`$pinned\`" \
+            "- Latest: \`$latest\`" \
+            "" \
+            "Chromium's stable updates are mostly security fixes. To update, in a worktree:" \
+            "" \
+            "1. \`just cef-bump\` (pins it, fetches it and regenerates the Acknowledgements)." \
+            "2. \`just beta\`, then the browser-panes checks in \`.claude/skills/verify-hammock/features/browser-panes.md\`, plus scrolling, pinch, a \`<select>\` and a right-click by hand (they rely on Chromium internals, ADR-0011)." \
+            "3. A FIXED release note for the Mac, and release." \
+            "" \
+            "Opened by the weekly \`cef-check\` workflow. An older issue like this one can be closed in favour of this.")"
+          gh issue create --type Task --title "$title" --body "$body" \
+            || gh issue create --title "$title" --body "$body"

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Moves browser panes to the newest stable CEF build (third_party/cef/VERSION), or checks for one.
+#   scripts/cef-bump            pin the latest stable macosarm64 build and regenerate the Acknowledgements
+#   scripts/cef-bump VERSION    pin that build instead (a cef_version from index.json)
+#   scripts/cef-bump --check    print the pinned and latest versions; exit 1 when a newer one is out
+# Chromium's stable channel ships security fixes about weekly, so keep up. Browser panes rely on
+# Chromium internals (ADR-0011): after a bump, run the browser-panes checks in
+# .claude/skills/verify-hammock/features/browser-panes.md on β before landing it.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+file="$root/third_party/cef/VERSION"
+index="https://cef-builds.spotifycdn.com/index.json"
+
+pinned="$(grep -v '^#' "$file" | sed -n 1p)"
+json="$(curl -fsSL "$index")"
+latest="$(jq -r '[.macosarm64.versions[] | select(.channel == "stable")][0].cef_version' <<<"$json")"
+[ -n "$latest" ] && [ "$latest" != null ] || { echo "No stable macosarm64 build in $index." >&2; exit 2; }
+
+if [ "${1:-}" = "--check" ]; then
+  echo "pinned: $pinned"
+  echo "latest: $latest"
+  [ "$pinned" = "$latest" ] && exit 0
+  exit 1
+fi
+
+want="${1:-$latest}"
+sha() { # file type
+  jq -r --arg v "$want" --arg t "$1" \
+    '.macosarm64.versions[] | select(.cef_version == $v) | .files[] | select(.type == $t) | .sha1' <<<"$json"
+}
+minimal="$(sha minimal)"
+client="$(sha client)"
+[ -n "$minimal" ] && [ -n "$client" ] || { echo "$want isn't a macosarm64 build in $index." >&2; exit 2; }
+if [ "$want" = "$pinned" ]; then
+  echo "Already on $want."
+  exit 0
+fi
+
+{
+  grep '^#' "$file"
+  printf '%s\n%s\n%s\n' "$want" "$minimal" "$client"
+} >"$file.tmp"
+mv "$file.tmp" "$file"
+echo "CEF: $pinned → $want"
+
+# Fetch and build the new CEF now (checks its checksum), and put its version in the Acknowledgements.
+cd "$root"
+just acknowledgements
+echo "Next: just beta, then the browser-panes checks (.claude/skills/verify-hammock/features/browser-panes.md)."

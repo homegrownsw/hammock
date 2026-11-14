@@ -118,6 +118,11 @@ unraid: (linux "amd64")
 browser:
     ./helpers/browser/build.sh
 
+# Pin the newest stable CEF build for browser panes (or VERSION), fetch it and regenerate the
+# Acknowledgements; `just cef-bump --check` only compares. Then test browser panes on β.
+cef-bump *args:
+    ./scripts/cef-bump {{args}}
+
 # Build the simulator panes' host into bin/Hammock Simulator.app.
 simulator:
     ./helpers/simulator/build.sh
