@@ -236,6 +236,7 @@ struct SidebarView: View {
                     // On another of your computers: yours to change, from here.
                     Button("Configure Group…") { TabSheets.shared.configuring = group }
                         .disabled(group.offline)
+                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                         .disabled(group.offline)
@@ -243,7 +244,6 @@ struct SidebarView: View {
                         .disabled(!group.canAddTabs)
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                         .disabled(group.offline)
-                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
                     if let c = model.computer(of: group) {
                         Button("Show Only \(c.name)") { withAnimation(.snappy(duration: 0.25)) { model.computerFilter = c.userID } }
@@ -251,11 +251,12 @@ struct SidebarView: View {
                     Button("Delete Group", role: .destructive) { CloseGuard.confirm(model, group: group) { Task { await model.deleteGroup(group.id) } } }
                         .disabled(group.offline)
                 } else if group.isRemote {
+                    OpenInNewWindowButton(model: model, subject: .group(group.id))
+                    Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                         .disabled(!group.canDrive || group.offline)
                     NewAgentTabItems(model: model, groupID: group.id, shortcuts: false)
                         .disabled(!group.canAddTabs)
-                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
                     Button("Leave Group", role: .destructive) { Task { await model.leave(group.id) } }
                 } else {
@@ -263,6 +264,8 @@ struct SidebarView: View {
                     if SharingUI.canShare(group) {
                         Button("Share…") { SharingUI.shared.shareGroup = group.id }
                     }
+                    Button("Change Folder…") { GroupFolder.choose(model, group) }
+                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                     NewAgentTabItems(model: model, groupID: group.id, shortcuts: false)
@@ -271,8 +274,6 @@ struct SidebarView: View {
                     }
                     Button("New Scheduled Task…") { ScheduleUI.shared.new(model, groupID: group.id) }
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
-                    Button("Change Folder…") { GroupFolder.choose(model, group) }
-                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
                     Button("Delete Group", role: .destructive) { CloseGuard.confirm(model, group: group) { Task { await model.deleteGroup(group.id) } } }
                 }
