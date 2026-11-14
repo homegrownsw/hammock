@@ -535,12 +535,8 @@ struct PaneView: View {
                     .background(.quaternary, in: Capsule())
                     .help("You can watch this Group; its host hasn't let you type")
             }
-            if agentCapable {
-                AgentViewToggle(paneID: paneID)
-            } else if isLog {
-                LogViewToggle(paneID: paneID)
-            }
-            ZoomButton(model: model, paneID: paneID)
+            // The pane's state comes before the buttons, so they stay put
+            // as it comes and goes.
             if let pane, pane.exited {
                 Text("Exited \(pane.exitStatus)")
                     .foregroundStyle(.secondary)
@@ -554,6 +550,12 @@ struct PaneView: View {
                 .foregroundStyle(pane.agent.state == .needsInput ? Color.orange : .secondary)
                 .fontWeight(pane.agent.state == .needsInput ? .semibold : .regular)
             }
+            if agentCapable {
+                AgentViewToggle(paneID: paneID)
+            } else if isLog {
+                LogViewToggle(paneID: paneID)
+            }
+            ZoomButton(model: model, paneID: paneID)
             PaneCloseButton(model: model, paneID: paneID)
         }
         .font(.callout)
