@@ -5,7 +5,10 @@ struct TabDetailView: View {
     let model: AppModel
     let tab: WorkspaceTab
 
-    @AppStorage(SidebarHiding.key) private var sidebarHidden = false
+    @AppStorage(SidebarHiding.key) private var storedSidebarHidden = false
+    @Environment(\.windowScope) private var scope
+    /// No sidebar beside the panes: hidden, or a window of its own without one.
+    private var sidebarHidden: Bool { scope.map { !$0.showsSidebar } ?? storedSidebarHidden }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,7 +116,9 @@ struct LayoutView: View {
     @State private var openClose = OpenCloseMotion()
     @State private var redraws = 0
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(SidebarHiding.key) private var sidebarHidden = false
+    @AppStorage(SidebarHiding.key) private var storedSidebarHidden = false
+    @Environment(\.windowScope) private var scope
+    private var sidebarHidden: Bool { scope.map { !$0.showsSidebar } ?? storedSidebarHidden }
 
     var body: some View {
         GeometryReader { geo in

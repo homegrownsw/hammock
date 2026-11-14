@@ -2428,6 +2428,18 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .sleepPane(newValue)}
   }
 
+  /// Show a pane, tab or Group in a window of its own in this Mac's app
+  /// (hmk window, MCP open_window): the same one as in the workspace, not
+  /// a copy. This Mac's app only; replies Ok, or an error when no app is
+  /// open to show it.
+  public var openWindow: Hammock_V1_OpenWindow {
+    get {
+      if case .openWindow(let v)? = msg {return v}
+      return Hammock_V1_OpenWindow()
+    }
+    set {msg = .openWindow(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2631,6 +2643,11 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     case holdPane(Hammock_V1_HoldPane)
     /// Put a pane's idle agent to sleep, or wake it (sleep.go). Replies Ok.
     case sleepPane(Hammock_V1_SleepPane)
+    /// Show a pane, tab or Group in a window of its own in this Mac's app
+    /// (hmk window, MCP open_window): the same one as in the workspace, not
+    /// a copy. This Mac's app only; replies Ok, or an error when no app is
+    /// open to show it.
+    case openWindow(Hammock_V1_OpenWindow)
 
   }
 
@@ -4040,6 +4057,15 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .agentAction(newValue)}
   }
 
+  /// to this Mac's app: show a pane, tab or Group in a window of its own
+  public var openWindow: Hammock_V1_OpenWindow {
+    get {
+      if case .openWindow(let v)? = msg {return v}
+      return Hammock_V1_OpenWindow()
+    }
+    set {msg = .openWindow(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -4139,6 +4165,8 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case repoInfo(Hammock_V1_RepoInfo)
     /// to this Mac's apps: an agent acting on a browser or simulator pane
     case agentAction(Hammock_V1_AgentAction)
+    /// to this Mac's app: show a pane, tab or Group in a window of its own
+    case openWindow(Hammock_V1_OpenWindow)
 
   }
 
@@ -6199,6 +6227,63 @@ public nonisolated struct Hammock_V1_SleepPane: Sendable {
   public var wake: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// A pane, tab or Group shown in a window of its own (Open in New Window).
+public nonisolated struct Hammock_V1_OpenWindow: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var kind: Hammock_V1_OpenWindow.Kind = .unspecified
+
+  public var id: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Kind: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case unspecified // = 0
+    case pane // = 1
+    case tab // = 2
+    case group // = 3
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .unspecified
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .pane
+      case 2: self = .tab
+      case 3: self = .group
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .pane: return 1
+      case .tab: return 2
+      case .group: return 3
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_OpenWindow.Kind] = [
+      .unspecified,
+      .pane,
+      .tab,
+      .group,
+    ]
+
+  }
 
   public init() {}
 }
@@ -12224,7 +12309,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -13845,6 +13930,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .sleepPane(v)
         }
       }()
+      case 136: try {
+        var v: Hammock_V1_OpenWindow?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .openWindow(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .openWindow(v)
+        }
+      }()
       default: break
       }
     }
@@ -14354,6 +14452,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .sleepPane?: try {
       guard case .sleepPane(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 135)
+    }()
+    case .openWindow?: try {
+      guard case .openWindow(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 136)
     }()
     case nil: break
     }
@@ -15887,7 +15989,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -16689,6 +16791,19 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .agentAction(v)
         }
       }()
+      case 71: try {
+        var v: Hammock_V1_OpenWindow?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .openWindow(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .openWindow(v)
+        }
+      }()
       default: break
       }
     }
@@ -16946,6 +17061,10 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
     case .agentAction?: try {
       guard case .agentAction(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 70)
+    }()
+    case .openWindow?: try {
+      guard case .openWindow(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 71)
     }()
     case nil: break
     }
@@ -20608,6 +20727,45 @@ nonisolated extension Hammock_V1_SleepPane: SwiftProtobuf.Message, SwiftProtobuf
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
+}
+
+nonisolated extension Hammock_V1_OpenWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".OpenWindow"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{1}id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.kind) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.kind != .unspecified {
+      try visitor.visitSingularEnumField(value: self.kind, fieldNumber: 1)
+    }
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_OpenWindow, rhs: Hammock_V1_OpenWindow) -> Bool {
+    if lhs.kind != rhs.kind {return false}
+    if lhs.id != rhs.id {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_OpenWindow.Kind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0KIND_UNSPECIFIED\0\u{1}KIND_PANE\0\u{1}KIND_TAB\0\u{1}KIND_GROUP\0")
 }
 
 nonisolated extension Hammock_V1_SimulatorCall: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

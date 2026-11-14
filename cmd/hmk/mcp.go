@@ -413,6 +413,11 @@ type arrangeArgs struct {
 	Direction string `json:"direction,omitempty" jsonschema:"dock: 'right' (default), 'down', 'left' or 'up' of beside_pane_id"`
 }
 
+type windowArgs struct {
+	Kind string `json:"kind" jsonschema:"'pane', 'tab' or 'group'"`
+	ID   string `json:"id,omitempty" jsonschema:"the pane, tab or Group's id; by default yours (the one your pane is in)"`
+}
+
 type sendArgs struct {
 	PaneID string   `json:"pane_id"`
 	Text   string   `json:"text,omitempty" jsonschema:"text to type into the pane"`
@@ -576,6 +581,43 @@ func (s *mcpServer) register(server *mcp.Server) {
 			return nil, nil, err
 		}
 		return textResult(map[string]string{"pane_id": a.PaneID, "done": a.Action}), nil, nil
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "open_window",
+		Description: "Show a pane, tab or Group in a window of its own in the user's Mac app, e.g. so they can share just that on a screen-sharing call. " +
+			"It's the same pane, tab or Group as in their workspace, not a copy; closing the window closes nothing.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a windowArgs) (*mcp.CallToolResult, any, error) {
+		kinds := map[string]pb.OpenWindow_Kind{"pane": pb.OpenWindow_KIND_PANE, "tab": pb.OpenWindow_KIND_TAB, "group": pb.OpenWindow_KIND_GROUP}
+		kind, ok := kinds[a.Kind]
+		if !ok {
+			return nil, nil, fmt.Errorf("unknown kind %q: pane, tab or group", a.Kind)
+		}
+		id := a.ID
+		if id == "" {
+			w, err := s.world(ctx)
+			if err != nil {
+				return nil, nil, err
+			}
+			me := w.panes[s.self]
+			if me == nil {
+				return nil, nil, errors.New("give the id: you're not in a pane")
+			}
+			switch kind {
+			case pb.OpenWindow_KIND_PANE:
+				id = me.Id
+			case pb.OpenWindow_KIND_TAB:
+				id = me.TabId
+			case pb.OpenWindow_KIND_GROUP:
+				if t := w.tabs[me.TabId]; t != nil {
+					id = t.GroupId
+				}
+			}
+		}
+		if _, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenWindow{OpenWindow: &pb.OpenWindow{Kind: kind, Id: id}}}); err != nil {
+			return nil, nil, err
+		}
+		return textResult(map[string]string{a.Kind: id, "done": "opened in a new window"}), nil, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{

@@ -197,6 +197,12 @@ public final class AppModel {
     @ObservationIgnored public var onJoinRequest: ((JoinRequest) -> Void)?
     /// Called when `hmk pair` (or the TUI) asks the Mac app to show its pairing code.
     @ObservationIgnored public var onShowPairing: (() -> Void)?
+    /// A tab just made (New Tab, Move to New Tab) is shown in the window it
+    /// was made from when that's a Group's own window (Mac): true when it
+    /// took it, and the workspace's selection stays as it was.
+    @ObservationIgnored public var showsTabElsewhere: ((_ tabID: String, _ groupID: String) -> Bool)?
+    /// hmk window / open_window: show a pane, tab or Group in a window of its own (Mac).
+    @ObservationIgnored public var onOpenWindow: ((Hammock_V1_OpenWindow) -> Void)?
     /// Called when another computer asks to link (its code to check).
     @ObservationIgnored public var onLinkRequest: ((LinkRequest) -> Void)?
     /// Called with a device's name when it pairs with this Mac.
@@ -474,6 +480,8 @@ public final class AppModel {
             #endif
         case .showPairing:
             onShowPairing?()
+        case .openWindow(let w):
+            onOpenWindow?(w)
         case .devicePaired(let p):
             onDevicePaired?(p.name)
         default:
@@ -1073,7 +1081,7 @@ public final class AppModel {
                 tabs[id] = stub
                 groups[gi].tabIds.append(id)
             }
-            selectedTabID = id
+            show(tab: id, in: groupID)
         }
         let created = await create(id)
         if created == id { return id }
@@ -1084,7 +1092,7 @@ public final class AppModel {
             if let gi = groups.firstIndex(where: { $0.id == groupID }) { groups[gi].tabIds.removeAll { $0 == id } }
         }
         if let created {
-            selectedTabID = created
+            show(tab: created, in: groupID)
             return created
         }
         if selectedTabID == id {
@@ -1340,9 +1348,17 @@ public final class AppModel {
     /// Moves a pane out of its tab into a new tab of its own, and shows it.
     @discardableResult
     public func breakOut(_ paneID: String) async -> String? {
+        let group = panes[paneID].flatMap { tabs[$0.tabID] }?.groupID ?? ""
         let id = await run { $0.breakOutPane = .with { $0.paneID = paneID } }?.created.id
-        if let id { selectedTabID = id }
+        if let id { show(tab: id, in: group) }
         return id
+    }
+
+    /// Selects a tab just made, or lets the window it was made from show it
+    /// (showsTabElsewhere).
+    private func show(tab id: String, in groupID: String) {
+        if showsTabElsewhere?(id, groupID) == true { return }
+        selectedTabID = id
     }
 
     /// Drives a browser pane: "load" (with url, as typed), "back", "forward",

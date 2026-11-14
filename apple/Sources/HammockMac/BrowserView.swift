@@ -13,7 +13,9 @@ import UniformTypeIdentifiers
 // dialogs, file pickers) is shown here instead. See docs/adr/0011.
 
 /// The app's one connection to the browser host. Each visible browser pane
-/// registers its view; messages for a pane go to its view.
+/// registers its view; messages for a pane go to its view. A pane shown in
+/// two windows (DetachedWindows) has its page in one of them, the one you
+/// were in last; the other view waits on standby, saying where it is.
 @MainActor
 final class BrowserHost {
     static let shared = BrowserHost()
@@ -24,6 +26,8 @@ final class BrowserHost {
     private var inbuf = Data()
     private var outbuf = Data()
     private var views: [String: BrowserPaneNSView] = [:]
+    /// Every view of a page, the one showing it and any on standby.
+    private let all = NSHashTable<BrowserPaneNSView>.weakObjects()
     private var retrying = false
 
     private var socketPath: String {
@@ -32,13 +36,33 @@ final class BrowserHost {
     }
 
     func register(_ v: BrowserPaneNSView) {
+        all.add(v)
+        // Already showing in another window, and this one isn't where you are: it waits.
+        if let shown = views[v.paneID], shown !== v, shown.window?.isVisible == true, v.window?.isKeyWindow != true {
+            v.standby = true
+            return
+        }
+        activate(v)
+    }
+
+    /// Shows the page in v (from standby: a click on it, or its window
+    /// coming to the front), the view that had it going on standby.
+    func activate(_ v: BrowserPaneNSView) {
+        if let shown = views[v.paneID], shown !== v { shown.standby = true }
         views[v.paneID] = v
+        v.standby = false
         if fd < 0 { connect() } else { v.hostConnected() }
     }
 
     func unregister(_ v: BrowserPaneNSView) {
+        all.remove(v)
         guard views[v.paneID] === v else { return }
         views[v.paneID] = nil
+        // Another window shows it: the page goes there.
+        if let next = all.allObjects.first(where: { $0.paneID == v.paneID && $0.window != nil }) {
+            activate(next)
+            return
+        }
         send(["t": "detach", "id": v.paneID])
     }
 
@@ -152,6 +176,23 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     var isFocusTarget = false {
         didSet { if isFocusTarget, !oldValue { focusSoon() } }
     }
+    /// The page is showing in another window (BrowserHost): this one says
+    /// so, and takes it back when clicked or its window comes to the front.
+    var standby = false {
+        didSet {
+            guard standby != oldValue else { return }
+            if standby {
+                let c = StandbyCover(frame: bounds)
+                c.autoresizingMask = [.width, .height]
+                addSubview(c)
+                cover = c
+            } else {
+                cover?.removeFromSuperview()
+                cover = nil
+            }
+        }
+    }
+    private var cover: NSView?
 
     private let container = CALayer()
     private var remote: CALayer?
@@ -316,8 +357,16 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
             })
         }
         for n in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-            observers.append(nc.addObserver(forName: n, object: w, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.keyChanged() }
+            observers.append(nc.addObserver(forName: n, object: w, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // On standby, its window coming to the front brings the page here.
+                    if self.standby {
+                        if note.name == NSWindow.didBecomeKeyNotification { self.host.activate(self) }
+                        return
+                    }
+                    self.keyChanged()
+                }
             })
         }
         host.register(self)
@@ -354,7 +403,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     /// anything Chromium places on screen (IME candidates) lands in the right
     /// place, at the pane's size.
     func sendGeometry() {
-        guard let w = window, bounds.width > 0, bounds.height > 0 else { return }
+        guard !standby, let w = window, bounds.width > 0, bounds.height > 0 else { return }
         let r = w.convertToScreen(convert(bounds, to: nil))
         let g: [String: Any] = ["t": "geom", "id": paneID, "x": r.origin.x, "y": r.origin.y, "w": r.width, "h": r.height, "wid": w.windowNumber]
         guard !NSDictionary(dictionary: g).isEqual(to: lastGeometry) else { return }
@@ -363,6 +412,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     }
 
     private func sendFocus(_ on: Bool) {
+        guard !standby else { return }
         host.send(["t": "focus", "id": paneID, "on": on && window?.isKeyWindow == true])
     }
 
@@ -383,13 +433,18 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     // MARK: Input
 
     private func forward(_ e: NSEvent, at p: NSPoint, ops: [[String: Any]] = []) {
-        guard let cg = e.cgEvent, let d = cg.data as Data? else { return }
+        guard !standby, let cg = e.cgEvent, let d = cg.data as Data? else { return }
         host.send(["t": "ev", "id": paneID, "cg": d.base64EncodedString(), "x": p.x, "y": bounds.height - p.y, "ops": ops])
     }
 
     private func fwd(_ e: NSEvent) { forward(e, at: convert(e.locationInWindow, from: nil)) }
 
-    override func mouseDown(with e: NSEvent) { window?.makeFirstResponder(self); dragEvent = e; fwd(e) }
+    override func mouseDown(with e: NSEvent) {
+        window?.makeFirstResponder(self)
+        if standby { host.activate(self); return } // the page comes here
+        dragEvent = e
+        fwd(e)
+    }
     override func mouseUp(with e: NSEvent) { dragEvent = nil; fwd(e) }
     override func mouseDragged(with e: NSEvent) { dragEvent = e; fwd(e) }
     override func mouseMoved(with e: NSEvent) { fwd(e); cursor.set() }
@@ -438,7 +493,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     /// ⌘[ and ⌘] are back and forward only while no shortcut has them: by
     /// default they're Previous and Next Pane, which must not stop here.
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
-        guard window?.firstResponder === self, e.type == .keyDown else { return false }
+        guard !standby, window?.firstResponder === self, e.type == .keyDown else { return false }
         let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = e.charactersIgnoringModifiers?.lowercased() ?? ""
         let action = Keys.action(for: e)
@@ -776,7 +831,36 @@ extension BrowserCommand {
     /// The menu bar and palette's way to the focused browser pane (its
     /// command in userInfo["command"]).
     static let notification = Notification.Name("HammockBrowserCommand")
-    func post() { NotificationCenter.default.post(name: Self.notification, object: nil, userInfo: ["command": rawValue]) }
+    /// For the focused pane in the window you're in (one of its own, or the main one).
+    @MainActor func post() {
+        NotificationCenter.default.post(name: Self.notification, object: nil,
+                                        userInfo: ["command": rawValue, "window": DetachedWindows.shared.keyScope?.id.uuidString ?? ""])
+    }
+}
+
+/// Over a browser pane whose page is in another window (BrowserHost).
+private final class StandbyCover: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.85).cgColor
+        let title = NSTextField(labelWithString: "Showing in another window")
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        let hint = NSTextField(labelWithString: "Click to show it here")
+        hint.font = .systemFont(ofSize: 13)
+        hint.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [title, hint])
+        stack.orientation = .vertical
+        stack.spacing = 4
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor), stack.centerYAnchor.constraint(equalTo: centerYAnchor)])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // Clicks reach the pane under it, which takes the page back.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 // MARK: - SwiftUI
@@ -818,6 +902,7 @@ struct BrowserPaneView: View {
     @State private var matches = 0
     @State private var activeMatch = 0
     @FocusState private var findFocused: Bool
+    @Environment(\.windowScope) private var windowScope
 
     private var pane: Pane? { model.panes[paneID] }
     private var pageURL: String { pane.map { $0.url == "about:blank" ? "" : $0.url } ?? "" }
@@ -844,6 +929,8 @@ struct BrowserPaneView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: BrowserCommand.notification)) { n in
+            // Only in the window it was meant for (the pane may show in two).
+            guard (n.userInfo?["window"] as? String ?? "") == (windowScope?.id.uuidString ?? "") else { return }
             guard isFocused, let raw = n.userInfo?["command"] as? String, let c = BrowserCommand(rawValue: raw) else { return }
             run(c)
         }

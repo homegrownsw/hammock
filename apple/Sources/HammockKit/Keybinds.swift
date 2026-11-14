@@ -191,7 +191,7 @@ public struct KeybindAction: Identifiable, Hashable, Sendable {
 /// Every action a shortcut can be given, in menu order. Settings lists them;
 /// `Keys` (the Mac app) binds them.
 public enum Keybinds {
-    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Simulator", "Editor", "Help"]
+    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Window", "Simulator", "Editor", "Help"]
 
     /// Groups whose actions only apply with that kind of pane focused: two
     /// of them can share a shortcut (⌘S saves a file, or screenshots a simulator).
@@ -292,6 +292,10 @@ public enum Keybinds {
             .init("toggle_floats", "Show or Hide Floating Panes", "Floating Panes", c("j"), "float overlay toggle"),
             .init("float_or_dock", "Float or Dock Pane", "Floating Panes", c("j", cs), "float overlay"),
             .init("minimise_float", "Minimise Floating Pane", "Floating Panes", c("m", cc), "minimize float hide"),
+            // Window: a tab, Group or pane in a window of its own (DetachedWindows.swift).
+            .init("open_tab_in_new_window", "Open Tab in New Window", "Window", nil, "detach pop out separate screen share present mirror"),
+            .init("open_group_in_new_window", "Open Group in New Window", "Window", nil, "detach pop out separate screen share present mirror"),
+            .init("open_pane_in_new_window", "Open Pane in New Window", "Window", nil, "detach pop out separate screen share present mirror"),
             // Simulator (only with one focused: ⌘← and ⌘→ are the terminal's otherwise)
             .init("sim_home", "Home", "Simulator", c("h", cs), "ios iphone button"),
             .init("sim_lock", "Lock", "Simulator", c("l"), "ios iphone sleep power button"),

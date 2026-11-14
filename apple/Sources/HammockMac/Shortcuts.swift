@@ -103,6 +103,11 @@ enum Keys {
     static var floatOrDock: KeyboardShortcut? { shortcut("float_or_dock") }
     static var minimiseFloat: KeyboardShortcut? { shortcut("minimise_float") }
 
+    // Window
+    static var openTabInNewWindow: KeyboardShortcut? { shortcut("open_tab_in_new_window") }
+    static var openGroupInNewWindow: KeyboardShortcut? { shortcut("open_group_in_new_window") }
+    static var openPaneInNewWindow: KeyboardShortcut? { shortcut("open_pane_in_new_window") }
+
     // Simulator (only with one focused: ⌘← and ⌘→ are the terminal's otherwise)
     static var simHome: KeyboardShortcut? { shortcut("sim_home") }
     static var simLock: KeyboardShortcut? { shortcut("sim_lock") }

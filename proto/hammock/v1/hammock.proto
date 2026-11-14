@@ -580,6 +580,11 @@ message ClientMessage {
     HoldPane hold_pane = 134;
     // Put a pane's idle agent to sleep, or wake it (sleep.go). Replies Ok.
     SleepPane sleep_pane = 135;
+    // Show a pane, tab or Group in a window of its own in this Mac's app
+    // (hmk window, MCP open_window): the same one as in the workspace, not
+    // a copy. This Mac's app only; replies Ok, or an error when no app is
+    // open to show it.
+    OpenWindow open_window = 136;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -859,6 +864,7 @@ message ServerMessage {
     ReviewReply review_reply = 68;                  // reply to ReviewCommand
     RepoInfo repo_info = 69;                        // reply to ReadRepo
     AgentAction agent_action = 70;                  // to this Mac's apps: an agent acting on a browser or simulator pane
+    OpenWindow open_window = 71;                    // to this Mac's app: show a pane, tab or Group in a window of its own
   }
 }
 
@@ -1472,6 +1478,18 @@ message HoldPane { string pane_id = 1; bool held = 2; }
 // Put the pane's agent to sleep (its process ended, its session resumed
 // when it's woken), or with wake, wake it now.
 message SleepPane { string pane_id = 1; bool wake = 2; }
+
+// A pane, tab or Group shown in a window of its own (Open in New Window).
+message OpenWindow {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_PANE = 1;
+    KIND_TAB = 2;
+    KIND_GROUP = 3;
+  }
+  Kind kind = 1;
+  string id = 2;
+}
 
 // Simulator panes (the Hammock Simulator helper). Ops:
 //   devices                       the simulators on this Mac (no pane needed)

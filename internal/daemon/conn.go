@@ -797,6 +797,13 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		defer d.mu.Unlock()
 		return nil, d.holdPane(m.HoldPane)
 
+	case *pb.ClientMessage_OpenWindow:
+		// Open in New Window (window.go): you, or an agent showing you
+		// something of its own (agentCheck).
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return nil, d.openWindow(m.OpenWindow)
+
 	case *pb.ClientMessage_ReadDiffFile:
 		t, err := d.diffs.readFile(m.ReadDiffFile)
 		if err != nil {
@@ -1853,7 +1860,8 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_ShowPairing, *pb.ClientMessage_ListDevices, *pb.ClientMessage_RevokeDevice, *pb.ClientMessage_SetRemoteAccess, *pb.ClientMessage_SetRemoteNetworks,
 		*pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_ListAudit, *pb.ClientMessage_BrowserCall, *pb.ClientMessage_BrowserLogs,
 		*pb.ClientMessage_ServerStatus, *pb.ClientMessage_EndScreenSession,
-		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup, *pb.ClientMessage_ConfigWritten, *pb.ClientMessage_HoldPane:
+		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup, *pb.ClientMessage_ConfigWritten, *pb.ClientMessage_HoldPane,
+		*pb.ClientMessage_OpenWindow:
 		return nil, errors.New("only available on this Mac"), true
 	case *pb.ClientMessage_CreateInvite, *pb.ClientMessage_RevokeInvite, *pb.ClientMessage_StopSharing,
 		*pb.ClientMessage_SetProfile, *pb.ClientMessage_JoinShared, *pb.ClientMessage_LeaveShared:

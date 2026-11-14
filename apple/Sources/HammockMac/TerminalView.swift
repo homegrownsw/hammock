@@ -4,6 +4,60 @@ import Metal
 import QuartzCore
 import SwiftUI
 
+/// Which window sets a pane's terminal size when more than one shows it (a
+/// window of its own, DetachedWindows): the one you were in last. The
+/// other draws it at that size.
+@MainActor
+enum TerminalDrivers {
+    private static let views = NSHashTable<TerminalNSView>.weakObjects()
+    /// The window (number) sizing each pane shown in more than one.
+    private static var driver: [String: Int] = [:]
+    private static var observer: NSObjectProtocol?
+
+    static func track(_ v: TerminalNSView) {
+        views.add(v)
+        guard observer == nil else { return }
+        // A window coming to the front sizes the panes it shows.
+        observer = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { n in
+            MainActor.assumeIsolated {
+                guard let w = n.object as? NSWindow else { return }
+                for v in views.allObjects where v.window === w {
+                    guard let id = v.session?.paneID, driver[id] != w.windowNumber, others(of: id, besides: w) else { continue }
+                    driver[id] = w.windowNumber
+                    v.forceGridReport()
+                }
+            }
+        }
+    }
+
+    /// Whether another window shows the pane too.
+    private static func others(of id: String, besides w: NSWindow) -> Bool {
+        views.allObjects.contains { $0.session?.paneID == id && $0.window != nil && $0.window !== w }
+    }
+
+    static func mayResize(_ v: TerminalNSView) -> Bool {
+        guard let id = v.session?.paneID, let w = v.window else { return true }
+        if let d = driver[id], d != w.windowNumber,
+           views.allObjects.contains(where: { $0.session?.paneID == id && $0.window?.windowNumber == d && $0.window?.isVisible == true }) {
+            return false
+        }
+        driver[id] = w.windowNumber
+        return true
+    }
+
+    /// A view going (its window closed, its tab left): another window
+    /// showing the pane sizes it now.
+    static func leaving(_ v: TerminalNSView) {
+        guard let id = v.session?.paneID, let w = v.window, driver[id] == w.windowNumber else { return }
+        let rest = views.allObjects.filter { $0 !== v && $0.session?.paneID == id && $0.window != nil }
+        guard !rest.contains(where: { $0.window === w }) else { return }
+        driver[id] = nil
+        DispatchQueue.main.async {
+            if let next = rest.first(where: { $0.window?.isKeyWindow == true }) ?? rest.first(where: { $0.window != nil }) { next.forceGridReport() }
+        }
+    }
+}
+
 /// Draws a pane's TerminalEngine (with Metal, or CoreGraphics) and turns keyboard/mouse input
 /// into PTY bytes. Purely a view: all terminal state comes from the daemon.
 final class TerminalNSView: NSView {
@@ -302,6 +356,7 @@ final class TerminalNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        TerminalDrivers.track(self)
         registerForDraggedTypes(Self.dropTypes)
         reportGrid()
         if isFocusTarget { focusSoon() }
@@ -316,6 +371,7 @@ final class TerminalNSView: NSView {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { TerminalDrivers.leaving(self) }
         blinkTimer?.invalidate()
         blinkTimer = nil
         guard newWindow != nil else { return }
@@ -366,7 +422,8 @@ final class TerminalNSView: NSView {
         let rows = max(Int((size.height - padding * 2) / cellHeight), 1)
         if cols != lastGrid.cols || rows != lastGrid.rows {
             lastGrid = (cols, rows)
-            onResize?(cols, rows)
+            // Shown in two windows: only the one you were in last sizes it.
+            if TerminalDrivers.mayResize(self) { onResize?(cols, rows) }
         }
     }
 

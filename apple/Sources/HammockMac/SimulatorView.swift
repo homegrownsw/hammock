@@ -9,7 +9,9 @@ import SwiftUI
 // IOSurface. This file shows it through CALayerHost, scaled to fit, and
 // sends the mouse and keyboard back as touches and typing.
 
-/// The app's one connection to the simulator host.
+/// The app's one connection to the simulator host. A pane can show in
+/// two windows at once (DetachedWindows): what the host says about it
+/// goes to each, and it's let go when the last one goes.
 @MainActor
 final class SimulatorHost {
     static let shared = SimulatorHost()
@@ -17,8 +19,10 @@ final class SimulatorHost {
     private var fd: Int32 = -1
     private var readSource: DispatchSourceRead?
     private var inbuf = Data()
-    private var views: [String: SimulatorPaneNSView] = [:]
+    private var views: [String: NSHashTable<SimulatorPaneNSView>] = [:]
     private var retrying = false
+
+    private func shown(_ id: String) -> [SimulatorPaneNSView] { views[id]?.allObjects ?? [] }
 
     private var socketPath: String {
         ((DaemonConnection.defaultSocketPath as NSString).deletingLastPathComponent as NSString)
@@ -26,12 +30,17 @@ final class SimulatorHost {
     }
 
     func register(_ v: SimulatorPaneNSView) {
-        views[v.paneID] = v
+        let set = views[v.paneID] ?? .weakObjects()
+        set.add(v)
+        views[v.paneID] = set
+        // Again for a second view: the host tells it the screen and state.
         if fd < 0 { connect() } else { send(["t": "attach", "id": v.paneID]) }
     }
 
     func unregister(_ v: SimulatorPaneNSView) {
-        guard views[v.paneID] === v else { return }
+        guard let set = views[v.paneID], set.contains(v) else { return }
+        set.remove(v)
+        guard set.allObjects.isEmpty else { return }
         views[v.paneID] = nil
         send(["t": "detach", "id": v.paneID])
     }
@@ -61,7 +70,7 @@ final class SimulatorHost {
         src.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.readable() } }
         src.resume()
         readSource = src
-        for id in views.keys { send(["t": "attach", "id": id]) }
+        for (id, set) in views where !set.allObjects.isEmpty { send(["t": "attach", "id": id]) }
     }
 
     private func retry() {
@@ -84,7 +93,7 @@ final class SimulatorHost {
             readSource = nil
             close(fd)
             fd = -1
-            for v in views.values { v.hostLost() }
+            for set in views.values { for v in set.allObjects { v.hostLost() } }
             retry()
             return
         }
@@ -95,8 +104,8 @@ final class SimulatorHost {
             guard let m = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
             if m["t"] as? String == "copyResult", let seq = (m["seq"] as? NSNumber)?.intValue {
                 copies.removeValue(forKey: seq)?(m["text"] as? String ?? "")
-            } else if let id = m["id"] as? String, let v = views[id] {
-                v.handle(m)
+            } else if let id = m["id"] as? String {
+                for v in shown(id) { v.handle(m) }
             }
         }
     }

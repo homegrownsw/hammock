@@ -68,7 +68,7 @@ final class EditorUI {
             guard r == .OK else { return }
             for url in panel.urls { self.open(model, url.path, groupID: g.id, replacePane: replacePane) }
         }
-        if let w = WorkspaceWindow.window { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
+        if let w = WorkspaceWindow.current { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
     }
 
     func open(_ model: AppModel, _ path: String, groupID: String?, splitPane: String? = nil, direction: SplitDirection = .horizontal,
@@ -158,7 +158,7 @@ final class EditorUI {
             // The panel asked about replacing already.
             Task { await self.save(s, as: url.path, name: url.lastPathComponent, force: true) }
         }
-        if let w = WorkspaceWindow.window { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
+        if let w = WorkspaceWindow.current { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
     }
 
     func reload(_ model: AppModel, _ paneID: String) {

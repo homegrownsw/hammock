@@ -243,6 +243,7 @@ struct SidebarView: View {
                         .disabled(!group.canAddTabs)
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                         .disabled(group.offline)
+                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
                     if let c = model.computer(of: group) {
                         Button("Show Only \(c.name)") { withAnimation(.snappy(duration: 0.25)) { model.computerFilter = c.userID } }
@@ -254,6 +255,7 @@ struct SidebarView: View {
                         .disabled(!group.canDrive || group.offline)
                     Button("New Agent Tab…") { AgentLauncher.shared.open(model, groupID: group.id) }
                         .disabled(!group.canAddTabs)
+                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
                     Button("Leave Group", role: .destructive) { Task { await model.leave(group.id) } }
                 } else {
@@ -270,6 +272,7 @@ struct SidebarView: View {
                     Button("New Scheduled Task…") { ScheduleUI.shared.new(model, groupID: group.id) }
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                     Button("Change Folder…") { GroupFolder.choose(model, group) }
+                    OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
                     Button("Delete Group", role: .destructive) { CloseGuard.confirm(model, group: group) { Task { await model.deleteGroup(group.id) } } }
                 }

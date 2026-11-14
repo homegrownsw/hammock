@@ -27,6 +27,8 @@ final class PaletteState {
     /// The finder shows only the sessions in the folders open in
     /// sessionGroupID (a Group's "Resume a Session…"), until it's cleared.
     var sessionsInGroup = false
+    /// The window of its own it opened in (DetachedWindows), or nil: the main window's.
+    var window: UUID?
     func toggle() { open(.commands) }
     /// Opens in mode (for group or computer), or closes if it's already
     /// showing just that; asked for another computer's or Group's sessions,
@@ -40,6 +42,7 @@ final class PaletteState {
         sessionGroupID = group
         sessionComputerID = computer
         sessionsInGroup = inGroup && group != nil
+        window = DetachedWindows.shared.keyScope?.id
         isOpen = true
     }
 }
@@ -176,6 +179,16 @@ struct CommandPalette: View {
         action("new-tab", "New Tab", "plus.square", .blue, "create", keys: Keys.newTab) { if let group { Task { await model.createTab(in: group) } } }
         action("new-browser-tab", "New Browser Tab", "globe", .blue, "create web", keys: Keys.newBrowserTab) { if let group { Task { await model.createBrowserTab(in: group) } } }
         action("reopen-closed", "Reopen Closed Tab or Pane", "arrow.uturn.backward", .blue, "undo close restore", keys: Keys.reopenClosed) { Task { await model.reopenClosed() } }
+        if let tab = model.selectedTab {
+            action("open-tab-window", "Open Tab in New Window", "macwindow.badge.plus", .blue, "detach pop out separate screen share present mirror window", keys: Keys.openTabInNewWindow) {
+                DetachedWindows.shared.open(.tab(tab.id), model: model)
+            }
+        }
+        if let group {
+            action("open-group-window", "Open Group in New Window", "macwindow.badge.plus", .blue, "detach pop out separate screen share present mirror window", keys: Keys.openGroupInNewWindow) {
+                DetachedWindows.shared.open(.group(group), model: model)
+            }
+        }
         action("toggle-sidebar", UserDefaults.standard.bool(forKey: SidebarHiding.key) ? "Show Sidebar" : "Hide Sidebar", "sidebar.left", .gray, "hide show toggle peek", keys: Keys.toggleSidebar) { SidebarHiding.toggle() }
         action("editor-wrap", Prefs.shared.bool(.editorWrap) ? "Stop Wrapping Lines in Editors" : "Wrap Lines in Editors", "text.word.spacing", .indigo, "text word soft wrap long lines editor", keys: Keys.editorWrap) { Prefs.shared.toggle(.editorWrap) }
         action("new-agent-tab", "New Agent Tab…", "sparkles", .orange, "start claude codex agent session launch", keys: Keys.newAgentTab) {
@@ -518,6 +531,9 @@ struct CommandPalette: View {
                     FloatMotion.shared.toggleAll(model, tab)
                 }
             }
+            action("open-pane-window", "Open Pane in New Window", "macwindow.badge.plus", .teal, "detach pop out separate screen share present mirror window", keys: Keys.openPaneInNewWindow) {
+                DetachedWindows.shared.open(.pane(focused), model: model)
+            }
             action("close-pane", "Close Pane", "xmark.square", .red, "close", keys: Keys.closePane ?? (closeKey == "pane" ? Keys.close : nil)) { CloseGuard.confirm(model, panes: [focused]) { Task { await model.closePane(focused) } } }
         }
         if let tab = model.selectedTab {
@@ -570,7 +586,7 @@ struct CommandPalette: View {
             let s = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { SharingUI.shared.joinLink = s.hasPrefix("hammock://join/") ? s : "" }
         }
-        action("close-window", "Close Window", "xmark.square", .red, "close", keys: Keys.closeWindow) { WorkspaceWindow.window?.performClose(nil) }
+        action("close-window", "Close Window", "xmark.square", .red, "close", keys: Keys.closeWindow) { WorkspaceWindow.current?.performClose(nil) }
         action("welcome", "Welcome to Hammock…", "hand.wave", .orange, "onboarding help tour introduction", keys: Keys.welcome) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { Onboarding.shared.show() }
         }

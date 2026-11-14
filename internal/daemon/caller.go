@@ -833,6 +833,21 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 			return nil
 		}
 		return errAgentScope
+	case *pb.ClientMessage_OpenWindow:
+		// Showing you something in a window of its own: what it may read.
+		switch m.OpenWindow.Kind {
+		case pb.OpenWindow_KIND_PANE:
+			return read(m.OpenWindow.Id)
+		case pb.OpenWindow_KIND_TAB:
+			if ownTab(m.OpenWindow.Id) {
+				return nil
+			}
+		case pb.OpenWindow_KIND_GROUP:
+			if ownGroup(m.OpenWindow.Id) {
+				return nil
+			}
+		}
+		return errAgentScope
 	case *pb.ClientMessage_RenameGroup:
 		if ownGroup(m.RenameGroup.GroupId) {
 			return nil

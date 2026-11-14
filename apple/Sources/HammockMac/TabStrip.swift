@@ -72,7 +72,17 @@ struct TabStrip: View {
     /// (the sidebar's width), which its offset counts from.
     @State private var scrollX: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(SidebarHiding.key) private var sidebarHidden = false
+    @AppStorage(SidebarHiding.key) private var storedSidebarHidden = false
+    /// In a Group's window of its own: its tabs, its selection.
+    @Environment(\.windowScope) private var scope
+    private var sidebarHidden: Bool { scope.map { !$0.showsSidebar } ?? storedSidebarHidden }
+    private var selectedTabID: String? { scope.map { $0.tab(in: model)?.id } ?? model.selectedTabID }
+
+    private func select(_ tab: WorkspaceTab) {
+        guard let scope else { model.selectedTabID = tab.id; return }
+        scope.selectedTabID = tab.id
+        model.focus(tab.focusedPaneID)
+    }
 
     /// The capsule the tabs sit in, and the + beside it.
     private let height: CGFloat = 28
@@ -91,7 +101,7 @@ struct TabStrip: View {
             // The tabs share the capsule equally, one filling it; at 130pt
             // each it scrolls instead.
             let width = max(130, (track - inset * 2) / CGFloat(max(tabs.count, 1)))
-            let selected = tabs.firstIndex { $0.id == model.selectedTabID }
+            let selected = tabs.firstIndex { $0.id == selectedTabID }
             let pinned = selected.map { pinnedX(of: $0, width: width, track: track) }
             HStack(spacing: gap) {
                 ScrollViewReader { proxy in
@@ -126,7 +136,7 @@ struct TabStrip: View {
                     // The selected tab kept in view: another in this Group,
                     // a glide to it; a Group opened (or the strip shown),
                     // straight there, once its tabs are laid out.
-                    .onChange(of: [group.id, model.selectedTabID ?? ""], initial: true) { old, new in
+                    .onChange(of: [group.id, selectedTabID ?? ""], initial: true) { old, new in
                         let id = new[1]
                         guard !id.isEmpty else { return }
                         if old[0] == new[0] && old != new {
@@ -165,7 +175,7 @@ struct TabStrip: View {
 
     @ViewBuilder
     private func tabView(_ tab: WorkspaceTab, width: CGFloat, divider: Bool) -> some View {
-        let selected = model.selectedTabID == tab.id
+        let selected = selectedTabID == tab.id
         let hover = hovered == tab.id && dragging == nil
         ZStack {
             HStack(spacing: 6) {
@@ -216,7 +226,7 @@ struct TabStrip: View {
                 .opacity(divider ? 1 : 0)
         }
         .contentShape(Capsule())
-        .onTapGesture { model.selectedTabID = tab.id }
+        .onTapGesture { select(tab) }
         .onHover { hovered = $0 && dragging == nil ? tab.id : (hovered == tab.id ? nil : hovered) }
         .tooltip(model.title(of: tab))
         .contextMenu {
@@ -239,7 +249,7 @@ struct TabStrip: View {
     private func divides(after i: Int, in tabs: [WorkspaceTab]) -> Bool {
         guard i + 1 < tabs.count else { return false }
         return [tabs[i].id, tabs[i + 1].id].allSatisfy { id in
-            id != model.selectedTabID && id != dragging && (id != hovered || dragging != nil)
+            id != selectedTabID && id != dragging && (id != hovered || dragging != nil)
         }
     }
 

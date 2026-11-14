@@ -41,7 +41,12 @@ struct HammockApp: App {
         }
         m.onDevicePaired = { name in Notifier.shared.notifyPaired(name) }
         m.onResolved = { ids in Notifier.shared.withdraw(ids) }
-        m.onFullState = { Notifier.shared.reconcile(m) }
+        m.onFullState = {
+            Notifier.shared.reconcile(m)
+            // Windows of their own open when Hammock last quit, now their tabs are here.
+            DetachedWindows.shared.restoreOnce(m)
+        }
+        DetachedWindows.shared.attach(m)
         // Run from outside Applications, the app first asks to move there
         // (AppMover, at launch), so no daemon starts from a copy about to go.
         if AppMover.shouldOffer { AppMover.deferredStart = { m.start() } } else { m.start() }
@@ -79,7 +84,8 @@ struct HammockApp: App {
                 .background(WorkspaceWindow())
                 .background(SettingsOpener())
                 .overlay {
-                    if PaletteState.shared.isOpen {
+                    // (One opened in a window of its own shows there: DetachedWindowView.)
+                    if PaletteState.shared.isOpen, PaletteState.shared.window == nil {
                         if PaletteState.shared.mode == .sessions { SessionFinder(model: model) } else { CommandPalette(model: model) }
                     }
                 }
@@ -177,9 +183,9 @@ struct HammockApp: App {
                 Button("Join Shared Group…") { SharingUI.shared.joinLink = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("hammock://join/") == true ? NSPasteboard.general.string(forType: .string)!.trimmingCharacters(in: .whitespacesAndNewlines) : "" }
                     .keyboardShortcut(Keys.joinSharedGroup)
                 Divider()
-                Button("Rename Tab…") { if let tab = model.selectedTab { TabSheets.shared.rename(tab) } }
+                Button("Rename Tab…") { if let tab = shownTab { TabSheets.shared.rename(tab) } }
                     .keyboardShortcut(Keys.renameTab)
-                    .disabled(model.selectedTab == nil)
+                    .disabled(shownTab == nil)
                 Button("Configure Group…") { if let g = currentGroup { TabSheets.shared.configuring = g } }
                     .keyboardShortcut(Keys.configureGroup)
                     .disabled(!(currentGroup.map(TabSheets.canConfigure) ?? false))
@@ -290,13 +296,13 @@ struct HammockApp: App {
                         .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
                 }
                 Divider()
-                Button("Next Tab") { model.cycleTab(by: 1) }.keyboardShortcut(Keys.nextTab)
-                Button("Previous Tab") { model.cycleTab(by: -1) }.keyboardShortcut(Keys.previousTab)
-                Button("Next Group") { model.cycleGroup(by: 1) }.keyboardShortcut(Keys.nextGroup)
-                Button("Previous Group") { model.cycleGroup(by: -1) }.keyboardShortcut(Keys.previousGroup)
+                Button("Next Tab") { cycleTab(by: 1) }.keyboardShortcut(Keys.nextTab)
+                Button("Previous Tab") { cycleTab(by: -1) }.keyboardShortcut(Keys.previousTab)
+                Button("Next Group") { if keyScope == nil { model.cycleGroup(by: 1) } }.keyboardShortcut(Keys.nextGroup)
+                Button("Previous Group") { if keyScope == nil { model.cycleGroup(by: -1) } }.keyboardShortcut(Keys.previousGroup)
                 Divider()
                 ForEach(0..<9) { i in
-                    Button("Tab \(i + 1)") { model.selectTab(at: i) }.keyboardShortcut(Keys.tab(i))
+                    Button("Tab \(i + 1)") { selectTab(at: i) }.keyboardShortcut(Keys.tab(i))
                 }
                 Divider()
                 Menu("Theme") {
@@ -317,14 +323,27 @@ struct HammockApp: App {
                 Button("Smaller") { TerminalFont.zoom(by: -1) }.keyboardShortcut(Keys.smaller)
                 Button("Actual Size") { TerminalFont.zoom(by: 0) }.keyboardShortcut(Keys.actualSize)
             }
+            CommandGroup(before: .windowArrangement) {
+                // A tab, Group or pane in a window of its own (DetachedWindows).
+                Button("Open Tab in New Window") { openInNewWindow("tab") }
+                    .keyboardShortcut(Keys.openTabInNewWindow)
+                    .disabled(shownTab == nil)
+                Button("Open Group in New Window") { openInNewWindow("group") }
+                    .keyboardShortcut(Keys.openGroupInNewWindow)
+                    .disabled(currentGroup == nil)
+                Button("Open Pane in New Window") { openInNewWindow("pane") }
+                    .keyboardShortcut(Keys.openPaneInNewWindow)
+                    .disabled(focused == nil)
+                Divider()
+            }
             CommandGroup(after: .help) {
                 Button("Hammock Documentation") { NSWorkspace.shared.open(HammockLinks.docs) }.keyboardShortcut(Keys.documentation)
                 Button("Welcome to Hammock…") { Onboarding.shared.show() }.keyboardShortcut(Keys.welcome)
                 Button("Acknowledgements") { AcknowledgementsUI.shared.show() }.keyboardShortcut(Keys.acknowledgements)
             }
             CommandMenu("Pane") {
-                Button("Next Pane") { model.cyclePane(by: 1) }.keyboardShortcut(Keys.nextPane)
-                Button("Previous Pane") { model.cyclePane(by: -1) }.keyboardShortcut(Keys.previousPane)
+                Button("Next Pane") { cyclePane(by: 1) }.keyboardShortcut(Keys.nextPane)
+                Button("Previous Pane") { cyclePane(by: -1) }.keyboardShortcut(Keys.previousPane)
                 Divider()
                 Button("Split Right") { split(.horizontal) }.keyboardShortcut(Keys.splitRight)
                 Button("Split Down") { split(.vertical) }.keyboardShortcut(Keys.splitDown)
@@ -419,10 +438,10 @@ struct HammockApp: App {
                     if let id = focused { PaneZoom.shared.toggle(id, model: model) }
                 }
                 .keyboardShortcut(Keys.zoomPane)
-                .disabled(focused.flatMap { model.floating($0) } == nil && (model.selectedTab.map { AppModel.paneIDs($0.layout).count < 2 } ?? true))
+                .disabled(focused.flatMap { model.floating($0) } == nil && (shownTab.map { AppModel.paneIDs($0.layout).count < 2 } ?? true))
                 Button("Move Pane to New Tab") { if let id = focused { Task { await model.breakOut(id) } } }
                     .keyboardShortcut(Keys.movePaneToNewTab)
-                    .disabled(model.selectedTab.map { AppModel.paneIDs(of: $0).count < 2 } ?? true)
+                    .disabled(shownTab.map { AppModel.paneIDs(of: $0).count < 2 } ?? true)
                 Divider()
                 FloatCommands(model: model, paneID: focused)
                 Button("Close Pane") { if let id = focused { CloseGuard.confirm(model, panes: [id]) { Task { await model.closePane(id) } } } }
@@ -440,6 +459,8 @@ struct HammockApp: App {
     /// shown): the model's focus outlives the tab it was in, and pane
     /// commands mustn't reach a tab you can't see.
     private var focused: String? {
+        // In a window of its own: what it shows.
+        if let s = keyScope { return s.focused(in: model) }
         guard let tab = model.selectedTab else { return nil }
         if let id = model.focusedPaneID, model.panes[id]?.tabID == tab.id { return id }
         return tab.focusedPaneID
@@ -456,6 +477,8 @@ struct HammockApp: App {
     }
 
     private var closeLabel: String {
+        // A window of its own just closes (what it shows stays).
+        if keyScope != nil { return "Close Window" }
         guard let tab = model.selectedTab else {
             if model.selectedEmptyGroup != nil { return "Close Group" }
             return model.groups.isEmpty || AppConfig.shared.keepEmptyGroups ? "Close Window" : "Close Group"
@@ -479,7 +502,7 @@ struct HammockApp: App {
     }
 
     private func newTab(browser: Bool = false) {
-        let group = model.currentGroup?.id ?? model.groups.first?.id
+        let group = keyScope?.group(in: model)?.id ?? model.currentGroup?.id ?? model.groups.first?.id
         Task {
             var id = group
             if id == nil { id = await model.createGroup(name: "Home") }
@@ -493,7 +516,59 @@ struct HammockApp: App {
     }
 
     /// The Group of the tab you're on, or the empty one shown.
-    private var currentGroup: WorkspaceGroup? { model.currentGroup }
+    private var currentGroup: WorkspaceGroup? { keyScope.map { $0.group(in: model) } ?? model.currentGroup }
+
+    /// The window of its own you're in (nil: the main window).
+    private var keyScope: WindowScope? { DetachedWindows.shared.keyScope }
+
+    /// The tab on screen where you are.
+    private var shownTab: WorkspaceTab? { keyScope.map { $0.tab(in: model) } ?? model.selectedTab }
+
+    /// Next or Previous Pane, through the tab where you are (a pane's own window has only it).
+    private func cyclePane(by delta: Int) {
+        guard let s = keyScope else { model.cyclePane(by: delta); return }
+        guard case .pane = s.subject else {
+            guard let tab = s.tab(in: model) else { return }
+            let ids = AppModel.shownPaneIDs(of: tab)
+            guard !ids.isEmpty else { return }
+            let i = s.focused(in: model).flatMap { ids.firstIndex(of: $0) } ?? 0
+            model.focus(ids[(i + delta + ids.count) % ids.count])
+            return
+        }
+    }
+
+    /// Next or Previous Tab, or Tab 1…9: in a Group's window, its tabs; in
+    /// a tab's or pane's, nothing (the main window's would change unseen).
+    private func selectTab(_ pick: ([WorkspaceTab], Int?) -> Int?) {
+        guard let s = keyScope else { return }
+        guard s.isGroup, let g = s.group(in: model) else { return }
+        let tabs = model.tabs(in: g)
+        let current = s.tab(in: model).flatMap { t in tabs.firstIndex { $0.id == t.id } }
+        guard let i = pick(tabs, current), tabs.indices.contains(i) else { return }
+        s.selectedTabID = tabs[i].id
+        model.focus(tabs[i].focusedPaneID)
+    }
+
+    private func cycleTab(by delta: Int) {
+        guard keyScope != nil else { model.cycleTab(by: delta); return }
+        selectTab { tabs, i in tabs.isEmpty ? nil : ((i ?? 0) + delta + tabs.count) % tabs.count }
+    }
+
+    private func selectTab(at index: Int) {
+        guard keyScope != nil else { model.selectTab(at: index); return }
+        selectTab { _, _ in index }
+    }
+
+    /// Open in New Window, from the menu bar: what's where you are.
+    private func openInNewWindow(_ kind: String) {
+        let subject: WindowSubject?
+        switch kind {
+        case "pane": subject = focused.map { .pane($0) }
+        case "tab": subject = shownTab.map { .tab($0.id) }
+        default: subject = currentGroup.map { .group($0.id) }
+        }
+        if let subject { DetachedWindows.shared.open(subject, model: model) }
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -639,8 +714,8 @@ struct ContentView: View {
     }
 
     private func reportPresence() {
-        let visible = model.selectedTab.map { AppModel.shownPaneIDs(of: $0) } ?? []
-        model.reportPresence(visible: visible, foreground: NSApp.isActive)
+        // With what windows of their own show (DetachedWindows).
+        WorkspacePresence.report(model)
     }
 }
 
@@ -649,6 +724,10 @@ struct WorkspaceWindow: NSViewRepresentable {
     /// The workspace window. (Not an identifier: SwiftUI manages those itself and
     /// replaces anything set on its windows.)
     nonisolated(unsafe) static weak var window: NSWindow?
+
+    /// The window you're in: a window of its own (DetachedWindows), else
+    /// the workspace window. Sheets and confirmations open there.
+    @MainActor static var current: NSWindow? { DetachedWindows.shared.keyScope?.window ?? window }
 
     final class Marker: NSView {
         /// The window's size and position, kept across launches. Not AppKit's

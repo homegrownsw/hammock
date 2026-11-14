@@ -133,6 +133,7 @@ struct PaneMenuItems: View {
         FloatPaneItems(model: model, paneID: paneID)
         Button("Move to New Tab") { Task { await model.breakOut(paneID) } }
             .disabled(tabPaneCount < 2)
+        OpenInNewWindowButton(model: model, subject: .pane(paneID))
         if model.panes[paneID]?.kind == .simulator {
             Button("Rotate Left") { model.rotateSimulator(paneID, "left") }
             Button("Rotate Right") { model.rotateSimulator(paneID, "right") }
@@ -228,6 +229,7 @@ struct TabMenuItems: View {
             Menu("Below") { mergeTargets(in: group, side: false) }
         }
         .disabled((group?.tabIds.count ?? 0) < 2 && otherGroups.isEmpty)
+        OpenInNewWindowButton(model: model, subject: .tab(tab.id))
         Divider()
         Button("Close Tab", role: .destructive) { CloseGuard.confirm(model, tab: tab) { Task { await model.closeTab(tab.id) } } }
     }
@@ -759,7 +761,7 @@ enum CloseGuard {
             a.addButton(withTitle: "Cancel")
             a.buttons[0].hasDestructiveAction = true
             let done: (NSApplication.ModalResponse) -> Void = { r in if r == .alertFirstButtonReturn { then() } }
-            if let w = WorkspaceWindow.window { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
+            if let w = WorkspaceWindow.current { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
             return
         }
         let busy = panes.filter { $0.hasAgent && !$0.exited && ([.working, .needsInput, .starting].contains($0.agent.shownState) || $0.agent.subagents > 0) }
@@ -795,7 +797,7 @@ enum CloseGuard {
             if alert.suppressionButton?.state == .on { Prefs.shared.set(pref, false) }
             if r == .alertFirstButtonReturn { then() }
         }
-        if let w = WorkspaceWindow.window { alert.beginSheetModal(for: w, completionHandler: done) } else { done(alert.runModal()) }
+        if let w = WorkspaceWindow.current { alert.beginSheetModal(for: w, completionHandler: done) } else { done(alert.runModal()) }
     }
 
     /// For a tab: all its panes.

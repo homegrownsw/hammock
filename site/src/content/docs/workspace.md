@@ -68,6 +68,16 @@ A floating pane sits over the tab's splits, handy for a dev server's output or a
 hmk split PANE --float -- tail -f server.log
 ```
 
+## Windows of their own
+
+Right-click a Group, tab or pane and choose **Open in New Window** (or use the Window menu) to show it in a window of its own, for instance to share just that on a call. It's the same Group, tab or pane, not a copy: what you do there happens in your workspace, and closing the window closes nothing. A tab or pane fills its window; a Group's window has only that Group's tabs, with its own selected tab.
+
+A pane showing in two windows takes the size of the one you were in last. A browser page shows in one window at a time: click it in the other to bring it there.
+
+```sh
+hmk window open tab TAB
+```
+
 ## The command palette
 
 **Command Palette…** (⌘K) finds any action by name, with its shortcut. **Find Session…** (⇧⌘O) searches agents' past sessions so you can resume one.

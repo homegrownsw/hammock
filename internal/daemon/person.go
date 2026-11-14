@@ -122,7 +122,7 @@ func agentReachable(msg *pb.ClientMessage) bool {
 		*pb.ClientMessage_FloatPane, *pb.ClientMessage_MoveTab, *pb.ClientMessage_RenameGroup,
 		*pb.ClientMessage_SetGroupIcon, *pb.ClientMessage_SetGroupFolder, *pb.ClientMessage_SetGroupIconImage,
 		*pb.ClientMessage_ListSessions, *pb.ClientMessage_SessionExcerpts, *pb.ClientMessage_ReadGroupIcon,
-		*pb.ClientMessage_CloseTab, *pb.ClientMessage_MergeTab:
+		*pb.ClientMessage_CloseTab, *pb.ClientMessage_MergeTab, *pb.ClientMessage_OpenWindow:
 		return true
 	}
 	return false

@@ -30,6 +30,9 @@ Usage:
                                             each agent's state and whether you've seen it; --on: only
                                             that linked computer's, or "this")
   hmk focus PANE|TAB                       show a pane (or a tab's focused pane) in the Mac app
+  hmk window open pane|tab|group [REF]     show a pane, tab or Group in a window of its own in the Mac app
+                                            (the same one, not a copy; closing it closes nothing); with no
+                                            REF, the one this runs in
   hmk group new [NAME] [--on COMPUTER] [--folder DIR]
                                             create a Group (on a linked computer); --folder: its tabs
                                             open in DIR, and it's named after DIR unless NAME is given
@@ -445,6 +448,9 @@ func runCommand(args []string) error {
 			return fmt.Errorf("usage: hmk focus PANE|TAB")
 		}
 		return focusInApp(w, args[1])
+
+	case "window":
+		return runWindow(w, call, args[1:])
 
 	case "group":
 		if len(args) < 2 {
