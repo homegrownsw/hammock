@@ -403,7 +403,7 @@ struct AccessStep: View {
             while !Task.isCancelled {
                 let now = FullDiskAccess.isGranted
                 if now != granted { withAnimation(.smooth) { granted = now } }
-                Onboarding.shared.diskAccess = now
+                if Onboarding.shared.diskAccess != now { Onboarding.shared.diskAccess = now }
                 try? await Task.sleep(for: .seconds(1))
             }
         }

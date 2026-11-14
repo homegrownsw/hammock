@@ -15,8 +15,9 @@ import SwiftUI
 final class Onboarding {
     static let shared = Onboarding()
     static let completedKey = "onboarding.completed"
-    /// The step to open on next launch: only Full Disk Access, which macOS
-    /// may relaunch Hammock from.
+    /// When Hammock quit while showing the Full Disk Access step, which macOS
+    /// asks to Quit & Reopen from: it opens on that step again if that was
+    /// in the last ten minutes. Read (and removed) once, at launch.
     static let resumeKey = "onboarding.resume"
 
     enum Step: Int, CaseIterable {
@@ -36,10 +37,12 @@ final class Onboarding {
 
     private init() {
         let env = ProcessInfo.processInfo.environment
-        // Also when it was reopened from Help and macOS relaunched Hammock
-        // from the Full Disk Access step.
-        let resume = UserDefaults.standard.string(forKey: Self.resumeKey) == "\(Step.access)"
-        isShowing = env["HMK_ONBOARDING"] == "1" || !UserDefaults.standard.bool(forKey: Self.completedKey) || resume
+        let defaults = UserDefaults.standard
+        // Also when setup was reopened from Help, finished before.
+        let quitAt = defaults.double(forKey: Self.resumeKey)
+        defaults.removeObject(forKey: Self.resumeKey)
+        let resume = quitAt > 0 && Date().timeIntervalSince1970 - quitAt < 600
+        isShowing = env["HMK_ONBOARDING"] == "1" || !defaults.bool(forKey: Self.completedKey) || resume
         if let s = env["HMK_ONBOARDING_STEP"], let step = Step.allCases.first(where: { "\($0)" == s }) {
             self.step = step
         } else if resume {
@@ -47,6 +50,14 @@ final class Onboarding {
             // What the steps before set up, for the finish screen.
             daemonOn = DaemonService.isEnabled
             cliPath = CommandLineTool.installedPath
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                let flow = Onboarding.shared
+                if flow.isShowing && flow.step == .access {
+                    UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.resumeKey)
+                }
+            }
         }
     }
 
@@ -56,11 +67,6 @@ final class Onboarding {
     }
 
     func go(_ s: Step) {
-        if s == .access {
-            UserDefaults.standard.set("\(Step.access)", forKey: Self.resumeKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: Self.resumeKey)
-        }
         withAnimation(.smooth(duration: 0.35)) { step = s }
     }
 
@@ -73,7 +79,6 @@ final class Onboarding {
     }
 
     func finish() {
-        UserDefaults.standard.removeObject(forKey: Self.resumeKey)
         UserDefaults.standard.set(true, forKey: Self.completedKey)
         withAnimation(.smooth) { isShowing = false }
     }

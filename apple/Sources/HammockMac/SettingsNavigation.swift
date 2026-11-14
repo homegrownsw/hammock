@@ -279,7 +279,7 @@ enum SettingsIndex {
             e(.general, "Menu Bar", "Show Hammock in the menu bar", "general.menubar", "status item icon"),
             e(.general, "Groups", "Keep a Group when its last tab closes", "general.keepgroups", "empty close"),
             e(.general, "Command-line tool", "Install the hmk command", "general.cli", "cli terminal path shell"),
-            e(.general, "Full Disk Access", "Full Disk Access for programs in panes", "general.fulldiskaccess", "privacy permission files 1password op tcc security"),
+            e(.general, "Privacy", "Full Disk Access for programs in panes", "general.fulldiskaccess", "privacy permission files 1password op tcc security"),
             e(.general, "Links to other apps", "Links to other apps", "general.links", "browser url scheme open obsidian zoom"),
             e(.general, "Simulators", "Shut down simulators when their last pane closes", "general.simulators", "ios xcode iphone done"),
             e(.about, "Updates", "Check for updates daily", "about.updates", "sparkle version upgrade"),

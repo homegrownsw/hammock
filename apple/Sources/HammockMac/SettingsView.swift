@@ -201,7 +201,7 @@ private struct GeneralSettings: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            Section("Full Disk Access") {
+            Section("Privacy") {
                 LabeledContent("Full Disk Access for programs in panes") {
                     HStack {
                         Text(diskAccess ? "On" : "Off").foregroundStyle(.secondary)

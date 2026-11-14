@@ -35,15 +35,14 @@ enum FullDiskAccess {
 
     /// System Settings ▸ Privacy & Security ▸ Full Disk Access.
     static func openSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")
-            ?? URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
-        NSWorkspace.shared.open(url)
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")!)
     }
 
-    /// Opens the Full Disk Access list with the drag panel beside it.
+    /// Opens the Full Disk Access list, with the drag panel beside it unless
+    /// Hammock has access already (to turn it off, say).
     static func openSettingsWithGuide() {
         openSettings()
-        FullDiskAccessGuide.shared.show()
+        if !isGranted { FullDiskAccessGuide.shared.show() }
     }
 }
 
@@ -58,10 +57,12 @@ enum FullDiskAccess {
 @Observable
 final class FullDiskAccessGuide {
     static let shared = FullDiskAccessGuide()
-    /// Hammock was dropped somewhere, or access was granted.
+    /// Hammock was dropped on System Settings, or access was granted.
     var dropped = false
-    private var panel: NSPanel?
-    private var watch: Task<Void, Never>?
+    @ObservationIgnored private var panel: NSPanel?
+    @ObservationIgnored private var watch: Task<Void, Never>?
+    /// Where the panel was last put, to leave it alone once it's been moved.
+    @ObservationIgnored private var placed: NSPoint?
 
     func show() {
         dropped = false
@@ -85,19 +86,26 @@ final class FullDiskAccessGuide {
         panel?.orderFrontRegardless()
         watch?.cancel()
         watch = Task { [weak self] in
-            // Follow System Settings as it opens, then wait for the grant. It
-            // stays up to say Quit & Reopen, which macOS asks for then (and
-            // which closes it), for a while in case macOS doesn't.
-            var grantedAt: Int?
-            for i in 0 ..< 600 {
-                try? await Task.sleep(for: .milliseconds(i < 10 ? 300 : 1000))
-                if Task.isCancelled { return }
-                if i < 10, let frame = Self.systemSettingsFrame() { self?.place(beside: frame) }
-                if grantedAt == nil, FullDiskAccess.isGranted {
-                    grantedAt = i
-                    withAnimation(.smooth) { self?.dropped = true }
+            // Go beside System Settings once its window is up (for the first
+            // 15 seconds, unless the panel has been moved), then wait for the
+            // grant. It stays up to say Quit & Reopen, which macOS asks for
+            // then (and which closes it), for 30 seconds in case macOS
+            // doesn't; with no grant, until it's closed.
+            var grantedAt: Date?
+            var besideSettings = false
+            let start = Date()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(besideSettings ? 1000 : 300))
+                guard let self, !Task.isCancelled else { return }
+                if !besideSettings, Date().timeIntervalSince(start) < 15, !self.wasMoved, let frame = Self.systemSettingsFrame() {
+                    self.place(beside: frame)
+                    besideSettings = true
                 }
-                if let g = grantedAt, i - g >= 30 { break }
+                if grantedAt == nil, FullDiskAccess.isGranted {
+                    grantedAt = Date()
+                    withAnimation(.smooth) { self.dropped = true }
+                }
+                if let g = grantedAt, Date().timeIntervalSince(g) >= 30 { break }
             }
             self?.close()
         }
@@ -108,30 +116,48 @@ final class FullDiskAccessGuide {
         watch = nil
         panel?.orderOut(nil)
         panel = nil
+        placed = nil
     }
 
-    /// Beside System Settings' window (to its right if there's room, else its
-    /// left, near its top), or in the corner of the screen until it's open.
+    /// Whether a drop at `point` (screen coordinates) landed on System Settings.
+    func isOnSystemSettings(_ point: NSPoint) -> Bool {
+        Self.systemSettingsFrame()?.contains(point) ?? false
+    }
+
+    private var wasMoved: Bool {
+        guard let panel, let placed else { return false }
+        return panel.frame.origin != placed
+    }
+
+    /// Beside System Settings' window (to its right if there's room on its
+    /// screen, else its left, near its top), or in the corner of the screen
+    /// until it's open.
     private func place(beside settings: NSRect?) {
-        guard let panel, let screen = NSScreen.main?.visibleFrame else { return }
+        guard let panel else { return }
+        let onScreen = settings.flatMap { s in NSScreen.screens.max { $0.frame.intersection(s).area < $1.frame.intersection(s).area } }
+        guard let screen = (onScreen ?? NSScreen.main)?.visibleFrame else { return }
         let size = panel.frame.size
         var origin: NSPoint
         if let s = settings {
             let right = s.maxX + 16, left = s.minX - 16 - size.width
             origin = NSPoint(x: right + size.width <= screen.maxX ? right : max(screen.minX, left),
-                             y: min(s.maxY - size.height - 60, screen.maxY - size.height))
+                             y: max(screen.minY, min(s.maxY - size.height - 60, screen.maxY - size.height)))
         } else {
             origin = NSPoint(x: screen.maxX - size.width - 24, y: screen.maxY - size.height - 24)
         }
         panel.setFrameOrigin(origin)
+        placed = origin
     }
 
     /// System Settings' frontmost window, in AppKit's coordinates. Window
-    /// bounds and owners are readable without Screen Recording (titles aren't).
+    /// bounds and owners are readable without Screen Recording (titles
+    /// aren't); its owner is found by process, as its name is localised.
     private static func systemSettingsFrame() -> NSRect? {
-        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]],
+        let pids = Set(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences").map(\.processIdentifier))
+        guard !pids.isEmpty,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]],
               let mainHeight = NSScreen.screens.first?.frame.height else { return nil }
-        for w in list where (w[kCGWindowOwnerName as String] as? String) == "System Settings" && (w[kCGWindowLayer as String] as? Int) == 0 {
+        for w in list where (w[kCGWindowOwnerPID as String] as? pid_t).map(pids.contains) == true && (w[kCGWindowLayer as String] as? Int) == 0 {
             guard let b = w[kCGWindowBounds as String] as? [String: CGFloat], let x = b["X"], let y = b["Y"],
                   let width = b["Width"], let height = b["Height"], width > 200 else { continue }
             return NSRect(x: x, y: mainHeight - y - height, width: width, height: height)
@@ -145,8 +171,10 @@ private struct FullDiskAccessGuideView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            AppIconDragSource(size: 56) { withAnimation(.smooth) { guide.dropped = true } }
-                .frame(width: 56, height: 56)
+            AppIconDragSource(size: 56) { point in
+                if guide.isOnSystemSettings(point) { withAnimation(.smooth) { guide.dropped = true } }
+            }
+            .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
                 Text(guide.dropped ? "Now choose Quit & Reopen" : "Drag Hammock into the list")
                     .font(.system(size: 13, weight: .semibold))
@@ -183,8 +211,9 @@ private struct FullDiskAccessGuideView: View {
 /// document's proxy icon does: drop it into a System Settings privacy list.
 struct AppIconDragSource: NSViewRepresentable {
     var size: CGFloat = 64
-    /// Called when it's dropped somewhere that took it.
-    var onDrop: () -> Void = {}
+    /// Called with where it was dropped (screen coordinates), when what it
+    /// was dropped on took it.
+    var onDrop: (NSPoint) -> Void = { _ in }
 
     func makeNSView(context: Context) -> DragView {
         let v = DragView()
@@ -200,11 +229,12 @@ struct AppIconDragSource: NSViewRepresentable {
 
     final class DragView: NSView, NSDraggingSource {
         var size: CGFloat = 64 { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
-        var onDrop: () -> Void = {}
+        var onDrop: (NSPoint) -> Void = { _ in }
         private var down: NSPoint?
 
         override var intrinsicContentSize: NSSize { NSSize(width: size, height: size) }
         override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func draw(_ dirtyRect: NSRect) {
             NSApp.applicationIconImage.draw(in: iconRect)
@@ -235,7 +265,11 @@ struct AppIconDragSource: NSViewRepresentable {
         }
 
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-            if !operation.isEmpty { onDrop() }
+            if !operation.isEmpty { onDrop(screenPoint) }
         }
     }
+}
+
+private extension NSRect {
+    var area: CGFloat { isNull ? 0 : width * height }
 }
