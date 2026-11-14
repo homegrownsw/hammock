@@ -20,6 +20,7 @@ struct SimulatorScreen: View {
     @State private var dragStart: Date?
     @State private var stream: MediaStream?
     @State private var playing = false
+    @State private var videoPixels: CGSize?
     @State private var pinch: (start: Date, anchor: UnitPoint, scale: CGFloat)?
     @State private var pinched = false // the drag that came with a pinch isn't a swipe
     @State private var shot: SimulatorShot? // a screenshot to share
@@ -85,6 +86,7 @@ struct SimulatorScreen: View {
                 .modifier(Prompts(screen: self, inCover: true))
         }
         .modifier(Prompts(screen: self, inCover: false))
+        .onChange(of: isTV) { sizeFromVideo() }
         .task(id: active) {
             guard active else { return }
             await withTaskGroup(of: Void.self) { g in
@@ -283,10 +285,8 @@ struct SimulatorScreen: View {
                 s.onState = { cont.yield($0) }
             }
             s.onSize = { px in
-                // Phones and tablets are 3x or 2x (as the simulator host decides);
-                // an Apple TV is 1920 points wide (2x at 4K, 1x at 1080p).
-                let scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
-                points = CGSize(width: px.width / scale, height: px.height / scale)
+                videoPixels = px
+                sizeFromVideo()
             }
             stream = s
             s.start()
@@ -304,6 +304,16 @@ struct SimulatorScreen: View {
         stream?.stop()
         stream = nil
         playing = false
+    }
+
+    /// The screen's size in points from the video's pixels. Phones and
+    /// tablets are 3x or 2x (as the simulator host decides); an Apple TV is
+    /// 1920 points wide (2x at 4K, 1x at 1080p), which the pane may only say
+    /// after the first frame.
+    private func sizeFromVideo() {
+        guard let px = videoPixels, px.width > 0 else { return }
+        let scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
+        points = CGSize(width: px.width / scale, height: px.height / scale)
     }
 
     /// Screenshots, one after another, while this pane is showing and the

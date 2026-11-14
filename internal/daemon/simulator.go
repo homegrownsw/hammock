@@ -506,11 +506,8 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	if !p.isSimulator() {
 		return errors.New("not a simulator pane")
 	}
-	switch platform := p.snapshotInfo().DevicePlatform; {
-	case platform == "tvOS" && slices.Contains(touchOnly, m.Op):
-		return errors.New("an Apple TV has no touch screen and doesn't turn: use its remote (sim_remote, or hmk sim remote)")
-	case m.Op == "remote" && platform != "tvOS":
-		return errors.New("only an Apple TV has a remote")
+	if err := simulatorOpRefused(p.snapshotInfo().DevicePlatform, m.Op); err != nil {
+		return err
 	}
 	d.mu.Lock()
 	peer := c.peer
@@ -736,7 +733,25 @@ func remotePresses(args simArgs) ([]string, error) {
 	if n < 1 || n > 50 {
 		return nil, errors.New("remote: repeat runs from 1 to 50")
 	}
+	// Within the CLI's and MCP's waits (45 s), with room to spare.
+	if n*(cmp.Or(args.HoldMs, 60)+150) > 30000 {
+		return nil, errors.New("remote: repeat × hold_ms comes to more than 30 seconds")
+	}
 	return slices.Repeat([]string{args.Name}, n), nil
+}
+
+// simulatorOpRefused says why a device can't take an op: an Apple TV has no
+// touch screen and only it has a remote. platform is the pane's, empty until
+// the simulator host has looked at its device, when anything goes (the host
+// drops what the device can't take).
+func simulatorOpRefused(platform, op string) error {
+	switch {
+	case platform == "tvOS" && slices.Contains(touchOnly, op):
+		return errors.New("an Apple TV has no touch screen and doesn't turn: use its remote (sim_remote, or hmk sim remote)")
+	case op == "remote" && platform != "tvOS" && platform != "":
+		return errors.New("only an Apple TV has a remote")
+	}
+	return nil
 }
 
 // pinchPaths: two fingers either side of (x, y), moving apart (scale > 1:

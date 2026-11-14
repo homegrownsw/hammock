@@ -383,6 +383,9 @@ func runCommand(args []string) error {
 	if len(args) > 1 && (args[0] == "sim" || args[0] == "simulator") && (args[1] == "rotate" || args[1] == "pinch" || args[1] == "fold") {
 		wait = 4 * time.Minute // the first one starts the device's XCTest runner
 	}
+	if len(args) > 1 && (args[0] == "sim" || args[0] == "simulator") && args[1] == "remote" {
+		wait = 45 * time.Second // repeated or held presses (the daemon caps them at 30 s)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	c, err := connect(ctx)

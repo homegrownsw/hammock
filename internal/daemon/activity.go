@@ -382,6 +382,8 @@ func simulatorWhat(op string) string {
 		return "typed in"
 	case "button":
 		return "pressed a button in"
+	case "remote":
+		return "pressed the remote in"
 	case "rotate":
 		return "rotated"
 	case "pinch":

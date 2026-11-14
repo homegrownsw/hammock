@@ -898,7 +898,7 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		switch m.SimulatorCall.Op {
 		case "screenshot":
 			return view(pane(m.SimulatorCall.PaneId))
-		case "tap", "swipe", "touch", "text", "key", "copy", "button":
+		case "tap", "swipe", "touch", "text", "key", "copy", "button", "remote":
 			return drive(pane(m.SimulatorCall.PaneId))
 		}
 	case *pb.ClientMessage_BrowserInput:

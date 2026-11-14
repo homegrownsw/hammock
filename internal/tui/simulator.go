@@ -69,6 +69,10 @@ func isAppleTV(p *pb.Pane) bool {
 // a space is Play/Pause).
 var tvKeys = map[string]string{"up": "up", "down": "down", "left": "left", "right": "right", "enter": "select", "esc": "menu", " ": "play_pause"}
 
+// tvEditKeys are keys without text a text field takes, as HID keyboard
+// usages (as the Mac sends them).
+var tvEditKeys = map[string]int{"backspace": 42, "tab": 43, "delete": 76}
+
 // tvInput sends typed bytes to a focused Apple TV pane: its remote's keys
 // as its remote's presses, anything else typed (for its text fields).
 // Send, not Call, keeps them in order.
@@ -90,6 +94,8 @@ func (a *App) tvInput(id string, b []byte) {
 			// A terminal doesn't say when a key's let go: a whole press each time.
 			send("remote", map[string]any{"name": tvKeys[name], "phase": "down"})
 			send("remote", map[string]any{"name": tvKeys[name], "phase": "up"})
+		case tvEditKeys[name] != 0:
+			send("key", map[string]any{"usage": tvEditKeys[name], "shift": k.shift})
 		case k.name == "" && k.r != 0:
 			send("text", map[string]any{"text": string(k.r)})
 		}

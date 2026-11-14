@@ -149,6 +149,7 @@ final class SimulatorPaneNSView: NSView {
         didSet {
             guard isTV != oldValue else { return }
             for (l, c) in [(rim, frameColours.rim), (band, frameColours.band)] { l.fillColor = c.cgColor }
+            sizeFromVideo()
             needsLayout = true
         }
     }
@@ -274,10 +275,8 @@ final class SimulatorPaneNSView: NSView {
         stream = s
         s.onSize = { [weak self] px in
             guard let self else { return }
-            // As the simulator host decides; an Apple TV is 1920 points wide (its scale is 2 at 4K, 1 at 1080p).
-            let scale: CGFloat = self.isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
-            self.size = CGSize(width: px.width / scale, height: px.height / scale)
-            self.needsLayout = true
+            self.videoPixels = px
+            self.sizeFromVideo()
         }
         s.onState = { [weak self, weak s] st in
             guard let self, let s, self.stream === s, case .failed = st else { return }
@@ -293,6 +292,20 @@ final class SimulatorPaneNSView: NSView {
         video = s.layer
         CATransaction.commit()
         s.start()
+        needsLayout = true
+    }
+
+    /// A shared pane's video, in pixels, as last sized.
+    private var videoPixels: CGSize?
+
+    /// The screen's size in points, from the video's pixels: as the simulator
+    /// host decides, and again once the pane says it's an Apple TV (1920
+    /// points wide: its scale is 2 at 4K, 1 at 1080p), which can come after
+    /// the first frame.
+    private func sizeFromVideo() {
+        guard let px = videoPixels, px.width > 0 else { return }
+        let scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
+        size = CGSize(width: px.width / scale, height: px.height / scale)
         needsLayout = true
     }
 
@@ -555,7 +568,7 @@ final class SimulatorPaneNSView: NSView {
         if isTV, let name = Self.remoteKeys[e.keyCode] {
             if !e.isARepeat {
                 heldKeys.insert(e.keyCode)
-                remote(name, "down")
+                remotePress(name, "down")
             }
             return
         }
@@ -592,19 +605,37 @@ final class SimulatorPaneNSView: NSView {
             super.keyUp(with: e)
             return
         }
-        remote(name, "up")
+        remotePress(name, "up")
     }
 
     override func resignFirstResponder() -> Bool {
-        // A key let go elsewhere would leave its button held.
-        for code in heldKeys { if let name = Self.remoteKeys[code] { remote(name, "up") } }
-        heldKeys = []
+        releaseKeys()
         return super.resignFirstResponder()
+    }
+
+    /// Lets go of the remote's buttons held by keys: a key let go elsewhere
+    /// (another view, another app, or after the pane went) never reaches keyUp.
+    private func releaseKeys() {
+        for code in heldKeys { if let name = Self.remoteKeys[code] { remotePress(name, "up") } }
+        heldKeys = []
+    }
+
+    private var resignObserver: NSObjectProtocol?
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        releaseKeys()
+        if let o = resignObserver { NotificationCenter.default.removeObserver(o) }
+        resignObserver = newWindow.map { w in
+            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.releaseKeys() }
+            }
+        }
     }
 
     /// Half a press on an Apple TV's remote ("down" or "up"): straight to the
     /// simulator host, or for a shared pane through the daemon to its host.
-    func remote(_ name: String, _ phase: String) {
+    func remotePress(_ name: String, _ phase: String) {
         if shared != nil {
             remote("remote", ["name": name, "phase": phase])
             return
@@ -861,7 +892,7 @@ struct SimulatorPaneView: View {
                     if isTV && showsRemote {
                         SiriRemote { name, phase in
                             model.viewFocused(paneID)
-                            ref.view?.remote(name, phase)
+                            ref.view?.remotePress(name, phase)
                         }
                         .padding(wide ? EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 24) : EdgeInsets(top: 0, leading: 20, bottom: 16, trailing: 20))
                         .frame(maxWidth: wide ? min(150, geo.size.width * 0.22) : .infinity,

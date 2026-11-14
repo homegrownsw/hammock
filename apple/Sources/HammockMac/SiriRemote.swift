@@ -72,6 +72,11 @@ private struct Press: ViewModifier {
                     held = nil
                 }
         )
+        // Hidden (or its pane gone) mid-press: the gesture never ends, so let go here.
+        .onDisappear {
+            if let name = held { press(name, "up") }
+            held = nil
+        }
     }
 }
 

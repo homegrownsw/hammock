@@ -1507,7 +1507,7 @@ int main(int argc, char **argv) {
     indigoButton = (ButtonFn)(sk ? dlsym(sk, "IndigoHIDMessageForButton") : NULL);
     indigoKey = (KeyFn)(sk ? dlsym(sk, "IndigoHIDMessageForKeyboardArbitrary") : NULL);
     indigoArbitrary = (ArbitraryFn)(sk ? dlsym(sk, "IndigoHIDMessageForHIDArbitrary") : NULL);
-    if (!indigoMouse || !indigoButton || !indigoKey) fprintf(stderr, "simulator-host: SimulatorKit input unavailable: %s\n", dlerror());
+    if (!indigoMouse || !indigoButton || !indigoKey || !indigoArbitrary) fprintf(stderr, "simulator-host: SimulatorKit input unavailable: %s\n", dlerror());
 
     NSApplication *app = NSApplication.sharedApplication;
     app.activationPolicy = NSApplicationActivationPolicyProhibited;
