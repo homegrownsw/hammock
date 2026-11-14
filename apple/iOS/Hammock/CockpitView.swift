@@ -64,6 +64,8 @@ struct SessionsView: View {
     @State private var finding = false
     /// Recent shows sessions older than 48 hours too, until Show Less.
     @State private var showingAllRecent = false
+    /// The agent pane a swipe asked to close, while it asks first.
+    @State private var closing: Pane?
 
     var body: some View {
         CockpitSplit(model: model, session: session, path: $path, placeholder: "No Session Selected") {
@@ -81,6 +83,7 @@ struct SessionsView: View {
                             // With Allow/Deny right here, for a permission prompt.
                             ForEach(waiting) { item in
                                 AttentionRow(model: model, item: item) { paneID in path = [paneID] }
+                                    .modifier(closeSwipe(paneID: item.paneID))
                             }
                             ForEach(others, id: \.tab.id) { r in sessionLink(r) }
                         }
@@ -137,6 +140,13 @@ struct SessionsView: View {
                     }
                 }
             }
+            .confirmationDialog(closing.map { "Close “\(model.tab(of: $0).map { model.title(of: $0) } ?? $0.displayName)”?" } ?? "",
+                                isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } }),
+                                titleVisibility: .visible, presenting: closing) { p in
+                Button("Close Session", role: .destructive) { close(p) }
+            } message: { p in
+                Text(closeWarning(p) ?? "")
+            }
             .sheet(isPresented: $finding) {
                 NavigationStack {
                     SessionFinderList(model: model) { id in
@@ -192,6 +202,31 @@ struct SessionsView: View {
     private func sessionLink(_ r: SessionRow) -> some View {
         // Straight to the agent's pane, even in a tab of several.
         NavigationLink(value: r.pane.id) { SessionRowView(model: model, row: r) }
+            .modifier(closeSwipe(paneID: r.pane.id))
+    }
+
+    /// Swipe left to close a session, asking first when that stops
+    /// something (an agent at work, a program running beside it).
+    private func closeSwipe(paneID: String) -> CloseSessionSwipe {
+        let pane = model.panes[paneID]
+        let drive = pane.flatMap { model.group(ofPane: $0.id) }.map { $0.canDrive && !$0.offline } ?? false
+        return CloseSessionSwipe(enabled: drive) {
+            guard let pane else { return }
+            if closeWarning(pane) != nil { closing = pane } else { close(pane) }
+        }
+    }
+
+    /// Closes a session: its tab, or only the agent's pane when the tab has
+    /// others in it, so they keep running.
+    private func close(_ pane: Pane) {
+        if path.first == pane.id { path = [] }
+        Task {
+            if let tab = model.tab(of: pane), model.panes(in: tab).count == 1 {
+                await model.closeTab(tab.id)
+            } else {
+                await model.closePane(pane.id)
+            }
+        }
     }
 
     /// A tab with an agent, represented by its most pressing agent pane.
@@ -231,6 +266,24 @@ struct SessionsView: View {
             out[keyPath: k].sort { $0.pane.agent.stateSinceUnixMs > $1.pane.agent.stateSinceUnixMs }
         }
         return out
+    }
+}
+
+/// A session row's swipe to close it, there only if you can drive its Group.
+private struct CloseSessionSwipe: ViewModifier {
+    let enabled: Bool
+    let close: () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                // Red, but not .destructive: that role takes the row away at
+                // once, before it's asked whether to.
+                Button("Close", systemImage: "xmark", action: close).tint(.red)
+            }
+        } else {
+            content
+        }
     }
 }
 
