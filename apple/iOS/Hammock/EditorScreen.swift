@@ -11,7 +11,8 @@ struct EditorScreen: View {
     let paneID: String
     var canDrive = true
 
-    @State private var session: EditorSession?
+    @State private var lease: PaneLease<EditorSession>?
+    private var session: EditorSession? { lease?.session }
     @State private var saveAsPath = ""
     @State private var askingSaveAs = false
     @State private var problem: String?
@@ -49,13 +50,7 @@ struct EditorScreen: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) { menu }
         }
-        .onAppear { if session == nil { session = model.acquireEditor(paneID) } }
-        .onDisappear {
-            if session != nil {
-                model.releaseEditor(paneID)
-                session = nil
-            }
-        }
+        .onAppear { if lease == nil { lease = model.leaseEditor(paneID) } }
         .alert("Save As", isPresented: $askingSaveAs) {
             TextField("notes.md", text: $saveAsPath)
                 .textInputAutocapitalization(.never)

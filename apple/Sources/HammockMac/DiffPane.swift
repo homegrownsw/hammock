@@ -47,7 +47,8 @@ struct DiffPaneView: View {
     let model: AppModel
     let paneID: String
     let isFocused: Bool
-    @State private var session: DiffSession?
+    @State private var lease: PaneLease<DiffSession>?
+    private var session: DiffSession? { lease?.session }
     @Environment(\.colorScheme) private var colorScheme
 
     private var pane: Pane? { model.panes[paneID] }
@@ -75,13 +76,7 @@ struct DiffPaneView: View {
                 Color.clear
             }
         }
-        .onAppear { if session == nil { session = model.acquireDiff(paneID) } }
-        .onDisappear {
-            if session != nil {
-                model.releaseDiff(paneID)
-                session = nil
-            }
-        }
+        .onAppear { if lease == nil { lease = model.leaseDiff(paneID) } }
     }
 
     private var config: DiffConfig {

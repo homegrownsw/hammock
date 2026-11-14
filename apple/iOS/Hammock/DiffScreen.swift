@@ -12,7 +12,8 @@ struct DiffScreen: View {
     let paneID: String
     var canDrive = true
 
-    @State private var session: DiffSession?
+    @State private var lease: PaneLease<DiffSession>?
+    private var session: DiffSession? { lease?.session }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.phoneTheme) private var theme
 
@@ -39,13 +40,7 @@ struct DiffScreen: View {
         }
         // (No menu of its own: the pane's is there, and Refresh is in the page.)
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
-        .onAppear { if session == nil { session = model.acquireDiff(paneID) } }
-        .onDisappear {
-            if session != nil {
-                model.releaseDiff(paneID)
-                session = nil
-            }
-        }
+        .onAppear { if lease == nil { lease = model.leaseDiff(paneID) } }
     }
 
     private var config: DiffConfig {

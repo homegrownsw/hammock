@@ -208,7 +208,8 @@ struct EditorPaneView: View {
     let model: AppModel
     let paneID: String
     let isFocused: Bool
-    @State private var session: EditorSession?
+    @State private var lease: PaneLease<EditorSession>?
+    private var session: EditorSession? { lease?.session }
     @Environment(\.colorScheme) private var colorScheme
 
     private var pane: Pane? { model.panes[paneID] }
@@ -238,13 +239,7 @@ struct EditorPaneView: View {
                 Color.clear
             }
         }
-        .onAppear { if session == nil { session = model.acquireEditor(paneID) } }
-        .onDisappear {
-            if session != nil {
-                model.releaseEditor(paneID)
-                session = nil
-            }
-        }
+        .onAppear { if lease == nil { lease = model.leaseEditor(paneID) } }
     }
 
     private var config: EditorConfig {
