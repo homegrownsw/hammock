@@ -52,6 +52,7 @@ extension AppConfig {
         # Agents
         #   default-agent = claude | codex | …     (the agent a new agent tab starts on this computer without asking (New Claude Code Tab, ⌥⌘N, and `hmk agent` with none named), if it's installed here; unset: New Agent Tab… asks)
         #   agent-sleep = off | 3h | 6h | 12h | 24h | 48h   (agents idle that long with nothing running have their process ended to free memory, until you wake them; any duration of a minute or more works, like 90m)
+        #   agent-keep-awake = false               (true: the Mac doesn't sleep while an agent is working (the display still can, and closing the lid still sleeps it); Mac only)
         #   confirm-close-busy-agent = true        (ask before closing a pane or tab whose agent is at work; Mac only)
         #
         # Agent view

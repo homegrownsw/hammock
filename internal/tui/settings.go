@@ -110,6 +110,21 @@ func agentSleepSetting() setting {
 	}, "Ends an idle agent's process to free memory; focusing its pane resumes it."}
 }
 
+// keepAwakeSetting is the config file's agent-keep-awake (shared with the
+// Mac's Settings): the Mac doesn't sleep while an agent works.
+func keepAwakeSetting() setting {
+	on := func() bool { return hammockconfig.Bool("agent-keep-awake", false) }
+	return setting{"Keep the Mac awake while agents work", func(*App) string { return onOff(on()) }, func(a *App, _ int) {
+		v := "true"
+		if on() {
+			v = "" // off is the default
+		}
+		if err := hammockconfig.Set("agent-keep-awake", v); err != nil {
+			a.flash("⚠ " + err.Error())
+		}
+	}, "The display can still sleep, and closing the lid still sleeps it."}
+}
+
 // toolSettings turn Hammock's tools on and off (the <kind>-enabled keys,
 // shared with the Mac's Settings ▸ Tools).
 func toolSettings() []setting {
@@ -193,6 +208,7 @@ func (a *App) openSettings() {
 		}, ""},
 	}}
 	v.items = append(v.items, agentSleepSetting())
+	v.items = append(v.items, keepAwakeSetting())
 	v.items = append(v.items, editorSettings()...)
 	v.items = append(v.items, toolSettings()...)
 	v.open.from(0)

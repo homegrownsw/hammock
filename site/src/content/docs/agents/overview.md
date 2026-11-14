@@ -69,6 +69,10 @@ Hammock can end an idle agent's process to free its memory, and keep its pane re
 
 Only an agent that has finished its turn sleeps, never one working or waiting for you. To wake it, click **Wake**, type in the pane, or run `hmk wake [PANE]`: its session resumes in a new process.
 
+## Keep your Mac awake
+
+Turn on Settings ▸ Agents ▸ **Keep this Mac awake while agents work** (`agent-keep-awake`) and your Mac won't go to sleep while any agent is working, so a long task left running finishes. Once none is (they've finished, or are waiting for you), it sleeps as usual. The display still sleeps, and closing a laptop's lid still puts it to sleep.
+
 ## Usage limits
 
 Hammock can show your agents' usage limits (Claude Code's five-hour and weekly ones, for example) in the sidebar: turn them on in Settings ▸ Agents ▸ Usage Limits in the Sidebar. With **Ask each agent's service for its usage** (`usage-live`), Hammock asks the agent's service directly, using the sign-in its CLI keeps on your Mac. The sign-in is sent only to that service, and never kept or changed.

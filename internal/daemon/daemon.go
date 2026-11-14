@@ -118,6 +118,10 @@ type Daemon struct {
 	agentMade    map[string]bool           // panes an agent made (caller.go)
 	colors       atomic.Pointer[vt.Colors] // the user's terminal colours (see setColors)
 
+	// awake: holding the power assertion for working agents (keepawake.go);
+	// awakeWarned: said once that it couldn't be taken.
+	awake, awakeWarned bool
+
 	// Multiplayer (share.go: hosting; peer.go: joining others' Groups).
 	id          identity
 	people      map[string]*pb.Person   // user id → person, for members and requesters
@@ -567,6 +571,7 @@ func (d *Daemon) shutdown() {
 	defer d.sessions.close()
 	d.mu.Lock()
 	d.stopped = true
+	d.releaseAwake()
 	srv := d.srv
 	for c := range d.conns {
 		c.cancel()
@@ -1216,6 +1221,7 @@ func (d *Daemon) pollCwds() {
 			d.pollStatus(p)
 		}
 		d.detectAgents()
+		d.keepAwake()
 		d.refreshTabNames()
 		if ticks%sleepEvery == 0 {
 			d.sleepIdleAgents()

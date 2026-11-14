@@ -26,6 +26,10 @@ extension Pref {
     /// one of AgentSleepChoice's. hmkd reads it from the file itself.
     static let agentSleep = Pref("agent-sleep", defaults: "agentSleep", .string, "off")
 
+    /// Keep the Mac from idle sleep while an agent is working. hmkd reads
+    /// it from the file itself and holds the power assertion.
+    static let agentKeepAwake = Pref("agent-keep-awake", defaults: "agentKeepAwake", false)
+
     /// The agent New Agent Tab starts on this Mac without asking (New Claude
     /// Code Tab, ⌥⌘N): an agent's id, or "" (none: the sheet asks). hmkd
     /// reads it, and tells the apps, while that agent is installed.

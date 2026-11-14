@@ -754,6 +754,10 @@ private struct AgentSettings: View {
                 Toggle("Warn before closing an agent that's at work", isOn: Prefs.shared.boolBinding(CloseGuard.pref))
                     .settingAnchor("agents.closeguard")
             }
+            Section {
+                Toggle("Keep this Mac awake while agents work", isOn: Prefs.shared.boolBinding(.agentKeepAwake))
+                    .settingAnchor("agents.keepawake")
+            }
             Section("Idle Agents") {
                 Picker("Put idle agents to sleep", selection: agentSleep) {
                     Text("Off").tag("off")
