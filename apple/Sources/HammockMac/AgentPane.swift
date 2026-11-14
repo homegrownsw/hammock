@@ -86,6 +86,8 @@ struct AgentPaneView: View {
             } else {
                 FileLink.open(path)
             }
+        }, onOpenWebLink: { url in
+            TerminalView.openWeb(url, in: AppConfig.shared.linkOpen, beside: paneID, model: model)
         })
         .environment(\.agentAutomaticColor, AgentAutomatic.color)
         .environment(\.agentAutomaticBubble, AgentAutomatic.bubble)

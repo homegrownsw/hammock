@@ -64,6 +64,7 @@ import SwiftUI
 ///     pane-animations = true           (false: panes open, close, zoom and float at once, without animating)
 ///     browser-open-schemes = obsidian,zoommtg  (links a browser pane opens in their app without asking)
 ///     browser-new-tab = external       (hammock: links a page opens in a new tab open as a browser tab, not in your browser; read by hmkd)
+///     link-open = browser              (or pane, tab: where a link ⌘-clicked in a terminal or clicked in the agent view opens: LinkTarget)
 ///     keybind = cmd+shift+b=new_browser_tab    (repeatable: a shortcut for an action, taking it from any other;
 ///                                               cmd+j=unbind, none=new_tab, ctrl+cmd+digits=select_tab, clear.
 ///                                               Actions: Keybinds.actions in HammockKit; Settings ▸ Keyboard writes them)
@@ -173,6 +174,9 @@ final class AppConfig {
     /// (`browser-new-tab = external`, the default), not a Hammock browser tab.
     /// hmkd reads the key; Settings shows it.
     private(set) var browserNewTabExternal = true
+    /// Where a clicked link opens (`link-open`): your default browser, the
+    /// default, or a Hammock browser pane or tab.
+    private(set) var linkOpen = LinkTarget.browser
     /// SSH agent forwarding between your linked computers: new panes use
     /// Hammock's agent, which adds the keys of the computer you're at (the
     /// daemon reads the key; this is for Settings).
@@ -410,6 +414,7 @@ final class AppConfig {
         savedSidebarOpacity = sidebarOpacity
         simulatorShutdown = ours["simulator-shutdown"] != "false"
         browserNewTabExternal = ours["browser-new-tab"] != "hammock"
+        linkOpen = ours["link-open"].flatMap { LinkTarget(rawValue: $0.lowercased()) } ?? .browser
         sshAgentForwarding = ours["ssh-agent-forwarding"] != "false"
         screenSharing = ours["screen-sharing"] == "true"
         usageLive = ours["usage-live"] == "true"
@@ -824,6 +829,7 @@ final class AppConfig {
         #   usage-limits-claude = false, usage-limits-codex = false   (an agent's usage limits in the sidebar)
         #   browser-open-schemes = obsidian,zoommtg   (links a browser pane opens in their app without asking)
         #   browser-new-tab = external | hammock   (links a page opens in a new tab: your default browser, or a Hammock browser tab)
+        #   link-open = browser | pane | tab   (links you ⌘-click in a terminal or click in the agent view: your default browser, a Hammock browser pane beside it, or a Hammock browser tab; ⌘⇧-click: the default browser or, set to browser, a pane)
         #   keybind = cmd+shift+b=new_browser_tab   (one line per shortcut; Settings ▸ Keyboard lists every action's name)
         #   keybind = cmd+j=unbind, keybind = none=new_tab, keybind = ctrl+cmd+digits=select_tab (⌃⌘1…9), keybind = clear
         #   tui-animations = true          (hmk tui: false snaps instead of animating)
@@ -855,4 +861,21 @@ extension Color {
 extension View {
     /// Controls in the theme's colour: buttons, switches, segments, sliders.
     @MainActor func themeTint() -> some View { tint(AppConfig.shared.agentColors.color) }
+}
+
+/// Where a clicked web link opens (the config file's link-open; Settings ▸
+/// General ▸ Links): ⌘-click in a terminal, a click in the agent view.
+enum LinkTarget: String, CaseIterable {
+    case browser, pane, tab
+
+    var title: String {
+        switch self {
+        case .browser: "Default Browser"
+        case .pane: "Hammock Pane"
+        case .tab: "Hammock Tab"
+        }
+    }
+
+    /// ⌘⇧-click's: the default browser, or set to it, a pane beside.
+    var alternate: LinkTarget { self == .browser ? .pane : .browser }
 }

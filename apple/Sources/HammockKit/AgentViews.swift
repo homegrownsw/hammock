@@ -202,12 +202,14 @@ extension EnvironmentValues {
 /// A pane's conversation with its agent, with the prompt it's showing and a
 /// composer. onShowTerminal flips the pane back to the terminal (offered when
 /// an answer can't be matched to what's on screen); onOpenFile opens a path
-/// the session referenced.
+/// the session referenced, and onOpenWebLink a web link (else the system's
+/// browser).
 public struct AgentConversationView: View {
     let model: AppModel
     let paneID: String
     var onShowTerminal: () -> Void = {}
     var onOpenFile: ((String) -> Void)?
+    var onOpenWebLink: ((URL) -> Void)?
     /// The pane's session, held for as long as this view exists (AgentLease).
     @State private var lease: AgentLease?
     private var session: AgentSession? { lease?.session }
@@ -268,11 +270,13 @@ public struct AgentConversationView: View {
     @Environment(\.agentAutomaticColor) private var automaticColor
     @Environment(\.agentAutomaticBubble) private var automaticBubble
 
-    public init(model: AppModel, paneID: String, onShowTerminal: @escaping () -> Void = {}, onOpenFile: ((String) -> Void)? = nil) {
+    public init(model: AppModel, paneID: String, onShowTerminal: @escaping () -> Void = {}, onOpenFile: ((String) -> Void)? = nil,
+                onOpenWebLink: ((URL) -> Void)? = nil) {
         self.model = model
         self.paneID = paneID
         self.onShowTerminal = onShowTerminal
         self.onOpenFile = onOpenFile
+        self.onOpenWebLink = onOpenWebLink
     }
 
     public var body: some View {
@@ -456,10 +460,15 @@ public struct AgentConversationView: View {
         .animation(.snappy(duration: 0.25), value: s.tasks.isEmpty)
     }
 
-    /// Links in the conversation: web and mail links open, file links go to
-    /// onOpenFile, and any other scheme (which could open any app) asks first.
+    /// Links in the conversation: web links go to onOpenWebLink, they and
+    /// mail links otherwise open, file links go to onOpenFile, and any other
+    /// scheme (which could open any app) asks first.
     private var linkAction: OpenURLAction {
         OpenURLAction { url in
+            if AgentLink.opening(url) == .web, let open = onOpenWebLink {
+                open(url)
+                return .handled
+            }
             if AgentLink.opensDirectly(url) { return .systemAction }
             if url.isFileURL, let open = onOpenFile {
                 open(url.path)

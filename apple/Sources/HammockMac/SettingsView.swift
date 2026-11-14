@@ -213,6 +213,14 @@ private struct GeneralSettings: View {
                     diskAccess = FullDiskAccess.isGranted
                 }
             }
+            Section("Links") {
+                Picker("Clicked links open in", selection: Binding(
+                    get: { AppConfig.shared.linkOpen },
+                    set: { AppConfig.shared.set("link-open", $0 == .browser ? nil : $0.rawValue) })) {
+                    ForEach(LinkTarget.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .settingAnchor("general.linkopen")
+            }
             Section("Browser panes") {
                 Picker("Links that open a new tab", selection: Binding(
                     get: { AppConfig.shared.browserNewTabExternal },

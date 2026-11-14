@@ -26,8 +26,8 @@ final class TerminalNSView: NSView {
     /// An image pasted with no text (a screenshot), as PNG: saved by the
     /// pane's daemon, which types its path.
     var onPasteImage: ((Data) -> Void)?
-    /// Opens a link: in the browser, or (true) a browser pane beside this one.
-    var onOpenLink: ((URL, Bool) -> Void)?
+    /// Opens a link: where it's asked to, or (nil) where Settings says.
+    var onOpenLink: ((URL, LinkTarget?) -> Void)?
     /// The link under the pointer while ⌘ is held (underlined, pointing hand).
     fileprivate(set) var hoverLink: TerminalLink?
     var onResize: ((Int, Int) -> Void)?
@@ -811,9 +811,10 @@ final class TerminalNSView: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         guard session?.engine != nil else { return }
-        // ⌘-click a link: open it (⌘⇧: in a browser pane beside this one).
+        // ⌘-click a link: open it where Settings says (⌘⇧: the other way,
+        // LinkTarget.alternate).
         if event.modifierFlags.contains(.command), let link = link(at: event), let url = URL(string: link.url) {
-            onOpenLink?(url, event.modifierFlags.contains(.shift))
+            onOpenLink?(url, event.modifierFlags.contains(.shift) ? AppConfig.shared.linkOpen.alternate : nil)
             return
         }
         // ⌃-click is the Mac's right-click: on a link, its menu, as for a
@@ -1094,7 +1095,7 @@ struct TerminalView: NSViewRepresentable {
         v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
         v.onCellSize = { [paneID, model] w, h in model.setCellPixels(paneID, width: w, height: h) }
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
-        v.onOpenLink = { [paneID, model] url, inHammock in TerminalView.open(url, inHammock: inHammock, beside: paneID, model: model) }
+        v.onOpenLink = { [paneID, model] url, target in TerminalView.open(url, in: target, beside: paneID, model: model) }
         v.isFocusTarget = isFocused
         v.folded = context.environment.paneFolded
         return v
@@ -1118,7 +1119,7 @@ struct TerminalView: NSViewRepresentable {
             v.onPasteImage = { [paneID, model] png in TerminalView.pasteImage(png, to: paneID, model: model) }
             v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
             v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
-            v.onOpenLink = { [paneID, model] url, inHammock in TerminalView.open(url, inHammock: inHammock, beside: paneID, model: model) }
+            v.onOpenLink = { [paneID, model] url, target in TerminalView.open(url, in: target, beside: paneID, model: model) }
             v.forceGridReport()
         }
         v.isFocusTarget = isFocused
@@ -1126,25 +1127,37 @@ struct TerminalView: NSViewRepresentable {
     }
 
     @MainActor
-    /// Opens a link from a terminal: in the default browser, or in a Hammock
-    /// browser pane beside the terminal. Anything a program prints can be a
-    /// link, so only web and mail links open straight away: a file that
-    /// would run something is shown in the Finder instead, and any other
-    /// scheme (which could launch any app, or mount a server) asks first.
-    static func open(_ url: URL, inHammock: Bool, beside paneID: String, model: AppModel) {
+    /// Opens a link from a terminal (or the agent view): a web page where
+    /// `target` says, or Settings (link-open) when it's nil. Anything a
+    /// program prints can be a link, so only web and mail links open
+    /// straight away: a file that would run something is shown in the
+    /// Finder instead, and any other scheme (which could launch any app, or
+    /// mount a server) asks first.
+    static func open(_ url: URL, in target: LinkTarget? = nil, beside paneID: String, model: AppModel) {
         switch AgentLink.opening(url) {
         case .web:
-            if inHammock && HammockTool.browser.on { // else (turned off in Settings ▸ Tools) your browser
-                Task { await model.splitBrowser(paneID, direction: .horizontal, url: url.absoluteString) }
-            } else {
-                NSWorkspace.shared.open(url)
-            }
+            openWeb(url, in: target ?? AppConfig.shared.linkOpen, beside: paneID, model: model)
         case .direct:
             NSWorkspace.shared.open(url)
         case .file(let path):
             FileLink.open(path)
         case .ask:
             askToOpen(url)
+        }
+    }
+
+    /// A web page in your default browser, or a Hammock browser pane beside
+    /// `paneID` or tab in its Group. With browser panes turned off (Settings
+    /// ▸ Tools), or no Group to open the tab in, your browser.
+    @MainActor static func openWeb(_ url: URL, in target: LinkTarget, beside paneID: String, model: AppModel) {
+        let groupID = model.group(ofPane: paneID)?.id
+        switch target {
+        case .pane where HammockTool.browser.on:
+            Task { await model.splitBrowser(paneID, direction: .horizontal, url: url.absoluteString) }
+        case .tab where HammockTool.browser.on && groupID != nil:
+            Task { await model.createBrowserTab(in: groupID!, url: url.absoluteString) }
+        default:
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -1341,8 +1354,13 @@ extension TerminalNSView {
                 menu.addItem(dest)
                 menu.addItem(.separator())
             }
-            menu.addItem(LinkMenuItem("Open Link") { [weak self] in self?.onOpenLink?(url, false) })
-            menu.addItem(LinkMenuItem("Open in Hammock Browser") { [weak self] in self?.onOpenLink?(url, true) })
+            if HammockTool.browser.on, AgentLink.opening(url) == .web {
+                for target in LinkTarget.allCases {
+                    menu.addItem(LinkMenuItem("Open in \(target.title)") { [weak self] in self?.onOpenLink?(url, target) })
+                }
+            } else {
+                menu.addItem(LinkMenuItem("Open Link") { [weak self] in self?.onOpenLink?(url, nil) })
+            }
             menu.addItem(LinkMenuItem("Copy Link") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(link.url, forType: .string)

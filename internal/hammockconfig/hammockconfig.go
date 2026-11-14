@@ -414,6 +414,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   usage-limits-claude = false, usage-limits-codex = false   (an agent's usage limits in the sidebar)
 #   browser-open-schemes = obsidian,zoommtg   (links a browser pane opens in their app without asking)
 #   browser-new-tab = external | hammock   (links a page opens in a new tab: your default browser, or a Hammock browser tab)
+#   link-open = browser | pane | tab   (links you ⌘-click in a terminal or click in the agent view: your default browser, a Hammock browser pane beside it, or a Hammock browser tab; ⌘⇧-click: the default browser or, set to browser, a pane)
 #   keybind = cmd+shift+b=new_browser_tab   (one line per shortcut; Settings ▸ Keyboard lists every action's name)
 #   keybind = cmd+j=unbind, keybind = none=new_tab, keybind = ctrl+cmd+digits=select_tab (⌃⌘1…9), keybind = clear
 #   tui-animations = true          (hmk tui: false snaps instead of animating)
