@@ -38,6 +38,15 @@ exit 0
 EOF
 chmod +x "$tmp/ios-testflight"
 export HMK_RELEASE_IOS_TESTFLIGHT="$tmp/ios-testflight"
+# And for scripts/site-deploy, into a log of its own: FAKE_SITE_FAIL=1 fails it.
+cat >"$tmp/site-deploy" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >>"$tmp/site.log"
+[ "\${FAKE_SITE_FAIL:-}" != 1 ] || exit 1
+EOF
+chmod +x "$tmp/site-deploy"
+export HMK_RELEASE_SITE_DEPLOY="$tmp/site-deploy"
+deploys() { cat "$tmp/site.log" 2>/dev/null || true; rm -f "$tmp/site.log"; }
 export HMK_RELEASE_YEAR=2026
 # Outside a pane, so a release's review of its notes isn't opened beside this one (scripts/release-review).
 unset HMK_PANE_ID
@@ -198,9 +207,11 @@ calls >/dev/null
 
 echo "Mac release:"
 d=$(fixture 2026.1.0)
+deploys >/dev/null
 release "$d" mac next
 check "built, then uploaded, release 2" "build 2|upload 2|" "$(calls | tr '\n' '|')"
 check "pushed the commit and tag" "2 Mac-v2026.1.0-r2" "$(count "$d.remote" main) $(remote_tags "$d")"
+check "deployed the website from the release commit" "--ref $(git -C "$d.remote" rev-parse main)" "$(deploys)"
 html=$(cat "$tmp/notes.html")
 check "the notes as HTML, escaped" yes "$(contains "<li>A &lt;thing&gt; &amp; more works now.</li>" "$html")"
 check "in sections, New first" "<h4>New</h4>|<ul>|<li>A new thing.</li>|</ul>|<h4>Fixed</h4>|<ul>|<li>A &lt;thing&gt; &amp; more works now.</li>|</ul>" "$(printf '%s' "$html" | tr '\n' '|')"
@@ -216,6 +227,7 @@ calls >/dev/null
 
 echo "a failed Mac build takes it all back:"
 d=$(fixture 2026.1.0)
+deploys >/dev/null
 mark_released "$d" Mac 2026.1.0
 check "fails" fails "$( (cd "$d" && FAKE_BUILD_FAIL=1 ./scripts/release mac next >/dev/null 2>&1) && echo passes || echo fails)"
 check "…publishing nothing" "1 Mac-v2026.1.0-r1" "$(count "$d.remote" main) $(remote_tags "$d")"
@@ -223,6 +235,15 @@ check "…back where it started, with no new tag" "1 Mac-v2026.1.0-r1" "$(count 
 check "…and its version" "2026.1.0" "$(ver "$d" MAC)"
 check "…the notes still pending" "3" "$(ls "$d/release-notes/mac/pending" | wc -l | tr -d ' ')"
 check "…and the build discarded" "build 2|discard 2|" "$(calls | tr '\n' '|')"
+check "…and the website left alone" "" "$(deploys)"
+
+echo "a failed website deploy keeps the release:"
+d=$(fixture 2026.1.0)
+out=$(cd "$d" && FAKE_SITE_FAIL=1 ./scripts/release mac next 2>&1) || true
+check "pushed anyway" "Mac-v2026.1.0-r2" "$(remote_tags "$d")"
+check "and says how to retry" yes "$(contains "scripts/site-deploy --ref" "$out")"
+calls >/dev/null
+deploys >/dev/null
 
 echo "a failed upload keeps the release:"
 d=$(fixture 2026.1.0)

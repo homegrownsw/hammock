@@ -45,9 +45,11 @@ takes in a change someone made on the website.
 
 ## Publish the site
 
-It lives at https://homegrownsw.com/hammock/, part of the Homegrown Software site (`homegrownsw/homegrownsw-site`,
-checked out at `~/Developer/homegrownsw-site`). `just site` copies the page, the banner and the icons into that
-repo's `site/hammock/`; commit them there and run its `just deploy`.
+It lives at https://homegrownsw.com/hammock/, part of the Homegrown Software site, but everything under `/hammock/`
+is this repo's: `just site` builds the page, privacy, support and the docs (`site/`) into `dist/website`, and
+`just site-deploy` puts them on the server (`HMK_SITE_REMOTE` in `.release.env`). Every release does that itself,
+from its own commit. The site repo (`homegrownsw/homegrownsw-site`) deploys everything else, and keeps only the
+App Review demo video under `hammock/`.
 
 Links on the page are relative, so it works under `/hammock/`. Its Download buttons go to `download`, which the
 site's nginx redirects to the latest release's `Hammock.dmg` on GitHub (the site repo's `nginx/hammock.conf`; it

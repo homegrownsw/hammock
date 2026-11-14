@@ -1,0 +1,22 @@
+---
+// Starlight's footer, plus which version of Hammock these docs describe (HMK_DOCS_VERSION, set by `just docs`).
+import Default from '@astrojs/starlight/components/Footer.astro';
+const version = process.env.HMK_DOCS_VERSION;
+---
+
+<Default><slot /></Default>
+{
+	version && (
+		<p class="hmk-version">
+			These docs describe Hammock {version}. <a href="/hammock/docs/whats-new/">What's new</a>
+		</p>
+	)
+}
+
+<style>
+	.hmk-version {
+		margin-top: 1.5rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+</style>

@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/homegrownsw/hammock/internal/agents"
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
@@ -55,6 +56,14 @@ func run(args []string) error {
 			"keyboard-shortcuts.md": func() (string, error) { return shortcutsPage(keys) },
 		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		// What's new sits at the top of the site, not in the reference.
+		whatsNew, err := whatsNewPage("release-notes")
+		if err != nil {
+			return fmt.Errorf("whats-new.md: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "..", "whats-new.md"), []byte(whatsNew), 0o644); err != nil {
 			return err
 		}
 		for name, make := range pages {
@@ -482,6 +491,154 @@ func shortcutsPage(data []byte) (string, error) {
 			fmt.Fprintf(&b, "| %s | %s | `%s` |\n", cell(a.Title), sc, a.ID)
 		}
 		b.WriteString("\n")
+	}
+	return b.String(), nil
+}
+
+// ---- What's new
+
+// A version's notes for one app: NEW and FIXED (INTERNAL never leaves the repo).
+type releaseNotes struct {
+	version    []int
+	name, date string
+	newNotes   []string
+	fixed      []string
+}
+
+func parseVersion(s string) []int {
+	var v []int
+	for _, p := range strings.Split(s, ".") {
+		n := 0
+		fmt.Sscanf(p, "%d", &n)
+		v = append(v, n)
+	}
+	return v
+}
+
+// appNotes reads release-notes/<app>/: each released version (a v<x.y.z>/ folder of notes), from its
+// summary (v<x.y.z>.md, written when the version was bumped) where there is one, else from the notes.
+func appNotes(root, app string) ([]releaseNotes, error) {
+	dir := filepath.Join(root, app)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []releaseNotes
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "v") {
+			continue
+		}
+		r := releaseNotes{name: strings.TrimPrefix(e.Name(), "v")}
+		r.version = parseVersion(r.name)
+		notes, _ := filepath.Glob(filepath.Join(dir, e.Name(), "*.md"))
+		for _, f := range notes {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				return nil, err
+			}
+			lines := strings.SplitN(string(b), "\n", 3)
+			if len(lines) < 3 {
+				continue
+			}
+			if d := strings.TrimSpace(strings.TrimPrefix(lines[1], "date:")); d > r.date {
+				r.date = d
+			}
+			text := strings.Join(strings.Fields(lines[2]), " ")
+			switch strings.TrimSpace(strings.TrimPrefix(lines[0], "tag:")) {
+			case "NEW":
+				r.newNotes = append(r.newNotes, text)
+			case "FIXED":
+				r.fixed = append(r.fixed, text)
+			}
+		}
+		if b, err := os.ReadFile(filepath.Join(dir, e.Name()+".md")); err == nil {
+			r.newNotes, r.fixed = nil, nil
+			var section *[]string
+			for _, l := range strings.Split(string(b), "\n") {
+				switch {
+				case l == "## New":
+					section = &r.newNotes
+				case l == "## Fixed":
+					section = &r.fixed
+				case strings.HasPrefix(l, "## "):
+					section = nil
+				case section != nil && strings.HasPrefix(l, "- "):
+					*section = append(*section, strings.TrimPrefix(l, "- "))
+				}
+			}
+		}
+		if len(r.newNotes)+len(r.fixed) > 0 {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func versionLess(a, b []int) bool {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return len(a) < len(b)
+}
+
+func whatsNewPage(root string) (string, error) {
+	apps := []struct{ id, title string }{{"mac", "On the Mac"}, {"ios", "On iPhone"}}
+	byVersion := map[string]map[string]releaseNotes{}
+	var names []string
+	for _, a := range apps {
+		notes, err := appNotes(root, a.id)
+		if err != nil {
+			return "", err
+		}
+		for _, r := range notes {
+			if byVersion[r.name] == nil {
+				byVersion[r.name] = map[string]releaseNotes{}
+				names = append(names, r.name)
+			}
+			byVersion[r.name][a.id] = r
+		}
+	}
+	if len(names) == 0 {
+		return "", fmt.Errorf("no released versions in %s", root)
+	}
+	sort.Slice(names, func(i, j int) bool { return versionLess(parseVersion(names[j]), parseVersion(names[i])) })
+	var b strings.Builder
+	b.WriteString(frontmatter("What's new", "What changed in each version of Hammock for Mac and iPhone, newest first.", 0))
+	b.WriteString(generated)
+	b.WriteString("What changed in each version of Hammock, newest first. The Mac app updates itself; the iPhone app updates from TestFlight.\n\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "## %s\n\n", n)
+		date := ""
+		for _, a := range apps {
+			if r, ok := byVersion[n][a.id]; ok && r.date > date {
+				date = r.date
+			}
+		}
+		if t, err := time.Parse("2006-01-02", date); err == nil {
+			fmt.Fprintf(&b, "Released %s.\n\n", t.Format("2 January 2006"))
+		}
+		for _, a := range apps {
+			r, ok := byVersion[n][a.id]
+			if !ok {
+				continue
+			}
+			fmt.Fprintf(&b, "### %s\n\n", a.title)
+			for _, s := range []struct {
+				label string
+				notes []string
+			}{{"New", r.newNotes}, {"Fixed", r.fixed}} {
+				if len(s.notes) == 0 {
+					continue
+				}
+				fmt.Fprintf(&b, "**%s**\n\n", s.label)
+				for _, t := range s.notes {
+					b.WriteString("- " + text(t) + "\n")
+				}
+				b.WriteString("\n")
+			}
+		}
 	}
 	return b.String(), nil
 }

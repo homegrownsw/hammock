@@ -3,6 +3,7 @@ dist/
 .astro/
 # Made by `just docs-gen` from Hammock's source (scripts/docsgen):
 src/content/docs/reference/
+src/content/docs/whats-new.md
 src/assets/icon.png
 public/favicon.png
 # Review comments left in `just docs-dev` (dev/comments.mjs):

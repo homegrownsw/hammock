@@ -282,17 +282,14 @@ readme-demo: mac-dev
 appstore-whats-new version *args:
     marketing/scripts/appstore-whats-new {{version}} {{args}}
 
-# Copy the website (marketing/) into the homegrownsw.com site repo, as site/hammock/ (HMK_SITE_REPO, default
-# ~/Developer/homegrownsw-site). Commit it there and `just deploy` it from there: this publishes nothing.
-# The page's comments are for the repo, so the copy drops them: each one starts its own line, `//` or `/* … */`.
-# The docs site (site/, `just docs`) is built and copied in as site/hammock/docs/.
+# Build Hammock's part of homegrownsw.com, everything under /hammock/, into dist/website: the page (marketing/),
+# privacy and support, and the docs (site/, as docs/). The page's comments are for the repo, so the copy drops
+# them: each one starts its own line, `//` or `/* … */`. `just site-deploy` puts it on the server.
 site: docs
     #!/usr/bin/env bash
     set -euo pipefail
-    repo="${HMK_SITE_REPO:-$HOME/Developer/homegrownsw-site}"
-    [ -d "$repo/site" ] || { echo "No site repo at $repo (set HMK_SITE_REPO)." >&2; exit 1; }
-    out="$repo/site/hammock"
-    mkdir -p "$out"
+    out=dist/website
+    rm -rf "$out" && mkdir -p "$out"
     strip() { perl -0pe 's{^[ \t]*/\*.*?\*/[ \t]*\n}{}gms; s{^[ \t]*//.*\n}{}gm' "$1"; }
     strip marketing/index.html > "$out/index.html"
     strip marketing/page.css > "$out/page.css"
@@ -300,9 +297,15 @@ site: docs
     cp marketing/banner.png "$out/"
     sips -Z 512 apple/Resources/AppIcon-1024.png --out "$out/icon-512.png" >/dev/null
     sips -Z 256 apple/Resources/AppIcon-1024.png --out "$out/icon-256.png" >/dev/null
-    rm -rf "$out/docs" && cp -R site/dist "$out/docs"
+    cp -R site/dist "$out/docs"
     find "$out" -type f -exec chmod 644 {} +
-    git -C "$repo" status --short -- site/hammock
+    echo "Built $out ($(find "$out" -type f | wc -l | tr -d ' ') files)."
+
+# Build the website (`just site`) and put it on the server, replacing what's under /hammock/ there:
+# HMK_SITE_REMOTE (.release.env) is where, as rsync's user@host:/path to /hammock/. --dry-run shows what would
+# change. Releases run it from the release commit (scripts/site-deploy --ref), so the docs match what shipped.
+site-deploy *args:
+    scripts/site-deploy {{args}}
 
 # The config file's header in the Mac app (ConfigHeader.generated.swift), from the keys in
 # internal/hammockconfig/keys.go: run after changing them (a Go test fails until you do).
@@ -323,14 +326,14 @@ docs-gen: build
     sips -Z 256 apple/Resources/AppIcon-1024.png --out site/src/assets/icon.png >/dev/null
     sips -Z 64 apple/Resources/AppIcon-1024.png --out site/public/favicon.png >/dev/null
 
-# Build the docs site (site/) into site/dist: `just site` copies it to the website.
+# Build the docs site (site/) into site/dist: `just site` adds it to the website, as docs/.
 docs: docs-gen
-    cd site && pnpm install --frozen-lockfile && pnpm build
+    cd site && pnpm install --frozen-lockfile && HMK_DOCS_VERSION="$(../scripts/mac-version)" pnpm build
 
 # Preview the docs site as you edit it, at http://localhost:4321/hammock/docs/. Select text in a page to
 # leave a review comment on it (kept in site/.comments.jsonl; `just docs-comments` lists them).
 docs-dev: docs-gen
-    cd site && pnpm install --frozen-lockfile && pnpm dev
+    cd site && pnpm install --frozen-lockfile && HMK_DOCS_VERSION="$(../scripts/mac-version)" pnpm dev
 
 # The open review comments left in `just docs-dev`: page, source file, passage and comment. To answer one,
 # set its "status" to "resolved" and add a "reply" in site/.comments.jsonl; the page shows it.

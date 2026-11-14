@@ -5,8 +5,10 @@ Hammock's documentation, published at https://homegrownsw.com/hammock/docs/: [As
 
 - `just docs-dev` previews it as you edit, at http://localhost:4321/hammock/docs/.
 - `just docs` builds it into `site/dist`.
-- `just site` copies it, with the website, into the homegrownsw.com site repo as `site/hammock/docs/`. It publishes
-  nothing.
+- `just site` builds it, with the rest of the website, into `dist/website`; `just site-deploy` puts that on the
+  server. Every release deploys it from its own commit, so the docs match what shipped.
+- **What's new** is made from `release-notes/` (the released versions' NEW and FIXED notes), and the footer says
+  which version the docs describe.
 
 ## Pages
 

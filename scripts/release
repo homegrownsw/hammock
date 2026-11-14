@@ -51,6 +51,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRYRUN="${HMK_RELEASE_DRYRUN:-}"
 MAC_UPDATE="${HMK_RELEASE_MAC_UPDATE:-$ROOT/scripts/mac-update}"
 IOS_TESTFLIGHT="${HMK_RELEASE_IOS_TESTFLIGHT:-$ROOT/scripts/ios-testflight}"
+# The website and docs, deployed once a release is pushed (scripts/site-deploy; tests fake it).
+SITE_DEPLOY="${HMK_RELEASE_SITE_DEPLOY:-$ROOT/scripts/site-deploy}"
 
 # shellcheck source=lib/release-notes.sh
 . "$ROOT/scripts/lib/release-notes.sh"
@@ -555,6 +557,14 @@ else
       IOS_RESULT="NOT uploaded (see above); the release is cut. Retry: scripts/ios-testflight upload ${N}"
     fi
   fi
+  # The website and its docs, built from the release commit, so What's new and the docs match what shipped.
+  if [ -z "${HMK_SITE_REMOTE:-}" ] && [ -z "${HMK_RELEASE_SITE_DEPLOY:-}" ]; then
+    SITE_RESULT="NOT deployed: HMK_SITE_REMOTE isn't set (.release.env). Then: scripts/site-deploy --ref ${RELEASE_SHA:0:9}"
+  elif "$SITE_DEPLOY" --ref "$RELEASE_SHA"; then
+    SITE_RESULT="deployed"
+  else
+    SITE_RESULT="NOT deployed (see above); the release is cut. Retry: scripts/site-deploy --ref ${RELEASE_SHA:0:9}"
+  fi
 fi
 
 # ---- summary -----------------------------------------------------------------------------------------------
@@ -577,5 +587,6 @@ for p in $PLATFORMS; do
       ;;
   esac
 done
+if [ -n "${SITE_RESULT:-}" ]; then echo "Website:       ${SITE_RESULT}"; fi
 # `if`, not `[ ] &&`: as the last command, a false test would make every real release exit 1.
 if [ -n "$DRYRUN" ]; then echo "(dry run: nothing was changed, committed or pushed)"; fi

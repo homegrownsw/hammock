@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Builds Hammock's part of homegrownsw.com (`just site`: the page, privacy, support and the docs) and puts it on
+# the server, replacing everything under /hammock/ there but the iPhone app's demo video (demo.mp4, which the
+# homegrownsw.com site repo keeps and deploys). The redirects for downloads and the update feed are nginx's,
+# not files, so they're untouched.
+#
+#   scripts/site-deploy [--ref REF] [--dry-run]
+#
+# HMK_SITE_REMOTE is rsync's destination for /hammock/ (user@host:/path), from .release.env. --ref builds from
+# that commit, in a worktree of its own (a release passes its commit, so the docs match what shipped);
+# otherwise from this checkout as it is. --dry-run builds, then shows what would change on the server.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+ref="" dry=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ref) ref="${2:?--ref needs a commit}"; shift 2 ;;
+    -n | --dry-run) dry=(--dry-run); shift ;;
+    *) echo "usage: scripts/site-deploy [--ref REF] [--dry-run]" >&2; exit 2 ;;
+  esac
+done
+remote="${HMK_SITE_REMOTE:-}"
+[ -n "$remote" ] || { echo "HMK_SITE_REMOTE isn't set: add it to .release.env (user@host:/path/to/hammock)." >&2; exit 1; }
+
+dir="$ROOT"
+if [ -n "$ref" ]; then
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/hammock-site.XXXXXX")"
+  trap 'git -C "$ROOT" worktree remove --force "$dir" >/dev/null 2>&1 || rm -rf "$dir"' EXIT
+  git -C "$ROOT" worktree add --quiet --detach "$dir" "$ref"
+fi
+
+(cd "$dir" && just site)
+rsync -az --itemize-changes --delete --exclude='.DS_Store' --exclude='/demo.mp4' ${dry[@]+"${dry[@]}"} \
+  -e ssh "$dir/dist/website/" "${remote%/}/"
+if [ ${#dry[@]} -gt 0 ]; then echo "(dry run: nothing on the server changed)"; else echo "Deployed the website and docs."; fi

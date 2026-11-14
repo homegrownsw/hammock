@@ -17,6 +17,7 @@ export default defineConfig({
 			logo: { src: './src/assets/icon.png', alt: '' },
 			favicon: '/favicon.png',
 			customCss: ['./src/styles/hammock.css'],
+			components: { Footer: './src/components/Footer.astro' },
 			head: [
 				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
 				{ tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' } },
@@ -34,6 +35,8 @@ export default defineConfig({
 			editLink: { baseUrl: 'https://github.com/homegrownsw/hammock/edit/main/site/' },
 			lastUpdated: false,
 			sidebar: [
+				// Generated from release-notes/ (scripts/docsgen), so it's always the latest.
+				{ label: "What's new", link: '/whats-new/' },
 				{
 					label: 'Start here',
 					items: [
