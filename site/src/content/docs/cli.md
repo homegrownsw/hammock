@@ -7,7 +7,7 @@ description: A guide to hmk, Hammock's command line, by what you want to do.
 
 ## Where it is
 
-On a Mac, setup puts `hmk` on your `PATH`; if you skipped that, use **Install** under Settings ▸ General ▸ Command-line tool. On Linux it comes with the daemon: see [Installing on Linux](/hammock/docs/install/linux/).
+On a Mac, setup puts `hmk` on your `PATH`; if you skipped that, use **Install** under Settings ▸ General ▸ Command-line tool. On Linux it comes with the Hammock Server: see [Installing on Linux](/hammock/docs/install/linux/).
 
 ## IDs and names
 
@@ -21,7 +21,7 @@ For scripts, `hmk ls`, `hmk status`, `hmk sessions` and others take `--json`.
 
 ## Look at what's running
 
-`hmk ls` lists every Group, tab and pane, with each agent's state. `hmk status` says whether the daemon is running, and exits with status 3 if it isn't. `hmk focus PANE` shows a pane in the Mac app.
+`hmk ls` lists every Group, tab and pane, with each agent's state. `hmk status` says whether the Hammock Server is running, and exits with status 3 if it isn't. `hmk focus PANE` shows a pane in the Mac app.
 
 ## Open things
 
@@ -88,12 +88,12 @@ hmk ls --json | jq -r '
   | "\(.id)  \(.title)"'
 ```
 
-## The daemon
+## The Hammock Server
 
-Your panes run in Hammock's daemon, `hmkd`, which keeps going when you quit the app.
+Your panes run in the Hammock Server, `hmkd`, which keeps going when you quit the app.
 
 ```sh
-hmk stop             # stop the daemon; panes keep running
+hmk stop             # stop the server; panes keep running
 hmk stop --panes     # stop it and end every pane
 hmk restart
 ```

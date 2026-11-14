@@ -13,7 +13,7 @@ This page uses the Mac app's default shortcuts. You can change any of them: see 
 
 ## Panes keep running
 
-A background server, the daemon, owns your panes; the window is only a view of them. Close it, quit, update or crash Hammock, and your shells, servers and agents carry on. After a restart or log-out, your Groups and tabs come back as they were: each pane starts again in its folder with its earlier output, and agents resume their sessions.
+The Hammock Server, running in the background, owns your panes; the window is only a view of them. Quit Hammock, update it, or even crash it, and your shells, servers and agents carry on. After a restart or log-out, your Groups and tabs come back as they were: each pane starts again in its folder with its earlier output, and agents resume their sessions.
 
 ## Groups
 

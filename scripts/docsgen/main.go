@@ -133,7 +133,7 @@ func configPage() string {
 	b.WriteString("Hammock's settings live in `~/.config/hammock/config`, in [Ghostty's syntax](https://ghostty.org/docs/config): one `key = value` per line, `#` for comments. ")
 	b.WriteString("Settings writes the same keys, and changes you make to the file apply within a couple of seconds. ")
 	b.WriteString("A key you leave out takes its default. See [Configuration](/hammock/docs/configuration/) for how the file works.\n\n")
-	b.WriteString("Keys marked *Mac only*, *hmk tui only* or *Mac and hmk tui only* are read there alone; the rest are read by the Mac app, `hmk tui` and the daemon wherever they make sense. The iPhone app keeps its own settings, on the phone, in its Settings tab.\n\n")
+	b.WriteString("Keys marked *Mac only*, *hmk tui only* or *Mac and hmk tui only* are read there alone; the rest are read by the Mac app, `hmk tui` and the Hammock Server wherever they make sense. The iPhone app keeps its own settings, on the phone, in its Settings tab.\n\n")
 	for _, g := range hammockconfig.Groups {
 		fmt.Fprintf(&b, "## %s\n\n", g)
 		for _, k := range hammockconfig.Keys {
@@ -228,7 +228,7 @@ var cliSections = []struct {
 	{"Agents", "Starting, finding and resuming agents, and what they may do.", []string{"agent", "switch", "sleep", "wake", "session-link", "sessions", "resume", "grant", "audit", "schedule", "hook", "hooks", "mcp"}},
 	{"Devices, linked computers and sharing", "Your iPhone, your other computers, and other people.", []string{"remote", "pair", "devices", "link", "computers", "share", "approve", "unshare", "join", "leave"}},
 	{"Keys and SSH", "The Hammock Key, and SSH in Hammock's panes.", []string{"key", "ssh"}},
-	{"The daemon, the TUI and more", "Running Hammock itself.", []string{"tui", "stop", "status", "service", "docs", "acknowledgements"}},
+	{"The Hammock Server, the TUI and more", "Running Hammock itself.", []string{"tui", "stop", "status", "service", "docs", "acknowledgements"}},
 }
 
 func parseHelp(help string) (entries []cliEntry, footer []string, err error) {
@@ -292,7 +292,7 @@ func cliPage(help string) (string, error) {
 	var b strings.Builder
 	b.WriteString(frontmatter("CLI reference", "Every hmk command and its options, from hmk help.", 4))
 	b.WriteString(generated)
-	b.WriteString("`hmk` is Hammock's command line: it works from any terminal on a Mac or Linux machine running the daemon (see [The CLI](/hammock/docs/cli/) for installing it). ")
+	b.WriteString("`hmk` is Hammock's command line: it works from any terminal on a Mac or Linux machine running the Hammock Server (see [The CLI](/hammock/docs/cli/) for installing it). ")
 	b.WriteString("This page is `hmk help`, sorted. For a guided tour, see [The CLI](/hammock/docs/cli/).\n\n")
 	b.WriteString(":::note\n" + text(strings.Join(footer, " ")) + "\n:::\n\n")
 	placed := map[string]bool{}

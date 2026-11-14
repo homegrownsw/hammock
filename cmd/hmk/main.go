@@ -192,11 +192,11 @@ Usage:
                                             tell the terminal what this script is doing (OSC 7501): idle,
                                             working, done, blocked (on you: --kind permission|question|auth),
                                             error, or clear; Hammock shows it on the pane and in Needs You
-  hmk stop [--panes] | start | restart     stop or start the daemon (panes keep running unless --panes, which
-                                            ends them too; an open Hammock app starts the daemon again)
-  hmk status [--json]                      whether the daemon is running, and its Groups, remote access
-                                            and linked computers (exits 3 when it isn't running)
-  hmk service install|uninstall|status     Linux: run the daemon as a systemd user service, from boot
+  hmk stop [--panes] | start | restart     stop or start the Hammock Server (panes keep running unless
+                                            --panes, which ends them too; an open Hammock app starts it again)
+  hmk status [--json]                      whether the Hammock Server is running, and its Groups, remote
+                                            access and linked computers (exits 3 when it isn't running)
+  hmk service install|uninstall|status     Linux: run the Hammock Server as a systemd user service, from boot
   hmk acknowledgements [NAME | --all]      the third-party software in Hammock and its licences
                                             (NAME: one's licence text; --all: every one's)
   hmk docs [--print]                       open Hammock's documentation in your browser (--print, or

@@ -23,7 +23,7 @@ Check each of these:
 - Under Remote Access, the network the iPhone is on is chosen. With none chosen, Hammock listens on Tailscale only.
 - If you use Tailscale, it's connected on both the Mac and the iPhone.
 - If you use your local network, the iPhone is on that Wi-Fi, not mobile data.
-- The Mac is awake and the daemon is running (below).
+- The Mac is awake and the Hammock Server is running (below).
 
 `hmk remote networks` lists the Mac's networks, with the chosen ones marked `*`. See
 [Install on iPhone](/hammock/docs/install/iphone/#networks).
@@ -34,7 +34,7 @@ Allow notifications for Hammock in the iPhone's Settings, and open the app once 
 The Mac only sends them while you're away from it: when its screen is locked, or you haven't touched it for a couple
 of minutes.
 
-## The daemon isn't running
+## The Hammock Server isn't running
 
 ```sh
 hmk start
@@ -54,10 +54,10 @@ Every Group, tab and pane, with its folder and scrollback. Shells start again, a
 hooks installed) and browser panes reopen their page. It happens at login with **Start the server at login** on in
 Settings ▸ General, or else when you next open Hammock.
 
-## hmk talks to the wrong daemon
+## hmk talks to the wrong server
 
-Check you haven't set `HMK_DIR` and forgotten it (`echo $HMK_DIR`): outside a pane, `hmk` talks to the daemon in that
-state folder. Inside a pane, it always talks to the daemon running that pane.
+Check you haven't set `HMK_DIR` and forgotten it (`echo $HMK_DIR`): outside a pane, `hmk` talks to the Hammock Server in that
+state folder. Inside a pane, it always talks to the server running that pane.
 
 If `hmk` isn't found at all, install it from Settings ▸ General ▸ Command-line tool, and check its folder is on your
 PATH ([Install on a Mac](/hammock/docs/install/mac/#the-hmk-command)).

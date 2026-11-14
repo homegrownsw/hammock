@@ -1,9 +1,9 @@
 ---
 title: Install on Linux
-description: Run Hammock's daemon, hmk and the TUI on a Linux server or Unraid, and link it to your Mac.
+description: Run the Hammock Server, hmk and the TUI on a Linux server or Unraid, and link it to your Mac.
 ---
 
-Hammock's daemon (`hmkd`) and its CLI and TUI (`hmk`) run on Linux: a VPS, a home server, an Unraid box. Your Mac
+The Hammock Server (`hmkd`) and its CLI and TUI (`hmk`) run on Linux: a VPS, a home server, an Unraid box. Your Mac
 shows its Groups as a [linked computer](/hammock/docs/remote/), and your iPhone can pair with it.
 
 There's no app on Linux: everything is `hmk`, so it can be set up over SSH. Use `hmk tui` for the
@@ -24,7 +24,7 @@ hmk hooks install       # your agents (Claude Code, Codex and others found) repo
 ```
 
 `hmk service status` shows how the service is doing, and `hmk service uninstall` removes it. Without systemd, run
-`hmk start`, or `hmkd --dir DIR` from your init system. `hmk status` says whether the daemon is running.
+`hmk start`, or `hmkd --dir DIR` from your init system. `hmk status` says whether the Hammock Server is running.
 
 | What | Where |
 |---|---|

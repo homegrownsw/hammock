@@ -1,9 +1,9 @@
 ---
-title: Away from this Mac
+title: Away from your Mac
 description: Remote access, pairing your iPhone, linking your other computers, sharing a Group with other people, and the Hammock Key.
 ---
 
-This page is about reaching your panes from your iPhone, your other computers, and other people. Everything here is off until you turn it on.
+Reach your panes from your iPhone, your other computers, and other people. Everything here is off until you turn it on.
 
 ## Remote access
 

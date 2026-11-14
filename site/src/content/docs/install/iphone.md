@@ -9,7 +9,7 @@ later**, and pairs with your own computer directly, with no account.
 ## Get the app
 
 The iPhone app is in beta on **TestFlight**. Install TestFlight from the App Store, then Hammock from your
-TestFlight invitation. No Mac to hand yet? Tap **See a demo** to try it with a made-up Mac.
+TestFlight invitation.
 
 ## Pair with your Mac
 
@@ -34,6 +34,9 @@ Your iPhone has to be on one of the networks remote access listens on:
 
 - **Tailscale** works from anywhere. Install it on the Mac and the iPhone, on the same tailnet.
 - **A local network**, such as your home Wi-Fi (`192.168.1.0/24`), works while the iPhone is on it.
+- **Your own VPN** (WireGuard, OpenVPN, ZeroTier and the like) is listed as a network of its own while the Mac is
+  connected to it: choose it like any other. If the iPhone reaches the Mac at an address the Mac can't see itself, such
+  as a VPN endpoint, a DNS name or a forwarded port, add it as an extra address so pairing codes include it.
 
 Change them in Settings ▸ Devices ▸ Remote Access, or with `hmk`:
 
@@ -41,6 +44,7 @@ Change them in Settings ▸ Devices ▸ Remote Access, or with `hmk`:
 hmk remote networks                  # the networks this Mac is on; * chosen
 hmk remote enable tailscale
 hmk remote enable 192.168.1.0/24
+hmk remote address add mac.example.net   # an extra address
 hmk remote on
 ```
 

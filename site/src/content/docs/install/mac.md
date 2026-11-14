@@ -13,8 +13,7 @@ Hammock for Mac needs **macOS 26 or later**. It's free and open source.
 
 ## Setup
 
-The first time it opens, Hammock walks you through a short setup. Any step can be skipped, and Help ▸ Welcome to
-Hammock… runs it again.
+The first time it opens, Hammock walks you through a short setup.
 
 - **Make it yours:** light, dark or automatic, a theme, and whether tabs sit in the sidebar under their Group or along the top.
 - **Keep Hammock running:** two switches, both on by default.
@@ -25,9 +24,9 @@ Hammock… runs it again.
 - **Connect your agents:** installs Hammock's hooks and MCP tools for the coding agents it finds. See
   [Setting up agents](/hammock/docs/agents/setup/).
 
-## Keeping the daemon running
+## Keeping the Hammock Server running
 
-Hammock's daemon owns your panes, so quitting the app leaves them running. **Start the server at login** in
+The Hammock Server owns your panes, so quitting the app leaves them running. **Start the server at login** in
 Settings ▸ General starts it when you log in, app or no app. To stop it, choose **Quit and Stop Server…** in
 Settings ▸ About.
 
@@ -58,7 +57,7 @@ under Command-line tool in Settings ▸ General. It goes in the first of `/opt/h
 |---|---|
 | Settings | `~/.config/hammock/config` ([Configuration](/hammock/docs/configuration/)) |
 | State: Groups, panes, scrollback, keys | `~/Library/Application Support/Hammock` |
-| The daemon's log | `~/Library/Application Support/Hammock/logs/hmkd.log` |
+| The Hammock Server's log | `~/Library/Application Support/Hammock/logs/hmkd.log` |
 
 
 ## Uninstall

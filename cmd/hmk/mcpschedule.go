@@ -121,7 +121,7 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		return textResult(out), nil, nil
 	})
 
-	saveDesc := "Create (no id) or change a scheduled task: Hammock's daemon then starts the agent (Claude Code by default, or Codex or another Hammock knows) with the prompt (or runs the command) " +
+	saveDesc := "Create (no id) or change a scheduled task: the Hammock Server then starts the agent (Claude Code by default, or Codex or another Hammock knows) with the prompt (or runs the command) " +
 		"at that time, each run a new tab in the Group, the user told when it's ready. Use this instead of launchd or cron for agent tasks. " +
 		"The user is asked to allow it first (this waits for their answer)."
 	if hammockconfig.PaneKindOn(hammockconfig.Values(), "browser") { // hmk show opens a browser pane

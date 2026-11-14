@@ -3,7 +3,7 @@ title: Permissions
 description: The macOS permissions Hammock asks for, what each one is for, and how to grant or take it back.
 ---
 
-Hammock asks macOS for a few permissions, each for one feature, and only when you use it. None is needed to run terminals and agents. Change any of them later in System Settings ▸ Privacy & Security.
+Setup asks for Full Disk Access, which programs in your panes rely on for a lot. The others are each for one feature, and are asked for when you first use it. Change any of them later in System Settings ▸ Privacy & Security.
 
 ## Full Disk Access
 
