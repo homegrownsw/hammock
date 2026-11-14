@@ -20,20 +20,22 @@ struct DictationButton: View {
                 .font(.body.weight(.medium))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 22, height: 22)
-                .background {
-                    // The level: a soft ring that swells as you speak.
-                    Circle()
-                        .fill(accent.opacity(0.35))
-                        .scaleEffect(1 + dictation.level * 0.6)
-                        .opacity(dictation.state == .listening ? 1 : 0)
-                        .animation(.easeOut(duration: 0.12), value: dictation.level)
-                        .allowsHitTesting(false)
-                }
         }
         .agentGlassButton(prominent: on)
         .buttonBorderShape(.circle)
         .tint(on ? accent : nil)
         .foregroundStyle(on ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+        .background {
+            // The level: a soft halo behind the button that swells past its
+            // edge as you speak. Outside the button, not in its label, where
+            // the accent fill hid it and the glass clipped it.
+            Circle()
+                .fill(accent.opacity(0.3))
+                .scaleEffect(1 + dictation.level * 0.45)
+                .opacity(dictation.state == .listening ? 1 : 0)
+                .animation(.easeOut(duration: 0.1), value: dictation.level)
+                .allowsHitTesting(false)
+        }
         .help(on ? "Stop Dictating" : DictationRequests.hint("Dictate"))
         .accessibilityLabel(on ? "Stop dictating" : "Dictate")
         .animation(.snappy(duration: 0.2), value: on)

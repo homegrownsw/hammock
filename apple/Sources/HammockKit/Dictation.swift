@@ -392,14 +392,15 @@ private final class MicrophoneTap: @unchecked Sendable {
         engine.stop()
     }
 
-    /// Loudness, 0 (−50 dB or quieter) to 1 (full scale).
+    /// Loudness, 0 (−45 dB or quieter) to 1 (−15 dB or louder): a speaking
+    /// voice's range, so ordinary talking moves it.
     private static func level(of buffer: AVAudioPCMBuffer) -> Double {
         guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
         var sum: Float = 0
         for i in 0..<Int(buffer.frameLength) { sum += data[i] * data[i] }
         let rms = sqrt(sum / Float(buffer.frameLength))
         let db = 20 * log10(max(rms, 0.000_001))
-        return Double(min(max((db + 50) / 50, 0), 1))
+        return Double(min(max((db + 45) / 30, 0), 1))
     }
 }
 
@@ -538,7 +539,8 @@ final class ComposerDictation {
             lastHeard = .now
             if state == .starting { state = .listening }
         case .level(let l):
-            level = l
+            // Up at once, down gently, so the halo follows words, not samples.
+            level = l > level ? l : level * 0.6 + l * 0.4
         case .text(let final, let volatile):
             let now = DictationText.join(final, volatile)
             if now != heard {
