@@ -323,6 +323,7 @@ docs-gen: build
     swiftc -O -o "$tmp/keybinds" apple/Sources/HammockKit/Keybinds.swift site/gen/keybinds/main.swift
     "$tmp/keybinds" > "$tmp/keybinds.json"
     go run -tags {{tags}} ./scripts/docsgen pages site/src/content/docs/reference "$tmp/help.txt" "$tmp/mcp.json" "$tmp/keybinds.json"
+    mkdir -p site/src/assets site/public
     sips -Z 256 apple/Resources/AppIcon-1024.png --out site/src/assets/icon.png >/dev/null
     sips -Z 64 apple/Resources/AppIcon-1024.png --out site/public/favicon.png >/dev/null
 
