@@ -448,23 +448,53 @@ func pointerOnly(b []byte) bool {
 // takes an agent that was waiting for input back to working: answering a
 // question or permission prompt sends no hook of its own (only tool events,
 // which a hand-edited settings.json may not route to Hammock), so without this
-// the pane would wait for the next prompt. Callers hold d.mu.
+// the pane would wait for the next prompt. Keys aren't always an answer,
+// though (↑↓ through a menu, then leaving it): once they stop, a menu still
+// on screen means it's still asking, and the agent stays waiting, in Needs
+// You. Callers hold d.mu.
 func (h *agentHub) userInput(p *pane) {
-	u := &pb.StateUpdate{}
-	h.d.clearAttentionForPane(p.id, u)
 	p.mu.Lock()
 	if a := p.info.Agent; a != nil && a.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT {
-		a.State, a.StateSinceUnixMs, a.Summary = pb.AgentState_AGENT_STATE_WORKING, time.Now().UnixMilli(), ""
+		since := a.StateSinceUnixMs
+		if p.answerCheck != nil {
+			p.answerCheck.Stop()
+		}
+		p.answerCheck = time.AfterFunc(answerSettle, func() { h.answered(p, since) })
 		p.mu.Unlock()
-		info := p.snapshotInfo()
-		h.d.persist(h.d.store.PutPane(info))
-		u.Panes = append(u.Panes, info)
-	} else {
-		p.mu.Unlock()
+		return
 	}
-	if len(u.ClearedAttentionIds) > 0 || len(u.Panes) > 0 {
+	p.mu.Unlock()
+	u := &pb.StateUpdate{}
+	h.d.clearAttentionForPane(p.id, u)
+	if len(u.ClearedAttentionIds) > 0 {
 		h.d.publish(u)
 	}
+}
+
+// answerSettle is how long after the last key into a waiting agent's pane
+// its screen is read for the prompt: long enough for it to redraw.
+var answerSettle = 400 * time.Millisecond
+
+// answered takes an agent that was waiting (since since) back to working,
+// and its Needs You item away, unless its menu is still on screen.
+func (h *agentHub) answered(p *pane, since int64) {
+	asking := len(agentview.ReadScreen(p.text(false)).Options) > 0
+	h.d.mu.Lock()
+	defer h.d.mu.Unlock()
+	p.mu.Lock()
+	a := p.info.Agent
+	if asking || a == nil || a.State != pb.AgentState_AGENT_STATE_NEEDS_INPUT || a.StateSinceUnixMs != since {
+		p.mu.Unlock()
+		return // still asking, or moved on (a hook) since
+	}
+	a.State, a.StateSinceUnixMs, a.Summary = pb.AgentState_AGENT_STATE_WORKING, time.Now().UnixMilli(), ""
+	p.mu.Unlock()
+	u := &pb.StateUpdate{}
+	h.d.clearAttentionForPane(p.id, u)
+	info := p.snapshotInfo()
+	h.d.persist(h.d.store.PutPane(info))
+	u.Panes = append(u.Panes, info)
+	h.d.publish(u)
 }
 
 // interrupted watches for an agent's "Interrupted" line (Claude's) after
