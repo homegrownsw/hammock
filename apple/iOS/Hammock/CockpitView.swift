@@ -498,6 +498,7 @@ struct CockpitSplit<Sidebar: View>: View {
                     // placeholder came in its place, said on the way out.
                     if let shown = path.first ?? (hSize == .compact ? leaving : nil) {
                         CockpitDestination(model: model, id: shown, path: $path).id(shown)
+                            .environment(\.screenLeaving, path.first == nil)
                     } else if !model.groups.isEmpty {
                         ContentUnavailableView(placeholder, systemImage: "sidebar.left")
                     }

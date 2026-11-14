@@ -9,8 +9,7 @@ extension View {
     /// again taller, its message box dropping and its scroll jumping), but
     /// shows it only once a swipe back has finished, so it popped in.
     func hidesTabBarWhenPushed(_ hide: Bool) -> some View {
-        toolbar(hide ? .hidden : .automatic, for: .tabBar)
-            .background { if hide { TabBarShower().frame(width: 0, height: 0) } }
+        modifier(TabBarHider(hide: hide))
     }
 
     /// Holds this screen still while it's popped: it slides away as it was
@@ -20,6 +19,26 @@ extension View {
     /// it (Messages stays still).
     func steadyWhilePopped() -> some View {
         background { PopFreezer().frame(width: 0, height: 0) }
+    }
+}
+
+extension EnvironmentValues {
+    /// This screen has been gone back from and is only sliding away (kept
+    /// a moment by `CockpitSplit`), so it no longer hides the tab bar.
+    @Entry var screenLeaving = false
+}
+
+private struct TabBarHider: ViewModifier {
+    let hide: Bool
+    @Environment(\.screenLeaving) private var leaving
+
+    func body(content: Content) -> some View {
+        // Still hidden while it slid away, SwiftUI took the tab bar for
+        // hidden, though TabBarShower had shown it: a screen opened before
+        // this one went, hiding it too, changed nothing, and the bar stayed.
+        content
+            .toolbar(hide && !leaving ? .hidden : .automatic, for: .tabBar)
+            .background { if hide { TabBarShower().frame(width: 0, height: 0) } }
     }
 }
 
