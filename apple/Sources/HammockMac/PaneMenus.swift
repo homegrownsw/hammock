@@ -13,11 +13,26 @@ final class SimulatorList {
 
     /// Running ones first.
     var sorted: [AppModel.SimulatorDevice] { devices.sorted { $0.booted && !$1.booted } }
+    /// iPhones and iPads, then Apple TVs, each running ones first.
+    var phones: [AppModel.SimulatorDevice] { sorted.filter { $0.platform != "tvOS" } }
+    var tvs: [AppModel.SimulatorDevice] { sorted.filter { $0.platform == "tvOS" } }
+
+    private var refreshing = false
 
     func refresh(_ model: AppModel) {
         // The README's demo (HMK_DEBUG_DIRECTOR) shows none: they're this Mac's.
-        guard ProcessInfo.processInfo.environment["HMK_DEBUG_DIRECTOR"] == nil else { return }
-        Task { devices = await model.simulators() }
+        guard ProcessInfo.processInfo.environment["HMK_DEBUG_DIRECTOR"] == nil, !refreshing else { return }
+        refreshing = true
+        Task {
+            defer { refreshing = false }
+            // An empty answer is often the simulator host not running yet (just
+            // after launch): asked again for half a minute, not left empty.
+            for attempt in 0..<10 {
+                devices = await model.simulators()
+                if !devices.isEmpty || attempt == 9 { return }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
     }
 
     static func label(_ d: AppModel.SimulatorDevice) -> String {
@@ -118,8 +133,15 @@ struct SimulatorItems: View {
         if list.devices.isEmpty {
             Text("No simulators (Xcode ▸ Settings ▸ Components)")
         }
-        ForEach(list.sorted) { d in
+        ForEach(list.phones) { d in
             Button(SimulatorList.label(d)) { open(d.udid) }
+        }
+        if !list.tvs.isEmpty {
+            Section("Apple TV") {
+                ForEach(list.tvs) { d in
+                    Button(SimulatorList.label(d)) { open(d.udid) }
+                }
+            }
         }
     }
 }

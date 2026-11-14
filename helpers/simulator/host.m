@@ -750,18 +750,27 @@ static CGPoint unturn(CGPoint q, int turn) {
 }
 
 // An Apple TV's Siri Remote: each button as the remote's own consumer-page
-// usage (Menu, Select, Play/Pause…, not keyboard keys standing in for them),
-// on the target the simulator's keyboard service takes. The caller sends
-// down and up, so a held button is a long press.
-static const uint32_t kRemoteTarget = 0x64, kConsumerPage = 0x0C;
+// usage (Select, Play/Pause…, not keyboard keys standing in for them), on
+// the target the simulator's keyboard service takes. The caller sends down
+// and up, so a held button is a long press.
+//
+// Back is the exception: from the keyboard service, tvOS takes the remote's
+// Menu usage (0x40) as Home, and AC Back (0x224) does nothing, so Back is
+// the Escape key, which tvOS makes its Menu press (back one level).
+static const uint32_t kRemoteTarget = 0x64, kConsumerPage = 0x0C, kEscape = 41;
 
 - (void)remote:(Pane *)p name:(NSString *)name phase:(NSString *)phase {
-  NSDictionary *usages = @{@"menu" : @0x40, @"select" : @0x41, @"up" : @0x42, @"down" : @0x43, @"left" : @0x44, @"right" : @0x45,
+  NSDictionary *usages = @{@"select" : @0x41, @"up" : @0x42, @"down" : @0x43, @"left" : @0x44, @"right" : @0x45,
                            @"play_pause" : @0xCD, @"home" : @0x223, @"volume_up" : @0xE9, @"volume_down" : @0xEA,
                            @"mute" : @0xE2, @"siri" : @0xCF};
-  NSNumber *usage = usages[name];
-  if (!usage || !indigoArbitrary || !p.device || !isTV(p.device)) return;
+  if (!p.device || !isTV(p.device)) return;
   uint32_t dir = [phase isEqualToString:@"up"] ? kUp : kDown;
+  if ([name isEqualToString:@"menu"]) {
+    if (indigoKey) [self sendHID:p message:indigoKey(kEscape, dir)];
+    return;
+  }
+  NSNumber *usage = usages[name];
+  if (!usage || !indigoArbitrary) return;
   [self sendHID:p message:indigoArbitrary(kRemoteTarget, kConsumerPage, usage.unsignedIntValue, dir)];
 }
 

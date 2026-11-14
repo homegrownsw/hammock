@@ -145,6 +145,15 @@ final class SimulatorPaneNSView: NSView {
     }
     /// An Apple TV: no touch screen; the keyboard is its remote's, and its
     /// frame is a TV's thin bezel.
+    /// An Apple TV's remote is shown beside it: set when it's toggled, so the
+    /// device animates to its new size (SimulatorPaneView fades the remote).
+    var remoteShown = false {
+        didSet { if remoteShown != oldValue, window != nil { animatesNextLayout = true; needsLayout = true } }
+    }
+    private var animatesNextLayout = false
+    /// How long the TV and its remote take to make room for each other.
+    static let remoteToggleDuration = 0.3
+
     var isTV = false {
         didSet {
             guard isTV != oldValue else { return }
@@ -183,6 +192,9 @@ final class SimulatorPaneNSView: NSView {
         self.shared = shared
         super.init(frame: .zero)
         wantsLayer = true
+        // The device may draw past the view while it animates to a smaller
+        // place (an Apple TV making room for its remote, which it covers).
+        clipsToBounds = false
         device.anchorPoint = .zero
         screen.masksToBounds = true
         screen.anchorPoint = .zero
@@ -441,13 +453,25 @@ final class SimulatorPaneNSView: NSView {
             reported = placed
             DispatchQueue.main.async { report(placed) }
         }
+        // The device moves and scales to its new place: animated when the
+        // remote beside it was shown or hidden, else straight there.
+        let animate = animatesNextLayout
+        animatesNextLayout = false
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        if animate {
+            CATransaction.setAnimationDuration(SimulatorPaneNSView.remoteToggleDuration)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+        } else {
+            CATransaction.setDisableActions(true)
+        }
         let d = deviceSize
         device.bounds = CGRect(origin: .zero, size: d)
         device.anchorPoint = .zero
         device.position = deviceRect.origin
         device.transform = CATransform3DMakeScale(s, s, 1)
+        CATransaction.commit()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         bezel.isHidden = !framed
         bezel.frame = CGRect(origin: .zero, size: d)
         let shape = outline ?? plainOutline
@@ -792,6 +816,7 @@ struct SimulatorView: NSViewRepresentable {
     var isFocused: Bool
     var showsFrame: Bool
     var isTV = false
+    var remoteShown = false
     var view: SimulatorRef
     var onPlacement: ((SimulatorPlacement) -> Void)? = nil
 
@@ -802,6 +827,7 @@ struct SimulatorView: NSViewRepresentable {
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
         v.showsFrame = showsFrame
         v.isTV = isTV
+        v.remoteShown = remoteShown
         v.isFocusTarget = isFocused
         v.onPlacement = onPlacement
         view.view = v
@@ -812,6 +838,7 @@ struct SimulatorView: NSViewRepresentable {
         v.isFocusTarget = isFocused
         v.showsFrame = showsFrame
         v.isTV = isTV
+        v.remoteShown = remoteShown
         v.onPlacement = onPlacement
     }
 }
@@ -888,7 +915,10 @@ struct SimulatorPaneView: View {
                 let wide = geo.size.width > geo.size.height * 1.15
                 let layout = wide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
                 layout {
-                    screen
+                    // Over the remote: as the TV scales down to make room, it
+                    // uncovers the remote fading in behind it, and covers it again
+                    // as it grows back.
+                    screen.zIndex(1)
                     if isTV && showsRemote {
                         SiriRemote { name, phase in
                             model.viewFocused(paneID)
@@ -897,15 +927,18 @@ struct SimulatorPaneView: View {
                         .padding(wide ? EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 24) : EdgeInsets(top: 0, leading: 20, bottom: 16, trailing: 20))
                         .frame(maxWidth: wide ? min(150, geo.size.width * 0.22) : .infinity,
                                maxHeight: wide ? .infinity : min(380, geo.size.height * 0.45))
+                        // Fades while the TV scales to make room (SimulatorPaneNSView.layout).
+                        .transition(.opacity)
                     }
                 }
+                .animation(.easeInOut(duration: SimulatorPaneNSView.remoteToggleDuration), value: isTV && showsRemote)
             }
             .background(Color(nsColor: .underPageBackgroundColor))
         }
     }
 
     private var screen: some View {
-        SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, isTV: isTV, view: ref,
+        SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, isTV: isTV, remoteShown: isTV && showsRemote, view: ref,
                       onPlacement: { placement = $0 })
             .overlay {
                 if let p = placement, !p.screen.isEmpty {

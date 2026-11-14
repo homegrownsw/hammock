@@ -1129,6 +1129,8 @@ public final class AppModel {
         public let name: String
         public let runtime: String
         public let booted: Bool
+        /// iOS or tvOS (an Apple TV); nil from an older simulator host.
+        public let platform: String?
         public var id: String { udid }
     }
 
