@@ -5,30 +5,19 @@ description: Answers to common problems with Hammock on the Mac, the iPhone and 
 
 ## Programs in my panes can't read files, or another app's data
 
-Give Hammock Full Disk Access. macOS records privacy decisions about the programs in your panes against Hammock, and
-refuses some of them without asking: a program fails quietly, with no dialog. A password manager's CLI that can't
-reach its desktop app is a typical case.
-
-Settings ▸ General ▸ Privacy shows whether Full Disk Access is on, and **Open System Settings…** takes you there.
-Add Hammock to the list and choose **Quit & Reopen** when macOS asks. Everything you run in Hammock gets it too,
-agents included. See [Install on a Mac](/hammock/docs/install/mac/#full-disk-access).
+Give Hammock Full Disk Access: Settings ▸ General ▸ Privacy ▸ **Open System Settings…**, add Hammock to the list and
+choose **Quit & Reopen**. Everything you run in Hammock gets it too, agents included. See
+[Install on a Mac](/hammock/docs/install/mac/#full-disk-access).
 
 ## An agent's state is wrong, or its session doesn't resume
 
-Without hooks, Hammock works out what an agent is doing from its process and what's on its screen, which can lag or
-miss a state. Hooks make it exact, and tell Hammock which session the pane is running, so it can resume it after a
-restart. Install them from Settings ▸ Agents ▸ **Install Hooks & Tools**, or:
-
-```sh
-hmk hooks install --dry-run   # see what would change
-hmk hooks install
-```
-
-It backs up each file it changes and leaves your own hooks alone. See [Agent setup](/hammock/docs/agents/setup/).
+Install Hammock's hooks: Settings ▸ Agents ▸ **Install Hooks & Tools**, or `hmk hooks install`. Without them,
+Hammock guesses the state from the agent's screen and can't resume its session. See
+[Setting up agents](/hammock/docs/agents/setup/).
 
 ## My iPhone can't connect to my Mac
 
-The iPhone reaches your Mac directly over a network you've chosen, so check each of these:
+Check each of these:
 
 - On the Mac, Settings ▸ Devices: **Allow paired devices to connect remotely** is on.
 - Under Remote Access, the network the iPhone is on is chosen. With none chosen, Hammock listens on Tailscale only.
@@ -36,72 +25,52 @@ The iPhone reaches your Mac directly over a network you've chosen, so check each
 - If you use your local network, the iPhone is on that Wi-Fi, not mobile data.
 - The Mac is awake and the daemon is running (below).
 
-`hmk remote networks` lists the networks the Mac is on and marks the chosen ones with `*`. See
+`hmk remote networks` lists the Mac's networks, with the chosen ones marked `*`. See
 [Install on iPhone](/hammock/docs/install/iphone/#networks).
 
 ## I don't get notifications on my iPhone
 
-Allow notifications for Hammock in the iPhone's Settings, and open the app once while it's connected to your Mac, so
-the Mac learns where to send them. The app's Settings tab says whether push is on, under **Notify Me When**.
-
-The Mac only sends them while you're away from it: its screen is locked, or you haven't touched it for a couple of
-minutes. While you're at it, the Mac notifies you itself.
+Allow notifications for Hammock in the iPhone's Settings, and open the app once while it's connected to your Mac.
+The Mac only sends them while you're away from it: when its screen is locked, or you haven't touched it for a couple
+of minutes.
 
 ## The daemon isn't running
 
 ```sh
-hmk status     # exits with 3 when the daemon isn't running
 hmk start
 ```
 
-Opening the Hammock app also starts it. To have it start at login, turn on **Start the server at login** in
-Settings ▸ General. If it won't start, its log is at `~/Library/Application Support/Hammock/logs/hmkd.log`
-(`~/.local/state/hammock/logs/hmkd.log` on Linux; under `hmk service install`, `journalctl --user -u hammock`).
+Opening the Hammock app also starts it. If it won't start, read its log at
+`~/Library/Application Support/Hammock/logs/hmkd.log` (`~/.local/state/hammock/logs/hmkd.log` on Linux).
 
 ## My panes keep running after I quit the app
 
-That's by design: the daemon owns your panes, so quitting the app, updating it or a crash doesn't stop them. To
-stop everything, choose **Quit and Stop Server…** in Settings ▸ About and tick **Also end what's running in your
-panes**, or:
-
-```sh
-hmk stop --panes
-```
-
-`hmk stop` on its own stops the daemon and leaves your panes running; they come back when it starts again.
+That's by design. To stop everything, choose **Quit and Stop Server…** in Settings ▸ About and tick **Also end
+what's running in your panes**, or run `hmk stop --panes`.
 
 ## What comes back after a reboot?
 
-Every Group, tab and pane, with its folder and the scrollback it had. Shells start again, and agents resume their
-sessions (with hooks installed: above). Browser panes come back at their page. For this to happen at login, turn on
-**Start the server at login** in Settings ▸ General; otherwise it happens when you next open Hammock.
+Every Group, tab and pane, with its folder and scrollback. Shells start again, agents resume their sessions (with
+hooks installed) and browser panes reopen their page. It happens at login with **Start the server at login** on in
+Settings ▸ General, or else when you next open Hammock.
 
 ## hmk talks to the wrong daemon
 
-Outside a pane, `hmk` uses the daemon whose state folder is `HMK_DIR`, or by default
-`~/Library/Application Support/Hammock` (`~/.local/state/hammock` on Linux). Check you haven't set `HMK_DIR`
-somewhere and forgotten it:
-
-```sh
-echo $HMK_DIR
-hmk status
-```
-
-Inside a Hammock pane, `hmk` always talks to the daemon that runs that pane, whatever `HMK_DIR` says.
+Check you haven't set `HMK_DIR` and forgotten it (`echo $HMK_DIR`): outside a pane, `hmk` talks to the daemon in that
+state folder. Inside a pane, it always talks to the daemon running that pane.
 
 If `hmk` isn't found at all, install it from Settings ▸ General ▸ Command-line tool, and check its folder is on your
 PATH ([Install on a Mac](/hammock/docs/install/mac/#the-hmk-command)).
 
 ## Resetting settings
 
-Your settings are all in `~/.config/hammock/config`, and a key you leave out takes its default. To reset one, delete
-its line. To reset them all, move the file away:
+Delete a setting's line from `~/.config/hammock/config` to reset it, or move the file away to reset them all:
 
 ```sh
 mv ~/.config/hammock/config ~/.config/hammock/config.old
 ```
 
-Hammock picks the change up within a couple of seconds. See [Configuration](/hammock/docs/configuration/).
+See [Configuration](/hammock/docs/configuration/).
 
 ## Still stuck?
 

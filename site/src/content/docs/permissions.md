@@ -3,116 +3,77 @@ title: Permissions
 description: The macOS permissions Hammock asks for, what each one is for, and how to grant or take it back.
 ---
 
-Hammock asks macOS for a few permissions, each for one feature, and only when you use it. None of them is needed to run terminals and agents. This page lists each one: what it's for, who asks, when, and what happens without it.
-
-Every permission below can be changed later in System Settings. Turning one off takes effect the next time Hammock needs it; for some, macOS asks you to quit and reopen Hammock.
+Hammock asks macOS for a few permissions, each for one feature, and only when you use it. None is needed to run terminals and agents. Change any of them later in System Settings ▸ Privacy & Security.
 
 ## Full Disk Access
 
-**What it's for.** Programs in your panes. macOS protects some of your files and other apps' data, and it decides whether a program may reach them by the app it runs in. For everything in a pane, that's Hammock. Without Full Disk Access, macOS can quietly stop programs in your panes from reading your files and other apps' data, sometimes without showing a prompt at all. For example, a password manager's command-line tool can fail to reach its desktop app.
+**What it's for.** Programs in your panes. macOS decides whether a program may reach your protected files and other apps' data by the app it runs in, which for a pane is Hammock. Without Full Disk Access, programs in your panes can quietly fail to read them: a password manager's command-line tool can fail to reach its desktop app, for example.
 
-**Who asks.** Hammock suggests it, but never requires it. macOS has no prompt for Full Disk Access: you add Hammock to the list yourself.
+**What it covers.** Everything you run in Hammock gets it too, agents included, as in other terminals. It's suggested, never required.
 
-**When.** During setup, on its Full Disk Access step. You can skip it.
+**Granting it.** Setup offers it, as do Settings ▸ General ▸ Privacy and the command palette's **Full Disk Access…**:
 
-**What it covers.** Everything you run in Hammock gets it too, agents included. That's how other terminals work, but it's worth knowing before you turn it on.
-
-**Granting it.**
-
-1. Open System Settings ▸ Privacy & Security ▸ Full Disk Access. Setup's button, Settings ▸ General's **Open System Settings…** button and the command palette's **Full Disk Access…** all open it, with a small window holding Hammock's icon beside it.
+1. Open System Settings ▸ Privacy & Security ▸ Full Disk Access.
 2. Drag Hammock's icon into the list.
-3. Choose **Quit & Reopen** when macOS asks. If you were in setup, it carries on where you left off.
+3. Choose **Quit & Reopen** when macOS asks.
 
-**Checking it.** Settings ▸ General ▸ Privacy shows **Full Disk Access for programs in panes** as On or Off.
-
-**Revoking it.** Turn Hammock off in System Settings ▸ Privacy & Security ▸ Full Disk Access.
+Settings ▸ General ▸ Privacy shows whether it's on.
 
 ## Programs in your panes
 
-macOS treats everything running in a pane as part of Hammock, the app it runs in. So when a program in a pane wants something macOS protects, the prompt names Hammock, not the program, and what you choose applies to Hammock: to every program in every pane, agents included.
-
-To see or change those choices, look for Hammock in the matching list in System Settings ▸ Privacy & Security. [Full Disk Access](#full-disk-access) covers most of what command-line tools need from your files.
+macOS treats everything in a pane as part of Hammock. When a program in a pane wants something macOS protects, the prompt names Hammock, and what you choose applies to every program in every pane, agents included. Those choices are under Hammock in System Settings ▸ Privacy & Security. [Full Disk Access](#full-disk-access) covers most of what command-line tools need.
 
 ## Notifications
 
-**What it's for.** macOS notifications when an agent needs your input, asks for permission, finishes or hits an error.
+**What it's for.** macOS notifications when an agent needs you, finishes or hits an error. macOS asks the first time Hammock has one to show.
 
-**Who asks.** Hammock.
+**Without it.** Choose **In the Hammock window** in Settings ▸ Notifications ▸ Show notifications, and they appear in Hammock's window instead.
 
-**When.** The first time Hammock has a notification to show as a macOS notification, so the prompt comes when an agent first needs you rather than at launch.
-
-**Without it.** Choose **In the Hammock window** in Settings ▸ Notifications ▸ Show notifications, and notifications appear in Hammock's window instead, with no macOS permission needed. Settings ▸ Notifications shows whether macOS allows them.
-
-**Granting or revoking it.** System Settings ▸ Notifications ▸ Hammock, or the **Open System Settings** button in Settings ▸ Notifications.
+**Granting or revoking it.** System Settings ▸ Notifications ▸ Hammock.
 
 ## Microphone
 
-**What it's for.** Dictating messages to your agents in the agent view, by clicking the microphone. The speech is turned into text on your Mac.
-
-**Who asks.** Hammock.
-
-**When.** The first time you dictate.
-
-**Without it.** Dictation doesn't start. Hammock says "Microphone access is off for Hammock." with an **Open Settings** button. Everything else works.
+**What it's for.** Dictating to your agents in the agent view, on your Mac. macOS asks the first time you dictate.
 
 **Granting or revoking it.** System Settings ▸ Privacy & Security ▸ Microphone.
 
 ## Local Network
 
-**What it's for.** Reaching your other computers and your iPhone over your local network: [remote access](/hammock/docs/remote/) on a local network you've chosen, and finding Hammock on your other computers there with Bonjour.
-
-**Who asks.** Hammock.
-
-**When.** The first time Hammock uses your local network, for example after you choose a local network for remote access in Settings ▸ Devices ▸ Remote Access.
-
-**Without it.** Hammock can't connect to your other computers on your local network, or find them there.
+**What it's for.** [Remote access](/hammock/docs/remote/) on a local network you've chosen, and finding Hammock on your other computers there. macOS asks the first time Hammock uses your local network.
 
 **Granting or revoking it.** System Settings ▸ Privacy & Security ▸ Local Network.
 
 ## Accessibility and Screen & System Audio Recording
 
-**What they're for.** [Screen sharing](/hammock/docs/screen-sharing/): letting your iPhone and your other Macs see this Mac's screen (Screen Recording) and send it clicks and typing (Accessibility). Nothing else in Hammock uses them. Browser and simulator panes don't need Screen Recording.
+**What they're for.** [Screen sharing](/hammock/docs/screen-sharing/) only: letting your iPhone and other Macs see this Mac's screen (Screen Recording) and click and type on it (Accessibility). Browser and simulator panes don't need them.
 
-**Who asks.** Hammock's screen-sharing helper, which runs inside Hammock. macOS lists it under two names:
+**When.** Once you turn on screen sharing in Settings ▸ Devices ▸ Screen Sharing and click **Allow…** beside each step. Allow Accessibility first.
 
-- in **Accessibility**, as **Hammock Screen Sharing**;
-- in **Screen & System Audio Recording**, as **Hammock**.
-
-**When.** Only once you turn on screen sharing in Settings ▸ Devices ▸ Screen Sharing, and click **Allow…** beside each step. Allow Accessibility first: macOS has the helper quit and reopen once Screen Recording is allowed.
-
-**Without them.** Your devices can't show this Mac's screen. They say which permission is missing.
-
-**Granting or revoking them.** System Settings ▸ Privacy & Security ▸ Accessibility, and System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. Settings ▸ Devices ▸ Screen Sharing shows a tick beside each one that's allowed.
+**Granting or revoking them.** System Settings ▸ Privacy & Security ▸ Accessibility, where the helper is **Hammock Screen Sharing**, and Screen & System Audio Recording, where it's **Hammock**.
 
 ## Login Items
 
-**What it's for.** Keeping your terminals and agents running when Hammock isn't open. The server, which runs your panes, starts when you log in, and so does the menu bar item.
+**What it's for.** Starting the server, which runs your panes, and the menu bar item when you log in. Without it, the server starts when you open Hammock.
 
-**Who asks.** Hammock registers them. macOS may ask you to approve them.
-
-**When.** During setup, on its **Keep Hammock running** step, or when you turn on **Start the server at login** in Settings ▸ General. If macOS wants your approval, Hammock opens Login Items for you.
-
-**Without it.** The server starts when you open Hammock, not when you log in.
-
-**Granting or revoking it.** System Settings ▸ General ▸ Login Items & Extensions: turn on Hammock. To stop it starting at login, turn off **Start the server at login** in Settings ▸ General.
+**Granting or revoking it.** Setup's **Keep Hammock running** step, or **Start the server at login** in Settings ▸ General. If macOS asks, turn Hammock on in System Settings ▸ General ▸ Login Items & Extensions.
 
 :::note
-Hammock can only start at login from your Applications folder. If you open it from somewhere else, move it to Applications first.
+Hammock can only start at login from your Applications folder.
 :::
 
 ## Touch ID and the Hammock Key
 
-The [Hammock Key](/hammock/docs/remote/), an SSH key kept in your Mac's Secure Enclave, signs only when you approve. It asks with Touch ID, or your password, in a panel that says what it will sign. This isn't a privacy permission, so there's nothing to grant in System Settings.
+The [Hammock Key](/hammock/docs/remote/) signs only when you approve, with Touch ID or your password, in a panel that says what it will sign. There's nothing to grant in System Settings.
 
 ## On your iPhone
 
 Hammock on the iPhone asks for:
 
-- **Camera**, to scan the pairing code shown on your Mac.
-- **Local Network**, to connect to Hammock on your Mac over your local network or a VPN.
+- **Camera**, to scan the pairing code.
+- **Local Network**, to reach your Mac over your local network or a VPN.
 - **Notifications**, for agents that need you.
-- **Microphone**, to dictate messages to your agents when you tap the microphone.
-- **Photos** (add only), to save simulator screenshots to your photos.
-- **Face ID**, if you have the app ask for it when you come back to Hammock (its Settings tab, under Privacy).
+- **Microphone**, to dictate to your agents.
+- **Photos** (add only), to save simulator screenshots.
+- **Face ID**, if you turn on **Require Face ID** in its Settings tab.
 
 Change any of them in the Settings app ▸ Apps ▸ Hammock. See [Using the iPhone app](/hammock/docs/iphone/).

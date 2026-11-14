@@ -15,12 +15,9 @@ hero:
 
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Hammock is a terminal multiplexer, like tmux or Zellij, as a native app. A daemon, `hmkd`, owns your panes: every
-pane's program runs in its own process, organised into Groups, tabs and panes. Quit the app, update it or crash it,
-and your terminals and agents carry on. After a reboot, your Groups come back and agents resume their sessions.
-
-Because the daemon owns the work, everything that talks to it shows the same workspace: the Mac app, the iPhone app,
-the TUI (`hmk tui`) and the `hmk` command. Agents can drive it too, through MCP.
+Hammock is a terminal multiplexer, like tmux or Zellij, as a native app. A daemon, `hmkd`, owns your panes, so
+quitting, updating or crashing the app doesn't stop them, and after a reboot your Groups come back and agents resume
+their sessions. The Mac app, the iPhone app, the TUI and the `hmk` command all show the same workspace.
 
 :::note[Project status]
 Hammock is in rapid development: treat it as beta software. See [Project status](/hammock/docs/status/).
@@ -30,8 +27,7 @@ Hammock is in rapid development: treat it as beta software. See [Project status]
 
 <CardGrid>
 	<Card title="Groups, tabs and panes" icon="seti:folder">
-		A Group for each piece of work, with its own tabs, split and floating panes, the sidebar and the command
-		palette. [The workspace](/hammock/docs/workspace/)
+		A Group for each piece of work, with its own tabs, split and floating panes. [The workspace](/hammock/docs/workspace/)
 	</Card>
 	<Card title="An agent cockpit" icon="rocket">
 		See at a glance which agent is working, which needs you and which has finished, across every Group.
@@ -50,12 +46,12 @@ Hammock is in rapid development: treat it as beta software. See [Project status]
 		[The iPhone app](/hammock/docs/iphone/)
 	</Card>
 	<Card title="Your other computers" icon="server">
-		Link a Mac or a Linux server and see its Groups beside yours, reach your Mac remotely, and share Groups
-		with other people. [Remote access](/hammock/docs/remote/)
+		Link a Mac or a Linux server and see its Groups beside yours, and share Groups with other people.
+		[Remote access](/hammock/docs/remote/)
 	</Card>
 	<Card title="From any terminal" icon="seti:shell">
-		`hmk` lists, opens, splits, reads and types into panes, from a script or another terminal, and `hmk tui`
-		is the whole workspace in a terminal. [The CLI](/hammock/docs/cli/) · [The TUI](/hammock/docs/tui/)
+		`hmk` drives your panes from a script or another terminal, and `hmk tui` is the whole workspace in a
+		terminal. [The CLI](/hammock/docs/cli/) · [The TUI](/hammock/docs/tui/)
 	</Card>
 	<Card title="On a schedule" icon="clock">
 		Run an agent's prompt or a command on a schedule, each run a new tab in its Group.

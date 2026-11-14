@@ -13,125 +13,69 @@ This page uses the Mac app's default shortcuts. You can change any of them: see 
 
 ## Panes keep running
 
-A background server, the daemon, owns your panes, and each pane runs in a small process of its own. The window is only a view of them. Close it, quit Hammock, update it or let it crash, and your shells, dev servers, builds and agents carry on. Open Hammock again and everything is where you left it.
-
-The Mac app starts the daemon when it isn't running. To keep it running from login, turn on Settings ▸ General ▸ Start the server at login.
-
-After a restart or a log-out, Hammock opens your Groups and tabs as they were. Each pane starts again in its folder, with its earlier output shown above, and agents resume the sessions they were in. A command that had already ended isn't run again.
+A background server, the daemon, owns your panes; the window is only a view of them. Close it, quit, update or crash Hammock, and your shells, servers and agents carry on. After a restart or log-out, your Groups and tabs come back as they were: each pane starts again in its folder with its earlier output, and agents resume their sessions.
 
 ## Groups
 
-- **New Group** (⌘N) makes an empty Group. **New Group in Directory…** (⇧⌘N) makes one for a folder, named after it.
-- **Configure Group…** (⌥⌘G) changes a Group's name, icon, picture and folder.
-- Move to the next or previous Group with ⌥⌘↓ and ⌥⌘↑. Drag a Group in the sidebar to reorder it, or right-click it for Move Up and Move Down.
+**New Group** (⌘N), or **New Group in Directory…** (⇧⌘N) for one named after a folder. **Configure Group…** (⌥⌘G) changes its name, icon and folder. ⌥⌘↓ and ⌥⌘↑ move between Groups; drag one in the sidebar to reorder it.
 
 ```sh
 hmk group new api --folder ~/Developer/api
-hmk group rename api "API server"
 ```
 
 ### A Group's folder
 
-Each Group has a folder its new tabs open in. It follows you: when you `cd` somewhere and work there, new tabs in that Group open in the folder you last worked in. To set it yourself, use File ▸ Change Group Folder…, the folder row in Configure Group…, or:
-
-```sh
-hmk group folder api ~/Developer/api
-```
+New tabs open in the Group's folder, which follows you: it's the folder you last worked in. Set it yourself with File ▸ Change Group Folder… or `hmk group folder`.
 
 ### Group icons
 
-A Group shows an icon beside its name in the sidebar. It can be:
-
-- an **emoji**, set in Configure Group… or with `hmk group icon GROUP 🚀`;
-- a **picture**, chosen in Configure Group… or with `hmk group icon GROUP --image logo.png`, which Hammock keeps on this Mac;
-- the project's own **`.hammock/icon.png`** (or `.jpg`) in the Group's folder, which shows when you haven't set a picture. Commit one to a repository and everyone who opens it in Hammock sees it.
-
-An emoji wins over a picture while it's set. To hide icons on Group headings altogether, turn off Settings ▸ Appearance ▸ Group icons (`group-icons = false`).
+A Group's icon is an emoji or picture set in Configure Group… (or `hmk group icon`), or, if you haven't set one, the project's own `.hammock/icon.png` (or `.jpg`): commit one and everyone who opens the repository in Hammock sees it. Settings ▸ Appearance ▸ Group icons hides them.
 
 ## Tabs
 
-- **New Tab** (⌘T) opens a terminal in the Group you're in. The **+** button in the toolbar opens a menu of everything a tab can hold: a terminal, an agent, a browser, a simulator, a log, an editor or a diff.
+- **New Tab** (⌘T) opens a terminal; the toolbar's **+** opens any other kind of tab.
 - **New Agent Tab…** (⌥⌘N) starts a coding agent. See [Agents](/hammock/docs/agents/overview/).
-- Switch with ⌘1 to ⌘9, or ⇧⌘] and ⇧⌘[ for the next and previous tab.
+- Switch with ⌘1 to ⌘9, or ⇧⌘] and ⇧⌘[.
 - **Rename Tab…** (⇧⌘R). Unnamed tabs are named after what's running in them.
 
-To move a tab to another Group, drag it there in the sidebar, or right-click it and choose Move to Group.
-
-To bring two tabs together, right-click one and choose **Merge into Tab**: its panes go beside the other tab's, or below them. To take a pane out into a tab of its own, use Pane ▸ Move Pane to New Tab. From a terminal:
-
-```sh
-hmk tab merge TAB INTO          # beside; --down to go below
-hmk tab break PANE              # a pane out into its own tab
-```
+Drag a tab to another Group in the sidebar to move it. Right-click a tab and choose **Merge into Tab** to put its panes beside another tab's; Pane ▸ Move Pane to New Tab does the reverse.
 
 ## The sidebar
 
-The sidebar lists your Groups with their tabs. Show or hide it with ⌃⌘S. Settings ▸ Appearance ▸ Layout offers three layouts (`sidebar-layout`):
+The sidebar (⌃⌘S) lists your Groups with their tabs, vertically, compactly, or with the tabs along the top (Settings ▸ Appearance ▸ Layout). A tab running an agent shows its state in its icon: [Agents](/hammock/docs/agents/overview/) explains each one.
 
-- **Vertical**: each Group's tabs listed under it. The default.
-- **Compact**: the same, with smaller rows, so more tabs fit.
-- **Horizontal**: Groups in the sidebar, and the selected Group's tabs in a tab bar along the top.
-
-A tab running an agent shows the agent's state in its icon: working, waiting for you, finished, or stopped with an error. With Settings ▸ Appearance ▸ Agent status set to At the end of the row (`tab-status = trailing`), the state moves there and the agent's logo takes the icon's place. [Agents](/hammock/docs/agents/overview/) explains each state.
-
-At the bottom of the sidebar, **Needs You** lists agents waiting on you: questions, permission requests and errors. Below it, **Finished** lists agents that are done and want nothing. Turn the Finished list off with Settings ▸ Appearance ▸ Show finished agents (`sidebar-finished = false`).
-
-A collapsed Group hides its tabs. To keep tabs with an active agent showing in a collapsed Group, turn on Show active agents in collapsed Groups (`collapsed-group-agents = true`).
+At the bottom, **Needs You** lists agents waiting on you, and **Finished** those that are done.
 
 ## Splits
 
-- **Split Right** (⌘D) and **Split Down** (⇧⌘D) split the focused pane. Split Left and Split Up are in the Pane menu. The toolbar's split buttons open a menu, so you can split with a browser, a simulator or another kind of pane instead of a terminal.
-- Move between panes with ⌘] and ⌘[.
-- Drag the line between two panes to resize them.
-- **Zoom Pane** (⇧⌘↩) fills the tab with the focused pane. Press it again to put it back.
+- **Split Right** (⌘D) and **Split Down** (⇧⌘D). The toolbar's split buttons split with other kinds of pane.
+- Move between panes with ⌘] and ⌘[, and drag the line between them to resize.
+- **Zoom Pane** (⇧⌘↩) fills the tab with the focused pane, and puts it back.
 
 ```sh
-hmk split PANE                  # to the right; --down, --left or --up
 hmk split PANE --down -- npm run dev
 ```
 
 ## Floating panes
 
-A floating pane sits over the tab's splits, like a card: handy for a dev server's output, or a quick shell you don't want in your layout.
+A floating pane sits over the tab's splits, handy for a dev server's output or a quick shell.
 
-- **New Floating Pane** (⇧⌘F) opens a terminal floating over the tab.
-- **Float or Dock Pane** (⇧⌘J) lifts the focused pane out of the splits, or puts a floating one back.
-- Drag a floating pane by its header to move it. Hold ⌥ while you drag to dock it into the split under the pointer.
-- **Minimise Floating Pane** (⌃⌘M) puts it on the tab's **shelf**, along the bottom of the tab, still running. Click it there to bring it back.
-- **Show or Hide Floating Panes** (⌘J) minimises every floating pane in the tab, or brings them all back.
+- **New Floating Pane** (⇧⌘F), or **Float or Dock Pane** (⇧⌘J) to lift the focused pane out or put it back.
+- Drag one by its header to move it; hold ⌥ to dock it into the split under the pointer.
+- **Minimise Floating Pane** (⌃⌘M) puts it, still running, on the tab's **shelf** along the bottom. **Show or Hide Floating Panes** (⌘J) does it for them all.
 
 ```sh
 hmk split PANE --float -- tail -f server.log
-hmk float PANE --at 0.5,0.5,0.45,0.45   # where, in fractions of the tab
-hmk dock PANE
-hmk minimise PANE                        # and hmk restore PANE
-hmk floats TAB                           # minimise or restore them all
 ```
 
 ## The command palette
 
-**Command Palette…** (⌘K) finds any action by name: new tabs and panes, Groups, layouts, settings and more. Each action shows its shortcut, if it has one. **Find Session…** (⇧⌘O) searches agents' past sessions so you can resume one.
+**Command Palette…** (⌘K) finds any action by name, with its shortcut. **Find Session…** (⇧⌘O) searches agents' past sessions so you can resume one.
 
 ## Closing and reopening
 
-⌘W closes the focused pane. On a tab's last pane it closes the tab, and on a Group's last tab it leaves the Group empty, ready for a new tab. To have it close the Group too, turn off Settings ▸ General ▸ Keep a Group when its last tab closes (`keep-empty-groups = false`).
-
-If an agent in the pane or tab is at work, Hammock asks first (Settings ▸ Agents ▸ Warn before closing an agent that's at work, `confirm-close-busy-agent`).
-
-**Reopen Closed Tab or Pane** (⇧⌘T) brings back the last tab or pane you closed, and its agent resumes its session. From a terminal, `hmk reopen` does the same.
+⌘W closes the focused pane, and with it an emptied tab. Hammock asks first if an agent there is at work. **Reopen Closed Tab or Pane** (⇧⌘T, or `hmk reopen`) brings it back, and its agent resumes its session.
 
 ## Notifications
 
-Hammock tells you when an agent:
-
-- is waiting for your input,
-- asks for permission,
-- finishes,
-- hits an error,
-- replies to your [review comments](/hammock/docs/panes/#diff) (off by default).
-
-Choose which in Settings ▸ Notifications. Show notifications sets where they appear: in the Hammock window while it's in front and as macOS notifications otherwise (the default), always as macOS notifications, or always in the window (`notify-style = auto`, `system` or `in-app`).
-
-Hammock doesn't notify you about the tab you're looking at, unless you turn on Also notify for the tab I'm looking at. The Dock icon counts the agents waiting for you (Show a count on the Dock icon). Each kind of notification has its own sound, also in Settings ▸ Notifications.
-
-With an iPhone paired, notifications reach it when you're away from your Mac: see [Hammock on iPhone](/hammock/docs/iphone/). Every notification setting is in the [config reference](/hammock/docs/reference/config/#notifications).
+Hammock tells you when an agent is waiting for you, asks for permission, finishes, hits an error, or replies to your [review comments](/hammock/docs/panes/#diff). Choose which, where they appear and their sounds in Settings ▸ Notifications. With an iPhone paired, they reach it when you're away: see [Hammock on iPhone](/hammock/docs/iphone/). Every setting is in the [config reference](/hammock/docs/reference/config/#notifications).

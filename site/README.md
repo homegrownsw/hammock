@@ -39,5 +39,7 @@ is in the built site (`dev/comments.mjs` runs in the dev server only).
 ## Style
 
 Write for people using Hammock, like the README: plain British English, short sentences, real commands, menu paths
-as Settings ▸ Agents. Check every claim against the code. Everything here is public (AGENTS.md): use placeholders
+as Settings ▸ Agents. Keep it tight: say each thing once, where it belongs, and link to it from elsewhere; no
+reasons that don't change what the reader does, no reassurance, nothing the app tells people itself. Check every
+claim against the code. Everything here is public (AGENTS.md): use placeholders
 in examples and screenshots.
