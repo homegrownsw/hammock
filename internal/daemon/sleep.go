@@ -15,7 +15,8 @@ package daemon
 // on an error), not one working or waiting for you (a permission prompt
 // or a question it wouldn't ask again), with no shells, subagents or
 // other programs running in the pane, whose session is known and can be
-// resumed; a scheduled run's never does.
+// resumed; a scheduled run's never does. A session nothing's been said in
+// has nothing to resume: it wakes as a new one, with the same options.
 //
 // What's typed while it wakes is kept until its agent is at its prompt,
 // then typed in order; a message sent from the agent view waits for that
@@ -92,8 +93,6 @@ func (p *pane) whyAwakeLocked() string {
 		return "it's a scheduled run"
 	case a.SessionId == "":
 		return "its session isn't known (hmk hooks install tells Hammock)"
-	case sessionFile(a) == "":
-		return "nothing's been said in its session yet"
 	}
 	if ag := agents.Get(a.Harness); ag == nil || ag.Resume == nil {
 		return "its sessions can't be resumed"
@@ -173,7 +172,13 @@ func (d *Daemon) sleepPane(p *pane, actor string) error {
 	if apid == 0 || harness != a.Harness {
 		return errors.New("its agent can't sleep now: its process isn't running")
 	}
-	cmd := agents.Get(harness).ResumeWith(a.SessionId, procinfo.Args(apid))
+	ag, argv := agents.Get(harness), procinfo.Args(apid)
+	cmd := ag.ResumeWith(a.SessionId, argv)
+	if sessionFile(a) == "" {
+		// Nothing's been said in it, so there's nothing to resume (and
+		// nothing to lose): it starts afresh, a new session.
+		cmd = ag.StartWith(argv)
+	}
 	cwd, _ := procinfo.Cwd(apid) // where its sessions are kept (Claude's, by folder)
 	p.saveScrollback(true)       // a restart restores it from there
 

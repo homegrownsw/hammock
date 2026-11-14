@@ -33,6 +33,9 @@ func TestResumeWith(t *testing.T) {
 	if want := "claude --resume 's1' '--model' 'opus'"; got != want {
 		t.Errorf("ResumeWith = %q, want %q", got, want)
 	}
+	if got := Claude.StartWith([]string{"claude", "--model", "opus", "do it"}); got != "claude '--model' 'opus'" {
+		t.Errorf("StartWith = %q", got)
+	}
 	if got := Codex.ResumeWith("s2", []string{"codex", "--yolo"}); got != Codex.Resume("s2") {
 		t.Errorf("an agent without ResumeFlags keeps none: %q", got)
 	}

@@ -217,7 +217,17 @@ func (a *Agent) Codec() thread.Codec {
 // ResumeWith is the command line that resumes session id with the options
 // argv (the command line it ran with) had that ResumeFlags keeps.
 func (a *Agent) ResumeWith(id string, argv []string) string {
-	cmd := a.Resume(id)
+	return a.withFlags(a.Resume(id), argv)
+}
+
+// StartWith is the command line that starts a afresh, with no first
+// message, with the options argv had that ResumeFlags keeps: for a session
+// that ended before anything was said in it, so has nothing to resume.
+func (a *Agent) StartWith(argv []string) string {
+	return a.withFlags(a.StartCommand(""), argv)
+}
+
+func (a *Agent) withFlags(cmd string, argv []string) string {
 	if a.ResumeFlags != nil && len(argv) > 1 {
 		for _, f := range a.ResumeFlags(argv[1:]) {
 			cmd += " " + Quote(f)

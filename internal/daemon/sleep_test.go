@@ -72,7 +72,6 @@ func TestWhyAwake(t *testing.T) {
 		"command":    func(p *pane) { p.info.Agent.RunningCommand = true },
 		"subagents":  func(p *pane) { p.info.Agent.Subagents = 2 },
 		"no session": func(p *pane) { p.info.Agent.SessionId = "" },
-		"unwritten":  func(p *pane) { p.info.Agent.SessionId, p.info.Agent.TranscriptPath = "new", "" },
 		"scheduled":  func(p *pane) { p.info.ScheduleRunId = "r" },
 		"asleep":     func(p *pane) { p.info.Asleep = true },
 		"exited":     func(p *pane) { p.info.Exited = true },
