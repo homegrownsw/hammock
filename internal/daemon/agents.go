@@ -402,6 +402,48 @@ func (h *agentHub) paneExited(p *pane, status int32) {
 	h.d.scheduleAgentChanged(p)
 }
 
+// pointerOnly reports whether input is nothing but mouse reports (SGR, urxvt
+// or X10: clicks, the wheel, the pointer passing over a program that tracks
+// motion) and focus reports. Selecting a pane, or scrolling it, isn't
+// answering its agent: only keys (and pastes) are.
+func pointerOnly(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	for len(b) > 0 {
+		if len(b) < 3 || b[0] != 0x1b || b[1] != '[' {
+			return false
+		}
+		switch c := b[2]; {
+		case c == 'I' || c == 'O': // focus in, out
+			b = b[3:]
+		case c == 'M': // X10: three bytes of button and position
+			if len(b) < 6 {
+				return false
+			}
+			b = b[6:]
+		default: // SGR (ESC [ < b ; x ; y M/m) or urxvt (ESC [ b ; x ; y M)
+			i := 2
+			if c == '<' {
+				i++
+			}
+			fields, digits := 1, 0
+			for ; i < len(b) && (b[i] >= '0' && b[i] <= '9' || b[i] == ';'); i++ {
+				if b[i] == ';' {
+					fields++
+				} else {
+					digits++
+				}
+			}
+			if i == len(b) || fields != 3 || digits < 3 || !(b[i] == 'M' || c == '<' && b[i] == 'm') {
+				return false
+			}
+			b = b[i+1:]
+		}
+	}
+	return true
+}
+
 // userInput clears a pane's attention item when someone types into it, and
 // takes an agent that was waiting for input back to working: answering a
 // question or permission prompt sends no hook of its own (only tool events,

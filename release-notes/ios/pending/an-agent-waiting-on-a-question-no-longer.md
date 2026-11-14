@@ -1,0 +1,3 @@
+tag: FIXED
+date: 2026-11-14
+An agent waiting on a question no longer shows as working, and stays in Needs You, after you tap its pane or scroll it without answering.

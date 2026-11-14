@@ -1053,7 +1053,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}
 		d.mu.Lock()
 		c.lastInput = time.Now()
-		d.agentHub.userInput(p)
+		if !pointerOnly(m.Input.Data) {
+			d.agentHub.userInput(p)
+		}
 		d.typed(cmp.Or(c.peer, d.id.me.UserId), p.id)
 		d.sshHub.noteTyped(c, p.id)
 		if strings.ContainsAny(string(m.Input.Data), "\r\n") {
