@@ -124,6 +124,8 @@ var Keys = []Key{
 		Doc: "false: panes open, close, zoom and float at once", Only: "Mac"},
 
 	// Agents
+	{Name: "default-agent", Group: "Agents", Value: "claude | codex | …",
+		Doc: "the agent a new agent tab starts on this computer without asking (New Claude Code Tab, ⌥⌘N, and `hmk agent` with none named), if it's installed here; unset: New Agent Tab… asks"},
 	{Name: "agent-sleep", Group: "Agents", Value: "off | 3h | 6h | 12h | 24h | 48h", Default: "off",
 		Doc: "agents idle that long with nothing running have their process ended to free memory, until you wake them; any duration of a minute or more works, like 90m"},
 	{Name: "agent-presence", Group: "Tools", Value: "true", Default: "true",

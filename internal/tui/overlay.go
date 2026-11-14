@@ -109,6 +109,7 @@ type menuItem struct {
 	sep         bool
 	disabled    bool
 	danger      bool
+	hidden      bool // left out (an item only some menus have: New Claude Code Tab)
 	run         func()
 }
 
@@ -121,7 +122,7 @@ type menu struct {
 }
 
 func (a *App) openMenu(x, y int, items []menuItem) {
-	items = withoutToolsOff(items)
+	items = slices.DeleteFunc(withoutToolsOff(items), func(it menuItem) bool { return it.hidden })
 	m := &menu{x: x, y: y, items: items, sel: -1, open: newSpring(gentle)}
 	m.open.from(0)
 	m.open.to(1)
@@ -312,6 +313,7 @@ func (a *App) tabMenu(id string, x, y int) {
 				}
 			})
 		}},
+		{label: defaultAgentTitle(a.defaultAgentIn(t.GroupId), ""), run: func() { a.startDefaultAgent(t.GroupId) }, hidden: a.defaultAgentIn(t.GroupId) == ""},
 		{label: "New Agent Tab…", run: func() { a.openStartAgent(t.GroupId) }},
 		{label: "New Log Tab…", run: func() {
 			a.openPrompt("New Log Tab", logPromptHint, "", func(v string) { a.openLog(t.GroupId, "", v) })
@@ -370,6 +372,7 @@ func (a *App) groupMenu(id string, x, y int) {
 		{label: "New Tab", run: func() { a.newTab(id, "") }},
 		{label: "New Editor Tab", run: func() { a.openEditor(id, "", false) }},
 		{label: "Resume a Session…", run: func() { a.openSessionFinderIn(id) }},
+		{label: defaultAgentTitle(a.defaultAgentIn(id), ""), run: func() { a.startDefaultAgent(id) }, hidden: a.defaultAgentIn(id) == ""},
 		{label: "New Agent Tab…", run: func() { a.openStartAgent(id) }},
 	}
 	if canSchedule(sp) {
@@ -562,6 +565,9 @@ func (a *App) paletteItems() []paletteItem {
 			}
 		})
 	})
+	if h := a.defaultAgentIn(a.currentGroup()); h != "" {
+		act("new-default-agent", defaultAgentTitle(h, ""), "", "start agent session launch default quick "+h, func() { a.startDefaultAgent("") })
+	}
 	act("new-agent", "New Agent Tab…", "", "start claude codex agent session launch", func() { a.openStartAgent("") })
 	act("new-log", "New Log Tab…", "", "console logs logcat tail file stream", func() {
 		a.openPrompt("New Log Tab", logPromptHint, "", func(v string) { a.openLog("", "", v) })

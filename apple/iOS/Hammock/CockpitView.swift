@@ -39,6 +39,7 @@ struct CockpitView: View {
         // Above the tab bar.
         .overlay(alignment: .bottom) { ToastOverlay(model: model).padding(.bottom, 64) }
         // A notification opened: its session.
+        .onChange(of: tab, initial: true) { AgentStarter.shared.shownTab = tab }
         .onChange(of: Push.shared.openPane) { _, pane in if pane != nil { tab = "sessions" } }
         .onChange(of: Push.shared.openNeedsYou) { _, on in if on { tab = "sessions" } }
         .sheet(item: Binding(get: { AgentStarter.shared.request }, set: { AgentStarter.shared.request = $0 })) { r in

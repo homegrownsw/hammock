@@ -72,6 +72,7 @@ struct EmptyGroupView: View {
             if group.canAddTabs {
                 HStack(alignment: .top, spacing: 16) {
                     terminalCard
+                    if let h = defaultAgent { defaultAgentCard(h) }
                     agentCard
                 }
                 // A set height: sized to fit (fixedSize) with cards that
@@ -79,7 +80,7 @@ struct EmptyGroupView: View {
                 // the window has, and pushed the sidebar's rows out of sight.
                 // Tall enough for a description on two lines (the agent
                 // card's usually is), with the cards' full padding below.
-                .frame(maxWidth: 640)
+                .frame(maxWidth: defaultAgent == nil ? 640 : 900)
                 .frame(height: 196)
                 .padding(.top, 28)
                 .padding(.horizontal, 40)
@@ -127,8 +128,19 @@ struct EmptyGroupView: View {
         }
     }
 
+    /// The default agent of the Group's computer (Settings ▸ Agents), if it has one.
+    private var defaultAgent: String? { model.defaultAgent(in: group) }
+
+    private func defaultAgentCard(_ harness: String) -> some View {
+        LaunchCard(prominent: false, title: AppModel.defaultAgentTitle(harness), text: "\(AgentCatalog.name(of: harness)) in this folder, straight away.", keys: Keys.label("new_default_agent_tab")) {
+            AgentLauncher.shared.newDefault(model, groupID: group.id)
+        } icon: {
+            AgentMark(harness: harness, size: 22)
+        }
+    }
+
     private var agentCard: some View {
-        LaunchCard(prominent: false, title: "Start an Agent…", text: "Claude Code, Codex or another agent in this folder, with a first message if you like.", keys: Keys.newAgentTab?.label) {
+        LaunchCard(prominent: false, title: "Start an Agent…", text: defaultAgent == nil ? "Claude Code, Codex or another agent in this folder, with a first message if you like." : "Another agent, folder or a first message.", keys: Keys.newAgentTabLabel(defaultAgent != nil)) {
             AgentLauncher.shared.open(model, groupID: group.id)
         } icon: {
             Image(systemName: "sparkles").font(.system(size: 20, weight: .medium))

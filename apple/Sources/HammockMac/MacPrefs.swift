@@ -26,6 +26,11 @@ extension Pref {
     /// one of AgentSleepChoice's. hmkd reads it from the file itself.
     static let agentSleep = Pref("agent-sleep", defaults: "agentSleep", .string, "off")
 
+    /// The agent New Agent Tab starts on this Mac without asking (New Claude
+    /// Code Tab, ⌥⌘N): an agent's id, or "" (none: the sheet asks). hmkd
+    /// reads it, and tells the apps, while that agent is installed.
+    static let defaultAgent = Pref("default-agent", defaults: "defaultAgent", .string, "")
+
     /// Sharing Groups with other people: off, the Share Group buttons and
     /// menu items are hidden (SharingUI.canShare). Settings stops every share
     /// when it's turned off.

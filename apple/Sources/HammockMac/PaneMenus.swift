@@ -270,7 +270,7 @@ struct NewTabMenuItems: View {
 
     var body: some View {
         Button("Terminal Tab") { Task { await model.createTab(in: groupID) } }.keyboardShortcut(Keys.newTab)
-        Button("Agent Tab…") { AgentLauncher.shared.open(model, groupID: groupID) }.keyboardShortcut(Keys.newAgentTab)
+        NewAgentTabItems(model: model, groupID: groupID, short: true)
         if HammockTool.browser.on {
             Button("Browser Tab") { Task { await model.createBrowserTab(in: groupID) } }.keyboardShortcut(Keys.newBrowserTab)
         }

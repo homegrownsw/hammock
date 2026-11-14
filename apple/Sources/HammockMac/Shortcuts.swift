@@ -35,7 +35,12 @@ enum Keys {
     // File
     static var newTab: KeyboardShortcut? { shortcut("new_tab") }
     static var newBrowserTab: KeyboardShortcut? { shortcut("new_browser_tab") }
-    static var newAgentTab: KeyboardShortcut? { shortcut("new_agent_tab") }
+    /// The default agent's tab, straight away (AgentLauncher.newDefault).
+    static var newDefaultAgentTab: KeyboardShortcut? { shortcut("new_default_agent_tab") }
+    /// New Agent Tab…: its own while there's a default agent beside it,
+    /// else the default's (⌥⌘N), as the only one.
+    static func newAgentTab(_ hasDefault: Bool) -> KeyboardShortcut? { hasDefault ? shortcut("new_agent_tab") : newDefaultAgentTab }
+    static func newAgentTabLabel(_ hasDefault: Bool) -> String? { label(hasDefault ? "new_agent_tab" : "new_default_agent_tab") }
     static var newLogTab: KeyboardShortcut? { shortcut("new_log_tab") }
     static var newEditorTab: KeyboardShortcut? { shortcut("new_editor_tab") }
     static var newDiffTab: KeyboardShortcut? { shortcut("new_diff_tab") }

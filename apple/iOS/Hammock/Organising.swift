@@ -51,6 +51,9 @@ struct TabActions: View {
         Button("Rename…", systemImage: "pencil", action: rename)
         if let newTab {
             Button("New Tab in Group", systemImage: "plus", action: newTab)
+            if let h = model.defaultAgent(in: model.group(of: tab)) {
+                Button(AppModel.defaultAgentTitle(h), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: tab.groupID) }
+            }
             Button("Start an Agent…", systemImage: "sparkles") { AgentStarter.shared.start(groupID: tab.groupID) }
         }
         // Tabs move between Groups on the same Mac.
@@ -139,6 +142,9 @@ struct GroupHeader: View {
             if group.isRemote, !group.isOnLinkedComputer, let host = model.people[group.hostUserID] { AvatarView(person: host, size: 18) }
             Menu {
                 Button("Terminal", systemImage: "apple.terminal", action: newTab)
+                if let h = model.defaultAgent(in: group) {
+                    Button(String(AppModel.defaultAgentTitle(h).dropFirst("New ".count)), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: group.id) }
+                }
                 Button("Agent…", systemImage: "sparkles") { AgentStarter.shared.start(groupID: group.id) }
             } label: {
                 // A finger's worth to aim at, not just the thin glyph: an
@@ -204,6 +210,12 @@ struct EmptyGroupRowIOS: View {
                             .frame(maxWidth: .infinity)
                     }
                     .prominentButton()
+                    if let h = model.defaultAgent(in: group) {
+                        Button { AgentStarter.shared.startDefault(model, groupID: group.id) } label: {
+                            Label { Text(AgentCatalog.shortName(of: h)) } icon: { AgentMark(harness: h, size: 16) }.frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
                     Button { AgentStarter.shared.start(groupID: group.id) } label: {
                         Label("Agent…", systemImage: "sparkles").frame(maxWidth: .infinity)
                     }
@@ -338,6 +350,17 @@ final class AgentStarter {
     private(set) var opened: (tabID: String, origin: String, nonce: UUID)?
 
     func start(groupID: String?) { request = Request(groupID: groupID) }
+
+    /// The tab (Sessions or Groups) on screen, for the tab a start without
+    /// the sheet opens (CockpitView keeps it).
+    var shownTab = ""
+
+    /// The Group's computer's default agent (its Settings ▸ Agents), started
+    /// without the sheet, in the folder the sheet would suggest.
+    func startDefault(_ model: AppModel, groupID: String) {
+        let origin = shownTab
+        Task { if let id = await model.startDefaultAgent(groupID: groupID) { didOpen(id, origin: origin) } }
+    }
 
     func didOpen(_ tabID: String, origin: String) { opened = (tabID, origin, UUID()) }
 }

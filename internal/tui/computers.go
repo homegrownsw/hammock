@@ -287,6 +287,9 @@ func (a *App) computerItems(act func(id, title, hint, kw string, run func())) {
 			}
 			act("new-group-on:"+c.UserId, "New Group on "+name, "", "create computer "+c.Name, func() { a.newGroupOn(on) })
 			if !c.ThisComputer {
+				if c.DefaultAgent != "" {
+					act("new-default-agent-on:"+c.UserId, defaultAgentTitle(c.DefaultAgent, name), "", "start agent default quick computer "+c.Name, func() { a.startDefaultAgentOn(c.UserId) })
+				}
 				act("new-agent-on:"+c.UserId, "New Agent Tab on "+name+"…", "", "start claude codex agent computer "+c.Name, func() { a.openStartAgentOn(c.UserId, c.Name) })
 				act("find-session-on:"+c.UserId, "Find Session on "+name+"…", "", "resume claude codex history computer "+c.Name, func() { a.openSessionFinderOn(c.UserId) })
 			}

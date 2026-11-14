@@ -148,10 +148,11 @@ Usage:
   hmk read PANE [--scrollback]             print a pane's screen as text (an editor pane's: its text)
   hmk close PANE|TAB|GROUP
   hmk reopen                               reopen the last tab or pane you closed (agents resume their sessions)
-  hmk agent AGENT [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]
+  hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]
                                             start an agent in a new tab (in DIR, by default here), in GROUP
                                             or the folder's Group (or a new one); --on a linked computer
-                                            (there, DIR is absolute or ~/…, its home; by default ~)
+                                            (there, DIR is absolute or ~/…, its home; by default ~); no AGENT:
+                                            the computer's default-agent
   hmk switch PANE AGENT                    continue a pane's agent session in another agent
   hmk sleep [PANE]                         put a pane's idle agent to sleep, by default this pane's:
                                             its process ends, freeing its memory, until it's woken (the

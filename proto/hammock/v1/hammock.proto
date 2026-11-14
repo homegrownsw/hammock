@@ -1995,7 +1995,7 @@ message LogView {
 // Codex), with a first prompt if given, in its login shell. Replies Created
 // (the tab). group_id empty: the Group already in that folder, else the first.
 message StartAgent {
-  string harness = 1;   // "claude" or "codex"
+  string harness = 1;   // "claude" or "codex"; "": the computer's default agent (Computer.default_agent)
   string cwd = 2;       // absolute; ~ is the home folder
   string group_id = 3;
   string prompt = 4;
@@ -2107,6 +2107,10 @@ message Computer {
   // Its badge's icon, as picked: an SF Symbol's name (ASCII, e.g.
   // "macmini") or an emoji. "": its kind's symbol (Computer.kind).
   string icon = 32;
+  // The agent its New Agent Tab starts without asking (default-agent in its
+  // config file), when that agent is installed there: an AgentKind id.
+  // "": none, so the Start an Agent sheet asks.
+  string default_agent = 33;
 }
 
 // A computer this one is linked with, as kept here (not sent).

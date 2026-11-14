@@ -23,17 +23,27 @@ public struct StartAgentView: View {
     @State private var starting = false
     @State private var browsing = false
 
-    public init(model: AppModel, groupID: String?, computerID: String? = nil, harness: String = "claude", chooseLocal: (() -> String?)? = nil, onDone: @escaping (String?) -> Void, onStarted: ((String) -> Void)? = nil) {
+    /// harness nil: the default agent of the computer it starts on, else Claude Code.
+    public init(model: AppModel, groupID: String?, computerID: String? = nil, harness: String? = nil, chooseLocal: (() -> String?)? = nil, onDone: @escaping (String?) -> Void, onStarted: ((String) -> Void)? = nil) {
         self.model = model
         self.onStarted = onStarted
         self.onDone = onDone
         self.chooseLocal = chooseLocal
+        let (group, computer) = Self.placement(model, groupID: groupID, computerID: computerID)
+        _computerID = State(initialValue: computer)
+        _groupID = State(initialValue: group)
+        let fallback = group.isEmpty ? model.defaultAgent(onComputer: computer) : model.defaultAgent(in: model.groups.first { $0.id == group })
+        _harness = State(initialValue: harness ?? fallback ?? "claude")
+    }
+
+    /// Where a start goes, as the sheet first shows it: the Group given (if a
+    /// tab can go in it) on its computer, else the first Group on the
+    /// computer given ("": this one; no Group: "", the folder's or a new one).
+    public static func placement(_ model: AppModel, groupID: String?, computerID: String?) -> (groupID: String, computerID: String) {
         let given = groupID.flatMap { id in model.groups.first { $0.id == id && $0.canAddTabs } }
         let computer = computerID ?? given.flatMap { model.computer(of: $0)?.userID } ?? ""
-        let usable = Self.groups(model, on: computer)
-        _computerID = State(initialValue: computer)
-        _groupID = State(initialValue: given.flatMap { g in usable.first { $0.id == g.id }?.id } ?? usable.first?.id ?? "")
-        _harness = State(initialValue: harness)
+        let usable = groups(model, on: computer)
+        return (given.flatMap { g in usable.first { $0.id == g.id }?.id } ?? usable.first?.id ?? "", computer)
     }
 
     /// The Groups a tab can go in on a computer ("": this one, and Groups

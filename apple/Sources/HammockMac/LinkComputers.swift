@@ -546,7 +546,7 @@ struct ComputerSwitcher: View {
     private func menu(_ c: Computer) -> some View {
         Button(c.thisComputer ? "New Group on This Mac" : "New Group on \(c.name)") { Task { await model.newGroup(on: c.thisComputer ? model.myUserID : c.userID) } }
             .disabled(!c.online)
-        Button(c.thisComputer ? "New Agent Tab on This Mac…" : "New Agent Tab on \(c.name)…") { AgentLauncher.shared.open(model, computerID: c.thisComputer ? "" : c.userID) }
+        NewAgentTabItems(model: model, computerID: c.thisComputer ? "" : c.userID, computerName: c.thisComputer ? "This Mac" : c.name, shortcuts: false)
             .disabled(!c.online)
         Button(c.thisComputer ? "Find Session on This Mac…" : "Find Session on \(c.name)…") { PaletteState.shared.open(.sessions, computer: c.thisComputer ? "" : c.userID) }
             .disabled(!c.online)

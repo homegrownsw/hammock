@@ -7583,7 +7583,7 @@ public nonisolated struct Hammock_V1_StartAgent: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// "claude" or "codex"
+  /// "claude" or "codex"; "": the computer's default agent (Computer.default_agent)
   public var harness: String = String()
 
   /// absolute; ~ is the home folder
@@ -7911,6 +7911,14 @@ public nonisolated struct Hammock_V1_Computer: @unchecked Sendable {
   public var icon: String {
     get {_storage._icon}
     set {_uniqueStorage()._icon = newValue}
+  }
+
+  /// The agent its New Agent Tab starts without asking (default-agent in its
+  /// config file), when that agent is installed there: an AgentKind id.
+  /// "": none, so the Start an Agent sheet asks.
+  public var defaultAgent: String {
+    get {_storage._defaultAgent}
+    set {_uniqueStorage()._defaultAgent = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -23508,7 +23516,7 @@ nonisolated extension Hammock_V1_Computers: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Computer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
 
   fileprivate class _StorageClass {
     var _userID: String = String()
@@ -23534,6 +23542,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
     var _chain: [Hammock_V1_IntroHop] = []
     var _lanSubnets: [String] = []
     var _icon: String = String()
+    var _defaultAgent: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -23567,6 +23576,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       _chain = source._chain
       _lanSubnets = source._lanSubnets
       _icon = source._icon
+      _defaultAgent = source._defaultAgent
     }
   }
 
@@ -23608,6 +23618,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         case 30: try { try decoder.decodeRepeatedMessageField(value: &_storage._chain) }()
         case 31: try { try decoder.decodeRepeatedStringField(value: &_storage._lanSubnets) }()
         case 32: try { try decoder.decodeSingularStringField(value: &_storage._icon) }()
+        case 33: try { try decoder.decodeSingularStringField(value: &_storage._defaultAgent) }()
         default: break
         }
       }
@@ -23685,6 +23696,9 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._icon.isEmpty {
         try visitor.visitSingularStringField(value: _storage._icon, fieldNumber: 32)
       }
+      if !_storage._defaultAgent.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._defaultAgent, fieldNumber: 33)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -23717,6 +23731,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._chain != rhs_storage._chain {return false}
         if _storage._lanSubnets != rhs_storage._lanSubnets {return false}
         if _storage._icon != rhs_storage._icon {return false}
+        if _storage._defaultAgent != rhs_storage._defaultAgent {return false}
         return true
       }
       if !storagesAreEqual {return false}

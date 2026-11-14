@@ -191,7 +191,13 @@ struct CommandPalette: View {
         }
         action("toggle-sidebar", UserDefaults.standard.bool(forKey: SidebarHiding.key) ? "Show Sidebar" : "Hide Sidebar", "sidebar.left", .gray, "hide show toggle peek", keys: Keys.toggleSidebar) { SidebarHiding.toggle() }
         action("editor-wrap", Prefs.shared.bool(.editorWrap) ? "Stop Wrapping Lines in Editors" : "Wrap Lines in Editors", "text.word.spacing", .indigo, "text word soft wrap long lines editor", keys: Keys.editorWrap) { Prefs.shared.toggle(.editorWrap) }
-        action("new-agent-tab", "New Agent Tab…", "sparkles", .orange, "start claude codex agent session launch", keys: Keys.newAgentTab) {
+        let defaultAgent = AgentLauncher.shared.defaultAgent(model)
+        if let defaultAgent {
+            action("new-default-agent-tab", AppModel.defaultAgentTitle(defaultAgent), "sparkles", .orange, "start agent session launch default quick \(defaultAgent)", keys: Keys.newDefaultAgentTab) {
+                AgentLauncher.shared.newDefault(model)
+            }
+        }
+        action("new-agent-tab", "New Agent Tab…", "sparkles", .orange, "start claude codex agent session launch", keys: Keys.newAgentTab(defaultAgent != nil)) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { AgentLauncher.shared.open(model) }
         }
         action("new-claude-tab", "New Claude Code Tab…", "sparkle", .orange, "start agent session launch") {
@@ -368,6 +374,11 @@ struct CommandPalette: View {
                     if !c.thisComputer {
                         action("find-session-on:" + c.userID, "Find Session on \(c.name)…", "clock.arrow.circlepath", .orange, "resume history claude codex computer \(c.name)") {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { PaletteState.shared.open(.sessions, computer: c.userID) }
+                        }
+                    }
+                    if let h = model.defaultAgent(onComputer: c.thisComputer ? "" : c.userID) {
+                        action("new-default-agent-on:" + c.userID, AppModel.defaultAgentTitle(h, on: name), "sparkles", .orange, "start agent default quick computer \(c.name)") {
+                            AgentLauncher.shared.newDefault(model, computerID: c.thisComputer ? "" : c.userID)
                         }
                     }
                     action("new-agent-on:" + c.userID, "New Agent Tab on \(name)…", "sparkles", .orange, "create claude codex computer \(c.name)") {

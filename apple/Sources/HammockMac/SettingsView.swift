@@ -725,6 +725,7 @@ private struct AgentSettings: View {
     private static var sleepChoices: [String] { ["off"] + sleepHours.map { "\($0)h" } }
 
     private var agentSleep: Binding<String> { Prefs.shared.stringBinding(.agentSleep) }
+    private var defaultAgent: Binding<String> { Prefs.shared.stringBinding(.defaultAgent) }
 
     /// What turning on usage-live does.
     private var liveUsageNote: String {
@@ -738,6 +739,17 @@ private struct AgentSettings: View {
     var body: some View {
         Form {
             SettingsPaneHeader(tab: .agents)
+            Section {
+                Picker("Default agent", selection: defaultAgent) {
+                    Text("None").tag("")
+                    ForEach(AgentCatalog.installed, id: \.id) { Text(AgentCatalog.name(of: $0.id)).tag($0.id) }
+                    // One the file names that isn't installed here (or by hand), kept as it is.
+                    if !defaultAgent.wrappedValue.isEmpty, !AgentCatalog.installed.contains(where: { $0.id == defaultAgent.wrappedValue }) {
+                        Text("\(AgentCatalog.name(of: defaultAgent.wrappedValue)) (not installed)").tag(defaultAgent.wrappedValue)
+                    }
+                }
+                .settingAnchor("agents.default")
+            }
             Section {
                 Toggle("Warn before closing an agent that's at work", isOn: Prefs.shared.boolBinding(CloseGuard.pref))
                     .settingAnchor("agents.closeguard")

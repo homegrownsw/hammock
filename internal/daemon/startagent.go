@@ -38,6 +38,12 @@ func expandHome(p string) string {
 // that agent's, as one it opened with CreateTab would be, so it doesn't
 // count as yours.
 func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage, error) {
+	d.mu.Lock()
+	err := d.resolveHarness(m) // none named: the default agent here
+	d.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
 	ag := agents.Get(m.Harness)
 	if ag == nil {
 		return nil, fmt.Errorf("Hammock doesn't know an agent %q", m.Harness)

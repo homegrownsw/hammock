@@ -18266,7 +18266,7 @@ func (x *LogView) GetFilter() *LogFilter {
 // (the tab). group_id empty: the Group already in that folder, else the first.
 type StartAgent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Harness       string                 `protobuf:"bytes,1,opt,name=harness,proto3" json:"harness,omitempty"` // "claude" or "codex"
+	Harness       string                 `protobuf:"bytes,1,opt,name=harness,proto3" json:"harness,omitempty"` // "claude" or "codex"; "": the computer's default agent (Computer.default_agent)
 	Cwd           string                 `protobuf:"bytes,2,opt,name=cwd,proto3" json:"cwd,omitempty"`         // absolute; ~ is the home folder
 	GroupId       string                 `protobuf:"bytes,3,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
@@ -18903,7 +18903,11 @@ type Computer struct {
 	LanSubnets []string `protobuf:"bytes,31,rep,name=lan_subnets,json=lanSubnets,proto3" json:"lan_subnets,omitempty"`
 	// Its badge's icon, as picked: an SF Symbol's name (ASCII, e.g.
 	// "macmini") or an emoji. "": its kind's symbol (Computer.kind).
-	Icon          string `protobuf:"bytes,32,opt,name=icon,proto3" json:"icon,omitempty"`
+	Icon string `protobuf:"bytes,32,opt,name=icon,proto3" json:"icon,omitempty"`
+	// The agent its New Agent Tab starts without asking (default-agent in its
+	// config file), when that agent is installed there: an AgentKind id.
+	// "": none, so the Start an Agent sheet asks.
+	DefaultAgent  string `protobuf:"bytes,33,opt,name=default_agent,json=defaultAgent,proto3" json:"default_agent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -19095,6 +19099,13 @@ func (x *Computer) GetLanSubnets() []string {
 func (x *Computer) GetIcon() string {
 	if x != nil {
 		return x.Icon
+	}
+	return ""
+}
+
+func (x *Computer) GetDefaultAgent() string {
+	if x != nil {
+		return x.DefaultAgent
 	}
 	return ""
 }
@@ -26134,7 +26145,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tactive_id\x18\x02 \x01(\tR\bactiveId\x12\x1d\n" +
 	"\n" +
 	"not_linked\x18\x04 \x01(\bR\tnotLinked\x12\x12\n" +
-	"\x04note\x18\x05 \x01(\tR\x04noteJ\x04\b\x03\x10\x04\"\xd6\x05\n" +
+	"\x04note\x18\x05 \x01(\tR\x04noteJ\x04\b\x03\x10\x04\"\xfb\x05\n" +
 	"\bComputer\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -26161,7 +26172,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05chain\x18\x1e \x03(\v2\x14.hammock.v1.IntroHopR\x05chain\x12\x1f\n" +
 	"\vlan_subnets\x18\x1f \x03(\tR\n" +
 	"lanSubnets\x12\x12\n" +
-	"\x04icon\x18  \x01(\tR\x04iconJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x17\x10\x18J\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1e\"\xa8\x02\n" +
+	"\x04icon\x18  \x01(\tR\x04icon\x12#\n" +
+	"\rdefault_agent\x18! \x01(\tR\fdefaultAgentJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x17\x10\x18J\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1e\"\xa8\x02\n" +
 	"\n" +
 	"StoredLink\x12,\n" +
 	"\x06record\x18\x01 \x01(\v2\x14.hammock.v1.ComputerR\x06record\x12\x1f\n" +

@@ -219,7 +219,10 @@ public enum Keybinds {
             // File
             .init("new_tab", "New Tab", "File", c("t"), "create terminal shell"),
             .init("new_browser_tab", "New Browser Tab", "File", c("b", cs), "create web chrome page"),
-            .init("new_agent_tab", "New Agent Tab…", "File", c("n", co), "start claude codex ai session launch"),
+            // The default agent's (Settings ▸ Agents), straight away; with
+            // none set, New Agent Tab… takes it (it's then the only one).
+            .init("new_default_agent_tab", "New Default Agent Tab", "File", c("n", co), "start claude codex ai session launch default quick without asking"),
+            .init("new_agent_tab", "New Agent Tab…", "File", c("n", cco), "start claude codex ai session launch choose pick"),
             .init("new_log_tab", "New Log Tab…", "File", c("l", co), "create console logs logcat tail stream"),
             .init("new_editor_tab", "New Editor Tab", "File", c("e", co), "create text file untitled note write code"),
             .init("new_diff_tab", "New Diff Tab…", "File", nil, "create git review changes compare branch commit range uncommitted"),

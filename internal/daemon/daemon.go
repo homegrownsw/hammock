@@ -78,6 +78,10 @@ type Daemon struct {
 	tabs      map[string]*pb.Tab
 	panes     map[string]*pane
 	attention map[string]*pb.AttentionItem
+
+	// default-agent, as the config file says (defaultagent.go; d.defaultAgent: if installed)
+	defaultAgentSet string
+
 	// focusOrder is each tab's panes in the order they were last focused
 	// (most recent last), so closing the focused one hands focus back to
 	// the one before it rather than the first in the layout. In memory only.
@@ -541,6 +545,7 @@ func (d *Daemon) Serve() error {
 	go d.watchTheme()
 	go d.watchConfig()
 	go d.watchAgentKinds()
+	go d.watchDefaultAgent()
 	go d.runSchedules()
 	d.log.Info("listening", "socket", sock)
 	err = srv.Serve(httpLn)

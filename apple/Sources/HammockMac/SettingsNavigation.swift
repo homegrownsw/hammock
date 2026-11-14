@@ -331,6 +331,7 @@ enum SettingsIndex {
             e(.editor, "Diff panes", "Ignore whitespace", "diff.whitespace", "diff review changes spaces indentation -w"),
             e(.editor, "Diff panes", "Wrap long lines", "diff.wrap", "diff review changes word wrap"),
 
+            e(.agents, "New Agents", "Default agent", "agents.default", "new agent tab claude codex start quick without asking default-agent shortcut"),
             e(.agents, "Closing", "Warn before closing an agent that's at work", "agents.closeguard", "quit confirm"),
             e(.agents, "Idle Agents", "Put idle agents to sleep", "agents.sleep", "sleep suspend wake resume memory ram free idle hours agent-sleep"),
             e(.agents, "Usage Limits in the Sidebar", "Usage limits in the sidebar", "agents.usage", "claude codex gemini cursor copilot limit 5 hours week"),

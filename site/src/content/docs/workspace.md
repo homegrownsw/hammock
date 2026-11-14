@@ -34,7 +34,7 @@ A Group's icon is an emoji or picture set in Configure Group… (or `hmk group i
 ## Tabs
 
 - **New Tab** (⌘T) opens a terminal; the toolbar's **+** opens any other kind of tab.
-- **New Agent Tab…** (⌥⌘N) starts a coding agent. See [Agents](/hammock/docs/agents/overview/).
+- **New Agent Tab…** (⌥⌘N) starts a coding agent, or your default agent's item does. See [Agents](/hammock/docs/agents/overview/#starting-an-agent).
 - Switch with ⌘1 to ⌘9, or ⇧⌘] and ⇧⌘[.
 - **Rename Tab…** (⇧⌘R). Unnamed tabs are named after what's running in them.
 

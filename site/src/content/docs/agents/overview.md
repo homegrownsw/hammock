@@ -35,13 +35,14 @@ Switch a pane between the two with Pane ▸ Toggle Agent View (⇧⌘A). Setting
 ## Starting an agent
 
 - **File ▸ New Agent Tab…** (⌥⌘N): pick the agent, the Group and the folder, and optionally a first message.
+- **A default agent:** set Settings ▸ Agents ▸ Default agent (`default-agent`), and **New Claude Code Tab** (or whichever you picked) joins New Agent Tab… wherever it's offered. It starts the agent straight away, in the Group's folder, and takes ⌥⌘N; New Agent Tab… moves to ⌃⌥⌘N. Each computer has its own default, set on that computer, and a Group uses its computer's.
 - **From the command line:**
 
   ```sh
   hmk agent claude --dir ~/Developer/app "Fix the failing login test"
   ```
 
-  `--group` picks a Group, and `--on` a [linked computer](/hammock/docs/remote/).
+  `--group` picks a Group, and `--on` a [linked computer](/hammock/docs/remote/). With no agent named (`hmk agent --dir ~/Developer/app`), it starts that computer's default agent.
 
 ## Resuming sessions
 

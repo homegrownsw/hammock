@@ -106,4 +106,5 @@ func cleanComputer(r *pb.Computer) {
 	}
 	r.Name, r.Model = cleanLine(strings.TrimSpace(r.Name), nameMax), cleanLine(r.Model, nameMax)
 	r.Kind, r.Os = cleanLine(r.Kind, nameMax), cleanLine(r.Os, nameMax)
+	r.DefaultAgent = cleanLine(r.DefaultAgent, nameMax)
 }

@@ -311,6 +311,7 @@ func (d *Daemon) selfRecord(forPeer bool) *pb.Computer {
 		self.Name, self.Model, self.Kind, self.Os = cmpOr(d.id.me.DeviceName, "This computer"), hw.model, hw.kind, hw.os
 	}
 	self.Notifies = d.canNotify()
+	self.DefaultAgent = d.defaultAgent()
 	if forPeer {
 		self.LastInputUnixMs, self.IdleMs = 0, 0
 		if idle := time.Now().UnixMilli() - d.comp.self.LastInputUnixMs; self.Notifies && d.comp.self.LastInputUnixMs > 0 && idle >= 0 {

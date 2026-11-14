@@ -34,6 +34,7 @@ func (d *Daemon) watchAgentKinds() {
 		if !slices.EqualFunc(kinds, d.agentKinds, func(a, b *pb.AgentKind) bool { return proto.Equal(a, b) }) {
 			d.agentKinds = kinds
 			d.publish(&pb.StateUpdate{AgentKinds: cloneKinds(kinds)})
+			d.publishComputers() // the default agent may be installed now, or not (defaultagent.go)
 		}
 		d.mu.Unlock()
 		select {

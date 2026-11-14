@@ -160,7 +160,7 @@ struct HammockApp: App {
                 if HammockTool.browser.on {
                     Button("New Browser Tab") { newTab(browser: true) }.keyboardShortcut(Keys.newBrowserTab)
                 }
-                Button("New Agent Tab…") { AgentLauncher.shared.open(model) }.keyboardShortcut(Keys.newAgentTab)
+                NewAgentTabItems(model: model)
                 if HammockTool.log.on {
                     Button("New Log Tab…") { LogUI.shared.newTab(model) }.keyboardShortcut(Keys.newLogTab)
                 }

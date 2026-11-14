@@ -239,7 +239,7 @@ struct SidebarView: View {
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                         .disabled(group.offline)
-                    Button("New Agent Tab…") { AgentLauncher.shared.open(model, groupID: group.id) }
+                    NewAgentTabItems(model: model, groupID: group.id, shortcuts: false)
                         .disabled(!group.canAddTabs)
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                         .disabled(group.offline)
@@ -253,7 +253,7 @@ struct SidebarView: View {
                 } else if group.isRemote {
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
                         .disabled(!group.canDrive || group.offline)
-                    Button("New Agent Tab…") { AgentLauncher.shared.open(model, groupID: group.id) }
+                    NewAgentTabItems(model: model, groupID: group.id, shortcuts: false)
                         .disabled(!group.canAddTabs)
                     OpenInNewWindowButton(model: model, subject: .group(group.id))
                     moveButtons(group)
@@ -265,7 +265,7 @@ struct SidebarView: View {
                     }
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }
-                    Button("New Agent Tab…") { AgentLauncher.shared.open(model, groupID: group.id) }
+                    NewAgentTabItems(model: model, groupID: group.id, shortcuts: false)
                     if HammockTool.log.on {
                         Button("New Log Tab…") { LogUI.shared.request = LogRequest(groupID: group.id) }
                     }

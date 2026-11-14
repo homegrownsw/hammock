@@ -23,10 +23,13 @@ import (
 //	hmk agent send PANE TEXT          send a message
 func runAgent(args []string) error {
 	if len(args) > 0 && agents.Get(args[0]) != nil {
-		return runStartAgent(args)
+		return runStartAgent(args[0], args[1:])
+	}
+	if len(args) == 0 || strings.HasPrefix(args[0], "--") {
+		return runStartAgent("", args) // none named: the computer's default agent
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: hmk agent AGENT [--dir DIR] [--group GROUP] [PROMPT]   (AGENT: %s)\n       hmk agent watch|answer|pick|send PANE …", agentIDs())
+		return fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [PROMPT]   (AGENT: %s; none: the default-agent)\n       hmk agent watch|answer|pick|send PANE …", agentIDs())
 	}
 	ctx := context.Background()
 	c, err := connect(ctx)
@@ -153,12 +156,12 @@ func printView(v *pb.AgentView) {
 // COMPUTER] [PROMPT…] starts the agent in a new tab (in DIR, by default
 // here; on a linked computer, its home folder), in GROUP or else the
 // folder's Group, or a new one.
-func runStartAgent(args []string) error {
-	usage := fmt.Errorf("usage: hmk agent AGENT [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]   (AGENT: %s)\n(on another computer, DIR is absolute or ~/…, its home)", agentIDs())
-	req := &pb.StartAgent{Harness: args[0]}
+func runStartAgent(harness string, args []string) error {
+	usage := fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]   (AGENT: %s; none: the computer's default-agent)\n(on another computer, DIR is absolute or ~/…, its home)", agentIDs())
+	req := &pb.StartAgent{Harness: harness}
 	var words []string
 	groupRef, on := "", ""
-	for i := 1; i < len(args); i++ {
+	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case (a == "--dir" || a == "--group" || a == "--on") && i+1 < len(args):
 			switch a {
