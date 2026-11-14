@@ -155,7 +155,7 @@ extension Pref {
     /// "" is the system's monospaced font; unset on the Mac, the terminal's.
     public static let agentCodeFont = Pref("agent-code-font-family", defaults: AgentViewPrefs.codeFontName, .string, "")
     public static let agentCodeFontSize = Pref("agent-code-font-size", defaults: AgentViewPrefs.codeFontSize, AgentViewPrefs.defaultSize - 1)
-    /// Which code blocks wrap their lines: "prose" (Markdown and plain text),
+    /// Which code blocks wrap their lines: "prose" (Markdown, plain text and tool calls),
     /// "always" or "never". Each block has its own toggle too.
     public static let agentCodeWrap = Pref("agent-code-wrap", defaults: AgentViewPrefs.codeWrap, .string, "prose")
     /// Which view agent panes open in: "agent" or "terminal".

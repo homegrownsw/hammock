@@ -79,7 +79,7 @@ struct SettingsScreen: View {
                     Stepper("Line spacing: \(Int(lineSpacing))", value: $lineSpacing, in: 0...12)
                     Stepper("Code size: \(Int(codeFontSize))", value: $codeFontSize, in: 10...26)
                     Picker("Wrap code", selection: $codeWrap) {
-                        Text("Markdown and Text").tag("prose")
+                        Text("Markdown, Text and Tools").tag("prose")
                         Text("Every Block").tag("always")
                         Text("Never").tag("never")
                     }

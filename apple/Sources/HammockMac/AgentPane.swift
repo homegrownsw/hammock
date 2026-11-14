@@ -225,7 +225,7 @@ struct AgentViewSettings: View {
                 .settingAnchor("agentview.codefont")
                 Stepper("Size: \(Int(codeFontSize))", value: prefs.doubleBinding(.agentCodeFontSize), in: 8...26)
                 Picker("Wrap long lines", selection: prefs.stringBinding(.agentCodeWrap)) {
-                    Text("In Markdown and text").tag("prose")
+                    Text("In Markdown, text and tools").tag("prose")
                     Text("In every block").tag("always")
                     Text("Never").tag("never")
                 }

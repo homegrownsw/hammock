@@ -1227,6 +1227,9 @@ struct CodeBlock: View {
     let code: String
     var language = ""
     var maxHeight: CGFloat? = nil
+    /// Wraps unless the setting says never, like prose: a tool's command,
+    /// prompt or output, read in a pane too narrow for its long lines.
+    var wrapsByDefault = false
     @Environment(\.agentFonts) private var fonts
     @State private var copied = false
     private var choices: CodeBlockChoices { .shared }
@@ -1251,7 +1254,7 @@ struct CodeBlock: View {
         switch fonts.codeWrap {
         case "always": return true
         case "never": return false
-        default: return Self.proseLanguages.contains(lang)
+        default: return wrapsByDefault || Self.proseLanguages.contains(lang)
         }
     }
 
@@ -1653,10 +1656,10 @@ struct ToolRow: View {
                     if !block.diff.isEmpty {
                         DiffView(diff: block.diff)
                     } else if showsInput {
-                        CodeBlock(code: block.input, language: block.tool == "Bash" ? "bash" : "", maxHeight: 200)
+                        CodeBlock(code: block.input, language: block.tool == "Bash" ? "bash" : "", maxHeight: 200, wrapsByDefault: true)
                     }
                     if !block.output.isEmpty {
-                        CodeBlock(code: block.output, language: "output", maxHeight: 260)
+                        CodeBlock(code: block.output, language: "output", maxHeight: 260, wrapsByDefault: true)
                     }
                 }
                 .padding(.leading, 26)
@@ -2100,7 +2103,7 @@ struct PromptCard: View {
                 }
             }
             if let b = pending, p.kind == .permission, !b.input.isEmpty {
-                CodeBlock(code: b.input, language: b.tool == "Bash" ? "bash" : "", maxHeight: 140)
+                CodeBlock(code: b.input, language: b.tool == "Bash" ? "bash" : "", maxHeight: 140, wrapsByDefault: true)
             }
             if !p.title.isEmpty {
                 Text(p.title).font(fonts.body(weight: .semibold)).fixedSize(horizontal: false, vertical: true)
