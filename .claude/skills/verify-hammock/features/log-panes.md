@@ -21,7 +21,7 @@ Preconditions:
 
 - Baseline run. A log file in the scratch dir: `eval "$(sed 's/^/export /' "$RUN/run.env")"; L=$SCRATCH/app.log; printf 'INFO start\n' >"$L"`. Group `verify-log`.
 
-- **Open.** `$S/record.sh "$RUN" 01-open log file "$L" --group verify-log` prints the pane id (`G`).
+- **Open.** `$S/record.sh "$RUN" 01-open log file "$L" --group verify-log` prints the pane id (`G`). `ls --json` lists it as `"kind":"log"`, titled `app.log`. Plain `hmk ls` shows `log  file  …/app.log`, and MCP `list_panes` also says `"kind":"log"`.
 - **Follow.** Append `printf 'ERROR verify-boom 42\nINFO later\n' >>"$L"`, then wait about two seconds.
 - **Read, parsed.** `$S/record.sh "$RUN" 02-read log read "$G" --json` prints three entries: `{"level":"info","message":"start","seq":1,…}`, `{"level":"error","message":"verify-boom 42","seq":2,…}` and `{"level":"info","message":"later","seq":3,…}`.
 - **Filter.** `$S/record.sh "$RUN" 03-errors log read "$G" --level error` prints only `… ERROR   verify-boom 42`.
@@ -29,6 +29,6 @@ Preconditions:
 
 ## Gotchas
 
-- `ls --json` reports a log pane as `"kind":"terminal"`, titled after the file (`app.log`), so you can't find it by kind. Use the id `hmk log` printed.
+- Inside, a log pane is a terminal running the source's command (`tail`, `log stream`…) with a parser over it. `hmk read` shows that raw terminal, so read entries with `hmk log read`. Builds before this fix reported log panes as `"kind":"terminal"`.
 - Levels are parsed from the text (`ERROR`, `INFO`…). A line without a recognisable level gets the default level, so assert on `message` too.
 - `hmk log macos` and `log sim` follow the person's real logs. Fine to read, but don't copy their entries into anything public.

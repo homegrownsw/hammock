@@ -38,7 +38,7 @@ type lsTab struct {
 
 type lsPane struct {
 	ID         string   `json:"id"`
-	Kind       string   `json:"kind"` // terminal, browser, simulator, editor
+	Kind       string   `json:"kind"` // terminal, log, browser, simulator, editor, diff
 	Title      string   `json:"title"`
 	Focused    bool     `json:"focused"` // the tab's focused pane
 	Cwd        string   `json:"cwd,omitempty"`
@@ -88,9 +88,14 @@ func stateJSON(s pb.AgentState) string {
 	return strings.ToLower(strings.TrimPrefix(s.String(), "AGENT_STATE_"))
 }
 
-// kindJSON: PANE_KIND_BROWSER → "browser"; unspecified is a terminal.
-func kindJSON(k pb.PaneKind) string {
-	if k == pb.PaneKind_PANE_KIND_UNSPECIFIED {
+// kindJSON: PANE_KIND_BROWSER → "browser"; unspecified is a terminal; a
+// terminal following a log source (hmk log) is a "log", as people see it.
+func kindJSON(p *pb.Pane) string {
+	k := p.GetKind()
+	if k == pb.PaneKind_PANE_KIND_UNSPECIFIED || k == pb.PaneKind_PANE_KIND_TERMINAL {
+		if p.GetLog() != nil {
+			return "log"
+		}
 		return "terminal"
 	}
 	return strings.ToLower(strings.TrimPrefix(k.String(), "PANE_KIND_"))
@@ -118,7 +123,7 @@ func printWorldJSON(w *world) error {
 					continue
 				}
 				lp := lsPane{
-					ID: p.Id, Kind: kindJSON(p.Kind), Title: p.Title, Focused: t.FocusedPaneId == pid,
+					ID: p.Id, Kind: kindJSON(p), Title: p.Title, Focused: t.FocusedPaneId == pid,
 					Cwd: p.Cwd, Cols: p.Cols, Rows: p.Rows, URL: p.Url, Path: p.GetEditor().GetPath(), Dirty: p.GetEditor().GetDirty(),
 					Exited: p.Exited, ExitStatus: p.ExitStatus, StartError: p.StartError,
 				}

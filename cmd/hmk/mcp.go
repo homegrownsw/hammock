@@ -279,7 +279,7 @@ type paneView struct {
 	Tab        string `json:"tab"`
 	Group      string `json:"group"`
 	Computer   string `json:"computer,omitempty"` // another of your computers (linked) it runs on
-	Kind       string `json:"kind"`               // "terminal", "browser", "simulator", "editor" or "diff"
+	Kind       string `json:"kind"`               // "terminal", "log", "browser", "simulator", "editor" or "diff"
 	Title      string `json:"title"`
 	URL        string `json:"url,omitempty"`
 	Path       string `json:"path,omitempty"`     // an editor pane's file
@@ -305,6 +305,9 @@ func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
 	v := paneView{
 		ID: p.Id, Kind: "terminal", Title: p.Title, Cwd: p.Cwd, Size: fmt.Sprintf("%dx%d", p.Cols, p.Rows),
 		Running: !p.Exited, CreatedBy: p.CreatedByPaneId, You: p.Id == s.self, YoursToUse: s.owns(w, p.Id),
+	}
+	if kindJSON(p) == "log" {
+		v.Kind = "log" // read it with log_read
 	}
 	if p.Kind == pb.PaneKind_PANE_KIND_BROWSER {
 		v.Kind, v.URL, v.Size = "browser", p.Url, ""

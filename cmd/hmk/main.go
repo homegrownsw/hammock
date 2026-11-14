@@ -1267,6 +1267,14 @@ func printWorld(w *world) {
 					printfSafe("   %s%s  %s simulator  %s%s\n", focus, p.Id, cell(p.Title, 24), p.DeviceUdid, status)
 					continue
 				}
+				if src := p.GetLog(); kindJSON(p) == "log" {
+					what := src.GetKind()
+					if src.GetPath() != "" {
+						what += "  " + src.GetPath()
+					}
+					printfSafe("   %s%s  %s log  %s%s\n", focus, p.Id, cell(p.Title, 24), what, status)
+					continue
+				}
 				printfSafe("   %s%s  %s %dx%d  %s%s\n", focus, p.Id, cell(p.Title, 24), p.Cols, p.Rows, p.Cwd, status)
 			}
 		}
