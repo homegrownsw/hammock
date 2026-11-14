@@ -406,7 +406,9 @@ public struct AgentConversationView: View {
             // Where the top of what shows would be, at the end.
             let topAtEnd = revealer.visible.top + glide.gap + revealer.visible.under
             if top < topAtEnd + 8 {
-                withAnimation(.smooth(duration: 0.35)) { revealer.proxy?.scrollTo(reply.id, anchor: .top) }
+                // A little below the toolbar: right under it (scrollTo(id,
+                // anchor: .top)), the first line was blurred by its soft edge.
+                withAnimation(.smooth(duration: 0.35)) { position.scrollTo(y: max(0, top - 24)) }
                 return
             }
         }
@@ -682,7 +684,7 @@ public struct AgentConversationView: View {
                     RowRevealer.Visible(top: g.visibleRect.minY + g.contentInsets.top,
                                         bottom: g.visibleRect.maxY - g.contentInsets.bottom,
                                         gap: g.contentSize.height - g.visibleRect.maxY,
-                                        under: g.contentInsets.bottom)
+                                        under: g.contentInsets.bottom, over: g.contentInsets.top)
                 } action: { old, new in
                     revealer.visible = new
                     if JankProbe.enabled, abs(new.top - old.top) > 20 { DevLog.agent("scrolled \(Int(new.top - old.top)) to \(Int(new.top))") }
@@ -860,8 +862,9 @@ struct ScrollEdge: Equatable {
 @MainActor final class RowRevealer {
     /// What's in view, in the content's coordinates, less what's under the
     /// floating bar, and how far the end is below it.
-    /// under: how much is under the floating bar at the bottom.
-    struct Visible: Equatable { var top: CGFloat = 0, bottom: CGFloat = 0, gap: CGFloat = 0, under: CGFloat = 0 }
+    /// under and over: how much is under the floating bar at the bottom,
+    /// and the toolbar at the top.
+    struct Visible: Equatable { var top: CGFloat = 0, bottom: CGFloat = 0, gap: CGFloat = 0, under: CGFloat = 0, over: CGFloat = 0 }
     var visible = Visible()
     var proxy: ScrollViewProxy?
     /// Where each reply that arrived while watched starts, in the content's
@@ -1057,9 +1060,19 @@ struct RevealsReply: ViewModifier {
     let length: Int
     let id: String
     @Environment(\.agentRowRevealer) private var revealer
-    @State private var shown: CGFloat = 1
-    @State private var started = false
+    /// How much shows: hidden from the start for a reply to reveal, as its
+    /// row is made. (Hidden on appearing, then shown in an animation, the
+    /// two came in one update on a phone and nothing was seen to fade.)
+    @State private var shown: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(arrived: Date?, length: Int, id: String) {
+        self.arrived = arrived
+        self.length = length
+        self.id = id
+        let reveal = arrived.map { Date.now.timeIntervalSince($0) < 1 } ?? false
+        _shown = State(initialValue: reveal && length > 80 ? 0 : 1)
+    }
 
     func body(content: Content) -> some View {
         if arrived == nil {
@@ -1069,11 +1082,10 @@ struct RevealsReply: ViewModifier {
                 .modifier(RevealMask(progress: shown))
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(RowRevealer.space)).minY } action: { revealer?.replyTops[id] = $0 }
                 .onAppear {
-                    guard !started else { return }
-                    started = true
-                    guard !reduceMotion, let arrived, Date.now.timeIntervalSince(arrived) < 1, length > 80 else { return }
-                    shown = 0
-                    withAnimation(.easeOut(duration: Self.duration(length))) { shown = 1 }
+                    guard shown < 1 else { return }
+                    if reduceMotion { shown = 1; return }
+                    // After it's drawn hidden, not in the same update.
+                    Task { @MainActor in withAnimation(.easeOut(duration: Self.duration(length))) { shown = 1 } }
                 }
         }
     }
