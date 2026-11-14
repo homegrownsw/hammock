@@ -757,30 +757,38 @@ private struct MiniWorkspace: View {
         .background(selected ? Color.primary.opacity(0.09) : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
-    /// TabStrip, a little smaller: equal tabs, the selected one filled,
-    /// hairlines between the rest, + at the end.
+    /// TabStrip, a little smaller: equal pills in a capsule, the selected
+    /// one raised, a round + beside it.
     private var tabBar: some View {
         let tabs: [(AgentState, String)] = [(.working, "daemon"), (.idle, "mac app"), (.needsInput, "browser")]
-        return HStack(spacing: 0) {
-            ForEach(tabs.indices, id: \.self) { i in
-                let on = i == 0
-                HStack(spacing: 5) {
-                    StatusIcon(state: tabs[i].0, size: 11)
-                    Text(tabs[i].1).font(.system(size: 10, weight: on ? .medium : .regular)).lineLimit(1)
-                }
-                .foregroundStyle(on ? .primary : .secondary)
-                .frame(width: 104, height: 24)
-                .background(on ? Color(nsColor: .windowBackgroundColor) : .clear)
-                .overlay(alignment: .trailing) {
-                    if i < tabs.count - 1 { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 1).padding(.vertical, on ? 0 : 5) }
+        let dark = scheme == .dark
+        return HStack(spacing: 6) {
+            HStack(spacing: 0) {
+                ForEach(tabs.indices, id: \.self) { i in
+                    let on = i == 0
+                    HStack(spacing: 5) {
+                        StatusIcon(state: tabs[i].0, size: 11)
+                        Text(tabs[i].1).font(.system(size: 10, weight: on ? .medium : .regular)).lineLimit(1)
+                    }
+                    .foregroundStyle(on ? .primary : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 18)
+                    .background {
+                        if on {
+                            Capsule().fill(dark ? Color.white.opacity(0.14) : Color(nsColor: .windowBackgroundColor))
+                                .shadow(color: .black.opacity(dark ? 0.3 : 0.12), radius: 1, y: 0.5)
+                        }
+                    }
                 }
             }
-            Image(systemName: "plus").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary).frame(width: 24, height: 24)
-            Spacer(minLength: 0)
+            .padding(2)
+            .background(Color.primary.opacity(dark ? 0.09 : 0.07), in: Capsule())
+            Image(systemName: "plus").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .background(dark ? Color.white.opacity(0.14) : Color(nsColor: .windowBackgroundColor), in: Circle())
+                .shadow(color: .black.opacity(dark ? 0.3 : 0.1), radius: 1, y: 0.5)
         }
-        .frame(height: 24)
-        .background(scheme == .dark ? Color.black.opacity(0.28) : Color.black.opacity(0.07))
-        .overlay(alignment: .bottom) { Divider() }
+        .padding(.bottom, 6)
     }
 
     private func terminal(_ t: TerminalTheme) -> some View {

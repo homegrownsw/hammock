@@ -163,9 +163,9 @@ struct LayoutView: View {
         PaneLook.spacious && !sidebarHidden && rect.minX <= area.minX + 0.5
     }
 
-    /// A pane's shape here (PaneLook.shape(at:in:sidebarHidden:underStrip:)).
+    /// A pane's shape here (PaneLook.shape(at:in:sidebarHidden:)).
     private func shape(at rect: CGRect, in area: CGRect) -> UnevenRoundedRectangle {
-        PaneLook.shape(at: rect, in: area, sidebarHidden: sidebarHidden, underStrip: SidebarLayout.current == .horizontal)
+        PaneLook.shape(at: rect, in: area, sidebarHidden: sidebarHidden)
     }
 
     private func tile(_ t: PanePlan.Tile, in area: CGRect) -> some View {

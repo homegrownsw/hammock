@@ -183,22 +183,32 @@ struct MiniWindow: View {
 
     // MARK: Tab bar
 
+    /// TabStrip: pills in a capsule, the first raised, a round + beside it.
     private var tabBar: some View {
         HStack(spacing: 2) {
-            ForEach(0..<3) { i in
-                HStack(spacing: 2) {
-                    Circle().fill(i == 0 ? look.accent : i == 1 ? .orange : ink.opacity(0.3)).frame(width: 3, height: 3)
-                    Capsule().fill(ink.opacity(i == 0 ? 0.6 : 0.3)).frame(height: 2)
+            HStack(spacing: 0) {
+                ForEach(0..<3) { i in
+                    HStack(spacing: 2) {
+                        Circle().fill(i == 0 ? look.accent : i == 1 ? .orange : ink.opacity(0.3)).frame(width: 3, height: 3)
+                        Capsule().fill(ink.opacity(i == 0 ? 0.6 : 0.3)).frame(height: 2)
+                    }
+                    .padding(.horizontal, 3)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 6)
+                    .background(i == 0 ? (look.dark ? Color.white.opacity(0.16) : .white) : .clear, in: Capsule())
                 }
-                .padding(.horizontal, 3)
-                .frame(width: 26, height: 7)
-                .background(i == 0 ? look.terminal.background.color : .clear, in: UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2))
             }
-            Spacer(minLength: 0)
+            .padding(1)
+            .background(ink.opacity(look.dark ? 0.09 : 0.07), in: Capsule())
+            Circle().fill(look.dark ? Color.white.opacity(0.16) : .white).frame(width: 8, height: 8)
+                .overlay { Image(systemName: "plus").font(.system(size: 5, weight: .bold)).foregroundStyle(ink.opacity(0.5)) }
         }
-        .padding(.horizontal, 3)
-        .padding(.top, 1)
-        .background(look.toolbar)
+        // In line with the panes below (spacious, they're inset as far),
+        // and that far above them.
+        .padding(.leading, options.spacious ? 3 : 0)
+        .padding(.trailing, 3)
+        .padding(.bottom, options.spacious ? 0 : 3)
+        .background(look.sidebar.opacity(look.sidebarAlpha))
     }
 
     // MARK: Panes

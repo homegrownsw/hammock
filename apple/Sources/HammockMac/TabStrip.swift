@@ -51,9 +51,10 @@ func currentTab(of group: WorkspaceGroup, in model: AppModel) -> WorkspaceTab? {
 }
 
 /// Horizontal Tabs: the selected Group's tabs across the top of the
-/// window's content, in the style of Finder's and Safari's tab bars: equal
-/// widths, the selected tab in the window's own colour, the rest a shade
-/// darker, a close button on hover and a + at the end.
+/// window's content, in the style of Terminal's tab bar on macOS 26: a row
+/// of pills in a capsule of their own, standing off the panes below, equal
+/// widths, the selected one raised in the window's colour, a close button on
+/// hover, and a round + beside it.
 struct TabStrip: View {
     let model: AppModel
     let group: WorkspaceGroup
@@ -67,21 +68,31 @@ struct TabStrip: View {
     @State private var dragX: CGFloat = 0
     @State private var order: [String]?
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(SidebarHiding.key) private var sidebarHidden = false
 
-    private let height: CGFloat = 30
+    /// The capsule the tabs sit in, and the + beside it.
+    private let height: CGFloat = 28
+    /// Between the capsule's edge and the tabs in it.
+    private let inset: CGFloat = 3
+    /// Between the capsule and the +.
+    private let gap: CGFloat = 8
+    /// Around the strip: as far off the window's edges as spacious panes
+    /// are, and that far above them, compact or spacious.
+    private let margin: CGFloat = 6
 
     var body: some View {
         let tabs = shown(model.tabs(in: group))
         GeometryReader { geo in
-            // The tabs share the bar equally, one filling it; at 130pt each
-            // it scrolls instead.
-            let width = max(130, (geo.size.width - height) / CGFloat(max(tabs.count, 1)))
-            HStack(spacing: 0) {
+            let track = max(0, geo.size.width - height - gap)
+            // The tabs share the capsule equally, one filling it; at 130pt
+            // each it scrolls instead.
+            let width = max(130, (track - inset * 2) / CGFloat(max(tabs.count, 1)))
+            HStack(spacing: gap) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
                             ForEach(Array(tabs.enumerated()), id: \.element.id) { i, tab in
-                                tabView(tab, index: i, width: width, last: i == tabs.count - 1)
+                                tabView(tab, width: width)
                                     .offset(x: dragging == tab.id ? dragX - CGFloat(i) * width : 0)
                                     .zIndex(dragging == tab.id ? 1 : 0)
                                     // The dragged tab stays under the pointer; the rest slide.
@@ -94,10 +105,14 @@ struct TabStrip: View {
                                     .id(tab.id)
                             }
                         }
+                        .padding(inset)
                         // Drags measured here, not on the tab: it moves as it
                         // takes each new place, which threw the pointer off it.
                         .coordinateSpace(.named("tabStrip"))
                     }
+                    .frame(width: track, height: height)
+                    .background(Capsule().fill(trackColor))
+                    .clipShape(Capsule())
                     // The selected tab kept in view: another in this Group,
                     // a glide to it; a Group opened (or the strip shown),
                     // straight there, once its tabs are laid out.
@@ -113,32 +128,33 @@ struct TabStrip: View {
                 }
                 Button { Task { await model.createTab(in: group.id) } } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13, weight: .medium))
                         .frame(width: height, height: height)
-                        .contentShape(Rectangle())
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .glassEffect(.regular.interactive(), in: Circle())
                 .disabled(group.isRemote && (!group.canDrive || group.offline))
                 .tooltip(Keys.hint("New Tab", "new_tab"))
             }
         }
         .frame(height: height)
-        // Not into the safe area: it would fill the toolbar above the strip.
-        .background(barColor, ignoresSafeAreaEdges: [])
-        .overlay(alignment: .bottom) { Divider() }
+        // On the tab's own backdrop (an empty Group's), as the toolbar is:
+        // in line with the panes below, and as far above them as they are
+        // apart. The sidebar meets it, as it does them.
+        .padding(EdgeInsets(top: 0, leading: sidebarHidden ? margin : 0, bottom: margin, trailing: margin))
         .animation(.snappy(duration: 0.2), value: tabs.map(\.id))
         .onChange(of: model.tabs(in: group).map(\.id)) { _, ids in
             if dragging == nil, ids == order { order = nil }
         }
     }
 
-    private var barColor: Color {
-        colorScheme == .dark ? Color.black.opacity(0.28) : Color.black.opacity(0.07)
-    }
+    private var dark: Bool { colorScheme == .dark }
+    private var trackColor: Color { Color.primary.opacity(dark ? 0.09 : 0.07) }
+    private var pillColor: Color { dark ? Color.white.opacity(0.14) : Color(nsColor: .windowBackgroundColor) }
 
     @ViewBuilder
-    private func tabView(_ tab: WorkspaceTab, index: Int, width: CGFloat, last: Bool) -> some View {
+    private func tabView(_ tab: WorkspaceTab, width: CGFloat) -> some View {
         let selected = model.selectedTabID == tab.id
         let hover = hovered == tab.id && dragging == nil
         ZStack {
@@ -171,14 +187,18 @@ struct TabStrip: View {
                 .tooltip("Close Tab")
                 Spacer()
             }
-            .padding(.leading, 7)
+            .padding(.leading, 4)
         }
-        .frame(width: width, height: height)
-        .background(selected ? Color(nsColor: .windowBackgroundColor) : (hover ? Color.primary.opacity(0.04) : .clear), ignoresSafeAreaEdges: [])
-        .overlay(alignment: .trailing) {
-            if !last { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 1).padding(.vertical, selected ? 0 : 6) }
+        .frame(width: width, height: height - inset * 2)
+        .background {
+            if selected {
+                Capsule().fill(pillColor)
+                    .shadow(color: .black.opacity(dark ? 0.3 : 0.12), radius: 1, y: 0.5)
+            } else if hover {
+                Capsule().fill(Color.primary.opacity(0.05))
+            }
         }
-        .contentShape(Rectangle())
+        .contentShape(Capsule())
         .onTapGesture { model.selectedTabID = tab.id }
         .onHover { hovered = $0 && dragging == nil ? tab.id : (hovered == tab.id ? nil : hovered) }
         .tooltip(model.title(of: tab))
