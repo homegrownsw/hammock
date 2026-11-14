@@ -18,6 +18,7 @@ titlebar geometry. With it:
 | `HMK_DEBUG_SIDEBAR_SCROLL=<pt>` | Start with the sidebar scrolled. |
 | `HMK_DEBUG_PEEK=1` | The hidden sidebar's peek panel open; pass `--args -sidebarHidden YES`. |
 | `HMK_DEBUG_NOTICES=1` | Sample notification cards in the window. |
+| `HMK_DEBUG_DISK_ACCESS=0` (or `1`) | Pretend Hammock hasn't (or has) Full Disk Access, for onboarding's Full Disk Access step (`HMK_ONBOARDING=1 HMK_ONBOARDING_STEP=access`) and Settings ▸ General. |
 | `HMK_DEBUG_AGENT_CURSOR=1` | A made-up agent click in every browser pane and tap in every simulator pane, with its glow and badge, kept showing. |
 | `HMK_DEBUG_SETTINGS=<pane>` | That Settings pane to `<prefix>-settings-<light\|dark>.png`: `notifications`, `keyboard`, `appearance`, `agentview`, `workspace` (onboarding's drawing of the window, both layouts), `devices`, `editor`, `tools`, `window` (the whole Settings window, sidebar included, on the pane given by `--args -settingsTab <name>`). Search it with `HMK_DEBUG_SETTINGS_QUERY=<text>`. Pick the notification style with `--args -notify-style in-app`: any config key given as a launch argument beats the file's. |
 | `HMK_DEBUG_PROMPT=plain\|other\|preview\|tasks` | The agent view's question card with a made-up question, its own answer being typed, one with previews, or under a task list and PR and artifact chips, to `<prefix>-prompt-<light\|dark>.png`. |

@@ -32,7 +32,9 @@ window: a terminal multiplexer, like tmux or Zellij, as a native app. The Mac an
 ## Install
 
 - **Mac:** [download Hammock](https://homegrownsw.com/hammock/download) (macOS 26 or later), open it and drag Hammock
-  to Applications. It updates itself.
+  to Applications. It updates itself. Give it Full Disk Access (System Settings ▸ Privacy & Security), as you would
+  any terminal: without it, macOS can quietly stop programs in your panes from reading your files and other apps'
+  data. Setup walks you through it, and Settings ▸ General shows whether it's on.
 - **iPhone:** in beta on TestFlight. Pair it with your Mac from Hammock ▸ Settings ▸ Devices.
 - **Linux and Unraid:** the daemon, `hmk` and the TUI, so sessions can live on a server your Mac links to. See
   [docs/linux.md](docs/linux.md).

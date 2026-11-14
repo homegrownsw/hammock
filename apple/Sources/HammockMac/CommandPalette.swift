@@ -571,6 +571,7 @@ struct CommandPalette: View {
         action("acknowledgements", "Acknowledgements", "doc.text.magnifyingglass", .gray, "licences licenses third party open source credits notices copyright chromium", keys: Keys.acknowledgements) { AcknowledgementsUI.shared.show() }
         action("keyboard-shortcuts", "Keyboard Shortcuts…", "keyboard", .gray, "keybindings keybinds hotkeys keys customize rebind settings") { SettingsTab.select(.keyboard); openSettings() }
         action("ssh-settings", "SSH and Hammock Key…", "key", .gray, "ssh key hmk key agent 1password git signing secure enclave settings") { SettingsTab.select(.ssh); openSettings() }
+        action("full-disk-access", "Full Disk Access…", "lock.open", .blue, "privacy permission files 1password op tcc security system settings") { FullDiskAccess.openSettingsWithGuide() }
         action("remote-networks", "Remote Access Networks…", "network", .blue, "remote access network wifi lan local vpn wireguard tailscale listen address iphone settings") { DevicesSettingsFocus.shared.showRemoteAccess(openSettings) }
         if model.hammockKey.exists {
             let key = model.hammockKey.publicKey
