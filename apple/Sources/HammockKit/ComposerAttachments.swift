@@ -91,15 +91,19 @@ struct ComposerAttachment: Identifiable {
     var size: AttachmentSize?
     /// Its pixels, read once (nil: not a picture).
     let pixels: CGSize?
+    /// Still being loaded or made small enough to send: in the tray and the
+    /// text already (numbered, so typing goes on around it), not yet its data.
+    var preparing = false
 
-    init(id: UUID = UUID(), number: Int, name: String, data: Data, file: URL? = nil, size: AttachmentSize? = nil) {
+    init(id: UUID = UUID(), number: Int, name: String, data: Data, file: URL? = nil, size: AttachmentSize? = nil, preparing: Bool = false) {
         self.id = id
         self.number = number
         self.name = name
         self.data = data
         self.file = file
         self.size = size
-        pixels = isVideoName(name) ? nil : ImageResize.pixelSize(data)
+        self.preparing = preparing
+        pixels = isVideoName(name) || preparing ? nil : ImageResize.pixelSize(data)
     }
 
     var isVideo: Bool { isVideoName(name) }

@@ -2728,7 +2728,13 @@ struct Composer: View {
     }
     private static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
 
-    private var canSend: Bool { !doc.plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !doc.chips.isEmpty }
+    private var canSend: Bool {
+        (!doc.plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !doc.chips.isEmpty) && !waitingOnAttachment
+    }
+    /// An attachment in the message is still being prepared: it can't go yet.
+    private var waitingOnAttachment: Bool { attachments.contains { $0.preparing && doc.chips.contains($0.id) } }
+    /// Anything still being prepared, for the note beside the attach button.
+    private var preparing: Bool { shrinking > 0 || attachments.contains(where: \.preparing) }
     /// While the agent works and nothing's typed, the round button stops it
     /// (not while dictating: it sends what you say).
     private var stops: Bool { session.working && text.isEmpty && !dictation.active }
@@ -2905,9 +2911,10 @@ struct Composer: View {
                     .buttonBorderShape(.circle)
                     .fixedSize()
                     .help("Attach images")
-                    if shrinking > 0 {
+                    if preparing {
                         ProgressView().controlSize(.small)
-                        Text("Preparing video…").font(.caption).foregroundStyle(.secondary)
+                        Text(attachments.contains { $0.preparing && !$0.isVideo } ? "Loading…" : "Preparing video…")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     // The model and how full its context is, beside the attach
                     // button.
@@ -2917,7 +2924,7 @@ struct Composer: View {
                             .padding(.horizontal, 4)
                             .transition(.opacity)
                     } else {
-                        if shrinking == 0, !session.agentModel.isEmpty {
+                        if !preparing, !session.agentModel.isEmpty {
                             AgentStatusBar(session: session, canDrive: true, harness: harness, inline: true)
                                 .transition(.opacity)
                         }
@@ -3003,17 +3010,25 @@ struct Composer: View {
         .onChange(of: photos) {
             let items = photos
             photos = []
-            Task {
-                for item in items {
-                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+            // Each in the tray and the text straight away, in the order
+            // picked, while it loads (a video from iCloud, then made smaller),
+            // so a chip doesn't land in the middle of what's being typed.
+            for item in items {
+                let video = item.supportedContentTypes.contains { $0.conforms(to: .movie) }
+                let n = (attachments.map(\.number).max() ?? 0) + 1
+                let id = placeholder(name: video ? "video-\(n).mp4" : "photo-\(n).jpg")
+                Task {
+                    if video {
                         if let movie = try? await item.loadTransferable(type: PickedMovie.self) {
-                            await attachVideo(movie.url, name: "video-\(attachments.count + 1).mp4")
+                            await attachVideo(movie.url, into: id)
                             try? FileManager.default.removeItem(at: movie.url)
                         } else {
-                            sendError = "Couldn't load that video."
+                            failed(id, "Couldn't load that video.")
                         }
                     } else if let d = try? await item.loadTransferable(type: Data.self) {
-                        attach(name: "photo-\(attachments.count + 1).jpg", data: d)
+                        fill(id, data: d)
+                    } else {
+                        failed(id, "Couldn't load that photo.")
                     }
                 }
             }
@@ -3100,7 +3115,7 @@ struct Composer: View {
             HStack(spacing: 10) {
                 ForEach(attachments) { a in
                     TrayThumb(attachment: a, thumbnail: thumbs[a.id], greyed: greyed(a), defaultSize: defaultSize,
-                              onOpen: { openTray(a) },
+                              onOpen: { if !a.preparing { openTray(a) } },
                               onInsert: { controller.insertChip(a.id); controller.focus() },
                               onSize: { s in setSize(a.id, s) },
                               onRemove: { remove(a.id) })
@@ -3184,7 +3199,8 @@ struct Composer: View {
                     attach(name: url.lastPathComponent, data: Data(), file: url)
                     continue
                 }
-                await attachVideo(url, name: url.deletingPathExtension().lastPathComponent + ".mp4")
+                let id = placeholder(name: url.deletingPathExtension().lastPathComponent + ".mp4")
+                await attachVideo(url, into: id)
             } else if let d = try? Data(contentsOf: url) {
                 // A picture can go by its path too, when it's not made smaller.
                 attach(name: url.lastPathComponent, data: d, file: local ? url : nil)
@@ -3192,20 +3208,56 @@ struct Composer: View {
         }
     }
 
-    /// Attaches a video, made small enough to send (540p H.264): a phone's
-    /// own is usually too big for a message to the Mac.
-    private func attachVideo(_ url: URL, name: String) async {
+    /// An attachment still being loaded or prepared: numbered next, in the
+    /// tray with its chip at the cursor now; fill(_:data:) gives it its data.
+    private func placeholder(name: String) -> UUID {
+        let a = ComposerAttachment(number: (attachments.map(\.number).max() ?? 0) + 1, name: name, data: Data(), preparing: true)
+        attachments.append(a)
+        _ = configured()
+        controller.insertChip(a.id)
+        return a.id
+    }
+
+    /// A placeholder's data, now it's ready (nothing, if it's been taken off
+    /// meanwhile).
+    private func fill(_ id: UUID, data: Data) {
+        guard let i = attachments.firstIndex(where: { $0.id == id }) else { return }
+        let old = attachments[i]
+        let a = ComposerAttachment(id: id, number: old.number, name: old.name, data: data, size: old.size)
+        attachments[i] = a
+        _ = configured()
+        if thumbs[id] == nil {
+            Task { if let t = await a.thumbnail() { thumbs[id] = t } }
+        }
+    }
+
+    /// A placeholder that couldn't be made: off the tray and the text, and why.
+    private func failed(_ id: UUID, _ why: String) {
+        guard attachments.contains(where: { $0.id == id }) else { return }
+        remove(id)
+        sendError = why
+    }
+
+    /// Fills a placeholder with a video, made small enough to send (540p
+    /// H.264): a phone's own is usually too big for a message to the Mac.
+    /// Its first frame shows in the tray and the chip meanwhile.
+    private func attachVideo(_ url: URL, into id: UUID) async {
         shrinking += 1
         defer { shrinking -= 1 }
+        if thumbs[id] == nil, let t = await VideoPoster.image(url: url, maxPixels: 256),
+           attachments.contains(where: { $0.id == id }) {
+            thumbs[id] = t
+            _ = configured()
+        }
         do {
             let data = try await shrinkVideo(url)
             guard data.count <= 30 << 20 else {
-                sendError = "That video is too long to send (\(data.count >> 20) MB after shrinking it; 30 MB at most)."
+                failed(id, "That video is too long to send (\(data.count >> 20) MB after shrinking it; 30 MB at most).")
                 return
             }
-            attach(name: name, data: data)
+            fill(id, data: data)
         } catch {
-            sendError = "Couldn't prepare that video: \(error.localizedDescription)"
+            failed(id, "Couldn't prepare that video: \(error.localizedDescription)")
         }
     }
 
@@ -3240,11 +3292,14 @@ struct Composer: View {
 
     /// What a saved draft depends on: saved again when it changes.
     private var draftSignature: String {
-        doc.text + "|" + doc.chips.map(\.uuidString).joined() + "|" + attachments.map { "\($0.id)\($0.size?.rawValue ?? "")" }.joined()
+        doc.text + "|" + doc.chips.map(\.uuidString).joined() + "|" + attachments.map { "\($0.id)\($0.size?.rawValue ?? "")\($0.preparing)" }.joined()
     }
 
     private func saveDraft(key: String, pane: String) {
         let d = UserDefaults.standard
+        // One still being prepared isn't kept (it has nothing to keep yet):
+        // its chip goes with it if the draft's loaded before it's ready.
+        let attachments = attachments.filter { !$0.preparing }
         if attachments.isEmpty {
             ComposerDrafts.remove(pane)
             let t = doc.plain.isEmpty ? "" : doc.text
@@ -3768,7 +3823,15 @@ struct TrayThumb: View {
                 }
             }
             .frame(width: 64, height: 64)
-            .overlay { if attachment.isVideo, thumbnail != nil { Image(systemName: "play.fill").foregroundStyle(.white).shadow(radius: 2) } }
+            .overlay {
+                if attachment.preparing {
+                    ProgressView().controlSize(.small).tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black.opacity(thumbnail == nil ? 0 : 0.35))
+                } else if attachment.isVideo, thumbnail != nil {
+                    Image(systemName: "play.fill").foregroundStyle(.white).shadow(radius: 2)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(alignment: .bottomLeading) { NumberBadge(number: attachment.number).padding(4) }
             .overlay(alignment: .center) {
