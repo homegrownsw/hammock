@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# The person cutting a release at a terminal reads its notes, and may edit them, before they're frozen
+# (scripts/release runs it; an agent's release has them read differently, as it says).
+#
+#   scripts/release-review <result file> <app>=<version>...     e.g. … mac=2026.1.4 ios=2026.1.1
+#
+# It shows every pending note of each app, under New, Fixed and Internal, and asks: release them as they are,
+# edit them, or stop. Editing puts them all in one document (notes_doc), opened in a Hammock editor pane beside
+# this one (outside Hammock, in $VISUAL or $EDITOR), and reads it back into release-notes/<app>/pending/ once
+# that's closed (apply_notes_doc); a mistake in it changes nothing and says what to put right. It writes "release" or
+# "stop" into the result file, which is what the release goes by.
+#
+# HMK_RELEASE_NOTES_EDITOR names a command to edit the document with instead, then writes "release" without
+# asking anything (the tests).
+set -euo pipefail
+shopt -s nullglob
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/release-notes.sh
+. "$ROOT/scripts/lib/release-notes.sh"
+
+[ "$#" -ge 2 ] || { echo "usage: scripts/release-review <result file> <app>=<version>..." >&2; exit 2; }
+RESULT="$1"
+shift
+APPS=""
+TITLE=""
+for a in "$@"; do
+  p=${a%%=*}
+  printf -v "VER_$p" '%s' "${a#*=}"
+  APPS+="${APPS:+ }$p"
+  TITLE+="${TITLE:+ and }$(label "$p") ${a#*=}"
+done
+ver() { local n="VER_$1"; printf '%s' "${!n}"; }
+answer() { printf '%s\n' "$1" >"$RESULT"; }
+answer stop # until the person says otherwise
+
+notes_edited() { [ -n "$(git -C "$ROOT" status --porcelain -- "$ROOT/release-notes")" ]; }
+
+DOC="$(mktemp -d)/release-notes.md"
+
+if [ -n "${HMK_RELEASE_NOTES_EDITOR:-}" ]; then
+  notes_doc "$ROOT" "$APPS" "The notes in the release of $TITLE" >"$DOC"
+  $HMK_RELEASE_NOTES_EDITOR "$DOC"
+  apply_notes_doc "$DOC" "$ROOT" "$APPS" || { echo "The edited notes have mistakes (above)." >&2; exit 1; }
+  answer release
+  exit 0
+fi
+
+command -v gum >/dev/null 2>&1 || { echo "Reading the notes before a release needs gum: brew install gum." >&2; exit 1; }
+
+show_notes() {
+  local p prev n fam
+  for p in $APPS; do
+    fam=$(version_family "$(ver "$p")")
+    echo
+    echo "── $(label "$p") $(ver "$p") ──────────────────────────────"
+    print_pending "$ROOT/release-notes/$p/pending"
+    prev=$(render_family "$ROOT" "$p" "$fam")
+    if [ -n "$prev" ]; then
+      n=$(printf '%s\n' "$prev" | grep -c .)
+      echo
+      echo "(then the $n notes of earlier $fam releases, as they were released)"
+    fi
+  done
+  echo
+}
+
+# Opens the document in an editor and waits until the person is done with it: a Hammock editor pane beside
+# this one, closed when they're done, or outside Hammock their $VISUAL or $EDITOR.
+edit_doc() {
+  if [ -n "${HMK_PANE_ID:-}" ] && command -v hmk >/dev/null 2>&1; then
+    echo "The notes are open in an editor pane beside this one. Edit them, save, and close the pane."
+    if edit_in_pane "$DOC" >/dev/null; then return 0; fi
+    echo "Couldn't open an editor pane; using your editor instead." >&2
+  fi
+  "${VISUAL:-${EDITOR:-vi}}" "$DOC"
+}
+
+show=1
+fresh=1
+while :; do
+  if [ "$show" = 1 ]; then show_notes; fi
+  if notes_edited; then ok="Release them as they are now"; else ok="Release them as they are"; fi
+  choice=$(gum choose --header "The notes in the release of $TITLE" "$ok" "Edit them" "Stop the release") ||
+    choice="Stop the release"
+  case "$choice" in
+    "Stop the release") echo "Stopped."; exit 0 ;;
+    "Edit them") ;;
+    *) answer release; exit 0 ;;
+  esac
+  if [ "$fresh" = 1 ]; then notes_doc "$ROOT" "$APPS" "The notes in the release of $TITLE" >"$DOC"; fi
+  show=0
+  edit_doc
+  if apply_notes_doc "$DOC" "$ROOT" "$APPS"; then
+    fresh=1
+    show=1
+  else
+    # The document is kept as it is, so Edit them picks up where they left off.
+    echo "Nothing was changed: put that right and read them back again." >&2
+    fresh=0
+  fi
+done

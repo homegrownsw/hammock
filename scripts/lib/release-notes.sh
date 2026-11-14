@@ -175,7 +175,9 @@ require_level_with_origin_main() { # require_level_with_origin_main <repo-root>
     echo "Releases are cut from main (this checkout is on '$branch'; HMK_RELEASE_BRANCH=$branch allows it)." >&2
     return 1
   fi
-  if [ -n "$(git -C "$root" status --porcelain)" ]; then
+  # ALLOW_PENDING_EDITS=1: but for the pending notes, which an approved release carries as the person edited them.
+  if [ -n "$(git -C "$root" status --porcelain --untracked-files=all |
+    if [ -n "${ALLOW_PENDING_EDITS:-}" ]; then grep -vE '^.. "?release-notes/(mac|ios)/pending/[^/]+\.md"?$'; else cat; fi)" ]; then
     echo "The working tree isn't clean; commit or stash first." >&2
     return 1
   fi
@@ -196,4 +198,138 @@ require_level_with_origin_main() { # require_level_with_origin_main <repo-root>
   fi
   echo "Update first:  git pull --rebase origin main" >&2
   return 1
+}
+
+# The notes of a version's family (2026.1.*), rendered, newest first: the earlier releases a release comes
+# after.
+render_family() { # render_family <repo-root> <mac|ios> <family>
+  local d r lines=""
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    r=$(render_dir "$d")
+    if [ -n "$r" ]; then lines+="$r"$'\n'; fi
+  done < <(family_dirs "$1" "$2" "$3")
+  new_first "$lines"
+}
+
+# ---- reviewing a release's notes (scripts/release-review) ---------------------------------------------------------
+# Before a release is cut, the person running it reads its pending notes and may edit them: in one document
+# holding every note (notes_doc), opened in an editor, then read back into the pending files (apply_notes_doc).
+
+# An app's pending notes for a person to read before the release: under New, Fixed and Internal headings,
+# each note's text wrapped to the terminal.
+print_pending() { # print_pending <pending dir>
+  local t f width items first=1
+  width=$(($(tput cols 2>/dev/null || echo 100) - 6))
+  if [ "$width" -gt 100 ]; then width=100; elif [ "$width" -lt 40 ]; then width=40; fi
+  for t in NEW FIXED INTERNAL; do
+    items=""
+    for f in "$1"/*.md; do
+      [ -f "$f" ] || continue
+      [ "$(note_tag "$f")" = "$t" ] || continue
+      items+="$(note_body "$f" | fold -s -w "$width" | sed -e 's/ *$//' -e '1s/^/  • /' -e '2,$s/^/    /')"$'\n'
+    done
+    [ -n "$items" ] || continue
+    if [ "$first" = 1 ]; then first=0; else echo; fi
+    if [ "$t" = INTERNAL ]; then echo "Internal (never shown to people)"; else tag_heading "$t"; fi
+    printf '%s' "$items"
+  done
+  if [ "$first" = 1 ]; then echo "  (no notes)"; fi
+}
+
+# Opens a file in a Hammock editor pane beside this one, and waits until the pane is closed. Prints the pane.
+edit_in_pane() { # edit_in_pane <file>
+  local pane
+  pane=$(hmk edit "$1") || return 1
+  echo "$pane"
+  while hmk edit --read "$pane" >/dev/null 2>&1; do sleep 1; done
+}
+
+# Every pending note of the apps, as one document to edit: each note under a "=== <app>/<file>" line, as its
+# file has it (tag, date, text), New, then Fixed, then Internal. Lines starting with # are guidance, left out
+# when it's read back.
+notes_doc() { # notes_doc <repo-root> <apps> <title>
+  local root="$1" p t f
+  cat <<DOC
+# $3
+#
+# Each note is under its "=== app/file" line, as its file has it: its tag (NEW, FIXED or INTERNAL), the date
+# it was written, then its text. NEW and FIXED are read by the people using Hammock; INTERNAL never leaves
+# the repo.
+#
+#   Change a note: edit its text or its tag.
+#   Merge notes into one: put the text in one of them and delete the others, their "===" lines and all.
+#   Drop a note: delete it. Add one: a new "=== mac/a-short-name.md" (or ios/) line, a tag, and its text.
+#
+# Lines starting with # are left out. Save, then close this pane (or your editor) to carry on.
+DOC
+  for p in $2; do
+    for t in NEW FIXED INTERNAL; do
+      for f in "$root/release-notes/$p/pending"/*.md; do
+        [ -f "$f" ] || continue
+        [ "$(note_tag "$f")" = "$t" ] || continue
+        printf '\n=== %s/%s\n' "$p" "$(basename "$f")"
+        cat "$f"
+        [ -z "$(tail -c1 "$f")" ] || echo
+      done
+    done
+  done
+}
+
+# Reads a document notes_doc wrote, once edited, back into the apps' pending notes: each "=== app/file"
+# note becomes that file (a missing .md added, a missing date today's), and a note no longer in it is
+# deleted. Nothing changes if anything in it is wrong; it says what on stderr and returns 1.
+apply_notes_doc() { # apply_notes_doc <doc> <repo-root> <apps>
+  local doc="$1" root="$2" apps="$3" stage p f name content tag rest date body bad=0 today
+  stage=$(mktemp -d)
+  for p in $apps; do mkdir -p "$stage/$p"; done
+  awk -v stage="$stage" -v apps=" $apps " '
+    function fail(msg) { printf "line %d: %s\n", NR, msg > "/dev/stderr"; bad = 1 }
+    /^#/ { next }
+    /^===/ {
+      h = $0; sub(/^===[ \t]*/, "", h); sub(/[ \t]+$/, "", h)
+      if (h !~ /\.md$/) h = h ".md"
+      cur = ""; skip = 1
+      if (h !~ /^[a-z]+\/[a-z0-9][a-z0-9-]*\.md$/) { fail("\"" $0 "\" should name a note, like === mac/a-short-name.md"); next }
+      app = h; sub(/\/.*/, "", app)
+      if (index(apps, " " app " ") == 0) { fail(h " is for an app this release isn'\''t of"); next }
+      if (h in seen) { fail(h " is in here twice"); next }
+      seen[h] = 1; cur = stage "/" h; skip = 0
+      printf "" > cur
+      next
+    }
+    {
+      if (cur != "") { print > cur; next }
+      if (!skip && $0 ~ /[^ \t]/) fail("this text isn'\''t under a \"=== app/file\" line")
+    }
+    END { exit bad }
+  ' "$doc" || bad=1
+  today=$(date +%F)
+  for f in "$stage"/*/*.md; do
+    [ -f "$f" ] || continue
+    name=${f#"$stage"/}
+    # Without the blank lines before and after it.
+    content=$(awk '{ l[NR] = $0 } NF { if (!a) a = NR; b = NR } END { if (a) for (i = a; i <= b; i++) print l[i] }' "$f")
+    tag=$(printf '%s\n' "$content" | head -n1 | sed -nE 's/^tag:[[:space:]]*([A-Za-z]+)[[:space:]]*$/\1/p' | tr '[:lower:]' '[:upper:]')
+    case "$tag" in
+      NEW | FIXED | INTERNAL) ;;
+      *) echo "$name: its first line should be its tag: tag: NEW, tag: FIXED or tag: INTERNAL" >&2; bad=1; continue ;;
+    esac
+    rest=$(printf '%s\n' "$content" | tail -n +2)
+    date=$(printf '%s\n' "$rest" | head -n1 | sed -nE 's/^date:[[:space:]]*([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]*$/\1/p')
+    if [ -n "$date" ]; then body=$(printf '%s\n' "$rest" | tail -n +2); else date=$today; body=$rest; fi
+    if ! printf '%s' "$body" | grep -q '[^[:space:]]'; then echo "$name has no text" >&2; bad=1; continue; fi
+    printf 'tag: %s\ndate: %s\n%s\n' "$tag" "$date" "$(printf '%s\n' "$body" | sed -e '/[^[:space:]]/,$!d')" >"$f"
+  done
+  if [ "$bad" != 0 ]; then rm -rf "$stage"; return 1; fi
+  for p in $apps; do
+    mkdir -p "$root/release-notes/$p/pending"
+    for f in "$root/release-notes/$p/pending"/*.md; do
+      if [ -f "$f" ]; then rm -f "$f"; fi
+    done
+    for f in "$stage/$p"/*.md; do
+      if [ -f "$f" ]; then cp "$f" "$root/release-notes/$p/pending/"; fi
+    done
+  done
+  rm -rf "$stage"
 }

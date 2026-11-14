@@ -39,6 +39,8 @@ EOF
 chmod +x "$tmp/ios-testflight"
 export HMK_RELEASE_IOS_TESTFLIGHT="$tmp/ios-testflight"
 export HMK_RELEASE_YEAR=2026
+# Outside a pane, so a release's review of its notes isn't opened beside this one (scripts/release-review).
+unset HMK_PANE_ID
 calls() { cat "$tmp/mac-update.log" 2>/dev/null || true; rm -f "$tmp/mac-update.log"; }
 
 pass=0
@@ -59,7 +61,7 @@ contains() { if printf '%s' "$2" | grep -qF -- "$1"; then echo yes; else echo no
 fixture() { # fixture <version> [ios version]
   local dir="$tmp/repo-$RANDOM$RANDOM"
   mkdir -p "$dir"/{scripts/lib,apple/iOS/Config,release-notes/mac/pending,release-notes/ios/pending}
-  cp "$REPO"/scripts/{release,note,note-check,version,commit-number} "$dir/scripts/"
+  cp "$REPO"/scripts/{release,release-review,note,note-check,version,commit-number} "$dir/scripts/"
   echo 0 >"$dir/scripts/history-commits"
   cp "$REPO/scripts/lib/release-notes.sh" "$dir/scripts/lib/"
   printf 'HAMMOCK_MAC_VERSION = %s\nHAMMOCK_IOS_VERSION = %s\nCURRENT_PROJECT_VERSION = 0\n' "$1" "${2:-$1}" \
@@ -274,6 +276,78 @@ check "both versions set in it" "2026.1.0 2026.1.0" "$(ver "$d" MAC Mac-v2026.1.
 check "the old version's summary, only where it had notes" "yes no" "$([ -e "$d/release-notes/mac/v0.4.0.md" ] && echo yes || echo no) $([ -e "$d/release-notes/ios/v0.4.0.md" ] && echo yes || echo no)"
 html=$(cat "$tmp/notes.html")
 check "the Mac's notes leave 0.4.0's out" no "$(contains "Old." "$html")"
+calls >/dev/null
+
+echo "editing the notes:"
+d=$(fixture 2026.1.0)
+(
+  cd "$d"
+  . scripts/lib/release-notes.sh
+  notes_doc "$d" "mac ios" "Test" >"$tmp/doc.md"
+  apply_notes_doc "$tmp/doc.md" "$d" "mac ios"
+)
+check "the document reads back to the same notes" "" "$(git -C "$d" status --porcelain)"
+# The stand-in editor: rewrites the FIXED note, merges the INTERNAL one away, and adds one with no date.
+cat >"$tmp/edit-notes" <<'EOF'
+#!/usr/bin/env bash
+sed -i.bak -e 's/^A <thing> & more works now\.$/Things work better now./' -e '/^=== mac\/plumbing.md$/,/^Plumbing\.$/d' "$1"
+printf '\n=== mac/added\ntag: fixed\n\nAn added note.\n' >>"$1"
+EOF
+chmod +x "$tmp/edit-notes"
+(cd "$d" && HMK_RELEASE_NOTES_EDITOR="$tmp/edit-notes" ./scripts/release mac next >/dev/null 2>&1)
+check "an edited note is released as edited" "Things work better now." "$(git -C "$d" show HEAD:release-notes/mac/v2026.1.0/1-a-thing.md | tail -n1)"
+check "a note deleted from it isn't released" "no" "$(git -C "$d" cat-file -e HEAD:release-notes/mac/v2026.1.0/plumbing.md 2>/dev/null && echo yes || echo no)"
+check "an added note gets .md, its tag and today's date" "tag: FIXED date: $(date +%F) An added note." "$(git -C "$d" show HEAD:release-notes/mac/v2026.1.0/added.md | tr '\n' ' ' | sed 's/ $//')"
+check "…and is in the update's notes" yes "$(contains "An added note." "$(cat "$tmp/notes.html")")"
+check "the edits are in the release commit, pushed" "clean 2" "$([ -z "$(git -C "$d" status --porcelain)" ] && echo clean) $(count "$d.remote" main)"
+check "iOS's notes are untouched" "A <thing> & more works now." "$(tail -n1 "$d/release-notes/ios/pending/1-a-thing.md")"
+calls >/dev/null
+d=$(fixture 2026.1.0)
+(cd "$d" && FAKE_BUILD_FAIL=1 HMK_RELEASE_NOTES_EDITOR="$tmp/edit-notes" ./scripts/release mac next >/dev/null 2>&1) || true
+check "a release taken back leaves the edits, uncommitted" "1 Things work better now. no yes" \
+  "$(count "$d") $(tail -n1 "$d/release-notes/mac/pending/1-a-thing.md") $([ -e "$d/release-notes/mac/pending/plumbing.md" ] && echo yes || echo no) $([ -e "$d/release-notes/mac/pending/added.md" ] && echo yes || echo no)"
+calls >/dev/null
+d=$(fixture 2026.1.0)
+printf '#!/usr/bin/env bash\nsed -i.bak "s/^tag: NEW$/tag: NOPE/" "$1"\n' >"$tmp/bad-edit"
+chmod +x "$tmp/bad-edit"
+check "a note with a wrong tag stops the release" fails "$( (cd "$d" && HMK_RELEASE_NOTES_EDITOR="$tmp/bad-edit" ./scripts/release mac next >/dev/null 2>&1) && echo passes || echo fails)"
+check "…changing nothing" "1 clean" "$(count "$d") $([ -z "$(git -C "$d" status --porcelain)" ] && echo clean)"
+printf '#!/usr/bin/env bash\nprintf "\\n=== ios/sneaky\\ntag: NEW\\nNot this release.\\n" >>"$1"\n' >"$tmp/bad-edit"
+check "a note for an app not being released is refused" fails "$( (cd "$d" && HMK_RELEASE_NOTES_EDITOR="$tmp/bad-edit" ./scripts/release mac next >/dev/null 2>&1) && echo passes || echo fails)"
+calls >/dev/null
+
+echo "an agent's release, the notes read in a pane:"
+# The stand-in hmk: `hmk edit FILE` runs $FAKE_PANE_EDIT on it, as if the person edited it in the pane and
+# closed it, which `hmk edit --read` then finds.
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/hmk" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1 $2" = "edit --read" ]; then exit 1; fi
+if [ "$1" = edit ]; then ${FAKE_PANE_EDIT:-true} "$2"; echo pn_fake; exit 0; fi
+exit 1
+EOF
+chmod +x "$tmp/bin/hmk"
+agent() { (cd "$d" && PATH="$tmp/bin:$PATH" HMK_PANE_ID=pn_agent ./scripts/release "$@" </dev/null 2>&1); }
+d=$(fixture 2026.1.0)
+out=$(FAKE_PANE_EDIT="$tmp/edit-notes" agent mac next) && st=0 || st=$?
+check "the first run stops, exit 3, releasing nothing" "3 1 " "$st $(count "$d") $(remote_tags "$d")"
+check "…printing the notes as edited" yes "$(contains "Things work better now." "$out")"
+check "…and how to release them" yes "$(contains "scripts/release mac next approved" "$out")"
+check "…the edits left in the tree" "Things work better now." "$(tail -n1 "$d/release-notes/mac/pending/1-a-thing.md")"
+calls >/dev/null
+check "approved, after the notes change, is refused" fails "$(
+  printf 'tag: NEW\ndate: 2026-11-01\nSlipped in.\n' >"$d/release-notes/mac/pending/sneaky.md"
+  agent mac next approved >/dev/null && echo passes || echo fails)"
+rm "$d/release-notes/mac/pending/sneaky.md"
+check "approved for another version is refused" fails "$(agent mac 2026.2.0 approved >/dev/null && echo passes || echo fails)"
+agent mac next approved >/dev/null || true
+check "approved releases the notes the person read" "2 Things work better now. no" \
+  "$(count "$d.remote" main) $(git -C "$d" show HEAD:release-notes/mac/v2026.1.0/1-a-thing.md | tail -n1) $(git -C "$d" cat-file -e HEAD:release-notes/mac/v2026.1.0/plumbing.md 2>/dev/null && echo yes || echo no)"
+check "…leaving a clean tree" "" "$(git -C "$d" status --porcelain)"
+calls >/dev/null
+d=$(fixture 2026.1.0)
+check "approved with no reading first is refused" fails "$(agent mac next approved >/dev/null && echo passes || echo fails)"
+check "a run outside a pane and a terminal (CI) just releases" "2" "$( (cd "$d" && ./scripts/release mac next </dev/null >/dev/null 2>&1); count "$d.remote" main)"
 calls >/dev/null
 
 echo "preflight:"

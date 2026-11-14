@@ -105,28 +105,45 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
    commit stops it before the push, and is left for a person to sort out.
 2. **Chooses the version** for each app (`next`, `build` or the one given, below) and writes it into
    Version.xcconfig.
-3. **Freezes the notes**: this release's are the pending NEW and FIXED notes, with the earlier releases' of
+3. **Has you read the notes**, every pending note of each app it releases, and edit them if you like: rewrite
+   one, change its tag, merge several into one, drop or add one. For editing they're all in one document, each
+   under its `=== mac/<file>.md` line as its file has it, in a Hammock editor pane (outside Hammock, `$VISUAL`
+   or `$EDITOR`): save and close it, and they're read back into `pending/`. A mistake (a missing tag, a note
+   for an app not in this release) changes nothing and says what to put right.
+   - **At a terminal** (with or without arguments, `scripts/release-review`), the notes are shown under New,
+     Fixed and Internal, with a choice: release them as they are, edit them, or stop.
+   - **When an agent cuts it** (no terminal, in a Hammock pane), it takes two runs. The first opens the notes
+     in an editor pane beside the agent's and waits for you to close it, then prints them and stops (exit 3),
+     releasing nothing. The agent shows you the notes and asks whether to release them; if you say so, it runs
+     the same command with `approved`, which releases exactly the notes you read, for the same versions, and
+     refuses if they've changed since.
+   - With neither (CI), nobody reads them.
+
+   The edits go into the release commit; a release that stops or is taken back before the push leaves them in
+   the working tree, uncommitted. `HMK_RELEASE_NOTES_EDITOR=<command>` edits the document with that command,
+   asking nothing (the tests).
+4. **Freezes the notes**: this release's are the pending NEW and FIXED notes, with the earlier releases' of
    its family (`2026.1.*`) after them, since Sparkle only shows the newest release's notes.
    - Mac: as HTML for Sparkle's window and the GitHub Release (this release's New and Fixed, then
      `Earlier in 2026.1`'s);
    - iOS: `apple/iOS/TestFlight/WhatToTest.{en-GB,en-US}.txt`, which the upload sends from the tagged
      commit, cut at TestFlight's 4000 characters.
-4. **Files** the pending notes under `release-notes/<app>/v<version>/`; an app moving on from a version gets
+5. **Files** the pending notes under `release-notes/<app>/v<version>/`; an app moving on from a version gets
    that version's summary, `release-notes/<app>/v<old>.md` (INTERNAL included). It **commits**
    `release(mac): v<version> (r<n>)` (or `release(ios): …`, or for both `release: v<version> (r<n>, Mac and iOS)`)
    and **tags** it.
-5. **Builds the Mac update** from the tagged commit (`scripts/mac-update build`): `UPDATES=1 just share`
+6. **Builds the Mac update** from the tagged commit (`scripts/mac-update build`): `UPDATES=1 just share`
    (Developer ID, notarized; 1Password asks first), then `generate_appcast` signs it with the EdDSA key
    (keychain, account "fika"; backed up in 1Password), makes deltas from earlier releases, and embeds the
    notes. **Builds the iPhone's** (`scripts/ios-testflight build`): archives it with the release's build
    number and exports it signed for App Store Connect, to `dist/testflight/<n>/Hammock.ipa`, checking its
    version, build number and push relay. If anything here fails, the release commit and tags are taken back
    and nothing is published.
-6. **Pushes** `main` and the tags in one atomic push. If it's rejected, everything is taken back as in 5.
-7. **Uploads the Mac update** (`scripts/mac-update upload <n>`): the zip and deltas, then the appcast, to
+7. **Pushes** `main` and the tags in one atomic push. If it's rejected, everything is taken back as in 6.
+8. **Uploads the Mac update** (`scripts/mac-update upload <n>`): the zip and deltas, then the appcast, to
    the update server. Installed copies are offered it at their next daily check. A failed upload doesn't
    undo the release; it says how to retry.
-8. **Uploads the iPhone's build to TestFlight** (`scripts/ios-testflight upload <n>`), with What to Test from
+9. **Uploads the iPhone's build to TestFlight** (`scripts/ios-testflight upload <n>`), with What to Test from
    the tag, and waits for App Store Connect to process it. A failed upload doesn't undo the release either.
 
 `next` is the next patch for the Mac or iOS (`2026.1.0` → `2026.1.1`) and the next joint release for both
@@ -141,11 +158,13 @@ just release-ios next                     # an iPhone hotfix, 2026.1.1 (App Revi
 just release-apple next                   # both apps' next joint release, 2026.2.0
 just release-apple 2026.3.0               # …or a version of your choosing
 just release-mac next allow-empty         # a release with no notes for people to read
+just release-mac next approved            # an agent's second run, once you've read the notes (step 3)
 HMK_RELEASE_DRYRUN=1 just release-apple next   # print the plan, change nothing
 ```
 
-With arguments every confirmation is a yes, and the edge cases fail instead: a release with nothing for
-people to read needs `allow-empty`, and a version must go up (the Mac's must be new).
+With arguments every confirmation is a yes (the notes are still shown, step 3), and the edge
+cases fail instead: a release with nothing for people to read needs `allow-empty`, and a version must go up
+(the Mac's must be new).
 
 ### Where releases go
 
@@ -186,5 +205,5 @@ archiving the Mac app in Xcode; releases are built with `just share`.
 `just test-release` runs `scripts/tests/release`: the real scripts against throwaway repos with a bare
 remote (they commit, tag and push for real), with stand-ins for `scripts/mac-update` and
 `scripts/ios-testflight` so nothing is built or uploaded. It covers `just note` and `note-check`, the dry run,
-choosing versions, iOS, Mac and joint cuts, a failed build and a failed upload of each app, a rejected push,
-the preflight, and that every committed note is well formed.
+editing the notes, choosing versions, iOS, Mac and joint cuts, a failed build and a failed upload of each app,
+a rejected push, the preflight, and that every committed note is well formed.
