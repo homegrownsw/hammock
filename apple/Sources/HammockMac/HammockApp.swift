@@ -318,6 +318,7 @@ struct HammockApp: App {
                 Button("Actual Size") { TerminalFont.zoom(by: 0) }.keyboardShortcut(Keys.actualSize)
             }
             CommandGroup(after: .help) {
+                Button("Hammock Documentation") { NSWorkspace.shared.open(HammockLinks.docs) }.keyboardShortcut(Keys.documentation)
                 Button("Welcome to Hammock…") { Onboarding.shared.show() }.keyboardShortcut(Keys.welcome)
                 Button("Acknowledgements") { AcknowledgementsUI.shared.show() }.keyboardShortcut(Keys.acknowledgements)
             }

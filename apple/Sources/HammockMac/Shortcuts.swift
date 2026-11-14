@@ -29,6 +29,7 @@ enum Keys {
     static var about: KeyboardShortcut? { shortcut("about") }
     static var checkForUpdates: KeyboardShortcut? { shortcut("check_for_updates") }
     static var welcome: KeyboardShortcut? { shortcut("welcome") }
+    static var documentation: KeyboardShortcut? { shortcut("documentation") }
     static var acknowledgements: KeyboardShortcut? { shortcut("acknowledgements") }
 
     // File

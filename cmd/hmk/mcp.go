@@ -42,6 +42,9 @@ type mcpServer struct {
 }
 
 func runMCP(args []string) error {
+	if len(args) > 0 && args[0] == "--list-tools" {
+		return mcpListTools()
+	}
 	ctx := context.Background()
 	// Registered for every Claude/Codex session, so outside a Hammock pane
 	// (an agent in another terminal) it offers nothing.

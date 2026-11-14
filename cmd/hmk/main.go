@@ -161,7 +161,7 @@ Usage:
                                             on a schedule, each run a new tab in its Group
   hmk schedule add [NAME] (--at HH:MM [--days weekdays|weekends|mon,tue…] | --cron EXPR)
              [--claude|--codex|--AGENT|--command] [--dir DIR] [--group G] [OPTIONS] -- PROMPT|COMMAND
-                                            add one (an agent's add or edit asks you first; hammock
+                                            add one (an agent's add or edit asks you first; hmk
                                             schedule help lists the options)
   hmk schedule edit|show|run|pause|resume|skip|rm SCHEDULE
                                             change, see (its runs), run now, pause, skip the next run, delete
@@ -199,6 +199,8 @@ Usage:
   hmk service install|uninstall|status     Linux: run the daemon as a systemd user service, from boot
   hmk acknowledgements [NAME | --all]      the third-party software in Hammock and its licences
                                             (NAME: one's licence text; --all: every one's)
+  hmk docs [--print]                       open Hammock's documentation in your browser (--print, or
+                                            where nothing can open it: print its address)
 
 IDs may be abbreviated to any unique prefix; Groups and tabs can also be
 named. Set HMK_DIR to use a non-default state directory.
@@ -242,6 +244,8 @@ func main() {
 		err = runTheme(args[1:])
 	case "acknowledgements", "licences", "licenses":
 		err = runAcknowledgements(args[1:])
+	case "docs":
+		err = runDocs(args[1:])
 	case "stop":
 		err = runStop(args[1:])
 	case "start":

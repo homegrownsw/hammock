@@ -9,6 +9,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/acknowledgements"
 	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -667,6 +668,7 @@ func (a *App) paletteItems() []paletteItem {
 		})
 	}
 	act("keys", "Keyboard Shortcuts", "⌃B ?", "help", a.openHelp)
+	act("documentation", "Hammock Documentation", "", "docs help manual guide reference website", func() { a.openLink(hammockconfig.DocsURL) })
 	act("acknowledgements", "Acknowledgements", "", "licences licenses third party open source credits notices copyright", a.openAcknowledgements)
 	act("quit", "Quit", "⌃B q", "exit detach", func() { a.quit = true })
 	return out

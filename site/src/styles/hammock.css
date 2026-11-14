@@ -1,0 +1,58 @@
+/* Starlight in Hammock's colours and type, after the website (marketing/page.css): deep green, mint. */
+:root {
+	--sl-font: Inter, system-ui, -apple-system, sans-serif;
+	--sl-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+	--hmk-display: 'Space Grotesk', Inter, sans-serif;
+
+	/* Dark: the website's */
+	--sl-color-accent-low: #0d3b27;
+	--sl-color-accent: #2fd585;
+	--sl-color-accent-high: #a8ffd6;
+	--sl-color-white: #f4fbf7;
+	--sl-color-gray-1: #eaf6ef;
+	--sl-color-gray-2: #c4dccf;
+	--sl-color-gray-3: #a3c2b2;
+	--sl-color-gray-4: #6f8f7f;
+	--sl-color-gray-5: #2a4236;
+	--sl-color-gray-6: #0d2219;
+	--sl-color-black: #06140e;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #c9f5df;
+	--sl-color-accent: #0f8a52;
+	--sl-color-accent-high: #0a5233;
+	--sl-color-white: #06140e;
+	--sl-color-gray-1: #10261b;
+	--sl-color-gray-2: #23392e;
+	--sl-color-gray-3: #4b6658;
+	--sl-color-gray-4: #7a9586;
+	--sl-color-gray-5: #c6d8ce;
+	--sl-color-gray-6: #ebf3ee;
+	--sl-color-gray-7: #f5faf7;
+	--sl-color-black: #ffffff;
+}
+
+:root:not([data-theme='light']) body {
+	background: radial-gradient(1300px 600px at 50% -200px, rgba(46, 138, 98, 0.28), transparent 70%), var(--sl-color-bg);
+}
+
+h1, h2, h3, h4, .site-title, .hero h1 {
+	font-family: var(--hmk-display);
+	letter-spacing: -0.015em;
+}
+.site-title { font-weight: 700; }
+
+.sl-markdown-content kbd {
+	font-family: var(--sl-font);
+	font-size: 0.85em;
+	padding: 0.1em 0.45em;
+	border: 1px solid var(--sl-color-gray-5);
+	border-bottom-width: 2px;
+	border-radius: 6px;
+	background: var(--sl-color-gray-6);
+	white-space: nowrap;
+}
+
+/* Reference tables: let long descriptions breathe, keep names on one line. */
+.sl-markdown-content table td:first-child code { white-space: nowrap; }

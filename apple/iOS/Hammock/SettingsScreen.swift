@@ -159,6 +159,7 @@ struct SettingsScreen: View {
                 }
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
+                    Link("Hammock Documentation", destination: HammockLinks.docs)
                     NavigationLink("Acknowledgements") { AcknowledgementsScreen() }
                 }
             }

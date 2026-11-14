@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://homegrownsw.com/hammock/"><b>Website</b></a> ·
   <a href="https://homegrownsw.com/hammock/download"><b>Download for Mac</b></a> ·
+  <a href="https://homegrownsw.com/hammock/docs/"><b>Documentation</b></a> ·
   <a href="docs/product-spec.md">Product spec</a> ·
   <a href="docs/build-plan.md">Build plan</a>
 </p>
@@ -29,6 +30,13 @@ window: a terminal multiplexer, like tmux or Zellij, as a native app. The Mac an
 | 🟣 **Agents drive it too** | Through `hmk mcp`, agents open panes, run dev servers, check pages and tap through simulators, inside their own Group. |
 | 🔵 **Native, and quick** | SwiftUI on the Mac and iPhone, terminals drawn by libghostty, plus a TUI and the `hmk` CLI. |
 
+## Project status
+
+Hammock is in rapid development and should be treated as **beta software**. New versions come out often, and
+features, settings and `hmk` commands can change between them. Panes live in their own processes, so a crash or
+an update doesn't end your shells and agents, but don't let Hammock be the only place something important lives.
+Bug reports are welcome (below).
+
 ## Install
 
 - **Mac:** [download Hammock](https://homegrownsw.com/hammock/download) (macOS 26 or later), open it and drag Hammock
@@ -42,7 +50,7 @@ window: a terminal multiplexer, like tmux or Zellij, as a native app. The Mac an
 
 ## Use
 
-- **Mac app:** it starts its daemon if none is running; Hammock ▸ *Run Daemon at Login* makes that permanent.
+- **Mac app:** it starts its daemon if none is running; Settings ▸ General ▸ *Start the server at login* makes that permanent.
 - **TUI:** `hmk tui`: a sidebar of Groups and tabs, and split panes, with a Ctrl-B prefix (`c` tab, `%`/`"` split, `o` pane, `n`/`p` tab, `x` close, `q` quit).
 - **CLI:** `hmk ls`, `hmk group new NAME`, `hmk tab new GROUP -- CMD`, `hmk split PANE`, `hmk attach PANE`, `hmk send/read PANE`, `hmk audit`. `hmk help` lists the rest.
 - **Agents:** their status is detected automatically; for precise states install hooks with `hmk hooks install` (it backs up and merges your Claude Code and Codex config).
@@ -90,6 +98,10 @@ Pull requests are welcome when they're small: bug fixes and small improvements. 
 issue first. [CONTRIBUTING.md](CONTRIBUTING.md) says how.
 
 ## Docs
+
+Using Hammock: **[the documentation](https://homegrownsw.com/hammock/docs/)** (installing, configuration, agents,
+the iPhone app, and a full reference for the config file, keyboard shortcuts, `hmk` and the MCP tools), made from
+[site/](site/README.md). For working on Hammock:
 
 - [Product spec](docs/product-spec.md) · [Technical spec](docs/tech-spec.md) · [Build plan](docs/build-plan.md)
 - [UI direction](docs/design/ui-direction.md) · [Decision records](docs/adr/)

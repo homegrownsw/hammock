@@ -285,7 +285,8 @@ appstore-whats-new version *args:
 # Copy the website (marketing/) into the homegrownsw.com site repo, as site/hammock/ (HMK_SITE_REPO, default
 # ~/Developer/homegrownsw-site). Commit it there and `just deploy` it from there: this publishes nothing.
 # The page's comments are for the repo, so the copy drops them: each one starts its own line, `//` or `/* … */`.
-site:
+# The docs site (site/, `just docs`) is built and copied in as site/hammock/docs/.
+site: docs
     #!/usr/bin/env bash
     set -euo pipefail
     repo="${HMK_SITE_REPO:-$HOME/Developer/homegrownsw-site}"
@@ -299,8 +300,36 @@ site:
     cp marketing/banner.png "$out/"
     sips -Z 512 apple/Resources/AppIcon-1024.png --out "$out/icon-512.png" >/dev/null
     sips -Z 256 apple/Resources/AppIcon-1024.png --out "$out/icon-256.png" >/dev/null
+    rm -rf "$out/docs" && cp -R site/dist "$out/docs"
     find "$out" -type f -exec chmod 644 {} +
     git -C "$repo" status --short -- site/hammock
+
+# The config file's header in the Mac app (ConfigHeader.generated.swift), from the keys in
+# internal/hammockconfig/keys.go: run after changing them (a Go test fails until you do).
+config-header:
+    go run ./scripts/docsgen swift-header
+
+# The docs site's reference pages (site/src/content/docs/reference/, git-ignored), made from Hammock's
+# own source: the config keys, the agents, `hmk help`, `hmk mcp --list-tools` and the Mac's keybinds.
+docs-gen: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    bin/hmk help > "$tmp/help.txt"
+    env -u HMK_PANE_ID bin/hmk mcp --list-tools > "$tmp/mcp.json"
+    swiftc -O -o "$tmp/keybinds" apple/Sources/HammockKit/Keybinds.swift site/gen/keybinds/main.swift
+    "$tmp/keybinds" > "$tmp/keybinds.json"
+    go run -tags {{tags}} ./scripts/docsgen pages site/src/content/docs/reference "$tmp/help.txt" "$tmp/mcp.json" "$tmp/keybinds.json"
+    sips -Z 256 apple/Resources/AppIcon-1024.png --out site/src/assets/icon.png >/dev/null
+    sips -Z 64 apple/Resources/AppIcon-1024.png --out site/public/favicon.png >/dev/null
+
+# Build the docs site (site/) into site/dist: `just site` copies it to the website.
+docs: docs-gen
+    cd site && pnpm install --frozen-lockfile && pnpm build
+
+# Preview the docs site as you edit it, at http://localhost:4321/hammock/docs/.
+docs-dev: docs-gen
+    cd site && pnpm install --frozen-lockfile && pnpm dev
 
 # The release scripts' tests: notes, the check, and cutting releases against a throwaway repo.
 test-release:

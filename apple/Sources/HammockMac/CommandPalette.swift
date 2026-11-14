@@ -574,6 +574,9 @@ struct CommandPalette: View {
         action("welcome", "Welcome to Hammock…", "hand.wave", .orange, "onboarding help tour introduction", keys: Keys.welcome) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { Onboarding.shared.show() }
         }
+        action("documentation", "Hammock Documentation", "book", .blue, "docs help manual guide reference website", keys: Keys.documentation) {
+            NSWorkspace.shared.open(HammockLinks.docs)
+        }
         action("hmk", "Install the hmk Command", "terminal", .green, "cli shell") { _ = try? CommandLineTool.install() }
         action("pair", "Pair a Device…", "iphone", .blue, "iphone phone ios remote qr pairing code", keys: Keys.pairDevice) { SharingUI.shared.pairing = true }
         if Updater.shared.isAvailable {

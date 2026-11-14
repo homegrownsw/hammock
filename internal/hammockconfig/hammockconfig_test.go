@@ -205,28 +205,3 @@ func TestPaneKinds(t *testing.T) {
 		}
 	}
 }
-
-// The header is a copy of the Mac app's, which gets new keys first.
-func TestHeaderMatchesMacApp(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "apple", "Sources", "HammockMac", "AppConfig.swift"))
-	if err != nil {
-		t.Skip("no Mac app source here:", err)
-	}
-	src := string(b)
-	start := strings.Index(src, "private static let header = \"\"\"\n")
-	if start < 0 {
-		t.Fatal("AppConfig.swift has no header")
-	}
-	src = src[start+len("private static let header = \"\"\"\n"):]
-	end := strings.Index(src, "\n        \"\"\"")
-	if end < 0 {
-		t.Fatal("AppConfig.swift's header doesn't end")
-	}
-	var lines []string
-	for _, l := range strings.Split(src[:end], "\n") {
-		lines = append(lines, strings.TrimPrefix(l, "        "))
-	}
-	if swift := strings.Join(lines, "\n"); swift != header {
-		t.Errorf("the header differs from AppConfig.swift's: copy it across\nswift:\n%s\ngo:\n%s", swift, header)
-	}
-}

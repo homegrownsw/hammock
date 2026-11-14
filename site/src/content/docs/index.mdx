@@ -1,0 +1,73 @@
+---
+title: Hammock
+description: A fast, native Mac terminal that never loses your work, built for coding agents.
+template: splash
+hero:
+  tagline: A fast, native Mac terminal that never loses your work. Your shells, coding agents, browsers and simulators keep running, whatever happens to the window.
+  actions:
+    - text: Install for Mac
+      link: /hammock/docs/install/mac/
+      icon: right-arrow
+    - text: Agents
+      link: /hammock/docs/agents/overview/
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Hammock is a terminal multiplexer, like tmux or Zellij, as a native app. A daemon, `hmkd`, owns your panes: every
+pane's program runs in its own process, organised into Groups, tabs and panes. Quit the app, update it or crash it,
+and your terminals and agents carry on. After a reboot, your Groups come back and agents resume their sessions.
+
+Because the daemon owns the work, everything that talks to it shows the same workspace: the Mac app, the iPhone app,
+the TUI (`hmk tui`) and the `hmk` command. Agents can drive it too, through MCP.
+
+:::note[Project status]
+Hammock is in rapid development: treat it as beta software. See [Project status](/hammock/docs/status/).
+:::
+
+## The main ideas
+
+<CardGrid>
+	<Card title="Groups, tabs and panes" icon="seti:folder">
+		A Group for each piece of work, with its own tabs, split and floating panes, the sidebar and the command
+		palette. [The workspace](/hammock/docs/workspace/)
+	</Card>
+	<Card title="An agent cockpit" icon="rocket">
+		See at a glance which agent is working, which needs you and which has finished, across every Group.
+		[Agents](/hammock/docs/agents/overview/)
+	</Card>
+	<Card title="More than terminals" icon="laptop">
+		Chromium browser, iOS Simulator, log, editor and diff panes, side by side with your shells.
+		[Panes](/hammock/docs/panes/)
+	</Card>
+	<Card title="Agents drive it too" icon="puzzle">
+		Through `hmk mcp`, agents open panes, run dev servers, check pages and tap through simulators.
+		[MCP](/hammock/docs/agents/mcp/)
+	</Card>
+	<Card title="Finds you" icon="phone">
+		A notification on the Mac you're using, or on your iPhone when you're away from it. Answer from there.
+		[The iPhone app](/hammock/docs/iphone/)
+	</Card>
+	<Card title="Your other computers" icon="server">
+		Link a Mac or a Linux server and see its Groups beside yours, reach your Mac remotely, and share Groups
+		with other people. [Remote access](/hammock/docs/remote/)
+	</Card>
+	<Card title="From any terminal" icon="seti:shell">
+		`hmk` lists, opens, splits, reads and types into panes, from a script or another terminal, and `hmk tui`
+		is the whole workspace in a terminal. [The CLI](/hammock/docs/cli/) · [The TUI](/hammock/docs/tui/)
+	</Card>
+	<Card title="On a schedule" icon="clock">
+		Run an agent's prompt or a command on a schedule, each run a new tab in its Group.
+		[Scheduled tasks](/hammock/docs/scheduled-tasks/)
+	</Card>
+</CardGrid>
+
+## Get started
+
+<CardGrid>
+	<LinkCard title="Install on a Mac" href="/hammock/docs/install/mac/" description="Download, setup and where things live." />
+	<LinkCard title="Pair your iPhone" href="/hammock/docs/install/iphone/" description="The TestFlight beta, pairing and notifications." />
+	<LinkCard title="Run it on Linux" href="/hammock/docs/install/linux/" description="The daemon, hmk and the TUI on a server or Unraid." />
+	<LinkCard title="Configure it" href="/hammock/docs/configuration/" description="The config file, themes and shortcuts." />
+</CardGrid>

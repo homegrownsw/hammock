@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.astro/
+# Made by `just docs-gen` from Hammock's source (scripts/docsgen):
+src/content/docs/reference/
+src/assets/icon.png
+public/favicon.png

@@ -191,7 +191,7 @@ public struct KeybindAction: Identifiable, Hashable, Sendable {
 /// Every action a shortcut can be given, in menu order. Settings lists them;
 /// `Keys` (the Mac app) binds them.
 public enum Keybinds {
-    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Simulator", "Editor"]
+    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Simulator", "Editor", "Help"]
 
     /// Groups whose actions only apply with that kind of pane focused: two
     /// of them can share a shortcut (⌘S saves a file, or screenshots a simulator).
@@ -212,8 +212,10 @@ public enum Keybinds {
             // Hammock (the app menu)
             .init("about", "About Hammock", "Hammock", nil, "version info uninstall quit stop server"),
             .init("check_for_updates", "Check for Updates…", "Hammock", nil, "upgrade new version sparkle"),
-            .init("welcome", "Welcome to Hammock…", "Hammock", nil, "onboarding help intro tour"),
-            .init("acknowledgements", "Acknowledgements", "Hammock", nil, "licences licenses third party open source credits notices copyright"),
+            // Help (listed last in Settings ▸ Keyboard, as in the menu bar)
+            .init("welcome", "Welcome to Hammock…", "Help", nil, "onboarding help intro tour"),
+            .init("documentation", "Hammock Documentation", "Help", nil, "docs help manual guide reference website"),
+            .init("acknowledgements", "Acknowledgements", "Help", nil, "licences licenses third party open source credits notices copyright"),
             // File
             .init("new_tab", "New Tab", "File", c("t"), "create terminal shell"),
             .init("new_browser_tab", "New Browser Tab", "File", c("b", cs), "create web chrome page"),
