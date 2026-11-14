@@ -23,6 +23,9 @@ final class TerminalNSView: NSView {
     /// Files dropped on a pane whose Mac is elsewhere: sent there (returns
     /// true when it took them).
     var onDropFiles: (([URL]) -> Bool)?
+    /// An image pasted with no text (a screenshot), as PNG: saved by the
+    /// pane's daemon, which types its path.
+    var onPasteImage: ((Data) -> Void)?
     /// Opens a link: in the browser, or (true) a browser pane beside this one.
     var onOpenLink: ((URL, Bool) -> Void)?
     /// The link under the pointer while ⌘ is held (underlined, pointing hand).
@@ -973,9 +976,31 @@ final class TerminalNSView: NSView {
         return out
     }
 
+    /// Pastes, as other terminals do: files copied in the Finder as their
+    /// paths (as they drop), text as itself, and an image with no text (a
+    /// screenshot) as the path of a copy the pane's daemon saves. Claude
+    /// Code turns a pasted image path into [Image #n].
     @objc func paste(_ sender: Any?) {
-        guard let text = NSPasteboard.general.string(forType: .string) else { return }
-        pasteChecked(text)
+        let pb = NSPasteboard.general
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            if onDropFiles?(urls) == true { return }
+            pasteChecked(urls.map { Self.shellEscape($0.path) }.joined(separator: " "))
+        } else if let text = pb.string(forType: .string) {
+            pasteChecked(text)
+        } else if session != nil, let png = Self.pastedImage(pb) {
+            onPasteImage?(png)
+        }
+    }
+
+    /// The pasteboard's image as PNG (a screenshot's own, or converted from
+    /// TIFF and the like), up to 20 MB.
+    static func pastedImage(_ pb: NSPasteboard) -> Data? {
+        var png = pb.data(forType: .png)
+        if png == nil, let image = NSImage(pasteboard: pb), let tiff = image.tiffRepresentation {
+            png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+        }
+        guard let png, !png.isEmpty, png.count <= 20 << 20 else { return nil }
+        return png
     }
 
     /// Pastes text, first asking (as Ghostty does; clipboard-paste-protection)
@@ -1065,6 +1090,7 @@ struct TerminalView: NSViewRepresentable {
         v.session = session
         v.onInput = { [paneID, model] data in model.send(paneID, data) }
         v.onDropFiles = { [paneID, model] urls in TerminalView.upload(urls, to: paneID, model: model) }
+        v.onPasteImage = { [paneID, model] png in TerminalView.pasteImage(png, to: paneID, model: model) }
         v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
         v.onCellSize = { [paneID, model] w, h in model.setCellPixels(paneID, width: w, height: h) }
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
@@ -1089,6 +1115,7 @@ struct TerminalView: NSViewRepresentable {
             v.session = model.acquireSession(paneID)
             v.onInput = { [paneID, model] data in model.send(paneID, data) }
             v.onDropFiles = { [paneID, model] urls in TerminalView.upload(urls, to: paneID, model: model) }
+            v.onPasteImage = { [paneID, model] png in TerminalView.pasteImage(png, to: paneID, model: model) }
             v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
             v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
             v.onOpenLink = { [paneID, model] url, inHammock in TerminalView.open(url, inHammock: inHammock, beside: paneID, model: model) }
@@ -1139,6 +1166,13 @@ struct TerminalView: NSViewRepresentable {
 
     /// A pane in a Group shared with you runs on another Mac: dropped files
     /// are copied there (up to 20 MB each) and their paths typed.
+    /// A pasted image goes to the pane's own Mac, this one or the one it runs
+    /// on, which saves it and types its path.
+    static func pasteImage(_ png: Data, to paneID: String, model: AppModel) {
+        if let group = model.group(ofPane: paneID), group.isRemote, !group.canDrive { return }
+        Task { await model.upload(png, name: "pasted-image.png", to: paneID) }
+    }
+
     static func upload(_ urls: [URL], to paneID: String, model: AppModel) -> Bool {
         guard let group = model.group(ofPane: paneID), group.isRemote else { return false }
         guard group.canDrive else { return true }
