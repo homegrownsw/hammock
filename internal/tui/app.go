@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -1110,20 +1111,13 @@ func (a *App) openStartAgent(group string) {
 	}
 	dir := ""
 	if p := a.panes[a.focus]; p != nil {
-		dir = p.Cwd
-	}
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(dir, home) {
-		dir = "~" + strings.TrimPrefix(dir, home)
+		dir = tildeHome(p.Cwd)
 	}
 	a.openDialog(&dialog{title: "Start an Agent", okLabel: "Start",
-		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: "claude"}, {label: "Folder", value: dir}, {label: "First message (optional)"}},
+		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: cmp.Or(a.defaultAgentIn(group), "claude")}, {label: "Folder", value: dir}, {label: "First message (optional)"}},
 		submit: func(v []string) {
-			harness := strings.ToLower(strings.TrimSpace(v[0]))
-			if ag := agents.Parse(harness); ag != nil {
-				harness = ag.ID
-			}
 			a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
-				Harness: harness, Cwd: strings.TrimSpace(v[1]), GroupId: group, Prompt: strings.TrimSpace(v[2]),
+				Harness: parseHarness(v[0]), Cwd: strings.TrimSpace(v[1]), GroupId: group, Prompt: strings.TrimSpace(v[2]),
 			}}}, func(r *pb.ServerMessage) { a.selectTab(client.CreatedID(r)) })
 		}})
 }
@@ -1132,7 +1126,7 @@ func (a *App) openStartAgent(group string) {
 // its Group, or a new one), as openStartAgent does here.
 func (a *App) openStartAgentOn(computer, name string) {
 	a.openDialog(&dialog{title: "Start an Agent on " + name, okLabel: "Start",
-		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: "claude"}, {label: "Folder on " + name, value: "~"}, {label: "First message (optional)"}},
+		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: cmp.Or(a.computer(computer).GetDefaultAgent(), "claude")}, {label: "Folder on " + name, value: "~"}, {label: "First message (optional)"}},
 		submit: func(v []string) {
 			harness := strings.ToLower(strings.TrimSpace(v[0]))
 			if ag := agents.Parse(harness); ag != nil {

@@ -441,6 +441,9 @@ func (a *App) paneMenu(id string, x, y int) {
 	items = append(items,
 		menuItem{label: "Split Right", hint: "⌃B %", run: func() { a.split(id, pb.Split_DIRECTION_HORIZONTAL, "") }},
 		menuItem{label: "Split Down", hint: "⌃B \"", run: func() { a.split(id, pb.Split_DIRECTION_VERTICAL, "") }},
+		menuItem{label: "Split Right with " + agentName(a.defaultAgentIn(a.groupOfPane(id))), run: func() { a.startAgentBeside(id, pb.Split_DIRECTION_HORIZONTAL, "", "", "") },
+			hidden: a.defaultAgentIn(a.groupOfPane(id)) == ""},
+		menuItem{label: "Split Right with Agent…", run: func() { a.openStartAgentBeside(id, pb.Split_DIRECTION_HORIZONTAL) }},
 		menuItem{label: "Split Left", run: func() { a.splitAt(id, pb.Split_DIRECTION_HORIZONTAL, "", true) }},
 		menuItem{label: "Split Up", run: func() { a.splitAt(id, pb.Split_DIRECTION_VERTICAL, "", true) }},
 		menuItem{label: "Split Right with Browser…", run: func() {
@@ -594,6 +597,15 @@ func (a *App) paletteItems() []paletteItem {
 		f := a.focus
 		act("split-right", "Split Right", "⌃B %", "pane", func() { a.split(f, pb.Split_DIRECTION_HORIZONTAL, "") })
 		act("split-down", "Split Down", "⌃B \"", "pane", func() { a.split(f, pb.Split_DIRECTION_VERTICAL, "") })
+		for _, s := range []struct {
+			word string
+			dir  pb.Split_Direction
+		}{{"Right", pb.Split_DIRECTION_HORIZONTAL}, {"Down", pb.Split_DIRECTION_VERTICAL}} {
+			if h := a.defaultAgentIn(a.groupOfPane(f)); h != "" {
+				act("split-default-agent-"+strings.ToLower(s.word), "Split "+s.word+" with "+agentName(h), "", "pane agent default quick "+h, func() { a.startAgentBeside(f, s.dir, "", "", "") })
+			}
+			act("split-agent-"+strings.ToLower(s.word), "Split "+s.word+" with Agent…", "", "pane agent claude codex start", func() { a.openStartAgentBeside(f, s.dir) })
+		}
 		act("split-left", "Split Left", "", "pane", func() { a.splitAt(f, pb.Split_DIRECTION_HORIZONTAL, "", true) })
 		act("split-up", "Split Up", "", "pane above", func() { a.splitAt(f, pb.Split_DIRECTION_VERTICAL, "", true) })
 		act("split-right-editor", "Split Right with Editor", "", "pane edit editor text file untitled", func() { a.splitEditor(f, pb.Split_DIRECTION_HORIZONTAL) })

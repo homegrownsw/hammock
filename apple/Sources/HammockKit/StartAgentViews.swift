@@ -11,6 +11,9 @@ public struct StartAgentView: View {
     let chooseLocal: (() -> String?)?
     /// The tab it opened, once the daemon has started it.
     let onStarted: ((String) -> Void)?
+    /// Beside a pane (a split menu's Agent…) rather than in a new tab: no
+    /// Computer or Group to pick, and the pane's folder to start with.
+    let split: AgentSplit?
 
     @State private var groupID: String
     /// The computer it starts on ("": this one): its Groups and folders.
@@ -24,12 +27,18 @@ public struct StartAgentView: View {
     @State private var browsing = false
 
     /// harness nil: the default agent of the computer it starts on, else Claude Code.
-    public init(model: AppModel, groupID: String?, computerID: String? = nil, harness: String? = nil, chooseLocal: (() -> String?)? = nil, onDone: @escaping (String?) -> Void, onStarted: ((String) -> Void)? = nil) {
+    public init(model: AppModel, groupID: String?, computerID: String? = nil, harness: String? = nil, split: AgentSplit? = nil, chooseLocal: (() -> String?)? = nil, onDone: @escaping (String?) -> Void, onStarted: ((String) -> Void)? = nil) {
         self.model = model
+        self.split = split
         self.onStarted = onStarted
         self.onDone = onDone
         self.chooseLocal = chooseLocal
-        let (group, computer) = Self.placement(model, groupID: groupID, computerID: computerID)
+        let paneGroup = split.flatMap { model.group(ofPane: $0.paneID) }
+        let (group, computer) = Self.placement(model, groupID: paneGroup?.id ?? groupID, computerID: paneGroup.map { model.computer(of: $0)?.userID ?? "" } ?? computerID)
+        if let split, let cwd = model.panes[split.paneID]?.cwd, !cwd.isEmpty {
+            _cwd = State(initialValue: cwd)
+            _cwdTouched = State(initialValue: true) // the pane's, kept as the suggestions come
+        }
         _computerID = State(initialValue: computer)
         _groupID = State(initialValue: group)
         let fallback = group.isEmpty ? model.defaultAgent(onComputer: computer) : model.defaultAgent(in: model.groups.first { $0.id == group })
@@ -77,7 +86,7 @@ public struct StartAgentView: View {
                     }
                 }
 
-                if model.hasLinkedComputers || usable.count > 1 {
+                if split == nil, model.hasLinkedComputers || usable.count > 1 {
                     Section {
                         if model.hasLinkedComputers {
                             Picker("Computer", selection: $computerID) {
@@ -161,7 +170,7 @@ public struct StartAgentView: View {
                     TextField("First message", text: $prompt, prompt: Text("Optional: what to work on"), axis: .vertical)
                         .lineLimit(3...8)
                 } footer: {
-                    Text("It starts in a new tab, in the folder's login shell, as if you'd typed \(harness)\(prompt.isEmpty ? "" : " and your message").")
+                    Text("It starts in a new \(split == nil ? "tab" : "pane"), in the folder's login shell, as if you'd typed \(harness)\(prompt.isEmpty ? "" : " and your message").")
                 }
             }
             .formStyle(.grouped)
@@ -240,6 +249,10 @@ public struct StartAgentView: View {
         // The tab shows at once; this closes as it does.
         onDone(nil)
         Task {
+            if let split {
+                if let id = await model.startAgent(h, beside: split, cwd: dir, prompt: text) { onStarted?(id) }
+                return
+            }
             if let id = await model.startAgent(h, cwd: dir, groupID: gid, prompt: text, computerID: cid) { onStarted?(id) }
         }
     }

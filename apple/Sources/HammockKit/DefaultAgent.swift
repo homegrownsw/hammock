@@ -1,5 +1,21 @@
 import Foundation
 
+/// Where an agent from a split menu goes: beside a pane, as a split (after
+/// it, or before it) or floating over its tab.
+public struct AgentSplit: Hashable, Sendable {
+    public var paneID: String
+    public var direction: SplitDirection
+    public var before: Bool
+    public var floating: Bool
+
+    public init(paneID: String, direction: SplitDirection = .horizontal, before: Bool = false, floating: Bool = false) {
+        self.paneID = paneID
+        self.direction = direction
+        self.before = before
+        self.floating = floating
+    }
+}
+
 /// Each computer's default agent (default-agent in its config file, set in
 /// its Settings ▸ Agents): New Claude Code Tab starts it without the Start
 /// an Agent sheet, beside New Agent Tab…, which still asks. Its daemon says
@@ -28,6 +44,33 @@ extension AppModel {
     /// The default agent's own menu item: "New Claude Code Tab".
     public static func defaultAgentTitle(_ harness: String, on computer: String? = nil) -> String {
         "New \(AgentCatalog.name(of: harness)) Tab" + (computer.map { " on \($0)" } ?? "")
+    }
+
+    /// Starts an agent in a new pane beside paneID (the split menus) rather
+    /// than a tab: harness nil, the default of the pane's computer; cwd
+    /// empty, the pane's folder. The new pane's id, focused.
+    @discardableResult
+    public func startAgent(_ harness: String?, beside split: AgentSplit, cwd: String = "", prompt: String = "") async -> String? {
+        splitting = split.paneID
+        defer { splitting = nil }
+        let id = await run {
+            $0.startAgent = .with {
+                $0.harness = harness ?? ""
+                $0.cwd = cwd
+                $0.prompt = prompt
+                $0.splitPaneID = split.paneID
+                $0.direction = split.direction
+                $0.before = split.before
+                $0.floating = split.floating
+            }
+        }?.created.id
+        if let id { focus(id) } // a new split is where you're working
+        return id
+    }
+
+    /// The default agent of the computer a pane is on.
+    public func defaultAgent(ofPane paneID: String) -> String? {
+        defaultAgent(in: group(ofPane: paneID))
     }
 
     /// Starts the default agent without asking: in a new tab in groupID (or,

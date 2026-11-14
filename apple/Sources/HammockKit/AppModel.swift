@@ -163,7 +163,7 @@ public final class AppModel {
     public var focusedPaneID: String?
     /// A pane this app is splitting: the new pane takes focus as it arrives,
     /// before the split's rebuilt views can hand it back to the old one.
-    private var splitting: String?
+    var splitting: String?
     public var lastError: String?
     /// A short note shown for a few seconds over the window (see showToast).
     public private(set) var toast: String?

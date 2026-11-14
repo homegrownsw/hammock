@@ -108,6 +108,59 @@ func TestStartAgent(t *testing.T) {
 	}
 }
 
+// An agent started beside a pane (the split menus) is a new pane in that
+// tab, in that pane's folder when none is given, or floating over it; one
+// beside a pane that isn't there is refused.
+func TestStartAgentInSplit(t *testing.T) {
+	bin := t.TempDir()
+	os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho STARTED \"$@\"\n"), 0o755)
+	t.Setenv("PATH", bin+":/usr/bin:/bin")
+	plainShell(t)
+	t.Setenv("ENV", "")
+	work := t.TempDir()
+
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	gid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	tid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: gid, Pane: &pb.PaneSpec{Cwd: work}}}}))
+	d.mu.Lock()
+	first := d.tabs[tid].FocusedPaneId
+	d.panes[first].mu.Lock()
+	d.panes[first].info.Cwd = work // as the shell would report it
+	d.panes[first].mu.Unlock()
+	d.mu.Unlock()
+
+	split := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
+		Harness: "claude", SplitPaneId: first, Direction: pb.Split_DIRECTION_HORIZONTAL, Prompt: "hi",
+	}}}))
+	floating := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
+		Harness: "claude", SplitPaneId: first, Floating: true,
+	}}}))
+	d.mu.Lock()
+	panes := tabPanes(d.tabs[tid])
+	info := d.panes[split].snapshotInfo()
+	floats := len(d.tabs[tid].Floating)
+	floatOK := d.panes[floating] != nil
+	d.mu.Unlock()
+	if !slices.Contains(panes, split) || info.Cwd != work || info.Agent.GetHarness() != "claude" {
+		t.Fatalf("split %q in %v, pane %v", split, panes, info)
+	}
+	if floats != 1 || !floatOK {
+		t.Fatalf("floating %q: %d floating", floating, floats)
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: split}}})
+	waitOutput(t, c, split, "STARTED hi")
+
+	if _, err := c.Call(context.Background(), &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
+		Harness: "claude", SplitPaneId: "pa_nothere",
+	}}}); err == nil {
+		t.Error("started beside a pane that isn't there")
+	}
+}
+
 // A prompt is the agent's first message and nothing else: control
 // characters (^U to clear the line, Return to run what's left) and quotes
 // in it never reach a shell as keystrokes or code. The agent is the pane's

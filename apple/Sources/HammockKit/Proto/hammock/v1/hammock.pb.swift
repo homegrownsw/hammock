@@ -7599,6 +7599,17 @@ public nonisolated struct Hammock_V1_StartAgent: Sendable {
   /// with no group_id: a linked computer to start it on
   public var computerID: String = String()
 
+  /// In a new pane beside this one (as CreatePane: direction, before, or
+  /// floating over its tab) rather than a tab; group_id, tab_id and
+  /// computer_id are then ignored. cwd "": that pane's folder.
+  public var splitPaneID: String = String()
+
+  public var direction: Hammock_V1_Split.Direction = .unspecified
+
+  public var before: Bool = false
+
+  public var floating: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -23131,7 +23142,7 @@ nonisolated extension Hammock_V1_LogView: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StartAgent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{1}cwd\0\u{3}group_id\0\u{1}prompt\0\u{3}tab_id\0\u{3}computer_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{1}cwd\0\u{3}group_id\0\u{1}prompt\0\u{3}tab_id\0\u{3}computer_id\0\u{3}split_pane_id\0\u{1}direction\0\u{1}before\0\u{1}floating\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -23145,6 +23156,10 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
       case 4: try { try decoder.decodeSingularStringField(value: &self.prompt) }()
       case 5: try { try decoder.decodeSingularStringField(value: &self.tabID) }()
       case 6: try { try decoder.decodeSingularStringField(value: &self.computerID) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.splitPaneID) }()
+      case 8: try { try decoder.decodeSingularEnumField(value: &self.direction) }()
+      case 9: try { try decoder.decodeSingularBoolField(value: &self.before) }()
+      case 10: try { try decoder.decodeSingularBoolField(value: &self.floating) }()
       default: break
       }
     }
@@ -23169,6 +23184,18 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
     if !self.computerID.isEmpty {
       try visitor.visitSingularStringField(value: self.computerID, fieldNumber: 6)
     }
+    if !self.splitPaneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.splitPaneID, fieldNumber: 7)
+    }
+    if self.direction != .unspecified {
+      try visitor.visitSingularEnumField(value: self.direction, fieldNumber: 8)
+    }
+    if self.before != false {
+      try visitor.visitSingularBoolField(value: self.before, fieldNumber: 9)
+    }
+    if self.floating != false {
+      try visitor.visitSingularBoolField(value: self.floating, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -23179,6 +23206,10 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
     if lhs.prompt != rhs.prompt {return false}
     if lhs.tabID != rhs.tabID {return false}
     if lhs.computerID != rhs.computerID {return false}
+    if lhs.splitPaneID != rhs.splitPaneID {return false}
+    if lhs.direction != rhs.direction {return false}
+    if lhs.before != rhs.before {return false}
+    if lhs.floating != rhs.floating {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

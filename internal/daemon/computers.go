@@ -1708,6 +1708,9 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 	case *pb.ClientMessage_CreateGroup:
 		return false, here(&m.CreateGroup.ComputerId)
 	case *pb.ClientMessage_StartAgent:
+		if t := m.StartAgent.SplitPaneId; t != "" && !local(t) {
+			return false, errors.New("no such pane")
+		}
 		return false, here(&m.StartAgent.ComputerId)
 	case *pb.ClientMessage_ListFolders:
 		return false, here(&m.ListFolders.ComputerId)
@@ -1739,7 +1742,7 @@ func msgComputer(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_CreateGroup:
 		return m.CreateGroup.ComputerId
 	case *pb.ClientMessage_StartAgent:
-		if m.StartAgent.GroupId == "" {
+		if m.StartAgent.GroupId == "" && m.StartAgent.SplitPaneId == "" {
 			return m.StartAgent.ComputerId
 		}
 	case *pb.ClientMessage_ListFolders:

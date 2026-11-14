@@ -945,6 +945,9 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		}
 		return drive(pane(m.ListFiles.PaneId))
 	case *pb.ClientMessage_StartAgent:
+		if m.StartAgent.SplitPaneId != "" {
+			return drive(pane(m.StartAgent.SplitPaneId))
+		}
 		return drive(roleOf(m.StartAgent.GroupId))
 	case *pb.ClientMessage_ReadGroupIcon:
 		return view(roleOf(m.ReadGroupIcon.GroupId))

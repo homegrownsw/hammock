@@ -675,6 +675,12 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	case *pb.ClientMessage_CreateGroup, *pb.ClientMessage_MoveGroup:
 		return nil
 	case *pb.ClientMessage_StartAgent:
+		if t := m.StartAgent.SplitPaneId; t != "" {
+			if ownGroup(d.groupOfPane(t)) || d.granted(self, "create", t) {
+				return nil
+			}
+			return errAgentScope
+		}
 		if ownGroup(m.StartAgent.GroupId) {
 			return nil
 		}

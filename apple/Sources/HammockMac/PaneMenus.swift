@@ -35,9 +35,19 @@ struct SplitMenuItems: View {
     /// A new pane floating over the tab instead of a split.
     var floating = false
 
+    /// The default agent of the pane's computer, straight away (when it has
+    /// one), and Agent…: the Start an Agent sheet, for a pane here.
+    @ViewBuilder private func agentItems(_ split: AgentSplit) -> some View {
+        if let h = model.defaultAgent(ofPane: paneID) {
+            Button(AgentCatalog.name(of: h)) { Task { await model.startAgent(nil, beside: split) } }
+        }
+        Button("Agent…") { AgentLauncher.shared.open(model, beside: split) }
+    }
+
     var body: some View {
         if floating {
             Button("Terminal") { Task { await model.newFloating(over: paneID) } }.keyboardShortcut(Keys.newFloatingPane)
+            agentItems(AgentSplit(paneID: paneID, floating: true))
             if HammockTool.browser.on {
                 Button("Browser") { Task { await model.newFloating(over: paneID, spec: .with { $0.url = "about:blank" }) } }
             }
@@ -49,6 +59,7 @@ struct SplitMenuItems: View {
         } else {
             Button("Terminal") { Task { await model.split(paneID, direction: direction, before: before) } }
                 .keyboardShortcut(before ? (direction == .horizontal ? Keys.splitLeft : Keys.splitUp) : (direction == .horizontal ? Keys.splitRight : Keys.splitDown))
+            agentItems(AgentSplit(paneID: paneID, direction: direction, before: before))
             if HammockTool.browser.on {
                 Button("Browser") { Task { await model.splitBrowser(paneID, direction: direction, before: before) } }
                     .keyboardShortcut(before ? nil : direction == .horizontal ? Keys.splitBrowserRight : Keys.splitBrowserDown)

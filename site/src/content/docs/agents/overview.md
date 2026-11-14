@@ -36,6 +36,7 @@ Switch a pane between the two with Pane ▸ Toggle Agent View (⇧⌘A). Setting
 
 - **File ▸ New Agent Tab…** (⌥⌘N): pick the agent, the Group and the folder, and optionally a first message.
 - **A default agent:** set Settings ▸ Agents ▸ Default agent (`default-agent`), and **New Claude Code Tab** (or whichever you picked) joins New Agent Tab… wherever it's offered. It starts the agent straight away, in the Group's folder, and takes ⌥⌘N; New Agent Tab… moves to ⌃⌥⌘N. Each computer has its own default, set on that computer, and a Group uses its computer's.
+- **Beside a pane:** the toolbar's split buttons and Pane ▸ Split Right (and the other Split menus) offer **Agent…** and your default agent, which start it in a new pane in that pane's folder.
 - **From the command line:**
 
   ```sh

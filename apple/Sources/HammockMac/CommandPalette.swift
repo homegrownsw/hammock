@@ -453,7 +453,18 @@ struct CommandPalette: View {
             action("split-browser", "Split Right with Browser", "rectangle.split.2x1", .blue, "pane web", keys: Keys.splitBrowserRight) { Task { await model.splitBrowser(focused, direction: .horizontal) } }
             action("split-down", "Split Down", "rectangle.split.1x2", .teal, "pane", keys: Keys.splitDown) { Task { await model.split(focused, direction: .vertical) } }
             action("split-browser-down", "Split Down with Browser", "rectangle.split.1x2", .blue, "pane web", keys: Keys.splitBrowserDown) { Task { await model.splitBrowser(focused, direction: .vertical) } }
-            action("split-left", "Split Left", "rectangle.split.2x1", .teal, "pane", keys: Keys.splitLeft) { Task { await model.split(focused, direction: .horizontal, before: true) } }
+            for (dir, word, symbol) in [(SplitDirection.horizontal, "Right", "rectangle.split.2x1"), (.vertical, "Down", "rectangle.split.1x2")] {
+                let split = AgentSplit(paneID: focused, direction: dir)
+                if let h = model.defaultAgent(ofPane: focused) {
+                    action("split-default-agent-\(word.lowercased())", "Split \(word) with \(AgentCatalog.name(of: h))", symbol, .orange, "pane agent default quick \(h)") {
+                        Task { await model.startAgent(nil, beside: split) }
+                    }
+                }
+                action("split-agent-\(word.lowercased())", "Split \(word) with Agent…", symbol, .orange, "pane agent claude codex start") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { AgentLauncher.shared.open(model, beside: split) }
+                }
+            }
+            action("split-left", "Split Left","rectangle.split.2x1", .teal, "pane", keys: Keys.splitLeft) { Task { await model.split(focused, direction: .horizontal, before: true) } }
             action("split-up", "Split Up", "rectangle.split.1x2", .teal, "pane above", keys: Keys.splitUp) { Task { await model.split(focused, direction: .vertical, before: true) } }
             action("split-browser-left", "Split Left with Browser", "rectangle.split.2x1", .blue, "pane web") { Task { await model.splitBrowser(focused, direction: .horizontal, before: true) } }
             action("split-browser-up", "Split Up with Browser", "rectangle.split.1x2", .blue, "pane web above") { Task { await model.splitBrowser(focused, direction: .vertical, before: true) } }

@@ -2001,6 +2001,13 @@ message StartAgent {
   string prompt = 4;
   string tab_id = 5;    // the client's choice, as CreateTab.tab_id
   string computer_id = 6;  // with no group_id: a linked computer to start it on
+  // In a new pane beside this one (as CreatePane: direction, before, or
+  // floating over its tab) rather than a tab; group_id, tab_id and
+  // computer_id are then ignored. cwd "": that pane's folder.
+  string split_pane_id = 7;
+  Split.Direction direction = 8;
+  bool before = 9;
+  bool floating = 10;
 }
 
 // The folders an agent could start in: suggestions (the Group's own folder,

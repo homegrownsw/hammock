@@ -40,6 +40,19 @@ func expandHome(p string) string {
 func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage, error) {
 	d.mu.Lock()
 	err := d.resolveHarness(m) // none named: the default agent here
+	if err == nil && m.SplitPaneId != "" && strings.TrimSpace(m.Cwd) == "" {
+		// Beside a pane, with no folder: that pane's, as a terminal split's.
+		if p := d.panes[m.SplitPaneId]; p == nil {
+			err = errors.New("no such pane")
+		} else if m.Cwd = p.cwd(); m.Cwd == "" {
+			if g := d.groups[d.groupOfPane(p.id)]; g != nil {
+				m.Cwd = d.groupFolder(g)
+			}
+		}
+		if err == nil && m.Cwd == "" {
+			m.Cwd = "~"
+		}
+	}
 	d.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -59,6 +72,21 @@ func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage
 	cmd, later := startCommand(ag, m.Prompt, nil)
 	cmd = agentCommand(ag, cmd)
 	d.mu.Lock()
+	if m.SplitPaneId != "" {
+		spec := &pb.PaneSpec{Cwd: cwd, Command: agentShellCommand(cmd), CreatedByPaneId: creator}
+		var p *pane
+		var err error
+		if m.Floating {
+			p, err = d.createFloating(m.SplitPaneId, spec, nil)
+		} else {
+			p, err = d.splitPane(m.SplitPaneId, m.Direction, spec, m.Before)
+		}
+		if err != nil {
+			d.mu.Unlock()
+			return nil, err
+		}
+		return d.agentStarted(p, m.Harness, creator, later, p.id), nil
+	}
 	gid := m.GroupId
 	if gid == "" {
 		gid = d.groupUsingDir(cwd)
@@ -83,22 +111,30 @@ func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage
 		return nil, err
 	}
 	p := d.panes[t.FocusedPaneId]
-	if p != nil && creator != "" {
+	if p == nil {
+		d.mu.Unlock()
+		return nil, errors.New("the new tab has no pane")
+	}
+	return d.agentStarted(p, m.Harness, creator, later, t.Id), nil
+}
+
+// agentStarted finishes a start in its new pane p (a tab's, or a split):
+// an agent's own if an agent asked, known to be starting before its hooks
+// say so, its first prompt typed when it's ready. Replies created(id).
+// Called with d.mu held; returns with it released.
+func (d *Daemon) agentStarted(p *pane, harness, creator, later, id string) *pb.ServerMessage {
+	if creator != "" {
 		d.markAgentMade(p.id) // before anyone can act on it as yours
 	}
 	d.mu.Unlock()
-	if p == nil {
-		return nil, errors.New("the new tab has no pane")
-	}
 	p.mu.Lock()
-	// Known before its hooks say so.
-	p.info.Agent = &pb.Agent{Harness: m.Harness, State: pb.AgentState_AGENT_STATE_STARTING, StateSinceUnixMs: time.Now().UnixMilli(), Heuristic: true}
+	p.info.Agent = &pb.Agent{Harness: harness, State: pb.AgentState_AGENT_STATE_STARTING, StateSinceUnixMs: time.Now().UnixMilli(), Heuristic: true}
 	p.mu.Unlock()
 	d.typeFirstPrompt(p, later)
 	d.mu.Lock()
 	d.paneChangedIfLive(p)
 	d.mu.Unlock()
-	return created(t.Id), nil
+	return created(id)
 }
 
 // groupFolder is where a Group works: the folder it keeps (its last focused

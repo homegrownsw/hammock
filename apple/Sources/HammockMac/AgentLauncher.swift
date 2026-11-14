@@ -16,6 +16,8 @@ final class AgentLauncher {
         var groupID: String?
         var computerID: String?
         var harness: String?
+        /// Beside a pane (a split menu), rather than in a new tab.
+        var split: AgentSplit?
     }
 
     var request: Request?
@@ -47,6 +49,11 @@ final class AgentLauncher {
         }
         let group = computerID.map { mine(model, on: $0) } ?? (groupID ?? current(model))
         Task { await model.startDefaultAgent(groupID: group, computerID: computerID) }
+    }
+
+    /// The sheet, starting it beside a pane (a split menu's Agent…).
+    func open(_ model: AppModel, beside split: AgentSplit) {
+        request = Request(split: split)
     }
 
     private func current(_ model: AppModel) -> String? { model.currentGroup?.id ?? model.shownGroups.first?.id }
@@ -96,7 +103,7 @@ struct StartAgentSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        StartAgentView(model: model, groupID: request.groupID, computerID: request.computerID, harness: request.harness, chooseLocal: {
+        StartAgentView(model: model, groupID: request.groupID, computerID: request.computerID, harness: request.harness, split: request.split, chooseLocal: {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
             panel.canChooseDirectories = true

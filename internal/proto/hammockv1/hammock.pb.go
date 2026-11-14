@@ -18265,13 +18265,20 @@ func (x *LogView) GetFilter() *LogFilter {
 // Codex), with a first prompt if given, in its login shell. Replies Created
 // (the tab). group_id empty: the Group already in that folder, else the first.
 type StartAgent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Harness       string                 `protobuf:"bytes,1,opt,name=harness,proto3" json:"harness,omitempty"` // "claude" or "codex"; "": the computer's default agent (Computer.default_agent)
-	Cwd           string                 `protobuf:"bytes,2,opt,name=cwd,proto3" json:"cwd,omitempty"`         // absolute; ~ is the home folder
-	GroupId       string                 `protobuf:"bytes,3,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
-	Prompt        string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
-	TabId         string                 `protobuf:"bytes,5,opt,name=tab_id,json=tabId,proto3" json:"tab_id,omitempty"`                // the client's choice, as CreateTab.tab_id
-	ComputerId    string                 `protobuf:"bytes,6,opt,name=computer_id,json=computerId,proto3" json:"computer_id,omitempty"` // with no group_id: a linked computer to start it on
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Harness    string                 `protobuf:"bytes,1,opt,name=harness,proto3" json:"harness,omitempty"` // "claude" or "codex"; "": the computer's default agent (Computer.default_agent)
+	Cwd        string                 `protobuf:"bytes,2,opt,name=cwd,proto3" json:"cwd,omitempty"`         // absolute; ~ is the home folder
+	GroupId    string                 `protobuf:"bytes,3,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	Prompt     string                 `protobuf:"bytes,4,opt,name=prompt,proto3" json:"prompt,omitempty"`
+	TabId      string                 `protobuf:"bytes,5,opt,name=tab_id,json=tabId,proto3" json:"tab_id,omitempty"`                // the client's choice, as CreateTab.tab_id
+	ComputerId string                 `protobuf:"bytes,6,opt,name=computer_id,json=computerId,proto3" json:"computer_id,omitempty"` // with no group_id: a linked computer to start it on
+	// In a new pane beside this one (as CreatePane: direction, before, or
+	// floating over its tab) rather than a tab; group_id, tab_id and
+	// computer_id are then ignored. cwd "": that pane's folder.
+	SplitPaneId   string          `protobuf:"bytes,7,opt,name=split_pane_id,json=splitPaneId,proto3" json:"split_pane_id,omitempty"`
+	Direction     Split_Direction `protobuf:"varint,8,opt,name=direction,proto3,enum=hammock.v1.Split_Direction" json:"direction,omitempty"`
+	Before        bool            `protobuf:"varint,9,opt,name=before,proto3" json:"before,omitempty"`
+	Floating      bool            `protobuf:"varint,10,opt,name=floating,proto3" json:"floating,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -18346,6 +18353,34 @@ func (x *StartAgent) GetComputerId() string {
 		return x.ComputerId
 	}
 	return ""
+}
+
+func (x *StartAgent) GetSplitPaneId() string {
+	if x != nil {
+		return x.SplitPaneId
+	}
+	return ""
+}
+
+func (x *StartAgent) GetDirection() Split_Direction {
+	if x != nil {
+		return x.Direction
+	}
+	return Split_DIRECTION_UNSPECIFIED
+}
+
+func (x *StartAgent) GetBefore() bool {
+	if x != nil {
+		return x.Before
+	}
+	return false
+}
+
+func (x *StartAgent) GetFloating() bool {
+	if x != nil {
+		return x.Floating
+	}
+	return false
 }
 
 // The folders an agent could start in: suggestions (the Group's own folder,
@@ -26098,7 +26133,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05total\x18\x06 \x01(\x03R\x05total\x12,\n" +
 	"\x06facets\x18\a \x03(\v2\x14.hammock.v1.LogFacetR\x06facets\x12\x14\n" +
 	"\x05error\x18\b \x01(\tR\x05error\x12-\n" +
-	"\x06filter\x18\t \x01(\v2\x15.hammock.v1.LogFilterR\x06filter\"\xa3\x01\n" +
+	"\x06filter\x18\t \x01(\v2\x15.hammock.v1.LogFilterR\x06filter\"\xb6\x02\n" +
 	"\n" +
 	"StartAgent\x12\x18\n" +
 	"\aharness\x18\x01 \x01(\tR\aharness\x12\x10\n" +
@@ -26107,7 +26142,12 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06prompt\x18\x04 \x01(\tR\x06prompt\x12\x15\n" +
 	"\x06tab_id\x18\x05 \x01(\tR\x05tabId\x12\x1f\n" +
 	"\vcomputer_id\x18\x06 \x01(\tR\n" +
-	"computerId\"]\n" +
+	"computerId\x12\"\n" +
+	"\rsplit_pane_id\x18\a \x01(\tR\vsplitPaneId\x129\n" +
+	"\tdirection\x18\b \x01(\x0e2\x1b.hammock.v1.Split.DirectionR\tdirection\x12\x16\n" +
+	"\x06before\x18\t \x01(\bR\x06before\x12\x1a\n" +
+	"\bfloating\x18\n" +
+	" \x01(\bR\bfloating\"]\n" +
 	"\vListFolders\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x19\n" +
 	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x1f\n" +
@@ -27360,59 +27400,60 @@ var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	204, // 280: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
 	206, // 281: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
 	205, // 282: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
-	214, // 283: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
-	220, // 284: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
-	222, // 285: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
-	220, // 286: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
-	222, // 287: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
-	221, // 288: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
-	220, // 289: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
-	231, // 290: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
-	220, // 291: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
-	220, // 292: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
-	220, // 293: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
-	220, // 294: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
-	220, // 295: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
-	220, // 296: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
-	250, // 297: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
-	252, // 298: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
-	252, // 299: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
-	15,  // 300: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
-	16,  // 301: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
-	17,  // 302: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
-	260, // 303: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
-	18,  // 304: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
-	259, // 305: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
-	259, // 306: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
-	269, // 307: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
-	19,  // 308: hammock.v1.DiffSource.kind:type_name -> hammock.v1.DiffSource.Kind
-	270, // 309: hammock.v1.DiffOpen.source:type_name -> hammock.v1.DiffSource
-	272, // 310: hammock.v1.DiffOpen.view:type_name -> hammock.v1.DiffView
-	270, // 311: hammock.v1.DiffInfo.source:type_name -> hammock.v1.DiffSource
-	272, // 312: hammock.v1.DiffInfo.view:type_name -> hammock.v1.DiffView
-	278, // 313: hammock.v1.DiffContent.files:type_name -> hammock.v1.DiffFile
-	279, // 314: hammock.v1.DiffContent.commits:type_name -> hammock.v1.DiffCommit
-	279, // 315: hammock.v1.RepoInfo.commits:type_name -> hammock.v1.DiffCommit
-	20,  // 316: hammock.v1.DiffFile.status:type_name -> hammock.v1.DiffFile.Status
-	21,  // 317: hammock.v1.DiffCommand.action:type_name -> hammock.v1.DiffCommand.Action
-	270, // 318: hammock.v1.DiffCommand.source:type_name -> hammock.v1.DiffSource
-	272, // 319: hammock.v1.DiffCommand.view:type_name -> hammock.v1.DiffView
-	270, // 320: hammock.v1.Review.source:type_name -> hammock.v1.DiffSource
-	284, // 321: hammock.v1.Review.threads:type_name -> hammock.v1.ReviewThread
-	22,  // 322: hammock.v1.ReviewThread.side:type_name -> hammock.v1.ReviewThread.Side
-	23,  // 323: hammock.v1.ReviewThread.state:type_name -> hammock.v1.ReviewThread.State
-	285, // 324: hammock.v1.ReviewThread.comments:type_name -> hammock.v1.ReviewComment
-	24,  // 325: hammock.v1.ReviewComment.delivery:type_name -> hammock.v1.ReviewComment.Delivery
-	283, // 326: hammock.v1.ReviewList.reviews:type_name -> hammock.v1.Review
-	25,  // 327: hammock.v1.ReviewCommand.action:type_name -> hammock.v1.ReviewCommand.Action
-	22,  // 328: hammock.v1.ReviewCommand.side:type_name -> hammock.v1.ReviewThread.Side
-	23,  // 329: hammock.v1.ReviewCommand.state:type_name -> hammock.v1.ReviewThread.State
-	283, // 330: hammock.v1.ReviewReply.review:type_name -> hammock.v1.Review
-	331, // [331:331] is the sub-list for method output_type
-	331, // [331:331] is the sub-list for method input_type
-	331, // [331:331] is the sub-list for extension type_name
-	331, // [331:331] is the sub-list for extension extendee
-	0,   // [0:331] is the sub-list for field type_name
+	4,   // 283: hammock.v1.StartAgent.direction:type_name -> hammock.v1.Split.Direction
+	214, // 284: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
+	220, // 285: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
+	222, // 286: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
+	220, // 287: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
+	222, // 288: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
+	221, // 289: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
+	220, // 290: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
+	231, // 291: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
+	220, // 292: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
+	220, // 293: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
+	220, // 294: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
+	220, // 295: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
+	220, // 296: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
+	220, // 297: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
+	250, // 298: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
+	252, // 299: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
+	252, // 300: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
+	15,  // 301: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
+	16,  // 302: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
+	17,  // 303: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
+	260, // 304: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
+	18,  // 305: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
+	259, // 306: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
+	259, // 307: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
+	269, // 308: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
+	19,  // 309: hammock.v1.DiffSource.kind:type_name -> hammock.v1.DiffSource.Kind
+	270, // 310: hammock.v1.DiffOpen.source:type_name -> hammock.v1.DiffSource
+	272, // 311: hammock.v1.DiffOpen.view:type_name -> hammock.v1.DiffView
+	270, // 312: hammock.v1.DiffInfo.source:type_name -> hammock.v1.DiffSource
+	272, // 313: hammock.v1.DiffInfo.view:type_name -> hammock.v1.DiffView
+	278, // 314: hammock.v1.DiffContent.files:type_name -> hammock.v1.DiffFile
+	279, // 315: hammock.v1.DiffContent.commits:type_name -> hammock.v1.DiffCommit
+	279, // 316: hammock.v1.RepoInfo.commits:type_name -> hammock.v1.DiffCommit
+	20,  // 317: hammock.v1.DiffFile.status:type_name -> hammock.v1.DiffFile.Status
+	21,  // 318: hammock.v1.DiffCommand.action:type_name -> hammock.v1.DiffCommand.Action
+	270, // 319: hammock.v1.DiffCommand.source:type_name -> hammock.v1.DiffSource
+	272, // 320: hammock.v1.DiffCommand.view:type_name -> hammock.v1.DiffView
+	270, // 321: hammock.v1.Review.source:type_name -> hammock.v1.DiffSource
+	284, // 322: hammock.v1.Review.threads:type_name -> hammock.v1.ReviewThread
+	22,  // 323: hammock.v1.ReviewThread.side:type_name -> hammock.v1.ReviewThread.Side
+	23,  // 324: hammock.v1.ReviewThread.state:type_name -> hammock.v1.ReviewThread.State
+	285, // 325: hammock.v1.ReviewThread.comments:type_name -> hammock.v1.ReviewComment
+	24,  // 326: hammock.v1.ReviewComment.delivery:type_name -> hammock.v1.ReviewComment.Delivery
+	283, // 327: hammock.v1.ReviewList.reviews:type_name -> hammock.v1.Review
+	25,  // 328: hammock.v1.ReviewCommand.action:type_name -> hammock.v1.ReviewCommand.Action
+	22,  // 329: hammock.v1.ReviewCommand.side:type_name -> hammock.v1.ReviewThread.Side
+	23,  // 330: hammock.v1.ReviewCommand.state:type_name -> hammock.v1.ReviewThread.State
+	283, // 331: hammock.v1.ReviewReply.review:type_name -> hammock.v1.Review
+	332, // [332:332] is the sub-list for method output_type
+	332, // [332:332] is the sub-list for method input_type
+	332, // [332:332] is the sub-list for extension type_name
+	332, // [332:332] is the sub-list for extension extendee
+	0,   // [0:332] is the sub-list for field type_name
 }
 
 func init() { file_hammock_v1_hammock_proto_init() }

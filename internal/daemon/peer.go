@@ -933,7 +933,7 @@ func msgTarget(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_ShowOutput:
 		return cmpOr(m.ShowOutput.IntoPaneId, m.ShowOutput.PaneId)
 	case *pb.ClientMessage_StartAgent:
-		return m.StartAgent.GroupId
+		return cmpOr(m.StartAgent.SplitPaneId, m.StartAgent.GroupId)
 	case *pb.ClientMessage_ListFolders:
 		return m.ListFolders.GroupId
 	case *pb.ClientMessage_ReadRepo:
