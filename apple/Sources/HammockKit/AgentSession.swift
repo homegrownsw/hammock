@@ -80,6 +80,10 @@ public final class AgentSession {
     /// since (DevLog's timings).
     @ObservationIgnored var askedAt: Date?
     @ObservationIgnored var shownSinceAsked = false
+    /// When the agent's replies came, by block: those arriving while the
+    /// conversation's watched (not loaded with it, or with earlier messages)
+    /// are revealed as they appear (RevealsReply).
+    @ObservationIgnored var arrived: [String: Date] = [:]
     @ObservationIgnored private var images: [String: Data] = [:]
     /// Pictures decoded, so a row made again (scrolled back to) shows its
     /// picture at once, at its size, not a placeholder that then grows.
@@ -180,6 +184,7 @@ public final class AgentSession {
                 } else {
                     index[b.id] = bs.count
                     bs.append(b)
+                    if b.kind == .text { arrived[b.id] = .now }
                 }
             }
         }

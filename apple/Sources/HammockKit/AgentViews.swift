@@ -396,6 +396,15 @@ public struct AgentConversationView: View {
 
     private func glideToEnd() {
         glide.pending = false
+        // A reply taller than what's in view: to its top, and no further
+        // (to the end, it ran past its own start, and you came to its last
+        // lines). It stops following there; Latest is for the rest.
+        let height = revealer.visible.bottom - revealer.visible.top
+        if glide.gap > height * 0.85, let s = viewing != nil ? subSession : session,
+           let reply = s.items.last(where: { $0.block?.kind == .text && (s.arrived[$0.id].map { Date.now.timeIntervalSince($0) < 2 } ?? false) }) {
+            withAnimation(.smooth(duration: 0.35)) { revealer.proxy?.scrollTo(reply.id, anchor: .top) }
+            return
+        }
         // To the end as laid out (the marker under the lazy rows):
         // scrollTo(edge:) aims at their estimated height, even once they've
         // measured, overshooting into blank space and springing back.
@@ -997,6 +1006,7 @@ struct AgentItemView: View, Equatable {
                 UserBubble(text: b.text, rich: b.richText, attachments: b.images.map { .remote($0) }, session: session)
             case .text:
                 MarkdownView(text: b.text)
+                    .modifier(RevealsReply(arrived: session.arrived[b.id], length: b.text.count))
             case .thinking:
                 ThinkingRow(block: b, seconds: item.thoughtSeconds, session: session)
             case .tool where b.tool == "SendUserFile":
@@ -1020,6 +1030,65 @@ struct AgentItemView: View, Equatable {
             ToolRow(block: only, session: session)
         } else {
             ToolGroup(id: item.id, tools: item.tools, session: session)
+        }
+    }
+}
+
+/// A reply that arrives while you watch shows from the top down, under a
+/// soft edge sliding down it, as if being written: Claude Code writes a
+/// reply to its transcript only once it's finished, so it otherwise came all
+/// at once. It's a mask over the reply laid out at its full height, so
+/// nothing around it moves while it shows. At once with Reduce Motion, for a
+/// short reply, and for one loaded rather than arriving.
+struct RevealsReply: ViewModifier {
+    /// When the reply arrived (AgentSession.arrived); nil, loaded.
+    let arrived: Date?
+    let length: Int
+    @State private var shown: CGFloat = 1
+    @State private var started = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if arrived == nil {
+            content
+        } else {
+            content
+                .modifier(RevealMask(progress: shown))
+                .onAppear {
+                    guard !started else { return }
+                    started = true
+                    guard !reduceMotion, let arrived, Date.now.timeIntervalSince(arrived) < 1, length > 80 else { return }
+                    shown = 0
+                    withAnimation(.easeOut(duration: Self.duration(length))) { shown = 1 }
+                }
+        }
+    }
+
+    /// Longer for a longer reply, but never so long it's in the way.
+    static func duration(_ length: Int) -> Double { min(0.8, max(0.2, Double(length) / 3000)) }
+}
+
+/// Shows the top `progress` of what it's on, fading out under a soft edge
+/// below that.
+private struct RevealMask: ViewModifier, Animatable {
+    var progress: CGFloat
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content.mask {
+            GeometryReader { g in
+                let h = max(g.size.height, 1)
+                let edge = min(90, h * 0.5) / h
+                // From the edge wholly above the top to wholly below the bottom.
+                let end = progress * (1 + edge)
+                LinearGradient(stops: [
+                    .init(color: .black, location: min(1, max(0, end - edge))),
+                    .init(color: .clear, location: min(1, max(0.0001, end))),
+                ], startPoint: .top, endPoint: .bottom)
+            }
         }
     }
 }

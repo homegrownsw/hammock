@@ -409,7 +409,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         t += 0.6
         later(t) {
             self.working[paneID] = nil
-            self.add(paneID, Self.block("b_reply_\(n)", .text, text: Self.longReply(n)))
+            self.add(paneID, Self.block("b_reply_\(n)", .text, text: Self.longReply(n) + "\n\n" + Self.longReply(n + 1)))
             self.setAgent(paneID, .idle, summary: "Answered")
         }
     }

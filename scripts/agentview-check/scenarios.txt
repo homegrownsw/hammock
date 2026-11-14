@@ -7,9 +7,9 @@
 open-long|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:4000
 
 # A message, then thinking and a run of tool calls straight away, then a long reply (the blank-screen bug).
-send-tools|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Start on the bundle in the work tree.;wait:800;submit:p_polish;wait:1500;dismiss;wait:13000
+send-tools|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Start on the bundle in the work tree.;wait:800;submit:p_polish;wait:1500;dismiss;wait:16000
 
-# The same with the keyboard left up throughout.
+# The same with the keyboard left up throughout: the long reply (taller than what shows) glides to its top, not past it.
 send-tools-keyboard|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Carry on.;wait:800;submit:p_polish;wait:13000
 
 # Read back to the top first (every row measured), back down, then send.
