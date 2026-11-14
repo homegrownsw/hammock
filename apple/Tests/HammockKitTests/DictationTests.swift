@@ -53,6 +53,48 @@ final class DictationTextTests: XCTestCase {
     }
 }
 
+final class LevelMeterTests: XCTestCase {
+    func testAQuietRoomShowsAVoice() {
+        var m = LevelMeter()
+        for _ in 0..<20 { m.hear(db: -55) }
+        XCTAssertEqual(m.level, 0)
+        m.hear(db: -30)
+        XCTAssertGreaterThan(m.level, 0.9)
+    }
+
+    func testSteadyNoiseFades() {
+        var m = LevelMeter()
+        m.hear(db: -60)
+        // A loud room comes in: at first it shows, then it's the floor.
+        m.hear(db: -25)
+        XCTAssertGreaterThan(m.level, 0.9)
+        for _ in 0..<300 { m.hear(db: -25) }
+        XCTAssertLessThan(m.level, 0.1)
+        // A voice over it still shows.
+        m.hear(db: -12)
+        XCTAssertGreaterThan(m.level, 0.5)
+    }
+
+    func testFallsGently() {
+        var m = LevelMeter()
+        for _ in 0..<20 { m.hear(db: -55) }
+        m.hear(db: -30)
+        let peak = m.level
+        m.hear(db: -55)
+        XCTAssertLessThan(m.level, peak)
+        XCTAssertGreaterThan(m.level, peak * 0.5)
+    }
+
+    func testAWordPulsesInANoisyRoom() {
+        var m = LevelMeter()
+        for _ in 0..<300 { m.hear(db: -25) }
+        XCTAssertLessThan(m.level, 0.1)
+        m.word()
+        XCTAssertGreaterThanOrEqual(m.level, 0.65)
+        XCTAssertLessThanOrEqual(m.level, 1)
+    }
+}
+
 /// An engine that says what it's told, for the composer's dictation.
 @MainActor
 private final class FakeEngine: DictationEngine {
@@ -95,8 +137,10 @@ final class ComposerDictationTests: XCTestCase {
         XCTAssertTrue(d.active)
         await started(engine)
         XCTAssertEqual(d.state, .listening)
-        engine.events?(.level(0.5))
-        XCTAssertEqual(d.level, 0.5)
+        engine.events?(.level(-50))
+        XCTAssertEqual(d.level, 0)
+        engine.events?(.level(-30))
+        XCTAssertGreaterThan(d.level, 0.5)
         engine.events?(.text(final: "Please run slash review PR", volatile: "and then"))
         XCTAssertEqual(v.string, "Please run /review-pr and then")
         engine.finishedWith = "Please run slash review PR and then stop."

@@ -128,7 +128,7 @@ public enum DictationText {
 enum DictationEvent: Sendable {
     /// Everything heard so far: what's settled, and what may still change.
     case text(final: String, volatile: String)
-    /// How loud the microphone is, 0 to 1.
+    /// How loud the microphone is, in dB (0 is full scale).
     case level(Double)
     /// The speech model for the language is downloading (0 to 1).
     case installing(Double)
@@ -392,15 +392,46 @@ private final class MicrophoneTap: @unchecked Sendable {
         engine.stop()
     }
 
-    /// Loudness, 0 (−45 dB or quieter) to 1 (−15 dB or louder): a speaking
-    /// voice's range, so ordinary talking moves it.
+    /// Loudness in dB (full scale is 0), raw: `LevelMeter` makes it a level.
     private static func level(of buffer: AVAudioPCMBuffer) -> Double {
-        guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
+        guard let data = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return -120 }
         var sum: Float = 0
         for i in 0..<Int(buffer.frameLength) { sum += data[i] * data[i] }
         let rms = sqrt(sum / Float(buffer.frameLength))
-        let db = 20 * log10(max(rms, 0.000_001))
-        return Double(min(max((db + 45) / 30, 0), 1))
+        return Double(20 * log10(max(rms, 0.000_001)))
+    }
+}
+
+/// The mic button's level, 0 to 1, from the microphone's loudness: how far
+/// it is above the room's own noise, so a noisy room doesn't hold it high,
+/// with a pulse for each new word heard, so it moves with speech even when
+/// the room is as loud as your voice.
+struct LevelMeter {
+    /// The room's noise, in dB: follows quiet straight away, and noise
+    /// slowly (a few seconds), so a voice doesn't become the floor.
+    private(set) var floor: Double?
+    /// What's shown.
+    private(set) var level: Double = 0
+    /// dB above the floor that fills it.
+    static let span = 18.0
+
+    /// Another reading (about ten a second).
+    mutating func hear(db: Double) {
+        let f = floor.map { db < $0 ? $0 * 0.5 + db * 0.5 : $0 + (db - $0) * 0.015 } ?? db
+        floor = f
+        let raw = min(max((db - f - 2) / Self.span, 0), 1)
+        settle(toward: raw)
+    }
+
+    /// A new word heard: a kick, whatever the loudness says.
+    mutating func word() {
+        settle(toward: max(level, 0.55) + Double.random(in: 0.1...0.3))
+    }
+
+    /// Up at once, down gently, so it follows words, not samples.
+    private mutating func settle(toward v: Double) {
+        let v = min(v, 1)
+        level = v > level ? v : level * 0.65 + v * 0.35
     }
 }
 
@@ -436,6 +467,7 @@ final class ComposerDictation {
     @ObservationIgnored private var watchdog: Task<Void, Never>?
     @ObservationIgnored private var finishing: Task<Void, Never>?
     @ObservationIgnored private var heard = ""
+    @ObservationIgnored private var meter = LevelMeter()
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored var makeEngine: () -> any DictationEngine = { AppleDictation() }
 
@@ -538,12 +570,17 @@ final class ComposerDictation {
             installing = nil
             lastHeard = .now
             if state == .starting { state = .listening }
-        case .level(let l):
-            // Up at once, down gently, so the halo follows words, not samples.
-            level = l > level ? l : level * 0.6 + l * 0.4
+        case .level(let db):
+            meter.hear(db: db)
+            level = meter.level
         case .text(let final, let volatile):
             let now = DictationText.join(final, volatile)
             if now != heard {
+                // More words than before (not just revised): a pulse.
+                if now.count > heard.count {
+                    meter.word()
+                    level = meter.level
+                }
                 heard = now
                 lastHeard = .now
             }
@@ -569,6 +606,7 @@ final class ComposerDictation {
         watchdog?.cancel()
         watchdog = nil
         level = 0
+        meter = LevelMeter()
         installing = nil
         text?.onDictationInterrupted = {}
         for o in observers { NotificationCenter.default.removeObserver(o) }

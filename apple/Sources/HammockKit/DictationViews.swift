@@ -13,6 +13,7 @@ struct DictationButton: View {
     @Environment(\.agentAccent) private var accent
 
     private var on: Bool { dictation.active }
+    private var listening: Bool { dictation.state == .listening }
 
     var body: some View {
         Button(action: action) {
@@ -20,6 +21,17 @@ struct DictationButton: View {
                 .font(.body.weight(.medium))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 22, height: 22)
+                .background {
+                    // The level, inside: a light that fills the button as
+                    // you speak (the glass clips it to the button).
+                    Circle()
+                        .fill(.white.opacity(0.35))
+                        .frame(width: 40, height: 40)
+                        .scaleEffect(0.25 + dictation.level * 0.85)
+                        .opacity(listening ? 1 : 0)
+                        .animation(.easeOut(duration: 0.1), value: dictation.level)
+                        .allowsHitTesting(false)
+                }
         }
         .agentGlassButton(prominent: on)
         .buttonBorderShape(.circle)
@@ -30,9 +42,9 @@ struct DictationButton: View {
             // edge as you speak. Outside the button, not in its label, where
             // the accent fill hid it and the glass clipped it.
             Circle()
-                .fill(accent.opacity(0.3))
-                .scaleEffect(1 + dictation.level * 0.45)
-                .opacity(dictation.state == .listening ? 1 : 0)
+                .fill(accent.opacity(0.35))
+                .scaleEffect(1 + dictation.level * 0.6)
+                .opacity(listening ? 1 : 0)
                 .animation(.easeOut(duration: 0.1), value: dictation.level)
                 .allowsHitTesting(false)
         }
