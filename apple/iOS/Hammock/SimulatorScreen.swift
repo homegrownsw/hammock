@@ -33,6 +33,9 @@ struct SimulatorScreen: View {
     @State private var threeFingered = false // nor is it a pinch
 
     private var pane: Pane? { model.panes[paneID] }
+    /// An Apple TV: no touch screen. A tap is its remote's Select, a swipe
+    /// moves focus, and its remote's buttons are in the bars.
+    private var isTV: Bool { model.isAppleTV(paneID) }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -101,13 +104,15 @@ struct SimulatorScreen: View {
                         .frame(width: fit.width, height: fit.height)
                         .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
                         .contentShape(Rectangle())
-                        .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive)
+                        .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive && !isTV)
+                        .gesture(remote(fit), isEnabled: canDrive && isTV)
                 } else if let image {
                     Image(uiImage: image)
                         .resizable()
                         .frame(width: fit.width, height: fit.height)
                         .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
-                        .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive)
+                        .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive && !isTV)
+                        .gesture(remote(fit), isEnabled: canDrive && isTV)
                 } else if failed {
                     ContentUnavailableView("Can't See This Simulator", systemImage: "iphone.slash",
                                            description: Text("Its Mac isn't answering, or it's still booting."))
@@ -146,8 +151,31 @@ struct SimulatorScreen: View {
     }
 
     /// Home, Lock, rotation, typing and folding: in the bottom bar, and in
-    /// full screen's controls.
+    /// full screen's controls. An Apple TV's are its remote's.
     @ViewBuilder private var deviceButtons: some View {
+        if isTV { remoteButtons } else { phoneButtons }
+    }
+
+    /// An Apple TV's remote: Back, TV and Play/Pause; volume (touch and hold
+    /// for down, mute and Siri); typing, for its text fields.
+    @ViewBuilder private var remoteButtons: some View {
+        Button("Back", systemImage: "chevron.left") { model.pressRemote(paneID, "menu") }
+        Button("TV", systemImage: "tv") { model.pressRemote(paneID, "home") }
+        Button("Play/Pause", systemImage: "playpause.fill") { model.pressRemote(paneID, "play_pause") }
+        Menu {
+            Button("Volume Up", systemImage: "speaker.plus") { model.pressRemote(paneID, "volume_up") }
+            Button("Volume Down", systemImage: "speaker.minus") { model.pressRemote(paneID, "volume_down") }
+            Button("Mute", systemImage: "speaker.slash") { model.pressRemote(paneID, "mute") }
+            Button("Siri", systemImage: "mic") { model.pressRemote(paneID, "siri") }
+        } label: {
+            Label("Volume", systemImage: "speaker.wave.2")
+        } primaryAction: {
+            model.pressRemote(paneID, "volume_up")
+        }
+        Button("Type", systemImage: "keyboard") { typing = true }
+    }
+
+    @ViewBuilder private var phoneButtons: some View {
         Button("Home", systemImage: "house") { button("home") }
         Button("Lock", systemImage: "lock") { button("lock") }
         Button("Rotate Left", systemImage: "rotate.left") { model.rotateSimulator(paneID, "left") }
@@ -255,8 +283,9 @@ struct SimulatorScreen: View {
                 s.onState = { cont.yield($0) }
             }
             s.onSize = { px in
-                // Phones and tablets are 3x or 2x (as the simulator host decides).
-                let scale: CGFloat = px.width >= 1000 ? 3 : 2
+                // Phones and tablets are 3x or 2x (as the simulator host decides);
+                // an Apple TV is 1920 points wide (2x at 4K, 1x at 1080p).
+                let scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
                 points = CGSize(width: px.width / scale, height: px.height / scale)
             }
             stream = s
@@ -301,6 +330,7 @@ struct SimulatorScreen: View {
     /// The screen's corners: about 55pt on the device (an iPhone's), whatever
     /// its shape (a Duo opened is wide), scaled to the view.
     private func corner(_ fit: CGSize) -> CGFloat {
+        if isTV { return 6 * fit.width / max(points.width, 1) } // a TV's screen is square-cornered
         let device = min(55, min(points.width, points.height) * 0.137)
         return device * fit.width / max(points.width, 1)
     }
@@ -332,6 +362,27 @@ struct SimulatorScreen: View {
                         _ = await model.simulatorCall(paneID, "swipe", ["x": a.x, "y": a.y, "x2": b.x, "y2": b.y, "ms": min(max(ms, 120), 1500)])
                     }
                 }
+            }
+    }
+
+    /// An Apple TV's picture as its remote's touch surface: a tap is Select,
+    /// a touch and hold a long Select, and a swipe moves focus that way, the
+    /// further the more (sent as presses).
+    private func remote(_ fit: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in if dragStart == nil { dragStart = .now } }
+            .onEnded { g in
+                let ms = Int(Date.now.timeIntervalSince(dragStart ?? .now) * 1000)
+                dragStart = nil
+                let dx = g.location.x - g.startLocation.x, dy = g.location.y - g.startLocation.y
+                let length = hypot(dx, dy)
+                if length < 12 {
+                    model.simulatorInput(paneID, "remote", ["name": "select", "holdms": ms >= 500 ? min(ms, 3000) : 60])
+                    return
+                }
+                let direction = abs(dx) > abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up")
+                let share = length / max(min(fit.width, fit.height), 1)
+                model.swipeRemote(paneID, direction, distance: share < 0.25 ? "short" : share < 0.6 ? "medium" : "long")
             }
     }
 

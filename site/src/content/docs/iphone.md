@@ -60,7 +60,7 @@ If you've let your iPhone approve your Mac's [Hammock Key](/hammock/docs/remote/
 ## Browser, simulator, editor and diff panes
 
 - **Browser panes** show the page live from the Mac. Tap to click, drag to scroll, pinch to zoom. The bar at the bottom has **Back**, **Forward**, **Reload**, **Type** and **Open in Safari**.
-- **Simulator panes** show the Mac's iOS simulator, to tap, swipe and type into.
+- **Simulator panes** show the Mac's iOS simulator, to tap, swipe and type into. On an Apple TV, tap for Select, touch and hold for a long Select, and swipe to move around; **Back**, **TV**, **Play/Pause**, **Volume** and **Type** are in the bar at the bottom (touch and hold **Volume** for Volume Down, Mute and Siri).
 - **Editor panes** open the file for editing. **Save**, **Find** and **Go to Line** are in the menu.
 - **Diff panes** show the diff in one column. Comments and replies work as on the Mac.
 - **Log panes** show their entries, with a switch to the raw terminal.
