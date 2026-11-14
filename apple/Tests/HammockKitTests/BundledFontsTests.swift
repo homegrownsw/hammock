@@ -1,5 +1,7 @@
 #if os(macOS)
 import AppKit
+#else
+import UIKit
 #endif
 import CoreText
 import Foundation
@@ -58,4 +60,29 @@ private let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponen
         let names = runs.map { CTFontCopyPostScriptName((CTRunGetAttributes($0) as NSDictionary)[kCTFontAttributeName] as! CTFont) as String }
         #expect(names == [BundledFonts.symbolsName])
     }
+}
+
+/// The terminal's default font, the system's monospaced one, ignores a
+/// cascade list: its rows give icons it hasn't got to the symbols font.
+@MainActor @Test func terminalRowsDrawIconsInTheSymbolsFont() throws {
+    BundledFonts.register(bundle: try #require(Bundle(url: resources)))
+    #if os(macOS)
+    let system = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular) as CTFont
+    #else
+    let system = UIFont.monospacedSystemFont(ofSize: 13, weight: .regular) as CTFont
+    #endif
+    let fonts = TerminalFonts(regular: system, bold: system, italic: system, boldItalic: system,
+                              cellWidth: 8, cellHeight: 16, baseline: 12, scale: 2)
+    let layout = TerminalLineLayout(fonts: fonts, palette: TerminalPalette(foreground: RGB(r: 0, g: 0, b: 0), background: RGB(r: 255, g: 255, b: 255),
+                                                                           selection: RGB(r: 0, g: 0, b: 255), selectionForeground: nil))
+    let line = layout.line(["a", "\u{E0B0}", "\u{F07B}", "b"].map { TerminalCell(text: $0) })
+    var fontsUsed: [String] = []
+    for t in line.text {
+        switch t {
+        case .glyphs(let g): fontsUsed += g.glyphs.map { _ in CTFontCopyPostScriptName(g.font) as String }
+        case .fitted(let g): fontsUsed.append(CTFontCopyPostScriptName(g.font) as String)
+        }
+    }
+    #expect(fontsUsed.filter { $0 == BundledFonts.symbolsName }.count == 2)
+    #expect(!fontsUsed.contains("LastResort"))
 }

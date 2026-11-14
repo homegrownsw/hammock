@@ -10,6 +10,11 @@ public struct TerminalFonts {
     public let baseline: CGFloat
     /// The backing scale, to snap block elements to device pixels.
     public let scale: CGFloat
+    /// Symbols Nerd Font Mono (BundledFonts), for icons the cell's font
+    /// hasn't got: font 4. A cascade list can't do it for every font (the
+    /// system's monospaced font, SF Mono, ignores one). Nil when it isn't
+    /// registered.
+    public let symbols: CTFont?
 
     public init(regular: CTFont, bold: CTFont, italic: CTFont, boldItalic: CTFont,
                 cellWidth: CGFloat, cellHeight: CGFloat, baseline: CGFloat, scale: CGFloat) {
@@ -21,9 +26,22 @@ public struct TerminalFonts {
         self.cellHeight = cellHeight
         self.baseline = baseline
         self.scale = scale
+        let symbols = CTFontCreateWithName(BundledFonts.symbolsName as CFString, CTFontGetSize(regular), nil)
+        self.symbols = CTFontCopyPostScriptName(symbols) as String == BundledFonts.symbolsName ? symbols : nil
     }
 
-    func font(_ i: Int) -> CTFont { [regular, bold, italic, boldItalic][i] }
+    func font(_ i: Int) -> CTFont { i == 4 ? symbols ?? regular : [regular, bold, italic, boldItalic][i] }
+
+    /// The font a cell's text is drawn in: its style's, or the symbols
+    /// font for a private-use character (where Nerd Fonts' icons are) the
+    /// style's font hasn't got.
+    func index(_ cell: TerminalCell) -> Int {
+        let style = Self.index(cell)
+        guard symbols != nil, let s = cell.text.unicodeScalars.first,
+              (0xE000...0xF8FF).contains(s.value) || s.value >= 0xF0000 else { return style }
+        var units = Array(String(s).utf16), glyphs = [CGGlyph](repeating: 0, count: units.count)
+        return CTFontGetGlyphsForCharacters(font(style), &units, &glyphs, units.count) ? style : 4
+    }
 
     static func index(_ cell: TerminalCell) -> Int { (cell.bold ? 1 : 0) + (cell.italic ? 2 : 0) }
 }
@@ -122,7 +140,7 @@ public final class TerminalLineLayout {
     /// Fonts or cell size changed: everything is laid out again.
     public func setFonts(_ f: TerminalFonts) {
         fonts = f
-        fontAttributes = (0..<4).map {
+        fontAttributes = (0..<5).map {
             [kCTFontAttributeName as String: f.font($0), kCTLigatureAttributeName as String: 0] as NSDictionary as CFDictionary
         }
         clear()
@@ -229,7 +247,7 @@ public final class TerminalLineLayout {
                 if !cell.spacer { gap = true }
                 continue
             }
-            let font = TerminalFonts.index(cell)
+            let font = f.index(cell)
             if gap, !text.isEmpty { add(" ", cell: -1, font: font) }
             gap = false
             add(cell.text, cell: Int32(i), font: font)
