@@ -686,8 +686,9 @@ struct FocusPicture: View {
         let t = look.terminal
         HStack(spacing: 4) {
             pane(t, lines: [("$ ", "make"), ("", "built in 2s")], cursor: true)
-                .overlay { RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(look.border, lineWidth: border ? 2 : 0) }
+                .overlay { RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(look.border, lineWidth: border ? 1.5 : 0) }
             pane(t, lines: [("$ ", "git log"), ("", "a1f3 fix")], cursor: false)
+                .overlay { RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(PaneLook.outlineColor(dark: look.dark), lineWidth: 1) }
                 .overlay { RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.black.opacity(dim ? (look.dark ? 0.45 : 0.3) : 0)) }
         }
         .padding(4)

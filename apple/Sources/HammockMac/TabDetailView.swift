@@ -141,6 +141,7 @@ struct LayoutView: View {
                 ForEach(tiles) { tile($0, in: area).zIndex(1) }
                 ForEach(tiles.filter { !$0.folded }) { t in
                     PaneFocusRing(rect: t.clip, on: t.id == focusedPaneID && sharesTab(t.id) && AppConfig.shared.activePaneBorder,
+                                  outlined: PaneLook.spacious, flushLeading: flushWithSidebar(t.clip, in: area),
                                   shape: shape(at: t.clip, in: area))
                         .zIndex(1.5)
                 }
@@ -148,11 +149,18 @@ struct LayoutView: View {
                 ForEach(plan.dividers) { DividerHandle(d: $0, drag: $drag, layout: layout, update: update).zIndex(3) }
             }
             // A hairline beside a pane of no size at the tab's edge stays in it.
-            .clipped()
+            // Spacious, the border's outer half at the tab's edge shows.
+            .clipShape(Rectangle().inset(by: PaneLook.spacious ? -PaneLook.borderWidth : 0))
         }
         .onReceive(NotificationCenter.default.publisher(for: PaneMotion.settled)) { _ in
             if openClose.settled() { redraws &+= 1 }
         }
+    }
+
+    /// A pane against the sidebar, which would cut off the outer half of a
+    /// line on its edge.
+    private func flushWithSidebar(_ rect: CGRect, in area: CGRect) -> Bool {
+        PaneLook.spacious && !sidebarHidden && rect.minX <= area.minX + 0.5
     }
 
     /// A pane's shape here (PaneLook.shape(at:in:sidebarHidden:underStrip:)).

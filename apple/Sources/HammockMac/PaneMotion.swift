@@ -289,7 +289,13 @@ enum PaneLook {
         return Color(red: Double(c.r) / 255, green: Double(c.g) / 255, blue: Double(c.b) / 255)
     }
 
-    static var borderWidth: CGFloat { spacious ? 2 : 1.5 }
+    /// The focused pane's border: drawn on the pane's edge, half over it
+    /// and half in the gap, so it takes little from what's in the pane.
+    static let borderWidth: CGFloat = 1.5
+    /// Spacious: every pane's hairline outline, inside its edge, which the
+    /// focused one's border (when on) takes the place of.
+    static let outlineWidth: CGFloat = 1
+    static func outlineColor(dark: Bool) -> Color { Color.primary.opacity(dark ? 0.16 : 0.2) }
 
     /// The fade for focus moving: border and dimming.
     static let fade = Animation.easeInOut(duration: 0.16)
@@ -324,7 +330,8 @@ struct PaneFocusLook: ViewModifier {
     }
 }
 
-/// The focused pane's border, as Settings asks: one over each pane in the
+/// The focused pane's border, as Settings asks, and (spacious) the hairline
+/// every pane has with it: one over each pane in the
 /// tab's layout (LayoutView), placed as the pane is, so it moves and resizes
 /// with it in any animation. Drawn inside the pane's own view, it would be
 /// laid out at the pane's final size from the start of an animation, and
@@ -336,33 +343,55 @@ struct PaneFocusLook: ViewModifier {
 struct PaneFocusRing: View {
     let rect: CGRect
     let on: Bool
+    /// The pane's hairline outline, under the border.
+    let outlined: Bool
+    /// Against the sidebar: the border moves in on the leading edge by half
+    /// its width, so it ends at the pane's edge rather than past it.
+    let flushLeading: Bool
     /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:underStrip:)).
     var shape = UnevenRoundedRectangle(cornerRadii: .init(), style: .continuous)
     @Environment(\.colorScheme) private var colorScheme
     @State private var shown: Bool
 
-    init(rect: CGRect, on: Bool, shape: UnevenRoundedRectangle) {
+    init(rect: CGRect, on: Bool, outlined: Bool, flushLeading: Bool, shape: UnevenRoundedRectangle) {
         self.rect = rect
         self.on = on
+        self.outlined = outlined
+        self.flushLeading = flushLeading
         self.shape = shape
         _shown = State(initialValue: on)
     }
 
     var body: some View {
-        shape
-            .strokeBorder(PaneLook.borderColor(dark: colorScheme == .dark), lineWidth: PaneLook.borderWidth)
-            .opacity(shown ? 1 : 0)
-            .frame(width: rect.width, height: rect.height)
-            .offset(x: rect.minX, y: rect.minY)
-            .allowsHitTesting(false)
-            .onChange(of: on) { _, v in
-                if PaneMotion.shared.openingOrClosing {
-                    var t = Transaction()
-                    t.disablesAnimations = true
-                    withTransaction(t) { shown = v }
-                } else {
-                    withAnimation(PaneLook.fade) { shown = v }
-                }
+        let dark = colorScheme == .dark
+        // Stroked on the edge, not inside it: half in the gap between panes.
+        ZStack(alignment: .trailing) {
+            // Inside the pane: its outer half would hardly show on the gap,
+            // and a pane against the sidebar would have it all.
+            if outlined {
+                shape.strokeBorder(PaneLook.outlineColor(dark: dark), lineWidth: PaneLook.outlineWidth)
+                    .frame(width: rect.width, height: rect.height)
+                    .opacity(shown ? 0 : 1)
             }
+            line(PaneLook.borderColor(dark: dark), PaneLook.borderWidth)
+                .opacity(shown ? 1 : 0)
+        }
+        .frame(width: rect.width, height: rect.height)
+        .offset(x: rect.minX, y: rect.minY)
+        .allowsHitTesting(false)
+        .onChange(of: on) { _, v in
+            if PaneMotion.shared.openingOrClosing {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) { shown = v }
+            } else {
+                withAnimation(PaneLook.fade) { shown = v }
+            }
+        }
+    }
+
+    private func line(_ color: Color, _ width: CGFloat) -> some View {
+        shape.stroke(color, lineWidth: width)
+            .frame(width: max(0, rect.width - (flushLeading ? width / 2 : 0)), height: rect.height)
     }
 }
