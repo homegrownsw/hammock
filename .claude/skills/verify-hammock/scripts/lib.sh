@@ -7,8 +7,10 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 
 # Never talk to the Hammock this shell runs in: a pane's HMK_SOCKET beats
 # HMK_DIR, and a bare hmkd/hmk without HMK_CONFIG_DIR uses ~/.config/hammock.
+# HMK_PERSON_KEY (Linux: the Unraid plugin's mark that you're the person)
+# goes too, as just beta-env drops it: a run's caller is never vouched for.
 scrub_env() {
-  unset HMK_SOCKET HMK_HOOK_SOCKET HMK_PANE_ID HMK_TAB_ID HMK_GROUP_ID HMK_CONFIG_DIR HMK_DIR
+  unset HMK_SOCKET HMK_HOOK_SOCKET HMK_PANE_ID HMK_TAB_ID HMK_GROUP_ID HMK_CONFIG_DIR HMK_DIR HMK_PERSON_KEY
 }
 
 # load_run RUN: read RUN/run.env (exports SCRATCH STATE CONFIG DAEMON_PID BUILD HMKD HMK APP).
