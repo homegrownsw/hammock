@@ -379,11 +379,13 @@ struct AgentsStep: View {
     }
 
     private var primaryTitle: String {
-        switch toInstall.count {
+        let connectable = found.filter { !$0.upToDate }.count
+        return switch toInstall.count {
         // Skip when there was something to connect and it's all unchecked.
-        case 0: found.contains { !$0.upToDate } ? "Skip" : "Continue"
+        case 0: connectable > 0 ? "Skip" : "Continue"
         case 1: "Connect"
-        default: "Connect Both"
+        case connectable: connectable == 2 ? "Connect Both" : "Connect All"
+        case let n: "Connect \(n) Agents"
         }
     }
 
@@ -407,56 +409,68 @@ struct AgentsStep: View {
     }
 
     private var cards: some View {
-        HStack(alignment: .top, spacing: 16) {
-            ForEach(found) { h in
-                let on = selected.contains(h.id)
-                OnboardingCard(padding: 18, highlighted: on && !h.upToDate) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 12) {
-                            AgentLogo(id: h.id)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(h.name).font(.system(size: 15, weight: .semibold))
-                                HStack(spacing: 5) {
-                                    DoneCheck(size: 11)
-                                    Text("Found\(h.version.isEmpty ? "" : " " + h.version) · \(tilde(h.binary))")
-                                        .lineLimit(1).truncationMode(.middle)
-                                }
-                                .font(.system(size: 12))
-                                .foregroundStyle(Brand.done)
-                            }
-                            Spacer(minLength: 8)
-                            if h.upToDate {
-                                // A note means part of it needs doing by hand.
-                                Text(h.notes.isEmpty ? "Connected" : "Needs a step")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(h.notes.isEmpty ? Brand.done : Brand.needsYou)
-                            } else {
-                                Toggle("Connect", isOn: Binding(get: { on }, set: { v in
-                                    if v { selected.insert(h.id) } else { selected.remove(h.id) }
-                                    fileIndex = 0
-                                }))
-                                .toggleStyle(.checkbox)
-                            }
-                        }
-                        Divider()
-                        VStack(alignment: .leading, spacing: 6) {
-                            if h.upToDate {
-                                bullet(h.notes.isEmpty ? "Already set up. Nothing to change." : "Hammock's tools are set up; one setting needs adding by hand:")
-                            }
-                            ForEach(h.changes, id: \.self) { bullet($0) }
-                            ForEach(h.notes, id: \.self) { n in
-                                Label { Text(n).fixedSize(horizontal: false, vertical: true) } icon: {
-                                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.needsYou)
-                                }
-                                .font(.system(size: 12))
-                                .textSelection(.enabled)
-                            }
-                        }
-                    }
+        // Two to a row past two, so a name, its path and its checkbox fit on one line.
+        let perRow = found.count > 2 ? 2 : max(found.count, 1)
+        let rows = stride(from: 0, to: found.count, by: perRow).map { Array(found[$0..<min($0 + perRow, found.count)]) }
+        return Grid(horizontalSpacing: 16, verticalSpacing: 16) {
+            ForEach(rows, id: \.first?.id) { row in
+                GridRow(alignment: .top) {
+                    ForEach(row) { card($0) }
+                    if row.count < perRow { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
                 }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func card(_ h: HooksPlan.Harness) -> some View {
+        let on = selected.contains(h.id)
+        return OnboardingCard(padding: 18, highlighted: on && !h.upToDate) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    AgentLogo(id: h.id)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(h.name).font(.system(size: 15, weight: .semibold))
+                        HStack(spacing: 5) {
+                            DoneCheck(size: 11)
+                            Text("Found\(h.version.isEmpty ? "" : " " + h.version) ·")
+                                .fixedSize()
+                            Text(tilde(h.binary))
+                                .lineLimit(1).truncationMode(.middle)
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(Brand.done)
+                    }
+                    Spacer(minLength: 8)
+                    if h.upToDate {
+                        // A note means part of it needs doing by hand.
+                        Text(h.notes.isEmpty ? "Connected" : "Needs a step")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(h.notes.isEmpty ? Brand.done : Brand.needsYou)
+                    } else {
+                        Toggle("Connect", isOn: Binding(get: { on }, set: { v in
+                            if v { selected.insert(h.id) } else { selected.remove(h.id) }
+                            fileIndex = 0
+                        }))
+                        .toggleStyle(.checkbox)
+                    }
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    if h.upToDate {
+                        bullet(h.notes.isEmpty ? "Already set up. Nothing to change." : "Hammock's tools are set up; one setting needs adding by hand:")
+                    }
+                    ForEach(h.changes, id: \.self) { bullet($0) }
+                    ForEach(h.notes, id: \.self) { n in
+                        Label { Text(n).fixedSize(horizontal: false, vertical: true) } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Brand.needsYou)
+                        }
+                        .font(.system(size: 12))
+                        .textSelection(.enabled)
+                    }
+                }
+            }
+        }
     }
 
     private func bullet(_ s: String) -> some View {
