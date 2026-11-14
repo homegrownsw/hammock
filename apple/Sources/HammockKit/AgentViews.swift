@@ -396,14 +396,19 @@ public struct AgentConversationView: View {
 
     private func glideToEnd() {
         glide.pending = false
-        // A reply taller than what's in view: to its top, and no further
-        // (to the end, it ran past its own start, and you came to its last
-        // lines). It stops following there; Latest is for the rest.
-        let height = revealer.visible.bottom - revealer.visible.top
-        if glide.gap > height * 0.85, let s = viewing != nil ? subSession : session,
-           let reply = s.items.last(where: { $0.block?.kind == .text && (s.arrived[$0.id].map { Date.now.timeIntervalSince($0) < 2 } ?? false) }) {
-            withAnimation(.smooth(duration: 0.35)) { revealer.proxy?.scrollTo(reply.id, anchor: .top) }
-            return
+        // A reply that doesn't fit with the end in view: to its first line,
+        // and no further (to the end, it ran past its own start, leaving you
+        // at its last lines, or just its first cut off). It stops following
+        // there; Latest is for the rest.
+        if let s = viewing != nil ? subSession : session,
+           let reply = s.items.last(where: { $0.block?.kind == .text && (s.arrived[$0.id].map { Date.now.timeIntervalSince($0) < 2 } ?? false) }),
+           let top = revealer.replyTops[reply.id] {
+            // Where the top of what shows would be, at the end.
+            let topAtEnd = revealer.visible.top + glide.gap + revealer.visible.under
+            if top < topAtEnd + 8 {
+                withAnimation(.smooth(duration: 0.35)) { revealer.proxy?.scrollTo(reply.id, anchor: .top) }
+                return
+            }
         }
         // To the end as laid out (the marker under the lazy rows):
         // scrollTo(edge:) aims at their estimated height, even once they've
@@ -676,7 +681,8 @@ public struct AgentConversationView: View {
                 .onScrollGeometryChange(for: RowRevealer.Visible.self) { g in
                     RowRevealer.Visible(top: g.visibleRect.minY + g.contentInsets.top,
                                         bottom: g.visibleRect.maxY - g.contentInsets.bottom,
-                                        gap: g.contentSize.height - g.visibleRect.maxY)
+                                        gap: g.contentSize.height - g.visibleRect.maxY,
+                                        under: g.contentInsets.bottom)
                 } action: { old, new in
                     revealer.visible = new
                     if JankProbe.enabled, abs(new.top - old.top) > 20 { DevLog.agent("scrolled \(Int(new.top - old.top)) to \(Int(new.top))") }
@@ -854,9 +860,14 @@ struct ScrollEdge: Equatable {
 @MainActor final class RowRevealer {
     /// What's in view, in the content's coordinates, less what's under the
     /// floating bar, and how far the end is below it.
-    struct Visible: Equatable { var top: CGFloat = 0, bottom: CGFloat = 0, gap: CGFloat = 0 }
+    /// under: how much is under the floating bar at the bottom.
+    struct Visible: Equatable { var top: CGFloat = 0, bottom: CGFloat = 0, gap: CGFloat = 0, under: CGFloat = 0 }
     var visible = Visible()
     var proxy: ScrollViewProxy?
+    /// Where each reply that arrived while watched starts, in the content's
+    /// coordinates (RevealsReply): a glide to the end goes no further than
+    /// the newest one's first line.
+    var replyTops: [String: CGFloat] = [:]
     /// While a row opens, the conversation doesn't glide to the end as it
     /// grows: where to go is decided here, once the row's laid out.
     var holdingFollow: Bool { Date.now < holdUntil }
@@ -1006,7 +1017,7 @@ struct AgentItemView: View, Equatable {
                 UserBubble(text: b.text, rich: b.richText, attachments: b.images.map { .remote($0) }, session: session)
             case .text:
                 MarkdownView(text: b.text)
-                    .modifier(RevealsReply(arrived: session.arrived[b.id], length: b.text.count))
+                    .modifier(RevealsReply(arrived: session.arrived[b.id], length: b.text.count, id: b.id))
             case .thinking:
                 ThinkingRow(block: b, seconds: item.thoughtSeconds, session: session)
             case .tool where b.tool == "SendUserFile":
@@ -1044,6 +1055,8 @@ struct RevealsReply: ViewModifier {
     /// When the reply arrived (AgentSession.arrived); nil, loaded.
     let arrived: Date?
     let length: Int
+    let id: String
+    @Environment(\.agentRowRevealer) private var revealer
     @State private var shown: CGFloat = 1
     @State private var started = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1054,6 +1067,7 @@ struct RevealsReply: ViewModifier {
         } else {
             content
                 .modifier(RevealMask(progress: shown))
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(RowRevealer.space)).minY } action: { revealer?.replyTops[id] = $0 }
                 .onAppear {
                     guard !started else { return }
                     started = true
@@ -1065,7 +1079,7 @@ struct RevealsReply: ViewModifier {
     }
 
     /// Longer for a longer reply, but never so long it's in the way.
-    static func duration(_ length: Int) -> Double { min(0.8, max(0.2, Double(length) / 3000)) }
+    static func duration(_ length: Int) -> Double { min(0.8, max(0.4, Double(length) / 1500)) }
 }
 
 /// Shows the top `progress` of what it's on, fading out under a soft edge
@@ -1593,7 +1607,10 @@ struct TranscriptTail: View {
             }
             if session.working {
                 WorkingRow(status: session.status)
-                    .transition(.opacity.combined(with: .offset(y: 6)))
+                    // Going at once: what it was working on (a reply, fading
+                    // in) takes its place, and fading out it was drawn over
+                    // the reply's first line.
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 6)), removal: .identity))
             }
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.72), value: session.pendingSends.count)

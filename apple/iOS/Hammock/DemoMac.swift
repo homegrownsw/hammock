@@ -409,7 +409,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         t += 0.6
         later(t) {
             self.working[paneID] = nil
-            self.add(paneID, Self.block("b_reply_\(n)", .text, text: Self.longReply(n) + "\n\n" + Self.longReply(n + 1)))
+            // "medium" in the message: a reply a little taller than what shows above the keyboard.
+            let reply = text.contains("medium") ? Self.longReply(n) : Self.longReply(n) + "\n\n" + Self.longReply(n + 1)
+            self.add(paneID, Self.block("b_reply_\(n)", .text, text: reply))
             self.setAgent(paneID, .idle, summary: "Answered")
         }
     }

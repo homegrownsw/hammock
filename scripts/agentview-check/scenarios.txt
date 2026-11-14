@@ -35,3 +35,7 @@ short-reply||open:p_brief;wait:2000;compose:p_brief:Thanks!;wait:800;submit:p_br
 
 # A real Claude session (--replay FILE, made by scripts/agentblocks): its history, then the rest at its pace.
 replay|HMK_DEBUG_REPLAY=$REPLAY|open:p_polish;wait:2500;compose:p_polish:$REPLAY_TEXT;wait:800;submit:p_polish;wait:1500;dismiss;wait:30000
+
+# A reply a little taller than what shows above the keyboard: it glides to its first line, not to its end with that
+# line cut off at the top; and it fades in.
+medium-reply-keyboard|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Another, medium length.;wait:800;submit:p_polish;wait:16000
