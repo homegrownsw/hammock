@@ -30,6 +30,9 @@ away-and-back|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Sta
 # Allowing what an agent waits on: the prompt card goes, the work arrives.
 permission||open:p_triage;wait:2500;allow:p_triage;wait:5000
 
+# The first message in a new conversation: it stays in view as the transcript takes it, not blinking out and back.
+send-new|HMK_DEBUG_NEW_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Hello, the first message.;wait:800;submit:p_polish;wait:1500;dismiss;wait:4000
+
 # A short conversation answered.
 short-reply||open:p_brief;wait:2000;compose:p_brief:Thanks!;wait:800;submit:p_brief;wait:1000;dismiss;wait:4000
 

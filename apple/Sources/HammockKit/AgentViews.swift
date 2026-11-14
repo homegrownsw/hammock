@@ -739,6 +739,10 @@ public struct AgentConversationView: View {
                     proxy.scrollTo(old, anchor: .top)
                 }
                 .onChange(of: landed, initial: true) { if JankProbe.enabled { JankProbe.shared.hidden = !landed } }
+                // Hidden (0) after showing, heard (2): not its first load, so a blank.
+                .onChange(of: landed || s.items.isEmpty ? (s.heard ? 2 : 1) : 0) { old, new in
+                    if JankProbe.enabled, old == 2, new == 0 { JankProbe.shared.hidAgain() }
+                }
                 .onDisappear { if JankProbe.enabled { JankProbe.shared.hidden = true } }
                 #if os(iOS)
                 .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
@@ -746,9 +750,16 @@ public struct AgentConversationView: View {
                     if JankProbe.enabled { JankProbe.shared.jumped(for: 0.6) }
                 }
                 #endif
+                // Showing, empty (a new conversation): landed already, so its
+                // first message (yours, just sent) isn't a load to hide while
+                // it lands. Hidden, what you'd sent and Working… blinked out
+                // and faded back. Not hidden on loading either: not yet heard,
+                // it isn't landed (opening, or switched to), and loaded it is.
+                .onChange(of: s.heard && s.blocks.isEmpty, initial: true) { _, empty in
+                    if empty { landed = true }
+                }
                 .onChange(of: s.blocks.last?.id) { old, _ in
                     if old == nil {
-                        landed = false
                         live = nil
                         keepLiveStart(s)
                         landAtLatest()

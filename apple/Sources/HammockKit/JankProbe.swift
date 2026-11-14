@@ -123,6 +123,14 @@ final class JankProbe {
     }
     private var quietUntil: CFTimeInterval = 0
 
+    /// The conversation, already showing, hidden to land again: whatever was
+    /// in view blinks out. A blank.
+    func hidAgain() {
+        guard Self.enabled else { return }
+        blanks += 1
+        event("blank", 0, rows.count)
+    }
+
     func row(_ id: String, _ frame: CGRect) {
         guard Self.enabled else { return }
         rows[id] = frame

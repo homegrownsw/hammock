@@ -64,6 +64,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         #if DEBUG
         if Self.longChat { transcripts["p_polish"] = Self.longTranscript(); working["p_polish"] = nil }
         if let first = Self.replay?.first { transcripts["p_polish"] = first.view.blocks; working["p_polish"] = nil }
+        if Self.newChat { transcripts["p_polish"] = []; working["p_polish"] = nil }
         #endif
     }
 
@@ -337,7 +338,18 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         #if DEBUG
         if paneID == "p_polish", let replay = Self.replay { return play(paneID, replay.dropFirst()) }
         if Self.longChat, paneID == "p_polish" { return replyWithTools(paneID, text, n) }
+        // In the transcript a moment after it's sent, as from a Mac: shown pending meanwhile.
+        if Self.newChat, paneID == "p_polish", n == 1 {
+            working[paneID] = "Thinking…"
+            setAgent(paneID, .working, summary: "Thinking…")
+            sendView(paneID, blocks: [])
+            return later(0.8) { self.answer(paneID, text, n) }
+        }
         #endif
+        answer(paneID, text, n)
+    }
+
+    private func answer(_ paneID: String, _ text: String, _ n: Int) {
         add(paneID, Self.block("b_you_\(n)", .user, text: text))
         working[paneID] = "Thinking…"
         sendView(paneID, blocks: [])
@@ -357,6 +369,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
     /// to it as Claude does: thinking, then a run of tool calls arriving one after another, then a reply. For
     /// checking the agent view following the end through a long conversation (docs/debug-hooks.md).
     static var longChat: Bool { ProcessInfo.processInfo.environment["HMK_DEBUG_LONG_CHAT"] == "1" }
+    /// Dev aid: HMK_DEBUG_NEW_CHAT=1 starts the polish agent's conversation empty, and a first message to it
+    /// reaches the transcript a moment after it's sent (docs/debug-hooks.md).
+    static var newChat: Bool { ProcessInfo.processInfo.environment["HMK_DEBUG_NEW_CHAT"] == "1" }
 
     /// Dev aid: HMK_DEBUG_REPLAY=<file> (made by scripts/agentblocks from a real Claude session) gives the polish
     /// agent that session's history, and a message to it plays the rest at the session's own pace, as a Mac
