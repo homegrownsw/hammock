@@ -76,7 +76,7 @@ extension SettingsTab: Identifiable {
         case .appearance: "Light and dark, your theme, and how the window, tabs, panes and cursor look."
         case .terminal: "The terminal's font, copying and pasting, and images programs show."
         case .tools: "What Hammock can open beside your terminals. If you already do one of these your own way, turn it off and neither Hammock nor its agents will offer it."
-        case .editor: "Editor and diff panes: wrapping, line numbers, indents, font size, Vim keys and how diffs are laid out."
+        case .editor: "Editor and diff panes: wrapping, line numbers, indents, font, Vim keys and how diffs are laid out."
         case .keyboard: "Change any shortcut. Search by name or keys."
         case .agents: "Closing agents at work, usage limits in the sidebar, and Hammock's hooks and tools for agents."
         case .agentView: "How agent panes open, and the agent view's colour and fonts."
@@ -322,6 +322,7 @@ enum SettingsIndex {
             e(.editor, "Editor panes", "Line numbers", "editor.linenumbers", "gutter"),
             e(.editor, "Editor panes", "Indent with spaces or tabs", "editor.indent", "tabs editorconfig"),
             e(.editor, "Editor panes", "Tab width", "editor.tabwidth", "indent size spaces editorconfig"),
+            e(.editor, "Editor panes", "Editor font", "editor.font", "typeface family diff ligatures"),
             e(.editor, "Editor panes", "Editor font size", "editor.fontsize", "text"),
             e(.editor, "Editor panes", "Vim keys", "editor.vim", "vi modal"),
             e(.editor, "Diff panes", "Split or unified layout", "diff.style", "diff review changes side by side one column"),

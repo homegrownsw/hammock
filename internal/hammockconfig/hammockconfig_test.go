@@ -172,16 +172,16 @@ func TestEditorSettings(t *testing.T) {
 	}
 	got := EditorSettings(map[string]string{
 		"editor-wrap": "true", "editor-line-numbers": "false", "editor-tab-width": "2", "editor-indent": "tabs",
-		"editor-font-size": "13.5", "editor-vim": "true", "editor-tui-external": "true",
+		"editor-font-family": "Fira Code", "editor-font-size": "13.5", "editor-vim": "true", "editor-tui-external": "true",
 	})
-	if want := (Editor{Wrap: true, TabWidth: 2, Indent: "tabs", FontSize: 13.5, Vim: true, TUIExternal: true}); got != want {
+	if want := (Editor{Wrap: true, TabWidth: 2, Indent: "tabs", FontFamily: "Fira Code", FontSize: 13.5, Vim: true, TUIExternal: true}); got != want {
 		t.Fatalf("set: %+v", got)
 	}
 	got = EditorSettings(map[string]string{"editor-tab-width": "0", "editor-indent": "both", "editor-font-size": "", "editor-wrap": "yes"})
 	if want := (Editor{LineNumbers: true, TabWidth: 4, Indent: "spaces"}); got != want {
 		t.Fatalf("unreadable: %+v", got)
 	}
-	for _, k := range []string{"editor-wrap", "editor-line-numbers", "editor-tab-width", "editor-indent", "editor-font-size", "editor-vim", "editor-tui-external"} {
+	for _, k := range []string{"editor-wrap", "editor-line-numbers", "editor-tab-width", "editor-indent", "editor-font-family", "editor-font-size", "editor-vim", "editor-tui-external"} {
 		if !strings.Contains(header, k) {
 			t.Errorf("the header doesn't list %s", k)
 		}

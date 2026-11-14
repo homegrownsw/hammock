@@ -33,7 +33,8 @@ public struct EditorConfig: Equatable {
     @MainActor public static func from(theme: TerminalTheme, dark: Bool, fontFamily: String, fontSize: Double, readOnly: Bool) -> EditorConfig {
         let p = Prefs.shared
         let size = p.string(.editorFontSize).isEmpty ? fontSize : p.double(.editorFontSize)
-        return EditorConfig(theme: theme, dark: dark, fontFamily: fontFamily, fontSize: size, wrap: p.bool(.editorWrap),
+        let family = p.string(.editorFontFamily).isEmpty ? fontFamily : p.string(.editorFontFamily)
+        return EditorConfig(theme: theme, dark: dark, fontFamily: family, fontSize: size, wrap: p.bool(.editorWrap),
                             lineNumbers: p.bool(.editorLineNumbers), tabWidth: Int(p.double(.editorTabWidth)),
                             indent: p.string(.editorIndent), vim: p.bool(.editorVim), readOnly: readOnly)
     }
@@ -61,11 +62,13 @@ extension Pref {
     public static let editorTabWidth = Pref("editor-tab-width", defaults: "editorTabWidth", 4.0)
     /// "spaces" or "tabs" (a file's .editorconfig, or its own indentation, wins).
     public static let editorIndent = Pref("editor-indent", defaults: "editorIndent", .string, "spaces")
+    /// Editor and diff panes' font; "" follows the terminal's.
+    public static let editorFontFamily = Pref("editor-font-family", defaults: "editorFontFamily", .string, "")
     /// "" follows the terminal's font size.
     public static let editorFontSize = Pref("editor-font-size", defaults: "editorFontSize", .string, "")
     public static let editorVim = Pref("editor-vim", defaults: "editorVim", false)
 
-    public static var editor: [Pref] { [editorWrap, editorLineNumbers, editorTabWidth, editorIndent, editorFontSize, editorVim] }
+    public static var editor: [Pref] { [editorWrap, editorLineNumbers, editorTabWidth, editorIndent, editorFontFamily, editorFontSize, editorVim] }
 }
 
 /// The pane's CodeMirror page and its messages both ways.

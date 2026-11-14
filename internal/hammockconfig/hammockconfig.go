@@ -136,6 +136,7 @@ type Editor struct {
 	LineNumbers bool    // editor-line-numbers
 	TabWidth    int     // editor-tab-width (1…16)
 	Indent      string  // editor-indent: "spaces" or "tabs"
+	FontFamily  string  // editor-font-family (editor and diff panes on the Mac and iPhone; "": the terminal's)
 	FontSize    float64 // editor-font-size (the Mac and iPhone; 0: follow the terminal's)
 	Vim         bool    // editor-vim (the Mac and iPhone)
 	TUIExternal bool    // editor-tui-external: hmk tui opens editor panes in $VISUAL/$EDITOR
@@ -164,6 +165,7 @@ func EditorSettings(values map[string]string) Editor {
 	if v := strings.TrimSpace(values["editor-indent"]); v == "tabs" || v == "spaces" {
 		e.Indent = v
 	}
+	e.FontFamily = strings.TrimSpace(values["editor-font-family"])
 	if f, err := strconv.ParseFloat(strings.TrimSpace(values["editor-font-size"]), 64); err == nil && f > 0 {
 		e.FontSize = f
 	}
@@ -420,6 +422,7 @@ const header = `# Hammock config (Ghostty syntax). Changes apply automatically.
 #   editor-wrap = false            (editor panes: wrap long lines instead of scrolling sideways)
 #   editor-line-numbers = true     (editor panes: line numbers in the gutter)
 #   editor-tab-width = 4, editor-indent = spaces | tabs   (what Tab inserts; a file's .editorconfig beats them)
+#   editor-font-family = NAME      (editor and diff panes on the Mac and iPhone; unset: the terminal's font)
 #   editor-font-size = 13          (editor panes on the Mac and iPhone; unset: the terminal's font size)
 #   editor-vim = false             (editor panes on the Mac and iPhone: Vim keys)
 #   editor-tui-external = false    (hmk tui: open editor panes in $VISUAL or $EDITOR; edits from your other devices show there only when it reloads the file)

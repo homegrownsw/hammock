@@ -765,6 +765,12 @@ struct EditorSettingsSection: View {
             .settingAnchor("editor.indent")
             Stepper("Tab width: \(Int(prefs.double(.editorTabWidth)))", value: prefs.doubleBinding(.editorTabWidth), in: 1...16, step: 1)
                 .settingAnchor("editor.tabwidth")
+            Picker("Font", selection: prefs.stringBinding(.editorFontFamily)) {
+                Text("Same as Terminal").tag("")
+                Divider()
+                ForEach(TerminalFont.families, id: \.self) { Text($0).tag($0) }
+            }
+            .settingAnchor("editor.font")
             HStack {
                 Toggle("Own font size", isOn: Binding(
                     get: { !prefs.string(.editorFontSize).isEmpty },

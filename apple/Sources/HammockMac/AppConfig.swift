@@ -70,6 +70,7 @@ import SwiftUI
 ///     pane-icon = btop=monitor         (a program's icon: a built-in icon (vim, git, python, monitor…: scripts/program-icons/icons.json) or an SF Symbol; several with commas, or repeat the key)
 ///     editor-wrap = false              (editor panes: wrap long lines; editor-line-numbers = true; editor-vim = false: Vim keys)
 ///     editor-tab-width = 4             (editor-indent = spaces or tabs; a file's .editorconfig, or its own indentation, wins)
+///     editor-font-family = NAME        (editor and diff panes; unset: the terminal's font)
 ///     editor-font-size = 13            (unset: the terminal's size; editor-tui-external = false: hmk tui opens $EDITOR instead)
 ///     diff-style = unified             (diff panes: unified or split; diff-whitespace = show or ignore; diff-wrap = false)
 ///     diff-enabled = true              (and browser-enabled, simulator-enabled, editor-enabled, log-enabled: false and Hammock
@@ -829,6 +830,7 @@ final class AppConfig {
         #   editor-wrap = false            (editor panes: wrap long lines instead of scrolling sideways)
         #   editor-line-numbers = true     (editor panes: line numbers in the gutter)
         #   editor-tab-width = 4, editor-indent = spaces | tabs   (what Tab inserts; a file's .editorconfig beats them)
+        #   editor-font-family = NAME      (editor and diff panes on the Mac and iPhone; unset: the terminal's font)
         #   editor-font-size = 13          (editor panes on the Mac and iPhone; unset: the terminal's font size)
         #   editor-vim = false             (editor panes on the Mac and iPhone: Vim keys)
         #   editor-tui-external = false    (hmk tui: open editor panes in $VISUAL or $EDITOR; edits from your other devices show there only when it reloads the file)

@@ -52,10 +52,11 @@ public struct DiffConfig: Equatable {
                                        agents: [DiffAgent] = [], canSend: Bool = true, accent: Color? = nil) -> DiffConfig {
         let p = Prefs.shared
         let size = p.string(.editorFontSize).isEmpty ? fontSize : p.double(.editorFontSize)
+        let family = p.string(.editorFontFamily).isEmpty ? fontFamily : p.string(.editorFontFamily)
         let style = view.style.isEmpty ? p.string(.diffStyle) : view.style
         let ws = view.whitespace.isEmpty ? p.string(.diffWhitespace) : view.whitespace
         let wrap = view.wrap.isEmpty ? p.bool(.diffWrap) : view.wrap == "on"
-        return DiffConfig(theme: theme, dark: dark, fontFamily: fontFamily, fontSize: size,
+        return DiffConfig(theme: theme, dark: dark, fontFamily: family, fontSize: size,
                           style: style == "split" ? "split" : "unified", whitespace: ws == "ignore" ? "ignore" : "show", wrap: wrap,
                           overridden: !(view.style.isEmpty && view.whitespace.isEmpty && view.wrap.isEmpty), canDrive: canDrive,
                           target: target, agents: agents, canSend: canSend, accent: accent.map(Self.hex) ?? "")

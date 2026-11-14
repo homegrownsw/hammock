@@ -17,6 +17,16 @@ enum TerminalFont {
         return (regular, bold)
     }
 
+    /// The fonts Settings offers for the terminal, editor and diff panes:
+    /// installed monospaced families and the bundled ones (BundledFonts).
+    static var families: [String] {
+        let installed = NSFontManager.shared.availableFontFamilies.filter { name in
+            NSFont(name: name, size: 12).map { $0.isFixedPitch || name.localizedCaseInsensitiveContains("mono") || name.localizedCaseInsensitiveContains("nerd") } ?? false
+        }
+        return Set(installed + BundledFonts.families).subtracting([BundledFonts.symbolsFamily])
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
     /// Bigger and Smaller keep the font between 6 and 72pt (or the
     /// configured size, if that's outside them).
     static func clampedZoom(_ zoom: Double, base: Double) -> Double {

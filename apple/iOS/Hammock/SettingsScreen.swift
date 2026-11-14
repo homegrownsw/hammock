@@ -125,6 +125,13 @@ struct SettingsScreen: View {
                 } footer: {
                     Text("Smaller text fits more columns. Panes wider than your screen shrink to fit.")
                 }
+                Section("Editors and Diffs") {
+                    Picker("Font", selection: Prefs.shared.stringBinding(.editorFontFamily)) {
+                        Text("Same as Terminal").tag("")
+                        ForEach(monoFamilies, id: \.self) { Text($0).font(.custom($0, size: 17)).tag($0) }
+                    }
+                    .pickerStyle(.navigationLink)
+                }
                 Section {
                     AppLockSettings()
                 } header: {
