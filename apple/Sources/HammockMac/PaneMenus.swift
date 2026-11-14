@@ -145,10 +145,14 @@ struct PaneMenuItems: View {
         Button("Move to New Tab") { Task { await model.breakOut(paneID) } }
             .disabled(tabPaneCount < 2)
         OpenInNewWindowButton(model: model, subject: .pane(paneID))
-        if model.panes[paneID]?.kind == .simulator {
+        if model.isAppleTV(paneID) {
+            Button(Prefs.shared.bool(.simulatorRemote) ? "Hide Remote" : "Show Remote") { Prefs.shared.toggle(.simulatorRemote) }
+        } else if model.panes[paneID]?.kind == .simulator {
             Button("Rotate Left") { model.rotateSimulator(paneID, "left") }
             Button("Rotate Right") { model.rotateSimulator(paneID, "right") }
             Button("Toggle Software Keyboard") { model.pressSimulatorButton(paneID, "keyboard") }
+        }
+        if model.panes[paneID]?.kind == .simulator {
             Button("Screenshot to File") { SimulatorShot.saveToFile(model, paneID) }
             Button("Screenshot to Clipboard") { SimulatorShot.copyToClipboard(model, paneID) }
             if model.panes[paneID]?.deviceFoldable == true {

@@ -6,8 +6,42 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"slices"
 	"testing"
 )
+
+func TestRemotePresses(t *testing.T) {
+	for _, c := range []struct {
+		args simArgs
+		want []string
+		bad  bool
+	}{
+		{args: simArgs{Name: "select"}, want: []string{"select"}},
+		{args: simArgs{Name: "down", Repeat: 3}, want: []string{"down", "down", "down"}},
+		{args: simArgs{Name: "home", HoldMs: 1500}, want: []string{"home"}},
+		{args: simArgs{Swipe: "left"}, want: []string{"left", "left", "left"}},
+		{args: simArgs{Swipe: "up", Distance: "short"}, want: []string{"up"}},
+		{args: simArgs{Swipe: "right", Distance: "long"}, want: slices.Repeat([]string{"right"}, 6)},
+		{args: simArgs{}, bad: true},                               // neither
+		{args: simArgs{Name: "select", Swipe: "up"}, bad: true},    // both
+		{args: simArgs{Name: "power"}, bad: true},                  // not on the remote
+		{args: simArgs{Name: "up", Repeat: 51}, bad: true},         // too many
+		{args: simArgs{Name: "up", HoldMs: -1}, bad: true},         // negative hold
+		{args: simArgs{Swipe: "select"}, bad: true},                // not a direction
+		{args: simArgs{Swipe: "up", Distance: "miles"}, bad: true}, // unknown distance
+	} {
+		got, err := remotePresses(c.args)
+		if c.bad {
+			if err == nil {
+				t.Errorf("%+v: want an error, got %v", c.args, got)
+			}
+			continue
+		}
+		if err != nil || !slices.Equal(got, c.want) {
+			t.Errorf("%+v: got %v, %v; want %v", c.args, got, err, c.want)
+		}
+	}
+}
 
 func TestToJPEG(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 40, 80))

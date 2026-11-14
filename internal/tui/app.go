@@ -499,6 +499,10 @@ func (a *App) send(b []byte) {
 		a.editorInput(v, b)
 		return
 	}
+	if p := a.panes[a.focus]; isAppleTV(p) {
+		a.tvInput(a.focus, b)
+		return
+	}
 	if p := a.panes[a.focus]; p != nil && !isTerm(p) {
 		return
 	}

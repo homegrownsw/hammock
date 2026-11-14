@@ -38,7 +38,7 @@ Pane ▸ Show DevTools (⌥⌘I) opens Chromium's DevTools beside the page. Link
 
 ## Simulator
 
-A simulator pane shows an iOS simulator in your layout. It needs Xcode and at least one simulator installed. Open one from the toolbar's **+** ▸ Simulator Tab or Pane ▸ Split Right with Simulator:
+A simulator pane shows an iPhone, iPad or Apple TV simulator in your layout. It needs Xcode and at least one simulator installed. Open one from the toolbar's **+** ▸ Simulator Tab or Pane ▸ Split Right with Simulator:
 
 ```sh
 hmk sim list
@@ -47,7 +47,9 @@ hmk sim "iPhone 17 Pro" --split "$HMK_PANE_ID"
 
 Click to tap, drag to swipe, and type with your keyboard. The Pane menu has Home, Lock, rotation, the software keyboard and screenshots. Simulators Hammock booted shut down a minute after their last pane closes, unless you turn off Settings ▸ General ▸ Shut down simulators when their last pane closes.
 
-**Agents** open one with [`sim_open`](/hammock/docs/reference/mcp/#sim_open), then look, tap, type, and install, launch and debug apps.
+An **Apple TV** has no touch screen: drive it with the Siri Remote beside it, which Pane ▸ Show Remote (⌃⌘R) hides and shows. With the pane focused, the arrow keys are the clickpad, Return is Select, Escape is Back and Space is Play/Pause, sent as the remote sends them; other keys type. Hold a button for a long press. The Pane menu also has the remote's Play/Pause, volume, Mute and Siri.
+
+**Agents** open one with [`sim_open`](/hammock/docs/reference/mcp/#sim_open), then look, tap, type, and install, launch and debug apps, and drive an Apple TV with [`sim_remote`](/hammock/docs/reference/mcp/#sim_remote).
 
 ## Log
 

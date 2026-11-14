@@ -426,11 +426,22 @@ struct HammockApp: App {
                 if let id = focused, model.panes[id]?.kind == .simulator {
                     Divider()
                     Button("Home") { model.pressSimulatorButton(id, "home") }.keyboardShortcut(Keys.simHome)
-                    Button("Lock") { model.pressSimulatorButton(id, "lock") }.keyboardShortcut(Keys.simLock)
-                    Button("Rotate Left") { model.rotateSimulator(id, "left") }.keyboardShortcut(Keys.simRotateLeft)
-                    Button("Rotate Right") { model.rotateSimulator(id, "right") }.keyboardShortcut(Keys.simRotateRight)
-                    Button("Toggle Software Keyboard") { model.pressSimulatorButton(id, "keyboard") }
-                        .keyboardShortcut(Keys.simKeyboard)
+                    if model.isAppleTV(id) {
+                        // Its remote's buttons (Home above is its TV button).
+                        Button("Play/Pause") { model.pressRemote(id, "play_pause") }.keyboardShortcut(Keys.simPlayPause)
+                        Button("Volume Up") { model.pressRemote(id, "volume_up") }.keyboardShortcut(Keys.simVolumeUp)
+                        Button("Volume Down") { model.pressRemote(id, "volume_down") }.keyboardShortcut(Keys.simVolumeDown)
+                        Button("Mute") { model.pressRemote(id, "mute") }.keyboardShortcut(Keys.simMute)
+                        Button("Siri") { model.pressRemote(id, "siri") }.keyboardShortcut(Keys.simSiri)
+                        Button(Prefs.shared.bool(.simulatorRemote) ? "Hide Remote" : "Show Remote") { Prefs.shared.toggle(.simulatorRemote) }
+                            .keyboardShortcut(Keys.simRemoteToggle)
+                    } else {
+                        Button("Lock") { model.pressSimulatorButton(id, "lock") }.keyboardShortcut(Keys.simLock)
+                        Button("Rotate Left") { model.rotateSimulator(id, "left") }.keyboardShortcut(Keys.simRotateLeft)
+                        Button("Rotate Right") { model.rotateSimulator(id, "right") }.keyboardShortcut(Keys.simRotateRight)
+                        Button("Toggle Software Keyboard") { model.pressSimulatorButton(id, "keyboard") }
+                            .keyboardShortcut(Keys.simKeyboard)
+                    }
                     Button("Screenshot to File") { SimulatorShot.saveToFile(model, id) }.keyboardShortcut(Keys.simScreenshotFile)
                     Button("Screenshot to Clipboard") { SimulatorShot.copyToClipboard(model, id) }
                         .keyboardShortcut(Keys.simScreenshotCopy)

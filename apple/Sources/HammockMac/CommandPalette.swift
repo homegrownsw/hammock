@@ -513,10 +513,20 @@ struct CommandPalette: View {
             if model.panes[focused]?.kind == .simulator {
                 action("sim-log", "Show Simulator Log", "list.bullet.rectangle", .blue, "console logs os_log", keys: Keys.showSimulatorLog) { LogUI.shared.showSimulatorLog(model, focused) }
                 action("sim-home", "Home", "house", .blue, "simulator button springboard", keys: Keys.simHome) { model.pressSimulatorButton(focused, "home") }
-                action("sim-lock", "Lock Simulator", "lock", .blue, "simulator button sleep power", keys: Keys.simLock) { model.pressSimulatorButton(focused, "lock") }
-                action("sim-rotate-left", "Rotate Left", "rotate.left", .blue, "simulator orientation landscape portrait turn", keys: Keys.simRotateLeft) { model.rotateSimulator(focused, "left") }
-                action("sim-rotate-right", "Rotate Right", "rotate.right", .blue, "simulator orientation landscape portrait turn", keys: Keys.simRotateRight) { model.rotateSimulator(focused, "right") }
-                action("sim-keyboard", "Toggle Software Keyboard", "keyboard", .blue, "simulator show hide keyboard", keys: Keys.simKeyboard) { model.pressSimulatorButton(focused, "keyboard") }
+                if model.isAppleTV(focused) {
+                    action("sim-play-pause", "Play/Pause", "playpause", .blue, "apple tv remote media", keys: Keys.simPlayPause) { model.pressRemote(focused, "play_pause") }
+                    action("sim-volume-up", "Volume Up", "speaker.plus", .blue, "apple tv remote louder", keys: Keys.simVolumeUp) { model.pressRemote(focused, "volume_up") }
+                    action("sim-volume-down", "Volume Down", "speaker.minus", .blue, "apple tv remote quieter", keys: Keys.simVolumeDown) { model.pressRemote(focused, "volume_down") }
+                    action("sim-mute", "Mute", "speaker.slash", .blue, "apple tv remote sound silence", keys: Keys.simMute) { model.pressRemote(focused, "mute") }
+                    action("sim-siri", "Siri", "mic", .blue, "apple tv remote voice dictation", keys: Keys.simSiri) { model.pressRemote(focused, "siri") }
+                    let shown = Prefs.shared.bool(.simulatorRemote)
+                    action("sim-remote", shown ? "Hide Remote" : "Show Remote", "appletvremote.gen4", .blue, "apple tv siri remote control toggle", keys: Keys.simRemoteToggle) { Prefs.shared.toggle(.simulatorRemote) }
+                } else {
+                    action("sim-lock", "Lock Simulator", "lock", .blue, "simulator button sleep power", keys: Keys.simLock) { model.pressSimulatorButton(focused, "lock") }
+                    action("sim-rotate-left", "Rotate Left", "rotate.left", .blue, "simulator orientation landscape portrait turn", keys: Keys.simRotateLeft) { model.rotateSimulator(focused, "left") }
+                    action("sim-rotate-right", "Rotate Right", "rotate.right", .blue, "simulator orientation landscape portrait turn", keys: Keys.simRotateRight) { model.rotateSimulator(focused, "right") }
+                    action("sim-keyboard", "Toggle Software Keyboard", "keyboard", .blue, "simulator show hide keyboard", keys: Keys.simKeyboard) { model.pressSimulatorButton(focused, "keyboard") }
+                }
                 action("sim-shot-file", "Screenshot to File", "camera", .blue, "simulator screen capture save png picture image", keys: Keys.simScreenshotFile) { SimulatorShot.saveToFile(model, focused) }
                 action("sim-shot-copy", "Screenshot to Clipboard", "doc.on.clipboard", .blue, "simulator screen capture copy png picture image", keys: Keys.simScreenshotCopy) { SimulatorShot.copyToClipboard(model, focused) }
                 if model.panes[focused]?.deviceFoldable == true {

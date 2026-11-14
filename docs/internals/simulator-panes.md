@@ -59,3 +59,11 @@ Only an XCTest session `xcodebuild` started may rotate an iOS 27 simulator or sy
   - **The fold:** `source = hinge-slider-control`, `type = range`, the angle in degrees (0 closed, 180 flat) as an OSSerialized number with DeviceHub's header (`0x3f`, `0x84`) then a little-endian double. SpringBoard swaps screens past about 85° opening and below 20° closing.
   - **Rotation:** `source = orientation-picker-control`, `type = enum`. Quicker than the runner, and works open or closed. This technique follows serve-sim's Duo helper (Apache-2.0); the code is Hammock's own.
 - **Not supported:** pinch on the inner screen (the runner's event record uses display 0).
+
+## Apple TV
+
+An Apple TV simulator (its device type's `productFamily` is `Apple TV`; the host reports `platform: tvOS`) has no touch screen and doesn't rotate. Its screen scale is the device type's `mainScreenScale` (2 at 4K, 1 at 1080p), so it's 1920×1080 points either way.
+
+- **The remote:** `IndigoHIDMessageForHIDArbitrary(target, page, usage, down/up)` with target `0x64` (the keyboard service's, as `IndigoHIDMessageForKeyboardArbitrary` uses) and the consumer page (`0x0C`), with the Siri Remote's own usages: Menu (Back) `0x40`, Select `0x41`, up, down, left, right `0x42`–`0x45`, Play/Pause `0xCD`, TV `0x223` (AC Home), volume `0xE9`/`0xEA`, Mute `0xE2`, Siri `0xCF` (Voice Command). backboardd logs them by name (`Select`, `PlayOrPause`…) with `source:externalKeyboard`: the right press types, from the simulator's keyboard service rather than a paired Siri Remote, so GameController's remote profile doesn't see them. Sent as down and up, a held button is a long press (PineBoard sees `CompatibilityHomeLongPress` for a held TV, but doesn't open Control Center in the simulator).
+- **Don't send iPhone buttons.** `IndigoHIDMessageForButton(0x0 /* home */, …, 0x33)` crashes tvOS's backboardd; so does an arbitrary message on target `0x33`. The host and daemon refuse touches, iPhone buttons, rotation and gestures for an Apple TV.
+- **The touch surface:** no Indigo message found for it, so a swipe is directional presses (it moves focus but doesn't scrub).

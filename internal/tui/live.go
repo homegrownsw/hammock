@@ -335,6 +335,13 @@ func (a *App) liveMouse(z zone, m mouseEv) bool {
 	fx := clamp01((float64(m.x-lv.box.x) + 0.5) / float64(lv.box.w))
 	fy := clamp01((float64(m.y-lv.box.y) + 0.5) / float64(lv.box.h))
 	browser := p.Kind == pb.PaneKind_PANE_KIND_BROWSER
+	if isAppleTV(p) {
+		// No touch screen: a click only focuses it, for its remote's keys.
+		if m.press && m.button == 0 {
+			a.setFocus(id)
+		}
+		return true
+	}
 	switch {
 	case m.wheel != 0 && a.livePress == "":
 		if browser {

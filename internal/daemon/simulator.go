@@ -80,6 +80,7 @@ type simMsg struct {
 	Mask     string            `json:"mask"`
 	Foldable bool              `json:"foldable"`
 	Hinge    float64           `json:"hinge"`
+	Platform string            `json:"platform"`
 	Text     string            `json:"text"`
 }
 
@@ -381,6 +382,9 @@ func (d *Daemon) simulatorState(m simMsg) {
 	info.DeviceBooted = m.Booted
 	info.DeviceChrome, info.DeviceMask = m.Chrome, m.Mask
 	info.DeviceFoldable, info.DeviceHinge = m.Foldable, m.Hinge
+	if m.Platform != "" {
+		info.DevicePlatform = m.Platform
+	}
 	changed := !proto.Equal(before, info)
 	udid := info.DeviceUdid
 	p.mu.Unlock()
@@ -434,7 +438,36 @@ type simArgs struct {
 	Angle        *float64 // fold: the hinge in degrees (0 closed, 180 flat)
 	Scale        float64
 	Paths        [][]struct{ X, Y, T float64 } // gesture: each finger's path, in points and ms
+	// remote (an Apple TV's): Name is the button, pressed Repeat times and
+	// held HoldMs each; or Swipe (up, down, left or right) on the touch
+	// surface, as far as Distance (short, medium or long). With Phase down or
+	// up, just that half of a press (a person holding the on-screen remote's
+	// button).
+	Repeat, HoldMs  int
+	Swipe, Distance string
 }
+
+// remoteButtons are an Apple TV remote's buttons, as the simulator host names them.
+var remoteButtons = []string{"up", "down", "left", "right", "select", "menu", "home", "play_pause", "volume_up", "volume_down", "mute", "siri"}
+
+// remoteSwipePresses is how many presses a swipe on the remote's touch
+// surface makes: it moves focus that far (there's no touch surface to send
+// to; a simulator's remote has only its buttons).
+func remoteSwipePresses(distance string) (int, error) {
+	switch distance {
+	case "short":
+		return 1, nil
+	case "", "medium":
+		return 3, nil
+	case "long":
+		return 6, nil
+	}
+	return 0, fmt.Errorf("distance: short, medium or long, not %q", distance)
+}
+
+// touchOnly are the simulator ops an Apple TV can't take: it has no touch
+// screen, doesn't turn or fold, and has a remote, not an iPhone's buttons.
+var touchOnly = []string{"tap", "swipe", "touch", "rotate", "pinch", "gesture", "fold", "button"}
 
 // simulatorCall runs an agent's (or the CLI's) simulator operation off the
 // read loop and replies when it's done.
@@ -442,7 +475,7 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	var args simArgs
 	// Your paired phones and guests may watch and touch a simulator; the
 	// rest (the device list, opening one) stays on this Mac.
-	if c.remote && !slices.Contains([]string{"screenshot", "tap", "swipe", "touch", "text", "key", "copy", "button", "rotate", "pinch", "gesture", "fold"}, m.Op) {
+	if c.remote && !slices.Contains([]string{"screenshot", "tap", "swipe", "touch", "text", "key", "copy", "button", "rotate", "pinch", "gesture", "fold", "remote"}, m.Op) {
 		return errors.New("only available on this Mac")
 	}
 	if m.ArgsJson != "" {
@@ -473,10 +506,17 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	if !p.isSimulator() {
 		return errors.New("not a simulator pane")
 	}
+	switch platform := p.snapshotInfo().DevicePlatform; {
+	case platform == "tvOS" && slices.Contains(touchOnly, m.Op):
+		return errors.New("an Apple TV has no touch screen and doesn't turn: use its remote (sim_remote, or hmk sim remote)")
+	case m.Op == "remote" && platform != "tvOS":
+		return errors.New("only an Apple TV has a remote")
+	}
 	d.mu.Lock()
 	peer := c.peer
 	d.mu.Unlock()
-	if (c.isAgent() || peer != "") && m.Op != "screenshot" && !(m.Op == "touch" && args.Phase != "down") {
+	halfPress := (m.Op == "touch" || m.Op == "remote") && args.Phase != "" && args.Phase != "down"
+	if (c.isAgent() || peer != "") && m.Op != "screenshot" && !halfPress {
 		d.mu.Lock()
 		d.audit(c.auditActor(), "simulator "+m.Op, p.id, "")
 		d.mu.Unlock()
@@ -501,6 +541,18 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 		}
 		d.simulatorPresence(c, p.id, m.Op, args, size)
 		touch(args.Phase, args.X, args.Y)
+		return nil
+	}
+	if m.Op == "remote" && args.Phase != "" {
+		// Half a press, inline like a touch, so a held button's down and up stay in order.
+		if !slices.Contains(remoteButtons, args.Name) {
+			return fmt.Errorf("unknown remote button %q (%s)", args.Name, strings.Join(remoteButtons, ", "))
+		}
+		if args.Phase != "down" && args.Phase != "up" {
+			return fmt.Errorf("unknown remote phase %q (down, up)", args.Phase)
+		}
+		d.simulatorPresence(c, p.id, m.Op, args, size)
+		h.send(map[string]any{"t": "remote", "id": p.id, "name": args.Name, "phase": args.Phase})
 		return nil
 	}
 	go func() {
@@ -633,6 +685,21 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 				return
 			}
 			h.send(map[string]any{"t": "button", "id": p.id, "name": args.Name})
+		case "remote":
+			presses, err := remotePresses(args)
+			if err != nil {
+				c.replyErr(reqID, err)
+				return
+			}
+			for i, name := range presses {
+				if i > 0 {
+					time.Sleep(150 * time.Millisecond) // a focus move animates
+				}
+				h.send(map[string]any{"t": "remote", "id": p.id, "name": name, "phase": "down"})
+				time.Sleep(time.Duration(cmp.Or(args.HoldMs, 60)) * time.Millisecond)
+				h.send(map[string]any{"t": "remote", "id": p.id, "name": name, "phase": "up"})
+			}
+			time.Sleep(250 * time.Millisecond) // the last move settles before a screenshot follows
 		default:
 			c.replyErr(reqID, fmt.Errorf("unknown simulator op %q", m.Op))
 			return
@@ -641,6 +708,35 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 		reply(map[string]any{"ok": true}, nil)
 	}()
 	return errDeferred
+}
+
+// remotePresses is the buttons a remote call presses, in turn: its button
+// Repeat times, or a swipe's direction as many times as its distance says.
+func remotePresses(args simArgs) ([]string, error) {
+	if (args.Name == "") == (args.Swipe == "") {
+		return nil, errors.New("remote: press a button or swipe, one of them")
+	}
+	if args.HoldMs < 0 || args.HoldMs > 10000 {
+		return nil, errors.New("remote: hold_ms runs from 0 to 10000")
+	}
+	if args.Swipe != "" {
+		if !slices.Contains([]string{"up", "down", "left", "right"}, args.Swipe) {
+			return nil, fmt.Errorf("remote: swipe up, down, left or right, not %q", args.Swipe)
+		}
+		n, err := remoteSwipePresses(args.Distance)
+		if err != nil {
+			return nil, err
+		}
+		return slices.Repeat([]string{args.Swipe}, n), nil
+	}
+	if !slices.Contains(remoteButtons, args.Name) {
+		return nil, fmt.Errorf("unknown remote button %q (%s)", args.Name, strings.Join(remoteButtons, ", "))
+	}
+	n := cmp.Or(args.Repeat, 1)
+	if n < 1 || n > 50 {
+		return nil, errors.New("remote: repeat runs from 1 to 50")
+	}
+	return slices.Repeat([]string{args.Name}, n), nil
 }
 
 // pinchPaths: two fingers either side of (x, y), moving apart (scale > 1:

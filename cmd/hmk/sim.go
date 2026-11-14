@@ -80,6 +80,39 @@ type simDevice struct {
 	Name    string `json:"name"`
 	Runtime string `json:"runtime"`
 	Booted  bool   `json:"booted"`
+	// Platform is iOS or tvOS (an Apple TV, driven by its remote).
+	Platform string `json:"platform"`
+}
+
+// remoteArgs reads `hmk sim remote PANE` arguments after the pane: a button
+// with --repeat N and --hold MS, or swipe DIRECTION [short|medium|long].
+func remoteArgs(args []string) (map[string]any, error) {
+	if len(args) == 0 {
+		return nil, errors.New("which button?")
+	}
+	if args[0] == "swipe" {
+		if len(args) < 2 || len(args) > 3 {
+			return nil, errors.New("swipe up|down|left|right [short|medium|long]")
+		}
+		m := map[string]any{"swipe": args[1]}
+		if len(args) == 3 {
+			m["distance"] = args[2]
+		}
+		return m, nil
+	}
+	m := map[string]any{"name": args[0]}
+	for i := 1; i < len(args); i++ {
+		if (args[i] != "--repeat" && args[i] != "--hold") || i+1 >= len(args) {
+			return nil, fmt.Errorf("unexpected %q", args[i])
+		}
+		n, err := strconv.Atoi(args[i+1])
+		if err != nil {
+			return nil, fmt.Errorf("%s: %q isn't a number", args[i], args[i+1])
+		}
+		m[map[string]string{"--repeat": "repeat", "--hold": "holdms"}[args[i]]] = n
+		i++
+	}
+	return m, nil
 }
 
 type caller func(*pb.ClientMessage) (*pb.ServerMessage, error)
@@ -155,6 +188,10 @@ func runSim(w *world, call caller, args []string) error {
        hmk sim rotate PANE left|right|portrait|upside-down|landscape-left|landscape-right
        hmk sim pinch PANE X Y SCALE  (two fingers around X, Y in points; SCALE above 1 zooms in)
        hmk sim fold PANE open|closed|half|DEGREES   (a foldable, such as the iPhone Duo)
+       hmk sim remote PANE BUTTON [--repeat N] [--hold MS]   an Apple TV's remote: up, down, left,
+                                 right, select, menu, home, play_pause, volume_up, volume_down,
+                                 mute or siri (--hold MS: a long press)
+       hmk sim remote PANE swipe up|down|left|right [short|medium|long]   moves focus (as presses)
        hmk sim shutdown PANE                    close the pane and shut its simulator down`)
 	sub := ""
 	if len(args) > 1 {
@@ -171,7 +208,7 @@ func runSim(w *world, call caller, args []string) error {
 			if d.Booted {
 				state = "  (booted)"
 			}
-			fmt.Printf("%s  %-28s %s%s\n", d.UDID, d.Name, d.Runtime, state)
+			fmt.Printf("%s  %-40s %s%s\n", d.UDID, d.Name, d.Runtime, state)
 		}
 		return nil
 	case "shutdown":
@@ -187,6 +224,20 @@ func runSim(w *world, call caller, args []string) error {
 		return err
 	case "shot":
 		return simShot(w, call, args[2:], usage)
+	case "remote":
+		if len(args) < 4 {
+			return usage
+		}
+		pid, err := w.resolve(args[2], "pane")
+		if err != nil {
+			return err
+		}
+		ra, err := remoteArgs(args[3:])
+		if err != nil {
+			return fmt.Errorf("%w\n%v", err, usage)
+		}
+		_, err = simCall(call, pid, "remote", ra)
+		return err
 	case "tap", "type", "button", "rotate", "pinch", "fold":
 		if len(args) < 4 {
 			return usage

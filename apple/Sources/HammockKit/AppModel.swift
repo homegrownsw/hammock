@@ -1268,8 +1268,33 @@ public final class AppModel {
         }
     }
 
-    /// Presses a simulator's button: home, lock, side, siri, or keyboard (the software keyboard).
+    /// Whether a simulator pane shows an Apple TV: no touch screen, driven by its remote.
+    public func isAppleTV(_ paneID: String) -> Bool { panes[paneID]?.devicePlatform == "tvOS" }
+
+    /// Presses a button on an Apple TV's remote (sim_remote's names: up,
+    /// down, left, right, select, menu, home, play_pause, volume_up,
+    /// volume_down, mute, siri). With a phase ("down" or "up"), just that half,
+    /// for a button held as long as someone holds it.
+    public func pressRemote(_ paneID: String, _ name: String, phase: String? = nil) {
+        var args: [String: Any] = ["name": name]
+        if let phase { args["phase"] = phase }
+        simulatorInput(paneID, "remote", args)
+    }
+
+    /// A swipe on an Apple TV remote's touch surface: up, down, left or right,
+    /// "short", "medium" or "long" (it moves focus as presses).
+    public func swipeRemote(_ paneID: String, _ direction: String, distance: String = "medium") {
+        simulatorInput(paneID, "remote", ["swipe": direction, "distance": distance])
+    }
+
+    /// Presses a simulator's button: home, lock, side, siri, or keyboard (the
+    /// software keyboard). An Apple TV's Home is its remote's TV button, and
+    /// it has none of the others.
     public func pressSimulatorButton(_ paneID: String, _ name: String) {
+        if isAppleTV(paneID) {
+            if name == "home" || name == "siri" { pressRemote(paneID, name) }
+            return
+        }
         simulatorInput(paneID, "button", ["name": name])
     }
 

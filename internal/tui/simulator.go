@@ -59,8 +59,56 @@ func (a *App) simScreenshot(id string) {
 	}()
 }
 
+// isAppleTV reports whether a pane shows an Apple TV simulator, which its
+// remote drives (it has no touch screen).
+func isAppleTV(p *pb.Pane) bool {
+	return p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR && p.DevicePlatform == "tvOS"
+}
+
+// tvKeys are the keys that are an Apple TV remote's buttons (edKey names;
+// a space is Play/Pause).
+var tvKeys = map[string]string{"up": "up", "down": "down", "left": "left", "right": "right", "enter": "select", "esc": "menu", " ": "play_pause"}
+
+// tvInput sends typed bytes to a focused Apple TV pane: its remote's keys
+// as its remote's presses, anything else typed (for its text fields).
+// Send, not Call, keeps them in order.
+func (a *App) tvInput(id string, b []byte) {
+	if !canDrive(a.paneGroup(id)) {
+		return
+	}
+	send := func(op string, args map[string]any) {
+		aj, _ := json.Marshal(args)
+		_ = a.c.Send(bgctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SimulatorCall{SimulatorCall: &pb.SimulatorCall{PaneId: id, Op: op, ArgsJson: string(aj)}}})
+	}
+	for _, k := range editorKeysOf(b) {
+		name := k.name
+		if name == "" && k.r == ' ' {
+			name = " "
+		}
+		switch {
+		case tvKeys[name] != "" && !k.ctrl && !k.alt:
+			// A terminal doesn't say when a key's let go: a whole press each time.
+			send("remote", map[string]any{"name": tvKeys[name], "phase": "down"})
+			send("remote", map[string]any{"name": tvKeys[name], "phase": "up"})
+		case k.name == "" && k.r != 0:
+			send("text", map[string]any{"text": string(k.r)})
+		}
+	}
+	a.liveSoon(id)
+}
+
 // simItems: what you can do to a simulator pane, for its menu and the palette.
 func (a *App) simItems(id string) []menuItem {
+	if isAppleTV(a.panes[id]) {
+		press := func(label, name string) menuItem {
+			return menuItem{label: label, run: func() { a.simOp(id, "remote", map[string]string{"name": name}) }}
+		}
+		return []menuItem{
+			press("Home (TV)", "home"), press("Back", "menu"), press("Select", "select"), press("Play/Pause", "play_pause"),
+			press("Volume Up", "volume_up"), press("Volume Down", "volume_down"), press("Mute", "mute"), press("Siri", "siri"),
+			{label: "Screenshot to File", run: func() { a.simScreenshot(id) }},
+		}
+	}
 	items := []menuItem{
 		{label: "Home", run: func() { a.simOp(id, "button", map[string]string{"name": "home"}) }},
 		{label: "Lock", run: func() { a.simOp(id, "button", map[string]string{"name": "lock"}) }},

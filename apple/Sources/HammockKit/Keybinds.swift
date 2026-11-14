@@ -312,6 +312,14 @@ public enum Keybinds {
             .init("sim_fold", "Open or Close Phone", "Simulator", c("f", co), "ios iphone fold foldable duo hinge"),
             .init("sim_half_open", "Half Open Phone", "Simulator", nil, "ios iphone fold foldable duo hinge"),
             .init("sim_shut_down", "Shut Down Simulator", "Simulator", nil, "ios iphone stop quit"),
+            // An Apple TV's remote (Home is its TV button). No defaults but the
+            // toggle: the arrows, Return, Escape and Space are its remote already.
+            .init("sim_remote_toggle", "Show or Hide Remote", "Simulator", c("r", cc), "apple tv tvos siri remote control"),
+            .init("sim_play_pause", "Play/Pause", "Simulator", nil, "apple tv tvos remote media"),
+            .init("sim_volume_up", "Volume Up", "Simulator", nil, "apple tv tvos remote louder"),
+            .init("sim_volume_down", "Volume Down", "Simulator", nil, "apple tv tvos remote quieter"),
+            .init("sim_mute", "Mute", "Simulator", nil, "apple tv tvos remote sound silence"),
+            .init("sim_siri", "Siri", "Simulator", nil, "apple tv tvos remote voice dictation"),
             // Editor (only with one focused: ⌘S and ⌘L are the simulator's otherwise)
             .init("editor_save", "Save", "Editor", c("s"), "write file disk"),
             .init("editor_save_as", "Save As…", "Editor", c("s", cos), "write file rename new name"),

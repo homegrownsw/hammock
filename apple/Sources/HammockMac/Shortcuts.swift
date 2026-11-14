@@ -122,6 +122,12 @@ enum Keys {
     static var simKeyboard: KeyboardShortcut? { shortcut("sim_keyboard") }
     static var simFold: KeyboardShortcut? { shortcut("sim_fold") }
     static var simHalfOpen: KeyboardShortcut? { shortcut("sim_half_open") }
+    static var simRemoteToggle: KeyboardShortcut? { shortcut("sim_remote_toggle") }
+    static var simPlayPause: KeyboardShortcut? { shortcut("sim_play_pause") }
+    static var simVolumeUp: KeyboardShortcut? { shortcut("sim_volume_up") }
+    static var simVolumeDown: KeyboardShortcut? { shortcut("sim_volume_down") }
+    static var simMute: KeyboardShortcut? { shortcut("sim_mute") }
+    static var simSiri: KeyboardShortcut? { shortcut("sim_siri") }
 
     // Editor (only with one focused: ⌘S and ⌘L are the simulator's otherwise)
     static var editorSave: KeyboardShortcut? { shortcut("editor_save") }

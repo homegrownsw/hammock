@@ -229,6 +229,8 @@ var Keys = []Key{
 	// Simulator panes
 	{Name: "simulator-frame", Group: "Simulator panes", Value: "true", Default: "true",
 		Doc: "draw the device around the screen", Only: "Mac"},
+	{Name: "simulator-remote", Group: "Simulator panes", Value: "true", Default: "true",
+		Doc: "show an Apple TV's Siri Remote beside its screen", Only: "Mac"},
 	{Name: "simulator-shutdown", Group: "Simulator panes", Value: "true", Default: "true",
 		Doc: "simulators Hammock booted shut down a minute after their last pane closes"},
 

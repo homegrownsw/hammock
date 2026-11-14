@@ -21,6 +21,9 @@
 //   client -> host: open {id, udid}, close {id}, attach {id}, detach {id},
 //                   touch {id, phase: down|move|up, x, y (0..1 of the screen)},
 //                   button {id, name: home|lock|siri|side|keyboard},
+//                   remote {id, name: up|down|left|right|select|menu|home|
+//                   play_pause|volume_up|volume_down|mute|siri, phase: down|up}
+//                   (an Apple TV's Siri Remote: its own consumer-page usages),
 //                   rotate {id, value, seq}, gesture {id, paths, seq} (through the
 //                   device's XCTest runner; a foldable rotates through its guest
 //                   helper), hinge {id, angle, ms, seq} (a foldable's fold),
@@ -43,7 +46,8 @@
 //                   layer {id, ctx} (to viewers), copyResult {seq, text},
 //                   shotResult {seq, png | error}, devicesResult {seq, devices},
 //                   barrierResult {seq}, runnerResult {seq, error?}; state
-//                   also has foldable, hinge
+//                   also has foldable, hinge, platform (iOS or tvOS); each
+//                   device listed has platform too
 //   on a media connection, after one line {"t":"mediaReady"}: binary
 //   records as HammockMediaRecord writes them (helpers/media/encoder.h): sid,
 //   flags (keyframe, refresh), capture time, size, LTR token, then the frame
@@ -80,9 +84,12 @@ extern uint32_t CGSMainConnectionID(void);
 typedef void *(*MouseFn)(CGPoint *, CGPoint *, uint32_t target, NSEventType type, uint32_t edge, double w, double h);
 typedef void *(*ButtonFn)(uint32_t source, uint32_t direction, uint32_t target);
 typedef void *(*KeyFn)(uint32_t usage, uint32_t direction);
+// Any HID page and usage: an Apple TV's remote buttons (consumer page).
+typedef void *(*ArbitraryFn)(uint32_t target, uint32_t page, uint32_t usage, uint32_t direction);
 static MouseFn indigoMouse;
 static ButtonFn indigoButton;
 static KeyFn indigoKey;
+static ArbitraryFn indigoArbitrary;
 
 static const uint32_t kTouchScreen = 0x32, kHardware = 0x33, kDown = 1, kUp = 2;
 
@@ -138,6 +145,9 @@ static id deviceFor(NSString *udid) {
 }
 
 static BOOL booted(id dev) { return [[dev valueForKey:@"state"] integerValue] == 3; }
+
+// An Apple TV: no touch screen, driven by its remote.
+static BOOL isTV(id dev) { return [[[dev valueForKey:@"deviceType"] valueForKey:@"productFamily"] isEqual:@"Apple TV"]; }
 
 #pragma mark - Panes
 
@@ -404,6 +414,7 @@ static Host *gHost;
     m[@"foldable"] = @YES;
     m[@"hinge"] = self.hinges[p.udid] ?: @0;
   }
+  if (dev) m[@"platform"] = isTV(dev) ? @"tvOS" : @"iOS";
   return m;
 }
 
@@ -598,7 +609,9 @@ static double lit(id screen) {
   if (!s) return;
   CGSize native = CGSizeMake(IOSurfaceGetWidth(s), IOSurfaceGetHeight(s));
   // Phones and tablets are 3x or 2x; points keep the layer the device's size.
+  // An Apple TV says its own (2 for 4K, 1 at 1080p: 1920×1080 points either way).
   double scale = MIN(native.width, native.height) >= 1000 ? 3 : 2;
+  if (p.device && isTV(p.device)) scale = MAX([[[p.device valueForKey:@"deviceType"] valueForKey:@"mainScreenScale"] doubleValue], 1);
   int turn = [self rotationOf:p];
   // As it's showing: turned on its side, the picture is landscape.
   CGSize px = turn % 180 ? CGSizeMake(native.height, native.width) : native;
@@ -717,6 +730,7 @@ static CGPoint unturn(CGPoint q, int turn) {
 // One finger. (A second point builds a two-finger message, but the legacy
 // HID client's devices ignore it: pinches go through the runner.)
 - (void)touch:(Pane *)p phase:(NSString *)phase x:(double)x y:(double)y {
+  if (p.device && isTV(p.device)) return;  // no touch screen
   NSEventType t = [phase isEqualToString:@"down"] ? NSEventTypeLeftMouseDown : [phase isEqualToString:@"up"] ? NSEventTypeLeftMouseUp : NSEventTypeLeftMouseDragged;
   CGPoint pt = unturn(CGPointMake(fmin(fmax(x, 0), 1), fmin(fmax(y, 0), 1)), [self rotationOf:p]);
   [self sendHID:p message:indigoMouse(&pt, NULL, p.touchTarget ?: kTouchScreen, t, 0, 1.0, 1.0)];
@@ -726,11 +740,29 @@ static CGPoint unturn(CGPoint q, int turn) {
   // keyboard: shows or hides the software keyboard (as DeviceHub's ⌘K).
   NSDictionary *sources = @{@"home" : @0x0, @"lock" : @0x1, @"side" : @0xbb8, @"siri" : @0x400002, @"keyboard" : @0x3f0};
   NSNumber *src = sources[name];
-  if (!src) return;
+  // An Apple TV has none of these: the iPhone's Home message crashes its
+  // backboardd. Its buttons are the remote's (below).
+  if (!src || (p.device && isTV(p.device))) return;
   [self sendHID:p message:indigoButton(src.unsignedIntValue, kDown, kHardware)];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 20), dispatch_get_main_queue(), ^{
     [self sendHID:p message:indigoButton(src.unsignedIntValue, kUp, kHardware)];
   });
+}
+
+// An Apple TV's Siri Remote: each button as the remote's own consumer-page
+// usage (Menu, Select, Play/Pause…, not keyboard keys standing in for them),
+// on the target the simulator's keyboard service takes. The caller sends
+// down and up, so a held button is a long press.
+static const uint32_t kRemoteTarget = 0x64, kConsumerPage = 0x0C;
+
+- (void)remote:(Pane *)p name:(NSString *)name phase:(NSString *)phase {
+  NSDictionary *usages = @{@"menu" : @0x40, @"select" : @0x41, @"up" : @0x42, @"down" : @0x43, @"left" : @0x44, @"right" : @0x45,
+                           @"play_pause" : @0xCD, @"home" : @0x223, @"volume_up" : @0xE9, @"volume_down" : @0xEA,
+                           @"mute" : @0xE2, @"siri" : @0xCF};
+  NSNumber *usage = usages[name];
+  if (!usage || !indigoArbitrary || !p.device || !isTV(p.device)) return;
+  uint32_t dir = [phase isEqualToString:@"up"] ? kUp : kDown;
+  [self sendHID:p message:indigoArbitrary(kRemoteTarget, kConsumerPage, usage.unsignedIntValue, dir)];
 }
 
 static const uint32_t kShift = 225, kCommand = 227, kUsageC = 6, kUsageV = 25;
@@ -1222,7 +1254,7 @@ static NSString *prepareRunner(NSString **error) {
     if (![[d valueForKey:@"available"] boolValue]) continue;
     id rt = [d valueForKey:@"runtime"];
     [out addObject:@{@"udid" : [[d valueForKey:@"UDID"] UUIDString], @"name" : [d valueForKey:@"name"] ?: @"",
-                     @"runtime" : [rt valueForKey:@"name"] ?: @"", @"booted" : @(booted(d))}];
+                     @"runtime" : [rt valueForKey:@"name"] ?: @"", @"booted" : @(booted(d)), @"platform" : isTV(d) ? @"tvOS" : @"iOS"}];
   }
   return out;
 }
@@ -1391,6 +1423,10 @@ static NSString *prepareRunner(NSString **error) {
       if (error) r[@"error"] = error;
       [gHost send:r to:c];
     };
+    if (p.device && isTV(p.device)) {
+      reply(@"an Apple TV doesn't rotate or take touches: use its remote");
+      return;
+    }
     if ([t isEqualToString:@"hinge"]) {
       if (!p.foldable) reply(@"this simulator doesn't fold");
       else [self hinge:p angle:fmin(fmax([m[@"angle"] doubleValue], 0), 180) ms:[m[@"ms"] doubleValue] done:reply];
@@ -1431,6 +1467,8 @@ static NSString *prepareRunner(NSString **error) {
     [self touch:p phase:m[@"phase"] x:[m[@"x"] doubleValue] y:[m[@"y"] doubleValue]];
   } else if ([t isEqualToString:@"button"]) {
     [self button:p name:m[@"name"]];
+  } else if ([t isEqualToString:@"remote"]) {
+    [self remote:p name:m[@"name"] ?: @"" phase:m[@"phase"] ?: @"down"];
   } else if ([t isEqualToString:@"text"]) {
     [self type:p text:m[@"text"] ?: @""];
   } else if ([t isEqualToString:@"key"]) {
@@ -1468,6 +1506,7 @@ int main(int argc, char **argv) {
     indigoMouse = (MouseFn)(sk ? dlsym(sk, "IndigoHIDMessageForMouseNSEvent") : NULL);
     indigoButton = (ButtonFn)(sk ? dlsym(sk, "IndigoHIDMessageForButton") : NULL);
     indigoKey = (KeyFn)(sk ? dlsym(sk, "IndigoHIDMessageForKeyboardArbitrary") : NULL);
+    indigoArbitrary = (ArbitraryFn)(sk ? dlsym(sk, "IndigoHIDMessageForHIDArbitrary") : NULL);
     if (!indigoMouse || !indigoButton || !indigoKey) fprintf(stderr, "simulator-host: SimulatorKit input unavailable: %s\n", dlerror());
 
     NSApplication *app = NSApplication.sharedApplication;

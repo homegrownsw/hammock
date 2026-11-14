@@ -15,6 +15,9 @@ extension Pref {
     /// Simulator panes draw the device around the screen.
     static let simulatorFrame = Pref("simulator-frame", defaults: "simulatorFrame", true)
 
+    /// An Apple TV's pane shows its Siri Remote beside the screen.
+    static let simulatorRemote = Pref("simulator-remote", defaults: "simulatorRemote", true)
+
     /// Agents acting in browser and simulator panes are shown there: a
     /// cursor or finger, a glow and a badge (AgentPresenceOverlay). hmkd
     /// reads it too: off, it sends no actions and doesn't wait for the

@@ -143,6 +143,18 @@ final class SimulatorPaneNSView: NSView {
     var showsFrame = true {
         didSet { if showsFrame != oldValue { needsLayout = true } }
     }
+    /// An Apple TV: no touch screen; the keyboard is its remote's, and its
+    /// frame is a TV's thin bezel.
+    var isTV = false {
+        didSet {
+            guard isTV != oldValue else { return }
+            for (l, c) in [(rim, frameColours.rim), (band, frameColours.band)] { l.fillColor = c.cgColor }
+            needsLayout = true
+        }
+    }
+    private var frameColours: (rim: NSColor, band: NSColor) {
+        isTV ? (NSColor(white: 0.24, alpha: 1), NSColor(white: 0.06, alpha: 1)) : (NSColor(white: 0.62, alpha: 1), NSColor(white: 0.17, alpha: 1))
+    }
 
     private let device = CALayer()   // the whole device, in points, scaled to fit
     private let screen = CALayer()   // the device's screen: its shape, clipping
@@ -262,7 +274,8 @@ final class SimulatorPaneNSView: NSView {
         stream = s
         s.onSize = { [weak self] px in
             guard let self else { return }
-            let scale: CGFloat = px.width >= 1000 ? 3 : 2 // as the simulator host decides
+            // As the simulator host decides; an Apple TV is 1920 points wide (its scale is 2 at 4K, 1 at 1080p).
+            let scale: CGFloat = self.isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
             self.size = CGSize(width: px.width / scale, height: px.height / scale)
             self.needsLayout = true
         }
@@ -356,11 +369,18 @@ final class SimulatorPaneNSView: NSView {
 
     // MARK: Layout
 
-    private var framed: Bool { showsFrame && chrome != nil }
+    private var framed: Bool { showsFrame && (chrome != nil || isTV) }
     /// Turned on its side: the frame's side buttons (drawn for portrait) are hidden.
     private var landscape: Bool { size.width > size.height }
-    /// The frame's width around the screen, in points.
-    private var edge: CGFloat { framed ? chrome!.edge : 0 }
+    /// The frame's width around the screen, in points: a TV's is a thin
+    /// bezel (its artwork's 8 points would vanish at a pane's scale).
+    private var edge: CGFloat { framed ? (isTV ? 22 : chrome!.edge) : 0 }
+    /// The screen's shape without a mask: a TV's square corners, rounded a
+    /// little; else a continuous corner close to a modern iPhone's.
+    private var plainOutline: CGPath {
+        let r = isTV ? 6 : size.width * 0.12
+        return CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: r, cornerHeight: r, transform: nil)
+    }
     /// Room beside the frame for the side buttons.
     private var sides: CGFloat { framed ? 10 : 0 }
     private var deviceSize: CGSize { CGSize(width: size.width + 2 * edge, height: size.height + 2 * edge) }
@@ -399,8 +419,7 @@ final class SimulatorPaneNSView: NSView {
         // points, y down, from its top left.
         let r = screenRect
         let screenTopLeft = CGPoint(x: r.minX, y: bounds.height - r.maxY)
-        let outlineShape = outline ?? CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: size.width * 0.12,
-                                             cornerHeight: size.width * 0.12, transform: nil)
+        let outlineShape = outline ?? plainOutline
         var place = CGAffineTransform(translationX: screenTopLeft.x, y: screenTopLeft.y).scaledBy(x: s, y: s)
         let placed = SimulatorPlacement(screen: CGRect(origin: screenTopLeft, size: r.size),
                                         screenPath: outlineShape.copy(using: &place) ?? outlineShape,
@@ -418,10 +437,8 @@ final class SimulatorPaneNSView: NSView {
         device.transform = CATransform3DMakeScale(s, s, 1)
         bezel.isHidden = !framed
         bezel.frame = CGRect(origin: .zero, size: d)
-        // Without a mask: a continuous corner close to a modern iPhone's.
-        let shape = outline ?? CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: size.width * 0.12,
-                                      cornerHeight: size.width * 0.12, transform: nil)
-        for (l, inset) in [(rim, 0.0), (band, 1.5), (glass, 6.0)] {
+        let shape = outline ?? plainOutline
+        for (l, inset) in isTV ? [(rim, 0.0), (band, 1.0), (glass, edge)] : [(rim, 0.0), (band, 1.5), (glass, 6.0)] {
             l.frame = CGRect(x: edge, y: edge, width: size.width, height: size.height)
             l.path = DeviceChrome.grow(shape, by: edge - inset)
         }
@@ -467,7 +484,7 @@ final class SimulatorPaneNSView: NSView {
             if name == "power" { button("lock") }
             return
         }
-        guard screenRect.contains(p) else { return }
+        guard !isTV, screenRect.contains(p) else { return } // an Apple TV has no touch screen
         touching = true
         touch("down", e)
     }
@@ -485,6 +502,7 @@ final class SimulatorPaneNSView: NSView {
     var model: AppModel?
 
     override func magnify(with e: NSEvent) {
+        guard !isTV else { return }
         switch e.phase {
         case .began:
             let p = ratio(e)
@@ -531,6 +549,16 @@ final class SimulatorPaneNSView: NSView {
             super.keyDown(with: e) // menus (Pane ▸ Home, Lock, Rotate…)
             return
         }
+        // An Apple TV: the arrows, Return, Escape and Space are its remote's
+        // buttons, sent as the remote sends them (Space as Play/Pause, not a
+        // space), held while the key is. Other keys type, for its text fields.
+        if isTV, let name = Self.remoteKeys[e.keyCode] {
+            if !e.isARepeat {
+                heldKeys.insert(e.keyCode)
+                remote(name, "down")
+            }
+            return
+        }
         // Keys without text: HID usages.
         let usages: [UInt16: UInt32] = [
             0x24: 40, 0x4C: 40, 0x35: 41, 0x33: 42, 0x30: 43, 0x75: 76,
@@ -550,6 +578,38 @@ final class SimulatorPaneNSView: NSView {
         } else if let s = e.characters, !s.isEmpty {
             host.send(["t": "text", "id": paneID, "text": s])
         }
+    }
+
+    /// The keys that are an Apple TV remote's buttons, by key code.
+    private static let remoteKeys: [UInt16: String] = [
+        0x7E: "up", 0x7D: "down", 0x7B: "left", 0x7C: "right",
+        0x24: "select", 0x4C: "select", 0x35: "menu", 0x31: "play_pause",
+    ]
+    private var heldKeys: Set<UInt16> = []
+
+    override func keyUp(with e: NSEvent) {
+        guard isTV, heldKeys.remove(e.keyCode) != nil, let name = Self.remoteKeys[e.keyCode] else {
+            super.keyUp(with: e)
+            return
+        }
+        remote(name, "up")
+    }
+
+    override func resignFirstResponder() -> Bool {
+        // A key let go elsewhere would leave its button held.
+        for code in heldKeys { if let name = Self.remoteKeys[code] { remote(name, "up") } }
+        heldKeys = []
+        return super.resignFirstResponder()
+    }
+
+    /// Half a press on an Apple TV's remote ("down" or "up"): straight to the
+    /// simulator host, or for a shared pane through the daemon to its host.
+    func remote(_ name: String, _ phase: String) {
+        if shared != nil {
+            remote("remote", ["name": name, "phase": phase])
+            return
+        }
+        host.send(["t": "remote", "id": paneID, "name": name, "phase": phase])
     }
 
     // Edit menu: through the device's pasteboard.
@@ -700,6 +760,7 @@ struct SimulatorView: NSViewRepresentable {
     let model: AppModel
     var isFocused: Bool
     var showsFrame: Bool
+    var isTV = false
     var view: SimulatorRef
     var onPlacement: ((SimulatorPlacement) -> Void)? = nil
 
@@ -709,6 +770,7 @@ struct SimulatorView: NSViewRepresentable {
         v.model = model
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
         v.showsFrame = showsFrame
+        v.isTV = isTV
         v.isFocusTarget = isFocused
         v.onPlacement = onPlacement
         view.view = v
@@ -718,6 +780,7 @@ struct SimulatorView: NSViewRepresentable {
     func updateNSView(_ v: SimulatorPaneNSView, context: Context) {
         v.isFocusTarget = isFocused
         v.showsFrame = showsFrame
+        v.isTV = isTV
         v.onPlacement = onPlacement
     }
 }
@@ -743,14 +806,16 @@ struct SimulatorPaneView: View {
     @State private var ref = SimulatorRef()
     @State private var placement: SimulatorPlacement? // where the device and its screen are, for the agent's overlay
     private var showsFrame: Bool { Prefs.shared.bool(.simulatorFrame) }
+    private var showsRemote: Bool { Prefs.shared.bool(.simulatorRemote) }
 
     private var pane: Pane? { model.panes[paneID] }
+    private var isTV: Bool { model.isAppleTV(paneID) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 PaneKindMenu(model: model, paneID: paneID) {
-                    Label(pane?.title ?? "Simulator", systemImage: "iphone").font(.callout.weight(.medium))
+                    Label(pane?.title ?? "Simulator", systemImage: isTV ? "appletv" : "iphone").font(.callout.weight(.medium))
                 }
                 if pane?.deviceBooted == false {
                     Text("Booting…").font(.caption).foregroundStyle(.secondary)
@@ -759,10 +824,16 @@ struct SimulatorPaneView: View {
                     ProgressView().controlSize(.mini).tooltip("Waiting for the simulator (the first rotation or pinch starts its XCTest runner)")
                 }
                 Spacer()
-                button("house", Keys.hint("Home", "sim_home")) { ref.view?.button("home") }
-                button("lock", Keys.hint("Lock", "sim_lock")) { ref.view?.button("lock") }
-                button("rotate.left", Keys.hint("Rotate Left", "sim_rotate_left")) { model.rotateSimulator(paneID, "left") }
-                button("rotate.right", Keys.hint("Rotate Right", "sim_rotate_right")) { model.rotateSimulator(paneID, "right") }
+                if isTV {
+                    button(showsRemote ? "appletvremote.gen4.fill" : "appletvremote.gen4", Keys.hint(showsRemote ? "Hide Remote" : "Show Remote", "sim_remote_toggle")) {
+                        Prefs.shared.toggle(.simulatorRemote)
+                    }
+                } else {
+                    button("house", Keys.hint("Home", "sim_home")) { ref.view?.button("home") }
+                    button("lock", Keys.hint("Lock", "sim_lock")) { ref.view?.button("lock") }
+                    button("rotate.left", Keys.hint("Rotate Left", "sim_rotate_left")) { model.rotateSimulator(paneID, "left") }
+                    button("rotate.right", Keys.hint("Rotate Right", "sim_rotate_right")) { model.rotateSimulator(paneID, "right") }
+                }
                 if pane?.deviceFoldable == true {
                     let open = (pane?.deviceHinge ?? 0) > 120
                     button(open ? "book.closed" : "book", Keys.hint(open ? "Close Phone" : "Open Phone", "sim_fold")) { model.toggleFold(paneID) }
@@ -770,7 +841,8 @@ struct SimulatorPaneView: View {
                 button("camera", Keys.hint("Screenshot to File", "sim_screenshot_file")) { SimulatorShot.saveToFile(model, paneID) }
                 button("doc.on.clipboard", Keys.hint("Screenshot to Clipboard", "sim_screenshot_copy")) { SimulatorShot.copyToClipboard(model, paneID) }
                 button("power", "Shut Down Simulator (closes the pane)") { model.shutDownSimulator(paneID) }
-                button(showsFrame ? "iphone.gen3" : "rectangle.portrait", showsFrame ? "Hide Device Frame" : "Show Device Frame") { Prefs.shared.toggle(.simulatorFrame) }
+                button(isTV ? (showsFrame ? "tv" : "rectangle") : (showsFrame ? "iphone.gen3" : "rectangle.portrait"),
+                       showsFrame ? "Hide Device Frame" : "Show Device Frame") { Prefs.shared.toggle(.simulatorFrame) }
                 ZoomButton(model: model, paneID: paneID)
                 PaneCloseButton(model: model, paneID: paneID)
             }
@@ -780,16 +852,36 @@ struct SimulatorPaneView: View {
             .background(isFocused ? Color.themeAccent.opacity(0.06) : Color.clear)
             .contextMenu { PaneMenuItems(model: model, paneID: paneID) }
             .paneSwapHandle(paneID, model: model)
-            SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, view: ref,
-                          onPlacement: { placement = $0 })
-                .background(Color(nsColor: .underPageBackgroundColor))
-                .overlay {
-                    if let p = placement, !p.screen.isEmpty {
-                        AgentPresenceOverlay(model: model, paneID: paneID, isSimulator: true,
-                                             screen: (p.screen, Path(p.screenPath)), device: Path(p.devicePath))
+            GeometryReader { geo in
+                // An Apple TV's remote goes beside it, or under it in a tall pane.
+                let wide = geo.size.width > geo.size.height * 1.15
+                let layout = wide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                layout {
+                    screen
+                    if isTV && showsRemote {
+                        SiriRemote { name, phase in
+                            model.viewFocused(paneID)
+                            ref.view?.remote(name, phase)
+                        }
+                        .padding(wide ? EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 24) : EdgeInsets(top: 0, leading: 20, bottom: 16, trailing: 20))
+                        .frame(maxWidth: wide ? min(150, geo.size.width * 0.22) : .infinity,
+                               maxHeight: wide ? .infinity : min(380, geo.size.height * 0.45))
                     }
                 }
+            }
+            .background(Color(nsColor: .underPageBackgroundColor))
         }
+    }
+
+    private var screen: some View {
+        SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, isTV: isTV, view: ref,
+                      onPlacement: { placement = $0 })
+            .overlay {
+                if let p = placement, !p.screen.isEmpty {
+                    AgentPresenceOverlay(model: model, paneID: paneID, isSimulator: true,
+                                         screen: (p.screen, Path(p.screenPath)), device: Path(p.devicePath))
+                }
+            }
     }
 
     private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {

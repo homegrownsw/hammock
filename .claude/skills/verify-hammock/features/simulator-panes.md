@@ -11,10 +11,11 @@ An iOS simulator in a pane, beside the code being built for it. People tap it in
 - `sim-url`: open a web page or deep link (`sim_open_url`).
 - `sim-logs`: its os_log (`sim_logs`, `hmk log sim`).
 - `sim-shutdown`: close the pane and shut it down (`sim_shutdown`).
+- `sim-remote`: an Apple TV's Siri Remote (`sim_remote`, `hmk sim remote`); touch tools refuse an Apple TV and point to it.
 
 ## How to get to it (user POV)
 
-- CLI: `hmk sim [DEVICE] [--group G]`, `hmk sim list|shot|tap|type|button|shutdown`.
+- CLI: `hmk sim [DEVICE] [--group G]`, `hmk sim list|shot|tap|type|button|remote|shutdown`.
 - MCP: `sim_*` tools.
 - Mac: File ▸ New Simulator Tab, the palette.
 
@@ -33,6 +34,7 @@ Preconditions:
 - **See it.** Wait about 10 s (Safari's first launch on a new device shows its Start Page first), then `$S/mcp.sh "$RUN" 03-shot sim_screenshot '{"pane_id":"'$P'"}'` saves `03-shot-1-0.png`. Look at it: Safari shows **verify-sim-42**. If it still shows the Start Page, wait and screenshot again.
 - **Input.** `$S/mcp.sh "$RUN" 04-home sim_press_button '{"pane_id":"'$P'","button":"home"}' sim_screenshot '{"pane_id":"'$P'"}'` prints `Pressed home`, and the screenshot shows the home screen.
 - **Logs.** `sim_logs '{"pane_id":"'$P'","last":"30s"}'` prints recent os_log lines (`… Df PosterBoard[…] …`).
+- **Apple TV** (with a tvOS runtime: create `verify-hammock-tv` the same way, from an `AppleTV-4K-…` device type, and register it in `$RUN/sim.udid` too). Open it, then `sim_remote '{"pane_id":"'$P'","press":"select"}'` on the home screen opens Settings; `{"press":"down","repeat":2}` moves focus two rows (screenshot to see), `{"press":"menu"}` goes back. `sim_tap` on it fails: `an Apple TV has no touch screen…`.
 - **Shut down.** `$S/mcp.sh "$RUN" 05-down sim_shutdown '{"pane_id":"'$P'"}'` prints `Shut the simulator down and closed its pane`. `down.sh` then deletes the device (`sim.udid`) and stops the server (`http.pid`).
 
 ## Gotchas

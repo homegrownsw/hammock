@@ -175,6 +175,9 @@ message Pane {
   // as last set (the cover screen shows when closed, the inner one open).
   bool device_foldable = 24;
   double device_hinge = 25;
+  // "iOS" or "tvOS" (an Apple TV: no touch screen, driven by its remote);
+  // empty until the simulator host has looked at the device.
+  string device_platform = 36;
   // Terminal panes: what's running besides the shell (process names), for
   // warnings before closing it.
   repeated string processes = 20;

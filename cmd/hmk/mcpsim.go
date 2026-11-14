@@ -14,7 +14,7 @@ import (
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
-// Simulator tools: agents drive iOS simulators shown in Hammock's simulator
+// Simulator tools: agents drive iOS and tvOS simulators shown in Hammock's simulator
 // panes. The picture and input go through the daemon to the simulator host;
 // app and log work runs simctl directly. Same policy as other panes: look
 // at any in your Groups, act in ones you opened, ask for the rest.
@@ -72,6 +72,15 @@ type simPinchArgs struct {
 	Y      float64 `json:"y" jsonschema:"the pinch's centre, in points"`
 	Scale  float64 `json:"scale" jsonschema:"above 1 spreads the fingers (zoom in), below 1 pinches them together (zoom out): e.g. 2 or 0.5"`
 	Ms     int     `json:"duration_ms,omitempty" jsonschema:"default 400"`
+}
+
+type simRemoteArgs struct {
+	PaneID   string `json:"pane_id" jsonschema:"the simulator pane (an Apple TV)"`
+	Press    string `json:"press,omitempty" jsonschema:"a button: up, down, left, right (the clickpad's ring), select (its centre), menu (Back), home (TV), play_pause, volume_up, volume_down, mute or siri"`
+	Repeat   int    `json:"repeat,omitempty" jsonschema:"press it this many times, 1 to 50 (default 1)"`
+	HoldMs   int    `json:"hold_ms,omitempty" jsonschema:"hold each press this long, in ms, for a long press (e.g. 1000)"`
+	Swipe    string `json:"swipe,omitempty" jsonschema:"instead of press: up, down, left or right on the touch surface, which moves focus (sent as presses, so it doesn't scrub video)"`
+	Distance string `json:"distance,omitempty" jsonschema:"how far a swipe goes: short, medium (default) or long"`
 }
 
 type simAppArgs struct {
@@ -144,7 +153,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_list_devices",
-		Description: "List this Mac's iOS simulators (name, OS, UDID, whether running).",
+		Description: "List this Mac's simulators (name, OS, UDID, platform, whether running). Platform iOS takes touches (sim_tap, sim_swipe); tvOS, an Apple TV, takes its remote (sim_remote).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listArgs) (*mcp.CallToolResult, any, error) {
 		devs, err := listSimulators(caller(ctx))
 		if err != nil {
@@ -155,7 +164,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name: "sim_open",
-		Description: "Open an iOS simulator in a pane in the user's workspace (split next to your pane, or in a new tab), booting it if needed. " +
+		Description: "Open an iPhone, iPad or Apple TV simulator in a pane in the user's workspace (split next to your pane, or in a new tab), booting it if needed. " +
 			"Returns the pane id for the other sim_ tools.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simOpenArgs) (*mcp.CallToolResult, any, error) {
 		devs, err := listSimulators(caller(ctx))
@@ -332,6 +341,29 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 			return nil, nil, err
 		}
 		return textResult("Pinched"), nil, nil
+	})
+
+	addTool(s, server, &mcp.Tool{
+		Name: "sim_remote",
+		Description: "Press an Apple TV simulator's Siri Remote: a button (press, with repeat and hold_ms), or a swipe on its touch surface. " +
+			"An Apple TV has no touch screen: move focus with up/down/left/right, then select. Take a screenshot after to see where focus is.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simRemoteArgs) (*mcp.CallToolResult, any, error) {
+		what := "press " + a.Press
+		if a.Swipe != "" {
+			what = "swipe " + a.Swipe
+		}
+		if _, err := s.simPane(ctx, a.PaneID, true, what+" on the remote"); err != nil {
+			return nil, nil, err
+		}
+		args := map[string]any{"name": a.Press, "repeat": a.Repeat, "holdms": a.HoldMs, "swipe": a.Swipe, "distance": a.Distance}
+		if _, err := s.sim(ctx, a.PaneID, "remote", args); err != nil {
+			return nil, nil, err
+		}
+		done := "Pressed " + a.Press
+		if a.Swipe != "" {
+			done = "Swiped " + a.Swipe
+		}
+		return textResult(done), nil, nil
 	})
 
 	addTool(s, server, &mcp.Tool{

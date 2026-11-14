@@ -722,6 +722,13 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
     set {_uniqueStorage()._deviceHinge = newValue}
   }
 
+  /// "iOS" or "tvOS" (an Apple TV: no touch screen, driven by its remote);
+  /// empty until the simulator host has looked at the device.
+  public var devicePlatform: String {
+    get {_storage._devicePlatform}
+    set {_uniqueStorage()._devicePlatform = newValue}
+  }
+
   /// Terminal panes: what's running besides the shell (process names), for
   /// warnings before closing it.
   public var processes: [String] {
@@ -11203,7 +11210,7 @@ nonisolated extension Hammock_V1_Split.Direction: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pane"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -11229,6 +11236,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _deviceMask: String = String()
     var _deviceFoldable: Bool = false
     var _deviceHinge: Double = 0
+    var _devicePlatform: String = String()
     var _processes: [String] = []
     var _program: [String] = []
     var _log: Hammock_V1_LogSource? = nil
@@ -11274,6 +11282,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _deviceMask = source._deviceMask
       _deviceFoldable = source._deviceFoldable
       _deviceHinge = source._deviceHinge
+      _devicePlatform = source._devicePlatform
       _processes = source._processes
       _program = source._program
       _log = source._log
@@ -11339,6 +11348,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 33: try { try decoder.decodeSingularBoolField(value: &_storage._interrupted) }()
         case 34: try { try decoder.decodeSingularBoolField(value: &_storage._agentHeld) }()
         case 35: try { try decoder.decodeSingularBoolField(value: &_storage._asleep) }()
+        case 36: try { try decoder.decodeSingularStringField(value: &_storage._devicePlatform) }()
         default: break
         }
       }
@@ -11456,6 +11466,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       if _storage._asleep != false {
         try visitor.visitSingularBoolField(value: _storage._asleep, fieldNumber: 35)
       }
+      if !_storage._devicePlatform.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._devicePlatform, fieldNumber: 36)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -11488,6 +11501,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._deviceMask != rhs_storage._deviceMask {return false}
         if _storage._deviceFoldable != rhs_storage._deviceFoldable {return false}
         if _storage._deviceHinge != rhs_storage._deviceHinge {return false}
+        if _storage._devicePlatform != rhs_storage._devicePlatform {return false}
         if _storage._processes != rhs_storage._processes {return false}
         if _storage._program != rhs_storage._program {return false}
         if _storage._log != rhs_storage._log {return false}

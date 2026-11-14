@@ -13,6 +13,7 @@ package daemon
 // they may still look.
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -275,6 +276,12 @@ func simulatorAction(op string, args simArgs, size [2]float64) *pb.AgentAction {
 		a.Kind = "key"
 	case "button":
 		a.Kind, a.Label = "key", args.Name
+	case "remote":
+		// An Apple TV's remote: its button, or a swipe's direction.
+		if args.Phase == "up" {
+			return nil
+		}
+		a.Kind, a.Label = "key", cmp.Or(args.Name, args.Swipe)
 	case "screenshot", "copy":
 		a.Kind = "look"
 	case "rotate", "fold":
