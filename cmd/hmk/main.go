@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -187,6 +188,10 @@ Usage:
   hmk hooks install --uninstall            remove them again
   hmk mcp                                  run the MCP server on stdio
   hmk tui                                  full-screen UI with mouse support (Ctrl-B prefix, Ctrl-B ? for keys)
+  hmk report STATE [MESSAGE] [--progress N] [--id ID] [--title T] [--app NAME] [--kind KIND]
+                                            tell the terminal what this script is doing (OSC 7501): idle,
+                                            working, done, blocked (on you: --kind permission|question|auth),
+                                            error, or clear; Hammock shows it on the pane and in Needs You
   hmk stop [--panes] | start | restart     stop or start the daemon (panes keep running unless --panes, which
                                             ends them too; an open Hammock app starts the daemon again)
   hmk status [--json]                      whether the daemon is running, and its Groups, remote access
@@ -245,6 +250,8 @@ func main() {
 		err = runRestart()
 	case "status":
 		err = runStatus(args[1:])
+	case "report":
+		err = runReport(args[1:])
 	case "service":
 		err = runService(args[1:])
 	default:
@@ -1252,7 +1259,14 @@ func printWorld(w *world) {
 					}
 				}
 				if a := p.Agent; a != nil {
-					status += fmt.Sprintf("  [%s %s]", a.Harness, stateNames[a.State])
+					// A program reporting its status (OSC 7501) goes by
+					// its own name for itself.
+					who := cmp.Or(a.Harness, a.Title, a.App, "program")
+					status += fmt.Sprintf("  [%s %s", who, stateNames[a.State])
+					if a.Progress != nil {
+						status += fmt.Sprintf(" %d%%", *a.Progress)
+					}
+					status += "]"
 					if a.Summary != "" {
 						status += " " + a.Summary
 					}

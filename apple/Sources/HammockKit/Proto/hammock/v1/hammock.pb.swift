@@ -835,49 +835,168 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
-public nonisolated struct Hammock_V1_Agent: Sendable {
+public nonisolated struct Hammock_V1_Agent: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   /// "claude", "codex", or a detected process name
-  public var harness: String = String()
+  public var harness: String {
+    get {_storage._harness}
+    set {_uniqueStorage()._harness = newValue}
+  }
 
   /// vendor session id, when known
-  public var sessionID: String = String()
+  public var sessionID: String {
+    get {_storage._sessionID}
+    set {_uniqueStorage()._sessionID = newValue}
+  }
 
-  public var state: Hammock_V1_AgentState = .unspecified
+  public var state: Hammock_V1_AgentState {
+    get {_storage._state}
+    set {_uniqueStorage()._state = newValue}
+  }
 
-  public var stateSinceUnixMs: Int64 = 0
+  public var stateSinceUnixMs: Int64 {
+    get {_storage._stateSinceUnixMs}
+    set {_uniqueStorage()._stateSinceUnixMs = newValue}
+  }
 
   /// short description of what it's doing / asking
-  public var summary: String = String()
+  public var summary: String {
+    get {_storage._summary}
+    set {_uniqueStorage()._summary = newValue}
+  }
 
   /// detected from process + screen, not hooks
-  public var heuristic: Bool = false
+  public var heuristic: Bool {
+    get {_storage._heuristic}
+    set {_uniqueStorage()._heuristic = newValue}
+  }
 
   /// native session file, when the harness reports it (Claude hooks do)
-  public var transcriptPath: String = String()
+  public var transcriptPath: String {
+    get {_storage._transcriptPath}
+    set {_uniqueStorage()._transcriptPath = newValue}
+  }
 
   /// the user has looked at the pane since this state began (clears "finished")
-  public var seen: Bool = false
+  public var seen: Bool {
+    get {_storage._seen}
+    set {_uniqueStorage()._seen = newValue}
+  }
 
   /// shells the agent has running (its commands, ! commands, background tasks)
-  public var shells: Int32 = 0
+  public var shells: Int32 {
+    get {_storage._shells}
+    set {_uniqueStorage()._shells = newValue}
+  }
 
   /// one started after it went idle: a command you ran with ! (show it as at work)
-  public var runningCommand: Bool = false
+  public var runningCommand: Bool {
+    get {_storage._runningCommand}
+    set {_uniqueStorage()._runningCommand = newValue}
+  }
 
   /// its subagents still running (background ones go on after its turn)
-  public var subagents: Int32 = 0
+  public var subagents: Int32 {
+    get {_storage._subagents}
+    set {_uniqueStorage()._subagents = newValue}
+  }
 
   /// Where the session can be opened in a browser, when its harness has one
   /// (Claude Code's Remote Control: https://claude.ai/code/session_…).
-  public var sessionURL: String = String()
+  public var sessionURL: String {
+    get {_storage._sessionURL}
+    set {_uniqueStorage()._sessionURL = newValue}
+  }
+
+  /// Its state comes from the program's own reports (the Program Status
+  /// Protocol, OSC 7501: programstatus.go), not hooks or its screen: set for
+  /// an agent that reports so, and for any other program that does (brew, a
+  /// deploy script), which has no harness. Hooks, where an agent has them,
+  /// win over reports.
+  public var reported: Bool {
+    get {_storage._reported}
+    set {_uniqueStorage()._reported = newValue}
+  }
+
+  /// the reporting program's own name for itself ("brew", "terraform"), untrusted
+  public var app: String {
+    get {_storage._app}
+    set {_uniqueStorage()._app = newValue}
+  }
+
+  /// its label for itself, untrusted: a program without a harness goes by it, else app
+  public var title: String {
+    get {_storage._title}
+    set {_uniqueStorage()._title = newValue}
+  }
+
+  /// How far along it is, 0–100, while working or waiting on you; unset when
+  /// it hasn't said (indeterminate).
+  public var progress: Int32 {
+    get {_storage._progress ?? 0}
+    set {_uniqueStorage()._progress = newValue}
+  }
+  /// Returns true if `progress` has been explicitly set.
+  public var hasProgress: Bool {_storage._progress != nil}
+  /// Clears the value of `progress`. Subsequent reads from it will return its default value.
+  public mutating func clearProgress() {_uniqueStorage()._progress = nil}
+
+  /// Everything it reported (the state above is the one that most needs
+  /// you), root ("") first.
+  public var records: [Hammock_V1_ProgramStatus] {
+    get {_storage._records}
+    set {_uniqueStorage()._records = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// One program status record (OSC 7501): the last report for its id.
+public nonisolated struct Hammock_V1_ProgramStatus: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "" the root; "/" nests ("build/test")
+  public var id: String = String()
+
+  /// idle, working, done, blocked, error
+  public var state: String = String()
+
+  /// blocked: permission, question, auth or ""
+  public var kind: String = String()
+
+  public var progress: Int32 {
+    get {_progress ?? 0}
+    set {_progress = newValue}
+  }
+  /// Returns true if `progress` has been explicitly set.
+  public var hasProgress: Bool {self._progress != nil}
+  /// Clears the value of `progress`. Subsequent reads from it will return its default value.
+  public mutating func clearProgress() {self._progress = nil}
+
+  /// its own, else its nearest ancestor's
+  public var app: String = String()
+
+  public var title: String = String()
+
+  public var message: String = String()
+
+  /// done or error, and you've looked since
+  public var seen: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _progress: Int32? = nil
 }
 
 public nonisolated struct Hammock_V1_AttentionItem: Sendable {
@@ -897,6 +1016,10 @@ public nonisolated struct Hammock_V1_AttentionItem: Sendable {
 
   /// the agent asked you something: answer it, there's nothing to allow
   public var question: Bool = false
+
+  /// A program that isn't an agent, reporting its own status (OSC 7501):
+  /// its notifications have their own settings (notify-program-*).
+  public var program: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -11275,7 +11398,189 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
 
 nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Agent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{3}session_id\0\u{1}state\0\u{3}state_since_unix_ms\0\u{1}summary\0\u{1}heuristic\0\u{3}transcript_path\0\u{1}seen\0\u{1}shells\0\u{3}running_command\0\u{1}subagents\0\u{3}session_url\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{3}session_id\0\u{1}state\0\u{3}state_since_unix_ms\0\u{1}summary\0\u{1}heuristic\0\u{3}transcript_path\0\u{1}seen\0\u{1}shells\0\u{3}running_command\0\u{1}subagents\0\u{3}session_url\0\u{1}reported\0\u{1}app\0\u{1}title\0\u{1}progress\0\u{1}records\0")
+
+  fileprivate class _StorageClass {
+    var _harness: String = String()
+    var _sessionID: String = String()
+    var _state: Hammock_V1_AgentState = .unspecified
+    var _stateSinceUnixMs: Int64 = 0
+    var _summary: String = String()
+    var _heuristic: Bool = false
+    var _transcriptPath: String = String()
+    var _seen: Bool = false
+    var _shells: Int32 = 0
+    var _runningCommand: Bool = false
+    var _subagents: Int32 = 0
+    var _sessionURL: String = String()
+    var _reported: Bool = false
+    var _app: String = String()
+    var _title: String = String()
+    var _progress: Int32? = nil
+    var _records: [Hammock_V1_ProgramStatus] = []
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _harness = source._harness
+      _sessionID = source._sessionID
+      _state = source._state
+      _stateSinceUnixMs = source._stateSinceUnixMs
+      _summary = source._summary
+      _heuristic = source._heuristic
+      _transcriptPath = source._transcriptPath
+      _seen = source._seen
+      _shells = source._shells
+      _runningCommand = source._runningCommand
+      _subagents = source._subagents
+      _sessionURL = source._sessionURL
+      _reported = source._reported
+      _app = source._app
+      _title = source._title
+      _progress = source._progress
+      _records = source._records
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._harness) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._sessionID) }()
+        case 3: try { try decoder.decodeSingularEnumField(value: &_storage._state) }()
+        case 4: try { try decoder.decodeSingularInt64Field(value: &_storage._stateSinceUnixMs) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._summary) }()
+        case 6: try { try decoder.decodeSingularBoolField(value: &_storage._heuristic) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._transcriptPath) }()
+        case 8: try { try decoder.decodeSingularBoolField(value: &_storage._seen) }()
+        case 9: try { try decoder.decodeSingularInt32Field(value: &_storage._shells) }()
+        case 10: try { try decoder.decodeSingularBoolField(value: &_storage._runningCommand) }()
+        case 11: try { try decoder.decodeSingularInt32Field(value: &_storage._subagents) }()
+        case 12: try { try decoder.decodeSingularStringField(value: &_storage._sessionURL) }()
+        case 13: try { try decoder.decodeSingularBoolField(value: &_storage._reported) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._app) }()
+        case 15: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        case 16: try { try decoder.decodeSingularInt32Field(value: &_storage._progress) }()
+        case 17: try { try decoder.decodeRepeatedMessageField(value: &_storage._records) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._harness.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._harness, fieldNumber: 1)
+      }
+      if !_storage._sessionID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sessionID, fieldNumber: 2)
+      }
+      if _storage._state != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._state, fieldNumber: 3)
+      }
+      if _storage._stateSinceUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._stateSinceUnixMs, fieldNumber: 4)
+      }
+      if !_storage._summary.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._summary, fieldNumber: 5)
+      }
+      if _storage._heuristic != false {
+        try visitor.visitSingularBoolField(value: _storage._heuristic, fieldNumber: 6)
+      }
+      if !_storage._transcriptPath.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._transcriptPath, fieldNumber: 7)
+      }
+      if _storage._seen != false {
+        try visitor.visitSingularBoolField(value: _storage._seen, fieldNumber: 8)
+      }
+      if _storage._shells != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._shells, fieldNumber: 9)
+      }
+      if _storage._runningCommand != false {
+        try visitor.visitSingularBoolField(value: _storage._runningCommand, fieldNumber: 10)
+      }
+      if _storage._subagents != 0 {
+        try visitor.visitSingularInt32Field(value: _storage._subagents, fieldNumber: 11)
+      }
+      if !_storage._sessionURL.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._sessionURL, fieldNumber: 12)
+      }
+      if _storage._reported != false {
+        try visitor.visitSingularBoolField(value: _storage._reported, fieldNumber: 13)
+      }
+      if !_storage._app.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._app, fieldNumber: 14)
+      }
+      if !_storage._title.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 15)
+      }
+      try { if let v = _storage._progress {
+        try visitor.visitSingularInt32Field(value: v, fieldNumber: 16)
+      } }()
+      if !_storage._records.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._records, fieldNumber: 17)
+      }
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_Agent, rhs: Hammock_V1_Agent) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._harness != rhs_storage._harness {return false}
+        if _storage._sessionID != rhs_storage._sessionID {return false}
+        if _storage._state != rhs_storage._state {return false}
+        if _storage._stateSinceUnixMs != rhs_storage._stateSinceUnixMs {return false}
+        if _storage._summary != rhs_storage._summary {return false}
+        if _storage._heuristic != rhs_storage._heuristic {return false}
+        if _storage._transcriptPath != rhs_storage._transcriptPath {return false}
+        if _storage._seen != rhs_storage._seen {return false}
+        if _storage._shells != rhs_storage._shells {return false}
+        if _storage._runningCommand != rhs_storage._runningCommand {return false}
+        if _storage._subagents != rhs_storage._subagents {return false}
+        if _storage._sessionURL != rhs_storage._sessionURL {return false}
+        if _storage._reported != rhs_storage._reported {return false}
+        if _storage._app != rhs_storage._app {return false}
+        if _storage._title != rhs_storage._title {return false}
+        if _storage._progress != rhs_storage._progress {return false}
+        if _storage._records != rhs_storage._records {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ProgramStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ProgramStatus"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}state\0\u{1}kind\0\u{1}progress\0\u{1}app\0\u{1}title\0\u{1}message\0\u{1}seen\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -11283,76 +11588,60 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
       // allocates stack space for every case branch when no optimizations are
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.harness) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
-      case 3: try { try decoder.decodeSingularEnumField(value: &self.state) }()
-      case 4: try { try decoder.decodeSingularInt64Field(value: &self.stateSinceUnixMs) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.summary) }()
-      case 6: try { try decoder.decodeSingularBoolField(value: &self.heuristic) }()
-      case 7: try { try decoder.decodeSingularStringField(value: &self.transcriptPath) }()
+      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.kind) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self._progress) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.app) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.title) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.message) }()
       case 8: try { try decoder.decodeSingularBoolField(value: &self.seen) }()
-      case 9: try { try decoder.decodeSingularInt32Field(value: &self.shells) }()
-      case 10: try { try decoder.decodeSingularBoolField(value: &self.runningCommand) }()
-      case 11: try { try decoder.decodeSingularInt32Field(value: &self.subagents) }()
-      case 12: try { try decoder.decodeSingularStringField(value: &self.sessionURL) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.harness.isEmpty {
-      try visitor.visitSingularStringField(value: self.harness, fieldNumber: 1)
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.id.isEmpty {
+      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
     }
-    if !self.sessionID.isEmpty {
-      try visitor.visitSingularStringField(value: self.sessionID, fieldNumber: 2)
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 2)
     }
-    if self.state != .unspecified {
-      try visitor.visitSingularEnumField(value: self.state, fieldNumber: 3)
+    if !self.kind.isEmpty {
+      try visitor.visitSingularStringField(value: self.kind, fieldNumber: 3)
     }
-    if self.stateSinceUnixMs != 0 {
-      try visitor.visitSingularInt64Field(value: self.stateSinceUnixMs, fieldNumber: 4)
+    try { if let v = self._progress {
+      try visitor.visitSingularInt32Field(value: v, fieldNumber: 4)
+    } }()
+    if !self.app.isEmpty {
+      try visitor.visitSingularStringField(value: self.app, fieldNumber: 5)
     }
-    if !self.summary.isEmpty {
-      try visitor.visitSingularStringField(value: self.summary, fieldNumber: 5)
+    if !self.title.isEmpty {
+      try visitor.visitSingularStringField(value: self.title, fieldNumber: 6)
     }
-    if self.heuristic != false {
-      try visitor.visitSingularBoolField(value: self.heuristic, fieldNumber: 6)
-    }
-    if !self.transcriptPath.isEmpty {
-      try visitor.visitSingularStringField(value: self.transcriptPath, fieldNumber: 7)
+    if !self.message.isEmpty {
+      try visitor.visitSingularStringField(value: self.message, fieldNumber: 7)
     }
     if self.seen != false {
       try visitor.visitSingularBoolField(value: self.seen, fieldNumber: 8)
     }
-    if self.shells != 0 {
-      try visitor.visitSingularInt32Field(value: self.shells, fieldNumber: 9)
-    }
-    if self.runningCommand != false {
-      try visitor.visitSingularBoolField(value: self.runningCommand, fieldNumber: 10)
-    }
-    if self.subagents != 0 {
-      try visitor.visitSingularInt32Field(value: self.subagents, fieldNumber: 11)
-    }
-    if !self.sessionURL.isEmpty {
-      try visitor.visitSingularStringField(value: self.sessionURL, fieldNumber: 12)
-    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  public static func ==(lhs: Hammock_V1_Agent, rhs: Hammock_V1_Agent) -> Bool {
-    if lhs.harness != rhs.harness {return false}
-    if lhs.sessionID != rhs.sessionID {return false}
+  public static func ==(lhs: Hammock_V1_ProgramStatus, rhs: Hammock_V1_ProgramStatus) -> Bool {
+    if lhs.id != rhs.id {return false}
     if lhs.state != rhs.state {return false}
-    if lhs.stateSinceUnixMs != rhs.stateSinceUnixMs {return false}
-    if lhs.summary != rhs.summary {return false}
-    if lhs.heuristic != rhs.heuristic {return false}
-    if lhs.transcriptPath != rhs.transcriptPath {return false}
+    if lhs.kind != rhs.kind {return false}
+    if lhs._progress != rhs._progress {return false}
+    if lhs.app != rhs.app {return false}
+    if lhs.title != rhs.title {return false}
+    if lhs.message != rhs.message {return false}
     if lhs.seen != rhs.seen {return false}
-    if lhs.shells != rhs.shells {return false}
-    if lhs.runningCommand != rhs.runningCommand {return false}
-    if lhs.subagents != rhs.subagents {return false}
-    if lhs.sessionURL != rhs.sessionURL {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -11360,7 +11649,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
 
 nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AttentionItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}pane_id\0\u{1}state\0\u{1}summary\0\u{3}created_unix_ms\0\u{1}question\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}pane_id\0\u{1}state\0\u{1}summary\0\u{3}created_unix_ms\0\u{1}question\0\u{1}program\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -11374,6 +11663,7 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
       case 4: try { try decoder.decodeSingularStringField(value: &self.summary) }()
       case 5: try { try decoder.decodeSingularInt64Field(value: &self.createdUnixMs) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.question) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.program) }()
       default: break
       }
     }
@@ -11398,6 +11688,9 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
     if self.question != false {
       try visitor.visitSingularBoolField(value: self.question, fieldNumber: 6)
     }
+    if self.program != false {
+      try visitor.visitSingularBoolField(value: self.program, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -11408,6 +11701,7 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
     if lhs.summary != rhs.summary {return false}
     if lhs.createdUnixMs != rhs.createdUnixMs {return false}
     if lhs.question != rhs.question {return false}
+    if lhs.program != rhs.program {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

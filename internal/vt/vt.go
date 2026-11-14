@@ -47,6 +47,11 @@ type Mirror interface {
 	// are answered truthfully; programs that asked (mode 2031) are told when
 	// the scheme flips.
 	SetColors(c Colors)
+	// SetStatusHandler routes program status reports (OSC 7501) to report,
+	// and the shell starting a new prompt (OSC 133 A) to prompt, both called
+	// during Write. Support is only answered to a program that asks while a
+	// handler is set: set it once any replayed output has been written.
+	SetStatusHandler(report func(StatusReport), prompt func())
 	// Close releases resources.
 	Close()
 }

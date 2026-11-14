@@ -108,14 +108,26 @@ type pane struct {
 	waking    bool
 	wakeQueue [][]byte
 	awake     chan struct{}
+
+	// What its programs report of themselves (OSC 7501, programstatus.go):
+	// the records, the reports and prompts its mirror's last Write passed
+	// on, whether the shell was in front at the last poll, and the last
+	// Needs You raised from them, with one held back until statusGap.
+	status       vt.StatusRecords
+	statusQueue  []statusEvent
+	shellFront   bool
+	statusRaised time.Time
+	statusTimer  *time.Timer
 }
 
 func newPane(d *Daemon, info *pb.Pane) *pane {
-	return &pane{
+	p := &pane{
 		d: d, id: info.Id, info: info,
 		socket:   filepath.Join(d.cfg.Dir, "run", "panes", info.Id+".sock"),
 		attached: map[*conn]struct{}{}, sizes: map[*conn][2]uint32{},
 	}
+	p.restoreStatus()
+	return p
 }
 
 func (p *pane) snapshotInfo() *pb.Pane {
@@ -581,6 +593,7 @@ func (p *pane) linkLocked(hc *holder.Client) int {
 	}()
 	if p.mirror != nil {
 		p.mirror.SetResponder(func(b []byte) { p.postLocked(func(hc *holder.Client) { _ = hc.Input(b) }) })
+		p.watchStatusLocked() // after any replay: old reports aren't news
 	}
 	p.gen++
 	return p.gen
@@ -678,6 +691,7 @@ func (p *pane) read(hc *holder.Client, gen int) {
 			p.outOffset += uint64(len(shown))
 		}
 		changed := false
+		status := p.takeStatusLocked()
 		if p.osc.Changed {
 			p.osc.Changed = false
 			if p.osc.Title != "" && p.osc.Title != p.info.Title {
@@ -691,9 +705,14 @@ func (p *pane) read(hc *holder.Client, gen int) {
 			}
 		}
 		p.mu.Unlock()
-		if changed {
+		if changed || len(status) > 0 {
 			p.d.mu.Lock()
-			p.d.paneChangedIfLive(p)
+			if changed {
+				p.d.paneChangedIfLive(p)
+			}
+			if len(status) > 0 && p.d.panes[p.id] == p {
+				p.d.applyStatus(p, status)
+			}
 			p.d.mu.Unlock()
 		}
 	}

@@ -146,14 +146,14 @@ func justSwitched(a *pb.Agent) bool {
 func (d *Daemon) detectAgents() {
 	for _, p := range d.panes {
 		p.mu.Lock()
-		pid, exited, hookAt := p.pid, p.info.Exited, p.hookAt
+		pid, exited, hookAt, reported := p.pid, p.info.Exited, p.hookAt, p.info.Agent.GetReported()
 		var screen string
-		if p.mirror != nil {
+		if p.mirror != nil && !reported {
 			screen = p.mirror.Text(false)
 		}
 		p.mu.Unlock()
-		if exited || pid == 0 {
-			continue
+		if exited || pid == 0 || reported {
+			continue // (what a program reports beats reading its screen)
 		}
 		if time.Since(hookAt) < hookFreshness {
 			d.screenAsks(p, screen)

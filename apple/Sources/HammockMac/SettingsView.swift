@@ -295,6 +295,14 @@ struct NotificationSettings: View {
                 Toggle("Replies to my review comments", isOn: prefs.boolBinding(NotifyPrefs.reviewReplies))
                     .settingAnchor("notify.reviewReplies")
             }
+            Section("Notify me when another program") {
+                Toggle("Is waiting for my input", isOn: prefs.boolBinding(NotifyPrefs.programNeedsInput))
+                    .settingAnchor("notify.program.input")
+                Toggle("Finishes", isOn: prefs.boolBinding(NotifyPrefs.programFinished))
+                    .settingAnchor("notify.program.finished")
+                Toggle("Hits an error", isOn: prefs.boolBinding(NotifyPrefs.programErrored))
+                    .settingAnchor("notify.program.errored")
+            }
             Section("How to notify me") {
                 Picker("Show notifications", selection: Binding(get: { style }, set: { prefs.set(NotifyPrefs.style, $0.rawValue) })) {
                     Text("In Hammock when it's in front, otherwise macOS").tag(NotifyStyle.auto)
@@ -441,7 +449,7 @@ struct AppearanceSettings: View {
                     GroupHeadingsPicture(subtle: config.groupHeadings == .subtle, icons: config.groupIcons)
                 }
                 .settingAnchor("appearance.groupicons")
-                PicturePicker(label: "Agent status", options: [(AppConfig.TabStatus.icon, "In the tab's icon"), (.trailing, "At the end of the row")],
+                PicturePicker(label: "Agent and program status", options: [(AppConfig.TabStatus.icon, "In the tab's icon"), (.trailing, "At the end of the row")],
                               selection: Binding(get: { config.tabStatus }, set: { config.setTabStatus($0) })) { s in
                     CurrentMiniWindow { $0.tabStatus = s; if $0.layout == .horizontal { $0.layout = .vertical } }
                 }

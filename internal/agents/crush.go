@@ -47,9 +47,9 @@ import (
 //
 // Its hooks (crush.json "hooks") have one event, PreToolUse: with no event
 // for a turn ending or a permission prompt, Hammock would think it worked
-// forever, so it reads Crush's screen instead (Hooks false). It reports
-// its state to herdr over herdr's own socket, and to terminals with the
-// Program Status Protocol (OSC 7501), neither of which Hammock reads yet.
+// forever, so it reads Crush's screen instead (Hooks false). It also reports
+// its state to terminals with the Program Status Protocol (OSC 7501), which
+// Hammock follows over its screen while it does (programstatus.go).
 //
 // `crush --session <id>` (-s) resumes a session of the folder it's run in;
 // `crush --continue` (-C) the latest. It takes no first message when

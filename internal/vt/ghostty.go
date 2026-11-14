@@ -106,6 +106,41 @@ var _ = func() error {
 // only party that answers queries; clients must not.
 func (m *ghosttyMirror) SetResponder(fn func([]byte)) { m.resp = fn }
 
+func (m *ghosttyMirror) SetStatusHandler(report func(StatusReport), prompt func()) {
+	if report == nil {
+		m.t.SetEffectProgramStatus(nil)
+	} else {
+		m.t.SetEffectProgramStatus(func(_ *libghostty.Terminal, s libghostty.ProgramStatus) {
+			st, ok := ghosttyStates[s.State]
+			if !ok {
+				return // a state from a later revision
+			}
+			report(StatusReport{State: st, Kind: ghosttyKinds[s.Kind], Progress: int(s.Progress),
+				ID: s.ID, App: s.App, Title: s.Title, Message: s.Message})
+		})
+	}
+	if prompt == nil {
+		m.t.SetEffectSemanticPrompt(nil)
+	} else {
+		m.t.SetEffectSemanticPrompt(func(_ *libghostty.Terminal, e libghostty.TerminalSemanticPrompt) {
+			if e.Kind == libghostty.SemanticPromptStart && e.PromptKind == libghostty.PromptPrimary {
+				prompt()
+			}
+		})
+	}
+}
+
+var ghosttyStates = map[libghostty.ProgramStatusState]StatusState{
+	libghostty.ProgramStatusStateIdle: StatusIdle, libghostty.ProgramStatusStateWorking: StatusWorking,
+	libghostty.ProgramStatusStateDone: StatusDone, libghostty.ProgramStatusStateBlocked: StatusBlocked,
+	libghostty.ProgramStatusStateError: StatusError, libghostty.ProgramStatusStateClear: StatusClear,
+}
+
+var ghosttyKinds = map[libghostty.ProgramStatusKind]string{
+	libghostty.ProgramStatusKindPermission: "permission", libghostty.ProgramStatusKindQuestion: "question",
+	libghostty.ProgramStatusKindAuth: "auth",
+}
+
 func (m *ghosttyMirror) Snapshot() []byte {
 	f, err := libghostty.NewFormatter(m.t,
 		libghostty.WithFormatterFormat(libghostty.FormatterFormatVT),

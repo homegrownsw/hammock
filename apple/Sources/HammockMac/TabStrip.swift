@@ -173,7 +173,7 @@ struct TabStrip: View {
                     Favicon(url: page.faviconURL, size: 14)
                 } else {
                     StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), size: 14,
-                               program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab))
+                               program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
                 }
                 Text(model.title(of: tab))
                     .font(.system(size: 12, weight: selected ? .medium : .regular))

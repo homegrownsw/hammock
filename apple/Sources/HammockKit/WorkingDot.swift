@@ -11,11 +11,15 @@ import UIKit
 public struct WorkingDot: View {
     var size: CGFloat
     var starting: Bool
+    /// How far along it is, 0–100, when the program says (OSC 7501): the
+    /// arc then fills the ring that far instead of going round.
+    var progress: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(size: CGFloat = 15, starting: Bool = false) {
+    public init(size: CGFloat = 15, starting: Bool = false, progress: Int? = nil) {
         self.size = size
         self.starting = starting
+        self.progress = progress
     }
 
     public var body: some View {
@@ -24,6 +28,13 @@ public struct WorkingDot: View {
         let period = starting ? 4.8 : 2.4
         ZStack {
             Circle().stroke(StatusPalette.track, lineWidth: line)
+            if let progress {
+                Circle()
+                    .trim(from: 0, to: max(0.02, min(1, Double(progress) / 100)))
+                    .stroke(StatusPalette.indigo, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: progress)
+            } else {
             TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
                 let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
                 Circle()
@@ -32,10 +43,11 @@ public struct WorkingDot: View {
                     .rotationEffect(.degrees(t * 360 - 90))
                     .opacity(starting ? 0.55 : 1)
             }
+            }
         }
         .frame(width: 14.5 * k, height: 14.5 * k)
         .frame(width: size, height: size)
         .accessibilityElement()
-        .accessibilityLabel(starting ? "Starting" : "Working")
+        .accessibilityLabel(starting ? "Starting" : progress.map { "Working, \($0)%" } ?? "Working")
     }
 }

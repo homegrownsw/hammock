@@ -33,7 +33,10 @@ final class Push: NSObject {
     /// notifications aren't shown while it is.
     var visiblePane: (host: String, pane: String)?
 
-    static let events = [("join", "Someone asks to join"), ("needs_input", "An agent needs you"), ("finished", "An agent finishes"), ("errored", "An agent hits an error")]
+    static let events = [("join", "Someone asks to join"), ("needs_input", "An agent needs you"), ("finished", "An agent finishes"), ("errored", "An agent hits an error"),
+                         // Other programs reporting what they're doing (OSC 7501: brew, your scripts).
+                         ("program_needs_input", "Another program needs you"), ("program_finished", "Another program finishes"),
+                         ("program_errored", "Another program hits an error")]
     static func prefKey(_ event: String) -> String { "push." + event }
 
     private var token: String? { UserDefaults.standard.string(forKey: "push.token") }

@@ -54,6 +54,8 @@ func (m *rawMirror) SetCellSize(int, int) {}
 func (m *rawMirror) Close() {}
 
 func (m *rawMirror) SetResponder(fn func([]byte)) {}
-func (m *rawMirror) SetColors(Colors)             {}
+
+func (m *rawMirror) SetStatusHandler(func(StatusReport), func()) {}
+func (m *rawMirror) SetColors(Colors)                            {}
 
 func (m *rawMirror) BottomText(n int) string { return "" }

@@ -316,6 +316,11 @@ func attentionPush(item *pb.AttentionItem) (event, body string) {
 	case pb.AgentState_AGENT_STATE_ERRORED:
 		event, body = "errored", cmpOr(body, "Hit an error")
 	}
+	// Another program reporting its status (programstatus.go): phones ask
+	// for these on their own (an older phone doesn't know them).
+	if item.Program && event != "" {
+		event = "program_" + event
+	}
 	return event, body
 }
 

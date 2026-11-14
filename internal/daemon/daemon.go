@@ -1096,7 +1096,9 @@ func (d *Daemon) focusPane(id string) {
 		u.Groups = append(u.Groups, proto.CloneOf(s))
 	}
 	// Looking at a finished agent acknowledges it: the checkmark and its
-	// "finished" item in Needs You go away.
+	// "finished" item in Needs You go away. So does looking at what a
+	// program reported it finished, or failed at.
+	d.statusSeen(p)
 	p.mu.Lock()
 	a := p.info.Agent
 	ack := a != nil && !a.Seen && a.State == pb.AgentState_AGENT_STATE_IDLE
@@ -1206,6 +1208,7 @@ func (d *Daemon) pollCwds() {
 			if c, r, g, s := p.refreshCwd(), p.refreshProcesses(), p.refreshProgram(), p.refreshSubagents(); c || r || g || s {
 				d.paneChanged(p)
 			}
+			d.pollStatus(p)
 		}
 		d.detectAgents()
 		d.refreshTabNames()

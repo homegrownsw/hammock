@@ -11,8 +11,23 @@ extension Hammock_V1_Pane {
     public var displayName: String {
         if kind == .editor { return editor.name.isEmpty ? "Untitled" : editor.name }
         if hasAgent, !agent.harness.isEmpty { return agent.harness }
+        // A program reporting its status (OSC 7501): its label for itself,
+        // else its own name, else what's running.
+        if isReportingProgram, let name = [agent.title, agent.app, program.first ?? ""].first(where: { !$0.isEmpty }) {
+            return name
+        }
         return title.isEmpty ? (command.first.map { ($0 as NSString).lastPathComponent } ?? "shell") : title
     }
+
+    /// How far along its agent (or program) is, 0–100, while working or
+    /// waiting on you, when it says (OSC 7501).
+    public var agentProgress: Int? {
+        hasAgent && agent.hasProgress && [.working, .needsInput].contains(agent.state) ? Int(agent.progress) : nil
+    }
+
+    /// Its "agent" is another program (brew, a deploy script) reporting what
+    /// it's doing with the Program Status Protocol (OSC 7501), not an agent.
+    public var isReportingProgram: Bool { hasAgent && agent.reported && agent.harness.isEmpty }
 
     /// Where the pane's agent session opens on the web (Claude Code's
     /// Remote Control link), when it has one.

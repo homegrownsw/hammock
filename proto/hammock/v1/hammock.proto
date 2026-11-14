@@ -248,6 +248,32 @@ message Agent {
   // Where the session can be opened in a browser, when its harness has one
   // (Claude Code's Remote Control: https://claude.ai/code/session_…).
   string session_url = 12;
+  // Its state comes from the program's own reports (the Program Status
+  // Protocol, OSC 7501: programstatus.go), not hooks or its screen: set for
+  // an agent that reports so, and for any other program that does (brew, a
+  // deploy script), which has no harness. Hooks, where an agent has them,
+  // win over reports.
+  bool reported = 13;
+  string app = 14;       // the reporting program's own name for itself ("brew", "terraform"), untrusted
+  string title = 15;     // its label for itself, untrusted: a program without a harness goes by it, else app
+  // How far along it is, 0–100, while working or waiting on you; unset when
+  // it hasn't said (indeterminate).
+  optional int32 progress = 16;
+  // Everything it reported (the state above is the one that most needs
+  // you), root ("") first.
+  repeated ProgramStatus records = 17;
+}
+
+// One program status record (OSC 7501): the last report for its id.
+message ProgramStatus {
+  string id = 1;        // "" the root; "/" nests ("build/test")
+  string state = 2;     // idle, working, done, blocked, error
+  string kind = 3;      // blocked: permission, question, auth or ""
+  optional int32 progress = 4;
+  string app = 5;       // its own, else its nearest ancestor's
+  string title = 6;
+  string message = 7;
+  bool seen = 8;        // done or error, and you've looked since
 }
 
 message AttentionItem {
@@ -257,6 +283,9 @@ message AttentionItem {
   string summary = 4;
   int64 created_unix_ms = 5;
   bool question = 6;               // the agent asked you something: answer it, there's nothing to allow
+  // A program that isn't an agent, reporting its own status (OSC 7501):
+  // its notifications have their own settings (notify-program-*).
+  bool program = 7;
 }
 
 // A batch of state changes. The first update after Subscribe has full=true

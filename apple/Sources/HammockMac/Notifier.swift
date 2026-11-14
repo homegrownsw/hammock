@@ -11,6 +11,11 @@ enum NotifyPrefs {
     /// An agent answering your comments on a diff (off: an agent fixing ten
     /// comments would send ten, and you hear when it finishes anyway).
     static let reviewReplies = Pref("notify-review-replies", defaults: "notify.reviewReplies", false)
+    /// Other programs reporting what they're doing (OSC 7501: brew, a
+    /// deploy script), apart from agents.
+    static let programNeedsInput = Pref("notify-program-needs-input", defaults: "notify.program.needsInput", true)
+    static let programFinished = Pref("notify-program-finished", defaults: "notify.program.finished", true)
+    static let programErrored = Pref("notify-program-error", defaults: "notify.program.errored", true)
     /// Retired: off, AppConfig sets each kind's sound to none instead
     /// (migrateSoundSwitch). Still read from UserDefaults (Pref.mac) and the
     /// config file for that.
@@ -112,9 +117,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // sidebar has every computer's agents).
         guard model.notifiesHere else { return }
         switch item.state {
-        case .needsInput: guard NotifyPrefs.on(NotifyPrefs.needsInput) else { return }
-        case .idle: guard NotifyPrefs.on(NotifyPrefs.finished) else { return }
-        case .errored: guard NotifyPrefs.on(NotifyPrefs.errored) else { return }
+        case .needsInput: guard NotifyPrefs.on(item.program ? NotifyPrefs.programNeedsInput : NotifyPrefs.needsInput) else { return }
+        case .idle: guard NotifyPrefs.on(item.program ? NotifyPrefs.programFinished : NotifyPrefs.finished) else { return }
+        case .errored: guard NotifyPrefs.on(item.program ? NotifyPrefs.programErrored : NotifyPrefs.errored) else { return }
         default: break
         }
         // Presence-aware: if the app is active and the pane is on screen, don't interrupt.
@@ -133,6 +138,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         switch item.state {
         case .needsInput where item.question: content.body = "\(who) asks: " + item.summary
         case .needsInput: content.body = item.summary.isEmpty ? "\(who) needs your input" : item.summary
+        case .idle where item.program && !item.summary.isEmpty: content.body = "\(who): " + item.summary // what it says it did
         case .idle: content.body = "\(who) finished"
         case .errored: content.body = "\(who) \(item.summary)"
         default: content.body = item.summary

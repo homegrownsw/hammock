@@ -521,7 +521,7 @@ private struct ShelfChip: View {
         case .editor: Image(systemName: "doc.text")
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
-                StatusIcon(state: p.agent.shownState, size: 12, asleep: p.asleep)
+                StatusIcon(state: p.agent.shownState, size: 12, asleep: p.asleep, progress: p.agentProgress)
             } else {
                 Image(systemName: "apple.terminal")
             }

@@ -299,7 +299,8 @@ struct SessionRowView: View {
     var body: some View {
         let a = row.pane.agent
         HStack(alignment: .sessionTitle, spacing: 12) {
-            StateGlyph(state: a.state == .idle && a.seen ? nil : a.state, resting: a.state == .idle && a.seen, asleep: row.pane.asleep)
+            StateGlyph(state: a.state == .idle && a.seen ? nil : a.state, resting: a.state == .idle && a.seen, asleep: row.pane.asleep,
+                       progress: row.pane.agentProgress)
                 .symbolRenderingMode(.palette)
                 .alignmentGuide(.sessionTitle) { $0[VerticalAlignment.center] }
             VStack(alignment: .leading, spacing: 3) {
@@ -563,8 +564,10 @@ struct StateGlyph: View {
     var program: [String] = []
     /// Its agent asleep: a moon.
     var asleep = false
+    /// Working, how far along (OSC 7501): a ring filling.
+    var progress: Int?
     var body: some View {
-        StatusIcon(state: state, resting: resting, shells: shells, size: 17, program: program, asleep: asleep)
+        StatusIcon(state: state, resting: resting, shells: shells, size: 17, program: program, asleep: asleep, progress: progress)
     }
 }
 
@@ -574,7 +577,7 @@ struct TabRowIOS: View {
     var body: some View {
         HStack {
             StateGlyph(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab),
-                       program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab))
+                       program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
             VStack(alignment: .leading) {
                 HStack(spacing: 5) {
                     Text(model.title(of: tab))

@@ -543,8 +543,8 @@ struct PaneView: View {
                 SleepBadge(model: model, paneID: paneID)
             } else if let pane, pane.hasAgent, pane.agent.state != .unspecified, !(pane.agent.shownState == .idle && pane.agent.seen) {
                 HStack(spacing: 5) {
-                    StatusIcon(state: pane.agent.shownState, size: 12)
-                    Text(pane.agent.runningCommand ? "Running a command" : pane.agent.state.label)
+                    StatusIcon(state: pane.agent.shownState, size: 12, progress: pane.agentProgress)
+                    Text(pane.agent.runningCommand ? "Running a command" : pane.agent.state.label + (pane.agentProgress.map { " \($0)%" } ?? ""))
                 }
                 .foregroundStyle(pane.agent.state == .needsInput ? Color.orange : .secondary)
                 .fontWeight(pane.agent.state == .needsInput ? .semibold : .regular)

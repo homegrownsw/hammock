@@ -35,6 +35,7 @@ import SwiftUI
 ///     menu-bar = always                (or active: the menu bar item only while a screen's shared or the server's down; read by Hammock Menu)
 ///     keep-empty-groups = true         (⌘W on a Group's last tab keeps the Group; false: closes it too)
 ///     notify-needs-input = true        (and notify-permission, notify-finished, notify-error, notify-review-replies: which agent events notify)
+///     notify-program-needs-input = true (and notify-program-finished, notify-program-error: other programs reporting their status, OSC 7501)
 ///     notify-style = auto              (or system, in-app: where notifications show)
 ///     notify-current-tab = false       (also for the tab you're looking at; dock-badge = true)
 ///     notify-sound-needs-input = Hammock Chime  (and notify-sound-permission, -finished, -error, -other: each kind's sound,
@@ -197,7 +198,7 @@ final class AppConfig {
     /// ⌘W on a Group's last tab leaves the Group (empty, showing what to
     /// open next) rather than closing it too.
     private(set) var keepEmptyGroups = true
-    /// Where sidebar rows show agent status.
+    /// Where sidebar rows show agent (and program) status.
     private(set) var tabStatus = TabStatus.icon
     /// How Group headings look in the sidebar.
     private(set) var groupHeadings = GroupHeadings.prominent
@@ -785,7 +786,7 @@ final class AppConfig {
         #   sidebar-opacity = 0 … 1        (0 glassy, 1 opaque)
         #   group-headings = prominent | subtle   (subtle: Group headings in the sidebar smaller and dimmer than its tabs)
         #   group-icons = true             (false: no icons on Group headings in the sidebar)
-        #   tab-status = icon | trailing   (agent status in a sidebar row's icon, or at its end with the agent's logo as the icon)
+        #   tab-status = icon | trailing   (agent and program status in a sidebar row's icon, or at its end with the agent's logo as the icon)
         #   pane-spacing = spacious | compact   (spacious, the default: split panes spaced apart, with rounded corners)
         #   dim-inactive-panes = false     (true: dim the panes you're not typing in, a little)
         #   active-pane-border = false     (true: a border around the focused pane)
@@ -804,6 +805,7 @@ final class AppConfig {
         #   menu-bar = always | active     (the menu bar item; active: only while a screen's shared or the server's down)
         #   keep-empty-groups = true       (⌘W on a Group's last tab keeps the Group; false: closes it too)
         #   notify-needs-input = true      (notify me when an agent waits for my input; and notify-permission, notify-finished, notify-error; notify-review-replies = false: an agent answering my diff comments)
+        #   notify-program-needs-input = true   (the same for other programs that report what they're doing, like brew or your scripts: and notify-program-finished, notify-program-error)
         #   notify-style = auto | system | in-app   (auto: in the window while it's in front, else as macOS notifications)
         #   notify-current-tab = false, dock-badge = true   (current tab: also for the tab I'm looking at)
         #   notify-sound-needs-input = Hammock Chime   (each kind's sound; and notify-sound-permission = Hammock Chime, notify-sound-finished = Hammock Kalimba, notify-sound-error = Hammock Low, notify-sound-other = Hammock Kalimba. Also Hammock Marimba, Hammock Bell, a macOS sound like Glass, or none)

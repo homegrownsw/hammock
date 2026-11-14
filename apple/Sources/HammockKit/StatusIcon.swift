@@ -28,10 +28,12 @@ public struct StatusIcon: View {
     var program: [String]
     /// The agent is asleep (Pane.asleep): a moon instead of its rest or check.
     var asleep: Bool
+    /// Working, how far along (0–100), when it says (OSC 7501): a ring filling.
+    var progress: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(state: AgentState?, resting: Bool = false, shells: Bool = false, size: CGFloat = 15, quietAtRest: Bool = false, program: [String] = [],
-                asleep: Bool = false) {
+                asleep: Bool = false, progress: Int? = nil) {
         self.state = state
         self.resting = resting
         self.shells = shells
@@ -39,6 +41,7 @@ public struct StatusIcon: View {
         self.quietAtRest = quietAtRest
         self.program = program
         self.asleep = asleep
+        self.progress = progress
     }
 
     /// Asleep, and nothing more pressing to show (an error stays).
@@ -86,7 +89,7 @@ public struct StatusIcon: View {
             StatusBadge(fill: StatusPalette.amber, glyph: .bang, size: size)
                 .accessibilityLabel("Needs input")
         case .working:
-            WorkingDot(size: size)
+            WorkingDot(size: size, progress: progress)
         case .starting:
             WorkingDot(size: size, starting: true)
         case .idle:

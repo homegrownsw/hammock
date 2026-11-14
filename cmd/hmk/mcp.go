@@ -295,10 +295,14 @@ type paneView struct {
 	State      string `json:"agent_state,omitempty"`
 	Summary    string `json:"agent_summary,omitempty"`
 	SessionURL string `json:"agent_session_url,omitempty"` // its session on the web (Claude Code's Remote Control)
-	CreatedBy  string `json:"created_by,omitempty"`
-	Floating   string `json:"floating,omitempty"` // "showing" or "minimised": over its tab's splits
-	You        bool   `json:"is_you,omitempty"`
-	YoursToUse bool   `json:"you_can_control,omitempty"`
+	// What the program in it reports of itself (the Program Status
+	// Protocol, OSC 7501), when it does: agent_state is then its most
+	// pressing record's.
+	Reported   *reportedView `json:"reported,omitempty"`
+	CreatedBy  string        `json:"created_by,omitempty"`
+	Floating   string        `json:"floating,omitempty"` // "showing" or "minimised": over its tab's splits
+	You        bool          `json:"is_you,omitempty"`
+	YoursToUse bool          `json:"you_can_control,omitempty"`
 }
 
 func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
@@ -346,8 +350,39 @@ func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
 	}
 	if a := p.Agent; a != nil {
 		v.Agent, v.State, v.Summary, v.SessionURL = a.Harness, strings.ToLower(stateNames[a.State]), a.Summary, a.SessionUrl
+		v.Reported = reportedOf(a)
 	}
 	return v
+}
+
+// reportedView is what a pane's program reports of itself (OSC 7501).
+type reportedView struct {
+	App      string       `json:"app,omitempty"`
+	Title    string       `json:"title,omitempty"`
+	Progress *int32       `json:"progress,omitempty"` // 0-100, the most pressing record's
+	Records  []recordView `json:"records"`
+}
+
+type recordView struct {
+	ID       string `json:"id,omitempty"` // "" the program itself; "/" nests
+	State    string `json:"state"`        // idle, working, done, blocked, error
+	Kind     string `json:"kind,omitempty"`
+	Progress *int32 `json:"progress,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Seen     bool   `json:"seen,omitempty"`
+}
+
+// reportedOf is what a's program reported, or nil.
+func reportedOf(a *pb.Agent) *reportedView {
+	if len(a.GetRecords()) == 0 {
+		return nil
+	}
+	r := &reportedView{App: a.App, Title: a.Title, Progress: a.Progress}
+	for _, s := range a.Records {
+		r.Records = append(r.Records, recordView{ID: s.Id, State: s.State, Kind: s.Kind, Progress: s.Progress, Title: s.Title, Message: s.Message, Seen: s.Seen})
+	}
+	return r
 }
 
 type listArgs struct{}

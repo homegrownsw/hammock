@@ -588,7 +588,7 @@ private struct FoldedPane: View {
         case .diff: Image(systemName: "plusminus")
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
-                StatusIcon(state: p.agent.shownState, size: 13, asleep: p.asleep)
+                StatusIcon(state: p.agent.shownState, size: 13, asleep: p.asleep, progress: p.agentProgress)
             } else {
                 ProgramIcon(program: pane?.exited == false ? pane?.program ?? [] : [], size: 13)
             }

@@ -822,6 +822,12 @@ public final class AppModel {
         return agents.filter { !$0.exited && $0.agent.shownState == .idle && $0.agent.seen }.min { focusRank($0) < focusRank($1) }
     }
 
+    /// How far along the work a tab's row shows is (0–100), when its program
+    /// says (OSC 7501).
+    public func agentProgress(of tab: WorkspaceTab) -> Int? {
+        shownAgentPane(of: tab)?.agentProgress
+    }
+
     /// The agent a tab's row stands for (`shownAgentPane(of:)`) is asleep.
     public func hasSleepingAgent(_ tab: WorkspaceTab) -> Bool {
         shownAgentPane(of: tab)?.asleep == true

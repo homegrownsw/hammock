@@ -320,7 +320,8 @@ func (h *agentHub) handle(ev HookEvent) {
 		a = &pb.Agent{}
 		p.info.Agent = a
 	}
-	a.Heuristic = false
+	// Its hooks tell from now on: what it reports (OSC 7501) is only kept.
+	a.Heuristic, a.Reported, a.Progress = false, false, nil
 	if ev.Harness != "" {
 		a.Harness = ev.Harness
 	}
@@ -383,7 +384,14 @@ func (h *agentHub) handle(ev HookEvent) {
 
 // paneExited marks an agent pane's process exit. Callers hold d.mu.
 func (h *agentHub) paneExited(p *pane, status int32) {
+	// What it reported it was doing ends with it; what it finished or
+	// failed at stays, and says so rather than that it exited.
+	h.d.statusEnded(p)
 	p.mu.Lock()
+	if a := p.info.Agent; a != nil && a.Reported && p.status.Len() > 0 {
+		p.mu.Unlock()
+		return
+	}
 	a := p.info.Agent
 	if a == nil {
 		p.mu.Unlock()
@@ -603,6 +611,13 @@ func agentShellCommand(typed string) []string {
 
 // raiseAttention adds/replaces the pane's attention item. Callers hold d.mu.
 func (d *Daemon) raiseAttention(p *pane, state pb.AgentState, summary string, u *pb.StateUpdate) {
+	d.raiseAttentionAs(p, state, summary, false, false, u)
+}
+
+// raiseAttentionAs is raiseAttention, for an agent or (program) another
+// program reporting its status (programstatus.go), which may say it asks
+// (question). Callers hold d.mu.
+func (d *Daemon) raiseAttentionAs(p *pane, state pb.AgentState, summary string, program, question bool, u *pb.StateUpdate) {
 	// A scheduled run under way says it's done, or failed, itself (in the
 	// schedule's words, as it asks: schedules.go); asking you still raises one.
 	if state != pb.AgentState_AGENT_STATE_NEEDS_INPUT && d.scheduleRunActive(p) {
@@ -610,7 +625,8 @@ func (d *Daemon) raiseAttention(p *pane, state pb.AgentState, summary string, u 
 	}
 	item := &pb.AttentionItem{
 		Id: "at_" + p.id, PaneId: p.id, State: state, Summary: summary,
-		CreatedUnixMs: time.Now().UnixMilli(),
+		CreatedUnixMs: time.Now().UnixMilli(), Program: program,
+		Question: question && state == pb.AgentState_AGENT_STATE_NEEDS_INPUT,
 	}
 	// Claude's question tool is open: it's asking, not after permission
 	// (its own notification says "needs your permission to use AskUserQuestion").

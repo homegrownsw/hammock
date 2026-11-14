@@ -64,6 +64,9 @@ type lsAgent struct {
 	SessionID      string `json:"session_id,omitempty"`
 	Subagents      int32  `json:"subagents,omitempty"`
 	RunningCommand bool   `json:"running_command,omitempty"`
+	// What the program reports of itself (OSC 7501), when it does: then
+	// harness is empty for one that isn't an agent.
+	Reported *reportedView `json:"reported,omitempty"`
 }
 
 type lsAttention struct {
@@ -134,7 +137,7 @@ func printWorldJSON(w *world) error {
 					lp.Agent = &lsAgent{
 						Harness: a.Harness, State: stateJSON(a.State), StateSinceMs: a.StateSinceUnixMs,
 						Summary: a.Summary, Seen: a.Seen, SessionID: a.SessionId,
-						Subagents: a.Subagents, RunningCommand: a.RunningCommand,
+						Subagents: a.Subagents, RunningCommand: a.RunningCommand, Reported: reportedOf(a),
 					}
 				}
 				tab.Panes = append(tab.Panes, lp)

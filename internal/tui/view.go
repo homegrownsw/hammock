@@ -188,6 +188,11 @@ func (a *App) agentGlyph(p *pb.Pane) (glyph, bool) {
 	case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
 		return glyph{"!", a.th.orange, true}, true
 	case pb.AgentState_AGENT_STATE_WORKING:
+		if p.Agent.Progress != nil {
+			// A program that says how far along it is (OSC 7501): a
+			// circle filling, as the Mac's ring does.
+			return glyph{progressGlyph(*p.Agent.Progress), a.th.indigo, false}, true
+		}
 		return glyph{a.orbit(1), a.th.indigo, false}, true
 	case pb.AgentState_AGENT_STATE_STARTING:
 		return glyph{a.orbit(2), mix(a.th.indigo, a.th.sidebar, 0.45), false}, true
@@ -197,6 +202,14 @@ func (a *App) agentGlyph(p *pb.Pane) (glyph, bool) {
 		return glyph{"✗", a.th.red, true}, true
 	}
 	return glyph{}, false
+}
+
+// progressFrames fill a circle by quarters.
+var progressFrames = []string{"○", "◔", "◑", "◕", "●"}
+
+// progressGlyph is pct (0–100) as a circle filling.
+func progressGlyph(pct int32) string {
+	return progressFrames[min(max(int(pct)+12, 0)/25, 4)]
 }
 
 // shownState is the state to show: a command you ran with ! (after the
@@ -1018,6 +1031,9 @@ func (a *App) drawPaneHeader(id string, p *pb.Pane, r rect, focused bool) {
 			pb.AgentState_AGENT_STATE_STARTING: "Starting", pb.AgentState_AGENT_STATE_IDLE: "Finished", pb.AgentState_AGENT_STATE_ERRORED: "Errored",
 		}
 		status, scol = g.ch+" "+labels[p.Agent.State], g.col
+		if pr := p.Agent.Progress; pr != nil && p.Agent.State != pb.AgentState_AGENT_STATE_IDLE {
+			status += fmt.Sprintf(" %d%%", *pr)
+		}
 		if p.Asleep {
 			status = g.ch + " Asleep"
 		}

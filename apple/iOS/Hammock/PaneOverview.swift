@@ -211,7 +211,7 @@ private struct PaneCard: View {
         case .diff: Image(systemName: "plusminus").foregroundStyle(.secondary)
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
-                StateGlyph(state: p.agent.shownState, asleep: p.asleep)
+                StateGlyph(state: p.agent.shownState, asleep: p.asleep, progress: p.agentProgress)
             } else {
                 ProgramIcon(program: pane?.exited == false ? pane?.program ?? [] : [], size: 17)
             }
