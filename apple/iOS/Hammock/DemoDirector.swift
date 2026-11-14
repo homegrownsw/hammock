@@ -15,6 +15,10 @@ import UIKit
 ///   allow:PANE          Allow what PANE's agent is waiting on (its Needs You card's Allow)
 ///   type:PANE:TEXT      TEXT typed into PANE's terminal, a key at a time
 ///   say:PANE:TEXT       TEXT sent to PANE's agent as a message
+///   compose:PANE:TEXT   TEXT typed into the agent view's message box (PANE's, on screen), keyboard up
+///   submit:PANE         that box sent, as its send button does
+///   dismiss             the keyboard put away
+///   scroll:top|bottom|N the conversation on screen scrolled to its top, its end, or by N points (up if negative)
 ///
 /// and at the end "HammockTake: done". The cockpit's views follow the tab and path through notifications.
 @MainActor
@@ -64,6 +68,14 @@ enum DemoDirector {
                 model.send(arg, Data(String(ch == "\n" ? "\r" : ch).utf8))
                 try? await Task.sleep(for: .milliseconds(85))
             }
+        case "compose":
+            NotificationCenter.default.post(name: Notification.Name("HammockDebugCompose"), object: nil, userInfo: ["pane": arg, "text": rest])
+        case "submit":
+            NotificationCenter.default.post(name: Notification.Name("HammockDebugCompose"), object: nil, userInfo: ["pane": arg])
+        case "scroll":
+            NotificationCenter.default.post(name: Notification.Name("HammockDebugScroll"), object: nil, userInfo: ["to": arg])
+        case "dismiss":
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         case "say":
             let s = model.acquireAgent(arg)
             await s.send(rest)

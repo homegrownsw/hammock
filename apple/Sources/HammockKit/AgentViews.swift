@@ -240,29 +240,8 @@ public struct AgentConversationView: View {
     @State private var layoutWidth: CGFloat?
     @State private var resize = ResizeState()
     private final class ResizeState { var tick = 0 }
-    /// The rows the lazy stack has made (in view, or about to be), so the
-    /// end showing none of them can be put right (checkRowsMade). A
-    /// reference, so keeping count redraws nothing.
-    @State private var made = MadeRows()
-    private final class MadeRows {
-        var ids = Set<String>()
-        var checking = false
-        /// The last row's bottom, in the content's coordinates, while it's made.
-        var lastBottom: (id: String, y: CGFloat)?
-        /// The top of the tail (what's sent, Working…), in the content's coordinates.
-        var tailTop: CGFloat?
-        /// Tries that didn't bring the rows back, and when to try again:
-        /// later each time, so a view that only looks blank (a row drawing
-        /// nothing) isn't scrolled about. Not keyed on the last row: a run
-        /// of tools is one row, its id the same however many it grows by,
-        /// so giving up until that changed left it blank through the run.
-        var failures = 0
-        var retryAt = Date.distantPast
-        /// Called when the last made row goes.
-        var emptied: (() -> Void)?
-    }
-    /// Bumped to have the lazy stack go over its rows again.
-    @State private var rowsPass = 0
+    /// The first row of the live end (liveStart), in which session.
+    @State private var live: (session: ObjectIdentifier, from: String)?
     /// Scrolls rows you open into view.
     @State private var revealer = RowRevealer()
     /// Where the conversation's scrolled to (Latest goes to the end).
@@ -388,62 +367,6 @@ public struct AgentConversationView: View {
         }
     }
 
-    /// At the end of the conversation, with room above the tail, but the
-    /// last row not made, or made above what's in view: the space over the
-    /// tail is blank.
-    private func rowsMissing(_ s: AgentSession) -> Bool {
-        guard glide.gap < 60, let last = s.items.last?.id, let tail = made.tailTop else { return false }
-        let top = revealer.visible.top
-        // What's sent fills the view: no row belongs in it.
-        guard tail - top > 60 else { return false }
-        // Where it last said it was, kept while it's out of view: back in
-        // view, the stack can bring back the same row, which, not having
-        // moved, doesn't say again. Forgotten as it went, the row looked
-        // missing at the end, and this scrolled to it and back over and over.
-        guard made.ids.contains(last), let bottom = made.lastBottom, bottom.id == last else { return true }
-        // The last row sits just over the tail (the stack's spacing): far
-        // above it, or above the view, the stack's laid out from a wrong estimate.
-        return bottom.y < top + 8 || bottom.y < tail - 60
-    }
-
-    /// At the end of the conversation with its last rows not showing: has
-    /// the lazy stack make them. Following the end to the marker under the
-    /// rows (a long conversation opened, or a message sent in one), the
-    /// stack can be left making no rows, or making them where its estimate,
-    /// far too tall, puts them, above what's in view, and nothing asks it
-    /// again: all that showed was the tail (Working…) under a blank screen
-    /// until you scrolled. Scrolling to the last row makes it, measured,
-    /// and the ones above it from there; a pass has the stack go over its
-    /// rows again; then back to the end.
-    private func checkRowsMade(_ s: AgentSession, _ proxy: ScrollViewProxy) {
-        guard !made.checking else { return }
-        guard rowsMissing(s) else { made.failures = 0; return }
-        guard Date.now >= made.retryAt else { return }
-        made.checking = true
-        Task { @MainActor in
-            defer { made.checking = false }
-            // Rows on their way (scrolled to, or new) are made in a moment.
-            try? await Task.sleep(for: .milliseconds(100))
-            for _ in 0..<6 {
-                guard rowsMissing(s), let last = s.items.last?.id else { break }
-                rowsPass += 1
-                proxy.scrollTo(last, anchor: .bottom)
-                try? await Task.sleep(for: .milliseconds(30))
-                proxy.scrollTo("bottom", anchor: .bottom)
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            guard rowsMissing(s) else { made.failures = 0; return }
-            // Again later, by itself: nothing else may come to ask.
-            made.failures += 1
-            guard made.failures <= 4 else { return }
-            let wait = Double(1 << made.failures) / 2
-            made.retryAt = .now + wait
-            try? await Task.sleep(for: .seconds(wait))
-            made.checking = false
-            checkRowsMade(s, proxy)
-        }
-    }
-
     private func glideToEnd() {
         glide.pending = false
         // To the end as laid out (the marker under the lazy rows):
@@ -516,12 +439,47 @@ public struct AgentConversationView: View {
         }
     }
 
+    /// Where the live end of the conversation starts in its rows: the last
+    /// `liveRows` when it was loaded (kept from then, so a row doesn't move
+    /// out of it, and from one stack to the other, as each new one comes).
+    private func liveStart(_ s: AgentSession) -> Int {
+        if let live, live.session == ObjectIdentifier(s), let i = s.items.firstIndex(where: { $0.id == live.from }) { return i }
+        return max(0, s.items.count - Self.liveRows)
+    }
+
+    /// Rows laid out in full at the end when a conversation's loaded: more
+    /// than a screenful, of all but the tallest.
+    static let liveRows = 24
+
+    /// Keeps where the live end starts (liveStart) from now on, from where
+    /// it would be (a new session, or the rows it started at gone).
+    private func keepLiveStart(_ s: AgentSession) {
+        let i = liveStart(s)
+        guard i < s.items.count else { return }
+        let from = s.items[i].id
+        if live?.session != ObjectIdentifier(s) || live?.from != from { live = (ObjectIdentifier(s), from) }
+    }
+
+    /// A row of the conversation.
+    private func row(_ item: AgentItem, _ s: AgentSession) -> some View {
+        // Equatable: a row only re-renders when its own blocks change, not
+        // whenever the session does.
+        AgentItemView(item: item, session: s)
+            .equatable()
+            .id(item.id)
+            .onAppear {
+                // DevLog: when the newest row first shows, after it was asked for.
+                if item.id == s.items.last?.id, !s.shownSinceAsked, let asked = s.askedAt {
+                    s.shownSinceAsked = true
+                    DevLog.agent("pane \(s.paneID): rows shown after \(DevLog.since(asked)) (\(s.items.count) rows)")
+                }
+            }
+            .jankRow(item.id)
+    }
+
     @ViewBuilder
     private func conversation(_ s: AgentSession) -> some View {
-        // Taken out of self for the rows: a row's closure holding self would
-        // update every row whenever this view does.
-        let made = made
-        let pass = rowsPass
+        let split = liveStart(s)
         VStack(spacing: 0) {
             if !s.subagentID.isEmpty {
                 SubagentHeader(subagent: session?.subagents.first { $0.id == s.subagentID }, working: s.working) { viewing = nil }
@@ -530,64 +488,43 @@ public struct AgentConversationView: View {
             }
             ScrollViewReader { proxy in
                 ScrollView {
-                    // The tail (what you've sent on its way, Working…) under
-                    // the lazy rows, not among them: always laid out, so never
-                    // given an estimated height. A lazy row pushed out of
-                    // view (by the row above growing) was estimated again, at
-                    // the average row's height, hundreds of points for a
-                    // one-line row, and following the end into that estimate
-                    // showed blank space, then jumped back.
+                    // History in a lazy stack, and the live end under it (the
+                    // last rows when it was loaded, everything since, then the
+                    // tail: what you've sent on its way, Working…) laid out in
+                    // full. Only rows a lazy stack has measured have real
+                    // heights; the rest are estimates (the average row's,
+                    // hundreds of points for a one-line row), and rows arriving
+                    // or growing at its end, while the view followed it there,
+                    // left it laying out from those estimates: blank space
+                    // past the end, the view jumping back, or rows made above
+                    // what's in view with nothing showing but the tail until
+                    // you scrolled up. What changes as you watch is never
+                    // lazy now, and the history above it doesn't change.
                     VStack(alignment: .leading, spacing: 14) {
-                        LazyVStack(alignment: .leading, spacing: 14) {
-                            if !s.error.isEmpty, s.blocks.isEmpty {
-                                ContentUnavailableView("No conversation yet", systemImage: "bubble.left.and.text.bubble.right", description: Text(s.error))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 60)
-                            }
-                            if s.hasMore {
-                                // On tap only: loading as it appears could chain
-                                // through the whole history whenever the list is
-                                // laid out from the top (as it is mid-push).
-                                Button(s.loadingOlder ? "Loading…" : "Show earlier messages") { s.loadOlder() }
-                                    .buttonStyle(.borderless)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            ForEach(s.items) { item in
-                                let isLast = item.id == s.items.last?.id
-                                // Equatable: a row only re-renders when its own
-                                // blocks change, not whenever the session does.
-                                AgentItemView(item: item, session: s)
-                                    .equatable()
-                                    .id(item.id)
-                                    .onAppear {
-                                        _ = pass // a new pass goes over the rows (checkRowsMade)
-                                        made.ids.insert(item.id)
-                                        // DevLog: when the newest row first shows, after it was asked for.
-                                        if item.id == s.items.last?.id, !s.shownSinceAsked, let asked = s.askedAt {
-                                            s.shownSinceAsked = true
-                                            DevLog.agent("pane \(s.paneID): rows shown after \(DevLog.since(asked)) (\(s.items.count) rows)")
-                                        }
-                                    }
-                                    .onDisappear {
-                                        made.ids.remove(item.id)
-                                        if made.ids.isEmpty { made.emptied?() }
-                                    }
-                                    // Where the last row is (checkRowsMade); only
-                                    // it, so the others don't report their frames.
-                                    .background {
-                                        if isLast {
-                                            Color.clear.onGeometryChange(for: CGFloat.self) {
-                                                $0.frame(in: .named(RowRevealer.space)).maxY
-                                            } action: { made.lastBottom = (item.id, $0) }
-                                        }
-                                    }
-                                    .jankRow(item.id)
+                        // Left out with nothing in it, or the stack's spacing
+                        // would add a gap at the top.
+                        if split > 0 || s.hasMore || !s.error.isEmpty && s.blocks.isEmpty {
+                            LazyVStack(alignment: .leading, spacing: 14) {
+                                if !s.error.isEmpty, s.blocks.isEmpty {
+                                    ContentUnavailableView("No conversation yet", systemImage: "bubble.left.and.text.bubble.right", description: Text(s.error))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.top, 60)
+                                }
+                                if s.hasMore {
+                                    // On tap only: loading as it appears could chain
+                                    // through the whole history whenever the list is
+                                    // laid out from the top (as it is mid-push).
+                                    Button(s.loadingOlder ? "Loading…" : "Show earlier messages") { s.loadOlder() }
+                                        .buttonStyle(.borderless)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                ForEach(s.items[..<split]) { row($0, s) }
                             }
                         }
+                        VStack(alignment: .leading, spacing: 14) {
+                            ForEach(s.items[split...]) { row($0, s) }
+                        }
                         TranscriptTail(session: s)
-                            .onGeometryChange(for: CGFloat.self) {
-                                $0.frame(in: .named(RowRevealer.space)).minY
-                            } action: { made.tailTop = $0 }
                             .jankRow("tail")
                         // The very end, the margin under the last row included,
                         // so scrolling to it shows all of that.
@@ -624,7 +561,6 @@ public struct AgentConversationView: View {
                 } action: { old, new in
                     glide.gap = new.gap
                     if !landed, !s.items.isEmpty { land(at: new.gap) }
-                    if new.gap < 60 { checkRowsMade(s, proxy) }
                     if JankProbe.enabled {
                         JankProbe.shared.viewport = new.container
                         JankProbe.shared.contentHeight = new.content
@@ -683,9 +619,9 @@ public struct AgentConversationView: View {
                 // above measure their real heights, so land again once they have.
                 .onAppear {
                     revealer.proxy = proxy
-                    made.emptied = { [s] in if glide.gap < 60 { checkRowsMade(s, proxy) } }
-                    made.failures = 0
-                    made.retryAt = .distantPast
+                    // Watched a long time, the live end can grow long: shown
+                    // again, it starts afresh, with what's been read lazy.
+                    if s.items.count - liveStart(s) > 120 { live = nil; keepLiveStart(s) }
                     if !s.items.isEmpty { landAtLatest() }
                     proxy.scrollTo("bottom", anchor: .bottom)
                     Task { @MainActor in
@@ -695,9 +631,12 @@ public struct AgentConversationView: View {
                         }
                     }
                 }
+                .onChange(of: s.items.count, initial: true) { keepLiveStart(s) }
                 .onChange(of: s.blocks.last?.id) { old, _ in
                     if old == nil {
                         landed = false
+                        live = nil
+                        keepLiveStart(s)
                         landAtLatest()
                         proxy.scrollTo("bottom", anchor: .bottom)
                         shownAt = .now
@@ -711,6 +650,19 @@ public struct AgentConversationView: View {
                     // content grows (onScrollGeometryChange): a second animated
                     // scroll here fought that one, the picture stepping back.
                 }
+                #if DEBUG
+                // Dev aid: the iPhone demo's takes (DemoDirector: scroll) scroll the conversation, as a finger would.
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HammockDebugScroll"))) { n in
+                    guard let to = n.userInfo?["to"] as? String else { return }
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        switch to {
+                        case "top": position.scrollTo(edge: .top)
+                        case "bottom": position.scrollTo(edge: .bottom)
+                        default: position.scrollTo(y: max(0, revealer.visible.top + (Double(to) ?? 0)))  // by that many points
+                        }
+                    }
+                }
+                #endif
                 .onChange(of: s.pendingSends.count) { old, new in
                     // Sent while scrolled up: down to see it go.
                     if new > old, !atBottom { jumpToEnd(proxy) }
@@ -2795,6 +2747,18 @@ struct Composer: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: attachments.map(\.id))
+        #if DEBUG
+        // Dev aid: the iPhone demo's takes (DemoDirector: compose, submit) type and send here, keyboard and all.
+        .onReceive(NotificationCenter.default.publisher(for: Self.debugCompose)) { n in
+            guard (n.userInfo?["pane"] as? String) == session.paneID else { return }
+            if let t = n.userInfo?["text"] as? String {
+                controller.focus()
+                replaceText(t)
+            } else {
+                send()
+            }
+        }
+        #endif
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image, .movie], allowsMultipleSelection: true) { result in
             let urls = (try? result.get()) ?? []
             Task { await attachFiles(urls, scoped: true) }
@@ -3060,6 +3024,11 @@ struct Composer: View {
     }
 
     // MARK: Sending
+
+    #if DEBUG
+    /// Dev aid: userInfo pane and text types text into that pane's box (focusing it); pane alone sends it.
+    static let debugCompose = Notification.Name("HammockDebugCompose")
+    #endif
 
     private func send() {
         guard canSend else { return }

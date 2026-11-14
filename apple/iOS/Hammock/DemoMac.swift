@@ -61,6 +61,10 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             $0.selected = 1; $0.other = 3
         }
         working["p_polish"] = "Building…"
+        #if DEBUG
+        if Self.longChat { transcripts["p_polish"] = Self.longTranscript(); working["p_polish"] = nil }
+        if let first = Self.replay?.first { transcripts["p_polish"] = first.view.blocks; working["p_polish"] = nil }
+        #endif
     }
 
     func receive(_ msg: ClientMessage, reply: @escaping @Sendable (ServerMessage) -> Void) {
@@ -312,6 +316,10 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
 
     private func agentSent(_ paneID: String, _ text: String) {
         let n = (transcripts[paneID]?.count ?? 0) + 1
+        #if DEBUG
+        if paneID == "p_polish", let replay = Self.replay { return play(paneID, replay.dropFirst()) }
+        if Self.longChat, paneID == "p_polish" { return replyWithTools(paneID, text, n) }
+        #endif
         add(paneID, Self.block("b_you_\(n)", .user, text: text))
         working[paneID] = "Thinking…"
         sendView(paneID, blocks: [])
@@ -325,6 +333,120 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             self.setAgent(paneID, .idle, summary: "Answered in the demo")
         }
     }
+
+    #if DEBUG
+    /// Dev aid: HMK_DEBUG_LONG_CHAT=1 gives the polish agent (p_polish) a long conversation, and answers a message
+    /// to it as Claude does: thinking, then a run of tool calls arriving one after another, then a reply. For
+    /// checking the agent view following the end through a long conversation (docs/debug-hooks.md).
+    static var longChat: Bool { ProcessInfo.processInfo.environment["HMK_DEBUG_LONG_CHAT"] == "1" }
+
+    /// Dev aid: HMK_DEBUG_REPLAY=<file> (made by scripts/agentblocks from a real Claude session) gives the polish
+    /// agent that session's history, and a message to it plays the rest at the session's own pace, as a Mac
+    /// watching it would send them.
+    static let replay: [(ms: Int, view: Hammock_V1_AgentView)]? = {
+        guard let path = ProcessInfo.processInfo.environment["HMK_DEBUG_REPLAY"],
+              let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        return text.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 1)
+            guard parts.count == 2, let ms = Int(parts[0]),
+                  let v = try? Hammock_V1_AgentView(jsonString: String(parts[1])) else { return nil }
+            return (ms, v)
+        }
+    }()
+
+    private func play(_ paneID: String, _ events: ArraySlice<(ms: Int, view: Hammock_V1_AgentView)>) {
+        working[paneID] = "Contemplating…"
+        setAgent(paneID, .working, summary: "Contemplating…")
+        var t = 0.0
+        for (i, e) in events.enumerated() {
+            t += Double(e.ms) / 1000
+            later(t) { for b in e.view.blocks { self.add(paneID, b) } }
+        }
+        later(t + 0.5) {
+            self.working[paneID] = nil
+            self.sendView(paneID, blocks: [])
+            self.setAgent(paneID, .idle, summary: "Done")
+        }
+    }
+
+    private func replyWithTools(_ paneID: String, _ text: String, _ n: Int) {
+        add(paneID, Self.block("b_you_\(n)", .user, text: text))
+        working[paneID] = "Contemplating…"
+        sendView(paneID, blocks: [])
+        setAgent(paneID, .working, summary: "Contemplating…")
+        var t = 0.4
+        let thinking = "b_think_\(n)"
+        later(t) { self.add(paneID, Self.block(thinking, .thinking)) }
+        for i in 0..<12 {
+            let id = "b_tool_\(n)_\(i)", file = "apple/Sources/HammockKit/File\(i).swift"
+            t += 0.35
+            later(t) { self.add(paneID, Self.block(id, .tool, title: "Read \(file)", tool: "Read", input: file, pending: true)) }
+            t += 0.3
+            later(t) { self.add(paneID, Self.block(id, .tool, title: "Read \(file)", tool: "Read", input: file, output: "\(120 + i * 17) lines")) }
+            if i == 5 {
+                t += 0.3
+                later(t) { self.add(paneID, Self.block("b_say_\(n)", .thinking, text: "Now the scroll view itself.")) }
+            }
+        }
+        t += 0.6
+        later(t) {
+            self.working[paneID] = nil
+            self.add(paneID, Self.block("b_reply_\(n)", .text, text: Self.longReply(n)))
+            self.setAgent(paneID, .idle, summary: "Answered")
+        }
+    }
+
+    /// A long reply, as Claude's often are: a list, a few paragraphs.
+    static func longReply(_ n: Int) -> String {
+        """
+        Here's what I found (\(n)):
+
+        - **Size:** Nerd Fonts are about 2 MB per style, which is fine. Iosevka's collection files are about \
+        43 MB each, so I'd cap the size (say 20 MB per family) and send only the styles the terminal uses: \
+        regular, bold, italic and bold italic.
+        - **Offline:** once downloaded, a font stays on the phone, so it keeps working when the Mac is away.
+
+        **My suggestion:** do both, in this order:
+
+        1. **Bundle:** Symbols Nerd Font Mono as the fallback for every font, plus Obel Mono, JetBrains Mono, \
+        Hack, Fira Code and Cascadia Code. This helps everyone, even without the Mac connected.
+        2. **Mac fonts:** add the phone feature as its own change on top.
+
+        Shall I start on the bundle in a worktree, and open an issue for the Mac fonts, or build both?
+        """
+    }
+
+    /// Many turns (a page's worth, as a Mac sends: 150 blocks), of rows of very different heights: long
+    /// messages and replies, code, edits standing on their own, narration, short answers.
+    static func longTranscript() -> [AgentBlock] {
+        var out: [AgentBlock] = []
+        let code = "```swift\n" + (0..<40).map { "let value\($0) = compute(\($0)) // a line of code that is long enough to wrap on a phone" }.joined(separator: "\n") + "\n```"
+        var turn = 0
+        while out.count < 150 {
+            let ago = Double(40 - turn) * 3
+            out.append(block("L\(turn)_u", .user, text: turn % 3 == 0
+                ? String(repeating: "Have a look at how fonts reach the phone. Could we bundle the popular ones, and could the phone fetch the Mac's own fonts when it's connected? ", count: 1 + turn % 4)
+                : "OK, carry on.", minutesAgo: ago))
+            out.append(block("L\(turn)_t", .thinking, minutesAgo: ago - 0.1))
+            for i in 0..<(1 + turn % 5) {
+                out.append(block("L\(turn)_tool\(i)", .tool, title: "Ran `grep -rn font`", input: "grep -rn font apple/", output: "\(10 + i) matches", minutesAgo: ago - 0.2))
+            }
+            if turn % 4 == 1 {
+                out.append(block("L\(turn)_say", .thinking, text: "Committing now.", minutesAgo: ago - 0.3))
+                out.append(block("L\(turn)_edit", .tool, title: "Edited Fonts.swift", tool: "Edit", input: "apple/Sources/HammockKit/Fonts.swift",
+                                 diff: "@@ -1,3 +1,4 @@\n-old\n+new\n+newer", added: 2, removed: 1, minutesAgo: ago - 0.3))
+            }
+            switch turn % 3 {
+            case 0: out.append(block("L\(turn)_r", .text, text: longReply(turn) + "\n\n" + code, minutesAgo: ago - 1))
+            case 1: out.append(block("L\(turn)_r", .text, text: "Done.", minutesAgo: ago - 1))
+            default: out.append(block("L\(turn)_r", .text, text: longReply(turn), minutesAgo: ago - 1))
+            }
+            out.append(done("L\(turn)_d", workedMinutes: 2, minutesAgo: ago - 1))
+            turn += 1
+        }
+        return out
+    }
+    #endif
 
     // MARK: The shell
 
