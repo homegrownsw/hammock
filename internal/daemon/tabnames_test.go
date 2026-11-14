@@ -21,15 +21,20 @@ func TestBranchName(t *testing.T) {
 }
 
 func TestAgentTitle(t *testing.T) {
-	for in, want := range map[string]string{
-		"✳ Pricing page rewrite": "Pricing page rewrite",
-		"⠂ Brand styling skill":  "Brand styling skill",
-		"✳ Claude Code":          "",
-		"zsh in work":            "",
-		"claude":                 "",
+	for _, c := range []struct{ title, harness, want string }{
+		{"✳ Pricing page rewrite", "claude", "Pricing page rewrite"},
+		{"⠂ Brand styling skill", "claude", "Brand styling skill"},
+		{"✳ Claude Code", "claude", ""},
+		{"claude", "claude", ""},
+		// Claude Code drops the prefix in a terminal that answers OSC 7501.
+		{"Pricing page rewrite", "claude", "Pricing page rewrite"},
+		{"Claude Code", "claude", ""},
+		{"~/Developer/app", "claude", ""},
+		{"zsh in work", "", ""},
+		{"Pricing page rewrite", "codex", ""},
 	} {
-		if got := agentTitle(in); got != want {
-			t.Errorf("agentTitle(%q) = %q, want %q", in, got, want)
+		if got := agentTitle(c.title, c.harness); got != c.want {
+			t.Errorf("agentTitle(%q, %q) = %q, want %q", c.title, c.harness, got, c.want)
 		}
 	}
 }

@@ -75,7 +75,7 @@ func terminalPane(p *pb.Pane) bool {
 // agentAutoName is a running agent's session title.
 func agentAutoName(p *pb.Pane) (name, key string) {
 	if a := p.Agent; terminalPane(p) && a != nil && a.State != pb.AgentState_AGENT_STATE_EXITED {
-		if n := agentTitle(p.Title); n != "" {
+		if n := agentTitle(p.Title, a.Harness); n != "" {
 			return n, "agent:" + a.Harness + ":" + a.SessionId
 		}
 	}
@@ -97,15 +97,19 @@ func branchAutoName(p *pb.Pane) (name, key string) {
 }
 
 // agentTitle reads an agent's session title from its terminal title: Claude
-// Code sets "✳ Title" (a spinner in place of ✳ while working). Titles that
-// are just the program or a path aren't names.
-func agentTitle(title string) string {
+// Code sets "✳ Title" (a spinner in place of ✳ while working), or just
+// "Title" in a terminal that answers the Program Status Protocol (OSC 7501),
+// as Hammock does, since its status goes there instead. Titles that are just
+// the program or a path aren't names. Only Claude Code's bare titles count: an
+// unknown harness's (or a shell's) bare title is anything.
+func agentTitle(title, harness string) string {
 	t := strings.TrimSpace(title)
 	r := []rune(t)
-	if len(r) < 3 || unicode.IsLetter(r[0]) || unicode.IsDigit(r[0]) || r[1] != ' ' {
+	if len(r) >= 3 && !unicode.IsLetter(r[0]) && !unicode.IsDigit(r[0]) && r[1] == ' ' {
+		t = strings.TrimSpace(string(r[2:]))
+	} else if harness != "claude" {
 		return ""
 	}
-	t = strings.TrimSpace(string(r[2:]))
 	low := strings.ToLower(t)
 	if low == "" || agents.IsName(low) || strings.HasPrefix(t, "/") || strings.HasPrefix(t, "~") {
 		return ""
@@ -121,7 +125,7 @@ func spinnerFrame(old, title string) bool {
 	if len(o) < 3 || len(n) < 3 || o[0] == '✳' || n[0] == '✳' {
 		return false
 	}
-	return agentTitle(old) != "" && string(o[1:]) == string(n[1:]) && agentTitle(title) != ""
+	return agentTitle(old, "") != "" && string(o[1:]) == string(n[1:]) && agentTitle(title, "") != ""
 }
 
 // gitBranch is the branch checked out in dir's repository (or worktree).
