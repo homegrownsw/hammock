@@ -25,6 +25,17 @@ Hammock's documentation, published at https://homegrownsw.com/hammock/docs/: [As
 
   To change one of them, change its source.
 
+## Review comments
+
+In `just docs-dev`, select any text in a page and click **Comment** to leave a note on it. The **Comments** button
+at the bottom right lists the page's comments, highlights what they're about, and shows replies. They're kept in
+`site/.comments.jsonl` (git-ignored), one JSON object per line: the page, its `source` file (or, for a generated
+page, what it's made from), the heading before it (`context`), the passage (`quote`) and the `comment`.
+
+To work through them, `just docs-comments` lists the open ones. Fix the page, then set the comment's `"status"` to
+`"resolved"` and add a `"reply"` saying what changed; the open page shows it within a few seconds. None of this
+is in the built site (`dev/comments.mjs` runs in the dev server only).
+
 ## Style
 
 Write for people using Hammock, like the README: plain British English, short sentences, real commands, menu paths

@@ -2,12 +2,15 @@
 // (generating the reference pages first), `just docs-dev` previews it; site/README.md says more.
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import docsComments from './dev/comments.mjs';
 
 export default defineConfig({
 	site: 'https://homegrownsw.com',
 	base: '/hammock/docs',
 	trailingSlash: 'always',
 	integrations: [
+		// Review comments, in `just docs-dev` only (dev/comments.mjs).
+		docsComments(),
 		starlight({
 			title: 'Hammock',
 			description: 'Docs for Hammock: a native Mac terminal that never loses your work, built for coding agents.',

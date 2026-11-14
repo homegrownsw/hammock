@@ -327,9 +327,15 @@ docs-gen: build
 docs: docs-gen
     cd site && pnpm install --frozen-lockfile && pnpm build
 
-# Preview the docs site as you edit it, at http://localhost:4321/hammock/docs/.
+# Preview the docs site as you edit it, at http://localhost:4321/hammock/docs/. Select text in a page to
+# leave a review comment on it (kept in site/.comments.jsonl; `just docs-comments` lists them).
 docs-dev: docs-gen
     cd site && pnpm install --frozen-lockfile && pnpm dev
+
+# The open review comments left in `just docs-dev`: page, source file, passage and comment. To answer one,
+# set its "status" to "resolved" and add a "reply" in site/.comments.jsonl; the page shows it.
+docs-comments:
+    @[ -s site/.comments.jsonl ] && jq -r 'select(.status == "open") | "[\(.id)] \(.source) \(.context)\n  page:    \(.page)\n  passage: \(.quote | gsub("\n"; " ") | .[0:300])\n  comment: \(.comment)\n"' site/.comments.jsonl || echo "No comments."
 
 # The release scripts' tests: notes, the check, and cutting releases against a throwaway repo.
 test-release:
