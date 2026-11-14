@@ -73,7 +73,9 @@ struct TabStrip: View {
     var body: some View {
         let tabs = shown(model.tabs(in: group))
         GeometryReader { geo in
-            let width = max(130, min(260, (geo.size.width - height) / CGFloat(max(tabs.count, 1))))
+            // The tabs share the bar equally, one filling it; at 130pt each
+            // it scrolls instead.
+            let width = max(130, (geo.size.width - height) / CGFloat(max(tabs.count, 1)))
             HStack(spacing: 0) {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -113,7 +115,8 @@ struct TabStrip: View {
             }
         }
         .frame(height: height)
-        .background(barColor)
+        // Not into the safe area: it would fill the toolbar above the strip.
+        .background(barColor, ignoresSafeAreaEdges: [])
         .overlay(alignment: .bottom) { Divider() }
         .animation(.snappy(duration: 0.2), value: tabs.map(\.id))
         .onChange(of: model.tabs(in: group).map(\.id)) { _, ids in
@@ -162,7 +165,7 @@ struct TabStrip: View {
             .padding(.leading, 7)
         }
         .frame(width: width, height: height)
-        .background(selected ? Color(nsColor: .windowBackgroundColor) : (hover ? Color.primary.opacity(0.04) : .clear))
+        .background(selected ? Color(nsColor: .windowBackgroundColor) : (hover ? Color.primary.opacity(0.04) : .clear), ignoresSafeAreaEdges: [])
         .overlay(alignment: .trailing) {
             if !last { Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 1).padding(.vertical, selected ? 0 : 6) }
         }

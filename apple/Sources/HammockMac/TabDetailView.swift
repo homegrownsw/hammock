@@ -141,7 +141,7 @@ struct LayoutView: View {
                 ForEach(tiles) { tile($0, in: area).zIndex(1) }
                 ForEach(tiles.filter { !$0.folded }) { t in
                     PaneFocusRing(rect: t.clip, on: t.id == focusedPaneID && sharesTab(t.id) && AppConfig.shared.activePaneBorder,
-                                  shape: PaneLook.shape(at: t.clip, in: area, sidebarHidden: sidebarHidden))
+                                  shape: shape(at: t.clip, in: area))
                         .zIndex(1.5)
                 }
                 ForEach(plan.bars) { bar($0, in: area).zIndex(2) }
@@ -155,8 +155,13 @@ struct LayoutView: View {
         }
     }
 
+    /// A pane's shape here (PaneLook.shape(at:in:sidebarHidden:underStrip:)).
+    private func shape(at rect: CGRect, in area: CGRect) -> UnevenRoundedRectangle {
+        PaneLook.shape(at: rect, in: area, sidebarHidden: sidebarHidden, underStrip: SidebarLayout.current == .horizontal)
+    }
+
     private func tile(_ t: PanePlan.Tile, in area: CGRect) -> some View {
-        let shape = PaneLook.shape(at: t.clip, in: area, sidebarHidden: sidebarHidden)
+        let shape = shape(at: t.clip, in: area)
         return PaneView(model: model, paneID: t.id, isFocused: t.id == focusedPaneID)
             .clipShape(shape)
             .modifier(PaneFocusLook(isFocused: t.id == focusedPaneID, among: sharesTab(t.id), shape: shape))
@@ -179,7 +184,7 @@ struct LayoutView: View {
     private func bar(_ b: PanePlan.Bar, in area: CGRect) -> some View {
         FoldedPanes(model: model, layout: b.layout, vertical: b.vertical, towardZoomed: b.toward)
             .frame(width: b.rect.width, height: b.rect.height)
-            .clipShape(PaneLook.shape(at: b.rect, in: area, sidebarHidden: sidebarHidden))
+            .clipShape(shape(at: b.rect, in: area))
             .offset(x: b.rect.minX, y: b.rect.minY)
             .transition(.opacity)
     }

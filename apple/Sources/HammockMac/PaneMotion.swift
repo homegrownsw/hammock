@@ -271,13 +271,16 @@ enum PaneLook {
     /// in one of the window's bottom corners rounds that corner with the
     /// window, concentric with it (the window's radius less the inset), the
     /// rest as any pane. The bottom left is the window's only with the
-    /// sidebar hidden.
-    static func shape(at rect: CGRect, in area: CGRect, sidebarHidden: Bool) -> UnevenRoundedRectangle {
+    /// sidebar hidden. Under Horizontal Tabs' strip, a pane at the top meets
+    /// the strip square, as the selected tab does: rounded, its corners
+    /// left notches of backdrop against the strip's straight edge.
+    static func shape(at rect: CGRect, in area: CGRect, sidebarHidden: Bool, underStrip: Bool = false) -> UnevenRoundedRectangle {
         let bottom = rect.maxY >= area.maxY - 0.5
+        let top = underStrip && rect.minY <= area.minY + 0.5 ? 0 : radius
         let outer = spacious ? windowCornerRadius - inset : radius
         let bl = bottom && sidebarHidden && rect.minX <= area.minX + 0.5 ? outer : radius
         let br = bottom && rect.maxX >= area.maxX - 0.5 ? outer : radius
-        return UnevenRoundedRectangle(topLeadingRadius: radius, bottomLeadingRadius: bl, bottomTrailingRadius: br, topTrailingRadius: radius, style: .continuous)
+        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bl, bottomTrailingRadius: br, topTrailingRadius: top, style: .continuous)
     }
 
     /// The terminal theme's background.
@@ -304,7 +307,7 @@ struct PaneFocusLook: ViewModifier {
     let isFocused: Bool
     /// Only panes that share their tab with another dim.
     let among: Bool
-    /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:)).
+    /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:underStrip:)).
     var shape = UnevenRoundedRectangle(cornerRadii: .init(), style: .continuous)
     @Environment(\.colorScheme) private var colorScheme
     private var config: AppConfig { .shared }
@@ -333,7 +336,7 @@ struct PaneFocusLook: ViewModifier {
 struct PaneFocusRing: View {
     let rect: CGRect
     let on: Bool
-    /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:)).
+    /// The pane's shape (PaneLook.shape(at:in:sidebarHidden:underStrip:)).
     var shape = UnevenRoundedRectangle(cornerRadii: .init(), style: .continuous)
     @Environment(\.colorScheme) private var colorScheme
     @State private var shown: Bool
