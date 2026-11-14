@@ -1,21 +1,22 @@
 This build
 
 New
-• The agent view says how long the agent worked on each longer turn, and when it finished, as Claude Code does: “Worked for 30m 31s · done 9:47 AM”. For Claude and Codex.
-• Agent view: the model menu also sets Claude's effort level (/effort), and both show as soon as Claude starts, not after its first reply.
-• Attachments in the agent view get a number and a chip, with their thumbnail, where the cursor is in your message: move it with the text, or delete it and the attachment waits greyed out in the tray above the message, to click back in.
-• Commands Claude Code knows are coloured as you type them in the agent view, as they are in Claude Code.
-• Groups collapse and expand: tap a Group's name in the Groups tab. A collapsed Group shows how many tabs it has and what its agents are up to, and stays collapsed next time you open Hammock.
-• Messages you've sent show their attachments' numbered chips where they were, and a video you sent shows as a video, not its path.
-• New themes: Apricot, Cocoa and Lagoon, which tint the window but leave the terminal plain white or black. Forest is gone: Hammock's green is a forest green now, and Forest moves to it.
-• Pictures you attach are sent smaller, so they cost fewer tokens: Large (1568 px) on this Mac and Medium (1024 px) to other computers and from the iPhone, in Settings ▸ Agent View. Right-click (or touch and hold) one to send it at another size.
-• Sessions' Recent list shows the last 48 hours' sessions, with Show More… and Show Less for older ones.
+• Dictate to your agents: tap the microphone beside Send in a session and your words appear as you speak, on your iPhone. Turn the button off in Settings.
+• A reply that arrives while you watch fades in from the top, and a long one stops at its first line instead of scrolling past it to the end.
+• Editors and diffs can have a font of their own, in Settings ▸ Editors and Diffs.
+• In the agent view, long lines in a tool's command and output now wrap, so you can read them without swiping sideways.
+• Pick a terminal font from Obel Mono, JetBrains Mono, Fira Code, Cascadia Code and Hack in Settings. Icons in prompts from Nerd Fonts now show in any font, and editor and diff screens use your terminal font.
+• Programs on your Mac that say what they're doing, like a long build or a deploy script, now show it the way agents do, including how far along they are. They can notify you too: choose which in Settings ▸ Notify Me When.
+• Sleeping agents: when your Mac puts an idle agent to sleep to save memory, it shows a moon in your Groups and sessions, and its screen is dimmed under a Wake Agent button.
+• Swipe left on a session in the Sessions tab to close it.
 
 Fixed
-• The agent view's composer no longer suggests Claude Code's and Codex's built-in commands, like /clear, partway through a message, where they'd be sent as text. Your skills and commands are still offered there.
-• Screen sharing on iPhone: zoomed in with the phone upright, a Mac's screen is sharp as soon as its height fills the phone, not blurry until you zoom further.
-• Scrolling to the end of an agent's conversation no longer leaves it jumping up and down a line.
-• Sending a video no longer briefly shows its file's path as a message of yours.
-• The agent view no longer stays blank, showing only Working…, while an agent's first tools run after you send a message.
-• The message box in the agent view grows as you type again, instead of scrolling a single line.
-• Working… stays at the left under a message you've just sent, instead of moving to the middle.
+• In Settings, the agent view's preview sits right under the text settings it shows.
+• A conversation no longer goes blank, all but Working…, when the agent starts using tools straight after your message.
+• A video or photo you attach in the agent view shows up straight away, in the strip and as its #1 in your message, while it's prepared, so it no longer pops in partway through what you're typing.
+• An agent waiting on a question no longer shows as working, and stays in Needs You, when you tap its pane, scroll it or move through its options, then leave without answering.
+• Diff and editor tabs no longer open blank the second time you open them.
+• Going back from a conversation no longer flashes No Session Selected as it slides away.
+• Opening a long conversation, it shows at its end straight away, not partway up and then jumping down.
+• Show Earlier Messages keeps your place, and Latest no longer flashes blank on the way down.
+• The conversation moves smoothly with the keyboard, and new messages and tool calls glide into view instead of jumping, also after you've gone back to the list and returned.

@@ -4,8 +4,8 @@
 // sets them (`just release-mac|ios|apple`); `just version` shows them. The
 // targets' own xcconfigs make one of them MARKETING_VERSION, and
 // scripts/build-mac-app.sh reads the Mac's for the builds made outside Xcode.
-HAMMOCK_MAC_VERSION = 2026.2.0
-HAMMOCK_IOS_VERSION = 2026.2.0
+HAMMOCK_MAC_VERSION = 2026.3.0
+HAMMOCK_IOS_VERSION = 2026.3.0
 
 // The build number is a release's: main's commit count, the r<n> in its
 // tag, passed to the build (build-mac-app.sh for the Mac's Sparkle builds,
