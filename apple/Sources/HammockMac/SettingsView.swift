@@ -656,11 +656,9 @@ private struct TerminalSettings: View {
         Form {
             SettingsPaneHeader(tab: .terminal)
             Section {
-                Picker("Font", selection: Binding(get: { config.fontFamily ?? "" }, set: { set("font-family", $0.isEmpty ? nil : $0, hammockDefault: "") })) {
-                    Text("SF Mono").tag("")
-                    Divider()
-                    ForEach(TerminalFont.families, id: \.self) { Text($0).tag($0) }
-                }
+                FontPicker(label: "Font", selection: Binding(get: { config.fontFamily ?? "" }, set: { set("font-family", $0.isEmpty ? nil : $0, hammockDefault: "") }),
+                           none: "SF Mono", noneFont: .monospacedSystemFont(ofSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .regular),
+                           families: TerminalFont.families)
                 .settingAnchor("terminal.font")
                 LabeledContent("Size") {
                     Stepper("\(Int(config.fontSize ?? 13)) pt", value: Binding(get: { config.fontSize ?? 13 }, set: { set("font-size", String(Int($0))) }), in: 6...36, step: 1)

@@ -229,21 +229,16 @@ struct AgentViewSettings: View {
                 .foregroundStyle(.secondary)
             }
             Section("Text") {
-                Picker("Font", selection: prefs.stringBinding(.agentFont)) {
-                    Text("System").tag("")
-                    Divider()
-                    ForEach(families, id: \.self) { Text($0).tag($0) }
-                }
+                FontPicker(label: "Font", selection: prefs.stringBinding(.agentFont), none: "System",
+                           noneFont: .menuFont(ofSize: 0), families: families)
                 .settingAnchor("agentview.font")
                 Stepper("Size: \(Int(fontSize))", value: prefs.doubleBinding(.agentFontSize), in: 9...28)
                 Stepper("Line spacing: \(Int(lineSpacing))", value: prefs.doubleBinding(.agentLineSpacing), in: 0...12)
             }
             Section("Code") {
-                Picker("Font", selection: prefs.stringBinding(.agentCodeFont)) {
-                    Text("System Monospaced").tag("")
-                    Divider()
-                    ForEach(families, id: \.self) { Text($0).tag($0) }
-                }
+                FontPicker(label: "Font", selection: prefs.stringBinding(.agentCodeFont), none: "System Monospaced",
+                           noneFont: .monospacedSystemFont(ofSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .regular),
+                           families: families)
                 .settingAnchor("agentview.codefont")
                 Stepper("Size: \(Int(codeFontSize))", value: prefs.doubleBinding(.agentCodeFontSize), in: 8...26)
                 Picker("Wrap long lines", selection: prefs.stringBinding(.agentCodeWrap)) {
