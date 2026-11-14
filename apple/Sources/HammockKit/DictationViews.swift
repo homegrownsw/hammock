@@ -5,52 +5,57 @@ import AppKit
 import UIKit
 #endif
 
-/// The composer's mic: tap to dictate, tap again to stop. Listening, it's
-/// filled in the accent colour and pulses with your voice.
+/// The composer's mic: tap to dictate, tap again to stop. While it's on,
+/// it's a stop button, and `DictationLevels` beside it shows your voice.
 struct DictationButton: View {
     let dictation: ComposerDictation
     let action: () -> Void
-    @Environment(\.agentAccent) private var accent
 
     private var on: Bool { dictation.active }
-    private var listening: Bool { dictation.state == .listening }
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: on ? "mic.fill" : "mic")
-                .font(.body.weight(.medium))
+            Image(systemName: on ? "stop.fill" : "mic")
+                .font(on ? .caption.weight(.bold) : .body.weight(.medium))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 22, height: 22)
-                .background {
-                    // The level, inside: a light that fills the button as
-                    // you speak (the glass clips it to the button).
-                    Circle()
-                        .fill(.white.opacity(0.35))
-                        .frame(width: 40, height: 40)
-                        .scaleEffect(0.25 + dictation.level * 0.85)
-                        .opacity(listening ? 1 : 0)
-                        .animation(.easeOut(duration: 0.1), value: dictation.level)
-                        .allowsHitTesting(false)
-                }
         }
-        .agentGlassButton(prominent: on)
+        .agentGlassButton()
         .buttonBorderShape(.circle)
-        .tint(on ? accent : nil)
-        .foregroundStyle(on ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
-        .background {
-            // The level: a soft halo behind the button that swells past its
-            // edge as you speak. Outside the button, not in its label, where
-            // the accent fill hid it and the glass clipped it.
-            Circle()
-                .fill(accent.opacity(0.35))
-                .scaleEffect(1 + dictation.level * 0.6)
-                .opacity(listening ? 1 : 0)
-                .animation(.easeOut(duration: 0.1), value: dictation.level)
-                .allowsHitTesting(false)
-        }
+        .foregroundStyle(.primary)
         .help(on ? "Stop Dictating" : DictationRequests.hint("Dictate"))
         .accessibilityLabel(on ? "Stop dictating" : "Dictate")
         .animation(.snappy(duration: 0.2), value: on)
+    }
+}
+
+/// While dictating, in place of the model and context: the last few
+/// seconds of your voice as bars, newest on the right, a dot when it's quiet.
+struct DictationLevels: View {
+    let dictation: ComposerDictation
+
+    static let bar: CGFloat = 3
+    static let gap: CGFloat = 2.5
+
+    var body: some View {
+        Canvas { ctx, size in
+            let step = Self.bar + Self.gap
+            let count = Int((size.width + Self.gap) / step)
+            // The newest reading at the trailing edge; dots before there's
+            // history to fill the width.
+            let heard = dictation.levels.suffix(count)
+            let levels = Array(repeating: 0, count: max(0, count - heard.count)) + heard
+            let start = size.width - CGFloat(levels.count) * step + Self.gap
+            for (i, level) in levels.enumerated() {
+                let h = max(Self.bar, CGFloat(level) * size.height)
+                let rect = CGRect(x: start + CGFloat(i) * step, y: (size.height - h) / 2, width: Self.bar, height: h)
+                ctx.fill(Path(roundedRect: rect, cornerRadius: Self.bar / 2), with: .style(.primary))
+            }
+        }
+        .frame(height: 22)
+        .frame(maxWidth: .infinity)
+        .opacity(dictation.state == .listening ? 1 : 0.4)
+        .accessibilityHidden(true)
     }
 }
 

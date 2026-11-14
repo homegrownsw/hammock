@@ -2716,11 +2716,18 @@ struct Composer: View {
                     }
                     // The model and how full its context is, beside the attach
                     // button.
-                    if shrinking == 0, !session.agentModel.isEmpty {
-                        AgentStatusBar(session: session, canDrive: true, harness: harness, inline: true)
+                    // Dictating, your voice instead.
+                    if dictation.active {
+                        DictationLevels(dictation: dictation)
+                            .padding(.horizontal, 4)
                             .transition(.opacity)
+                    } else {
+                        if shrinking == 0, !session.agentModel.isEmpty {
+                            AgentStatusBar(session: session, canDrive: true, harness: harness, inline: true)
+                                .transition(.opacity)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                     if dictationOn || dictation.active {
                         DictationButton(dictation: dictation, action: toggleDictation)
                     }

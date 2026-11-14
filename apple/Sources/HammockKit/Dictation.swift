@@ -448,6 +448,11 @@ final class ComposerDictation {
     private(set) var state: State = .idle
     /// The microphone's level while listening, 0 to 1.
     private(set) var level: Double = 0
+    /// The level's recent history, oldest first (about ten a second), for
+    /// the graph that stands in for the model while listening.
+    private(set) var levels: [Double] = []
+    /// How many readings `levels` keeps: more than the widest graph shows.
+    static let levelHistory = 120
     /// The language's speech model downloading, 0 to 1.
     private(set) var installing: Double?
     /// Why it couldn't listen, to show above the composer.
@@ -535,6 +540,12 @@ final class ComposerDictation {
         engine = SilentEngine()
         state = .listening
         level = 0.6
+        // A few seconds of talking, with pauses.
+        levels = (0..<Self.levelHistory).map { i in
+            let t = Double(i)
+            let word = max(0, sin(t * 0.9)) * (0.5 + 0.5 * sin(t * 0.23))
+            return i % 17 < 4 ? 0 : min(1, word)
+        }
         // Once the text view's made.
         Task {
             try? await Task.sleep(for: .milliseconds(300))
@@ -573,6 +584,8 @@ final class ComposerDictation {
         case .level(let db):
             meter.hear(db: db)
             level = meter.level
+            levels.append(level)
+            if levels.count > Self.levelHistory { levels.removeFirst(levels.count - Self.levelHistory) }
         case .text(let final, let volatile):
             let now = DictationText.join(final, volatile)
             if now != heard {
@@ -580,6 +593,7 @@ final class ComposerDictation {
                 if now.count > heard.count {
                     meter.word()
                     level = meter.level
+                    if !levels.isEmpty { levels[levels.count - 1] = max(levels[levels.count - 1], level) }
                 }
                 heard = now
                 lastHeard = .now
@@ -607,6 +621,7 @@ final class ComposerDictation {
         watchdog = nil
         level = 0
         meter = LevelMeter()
+        levels = []
         installing = nil
         text?.onDictationInterrupted = {}
         for o in observers { NotificationCenter.default.removeObserver(o) }
