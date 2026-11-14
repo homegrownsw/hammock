@@ -361,7 +361,7 @@ for p in $PLATFORMS; do
     exit 1
   fi
   set_var TAG "$p" "$tag"
-  this=$(render_dir "$ROOT/release-notes/$p/pending")
+  this=$(render_dir "$ROOT/release-notes/$p/pending" "$p/v$ver")
   prev=$(render_family "$ROOT" "$p" "$(version_family "$ver")")
   set_var THIS "$p" "$this"
   set_var PREV "$p" "$prev"
@@ -398,10 +398,10 @@ mac_notes_html() {
   local this prev
   this=$(get_var THIS mac)
   prev=$(get_var PREV mac)
-  if [ -n "$this" ]; then lines_to_html "$this"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
+  if [ -n "$this" ]; then lines_to_html "$this" "$(get_var TAG mac)"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
   if [ -n "$prev" ]; then
     echo "<h3>Earlier in $(version_family "$(get_var VER mac)")</h3>"
-    lines_to_html "$prev"
+    lines_to_html "$prev" "$(get_var TAG mac)"
   fi
 }
 
@@ -484,8 +484,8 @@ else
       git -C "$ROOT" add -- "$(version_file "$ROOT")"
     fi
     mkdir -p "$ROOT/release-notes/$p/v${ver}"
-    # mv, not git mv: notes edited before the release (review_notes) may be new to git.
-    for f in "$ROOT/release-notes/$p/pending"/*.md; do mv "$f" "$ROOT/release-notes/$p/v${ver}/"; done
+    # mv, not git mv: notes edited before the release (review_notes) may be new to git. Their images too.
+    for f in "$ROOT/release-notes/$p/pending"/*; do if [ -f "$f" ]; then mv "$f" "$ROOT/release-notes/$p/v${ver}/"; fi; done
     git -C "$ROOT" add -A -- "$ROOT/release-notes/$p"
     if [ "$p" = ios ]; then
       mkdir -p "$IOS_NOTES_DIR"

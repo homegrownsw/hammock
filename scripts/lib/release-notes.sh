@@ -5,6 +5,7 @@
 # A note file is (release-notes/README.md):
 #   tag: NEW|FIXED|INTERNAL
 #   date: YYYY-MM-DD
+#   image: <file> <alt text>     (optional: a screenshot or GIF beside the note, for a big, visual feature)
 #   <the text, one or more lines>
 
 # shellcheck shell=bash
@@ -14,18 +15,30 @@ PLATFORMS_ALL="mac ios"
 label() { case "$1" in mac) echo Mac ;; ios) echo iOS ;; esac; }
 
 note_tag() { head -n1 "$1" | sed -E 's/^tag:[[:space:]]*//' | tr '[:lower:]' '[:upper:]'; }
-note_body() { tail -n +2 "$1" | sed -E '/^date:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}$/d' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +//; s/ +$//'; }
+note_body() { tail -n +2 "$1" | sed -E '/^date:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}$/d; /^image:/d' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +//; s/ +$//'; }
+
+# A note's image, from its `image: <file> <alt text>` line: "<file><TAB><alt text>", or nothing.
+note_image() {
+  awk '/^image:/ { sub(/^image:[ \t]*/, ""); f = $1; sub(/^[^ \t]+[ \t]*/, ""); sub(/[ \t]+$/, "")
+    if (f != "") print f "\t" $0; exit }' "$1"
+}
 
 # Prints "[NEW] text" or "[FIXED] text", and nothing for INTERNAL or an empty note. INTERNAL is dropped here
-# rather than by each caller, so nothing people see can carry one by accident.
-render_visible() {
-  local t body
+# rather than by each caller, so nothing people see can carry one by accident. A note with an image adds
+# "<TAB><path><TAB><alt text>", the path under release-notes/ of the folder the note is released from
+# (<as>: mac/v2026.3.0 for a pending note being released; its own folder when left out).
+render_visible() { # render_visible <file> [<as>]
+  local t body img as="${2:-}"
   t=$(note_tag "$1")
   case "$t" in NEW | FIXED) ;; *) return 0 ;; esac
   body=$(note_body "$1")
   # `if`, not `[ -n ] &&`: as the last command, a false test would make the function return 1, and callers
   # use it in a command substitution, which `set -e` honours, so an empty NEW note would stop a release.
-  if [ -n "$body" ]; then printf '[%s] %s\n' "$t" "$body"; fi
+  [ -n "$body" ] || return 0
+  img=$(note_image "$1")
+  if [ -z "$img" ]; then printf '[%s] %s\n' "$t" "$body"; return 0; fi
+  if [ -z "$as" ]; then as="$(basename "$(dirname "$(dirname "$1")")")/$(basename "$(dirname "$1")")"; fi
+  printf '[%s] %s\t%s/%s\n' "$t" "$body" "$as" "$img"
 }
 
 # Reorders rendered lines so [NEW] sits above [FIXED].
@@ -34,12 +47,13 @@ new_first() {
   printf '%s' "$1" | grep '^\[FIXED\] ' || true
 }
 
-# The visible notes in a directory, rendered and NEW first, one per line (no trailing newline).
-render_dir() { # render_dir <dir>
+# The visible notes in a directory, rendered and NEW first, one per line (no trailing newline). <as> is
+# render_visible's.
+render_dir() { # render_dir <dir> [<as>]
   local f line lines=""
   for f in "$1"/*.md; do
     [ -f "$f" ] || continue
-    line=$(render_visible "$f")
+    line=$(render_visible "$f" "${2:-}")
     if [ -n "$line" ]; then lines+="$line"$'\n'; fi
   done
   new_first "$lines"
@@ -47,14 +61,18 @@ render_dir() { # render_dir <dir>
 
 # A version's summary (release-notes/<platform>/v<ver>.md): every note in <dir>, INTERNAL included, since
 # the summary is for the people making the app, under "## New", "## Fixed" and "## Internal" headings, by file
-# name within a section, and a section only when it has notes.
+# name within a section, and a section only when it has notes. A note's image follows it, as Markdown with its
+# path from release-notes/<platform>/.
 render_consolidated_lines() { # render_consolidated_lines <dir>
-  local t f heading first=1 items
+  local t f heading first=1 items img
   for t in NEW FIXED INTERNAL; do
     items=""
     for f in "$1"/*.md; do
       [ -f "$f" ] || continue
-      if [ "$(note_tag "$f")" = "$t" ]; then items+="- $(note_body "$f")"$'\n'; fi
+      [ "$(note_tag "$f")" = "$t" ] || continue
+      items+="- $(note_body "$f")"$'\n'
+      img=$(note_image "$f")
+      if [ -n "$img" ]; then items+="  ![${img#*$'\t'}]($(basename "$1")/${img%%$'\t'*})"$'\n'; fi
     done
     [ -n "$items" ] || continue
     heading=$(tag_heading "$t")
@@ -66,7 +84,8 @@ render_consolidated_lines() { # render_consolidated_lines <dir>
 # The heading a tag's notes go under: New, Fixed, Internal.
 tag_heading() { case "$1" in NEW) echo New ;; FIXED) echo Fixed ;; INTERNAL) echo Internal ;; esac; }
 
-# The texts of the rendered lines ("[NEW] text") with one tag, one per line, without the tag.
+# The texts of the rendered lines ("[NEW] text") with one tag, one per line, without the tag (an image's
+# fields stay on the end, after a tab).
 lines_with_tag() { # lines_with_tag <TAG> <rendered lines>
   printf '%s\n' "$2" | sed -nE "s/^\[$1\] //p"
 }
@@ -79,7 +98,8 @@ lines_to_text() { # lines_to_text <rendered lines>
     items=$(lines_with_tag "$t" "$1")
     [ -n "$items" ] || continue
     [ -z "$out" ] || out+=$'\n\n'
-    out+="$(tag_heading "$t")"$'\n'"$(printf '%s\n' "$items" | sed 's/^/• /')"
+    # Text has no room for an image: cut -f1 drops it.
+    out+="$(tag_heading "$t")"$'\n'"$(printf '%s\n' "$items" | cut -f1 | sed 's/^/• /')"
   done
   printf '%s' "$out"
 }
@@ -93,15 +113,21 @@ fit_to_limit() { # fit_to_limit <limit> <text>
 html_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
 # Rendered lines ("[NEW] text") as HTML for Sparkle's update window (and the GitHub Release): a heading for
-# each tag with notes (<h4>New</h4>, <h4>Fixed</h4>), each followed by its list.
-lines_to_html() { # lines_to_html <rendered lines>
-  local t items
+# each tag with notes (<h4>New</h4>, <h4>Fixed</h4>), each followed by its list. A note's image is under its
+# text, from the repo at <ref> (the release's tag), which is public once the release is pushed.
+lines_to_html() { # lines_to_html <rendered lines> [<ref>]
+  local t items base
+  base="https://raw.githubusercontent.com/${HMK_RELEASE_REPO:-homegrownsw/hammock}/${2:-main}/release-notes"
   for t in NEW FIXED; do
     items=$(lines_with_tag "$t" "$1")
     [ -n "$items" ] || continue
     echo "<h4>$(tag_heading "$t")</h4>"
     echo "<ul>"
-    printf '%s\n' "$items" | html_escape | sed -E 's|^(.*)$|<li>\1</li>|'
+    printf '%s\n' "$items" | html_escape | awk -F '\t' -v base="$base" '{
+      if (NF < 3) { print "<li>" $1 "</li>"; next }
+      alt = $3; gsub(/"/, "\\&quot;", alt)
+      printf "<li>%s<br><img src=\"%s/%s\" alt=\"%s\" style=\"max-width: 100%%\"></li>\n", $1, base, $2, alt
+    }'
     echo "</ul>"
   done
 }
@@ -260,6 +286,7 @@ notes_doc() { # notes_doc <repo-root> <apps> <title>
 #   Change a note: edit its text or its tag.
 #   Merge notes into one: put the text in one of them and delete the others, their "===" lines and all.
 #   Drop a note: delete it. Add one: a new "=== mac/a-short-name.md" (or ios/) line, a tag, and its text.
+#   A note's "image: <file> <alt text>" line shows a picture beside it in pending/; keep it with the note.
 #
 # Lines starting with # are left out. Save, then close this pane (or your editor) to carry on.
 DOC

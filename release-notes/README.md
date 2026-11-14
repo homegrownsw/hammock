@@ -32,6 +32,25 @@ Pane headers no longer flicker while you type.
   can do now, or what no longer goes wrong. One feature gets one note, however many commits built it: merge
   them before the release. INTERNAL can be terse; it never leaves this repo.
 
+### With a picture
+
+A NEW or FIXED note for a big, visual feature can carry one screenshot or short GIF (.png, .jpg or .gif, up to
+5 MB), shown under it in Sparkle's update window, the GitHub Release and the docs' What's new (TestFlight's
+text leaves it out). Most notes shouldn't have one: see AGENTS.md. It sits beside the note, under the note's
+name, and the note names it after its date, with alt text saying what it shows:
+
+```
+tag: NEW
+date: 2026-11-14
+image: open-in-new-window.gif A Group dragged out into a window of its own
+Open a tab, Group or pane in a window of its own.
+```
+
+`just note … --image <file> --alt "…"` copies it in and writes the line. Sparkle and the GitHub Release load it
+from the release's tag on GitHub (raw.githubusercontent.com), so it's in the repo for good: keep it small, and
+show test data, never someone's real Groups or panes. A version's summary shows it as Markdown under its note,
+and `just docs-gen` copies it into the site (`site/public/whats-new/`, git-ignored).
+
 Wherever notes are listed, they're in sections with a heading (New, Fixed, and Internal where INTERNAL is
 shown), in that order, rather than a tag on each note.
 
@@ -41,6 +60,7 @@ shown), in that order, rather than a tag on each note.
 just note mac fixed "Pane headers no longer flicker while you type."
 just note ios new 44 "Long-press a pane to close it."      # with its GitHub issue (44 or #44)
 just note both internal none "Protocol tidy-up."           # both apps; `none`: no issue
+just note mac new --image ~/Desktop/split.gif --alt "Splitting a pane from its menu" "Split from the menu."
 ```
 
 The app comes first: `mac`, `ios` or `both`. `tag` is `new`, `fixed` or `internal`, in any case. A note for

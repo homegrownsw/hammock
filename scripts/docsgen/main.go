@@ -58,8 +58,9 @@ func run(args []string) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-		// What's new sits at the top of the site, not in the reference.
-		whatsNew, err := whatsNewPage("release-notes")
+		// What's new sits at the top of the site, not in the reference. Its images go in the site's public/
+		// (dir is site/src/content/docs/reference).
+		whatsNew, err := whatsNewPage("release-notes", filepath.Join(dir, "..", "..", "..", "..", "public", "whats-new"))
 		if err != nil {
 			return fmt.Errorf("whats-new.md: %w", err)
 		}
@@ -501,9 +502,15 @@ func shortcutsPage(data []byte) (string, error) {
 type releaseNotes struct {
 	version    []int
 	name, date string
-	newNotes   []string
-	fixed      []string
+	newNotes   []note
+	fixed      []note
 }
+
+// A note's text, and its image (a file under release-notes/, and what it shows) if it has one.
+type note struct{ text, image, alt string }
+
+// summaryImage matches a version summary's image line, under its note: "  ![alt](v2026.3.0/file.png)".
+var summaryImage = regexp.MustCompile(`^\s+!\[(.*)\]\((\S+)\)$`)
 
 func parseVersion(s string) []int {
 	var v []int
@@ -543,19 +550,25 @@ func appNotes(root, app string) ([]releaseNotes, error) {
 			if d := strings.TrimSpace(strings.TrimPrefix(lines[1], "date:")); d > r.date {
 				r.date = d
 			}
-			text := strings.Join(strings.Fields(lines[2]), " ")
+			n := note{text: lines[2]}
+			if img, ok := strings.CutPrefix(n.text, "image:"); ok {
+				img, n.text, _ = strings.Cut(img, "\n")
+				file, alt, _ := strings.Cut(strings.TrimSpace(img), " ")
+				n.image, n.alt = filepath.Join(dir, e.Name(), file), strings.TrimSpace(alt)
+			}
+			n.text = strings.Join(strings.Fields(n.text), " ")
 			switch strings.TrimSpace(strings.TrimPrefix(lines[0], "tag:")) {
 			case "NEW":
-				r.newNotes = append(r.newNotes, text)
+				r.newNotes = append(r.newNotes, n)
 			case "FIXED":
-				r.fixed = append(r.fixed, text)
+				r.fixed = append(r.fixed, n)
 			}
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, e.Name()+".md")); err == nil {
 			r.newNotes, r.fixed = nil, nil
-			var section *[]string
+			var section *[]note
 			for _, l := range strings.Split(string(b), "\n") {
-				switch {
+				switch m := summaryImage.FindStringSubmatch(l); {
 				case l == "## New":
 					section = &r.newNotes
 				case l == "## Fixed":
@@ -563,7 +576,10 @@ func appNotes(root, app string) ([]releaseNotes, error) {
 				case strings.HasPrefix(l, "## "):
 					section = nil
 				case section != nil && strings.HasPrefix(l, "- "):
-					*section = append(*section, strings.TrimPrefix(l, "- "))
+					*section = append(*section, note{text: strings.TrimPrefix(l, "- ")})
+				case section != nil && m != nil && len(*section) > 0:
+					last := &(*section)[len(*section)-1]
+					last.alt, last.image = m[1], filepath.Join(dir, m[2])
 				}
 			}
 		}
@@ -583,7 +599,12 @@ func versionLess(a, b []int) bool {
 	return len(a) < len(b)
 }
 
-func whatsNewPage(root string) (string, error) {
+// whatsNewPage makes the What's new page from root (release-notes/), copying the notes' images into
+// public (the site's public/whats-new/, git-ignored), which it empties first.
+func whatsNewPage(root, public string) (string, error) {
+	if err := os.RemoveAll(public); err != nil {
+		return "", err
+	}
 	apps := []struct{ id, title string }{{"mac", "On the Mac"}, {"ios", "On iPhone"}}
 	byVersion := map[string]map[string]releaseNotes{}
 	var names []string
@@ -627,14 +648,30 @@ func whatsNewPage(root string) (string, error) {
 			fmt.Fprintf(&b, "### %s\n\n", a.title)
 			for _, s := range []struct {
 				label string
-				notes []string
+				notes []note
 			}{{"New", r.newNotes}, {"Fixed", r.fixed}} {
 				if len(s.notes) == 0 {
 					continue
 				}
 				fmt.Fprintf(&b, "**%s**\n\n", s.label)
 				for _, t := range s.notes {
-					b.WriteString("- " + text(t) + "\n")
+					b.WriteString("- " + text(t.text) + "\n")
+					if t.image == "" {
+						continue
+					}
+					src, err := os.ReadFile(t.image)
+					if err != nil {
+						return "", fmt.Errorf("%s %s: %w", a.id, n, err)
+					}
+					name := a.id + "-" + n + "-" + filepath.Base(t.image)
+					if err := os.MkdirAll(public, 0o755); err != nil {
+						return "", err
+					}
+					if err := os.WriteFile(filepath.Join(public, name), src, 0o644); err != nil {
+						return "", err
+					}
+					alt := strings.NewReplacer("[", `\[`, "]", `\]`).Replace(text(t.alt))
+					fmt.Fprintf(&b, "  ![%s](/hammock/docs/whats-new/%s)\n", alt, name)
 				}
 				b.WriteString("\n")
 			}
