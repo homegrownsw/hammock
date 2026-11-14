@@ -1,0 +1,143 @@
+#!/bin/zsh
+# Plays the agent view's scenarios (scenarios.txt) in the iPhone's demo, on a simulator of its own, and reports
+# the glitches each had: blanks (an empty stretch of the conversation over 40% of the view, while there's more
+# than fits: the "only Working… showing" bug), snaps (rows jumping over 30 pt in a frame while nothing scrolls),
+# bounces (rows moving one way then back), shuffles (rows in view laid out again apart) and hitches (late frames).
+# The view measures these itself (JankProbe, HMK_DEBUG_JANK), so they don't depend on reading pixels.
+#
+#   scripts/agentview-check/run [--only NAME[,NAME…]] [--device TYPE] [--replay FILE] [--no-build] [--keep] [--env K=V] [--fast]
+#
+#   --only     just these scenarios
+#   --device   a simulator device type (default "iPhone 15 Pro Max"; try "iPhone 16e" for a small screen)
+#   --replay   a real session, made by scripts/agentblocks: runs the replay scenario (skipped without it)
+#   --no-build use the last build
+#   --keep     leave the simulator (otherwise deleted at the end)
+#   --env K=V  a variable for the app (a debug hook), in every scenario; again for more
+#   --fast     build optimised, as a release is (for timings), with the debug hooks still in
+#
+# Each scenario's recording, probe log (jank.jsonl), the app's DevLog (devlog.txt) and a frame at each glitch go in dist/agentview-check/<stamp>/<name>/;
+# report.md there sums them up. Exits 1 when any scenario had a blank, snap or bounce. Run it after changing
+# the agent view (AgentViews.swift and its rows, AgentSession), and add a scenario for each new glitch found.
+# Needs Xcode, ffmpeg and jq. The simulator shows nothing on screen (it isn't opened in Simulator.app).
+set -eu
+setopt pipefail null_glob
+root="${0:A:h:h:h}"
+here="${0:A:h}"
+only="" device="iPhone 15 Pro Max" replay="" build=1 keep=0 extra=() fast=0
+while (( $# )); do
+  case "$1" in
+    --only) only="$2"; shift 2 ;;
+    --device) device="$2"; shift 2 ;;
+    --replay) replay="${2:A}"; shift 2 ;;
+    --no-build) build=0; shift ;;
+    --keep) keep=1; shift ;;
+    --env) extra+=("$2"); shift 2 ;;
+    --fast) fast=1; shift ;;
+    *) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  esac
+done
+for tool in xcrun ffmpeg jq; do command -v $tool >/dev/null || { echo "agentview-check: needs $tool" >&2; exit 2; }; done
+
+out="$root/dist/agentview-check/$(date +%Y%m%d-%H%M%S)"
+dd="$root/dist/agentview-check/build"
+opt=()
+# Optimised (as a release is), for timings; the debug hooks stay in.
+if (( fast )); then dd+="-fast"; opt=(SWIFT_OPTIMIZATION_LEVEL=-O); fi
+app="$dd/Build/Products/Debug-iphonesimulator/Hammock.app"
+mkdir -p "$out"
+
+if (( build )); then
+  echo "Building the iPhone app for the simulator…"
+  (cd "$root" && just deps >/dev/null)
+  # ARCHS=arm64: libghostty-vt has no x86_64 simulator slice.
+  xcodebuild -project "$root/apple/iOS/HammockIOS.xcodeproj" -scheme Hammock -configuration Debug \
+    -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES $opt \
+    -derivedDataPath "$dd" build >"$out/build.log" 2>&1 || { tail -30 "$out/build.log"; echo "agentview-check: build failed ($out/build.log)" >&2; exit 2; }
+fi
+[[ -d "$app" ]] || { echo "agentview-check: no build at $app (run without --no-build)" >&2; exit 2; }
+
+# A simulator of its own, so nothing else's state (or another session's simulator) is touched.
+type_id="$(xcrun simctl list devicetypes -j | jq -r --arg n "$device" '.devicetypes[] | select(.name == $n) | .identifier')"
+runtime="$(xcrun simctl list runtimes -j | jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | last | .identifier')"
+[[ -n "$type_id" && -n "$runtime" ]] || { echo "agentview-check: no simulator type \"$device\" or iOS runtime" >&2; exit 2; }
+udid="$(xcrun simctl create "hmk-agentview-check" "$type_id" "$runtime")"
+cleanup() {
+  if (( keep )); then echo "Kept the simulator $udid"; else xcrun simctl delete "$udid" 2>/dev/null || true; fi
+}
+trap cleanup EXIT
+xcrun simctl boot "$udid"
+xcrun simctl bootstatus "$udid" -b >/dev/null
+xcrun simctl ui "$udid" appearance light
+xcrun simctl install "$udid" "$app"
+echo "Simulator: $device ($udid), results in $out"
+
+replay_text=""
+if [[ -n "$replay" ]]; then
+  # The message the replay goes on from: typed and sent, as you did.
+  replay_text="$(sed -n 2p "$replay" | cut -f2 | jq -r '.blocks[0].text')"
+fi
+
+epoch() { perl -MTime::HiRes=time -e 'printf "%.3f\n", time'; }
+failed=0
+{
+  echo "# Agent view check, $(date '+%Y-%m-%d %H:%M'), $device"
+  echo
+  echo "$(cd "$root" && git describe --always --dirty)"
+  echo
+  echo "| Scenario | Blanks | Snaps | Bounces | Shuffles | Hitches | Worst frame |"
+  echo "|---|---|---|---|---|---|---|"
+} >"$out/report.md"
+
+grep -v '^#' "$here/scenarios.txt" | grep -v '^[[:space:]]*$' | while IFS='|' read -r name env take; do
+  if [[ -n "$only" && ",$only," != *",$name,"* ]]; then continue; fi
+  if [[ "$env" == *'$REPLAY'* && -z "$replay" ]]; then echo "$name: skipped (no --replay)"; continue; fi
+  env="${env//\$REPLAY/$replay}"
+  take="${take//\$REPLAY_TEXT/$replay_text}"
+  dir="$out/$name"; mkdir -p "$dir"
+  xcrun simctl terminate "$udid" com.homegrownsw.hammock </dev/null 2>/dev/null || true
+  vars=(SIMCTL_CHILD_HMK_DEBUG_SAMPLE=1 SIMCTL_CHILD_HMK_DEBUG_JANK="$dir/jank.jsonl" SIMCTL_CHILD_HMK_DEBUG_JANK_ROWS=1
+        SIMCTL_CHILD_HMK_DEBUG_JANK_EVENTS=1 "SIMCTL_CHILD_HMK_DEBUG_TAKE=wait:3500;$take")
+  for kv in ${=env} $extra; do vars+=("SIMCTL_CHILD_$kv"); done
+  xcrun simctl spawn "$udid" log stream --level info --predicate 'subsystem == "com.homegrownsw.hammock"' </dev/null >"$dir/devlog.txt" 2>&1 &
+  logger=$!
+  xcrun simctl io "$udid" recordVideo --codec h264 --force "$dir/run.mp4" </dev/null >"$dir/record.log" 2>&1 &
+  rec=$!
+  for _ in {1..40}; do grep -q "Recording started" "$dir/record.log" && break; sleep 0.1; done
+  start="$(epoch)"
+  env "${vars[@]}" xcrun simctl launch --console-pty "$udid" com.homegrownsw.hammock </dev/null >"$dir/console.txt" 2>&1 &
+  app_pid=$!
+  for _ in {1..900}; do grep -q "HammockTake: done" "$dir/console.txt" 2>/dev/null && break; sleep 0.2; done
+  sleep 0.5
+  kill -INT $rec; wait $rec 2>/dev/null || true
+  kill $app_pid $logger 2>/dev/null || true
+  if grep -q "Fatal error\|EXC_\|Terminating app" "$dir/console.txt"; then
+    echo "$name: CRASHED: $(grep -m1 "Fatal error\|EXC_\|Terminating app" "$dir/console.txt") (the report is in ~/Library/Logs/DiagnosticReports)" | tee -a "$out/glitches.md" >&2
+    failed=1
+  elif ! grep -q "HammockTake: done" "$dir/console.txt"; then
+    echo "$name: the take didn't finish (console.txt)" | tee -a "$out/glitches.md" >&2
+    failed=1
+  fi
+
+  touch "$dir/jank.jsonl"
+  sum() { jq -s "[.[] | select(.frames != null) | .$1 // 0] | add // 0" "$dir/jank.jsonl"; }
+  worst="$(jq -s '[.[] | select(.frames != null) | .worstMs] | max // 0' "$dir/jank.jsonl")"
+  blanks=$(sum blanks) snaps=$(sum snaps) bounces=$(sum bounces) shuffles=$(sum shuffles) hitches=$(sum hitches)
+  echo "| $name | $blanks | $snaps | $bounces | $shuffles | $hitches | ${worst} ms |" >>"$out/report.md"
+  printf '%-22s blanks %s  snaps %s  bounces %s  shuffles %s  hitches %s  worst %s ms\n' "$name" "$blanks" "$snaps" "$bounces" "$shuffles" "$hitches" "$worst"
+  (( blanks + snaps + bounces > 0 )) && failed=1
+
+  # A frame at each glitch (and a moment before it), to look at.
+  jq -r 'select(.ev == "blank" or .ev == "snap" or .ev == "bounce") | "\(.ev) \(.t) \(.v)"' "$dir/jank.jsonl" | head -12 |
+    while read -r ev t v; do
+      at=$(( t - start ))
+      (( at < 0 )) && at=0
+      ffmpeg -nostdin -loglevel error -y -ss "$(( at > 0.3 ? at - 0.3 : 0 ))" -i "$dir/run.mp4" -frames:v 1 -update 1 -vf "fps=6,scale=300:-2,tile=3x1" \
+        "$dir/$(printf '%s-%06.2f' "$ev" "$at").png" || true
+      echo "- $name: $ev ($v) at ${at}s: \`$name/$(printf '%s-%06.2f' "$ev" "$at").png\`" >>"$out/glitches.md"
+    done
+done
+
+if [[ -f "$out/glitches.md" ]]; then { echo; echo "## Glitches"; echo; cat "$out/glitches.md"; } >>"$out/report.md"; fi
+echo
+echo "Report: $out/report.md"
+exit $failed

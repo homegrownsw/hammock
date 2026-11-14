@@ -105,7 +105,12 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         case .watchAgent(let w):
             guard w.watch, w.subagentID.isEmpty, w.shellID.isEmpty else { return }
             if !w.beforeBlockID.isEmpty {
-                send(.with { $0.agentView = .with { $0.paneID = w.paneID; $0.older = true } })
+                var older: [AgentBlock] = []
+                #if DEBUG
+                // The long conversation (HMK_DEBUG_LONG_CHAT) has a page of history before it.
+                if Self.longChat, w.paneID == "p_polish" { older = Self.longTranscript(prefix: "O") }
+                #endif
+                send(.with { $0.agentView = .with { $0.paneID = w.paneID; $0.older = true; $0.blocks = older } })
                 return
             }
             watched.insert(w.paneID)
@@ -266,6 +271,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 $0.effort = "high"
                 if let p = prompts[paneID] { $0.prompt = p }
                 if let w = working[paneID] { $0.working = true; $0.status = w }
+                #if DEBUG
+                if replace, Self.longChat, paneID == "p_polish" { $0.hasMore_p = true }
+                #endif
             }
         })
     }
@@ -418,30 +426,30 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
 
     /// Many turns (a page's worth, as a Mac sends: 150 blocks), of rows of very different heights: long
     /// messages and replies, code, edits standing on their own, narration, short answers.
-    static func longTranscript() -> [AgentBlock] {
+    static func longTranscript(prefix: String = "L") -> [AgentBlock] {
         var out: [AgentBlock] = []
         let code = "```swift\n" + (0..<40).map { "let value\($0) = compute(\($0)) // a line of code that is long enough to wrap on a phone" }.joined(separator: "\n") + "\n```"
         var turn = 0
         while out.count < 150 {
-            let ago = Double(40 - turn) * 3
-            out.append(block("L\(turn)_u", .user, text: turn % 3 == 0
+            let ago = Double(40 - turn) * 3 + (prefix == "L" ? 0 : 150)
+            out.append(block("\(prefix)\(turn)_u", .user, text: turn % 3 == 0
                 ? String(repeating: "Have a look at how fonts reach the phone. Could we bundle the popular ones, and could the phone fetch the Mac's own fonts when it's connected? ", count: 1 + turn % 4)
                 : "OK, carry on.", minutesAgo: ago))
-            out.append(block("L\(turn)_t", .thinking, minutesAgo: ago - 0.1))
+            out.append(block("\(prefix)\(turn)_t", .thinking, minutesAgo: ago - 0.1))
             for i in 0..<(1 + turn % 5) {
-                out.append(block("L\(turn)_tool\(i)", .tool, title: "Ran `grep -rn font`", input: "grep -rn font apple/", output: "\(10 + i) matches", minutesAgo: ago - 0.2))
+                out.append(block("\(prefix)\(turn)_tool\(i)", .tool, title: "Ran `grep -rn font`", input: "grep -rn font apple/", output: "\(10 + i) matches", minutesAgo: ago - 0.2))
             }
             if turn % 4 == 1 {
-                out.append(block("L\(turn)_say", .thinking, text: "Committing now.", minutesAgo: ago - 0.3))
-                out.append(block("L\(turn)_edit", .tool, title: "Edited Fonts.swift", tool: "Edit", input: "apple/Sources/HammockKit/Fonts.swift",
+                out.append(block("\(prefix)\(turn)_say", .thinking, text: "Committing now.", minutesAgo: ago - 0.3))
+                out.append(block("\(prefix)\(turn)_edit", .tool, title: "Edited Fonts.swift", tool: "Edit", input: "apple/Sources/HammockKit/Fonts.swift",
                                  diff: "@@ -1,3 +1,4 @@\n-old\n+new\n+newer", added: 2, removed: 1, minutesAgo: ago - 0.3))
             }
             switch turn % 3 {
-            case 0: out.append(block("L\(turn)_r", .text, text: longReply(turn) + "\n\n" + code, minutesAgo: ago - 1))
-            case 1: out.append(block("L\(turn)_r", .text, text: "Done.", minutesAgo: ago - 1))
-            default: out.append(block("L\(turn)_r", .text, text: longReply(turn), minutesAgo: ago - 1))
+            case 0: out.append(block("\(prefix)\(turn)_r", .text, text: longReply(turn) + "\n\n" + code, minutesAgo: ago - 1))
+            case 1: out.append(block("\(prefix)\(turn)_r", .text, text: "Done.", minutesAgo: ago - 1))
+            default: out.append(block("\(prefix)\(turn)_r", .text, text: longReply(turn), minutesAgo: ago - 1))
             }
-            out.append(done("L\(turn)_d", workedMinutes: 2, minutesAgo: ago - 1))
+            out.append(done("\(prefix)\(turn)_d", workedMinutes: 2, minutesAgo: ago - 1))
             turn += 1
         }
         return out

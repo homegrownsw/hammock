@@ -467,6 +467,10 @@ struct CockpitSplit<Sidebar: View>: View {
     /// What the list opened, once it's been seen in the state (a new tab
     /// can open before it arrives), so its going means it closed.
     @State private var seen: String?
+    /// What the list had open, while it slides away after going back (on
+    /// an iPhone, where the split view is one column).
+    @State private var leaving: String?
+    @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
         NavigationSplitView {
@@ -489,10 +493,20 @@ struct CockpitSplit<Sidebar: View>: View {
         } detail: {
             NavigationStack(path: Binding(get: { Array(path.dropFirst()) }, set: { path = Array(path.prefix(1)) + $0 })) {
                 Group {
-                    if let first = path.first {
-                        CockpitDestination(model: model, id: first, path: $path).id(first)
+                    // Going back, what was open stays as it slides away: the
+                    // placeholder came in its place, said on the way out.
+                    if let shown = path.first ?? (hSize == .compact ? leaving : nil) {
+                        CockpitDestination(model: model, id: shown, path: $path).id(shown)
                     } else if !model.groups.isEmpty {
                         ContentUnavailableView(placeholder, systemImage: "sidebar.left")
+                    }
+                }
+                .onChange(of: path.first) { old, new in
+                    guard new == nil, let old else { leaving = nil; return }
+                    leaving = old
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(700))
+                        if path.first == nil, leaving == old { leaving = nil }
                     }
                 }
                 .navigationDestination(for: String.self) { CockpitDestination(model: model, id: $0, path: $path) }

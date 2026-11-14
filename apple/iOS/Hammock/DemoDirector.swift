@@ -18,7 +18,9 @@ import UIKit
 ///   compose:PANE:TEXT   TEXT typed into the agent view's message box (PANE's, on screen), keyboard up
 ///   submit:PANE         that box sent, as its send button does
 ///   dismiss             the keyboard put away
-///   scroll:top|bottom|N the conversation on screen scrolled to its top, its end, or by N points (up if negative)
+///   scroll:top|bottom|latest|N  the conversation on screen scrolled to its top, its end (latest: as its Latest
+///                       button does), or by N points (up if negative)
+///   older:PANE          PANE's earlier messages loaded, as Show Earlier Messages does
 ///
 /// and at the end "HammockTake: done". The cockpit's views follow the tab and path through notifications.
 @MainActor
@@ -74,6 +76,10 @@ enum DemoDirector {
             NotificationCenter.default.post(name: Notification.Name("HammockDebugCompose"), object: nil, userInfo: ["pane": arg])
         case "scroll":
             NotificationCenter.default.post(name: Notification.Name("HammockDebugScroll"), object: nil, userInfo: ["to": arg])
+        case "older":
+            let s = model.acquireAgent(arg)
+            s.loadOlder()
+            model.releaseAgent(arg)
         case "dismiss":
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         case "say":

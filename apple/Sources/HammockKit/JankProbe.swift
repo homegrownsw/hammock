@@ -16,6 +16,8 @@ import AppKit
 ///   content jumping rather than moving;
 /// - bounces: rows moving one way then the other within a third of a
 ///   second, while nobody scrolls;
+/// - blanks: an empty stretch over 40% of the view, between or past the
+///   rows, while there's more of the conversation than fits;
 /// - shuffles: rows in view moving more than 12 pt apart in one frame (laid
 ///   out again, unanimated);
 /// - rows rendered (AgentItemView bodies) and row geometry changes.
@@ -49,6 +51,13 @@ final class JankProbe {
     /// The scroll view's height, and its content's.
     var viewport: CGFloat = 10_000
     var contentHeight: CGFloat = 0
+    /// The part of the scroll view not under its bars, in its own coordinates.
+    var shown: ClosedRange<CGFloat> = 0...0
+    /// The conversation kept out of sight while it lands at its end: nothing
+    /// moving then is seen, so none of it counts.
+    var hidden = false { didSet { if hidden != oldValue { last = [:]; blankFrames = 0 } } }
+    /// Frames in a row the view has been blank (blankGap).
+    private var blankFrames = 0
     private var events = ProcessInfo.processInfo.environment["HMK_DEBUG_JANK_EVENTS"] != nil
     var userScrolling = false
     var animatingScroll = false
@@ -58,6 +67,7 @@ final class JankProbe {
     private var frames = 0, hitches = 0
     private var lostMs = 0.0, worstMs = 0.0
     private var snaps = 0, snapPx = 0.0, bounces = 0, shuffles = 0
+    private var blanks = 0
     private var bodies = 0, geometry = 0
     private var lastFrame: CFTimeInterval = 0
     private var interval: CFTimeInterval = 1.0 / 60
@@ -103,6 +113,16 @@ final class JankProbe {
 
     func body() { if Self.enabled { bodies += 1 } }
 
+    /// The view jumping somewhere on purpose (Latest, or sending while
+    /// scrolled up), or moving with the keyboard for a moment: its rows
+    /// moving meanwhile isn't a snap.
+    func jumped(for seconds: Double = 0.4) {
+        guard Self.enabled else { return }
+        last = [:]
+        quietUntil = CACurrentMediaTime() + seconds
+    }
+    private var quietUntil: CFTimeInterval = 0
+
     func row(_ id: String, _ frame: CGRect) {
         guard Self.enabled else { return }
         rows[id] = frame
@@ -133,10 +153,11 @@ final class JankProbe {
             worstMs = max(worstMs, dt * 1000)
         }
         lastFrame = now
-        if !userScrolling, !animatingScroll {
+        if !userScrolling, !animatingScroll, !hidden, now >= quietUntil {
             // The rows in view that kept their height: how far they moved.
             var moves: [(id: String, dy: CGFloat)] = []
-            for (id, r) in rows where r.maxY > 0 && r.minY < viewport {
+            // What shows, not under the bars (the message box, the toolbar).
+            for (id, r) in rows where r.height > 1 && r.maxY > shown.lowerBound && r.minY < shown.upperBound {
                 guard let p = last[id], abs(r.height - p.height) < 0.5 else { continue }
                 moves.append((id, r.minY - p.minY))
             }
@@ -164,21 +185,48 @@ final class JankProbe {
                 }
             }
         }
+        // Blank: an empty stretch of the view, between the rows (and the
+        // tail) or past them, over 40% of it, while there's more of the
+        // conversation than fits. Two frames or more, so a row not yet
+        // reporting where it's gone doesn't count.
+        if Self.rows, !hidden, contentHeight > shown.upperBound - shown.lowerBound + 40, let gap = blankGap(), gap > (shown.upperBound - shown.lowerBound) * 0.4 {
+            blankFrames += 1
+            if blankFrames == 2 {
+                blanks += 1
+                event("blank", gap, rows.count)
+            }
+        } else {
+            blankFrames = 0
+        }
         last = rows
         if now - windowStart >= 2 { flush(now) }
+    }
+
+    /// The longest stretch of what's shown with no row (or the tail) in it.
+    private func blankGap() -> CGFloat? {
+        let lo = shown.lowerBound, hi = shown.upperBound
+        guard hi - lo > 100 else { return nil }
+        let spans = rows.values.filter { $0.maxY > lo && $0.minY < hi && $0.height > 0 }
+            .map { (max($0.minY, lo), min($0.maxY, hi)) }.sorted { $0.0 < $1.0 }
+        var at = lo, widest: CGFloat = 0
+        for (a, b) in spans {
+            widest = max(widest, a - at)
+            at = max(at, b)
+        }
+        return max(widest, hi - at)
     }
 
     private func flush(_ now: CFTimeInterval) {
         defer {
             windowStart = now
             frames = 0; hitches = 0; lostMs = 0; worstMs = 0
-            snaps = 0; snapPx = 0; bounces = 0; shuffles = 0; bodies = 0; geometry = 0
+            snaps = 0; snapPx = 0; bounces = 0; shuffles = 0; blanks = 0; bodies = 0; geometry = 0
             note = ""
         }
         // Idle windows (nothing on screen moving or drawing) say nothing.
-        guard hitches > 0 || snaps > 0 || bounces > 0 || bodies > 0 || geometry > 0 else { return }
-        let line = String(format: #"{"t":%.1f,"frames":%d,"hitches":%d,"lostMs":%.0f,"worstMs":%.0f,"snaps":%d,"snapPx":%.0f,"bounces":%d,"shuffles":%d,"bodies":%d,"geometry":%d,"rows":%d,"note":"%@"}"#,
-                          Date().timeIntervalSince1970, frames, hitches, lostMs, worstMs, snaps, snapPx, bounces, shuffles, bodies, geometry, rows.count, note)
+        guard hitches > 0 || snaps > 0 || bounces > 0 || blanks > 0 || bodies > 0 || geometry > 0 else { return }
+        let line = String(format: #"{"t":%.1f,"frames":%d,"hitches":%d,"lostMs":%.0f,"worstMs":%.0f,"snaps":%d,"snapPx":%.0f,"bounces":%d,"shuffles":%d,"blanks":%d,"bodies":%d,"geometry":%d,"rows":%d,"note":"%@"}"#,
+                          Date().timeIntervalSince1970, frames, hitches, lostMs, worstMs, snaps, snapPx, bounces, shuffles, blanks, bodies, geometry, rows.count, note)
         if logOnly {
             DevLog.agent("jank \(line)")
         } else {

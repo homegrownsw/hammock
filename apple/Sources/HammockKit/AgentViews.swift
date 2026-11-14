@@ -219,6 +219,13 @@ public struct AgentConversationView: View {
     @State private var shownAt: Date?
     /// Just loaded, while rows settle: the end stays anchored in view.
     @State private var settling = true
+    /// Kept at the end for a moment (holdEnd): the keyboard coming or going
+    /// with the conversation at its end, so it moves with the keyboard
+    /// (followed by a scroll, it jumped the keyboard's height in a frame
+    /// while the keyboard slid; going, the scroll view clamped it at once),
+    /// or jumped there (Latest), while the rows passed measure.
+    @State private var holdingEnd = false
+    @State private var holdTick = 0
     /// The conversation has come to rest at its end since it was loaded
     /// (or switched to): until then its rows are kept out of sight, so it
     /// first shows where it lands, not partway up and jumping down as lazy
@@ -244,8 +251,12 @@ public struct AgentConversationView: View {
     @State private var live: (session: ObjectIdentifier, from: String)?
     /// Scrolls rows you open into view.
     @State private var revealer = RowRevealer()
-    /// Where the conversation's scrolled to (Latest goes to the end).
-    @State private var position = ScrollPosition(edge: .bottom)
+    /// Where the conversation's scrolled to. Not pinned to its bottom edge
+    /// (ScrollPosition(edge:)): pinned, SwiftUI put it back at the end on
+    /// some layout passes, rows that came while you watched snapping into
+    /// view before the glide to them, until a finger scrolled it. It opens
+    /// at the end by defaultScrollAnchor.
+    @State private var position = ScrollPosition(idType: String.self)
     /// A link with a scheme that could open any app, waiting for a yes.
     @State private var askingToOpen: URL?
     @Environment(\.openURL) private var openURL
@@ -316,6 +327,7 @@ public struct AgentConversationView: View {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(80))
             guard !landed, tick == landingTick, gap < 2 else { return }
+            DevLog.agent("pane \(paneID): landed at its end")
             withAnimation(.easeOut(duration: 0.15)) { landed = true }
         }
     }
@@ -325,7 +337,7 @@ public struct AgentConversationView: View {
     private func landAtLatest() {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(450))
-            if !landed { withAnimation(.easeOut(duration: 0.15)) { landed = true } }
+            if !landed { DevLog.agent("pane \(paneID): landed by timeout, still settling"); withAnimation(.easeOut(duration: 0.15)) { landed = true } }
         }
     }
 
@@ -353,11 +365,26 @@ public struct AgentConversationView: View {
         }
     }
 
+    private func holdEnd(for ms: Int) {
+        holdingEnd = true
+        holdTick += 1
+        let tick = holdTick
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(ms))
+            if holdTick == tick { holdingEnd = false }
+        }
+    }
+
     /// To the end, at once (an animated scroll aims at an estimate of rows
     /// not yet laid out, overshooting into blank space and bouncing back as
     /// they measure, worse while messages arrive), then again once they have.
+    /// To the marker under the rows, laid out in full: scrollTo(edge:) aims
+    /// at the lazy rows' estimated end, and with earlier messages loaded it
+    /// overshot into blank space for a moment.
     private func jumpToEnd(_ proxy: ScrollViewProxy) {
-        position.scrollTo(edge: .bottom)
+        if JankProbe.enabled { JankProbe.shared.jumped() }
+        holdEnd(for: 500)
+        proxy.scrollTo("bottom", anchor: .bottom)
         atBottom = true
         Task { @MainActor in
             for ms in [80, 300] {
@@ -439,17 +466,36 @@ public struct AgentConversationView: View {
         }
     }
 
-    /// Where the live end of the conversation starts in its rows: the last
-    /// `liveRows` when it was loaded (kept from then, so a row doesn't move
-    /// out of it, and from one stack to the other, as each new one comes).
+    /// Where the live end of the conversation starts in its rows: as it was
+    /// loaded, all of it, back to `liveText` of text (kept from then, so a
+    /// row doesn't move out of it, and from one stack to the other, as each
+    /// new one comes). Even a few lazy rows left the view landing at its end
+    /// while their estimated heights corrected themselves, over half a
+    /// second and more, coming into view partway up and jumping down; and a
+    /// correction after it had landed left it past the end for a frame.
     private func liveStart(_ s: AgentSession) -> Int {
         if let live, live.session == ObjectIdentifier(s), let i = s.items.firstIndex(where: { $0.id == live.from }) { return i }
-        return max(0, s.items.count - Self.liveRows)
+        return freshLiveStart(s)
     }
 
-    /// Rows laid out in full at the end when a conversation's loaded: more
-    /// than a screenful, of all but the tallest.
-    static let liveRows = 24
+    /// Where the live end would start now: back to `liveText` of text from
+    /// the end, the last row at least.
+    private func freshLiveStart(_ s: AgentSession) -> Int {
+        var text = 0
+        for i in s.items.indices.reversed() {
+            text += s.items[i].textSize
+            if text > Self.liveText { return min(i + 1, s.items.count - 1) }
+        }
+        return 0
+    }
+
+    /// How much text the live end starts with, at most: a page from the Mac
+    /// (up to 256 KB) can be more than lays out at once without a pause.
+    static let liveText = 64_000
+
+    /// How much text, with earlier messages loaded, is still all laid out
+    /// in full (a pause as they come, not as they're scrolled through).
+    static let allLiveText = 192_000
 
     /// Keeps where the live end starts (liveStart) from now on, from where
     /// it would be (a new session, or the rows it started at gone).
@@ -488,10 +534,10 @@ public struct AgentConversationView: View {
             }
             ScrollViewReader { proxy in
                 ScrollView {
-                    // History in a lazy stack, and the live end under it (the
-                    // last rows when it was loaded, everything since, then the
-                    // tail: what you've sent on its way, Working…) laid out in
-                    // full. Only rows a lazy stack has measured have real
+                    // History in a lazy stack, and the live end under it (what
+                    // was loaded, back to liveText of it, everything since,
+                    // then the tail: what you've sent on its way, Working…)
+                    // laid out in full. Only rows a lazy stack has measured have real
                     // heights; the rest are estimates (the average row's,
                     // hundreds of points for a one-line row), and rows arriving
                     // or growing at its end, while the view followed it there,
@@ -536,6 +582,10 @@ public struct AgentConversationView: View {
                     .frame(maxWidth: .infinity)
                     .coordinateSpace(.named(RowRevealer.space))
                     .environment(\.agentRowRevealer, revealer)
+                    // Working… going (the turn done) or coming: the rows above
+                    // move with it, not dropping its height in a frame (at the
+                    // end, the scroll view clamped them down at once).
+                    .animation(.easeOut(duration: 0.25), value: s.working)
                     .opacity(landed || s.items.isEmpty ? 1 : 0)
                 }
                 // Open at the bottom, and kept there while what's loaded settles
@@ -546,7 +596,7 @@ public struct AgentConversationView: View {
                 .scrollPosition($position)
                 .jankScroll()
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
-                .defaultScrollAnchor(settling ? .bottom : nil, for: .sizeChanges)
+                .defaultScrollAnchor(settling || holdingEnd ? .bottom : nil, for: .sizeChanges)
                 // Drag down into the keyboard to pull it away with your finger.
                 .scrollDismissesKeyboard(.interactively)
                 // Follow the conversation while you're at the bottom: a new
@@ -557,16 +607,19 @@ public struct AgentConversationView: View {
                 .onScrollGeometryChange(for: ScrollEdge.self) { g in
                     ScrollEdge(content: g.contentSize.height,
                                gap: g.contentSize.height - g.visibleRect.maxY,
-                               container: g.containerSize.height)
+                               container: g.containerSize.height,
+                               insets: g.contentInsets.top + g.contentInsets.bottom, top: g.contentInsets.top)
                 } action: { old, new in
                     glide.gap = new.gap
                     if !landed, !s.items.isEmpty { land(at: new.gap) }
                     if JankProbe.enabled {
                         JankProbe.shared.viewport = new.container
                         JankProbe.shared.contentHeight = new.content
+                        JankProbe.shared.shown = new.top...max(new.top, new.container - new.insets + new.top)
                     }
                     // Not with a picture open: it zooms back to where its picture is.
                     let wasNear = old.gap < 60 && viewedImage == nil
+                    if JankProbe.enabled, abs(new.content - old.content) > 0.5, wasNear { DevLog.agent("grow \(Int(new.content - old.content)) gap \(Int(old.gap))→\(Int(new.gap)) settling=\(settling) holding=\(holdingEnd) follow=\(revealer.holdingFollow) pending=\(glide.pending)") }
                     if settling {
                         // Just loaded: the anchor keeps the end in view as rows
                         // measure their real heights.
@@ -601,9 +654,11 @@ public struct AgentConversationView: View {
                             await Task.yield()
                             if glide.pending, glide.tick == tick { glideToEnd() }
                         }
-                    } else if new.container < old.container - 0.5, wasNear {
-                        // Shorter (the keyboard came up): to the very end, with it.
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                    } else if new.container < old.container - 0.5, wasNear, !holdingEnd {
+                        // Shorter (a prompt card, the message box growing; not
+                        // the keyboard, held at the end meanwhile): to the very
+                        // end, moving, not jumping the height in a frame.
+                        withAnimation(.smooth(duration: 0.35)) { proxy.scrollTo("bottom", anchor: .bottom) }
                     }
                     // Latest once well up from the end; gone again near it (a gap
                     // between the two, so it doesn't flicker at the line).
@@ -613,15 +668,19 @@ public struct AgentConversationView: View {
                     RowRevealer.Visible(top: g.visibleRect.minY + g.contentInsets.top,
                                         bottom: g.visibleRect.maxY - g.contentInsets.bottom,
                                         gap: g.contentSize.height - g.visibleRect.maxY)
-                } action: { _, new in revealer.visible = new }
+                } action: { old, new in
+                    revealer.visible = new
+                    if JankProbe.enabled, abs(new.top - old.top) > 20 { DevLog.agent("scrolled \(Int(new.top - old.top)) to \(Int(new.top))") }
+                }
                 // Switching to this view with the conversation already loaded:
                 // the anchor alone can land short of the end while lazy rows
                 // above measure their real heights, so land again once they have.
                 .onAppear {
                     revealer.proxy = proxy
+                    let loaded = !s.blocks.isEmpty
                     // Watched a long time, the live end can grow long: shown
-                    // again, it starts afresh, with what's been read lazy.
-                    if s.items.count - liveStart(s) > 120 { live = nil; keepLiveStart(s) }
+                    // again, it starts afresh, with what's well above lazy.
+                    if freshLiveStart(s) > liveStart(s) + 20 { live = nil; keepLiveStart(s) }
                     if !s.items.isEmpty { landAtLatest() }
                     proxy.scrollTo("bottom", anchor: .bottom)
                     Task { @MainActor in
@@ -629,9 +688,38 @@ public struct AgentConversationView: View {
                             try? await Task.sleep(for: .milliseconds(ms))
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
+                        // Settled, as when it loads (below): left anchored
+                        // at the end (back to a conversation loaded before),
+                        // what arrived after snapped into view, not gliding.
+                        try? await Task.sleep(for: .seconds(1.2))
+                        if loaded { settling = false }
                     }
                 }
                 .onChange(of: s.items.count, initial: true) { keepLiveStart(s) }
+                // Earlier messages loaded (at the top, where you asked for
+                // them): what you were reading stays in view, with them
+                // above it, not the top of what came in its place.
+                .onChange(of: s.items.first?.id) { old, new in
+                    guard let old, new != old, let was = s.items.firstIndex(where: { $0.id == old }), was > 0 else { return }
+                    // Laid out in full with the rest, while it all was and
+                    // there's not too much: lazy, it came in at estimated
+                    // heights, rows drawn over each other as you scrolled up
+                    // through it, and Latest from there overshooting the end.
+                    if liveStart(s) == was, s.items.reduce(0, { $0 + $1.textSize }) <= Self.allLiveText, let first = new {
+                        live = (ObjectIdentifier(s), first)
+                    }
+                    guard glide.gap > 60 else { return }
+                    if JankProbe.enabled { JankProbe.shared.jumped() }
+                    proxy.scrollTo(old, anchor: .top)
+                }
+                .onChange(of: landed, initial: true) { if JankProbe.enabled { JankProbe.shared.hidden = !landed } }
+                .onDisappear { if JankProbe.enabled { JankProbe.shared.hidden = true } }
+                #if os(iOS)
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
+                    if glide.gap < 60 { holdEnd(for: 600) }
+                    if JankProbe.enabled { JankProbe.shared.jumped(for: 0.6) }
+                }
+                #endif
                 .onChange(of: s.blocks.last?.id) { old, _ in
                     if old == nil {
                         landed = false
@@ -654,10 +742,11 @@ public struct AgentConversationView: View {
                 // Dev aid: the iPhone demo's takes (DemoDirector: scroll) scroll the conversation, as a finger would.
                 .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HammockDebugScroll"))) { n in
                     guard let to = n.userInfo?["to"] as? String else { return }
+                    if to == "latest" { return jumpToEnd(proxy) }  // as the Latest button does
                     withAnimation(.easeInOut(duration: 0.6)) {
                         switch to {
-                        case "top": position.scrollTo(edge: .top)
-                        case "bottom": position.scrollTo(edge: .bottom)
+                        case "top": position.scrollTo(y: 0)
+                        case "bottom": proxy.scrollTo("bottom", anchor: .bottom)
                         default: position.scrollTo(y: max(0, revealer.visible.top + (Double(to) ?? 0)))  // by that many points
                         }
                     }
@@ -742,6 +831,10 @@ struct ScrollEdge: Equatable {
     /// less at the end, counting what's under the floating bar).
     var gap: CGFloat
     var container: CGFloat = 0
+    /// What's under the bars (the floating message box, the keyboard) at the
+    /// bottom and top, together, and at the top alone.
+    var insets: CGFloat = 0
+    var top: CGFloat = 0
 }
 
 /// Brings a row you've just opened into view: all of it if it fits, its top
@@ -830,6 +923,10 @@ public struct AgentItem: Identifiable, Equatable {
     var block: AgentBlock?
     var tools: [AgentBlock] = []
     var thoughtSeconds: Int?
+
+    /// Roughly how much there is to lay out (a run of tools shows a line
+    /// each, closed), for how much of the conversation lays out in full.
+    var textSize: Int { (block.map { $0.text.utf8.count + $0.title.utf8.count } ?? 0) + tools.count * 100 + 100 }
 
     /// A turn shorter than this ends without a "Worked for" line.
     static let doneShownFromMs: Int64 = 30_000

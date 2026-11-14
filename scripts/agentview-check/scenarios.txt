@@ -1,0 +1,37 @@
+# The agent view's scenarios (scripts/agentview-check), one a line: NAME|ENV|TAKE.
+# ENV is space-separated KEY=VALUE for the demo (DemoMac: HMK_DEBUG_LONG_CHAT, HMK_DEBUG_REPLAY); TAKE is the
+# demo's steps (DemoDirector.swift), after the app has its state. p_polish is the long conversation, p_triage
+# the agent waiting on a permission, p_brief a short finished one. Each new kind of glitch found gets a scenario.
+
+# Opening a long conversation: it lands at its end, without jumping down to it.
+open-long|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:4000
+
+# A message, then thinking and a run of tool calls straight away, then a long reply (the blank-screen bug).
+send-tools|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Start on the bundle in the work tree.;wait:800;submit:p_polish;wait:1500;dismiss;wait:13000
+
+# The same with the keyboard left up throughout.
+send-tools-keyboard|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Carry on.;wait:800;submit:p_polish;wait:13000
+
+# Read back to the top first (every row measured), back down, then send.
+top-then-send|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;scroll:top;wait:2000;scroll:bottom;wait:1500;compose:p_polish:Start on the bundle.;wait:800;submit:p_polish;wait:1500;dismiss;wait:12000
+
+# Scrolled up reading while the agent works: what you're reading holds still, then Latest takes you down.
+read-while-working|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Go on.;wait:800;submit:p_polish;wait:1000;dismiss;wait:1500;scroll:-700;wait:9000;scroll:latest;wait:4000
+
+# Sent while scrolled well up: down to the end to see it go.
+send-scrolled-up|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;scroll:-2500;wait:1500;compose:p_polish:And the Mac fonts?;wait:800;submit:p_polish;wait:1500;dismiss;wait:12000
+
+# Earlier messages loaded at the top: what's in view stays put; then up through them, and Latest back down.
+older|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;scroll:top;wait:2000;older:p_polish;wait:3000;scroll:top;wait:2000;scroll:900;wait:1500;scroll:latest;wait:3000
+
+# Leaving the conversation while tools arrive, and coming back to it.
+away-and-back|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Start.;wait:800;submit:p_polish;wait:1000;dismiss;wait:2000;back;wait:2500;open:p_polish;wait:9000
+
+# Allowing what an agent waits on: the prompt card goes, the work arrives.
+permission||open:p_triage;wait:2500;allow:p_triage;wait:5000
+
+# A short conversation answered.
+short-reply||open:p_brief;wait:2000;compose:p_brief:Thanks!;wait:800;submit:p_brief;wait:1000;dismiss;wait:4000
+
+# A real Claude session (--replay FILE, made by scripts/agentblocks): its history, then the rest at its pace.
+replay|HMK_DEBUG_REPLAY=$REPLAY|open:p_polish;wait:2500;compose:p_polish:$REPLAY_TEXT;wait:800;submit:p_polish;wait:1500;dismiss;wait:30000
