@@ -532,6 +532,7 @@ func (p *pane) attachHolderLocked(hc *holder.Client) int {
 	if len(p.seed) > 0 {
 		// Scrollback saved before a reboot: replay it ahead of the new process.
 		p.mirror.Write(p.seed)
+		p.mirror.Write(modesOff)
 		p.mirror.Write([]byte("\r\n\x1b[0;2m── " + cmp.Or(p.seedNote, "restored after restart") + " ──\x1b[0m\r\n"))
 		p.seed, p.seedNote = nil, ""
 	}
@@ -810,6 +811,9 @@ func (p *pane) input(c *conn, data []byte) (resized bool, err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.info.Asleep {
+		if onlyReports(data) {
+			return false, nil // the mouse moving over it
+		}
 		return false, errors.New("the pane's agent is asleep")
 	}
 	if p.ops == nil || p.info.Exited { // no holder, nor one starting
@@ -1291,9 +1295,18 @@ func (p *pane) showEnded() {
 		p.mirror.Write(p.seed)
 		p.seed = nil
 	}
+	p.mirror.Write(modesOff)
 	p.mirror.Write([]byte("\r\n\x1b[0;2m── ended before restart ──\x1b[0m\r\n"))
 	p.sendSnapshotsLocked()
 }
+
+// modesOff turns off what the program that drew a saved screen asked of
+// the terminal (mouse and focus reports, bracketed paste, the kitty
+// keyboard, a hidden cursor), once it's gone: else moving the mouse over
+// its screen types reports into whatever's there now, or wakes a sleeping
+// agent.
+var modesOff = []byte("\x1b[?9l\x1b[?1000l\x1b[?1001l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1016l" +
+	"\x1b[?2004l\x1b[<99u\x1b[?25h")
 
 // loadScrollback queues a saved snapshot to seed the next mirror (a new
 // process); its offset belonged to the old one.

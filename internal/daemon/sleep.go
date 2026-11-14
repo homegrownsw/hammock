@@ -25,6 +25,7 @@ package daemon
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -91,6 +92,8 @@ func (p *pane) whyAwakeLocked() string {
 		return "it's a scheduled run"
 	case a.SessionId == "":
 		return "its session isn't known (hmk hooks install tells Hammock)"
+	case sessionFile(a) == "":
+		return "nothing's been said in its session yet"
 	}
 	if ag := agents.Get(a.Harness); ag == nil || ag.Resume == nil {
 		return "its sessions can't be resumed"
@@ -189,6 +192,12 @@ func (d *Daemon) sleepPane(p *pane, actor string) error {
 		p.info.Cwd = cwd
 	}
 	p.wakeCmd = cmd
+	if p.mirror != nil {
+		// Its screen stays, but not the agent's mouse reports and the like:
+		// moving the mouse over it mustn't wake it.
+		p.mirror.Write(modesOff)
+		p.sendSnapshotsLocked()
+	}
 	// Its holder ends with what it runs; the reader, a generation behind,
 	// takes neither the connection closing nor the exit for the pane's.
 	p.postLocked(func(hc *holder.Client) { _ = hc.CloseHolder() })
@@ -321,6 +330,9 @@ func (c *conn) wakeFor(msg *pb.ClientMessage) {
 	var id string
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Input:
+		if onlyReports(m.Input.Data) {
+			return // the mouse moved over it: not typing
+		}
 		id = m.Input.PaneId
 	case *pb.ClientMessage_AgentAnswer:
 		id = m.AgentAnswer.PaneId
@@ -337,6 +349,25 @@ func (c *conn) wakeFor(msg *pb.ClientMessage) {
 	if _, err := d.wakePane(p, auditActorOf(c)); err != nil {
 		d.log.Warn("couldn't wake the pane's agent", "pane", id, "err", err)
 	}
+}
+
+// reportRE is one report a terminal sends unasked: a mouse event (SGR,
+// urxvt or X10) or focus in or out.
+var reportRE = regexp.MustCompile(`^\x1b\[(?:<[0-9;]*[Mm]|M[\s\S]{3}|[0-9;]*M|[IO])`)
+
+// onlyReports reports whether data is nothing but such reports.
+func onlyReports(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	for len(data) > 0 {
+		loc := reportRE.FindIndex(data)
+		if loc == nil {
+			return false
+		}
+		data = data[loc[1]:]
+	}
+	return true
 }
 
 // auditActorOf is c.auditActor, taking d.mu for it.
@@ -390,5 +421,6 @@ func (d *Daemon) restoreAsleep(p *pane) {
 		p.mirror.Write(p.seed)
 		p.seed = nil
 	}
+	p.mirror.Write(modesOff)
 	p.sendSnapshotsLocked()
 }

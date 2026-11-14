@@ -28,10 +28,39 @@ func TestParseAgentSleep(t *testing.T) {
 	}
 }
 
+// claudeSession makes session id's transcript, as if something had been
+// said in it, and returns its path.
+func claudeSession(t *testing.T, id string) string {
+	t.Helper()
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	path := filepath.Join(cfg, "projects", "-tmp-x", id+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestOnlyReports(t *testing.T) {
+	for in, want := range map[string]bool{
+		"\x1b[<35;2;9M\x1b[<35;12;10M": true, "\x1b[<0;5;5m": true, "\x1b[I": true, "\x1b[O\x1b[I": true,
+		"\x1b[M !!": true, "\x1b[32;10;5M": true,
+		"": false, "a": false, "\x1b[<35;2;9Mx": false, "\x1b[A": false, "\r": false,
+	} {
+		if got := onlyReports([]byte(in)); got != want {
+			t.Errorf("onlyReports(%q) = %v", in, got)
+		}
+	}
+}
+
 func TestWhyAwake(t *testing.T) {
+	transcript := claudeSession(t, "s")
 	ready := func() *pane {
 		return &pane{pid: 1, ops: make(chan func(*holder.Client)), info: &pb.Pane{Kind: pb.PaneKind_PANE_KIND_TERMINAL, Processes: []string{"claude"},
-			Agent: &pb.Agent{Harness: "claude", SessionId: "s", State: pb.AgentState_AGENT_STATE_IDLE}}}
+			Agent: &pb.Agent{Harness: "claude", SessionId: "s", TranscriptPath: transcript, State: pb.AgentState_AGENT_STATE_IDLE}}}
 	}
 	if why := ready().whyAwakeLocked(); why != "" {
 		t.Fatalf("an idle agent can't sleep: %s", why)
@@ -43,6 +72,7 @@ func TestWhyAwake(t *testing.T) {
 		"command":    func(p *pane) { p.info.Agent.RunningCommand = true },
 		"subagents":  func(p *pane) { p.info.Agent.Subagents = 2 },
 		"no session": func(p *pane) { p.info.Agent.SessionId = "" },
+		"unwritten":  func(p *pane) { p.info.Agent.SessionId, p.info.Agent.TranscriptPath = "new", "" },
 		"scheduled":  func(p *pane) { p.info.ScheduleRunId = "r" },
 		"asleep":     func(p *pane) { p.info.Asleep = true },
 		"exited":     func(p *pane) { p.info.Exited = true },
@@ -78,6 +108,7 @@ func TestSleepAndWake(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HMK_TEST_IDLE_AGENT", "1")
+	transcript := claudeSession(t, "s1")
 	t.Setenv("SHELL", "/bin/sh") // woken panes' shell, not your own's startup files
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	old := wakeWait
@@ -118,7 +149,7 @@ func TestSleepAndWake(t *testing.T) {
 		return len(p.info.Processes) == 1 && p.info.Processes[0] == "claude"
 	})
 	p.mu.Lock()
-	p.info.Agent = &pb.Agent{Harness: "claude", SessionId: "s1", State: pb.AgentState_AGENT_STATE_IDLE}
+	p.info.Agent = &pb.Agent{Harness: "claude", SessionId: "s1", TranscriptPath: transcript, State: pb.AgentState_AGENT_STATE_IDLE}
 	p.hookAt = time.Now() // agent detection leaves it be
 	p.mu.Unlock()
 
@@ -173,6 +204,10 @@ func TestSleepAndWake(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Focus{Focus: &pb.Focus{PaneId: pid}}})
 	if info := p.snapshotInfo(); !info.Asleep {
 		t.Fatal("focusing it woke it")
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pid, Data: []byte("\x1b[<35;2;9M\x1b[I")}}})
+	if info := p.snapshotInfo(); !info.Asleep {
+		t.Fatal("the mouse moving over it woke it")
 	}
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pid, Data: []byte("echo typed-$((40+2))\r")}}})
 	if info := p.snapshotInfo(); info.Asleep {
