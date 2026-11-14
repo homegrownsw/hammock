@@ -94,7 +94,7 @@ func TestWhyAwake(t *testing.T) {
 // was typed meanwhile goes in once it's up.
 func TestSleepAndWake(t *testing.T) {
 	bin := shortDir(t)
-	// An agent by its name: this test, copied as claude, idling (TestMain).
+	// An agent by its name: this test, copied as claude, idles (TestMain).
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,6 @@ func TestSleepAndWake(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "claude"), b, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HMK_TEST_IDLE_AGENT", "1")
 	transcript := claudeSession(t, "s1")
 	t.Setenv("SHELL", "/bin/sh") // woken panes' shell, not your own's startup files
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
@@ -127,7 +126,7 @@ func TestSleepAndWake(t *testing.T) {
 	pid := p.id
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Resize{Resize: &pb.Resize{PaneId: pid, Cols: 100, Rows: 30}}})
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: pid,
-		Data: []byte("echo before-sleep; " + filepath.Join(bin, "claude") + " --model opus 'say hi'\r")}}})
+		Data: []byte("echo before-sleep; printf '\\342\\235\\257 half-typed\\n'; " + filepath.Join(bin, "claude") + " --model opus 'say hi'\r")}}})
 
 	var agentPID int
 	waitFor(t, "the agent to start", func() bool {
@@ -161,6 +160,9 @@ func TestSleepAndWake(t *testing.T) {
 	if !strings.Contains(p.text(false), "before-sleep") {
 		t.Errorf("its screen went: %q", p.text(false))
 	}
+	if p.wakeDraft != "half-typed" {
+		t.Errorf("its draft: %q", p.wakeDraft)
+	}
 	if want := "claude --resume 's1' '--model' 'opus'"; p.wakeCmd != want {
 		t.Errorf("wakes with %q, want %q", p.wakeCmd, want)
 	}
@@ -183,8 +185,11 @@ func TestSleepAndWake(t *testing.T) {
 		t.Fatalf("not asleep after restart: %v", info)
 	}
 	p.mu.Lock()
-	running, cmd := p.pid, p.wakeCmd
+	running, cmd, draft := p.pid, p.wakeCmd, p.wakeDraft
 	p.mu.Unlock()
+	if draft != "half-typed" {
+		t.Errorf("its draft after restart: %q", draft)
+	}
 	if running != 0 || cmd != "claude --resume 's1' '--model' 'opus'" {
 		t.Errorf("after restart: pid %d, wake command %q", running, cmd)
 	}
@@ -235,9 +240,20 @@ func TestSleepAndWake(t *testing.T) {
 		t.Errorf("resumed with %q", got)
 	}
 	waitFor(t, "what was typed to go in", func() bool { return strings.Contains(p.text(true), "echo typed-") })
+	p.mu.Lock()
+	shell := p.pid
+	p.mu.Unlock()
+	if h, _ := findAgentProc(shell); h != "claude" {
+		t.Error("the woken agent didn't stay up")
+	}
 	screen := p.text(true)
 	if !strings.Contains(screen, "before-sleep") || !strings.Contains(screen, "resumed after sleeping") {
 		t.Errorf("woken screen: %q", screen)
+	}
+	// Its draft typed in again, ahead of what was typed while it woke.
+	woke := screen[strings.Index(screen, "resumed after sleeping"):]
+	if d, e := strings.Index(woke, "half-typed"), strings.Index(woke, "echo typed-"); d < 0 || d > e {
+		t.Errorf("draft not typed in first: %q", woke)
 	}
 	recs, _ = d.store.Records(sleepRecord)
 	if _, ok := recs[pid]; ok {

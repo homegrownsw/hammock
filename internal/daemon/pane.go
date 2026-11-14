@@ -103,6 +103,7 @@ type pane struct {
 	// at its prompt, with what's typed meanwhile (wakeQueue) and awake,
 	// closed then.
 	wakeCmd   string
+	wakeDraft string // what was in its agent's input box, unsent, when it went to sleep
 	sleepBusy bool
 	waking    bool
 	wakeQueue [][]byte
@@ -1211,6 +1212,7 @@ func (p *pane) discardFiles() {
 	}
 	_ = os.Remove(p.holderLogPath())
 	_ = p.d.store.DeleteRecord(sleepRecord, p.id)
+	_ = p.d.store.DeleteRecord(sleepDraftRecord, p.id)
 	_ = p.d.store.DeleteRecord(agentArgsRecord, p.id)
 	p.saveMu.Lock()
 	defer p.saveMu.Unlock()

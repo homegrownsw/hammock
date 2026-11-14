@@ -32,8 +32,10 @@ func TestMain(m *testing.M) {
 	if os.Getenv("HMK_TEST_APP_PROOF") != "" {
 		os.Exit(fakeAppProof()) // a process other than the test's proving it's the app (appproof_darwin_test.go)
 	}
-	if os.Getenv("HMK_TEST_IDLE_AGENT") != "" {
-		time.Sleep(time.Hour) // an agent at rest, by its name (sleep_test.go)
+	if filepath.Base(os.Args[0]) == "claude" {
+		// An agent at rest, by its name (sleep_test.go). Not told by an
+		// environment variable: panes don't pass the tests' on.
+		time.Sleep(time.Hour)
 		os.Exit(0)
 	}
 	if os.Getenv("HMK_TEST_KEY_HELPER") != "" {

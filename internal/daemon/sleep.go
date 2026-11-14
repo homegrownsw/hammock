@@ -18,7 +18,8 @@ package daemon
 // resumed; a scheduled run's never does. A session nothing's been said in
 // has nothing to resume: it wakes as a new one, with the same options.
 //
-// What's typed while it wakes is kept until its agent is at its prompt,
+// What was typed in its input box and not sent is typed in again once
+// it's up. What's typed while it wakes is kept until its agent is at its prompt,
 // then typed in order; a message sent from the agent view waits for that
 // too. A sleeping pane stays asleep when the daemon restarts or the Mac
 // does (restoreHolder): its record (sleepRecord) keeps the command that
@@ -26,6 +27,7 @@ package daemon
 
 import (
 	"errors"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -34,12 +36,18 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/homegrownsw/hammock/internal/agents"
+	"github.com/homegrownsw/hammock/internal/agentview"
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	"github.com/homegrownsw/hammock/internal/holder"
 	"github.com/homegrownsw/hammock/internal/procinfo"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/vt"
 )
+
+// sleepDraftRecord is the store's kind for what was typed, not sent, in a
+// sleeping pane's agent's input box (wrapperspb.StringValue): typed into
+// it again when it wakes.
+const sleepDraftRecord = "sleepdraft"
 
 // sleepRecord is the store's kind for a sleeping pane's wake command (a
 // command line for the login shell, wrapperspb.StringValue).
@@ -181,6 +189,10 @@ func (d *Daemon) sleepPane(p *pane, actor string) error {
 	}
 	cwd, _ := procinfo.Cwd(apid) // where its sessions are kept (Claude's, by folder)
 	p.saveScrollback(true)       // a restart restores it from there
+	// What's typed in its input box, not sent: back in it when it wakes.
+	// Anywhere on its screen (a new session's box is near the top), its
+	// placeholder left out.
+	draft := agentview.InputDraft(p.bottomText(math.MaxInt32))
 
 	p.mu.Lock()
 	p.sleepBusy = false
@@ -196,7 +208,7 @@ func (d *Daemon) sleepPane(p *pane, actor string) error {
 	if cwd != "" && isDir(cwd) {
 		p.info.Cwd = cwd
 	}
-	p.wakeCmd = cmd
+	p.wakeCmd, p.wakeDraft = cmd, draft
 	if p.mirror != nil {
 		// Its screen stays, but not the agent's mouse reports and the like:
 		// moving the mouse over it mustn't wake it.
@@ -215,6 +227,9 @@ func (d *Daemon) sleepPane(p *pane, actor string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.persist(d.store.PutRecord(sleepRecord, p.id, wrapperspb.String(cmd)))
+	if draft != "" {
+		d.persist(d.store.PutRecord(sleepDraftRecord, p.id, wrapperspb.String(draft)))
+	}
 	d.persist(d.store.DeleteRuntime(p.id))
 	d.persist(d.store.PutPane(info))
 	d.audit(actor, "sleep", p.id, harness)
@@ -263,6 +278,7 @@ func (d *Daemon) wakePane(p *pane, actor string) (<-chan struct{}, error) {
 	}
 	d.mu.Lock()
 	d.persist(d.store.DeleteRecord(sleepRecord, p.id))
+	d.persist(d.store.DeleteRecord(sleepDraftRecord, p.id))
 	if err == nil {
 		d.audit(actor, "wake", p.id, "")
 		d.log.Info("woke a sleeping agent", "pane", p.id, "by", actor)
@@ -307,6 +323,11 @@ func (p *pane) wakeDone() {
 	defer p.mu.Unlock()
 	if !p.waking {
 		return
+	}
+	if p.wakeDraft != "" {
+		bracketed := p.mirror != nil && p.mirror.BracketedPaste()
+		p.wakeQueue = append([][]byte{firstPromptPaste(p.wakeDraft, bracketed)}, p.wakeQueue...)
+		p.wakeDraft = ""
 	}
 	for _, b := range p.wakeQueue {
 		p.postLocked(func(hc *holder.Client) { _ = hc.Input(b) })
@@ -408,16 +429,21 @@ func (d *Daemon) setPaneAsleep(c *conn, m *pb.SleepPane) error {
 // saved screen back, and the command that wakes it, starting nothing.
 // Callers hold d.mu.
 func (d *Daemon) restoreAsleep(p *pane) {
-	var cmd wrapperspb.StringValue
+	var cmd, draft wrapperspb.StringValue
 	if recs, err := d.store.Records(sleepRecord); err == nil {
 		if b, ok := recs[p.id]; ok {
 			_ = proto.Unmarshal(b, &cmd)
 		}
 	}
+	if recs, err := d.store.Records(sleepDraftRecord); err == nil {
+		if b, ok := recs[p.id]; ok {
+			_ = proto.Unmarshal(b, &draft)
+		}
+	}
 	p.loadScrollback()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.wakeCmd = cmd.GetValue()
+	p.wakeCmd, p.wakeDraft = cmd.GetValue(), draft.GetValue()
 	p.mirror = vt.New(int(p.info.Cols), int(p.info.Rows))
 	if c := d.colors.Load(); c != nil {
 		p.mirror.SetColors(*c)
