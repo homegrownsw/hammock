@@ -103,6 +103,7 @@
             "HammockMacApp/resources",
           ],
         },
+        { "kind": "folder", "path": "Fonts", "target-membership": [ "Hammock", "HammockMacApp" ] },
       ],
     }, {
       "kind": "group",

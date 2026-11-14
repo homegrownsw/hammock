@@ -623,10 +623,13 @@ private struct ThemeSwatch: View {
 private struct TerminalSettings: View {
     private var config: AppConfig { .shared }
 
+    /// Installed monospaced families and the bundled ones (BundledFonts).
     private var families: [String] {
-        NSFontManager.shared.availableFontFamilies.filter { name in
+        let installed = NSFontManager.shared.availableFontFamilies.filter { name in
             NSFont(name: name, size: 12).map { $0.isFixedPitch || name.localizedCaseInsensitiveContains("mono") || name.localizedCaseInsensitiveContains("nerd") } ?? false
         }
+        return Set(installed + BundledFonts.families).subtracting([BundledFonts.symbolsFamily])
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     var body: some View {

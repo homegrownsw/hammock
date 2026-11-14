@@ -55,7 +55,7 @@ struct DiffScreen: View {
         // One column here, whatever the pane's choice: split needs width.
         var view = info.view
         view.style = "unified"
-        return .from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: "SF Mono", fontSize: 12, view: view,
+        return .from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: TerminalPrefs.family, fontSize: 12, view: view,
                      canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend, accent: theme.accent)
     }
 }

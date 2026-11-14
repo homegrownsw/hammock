@@ -90,6 +90,7 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
         let conf = WKWebViewConfiguration()
         let ucc = WKUserContentController()
         conf.userContentController = ucc
+        BundledFonts.addFontFaces(to: ucc, page: "editor")
         webView = makeWebView(conf)
         super.init()
         ucc.add(WeakHandler(self), name: "hammock")

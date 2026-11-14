@@ -56,6 +56,8 @@ cp "$root/apple/Resources/$icon" "$app/Contents/Resources/AppIcon.icns"
 for s in NeedsYou Chime Low Marimba Bell; do cp "$root/apple/Resources/$s.caf" "$app/Contents/Resources/"; done
 # Editor and diff panes' pages (CodeMirror, built by `just editor-js`).
 cp "$root/apple/Resources/editor.html" "$root/apple/Resources/diff.html" "$app/Contents/Resources/"
+# Bundled terminal fonts (HammockKit's BundledFonts registers them; the Xcode project bundles the same folder).
+cp -R "$root/apple/Resources/Fonts" "$app/Contents/Resources/"
 # Third-party software and its licences (Settings ▸ About ▸ Acknowledgements;
 # `just acknowledgements` makes it). The Xcode project bundles the same file.
 cp "$root/internal/acknowledgements/Acknowledgements.json" "$app/Contents/Resources/"

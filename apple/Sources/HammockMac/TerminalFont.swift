@@ -1,8 +1,9 @@
 import AppKit
+import HammockKit
 
 /// The terminal font: font-family / font-size from the config (falling back to
-/// Ghostty's; see AppConfig), else SF Mono 13. An installed Nerd Font is added
-/// as a fallback so prompt glyphs render.
+/// Ghostty's; see AppConfig), else SF Mono 13, with the bundled Symbols Nerd
+/// Font Mono after it so prompt glyphs render (BundledFonts).
 @MainActor
 enum TerminalFont {
     static func resolve() -> (regular: NSFont, bold: NSFont) {
@@ -27,14 +28,8 @@ enum TerminalFont {
     }
 
     private static func withNerdFallback(_ font: NSFont) -> NSFont {
-        guard !font.fontName.localizedCaseInsensitiveContains("nerd"),
-              let nerd = NSFontManager.shared.availableFonts.first(where: { $0.localizedCaseInsensitiveContains("NerdFontMono") || $0.localizedCaseInsensitiveContains("SymbolsNerdFont") })
-        else { return font }
-        let cascade = [NSFontDescriptor(name: nerd, size: font.pointSize)]
-        let desc = font.fontDescriptor.addingAttributes([.cascadeList: cascade])
-        return NSFont(descriptor: desc, size: font.pointSize) ?? font
+        BundledFonts.withSymbols(font) as NSFont
     }
-
 }
 
 extension TerminalFont {

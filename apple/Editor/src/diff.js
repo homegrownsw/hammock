@@ -119,7 +119,7 @@ function applyTheme() {
   set("--mod", pal(4, "#61afef"))
   set("--ren", pal(5, "#c678dd"))
   set("--warn", pal(3, "#e5c07b"))
-  set("--code", `"${(config.font.family || "Menlo").replace(/"/g, "")}", ui-monospace, Menlo, monospace`)
+  set("--code", `"${(config.font.family || "Menlo").replace(/"/g, "")}", ui-monospace, Menlo, "Symbols Nerd Font Mono", monospace`)
   set("--code-size", `${config.font.size}px`)
   document.body.style.background = th.background
   document.documentElement.style.colorScheme = th.dark ? "dark" : "light"

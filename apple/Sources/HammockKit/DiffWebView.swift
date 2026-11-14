@@ -529,6 +529,7 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
         let conf = WKWebViewConfiguration()
         let ucc = WKUserContentController()
         conf.userContentController = ucc
+        BundledFonts.addFontFaces(to: ucc, page: "diff")
         webView = makeWebView(conf)
         super.init()
         ucc.add(DiffWeakHandler(self), name: "hammock")

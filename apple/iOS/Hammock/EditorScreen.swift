@@ -90,7 +90,7 @@ struct EditorScreen: View {
 
     private var config: EditorConfig {
         let dark = colorScheme == .dark
-        return .from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: "SF Mono", fontSize: 13, readOnly: !canDrive)
+        return .from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: TerminalPrefs.family, fontSize: 13, readOnly: !canDrive)
     }
 
     private var menu: some View {

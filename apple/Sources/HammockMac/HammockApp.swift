@@ -11,6 +11,7 @@ struct HammockApp: App {
     @State private var model: AppModel
 
     init() {
+        BundledFonts.register()
         let m = AppModel(clientKind: "mac")
         _model = State(initialValue: m)
         AppModelRegistry.shared = m

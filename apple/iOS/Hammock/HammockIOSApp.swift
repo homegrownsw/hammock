@@ -10,7 +10,10 @@ struct HammockIOSApp: App {
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage(PhoneTheme.prefKey) private var themePref = ""
 
-    init() { PhoneTheme.migrate() }
+    init() {
+        BundledFonts.register()
+        PhoneTheme.migrate()
+    }
 
     var body: some Scene {
         WindowGroup {

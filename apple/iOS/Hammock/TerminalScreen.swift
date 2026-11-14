@@ -54,20 +54,35 @@ enum TerminalPrefs {
     static let lineSpacing = "terminalLineSpacing"
     static let defaultSize = 11.0
 
-    /// Installed font families with a monospaced regular face.
+    /// Font families with a monospaced regular face, and the bundled ones
+    /// (BundledFonts; Obel Mono doesn't say it's monospaced).
     static var monospacedFamilies: [String] {
-        UIFont.familyNames.sorted().filter { family in
+        let mono = UIFont.familyNames.filter { family in
             UIFont(descriptor: UIFontDescriptor(fontAttributes: [.family: family]), size: 12)
                 .fontDescriptor.symbolicTraits.contains(.traitMonoSpace)
         }
+        return Set(mono + BundledFonts.families).subtracting([BundledFonts.symbolsFamily])
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
+    /// The chosen family, for the editor and diff pages.
+    static var family: String {
+        let name = UserDefaults.standard.string(forKey: fontName) ?? ""
+        return name.isEmpty ? "SF Mono" : name
+    }
+
+    /// The chosen font (SF Mono when none is), with Nerd Font icons after it.
     static func font(size: CGFloat, bold: Bool) -> UIFont {
         let name = UserDefaults.standard.string(forKey: fontName) ?? ""
-        guard !name.isEmpty else { return .monospacedSystemFont(ofSize: size, weight: bold ? .bold : .regular) }
-        var d = UIFontDescriptor(fontAttributes: [.family: name])
-        if bold, let b = d.withSymbolicTraits(.traitBold) { d = b }
-        return UIFont(descriptor: d, size: size)
+        let font: UIFont
+        if name.isEmpty {
+            font = .monospacedSystemFont(ofSize: size, weight: bold ? .bold : .regular)
+        } else {
+            var d = UIFontDescriptor(fontAttributes: [.family: name])
+            if bold, let b = d.withSymbolicTraits(.traitBold) { d = b }
+            font = UIFont(descriptor: d, size: size)
+        }
+        return BundledFonts.withSymbols(font) as UIFont
     }
 }
 

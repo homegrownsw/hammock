@@ -75,6 +75,60 @@
       "files": ["{repo}/third_party/licenses/unicode-LICENSE"]
     },
     {
+      "name": "Cascadia Code",
+      "version": "2407.24",
+      "url": "https://github.com/microsoft/cascadia-code",
+      "license": "OFL-1.1",
+      "apps": ["mac", "ios"],
+      "note": "A terminal font.",
+      "files": ["{repo}/third_party/licenses/CascadiaCode-OFL.txt"]
+    },
+    {
+      "name": "Fira Code",
+      "version": "6.2",
+      "url": "https://github.com/tonsky/FiraCode",
+      "license": "OFL-1.1",
+      "apps": ["mac", "ios"],
+      "note": "A terminal font.",
+      "files": ["{repo}/third_party/licenses/FiraCode-OFL.txt"]
+    },
+    {
+      "name": "Hack",
+      "version": "3.003",
+      "url": "https://sourcefoundry.org/hack/",
+      "license": "MIT AND Bitstream-Vera",
+      "apps": ["mac", "ios"],
+      "note": "A terminal font.",
+      "files": ["{repo}/third_party/licenses/Hack-LICENSE.md"]
+    },
+    {
+      "name": "JetBrains Mono",
+      "version": "2.304",
+      "url": "https://www.jetbrains.com/lp/mono/",
+      "license": "OFL-1.1",
+      "apps": ["mac", "ios"],
+      "note": "A terminal font.",
+      "files": ["{repo}/third_party/licenses/JetBrainsMono-OFL.txt"]
+    },
+    {
+      "name": "Obel Mono",
+      "version": "1.003",
+      "url": "https://typographic.systems/obel-mono",
+      "license": "OFL-1.1",
+      "apps": ["mac", "ios"],
+      "note": "A terminal font.",
+      "files": ["{repo}/third_party/licenses/ObelMono-OFL.txt"]
+    },
+    {
+      "name": "Symbols Nerd Font Mono",
+      "version": "3.5.1",
+      "url": "https://github.com/ryanoasis/nerd-fonts",
+      "license": "MIT",
+      "apps": ["mac", "ios"],
+      "note": "Nerd Fonts' icons, shown after any terminal font. The icon sets in it keep their own licences, listed below.",
+      "files": ["{repo}/third_party/licenses/SymbolsNerdFont-LICENSE", "{repo}/third_party/licenses/SymbolsNerdFont-README.md"]
+    },
+    {
       "name": "Go",
       "version": "{go}",
       "url": "https://go.dev",

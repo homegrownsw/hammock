@@ -26,7 +26,7 @@ export function themeExtension(config) {
   const th = config.theme, p = th.palette || []
   const pal = (i, fallback) => p[i] || fallback
   const dim = mix(th.foreground, th.background, 0.45)
-  const fam = `"${(config.font.family || "Menlo").replace(/"/g, "")}", ui-monospace, Menlo, monospace`
+  const fam = `"${(config.font.family || "Menlo").replace(/"/g, "")}", ui-monospace, Menlo, "Symbols Nerd Font Mono", monospace`
   const base = EditorView.theme({
     "&": { color: th.foreground, backgroundColor: th.background, height: "100%", fontSize: `${config.font.size}px` },
     ".cm-scroller": { fontFamily: fam, lineHeight: "1.45" },
