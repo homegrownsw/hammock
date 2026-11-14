@@ -51,16 +51,22 @@ enum FullDiskAccess {
 
 /// A small floating panel beside System Settings holding Hammock's icon, to
 /// drag into the Full Disk Access list. It stays above other windows while
-/// Hammock isn't active, and closes itself once access is granted.
+/// Hammock isn't active. Once Hammock is dropped in (or access is granted)
+/// it says to choose Quit & Reopen, which macOS asks for next: onboarding
+/// opens on its Full Disk Access step again after that.
 @MainActor
+@Observable
 final class FullDiskAccessGuide {
     static let shared = FullDiskAccessGuide()
+    /// Hammock was dropped somewhere, or access was granted.
+    var dropped = false
     private var panel: NSPanel?
     private var watch: Task<Void, Never>?
 
     func show() {
+        dropped = false
         if panel == nil {
-            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 104),
+            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 112),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             p.isFloatingPanel = true
             p.level = .floating
@@ -70,7 +76,7 @@ final class FullDiskAccessGuide {
             p.isOpaque = false
             p.hasShadow = true
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            let host = NSHostingView(rootView: FullDiskAccessGuideView { [weak self] in self?.close() })
+            let host = NSHostingView(rootView: FullDiskAccessGuideView(guide: self))
             host.frame = p.contentLayoutRect
             p.contentView = host
             panel = p
@@ -79,12 +85,19 @@ final class FullDiskAccessGuide {
         panel?.orderFrontRegardless()
         watch?.cancel()
         watch = Task { [weak self] in
-            // Follow System Settings as it opens, then wait for the grant.
+            // Follow System Settings as it opens, then wait for the grant. It
+            // stays up to say Quit & Reopen, which macOS asks for then (and
+            // which closes it), for a while in case macOS doesn't.
+            var grantedAt: Int?
             for i in 0 ..< 600 {
                 try? await Task.sleep(for: .milliseconds(i < 10 ? 300 : 1000))
                 if Task.isCancelled { return }
                 if i < 10, let frame = Self.systemSettingsFrame() { self?.place(beside: frame) }
-                if FullDiskAccess.isGranted { self?.close(); return }
+                if grantedAt == nil, FullDiskAccess.isGranted {
+                    grantedAt = i
+                    withAnimation(.smooth) { self?.dropped = true }
+                }
+                if let g = grantedAt, i - g >= 30 { break }
             }
             self?.close()
         }
@@ -128,27 +141,31 @@ final class FullDiskAccessGuide {
 }
 
 private struct FullDiskAccessGuideView: View {
-    let close: () -> Void
+    let guide: FullDiskAccessGuide
 
     var body: some View {
         HStack(spacing: 14) {
-            AppIconDragSource(size: 56)
+            AppIconDragSource(size: 56) { withAnimation(.smooth) { guide.dropped = true } }
                 .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Drag Hammock into the list")
+                Text(guide.dropped ? "Now choose Quit & Reopen" : "Drag Hammock into the list")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Then make sure its switch is on.")
+                Text(guide.dropped ? (Onboarding.shared.isShowing ? "When macOS asks. Setup carries on where you left off." : "When macOS asks.") : "Then choose Quit & Reopen when macOS asks.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .contentTransition(.opacity)
             Spacer(minLength: 0)
         }
         .padding(.leading, 16).padding(.trailing, 28).padding(.vertical, 14)
-        .frame(width: 300, height: 104)
+        .frame(width: 320, height: 112)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
         .overlay(alignment: .topTrailing) {
-            Button(action: close) {
+            Button {
+                guide.close()
+            } label: {
                 Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
                     .frame(width: 18, height: 18)
                     .background(Color.primary.opacity(0.08), in: Circle())
@@ -166,17 +183,24 @@ private struct FullDiskAccessGuideView: View {
 /// document's proxy icon does: drop it into a System Settings privacy list.
 struct AppIconDragSource: NSViewRepresentable {
     var size: CGFloat = 64
+    /// Called when it's dropped somewhere that took it.
+    var onDrop: () -> Void = {}
 
     func makeNSView(context: Context) -> DragView {
         let v = DragView()
         v.size = size
+        v.onDrop = onDrop
         return v
     }
 
-    func updateNSView(_ v: DragView, context: Context) { v.size = size }
+    func updateNSView(_ v: DragView, context: Context) {
+        v.size = size
+        v.onDrop = onDrop
+    }
 
     final class DragView: NSView, NSDraggingSource {
         var size: CGFloat = 64 { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
+        var onDrop: () -> Void = {}
         private var down: NSPoint?
 
         override var intrinsicContentSize: NSSize { NSSize(width: size, height: size) }
@@ -208,6 +232,10 @@ struct AppIconDragSource: NSViewRepresentable {
 
         func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
             context == .outsideApplication ? [.copy, .link, .generic] : []
+        }
+
+        func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+            if !operation.isEmpty { onDrop() }
         }
     }
 }

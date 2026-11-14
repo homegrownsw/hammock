@@ -36,11 +36,17 @@ final class Onboarding {
 
     private init() {
         let env = ProcessInfo.processInfo.environment
-        isShowing = env["HMK_ONBOARDING"] == "1" || !UserDefaults.standard.bool(forKey: Self.completedKey)
+        // Also when it was reopened from Help and macOS relaunched Hammock
+        // from the Full Disk Access step.
+        let resume = UserDefaults.standard.string(forKey: Self.resumeKey) == "\(Step.access)"
+        isShowing = env["HMK_ONBOARDING"] == "1" || !UserDefaults.standard.bool(forKey: Self.completedKey) || resume
         if let s = env["HMK_ONBOARDING_STEP"], let step = Step.allCases.first(where: { "\($0)" == s }) {
             self.step = step
-        } else if isShowing, UserDefaults.standard.string(forKey: Self.resumeKey) == "\(Step.access)" {
+        } else if resume {
             step = .access
+            // What the steps before set up, for the finish screen.
+            daemonOn = DaemonService.isEnabled
+            cliPath = CommandLineTool.installedPath
         }
     }
 
