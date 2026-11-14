@@ -28,6 +28,26 @@ final class AgentModes {
     }
 }
 
+/// Dictate, from the menu bar and the palette: into an agent pane's composer.
+@MainActor
+enum DictateAction {
+    /// The pane can take it: its agent view's composer is on screen, or it's
+    /// showing its terminal (Dictate switches to the agent view first). Not
+    /// while the agent view is asking a question, or in a pane you can only
+    /// watch: there's no composer to dictate into.
+    static func available(_ model: AppModel, _ id: String?) -> Bool {
+        guard DictationRequests.enabled, let id, let p = model.panes[id], !p.isLog,
+              model.supportsAgentView(p) else { return false }
+        if AgentModes.shared.showsAgent(id) { return DictationRequests.shared.composers.contains(id) }
+        return model.group(ofPane: id)?.canDrive != false
+    }
+
+    static func run(_ id: String) {
+        if !AgentModes.shared.showsAgent(id) { AgentModes.shared.set(id, true) }
+        DictationRequests.shared.toggle(id)
+    }
+}
+
 /// The header control that flips an agent pane between terminal and agent view.
 struct AgentViewToggle: View {
     let paneID: String
@@ -231,6 +251,15 @@ struct AgentViewSettings: View {
                 }
                 .settingAnchor("agentview.codewrap")
             }
+            Section("Preview") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Here's the plan: **two** small changes, then a test run.")
+                        .font(fontName.isEmpty ? .system(size: fontSize) : .custom(fontName, size: fontSize))
+                        .lineSpacing(lineSpacing)
+                    Text("go test ./internal/agentview/")
+                        .font(codeFontName.isEmpty ? .system(size: codeFontSize, design: .monospaced) : .custom(codeFontName, size: codeFontSize))
+                }
+            }
             Section("Attachments") {
                 Picker("Picture size", selection: prefs.stringBinding(.agentImageSize)) {
                     ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
@@ -244,15 +273,6 @@ struct AgentViewSettings: View {
             Section("Dictation") {
                 Toggle("Dictation button", isOn: prefs.boolBinding(.agentDictation))
                     .settingAnchor("agentview.dictation")
-            }
-            Section("Preview") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Here's the plan: **two** small changes, then a test run.")
-                        .font(fontName.isEmpty ? .system(size: fontSize) : .custom(fontName, size: fontSize))
-                        .lineSpacing(lineSpacing)
-                    Text("go test ./internal/agentview/")
-                        .font(codeFontName.isEmpty ? .system(size: codeFontSize, design: .monospaced) : .custom(codeFontName, size: codeFontSize))
-                }
             }
         }
         .formStyle(.grouped)

@@ -95,6 +95,24 @@ final class LevelMeterTests: XCTestCase {
     }
 }
 
+@MainActor
+final class DictationRequestsTests: XCTestCase {
+    func testDictateBeforeTheComposerIsThereWaitsForIt() {
+        let r = DictationRequests()
+        // Showing its terminal: no composer yet, so it waits.
+        r.toggle("p1")
+        XCTAssertNil(r.toggle)
+        XCTAssertFalse(r.takePending("p2"))
+        XCTAssertTrue(r.takePending("p1"))
+        XCTAssertFalse(r.takePending("p1"))
+        // With its composer on screen, it goes straight there.
+        r.set("p1", composer: true)
+        r.toggle("p1")
+        XCTAssertEqual(r.toggle?.pane, "p1")
+        XCTAssertFalse(r.takePending("p1"))
+    }
+}
+
 /// An engine that says what it's told, for the composer's dictation.
 @MainActor
 private final class FakeEngine: DictationEngine {

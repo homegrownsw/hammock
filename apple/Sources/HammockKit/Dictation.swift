@@ -669,10 +669,35 @@ public final class DictationRequests {
     /// Panes whose composer is dictating now, for the menu's title.
     public private(set) var listening: Set<String> = []
 
-    public func toggle(_ pane: String) { toggle = (pane, UUID()) }
+    /// Panes whose composer is on screen: the ones Dictate can start in.
+    /// (An agent view asking a question, or one you can only watch, has none.)
+    public private(set) var composers: Set<String> = []
+    /// Dictate asked of a pane before its composer was there (it was showing
+    /// its terminal): the composer starts listening when it appears, if it
+    /// does so soon.
+    @ObservationIgnored private var pending: (pane: String, at: ContinuousClock.Instant)?
+
+    public func toggle(_ pane: String) {
+        if composers.contains(pane) {
+            toggle = (pane, UUID())
+        } else {
+            pending = (pane, .now)
+        }
+    }
 
     func set(_ pane: String, listening on: Bool) {
         if on { listening.insert(pane) } else { listening.remove(pane) }
+    }
+
+    func set(_ pane: String, composer on: Bool) {
+        if on { composers.insert(pane) } else { composers.remove(pane) }
+    }
+
+    /// The composer just appeared: was Dictate asked of it a moment ago?
+    func takePending(_ pane: String) -> Bool {
+        guard let p = pending, p.pane == pane else { return false }
+        pending = nil
+        return ContinuousClock.now - p.at < .seconds(3)
     }
 
     /// Dictation is on in Settings (and so in the menus and palette).

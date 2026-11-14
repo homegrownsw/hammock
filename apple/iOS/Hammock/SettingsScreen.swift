@@ -85,14 +85,6 @@ struct SettingsScreen: View {
                         Text("Never").tag("never")
                     }
                 }
-                Section("Attachments") {
-                    Picker("Picture size", selection: $imageSize) {
-                        ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
-                    }
-                }
-                Section("Dictation") {
-                    Toggle("Dictation Button", isOn: $dictation)
-                }
                 Section("Preview") {
                     VStack(alignment: .leading, spacing: 8) {
                         AgentColorPreview(color: theme.bubble)
@@ -104,6 +96,14 @@ struct SettingsScreen: View {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
+                }
+                Section("Attachments") {
+                    Picker("Picture size", selection: $imageSize) {
+                        ForEach(AttachmentSize.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                }
+                Section("Dictation") {
+                    Toggle("Dictation Button", isOn: $dictation)
                 }
             } trailing: {
                 Section {

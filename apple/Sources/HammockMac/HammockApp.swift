@@ -338,12 +338,13 @@ struct HammockApp: App {
                     .keyboardShortcut(Keys.copySessionLink)
                     .disabled(focused.flatMap { model.panes[$0] }?.sessionURL == nil)
                 if DictationRequests.enabled {
-                    // The focused agent view's composer: start or stop.
+                    // The focused agent pane's composer: start or stop (from
+                    // its terminal, it switches to the agent view to listen).
                     Button(focused.map { DictationRequests.shared.listening.contains($0) } == true ? "Stop Dictating" : "Dictate") {
-                        if let id = focused { DictationRequests.shared.toggle(id) }
+                        if let id = focused { DictateAction.run(id) }
                     }
                     .keyboardShortcut(Keys.dictate)
-                    .disabled(!focusedShowsAgentView)
+                    .disabled(!DictateAction.available(model, focused))
                 }
                 if HammockTool.browser.on {
                     Button("Split Right with Browser") {
@@ -437,12 +438,6 @@ struct HammockApp: App {
     private var focusedIsLog: Bool { focused.flatMap { model.panes[$0] }?.isLog == true }
 
     private var focusedIsEditor: Bool { focused.flatMap { model.panes[$0] }?.isEditor == true }
-
-    /// The focused pane shows its agent view (its composer can dictate).
-    private var focusedShowsAgentView: Bool {
-        guard let id = focused, let p = model.panes[id], !p.isLog, model.supportsAgentView(p) else { return false }
-        return AgentModes.shared.showsAgent(id)
-    }
 
     /// The focused pane is a page on this Mac (find in page works there).
     private var focusedIsBrowser: Bool {

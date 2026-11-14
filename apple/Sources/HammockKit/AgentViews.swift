@@ -2837,6 +2837,15 @@ struct Composer: View {
                 if let initialText { sample(initialText) } else { loadDraft() }
             }
             ComposerDrafts.pruneStale(livePanes: nil)
+            DictationRequests.shared.set(session.paneID, composer: true)
+            // Dictate from the terminal: it switched here to listen.
+            // Once its text view's made.
+            if DictationRequests.shared.takePending(session.paneID), dictationOn {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(250))
+                    if !dictation.active { toggleDictation() }
+                }
+            }
         }
         #if os(iOS)
         // A new chat (a Claude tab just started): straight to typing, without
@@ -2852,6 +2861,8 @@ struct Composer: View {
             // What was being said stays in the pane it was said in.
             dictation.stopNow()
             DictationRequests.shared.set(old, listening: false)
+            DictationRequests.shared.set(old, composer: false)
+            DictationRequests.shared.set(session.paneID, composer: true)
             saveDraft(key: "agentDraft." + old, pane: old)
             attachments = []
             thumbs = [:]
@@ -2876,6 +2887,7 @@ struct Composer: View {
         .onDisappear {
             dictation.stopNow()
             DictationRequests.shared.set(session.paneID, listening: false)
+            DictationRequests.shared.set(session.paneID, composer: false)
             saveDraft(key: draftKey, pane: session.paneID)
         }
         .onChange(of: scenePhase) { _, phase in
