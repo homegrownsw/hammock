@@ -146,14 +146,18 @@
   .tb-lead { display: flex; align-items: center; gap: 8px; flex: none; max-width: 0; opacity: 0; overflow: hidden; margin-left: -8px; transition: max-width .3s cubic-bezier(.3,.7,.2,1), opacity .2s, margin .3s; }
   .window.nosb .tb-lead { max-width: 120px; opacity: 1; margin: 0 6px 0 -4px; }
   /* A tab's splits: .sp.h side by side, .sp.v stacked; flex-grow carries each one's share. */
-  /* Clipped to the window's corner radius less the 6px, so the pane in that corner follows the window's curve. */
-  .panes { display: flex; min-width: 0; min-height: 0; margin: 0 6px 6px 0; border-radius: 0 0 12px 0; overflow: hidden;
-    transition: margin .3s cubic-bezier(.3,.7,.2,1), border-radius .3s; }
-  .window.nosb .panes { margin-left: 6px; border-radius: 0 0 12px 12px; }
+  .panes { display: flex; min-width: 0; min-height: 0; margin: 0 6px 6px 0; transition: margin .3s cubic-bezier(.3,.7,.2,1); }
+  .window.nosb .panes { margin-left: 6px; }
   .sp { display: flex; gap: 6px; }
   .sp.v { flex-direction: column; }
   .panes > *, .sp > * { flex: 1 1 0; min-width: 0; min-height: 0; }
-  .pane { display: grid; grid-template-rows: 30px minmax(0,1fr); background: #0a1a13; border-radius: 8px; overflow: hidden; min-width: 0; min-height: 0; }
+  .pane { display: grid; grid-template-rows: 30px minmax(0,1fr); background: #0a1a13; border-radius: 8px; overflow: hidden; min-width: 0; min-height: 0; position: relative; }
+  /* A pane in the window's bottom corner rounds it with the window: its radius less the 6px (.br, .bl: set by markCorners). */
+  .pane.br { border-bottom-right-radius: 12px; }
+  .window.nosb .pane.bl { border-bottom-left-radius: 12px; }
+  /* The focused pane's border, in the theme's accent, when the tab has more than one. */
+  .pane::after { content: ""; position: absolute; inset: 0; border: 2px solid #3fb88a; border-radius: inherit; opacity: 0; pointer-events: none; transition: opacity .16s ease-in-out; }
+  .pane.focus::after { opacity: 1; }
   .pane.new { animation: pane-in .25s ease; }
   @keyframes pane-in { from { opacity: 0; } }
   .pane.focus .ptitle { background: color-mix(in srgb, #3fb88a 9%, #0f241b); }
@@ -929,8 +933,19 @@
       panesEl.querySelectorAll('.pane').forEach(e => e.classList.toggle('focus', many && e.dataset.p === t.focus));
       for (let e = panesEl.querySelector(`[data-p="${t.focus}"]`); e && e !== panesEl; e = e.parentElement) e.classList.add('hf');
       panesEl.querySelectorAll('.caret').forEach(c => c.classList.toggle('off', !(kbd && c.closest('[data-p]').dataset.p === t.focus)));
+      markCorners();
       renderTitle();
     }
+    // Which panes are in the window's bottom corners (narrow windows show only one side of a split).
+    function markCorners() {
+      const a = panesEl.getBoundingClientRect();
+      panesEl.querySelectorAll('.pane').forEach(e => {
+        const r = e.getBoundingClientRect(), bottom = r.width > 0 && r.bottom >= a.bottom - 1;
+        e.classList.toggle('br', bottom && r.right >= a.right - 1);
+        e.classList.toggle('bl', bottom && r.left <= a.left + 1);
+      });
+    }
+    addEventListener('resize', markCorners);
     function select(id) {
       cur = id;
       groupOf(id).open = true;
