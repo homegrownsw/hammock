@@ -98,8 +98,17 @@ struct TabStrip: View {
                         // takes each new place, which threw the pointer off it.
                         .coordinateSpace(.named("tabStrip"))
                     }
-                    .onChange(of: model.selectedTabID) { _, id in
-                        if let id { withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(id) } }
+                    // The selected tab kept in view: another in this Group,
+                    // a glide to it; a Group opened (or the strip shown),
+                    // straight there, once its tabs are laid out.
+                    .onChange(of: [group.id, model.selectedTabID ?? ""], initial: true) { old, new in
+                        let id = new[1]
+                        guard !id.isEmpty else { return }
+                        if old[0] == new[0] && old != new {
+                            withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(id) }
+                        } else {
+                            DispatchQueue.main.async { proxy.scrollTo(id) }
+                        }
                     }
                 }
                 Button { Task { await model.createTab(in: group.id) } } label: {
