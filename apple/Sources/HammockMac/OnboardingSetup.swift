@@ -348,7 +348,7 @@ struct AccessStep: View {
                                 }
                             }
                             instruction(2, Text("Drag Hammock's icon into the list. A little window with it waits beside System Settings."))
-                            instruction(3, Text("Make sure Hammock's switch is on."))
+                            instruction(3, Text("Choose **Quit & Reopen** when macOS asks. Setup carries on from here."))
                         }
                         Spacer(minLength: 0)
                     }
@@ -363,7 +363,7 @@ struct AccessStep: View {
                     } else if returned {
                         banner(tint: Brand.needsYou) {
                             Image(systemName: "info.circle.fill").foregroundStyle(.white, Brand.needsYou)
-                            Text("Turned it on, but it still says off? Choose **Quit & Reopen** if macOS asks: Hammock picks up where you left off.")
+                            Text("Added Hammock, but it still says off? Choose **Quit & Reopen** if macOS asks: setup picks up where you left off.")
                                 .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                         }
