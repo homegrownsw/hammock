@@ -738,6 +738,30 @@ func (a *App) editorSaveAs(id string) {
 		}})
 }
 
+// editorRename asks for the file's new name, and moves it: unsaved edits
+// go with it.
+func (a *App) editorRename(id string) {
+	ed := a.panes[id].GetEditor()
+	if ed.GetPath() == "" {
+		a.editorSaveAs(id)
+		return
+	}
+	lines := []string{truncate("In "+shortPath(filepath.Dir(ed.GetPath())), max(a.w-10, 20))}
+	a.openDialog(&dialog{title: "Rename", okLabel: "Rename", lines: lines, fields: []*field{{label: "Name", value: filepath.Base(ed.GetPath())}},
+		submit: func(v []string) {
+			name := strings.TrimSpace(v[0])
+			if name == "" || name == filepath.Base(ed.GetPath()) {
+				return
+			}
+			a.callErr(&pb.ClientMessage{Msg: &pb.ClientMessage_EditorCommand{EditorCommand: &pb.EditorCommand{
+				PaneId: id, Action: pb.EditorCommand_ACTION_RENAME, Path: expandTilde(name)}}}, func(_ *pb.ServerMessage, err error) {
+				if err != nil {
+					a.flash("Couldn't rename it: " + err.Error())
+				}
+			})
+		}})
+}
+
 func (a *App) editorSaveIfDue(v *editorView) {
 	if v.save == nil || !v.doc.confirmed() {
 		return
@@ -843,7 +867,11 @@ func (a *App) editorItems(id string) []menuItem {
 			}
 		}},
 		menuItem{label: "Go to Line…", hint: "⌃G", run: func() { a.editorGoToLine(id) }},
-		menuItem{label: "Reload from Disk", disabled: ed.GetPath() == "", run: func() { a.editorReload(id, false) }})
+		menuItem{label: "Reload from Disk", disabled: ed.GetPath() == "", run: func() { a.editorReload(id, false) }},
+		menuItem{label: "Rename…", disabled: ed.GetPath() == "" || !canDrive(a.paneGroup(id)), run: func() { a.editorRename(id) }})
+	if ed.GetPath() != "" && a.canReveal(a.paneGroup(id)) {
+		items = append(items, menuItem{label: "Reveal in Finder", run: func() { a.revealInFinder(ed.GetPath()) }})
+	}
 	if ed.GetConflict() {
 		items = append(items,
 			menuItem{label: "Keep Mine", hint: "⌥K", run: func() { a.editorCommand(id, pb.EditorCommand_ACTION_KEEP_MINE) }},

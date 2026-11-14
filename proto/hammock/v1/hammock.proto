@@ -1854,10 +1854,16 @@ message EditorCommand {
     ACTION_KEEP_MINE = 3;     // dismiss the conflict, keeping the buffer
     ACTION_SET_LANGUAGE = 4;  // language ("" back to detecting it)
     ACTION_SELECT = 5;        // select line:column to end_line:end_column and scroll to it (agents)
+    // Move the file to path (a new name, or relative to the file's own
+    // folder, or absolute), unsaved edits and all; refused over another
+    // file. Still unsaved (untitled): Save As.
+    ACTION_RENAME = 6;
   }
   string pane_id = 1;
   Action action = 2;
-  string path = 3;      // ACTION_SAVE: save as (absolute, or relative to the Group's folder)
+  // ACTION_SAVE: save as (absolute, or relative to the Group's folder).
+  // ACTION_RENAME: the new name.
+  string path = 3;
   bool force = 4;       // ACTION_SAVE: over a conflict, or replacing another file
   string language = 5;
   uint32 line = 6;      // ACTION_SELECT, 1-based

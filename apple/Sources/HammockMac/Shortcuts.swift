@@ -58,6 +58,7 @@ enum Keys {
     static var renameTab: KeyboardShortcut? { shortcut("rename_tab") }
     static var configureGroup: KeyboardShortcut? { shortcut("configure_group") }
     static var changeGroupFolder: KeyboardShortcut? { shortcut("change_group_folder") }
+    static var revealGroupInFinder: KeyboardShortcut? { shortcut("reveal_group_in_finder") }
     static var shareGroup: KeyboardShortcut? { shortcut("share_group") }
     static var close: KeyboardShortcut? { shortcut("close") }
     static var closeWindow: KeyboardShortcut? { shortcut("close_window") }
@@ -128,6 +129,8 @@ enum Keys {
     static var editorGoToLine: KeyboardShortcut? { shortcut("editor_go_to_line") }
     static var editorReload: KeyboardShortcut? { shortcut("editor_reload") }
     static var editorShowDiff: KeyboardShortcut? { shortcut("editor_show_diff") }
+    static var editorRename: KeyboardShortcut? { shortcut("editor_rename") }
+    static var editorRevealInFinder: KeyboardShortcut? { shortcut("editor_reveal_in_finder") }
     static var editorWrap: KeyboardShortcut? { shortcut("editor_wrap") }
     static var reviewChanges: KeyboardShortcut? { shortcut("review_changes") }
     static var simShutDown: KeyboardShortcut? { shortcut("sim_shut_down") }

@@ -378,6 +378,9 @@ func (a *App) groupMenu(id string, x, y int) {
 	if canSchedule(sp) {
 		items = append(items, menuItem{label: "New Scheduled Task…", run: func() { a.openNewSchedule(id, "", "claude") }})
 	}
+	if a.canReveal(sp) {
+		items = append(items, menuItem{label: "Reveal in Finder", run: func() { a.revealInFinder(a.groupFolder(sp)) }})
+	}
 	a.openMenu(x, y, append(items, []menuItem{
 		{label: collapse, run: func() { a.toggleGroup(id) }},
 		{sep: true},
@@ -666,6 +669,9 @@ func (a *App) paletteItems() []paletteItem {
 	// The Group you're in, with tabs or without.
 	if sp := a.group(a.currentGroup()); sp != nil && (a.tabs[a.selTab] != nil || a.selGroup == sp.Id) {
 		act("configure-group", "Configure Group…", "⌃B .", "rename icon emoji folder", func() { a.openConfigureGroup(sp) })
+		if a.canReveal(sp) {
+			act("reveal-group", "Reveal Group in Finder", "", "show folder directory open finder", func() { a.revealInFinder(a.groupFolder(sp)) })
+		}
 		if len(sp.TabIds) == 0 {
 			act("start-agent-here", "Start an Agent…", "", "claude codex new agent tab", func() { a.openStartAgent(sp.Id) })
 			act("close-group", "Close Group", "", "delete remove", func() { a.closeGroup(sp.Id) })

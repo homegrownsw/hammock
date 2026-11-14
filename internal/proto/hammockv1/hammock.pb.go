@@ -771,6 +771,10 @@ const (
 	EditorCommand_ACTION_KEEP_MINE    EditorCommand_Action = 3 // dismiss the conflict, keeping the buffer
 	EditorCommand_ACTION_SET_LANGUAGE EditorCommand_Action = 4 // language ("" back to detecting it)
 	EditorCommand_ACTION_SELECT       EditorCommand_Action = 5 // select line:column to end_line:end_column and scroll to it (agents)
+	// Move the file to path (a new name, or relative to the file's own
+	// folder, or absolute), unsaved edits and all; refused over another
+	// file. Still unsaved (untitled): Save As.
+	EditorCommand_ACTION_RENAME EditorCommand_Action = 6
 )
 
 // Enum value maps for EditorCommand_Action.
@@ -782,6 +786,7 @@ var (
 		3: "ACTION_KEEP_MINE",
 		4: "ACTION_SET_LANGUAGE",
 		5: "ACTION_SELECT",
+		6: "ACTION_RENAME",
 	}
 	EditorCommand_Action_value = map[string]int32{
 		"ACTION_UNSPECIFIED":  0,
@@ -790,6 +795,7 @@ var (
 		"ACTION_KEEP_MINE":    3,
 		"ACTION_SET_LANGUAGE": 4,
 		"ACTION_SELECT":       5,
+		"ACTION_RENAME":       6,
 	}
 )
 
@@ -17098,16 +17104,18 @@ func (x *EditorSelect) GetHead() uint32 {
 }
 
 type EditorCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
-	Action        EditorCommand_Action   `protobuf:"varint,2,opt,name=action,proto3,enum=hammock.v1.EditorCommand_Action" json:"action,omitempty"`
-	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`    // ACTION_SAVE: save as (absolute, or relative to the Group's folder)
-	Force         bool                   `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"` // ACTION_SAVE: over a conflict, or replacing another file
-	Language      string                 `protobuf:"bytes,5,opt,name=language,proto3" json:"language,omitempty"`
-	Line          uint32                 `protobuf:"varint,6,opt,name=line,proto3" json:"line,omitempty"` // ACTION_SELECT, 1-based
-	Column        uint32                 `protobuf:"varint,7,opt,name=column,proto3" json:"column,omitempty"`
-	EndLine       uint32                 `protobuf:"varint,8,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
-	EndColumn     uint32                 `protobuf:"varint,9,opt,name=end_column,json=endColumn,proto3" json:"end_column,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	PaneId string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
+	Action EditorCommand_Action   `protobuf:"varint,2,opt,name=action,proto3,enum=hammock.v1.EditorCommand_Action" json:"action,omitempty"`
+	// ACTION_SAVE: save as (absolute, or relative to the Group's folder).
+	// ACTION_RENAME: the new name.
+	Path          string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Force         bool   `protobuf:"varint,4,opt,name=force,proto3" json:"force,omitempty"` // ACTION_SAVE: over a conflict, or replacing another file
+	Language      string `protobuf:"bytes,5,opt,name=language,proto3" json:"language,omitempty"`
+	Line          uint32 `protobuf:"varint,6,opt,name=line,proto3" json:"line,omitempty"` // ACTION_SELECT, 1-based
+	Column        uint32 `protobuf:"varint,7,opt,name=column,proto3" json:"column,omitempty"`
+	EndLine       uint32 `protobuf:"varint,8,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
+	EndColumn     uint32 `protobuf:"varint,9,opt,name=end_column,json=endColumn,proto3" json:"end_column,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -26021,7 +26029,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x04R\aversion\x12\x16\n" +
 	"\x06anchor\x18\x03 \x01(\rR\x06anchor\x12\x12\n" +
-	"\x04head\x18\x04 \x01(\rR\x04head\"\x97\x03\n" +
+	"\x04head\x18\x04 \x01(\rR\x04head\"\xaa\x03\n" +
 	"\rEditorCommand\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x128\n" +
 	"\x06action\x18\x02 \x01(\x0e2 .hammock.v1.EditorCommand.ActionR\x06action\x12\x12\n" +
@@ -26032,14 +26040,15 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06column\x18\a \x01(\rR\x06column\x12\x19\n" +
 	"\bend_line\x18\b \x01(\rR\aendLine\x12\x1d\n" +
 	"\n" +
-	"end_column\x18\t \x01(\rR\tendColumn\"\x86\x01\n" +
+	"end_column\x18\t \x01(\rR\tendColumn\"\x99\x01\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vACTION_SAVE\x10\x01\x12\x11\n" +
 	"\rACTION_RELOAD\x10\x02\x12\x14\n" +
 	"\x10ACTION_KEEP_MINE\x10\x03\x12\x17\n" +
 	"\x13ACTION_SET_LANGUAGE\x10\x04\x12\x11\n" +
-	"\rACTION_SELECT\x10\x05\"9\n" +
+	"\rACTION_SELECT\x10\x05\x12\x11\n" +
+	"\rACTION_RENAME\x10\x06\"9\n" +
 	"\n" +
 	"ReadEditor\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x12\n" +

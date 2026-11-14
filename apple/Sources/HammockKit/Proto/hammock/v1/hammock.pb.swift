@@ -7089,7 +7089,8 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
 
   public var action: Hammock_V1_EditorCommand.Action = .unspecified
 
-  /// ACTION_SAVE: save as (absolute, or relative to the Group's folder)
+  /// ACTION_SAVE: save as (absolute, or relative to the Group's folder).
+  /// ACTION_RENAME: the new name.
   public var path: String = String()
 
   /// ACTION_SAVE: over a conflict, or replacing another file
@@ -7126,6 +7127,11 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
 
     /// select line:column to end_line:end_column and scroll to it (agents)
     case select // = 5
+
+    /// Move the file to path (a new name, or relative to the file's own
+    /// folder, or absolute), unsaved edits and all; refused over another
+    /// file. Still unsaved (untitled): Save As.
+    case rename // = 6
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -7140,6 +7146,7 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
       case 3: self = .keepMine
       case 4: self = .setLanguage
       case 5: self = .select
+      case 6: self = .rename
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -7152,6 +7159,7 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
       case .keepMine: return 3
       case .setLanguage: return 4
       case .select: return 5
+      case .rename: return 6
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -7164,6 +7172,7 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
       .keepMine,
       .setLanguage,
       .select,
+      .rename,
     ]
 
   }
@@ -22432,7 +22441,7 @@ nonisolated extension Hammock_V1_EditorCommand: SwiftProtobuf.Message, SwiftProt
 }
 
 nonisolated extension Hammock_V1_EditorCommand.Action: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SAVE\0\u{1}ACTION_RELOAD\0\u{1}ACTION_KEEP_MINE\0\u{1}ACTION_SET_LANGUAGE\0\u{1}ACTION_SELECT\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SAVE\0\u{1}ACTION_RELOAD\0\u{1}ACTION_KEEP_MINE\0\u{1}ACTION_SET_LANGUAGE\0\u{1}ACTION_SELECT\0\u{1}ACTION_RENAME\0")
 }
 
 nonisolated extension Hammock_V1_ReadEditor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

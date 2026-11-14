@@ -265,6 +265,8 @@ struct SidebarView: View {
                         Button("Share…") { SharingUI.shared.shareGroup = group.id }
                     }
                     Button("Change Folder…") { GroupFolder.choose(model, group) }
+                    Button("Reveal in Finder") { GroupFolder.reveal(model, group) }
+                        .keyboardShortcut(Keys.revealGroupInFinder)
                     OpenInNewWindowButton(model: model, subject: .group(group.id))
                     Divider()
                     Button("New Tab") { Task { await model.createTab(in: group.id) } }

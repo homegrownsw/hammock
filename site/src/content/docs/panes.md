@@ -71,7 +71,7 @@ Open one with File ▸ Quick Open… (⌘P), File ▸ Open File… (⌘O), or Pa
 hmk edit src/main.go:42-60       # beside this pane, lines 42 to 60 selected
 ```
 
-When a program changes the file on disk, the pane reloads it, or offers to if you have unsaved edits. Settings ▸ Editor sets wrapping, line numbers, indentation, the font and **Vim keys**; a file's `.editorconfig` wins over them. All the keys are in the [config reference](/hammock/docs/reference/config/#editor-panes).
+When a program changes the file on disk, the pane reloads it, or offers to if you have unsaved edits. When the file is renamed or moved, in the Finder or by git or an agent, the pane follows it; moved to the Trash, it shows as missing. File ▸ Rename… renames it from the pane, unsaved edits and all, and Reveal in Finder shows it there. Settings ▸ Editor sets wrapping, line numbers, indentation, the font and **Vim keys**; a file's `.editorconfig` wins over them. All the keys are in the [config reference](/hammock/docs/reference/config/#editor-panes).
 
 **Agents** use [`editor_open`](/hammock/docs/reference/mcp/#editor_open) to show you code with the lines selected, and [`editor_read`](/hammock/docs/reference/mcp/#editor_read) to see what you've selected, so you can ask about "the lines I've selected".
 

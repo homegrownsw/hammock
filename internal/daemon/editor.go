@@ -58,6 +58,7 @@ type editorBuf struct {
 	diskSize int64
 	eol      lineEnds // how disk's lines end in the file
 	mode     fs.FileMode
+	dev, ino uint64 // the file's identity, to follow it when it's moved (editormove.go)
 
 	dirty, conflict, missing, readOnly bool
 	language                           string
@@ -232,6 +233,7 @@ func (h *editorHub) load(path string, large bool) (*editorBuf, error) {
 		b.text, b.eol = normaliseText(data)
 		b.disk = b.text
 		b.diskSum, b.diskMod, b.diskSize, b.mode = sha256.Sum256(data), st.ModTime(), st.Size(), st.Mode().Perm()
+		b.dev, b.ino = fileID(st)
 		b.readOnly = !writable(path)
 	}
 	b.tabWidth, b.indent = indentFor(path, b.text)
@@ -635,6 +637,8 @@ func (h *editorHub) command(m *pb.EditorCommand, folder string, guest bool) erro
 	switch m.Action {
 	case pb.EditorCommand_ACTION_SAVE:
 		return h.save(m, folder, guest)
+	case pb.EditorCommand_ACTION_RENAME:
+		return h.rename(m, folder, guest)
 	case pb.EditorCommand_ACTION_RELOAD:
 		h.mu.Lock()
 		b, err := h.buf(m.PaneId)
@@ -662,6 +666,7 @@ func (h *editorHub) command(m *pb.EditorCommand, folder string, guest bool) erro
 			b.disk, b.eol, b.missing = t, eol, false
 			b.diskSum, b.diskMod, b.diskSize = sha256.Sum256(data), st.ModTime(), st.Size()
 			b.mode, b.readOnly = st.Mode().Perm(), !writable(path)
+			b.dev, b.ino = fileID(st)
 			b.replaceText(t)
 		}
 		b.conflict = false
@@ -788,22 +793,13 @@ func (h *editorHub) save(m *pb.EditorCommand, folder string, guest bool) error {
 
 	h.mu.Lock()
 	if renaming {
-		oldKey := b.key
-		delete(h.bufs, oldKey)
-		if b.saveDue || b.dirty {
-			h.d.persist(h.d.store.DeleteRecord(editorRecord, oldKey))
-		}
-		b.key, b.path = target, target
-		h.bufs[target] = b
-		for id := range b.panes {
-			h.pane[id] = target
-		}
-		b.tabWidth, b.indent = indentFor(target, text)
+		h.rekey(b, target)
 	}
 	b.disk, b.eol = text, wrote
 	b.diskSum = sha256.Sum256(out)
 	if st != nil {
 		b.diskMod, b.diskSize = st.ModTime(), st.Size()
+		b.dev, b.ino = fileID(st)
 	}
 	b.missing, b.conflict, b.readOnly = false, false, false
 	b.changed() // dirty only if edited since text was taken
@@ -879,7 +875,7 @@ func (h *editorHub) read(m *pb.ReadEditor) (*pb.EditorUpdate, error) {
 // else a conflict.
 func (h *editorHub) checkDisk(b *editorBuf) {
 	h.mu.Lock()
-	path, mod, size, missing := b.path, b.diskMod, b.diskSize, b.missing
+	path, mod, size, missing, dev, ino := b.path, b.diskMod, b.diskSize, b.missing, b.dev, b.ino
 	h.mu.Unlock()
 	if path == "" {
 		return
@@ -887,7 +883,14 @@ func (h *editorHub) checkDisk(b *editorBuf) {
 	st, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) && !missing {
+			if h.follow(b, path, dev, ino) {
+				return // moved: the pane goes with it
+			}
 			h.mu.Lock()
+			if b.path != path {
+				h.mu.Unlock()
+				return
+			}
 			b.missing = true
 			b.changed()
 			h.mu.Unlock()
@@ -904,7 +907,12 @@ func (h *editorHub) checkDisk(b *editorBuf) {
 	}
 	sum := sha256.Sum256(data)
 	h.mu.Lock()
+	if b.path != path {
+		h.mu.Unlock()
+		return // renamed meanwhile: looked at again next time
+	}
 	b.diskMod, b.diskSize = st.ModTime(), st.Size()
+	b.dev, b.ino = fileID(st)
 	if sum == b.diskSum && !b.missing {
 		h.mu.Unlock()
 		return

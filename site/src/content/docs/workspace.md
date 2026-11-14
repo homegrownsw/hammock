@@ -25,7 +25,7 @@ hmk group new api --folder ~/Developer/api
 
 ### A Group's folder
 
-New tabs open in the Group's folder, which follows you: it's the folder you last worked in. Set it yourself with File ▸ Change Group Folder… or `hmk group folder`.
+New tabs open in the Group's folder, which follows you: it's the folder you last worked in. Set it yourself with File ▸ Change Group Folder… or `hmk group folder`, and open it with File ▸ Reveal Group in Finder.
 
 ### Group icons
 

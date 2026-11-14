@@ -192,6 +192,9 @@ struct HammockApp: App {
                 Button("Change Group Folder…") { if let g = currentGroup { GroupFolder.choose(model, g) } }
                     .keyboardShortcut(Keys.changeGroupFolder)
                     .disabled(!(currentGroup.map(GroupFolder.canChange) ?? false))
+                Button("Reveal Group in Finder") { if let g = currentGroup { GroupFolder.reveal(model, g) } }
+                    .keyboardShortcut(Keys.revealGroupInFinder)
+                    .disabled(!(currentGroup.map { GroupFolder.canReveal(model, $0) } ?? false))
                 if Prefs.shared.bool(.groupSharing) {
                     Button("Share Group…") { if let g = currentGroup { SharingUI.shared.shareGroup = g.id } }
                         .keyboardShortcut(Keys.shareGroup)
@@ -252,6 +255,11 @@ struct HammockApp: App {
                             .keyboardShortcut(Keys.editorShowDiff)
                         Button("Reload from Disk") { EditorUI.shared.reload(model, id) }.keyboardShortcut(Keys.editorReload)
                             .disabled(model.group(ofPane: id)?.canDrive == false)
+                        Button("Rename…") { EditorUI.shared.rename(model, id) }.keyboardShortcut(Keys.editorRename)
+                            .disabled(model.group(ofPane: id)?.canDrive == false)
+                        if EditorUI.shared.canReveal(model, id) {
+                            Button("Reveal in Finder") { EditorUI.shared.revealInFinder(model, id) }.keyboardShortcut(Keys.editorRevealInFinder)
+                        }
                     }
                 }
                 Button("Reopen Closed Tab or Pane") { Task { await model.reopenClosed() } }.keyboardShortcut(Keys.reopenClosed)

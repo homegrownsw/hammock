@@ -15,6 +15,8 @@ struct EditorScreen: View {
     private var session: EditorSession? { lease?.session }
     @State private var saveAsPath = ""
     @State private var askingSaveAs = false
+    @State private var renameTo = ""
+    @State private var askingRename = false
     @State private var problem: String?
     @State private var confirm: Confirm?
     @Environment(\.colorScheme) private var colorScheme
@@ -60,6 +62,15 @@ struct EditorScreen: View {
         } message: {
             Text("A path in \(info.folder.isEmpty ? "the Group's folder" : (info.folder as NSString).lastPathComponent), or a full path.")
         }
+        .alert("Rename", isPresented: $askingRename) {
+            TextField(info.name, text: $renameTo)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Rename") { rename() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A new name for \(info.name).")
+        }
         .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK", role: .cancel) {}
         }
@@ -95,6 +106,9 @@ struct EditorScreen: View {
                     Button("Save", systemImage: "square.and.arrow.down") { info.path.isEmpty ? startSaveAs() : save() }
                 }
                 Button("Save As…", systemImage: "square.and.arrow.down.on.square") { startSaveAs() }
+                if !info.path.isEmpty {
+                    Button("Rename…", systemImage: "pencil") { renameTo = info.name; askingRename = true }
+                }
             }
             Button("Find", systemImage: "magnifyingglass") { session?.run("find") }
             Button("Go to Line", systemImage: "arrow.right.to.line") { session?.run("gotoLine") }
@@ -188,6 +202,14 @@ struct EditorScreen: View {
     private func startSaveAs() {
         saveAsPath = info.path.isEmpty ? "" : (info.path.hasPrefix(info.folder + "/") ? String(info.path.dropFirst(info.folder.count + 1)) : info.path)
         askingSaveAs = true
+    }
+
+    private func rename() {
+        let name = renameTo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let s = session, !name.isEmpty, name != info.name else { return }
+        Task {
+            do { try await s.rename(to: name) } catch { problem = "Couldn't rename it: \(error.localizedDescription)" }
+        }
     }
 
     private func save(as path: String = "", force: Bool = false) {

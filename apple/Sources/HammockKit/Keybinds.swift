@@ -238,6 +238,7 @@ public enum Keybinds {
             .init("rename_tab", "Rename Tab…", "File", c("r", cs), "name title label"),
             .init("configure_group", "Configure Group…", "File", c("g", co), "rename name icon emoji picture edit settings"),
             .init("change_group_folder", "Change Group Folder…", "File", nil, "directory cwd path"),
+            .init("reveal_group_in_finder", "Reveal Group in Finder", "File", nil, "show folder directory open finder"),
             .init("share_group", "Share Group…", "File", nil, "invite collaborate"),
             .init("command_palette", "Command Palette…", "File", c("k"), "commands search quick open launcher"),
             .init("find_session", "Find Session…", "File", c("o", cs), "resume history claude agent search"),
@@ -317,6 +318,8 @@ public enum Keybinds {
             .init("editor_go_to_line", "Go to Line…", "Editor", c("l"), "jump line number"),
             .init("editor_reload", "Reload from Disk", "Editor", nil, "revert discard changes file"),
             .init("editor_show_diff", "Compare with File on Disk", "Editor", nil, "diff changes conflict merge"),
+            .init("editor_rename", "Rename…", "Editor", nil, "file name move"),
+            .init("editor_reveal_in_finder", "Reveal in Finder", "Editor", nil, "show file folder finder"),
         ]
     }()
 

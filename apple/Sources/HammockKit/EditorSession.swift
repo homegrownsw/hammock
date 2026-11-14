@@ -139,6 +139,8 @@ public final class EditorSession {
     }
 
     public func reload() async throws { try await command { $0.action = .reload } }
+    /// Renames the file (a new name, or a path relative to its folder), unsaved edits and all.
+    public func rename(to name: String) async throws { try await command { $0.action = .rename; $0.path = name } }
     public func keepMine() async throws { try await command { $0.action = .keepMine } }
 
     public func setLanguage(_ name: String) {

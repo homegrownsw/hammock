@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // Opening links, as the Mac app does: web and mail links open; a file
@@ -107,4 +109,30 @@ func linkOpener() string {
 		return p
 	}
 	return ""
+}
+
+// canReveal says whether Reveal in Finder works here: on the Mac at hand,
+// not one reached over SSH, for a Group of this computer's.
+func (a *App) canReveal(g *pb.Group) bool {
+	return runtime.GOOS == "darwin" && os.Getenv("SSH_CONNECTION") == "" && g != nil && g.HostUserId == ""
+}
+
+// revealInFinder shows path in the Finder, selected.
+func (a *App) revealInFinder(path string) {
+	if err := exec.Command("open", "-R", path).Start(); err != nil {
+		a.flash("Couldn't show it in Finder: " + err.Error())
+	}
+}
+
+// groupFolder is where a Group works: its folder, else its last focused
+// pane's, else home.
+func (a *App) groupFolder(g *pb.Group) string {
+	if g.Folder != "" {
+		return g.Folder
+	}
+	if p := a.panes[g.LastFocusedPaneId]; p != nil && p.Cwd != "" {
+		return p.Cwd
+	}
+	home, _ := os.UserHomeDir()
+	return home
 }

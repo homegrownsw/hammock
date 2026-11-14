@@ -367,6 +367,20 @@ struct PaneKindMenu<Label: View>: View {
                     Button("Open File…") { EditorUI.shared.openFile(model, replacePane: paneID) }
                 }
             }
+            if let pane, pane.isEditor, !pane.editor.path.isEmpty {
+                Section(pane.editor.name) {
+                    if model.group(ofPane: paneID)?.canDrive != false {
+                        Button("Rename…") { EditorUI.shared.rename(model, paneID) }.keyboardShortcut(Keys.editorRename)
+                    }
+                    if EditorUI.shared.canReveal(model, paneID) {
+                        Button("Reveal in Finder") { EditorUI.shared.revealInFinder(model, paneID) }.keyboardShortcut(Keys.editorRevealInFinder)
+                    }
+                    Button("Copy Path") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(pane.editor.path, forType: .string)
+                    }
+                }
+            }
             if let pane, pane.isEditor {
                 Toggle("Wrap Lines", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
             }

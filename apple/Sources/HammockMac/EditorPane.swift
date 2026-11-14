@@ -169,6 +169,45 @@ final class EditorUI {
         }
     }
 
+    /// Rename…: a new name for the file, in its folder (or a path from
+    /// there); unsaved edits go with it. Untitled, it's Save As.
+    func rename(_ model: AppModel, _ paneID: String) {
+        guard let pane = model.panes[paneID], let s = model.editorSession(paneID) else { return }
+        if pane.editor.path.isEmpty { chooseSaveAs(model, paneID); return }
+        let a = NSAlert()
+        a.messageText = "Rename \(pane.editor.name)"
+        a.informativeText = "In \(GroupFolder.tilde((pane.editor.path as NSString).deletingLastPathComponent))"
+        let field = NSTextField(string: pane.editor.name)
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 22)
+        field.lineBreakMode = .byTruncatingMiddle
+        a.accessoryView = field
+        a.addButton(withTitle: "Rename")
+        a.addButton(withTitle: "Cancel")
+        a.window.initialFirstResponder = field
+        // The name without its extension selected, as the Finder does.
+        DispatchQueue.main.async {
+            let stem = (pane.editor.name as NSString).deletingPathExtension
+            field.currentEditor()?.selectedRange = NSRange(location: 0, length: (stem.isEmpty ? pane.editor.name : stem).utf16.count)
+        }
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != pane.editor.name else { return }
+        Task {
+            do { try await s.rename(to: (name as NSString).expandingTildeInPath) } catch { Self.show("Couldn't rename \(pane.editor.name)", error) }
+        }
+    }
+
+    /// Whether the pane's file is this Mac's, to show in the Finder.
+    func canReveal(_ model: AppModel, _ paneID: String) -> Bool {
+        guard let pane = model.panes[paneID], pane.isEditor, !pane.editor.path.isEmpty, let g = model.group(ofPane: paneID) else { return false }
+        return !(g.isRemote || model.isOnLinkedComputer(g))
+    }
+
+    func revealInFinder(_ model: AppModel, _ paneID: String) {
+        guard canReveal(model, paneID), let path = model.panes[paneID]?.editor.path else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
     func showDiff(_ model: AppModel, _ paneID: String) {
         guard let s = model.editorSession(paneID) else { return }
         if s.showingDiff { s.hideDiff(); return }
@@ -543,7 +582,6 @@ final class EditorWK: WKWebView {
         guard let model, let pane = model.panes[paneID] else { return }
         let ed = pane.editor
         let canEdit = model.group(ofPane: paneID)?.canDrive != false
-        let local = !(model.group(ofPane: paneID).map { $0.isRemote || model.isOnLinkedComputer($0) } ?? false)
         let ui = EditorUI.shared
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         menu.addItem(ClosureItem("Find…", key: "find_in_page") { ui.run(model, self.paneID, "find") })
@@ -555,6 +593,7 @@ final class EditorWK: WKWebView {
             if !ed.path.isEmpty {
                 menu.addItem(ClosureItem(bridge?.session.showingDiff == true ? "Hide Comparison" : "Compare with File on Disk", key: "editor_show_diff") { ui.showDiff(model, self.paneID) })
                 menu.addItem(ClosureItem("Reload from Disk", key: "editor_reload") { ui.reload(model, self.paneID) })
+                menu.addItem(ClosureItem("Rename…", key: "editor_rename") { ui.rename(model, self.paneID) })
             }
             menu.addItem(.separator())
         }
@@ -563,8 +602,8 @@ final class EditorWK: WKWebView {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(ed.path, forType: .string)
             })
-            if local {
-                menu.addItem(ClosureItem("Reveal in Finder", key: nil) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: ed.path)]) })
+            if ui.canReveal(model, paneID) {
+                menu.addItem(ClosureItem("Reveal in Finder", key: "editor_reveal_in_finder") { ui.revealInFinder(model, self.paneID) })
                 menu.addItem(ClosureItem("Open in Default App", key: nil) { NSWorkspace.shared.open(URL(fileURLWithPath: ed.path)) })
             }
             menu.addItem(.separator())

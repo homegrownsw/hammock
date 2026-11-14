@@ -282,6 +282,9 @@ struct CommandPalette: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { GroupFolder.choose(model, g) }
                 }
             }
+            if GroupFolder.canReveal(model, g) {
+                action("reveal-group", "Reveal Group in Finder", "folder", .blue, "show folder directory open finder", keys: Keys.revealGroupInFinder) { GroupFolder.reveal(model, g) }
+            }
             if SharingUI.canShare(g) {
                 action("share-group", "Share Group…", "person.2", .blue, "invite collaborate multiplayer link people", keys: Keys.shareGroup) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { SharingUI.shared.shareGroup = g.id }
@@ -497,6 +500,14 @@ struct CommandPalette: View {
                 if !p.editor.path.isEmpty {
                     action("editor-diff", "Compare with File on Disk", "arrow.left.arrow.right", .indigo, "diff changes conflict merge", keys: Keys.editorShowDiff) { ui.showDiff(model, focused) }
                     action("editor-reload", "Reload from Disk", "arrow.clockwise", .indigo, "revert discard changes file", keys: Keys.editorReload) { ui.reload(model, focused) }
+                    if model.group(ofPane: focused)?.canDrive != false {
+                        action("editor-rename", "Rename File…", "pencil", .indigo, "file name move", keys: Keys.editorRename) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.rename(model, focused) }
+                        }
+                    }
+                    if ui.canReveal(model, focused) {
+                        action("editor-reveal", "Reveal in Finder", "folder", .indigo, "show file folder finder", keys: Keys.editorRevealInFinder) { ui.revealInFinder(model, focused) }
+                    }
                 }
             }
             if model.panes[focused]?.kind == .simulator {

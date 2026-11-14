@@ -30,6 +30,16 @@ enum GroupFolder {
         Task { await model.setGroupFolder(g.id, f) }
     }
 
+    /// Whether the Group's folder is this Mac's, to show in the Finder.
+    static func canReveal(_ model: AppModel, _ g: WorkspaceGroup) -> Bool { !g.isRemote && !model.isOnLinkedComputer(g) }
+
+    /// Reveal Group in Finder: its folder (home, if it has none yet).
+    static func reveal(_ model: AppModel, _ g: WorkspaceGroup) {
+        guard canReveal(model, g) else { return }
+        let f = model.groupFolder(g)
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: f.isEmpty ? NSHomeDirectory() : f)])
+    }
+
     /// New Group in Directory…: picks a folder, then makes an empty Group
     /// there, named after it.
     static func newGroup(_ model: AppModel) {
