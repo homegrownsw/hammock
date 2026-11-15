@@ -485,8 +485,7 @@ struct PaneView: View {
                     // drags, zooms and has its menus.
                     .overlay {
                         if asleep {
-                            SleepingPaneOverlay(backdrop: themeBackground, fill: AgentAutomatic.bubble, tint: AgentAutomatic.color,
-                                                animated: PaneMotion.enabled) { model.sleepPane(paneID, wake: true) }
+                            SleepingPaneOverlay(backdrop: themeBackground, fill: AgentAutomatic.bubble, tint: AgentAutomatic.color) { model.sleepPane(paneID, wake: true) }
                                 .transition(.opacity)
                         }
                     }

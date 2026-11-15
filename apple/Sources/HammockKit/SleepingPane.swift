@@ -9,8 +9,8 @@ import SwiftUI
 /// Only the card takes clicks: the faded pane under it can still be
 /// scrolled, selected and typed in (which wakes it too). Too short for the
 /// card, it's the button alone; too narrow for its words, the button's icon.
-/// It comes in with a small rise of the card unless `animated` is false
-/// (pane animations off, Reduce Motion): the caller fades the whole of it.
+/// It doesn't move: the caller fades it in and out as the pane sleeps and
+/// wakes, and switching to a tab that's already asleep shows it still.
 public struct SleepingPaneOverlay: View {
     /// The pane's background (the terminal theme's), which the pane fades to
     /// and the card is made of.
@@ -19,20 +19,17 @@ public struct SleepingPaneOverlay: View {
     let fill: Color
     /// The moon's colour: the theme's colour.
     let tint: Color
-    let animated: Bool
     let wake: () -> Void
-    @State private var shown = false
     @Environment(\.colorScheme) private var scheme
 
     /// The theme's colour can be too pale on a light card: there, the
     /// button's deeper one.
     private var moon: Color { scheme == .light ? fill : tint }
 
-    public init(backdrop: Color, fill: Color, tint: Color, animated: Bool = true, wake: @escaping () -> Void) {
+    public init(backdrop: Color, fill: Color, tint: Color, wake: @escaping () -> Void) {
         self.backdrop = backdrop
         self.fill = fill
         self.tint = tint
-        self.animated = animated
         self.wake = wake
     }
 
@@ -48,12 +45,6 @@ public struct SleepingPaneOverlay: View {
                 }
             }
             .padding(12)
-            .scaleEffect(shown ? 1 : 0.94)
-            .offset(y: shown ? 0 : 6)
-        }
-        .onAppear {
-            guard animated else { shown = true; return }
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true }
         }
         .accessibilityElement(children: .contain)
     }

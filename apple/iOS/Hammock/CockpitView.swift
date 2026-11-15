@@ -1091,7 +1091,7 @@ struct PaneScreen: View {
         // doesn't; typing in it or sending its agent a message does).
         .overlay {
             if asleep {
-                SleepingPaneOverlay(backdrop: theme.terminalBackground, fill: theme.bubble, tint: theme.accent, animated: !reduceMotion) {
+                SleepingPaneOverlay(backdrop: theme.terminalBackground, fill: theme.bubble, tint: theme.accent) {
                     model.sleepPane(paneID, wake: true)
                 }
                 .transition(.opacity)
