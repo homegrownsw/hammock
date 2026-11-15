@@ -787,12 +787,14 @@ struct GroupRow: View {
                 .opacity(subtle ? 0.75 : 1)
             }
             VStack(alignment: .leading, spacing: 0) {
-                Text(model.title(of: group))
+                let name = Text(model.title(of: group))
                     .fontWeight(.semibold)
                     // Subtle: under the tabs' 13.5–14 pt, in the secondary colour.
                     .font(.system(size: subtle ? (compact ? 11.5 : 12) : (compact ? 14 : 15)))
-                    .foregroundStyle(subtle ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                     .lineLimit(1)
+                // Otherwise the List's own colour, like the tabs', so it dims
+                // with them when the window isn't key (an explicit .primary doesn't).
+                if subtle { name.foregroundStyle(.secondary) } else { name }
                 if group.isRemote, !group.isOnLinkedComputer {
                     // Whose Mac it runs on.
                     Text(group.offline ? "\(model.hostLabel(of: group)) · offline" : model.hostLabel(of: group))
