@@ -46,11 +46,37 @@ final class SimulatorList {
 /// pane: after it, or before it (left, or above) with before.
 struct SplitMenuItems: View {
     let model: AppModel
-    let paneID: String
+    /// Read when an item runs, not when the menu was built: the toolbar's
+    /// menus keep their items (and their ⌘D) from a while ago, and the
+    /// window finds that ⌘D before the menu bar's.
+    private let pane: () -> String
     var direction: SplitDirection = .horizontal
     var before = false
     /// A new pane floating over the tab instead of a split.
     var floating = false
+
+    private var paneID: String { pane() }
+
+    init(model: AppModel, paneID: String, direction: SplitDirection = .horizontal, before: Bool = false, floating: Bool = false) {
+        self.init(model: model, pane: { paneID }, direction: direction, before: before, floating: floating)
+    }
+
+    /// For the pane focused in a tab when the item runs (the toolbar's).
+    init(model: AppModel, focusedIn tabID: String, direction: SplitDirection) {
+        self.init(model: model, pane: { [weak model] in
+            guard let model, let tab = model.tabs[tabID] else { return "" }
+            if let f = model.focusedPaneID, model.panes[f]?.tabID == tabID { return f }
+            return tab.focusedPaneID
+        }, direction: direction)
+    }
+
+    private init(model: AppModel, pane: @escaping () -> String, direction: SplitDirection, before: Bool = false, floating: Bool = false) {
+        self.model = model
+        self.pane = pane
+        self.direction = direction
+        self.before = before
+        self.floating = floating
+    }
 
     /// The default agent of the pane's computer, straight away (when it has
     /// one), and Agent…: the Start an Agent sheet, for a pane here.

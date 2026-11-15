@@ -45,11 +45,11 @@ struct TabDetailView: View {
                 ToolbarItemGroup(placement: .primaryAction) {
                     // Each opens a menu of what to open: a terminal, browser or simulator.
                     Menu {
-                        SplitMenuItems(model: model, paneID: currentFocus, direction: .horizontal)
+                        SplitMenuItems(model: model, focusedIn: tab.id, direction: .horizontal)
                     } label: { Label("Split Right", systemImage: "rectangle.split.2x1") }
                         .help(Keys.hint("Split Right", "split_right", for: "a terminal"))
                     Menu {
-                        SplitMenuItems(model: model, paneID: currentFocus, direction: .vertical)
+                        SplitMenuItems(model: model, focusedIn: tab.id, direction: .vertical)
                     } label: { Label("Split Down", systemImage: "rectangle.split.1x2") }
                         .help(Keys.hint("Split Down", "split_down", for: "a terminal"))
                     Menu {
