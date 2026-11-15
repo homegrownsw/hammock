@@ -62,10 +62,8 @@
   nav.open::before { opacity: 1; }
   nav .menu { display: none; margin-left: auto; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
   nav .menu svg { display: block; margin: auto; }
-  nav .menu path { transition: transform .2s; transform-origin: center; }
-  nav.open .menu .t { transform: translateY(5px) rotate(45deg); }
-  nav.open .menu .m { opacity: 0; }
-  nav.open .menu .b { transform: translateY(-5px) rotate(-45deg); }
+  nav .menu .x, nav.open .menu .bars { display: none; }
+  nav.open .menu .x { display: inline; }
   nav .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.02em; }
   nav .brand img { width: 34px; height: 34px; }
   nav .links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
@@ -387,7 +385,7 @@
 
 <nav aria-label="Main">
   <a class="brand" href="#"><img src="icon-256.png" alt="">Hammock</a>
-  <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path class="t" d="M4 6h14"/><path class="m" d="M4 11h14"/><path class="b" d="M4 16h14"/></svg></button>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path class="bars" d="M4 6h14M4 11h14M4 16h14"/><path class="x" d="M5.5 5.5l11 11M16.5 5.5l-11 11"/></svg></button>
   <div class="links" id="nav-links">
     <a href="#features">Features</a>
     <a href="#iphone">iPhone</a>

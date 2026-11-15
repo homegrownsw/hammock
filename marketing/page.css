@@ -33,10 +33,8 @@ nav::before {
 nav.open::before { opacity: 1; }
 nav .menu { display: none; margin-left: auto; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
 nav .menu svg { display: block; margin: auto; }
-nav .menu path { transition: transform .2s; transform-origin: center; }
-nav.open .menu .t { transform: translateY(5px) rotate(45deg); }
-nav.open .menu .m { opacity: 0; }
-nav.open .menu .b { transform: translateY(-5px) rotate(-45deg); }
+nav .menu .x, nav.open .menu .bars { display: none; }
+nav.open .menu .x { display: inline; }
 nav .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.02em; }
 nav .brand img { width: 34px; height: 34px; }
 nav .links { margin-left: auto; display: flex; gap: 22px; }
