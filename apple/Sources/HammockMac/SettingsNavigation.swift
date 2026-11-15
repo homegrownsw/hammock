@@ -144,14 +144,126 @@ struct SettingsWindowStyle: NSViewRepresentable {
             window.toolbarStyle = .unified
             window.titleVisibility = .visible
             window.titlebarSeparatorStyle = .automatic
+            // The search field comes with the sidebar, after this.
+            for delay in [0, 0.3, 1] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.ringSearchField() }
+            }
+        }
+
+        // MARK: The search field's focus ring, in the theme's colour
+
+        // AppKit draws a focused field's ring in the app's accent (the asset
+        // catalog's, Hammock's green, whatever the theme), which nothing in
+        // SwiftUI changes. So the search field's own is off, and this draws
+        // one where it was, in the theme's colour, while you type in it.
+        private weak var field: NSSearchField?
+        private let ring = CALayer()
+        private var observers: [NSObjectProtocol] = []
+
+        private func ringSearchField() {
+            guard field == nil, let root = window?.contentView?.superview, let found = Self.searchField(in: root) else { return }
+            field = found
+            found.focusRingType = .none
+            ring.borderWidth = 3.5
+            ring.actions = ["position": NSNull(), "bounds": NSNull()]
+            let center = NotificationCenter.default
+            for name in [NSControl.textDidBeginEditingNotification, NSControl.textDidEndEditingNotification, NSView.frameDidChangeNotification] {
+                observers.append(center.addObserver(forName: name, object: found, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.updateRing() }
+                })
+            }
+            observers.append(center.addObserver(forName: AppConfig.changed, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.updateRing() }
+            })
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+                observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.updateRing() }
+                })
+            }
+            found.postsFrameChangedNotifications = true
+            updateRing()
+        }
+
+        private func updateRing() {
+            guard let field, let host = field.superview else { ring.removeFromSuperlayer(); return }
+            host.wantsLayer = true
+            if ring.superlayer !== host.layer { host.layer?.addSublayer(ring) }
+            let editing = field.currentEditor() != nil && window?.isKeyWindow == true
+            // In the host's own coordinates, as its layer's are.
+            let frame = field.frame.insetBy(dx: -3, dy: -3)
+            ring.frame = frame
+            ring.cornerRadius = frame.height / 2
+            field.effectiveAppearance.performAsCurrentDrawingAppearance {
+                ring.borderColor = NSColor(Color.themeAccent).withAlphaComponent(0.5).cgColor
+            }
+            ring.isHidden = !editing
+        }
+
+        private static func searchField(in view: NSView) -> NSSearchField? {
+            if let f = view as? NSSearchField { return f }
+            for v in view.subviews { if let f = searchField(in: v) { return f } }
+            return nil
         }
     }
 }
 
-/// Settings' switches in the theme's colour. The window itself takes the
-/// system's accent, so buttons and pop-up menus look as System Settings'
-/// do; switches and choices (radio buttons, segments: `.themeTint()` on
-/// each) keep Hammock's colour.
+extension View {
+    /// Settings drawn as a small workspace window: the pane a card, as a
+    /// spacious split pane is (rounded, outlined, standing off the window's
+    /// right and bottom edges, its bottom right corner concentric with the
+    /// window's), on what the workspace window's tabs sit on: the sidebar's
+    /// glass and the window theme's tint, under the toolbar too.
+    func settingsPaneCard() -> some View { modifier(SettingsPaneCard()) }
+}
+
+extension View {
+    /// A row of Settings' sidebar, picked by a click and drawn as the
+    /// workspace sidebar's tabs are: a pill (SidebarPill). The row reaches
+    /// the pill's edges (out 6 pt each side, and the List's 4 above and
+    /// below, rows at least 32 tall, as its padding instead), so anywhere the
+    /// pill shows takes the click and the hover; what's in it, and the rows'
+    /// heights, stay where the List put them.
+    func settingsSidebarRow(_ id: String, selected: Bool, hovered: Binding<String?>, action: @escaping () -> Void) -> some View {
+        padding(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .onHover { inside in
+                if inside { hovered.wrappedValue = id } else if hovered.wrappedValue == id { hovered.wrappedValue = nil }
+            }
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            // Outermost, so the List sees them.
+            .listRowBackground(SidebarPill(selected: selected, hovered: hovered.wrappedValue == id).padding(.horizontal, 10).padding(.vertical, 1))
+            .listRowInsets(EdgeInsets(top: 0, leading: -6, bottom: 0, trailing: -6))
+    }
+}
+
+private struct SettingsPaneCard: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    /// As spacious panes, whatever the workspace's pane spacing.
+    private static let inset: CGFloat = 6
+    private static let radius: CGFloat = 8
+    private var shape: UnevenRoundedRectangle {
+        let outer = PaneLook.windowCornerRadius - Self.inset
+        return UnevenRoundedRectangle(topLeadingRadius: Self.radius, bottomLeadingRadius: Self.radius,
+                                      bottomTrailingRadius: outer, topTrailingRadius: Self.radius, style: .continuous)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(shape)
+            .overlay { shape.strokeBorder(PaneLook.outlineColor(dark: colorScheme == .dark), lineWidth: PaneLook.outlineWidth) }
+            .padding(EdgeInsets(top: 0, leading: 0, bottom: Self.inset, trailing: Self.inset))
+            .emptyDetailBackground()
+    }
+}
+
+/// Settings' switches in the theme's colour. The window itself isn't
+/// tinted, so plain buttons and pop-up menus look as System Settings' do;
+/// what the accent fills (switches, and with `.themeTint()` on each, choices,
+/// sliders, prominent and default buttons) takes the theme's colour rather
+/// than the app's own accent (Hammock's green).
 struct ThemedSwitchStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Toggle(configuration)

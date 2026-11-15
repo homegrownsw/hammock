@@ -10,6 +10,8 @@ struct SettingsView: View {
 
     @State private var query: String
     @State private var picked: SettingsEntry.ID?
+    /// The sidebar row under the pointer: its pill.
+    @State private var hovered: String?
     private var nav: SettingsNav { .shared }
     private var selected: SettingsTab { SettingsTab(rawValue: tab) ?? .general }
 
@@ -26,9 +28,12 @@ struct SettingsView: View {
                 .frame(minWidth: 250)
                 .navigationSplitViewColumnWidth(250)
                 .toolbar(removing: .sidebarToggle)
+                // The window theme's tint, as the workspace window's sidebar has.
+                .background { SidebarTint().ignoresSafeArea() }
         } detail: {
             pane(selected)
                 .id(selected)
+                .settingsPaneCard()
                 .navigationTitle(selected.title)
                 .toolbar {
                     ToolbarItemGroup(placement: .navigation) {
@@ -42,7 +47,10 @@ struct SettingsView: View {
                 }
         }
         .searchable(text: $query, placement: .sidebar, prompt: "Search")
-        .onSubmit(of: .search) { picked = SettingsIndex.search(query).first?.id }
+        .onSubmit(of: .search) {
+            picked = SettingsIndex.search(query).first?.id
+            if let r = SettingsIndex.search(query).first { nav.reveal(r) }
+        }
         .onChange(of: query) { picked = nil }
         .onChange(of: tab) { old, new in
             nav.moved(from: SettingsTab(rawValue: old) ?? .general, to: SettingsTab(rawValue: new) ?? .general)
@@ -57,13 +65,15 @@ struct SettingsView: View {
 
     @ViewBuilder private var sidebar: some View {
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
-            List(selection: Binding(get: { selected }, set: { if let t = $0 { tab = t.rawValue } })) {
-                Section { hammockCard }
+            // No selection of the list's own: a row's click picks it and its
+            // pill shows it, as the workspace sidebar's tabs do.
+            List {
+                Section { hammockCard.settingsSidebarRow("about", selected: selected == .about, hovered: $hovered) { tab = SettingsTab.about.rawValue } }
                 ForEach(SettingsTab.sidebar, id: \.self) { group in
                     Section {
                         ForEach(group) { t in
                             Label { Text(t.title) } icon: { SettingsIcon(tab: t) }
-                                .tag(t)
+                                .settingsSidebarRow(t.rawValue, selected: selected == t, hovered: $hovered) { tab = t.rawValue }
                         }
                     }
                 }
@@ -84,11 +94,10 @@ struct SettingsView: View {
                 Text("Hammock").fontWeight(.semibold)
                 Text(model.connected ? "Server running" : "Server not running")
                     .font(.caption)
-                    .foregroundStyle(model.connected || selected == .about ? Color.secondary : Color.orange)
+                    .foregroundStyle(model.connected ? Color.secondary : Color.orange)
             }
         }
         .padding(.vertical, 2)
-        .tag(SettingsTab.about)
         .accessibilityLabel("Hammock, \(model.connected ? "server running" : "server not running"): About")
     }
 
@@ -98,7 +107,7 @@ struct SettingsView: View {
         let shortcuts = found.filter { $0.keyboardQuery != nil }.prefix(12)
         let shown = found.filter { $0.keyboardQuery == nil } + shortcuts
         let tabs = ([SettingsTab.about] + SettingsTab.sidebar.joined()).filter { t in shown.contains { $0.tab == t } }
-        return List(selection: $picked) {
+        return List {
             if shown.isEmpty {
                 Text("No settings match “\(query)”.")
                     .foregroundStyle(.secondary)
@@ -112,15 +121,15 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 2)
                         .padding(.leading, 26)
-                        .tag(r.id)
+                        .settingsSidebarRow(r.id, selected: picked == r.id, hovered: $hovered) {
+                            picked = r.id
+                            nav.reveal(r)
+                        }
                     }
                 } header: {
                     Label { Text(t.title) } icon: { SettingsIcon(tab: t, size: 18) }
                 }
             }
-        }
-        .onChange(of: picked) { _, id in
-            if let r = shown.first(where: { $0.id == id }) { nav.reveal(r) }
         }
     }
 
@@ -432,6 +441,7 @@ struct AppearanceSettings: View {
                             Slider(value: Binding(get: { config.sidebarOpacity }, set: { config.previewSidebarOpacity($0) }), in: 0...1) { editing in
                                 if !editing { config.setSidebarOpacity(config.sidebarOpacity) }
                             }
+                            .themeTint()
                             Text("Opaque").font(.callout).foregroundStyle(.secondary)
                         }
                     }
@@ -792,6 +802,7 @@ private struct AgentSettings: View {
                     Button("Preview Changes") { run(["hooks", "install", "--dry-run"]) }
                     Button("Install Hooks & Tools") { run(["hooks", "install"]) }
                         .buttonStyle(.borderedProminent)
+                        .themeTint()
                     Button("Remove") { run(["hooks", "install", "--uninstall"]) }
                     if running { ProgressView().controlSize(.small) }
                 }

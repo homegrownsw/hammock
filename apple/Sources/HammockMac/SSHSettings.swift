@@ -228,6 +228,7 @@ struct SSHSettings: View {
                 Button("Cancel") { askHost = false }.keyboardShortcut(.cancelAction)
                 Button("Copy") { copyToServer() }
                     .keyboardShortcut(.defaultAction)
+                    .themeTint()
                     .disabled(copyHost.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }

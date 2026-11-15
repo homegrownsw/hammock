@@ -455,22 +455,11 @@ struct SidebarView: View {
     /// tab, which replaces the system highlight, and a dim one on hover.
     @ViewBuilder
     private func tabPill(_ id: String) -> some View {
-        let dark = colorScheme == .dark
         let selected = model.selectedTabID == id || (id.hasPrefix("group:") && model.selectedEmptyGroup.map { "group:" + $0.id } == id)
-        if selected {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(dark ? Color.white.opacity(0.16) : Color.white.opacity(0.92))
-                .shadow(color: .black.opacity(dark ? 0.3 : 0.08), radius: 2, y: 1)
-                .padding(.leading, -8)
-                .padding(.trailing, -8)
-                .padding(.vertical, pillInset)
-        } else if hoveredTab == id {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(dark ? Color.white.opacity(0.06) : Color.white.opacity(0.4))
-                .padding(.leading, -8)
-                .padding(.trailing, -8)
-                .padding(.vertical, pillInset)
-        }
+        SidebarPill(selected: selected, hovered: hoveredTab == id)
+            .padding(.leading, -8)
+            .padding(.trailing, -8)
+            .padding(.vertical, pillInset)
     }
 
     /// How far a pill sits inside its row. Compact rows are tight around
@@ -1161,6 +1150,27 @@ struct SidebarRefusesFocus: NSViewRepresentable {
             let sel = NSSelectorFromString(name)
             guard let m = class_getInstanceMethod(cls, sel) else { continue }
             class_replaceMethod(cls, sel, imp_implementationWithBlock(block), method_getTypeEncoding(m))
+        }
+    }
+}
+
+/// A sidebar row's pill, Dia-style: a bright one (with a soft shadow) when
+/// it's selected, which replaces the system highlight, and a dim one on
+/// hover. The workspace sidebar's tabs and Settings' panes.
+struct SidebarPill: View {
+    let selected: Bool
+    var hovered = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let dark = colorScheme == .dark
+        if selected {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(dark ? Color.white.opacity(0.16) : Color.white.opacity(0.92))
+                .shadow(color: .black.opacity(dark ? 0.3 : 0.08), radius: 2, y: 1)
+        } else if hovered {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(dark ? Color.white.opacity(0.06) : Color.white.opacity(0.4))
         }
     }
 }

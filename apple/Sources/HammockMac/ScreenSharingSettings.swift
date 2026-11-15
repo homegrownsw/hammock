@@ -71,6 +71,7 @@ struct ScreenSharingSection: View {
             } else {
                 Button("Allow…") { Task { await action() } }
                     .buttonStyle(.borderedProminent)
+                    .themeTint()
                     .disabled(!enabled)
             }
         }

@@ -247,7 +247,7 @@ struct PairingSheet: View {
         }
         HStack {
             Spacer()
-            Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            Button("Done") { dismiss() }.keyboardShortcut(.defaultAction).themeTint()
         }
     }
 

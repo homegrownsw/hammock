@@ -107,6 +107,7 @@ struct NetworkChooser: View {
                 Button("Cancel") { done(false) }.keyboardShortcut(.cancelAction)
                 Button("Listen on These") { Task { await confirm() } }
                     .keyboardShortcut(.defaultAction)
+                    .themeTint()
                     .disabled(!canConfirm || saving)
             }
         }
