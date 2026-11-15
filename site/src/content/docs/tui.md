@@ -15,7 +15,7 @@ Quit with ⌃B q; your panes keep running.
 
 The sidebar lists your Groups, tabs and agents' states, with **Needs You** at the bottom; the selected tab fills the rest. Click, drag and right-click as you would in the app. Drag in a pane to copy text, holding Shift in programs that use the mouse themselves.
 
-Browser and simulator panes show live pictures in terminals that can draw them (Ghostty and Kitty). In an Apple TV's pane, the arrow keys, Return, Escape and Space are its remote's. Diff panes show a summary: review diffs in the Mac app.
+Browser and simulator panes show live pictures in terminals that can draw them (Ghostty and Kitty). In an Apple TV's or Android TV's pane, the arrow keys, Return, Escape and Space are its remote's. Diff panes show a summary: review diffs in the Mac app.
 
 ## The palette and Settings
 

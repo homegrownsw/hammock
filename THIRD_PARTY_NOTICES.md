@@ -16,6 +16,7 @@ which reads this table and the sections below; "Ships in" says which apps).
 | [T3 Code](https://github.com/pingdotgg/t3code) | Usage-limit endpoints and Grok ACP message shapes (`internal/agents`, `internal/agentview/grok.go`) | MIT | Mac, Linux |
 | [CodexBar](https://github.com/steipete/CodexBar) | Usage-limit endpoints and response shapes (`internal/agents/live_*.go`) | MIT | Mac, Linux |
 | [Atuin](https://github.com/atuinsh/atuin) | The approach of the neutral thread store for switching agents (`internal/thread`, ADR-0006) | MIT | Mac, Linux |
+| [Android Emulator](https://android.googlesource.com/platform/external/qemu/) | Its gRPC controller's definition, copied from the SDK (`internal/emulator/emupb/emulator_controller.proto`) | Apache-2.0 | Mac, Linux |
 
 The agents' and programs' logos are their makers' trademarks, used only to
 name their products.
@@ -170,3 +171,23 @@ SOFTWARE.
 
 CC0 1.0 Universal: dedicated to the public domain, no notice required. Full
 text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+---
+
+## Android Emulator
+
+```
+Copyright (C) 2018 The Android Open Source Project
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```

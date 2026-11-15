@@ -12,7 +12,7 @@ mkdir -p "$app/Contents/MacOS"
 clang -fobjc-arc -O2 -mmacosx-version-min=14.0 -Wall -Wno-objc-method-access \
   "$here/host.m" "$here/../media/encoder.m" -o "$app/Contents/MacOS/$name" \
   -framework AppKit -framework QuartzCore -framework CoreImage -framework IOSurface \
-  -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework Security
+  -framework VideoToolbox -framework CoreMedia -framework CoreVideo -framework Security -framework Accelerate
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

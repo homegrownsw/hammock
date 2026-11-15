@@ -38,7 +38,7 @@ Pane ▸ Show DevTools (⌥⌘I) opens Chromium's DevTools beside the page. Link
 
 ## Simulator
 
-A simulator pane shows an iPhone, iPad or Apple TV simulator in your layout. It needs Xcode and at least one simulator installed. Open one from the toolbar's **+** ▸ Simulator Tab or Pane ▸ Split Right with Simulator:
+A simulator pane shows an iPhone, iPad or Apple TV simulator, or an Android emulator, in your layout. It needs Xcode (or the Android SDK) and at least one simulator (or AVD) installed. Open one from the toolbar's **+** ▸ Simulator Tab or Pane ▸ Split Right with Simulator:
 
 ```sh
 hmk sim list
@@ -49,11 +49,13 @@ Click to tap, drag to swipe, and type with your keyboard. The Pane menu has Home
 
 An **Apple TV** has no touch screen: drive it with the Siri Remote beside it, which Pane ▸ Show Remote (⌃⌘R) hides and shows. With the pane focused, the arrow keys are the clickpad, Return is Select, Escape is Back and Space is Play/Pause, sent as the remote sends them; other keys type. Hold a button for a long press. The Pane menu also has the remote's Play/Pause, volume, Mute and Siri.
 
-**Agents** open one with [`sim_open`](/hammock/docs/reference/mcp/#sim_open), then look, tap, type, and install, launch and debug apps, and drive an Apple TV with [`sim_remote`](/hammock/docs/reference/mcp/#sim_remote).
+An **Android emulator** opens the same way: your Android Virtual Devices are listed under Android and Android TV (`hmk sim avd:Pixel_9`). Hammock boots the AVD with no window, or shows its emulator if one is already running with `-grpc-use-token`. One running in Android Studio can't be driven from Hammock: its pane offers Restart in Hammock, which stops it in Studio and boots it here. Hammock finds the Android SDK where Android Studio puts it, or set `android-sdk` in the config file. The header has Back, Home and Recents, and Escape is Back. An Android TV has a remote beside it, driven like an Apple TV's.
+
+**Agents** open one with [`sim_open`](/hammock/docs/reference/mcp/#sim_open), then look, tap, type, and install, launch and debug apps, and drive an Apple TV or Android TV with [`sim_remote`](/hammock/docs/reference/mcp/#sim_remote).
 
 ## Log
 
-A log pane follows a file, this Mac's unified log, a simulator's log, an Android device's logcat or a command's output, and splits it into entries you can filter by text, `/regex/`, level, process or tag. Open one with File ▸ New Log Tab… (⌥⌘L), or Pane ▸ Show Simulator Log beside a simulator. Pane ▸ Toggle Log View (⇧⌘A) shows the raw output.
+A log pane follows a file, this Mac's unified log, a simulator's log, an Android device's logcat or a command's output, and splits it into entries you can filter by text, `/regex/`, level, process or tag. Open one with File ▸ New Log Tab… (⌥⌘L), or Pane ▸ Show Simulator Log beside a simulator (an emulator's is its logcat). Pane ▸ Toggle Log View (⇧⌘A) shows the raw output.
 
 ```sh
 hmk log file ./server.log

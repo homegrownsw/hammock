@@ -1273,6 +1273,27 @@ public final class AppModel {
     /// Whether a simulator pane shows an Apple TV: no touch screen, driven by its remote.
     public func isAppleTV(_ paneID: String) -> Bool { panes[paneID]?.devicePlatform == "tvOS" }
 
+    /// Whether a simulator pane shows a TV (an Apple TV or an Android TV
+    /// emulator): no touch screen, driven by its remote.
+    public func isTVSimulator(_ paneID: String) -> Bool {
+        let p = panes[paneID]?.devicePlatform
+        return p == "tvOS" || p == "Android TV"
+    }
+
+    /// Whether a simulator pane shows an Android emulator (phone, tablet or TV).
+    public func isAndroid(_ paneID: String) -> Bool {
+        let p = panes[paneID]?.devicePlatform
+        return p == "Android" || p == "Android TV"
+    }
+
+    /// Whether a simulator pane shows an Android phone or tablet (Back, Home and Recents).
+    public func isAndroidPhone(_ paneID: String) -> Bool { panes[paneID]?.devicePlatform == "Android" }
+
+    /// Stops an emulator running in Android Studio and boots it in its pane.
+    public func takeOverEmulator(_ paneID: String) {
+        simulatorInput(paneID, "takeover")
+    }
+
     /// Presses a button on an Apple TV's remote (sim_remote's names: up,
     /// down, left, right, select, menu, home, play_pause, volume_up,
     /// volume_down, mute, siri). With a phase ("down" or "up"), just that half,
@@ -1290,11 +1311,19 @@ public final class AppModel {
     }
 
     /// Presses a simulator's button: home, lock, side, siri, or keyboard (the
-    /// software keyboard). An Apple TV's Home is its remote's TV button, and
-    /// it has none of the others.
+    /// software keyboard); an Android phone's back, home, recents, power,
+    /// volume_up or volume_down (lock is its power). A TV's Home is its
+    /// remote's, and it has none of the others (but an Apple TV's Siri).
     public func pressSimulatorButton(_ paneID: String, _ name: String) {
-        if isAppleTV(paneID) {
-            if name == "home" || name == "siri" { pressRemote(paneID, name) }
+        if isTVSimulator(paneID) {
+            if name == "home" || (name == "siri" && isAppleTV(paneID)) { pressRemote(paneID, name) }
+            return
+        }
+        if isAndroidPhone(paneID) {
+            let android = name == "lock" ? "power" : name
+            if ["back", "home", "recents", "power", "volume_up", "volume_down"].contains(android) {
+                simulatorInput(paneID, "button", ["name": android])
+            }
             return
         }
         simulatorInput(paneID, "button", ["name": name])

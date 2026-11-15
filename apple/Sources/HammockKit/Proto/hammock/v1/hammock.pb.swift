@@ -722,11 +722,33 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
     set {_uniqueStorage()._deviceHinge = newValue}
   }
 
-  /// "iOS" or "tvOS" (an Apple TV: no touch screen, driven by its remote);
-  /// empty until the simulator host has looked at the device.
+  /// "iOS", "tvOS" (an Apple TV: no touch screen, driven by its remote),
+  /// "Android" or "Android TV" (an emulator); empty until the simulator host
+  /// has looked at the device.
   public var devicePlatform: String {
     get {_storage._devicePlatform}
     set {_uniqueStorage()._devicePlatform = newValue}
+  }
+
+  /// The screen's pixels per point (Android: per dp), so a viewer of its video
+  /// knows its size in points, which taps are measured in.
+  public var deviceScale: Double {
+    get {_storage._deviceScale}
+    set {_uniqueStorage()._deviceScale = newValue}
+  }
+
+  /// Why the device isn't showing, when something stops it ("Running in
+  /// Android Studio", an error booting it); empty while it shows or boots.
+  public var deviceNote: String {
+    get {_storage._deviceNote}
+    set {_uniqueStorage()._deviceNote = newValue}
+  }
+
+  /// An Android emulator running somewhere Hammock can't drive it (Android
+  /// Studio): the pane offers to take it over (the "takeover" op).
+  public var deviceElsewhere: Bool {
+    get {_storage._deviceElsewhere}
+    set {_uniqueStorage()._deviceElsewhere = newValue}
   }
 
   /// Terminal panes: what's running besides the shell (process names), for
@@ -11210,7 +11232,7 @@ nonisolated extension Hammock_V1_Split.Direction: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pane"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0\u{3}device_note\0\u{3}device_elsewhere\0\u{3}device_scale\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -11237,6 +11259,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _deviceFoldable: Bool = false
     var _deviceHinge: Double = 0
     var _devicePlatform: String = String()
+    var _deviceScale: Double = 0
+    var _deviceNote: String = String()
+    var _deviceElsewhere: Bool = false
     var _processes: [String] = []
     var _program: [String] = []
     var _log: Hammock_V1_LogSource? = nil
@@ -11283,6 +11308,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _deviceFoldable = source._deviceFoldable
       _deviceHinge = source._deviceHinge
       _devicePlatform = source._devicePlatform
+      _deviceScale = source._deviceScale
+      _deviceNote = source._deviceNote
+      _deviceElsewhere = source._deviceElsewhere
       _processes = source._processes
       _program = source._program
       _log = source._log
@@ -11349,6 +11377,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 34: try { try decoder.decodeSingularBoolField(value: &_storage._agentHeld) }()
         case 35: try { try decoder.decodeSingularBoolField(value: &_storage._asleep) }()
         case 36: try { try decoder.decodeSingularStringField(value: &_storage._devicePlatform) }()
+        case 37: try { try decoder.decodeSingularStringField(value: &_storage._deviceNote) }()
+        case 38: try { try decoder.decodeSingularBoolField(value: &_storage._deviceElsewhere) }()
+        case 39: try { try decoder.decodeSingularDoubleField(value: &_storage._deviceScale) }()
         default: break
         }
       }
@@ -11469,6 +11500,15 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       if !_storage._devicePlatform.isEmpty {
         try visitor.visitSingularStringField(value: _storage._devicePlatform, fieldNumber: 36)
       }
+      if !_storage._deviceNote.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._deviceNote, fieldNumber: 37)
+      }
+      if _storage._deviceElsewhere != false {
+        try visitor.visitSingularBoolField(value: _storage._deviceElsewhere, fieldNumber: 38)
+      }
+      if _storage._deviceScale.bitPattern != 0 {
+        try visitor.visitSingularDoubleField(value: _storage._deviceScale, fieldNumber: 39)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -11502,6 +11542,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._deviceFoldable != rhs_storage._deviceFoldable {return false}
         if _storage._deviceHinge != rhs_storage._deviceHinge {return false}
         if _storage._devicePlatform != rhs_storage._devicePlatform {return false}
+        if _storage._deviceScale != rhs_storage._deviceScale {return false}
+        if _storage._deviceNote != rhs_storage._deviceNote {return false}
+        if _storage._deviceElsewhere != rhs_storage._deviceElsewhere {return false}
         if _storage._processes != rhs_storage._processes {return false}
         if _storage._program != rhs_storage._program {return false}
         if _storage._log != rhs_storage._log {return false}

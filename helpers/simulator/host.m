@@ -55,6 +55,8 @@
 //   HEVC, SPS and PPS for H.264).
 #import <AppKit/AppKit.h>
 #import <CoreImage/CoreImage.h>
+#import <Accelerate/Accelerate.h>
+#import <CoreVideo/CoreVideo.h>
 #import <IOSurface/IOSurface.h>
 
 #import "../media/encoder.h"
@@ -63,6 +65,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <dlfcn.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -171,9 +174,31 @@ static BOOL isTV(id dev) { return [[[dev valueForKey:@"deviceType"] valueForKey:
 @property uint32_t touchTarget;
 @property(copy) NSString *callbackID;
 @property(strong) NSMutableArray<Session *> *sessions;
+// An Android Emulator (the daemon drives it by gRPC: internal/emulator): no
+// CoreSimulator device. Its frames are written into a file the daemon names
+// (RGBA rows), copied into a surface of the pane's own on each emuFrame.
+@property BOOL emulator;
+@property IOSurfaceRef emuSurface;
+@property(copy) NSString *emuPath, *emuName, *emuPlatform;
+@property int emuFd;
+@property void *emuMem;
+@property size_t emuLen;
+@property BOOL emuBooted, emuFoldable;
+@property double emuHinge;
 @end
 @implementation Pane
+- (void)dealloc {
+  if (_emuSurface) CFRelease(_emuSurface);
+  if (_emuMem) munmap(_emuMem, _emuLen);
+  if (_emuFd > 0) close(_emuFd);
+}
 @end
+
+// The surface a pane shows: an emulator's own, else the device screen's framebuffer.
+static IOSurfaceRef surfaceOf(Pane *p) {
+  if (p.emulator) return p.emuSurface;
+  return p.screen ? (__bridge IOSurfaceRef)MSG(p.screen, @"framebufferSurface") : NULL;
+}
 
 @interface Conn : NSObject
 @property int fd;
@@ -390,6 +415,12 @@ static Host *gHost;
 }
 
 - (NSDictionary *)stateOf:(Pane *)p {
+  if (p.emulator) {
+    CGFloat s = p.scale ?: 1;
+    return @{@"t" : @"state", @"id" : p.pid, @"udid" : p.udid ?: @"", @"name" : p.emuName ?: @"", @"booted" : @(p.emuBooted),
+             @"w" : @(p.pixels.width / s), @"h" : @(p.pixels.height / s), @"scale" : @(s), @"platform" : p.emuPlatform ?: @"Android",
+             @"foldable" : @(p.emuFoldable), @"hinge" : @(p.emuHinge)};
+  }
   id dev = p.device ?: deviceFor(p.udid);
   CGFloat s = p.scale ?: 1;
   NSMutableDictionary *m = [@{@"t" : @"state", @"id" : p.pid, @"udid" : p.udid ?: @"", @"name" : [dev valueForKey:@"name"] ?: @"",
@@ -488,9 +519,15 @@ static double lit(id screen) {
   Pane *p = self.panes[pid];
   if (p && [p.udid isEqualToString:udid] && p.screen) return;
   if (p) [self teardown:p];
-  p = [Pane new];
-  p.pid = pid;
+  p = [self makePane:pid];
   p.udid = udid;
+  [self connect:p attempt:0];
+}
+
+// A pane with its own layer context, for viewers to show.
+- (Pane *)makePane:(NSString *)pid {
+  Pane *p = [Pane new];
+  p.pid = pid;
   self.panes[pid] = p;
   p.context = [CAContext contextWithCGSConnection:CGSMainConnectionID() options:@{}];
   p.root = [CALayer layer];
@@ -501,7 +538,79 @@ static double lit(id screen) {
   p.content.contentsGravity = kCAGravityResize;
   [p.root addSublayer:p.content];
   p.context.layer = p.root;
-  [self connect:p attempt:0];
+  return p;
+}
+
+#pragma mark Emulators
+
+// An Android Emulator's pane, or news of it (emuOpen again): its name,
+// platform, density (scale), whether it's booted, and the file its frames
+// are written to.
+- (void)emuOpen:(NSDictionary *)m {
+  NSString *pid = m[@"id"] ?: @"";
+  Pane *p = self.panes[pid];
+  if (p && !p.emulator) {
+    [self teardown:p];
+    p = nil;
+  }
+  if (!p) {
+    p = [self makePane:pid];
+    p.emulator = YES;
+  }
+  p.udid = m[@"udid"] ?: @"";
+  p.emuName = m[@"name"] ?: @"";
+  p.emuPlatform = m[@"platform"] ?: @"Android";
+  p.scale = MAX([m[@"scale"] doubleValue], 0.5);
+  p.emuBooted = [m[@"booted"] boolValue];
+  p.emuFoldable = [m[@"foldable"] boolValue];
+  p.emuHinge = [m[@"hinge"] doubleValue];
+  NSString *path = m[@"path"] ?: @"";
+  if (path.length && ![path isEqualToString:p.emuPath ?: @""]) {
+    if (p.emuMem) munmap(p.emuMem, p.emuLen);
+    if (p.emuFd > 0) close(p.emuFd);
+    p.emuMem = NULL;
+    p.emuFd = open(path.fileSystemRepresentation, O_RDONLY);
+    struct stat st;
+    if (p.emuFd > 0 && fstat(p.emuFd, &st) == 0 && st.st_size > 0) {
+      void *mem = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_SHARED, p.emuFd, 0);
+      if (mem != MAP_FAILED) {
+        p.emuMem = mem;
+        p.emuLen = (size_t)st.st_size;
+      }
+    }
+    if (!p.emuMem) fprintf(stderr, "simulator-host: can't map %s\n", path.fileSystemRepresentation);
+    p.emuPath = path;
+  }
+  [self broadcast:[self stateOf:p]];
+  if (p.viewer) [self sendLayer:p];
+}
+
+// A new frame in an emulator's file (w×h RGBA): copied into the pane's
+// surface (BGRA, as layers and the encoder take it), a new one if its size
+// changed (a rotation).
+- (void)emuFrame:(Pane *)p w:(int)w h:(int)h {
+  if (!p.emulator || !p.emuMem || w <= 0 || h <= 0 || (size_t)w * h * 4 > p.emuLen) return;
+  BOOL fresh = NO;
+  if (!p.emuSurface || (int)IOSurfaceGetWidth(p.emuSurface) != w || (int)IOSurfaceGetHeight(p.emuSurface) != h) {
+    IOSurfaceRef s = IOSurfaceCreate((__bridge CFDictionaryRef) @{
+      (id)kIOSurfaceWidth : @(w), (id)kIOSurfaceHeight : @(h), (id)kIOSurfaceBytesPerElement : @4,
+      (id)kIOSurfacePixelFormat : @(kCVPixelFormatType_32BGRA)
+    });
+    if (!s) return;
+    if (p.emuSurface) CFRelease(p.emuSurface);
+    p.emuSurface = s;
+    fresh = YES;
+  }
+  IOSurfaceLock(p.emuSurface, 0, NULL);
+  vImage_Buffer src = {.data = p.emuMem, .width = (vImagePixelCount)w, .height = (vImagePixelCount)h, .rowBytes = (size_t)w * 4};
+  vImage_Buffer dst = {.data = IOSurfaceGetBaseAddress(p.emuSurface), .width = (vImagePixelCount)w, .height = (vImagePixelCount)h,
+                       .rowBytes = IOSurfaceGetBytesPerRow(p.emuSurface)};
+  const uint8_t rgbaToBGRA[4] = {2, 1, 0, 3};
+  vImagePermuteChannels_ARGB8888(&src, &dst, rgbaToBGRA, kvImageNoFlags);
+  IOSurfaceUnlock(p.emuSurface, 0, NULL);
+  if (fresh) [self showSurface:p];
+  else [p.content setContentsChanged];
+  for (Session *s in p.sessions) [self frameFor:s];
 }
 
 // Boots the device if it needs it, then attaches to its screen and HID.
@@ -605,13 +714,14 @@ static double lit(id screen) {
 }
 
 - (void)showSurface:(Pane *)p {
-  IOSurfaceRef s = (__bridge IOSurfaceRef)MSG(p.screen, @"framebufferSurface");
+  IOSurfaceRef s = surfaceOf(p);
   if (!s) return;
   CGSize native = CGSizeMake(IOSurfaceGetWidth(s), IOSurfaceGetHeight(s));
   // Phones and tablets are 3x or 2x; points keep the layer the device's size.
   // An Apple TV says its own (2 for 4K, 1 at 1080p: 1920×1080 points either way).
   double scale = MIN(native.width, native.height) >= 1000 ? 3 : 2;
   if (p.device && isTV(p.device)) scale = MAX([[[p.device valueForKey:@"deviceType"] valueForKey:@"mainScreenScale"] doubleValue], 1);
+  if (p.emulator) scale = p.scale ?: 1;  // its density, from the daemon (points are dp)
   int turn = [self rotationOf:p];
   // As it's showing: turned on its side, the picture is landscape.
   CGSize px = turn % 180 ? CGSizeMake(native.height, native.width) : native;
@@ -1235,7 +1345,7 @@ static NSString *prepareRunner(NSString **error) {
 #pragma mark Screenshots
 
 - (void)shot:(Pane *)p pixels:(BOOL)pixels seq:(id)seq to:(Conn *)c {
-  IOSurfaceRef s = p.screen ? (__bridge IOSurfaceRef)MSG(p.screen, @"framebufferSurface") : NULL;
+  IOSurfaceRef s = surfaceOf(p);
   if (!s) {
     [self send:@{@"t" : @"shotResult", @"seq" : seq, @"error" : @"the simulator isn't showing anything yet"} to:c];
     return;
@@ -1307,7 +1417,7 @@ static NSString *prepareRunner(NSString **error) {
 
 - (void)encode:(Session *)s {
   Pane *p = s.pane;
-  IOSurfaceRef surf = p.screen ? (__bridge IOSurfaceRef)MSG(p.screen, @"framebufferSurface") : NULL;
+  IOSurfaceRef surf = surfaceOf(p);
   if (!surf) return;
   s.dirty = NO;
   s.last = CACurrentMediaTime();
@@ -1405,6 +1515,15 @@ static NSString *prepareRunner(NSString **error) {
   NSString *pid = m[@"id"] ?: @"";
   if ([t isEqualToString:@"open"]) {
     [self open:pid udid:m[@"udid"] ?: @""];
+    return;
+  }
+  if ([t isEqualToString:@"emuOpen"]) {
+    [self emuOpen:m];
+    return;
+  }
+  if ([t isEqualToString:@"emuFrame"]) {
+    Pane *ep = self.panes[pid];
+    if (ep) [self emuFrame:ep w:[m[@"w"] intValue] h:[m[@"h"] intValue]];
     return;
   }
   Pane *p = self.panes[pid];

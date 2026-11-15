@@ -54,7 +54,7 @@ struct SiriRemote: View {
 }
 
 /// Tracks a press from mouse down to mouse up, wherever it goes meanwhile.
-private struct Press: ViewModifier {
+struct RemotePress: ViewModifier {
     let begin: (CGPoint) -> String?
     let press: (String, String) -> Void
     @Binding var held: String?
@@ -124,7 +124,7 @@ private struct Clickpad: View {
         .onContinuousHover { phase in
             if case .active(let p) = phase { hover = region(p) } else { hover = nil }
         }
-        .modifier(Press(begin: region, press: press, held: $held))
+        .modifier(RemotePress(begin: region, press: press, held: $held))
         .tooltip(tip(lit))
         .accessibilityElement()
         .accessibilityLabel("Clickpad")
@@ -154,7 +154,7 @@ private struct RoundButton: View {
             .overlay(Image(systemName: symbol).font(.system(size: size * 0.36, weight: .semibold)).foregroundStyle(Color(white: 0.92)))
             .frame(width: size, height: size)
             .contentShape(Circle())
-            .modifier(Press(begin: { _ in name }, press: press, held: $held))
+            .modifier(RemotePress(begin: { _ in name }, press: press, held: $held))
             .tooltip(help)
             .accessibilityElement()
             .accessibilityLabel(help)
@@ -180,7 +180,7 @@ private struct VolumeRocker: View {
         .frame(width: width, height: height)
         .clipShape(Capsule())
         .contentShape(Capsule())
-        .modifier(Press(begin: { p in p.y < height / 2 ? "volume_up" : "volume_down" }, press: press, held: $held))
+        .modifier(RemotePress(begin: { p in p.y < height / 2 ? "volume_up" : "volume_down" }, press: press, held: $held))
         .tooltip(Keys.hint("Volume", "sim_volume_up"))
     }
 
@@ -203,7 +203,7 @@ private struct SideButton: View {
             .frame(width: width, height: height)
             .padding(.horizontal, width) // easier to hit
             .contentShape(Rectangle())
-            .modifier(Press(begin: { _ in "siri" }, press: press, held: $held))
+            .modifier(RemotePress(begin: { _ in "siri" }, press: press, held: $held))
             .tooltip(Keys.hint("Siri (hold to talk)", "sim_siri"))
     }
 }

@@ -232,7 +232,9 @@ var Keys = []Key{
 	{Name: "simulator-remote", Group: "Simulator panes", Value: "true", Default: "true",
 		Doc: "show an Apple TV's Siri Remote beside its screen", Only: "Mac"},
 	{Name: "simulator-shutdown", Group: "Simulator panes", Value: "true", Default: "true",
-		Doc: "simulators Hammock booted shut down a minute after their last pane closes"},
+		Doc: "simulators (and Android emulators) Hammock booted shut down a minute after their last pane closes"},
+	{Name: "android-sdk", Group: "Simulator panes", Value: "~/Library/Android/sdk",
+		Doc: "the Android SDK, for Android emulators in simulator panes; unset: $ANDROID_HOME, else where Android Studio puts it"},
 
 	// Tools
 	{Name: "browser-enabled", Group: "Tools", Value: "true", Default: "true",

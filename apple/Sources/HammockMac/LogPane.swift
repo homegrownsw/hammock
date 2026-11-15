@@ -39,7 +39,9 @@ final class LogUI {
     /// A simulator pane's log, beside it, straight away.
     func showSimulatorLog(_ model: AppModel, _ paneID: String) {
         guard let p = model.panes[paneID], p.kind == .simulator else { return }
-        let src = LogSource.with { $0.kind = "simulator"; $0.device = p.deviceUdid; $0.label = "\(p.title) log" }
+        // An emulator's is its logcat (the daemon finds its adb serial).
+        let kind = model.isAndroid(paneID) ? "logcat" : "simulator"
+        let src = LogSource.with { $0.kind = kind; $0.device = p.deviceUdid; $0.label = "\(p.title) log" }
         Task { await model.openLog(src, in: nil, splitting: paneID, direction: .vertical) }
     }
 
@@ -137,7 +139,7 @@ struct NewLogSheet: View {
             if kind == "simulator" {
                 Picker("Simulator", selection: $device) {
                     Text("The one running").tag("")
-                    ForEach(sims.sorted) { d in Text(SimulatorList.label(d)).tag(d.udid) }
+                    ForEach(sims.phones + sims.tvs) { d in Text(SimulatorList.label(d)).tag(d.udid) } // an emulator's log is logcat
                 }
             }
             TextField("Process", text: $process, prompt: Text(kind == "macos" ? "Every process (a firehose)" : "Every process"))

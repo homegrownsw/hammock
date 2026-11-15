@@ -61,7 +61,7 @@ func (a *App) simScreenshot(id string) {
 
 // isAppleTV reports whether a pane shows an Apple TV simulator, which its
 // remote drives (it has no touch screen).
-func isAppleTV(p *pb.Pane) bool {
+func isTVPane(p *pb.Pane) bool {
 	return p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR && p.DevicePlatform == "tvOS"
 }
 
@@ -105,15 +105,42 @@ func (a *App) tvInput(id string, b []byte) {
 
 // simItems: what you can do to a simulator pane, for its menu and the palette.
 func (a *App) simItems(id string) []menuItem {
-	if isAppleTV(a.panes[id]) {
+	if isTVPane(a.panes[id]) {
 		press := func(label, name string) menuItem {
 			return menuItem{label: label, run: func() { a.simOp(id, "remote", map[string]string{"name": name}) }}
 		}
-		return []menuItem{
+		items := []menuItem{
 			press("Home (TV)", "home"), press("Back", "menu"), press("Select", "select"), press("Play/Pause", "play_pause"),
-			press("Volume Up", "volume_up"), press("Volume Down", "volume_down"), press("Mute", "mute"), press("Siri", "siri"),
+			press("Volume Up", "volume_up"), press("Volume Down", "volume_down"), press("Mute", "mute"),
+		}
+		if a.panes[id].DevicePlatform == "tvOS" {
+			items = append(items, press("Siri", "siri"))
+		}
+		if a.panes[id].DeviceElsewhere {
+			items = append(items, menuItem{label: "Restart in Hammock (stops it in Android Studio)", run: func() { a.simOp(id, "takeover", nil) }})
+		}
+		return append(items, menuItem{label: "Screenshot to File", run: func() { a.simScreenshot(id) }})
+	}
+	if p := a.panes[id]; p != nil && p.DevicePlatform == "Android" {
+		button := func(label, name string) menuItem {
+			return menuItem{label: label, run: func() { a.simOp(id, "button", map[string]string{"name": name}) }}
+		}
+		items := []menuItem{
+			button("Back", "back"), button("Home", "home"), button("Recents", "recents"), button("Power", "power"),
+			button("Volume Up", "volume_up"), button("Volume Down", "volume_down"),
+			{label: "Rotate Left", run: func() { a.simOp(id, "rotate", map[string]string{"value": "left"}) }},
+			{label: "Rotate Right", run: func() { a.simOp(id, "rotate", map[string]string{"value": "right"}) }},
 			{label: "Screenshot to File", run: func() { a.simScreenshot(id) }},
 		}
+		if p.DeviceFoldable {
+			items = append(items,
+				menuItem{label: "Open Phone", run: func() { a.simOp(id, "fold", map[string]string{"value": "open"}) }},
+				menuItem{label: "Close Phone", run: func() { a.simOp(id, "fold", map[string]string{"value": "closed"}) }})
+		}
+		if p.DeviceElsewhere {
+			items = append(items, menuItem{label: "Restart in Hammock (stops it in Android Studio)", run: func() { a.simOp(id, "takeover", nil) }})
+		}
+		return items
 	}
 	items := []menuItem{
 		{label: "Home", run: func() { a.simOp(id, "button", map[string]string{"name": "home"}) }},

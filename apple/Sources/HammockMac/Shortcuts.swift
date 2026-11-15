@@ -123,6 +123,8 @@ enum Keys {
     static var simFold: KeyboardShortcut? { shortcut("sim_fold") }
     static var simHalfOpen: KeyboardShortcut? { shortcut("sim_half_open") }
     static var simRemoteToggle: KeyboardShortcut? { shortcut("sim_remote_toggle") }
+    static var simBack: KeyboardShortcut? { shortcut("sim_back") }
+    static var simRecents: KeyboardShortcut? { shortcut("sim_recents") }
     static var simPlayPause: KeyboardShortcut? { shortcut("sim_play_pause") }
     static var simVolumeUp: KeyboardShortcut? { shortcut("sim_volume_up") }
     static var simVolumeDown: KeyboardShortcut? { shortcut("sim_volume_down") }

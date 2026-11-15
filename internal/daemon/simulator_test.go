@@ -71,6 +71,17 @@ func TestSimulatorOpRefused(t *testing.T) {
 		{"iOS", "remote", true},
 		{"", "remote", false}, // not known yet: the host decides
 		{"", "tap", false},
+		{"Android", "tap", false},
+		{"Android", "pinch", false},
+		{"Android", "button", false}, // back, home, recents…
+		{"Android", "remote", true},
+		{"Android", "takeover", false},
+		{"Android TV", "remote", false},
+		{"Android TV", "tap", true},
+		{"Android TV", "button", true},
+		{"Android TV", "takeover", false},
+		{"iOS", "takeover", true},
+		{"tvOS", "takeover", true},
 	} {
 		if err := simulatorOpRefused(c.platform, c.op); (err != nil) != c.refused {
 			t.Errorf("%s %s: refused %v, want %v", c.platform, c.op, err, c.refused)

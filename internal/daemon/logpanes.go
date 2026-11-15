@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/homegrownsw/hammock/internal/emulator"
 	"github.com/homegrownsw/hammock/internal/logview"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"google.golang.org/protobuf/proto"
@@ -61,14 +62,25 @@ func logCommand(src *pb.LogSource) (cmd []string, label string, err error) {
 		}
 		cmd = osLog([]string{"/usr/bin/xcrun", "simctl", "spawn", dev, "log"}, "Simulator log")
 	case "logcat":
-		c := "adb"
-		if src.Device != "" {
-			c += " -s " + shellQuote(src.Device)
+		c, dev := "adb", src.Device
+		if emulator.IsAVD(dev) {
+			// An emulator pane's (avd:NAME): its adb serial, while it runs.
+			r, ok := emulator.RunningAVD(emulator.DiscoveryDir(), emulator.AVDName(dev))
+			if !ok {
+				return nil, "", errors.New("that emulator isn't running")
+			}
+			dev = r.ADBSerial()
+			if adb := emulator.ADB(emulatorSDK()); adb != "adb" {
+				c = shellQuote(adb)
+			}
+		}
+		if dev != "" {
+			c += " -s " + shellQuote(dev)
 		}
 		// Through a login shell: adb lives wherever the SDK put it.
 		cmd, label = []string{loginShell(), "-l", "-c", "exec " + c + " logcat -v threadtime"}, "logcat"
 		if src.Device != "" {
-			label += ": " + src.Device
+			label += ": " + emulator.AVDName(src.Device)
 		}
 	case "command":
 		if len(src.Command) == 0 {

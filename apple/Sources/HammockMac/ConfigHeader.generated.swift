@@ -111,7 +111,8 @@ extension AppConfig {
         # Simulator panes
         #   simulator-frame = true                 (draw the device around the screen; Mac only)
         #   simulator-remote = true                (show an Apple TV's Siri Remote beside its screen; Mac only)
-        #   simulator-shutdown = true              (simulators Hammock booted shut down a minute after their last pane closes)
+        #   simulator-shutdown = true              (simulators (and Android emulators) Hammock booted shut down a minute after their last pane closes)
+        #   android-sdk = ~/Library/Android/sdk    (the Android SDK, for Android emulators in simulator panes; unset: $ANDROID_HOME, else where Android Studio puts it)
         #
         # Tools
         #   agent-presence = true                  (show agents acting in browser and simulator panes: a cursor, a glow and a badge)

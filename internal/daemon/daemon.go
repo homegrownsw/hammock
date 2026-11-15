@@ -98,6 +98,7 @@ type Daemon struct {
 	hammockKey   *hammockKeyHub // the Hammock Key (hammockkey.go)
 	browsers     *browserHub
 	simulators   *simHub
+	emulators    *emuHub // Android Emulators in simulator panes (emulator.go)
 	editors      *editorHub
 	diffs        *diffHub
 	screens      *screenHub
@@ -256,6 +257,7 @@ func New(cfg Config) (*Daemon, error) {
 	d.hammockKey = newHammockKeyHub(d)
 	d.browsers = newBrowserHub(d)
 	d.simulators = newSimHub(d)
+	d.emulators = newEmuHub(d)
 	d.editors = newEditorHub(d)
 	d.diffs = newDiffHub(d)
 	d.screens = newScreenHub(d)
@@ -328,6 +330,9 @@ func (d *Daemon) restore() error {
 		}
 		if info.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {
 			d.simulators.ensure() // reopens it in the simulator host
+			if isEmulatorDevice(info.DeviceUdid) {
+				d.emulators.open(info.Id, info.DeviceUdid) // attaches to (or boots) its emulator
+			}
 			continue
 		}
 		if info.Log != nil {

@@ -162,6 +162,11 @@ final class SimulatorPaneNSView: NSView {
             needsLayout = true
         }
     }
+    /// An Android emulator: its input goes through the daemon (which drives
+    /// it), and its frame is drawn, as Xcode has no artwork for it.
+    var isAndroid = false {
+        didSet { if isAndroid != oldValue { sizeFromVideo(); needsLayout = true } }
+    }
     private var frameColours: (rim: NSColor, band: NSColor) {
         isTV ? (NSColor(white: 0.24, alpha: 1), NSColor(white: 0.06, alpha: 1)) : (NSColor(white: 0.62, alpha: 1), NSColor(white: 0.17, alpha: 1))
     }
@@ -316,7 +321,9 @@ final class SimulatorPaneNSView: NSView {
     /// the first frame.
     private func sizeFromVideo() {
         guard let px = videoPixels, px.width > 0 else { return }
-        let scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
+        var scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
+        // The host says it (an emulator's is its density, which can't be guessed).
+        if let s = (shared ?? model)?.panes[paneID]?.deviceScale, s > 0 { scale = s }
         size = CGSize(width: px.width / scale, height: px.height / scale)
         needsLayout = true
     }
@@ -337,10 +344,14 @@ final class SimulatorPaneNSView: NSView {
         }
     }
 
-    /// Input for a shared pane, through the daemon to its host.
+    /// Input for a shared pane, through the daemon to its host; or an
+    /// emulator's, which the daemon drives (the simulator host only shows it).
     private func remote(_ op: String, _ args: [String: Any] = [:]) {
-        shared?.simulatorInput(paneID, op, args)
+        (shared ?? model)?.simulatorInput(paneID, op, args)
     }
+
+    /// Input goes through the daemon: a shared pane's, or an emulator's.
+    private var viaDaemon: Bool { shared != nil || isAndroid }
 
     private func show(context ctx: UInt32) {
         if let r = remote, (r.value(forKey: "contextId") as? NSNumber)?.uint32Value == ctx { return }
@@ -394,16 +405,17 @@ final class SimulatorPaneNSView: NSView {
 
     // MARK: Layout
 
-    private var framed: Bool { showsFrame && (chrome != nil || isTV) }
+    private var framed: Bool { showsFrame && (chrome != nil || isTV || isAndroid) }
     /// Turned on its side: the frame's side buttons (drawn for portrait) are hidden.
     private var landscape: Bool { size.width > size.height }
     /// The frame's width around the screen, in points: a TV's is a thin
     /// bezel (its artwork's 8 points would vanish at a pane's scale).
-    private var edge: CGFloat { framed ? (isTV ? 22 : chrome!.edge) : 0 }
+    private var edge: CGFloat { framed ? (isTV ? 22 : chrome?.edge ?? 14) : 0 }
     /// The screen's shape without a mask: a TV's square corners, rounded a
     /// little; else a continuous corner close to a modern iPhone's.
     private var plainOutline: CGPath {
-        let r = isTV ? 6 : size.width * 0.12
+        // An Android phone's: a little tighter than an iPhone's.
+        let r = isTV ? 6 : size.width * (isAndroid ? 0.09 : 0.12)
         return CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: r, cornerHeight: r, transform: nil)
     }
     /// Room beside the frame for the side buttons.
@@ -504,7 +516,7 @@ final class SimulatorPaneNSView: NSView {
 
     private func touch(_ phase: String, _ e: NSEvent) {
         let p = ratio(e)
-        if shared != nil {
+        if viaDaemon {
             remote("touch", ["phase": phase, "x": p.x * size.width, "y": p.y * size.height]) // in points
             return
         }
@@ -601,7 +613,7 @@ final class SimulatorPaneNSView: NSView {
             0x24: 40, 0x4C: 40, 0x35: 41, 0x33: 42, 0x30: 43, 0x75: 76,
             0x7C: 79, 0x7B: 80, 0x7D: 81, 0x7E: 82,
         ]
-        if shared != nil {
+        if viaDaemon {
             // Through the daemon to its host: keys without text by usage, the rest as text.
             if let u = usages[e.keyCode] {
                 remote("key", ["usage": u, "shift": mods.contains(.shift)])
@@ -660,7 +672,7 @@ final class SimulatorPaneNSView: NSView {
     /// Half a press on an Apple TV's remote ("down" or "up"): straight to the
     /// simulator host, or for a shared pane through the daemon to its host.
     func remotePress(_ name: String, _ phase: String) {
-        if shared != nil {
+        if viaDaemon {
             remote("remote", ["name": name, "phase": phase])
             return
         }
@@ -670,6 +682,10 @@ final class SimulatorPaneNSView: NSView {
     // Edit menu: through the device's pasteboard.
     @objc func paste(_ sender: Any?) {
         guard let s = NSPasteboard.general.string(forType: .string), !s.isEmpty else { return }
+        if isAndroid {
+            remote("paste", ["text": s]) // its clipboard, then Paste
+            return
+        }
         if shared != nil {
             remote("text", ["text": s])
             return
@@ -678,10 +694,10 @@ final class SimulatorPaneNSView: NSView {
     }
 
     @objc func copy(_ sender: Any?) {
-        if let shared {
-            // The device's pasteboard, from its host, onto yours.
+        if viaDaemon, let m = shared ?? model {
+            // The device's pasteboard, from its host (an emulator's clipboard), onto yours.
             Task { [paneID] in
-                guard let r = await shared.simulatorCall(paneID, "copy"), let text = r.json["text"] as? String, !text.isEmpty else { return }
+                guard let r = await m.simulatorCall(paneID, "copy"), let text = r.json["text"] as? String, !text.isEmpty else { return }
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
             }
@@ -695,6 +711,7 @@ final class SimulatorPaneNSView: NSView {
     }
 
     @objc override func selectAll(_ sender: Any?) {
+        if isAndroid { return } // no ⌘A on Android
         if shared != nil {
             remote("key", ["usage": 4, "cmd": true])
             return
@@ -703,7 +720,7 @@ final class SimulatorPaneNSView: NSView {
     }
 
     func button(_ name: String) {
-        if shared != nil {
+        if viaDaemon {
             remote("button", ["name": name])
             return
         }
@@ -816,6 +833,7 @@ struct SimulatorView: NSViewRepresentable {
     var isFocused: Bool
     var showsFrame: Bool
     var isTV = false
+    var isAndroid = false
     var remoteShown = false
     var view: SimulatorRef
     var onPlacement: ((SimulatorPlacement) -> Void)? = nil
@@ -827,6 +845,7 @@ struct SimulatorView: NSViewRepresentable {
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
         v.showsFrame = showsFrame
         v.isTV = isTV
+        v.isAndroid = isAndroid
         v.remoteShown = remoteShown
         v.isFocusTarget = isFocused
         v.onPlacement = onPlacement
@@ -838,6 +857,7 @@ struct SimulatorView: NSViewRepresentable {
         v.isFocusTarget = isFocused
         v.showsFrame = showsFrame
         v.isTV = isTV
+        v.isAndroid = isAndroid
         v.remoteShown = remoteShown
         v.onPlacement = onPlacement
     }
@@ -867,15 +887,25 @@ struct SimulatorPaneView: View {
     private var showsRemote: Bool { Prefs.shared.bool(.simulatorRemote) }
 
     private var pane: Pane? { model.panes[paneID] }
-    private var isTV: Bool { model.isAppleTV(paneID) }
+    private var isTV: Bool { model.isTVSimulator(paneID) }
+    private var isAndroid: Bool { model.isAndroid(paneID) }
+    private var deviceSymbol: String {
+        model.isAppleTV(paneID) ? "appletv" : isTV ? "tv" : isAndroid ? "smartphone" : "iphone"
+    }
+    /// The remote's own symbol: a Siri Remote or an Android TV's.
+    private func remoteSymbol(_ shown: Bool) -> String {
+        model.isAppleTV(paneID) ? (shown ? "appletvremote.gen4.fill" : "appletvremote.gen4") : (shown ? "av.remote.fill" : "av.remote")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 PaneKindMenu(model: model, paneID: paneID) {
-                    Label(pane?.title ?? "Simulator", systemImage: isTV ? "appletv" : "iphone").font(.callout.weight(.medium))
+                    Label(pane?.title ?? "Simulator", systemImage: deviceSymbol).font(.callout.weight(.medium))
                 }
-                if pane?.deviceBooted == false {
+                if let note = pane?.deviceNote, !note.isEmpty {
+                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if pane?.deviceBooted == false {
                     Text("Booting…").font(.caption).foregroundStyle(.secondary)
                     ProgressView().controlSize(.mini)
                 } else if model.simulatorsBusy.contains(paneID) {
@@ -883,9 +913,15 @@ struct SimulatorPaneView: View {
                 }
                 Spacer()
                 if isTV {
-                    button(showsRemote ? "appletvremote.gen4.fill" : "appletvremote.gen4", Keys.hint(showsRemote ? "Hide Remote" : "Show Remote", "sim_remote_toggle")) {
+                    button(remoteSymbol(showsRemote), Keys.hint(showsRemote ? "Hide Remote" : "Show Remote", "sim_remote_toggle")) {
                         Prefs.shared.toggle(.simulatorRemote)
                     }
+                } else if isAndroid {
+                    button("chevron.backward", Keys.hint("Back", "sim_back")) { model.pressSimulatorButton(paneID, "back") }
+                    button("circle", Keys.hint("Home", "sim_home")) { model.pressSimulatorButton(paneID, "home") }
+                    button("square", Keys.hint("Recents", "sim_recents")) { model.pressSimulatorButton(paneID, "recents") }
+                    button("rotate.left", Keys.hint("Rotate Left", "sim_rotate_left")) { model.rotateSimulator(paneID, "left") }
+                    button("rotate.right", Keys.hint("Rotate Right", "sim_rotate_right")) { model.rotateSimulator(paneID, "right") }
                 } else {
                     button("house", Keys.hint("Home", "sim_home")) { ref.view?.button("home") }
                     button("lock", Keys.hint("Lock", "sim_lock")) { ref.view?.button("lock") }
@@ -899,7 +935,7 @@ struct SimulatorPaneView: View {
                 button("camera", Keys.hint("Screenshot to File", "sim_screenshot_file")) { SimulatorShot.saveToFile(model, paneID) }
                 button("doc.on.clipboard", Keys.hint("Screenshot to Clipboard", "sim_screenshot_copy")) { SimulatorShot.copyToClipboard(model, paneID) }
                 button("power", "Shut Down Simulator (closes the pane)") { model.shutDownSimulator(paneID) }
-                button(isTV ? (showsFrame ? "tv" : "rectangle") : (showsFrame ? "iphone.gen3" : "rectangle.portrait"),
+                button(isTV ? (showsFrame ? "tv" : "rectangle") : isAndroid ? (showsFrame ? "smartphone" : "rectangle.portrait") : (showsFrame ? "iphone.gen3" : "rectangle.portrait"),
                        showsFrame ? "Hide Device Frame" : "Show Device Frame") { Prefs.shared.toggle(.simulatorFrame) }
                 ZoomButton(model: model, paneID: paneID)
                 PaneCloseButton(model: model, paneID: paneID)
@@ -920,9 +956,12 @@ struct SimulatorPaneView: View {
                     // as it grows back.
                     screen.zIndex(1)
                     if isTV && showsRemote {
-                        SiriRemote { name, phase in
-                            model.viewFocused(paneID)
-                            ref.view?.remotePress(name, phase)
+                        Group {
+                            if model.isAppleTV(paneID) {
+                                SiriRemote { name, phase in press(name, phase) }
+                            } else {
+                                GoogleTVRemote { name, phase in press(name, phase) }
+                            }
                         }
                         .padding(wide ? EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 24) : EdgeInsets(top: 0, leading: 20, bottom: 16, trailing: 20))
                         .frame(maxWidth: wide ? min(150, geo.size.width * 0.22) : .infinity,
@@ -938,7 +977,7 @@ struct SimulatorPaneView: View {
     }
 
     private var screen: some View {
-        SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, isTV: isTV, remoteShown: isTV && showsRemote, view: ref,
+        SimulatorView(paneID: paneID, model: model, isFocused: isFocused, showsFrame: showsFrame, isTV: isTV, isAndroid: isAndroid, remoteShown: isTV && showsRemote, view: ref,
                       onPlacement: { placement = $0 })
             .overlay {
                 if let p = placement, !p.screen.isEmpty {
@@ -946,6 +985,23 @@ struct SimulatorPaneView: View {
                                          screen: (p.screen, Path(p.screenPath)), device: Path(p.devicePath))
                 }
             }
+            .overlay {
+                if pane?.deviceElsewhere == true {
+                    // Android Studio runs it, where Hammock can't drive it: offer to take it over.
+                    VStack(spacing: 10) {
+                        Image(systemName: "smartphone").font(.system(size: 28)).foregroundStyle(.secondary)
+                        Text("\(pane?.title ?? "This emulator") is running in Android Studio").font(.headline)
+                        Button("Restart in Hammock…") { EmulatorTakeover.confirm(model, paneID) }
+                    }
+                    .padding(24)
+                }
+            }
+    }
+
+    /// A press on the remote beside a TV.
+    private func press(_ name: String, _ phase: String) {
+        model.viewFocused(paneID)
+        ref.view?.remotePress(name, phase)
     }
 
     private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {

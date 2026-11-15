@@ -314,6 +314,9 @@ public enum Keybinds {
             .init("sim_shut_down", "Shut Down Simulator", "Simulator", nil, "ios iphone stop quit"),
             // An Apple TV's remote (Home is its TV button). No defaults but the
             // toggle: the arrows, Return, Escape and Space are its remote already.
+            // An Android phone's Back (Esc too, with its pane focused) and Recents.
+            .init("sim_back", "Back", "Simulator", nil, "android navigation return"),
+            .init("sim_recents", "Recents", "Simulator", nil, "android overview app switcher multitasking"),
             .init("sim_remote_toggle", "Show or Hide Remote", "Simulator", c("r", cc), "apple tv tvos siri remote control"),
             .init("sim_play_pause", "Play/Pause", "Simulator", nil, "apple tv tvos remote media"),
             .init("sim_volume_up", "Volume Up", "Simulator", nil, "apple tv tvos remote louder"),

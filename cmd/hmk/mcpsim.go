@@ -11,6 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/emulator"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -20,7 +21,7 @@ import (
 // at any in your Groups, act in ones you opened, ask for the rest.
 
 type simOpenArgs struct {
-	Device    string `json:"device,omitempty" jsonschema:"device name or UDID (see sim_list_devices); default: a running one, else the newest iPhone"`
+	Device    string `json:"device,omitempty" jsonschema:"device name, UDID, or avd:NAME for an Android Virtual Device (see sim_list_devices); default: a running one, else the newest iPhone"`
 	Direction string `json:"direction,omitempty" jsonschema:"'right' (default) or 'down' — where to split relative to split_pane_id"`
 	SplitPane string `json:"split_pane_id,omitempty" jsonschema:"pane to split; defaults to your own pane"`
 	NewTab    bool   `json:"new_tab,omitempty" jsonschema:"open in a new tab instead of splitting"`
@@ -52,7 +53,7 @@ type simTypeArgs struct {
 
 type simButtonArgs struct {
 	PaneID string `json:"pane_id" jsonschema:"the simulator pane"`
-	Button string `json:"button" jsonschema:"home, lock, side, siri, or keyboard (shows or hides the software keyboard)"`
+	Button string `json:"button" jsonschema:"iPhone: home, lock, side, siri, or keyboard (shows or hides the software keyboard). Android: back, home, recents, power, volume_up or volume_down"`
 }
 
 type simRotateArgs struct {
@@ -85,7 +86,7 @@ type simRemoteArgs struct {
 
 type simAppArgs struct {
 	PaneID string   `json:"pane_id" jsonschema:"the simulator pane"`
-	App    string   `json:"app" jsonschema:"install: path to a built .app; launch/terminate: bundle id"`
+	App    string   `json:"app" jsonschema:"install: path to a built .app (iOS) or .apk (Android); launch/terminate: bundle id or package name"`
 	Args   []string `json:"args,omitempty" jsonschema:"launch: arguments for the app"`
 }
 
@@ -96,7 +97,7 @@ type simURLArgs struct {
 
 type simLogArgs struct {
 	PaneID    string `json:"pane_id" jsonschema:"the simulator pane"`
-	Predicate string `json:"predicate,omitempty" jsonschema:"a log predicate, e.g. 'process == \"MyApp\"' or 'subsystem == \"com.example\"'"`
+	Predicate string `json:"predicate,omitempty" jsonschema:"iOS: a log predicate, e.g. 'process == \"MyApp\"' or 'subsystem == \"com.example\"'. Android: a logcat filter spec, e.g. 'MyApp:D *:S'"`
 	Last      string `json:"last,omitempty" jsonschema:"how far back, e.g. '30s', '5m' (default 1m)"`
 }
 
@@ -153,7 +154,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_list_devices",
-		Description: "List this Mac's simulators (name, OS, UDID, platform, whether running). Platform iOS takes touches (sim_tap, sim_swipe); tvOS, an Apple TV, takes its remote (sim_remote).",
+		Description: "List this Mac's simulators and Android Virtual Devices (name, OS, UDID or avd:NAME, platform, whether running). Platforms iOS and Android take touches (sim_tap, sim_swipe); tvOS and Android TV take their remote (sim_remote).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listArgs) (*mcp.CallToolResult, any, error) {
 		devs, err := listSimulators(caller(ctx))
 		if err != nil {
@@ -164,7 +165,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name: "sim_open",
-		Description: "Open an iPhone, iPad or Apple TV simulator in a pane in the user's workspace (split next to your pane, or in a new tab), booting it if needed. " +
+		Description: "Open an iPhone, iPad or Apple TV simulator, or an Android emulator (an AVD, booted with no window if it isn't running), in a pane in the user's workspace (split next to your pane, or in a new tab), booting it if needed. " +
 			"Returns the pane id for the other sim_ tools.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simOpenArgs) (*mcp.CallToolResult, any, error) {
 		devs, err := listSimulators(caller(ctx))
@@ -289,7 +290,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_press_button",
-		Description: "Press a simulator's hardware button: home (go to the home screen), lock, side or siri; or keyboard, which shows or hides the software keyboard.",
+		Description: "Press a simulator's hardware button. iPhone: home (go to the home screen), lock, side or siri; or keyboard, which shows or hides the software keyboard. Android: back, home, recents (the app switcher), power, volume_up or volume_down.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simButtonArgs) (*mcp.CallToolResult, any, error) {
 		if _, err := s.simPane(ctx, a.PaneID, true, "press "+a.Button); err != nil {
 			return nil, nil, err
@@ -345,7 +346,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name: "sim_remote",
-		Description: "Press an Apple TV simulator's Siri Remote: a button (press, with repeat and hold_ms), or a swipe on its touch surface. " +
+		Description: "Press an Apple TV's Siri Remote (or an Android TV's remote, which has no siri): a button (press, with repeat and hold_ms), or a swipe on its touch surface. " +
 			"An Apple TV has no touch screen: move focus with up/down/left/right, then select. Take a screenshot after to see where focus is.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simRemoteArgs) (*mcp.CallToolResult, any, error) {
 		what := "press " + a.Press
@@ -381,13 +382,18 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_install_app",
-		Description: "Install a built app (.app bundle for the simulator, e.g. from DerivedData) on a simulator.",
+		Description: "Install a built app on a simulator: a .app bundle for an iOS simulator (e.g. from DerivedData), or an .apk for an Android emulator.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simAppArgs) (*mcp.CallToolResult, any, error) {
 		udid, err := s.simPane(ctx, a.PaneID, true, "install "+a.App)
 		if err != nil {
 			return nil, nil, err
 		}
-		if _, err := simctl(ctx, "install", udid, a.App); err != nil {
+		if emulator.IsAVD(udid) {
+			_, err = adbRun(ctx, udid, "install", "-r", a.App)
+		} else {
+			_, err = simctl(ctx, "install", udid, a.App)
+		}
+		if err != nil {
 			return nil, nil, err
 		}
 		return textResult("Installed " + a.App), nil, nil
@@ -395,13 +401,18 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_launch_app",
-		Description: "Launch (or relaunch) an installed app on a simulator by bundle id. Returns its process id.",
+		Description: "Launch (or relaunch) an installed app on a simulator by bundle id (or an Android package name). Returns its process id.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simAppArgs) (*mcp.CallToolResult, any, error) {
 		udid, err := s.simPane(ctx, a.PaneID, true, "launch "+a.App)
 		if err != nil {
 			return nil, nil, err
 		}
-		out, err := simctl(ctx, append([]string{"launch", "--terminate-running-process", udid, a.App}, a.Args...)...)
+		var out string
+		if emulator.IsAVD(udid) {
+			out, err = androidLaunch(ctx, udid, a.App)
+		} else {
+			out, err = simctl(ctx, append([]string{"launch", "--terminate-running-process", udid, a.App}, a.Args...)...)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
@@ -410,13 +421,18 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_terminate_app",
-		Description: "Quit an app on a simulator by bundle id.",
+		Description: "Quit an app on a simulator by bundle id (or an Android package name).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simAppArgs) (*mcp.CallToolResult, any, error) {
 		udid, err := s.simPane(ctx, a.PaneID, true, "quit "+a.App)
 		if err != nil {
 			return nil, nil, err
 		}
-		if _, err := simctl(ctx, "terminate", udid, a.App); err != nil {
+		if emulator.IsAVD(udid) {
+			_, err = adbRun(ctx, udid, "shell", "am", "force-stop", a.App)
+		} else {
+			_, err = simctl(ctx, "terminate", udid, a.App)
+		}
+		if err != nil {
 			return nil, nil, err
 		}
 		return textResult("Quit " + a.App), nil, nil
@@ -430,7 +446,12 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if _, err := simctl(ctx, "openurl", udid, a.URL); err != nil {
+		if emulator.IsAVD(udid) {
+			_, err = adbRun(ctx, udid, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", a.URL)
+		} else {
+			_, err = simctl(ctx, "openurl", udid, a.URL)
+		}
+		if err != nil {
 			return nil, nil, err
 		}
 		return textResult("Opened " + a.URL), nil, nil
@@ -438,7 +459,7 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "sim_logs",
-		Description: "Read a simulator's recent system log (os_log), optionally filtered with a predicate. Untrusted content.",
+		Description: "Read a simulator's recent system log (os_log; logcat on Android), optionally filtered. Untrusted content.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simLogArgs) (*mcp.CallToolResult, any, error) {
 		udid, err := s.simPane(ctx, a.PaneID, false, "read the logs")
 		if err != nil {
@@ -448,11 +469,16 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 		if last == "" {
 			last = "1m"
 		}
-		args := []string{"spawn", udid, "log", "show", "--style", "compact", "--last", last}
-		if a.Predicate != "" {
-			args = append(args, "--predicate", a.Predicate)
+		var out string
+		if emulator.IsAVD(udid) {
+			out, err = androidLogs(ctx, udid, last, a.Predicate)
+		} else {
+			args := []string{"spawn", udid, "log", "show", "--style", "compact", "--last", last}
+			if a.Predicate != "" {
+				args = append(args, "--predicate", a.Predicate)
+			}
+			out, err = simctl(ctx, args...)
 		}
-		out, err := simctl(ctx, args...)
 		if err != nil {
 			return nil, nil, err
 		}

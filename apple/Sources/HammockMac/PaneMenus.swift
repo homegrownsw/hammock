@@ -13,9 +13,11 @@ final class SimulatorList {
 
     /// Running ones first.
     var sorted: [AppModel.SimulatorDevice] { devices.sorted { $0.booted && !$1.booted } }
-    /// iPhones and iPads, then Apple TVs, each running ones first.
-    var phones: [AppModel.SimulatorDevice] { sorted.filter { $0.platform != "tvOS" } }
+    /// iPhones and iPads, Apple TVs, Android phones and tablets, then Android TVs, each running ones first.
+    var phones: [AppModel.SimulatorDevice] { sorted.filter { ($0.platform ?? "iOS") == "iOS" } }
     var tvs: [AppModel.SimulatorDevice] { sorted.filter { $0.platform == "tvOS" } }
+    var androids: [AppModel.SimulatorDevice] { sorted.filter { $0.platform == "Android" } }
+    var androidTVs: [AppModel.SimulatorDevice] { sorted.filter { $0.platform == "Android TV" } }
 
     private var refreshing = false
 
@@ -136,9 +138,15 @@ struct SimulatorItems: View {
         ForEach(list.phones) { d in
             Button(SimulatorList.label(d)) { open(d.udid) }
         }
-        if !list.tvs.isEmpty {
-            Section("Apple TV") {
-                ForEach(list.tvs) { d in
+        section("Apple TV", list.tvs)
+        section("Android", list.androids)
+        section("Android TV", list.androidTVs)
+    }
+
+    @ViewBuilder private func section(_ title: String, _ devices: [AppModel.SimulatorDevice]) -> some View {
+        if !devices.isEmpty {
+            Section(title) {
+                ForEach(devices) { d in
                     Button(SimulatorList.label(d)) { open(d.udid) }
                 }
             }
@@ -167,12 +175,22 @@ struct PaneMenuItems: View {
         Button("Move to New Tab") { Task { await model.breakOut(paneID) } }
             .disabled(tabPaneCount < 2)
         OpenInNewWindowButton(model: model, subject: .pane(paneID))
-        if model.isAppleTV(paneID) {
+        if model.isTVSimulator(paneID) {
             Button(Prefs.shared.bool(.simulatorRemote) ? "Hide Remote" : "Show Remote") { Prefs.shared.toggle(.simulatorRemote) }
         } else if model.panes[paneID]?.kind == .simulator {
+            if model.isAndroidPhone(paneID) {
+                Button("Back") { model.pressSimulatorButton(paneID, "back") }
+                Button("Home") { model.pressSimulatorButton(paneID, "home") }
+                Button("Recents") { model.pressSimulatorButton(paneID, "recents") }
+            }
             Button("Rotate Left") { model.rotateSimulator(paneID, "left") }
             Button("Rotate Right") { model.rotateSimulator(paneID, "right") }
-            Button("Toggle Software Keyboard") { model.pressSimulatorButton(paneID, "keyboard") }
+            if !model.isAndroid(paneID) {
+                Button("Toggle Software Keyboard") { model.pressSimulatorButton(paneID, "keyboard") }
+            }
+        }
+        if model.panes[paneID]?.deviceElsewhere == true {
+            Button("Restart in Hammock…") { EmulatorTakeover.confirm(model, paneID) }
         }
         if model.panes[paneID]?.kind == .simulator {
             Button("Screenshot to File") { SimulatorShot.saveToFile(model, paneID) }

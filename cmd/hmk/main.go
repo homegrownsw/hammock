@@ -110,7 +110,7 @@ Usage:
                                             open a web page in a browser tab (or split)
   hmk nav PANE URL|back|forward|reload|stop  drive a browser pane
   hmk devtools PANE [--down]               show a browser pane's DevTools in a pane beside it
-  hmk sim [DEVICE] [--group G] [--split PANE]  open an iPhone or Apple TV simulator in a tab (or split)
+  hmk sim [DEVICE] [--group G] [--split PANE]  open a simulator, or an Android emulator (avd:NAME), in a tab (or split)
   hmk sim list | shot PANE [FILE] [--pixels] [--clipboard] | tap PANE X Y | type PANE TEXT | button PANE NAME | shutdown PANE
   hmk sim remote PANE BUTTON [--repeat N] [--hold MS] | remote PANE swipe DIRECTION   an Apple TV's remote
   hmk log file PATH | macos | sim [DEVICE] | logcat | -- CMD...  [--group G | --split PANE]

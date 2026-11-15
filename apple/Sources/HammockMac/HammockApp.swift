@@ -426,15 +426,26 @@ struct HammockApp: App {
                 if let id = focused, model.panes[id]?.kind == .simulator {
                     Divider()
                     Button("Home") { model.pressSimulatorButton(id, "home") }.keyboardShortcut(Keys.simHome)
-                    if model.isAppleTV(id) {
+                    if model.isTVSimulator(id) {
                         // Its remote's buttons (Home above is its TV button).
                         Button("Play/Pause") { model.pressRemote(id, "play_pause") }.keyboardShortcut(Keys.simPlayPause)
                         Button("Volume Up") { model.pressRemote(id, "volume_up") }.keyboardShortcut(Keys.simVolumeUp)
                         Button("Volume Down") { model.pressRemote(id, "volume_down") }.keyboardShortcut(Keys.simVolumeDown)
                         Button("Mute") { model.pressRemote(id, "mute") }.keyboardShortcut(Keys.simMute)
-                        Button("Siri") { model.pressRemote(id, "siri") }.keyboardShortcut(Keys.simSiri)
+                        if model.isAppleTV(id) {
+                            Button("Siri") { model.pressRemote(id, "siri") }.keyboardShortcut(Keys.simSiri)
+                        }
                         Button(Prefs.shared.bool(.simulatorRemote) ? "Hide Remote" : "Show Remote") { Prefs.shared.toggle(.simulatorRemote) }
                             .keyboardShortcut(Keys.simRemoteToggle)
+                    } else if model.isAndroidPhone(id) {
+                        // Android's navigation and hardware buttons (Home above).
+                        Button("Back") { model.pressSimulatorButton(id, "back") }.keyboardShortcut(Keys.simBack)
+                        Button("Recents") { model.pressSimulatorButton(id, "recents") }.keyboardShortcut(Keys.simRecents)
+                        Button("Power") { model.pressSimulatorButton(id, "power") }.keyboardShortcut(Keys.simLock)
+                        Button("Volume Up") { model.pressSimulatorButton(id, "volume_up") }.keyboardShortcut(Keys.simVolumeUp)
+                        Button("Volume Down") { model.pressSimulatorButton(id, "volume_down") }.keyboardShortcut(Keys.simVolumeDown)
+                        Button("Rotate Left") { model.rotateSimulator(id, "left") }.keyboardShortcut(Keys.simRotateLeft)
+                        Button("Rotate Right") { model.rotateSimulator(id, "right") }.keyboardShortcut(Keys.simRotateRight)
                     } else {
                         Button("Lock") { model.pressSimulatorButton(id, "lock") }.keyboardShortcut(Keys.simLock)
                         Button("Rotate Left") { model.rotateSimulator(id, "left") }.keyboardShortcut(Keys.simRotateLeft)

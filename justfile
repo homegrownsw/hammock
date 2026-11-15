@@ -69,6 +69,9 @@ vet: deps
 
 proto:
     PATH="$PATH:$(go env GOPATH)/bin" protoc -I proto --go_out=. --go_opt=module=github.com/homegrownsw/hammock proto/hammock/v1/hammock.proto
+    # The Android Emulator's gRPC controller (vendored from the SDK's emulator/lib, Apache-2.0): messages only;
+    # internal/emulator calls its methods by name.
+    PATH="$PATH:$(go env GOPATH)/bin" protoc -I internal/emulator/emupb --go_out=internal/emulator/emupb --go_opt=paths=source_relative --go_opt=Memulator_controller.proto=github.com/homegrownsw/hammock/internal/emulator/emupb internal/emulator/emupb/emulator_controller.proto
 
 # Run the daemon in the foreground against a scratch state dir.
 dev-daemon dir="/tmp/hmk-dev": deps

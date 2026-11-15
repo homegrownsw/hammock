@@ -163,6 +163,7 @@ func TestLogCommand(t *testing.T) {
 		{&pb.LogSource{Kind: "file", Path: "/var/log/x.log"}, "/usr/bin/tail -n 5000 -F /var/log/x.log|x.log"},
 		{&pb.LogSource{Kind: "macos", Process: "Safari", Level: "debug"}, "/usr/bin/log stream --style compact --level debug --process Safari|Console: Safari"},
 		{&pb.LogSource{Kind: "simulator", Device: "ABC", Predicate: `subsystem == "x"`}, `/usr/bin/xcrun simctl spawn ABC log stream --style compact --predicate subsystem == "x"|Simulator log`},
+		{&pb.LogSource{Kind: "logcat", Device: "emulator-5554"}, loginShell() + " -l -c exec adb -s 'emulator-5554' logcat -v threadtime|logcat: emulator-5554"},
 	} {
 		cmd, label, err := logCommand(tc.src)
 		if err != nil || strings.Join(cmd, " ")+"|"+label != tc.want {

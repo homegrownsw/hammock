@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/emulator"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/simshot"
 )
@@ -159,7 +160,9 @@ func pickSimulator(devs []simDevice, ref string) (simDevice, error) {
 	}
 	var match []simDevice
 	for _, d := range devs {
-		if strings.EqualFold(d.Name, ref) || strings.HasPrefix(d.UDID, strings.ToUpper(ref)) {
+		// By name, UDID (or its start), or an AVD's id (avd:Pixel_9, or just Pixel_9).
+		if strings.EqualFold(d.Name, ref) || strings.HasPrefix(d.UDID, strings.ToUpper(ref)) ||
+			strings.EqualFold(d.UDID, ref) || strings.EqualFold(d.UDID, emulator.Prefix+ref) {
 			match = append(match, d)
 		}
 	}
@@ -185,14 +188,17 @@ func runSim(w *world, call caller, args []string) error {
        hmk sim tap PANE X Y          (points, as in a screenshot)
        hmk sim type PANE TEXT
        hmk sim button PANE home|lock|side|siri|keyboard   (keyboard: show or hide the software keyboard)
+                                 Android: back|home|recents|power|volume_up|volume_down
        hmk sim rotate PANE left|right|portrait|upside-down|landscape-left|landscape-right
        hmk sim pinch PANE X Y SCALE  (two fingers around X, Y in points; SCALE above 1 zooms in)
        hmk sim fold PANE open|closed|half|DEGREES   (a foldable, such as the iPhone Duo)
-       hmk sim remote PANE BUTTON [--repeat N] [--hold MS]   an Apple TV's remote: up, down, left,
+       hmk sim remote PANE BUTTON [--repeat N] [--hold MS]   an Apple TV's or Android TV's remote: up, down, left,
                                  right, select, menu, home, play_pause, volume_up, volume_down,
                                  mute or siri (--hold MS: a long press)
        hmk sim remote PANE swipe up|down|left|right [short|medium|long]   moves focus (as presses)
-       hmk sim shutdown PANE                    close the pane and shut its simulator down`)
+       hmk sim shutdown PANE                    close the pane and shut its simulator down
+       hmk sim takeover PANE                    an Android emulator running in Android Studio: stop it there
+                                                and boot it in the pane`)
 	sub := ""
 	if len(args) > 1 {
 		sub = args[1]
@@ -211,8 +217,8 @@ func runSim(w *world, call caller, args []string) error {
 			fmt.Printf("%s  %-40s %s%s\n", d.UDID, d.Name, d.Runtime, state)
 		}
 		return nil
-	case "shutdown":
-		// Close the pane and shut its simulator down.
+	case "shutdown", "takeover":
+		// Close the pane and shut its simulator down; or take an emulator over from Android Studio.
 		if len(args) < 3 {
 			return usage
 		}
@@ -220,7 +226,7 @@ func runSim(w *world, call caller, args []string) error {
 		if err != nil {
 			return err
 		}
-		_, err = simCall(call, pid, "shutdown", nil)
+		_, err = simCall(call, pid, sub, nil)
 		return err
 	case "shot":
 		return simShot(w, call, args[2:], usage)

@@ -81,6 +81,7 @@ type simMsg struct {
 	Foldable bool              `json:"foldable"`
 	Hinge    float64           `json:"hinge"`
 	Platform string            `json:"platform"`
+	Scale    float64           `json:"scale"`
 	Text     string            `json:"text"`
 }
 
@@ -137,6 +138,10 @@ func (h *simHub) send(m map[string]any) {
 
 func (h *simHub) open(id, udid string) {
 	h.ensure()
+	if isEmulatorDevice(udid) {
+		h.d.emulators.open(id, udid) // an Android Emulator: emulator.go tells the host
+		return
+	}
 	h.mu.Lock()
 	if t := h.shutdown[udid]; t != nil {
 		t.Stop() // shown again: keep it running
@@ -147,6 +152,14 @@ func (h *simHub) open(id, udid string) {
 }
 
 func (h *simHub) close(id, udid string) {
+	if isEmulatorDevice(udid) {
+		h.d.emulators.close(id)
+		h.mu.Lock()
+		delete(h.size, id)
+		h.mu.Unlock()
+		h.send(map[string]any{"t": "close", "id": id})
+		return
+	}
 	h.mu.Lock()
 	delete(h.size, id)
 	if udid != "" && h.started[udid] && simulatorAutoShutdown() {
@@ -314,13 +327,16 @@ func (h *simHub) sync(have []string) {
 	}
 	d.mu.Unlock()
 	for id, udid := range want {
-		h.send(map[string]any{"t": "open", "id": id, "udid": udid})
+		if !isEmulatorDevice(udid) {
+			h.send(map[string]any{"t": "open", "id": id, "udid": udid})
+		}
 	}
 	for _, id := range have {
 		if _, ok := want[id]; !ok {
 			h.send(map[string]any{"t": "close", "id": id})
 		}
 	}
+	h.d.emulators.announceAll() // emulators' panes, and their last frames
 }
 
 // ask sends m with a fresh seq and waits for its answer.
@@ -384,6 +400,9 @@ func (d *Daemon) simulatorState(m simMsg) {
 	info.DeviceFoldable, info.DeviceHinge = m.Foldable, m.Hinge
 	if m.Platform != "" {
 		info.DevicePlatform = m.Platform
+	}
+	if m.Scale > 0 {
+		info.DeviceScale = m.Scale
 	}
 	changed := !proto.Equal(before, info)
 	udid := info.DeviceUdid
@@ -490,12 +509,21 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	}
 	if m.Op == "devices" {
 		go func() {
+			// Simulators from the host (none without Xcode), then this Mac's AVDs.
 			r, err := h.ask(map[string]any{"t": "devices"}, 10*time.Second)
-			if err != nil {
+			avds := emulatorDevices()
+			if err != nil && len(avds) == 0 {
 				c.replyErr(reqID, err)
 				return
 			}
-			reply(r.Devices, nil)
+			devs := make([]any, 0, len(r.Devices)+len(avds))
+			for _, d := range r.Devices {
+				devs = append(devs, d)
+			}
+			for _, a := range avds {
+				devs = append(devs, a)
+			}
+			reply(devs, nil)
 		}()
 		return errDeferred
 	}
@@ -508,6 +536,10 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	}
 	if err := simulatorOpRefused(p.snapshotInfo().DevicePlatform, m.Op); err != nil {
 		return err
+	}
+	if m.Op == "takeover" && (c.isAgent() || c.remote) {
+		// It stops an emulator someone runs in Android Studio: theirs to decide, on this Mac.
+		return errors.New("only you can take an emulator over from Android Studio, in its pane or with hmk sim takeover")
 	}
 	d.mu.Lock()
 	peer := c.peer
@@ -530,6 +562,30 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	touch := func(phase string, x, y float64) {
 		rx, ry := ratio(x, y)
 		h.send(map[string]any{"t": "touch", "id": p.id, "phase": phase, "x": rx, "y": ry})
+	}
+	// An Android Emulator: driven here, by gRPC (emulator.go). Its screenshots
+	// are the host's, and shutting it down is as for a simulator.
+	if isEmulatorDevice(p.snapshotInfo().DeviceUdid) && m.Op != "screenshot" && m.Op != "shutdown" {
+		s := d.emulatorPane(p)
+		if s == nil {
+			return errNotReady
+		}
+		if m.Op == "touch" || (m.Op == "remote" && args.Phase != "") {
+			// Inline, so a drag's (or a held button's) down and up stay in order.
+			d.simulatorPresence(c, p.id, m.Op, args, size)
+			_, _, err := d.emulatorCall(s, m.Op, args, size)
+			return err
+		}
+		go func() {
+			d.simulatorPresence(c, p.id, m.Op, args, size)
+			r, _, err := d.emulatorCall(s, m.Op, args, size)
+			if err != nil {
+				c.replyErr(reqID, err)
+				return
+			}
+			reply(r, nil)
+		}()
+		return errDeferred
 	}
 	if m.Op == "touch" {
 		// Inline, so a drag's down, moves and up stay in order.
@@ -572,7 +628,11 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 			if _, err := h.ask(map[string]any{"t": "barrier"}, 5*time.Second); err != nil {
 				d.log.Warn("simulator shutdown: the host didn't confirm the pane closed", "pane", p.id, "err", err)
 			}
-			h.shutDown(udid)
+			if isEmulatorDevice(udid) {
+				d.emulators.shutDown(emulatorAVD(udid))
+			} else {
+				h.shutDown(udid)
+			}
 			reply(map[string]any{"ok": true}, nil)
 			return
 		case "screenshot":
@@ -745,11 +805,15 @@ func remotePresses(args simArgs) ([]string, error) {
 // the simulator host has looked at its device, when anything goes (the host
 // drops what the device can't take).
 func simulatorOpRefused(platform, op string) error {
+	tv := platform == "tvOS" || platform == "Android TV"
 	switch {
-	case platform == "tvOS" && slices.Contains(touchOnly, op):
-		return errors.New("an Apple TV has no touch screen and doesn't turn: use its remote (sim_remote, or hmk sim remote)")
-	case op == "remote" && platform != "tvOS" && platform != "":
-		return errors.New("only an Apple TV has a remote")
+	case tv && slices.Contains(touchOnly, op):
+		return fmt.Errorf("%s has no touch screen and doesn't turn: use its remote (sim_remote, or hmk sim remote)",
+			map[bool]string{true: "an Apple TV", false: "an Android TV"}[platform == "tvOS"])
+	case op == "remote" && !tv && platform != "":
+		return errors.New("only an Apple TV or Android TV has a remote")
+	case op == "takeover" && platform != "Android" && platform != "Android TV" && platform != "":
+		return errors.New("only an Android emulator can be taken over")
 	}
 	return nil
 }

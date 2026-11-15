@@ -175,9 +175,19 @@ message Pane {
   // as last set (the cover screen shows when closed, the inner one open).
   bool device_foldable = 24;
   double device_hinge = 25;
-  // "iOS" or "tvOS" (an Apple TV: no touch screen, driven by its remote);
-  // empty until the simulator host has looked at the device.
+  // "iOS", "tvOS" (an Apple TV: no touch screen, driven by its remote),
+  // "Android" or "Android TV" (an emulator); empty until the simulator host
+  // has looked at the device.
   string device_platform = 36;
+  // The screen's pixels per point (Android: per dp), so a viewer of its video
+  // knows its size in points, which taps are measured in.
+  double device_scale = 39;
+  // Why the device isn't showing, when something stops it ("Running in
+  // Android Studio", an error booting it); empty while it shows or boots.
+  string device_note = 37;
+  // An Android emulator running somewhere Hammock can't drive it (Android
+  // Studio): the pane offers to take it over (the "takeover" op).
+  bool device_elsewhere = 38;
   // Terminal panes: what's running besides the shell (process names), for
   // warnings before closing it.
   repeated string processes = 20;

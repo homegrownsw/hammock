@@ -2344,9 +2344,19 @@ type Pane struct {
 	// as last set (the cover screen shows when closed, the inner one open).
 	DeviceFoldable bool    `protobuf:"varint,24,opt,name=device_foldable,json=deviceFoldable,proto3" json:"device_foldable,omitempty"`
 	DeviceHinge    float64 `protobuf:"fixed64,25,opt,name=device_hinge,json=deviceHinge,proto3" json:"device_hinge,omitempty"`
-	// "iOS" or "tvOS" (an Apple TV: no touch screen, driven by its remote);
-	// empty until the simulator host has looked at the device.
+	// "iOS", "tvOS" (an Apple TV: no touch screen, driven by its remote),
+	// "Android" or "Android TV" (an emulator); empty until the simulator host
+	// has looked at the device.
 	DevicePlatform string `protobuf:"bytes,36,opt,name=device_platform,json=devicePlatform,proto3" json:"device_platform,omitempty"`
+	// The screen's pixels per point (Android: per dp), so a viewer of its video
+	// knows its size in points, which taps are measured in.
+	DeviceScale float64 `protobuf:"fixed64,39,opt,name=device_scale,json=deviceScale,proto3" json:"device_scale,omitempty"`
+	// Why the device isn't showing, when something stops it ("Running in
+	// Android Studio", an error booting it); empty while it shows or boots.
+	DeviceNote string `protobuf:"bytes,37,opt,name=device_note,json=deviceNote,proto3" json:"device_note,omitempty"`
+	// An Android emulator running somewhere Hammock can't drive it (Android
+	// Studio): the pane offers to take it over (the "takeover" op).
+	DeviceElsewhere bool `protobuf:"varint,38,opt,name=device_elsewhere,json=deviceElsewhere,proto3" json:"device_elsewhere,omitempty"`
 	// Terminal panes: what's running besides the shell (process names), for
 	// warnings before closing it.
 	Processes []string `protobuf:"bytes,20,rep,name=processes,proto3" json:"processes,omitempty"`
@@ -2593,6 +2603,27 @@ func (x *Pane) GetDevicePlatform() string {
 		return x.DevicePlatform
 	}
 	return ""
+}
+
+func (x *Pane) GetDeviceScale() float64 {
+	if x != nil {
+		return x.DeviceScale
+	}
+	return 0
+}
+
+func (x *Pane) GetDeviceNote() string {
+	if x != nil {
+		return x.DeviceNote
+	}
+	return ""
+}
+
+func (x *Pane) GetDeviceElsewhere() bool {
+	if x != nil {
+		return x.DeviceElsewhere
+	}
+	return false
 }
 
 func (x *Pane) GetProcesses() []string {
@@ -24765,7 +24796,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tDirection\x12\x19\n" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14DIRECTION_HORIZONTAL\x10\x01\x12\x16\n" +
-	"\x12DIRECTION_VERTICAL\x10\x02\"\x8d\t\n" +
+	"\x12DIRECTION_VERTICAL\x10\x02\"\xfc\t\n" +
 	"\x04Pane\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06tab_id\x18\x02 \x01(\tR\x05tabId\x12(\n" +
@@ -24795,7 +24826,11 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"deviceMask\x12'\n" +
 	"\x0fdevice_foldable\x18\x18 \x01(\bR\x0edeviceFoldable\x12!\n" +
 	"\fdevice_hinge\x18\x19 \x01(\x01R\vdeviceHinge\x12'\n" +
-	"\x0fdevice_platform\x18$ \x01(\tR\x0edevicePlatform\x12\x1c\n" +
+	"\x0fdevice_platform\x18$ \x01(\tR\x0edevicePlatform\x12!\n" +
+	"\fdevice_scale\x18' \x01(\x01R\vdeviceScale\x12\x1f\n" +
+	"\vdevice_note\x18% \x01(\tR\n" +
+	"deviceNote\x12)\n" +
+	"\x10device_elsewhere\x18& \x01(\bR\x0fdeviceElsewhere\x12\x1c\n" +
 	"\tprocesses\x18\x14 \x03(\tR\tprocesses\x12\x18\n" +
 	"\aprogram\x18\x1d \x03(\tR\aprogram\x12'\n" +
 	"\x03log\x18\x17 \x01(\v2\x15.hammock.v1.LogSourceR\x03log\x12\x1f\n" +
