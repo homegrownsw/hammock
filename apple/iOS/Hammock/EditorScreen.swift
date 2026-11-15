@@ -21,6 +21,8 @@ struct EditorScreen: View {
     @State private var confirm: Confirm?
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.phoneTheme) private var theme
+    @Environment(\.paneChrome) private var chrome
+    @Environment(\.paneTabMenu) private var tabMenu
 
     private enum Confirm: Identifiable {
         case overwrite(path: String, message: String), reload
@@ -50,7 +52,7 @@ struct EditorScreen: View {
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
         .safeAreaInset(edge: .bottom) { if editable, let session { keyBar(session) } }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) { menu }
+            if chrome { ToolbarItem(placement: .primaryAction) { menu } }
         }
         .onAppear { if lease == nil { lease = model.leaseEditor(paneID) } }
         .alert("Save As", isPresented: $askingSaveAs) {
@@ -127,6 +129,8 @@ struct EditorScreen: View {
                     }
                 }
             }
+            // The tab's actions too: one … menu, not two (PaneScreen leaves them to us).
+            if let tabMenu { tabMenu }
         } label: {
             Label("More", systemImage: info.dirty ? "ellipsis.circle.fill" : "ellipsis.circle")
         }

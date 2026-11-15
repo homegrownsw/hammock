@@ -20,6 +20,33 @@ extension View {
     func steadyWhilePopped() -> some View {
         background { PopFreezer().frame(width: 0, height: 0) }
     }
+
+    /// Back only from the screen's left edge while this screen shows: a
+    /// swipe across its content is its own (a tab's panes swipe between
+    /// them), not iOS's go-back-from-anywhere.
+    func backFromEdgeOnly() -> some View {
+        background { EdgeOnlyBack().frame(width: 0, height: 0) }
+    }
+}
+
+private struct EdgeOnlyBack: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Holder { Holder() }
+    func updateUIViewController(_ vc: Holder, context: Context) {}
+
+    final class Holder: UIViewController {
+        private weak var nav: UINavigationController?
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            nav = UIViewController.pushed(from: self)?.navigationController
+            nav?.interactiveContentPopGestureRecognizer?.isEnabled = false
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            nav?.interactiveContentPopGestureRecognizer?.isEnabled = true
+        }
+    }
 }
 
 extension EnvironmentValues {

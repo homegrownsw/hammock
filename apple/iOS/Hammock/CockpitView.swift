@@ -549,8 +549,13 @@ struct CockpitDestination: View {
             ScheduledTasksScreen(model: model, path: $path)
         } else if let s = ScheduleRoute.scheduleID(id) {
             ScheduleDetailScreen(model: model, scheduleID: s, path: $path)
-        } else if model.panes[id] != nil {
-            PaneScreen(model: model, paneID: id, path: $path)
+        } else if let pane = model.panes[id] {
+            // A pane of a tab of several opens in its tab, with the strip.
+            if let tab = model.tab(of: pane), model.panes(in: tab).count > 1 {
+                TabScreen(model: model, tabID: tab.id, path: $path, start: id)
+            } else {
+                PaneScreen(model: model, paneID: id, path: $path)
+            }
         } else {
             TabScreen(model: model, tabID: id, path: $path)
         }
@@ -743,48 +748,266 @@ struct GrantRow: View {
     }
 }
 
-/// A tab's panes, swipeable when there are several.
-/// A tab: its one pane as a whole screen, or with several an overview of
-/// them in their layout (tap one to open it).
+/// A tab: its one pane as a whole screen, or with several one of them at a
+/// time (the one last shown here, else the first), a strip of pills along
+/// the bottom to switch, and Exposé to pick one from the tab's layout.
+/// Swiping sideways goes to the next or previous pane, in panes that
+/// don't use sideways drags themselves (not a simulator, a browser or the
+/// editor). Only the pane showing is loaded: the others stream nothing.
 struct TabScreen: View {
     let model: AppModel
     let tabID: String
     @Binding var path: [String]
-    @State private var renaming: WorkspaceTab?
+    /// The pane to show first (opened from a notification or a session).
+    var start: String? = nil
+    @State private var current = ""
+    /// The pane a swipe (or a tap on a pill) is bringing in, and how far
+    /// the panes have moved: the finger's drag, then the settling.
+    @State private var incoming: String?
+    @State private var offset: CGFloat = 0
+    @State private var pageWidth: CGFloat = 390
+    /// The swipe under way is sideways (nil: not decided yet).
+    @State private var sideways: Bool?
+    /// Where panes take their own drags (PaneSwipeExclusion).
+    @State private var ownDrags: [CGRect] = []
+    /// A pane showing (or coming in) has nothing to show yet (PaneLoading).
+    @State private var loading = false
+    /// The pane a tap on its pill is going to: marked in the strip at once.
+    @State private var tapped: String?
+    /// The pane settling in, which has the bar (its buttons, its … menu)
+    /// from the moment it starts to: changed in the settling animation, so
+    /// iOS morphs the bar's buttons from one pane's to the other's as they
+    /// slide (changed after it, with no animation, they jumped).
+    @State private var barPane: String?
+
+    /// How far the slide to the incoming pane has got, 0 to 1.
+    private var progress: Double {
+        pageWidth > 0 && incoming != nil ? min(abs(offset) / pageWidth, 1) : 0
+    }
+
+    /// How selected a pill shows: the pane a tap is going to at once; during
+    /// a swipe, fading from the pane on screen to the one coming in.
+    private func selection(_ id: String, showing: String) -> Double {
+        if let tapped { return id == tapped ? 1 : 0 }
+        if id == showing { return 1 - progress }
+        return id == incoming ? progress : 0
+    }
+    @State private var exposing = false
+    @State private var closing: Pane?
+    @State private var keyboardUp = false
     @State private var shown = false
+    @Namespace private var namespace
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let tab = model.tabs[tabID]
-        let panes = tab.map { model.panes(in: $0) } ?? []
+        let ids = tab.map(stripPaneIDs) ?? []
         Group {
-            if let tab, panes.count > 1 {
-                PaneOverview(model: model, tab: tab) { path.append($0) }
-                    .hidesTabBarWhenPushed(hSize == .compact)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Menu {
-                                TabActions(model: model, tab: tab, rename: { renaming = tab },
-                                           newTab: model.group(of: tab)?.canAddTabs == false ? nil : { newTab(in: tab.groupID, model: model, path: $path, replacing: tabID) })
-                            } label: {
-                                Image(systemName: "ellipsis.circle")
-                            }
-                            .accessibilityLabel("Tab Actions")
+            if let tab, ids.count > 1 {
+                let showing = ids.contains(current) ? current : ids[0]
+                // The pane on screen, and while a swipe brings one in, that
+                // one beside it, following the finger. Only the panes slide:
+                // the strip stays put and moves its mark.
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    ZStack {
+                        ForEach([showing] + (incoming.map { [$0] } ?? []).filter { $0 != showing && ids.contains($0) }, id: \.self) { id in
+                            PaneScreen(model: model, paneID: id, path: $path, asTab: tabID, inStrip: true, chrome: id == (barPane ?? showing))
+                                .offset(x: side(of: id, from: showing, in: ids) * width + offset)
+                                .allowsHitTesting(id == showing)
                         }
                     }
-                    .renameTabAlert(model: model, tab: $renaming)
-                    .navigationTitle(model.title(of: tab))
-                    .navigationBarTitleDisplayMode(.inline)
-            } else if let p = panes.first {
-                PaneScreen(model: model, paneID: p.id, path: $path, asTab: tabID)
+                    .frame(width: width, height: geo.size.height)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(swipe(ids, from: showing, width: width))
+                    .onAppear { pageWidth = width }
+                    .onChange(of: width) { _, w in pageWidth = w }
+                }
+                    // The title fades from one pane's to the next's as they slide.
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            ZStack {
+                                StripTitle(model: model, paneID: showing).opacity(1 - progress)
+                                if let incoming, incoming != showing { StripTitle(model: model, paneID: incoming).opacity(progress) }
+                            }
+                        }
+                    }
+                    .onPreferenceChange(PaneSwipeExclusion.self) { ownDrags = $0 }
+                    .onPreferenceChange(PaneLoading.self) { loading = $0 }
+                    .backFromEdgeOnly()
+                    // The keyboard covers the strip rather than lifting it.
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if !keyboardUp {
+                            PaneStrip(model: model, tab: tab, current: tapped ?? showing, selected: { selection($0, showing: showing) },
+                                      namespace: namespace, select: { go(to: $0, in: ids) }, expose: { exposing = true }, confirmClose: { closing = $0 })
+                        }
+                    }
+                    .fullScreenCover(isPresented: $exposing) {
+                        ExposeScreen(model: model, tabID: tabID, current: showing, open: { go(to: $0, in: ids, animated: false) },
+                                     confirmClose: { closing = $0 })
+                            .navigationTransition(.zoom(sourceID: ExposeScreen.transitionID, in: namespace))
+                    }
+            } else if let p = ids.first {
+                PaneScreen(model: model, paneID: p, path: $path, asTab: tabID)
             }
         }
+        .confirmationDialog(closing.map { "Close \($0.displayName)?" } ?? "", isPresented: Binding(get: { closing != nil }, set: { if !$0 { closing = nil } }),
+                            titleVisibility: .visible, presenting: closing) { p in
+            Button("Close Pane", role: .destructive) { Task { await model.closePane(p.id) } }
+        } message: { p in
+            Text(closeWarning(p) ?? "")
+        }
+        .onAppear {
+            guard current.isEmpty else { return }
+            let first = [start, TabPanes.last(tabID)].compactMap { $0 }.first { ids.contains($0) }
+            current = first ?? ids.first ?? ""
+            #if DEBUG
+            // Dev aid: HMK_DEBUG_EXPOSE=1 opens Exposé over a tab of several panes as it opens.
+            if ProcessInfo.processInfo.environment["HMK_DEBUG_EXPOSE"] == "1", ids.count > 1 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { exposing = true }
+            }
+            #endif
+        }
+        .onChange(of: current) { _, id in if !id.isEmpty { TabPanes.remember(id, in: tabID) } }
+        .demoStripSteps { verb, id in
+            switch verb {
+            case "pane": go(to: id, in: ids)
+            case "expose": exposing = true
+            case "pick":
+                go(to: id, in: ids, animated: false)
+                exposing = false
+            default: break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         // Closed (here or on the Mac): back to the list. A new tab can open
         // before its state arrives, so only once it's been seen.
         .onChange(of: tab == nil, initial: true) { _, gone in
             if !gone { shown = true } else if shown { dismiss() }
         }
+    }
+
+    /// Which side of the pane on screen a pane sits: after it in the
+    /// strip's order to the right (1), before it to the left (-1).
+    private func side(of id: String, from showing: String, in ids: [String]) -> CGFloat {
+        guard id != showing, let a = ids.firstIndex(of: id), let b = ids.firstIndex(of: showing) else { return 0 }
+        return a > b ? 1 : -1
+    }
+
+    /// A sideways drag moves the panes with the finger, the next one (or
+    /// the previous) coming in beside; let go past a third of the way, or
+    /// flicked, it settles there, else it goes back. Drags that start at
+    /// the left edge (the system's Back) or where a pane takes its own
+    /// (a simulator's screen, a browser's page), or go mostly up and down,
+    /// are left to them.
+    private func swipe(_ ids: [String], from id: String, width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .global)
+            .onChanged { v in
+                let dx = v.translation.width, dy = v.translation.height
+                if sideways == nil {
+                    guard abs(dx) > 8 || abs(dy) > 8 else { return }
+                    sideways = abs(dx) > abs(dy) * 1.2 && v.startLocation.x > 24
+                        && !ownDrags.contains { $0.contains(v.startLocation) }
+                    if sideways == true {
+                        tapped = nil
+                        // The keyboard belongs to the pane it was typing into.
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                }
+                guard sideways == true, let i = ids.firstIndex(of: id) else { return }
+                let next = dx < 0 ? i + 1 : i - 1
+                if ids.indices.contains(next) {
+                    incoming = ids[next]
+                    offset = dx
+                } else {
+                    // No pane that way: it gives, and comes back.
+                    incoming = nil
+                    offset = dx / 4
+                }
+            }
+            .onEnded { v in
+                defer { sideways = nil }
+                guard sideways == true else { return }
+                let dx = v.translation.width, flick = v.predictedEndTranslation.width
+                if let target = incoming, abs(dx) > width / 3 || (abs(flick) > width / 2 && (flick < 0) == (dx < 0)) {
+                    settle(on: target, width: width, direction: dx < 0 ? -1 : 1)
+                } else {
+                    withAnimation(.snappy(duration: 0.25)) { offset = 0 } completion: { if sideways == nil { incoming = nil } }
+                }
+            }
+    }
+
+    /// Slides the incoming pane the rest of the way in, then makes it the
+    /// one on screen (in place: the view moves over as it is).
+    private func settle(on target: String, width: CGFloat, direction: CGFloat) {
+        withAnimation(.snappy(duration: 0.28)) {
+            incoming = target
+            offset = direction * width
+            barPane = target
+        } completion: {
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                current = target
+                incoming = nil
+                offset = 0
+                tapped = nil
+                barPane = nil
+            }
+        }
+    }
+
+    /// To a pane from its pill (or a take): slid in from its side.
+    private func go(to id: String, in ids: [String], animated: Bool = true) {
+        guard id != current, ids.contains(id), let to = ids.firstIndex(of: id) else { return }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        guard animated, !reduceMotion, sideways == nil else {
+            current = id
+            incoming = nil
+            offset = 0
+            tapped = nil
+            return
+        }
+        let from = ids.firstIndex(of: current) ?? 0
+        // Its pill marked at once, not when it's slid in.
+        withAnimation(.easeOut(duration: 0.15)) { tapped = id }
+        // As a swipe does it: the pane in place off screen on its side
+        // first, without an animation, then both slid. (Animating its
+        // arrival instead, it showed in place at once: its glass, the
+        // agent view's message box, doesn't follow a transition.) A moment
+        // between lets it draw before it moves, and one still waiting on
+        // its first picture (a simulator's, a browser's) gets up to half a
+        // second for it, so it slides in showing something.
+        incoming = id
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            let until = Date.now.addingTimeInterval(0.5)
+            while loading, Date.now < until, incoming == id {
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            guard incoming == id, sideways == nil else {
+                if tapped == id { tapped = nil }
+                return
+            }
+            settle(on: id, width: pageWidth, direction: to > from ? -1 : 1)
+        }
+    }
+}
+
+extension View {
+    /// The demo's takes switching panes and opening Exposé (DemoDirector's
+    /// pane, expose and pick steps). Nothing outside a debug build.
+    @ViewBuilder func demoStripSteps(_ act: @escaping (String, String) -> Void) -> some View {
+        #if DEBUG
+        onReceive(NotificationCenter.default.publisher(for: DemoDirector.strip)) { n in
+            act(n.userInfo?["do"] as? String ?? "", n.userInfo?["pane"] as? String ?? "")
+        }
+        #else
+        self
+        #endif
     }
 }
 
@@ -807,6 +1030,12 @@ struct PaneScreen: View {
     @Binding var path: [String]
     /// Shown as its tab (one pane): titled and closed as the tab.
     var asTab: String? = nil
+    /// One of its tab's several, with the pane strip (TabScreen): titled
+    /// with its own name, the tab's under it.
+    var inStrip = false
+    /// On screen, not a neighbour a swipe is bringing in: titles the bar,
+    /// shows the toolbar, and counts as looked at.
+    var chrome = true
     @State private var showsAgent: Bool?
     /// Which views have been shown (each is kept once it has).
     @State private var shownAgent = false
@@ -842,6 +1071,7 @@ struct PaneScreen: View {
     /// The tab's name for its only pane, else the pane's own.
     private var title: String {
         guard let pane, let tab = model.tab(of: pane) else { return "" }
+        if inStrip { return stripName(pane) }
         if asTab != nil || model.panes(in: tab).count < 2 { return model.title(of: tab) }
         if pane.kind == .browser || pane.kind == .simulator || pane.kind == .editor || pane.kind == .diff { return pane.title.isEmpty ? model.title(of: tab) : pane.title }
         return pane.displayName
@@ -850,45 +1080,11 @@ struct PaneScreen: View {
     var body: some View {
         Group {
             if let pane {
-                if pane.kind == .browser {
-                    BrowserScreen(model: model, paneID: pane.id, active: scenePhase == .active, canDrive: canDrive(pane))
-                } else if pane.kind == .simulator {
-                    SimulatorScreen(model: model, paneID: pane.id, active: scenePhase == .active, canDrive: canDrive(pane))
-                } else if pane.kind == .editor {
-                    EditorScreen(model: model, paneID: pane.id, canDrive: canDrive(pane))
-                } else if pane.kind == .diff {
-                    DiffScreen(model: model, paneID: pane.id, canDrive: canDrive(pane))
-                } else if pane.isLog {
-                    if logRaw {
-                        TerminalScreen(model: model, paneID: pane.id, active: true)
-                    } else {
-                        LogConsoleView(model: model, paneID: pane.id)
-                    }
-                } else if model.supportsAgentView(pane) {
-                    // Both kept once shown, the other hidden: switching only
-                    // changes which is visible, so nothing is rebuilt (the
-                    // toolbar and its switch included, whose slide a rebuild
-                    // cut short), and switching back is instant.
-                    ZStack {
-                        if shownAgent || agentMode {
-                            AgentConversationView(model: model, paneID: pane.id, onShowTerminal: { setMode(false) },
-                                                  onOpenFile: { preview = FilePreview(paneID: pane.id, path: $0) })
-                                .opacity(agentMode ? 1 : 0)
-                                .allowsHitTesting(agentMode)
-                                .accessibilityHidden(!agentMode)
-                                .onAppear { shownAgent = true }
-                        }
-                        if shownTerminal || !agentMode {
-                            TerminalScreen(model: model, paneID: pane.id, active: !agentMode)
-                                .opacity(agentMode ? 0 : 1)
-                                .allowsHitTesting(!agentMode)
-                                .accessibilityHidden(agentMode)
-                                .onAppear { shownTerminal = true }
-                        }
-                    }
-                } else {
-                    TerminalScreen(model: model, paneID: pane.id, active: true)
-                }
+                PaneContent(model: model, pane: pane, active: scenePhase == .active, canDrive: canDrive(pane), logRaw: logRaw,
+                            agentMode: agentMode, agentView: model.supportsAgentView(pane),
+                            shownAgent: $shownAgent, shownTerminal: $shownTerminal,
+                            showTerminal: { setMode(false) }, openFile: { preview = FilePreview(paneID: pane.id, path: $0) })
+                    .equatable()
             }
         }
         // Its agent asleep: faded, with a button to wake it (opening it
@@ -909,7 +1105,9 @@ struct PaneScreen: View {
         // wide screen: iPhone Duo open, an iPad), where the tabs stay.
         .hidesTabBarWhenPushed(hSize == .compact)
         .toolbar {
-            if let pane, model.supportsAgentView(pane) {
+            // With the strip, the pane's name is the title, and which view
+            // shows is in the … menu (viewSwitch).
+            if chrome, !inStrip, let pane, model.supportsAgentView(pane) {
                 ToolbarItem(placement: .principal) {
                     Picker("View", selection: Binding(get: { agentMode }, set: { setMode($0) })) {
                         Image(systemName: "text.bubble").tag(true)
@@ -918,7 +1116,7 @@ struct PaneScreen: View {
                     .pickerStyle(.segmented)
                     .frame(width: 120)
                 }
-            } else if let pane, pane.isLog {
+            } else if chrome, !inStrip, let pane, pane.isLog {
                 ToolbarItem(placement: .principal) {
                     Picker("View", selection: $logRaw) {
                         Image(systemName: "list.bullet.rectangle").tag(false)
@@ -930,11 +1128,13 @@ struct PaneScreen: View {
             }
         }
         .toolbar {
-            if let tab = pane.flatMap({ model.tab(of: $0) }) {
+            // One … menu, at the right: the editor and the simulator draw
+            // their own, with the tab's actions in it (paneTabMenu).
+            if chrome, !ownsMenu, let tab = pane.flatMap({ model.tab(of: $0) }) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        TabActions(model: model, tab: tab, rename: { renaming = tab },
-                                   newTab: model.group(of: tab)?.canAddTabs == false ? nil : { newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID) })
+                        viewSwitch
+                        tabActions(tab)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -942,30 +1142,154 @@ struct PaneScreen: View {
                 }
             }
         }
+        .environment(\.paneTabMenu, tabMenu)
         .renameTabAlert(model: model, tab: $renaming)
         .sheet(item: $preview) { FilePreviewSheet(model: model, preview: $0) }
-        .navigationTitle(title)
+        // Only the pane on screen titles the bar: not a neighbour a swipe
+        // is bringing in (from a view of its own, so that changing doesn't
+        // rebuild the pane).
+        .background {
+            if chrome {
+                // With the strip, TabScreen draws the title and the tab's
+                // name under it (faded between panes as they slide): this
+                // one is for the Back button's menu and VoiceOver.
+                Color.clear.navigationTitle(title)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.inPaneStrip, inStrip)
+        .environment(\.paneChrome, chrome)
         // Closed (here or on the Mac): back to where it was opened from.
         .onChange(of: pane == nil, initial: true) { _, gone in
             if !gone { shown = true } else if shown, asTab == nil { dismiss() }
         }
         // Looking at a finished agent acknowledges it, as on the Mac: when
-        // you open it, and when it finishes while you're watching.
-        .onAppear {
-            model.focus(paneID)
-            // Its own notifications aren't shown while it's on screen (Push).
-            Push.shared.visiblePane = (Push.shared.session?.host?.id ?? "", paneID)
+        // you open it (or swipe to it), and when it finishes while you're
+        // watching. A neighbour peeking in during a swipe isn't looked at.
+        .onAppear { if chrome, !inStrip { cameOnScreen() } }
+        // Swiped to: once it's slid in, so what looking at it changes (the
+        // Mac's focus, its finished state) doesn't update the app mid-slide.
+        .task(id: chrome) {
+            guard chrome, inStrip else { return }
+            try? await Task.sleep(for: .milliseconds(350))
+            if !Task.isCancelled { cameOnScreen() }
         }
+        .onChange(of: chrome) { _, on in if on, !inStrip { cameOnScreen() } }
         .onDisappear { if Push.shared.visiblePane?.pane == paneID { Push.shared.visiblePane = nil } }
-        .onChange(of: unseenFinish) { _, unseen in if unseen, scenePhase == .active { model.focus(paneID) } }
-        .onChange(of: scenePhase) { _, phase in if phase == .active, unseenFinish { model.focus(paneID) } }
+        .onChange(of: unseenFinish) { _, unseen in if unseen, chrome, scenePhase == .active { model.focus(paneID) } }
+        .onChange(of: scenePhase) { _, phase in if phase == .active, chrome, unseenFinish { model.focus(paneID) } }
+    }
+
+    /// The editor and the simulator have a … menu of their own.
+    private var ownsMenu: Bool { pane?.kind == .editor || pane?.kind == .simulator }
+
+    /// The tab's actions for their menu (paneTabMenu).
+    private var tabMenu: AnyView? {
+        guard let tab = pane.flatMap({ model.tab(of: $0) }) else { return nil }
+        return AnyView(Section("Tab") { tabActions(tab) })
+    }
+
+    @ViewBuilder private func tabActions(_ tab: WorkspaceTab) -> some View {
+        TabActions(model: model, tab: tab, rename: { renaming = tab },
+                   newTab: model.group(of: tab)?.canAddTabs == false ? nil : { newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID) })
+    }
+
+    /// With the strip: which view an agent's (or a log's) pane shows, as a
+    /// choice in the … menu, where the bar's switch is otherwise.
+    @ViewBuilder private var viewSwitch: some View {
+        if inStrip, let pane, model.supportsAgentView(pane), !pane.isLog {
+            Picker("View", selection: Binding(get: { agentMode }, set: { setMode($0) })) {
+                Label("Conversation", systemImage: "text.bubble").tag(true)
+                Label("Terminal", systemImage: "apple.terminal").tag(false)
+            }
+            .pickerStyle(.inline)
+        } else if inStrip, let pane, pane.isLog {
+            Picker("View", selection: $logRaw) {
+                Label("Log", systemImage: "list.bullet.rectangle").tag(false)
+                Label("Terminal", systemImage: "apple.terminal").tag(true)
+            }
+            .pickerStyle(.inline)
+        }
+    }
+
+    private func cameOnScreen() {
+        model.focus(paneID)
+        // Its own notifications aren't shown while it's on screen (Push).
+        Push.shared.visiblePane = (Push.shared.session?.host?.id ?? "", paneID)
     }
 
     /// The pane has an agent that finished and hasn't been looked at.
     private var unseenFinish: Bool {
         guard let a = pane.flatMap({ $0.hasAgent ? $0.agent : nil }) else { return false }
         return a.state == .idle && !a.seen
+    }
+}
+
+/// What a pane shows: its terminal or agent view, a browser, a simulator,
+/// the editor or a diff. Compared by what decides that, so PaneScreen's
+/// bar changing hands as a swipe settles (`chrome`) doesn't rebuild it: a
+/// long conversation took longer than the slide, which then jumped to its
+/// end. Its views follow the pane themselves, through the model.
+private struct PaneContent: View, Equatable {
+    let model: AppModel
+    let pane: Pane
+    let active: Bool
+    let canDrive: Bool
+    let logRaw: Bool
+    let agentMode: Bool
+    let agentView: Bool
+    @Binding var shownAgent: Bool
+    @Binding var shownTerminal: Bool
+    let showTerminal: () -> Void
+    let openFile: (String) -> Void
+
+    nonisolated static func == (a: PaneContent, b: PaneContent) -> Bool {
+        MainActor.assumeIsolated {
+            a.pane.id == b.pane.id && a.pane.kind == b.pane.kind && a.pane.isLog == b.pane.isLog && a.active == b.active
+                && a.canDrive == b.canDrive && a.logRaw == b.logRaw && a.agentMode == b.agentMode && a.agentView == b.agentView
+                && a.shownAgent == b.shownAgent && a.shownTerminal == b.shownTerminal
+        }
+    }
+
+    var body: some View {
+        if pane.kind == .browser {
+            BrowserScreen(model: model, paneID: pane.id, active: active, canDrive: canDrive)
+        } else if pane.kind == .simulator {
+            SimulatorScreen(model: model, paneID: pane.id, active: active, canDrive: canDrive)
+        } else if pane.kind == .editor {
+            EditorScreen(model: model, paneID: pane.id, canDrive: canDrive)
+        } else if pane.kind == .diff {
+            DiffScreen(model: model, paneID: pane.id, canDrive: canDrive)
+        } else if pane.isLog {
+            if logRaw {
+                TerminalScreen(model: model, paneID: pane.id, active: true)
+            } else {
+                LogConsoleView(model: model, paneID: pane.id)
+            }
+        } else if agentView {
+            // Both kept once shown, the other hidden: switching only
+            // changes which is visible, so nothing is rebuilt (the
+            // toolbar and its switch included, whose slide a rebuild
+            // cut short), and switching back is instant.
+            ZStack {
+                if shownAgent || agentMode {
+                    AgentConversationView(model: model, paneID: pane.id, onShowTerminal: showTerminal, onOpenFile: openFile)
+                        .opacity(agentMode ? 1 : 0)
+                        .allowsHitTesting(agentMode)
+                        .accessibilityHidden(!agentMode)
+                        .onAppear { shownAgent = true }
+                }
+                if shownTerminal || !agentMode {
+                    TerminalScreen(model: model, paneID: pane.id, active: !agentMode)
+                        .opacity(agentMode ? 0 : 1)
+                        .allowsHitTesting(!agentMode)
+                        .accessibilityHidden(agentMode)
+                        .onAppear { shownTerminal = true }
+                }
+            }
+        } else {
+            TerminalScreen(model: model, paneID: pane.id, active: true)
+        }
     }
 }
 

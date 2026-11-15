@@ -26,6 +26,9 @@ struct PhoneTheme: Equatable, Sendable {
     let dark: TerminalTheme
     /// Hammock's own green: the lock screen keeps its mesh.
     let isHammock: Bool
+    /// The Mac sidebar's tint over its glass (nil: Native, the glass alone):
+    /// Exposé is the same colour and glass.
+    let sidebar: Color?
 
     static func == (a: PhoneTheme, b: PhoneTheme) -> Bool { a.source == b.source }
 
@@ -78,9 +81,10 @@ struct PhoneTheme: Equatable, Sendable {
     /// lastMac, read once (the body asks often).
     @MainActor private static var storedMac: Hammock_V1_HostTheme?
 
-    private init(source: Source, name: String, accent: Color, bubble: Color, light: TerminalTheme, dark: TerminalTheme, isHammock: Bool) {
+    private init(source: Source, name: String, accent: Color, bubble: Color, light: TerminalTheme, dark: TerminalTheme, isHammock: Bool,
+                 sidebar: Color?) {
         self.source = source; self.name = name; self.accent = accent; self.bubble = bubble
-        self.light = light; self.dark = dark; self.isHammock = isHammock
+        self.light = light; self.dark = dark; self.isHammock = isHammock; self.sidebar = sidebar
     }
 
     /// A curated theme. Native and Hammock take the iPhone's own green (its
@@ -90,7 +94,7 @@ struct PhoneTheme: Equatable, Sendable {
         self.init(source: .curated(t.name), name: t.name,
                   accent: own ? Self.hammockAccent : (t.accent?.color ?? Self.hammockAccent),
                   bubble: own ? Self.hammockBubble : (t.bubble?.color ?? Self.hammockBubble),
-                  light: t.light, dark: t.dark, isHammock: own)
+                  light: t.light, dark: t.dark, isHammock: own, sidebar: t.sidebar?.color)
     }
 
     /// The Mac's own choices: its terminal themes (the file it sent, which
@@ -104,7 +108,8 @@ struct PhoneTheme: Equatable, Sendable {
         let agent = agentColors(host.agentColor) ?? agentColors(windowTint(host.windowTheme)) ?? (hammockAccent, hammockBubble, true)
         let t = PhoneTheme(source: .mac(host), name: "Custom", accent: agent.color, bubble: agent.bubble,
                            light: terminal(host.lightTerminal, file: host.lightTerminalFile, base: .light),
-                           dark: terminal(host.darkTerminal, file: host.darkTerminalFile, base: .dark), isHammock: agent.own)
+                           dark: terminal(host.darkTerminal, file: host.darkTerminalFile, base: .dark), isHammock: agent.own,
+                           sidebar: AppTheme.named(windowTint(host.windowTheme))?.sidebar?.color)
         if customThemes.count > 8 { customThemes.removeAll() }
         customThemes[host] = t
         return t
@@ -157,8 +162,8 @@ struct PhoneTheme: Equatable, Sendable {
     @MainActor private static var parsed: [String: TerminalTheme] = [:]
 
     // The iPhone's Hammock green (AgentColor's, as its AccentColor).
-    private static let hammockAccent = AgentColor.named("Hammock") ?? .accentColor
-    private static let hammockBubble = AgentColor.bubble("Hammock") ?? .accentColor
+    private static let hammockAccent = AgentColor.named("Hammock") ?? .accentColor // system accent: unreachable fallback
+    private static let hammockBubble = AgentColor.bubble("Hammock") ?? .accentColor // system accent: unreachable fallback
 
     // MARK: The terminal (UIKit)
 

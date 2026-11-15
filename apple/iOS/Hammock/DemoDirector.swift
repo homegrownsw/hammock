@@ -21,11 +21,16 @@ import UIKit
 ///   scroll:top|bottom|latest|N  the conversation on screen scrolled to its top, its end (latest: as its Latest
 ///                       button does), or by N points (up if negative)
 ///   older:PANE          PANE's earlier messages loaded, as Show Earlier Messages does
+///   pane:PANE           the tab on screen switches to PANE, as tapping its pill does
+///   expose              the tab on screen opens Exposé, as its button does
+///   pick:PANE           Exposé goes to PANE, as tapping its tile does
 ///
 /// and at the end "HammockTake: done". The cockpit's views follow the tab and path through notifications.
 @MainActor
 enum DemoDirector {
     static let navigate = Notification.Name("HammockDemoDirectorNavigate")
+    /// The pane strip's steps (pane, expose, pick), for TabScreen.
+    static let strip = Notification.Name("HammockDemoDirectorStrip")
     private static var started = false
 
     static var steps: [String]? {
@@ -80,6 +85,8 @@ enum DemoDirector {
             let s = model.acquireAgent(arg)
             s.loadOlder()
             model.releaseAgent(arg)
+        case "pane", "expose", "pick":
+            NotificationCenter.default.post(name: strip, object: nil, userInfo: ["do": verb, "pane": arg])
         case "dismiss":
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         case "say":

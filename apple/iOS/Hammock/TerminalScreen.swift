@@ -23,20 +23,29 @@ struct TerminalRepresentable: UIViewRepresentable {
     let model: AppModel
     let paneID: String
     let active: Bool
+    /// A picture of the pane (Exposé's tile): drawn, never driven. It
+    /// takes no touches and has nowhere to send input, focus or a size,
+    /// so it can't resize the pane on the Mac.
+    var preview = false
 
     func makeUIView(context: Context) -> TerminalUIView {
         let v = TerminalUIView()
         let s = model.acquireSession(paneID)
         v.session = s
+        v.preview = preview
+        v.release = { [model] id in model.releaseSession(id) }
+        if preview {
+            v.isUserInteractionEnabled = false
+            return v
+        }
         v.onInput = { [model, paneID] data in model.send(paneID, data) }
         v.onFocus = { [model, paneID] in model.focus(paneID) }
         v.onResize = { [model, paneID] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
-        v.release = { [model] id in model.releaseSession(id) }
         v.active = active
         return v
     }
 
-    func updateUIView(_ v: TerminalUIView, context: Context) { v.active = active }
+    func updateUIView(_ v: TerminalUIView, context: Context) { if !preview { v.active = active } }
 
     static func dismantleUIView(_ v: TerminalUIView, coordinator: ()) {
         if let s = v.session {
@@ -112,6 +121,11 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
             if !active, isFirstResponder { _ = resignFirstResponder() }
         }
     }
+
+    /// A picture (TerminalRepresentable's preview): the font fits the
+    /// width only, no smaller than 4 points, and a grid taller than the
+    /// view shows its bottom rows, where the prompt and the latest output are.
+    var preview = false
 
     private let padding: CGFloat = 4
     private var ctrlLatched = false
@@ -427,10 +441,10 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         let base = metrics(size: size)
         let needW = CGFloat(f.cols) * base.cw + padding * 2
         let needH = CGFloat(f.rows) * base.ch + padding * 2
-        let shrink = min(1, usable.width / needW, usable.height / needH)
-        if shrink < 1 { size = max(5, size * shrink) }
+        let shrink = preview ? min(1, usable.width / needW) : min(1, usable.width / needW, usable.height / needH)
+        if shrink < 1 { size = max(preview ? 4 : 5, size * shrink) }
         let m = metrics(size: size)
-        let origin = CGPoint(x: usable.minX + padding, y: usable.minY + padding)
+        let origin = gridOrigin(usable: usable, rows: f.rows, cursor: f.cursorVisible ? f.cursorY : nil, cellHeight: m.ch)
         drawn = (origin, m.cw, m.ch)
 
         let key = "\(m.font.fontName)|\(size)|\(m.cw)|\(m.ch)|\(m.inset)|\(scale)"
@@ -464,6 +478,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         for (y, row) in f.cells.enumerated() {
             let top = origin.y + CGFloat(y) * m.ch
             if top > bounds.maxY { break }
+            if top + m.ch < bounds.minY { continue }
             scene.rows.append((top, layout.line(row)))
         }
         for img in session.engine.images() {
@@ -479,6 +494,16 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
             scene.overlay.append(.init(rect: isFirstResponder ? r : CGRect(x: r.minX, y: r.maxY - 2, width: r.width, height: 2), color: c, copy: false))
         }
         return scene
+    }
+
+    /// Where the grid's top left goes: inside the padding, except that a
+    /// preview whose rows down to the cursor (all of them, with the cursor
+    /// hidden) don't fit shows them ending at its bottom.
+    private func gridOrigin(usable: CGRect, rows: Int, cursor: Int?, cellHeight: CGFloat) -> CGPoint {
+        var origin = CGPoint(x: usable.minX + padding, y: usable.minY + padding)
+        let height = CGFloat(min(cursor.map { $0 + 1 } ?? rows, rows)) * cellHeight
+        if preview, height + padding * 2 > usable.height { origin.y = usable.maxY - padding - height }
+        return origin
     }
 
     private func color(_ c: RGB, alpha: CGFloat = 1) -> UIColor {
@@ -499,15 +524,16 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         // Fit both dimensions so the prompt (usually the bottom row) stays visible.
         let needW = CGFloat(f.cols) * base.cw + padding * 2
         let needH = CGFloat(f.rows) * base.ch + padding * 2
-        let scale = min(1, usable.width / needW, usable.height / needH)
-        if scale < 1 { size = max(5, size * scale) }
+        let scale = preview ? min(1, usable.width / needW) : min(1, usable.width / needW, usable.height / needH)
+        if scale < 1 { size = max(preview ? 4 : 5, size * scale) }
         let m = metrics(size: size)
-        let origin = CGPoint(x: usable.minX + padding, y: usable.minY + padding)
+        let origin = gridOrigin(usable: usable, rows: f.rows, cursor: f.cursorVisible ? f.cursorY : nil, cellHeight: m.ch)
         drawn = (origin, m.cw, m.ch)
 
         for (y, row) in f.cells.enumerated() {
             let top = origin.y + CGFloat(y) * m.ch
             if top > bounds.maxY { break }
+            if top + m.ch < bounds.minY { continue }
             for (x, c) in row.enumerated() {
                 let bg = c.selected ? theme.selection : (c.inverse ? (c.fg ?? f.foreground) : c.bg)
                 if let bg {

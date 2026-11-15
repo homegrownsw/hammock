@@ -18,6 +18,9 @@ public final class EditorSession {
     /// The language highlighting it ("" plain text), as the page found it.
     public private(set) var languageName = ""
     public private(set) var loaded = false
+    /// The buffer's text as last heard (nil until a snapshot, or after an
+    /// update it couldn't follow until the next): for a preview, not editing.
+    public private(set) var text: String?
     /// The diff against the file on disk is showing.
     public private(set) var showingDiff = false
     public var error = ""
@@ -50,6 +53,11 @@ public final class EditorSession {
     func apply(_ u: Hammock_V1_EditorUpdate) {
         if u.gitKnown || !u.git.isEmpty || (u.updates.isEmpty && !u.snapshot && !u.hasSelection) { lastGit = u.git }
         if u.snapshot {
+            text = u.text
+        } else if let t = text, !u.updates.isEmpty {
+            text = u.updates.reduce(Optional(t)) { t, c in t.flatMap { Self.applying(c.changes, to: $0) } }
+        }
+        if u.snapshot {
             snapshot = u
             since = []
             loaded = true
@@ -64,6 +72,31 @@ public final class EditorSession {
             snapshot = nil
         }
         for p in pages.allObjects { p.receive(u) }
+    }
+
+    /// A CodeMirror ChangeSet (its JSON: a number keeps that many UTF-16
+    /// units, an array deletes its first element's worth and inserts the
+    /// lines after it) applied to `text`; nil if it doesn't fit.
+    nonisolated static func applying(_ json: String, to text: String) -> String? {
+        guard let parts = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [Any] else { return nil }
+        let src = text as NSString
+        let out = NSMutableString()
+        var at = 0
+        for part in parts {
+            if let keep = part as? Int {
+                guard at + keep <= src.length else { return nil }
+                out.append(src.substring(with: NSRange(location: at, length: keep)))
+                at += keep
+            } else if let change = part as? [Any], let delete = change.first as? Int {
+                guard at + delete <= src.length else { return nil }
+                at += delete
+                out.append(change.dropFirst().compactMap { $0 as? String }.joined(separator: "\n"))
+            } else {
+                return nil
+            }
+        }
+        guard at == src.length else { return nil }
+        return out as String
     }
 
     /// A page ready for the buffer: what's arrived so far.

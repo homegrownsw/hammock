@@ -14,6 +14,22 @@ struct SimulatorScreen: View {
 
     @State private var image: UIImage?
     @State private var points = CGSize(width: 402, height: 874) // the device's screen
+
+    /// Each pane's last screenshot (and its screen's size) this run: shown
+    /// at once when the pane comes back (a swipe or a tap on its pill
+    /// slides it in), until its video or a new screenshot comes.
+    @MainActor private static var lastShot: [String: (image: UIImage, points: CGSize)] = [:]
+
+    init(model: AppModel, paneID: String, active: Bool, canDrive: Bool = true) {
+        self.model = model
+        self.paneID = paneID
+        self.active = active
+        self.canDrive = canDrive
+        if let last = MainActor.assumeIsolated({ Self.lastShot[paneID] }) {
+            _image = State(initialValue: last.image)
+            _points = State(initialValue: last.points)
+        }
+    }
     @State private var failed = false
     @State private var typing = false
     @State private var text = ""
@@ -38,26 +54,44 @@ struct SimulatorScreen: View {
     /// moves focus, and its remote's buttons are in the bars.
     private var isTV: Bool { model.isTVSimulator(paneID) }
     private var isAndroidPhone: Bool { model.isAndroidPhone(paneID) }
+    @Environment(\.inPaneStrip) private var inStrip
+    @Environment(\.paneChrome) private var chrome
+    @Environment(\.paneTabMenu) private var tabMenu
 
     var body: some View {
         VStack(spacing: 12) {
             // Left empty while full screen has the video: the stream's
             // layer can be in only one view, and comes back to a new one.
             if fullScreen { Color.clear } else { surface }
+            // With the pane strip: the buttons above it, not in the
+            // system's bar under it.
+            if inStrip {
+                InlinePaneControls { Group { deviceButtons }.disabled(!canDrive) }
+            }
         }
         .padding(.horizontal)
-        .navigationTitle(pane?.title ?? "Simulator")
+        .preference(key: PaneLoading.self, value: !playing && image == nil && !failed)
+        .background { if chrome { Color.clear.navigationTitle(pane?.title ?? "Simulator") } }
         // The system's bar, not one of our own: at the bottom of an iPhone,
         // down the side of iPhone Duo (where it leaves the device its
         // height, and keeps out of the fold).
         .toolbar {
-            ToolbarItemGroup(placement: .bottomBar) { Group { deviceButtons }.disabled(!canDrive) }
+            if !inStrip {
+                ToolbarItemGroup(placement: .bottomBar) { Group { deviceButtons }.disabled(!canDrive) }
+            }
         }
         // Full screen, and a screenshot to share.
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") { enterFullScreen() }
-                screenshotButton
+            if chrome {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") { enterFullScreen() }
+                    screenshotButton
+                    // The tab's … menu, after these (PaneScreen leaves it to us).
+                    if let tabMenu {
+                        Menu { tabMenu } label: { Image(systemName: "ellipsis.circle") }
+                            .accessibilityLabel("Tab Actions")
+                    }
+                }
             }
         }
         // Presented over everything, not this screen made bigger: a pushed
@@ -108,6 +142,7 @@ struct SimulatorScreen: View {
                         .frame(width: fit.width, height: fit.height)
                         .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
                         .contentShape(Rectangle())
+                        .takesOwnDrags()
                         .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive && !isTV)
                         .gesture(remote(fit), isEnabled: canDrive && isTV)
                 } else if let image {
@@ -115,6 +150,7 @@ struct SimulatorScreen: View {
                         .resizable()
                         .frame(width: fit.width, height: fit.height)
                         .clipShape(RoundedRectangle(cornerRadius: corner(fit), style: .continuous))
+                        .takesOwnDrags()
                         .gesture(magnify(fit).simultaneously(with: drag(fit)), isEnabled: canDrive && !isTV)
                         .gesture(remote(fit), isEnabled: canDrive && isTV)
                 } else if failed {
@@ -372,6 +408,7 @@ struct SimulatorScreen: View {
                 if let w = (r.json["width"] as? NSNumber)?.doubleValue, let h = (r.json["height"] as? NSNumber)?.doubleValue, w > 0, h > 0 {
                     points = CGSize(width: w, height: h)
                 }
+                Self.lastShot[paneID] = (img, points)
             } else if image == nil {
                 failed = true
             }

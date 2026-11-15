@@ -23,7 +23,9 @@ Groups shows each Group with its tabs, as on your Mac. Each Group's header has b
 
 Tap a tab to open it, swipe left to close or rename it, or touch and hold it for the rest of its actions. **Edit** at the top reorders tabs.
 
-A tab with several panes opens as an overview, laid out as on the Mac. Tap a pane to open it, or touch and hold it for more, such as **Interrupt**, **Put Agent to Sleep** or **Move to New Tab**.
+A tab with several panes opens on the one you last had open there. A strip along the bottom has a pill for each pane, its floating ones after a divider: tap one to switch, or swipe sideways across the pane (beside a simulator's screen or a browser's page, not on it). A pill turns orange when its agent is waiting on you, and shows a dot when one has finished. Touch and hold a pill for more, such as **Interrupt**, **Put Agent to Sleep** or **Move to New Tab**.
+
+The button at the left of the strip opens Exposé: the tab laid out as on the Mac, each pane live. Tap one to go to it.
 
 If you've [linked computers](/hammock/docs/remote/#linked-computers), Groups shows every computer's Groups, with chips at the top to pick one.
 

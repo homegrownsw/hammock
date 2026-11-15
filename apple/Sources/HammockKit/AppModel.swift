@@ -1229,12 +1229,13 @@ public final class AppModel {
 
     /// Live video of a simulator or browser pane (MediaStream): over QUIC from
     /// a paired device, in band locally. maxPixels caps its size (0: the
-    /// pane's own). Nil while disconnected. Call start().
-    public func videoStream(for paneID: String, maxPixels: UInt32 = 0) -> MediaStream? {
+    /// pane's own), maxFPS its frame rate (0: the host's, 60). Nil while
+    /// disconnected. Call start().
+    public func videoStream(for paneID: String, maxPixels: UInt32 = 0, maxFPS: UInt32 = 0) -> MediaStream? {
         guard let conn = connection else { return nil }
         // A shared Group's pane comes through your Mac, which relays its host's video.
         let shared = group(ofPane: paneID)?.isRemote == true
-        return MediaStream(connection: conn, paneID: paneID, maxPixels: maxPixels, inBand: shared)
+        return MediaStream(connection: conn, paneID: paneID, maxPixels: maxPixels, maxFPS: maxFPS, inBand: shared)
     }
 
     /// Simulator panes waiting on their XCTest runner (rotations and pinches:

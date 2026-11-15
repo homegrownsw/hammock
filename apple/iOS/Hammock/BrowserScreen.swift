@@ -22,6 +22,24 @@ struct BrowserScreen: View {
     @Environment(\.horizontalSizeClass) private var hSize
 
     private var pane: Pane? { model.panes[paneID] }
+    @Environment(\.inPaneStrip) private var inStrip
+    @Environment(\.paneChrome) private var chrome
+
+    /// Back, Forward, Reload, typing and Safari: in the system's bottom
+    /// bar, or above the pane strip.
+    @ViewBuilder private var pageButtons: some View {
+        Button("Back", systemImage: "chevron.left") { model.navigate(paneID, "back") }
+            .disabled(!canDrive || pane?.canGoBack != true)
+        Button("Forward", systemImage: "chevron.right") { model.navigate(paneID, "forward") }
+            .disabled(!canDrive || pane?.canGoForward != true)
+        Button("Reload", systemImage: "arrow.clockwise") { model.navigate(paneID, "reload") }
+            .disabled(!canDrive)
+        Button(typing ? "Hide Keyboard" : "Type", systemImage: typing ? "keyboard.chevron.compact.down" : "keyboard") { typing.toggle() }
+            .disabled(!canDrive)
+        if let url = pane.flatMap({ URL(string: $0.url) }), url.scheme?.hasPrefix("http") == true {
+            Link(destination: url) { Label("Open in Safari", systemImage: "safari") }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -30,6 +48,7 @@ struct BrowserScreen: View {
                     if let stream, playing {
                         // All the space, so a pinch can zoom into it; the page sits fitted in the middle.
                         RemotePageView(stream: stream, pageSize: pixels) { op, args in if canDrive { model.browserInput(paneID, op, args) } }
+                            .takesOwnDrags()
                     } else if failed {
                         ContentUnavailableView("Can't See This Page", systemImage: "globe",
                                                description: Text("Its Mac isn't answering."))
@@ -44,25 +63,21 @@ struct BrowserScreen: View {
             }
         }
         .padding(.horizontal)
+        .preference(key: PaneLoading.self, value: !playing && !failed)
+        // With the pane strip: the buttons above it, not in the system's
+        // bar under it.
+        .safeAreaInset(edge: .bottom, spacing: 8) {
+            if inStrip { InlinePaneControls { pageButtons } }
+        }
         // The system's bar, not one of our own: at the bottom of an iPhone,
         // down the side of iPhone Duo (where it leaves the page its height,
         // and keeps out of the fold).
         .toolbar {
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button("Back", systemImage: "chevron.left") { model.navigate(paneID, "back") }
-                    .disabled(!canDrive || pane?.canGoBack != true)
-                Button("Forward", systemImage: "chevron.right") { model.navigate(paneID, "forward") }
-                    .disabled(!canDrive || pane?.canGoForward != true)
-                Button("Reload", systemImage: "arrow.clockwise") { model.navigate(paneID, "reload") }
-                    .disabled(!canDrive)
-                Button(typing ? "Hide Keyboard" : "Type", systemImage: typing ? "keyboard.chevron.compact.down" : "keyboard") { typing.toggle() }
-                    .disabled(!canDrive)
-                if let url = pane.flatMap({ URL(string: $0.url) }), url.scheme?.hasPrefix("http") == true {
-                    Link(destination: url) { Label("Open in Safari", systemImage: "safari") }
-                }
+            if !inStrip {
+                ToolbarItemGroup(placement: .bottomBar) { pageButtons }
             }
         }
-        .navigationTitle(pane.map { $0.title.isEmpty ? "Browser" : $0.title } ?? "Browser")
+        .background { if chrome { Color.clear.navigationTitle(pane.map { $0.title.isEmpty ? "Browser" : $0.title } ?? "Browser") } }
         .task(id: "\(active) \(String(describing: hSize))") {
             guard active else { return }
             await watchVideo()

@@ -94,6 +94,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             answer(msg) { $0.helloReply = .with { $0.protocolVersion = 1; $0.hostName = "MacBook"; $0.userID = Self.me; $0.daemonVersion = "demo" } }
         case .subscribe:
             answer(msg) { $0.state = state }
+        case .attachPane(let a) where a.paneID == "p_page":
+            // The editor pane: its buffer.
+            send(.with { $0.editorUpdate = .with { $0.paneID = a.paneID; $0.version = 1; $0.snapshot = true; $0.text = Self.pageText } })
         case .attachPane(let a):
             let (cols, rows) = sizes[a.paneID] ?? (80, 40)
             snapshot(a.paneID, cols: cols, rows: rows)
@@ -555,7 +558,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         }
         u.groups = [
             group("g_notes", "Notes", "🗞️", order: 0, tabs: ["t_brief", "t_inbox"]),
-            group("g_hammock", "Hammock", "🌴", order: 1, tabs: ["t_triage", "t_polish", "t_shell", "t_backup"]),
+            group("g_hammock", "Hammock", "🌴", order: 1, tabs: ["t_triage", "t_polish", "t_site", "t_shell", "t_backup"]),
             group("g_release", "Releases", "📦", order: 2, tabs: ["t_notes"], host: studio),
             // Its tabs all closed: what to open next.
             .with { $0.id = "g_units"; $0.name = "Units"; $0.icon = "⚖️"; $0.order = 3; $0.folder = "/Users/me/Developer/units" },
@@ -565,6 +568,27 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             tab("t_inbox", "g_notes", "Inbox zero", pane: "p_inbox"),
             tab("t_triage", "g_hammock", "Triage new issues", pane: "p_triage"),
             tab("t_polish", "g_hammock", "Agent view polish", pane: "p_polish"),
+            // Several panes, as on a Mac: the agent beside its tests and its
+            // diff, and the docs' server floating over them.
+            {
+                var t = tab("t_site", "g_hammock", "Docs site", pane: "p_site")
+                t.layout = .with {
+                    $0.split = .with {
+                        $0.direction = .horizontal
+                        $0.weights = [0.55, 0.45]
+                        $0.children = [
+                            .with { $0.paneID = "p_site" },
+                            .with { $0.split = .with {
+                                $0.direction = .vertical
+                                $0.weights = [0.5, 0.5]
+                                $0.children = [.with { $0.paneID = "p_tests" }, .with { $0.paneID = "p_diff" }]
+                            } },
+                        ]
+                    }
+                }
+                t.floating = [.with { $0.paneID = "p_docs" }, .with { $0.paneID = "p_page" }]
+                return t
+            }(),
             tab("t_shell", "g_hammock", "zsh", pane: "p_shell"),
             tab("t_backup", "g_hammock", "Back up dotfiles", pane: "p_backup"),
             tab("t_notes", "g_release", "Weekly release notes", pane: "p_notes"),
@@ -576,6 +600,16 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             pane("p_triage", "t_triage", agent: .needsInput, summary: "Bash: gh issue list --label needs-triage --json number,title", since: 3,
                  schedule: "s_triage", run: "r_triage_now"),
             pane("p_polish", "t_polish", agent: .working, summary: "Editing AgentViews.swift", since: 2),
+            pane("p_site", "t_site", agent: .idle, summary: "The phone’s docs page covers the pane strip now.", since: 12, seen: true),
+            { var p = pane("p_tests", "t_site"); p.program = ["go"]; p.title = "go test"; p.cols = 100; p.rows = 30; return p }(),
+            { var p = pane("p_diff", "t_site"); p.kind = .diff
+                p.diff = .with { $0.repo = "/Users/me/Developer/hammock"; $0.title = "Uncommitted changes"; $0.branch = "agent-view"
+                    $0.files = 3; $0.added = 142; $0.removed = 38; $0.openThreads = 1 }
+                return p }(),
+            { var p = pane("p_page", "t_site"); p.kind = .editor
+                p.editor = .with { $0.path = "/Users/me/Developer/hammock/site/src/content/docs/iphone.md"; $0.name = "iphone.md"; $0.dirty = true; $0.language = "markdown" }
+                return p }(),
+            { var p = pane("p_docs", "t_site"); p.program = ["npm", "node"]; p.title = "docs"; p.cols = 90; p.rows = 24; return p }(),
             pane("p_shell", "t_shell"),
             pane("p_backup", "t_backup", schedule: "s_backup", run: "r_backup_y"),
             pane("p_notes", "t_notes", agent: .idle, summary: "Release notes for 1.8 are ready to review.", since: 50,
@@ -698,6 +732,30 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
     static let prompt = "\(e)1;32mme@MacBook\(e)0m \(e)1;34m~/Developer/hammock\(e)0m $ "
 
     /// What a pane's terminal shows.
+    /// The editor pane's file (p_page).
+    static let pageText = """
+    ---
+    title: iPhone
+    description: Your Mac's Groups, agents and panes on your phone.
+    ---
+
+    ## Groups
+
+    Groups shows each Group with its tabs, as on your Mac.
+
+    A tab with several panes opens on the one you last had open there.
+    A strip along the bottom has a pill for each pane: tap one to switch,
+    or swipe sideways across a pane.
+
+    The button at the left of the strip opens Exposé: the tab laid out as
+    on the Mac, each pane live. Tap one to go to it.
+
+    ## Terminals
+
+    Tap a terminal to bring up the keyboard, with a row above it of the
+    keys a phone lacks.
+    """
+
     static func terminal(_ paneID: String) -> String {
         switch paneID {
         case "p_shell":
@@ -725,6 +783,25 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 + "\(e)2m9:38:02\(e)0m \(e)36m[vite]\(e)0m page reload \(e)2msrc/App.tsx\(e)0m\r\n"
                 + "\(e)2m9:39:15\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/Forecast.tsx\(e)0m\r\n"
                 + "\(e)2m9:40:47\(e)0m \(e)36m[vite]\(e)0m hmr update \(e)2m/src/theme.css\(e)0m\r\n^C\r\n" + prompt
+        case "p_tests":
+            let ok = "\(e)32mok\(e)0m"
+            return prompt + "watchexec -e go -- go test ./internal/agents/...\r\n"
+                + "\(e)2m[Running: go test ./internal/agents/...]\(e)0m\r\n"
+                + "\(ok)  internal/agents          \(e)2m0.44s\(e)0m\r\n"
+                + "\(ok)  internal/agents/claude   \(e)2m0.21s\(e)0m\r\n"
+                + "\(ok)  internal/agents/codex    \(e)2m0.17s\(e)0m\r\n"
+                + "\(e)2m[Command was successful]\(e)0m\r\n"
+                + "\(e)2m[Running: go test ./internal/agents/...]\(e)0m\r\n"
+                + "\(e)31m--- FAIL\(e)0m: TestBlocksWrapLongLines \(e)2m(0.01s)\(e)0m\r\n"
+                + "    blocks_test.go:88: got 3 rows, want 2\r\n"
+                + "\(e)31mFAIL\(e)0m  internal/agents          \(e)2m0.39s\(e)0m\r\n"
+                + "\(e)2m[Command exited with 1]\(e)0m\r\n"
+        case "p_docs":
+            return prompt + "npm run docs-dev\r\n\r\n"
+                + "  \(e)1;35mastro\(e)0m  v5.4 \(e)2mready in 612 ms\(e)0m\r\n\r\n"
+                + "  \(e)32m┃\(e)0m Local    \(e)36mhttp://localhost:4321/hammock/docs\(e)0m\r\n\r\n"
+                + "\(e)2m09:41:12\(e)0m \(e)36m[watch]\(e)0m src/content/docs/iphone.md\r\n"
+                + "\(e)2m09:41:12\(e)0m \(e)32m[200]\(e)0m /hammock/docs/iphone/ \(e)2m18ms\(e)0m\r\n"
         case "p_backup":
             return "\(e)1;32mme@MacBook\(e)0m \(e)1;34m~\(e)0m $ rsync -a ~/.config/ /Volumes/Backup/config/\r\n"
                 + "\(e)2msent 18.2 MB  received 4.1 kB  12.1 MB/sec\(e)0m\r\n"
@@ -775,6 +852,13 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 block("b3", .tool, title: "Archived 41 newsletters", tool: "mcp__mail__archive", input: "41 messages", minutesAgo: 246),
                 block("b4", .text, text: "Archived 41 newsletters and drafted two replies, to Priya about Thursday and to the landlord about the boiler. They’re in Drafts for you to check before they go.", minutesAgo: 240),
                 done("b5", workedMinutes: 9.8, minutesAgo: 240),
+            ],
+            "p_site": [
+                block("b1", .user, text: "Document the iPhone’s new pane strip on the docs site, and keep the tests passing.", minutesAgo: 20),
+                block("b2", .tool, title: "Edited iphone.md", tool: "Edit", input: "/Users/me/Developer/hammock/site/src/content/docs/iphone.md", added: 24, removed: 9, minutesAgo: 16),
+                block("b3", .tool, title: "Ran `go test ./internal/agents/...`", input: "go test ./internal/agents/...", output: "FAIL TestBlocksWrapLongLines", error: true, minutesAgo: 14),
+                block("b4", .text, text: "The iPhone page now covers the pane strip and Exposé. One test is failing, **TestBlocksWrapLongLines**, which is from the agent view work in the next tab, not this change.", minutesAgo: 12),
+                done("b5", workedMinutes: 8.1, minutesAgo: 12),
             ],
             "p_triage": [
                 block("b1", .user, text: "Label and prioritise new GitHub issues.", minutesAgo: 6),

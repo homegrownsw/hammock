@@ -149,11 +149,12 @@ public final class MediaStream: @unchecked Sendable {
 
     /// inBand: frames on the control connection even when remote (a
     /// shared Group's pane, which your Mac relays from its host).
-    public init(connection: DaemonConnection, paneID: String, maxPixels: UInt32 = 0, inBand: Bool = false) {
+    public init(connection: DaemonConnection, paneID: String, maxPixels: UInt32 = 0, maxFPS: UInt32 = 0, inBand: Bool = false) {
         self.conn = connection
         self.paneID = paneID
         self.screen = nil
         self.maxPixels = maxPixels
+        self.maxFPS = maxFPS
         self.forceInBand = inBand
         layer.videoGravity = .resizeAspect
         layer.preventsDisplaySleepDuringVideoPlayback = false
