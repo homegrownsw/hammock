@@ -414,8 +414,9 @@ final class SimulatorPaneNSView: NSView {
     /// The screen's shape without a mask: a TV's square corners, rounded a
     /// little; else a continuous corner close to a modern iPhone's.
     private var plainOutline: CGPath {
-        // An Android phone's: a little tighter than an iPhone's.
-        let r = isTV ? 6 : size.width * (isAndroid ? 0.09 : 0.12)
+        // An emulator's screen is square-cornered (its status bar reaches into the
+        // corners): only a little rounding, so none of it is cut off.
+        let r = isTV ? 6 : isAndroid ? min(size.width * 0.03, 20) : size.width * 0.12
         return CGPath(roundedRect: CGRect(origin: .zero, size: size), cornerWidth: r, cornerHeight: r, transform: nil)
     }
     /// Room beside the frame for the side buttons.
@@ -990,14 +991,25 @@ struct SimulatorPaneView: View {
             .overlay {
                 if let start = model.emulatorStartLabel(paneID) {
                     // It runs in Android Studio, where Hammock can't drive it, or it
-                    // stopped: offer to start it here.
-                    VStack(spacing: 10) {
-                        Image(systemName: "smartphone").font(.system(size: 28)).foregroundStyle(.secondary)
-                        Text(model.emulatorInStudio(paneID) ? "\(pane?.title ?? "This emulator") is running in Android Studio" : (pane?.deviceNote ?? ""))
-                            .font(.headline).multilineTextAlignment(.center)
-                        Button(start) { EmulatorTakeover.confirm(model, paneID) }
+                    // stopped: offer to start it here. Its last picture stays, dimmed,
+                    // under a card that reads over any picture.
+                    ZStack {
+                        if let p = placement, !p.screen.isEmpty {
+                            Path(p.screenPath).fill(Color.black.opacity(0.6))
+                        }
+                        VStack(spacing: 10) {
+                            Image(systemName: isTV ? "tv" : "smartphone").font(.system(size: 26)).foregroundStyle(.secondary)
+                            Text(model.emulatorInStudio(paneID) ? "\(pane?.title ?? "This emulator") is running in Android Studio" : (pane?.deviceNote ?? ""))
+                                .font(.headline).multilineTextAlignment(.center)
+                            Button(start) { EmulatorTakeover.confirm(model, paneID) }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
+                        }
+                        .padding(.horizontal, 28).padding(.vertical, 22)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+                        .padding(24)
                     }
-                    .padding(24)
                 }
             }
     }

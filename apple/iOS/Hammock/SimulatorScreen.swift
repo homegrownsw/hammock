@@ -368,6 +368,7 @@ struct SimulatorScreen: View {
     /// its shape (a Duo opened is wide), scaled to the view.
     private func corner(_ fit: CGSize) -> CGFloat {
         if isTV { return 6 * fit.width / max(points.width, 1) } // a TV's screen is square-cornered
+        if model.isAndroid(paneID) { return min(points.width * 0.03, 20) * fit.width / max(points.width, 1) } // so is an emulator's
         let device = min(55, min(points.width, points.height) * 0.137)
         return device * fit.width / max(points.width, 1)
     }
