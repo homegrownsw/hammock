@@ -36,7 +36,8 @@ struct SimulatorScreen: View {
     private var pane: Pane? { model.panes[paneID] }
     /// An Apple TV: no touch screen. A tap is its remote's Select, a swipe
     /// moves focus, and its remote's buttons are in the bars.
-    private var isTV: Bool { model.isAppleTV(paneID) }
+    private var isTV: Bool { model.isTVSimulator(paneID) }
+    private var isAndroidPhone: Bool { model.isAndroidPhone(paneID) }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -87,6 +88,7 @@ struct SimulatorScreen: View {
         }
         .modifier(Prompts(screen: self, inCover: false))
         .onChange(of: isTV) { sizeFromVideo() }
+        .onChange(of: pane?.deviceScale) { sizeFromVideo() }
         .task(id: active) {
             guard active else { return }
             await withTaskGroup(of: Void.self) { g in
@@ -155,7 +157,7 @@ struct SimulatorScreen: View {
     /// Home, Lock, rotation, typing and folding: in the bottom bar, and in
     /// full screen's controls. An Apple TV's are its remote's.
     @ViewBuilder private var deviceButtons: some View {
-        if isTV { remoteButtons } else { phoneButtons }
+        if isTV { remoteButtons } else if isAndroidPhone { androidButtons } else { phoneButtons }
     }
 
     /// An Apple TV's remote: Back, TV and Play/Pause; volume (touch and hold
@@ -168,11 +170,34 @@ struct SimulatorScreen: View {
             Button("Volume Up", systemImage: "speaker.plus") { model.pressRemote(paneID, "volume_up") }
             Button("Volume Down", systemImage: "speaker.minus") { model.pressRemote(paneID, "volume_down") }
             Button("Mute", systemImage: "speaker.slash") { model.pressRemote(paneID, "mute") }
-            Button("Siri", systemImage: "mic") { model.pressRemote(paneID, "siri") }
+            if model.isAppleTV(paneID) {
+                Button("Siri", systemImage: "mic") { model.pressRemote(paneID, "siri") }
+            }
         } label: {
             Label("Volume", systemImage: "speaker.wave.2")
         } primaryAction: {
             model.pressRemote(paneID, "volume_up")
+        }
+        Button("Type", systemImage: "keyboard") { typing = true }
+    }
+
+    /// An Android phone's: Back, Home and Recents; rotation; typing; folding.
+    @ViewBuilder private var androidButtons: some View {
+        Button("Back", systemImage: "chevron.backward") { model.pressSimulatorButton(paneID, "back") }
+        Button("Home", systemImage: "circle") { model.pressSimulatorButton(paneID, "home") }
+        Button("Recents", systemImage: "square") { model.pressSimulatorButton(paneID, "recents") }
+        Menu {
+            Button("Rotate Left", systemImage: "rotate.left") { model.rotateSimulator(paneID, "left") }
+            Button("Rotate Right", systemImage: "rotate.right") { model.rotateSimulator(paneID, "right") }
+            Button("Power", systemImage: "power") { model.pressSimulatorButton(paneID, "power") }
+            Button("Volume Up", systemImage: "speaker.plus") { model.pressSimulatorButton(paneID, "volume_up") }
+            Button("Volume Down", systemImage: "speaker.minus") { model.pressSimulatorButton(paneID, "volume_down") }
+            if pane?.deviceFoldable == true {
+                let open = (pane?.deviceHinge ?? 0) > 120
+                Button(open ? "Close Phone" : "Open Phone", systemImage: open ? "book.closed" : "book") { model.toggleFold(paneID) }
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
         }
         Button("Type", systemImage: "keyboard") { typing = true }
     }
@@ -312,7 +337,9 @@ struct SimulatorScreen: View {
     /// after the first frame.
     private func sizeFromVideo() {
         guard let px = videoPixels, px.width > 0 else { return }
-        let scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
+        var scale: CGFloat = isTV ? max(px.width, px.height) / 1920 : px.width >= 1000 ? 3 : 2
+        // The Mac says it (an emulator's is its density, which can't be guessed).
+        if let s = pane?.deviceScale, s > 0 { scale = s }
         points = CGSize(width: px.width / scale, height: px.height / scale)
     }
 
