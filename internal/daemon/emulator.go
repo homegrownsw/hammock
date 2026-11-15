@@ -33,6 +33,7 @@ type emuHub struct {
 	// as simulators are. Emulators already running are left alone.
 	started  map[string]bool
 	shutdown map[string]*time.Timer
+	seq      int // makes each session's frames file its own
 }
 
 func newEmuHub(d *Daemon) *emuHub {
@@ -41,24 +42,31 @@ func newEmuHub(d *Daemon) *emuHub {
 
 // emuSession drives one pane's emulator.
 type emuSession struct {
-	hub      *emuHub
-	id, avd  string
-	ctx      context.Context
-	cancel   context.CancelFunc
-	takeover chan struct{}
+	hub     *emuHub
+	id, avd string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	// start asks for the AVD to be (re)started in Hammock: Android Studio's
+	// instance stopped, or a stopped one booted (the pane's Restart or
+	// Start in Hammock). Only heeded while the pane offers it.
+	start chan struct{}
+	// ops runs the pane's input in the order it came, one at a time, off
+	// the connection's read loop (each is a gRPC call).
+	ops chan func()
 
 	mu       sync.Mutex
 	info     emulator.AVD
 	client   *emulator.Client
 	running  emulator.Running
 	booted   bool
+	mayBoot  bool    // boot it if none runs: on opening, and when asked to start it
 	w, h     int     // the last frame, in pixels
-	turn     float32 // degrees the device is turned
+	turn     float32 // degrees the device is turned (0, 90 left, 180, 270)
 	hinge    float64 // a foldable's hinge, as last set
 	framePth string
 }
 
-// sdk is the Android SDK (android-sdk in the config file, else the usual places).
+// emulatorSDK is the Android SDK (android-sdk in the config file, else the usual places).
 func emulatorSDK() string {
 	v, _ := hammockconfig.Value("android-sdk")
 	return emulator.SDKDir(v)
@@ -75,12 +83,36 @@ func (h *emuHub) open(id, udid string) {
 		t.Stop() // shown again: keep it running
 		delete(h.shutdown, avd)
 	}
+	h.seq++
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &emuSession{hub: h, id: id, avd: avd, ctx: ctx, cancel: cancel, takeover: make(chan struct{}, 1),
-		framePth: filepath.Join(h.d.cfg.Dir, "run", "emu-"+id+".rgba")}
+	s := &emuSession{hub: h, id: id, avd: avd, ctx: ctx, cancel: cancel, start: make(chan struct{}, 1), ops: make(chan func(), 256),
+		mayBoot: true, framePth: filepath.Join(h.d.cfg.Dir, "run", fmt.Sprintf("emu-%s-%d.rgba", id, h.seq))}
 	h.sessions[id] = s
 	h.mu.Unlock()
 	go s.run()
+	go s.work()
+}
+
+// work runs the pane's input, in order, until the pane closes.
+func (s *emuSession) work() {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case op := <-s.ops:
+			op()
+		}
+	}
+}
+
+// enqueue queues an op; false if the queue's full (the emulator is wedged).
+func (s *emuSession) enqueue(op func()) bool {
+	select {
+	case s.ops <- op:
+		return true
+	default:
+		return false
+	}
 }
 
 // close ends a pane's session; an emulator Hammock booted shuts down a
@@ -125,9 +157,11 @@ func (h *emuHub) shutDownIfUnused(avd string) {
 	}
 }
 
-// shutDown stops an AVD's emulator now.
+// shutDown stops an AVD's emulator now: only one Hammock can drive (started
+// with a token), never one Android Studio runs (that's the pane's take over,
+// which asks first).
 func (h *emuHub) shutDown(avd string) {
-	if r, ok := emulator.RunningAVD(emulator.DiscoveryDir(), avd); ok {
+	if r, ok := emulator.RunningAVD(emulator.DiscoveryDir(), avd); ok && r.Reachable() {
 		h.d.log.Info("shutting emulator down", "avd", avd)
 		emulator.Stop(emulatorSDK(), r)
 	}
@@ -257,7 +291,15 @@ func (s *emuSession) run() {
 		s.mu.Lock()
 		s.client, s.running = c, r
 		s.mu.Unlock()
-		s.waitBooted(c)
+		if !s.waitBooted(c) {
+			// It went away while Android booted: look for it again.
+			s.mu.Lock()
+			s.client = nil
+			s.mu.Unlock()
+			c.Close()
+			continue
+		}
+		s.readTurn(c) // how it's turned now (attached to one someone turned)
 		// The frames, until the stream ends (the emulator stopped).
 		fr.W, fr.H = side, side
 		err = c.StreamFrames(s.ctx, fr, func(w, h int, seq uint32) {
@@ -281,22 +323,49 @@ func (s *emuSession) run() {
 	}
 }
 
-// attach finds the AVD's emulator, booting it if none runs (Hammock's own,
-// first time round). One running where Hammock can't drive it (Android
-// Studio's) waits for the pane's take over, or for it to stop.
+// The pane's notes when it offers to start the emulator in Hammock.
+const (
+	noteInStudio = "Running in Android Studio"
+	noteStopped  = "The emulator isn't running"
+)
+
+// attach finds the AVD's emulator. It boots one only when it may: when the
+// pane opens, and when asked to start it. Otherwise (it stopped, someone
+// shut it down, or it wouldn't boot) the pane says so and offers to start
+// it, rather than booting it again and again. One running where Hammock
+// can't drive it (Android Studio's) waits for the pane's Restart in Hammock,
+// or for it to stop.
 func (s *emuSession) attach(log interface{ Info(string, ...any) }) (emulator.Running, error) {
 	dir := emulator.DiscoveryDir()
+	offered := ""
 	for {
 		r, ok := emulator.RunningAVD(dir, s.avd)
 		if ok && r.Reachable() {
 			return r, nil
 		}
+		s.mu.Lock()
+		boot := s.mayBoot && !ok
+		s.mayBoot = false
+		s.mu.Unlock()
+		if boot {
+			return s.boot(log)
+		}
+		offer := noteStopped
 		if ok {
-			s.note("Running in Android Studio", true)
-			select {
-			case <-s.ctx.Done():
-				return r, s.ctx.Err()
-			case <-s.takeover:
+			offer = noteInStudio
+		}
+		if offer != offered {
+			// A request made before this offer isn't an answer to it.
+			s.drainStart()
+			offered = offer
+			s.note(offer, true)
+		}
+		select {
+		case <-s.ctx.Done():
+			return r, s.ctx.Err()
+		case <-s.start:
+			offered = ""
+			if ok {
 				s.note("Taking it over from Android Studio…", false)
 				emulator.Stop(emulatorSDK(), r)
 				for i := 0; i < 40; i++ { // until it's gone
@@ -304,11 +373,12 @@ func (s *emuSession) attach(log interface{ Info(string, ...any) }) (emulator.Run
 						break
 					}
 				}
-			case <-time.After(3 * time.Second):
 			}
-			continue
+			s.mu.Lock()
+			s.mayBoot = true
+			s.mu.Unlock()
+		case <-time.After(3 * time.Second): // or started elsewhere, with a token
 		}
-		return s.boot(log)
 	}
 }
 
@@ -321,7 +391,7 @@ func (s *emuSession) boot(log interface{ Info(string, ...any) }) (emulator.Runni
 	}
 	defer f.Close()
 	if _, err := emulator.Boot(emulatorSDK(), s.avd, f); err != nil {
-		s.note(err.Error(), false)
+		s.note(err.Error(), true)
 		return emulator.Running{}, err
 	}
 	log.Info("booting emulator")
@@ -330,13 +400,15 @@ func (s *emuSession) boot(log interface{ Info(string, ...any) }) (emulator.Runni
 	s.hub.mu.Unlock()
 	r, err := emulator.WaitRunning(emulator.DiscoveryDir(), s.avd, 2*time.Minute)
 	if err != nil {
-		s.note("The emulator didn't start (see "+logPath+")", false)
+		s.note("The emulator didn't start (see "+logPath+")", true)
 	}
 	return r, err
 }
 
-// waitBooted waits for Android to finish booting, telling the host when it has.
-func (s *emuSession) waitBooted(c *emulator.Client) {
+// waitBooted waits for Android to finish booting, telling the host when it
+// has. False if the emulator stops answering first (it went away).
+func (s *emuSession) waitBooted(c *emulator.Client) bool {
+	fails := 0
 	for s.ctx.Err() == nil {
 		ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
 		st, err := c.Status(ctx)
@@ -346,17 +418,43 @@ func (s *emuSession) waitBooted(c *emulator.Client) {
 			s.booted = true
 			s.mu.Unlock()
 			s.announce()
-			return
+			return true
+		}
+		if err != nil {
+			if fails++; fails >= 10 {
+				return false
+			}
+		} else {
+			fails = 0
 		}
 		s.wait(time.Second)
 	}
+	return false
 }
 
-// requestTakeover asks the session to stop Android Studio's instance and
-// boot its own.
-func (s *emuSession) requestTakeover() {
+// readTurn reads how far the device is turned, for its touches.
+func (s *emuSession) readTurn(c *emulator.Client) {
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+	defer cancel()
+	if turn, err := c.Rotation(ctx); err == nil {
+		s.mu.Lock()
+		s.turn = turn
+		s.mu.Unlock()
+	}
+}
+
+// requestStart asks the session to start the AVD in Hammock (taking it over
+// from Android Studio if it runs there).
+func (s *emuSession) requestStart() {
 	select {
-	case s.takeover <- struct{}{}:
+	case s.start <- struct{}{}:
+	default:
+	}
+}
+
+func (s *emuSession) drainStart() {
+	select {
+	case <-s.start:
 	default:
 	}
 }
@@ -400,20 +498,36 @@ var usageKeys = map[int]string{40: "Enter", 41: "GoBack", 42: "Backspace", 43: "
 // emulatorTurns are the orientations sim_rotate names, in degrees.
 var emulatorTurns = map[string]float32{"portrait": 0, "landscape-left": 90, "upside-down": 180, "landscape-right": 270}
 
-// emulatorCall runs a simulator op on an emulator pane. Done reports whether
-// the op is finished (else it's the host's: a screenshot).
-func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]float64) (reply any, done bool, err error) {
-	if op == "screenshot" {
-		return nil, false, nil // the host has its surface
+// toScreen turns a point as the screen shows it (dp, y down, as screenshots
+// and taps measure it) into the emulator's pixels in its natural (unturned)
+// orientation, which is where its touches go. w, h: the frame as it shows.
+func toScreen(x, y, w, h float64, turn float32, scale float64) (int, int) {
+	switch turn {
+	case 90:
+		x, y = h-y, x
+	case 180:
+		x, y = w-x, h-y
+	case 270:
+		x, y = y, w-x
 	}
+	return px(x, scale), px(y, scale)
+}
+
+// emulatorCall runs a simulator op (all but screenshot and shutdown, which
+// are as for simulators) on an emulator pane.
+func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs) (reply any, err error) {
 	if op == "takeover" {
-		s.requestTakeover()
-		return map[string]any{"ok": true}, true, nil
+		s.requestStart()
+		return map[string]any{"ok": true}, nil
 	}
 	c, scale, err := s.conn()
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
+	s.mu.Lock()
+	turn, fw, fh := s.turn, float64(s.w)/scale, float64(s.h)/scale
+	s.mu.Unlock()
+	at := func(x, y float64) (int, int) { return toScreen(x, y, fw, fh, turn, scale) }
 	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
 	defer cancel()
 	touch := func(phase string, x, y float64) error {
@@ -421,15 +535,19 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]fl
 		if phase == "up" {
 			pressure = 0
 		}
-		return c.Touches(ctx, emulator.Touch{ID: 1, X: px(x, scale), Y: px(y, scale), Pressure: pressure})
+		sx, sy := at(x, y)
+		return c.Touches(ctx, emulator.Touch{ID: 1, X: sx, Y: sy, Pressure: pressure})
 	}
 	key := func(name string, phase emulator.KeyPhase) error { return c.Key(ctx, name, phase) }
 	switch op {
 	case "touch":
-		return nil, true, touch(args.Phase, args.X, args.Y)
+		if !slices.Contains([]string{"down", "move", "up"}, args.Phase) {
+			return nil, fmt.Errorf("unknown touch phase %q (down, move, up)", args.Phase)
+		}
+		return nil, touch(args.Phase, args.X, args.Y)
 	case "tap":
 		if err := touch("down", args.X, args.Y); err != nil {
-			return nil, true, err
+			return nil, err
 		}
 		time.Sleep(60 * time.Millisecond)
 		err = touch("up", args.X, args.Y)
@@ -437,7 +555,7 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]fl
 		ms := cmp.Or(args.Ms, 300)
 		steps := max(ms/16, 4)
 		if err := touch("down", args.X, args.Y); err != nil {
-			return nil, true, err
+			return nil, err
 		}
 		for i := 1; i <= steps; i++ {
 			f := float64(i) / float64(steps)
@@ -449,58 +567,62 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]fl
 		paths := args.Paths
 		if op == "pinch" {
 			if paths = pinchPaths(args.X, args.Y, args.Scale, args.Ms); paths == nil {
-				return nil, true, errors.New("pinch: scale must be above 0 and not 1 (above 1 zooms in)")
+				return nil, errors.New("pinch: scale must be above 0 and not 1 (above 1 zooms in)")
 			}
 		}
-		err = playFingers(ctx, c, paths, scale)
+		err = playFingers(ctx, c, paths, at)
 	case "text":
 		err = c.Text(ctx, args.Text)
 	case "key":
 		name, ok := usageKeys[args.Usage]
 		if !ok {
-			return nil, true, fmt.Errorf("key: usage %d isn't one an emulator takes here", args.Usage)
+			return nil, fmt.Errorf("key: usage %d isn't one an emulator takes here", args.Usage)
 		}
 		err = key(name, emulator.KeyPress)
 	case "copy":
 		text, err := c.Clipboard(ctx)
-		return map[string]any{"text": text}, true, err
+		return map[string]any{"text": text}, err
 	case "paste":
 		if err := c.SetClipboard(ctx, args.Text); err != nil {
-			return nil, true, err
+			return nil, err
 		}
 		err = key("Paste", emulator.KeyPress)
 	case "button":
 		name, ok := androidButtons[args.Name]
 		if !ok {
-			return nil, true, fmt.Errorf("unknown button %q (back, home, recents, power, volume_up, volume_down)", args.Name)
+			return nil, fmt.Errorf("unknown button %q (back, home, recents, power, volume_up, volume_down)", args.Name)
 		}
 		err = key(name, emulator.KeyPress)
 	case "remote":
 		if args.Phase != "" {
 			name, ok := androidRemote[args.Name]
 			if !ok {
-				return nil, true, fmt.Errorf("an Android TV remote has no %q button", args.Name)
+				return nil, fmt.Errorf("an Android TV remote has no %q button", args.Name)
 			}
-			return nil, true, key(name, map[string]emulator.KeyPhase{"down": emulator.KeyDown, "up": emulator.KeyUp}[args.Phase])
+			phase, ok := map[string]emulator.KeyPhase{"down": emulator.KeyDown, "up": emulator.KeyUp}[args.Phase]
+			if !ok {
+				return nil, fmt.Errorf("unknown remote phase %q (down, up)", args.Phase)
+			}
+			return nil, key(name, phase)
 		}
 		presses, perr := remotePresses(args)
 		if perr != nil {
-			return nil, true, perr
+			return nil, perr
 		}
 		for i, p := range presses {
 			name, ok := androidRemote[p]
 			if !ok {
-				return nil, true, fmt.Errorf("an Android TV remote has no %q button", p)
+				return nil, fmt.Errorf("an Android TV remote has no %q button", p)
 			}
 			if i > 0 {
 				time.Sleep(150 * time.Millisecond)
 			}
 			if err := key(name, emulator.KeyDown); err != nil {
-				return nil, true, err
+				return nil, err
 			}
 			time.Sleep(time.Duration(cmp.Or(args.HoldMs, 60)) * time.Millisecond)
 			if err := key(name, emulator.KeyUp); err != nil {
-				return nil, true, err
+				return nil, err
 			}
 		}
 	case "rotate":
@@ -515,12 +637,12 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]fl
 		default:
 			t, ok := emulatorTurns[args.Value]
 			if !ok {
-				return nil, true, errors.New("orientation: portrait, upside-down, landscape-left, landscape-right, left or right")
+				return nil, errors.New("orientation: portrait, upside-down, landscape-left, landscape-right, left or right")
 			}
 			turn = t
 		}
 		if err := c.Rotate(ctx, turn); err != nil {
-			return nil, true, err
+			return nil, err
 		}
 		s.mu.Lock()
 		s.turn = turn
@@ -531,17 +653,17 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]fl
 		foldable := s.info.Foldable
 		s.mu.Unlock()
 		if !foldable {
-			return nil, true, errors.New("this emulator doesn't fold")
+			return nil, errors.New("this emulator doesn't fold")
 		}
 		angle, ok := map[string]float64{"open": 180, "closed": 0, "close": 0, "half": 90}[args.Value]
 		if args.Angle != nil {
 			angle, ok = *args.Angle, true
 		}
 		if !ok || angle < 0 || angle > 180 {
-			return nil, true, errors.New("fold: open, closed, half, or an angle from 0 (closed) to 180 (flat)")
+			return nil, errors.New("fold: open, closed, half, or an angle from 0 (closed) to 180 (flat)")
 		}
 		if err := c.Hinge(ctx, float32(angle)); err != nil {
-			return nil, true, err
+			return nil, err
 		}
 		s.mu.Lock()
 		s.hinge = angle
@@ -549,17 +671,17 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs, size [2]fl
 		s.announce() // the pane's fold button follows it
 		time.Sleep(time.Second)
 	default:
-		return nil, true, fmt.Errorf("an emulator can't %s", op)
+		return nil, fmt.Errorf("an emulator can't %s", op)
 	}
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
 	time.Sleep(150 * time.Millisecond) // let it react before a screenshot follows
-	return map[string]any{"ok": true}, true, nil
+	return map[string]any{"ok": true}, nil
 }
 
 // playFingers plays fingers' paths (points, ms from the start) as touches.
-func playFingers(ctx context.Context, c *emulator.Client, paths [][]struct{ X, Y, T float64 }, scale float64) error {
+func playFingers(ctx context.Context, c *emulator.Client, paths [][]struct{ X, Y, T float64 }, toPx func(x, y float64) (int, int)) error {
 	if len(paths) == 0 {
 		return errors.New("gesture: no paths")
 	}
@@ -594,7 +716,8 @@ func playFingers(ctx context.Context, c *emulator.Client, paths [][]struct{ X, Y
 				continue
 			}
 			x, y := at(p, t)
-			ts = append(ts, emulator.Touch{ID: f + 1, X: px(x, scale), Y: px(y, scale), Pressure: 1})
+			sx, sy := toPx(x, y)
+			ts = append(ts, emulator.Touch{ID: f + 1, X: sx, Y: sy, Pressure: 1})
 		}
 		if i == len(times)-1 {
 			for j := range ts {
@@ -636,7 +759,7 @@ func (d *Daemon) emulatorPane(p *pane) *emuSession {
 	return d.emulators.session(p.id)
 }
 
-// isEmulatorPane reports whether a pane spec or pane shows an AVD.
+// isEmulatorDevice reports whether a device id names an AVD.
 func isEmulatorDevice(udid string) bool { return emulator.IsAVD(udid) }
 
 // emulatorAVD is the AVD a device id names.

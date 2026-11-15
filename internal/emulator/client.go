@@ -3,6 +3,7 @@ package emulator
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"syscall"
 
@@ -19,8 +20,7 @@ const service = "/android.emulation.control.EmulatorController/"
 
 // Client is a connection to one emulator's gRPC controller.
 type Client struct {
-	conn  *grpc.ClientConn
-	token string
+	conn *grpc.ClientConn
 }
 
 // tokenAuth sends the emulator's token with every call.
@@ -43,7 +43,7 @@ func Dial(r Running) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{conn: conn, token: r.Token}, nil
+	return &Client{conn: conn}, nil
 }
 
 // Close ends the connection.
@@ -198,5 +198,23 @@ func (c *Client) SetClipboard(ctx context.Context, text string) error {
 // Clipboard is the device's clipboard's text.
 func (c *Client) Clipboard(ctx context.Context) (string, error) {
 	var d emupb.ClipData
-	return d.GetText(), c.call(ctx, "getClipboard", &emptypb.Empty{}, &d)
+	if err := c.call(ctx, "getClipboard", &emptypb.Empty{}, &d); err != nil {
+		return "", err
+	}
+	return d.GetText(), nil
+}
+
+// Rotation is how far the device is turned, in degrees (as Rotate sets it).
+func (c *Client) Rotation(ctx context.Context) (float32, error) {
+	var pm emupb.PhysicalModelValue
+	if err := c.call(ctx, "getPhysicalModel", &emupb.PhysicalModelValue{Target: emupb.PhysicalModelValue_ROTATION}, &pm); err != nil {
+		return 0, err
+	}
+	d := pm.GetValue().GetData()
+	if len(d) < 3 {
+		return 0, nil
+	}
+	// To 0, 90, 180 or 270.
+	turn := float32(math.Mod(math.Round(float64(d[2])/90)*90+360, 360))
+	return turn, nil
 }

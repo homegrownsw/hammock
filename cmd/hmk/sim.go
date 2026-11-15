@@ -143,20 +143,30 @@ func listSimulators(call caller) ([]simDevice, error) {
 // given, a booted one, else the newest iPhone.
 func pickSimulator(devs []simDevice, ref string) (simDevice, error) {
 	if len(devs) == 0 {
-		return simDevice{}, errors.New("no simulators found (install one in Xcode ▸ Settings ▸ Components)")
+		return simDevice{}, errors.New("no simulators found (install one in Xcode ▸ Settings ▸ Components, or an Android Virtual Device in Android Studio)")
 	}
 	if ref == "" {
+		// A running simulator, else the newest iPhone: an emulator only by name.
+		var sims []simDevice
 		for _, d := range devs {
+			if !emulator.IsAVD(d.UDID) {
+				sims = append(sims, d)
+			}
+		}
+		if len(sims) == 0 {
+			return simDevice{}, errors.New("no simulators found: name an Android Virtual Device (hmk sim list)")
+		}
+		for _, d := range sims {
 			if d.Booted {
 				return d, nil
 			}
 		}
-		for i := len(devs) - 1; i >= 0; i-- {
-			if strings.HasPrefix(devs[i].Name, "iPhone") {
-				return devs[i], nil
+		for i := len(sims) - 1; i >= 0; i-- {
+			if strings.HasPrefix(sims[i].Name, "iPhone") {
+				return sims[i], nil
 			}
 		}
-		return devs[0], nil
+		return sims[0], nil
 	}
 	var match []simDevice
 	for _, d := range devs {
@@ -197,8 +207,8 @@ func runSim(w *world, call caller, args []string) error {
                                  mute or siri (--hold MS: a long press)
        hmk sim remote PANE swipe up|down|left|right [short|medium|long]   moves focus (as presses)
        hmk sim shutdown PANE                    close the pane and shut its simulator down
-       hmk sim takeover PANE                    an Android emulator running in Android Studio: stop it there
-                                                and boot it in the pane`)
+       hmk sim takeover PANE                    an Android emulator its pane can't show (in Android Studio, or stopped):
+                                                start it in the pane (from a terminal outside Hammock)`)
 	sub := ""
 	if len(args) > 1 {
 		sub = args[1]

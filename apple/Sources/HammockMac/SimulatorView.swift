@@ -682,12 +682,12 @@ final class SimulatorPaneNSView: NSView {
     // Edit menu: through the device's pasteboard.
     @objc func paste(_ sender: Any?) {
         guard let s = NSPasteboard.general.string(forType: .string), !s.isEmpty else { return }
-        if isAndroid {
-            remote("paste", ["text": s]) // its clipboard, then Paste
+        if shared != nil {
+            remote("text", ["text": s]) // a guest may type, not paste
             return
         }
-        if shared != nil {
-            remote("text", ["text": s])
+        if isAndroid {
+            remote("paste", ["text": s]) // its clipboard, then Paste
             return
         }
         host.send(["t": "paste", "id": paneID, "text": s])
@@ -988,12 +988,14 @@ struct SimulatorPaneView: View {
                 }
             }
             .overlay {
-                if pane?.deviceElsewhere == true {
-                    // Android Studio runs it, where Hammock can't drive it: offer to take it over.
+                if let start = model.emulatorStartLabel(paneID) {
+                    // It runs in Android Studio, where Hammock can't drive it, or it
+                    // stopped: offer to start it here.
                     VStack(spacing: 10) {
                         Image(systemName: "smartphone").font(.system(size: 28)).foregroundStyle(.secondary)
-                        Text("\(pane?.title ?? "This emulator") is running in Android Studio").font(.headline)
-                        Button("Restart in Hammock…") { EmulatorTakeover.confirm(model, paneID) }
+                        Text(model.emulatorInStudio(paneID) ? "\(pane?.title ?? "This emulator") is running in Android Studio" : (pane?.deviceNote ?? ""))
+                            .font(.headline).multilineTextAlignment(.center)
+                        Button(start) { EmulatorTakeover.confirm(model, paneID) }
                     }
                     .padding(24)
                 }

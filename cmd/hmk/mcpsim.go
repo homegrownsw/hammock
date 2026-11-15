@@ -87,7 +87,7 @@ type simRemoteArgs struct {
 type simAppArgs struct {
 	PaneID string   `json:"pane_id" jsonschema:"the simulator pane"`
 	App    string   `json:"app" jsonschema:"install: path to a built .app (iOS) or .apk (Android); launch/terminate: bundle id or package name"`
-	Args   []string `json:"args,omitempty" jsonschema:"launch: arguments for the app"`
+	Args   []string `json:"args,omitempty" jsonschema:"launch: arguments for the app (iOS only)"`
 }
 
 type simURLArgs struct {

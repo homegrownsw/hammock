@@ -189,8 +189,8 @@ struct PaneMenuItems: View {
                 Button("Toggle Software Keyboard") { model.pressSimulatorButton(paneID, "keyboard") }
             }
         }
-        if model.panes[paneID]?.deviceElsewhere == true {
-            Button("Restart in Hammock…") { EmulatorTakeover.confirm(model, paneID) }
+        if let start = model.emulatorStartLabel(paneID) {
+            Button(start) { EmulatorTakeover.confirm(model, paneID) }
         }
         if model.panes[paneID]?.kind == .simulator {
             Button("Screenshot to File") { SimulatorShot.saveToFile(model, paneID) }

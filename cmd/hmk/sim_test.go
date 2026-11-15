@@ -33,3 +33,21 @@ func TestRemoteArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestPickSimulatorDefaultIsNotAnEmulator(t *testing.T) {
+	devs := []simDevice{
+		{UDID: "AAAA", Name: "iPhone 17", Platform: "iOS"},
+		{UDID: "avd:Pixel_9", Name: "Pixel 9", Platform: "Android", Booted: true},
+	}
+	if d, err := pickSimulator(devs, ""); err != nil || d.UDID != "AAAA" {
+		t.Fatalf("default: %+v %v", d, err)
+	}
+	for _, ref := range []string{"avd:Pixel_9", "Pixel_9", "pixel 9"} {
+		if d, err := pickSimulator(devs, ref); err != nil || d.UDID != "avd:Pixel_9" {
+			t.Errorf("%q: %+v %v", ref, d, err)
+		}
+	}
+	if _, err := pickSimulator(devs[1:], ""); err == nil {
+		t.Error("only an AVD and none named: want an error")
+	}
+}

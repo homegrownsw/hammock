@@ -59,10 +59,10 @@ func (a *App) simScreenshot(id string) {
 	}()
 }
 
-// isAppleTV reports whether a pane shows an Apple TV simulator, which its
-// remote drives (it has no touch screen).
+// isTVPane reports whether a pane shows a TV (an Apple TV, or an Android TV
+// emulator), which its remote drives (it has no touch screen).
 func isTVPane(p *pb.Pane) bool {
-	return p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR && p.DevicePlatform == "tvOS"
+	return p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR && (p.DevicePlatform == "tvOS" || p.DevicePlatform == "Android TV")
 }
 
 // tvKeys are the keys that are an Apple TV remote's buttons (edKey names;
@@ -117,7 +117,7 @@ func (a *App) simItems(id string) []menuItem {
 			items = append(items, press("Siri", "siri"))
 		}
 		if a.panes[id].DeviceElsewhere {
-			items = append(items, menuItem{label: "Restart in Hammock (stops it in Android Studio)", run: func() { a.simOp(id, "takeover", nil) }})
+			items = append(items, startItem(a, id))
 		}
 		return append(items, menuItem{label: "Screenshot to File", run: func() { a.simScreenshot(id) }})
 	}
@@ -138,7 +138,7 @@ func (a *App) simItems(id string) []menuItem {
 				menuItem{label: "Close Phone", run: func() { a.simOp(id, "fold", map[string]string{"value": "closed"}) }})
 		}
 		if p.DeviceElsewhere {
-			items = append(items, menuItem{label: "Restart in Hammock (stops it in Android Studio)", run: func() { a.simOp(id, "takeover", nil) }})
+			items = append(items, startItem(a, id))
 		}
 		return items
 	}
@@ -158,4 +158,14 @@ func (a *App) simItems(id string) []menuItem {
 			menuItem{label: "Close Phone", run: func() { a.simOp(id, "fold", map[string]string{"value": "closed"}) }})
 	}
 	return items
+}
+
+// startItem starts an Android emulator in Hammock, as its pane offers:
+// restarting it there (stopping it in Android Studio), or booting a stopped one.
+func startItem(a *App, id string) menuItem {
+	label := "Start in Hammock"
+	if p := a.panes[id]; p != nil && p.DeviceNote == "Running in Android Studio" {
+		label = "Restart in Hammock (stops it in Android Studio)"
+	}
+	return menuItem{label: label, run: func() { a.simOp(id, "takeover", nil) }}
 }

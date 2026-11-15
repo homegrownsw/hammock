@@ -124,3 +124,27 @@ func TestToJPEG(t *testing.T) {
 		t.Fatalf("size %v", b)
 	}
 }
+
+// TestToScreen pins how a point as the screen shows maps to the emulator's
+// natural orientation, as measured on a 674×842 dp foldable turned left:
+// Chrome at (432, 600) in landscape was a touch at (74, 432).
+func TestToScreen(t *testing.T) {
+	for _, c := range []struct {
+		x, y, w, h float64
+		turn       float32
+		wx, wy     int
+	}{
+		{10, 20, 674, 842, 0, 10, 20},
+		{432, 600, 842, 674, 90, 74, 432},
+		{10, 20, 674, 842, 180, 664, 822},
+		{432, 600, 842, 674, 270, 600, 410},
+	} {
+		x, y := toScreen(c.x, c.y, c.w, c.h, c.turn, 1)
+		if x != c.wx || y != c.wy {
+			t.Errorf("%+v: got %d,%d", c, x, y)
+		}
+	}
+	if x, y := toScreen(100, 200, 674, 842, 0, 2.625); x != 263 || y != 525 {
+		t.Errorf("scaled: got %d,%d", x, y)
+	}
+}

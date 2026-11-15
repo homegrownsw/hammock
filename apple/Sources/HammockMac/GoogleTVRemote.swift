@@ -149,6 +149,11 @@ private struct Rocker: View {
 @MainActor
 enum EmulatorTakeover {
     static func confirm(_ model: AppModel, _ paneID: String) {
+        // A stopped one just boots; one in Android Studio is stopped there first.
+        guard model.emulatorInStudio(paneID) else {
+            model.takeOverEmulator(paneID)
+            return
+        }
         let name = model.panes[paneID]?.title ?? "this emulator"
         let alert = NSAlert()
         alert.messageText = "Restart \(name) in Hammock?"

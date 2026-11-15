@@ -1289,9 +1289,23 @@ public final class AppModel {
     /// Whether a simulator pane shows an Android phone or tablet (Back, Home and Recents).
     public func isAndroidPhone(_ paneID: String) -> Bool { panes[paneID]?.devicePlatform == "Android" }
 
-    /// Stops an emulator running in Android Studio and boots it in its pane.
+    /// Starts an emulator in its pane: stops it in Android Studio and boots it
+    /// here, or boots a stopped one.
     public func takeOverEmulator(_ paneID: String) {
         simulatorInput(paneID, "takeover")
+    }
+
+    /// Whether an emulator pane's device runs in Android Studio, where Hammock can't drive it.
+    public func emulatorInStudio(_ paneID: String) -> Bool {
+        panes[paneID]?.deviceElsewhere == true && panes[paneID]?.deviceNote == "Running in Android Studio"
+    }
+
+    /// What an emulator pane offers when it can't show its device: Restart in
+    /// Hammock (Android Studio runs it) or Start in Hammock (it stopped, or
+    /// wouldn't boot); nil while it shows.
+    public func emulatorStartLabel(_ paneID: String) -> String? {
+        guard panes[paneID]?.deviceElsewhere == true else { return nil }
+        return emulatorInStudio(paneID) ? "Restart in Hammock…" : "Start in Hammock"
     }
 
     /// Presses a button on an Apple TV's remote (sim_remote's names: up,

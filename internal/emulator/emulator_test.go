@@ -1,6 +1,7 @@
 package emulator
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -82,7 +83,7 @@ func TestLive(t *testing.T) {
 		t.Skip("set HMK_EMULATOR_TEST to an AVD's name")
 	}
 	sdk := SDKDir("")
-	log, _ := os.Create(cmpOr(os.Getenv("HMK_EMULATOR_LOG"), filepath.Join(t.TempDir(), "emu.log")))
+	log, _ := os.Create(cmp.Or(os.Getenv("HMK_EMULATOR_LOG"), filepath.Join(t.TempDir(), "emu.log")))
 	if _, err := Boot(sdk, avd, log); err != nil {
 		t.Fatal(err)
 	}
@@ -113,33 +114,51 @@ func TestLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fr.Close()
-	got := make(chan [2]int, 64)
+	got := make(chan [2]int, 1024)
 	sctx, scancel := context.WithTimeout(ctx, 6*time.Second)
 	defer scancel()
-	go func() { t.Log("stream:", c.StreamFrames(sctx, fr, func(w, h int, seq uint32) { got <- [2]int{w, h} })) }()
+	streamed := make(chan error, 1)
+	go func() {
+		streamed <- c.StreamFrames(sctx, fr, func(w, h int, seq uint32) {
+			select {
+			case got <- [2]int{w, h}:
+			default:
+			}
+		})
+	}()
 	time.Sleep(time.Second)
 	for i := 0; i < 4; i++ {
 		_ = c.Key(ctx, map[bool]string{true: "ArrowDown", false: "ArrowUp"}[i%2 == 0], KeyPress)
 		time.Sleep(400 * time.Millisecond)
 	}
 	<-sctx.Done()
+	t.Log("stream:", <-streamed)
 	if len(got) < 2 {
 		t.Fatalf("%d frames", len(got))
 	}
 	size := <-got
 	t.Logf("%d frames, %dx%d", len(got)+1, size[0], size[1])
+	// The clipboard both ways, and a tap (fingers down and up).
+	if err := c.SetClipboard(ctx, "hammock-clip"); err != nil {
+		t.Fatal(err)
+	}
+	if text, err := c.Clipboard(ctx); err != nil || text != "hammock-clip" {
+		t.Fatalf("clipboard: %q %v", text, err)
+	}
+	if err := c.Touches(ctx, Touch{ID: 1, X: 100, Y: 100, Pressure: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Touches(ctx, Touch{ID: 1, X: 100, Y: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if turn, err := c.Rotation(ctx); err != nil || turn != 0 {
+		t.Fatalf("rotation: %v %v", turn, err)
+	}
 	if png, w, h, err := c.Screenshot(ctx); err != nil || len(png) == 0 {
 		t.Fatalf("screenshot: %v", err)
 	} else {
 		t.Logf("screenshot %dx%d, %d bytes", w, h, len(png))
 	}
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 func TestSDKDir(t *testing.T) {

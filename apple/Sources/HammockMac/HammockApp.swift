@@ -453,6 +453,9 @@ struct HammockApp: App {
                         Button("Toggle Software Keyboard") { model.pressSimulatorButton(id, "keyboard") }
                             .keyboardShortcut(Keys.simKeyboard)
                     }
+                    if let start = model.emulatorStartLabel(id) {
+                        Button(start) { EmulatorTakeover.confirm(model, id) }
+                    }
                     Button("Screenshot to File") { SimulatorShot.saveToFile(model, id) }.keyboardShortcut(Keys.simScreenshotFile)
                     Button("Screenshot to Clipboard") { SimulatorShot.copyToClipboard(model, id) }
                         .keyboardShortcut(Keys.simScreenshotCopy)

@@ -407,7 +407,7 @@ func (d *Daemon) simulatorState(m simMsg) {
 	changed := !proto.Equal(before, info)
 	udid := info.DeviceUdid
 	p.mu.Unlock()
-	if udid != "" {
+	if udid != "" && !isEmulatorDevice(udid) { // emulators keep their own (emulator.go)
 		d.simulators.booted(udid, m.Booted)
 	}
 	if changed {
@@ -537,9 +537,19 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	if err := simulatorOpRefused(p.snapshotInfo().DevicePlatform, m.Op); err != nil {
 		return err
 	}
-	if m.Op == "takeover" && (c.isAgent() || c.remote) {
-		// It stops an emulator someone runs in Android Studio: theirs to decide, on this Mac.
-		return errors.New("only you can take an emulator over from Android Studio, in its pane or with hmk sim takeover")
+	if m.Op == "takeover" {
+		// It can stop an emulator someone runs in Android Studio: theirs to
+		// decide, on this Mac (as for the screen's permissions, hmk in a pane
+		// counts as an agent). And only while the pane offers it.
+		d.mu.Lock()
+		here := !c.remote && c.peer == "" && !c.isAgent() && !c.caller.isAgent()
+		d.mu.Unlock()
+		if !here {
+			return errors.New("only you can start an emulator in Hammock, from its pane (Start or Restart in Hammock)")
+		}
+		if !p.snapshotInfo().DeviceElsewhere {
+			return errors.New("the emulator is already running in Hammock")
+		}
 	}
 	d.mu.Lock()
 	peer := c.peer
@@ -570,21 +580,19 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 		if s == nil {
 			return errNotReady
 		}
-		if m.Op == "touch" || (m.Op == "remote" && args.Phase != "") {
-			// Inline, so a drag's (or a held button's) down and up stay in order.
+		// In the session's queue: in the order they came (a drag's down, moves
+		// and up; typing, key by key), and off this read loop.
+		if !s.enqueue(func() {
 			d.simulatorPresence(c, p.id, m.Op, args, size)
-			_, _, err := d.emulatorCall(s, m.Op, args, size)
-			return err
-		}
-		go func() {
-			d.simulatorPresence(c, p.id, m.Op, args, size)
-			r, _, err := d.emulatorCall(s, m.Op, args, size)
+			r, err := d.emulatorCall(s, m.Op, args)
 			if err != nil {
 				c.replyErr(reqID, err)
 				return
 			}
 			reply(r, nil)
-		}()
+		}) {
+			return errors.New("the emulator isn't keeping up")
+		}
 		return errDeferred
 	}
 	if m.Op == "touch" {

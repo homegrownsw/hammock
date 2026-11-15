@@ -512,6 +512,9 @@ struct CommandPalette: View {
             }
             if model.panes[focused]?.kind == .simulator {
                 action("sim-log", "Show Simulator Log", "list.bullet.rectangle", .blue, "console logs os_log", keys: Keys.showSimulatorLog) { LogUI.shared.showSimulatorLog(model, focused) }
+                if let start = model.emulatorStartLabel(focused) {
+                    action("sim-start", start, "play.circle", .blue, "android emulator studio take over restart boot", keys: nil) { EmulatorTakeover.confirm(model, focused) }
+                }
                 action("sim-home", "Home", "house", .blue, "simulator button springboard", keys: Keys.simHome) { model.pressSimulatorButton(focused, "home") }
                 if model.isTVSimulator(focused) {
                     action("sim-play-pause", "Play/Pause", "playpause", .blue, "apple tv remote media", keys: Keys.simPlayPause) { model.pressRemote(focused, "play_pause") }

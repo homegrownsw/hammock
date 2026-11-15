@@ -214,11 +214,18 @@ func WaitRunning(dir, avd string, timeout time.Duration) (Running, error) {
 	return Running{}, fmt.Errorf("the emulator for %s didn't start in time", avd)
 }
 
-// Stop ends an emulator: adb's emu kill shuts it down cleanly; SIGTERM if
-// adb can't.
+// Stop ends an emulator: adb's emu kill shuts it down cleanly, but one that's
+// only just booted can ignore it, so SIGTERM if it's still there after a
+// while (or adb can't reach it).
 func Stop(sdk string, r Running) {
-	adb := filepath.Join(sdk, "platform-tools", "adb")
-	if err := exec.Command(adb, "-s", r.ADBSerial(), "emu", "kill").Run(); err != nil && r.Pid > 0 {
+	_ = exec.Command(ADB(sdk), "-s", r.ADBSerial(), "emu", "kill").Run()
+	if r.Pid <= 0 {
+		return
+	}
+	for i := 0; i < 40 && alive(r.Pid); i++ {
+		time.Sleep(250 * time.Millisecond)
+	}
+	if alive(r.Pid) {
 		_ = syscall.Kill(r.Pid, syscall.SIGTERM)
 	}
 }
