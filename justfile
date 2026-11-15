@@ -34,9 +34,10 @@ worktree name:
     [ ! -f AGENTS.local.md ] || cp AGENTS.local.md .claude/worktrees/{{name}}/
     cd .claude/worktrees/{{name}} && ./scripts/ghostty-deps.sh
 
-# Build all Go binaries into bin/.
+# Build all Go binaries into bin/. What the Mac app ships (no symbol table or DWARF: panics still name
+# functions and lines; no home paths: -trimpath), as scripts/build-mac-payloads.sh and build-linux.sh do.
 build: deps
-    go build -tags {{tags}} -ldflags "-X github.com/homegrownsw/hammock/internal/daemon.Version=$(git describe --always --dirty)+$(date +%Y%m%d%H%M%S) -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$(scripts/mac-version)" -o bin/ ./cmd/...
+    go build -tags {{tags}} -trimpath -ldflags "-s -w -X github.com/homegrownsw/hammock/internal/daemon.Version=$(git describe --always --dirty)+$(date +%Y%m%d%H%M%S) -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$(scripts/mac-version)" -o bin/ ./cmd/...
 
 # Go tests, everything or what's named: `just test -run TestX ./internal/agents/` runs that package only
 # (flags alone, `just test -run TestX`, still mean every package). The full suite takes minutes, most of it

@@ -28,6 +28,7 @@
 # Every released zip is kept in dist/releases; build first fetches the last few releases' zips from GitHub
 # into it, so deltas can be made from them on any Mac. Each release's DMG (scripts/make-dmg.sh) is kept in
 # dist/release-dmgs instead: generate_appcast takes every archive in dist/releases, a DMG too, for an update.
+# Its debug symbols (dSYMs, which name this Mac's paths, so never published) go in dist/release-dsyms.
 #
 # The Sparkle signing key is read from the keychain (account "fika"), or from SPARKLE_KEY_FILE
 # (op document get "Hammock Sparkle EdDSA private key").
@@ -39,6 +40,7 @@ repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
 site="${HMK_SITE_URL:-https://homegrownsw.com/hammock}"
 archives="$root/dist/releases"
 dmgs="$root/dist/release-dmgs"
+dsyms="$root/dist/release-dsyms" # each release's debug symbols (build-mac-app.sh), for crash reports
 sparkle_bin="$root/apple/.build/artifacts/sparkle/Sparkle/bin"
 deltas=5
 
@@ -74,6 +76,8 @@ case "$cmd" in
     cp "$root/dist/share/Hammock.zip" "$archives/Hammock-$n.zip"
     mkdir -p "$dmgs"
     cp "$root/dist/share/Hammock.dmg" "$dmgs/Hammock-$n.dmg"
+    mkdir -p "$dsyms"
+    ditto -c -k --keepParent "$root/dist/share/Hammock.dSYMs" "$dsyms/Hammock-$n.dSYMs.zip"
     cp "$notes" "$archives/Hammock-$n.html"
 
     # A fresh appcast: the last one's item pointed at its own release, and only the new build is offered.
@@ -136,7 +140,7 @@ $(sed -E -e 's|<li>|- |' -e 's|<h[34]>(.*)</h[34]>|\1:|' -e 's|<[^>]+>||g' -e '/
     [ ! -d "$linux" ] || echo "Linux: $site/linux/hammock-linux-amd64.tar.gz (arm64 too); Unraid: $site/linux/hammock.plg"
     ;;
   discard)
-    rm -f "$archives/Hammock-$n.zip" "$archives/Hammock-$n.html" "$dmgs/Hammock-$n.dmg" "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml"
+    rm -f "$archives/Hammock-$n.zip" "$archives/Hammock-$n.html" "$dmgs/Hammock-$n.dmg" "$dsyms/Hammock-$n.dSYMs.zip" "$archives"/Hammock"$n"-*.delta "$archives/appcast.xml"
     rm -rf "$archives/linux-$n"
     ;;
   *) echo "usage: scripts/mac-update build <n> <notes.html> | upload <n> | discard <n>" >&2; exit 2 ;;

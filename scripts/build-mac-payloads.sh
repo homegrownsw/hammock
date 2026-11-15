@@ -17,7 +17,8 @@ out="$root/third_party/ghostty/out"
 
 export PKG_CONFIG_PATH="$out/share/pkgconfig"
 version="${HMK_VERSION:-$(git describe --always --dirty 2>/dev/null || echo dev)+$(date +%Y%m%d%H%M%S)}"
-go build -tags ghostty -ldflags "-X github.com/homegrownsw/hammock/internal/daemon.Version=$version -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$("$root/scripts/mac-version")" -o bin/ ./cmd/...
+# Stripped (-s -w) and without this Mac's paths (-trimpath), as `just build` does.
+go build -tags ghostty -trimpath -ldflags "-s -w -X github.com/homegrownsw/hammock/internal/daemon.Version=$version -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$("$root/scripts/mac-version")" -o bin/ ./cmd/...
 echo "hmkd $version"
 
 ./helpers/browser/build.sh

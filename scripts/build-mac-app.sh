@@ -130,6 +130,20 @@ $updates
 </dict>
 </plist>
 PLIST
+# Prod's Swift executables (the app and the menu bar item) lose their symbols, a
+# third of their size, as Xcode strips an archive. Their debug info is kept
+# beside the app first, in $name.dSYMs (a release keeps each build's: scripts/mac-update),
+# so a crash report can still be symbolicated. β keeps its symbols, for the debugger.
+# STRIP=0/1 overrides.
+if [ "${STRIP:-$([ "$variant" = prod ] && echo 1 || echo 0)}" = 1 ]; then
+  dsyms="$parent/$name.dSYMs"
+  rm -rf "$dsyms" && mkdir -p "$dsyms"
+  for exe in "$app/Contents/MacOS/Hammock" "$app/Contents/Library/LoginItems/Hammock Menu.app/Contents/MacOS/Hammock Menu"; do
+    [ -f "$exe" ] || continue
+    dsymutil "$exe" -o "$dsyms/$(basename "$exe").dSYM"
+    strip -rSTx "$exe" 2>&1 | { grep -v 'invalidate the code signature' || true; } >&2
+  done
+fi
 # A stable signing identity keeps macOS privacy grants (Files & Folders, etc.)
 # across rebuilds; ad-hoc signatures are a new identity every build. Set
 # SIGN_IDENTITY or put a codesigning identity (name or SHA-1) in
