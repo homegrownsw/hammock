@@ -89,22 +89,23 @@ struct AgentFonts: Equatable {
     }
 }
 
-private struct AgentAccentKey: EnvironmentKey { static let defaultValue = Color.accentColor }
+// The defaults until an app sets them from its theme (each app does, at its root).
+private struct AgentAccentKey: EnvironmentKey { static let defaultValue = Color.accentColor } // system accent: unset default
 // The iPhone's: Hammock's forest green, as the palette has it (the app accent turns light in
 // dark mode, too light under white text).
 private struct AgentAutomaticKey: EnvironmentKey {
     #if os(macOS)
-    static let defaultValue = Color.accentColor
+    static let defaultValue = Color.accentColor // system accent: unset default
     #else
-    static let defaultValue = AgentColor.named("Hammock") ?? .accentColor
+    static let defaultValue = AgentColor.named("Hammock") ?? .accentColor // system accent: unset default
     #endif
 }
-private struct AgentBubbleKey: EnvironmentKey { static let defaultValue = Color.accentColor }
+private struct AgentBubbleKey: EnvironmentKey { static let defaultValue = Color.accentColor } // system accent: unset default
 private struct AgentAutomaticBubbleKey: EnvironmentKey {
     #if os(macOS)
-    static let defaultValue = Color.accentColor
+    static let defaultValue = Color.accentColor // system accent: unset default
     #else
-    static let defaultValue = AgentColor.bubble("Hammock") ?? .accentColor
+    static let defaultValue = AgentColor.bubble("Hammock") ?? .accentColor // system accent: unset default
     #endif
 }
 

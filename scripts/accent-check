@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Fails on an accent colour that ignores the app's theme in the Swift apps:
+# the system's (or the asset catalog's) accent, Color.accentColor and the
+# like. Use the theme's instead: `.tint` (each app tints its root with the
+# theme), Color.themeAccent or .themeTint() on the Mac, theme.accent
+# (PhoneTheme) on the iPhone, \.agentAccent in HammockKit's views. A line
+# that means the system's (Native's fallback) says so with a
+# "// system accent: why" comment. Run by `just vet`.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+hits="$(git grep -n -E '\.accentColor([^A-Za-z]|$)|controlAccentColor|UIColor\.tintColor|"AccentColor"' -- 'apple/*.swift' ':!apple/Sources/HammockKit/Proto' \
+    | grep -v '// system accent:' || true)"
+if [ -n "$hits" ]; then
+    {
+        echo "An accent colour that ignores the theme (use .tint, Color.themeAccent, theme.accent or \\.agentAccent;"
+        echo "a deliberate system accent says why in a \"// system accent: …\" comment on its line):"
+        echo "$hits"
+    } >&2
+    exit 1
+fi

@@ -156,7 +156,7 @@ public struct StartAgentView: View {
                                     Text(s.why).font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if expand(cwd) == s.path { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                                if expand(cwd) == s.path { Image(systemName: "checkmark").foregroundStyle(.tint) }
                             }
                             .contentShape(Rectangle())
                         }

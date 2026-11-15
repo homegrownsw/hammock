@@ -265,7 +265,7 @@ private struct LogFilterBar: View {
         .font(.caption)
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
-        .background(Color.accentColor.opacity(0.14), in: Capsule())
+        .background(.tint.opacity(0.14), in: Capsule())
     }
 }
 

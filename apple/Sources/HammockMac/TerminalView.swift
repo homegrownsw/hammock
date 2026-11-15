@@ -1367,7 +1367,7 @@ extension TerminalNSView {
         subviews.filter { $0 is CopiedPillView }.forEach { $0.removeFromSuperview() }
         // The app theme's accent, with white or black on it, whichever reads.
         let accent = AppConfig.shared.agentColors.color
-        var resolved = NSColor.controlAccentColor
+        var resolved = NSColor.controlAccentColor // system accent: if the theme's doesn't convert
         effectiveAppearance.performAsCurrentDrawingAppearance { resolved = NSColor(accent).usingColorSpace(.sRGB) ?? resolved }
         let luminance = 0.2126 * resolved.redComponent + 0.7152 * resolved.greenComponent + 0.0722 * resolved.blueComponent
         let pill = CopiedPillView(CopiedPill(background: Color(nsColor: resolved), foreground: luminance > 0.6 ? .black : .white))

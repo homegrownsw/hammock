@@ -23,7 +23,7 @@ struct ChipLabel: View {
     /// In a sent message's bubble (white on its colour), not the composer.
     let onBubble: Bool
     let fontSize: CGFloat
-    var accent: Color = .accentColor
+    var accent: Color
 
     var body: some View {
         HStack(spacing: 3) {

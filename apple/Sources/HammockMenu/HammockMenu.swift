@@ -567,7 +567,7 @@ struct MenuSharing: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Sharing this Mac’s screen", systemImage: "display")
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color.accentColor) // system accent: the menu bar helper doesn't know the theme
             ForEach(model.status.screenViewers, id: \.sessionID) { v in
                 HStack(spacing: 10) {
                     Image(systemName: v.kind == "phone" ? "iphone" : "laptopcomputer").frame(width: 16)
@@ -586,7 +586,7 @@ struct MenuSharing: View {
             }
         }
         .padding(10)
-        .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 10)) // system accent: the menu bar helper doesn't know the theme
     }
 
     private func viewerLine(_ v: Hammock_V1_ScreenViewer) -> String {

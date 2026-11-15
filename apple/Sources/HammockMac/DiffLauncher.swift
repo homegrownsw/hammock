@@ -184,7 +184,7 @@ struct OpenDiffSheet: View {
                             Text("\(c.author), \(Self.ago(c.unix))").font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if commit == c.sha { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
+                        if commit == c.sha { Image(systemName: "checkmark").foregroundStyle(.tint) }
                     }
                     .contentShape(Rectangle())
                 }

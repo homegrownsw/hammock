@@ -456,7 +456,7 @@ struct LanguagePicker: View {
                     .contentShape(Rectangle())
                     .onTapGesture { selection = i; choose() }
                     .id(i)
-                    .listRowBackground(i == selection ? Color.accentColor.opacity(0.2) : Color.clear)
+                    .listRowBackground(i == selection ? Color.themeAccent.opacity(0.2) : Color.clear)
                 }
                 .listStyle(.plain)
                 .onChange(of: selection) { _, s in proxy.scrollTo(s) }
@@ -674,7 +674,7 @@ struct QuickOpenSheet: View {
                         .id(i)
                         .contentShape(Rectangle())
                         .onTapGesture { selection = i; open() }
-                        .listRowBackground(i == selection ? Color.accentColor.opacity(0.2) : Color.clear)
+                        .listRowBackground(i == selection ? Color.themeAccent.opacity(0.2) : Color.clear)
                 }
                 .listStyle(.plain)
                 .onChange(of: selection) { _, s in proxy.scrollTo(s) }

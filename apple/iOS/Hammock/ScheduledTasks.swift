@@ -367,7 +367,7 @@ struct ScheduledTasksScreen: View {
                             Button("Run Now", systemImage: "play.fill") {
                                 Task { if let tab = await ScheduleActionsIOS.runNow(model, s) { path.append(tab) } }
                             }
-                            .tint(.accentColor)
+                            .tint(PhoneTheme.current.accent)
                         }
                         .contextMenu {
                             ScheduleMenuIOS(model: model, schedule: s, push: { path.append($0) }, showsDetails: false)

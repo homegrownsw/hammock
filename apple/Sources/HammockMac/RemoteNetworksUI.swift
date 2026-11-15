@@ -25,7 +25,7 @@ struct NetworkRow: View {
         Toggle(isOn: $isOn) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: networkSymbol(network))
-                    .foregroundStyle(network.connected ? Color.accentColor : .secondary)
+                    .foregroundStyle(network.connected ? Color.themeAccent : .secondary)
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(network.title)

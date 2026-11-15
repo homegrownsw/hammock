@@ -497,12 +497,12 @@ final class AppConfig {
     /// The agent view's colour (buttons, links) and your messages' (deep
     /// enough for white text), from the theme, or with Custom `agent-color`
     /// and else the window theme's.
-    private(set) var agentColors: (color: Color, bubble: Color) = (.accentColor, .accentColor)
+    private(set) var agentColors: (color: Color, bubble: Color) = (.accentColor, .accentColor) // system accent: Native's
 
     /// Made once a load, so views comparing them see the same colours.
     private func resolveAgentColors() -> (color: Color, bubble: Color) {
-        if let t = appTheme { return (t.accent?.color ?? .accentColor, t.bubble?.color ?? .accentColor) }
-        return Self.agentColors(agentColorValue) ?? Self.agentColors(windowThemeName) ?? (.accentColor, .accentColor)
+        if let t = appTheme { return (t.accent?.color ?? .accentColor, t.bubble?.color ?? .accentColor) } // system accent: Native's
+        return Self.agentColors(agentColorValue) ?? Self.agentColors(windowThemeName) ?? (.accentColor, .accentColor) // system accent: Native's
     }
 
     /// An `agent-color` value's colours: an AgentColor's, a theme's, or a

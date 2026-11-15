@@ -68,6 +68,7 @@ race *args: deps
 vet: deps
     go vet -tags {{tags}} ./...
     @files="$(gofmt -l cmd internal)"; [ -z "$files" ] || { echo "gofmt would change:"; echo "$files"; exit 1; } >&2
+    @scripts/accent-check
 
 proto:
     PATH="$PATH:$(go env GOPATH)/bin" protoc -I proto --go_out=. --go_opt=module=github.com/homegrownsw/hammock proto/hammock/v1/hammock.proto

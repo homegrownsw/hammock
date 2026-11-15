@@ -227,8 +227,8 @@ private struct SettingAnchor: ViewModifier {
         content
             .background {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.accentColor.opacity(on ? 0.12 : 0))
-                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.accentColor.opacity(on ? 1 : 0), lineWidth: 2))
+                    .fill(Color.themeAccent.opacity(on ? 0.12 : 0))
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.themeAccent.opacity(on ? 1 : 0), lineWidth: 2))
                     .padding(.horizontal, -8)
                     .padding(.vertical, -5)
                     .allowsHitTesting(false)
