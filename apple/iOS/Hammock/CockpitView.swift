@@ -1071,7 +1071,7 @@ struct PaneScreen: View {
     /// The tab's name for its only pane, else the pane's own.
     private var title: String {
         guard let pane, let tab = model.tab(of: pane) else { return "" }
-        if inStrip { return stripName(pane) }
+        if inStrip || switchesView { return stripName(pane) }
         if asTab != nil || model.panes(in: tab).count < 2 { return model.title(of: tab) }
         if pane.kind == .browser || pane.kind == .simulator || pane.kind == .editor || pane.kind == .diff { return pane.title.isEmpty ? model.title(of: tab) : pane.title }
         return pane.displayName
@@ -1105,31 +1105,9 @@ struct PaneScreen: View {
         // wide screen: iPhone Duo open, an iPad), where the tabs stay.
         .hidesTabBarWhenPushed(hSize == .compact)
         .toolbar {
-            // With the strip, the pane's name is the title, and which view
-            // shows is in the … menu (viewSwitch).
-            if chrome, !inStrip, let pane, model.supportsAgentView(pane) {
-                ToolbarItem(placement: .principal) {
-                    Picker("View", selection: Binding(get: { agentMode }, set: { setMode($0) })) {
-                        Image(systemName: "text.bubble").tag(true)
-                        Image(systemName: "apple.terminal").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 120)
-                }
-            } else if chrome, !inStrip, let pane, pane.isLog {
-                ToolbarItem(placement: .principal) {
-                    Picker("View", selection: $logRaw) {
-                        Image(systemName: "list.bullet.rectangle").tag(false)
-                        Image(systemName: "apple.terminal").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 120)
-                }
-            }
-        }
-        .toolbar {
-            // One … menu, at the right: the editor and the simulator draw
-            // their own, with the tab's actions in it (paneTabMenu).
+            // One … menu, at the right, with which view an agent's or a
+            // log's pane shows (viewSwitch): the editor and the simulator
+            // draw their own, with the tab's actions in it (paneTabMenu).
             if chrome, !ownsMenu, let tab = pane.flatMap({ model.tab(of: $0) }) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -1152,8 +1130,11 @@ struct PaneScreen: View {
             if chrome {
                 // With the strip, TabScreen draws the title and the tab's
                 // name under it (faded between panes as they slide): this
-                // one is for the Back button's menu and VoiceOver.
-                Color.clear.navigationTitle(title)
+                // one is for the Back button's menu and VoiceOver. On its
+                // own, an agent's or a log's pane says so the same way.
+                Color.clear
+                    .navigationTitle(title)
+                    .navigationSubtitle(!inStrip && switchesView ? pane.flatMap { model.tab(of: $0) }.map { model.title(of: $0) } ?? "" : "")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -1180,6 +1161,14 @@ struct PaneScreen: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active, chrome, unseenFinish { model.focus(paneID) } }
     }
 
+    /// An agent's pane (conversation or terminal) or a log's (log or
+    /// terminal): titled with its own name, the tab's under it, and which
+    /// view shows chosen in the … menu, however many panes its tab has.
+    private var switchesView: Bool {
+        guard let pane else { return false }
+        return pane.isLog || model.supportsAgentView(pane)
+    }
+
     /// The editor and the simulator have a … menu of their own.
     private var ownsMenu: Bool { pane?.kind == .editor || pane?.kind == .simulator }
 
@@ -1197,13 +1186,13 @@ struct PaneScreen: View {
     /// With the strip: which view an agent's (or a log's) pane shows, as a
     /// choice in the … menu, where the bar's switch is otherwise.
     @ViewBuilder private var viewSwitch: some View {
-        if inStrip, let pane, model.supportsAgentView(pane), !pane.isLog {
+        if let pane, model.supportsAgentView(pane), !pane.isLog {
             Picker("View", selection: Binding(get: { agentMode }, set: { setMode($0) })) {
                 Label("Conversation", systemImage: "text.bubble").tag(true)
                 Label("Terminal", systemImage: "apple.terminal").tag(false)
             }
             .pickerStyle(.inline)
-        } else if inStrip, let pane, pane.isLog {
+        } else if let pane, pane.isLog {
             Picker("View", selection: $logRaw) {
                 Label("Log", systemImage: "list.bullet.rectangle").tag(false)
                 Label("Terminal", systemImage: "apple.terminal").tag(true)

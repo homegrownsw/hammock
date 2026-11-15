@@ -37,7 +37,7 @@ Panes keep the size your Mac gave them, shrunk to fit if they're wider than the 
 
 ## The agent view
 
-For [agents that support it](/hammock/docs/reference/agents/), a pane can show the conversation as a native view instead of the terminal: messages, the tools it ran and the changes it made. The switch at the top of the screen goes between the two, and Settings ▸ Agent View chooses which agent tabs open in.
+For [agents that support it](/hammock/docs/reference/agents/), a pane can show the conversation as a native view instead of the terminal: messages, the tools it ran and the changes it made. Choose **Conversation** or **Terminal** in the … menu, and Settings ▸ Agent View chooses which agent tabs open in.
 
 Tap a file the agent mentions to see it, or one of its running tasks or subagents to watch it. **Latest** takes you back to the end.
 
