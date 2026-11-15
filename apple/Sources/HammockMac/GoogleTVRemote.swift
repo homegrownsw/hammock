@@ -15,7 +15,7 @@ struct GoogleTVRemote: View {
     var press: (_ name: String, _ phase: String) -> Void
 
     /// Its width to its height (with the volume rocker on its side).
-    static let aspect: CGFloat = 0.27
+    static let aspect: CGFloat = 0.3
 
     var body: some View {
         GeometryReader { geo in

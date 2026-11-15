@@ -960,7 +960,9 @@ struct SimulatorPaneView: View {
                             if model.isAppleTV(paneID) {
                                 SiriRemote { name, phase in press(name, phase) }
                             } else {
+                                // No taller than the TV beside it.
                                 GoogleTVRemote { name, phase in press(name, phase) }
+                                    .frame(maxHeight: wide ? placement.map { $0.devicePath.boundingBox.height } : nil)
                             }
                         }
                         .padding(wide ? EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 24) : EdgeInsets(top: 0, leading: 20, bottom: 16, trailing: 20))
