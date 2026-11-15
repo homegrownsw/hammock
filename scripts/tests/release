@@ -335,6 +335,37 @@ d=$(fixture 2026.1.0)
   apply_notes_doc "$tmp/doc.md" "$d" "mac ios"
 )
 check "the document reads back to the same notes" "" "$(git -C "$d" status --porcelain)"
+# Order: a NEW note with a picture leads its section; moving notes in the document keeps them where they were put.
+od=$(fixture 2026.1.0)
+printf 'tag: NEW\ndate: 2026-11-01\nimage: z.gif A picture\nPictured.\n' >"$od/release-notes/mac/pending/z-pictured.md"
+printf 'tag: NEW\ndate: 2026-11-01\nAnother.\n' >"$od/release-notes/mac/pending/another.md"
+order_of() { (. "$od/scripts/lib/release-notes.sh"; render_dir "$od/release-notes/mac/pending" | cut -f1 | tr '\n' '|'); }
+check "a picture leads New, then file names" "[NEW] Pictured.|[NEW] Another.|[NEW] A new thing.|[FIXED] A <thing> & more works now.|" "$(order_of)"
+(
+  cd "$od"
+  . scripts/lib/release-notes.sh
+  notes_doc "$od" mac "Test" >"$tmp/doc.md"
+  apply_notes_doc "$tmp/doc.md" "$od" mac
+)
+check "…and reading it back unmoved adds no order lines" "" "$(grep -l '^order:' "$od"/release-notes/mac/pending/*.md)"
+# Moves "Another." to the top: its === line and the lines after it, to before the first note.
+(
+  cd "$od"
+  . scripts/lib/release-notes.sh
+  notes_doc "$od" mac "Test" >"$tmp/doc.md"
+  awk '/^=== /{ inmove = ($2 == "mac/another.md") } inmove { moved = moved $0 "\n"; next } { rest = rest $0 "\n" }
+    END { n = index(rest, "\n=== "); printf "%s\n%s%s", substr(rest, 1, n), moved, substr(rest, n + 1) }' "$tmp/doc.md" >"$tmp/doc2.md"
+  apply_notes_doc "$tmp/doc2.md" "$od" mac
+)
+check "a note moved up in the document is shown there" "[NEW] Another.|[NEW] Pictured.|[NEW] A new thing.|[FIXED] A <thing> & more works now.|" "$(order_of)"
+check "…from an order line after its date" "order: 1" "$(sed -n 3p "$od/release-notes/mac/pending/another.md")"
+check "…which stays out of its text" "Another." "$(. "$od/scripts/lib/release-notes.sh"; note_body "$od/release-notes/mac/pending/another.md")"
+check "…and out of the document" "" "$( (. "$od/scripts/lib/release-notes.sh"; notes_doc "$od" mac "Test") | grep '^order:')"
+check "…which reads back the same" "[NEW] Another.|[NEW] Pictured.|[NEW] A new thing.|[FIXED] A <thing> & more works now.|" "$(
+  (cd "$od" && . scripts/lib/release-notes.sh && notes_doc "$od" mac "Test" >"$tmp/doc.md" && apply_notes_doc "$tmp/doc.md" "$od" mac)
+  order_of)"
+check "a version's summary keeps it" "- Another.|- Pictured.|- A new thing.|" \
+  "$(. "$od/scripts/lib/release-notes.sh"; render_consolidated_lines "$od/release-notes/mac/pending" | grep '^- ' | head -3 | tr '\n' '|')"
 # The stand-in editor: rewrites the FIXED note, merges the INTERNAL one away, and adds one with no date.
 cat >"$tmp/edit-notes" <<'EOF'
 #!/usr/bin/env bash

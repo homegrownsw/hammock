@@ -11,11 +11,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -507,7 +509,10 @@ type releaseNotes struct {
 }
 
 // A note's text, and its image (a file under release-notes/, and what it shows) if it has one.
-type note struct{ text, image, alt string }
+type note struct {
+	text, image, alt string
+	order            int // its order line, or math.MaxInt
+}
 
 // summaryImage matches a version summary's image line, under its note: "  ![alt](v2026.3.0/file.png)".
 var summaryImage = regexp.MustCompile(`^\s+!\[(.*)\]\((\S+)\)$`)
@@ -543,26 +548,49 @@ func appNotes(root, app string) ([]releaseNotes, error) {
 			if err != nil {
 				return nil, err
 			}
-			lines := strings.SplitN(string(b), "\n", 3)
+			lines := strings.Split(string(b), "\n")
 			if len(lines) < 3 {
 				continue
 			}
 			if d := strings.TrimSpace(strings.TrimPrefix(lines[1], "date:")); d > r.date {
 				r.date = d
 			}
-			n := note{text: lines[2]}
-			if img, ok := strings.CutPrefix(n.text, "image:"); ok {
-				img, n.text, _ = strings.Cut(img, "\n")
-				file, alt, _ := strings.Cut(strings.TrimSpace(img), " ")
-				n.image, n.alt = filepath.Join(dir, e.Name(), file), strings.TrimSpace(alt)
+			n := note{order: math.MaxInt}
+			rest := lines[2:]
+		header:
+			for len(rest) > 0 {
+				switch {
+				case strings.HasPrefix(rest[0], "order:"):
+					o, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(rest[0], "order:")))
+					if err != nil {
+						break header
+					}
+					n.order = o
+				case strings.HasPrefix(rest[0], "image:"):
+					file, alt, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(rest[0], "image:")), " ")
+					n.image, n.alt = filepath.Join(dir, e.Name(), file), strings.TrimSpace(alt)
+				default:
+					break header
+				}
+				rest = rest[1:]
 			}
-			n.text = strings.Join(strings.Fields(n.text), " ")
+			n.text = strings.Join(strings.Fields(strings.Join(rest, " ")), " ")
 			switch strings.TrimSpace(strings.TrimPrefix(lines[0], "tag:")) {
 			case "NEW":
 				r.newNotes = append(r.newNotes, n)
 			case "FIXED":
 				r.fixed = append(r.fixed, n)
 			}
+		}
+		// As scripts/lib/release-notes.sh's sorted_notes: by order line, then those with a picture, then by
+		// file name (Glob's order).
+		for _, s := range [][]note{r.newNotes, r.fixed} {
+			sort.SliceStable(s, func(i, j int) bool {
+				if s[i].order != s[j].order {
+					return s[i].order < s[j].order
+				}
+				return s[i].image != "" && s[j].image == ""
+			})
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, e.Name()+".md")); err == nil {
 			r.newNotes, r.fixed = nil, nil

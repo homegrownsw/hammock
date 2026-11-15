@@ -64,3 +64,33 @@ func TestWhatsNewImages(t *testing.T) {
 		t.Error("an image from an earlier run was left behind")
 	}
 }
+
+// A version's notes are shown by their order lines, then those with a picture, then by file name.
+func TestWhatsNewOrder(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "ios", "v2026.4.0")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, s := range map[string]string{
+		"a-plain.md":   "tag: NEW\ndate: 2026-11-10\nPlain.\n",
+		"b-picture.md": "tag: NEW\ndate: 2026-11-10\nimage: b.gif A picture\nWith a picture.\n",
+		"c-placed.md":  "tag: NEW\ndate: 2026-11-10\norder: 1\nPlaced first.\n",
+		"d-fixed.md":   "tag: FIXED\ndate: 2026-11-10\norder: 2\nFixed.\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	notes, err := appNotes(root, "ios")
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("appNotes: %v, %d versions", err, len(notes))
+	}
+	var got []string
+	for _, n := range append(notes[0].newNotes, notes[0].fixed...) {
+		got = append(got, n.text)
+	}
+	if want := "Placed first.|With a picture.|Plain.|Fixed."; strings.Join(got, "|") != want {
+		t.Errorf("order %q, want %q", strings.Join(got, "|"), want)
+	}
+}

@@ -5,6 +5,7 @@
 # A note file is (release-notes/README.md):
 #   tag: NEW|FIXED|INTERNAL
 #   date: YYYY-MM-DD
+#   order: <n>                   (optional: its place among the version's notes, set when they're reordered)
 #   image: <file> <alt text>     (optional: a screenshot or GIF beside the note, for a big, visual feature)
 #   <the text, one or more lines>
 
@@ -15,7 +16,22 @@ PLATFORMS_ALL="mac ios"
 label() { case "$1" in mac) echo Mac ;; ios) echo iOS ;; esac; }
 
 note_tag() { head -n1 "$1" | sed -E 's/^tag:[[:space:]]*//' | tr '[:lower:]' '[:upper:]'; }
-note_body() { tail -n +2 "$1" | sed -E '/^date:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}$/d; /^image:/d' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +//; s/ +$//'; }
+note_body() { tail -n +2 "$1" | sed -E '/^date:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}$/d; /^order:[[:space:]]*[0-9]+[[:space:]]*$/d; /^image:/d' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +//; s/ +$//'; }
+# A note's place, from its `order: <n>` line, or nothing.
+note_order() { sed -nE 's/^order:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$1" | head -n1; }
+
+# The notes in a directory, one path per line, in the order they're shown: those with an order line first, by
+# it; then those with a picture, so a big feature leads; then by file name. Callers group them by tag.
+sorted_notes() { # sorted_notes <dir>
+  local f o i
+  for f in "$1"/*.md; do
+    [ -f "$f" ] || continue
+    o=$(note_order "$f")
+    if [ -z "$o" ]; then o=999999; fi
+    if [ -n "$(note_image "$f")" ]; then i=0; else i=1; fi
+    printf '%06d\t%s\t%s\t%s\n' "$((10#$o))" "$i" "$(basename "$f")" "$f"
+  done | LC_ALL=C sort | cut -f4
+}
 
 # A note's image, from its `image: <file> <alt text>` line: "<file><TAB><alt text>", or nothing.
 note_image() {
@@ -51,11 +67,10 @@ new_first() {
 # render_visible's.
 render_dir() { # render_dir <dir> [<as>]
   local f line lines=""
-  for f in "$1"/*.md; do
-    [ -f "$f" ] || continue
+  while IFS= read -r f; do
     line=$(render_visible "$f" "${2:-}")
     if [ -n "$line" ]; then lines+="$line"$'\n'; fi
-  done
+  done < <(sorted_notes "$1")
   new_first "$lines"
 }
 
@@ -67,13 +82,12 @@ render_consolidated_lines() { # render_consolidated_lines <dir>
   local t f heading first=1 items img
   for t in NEW FIXED INTERNAL; do
     items=""
-    for f in "$1"/*.md; do
-      [ -f "$f" ] || continue
+    while IFS= read -r f; do
       [ "$(note_tag "$f")" = "$t" ] || continue
       items+="- $(note_body "$f")"$'\n'
       img=$(note_image "$f")
       if [ -n "$img" ]; then items+="  ![${img#*$'\t'}]($(basename "$1")/${img%%$'\t'*})"$'\n'; fi
-    done
+    done < <(sorted_notes "$1")
     [ -n "$items" ] || continue
     heading=$(tag_heading "$t")
     if [ "$first" = 1 ]; then first=0; else echo; fi
@@ -250,11 +264,10 @@ print_pending() { # print_pending <pending dir>
   if [ "$width" -gt 100 ]; then width=100; elif [ "$width" -lt 40 ]; then width=40; fi
   for t in NEW FIXED INTERNAL; do
     items=""
-    for f in "$1"/*.md; do
-      [ -f "$f" ] || continue
+    while IFS= read -r f; do
       [ "$(note_tag "$f")" = "$t" ] || continue
       items+="$(note_body "$f" | fold -s -w "$width" | sed -e 's/ *$//' -e '1s/^/  • /' -e '2,$s/^/    /')"$'\n'
-    done
+    done < <(sorted_notes "$1")
     [ -n "$items" ] || continue
     if [ "$first" = 1 ]; then first=0; else echo; fi
     if [ "$t" = INTERNAL ]; then echo "Internal (never shown to people)"; else tag_heading "$t"; fi
@@ -286,26 +299,51 @@ notes_doc() { # notes_doc <repo-root> <apps> <title>
 #   Change a note: edit its text or its tag.
 #   Merge notes into one: put the text in one of them and delete the others, their "===" lines and all.
 #   Drop a note: delete it. Add one: a new "=== mac/a-short-name.md" (or ios/) line, a tag, and its text.
+#   Reorder them: move a note, "===" line and all. They're released in the order they're in here.
 #   A note's "image: <file> <alt text>" line shows a picture beside it in pending/; keep it with the note.
 #
 # Lines starting with # are left out. Save, then close this pane (or your editor) to carry on.
 DOC
   for p in $2; do
     for t in NEW FIXED INTERNAL; do
-      for f in "$root/release-notes/$p/pending"/*.md; do
-        [ -f "$f" ] || continue
+      while IFS= read -r f; do
         [ "$(note_tag "$f")" = "$t" ] || continue
         printf '\n=== %s/%s\n' "$p" "$(basename "$f")"
-        cat "$f"
-        [ -z "$(tail -c1 "$f")" ] || echo
-      done
+        # Without its order line: its place in the document is its order.
+        awk '!/^order:[ \t]*[0-9]+[ \t]*$/' "$f"
+      done < <(sorted_notes "$root/release-notes/$p/pending")
     done
   done
 }
 
+# Note file names read from stdin, grouped New, Fixed, Internal as they're shown, keeping their order within
+# each.
+by_tag() { # by_tag <dir>
+  local names t n
+  names=$(cat)
+  for t in NEW FIXED INTERNAL; do
+    while IFS= read -r n; do
+      if [ -n "$n" ] && [ "$(note_tag "$1/$n")" = "$t" ]; then echo "$n"; fi
+    done <<<"$names"
+  done
+}
+
+# Gives the notes in <dir> (each starting tag:, date:) order lines for the order <names> has them in, unless
+# that's the order they'd be shown in without them, so a document read back unmoved adds none.
+place_notes() { # place_notes <dir> <names, one per line>
+  local want have n i=0
+  want=$(printf '%s\n' "$2" | by_tag "$1")
+  have=$(sorted_notes "$1" | sed 's|.*/||' | by_tag "$1")
+  [ "$want" != "$have" ] || return 0
+  while IFS= read -r n; do
+    i=$((i + 1))
+    awk -v o="$i" '{ print } NR == 2 { print "order: " o }' "$1/$n" >"$1/$n.new" && mv "$1/$n.new" "$1/$n"
+  done <<<"$want"
+}
+
 # Reads a document notes_doc wrote, once edited, back into the apps' pending notes: each "=== app/file"
 # note becomes that file (a missing .md added, a missing date today's), and a note no longer in it is
-# deleted. Nothing changes if anything in it is wrong; it says what on stderr and returns 1.
+# deleted. The notes keep the order they're in (place_notes). Nothing changes if anything in it is wrong; it says what on stderr and returns 1.
 apply_notes_doc() { # apply_notes_doc <doc> <repo-root> <apps>
   local doc="$1" root="$2" apps="$3" stage p f name content tag rest date body bad=0 today
   stage=$(mktemp -d)
@@ -323,6 +361,7 @@ apply_notes_doc() { # apply_notes_doc <doc> <repo-root> <apps>
       if (h in seen) { fail(h " is in here twice"); next }
       seen[h] = 1; cur = stage "/" h; skip = 0
       printf "" > cur
+      print h > (stage "/.sequence")
       next
     }
     {
@@ -345,11 +384,15 @@ apply_notes_doc() { # apply_notes_doc <doc> <repo-root> <apps>
     rest=$(printf '%s\n' "$content" | tail -n +2)
     date=$(printf '%s\n' "$rest" | head -n1 | sed -nE 's/^date:[[:space:]]*([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]*$/\1/p')
     if [ -n "$date" ]; then body=$(printf '%s\n' "$rest" | tail -n +2); else date=$today; body=$rest; fi
+    # An order line typed in is dropped: a note's place in the document is its order (place_notes).
+    body=$(printf '%s\n' "$body" | awk '!/^order:[ \t]*[0-9]+[ \t]*$/')
     if ! printf '%s' "$body" | grep -q '[^[:space:]]'; then echo "$name has no text" >&2; bad=1; continue; fi
     printf 'tag: %s\ndate: %s\n%s\n' "$tag" "$date" "$(printf '%s\n' "$body" | sed -e '/[^[:space:]]/,$!d')" >"$f"
   done
   if [ "$bad" != 0 ]; then rm -rf "$stage"; return 1; fi
+  touch "$stage/.sequence"
   for p in $apps; do
+    place_notes "$stage/$p" "$(sed -n "s|^$p/||p" "$stage/.sequence")"
     mkdir -p "$root/release-notes/$p/pending"
     for f in "$root/release-notes/$p/pending"/*.md; do
       if [ -f "$f" ]; then rm -f "$f"; fi

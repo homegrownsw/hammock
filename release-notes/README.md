@@ -52,7 +52,9 @@ show test data, never someone's real Groups or panes. A version's summary shows 
 and `just docs-gen` copies it into the site (`site/public/whats-new/`, git-ignored).
 
 Wherever notes are listed, they're in sections with a heading (New, Fixed, and Internal where INTERNAL is
-shown), in that order, rather than a tag on each note.
+shown), in that order, rather than a tag on each note. Within a section, a note with a picture comes first,
+then the rest by file name, unless they've been reordered when the release was read (below): that gives each
+note an `order: <n>` line after its date, which puts it in that place.
 
 ## Adding one: `just note`
 
@@ -126,7 +128,7 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
 2. **Chooses the version** for each app (`next`, `build` or the one given, below) and writes it into
    Version.xcconfig.
 3. **Has you read the notes**, every pending note of each app it releases, and edit them if you like: rewrite
-   one, change its tag, merge several into one, drop or add one. For editing they're all in one document, each
+   one, change its tag, merge several into one, drop or add one, move one up or down. For editing they're all in one document, each
    under its `=== mac/<file>.md` line as its file has it, in a Hammock editor pane (outside Hammock, `$VISUAL`
    or `$EDITOR`): save and close it, and they're read back into `pending/`. A mistake (a missing tag, a note
    for an app not in this release) changes nothing and says what to put right.
