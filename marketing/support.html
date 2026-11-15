@@ -18,7 +18,8 @@
 <div class="wrap">
 <nav aria-label="Main">
   <a class="brand" href="../"><img src="../icon-256.png" alt="">Hammock</a>
-  <div class="links">
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path class="t" d="M4 6h14"/><path class="m" d="M4 11h14"/><path class="b" d="M4 16h14"/></svg></button>
+  <div class="links" id="nav-links">
     <a href="../">Home</a>
     <a href="../docs/">Docs</a>
     <a href="../privacy/">Privacy</a>
@@ -63,5 +64,18 @@
   <a href="../">Hammock</a> · <a href="./">Support</a> · <a href="../privacy/">Privacy</a> · Made by <a href="https://homegrownsw.com/">Homegrown Software</a>
 </footer>
 </div>
+<script>
+  // The nav: its bar shows once the page has scrolled; on a phone, the menu button opens and closes its links.
+  (() => {
+    const nav = document.querySelector('nav[aria-label="Main"]'), menu = nav.querySelector('.menu');
+    const scrolled = () => nav.classList.toggle('scrolled', scrollY > 4);
+    const open = on => { nav.classList.toggle('open', on); menu.setAttribute('aria-expanded', on); };
+    addEventListener('scroll', scrolled, { passive: true }); scrolled();
+    menu.addEventListener('click', () => open(!nav.classList.contains('open')));
+    nav.querySelectorAll('.links a').forEach(a => a.addEventListener('click', () => open(false)));
+    addEventListener('keydown', e => { if (e.key === 'Escape') open(false); });
+    addEventListener('click', e => { if (!nav.contains(e.target)) open(false); });
+  })();
+</script>
 </body>
 </html>

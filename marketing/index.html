@@ -44,7 +44,7 @@
       var(--bg);
     color: var(--text);
     font: 16px/1.6 Inter, system-ui, -apple-system, sans-serif;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
   a { color: var(--mint); text-underline-offset: 3px; }
   a:hover { color: #a8ffd6; }
@@ -52,7 +52,20 @@
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
   /* Nav */
-  nav { display: flex; align-items: center; gap: 20px; padding: 18px 0; }
+  /* Stays at the top as the page scrolls; its frosted bar (full width, past .wrap) fades in once it has. */
+  nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 20px; padding: 14px 0; }
+  nav::before {
+    content: ""; position: absolute; z-index: -1; inset: 0 calc(50% - 50vw);
+    background: rgba(6, 20, 14, 0.78); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px);
+    border-bottom: 1px solid var(--card-line); opacity: 0; transition: opacity .2s;
+  }
+  nav.scrolled::before, nav.open::before { opacity: 1; }
+  nav .menu { display: none; margin-left: auto; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
+  nav .menu svg { display: block; margin: auto; }
+  nav .menu path { transition: transform .2s; transform-origin: center; }
+  nav.open .menu .t { transform: translateY(5px) rotate(45deg); }
+  nav.open .menu .m { opacity: 0; }
+  nav.open .menu .b { transform: translateY(-5px) rotate(-45deg); }
   nav .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font: 700 20px var(--display); letter-spacing: -0.02em; }
   nav .brand img { width: 34px; height: 34px; }
   nav .links { margin-left: auto; display: flex; align-items: center; gap: 22px; }
@@ -344,7 +357,13 @@
   }
   @media (max-width: 560px) {
     .wrap { padding: 0 16px; }
-    nav .links a:not(.btn) { display: none; }
+    /* No room for the links: they fold into a menu. Download goes (it's a Mac app; this is a phone). */
+    nav .menu { display: block; }
+    nav .links { display: none; position: absolute; top: 100%; left: -16px; right: -16px; flex-direction: column; align-items: stretch; gap: 0; padding: 6px 16px 14px; background: rgba(6, 20, 14, 0.94); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-bottom: 1px solid var(--card-line); }
+    nav.open .links { display: flex; }
+    nav .links a:not(.btn) { padding: 12px 0; font-size: 17px; color: var(--text); }
+    nav .links a:not(.btn) + a:not(.btn) { border-top: 1px solid var(--card-line); }
+    nav .links .btn { display: none; }
     .hero { padding-top: 30px; }
     .hero img.icon { width: 124px; height: 124px; }
     .stage { --fit: .6; height: calc(520px * var(--fit)); }
@@ -368,7 +387,8 @@
 
 <nav aria-label="Main">
   <a class="brand" href="#"><img src="icon-256.png" alt="">Hammock</a>
-  <div class="links">
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path class="t" d="M4 6h14"/><path class="m" d="M4 11h14"/><path class="b" d="M4 16h14"/></svg></button>
+  <div class="links" id="nav-links">
     <a href="#features">Features</a>
     <a href="#iphone">iPhone</a>
     <a href="#agents">For Agents</a>
@@ -1437,6 +1457,19 @@
 
     win.classList.add('live');
     renderSide(); renderPanes();
+  })();
+</script>
+<script>
+  // The nav: its bar shows once the page has scrolled; on a phone, the menu button opens and closes its links.
+  (() => {
+    const nav = document.querySelector('nav[aria-label="Main"]'), menu = nav.querySelector('.menu');
+    const scrolled = () => nav.classList.toggle('scrolled', scrollY > 4);
+    const open = on => { nav.classList.toggle('open', on); menu.setAttribute('aria-expanded', on); };
+    addEventListener('scroll', scrolled, { passive: true }); scrolled();
+    menu.addEventListener('click', () => open(!nav.classList.contains('open')));
+    nav.querySelectorAll('.links a').forEach(a => a.addEventListener('click', () => open(false)));
+    addEventListener('keydown', e => { if (e.key === 'Escape') open(false); });
+    addEventListener('click', e => { if (!nav.contains(e.target)) open(false); });
   })();
 </script>
 </body>
