@@ -609,7 +609,14 @@ public final class AppModel {
             if Self.debugAsleep { Self.debugPutToSleep(&p) }
             let old = panes[p.id]
             if old == p { continue }
-            panes[p.id] = p
+            if let old, Self.sameButSize(old, p) {
+                // Only its size changed, as on every step of resizing a
+                // window: no view shows it, so the views reading `panes`
+                // (the whole window, the main menu) aren't woken for it.
+                _panes[p.id] = p
+            } else {
+                panes[p.id] = p
+            }
             if old == nil, let from = splitting, panes[from]?.tabID == p.tabID {
                 splitting = nil
                 focusedPaneID = p.id
@@ -2024,6 +2031,14 @@ extension AppModel {
             // What came across (the carry-over report).
             if !r.agentSwitched.report.isEmpty { showToast(r.agentSwitched.report) }
         }
+    }
+
+    /// Whether two of a pane's states differ in its size (cols and rows) alone.
+    nonisolated static func sameButSize(_ a: Pane, _ b: Pane) -> Bool {
+        var b = b
+        b.cols = a.cols
+        b.rows = a.rows
+        return a == b
     }
 
     /// HMK_DEBUG_ASLEEP=1: every terminal pane shown as an agent put to

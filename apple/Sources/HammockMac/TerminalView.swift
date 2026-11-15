@@ -423,7 +423,7 @@ final class TerminalNSView: NSView {
         if cols != lastGrid.cols || rows != lastGrid.rows {
             lastGrid = (cols, rows)
             // Shown in two windows: only the one you were in last sizes it.
-            if TerminalDrivers.mayResize(self) { onResize?(cols, rows) }
+            if TerminalDrivers.mayResize(self) { onResize?(cols, rows); ResizeDrag.resizeSent?() }
         }
     }
 
@@ -543,6 +543,7 @@ final class TerminalNSView: NSView {
         l.contentsGravity = .topLeft
         // Two drawables, not three: a full-screen pane on a 6K display is
         // 85 MB each, and drawing waits on the GPU's last frame anyway.
+        // Three while the window is resized (viewWillStartLiveResize).
         l.maximumDrawableCount = 2
         // Moved and resized with the view, never animated; under its
         // subviews' layers (the "Copied" pill).
@@ -558,8 +559,23 @@ final class TerminalNSView: NSView {
         if let metalLayer, metalLayer.frame != frame { metalLayer.frame = frame }
     }
 
+    // The window being resized: a third drawable, so each frame doesn't
+    // wait for the compositor to hand one back (about a quarter more frames
+    // drawn, measured with the debug director's `drag`); two again after.
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        if metal != nil { metalLayer?.maximumDrawableCount = 3 }
+    }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        if metal != nil { metalLayer?.maximumDrawableCount = 2 }
+    }
+
     override func updateLayer() {
         guard metal != nil, let layer = metalLayer else { return }
+        let whole = ResizeDrag.layerTiming == nil ? 0 : CACurrentMediaTime()
+        defer { if whole > 0 { ResizeDrag.layerTiming?(CACurrentMediaTime() - whole) } }
         // Mid zoom, the size it's going to (motionTarget), clipped by the view.
         let frame = CGRect(origin: .zero, size: layoutSize)
         if layer.frame != frame { layer.frame = frame }

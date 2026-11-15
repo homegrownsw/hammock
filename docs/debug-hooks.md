@@ -49,7 +49,7 @@ render faithfully in snapshots (the sidebar's list comes out blank). For the win
 | `HMK_DEBUG_CAPTURE_SPLIT=<n>` | Split it (down with `HMK_DEBUG_CAPTURE_SPLIT_DOWN=1`) and close the new pane (`<prefix>-split-NN.png`; in light mode with `HMK_DEBUG_CAPTURE_LIGHT=1`). |
 | `HMK_DEBUG_CAPTURE_FLOAT=<n>` | Float it and dock it again (`<prefix>-float-NN.png`). |
 | `HMK_DEBUG_RECORD=<movie.mov>` | Record the window as a movie, drawn as the active window throughout, whatever app has the focus. |
-| `HMK_DEBUG_DIRECTOR=<file>` | Take commands appended to a file: collapse or expand a Group, focus or zoom a pane, type into the palette (`DebugDirector.swift`). `scripts/readme-demo` (`just readme-demo`) uses it and `HMK_DEBUG_RECORD` to record the README's demo GIF on a scratch daemon with made-up Groups (`marketing/demo/`). |
+| `HMK_DEBUG_DIRECTOR=<file>` | Take commands appended to a file: collapse or expand a Group, focus or zoom a pane, type into the palette (`DebugDirector.swift`), or `drag SECONDS`: resize the window every frame, as dragging its corner does, and report to stderr how it kept up (`DebugResizeDrag.swift`). `scripts/readme-demo` (`just readme-demo`) uses it and `HMK_DEBUG_RECORD` to record the README's demo GIF on a scratch daemon with made-up Groups (`marketing/demo/`). |
 
 Look at frames as a downscaled contact sheet (`scripts/frames`), not one full-size PNG at a time.
 

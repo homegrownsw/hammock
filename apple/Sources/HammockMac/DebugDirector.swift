@@ -13,6 +13,7 @@ import HammockKit
 ///	palette [TEXT]                opens the command palette, typing TEXT into it
 ///	palette close
 ///	profile NAME|DEVICE           your name and this Mac's, as Settings ▸ Sharing sets them
+///	drag [SECONDS]                resizes the window every frame and reports how it kept up (ResizeDrag)
 @MainActor enum DebugDirector {
     static let collapse = Notification.Name("HammockDebugCollapse")
     /// What the palette's search field should hold, set as it's typed.
@@ -57,6 +58,8 @@ import HammockKit
             guard let n = Int(arg), let tab = m.selectedTabID.flatMap({ m.tabs[$0] }) else { return }
             let ids = AppModel.paneIDs(tab.layout)
             if n >= 1, n <= ids.count { PaneZoom.shared.toggle(ids[n - 1], model: m) }
+        case "drag":
+            await ResizeDrag.run(seconds: Double(arg) ?? 4)
         case "palette" where arg == "close":
             PaletteState.shared.isOpen = false
         case "palette":
