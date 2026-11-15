@@ -357,13 +357,13 @@
   }
   @media (max-width: 560px) {
     .wrap { padding: 0 16px; }
-    /* No room for the links: they fold into a menu. Download goes (it's a Mac app; this is a phone). */
+    /* No room for the links: they fold into a menu, Download last (a narrow window on a Mac still wants it). */
     nav .menu { display: block; }
     nav .links { display: none; position: absolute; top: 100%; left: -16px; right: -16px; flex-direction: column; align-items: stretch; gap: 0; padding: 6px 16px 14px; background: rgba(6, 20, 14, 0.94); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); border-bottom: 1px solid var(--card-line); }
     nav.open .links { display: flex; }
     nav .links a:not(.btn) { padding: 12px 0; font-size: 17px; color: var(--text); }
     nav .links a:not(.btn) + a:not(.btn) { border-top: 1px solid var(--card-line); }
-    nav .links .btn { display: none; }
+    nav .links .btn { justify-content: center; margin-top: 10px; }
     .hero { padding-top: 30px; }
     .hero img.icon { width: 124px; height: 124px; }
     .stage { --fit: .6; height: calc(520px * var(--fit)); }
