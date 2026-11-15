@@ -5,7 +5,8 @@
 # Release settings naming your own machines and vaults live in .release.env
 # (git-ignored, KEY=value lines): UPDATE_HOST,
 # UPDATE_DIR and UPDATE_CONTAINER for scripts/mac-update, HMK_SHARE_OP_ITEM and
-# HMK_SHARE_OP_ACCOUNT for `just share`.
+# HMK_SHARE_OP_ACCOUNT for `just share`, HMK_SITE_REMOTE for `just site-deploy`, HMK_DSYM_REMOTE for
+# scripts/dsyms.
 set dotenv-filename := ".release.env"
 set dotenv-load
 
@@ -315,6 +316,15 @@ site: docs
 # change. Releases run it from the release commit (scripts/site-deploy --ref), so the docs match what shipped.
 site-deploy *args:
     scripts/site-deploy {{args}}
+
+# Send release dSYMs still waiting in dist/release-dsyms (a release that couldn't reach the server) to
+# HMK_DSYM_REMOTE (.release.env), deleting each here once it's there whole. Releases do it themselves.
+dsyms-backup:
+    scripts/dsyms backup
+
+# Bring Mac build N's dSYMs back from HMK_DSYM_REMOTE, unzipped into dist/release-dsyms, to symbolicate a crash.
+dsyms n:
+    scripts/dsyms fetch {{n}}
 
 # The config file's header in the Mac app (ConfigHeader.generated.swift), from the keys in
 # internal/hammockconfig/keys.go: run after changing them (a Go test fails until you do).

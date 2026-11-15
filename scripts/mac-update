@@ -28,7 +28,8 @@
 # Every released zip is kept in dist/releases; build first fetches the last few releases' zips from GitHub
 # into it, so deltas can be made from them on any Mac. Each release's DMG (scripts/make-dmg.sh) is kept in
 # dist/release-dmgs instead: generate_appcast takes every archive in dist/releases, a DMG too, for an update.
-# Its debug symbols (dSYMs, which name this Mac's paths, so never published) go in dist/release-dsyms.
+# Its debug symbols (dSYMs, which name this Mac's paths, so never published) go in dist/release-dsyms, and
+# upload sends them to HMK_DSYM_REMOTE (.release.env) and deletes them here (scripts/dsyms).
 #
 # The Sparkle signing key is read from the keychain (account "fika"), or from SPARKLE_KEY_FILE
 # (op document get "Hammock Sparkle EdDSA private key").
@@ -136,6 +137,14 @@ $(sed -E -e 's|<li>|- |' -e 's|<h[34]>(.*)</h[34]>|\1:|' -e 's|<[^>]+>||g' -e '/
         --title "Hammock $ver (build $n)" --notes-file "$archives/Hammock-$n.html" "${files[@]}"
     fi
     gh release edit "$tag" --repo "$repo" --draft=false --latest
+    # Its dSYMs (and any an earlier release couldn't send) off to the backup server, then off this Mac. A
+    # failure doesn't stop the release: they wait in dist/release-dsyms for the next (or `just dsyms-backup`).
+    if [ -n "${HMK_DSYM_REMOTE:-}" ]; then
+      "$root/scripts/dsyms" backup ||
+        echo "warning: dSYMs NOT backed up; they're in $dsyms until the next release or \`just dsyms-backup\`." >&2
+    else
+      echo "warning: HMK_DSYM_REMOTE isn't set (.release.env): dSYMs stay in $dsyms." >&2
+    fi
     echo "Hammock build $n: https://github.com/$repo/releases/tag/$tag ($site/download)"
     [ ! -d "$linux" ] || echo "Linux: $site/linux/hammock-linux-amd64.tar.gz (arm64 too); Unraid: $site/linux/hammock.plg"
     ;;

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Each Mac release's debug symbols (dSYMs: build-mac-app.sh writes them, scripts/mac-update zips them into
+# dist/release-dsyms as Hammock-<n>.dSYMs.zip), kept on a server rather than this Mac, for symbolicating
+# crash reports. They name the build Mac's paths, so they're never published.
+#
+#   scripts/dsyms backup     copy every zip waiting in dist/release-dsyms to HMK_DSYM_REMOTE, check each
+#                            arrived whole (SHA-256 on both ends), then delete it here. Releases run it after
+#                            publishing; what fails (the server off, away from home) waits for the next one.
+#   scripts/dsyms fetch <n>  bring build n's back and unzip it: dist/release-dsyms/Hammock-<n>.dSYMs
+#
+# HMK_DSYM_REMOTE is where, as user@host:/path (.release.env).
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+[ ! -f "$root/.release.env" ] || { set -a; . "$root/.release.env"; set +a; }
+dir="$root/dist/release-dsyms"
+remote="${HMK_DSYM_REMOTE:-}"
+[ -n "$remote" ] || { echo "HMK_DSYM_REMOTE isn't set: add it to .release.env (user@host:/path)." >&2; exit 1; }
+host="${remote%%:*}" path="${remote#*:}"
+[ "$host" != "$remote" ] && [ -n "$path" ] || { echo "HMK_DSYM_REMOTE should be user@host:/path, not $remote." >&2; exit 1; }
+ssh_opts=(-o BatchMode=yes -o ConnectTimeout=10)
+q() { printf '%q' "$1"; } # a path quoted for the remote shell
+
+case "${1:-}" in
+  backup)
+    shopt -s nullglob
+    zips=("$dir"/Hammock-*.dSYMs.zip)
+    [ ${#zips[@]} -gt 0 ] || { echo "No dSYMs waiting to be backed up."; exit 0; }
+    ssh "${ssh_opts[@]}" "$host" "mkdir -p $(q "$path")"
+    for z in "${zips[@]}"; do
+      f="$(basename "$z")"
+      # Copied under a temporary name and renamed once whole, so a half-copied zip never looks backed up.
+      scp -q "${ssh_opts[@]}" "$z" "$host:$path/.$f.part"
+      ours="$(shasum -a 256 "$z" | cut -d' ' -f1)"
+      theirs="$(ssh "${ssh_opts[@]}" "$host" "sha256sum $(q "$path/.$f.part")" | cut -d' ' -f1)"
+      [ "$ours" = "$theirs" ] || { echo "$f arrived different (SHA-256 $theirs, not $ours): kept here." >&2; exit 1; }
+      ssh "${ssh_opts[@]}" "$host" "mv -f $(q "$path/.$f.part") $(q "$path/$f")"
+      rm -f "$z"
+      echo "backed up $f to $remote"
+    done
+    ;;
+  fetch)
+    n="${2:?usage: scripts/dsyms fetch <build number>}"
+    f="Hammock-$n.dSYMs.zip"
+    mkdir -p "$dir"
+    tmp="$(mktemp -d "$dir/.fetch-XXXXXX")"
+    trap 'rm -rf "$tmp"' EXIT
+    scp -q "${ssh_opts[@]}" "$host:$path/$f" "$tmp/$f"
+    ditto -x -k "$tmp/$f" "$tmp" # Hammock.dSYMs/, as build-mac-app.sh wrote it
+    rm -rf "$dir/Hammock-$n.dSYMs"
+    mv "$tmp/Hammock.dSYMs" "$dir/Hammock-$n.dSYMs"
+    # Spotlight indexes dSYMs by UUID, so Console and lldb find these by themselves; atos needs the path.
+    echo "$dir/Hammock-$n.dSYMs"
+    ;;
+  *) echo "usage: scripts/dsyms backup | fetch <n>" >&2; exit 2 ;;
+esac
