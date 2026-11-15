@@ -991,27 +991,41 @@ struct SimulatorPaneView: View {
             .overlay {
                 if let start = model.emulatorStartLabel(paneID) {
                     // It runs in Android Studio, where Hammock can't drive it, or it
-                    // stopped: offer to start it here. Its last picture stays, dimmed,
-                    // under a card that reads over any picture.
-                    ZStack {
-                        if let p = placement, !p.screen.isEmpty {
-                            Path(p.screenPath).fill(Color.black.opacity(0.6))
-                        }
-                        VStack(spacing: 10) {
-                            Image(systemName: isTV ? "tv" : "smartphone").font(.system(size: 26)).foregroundStyle(.secondary)
-                            Text(model.emulatorInStudio(paneID) ? "\(pane?.title ?? "This emulator") is running in Android Studio" : (pane?.deviceNote ?? ""))
-                                .font(.headline).multilineTextAlignment(.center)
-                            Button(start) { EmulatorTakeover.confirm(model, paneID) }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.large)
-                        }
-                        .padding(.horizontal, 28).padding(.vertical, 22)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-                        .padding(24)
+                    // stopped: offer to start it here.
+                    emulatorCard {
+                        Image(systemName: isTV ? "tv" : "smartphone").font(.system(size: 26)).foregroundStyle(.secondary)
+                        Text(model.emulatorInStudio(paneID) ? "\(pane?.title ?? "This emulator") is running in Android Studio" : (pane?.deviceNote ?? ""))
+                            .font(.headline).multilineTextAlignment(.center)
+                        Button(start) { EmulatorTakeover.confirm(model, paneID) }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                    }
+                } else if isAndroid, pane?.deviceBooted == false {
+                    // Booting (or being taken over): until Android has booted, the
+                    // picture is the old one, or none.
+                    emulatorCard {
+                        ProgressView().controlSize(.regular)
+                        Text(pane?.deviceNote.isEmpty == false ? pane!.deviceNote : "Starting \(pane?.title ?? "the emulator")…")
+                            .font(.headline).multilineTextAlignment(.center)
                     }
                 }
             }
+    }
+
+    /// A card over an emulator's screen, which is dimmed under it (its last
+    /// picture, while it isn't showing): readable over any picture.
+    private func emulatorCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ZStack {
+            if let p = placement, !p.screen.isEmpty {
+                Path(p.screenPath).fill(Color.black.opacity(0.6))
+            }
+            VStack(spacing: 10, content: content)
+                .padding(.horizontal, 28).padding(.vertical, 22)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+                .padding(24)
+        }
+        .transition(.opacity)
     }
 
     /// A press on the remote beside a TV.

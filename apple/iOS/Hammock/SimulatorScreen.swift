@@ -123,6 +123,21 @@ struct SimulatorScreen: View {
                 } else {
                     ProgressView()
                 }
+                // An emulator that isn't showing (starting, stopped, or in Android
+                // Studio on the Mac): its old picture, dimmed, under why.
+                if model.isAndroid(paneID), pane?.deviceBooted == false || pane?.deviceElsewhere == true, stream != nil || image != nil {
+                    RoundedRectangle(cornerRadius: corner(fit), style: .continuous)
+                        .fill(Color.black.opacity(0.6))
+                        .frame(width: fit.width, height: fit.height)
+                        .allowsHitTesting(false)
+                    VStack(spacing: 8) {
+                        if pane?.deviceElsewhere != true { ProgressView() }
+                        Text(pane?.deviceNote.isEmpty == false ? pane!.deviceNote : "Starting…").font(.headline)
+                    }
+                    .padding(.horizontal, 20).padding(.vertical, 14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .allowsHitTesting(false)
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
