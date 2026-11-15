@@ -72,10 +72,10 @@
 </footer>
 </div>
 <script>
-  // The nav: its bar shows once the page has scrolled; on a phone, the menu button opens and closes its links.
+  // The nav: its bar fades in with the first 80px scrolled (--bar), rather than snapping in; on a phone, the menu button opens and closes its links.
   (() => {
     const nav = document.querySelector('nav[aria-label="Main"]'), menu = nav.querySelector('.menu');
-    const scrolled = () => nav.classList.toggle('scrolled', scrollY > 4);
+    const scrolled = () => nav.style.setProperty('--bar', Math.min(Math.max(scrollY, 0) / 80, 1).toFixed(2));
     const open = on => { nav.classList.toggle('open', on); menu.setAttribute('aria-expanded', on); };
     addEventListener('scroll', scrolled, { passive: true }); scrolled();
     menu.addEventListener('click', () => open(!nav.classList.contains('open')));

@@ -52,14 +52,14 @@
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
   /* Nav */
-  /* Stays at the top as the page scrolls; its frosted bar (full width, past .wrap) fades in once it has. */
+  /* Stays at the top as the page scrolls; its frosted bar (full width, past .wrap) fades in over the first 80px. */
   nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 20px; padding: 14px 0; }
   nav::before {
     content: ""; position: absolute; z-index: -1; inset: 0 calc(50% - 50vw);
     background: rgba(6, 20, 14, 0.78); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px);
-    border-bottom: 1px solid var(--card-line); opacity: 0; transition: opacity .2s;
+    border-bottom: 1px solid var(--card-line); opacity: var(--bar, 0);
   }
-  nav.scrolled::before, nav.open::before { opacity: 1; }
+  nav.open::before { opacity: 1; }
   nav .menu { display: none; margin-left: auto; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
   nav .menu svg { display: block; margin: auto; }
   nav .menu path { transition: transform .2s; transform-origin: center; }
@@ -1460,10 +1460,10 @@
   })();
 </script>
 <script>
-  // The nav: its bar shows once the page has scrolled; on a phone, the menu button opens and closes its links.
+  // The nav: its bar fades in with the first 80px scrolled (--bar), rather than snapping in; on a phone, the menu button opens and closes its links.
   (() => {
     const nav = document.querySelector('nav[aria-label="Main"]'), menu = nav.querySelector('.menu');
-    const scrolled = () => nav.classList.toggle('scrolled', scrollY > 4);
+    const scrolled = () => nav.style.setProperty('--bar', Math.min(Math.max(scrollY, 0) / 80, 1).toFixed(2));
     const open = on => { nav.classList.toggle('open', on); menu.setAttribute('aria-expanded', on); };
     addEventListener('scroll', scrolled, { passive: true }); scrolled();
     menu.addEventListener('click', () => open(!nav.classList.contains('open')));

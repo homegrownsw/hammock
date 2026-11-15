@@ -23,14 +23,14 @@ a:hover { color: #a8ffd6; }
 b, strong { color: var(--text); font-weight: 600; }
 .wrap { max-width: 820px; margin: 0 auto; padding: 0 24px; }
 
-/* The nav works as the main page's does: sticky, its bar showing once scrolled, a menu on a phone. */
+/* The nav works as the main page's does: sticky, its bar fading in as the page scrolls, a menu on a phone. */
 nav { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 20px; padding: 14px 0; }
 nav::before {
   content: ""; position: absolute; z-index: -1; inset: 0 calc(50% - 50vw);
   background: rgba(6, 20, 14, 0.78); -webkit-backdrop-filter: saturate(1.4) blur(16px); backdrop-filter: saturate(1.4) blur(16px);
-  border-bottom: 1px solid var(--card-line); opacity: 0; transition: opacity .2s;
+  border-bottom: 1px solid var(--card-line); opacity: var(--bar, 0);
 }
-nav.scrolled::before, nav.open::before { opacity: 1; }
+nav.open::before { opacity: 1; }
 nav .menu { display: none; margin-left: auto; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
 nav .menu svg { display: block; margin: auto; }
 nav .menu path { transition: transform .2s; transform-origin: center; }
