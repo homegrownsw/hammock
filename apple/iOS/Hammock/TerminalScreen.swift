@@ -11,10 +11,14 @@ struct TerminalScreen: View {
     /// the PTY to fit.
     var active = true
     @Environment(\.phoneTheme) private var theme
+    @Environment(\.inPaneStrip) private var inStrip
 
     var body: some View {
         TerminalRepresentable(model: model, paneID: paneID, active: active)
-            .ignoresSafeArea(.container, edges: .bottom)
+            // Down to the screen's bottom edge, but not under the pane
+            // strip: its rows there were hidden (and counted in the size
+            // the pane was given).
+            .ignoresSafeArea(.container, edges: inStrip ? [] : .bottom)
             .background(theme.terminalBackground)
     }
 }
