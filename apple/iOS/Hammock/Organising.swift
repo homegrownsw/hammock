@@ -143,7 +143,7 @@ struct GroupHeader: View {
             Menu {
                 Button("Terminal", systemImage: "apple.terminal", action: newTab)
                 if let h = model.defaultAgent(in: group) {
-                    Button(String(AppModel.defaultAgentTitle(h).dropFirst("New ".count)), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: group.id) }
+                    Button(AgentCatalog.name(of: h), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: group.id) }
                 }
                 Button("Agent…", systemImage: "sparkles") { AgentStarter.shared.start(groupID: group.id) }
             } label: {
