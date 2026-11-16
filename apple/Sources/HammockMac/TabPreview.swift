@@ -682,15 +682,16 @@ private struct TerminalTile: View {
         GeometryReader { g in
             if let image = thumb.image {
                 // Filling the tile from its left edge, and, if the tile is
-                // wider than the pane, from its bottom, where the latest
-                // output is.
+                // wider than the pane, from the half the cursor's in: its
+                // bottom, where the latest output is in a full screen, or its
+                // top, where a few lines printed after a clear are.
                 let iw = CGFloat(image.width), ih = CGFloat(image.height)
                 let s = max(g.size.width / iw, g.size.height / ih)
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .interpolation(.high)
                     .frame(width: iw * s, height: ih * s)
-                    .frame(width: g.size.width, height: g.size.height, alignment: .bottomLeading)
+                    .frame(width: g.size.width, height: g.size.height, alignment: thumb.bottom ? .bottomLeading : .topLeading)
                     .transition(.opacity)
             }
         }
@@ -705,6 +706,9 @@ private struct TerminalTile: View {
 @Observable
 private final class TerminalThumb {
     var image: CGImage?
+    /// The cursor's in the lower half of the screen (or hidden, as a
+    /// full-screen program has it): the picture's kept to its bottom.
+    var bottom = true
     @ObservationIgnored private var view: TerminalNSView?
     @ObservationIgnored private weak var model: AppModel?
     @ObservationIgnored private var soon = false
@@ -747,6 +751,8 @@ private final class TerminalThumb {
                           height: CGFloat(s.engine.rows) * v.cellHeight + v.padding * 2)
         if v.frame.size != size { v.setFrameSize(size) }
         guard let i = v.previewImage(scale: 1) else { return }
+        let low = (v.drawnCursorRow ?? s.engine.rows) >= s.engine.rows / 2
+        if bottom != low { bottom = low }
         // The first, if it comes after the card shows (the pane's screen
         // arriving from the daemon), fades in; otherwise it's simply there,
         // and new output replaces it at once.

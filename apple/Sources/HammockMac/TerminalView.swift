@@ -278,7 +278,7 @@ final class TerminalNSView: NSView {
     }
 
     /// The row the cursor was last drawn on (shown or blinked off), to clear it once it moves.
-    private var drawnCursorRow: Int?
+    private(set) var drawnCursorRow: Int?
 
     private func settle() {
         if motionTarget != nil {
