@@ -666,6 +666,77 @@ struct TabClosePicture: View {
     }
 }
 
+/// The pointer on a sidebar row, its tab's preview beside it (ghosted while off).
+struct TabPreviewPicture: View {
+    let on: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let look = MiniLook.current(dark: scheme == .dark)
+        let t = look.terminal
+        CloseUp(background: look.terminal.background.color) {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 1) {
+                    groupHeader("Hammock", open: true)
+                    SidebarRow(symbol: "terminal", color: .secondary, name: "shell")
+                    SidebarRow(symbol: "terminal", color: .secondary, name: "server")
+                        .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(look.dark ? 0.08 : 0.06)).padding(.leading, 6))
+                        .overlay(alignment: .trailing) {
+                            Image(systemName: "cursorarrow")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.primary)
+                                .shadow(color: .white.opacity(0.6), radius: 0.5)
+                                .offset(x: -14, y: 7)
+                        }
+                    SidebarRow(symbol: "terminal", color: .secondary, name: "tests")
+                }
+                .padding(.horizontal, 6).padding(.vertical, 5)
+                .frame(width: 86, alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(look.sidebar)
+                Spacer(minLength: 0)
+            }
+            .overlay(alignment: .topLeading) {
+                card(look, t)
+                    .modifier(Ghosted(off: !on))
+                    .offset(x: 78, y: 22)
+            }
+        }
+    }
+
+    /// The card: the tab's two panes, its title, a line of what it's up to.
+    private func card(_ look: MiniLook, _ t: TerminalTheme) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 2) {
+                pane(t, widths: [0.7, 0.5, 0.8, 0.4]).overlay(RoundedRectangle(cornerRadius: 2).stroke(look.accent, lineWidth: 1))
+                pane(t, widths: [0.6, 0.9, 0.3])
+            }
+            .padding(2)
+            .frame(height: 34)
+            .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 3))
+            Text("server").font(.system(size: 7.5, weight: .semibold))
+            Capsule().fill(Color.secondary.opacity(0.45)).frame(width: 46, height: 2.5)
+        }
+        .padding(4)
+        .frame(width: 82, alignment: .leading)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .shadow(color: .black.opacity(on ? 0.2 : 0), radius: 4, y: 2)
+    }
+
+    private func pane(_ t: TerminalTheme, widths: [CGFloat]) -> some View {
+        GeometryReader { g in
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(widths.indices, id: \.self) { i in
+                    Capsule().fill((i == 0 ? t.ansi[2] : t.foreground).color.opacity(0.7)).frame(width: g.size.width * widths[i], height: 1.5)
+                }
+            }
+            .padding(3)
+        }
+        .background(t.background.color, in: RoundedRectangle(cornerRadius: 2))
+    }
+}
+
 /// A collapsed Group, still showing (if on) the tab whose agent is at work.
 struct CollapsedAgentsPicture: View {
     let on: Bool

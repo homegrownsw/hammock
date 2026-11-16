@@ -487,8 +487,11 @@ struct AppearanceSettings: View {
                     TabClosePicture(on: config.tabCloseButton)
                 }
                 .settingAnchor("appearance.closebutton")
-                Toggle("Preview on hover", isOn: Binding(get: { config.tabPreview }, set: { config.set("tab-preview", $0 ? nil : "false") }))
-                    .settingAnchor("appearance.tabpreview")
+                PictureToggle(label: "Preview on hover",
+                              isOn: Binding(get: { config.tabPreview }, set: { config.set("tab-preview", $0 ? nil : "false") })) {
+                    TabPreviewPicture(on: config.tabPreview)
+                }
+                .settingAnchor("appearance.tabpreview")
                 PicturePicker(label: "Program icons", options: [(ProgramIconStyle.off, "None"), (.plain, "Plain"), (.colorful, "Colorful")],
                               selection: Binding(get: { config.programIconStyle }, set: { config.set("program-icons", $0 == .plain ? nil : $0.rawValue) })) { s in
                     ProgramIconsPicture(style: s)
