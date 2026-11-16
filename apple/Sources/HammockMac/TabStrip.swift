@@ -228,7 +228,11 @@ struct TabStrip: View {
         .contentShape(Capsule())
         .onTapGesture { select(tab) }
         .onHover { hovered = $0 && dragging == nil ? tab.id : (hovered == tab.id ? nil : hovered) }
-        .tabPreview(model: model, tab: tab, edge: .below)
+        .tabPreview(model: model, tab: tab, edge: .below) { pane in
+            guard let scope else { model.reveal(paneID: pane); return }
+            scope.selectedTabID = tab.id
+            model.focus(pane)
+        }
         .contextMenu {
             TabMenuItems(model: model, tab: tab)
         }

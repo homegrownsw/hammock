@@ -16,9 +16,11 @@ enum TabPreviewEdge {
 
 extension View {
     /// This tab's preview when the pointer rests here (or, with previews
-    /// off, its title as a tooltip).
-    func tabPreview(model: AppModel, tab: WorkspaceTab, edge: TabPreviewEdge) -> some View {
-        background(TabPreviewAnchor(model: model, tabID: tab.id, title: model.title(of: tab), edge: edge, on: AppConfig.shared.tabPreview))
+    /// off, its title as a tooltip). `open` goes to a pane clicked in it
+    /// (by default, the main window's way: `reveal`).
+    func tabPreview(model: AppModel, tab: WorkspaceTab, edge: TabPreviewEdge, open: ((String) -> Void)? = nil) -> some View {
+        background(TabPreviewAnchor(model: model, tabID: tab.id, title: model.title(of: tab), edge: edge, on: AppConfig.shared.tabPreview,
+                                    open: open ?? { model.reveal(paneID: $0) }))
     }
 }
 
@@ -29,6 +31,7 @@ private struct TabPreviewAnchor: NSViewRepresentable {
     let title: String
     let edge: TabPreviewEdge
     let on: Bool
+    let open: (String) -> Void
 
     func makeNSView(context: Context) -> TabPreviewAnchorView {
         let v = TabPreviewAnchorView()
@@ -40,6 +43,7 @@ private struct TabPreviewAnchor: NSViewRepresentable {
         v.model = model
         v.tabID = tabID
         v.edge = edge
+        v.open = open
         let tip = on ? nil : title
         if v.toolTip != tip { v.toolTip = tip }
     }
@@ -49,6 +53,8 @@ final class TabPreviewAnchorView: NSView {
     weak var model: AppModel?
     var tabID = ""
     var edge = TabPreviewEdge.below
+    /// Goes to a pane clicked in the preview, in this window's way.
+    var open: (String) -> Void = { _ in }
     private var area: NSTrackingArea?
 
     /// Never takes a click: the tab in front of it does.
@@ -105,6 +111,41 @@ final class TabPreview {
     private let debugTab = ProcessInfo.processInfo.environment["HMK_DEBUG_TAB_PREVIEW"]
     private var pinned = false
 
+    /// The card stays while the pointer's on it, and a click on a pane in
+    /// it goes there (on trial: false makes it a picture the pointer goes
+    /// through).
+    static let clickable = true
+    /// From tab to tab while the card shows, with it clickable: how long
+    /// the pointer stays on another tab before the card goes to it.
+    static let sweep: Duration = .milliseconds(100)
+    private var overCard = false
+
+    /// The pointer came onto the card or left it.
+    func cardHover(_ inside: Bool) {
+        guard Self.clickable, !pinned else { return }
+        overCard = inside
+        if inside {
+            closing?.cancel()
+            closing = nil
+            waiting?.cancel()
+            waiting = nil
+        } else {
+            closing?.cancel()
+            closing = Task {
+                try? await Task.sleep(for: Self.linger)
+                guard !Task.isCancelled else { return }
+                self.hide()
+            }
+        }
+    }
+
+    /// A pane clicked in the card: its tab selected, it focused.
+    func open(_ paneID: String) {
+        let v = anchor
+        hide(force: true)
+        v?.open(paneID)
+    }
+
     private init() {
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { TabPreview.shared.hide() }
@@ -121,6 +162,17 @@ final class TabPreview {
         closing = nil
         if v === anchor, showing { return }
         waiting?.cancel()
+        if showing, Self.clickable {
+            // On the way to the card, the pointer can cross other tabs:
+            // only one it stays on takes the card.
+            waitingOn = v
+            waiting = Task { [weak v] in
+                try? await Task.sleep(for: Self.sweep)
+                guard !Task.isCancelled, let v, !self.overCard else { return }
+                self.show(v)
+            }
+            return
+        }
         if showing || ContinuousClock.now - hiddenAt < Self.linger {
             show(v)
             return
@@ -138,7 +190,7 @@ final class TabPreview {
             waiting?.cancel()
             waiting = nil
         }
-        guard v === anchor, !pinned else { return }
+        guard v === anchor, !pinned, !overCard else { return }
         closing?.cancel()
         closing = Task {
             try? await Task.sleep(for: Self.linger)
@@ -232,6 +284,7 @@ final class TabPreview {
         guard let panel, anchor != nil || panel.isVisible else { return }
         anchor = nil
         pinned = false
+        overCard = false
         hiddenAt = .now
         panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
@@ -239,11 +292,13 @@ final class TabPreview {
         panel.host.rootView = TabPreviewContent(model: nil, tabID: "") { _ in }
     }
 
-    /// A click, scroll or key while it shows puts it away.
+    /// A click, scroll or key while it shows puts it away (not one on the
+    /// card itself).
     private func watchEvents() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .keyDown]) { e in
             MainActor.assumeIsolated {
+                if e.window != nil, e.window === TabPreview.shared.panel { return }
                 if e.type == .scrollWheel { TabPreview.shared.scrolledAt = .now }
                 TabPreview.shared.hide()
             }
@@ -252,17 +307,18 @@ final class TabPreview {
     }
 }
 
-/// The window the card floats in, over its tab's window: never key, and
-/// the pointer goes through it.
+/// The window the card floats in, over its tab's window: never key. The
+/// pointer goes through its clear margin (and, unless it's clickable, the
+/// card).
 private final class TabPreviewPanel: NSPanel {
-    let host = NSHostingView(rootView: TabPreviewContent(model: nil, tabID: "") { _ in })
+    let host = FirstClickHostingView(rootView: TabPreviewContent(model: nil, tabID: "") { _ in })
 
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        ignoresMouseEvents = true
+        ignoresMouseEvents = !TabPreview.clickable
         isReleasedWhenClosed = false
         animationBehavior = .none
         collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
@@ -274,6 +330,12 @@ private final class TabPreviewPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Takes a click though its window is never key: the card's first click
+/// opens a pane.
+private final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// The card, with room around it for its shadow, saying when its size changes.
 private struct TabPreviewContent: View {
     let model: AppModel?
@@ -283,8 +345,9 @@ private struct TabPreviewContent: View {
     var body: some View {
         Group {
             if let model, model.tabs[tabID] != nil {
-                TabPreviewCard(model: model, tabID: tabID)
+                TabPreviewCard(model: model, tabID: tabID, open: TabPreview.clickable ? { TabPreview.shared.open($0) } : nil)
                     .id(tabID)
+                    .onHover { TabPreview.shared.cardHover($0) }
             }
         }
         .padding(TabPreview.margin)
@@ -298,6 +361,8 @@ private struct TabPreviewContent: View {
 struct TabPreviewCard: View {
     let model: AppModel
     let tabID: String
+    /// Goes to a pane clicked in it (nil: not clickable).
+    var open: ((String) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 
     static let width: CGFloat = 320
@@ -306,7 +371,7 @@ struct TabPreviewCard: View {
     var body: some View {
         if let tab = model.tabs[tabID] {
             VStack(alignment: .leading, spacing: 9) {
-                TabPicture(model: model, tab: tab)
+                TabPicture(model: model, tab: tab, open: open)
                     .frame(width: Self.picture.width, height: Self.picture.height)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(model.title(of: tab))
@@ -323,6 +388,9 @@ struct TabPreviewCard: View {
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.12), lineWidth: 0.5))
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 18, y: 10)
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 3, y: 1)
+            // A click anywhere else on it goes to the tab as it is.
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .onTapGesture { open?(tab.focusedPaneID) }
         }
     }
 }
@@ -448,6 +516,7 @@ private struct ProgressBar: View {
 private struct TabPicture: View {
     let model: AppModel
     let tab: WorkspaceTab
+    let open: ((String) -> Void)?
 
     private struct Placed: Identifiable {
         let id: String
@@ -460,7 +529,7 @@ private struct TabPicture: View {
             let area = CGRect(origin: .zero, size: geo.size).insetBy(dx: 3, dy: 3)
             ZStack(alignment: .topLeading) {
                 ForEach(placed(in: area)) { p in
-                    PaneTile(model: model, paneID: p.id, focused: p.id == tab.focusedPaneID)
+                    PaneTile(model: model, paneID: p.id, focused: p.id == tab.focusedPaneID, open: open)
                         .frame(width: max(p.rect.width, 1), height: max(p.rect.height, 1))
                         .shadow(color: .black.opacity(p.floating ? 0.3 : 0), radius: p.floating ? 6 : 0, y: p.floating ? 3 : 0)
                         .offset(x: p.rect.minX, y: p.rect.minY)
@@ -489,13 +558,24 @@ private struct PaneTile: View {
     let model: AppModel
     let paneID: String
     let focused: Bool
+    let open: ((String) -> Void)?
+    @State private var hovered = false
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(focused ? Color.themeAccent : Color.primary.opacity(0.1), lineWidth: focused ? 1.5 : 0.5))
+            .overlay {
+                // Clickable: the pane under the pointer lit, as it would be
+                // once clicked.
+                RoundedRectangle(cornerRadius: 5).fill(Color.themeAccent.opacity(hovered ? 0.12 : 0))
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(focused || hovered ? Color.themeAccent : Color.primary.opacity(0.1), lineWidth: focused || hovered ? 1.5 : 0.5)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 5))
+            .onHover { hovered = open != nil && $0 }
+            .onTapGesture { open?(paneID) }
+            .accessibilityAddTraits(open != nil ? .isButton : [])
     }
 
     @ViewBuilder private var content: some View {

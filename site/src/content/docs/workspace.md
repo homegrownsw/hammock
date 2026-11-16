@@ -44,7 +44,7 @@ Drag a tab to another Group in the sidebar to move it. Right-click a tab and cho
 
 The sidebar (⌃⌘S) lists your Groups with their tabs, vertically, compactly, or with the tabs along the top (Settings ▸ Appearance ▸ Layout). A tab running an agent shows its state in its icon: [Agents](/hammock/docs/agents/overview/) explains each one.
 
-Rest the pointer on a tab to preview it: its panes, live, with its full title, its agent's state, who's in it and when it last printed anything. Turn this off with Settings ▸ Appearance ▸ Preview on hover.
+Rest the pointer on a tab to preview it: its panes, live, with its full title, its agent's state, who's in it and when it last printed anything. Click a pane in the preview to go straight to it. Turn this off with Settings ▸ Appearance ▸ Preview on hover.
 
 At the bottom, **Needs You** lists agents waiting on you, and **Finished** those that are done.
 
