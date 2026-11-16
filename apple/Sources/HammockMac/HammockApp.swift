@@ -769,6 +769,7 @@ struct WorkspaceWindow: NSViewRepresentable {
         /// so SwiftUI's first, default sizing overwrote the one to restore.
         static let frameKey = "workspaceWindowFrame"
         private var observers: [NSObjectProtocol] = []
+        private var dividers: SplitDividerHider?
         private var restoring = true
 
         override func viewDidMoveToWindow() {
@@ -779,6 +780,9 @@ struct WorkspaceWindow: NSViewRepresentable {
             // No hairline under the toolbar: it overhung the sidebar's divider,
             // and the pane headers already mark where the toolbar ends.
             window.titlebarSeparatorStyle = .none
+            // Spacious: no line where the sidebar ends, the panes' cards
+            // already stand apart from it. Compact keeps it beside the panes.
+            dividers = SplitDividerHider(window) { PaneLook.spacious }
             ToolbarTitleInk.follow(window)
             // Again after SwiftUI's sizing passes, which come after this; only
             // then do moves and resizes count as yours.
@@ -880,6 +884,51 @@ struct ColumnGlass: NSViewRepresentable {
     }
 
     func updateNSView(_ v: NSGlassEffectView, context: Context) {}
+}
+
+/// The hairline AppKit draws between a split view's sidebar and its detail
+/// (NSSplitDividerView), kept invisible while `hidden` says so: macOS 27.2
+/// draws it over the glass the two share, toolbar and all. Faded, not
+/// hidden, so the sidebar's edge still drags. AppKit adds dividers again as
+/// the sidebar shows and hides, so this looks again after each layout.
+@MainActor
+final class SplitDividerHider {
+    private weak var window: NSWindow?
+    private let hidden: () -> Bool
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
+
+    init(_ window: NSWindow, hidden: @escaping () -> Bool) {
+        self.window = window
+        self.hidden = hidden
+        let center = NotificationCenter.default
+        let watched: [(Notification.Name, AnyObject?)] = [(NSSplitView.didResizeSubviewsNotification, nil), (NSWindow.didResizeNotification, window),
+                                                          (AppConfig.changed, nil)]
+        for (name, object) in watched {
+            observers.append(center.addObserver(forName: name, object: object, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let window = self.window else { return }
+                    if let split = note.object as? NSSplitView, split.window !== window { return }
+                    self.apply()
+                }
+            })
+        }
+        // The split view comes with SwiftUI's first passes, after this.
+        for delay in [0, 0.3, 1] { DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.apply() } }
+    }
+
+    deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+
+    func apply() {
+        guard let root = window?.contentView?.superview else { return }
+        let alpha: CGFloat = hidden() ? 0 : 1
+        func visit(_ v: NSView) {
+            if v.superview is NSSplitView, String(describing: type(of: v)).contains("SplitDivider") {
+                if v.alphaValue != alpha { v.alphaValue = alpha }
+            }
+            v.subviews.forEach(visit)
+        }
+        visit(root)
+    }
 }
 
 /// AppKit's sidebar material, blending with the desktop behind the window

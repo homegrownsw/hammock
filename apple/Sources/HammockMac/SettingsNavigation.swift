@@ -137,6 +137,8 @@ struct SettingsWindowStyle: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 
     private final class Probe: NSView {
+        private var dividers: SplitDividerHider?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
@@ -144,6 +146,8 @@ struct SettingsWindowStyle: NSViewRepresentable {
             window.toolbarStyle = .unified
             window.titleVisibility = .visible
             window.titlebarSeparatorStyle = .automatic
+            // The panes are cards on the sidebar's glass: no line between.
+            if dividers == nil { dividers = SplitDividerHider(window) { true } }
             // The search field comes with the sidebar, after this.
             for delay in [0, 0.3, 1] {
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.ringSearchField() }
