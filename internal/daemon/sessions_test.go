@@ -76,10 +76,13 @@ func TestSessionFinderListsAndResumes(t *testing.T) {
 		t.Fatalf("resumed: %v", r)
 	}
 	d.mu.Lock()
-	gid := d.tabs[r.TabId].GroupId
+	gid, name := d.tabs[r.TabId].GroupId, d.tabs[r.TabId].AutoName
 	d.mu.Unlock()
 	if gid != here {
 		t.Fatalf("opened in %s, not the Group in its folder (%s)", gid, here)
+	}
+	if name != "Hangar tidy" {
+		t.Fatalf("tab named %q, not for its session", name)
 	}
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: r.PaneId}}})
 	waitOutput(t, c, r.PaneId, "RESUMED --resume s1")

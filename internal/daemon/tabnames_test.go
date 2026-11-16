@@ -30,6 +30,9 @@ func TestAgentTitle(t *testing.T) {
 		{"Pricing page rewrite", "claude", "Pricing page rewrite"},
 		{"Claude Code", "claude", ""},
 		{"~/Developer/app", "claude", ""},
+		// The shell's title while it runs the agent (as a resume does).
+		{"claude --resume 8ddc0a1e-5b2f-4c3d-9e8f-123456789abc", "claude", ""},
+		{"Claude Code tips", "claude", "Claude Code tips"},
 		{"zsh in work", "", ""},
 		{"Pricing page rewrite", "codex", ""},
 	} {

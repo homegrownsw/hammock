@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/homegrownsw/hammock/internal/agents"
 	"github.com/homegrownsw/hammock/internal/holder"
 	"github.com/homegrownsw/hammock/internal/procinfo"
@@ -289,6 +291,13 @@ func (d *Daemon) resumeSession(m *pb.ResumeSession) (*pb.SessionResumed, error) 
 	if err != nil {
 		d.mu.Unlock()
 		return nil, err
+	}
+	// Named for the session straight away, not after the shell's title (the
+	// resume command) or once the agent sets its own.
+	if title := cleanLine(s.Title, nameMax); title != "" {
+		t.AutoName, t.AutoKey = title, "agent:"+target+":"+sessionID
+		d.persist(d.store.PutTab(t))
+		d.publish(&pb.StateUpdate{Tabs: []*pb.Tab{proto.CloneOf(t)}})
 	}
 	p := d.panes[t.FocusedPaneId]
 	d.mu.Unlock()

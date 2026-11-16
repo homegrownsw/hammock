@@ -111,10 +111,17 @@ func agentTitle(title, harness string) string {
 		return ""
 	}
 	low := strings.ToLower(t)
-	if low == "" || agents.IsName(low) || strings.HasPrefix(t, "/") || strings.HasPrefix(t, "~") {
+	if low == "" || agents.IsName(low) || strings.HasPrefix(t, "/") || strings.HasPrefix(t, "~") || commandLine(low) {
 		return ""
 	}
 	return t
+}
+
+// commandLine reports whether a title is the shell showing the agent's
+// command as it runs ("claude --resume 8ddc…"), not a session title.
+func commandLine(low string) bool {
+	f := strings.Fields(low)
+	return len(f) >= 2 && agents.IsName(f[0]) && strings.HasPrefix(f[1], "-")
 }
 
 // spinnerFrame reports whether a title change is only Claude Code turning
