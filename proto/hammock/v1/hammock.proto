@@ -1790,6 +1790,13 @@ message SetMediaView {
   // full height in detail, not squeezed into a landscape frame. A change
   // starts the encoder again (a keyframe). 0: the display's own shape.
   float aspect = 6;
+  // A browser pane's viewer instead: the size, in points, it shows the page
+  // at. The page takes that size while this viewer is the last to have
+  // opened or used it (as a terminal takes its driver's), and goes back to
+  // the Mac pane's when the Mac is used or the session ends. x, y, w, h and
+  // aspect are unused.
+  float page_width = 7;
+  float page_height = 8;
 }
 message MediaEnded { string session_id = 1; string reason = 2; }
 

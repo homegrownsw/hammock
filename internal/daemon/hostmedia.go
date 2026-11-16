@@ -24,6 +24,9 @@ type hostMedia struct {
 	// greet, if set, is what the helper must hear before anything else on a
 	// connection (the screen host's challenge: screenauth.go).
 	greet func(c net.Conn, r *bufio.Reader) error
+	// pages: the helper's pixels are pages that take their viewer's size
+	// (setPage): Hammock Browser.
+	pages bool
 
 	start sync.Once
 	mu    sync.Mutex
@@ -83,6 +86,14 @@ func (h *hostMedia) setView(sid string, x, y, w, h2, aspect float32) {
 
 func (h *hostMedia) setSize(sid string, maxPixels int) {
 	h.send(map[string]any{"t": "size", "sid": sid, "maxPixels": maxPixels})
+}
+
+// setPage: the size (points) a browser session's viewer shows the page at,
+// and who it is. Only Hammock Browser takes it.
+func (h *hostMedia) setPage(sid string, w, h2 float32, by string) {
+	if h.pages {
+		h.send(map[string]any{"t": "page", "sid": sid, "w": w, "h": h2, "by": by})
+	}
 }
 
 func (h *hostMedia) setRate(sid string, bitrate, fps int) {

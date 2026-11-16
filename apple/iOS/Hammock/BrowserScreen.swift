@@ -3,8 +3,10 @@ import SwiftUI
 import UIKit
 
 /// A browser pane on the phone: the Mac's page as live video (MediaStream),
-/// at the size it has on the Mac, scaled to fit (pinch to zoom). A tap clicks, a drag
-/// scrolls, and the keyboard types into the page.
+/// scaled to fit (pinch to zoom). A tap clicks, a drag scrolls, and the
+/// keyboard types into the page. Like a terminal, the page takes the size of
+/// whoever opened or used it last: here, the phone's (setPageSize), until
+/// the Mac is used; then a tap here takes it back.
 struct BrowserScreen: View {
     let model: AppModel
     let paneID: String
@@ -16,6 +18,7 @@ struct BrowserScreen: View {
     @State private var playing = false
     @State private var failed = false
     @State private var pixels = CGSize(width: 1600, height: 1000) // the video's size
+    @State private var viewSize = CGSize.zero // where the page goes, in points
     @State private var typing = false
     /// Changes as iPhone Duo folds and unfolds (its displays differ), when
     /// the video's restarted for the display it's on.
@@ -60,6 +63,10 @@ struct BrowserScreen: View {
                         .opacity(0)
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
+                .onChange(of: geo.size, initial: true) { _, size in
+                    viewSize = size
+                    if canDrive { stream?.setPageSize(size) }
+                }
             }
         }
         .padding(.horizontal)
@@ -104,6 +111,7 @@ struct BrowserScreen: View {
                 s.onState = { cont.yield($0) }
             }
             s.onSize = { px in pixels = px }
+            if canDrive { s.setPageSize(viewSize) } // sent once the session opens
             stream = s
             s.start()
             for await st in states {

@@ -6968,6 +6968,15 @@ public nonisolated struct Hammock_V1_SetMediaView: Sendable {
   /// starts the encoder again (a keyframe). 0: the display's own shape.
   public var aspect: Float = 0
 
+  /// A browser pane's viewer instead: the size, in points, it shows the page
+  /// at. The page takes that size while this viewer is the last to have
+  /// opened or used it (as a terminal takes its driver's), and goes back to
+  /// the Mac pane's when the Mac is used or the session ends. x, y, w, h and
+  /// aspect are unused.
+  public var pageWidth: Float = 0
+
+  public var pageHeight: Float = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -22186,7 +22195,7 @@ nonisolated extension Hammock_V1_ScreenState: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SetMediaView"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}x\0\u{1}y\0\u{1}w\0\u{1}h\0\u{1}aspect\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}x\0\u{1}y\0\u{1}w\0\u{1}h\0\u{1}aspect\0\u{3}page_width\0\u{3}page_height\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -22200,6 +22209,8 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
       case 4: try { try decoder.decodeSingularFloatField(value: &self.w) }()
       case 5: try { try decoder.decodeSingularFloatField(value: &self.h) }()
       case 6: try { try decoder.decodeSingularFloatField(value: &self.aspect) }()
+      case 7: try { try decoder.decodeSingularFloatField(value: &self.pageWidth) }()
+      case 8: try { try decoder.decodeSingularFloatField(value: &self.pageHeight) }()
       default: break
       }
     }
@@ -22224,6 +22235,12 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
     if self.aspect.bitPattern != 0 {
       try visitor.visitSingularFloatField(value: self.aspect, fieldNumber: 6)
     }
+    if self.pageWidth.bitPattern != 0 {
+      try visitor.visitSingularFloatField(value: self.pageWidth, fieldNumber: 7)
+    }
+    if self.pageHeight.bitPattern != 0 {
+      try visitor.visitSingularFloatField(value: self.pageHeight, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -22234,6 +22251,8 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
     if lhs.w != rhs.w {return false}
     if lhs.h != rhs.h {return false}
     if lhs.aspect != rhs.aspect {return false}
+    if lhs.pageWidth != rhs.pageWidth {return false}
+    if lhs.pageHeight != rhs.pageHeight {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

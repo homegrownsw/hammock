@@ -26,7 +26,7 @@
 //   host -> client: hello, state, popup (page: a new-tab link the person's
 //                   own click opened, which may go to their browser), download (to everyone);
 //                   layer, cursor, ti, unhandled, menu, context, dialog, file, drag,
-//                   external (to the client the browser is attached to);
+//                   external, page (to the client the browser is attached to);
 //                   cdpResult (to the caller), cdpEvent (to subscribers);
 //                   menu, context and clipboard go to a remote viewer instead
 //                   (through the daemon) when its input came last
@@ -34,13 +34,18 @@
 // Remote viewers (ADR-0012): the daemon opens a second connection and sends
 // {"t":"media"}; the host answers {"t":"mediaReady"} and from then on takes
 // encode {id, sid, bitrate, fps, maxPixels}, rate {sid, bitrate, fps},
-// keyframe {sid}, refresh {sid}, ltr {sid, tokens}, hold {sid, on} and stop
-// {sid}, and writes binary records (HammockMediaRecord, helpers/media/encoder.h),
+// keyframe {sid}, refresh {sid}, ltr {sid, tokens}, hold {sid, on}, page
+// {sid, w, h, by} and stop {sid}, and writes binary records (HammockMediaRecord, helpers/media/encoder.h),
 // the same as Hammock Simulator's. Pixels come
 // from the DevTools screencast (no screen recording permission), decoded and
 // re-encoded by HammockEncoder. A remote viewer's input arrives on the main
 // connection as rinput {id, op: mouse|wheel|key|text|compose|copy|cut, ...}, in fractions of
 // the page (x, y in 0...1), and is sent to the page as DevTools Input events.
+//
+// The page's size is its last user's, as a terminal's is: the Mac pane's, or
+// a remote viewer's that sent page (opening the page there, or using it).
+// The Mac's viewer is told where in its pane the page then is: page {x, y
+// (from the top), w, h, by (who it's sized for; empty: the pane)}.
 //
 // DevTools calls go through CEF's in-process channel: no debugging port is
 // opened, so only clients of this socket (the daemon) can drive pages.
@@ -112,6 +117,7 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 #pragma mark - Host state
 
 @class Conn;
+@class Session;
 
 @interface Browser : NSObject {
  @public
@@ -144,6 +150,17 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 @property CFTimeInterval pressAt;
 @property BOOL pressAsksTab;
 @property(strong) NSMutableArray *sessions;
+// The page's size, like a terminal's, is its last user's: the Mac pane's
+// (paneRect, screen coordinates, from geom), or a remote viewer's (sizer, a
+// session that sent its page size, while it's the last to have opened or
+// used the page). lastRemote is the latest of those, which input from a
+// remote viewer gives the page back to. A click that changes who sizes the
+// page only does that: the rest of it (to the button's release) is dropped,
+// since it was aimed at the page as it was.
+@property NSRect paneRect;
+@property(weak) Session *sizer, *lastRemote;
+@property BOOL swallowLocal, swallowRemote;
+@property(copy) NSDictionary *pageSent;  // what the Mac viewer was last told (page)
 @property BOOL casting, decoding;
 @property int castPixels;     // the size cap the screencast runs at (0: none)
 @property NSSize castSize;     // the window size (points) it was started for
@@ -186,6 +203,8 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 @property(weak) Conn *conn;
 @property(strong) HammockEncoder *encoder;
 @property int maxPixels;
+@property NSSize pageSize;   // the size its viewer shows the page at (points; zero: none said)
+@property(copy) NSString *by;  // who that viewer is, for the Mac's "Sized for …"
 @property CFTimeInterval last;  // when a frame was last encoded
 @property BOOL scheduled, held, dirty;
 @property BOOL lost;  // frames dropped for a backlog: waiting for a keyframe (HammockAdmitFrame)
@@ -1348,6 +1367,7 @@ static time_t mtimeOf(const char *path) {
   } else if ([t isEqualToString:@"attach"]) {
     b.viewer = c;
     b.lastCtx = 0;  // resend the layer to this viewer
+    b.pageSent = nil;  // and where the page is
     [self pollLayer:b];
   } else if ([t isEqualToString:@"detach"]) {
     if (b.viewer == c) {
@@ -1359,16 +1379,12 @@ static time_t mtimeOf(const char *path) {
     if (b.viewer != c) {
       b.viewer = c;
       b.lastCtx = 0;
+      b.pageSent = nil;
     }
-    NSRect r = NSMakeRect([m[@"x"] doubleValue], [m[@"y"] doubleValue], [m[@"w"] doubleValue], [m[@"h"] doubleValue]);
-    [b.window setFrame:r display:NO];
+    b.paneRect = NSMakeRect([m[@"x"] doubleValue], [m[@"y"] doubleValue], [m[@"w"] doubleValue], [m[@"h"] doubleValue]);
+    [self layoutPage:b];
     NSInteger below = [m[@"wid"] integerValue];
     if (below) [b.window orderWindow:NSWindowBelow relativeTo:below];
-    if (b.casting && !NSEqualSizes(b.window.contentView.bounds.size, b.castSize)) {
-      // Resized while watched: cast at the new size, once the resizing settles.
-      [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(recast:) object:b];
-      [self performSelector:@selector(recast:) withObject:b afterDelay:0.15];
-    }
     [self pollLayer:b];
   } else if ([t isEqualToString:@"focus"]) {
     BOOL on = [m[@"on"] boolValue];
@@ -1434,6 +1450,8 @@ static time_t mtimeOf(const char *path) {
   Browser *b = s.browser;
   [s.encoder invalidate];
   [b.sessions removeObject:s];
+  if (b.lastRemote == s) b.lastRemote = nil;
+  if (b.sizer == s) [self sizePage:b for:nil];  // its viewer left: back to the Mac pane's size
   if (b && !b.sessions.count && b.casting) {
     b.casting = NO;
     sendCDP(b, @"Page.stopScreencast", nil);
@@ -1445,6 +1463,46 @@ static time_t mtimeOf(const char *path) {
 
 - (void)recast:(Browser *)b {
   [self startCasting:b];
+}
+
+#pragma mark Page size
+
+// Sizes the shadow window, so the page, for whoever sizes it: the Mac pane
+// it sits behind, or a remote viewer's size, centred at the top of the pane
+// (so what Chromium places on screen still lands by the page the Mac shows).
+// The Mac viewer is told where in the pane the page is.
+- (void)layoutPage:(Browser *)b {
+  if (b.sizer && ![b.sessions containsObject:b.sizer]) b.sizer = nil;
+  NSRect pane = b.paneRect, f = pane;
+  if (NSIsEmptyRect(pane)) pane = f = b.window.frame;  // no Mac pane yet: stay where it is
+  Session *s = b.sizer;
+  if (s) {
+    NSSize sz = s.pageSize;
+    f = NSMakeRect(round(NSMidX(pane) - sz.width / 2), NSMaxY(pane) - sz.height, sz.width, sz.height);
+  }
+  if (!NSEqualRects(f, b.window.frame)) [b.window setFrame:f display:NO];
+  if (b.casting && !NSEqualSizes(b.window.contentView.bounds.size, b.castSize)) {
+    // Resized while watched: cast at the new size, once the resizing settles.
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(recast:) object:b];
+    [self performSelector:@selector(recast:) withObject:b afterDelay:0.15];
+  }
+  NSDictionary *page = @{@"t" : @"page", @"id" : b.bid, @"x" : @(NSMinX(f) - NSMinX(pane)), @"y" : @(NSMaxY(pane) - NSMaxY(f)),
+                         @"w" : @(f.size.width), @"h" : @(f.size.height), @"by" : s ? (s.by.length ? s.by : @"another device") : @""};
+  if (b.viewer && ![page isEqualToDictionary:b.pageSent]) {
+    b.pageSent = page;
+    [self toViewer:b msg:page];
+  }
+}
+
+// The page goes to a remote viewer's size (a session), or back to the Mac
+// pane's (nil).
+- (void)sizePage:(Browser *)b for:(Session *)s {
+  if (s == b.sizer) return;
+  fprintf(stderr, "browser-host: %s sized for %s\n", b.bid.UTF8String,
+          s ? [NSString stringWithFormat:@"%@ (%.0fx%.0f)", s.by, s.pageSize.width, s.pageSize.height].UTF8String : "the Mac pane");
+  b.sizer = s;
+  if (s) b.lastRemote = s;
+  [self layoutPage:b];
 }
 
 // Starts the page's screencast, if it isn't running. Chromium sends a frame
@@ -1692,6 +1750,16 @@ static dispatch_queue_t decodeQueue(void) {
   } else if ([t isEqualToString:@"hold"]) {
     s.held = [m[@"on"] boolValue];
     if (!s.held && s.dirty) [self frameFor:s];
+  } else if ([t isEqualToString:@"page"]) {
+    // The size its viewer shows the page at: saying it is opening the page
+    // there (or the viewer turning or resizing), so the page takes it.
+    double w = [m[@"w"] doubleValue], h = [m[@"h"] doubleValue];
+    if (!(w > 0 && h > 0) || !s.browser) return;
+    s.pageSize = NSMakeSize(round(MIN(MAX(w, 200), 2048)), round(MIN(MAX(h, 200), 2048)));
+    s.by = m[@"by"];
+    Browser *b = s.browser;
+    if (b.sizer == s) [self layoutPage:b];
+    else [self sizePage:b for:s];
   } else if ([t isEqualToString:@"stop"]) {
     [self stopSession:s];
   }
@@ -1758,6 +1826,22 @@ static int cdpModifiers(id mods) {
 // fractions of the page and become CSS pixels of its viewport.
 - (void)remoteInput:(NSDictionary *)m into:(Browser *)b {
   NSString *op = m[@"op"];
+  // At the Mac pane's size, with a remote viewer that said its own: input
+  // from it gives the page back to that size (a tap or scroll only does that).
+  BOOL mouse = [op isEqualToString:@"mouse"], press = mouse && [m[@"type"] isEqualToString:@"down"];
+  Session *last = b.lastRemote;
+  if (!b.sizer && last && [b.sessions containsObject:last]) {
+    if (press || [op isEqualToString:@"wheel"]) {
+      [self sizePage:b for:last];
+      b.swallowRemote = press;
+      return;
+    }
+    if ([op isEqualToString:@"key"] || [op isEqualToString:@"text"] || [op isEqualToString:@"compose"]) [self sizePage:b for:last];
+  }
+  if (b.swallowRemote && mouse) {
+    if ([m[@"type"] isEqualToString:@"up"]) b.swallowRemote = NO;
+    return;
+  }
   NSSize size = b.window.contentView.bounds.size;
   double zoom = b->cef ? pow(1.2, b->cef->GetHost()->GetZoomLevel()) : 1;
   double x = [m[@"x"] doubleValue] * size.width / zoom, y = [m[@"y"] doubleValue] * size.height / zoom;
@@ -1869,6 +1953,26 @@ static uint32_t cefModifiers(NSEventModifierFlags f) {
   NSEvent *src = [NSEvent eventWithCGEvent:cg];
   CFRelease(cg);
   if (!src) return;
+
+  // Sized for a remote viewer: a click, scroll or key here gives the page
+  // back to the Mac pane (the click and scroll only do that); pointer events
+  // otherwise are aimed at a page the pane doesn't show at its size.
+  NSEventType type0 = src.type;
+  BOOL keyish = type0 == NSEventTypeKeyDown || type0 == NSEventTypeKeyUp || type0 == NSEventTypeFlagsChanged;
+  BOOL press = type0 == NSEventTypeLeftMouseDown || type0 == NSEventTypeRightMouseDown || type0 == NSEventTypeOtherMouseDown;
+  if (b.sizer) {
+    if (press || type0 == NSEventTypeScrollWheel) {
+      [self sizePage:b for:nil];
+      b.swallowLocal = press;
+      return;
+    }
+    if (type0 == NSEventTypeKeyDown) [self sizePage:b for:nil];
+    else if (!keyish) return;
+  }
+  if (b.swallowLocal && !keyish) {
+    if (type0 == NSEventTypeLeftMouseUp || type0 == NSEventTypeRightMouseUp || type0 == NSEventTypeOtherMouseUp) b.swallowLocal = NO;
+    if (type0 != NSEventTypeMouseMoved && type0 != NSEventTypeMouseEntered && type0 != NSEventTypeMouseExited) return;
+  }
 
   // The app sends pane-local points with a top-left origin; the web view
   // fills the shadow window's content view.

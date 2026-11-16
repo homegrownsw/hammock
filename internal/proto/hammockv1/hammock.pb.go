@@ -16618,7 +16618,14 @@ type SetMediaView struct {
 	// frames come in that shape, so a phone held upright gets the display's
 	// full height in detail, not squeezed into a landscape frame. A change
 	// starts the encoder again (a keyframe). 0: the display's own shape.
-	Aspect        float32 `protobuf:"fixed32,6,opt,name=aspect,proto3" json:"aspect,omitempty"`
+	Aspect float32 `protobuf:"fixed32,6,opt,name=aspect,proto3" json:"aspect,omitempty"`
+	// A browser pane's viewer instead: the size, in points, it shows the page
+	// at. The page takes that size while this viewer is the last to have
+	// opened or used it (as a terminal takes its driver's), and goes back to
+	// the Mac pane's when the Mac is used or the session ends. x, y, w, h and
+	// aspect are unused.
+	PageWidth     float32 `protobuf:"fixed32,7,opt,name=page_width,json=pageWidth,proto3" json:"page_width,omitempty"`
+	PageHeight    float32 `protobuf:"fixed32,8,opt,name=page_height,json=pageHeight,proto3" json:"page_height,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -16691,6 +16698,20 @@ func (x *SetMediaView) GetH() float32 {
 func (x *SetMediaView) GetAspect() float32 {
 	if x != nil {
 		return x.Aspect
+	}
+	return 0
+}
+
+func (x *SetMediaView) GetPageWidth() float32 {
+	if x != nil {
+		return x.PageWidth
+	}
+	return 0
+}
+
+func (x *SetMediaView) GetPageHeight() float32 {
+	if x != nil {
+		return x.PageHeight
 	}
 	return 0
 }
@@ -26264,7 +26285,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vScreenState\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
-	"\x06locked\x18\x02 \x01(\bR\x06locked\"}\n" +
+	"\x06locked\x18\x02 \x01(\bR\x06locked\"\xbd\x01\n" +
 	"\fSetMediaView\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\f\n" +
@@ -26272,7 +26293,11 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x01y\x18\x03 \x01(\x02R\x01y\x12\f\n" +
 	"\x01w\x18\x04 \x01(\x02R\x01w\x12\f\n" +
 	"\x01h\x18\x05 \x01(\x02R\x01h\x12\x16\n" +
-	"\x06aspect\x18\x06 \x01(\x02R\x06aspect\"C\n" +
+	"\x06aspect\x18\x06 \x01(\x02R\x06aspect\x12\x1d\n" +
+	"\n" +
+	"page_width\x18\a \x01(\x02R\tpageWidth\x12\x1f\n" +
+	"\vpage_height\x18\b \x01(\x02R\n" +
+	"pageHeight\"C\n" +
 	"\n" +
 	"MediaEnded\x12\x1d\n" +
 	"\n" +

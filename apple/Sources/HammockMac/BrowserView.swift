@@ -196,6 +196,11 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
 
     private let container = CALayer()
     private var remote: CALayer?
+    /// Where the page is in the pane while another device sizes it (the
+    /// host's page message: x and y from the top-left, in points); nil: it
+    /// fills the pane.
+    private var page: NSRect?
+    private var sizedCover: SizedElsewhereCover?
     private var cursor = NSCursor.arrow
     private var lastGeometry: [String: Any] = [:]
     private var observers: [NSObjectProtocol] = []
@@ -232,6 +237,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
         // never covers the pane's own controls.
         container.masksToBounds = true
         layer?.addSublayer(container)
+        layer?.masksToBounds = true // a page sized for a wider screen than the pane
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self))
         observers.append(NotificationCenter.default.addObserver(forName: TerminalNSView.refocus, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { if self?.isFocusTarget == true { self?.focusSoon() } }
@@ -270,6 +276,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     func hostLost() {
         remote?.removeFromSuperlayer()
         remote = nil
+        sized([:]) // a new host says again
     }
 
     func handle(_ m: [String: Any]) {
@@ -308,6 +315,8 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
             showFilePanel(m)
         case "found":
             onFound?((m["count"] as? Int) ?? 0, (m["active"] as? Int) ?? 0)
+        case "page":
+            sized(m)
         case "drag":
             startDrag(m)
         default:
@@ -379,13 +388,41 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
         sendGeometry()
     }
 
-    /// The page's layer exactly over the view.
+    /// The page's layer exactly over the view, or where the host says it is
+    /// while it's sized for another device.
     private func fitContainer() {
-        guard container.frame != bounds else { return }
+        var f = bounds
+        if let p = page { f = NSRect(x: p.minX, y: bounds.height - p.minY - p.height, width: p.width, height: p.height) }
+        guard container.frame != f else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        container.frame = bounds
+        container.frame = f
         CATransaction.commit()
+    }
+
+    /// The page's size is its last user's, like a terminal's (host.mm): this
+    /// pane's, or a phone's that opened or used it last. Sized for one, it
+    /// sits at the top of the pane, saying so; a click or key here takes it
+    /// back (the host sees to that).
+    private func sized(_ m: [String: Any]) {
+        let by = (m["by"] as? String) ?? ""
+        let d = { (k: String) in (m[k] as? Double) ?? 0 }
+        page = by.isEmpty ? nil : NSRect(x: d("x"), y: d("y"), width: d("w"), height: d("h"))
+        fitContainer()
+        if by.isEmpty {
+            sizedCover?.removeFromSuperview()
+            sizedCover = nil
+            layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
+        } else {
+            if sizedCover == nil {
+                let c = SizedElsewhereCover(frame: bounds)
+                c.autoresizingMask = [.width, .height]
+                addSubview(c, positioned: .below, relativeTo: cover)
+                sizedCover = c
+            }
+            sizedCover?.device = by
+            layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
     }
 
     override func setFrameOrigin(_ p: NSPoint) {
@@ -860,6 +897,40 @@ private final class StandbyCover: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     // Clicks reach the pane under it, which takes the page back.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Over a browser pane whose page is sized for another device (a phone that
+/// opened or used it last): who for, under the page.
+private final class SizedElsewhereCover: NSView {
+    private let title = NSTextField(labelWithString: "")
+
+    var device = "" {
+        didSet { title.stringValue = "Sized for \(device)" }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        let hint = NSTextField(labelWithString: "Click to fit this pane")
+        hint.font = .systemFont(ofSize: 12)
+        hint.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [title, hint])
+        stack.orientation = .vertical
+        stack.spacing = 2
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        stack.wantsLayer = true
+        stack.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.9).cgColor
+        stack.layer?.cornerRadius = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+                                     stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    // Clicks reach the pane under it, whose page the host gives back to it.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 

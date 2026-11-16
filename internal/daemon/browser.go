@@ -58,7 +58,7 @@ type browserHub struct {
 func newBrowserHub(d *Daemon) *browserHub {
 	h := &browserHub{d: d, path: browserHostPath(), kick: make(chan struct{}, 1)}
 	h.devtools.h = h
-	h.media = &hostMedia{d: d, name: "browser", socket: func() string { return BrowserSocketPath(d.cfg.Dir) }, ensure: h.ensure}
+	h.media = &hostMedia{d: d, name: "browser", socket: func() string { return BrowserSocketPath(d.cfg.Dir) }, ensure: h.ensure, pages: true}
 	return h
 }
 

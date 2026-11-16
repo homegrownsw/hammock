@@ -936,7 +936,21 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_SetMediaView:
 		v := m.SetMediaView
 		if s := d.media.session(c, v.SessionId); s != nil {
-			s.view(v.X, v.Y, v.W, v.H, v.Aspect)
+			if v.PageWidth > 0 && v.PageHeight > 0 {
+				d.mu.Lock()
+				by, peer := c.name, c.peer
+				d.mu.Unlock()
+				if peer != "" {
+					// Sizing the page is driving it: a guest who only views can't.
+					drive := &pb.ClientMessage{Msg: &pb.ClientMessage_BrowserInput{BrowserInput: &pb.BrowserInput{PaneId: s.paneID}}}
+					if _, err := c.peerCheck(drive); err != nil {
+						return nil, err
+					}
+				}
+				s.page(v.PageWidth, v.PageHeight, by)
+			} else {
+				s.view(v.X, v.Y, v.W, v.H, v.Aspect)
+			}
 		} else if r := d.media.relay(c, v.SessionId); r != nil {
 			r.setView(v)
 		}

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -793,5 +794,82 @@ func TestMediaQUICPendingCap(t *testing.T) {
 			t.Fatal("one within the limit was closed early")
 		default:
 		}
+	}
+}
+
+// pageEncoder is a browser host's media connection: it takes page sizes.
+type pageEncoder struct {
+	*fakeEncoder
+	mu           sync.Mutex
+	pages, views []string
+}
+
+func (e *pageEncoder) setPage(sid string, w, h float32, by string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.pages = append(e.pages, fmt.Sprintf("%s %gx%g %q", sid, w, h, by))
+}
+
+func (e *pageEncoder) setView(sid string, x, y, w, h, aspect float32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.views = append(e.views, sid)
+}
+
+func (e *pageEncoder) setSize(string, int) {}
+
+// encodeWith and setCodec: like the real host's media connection
+// (hostMedia), it's a codecSource too.
+func (e *pageEncoder) encodeWith(paneID, sid string, bitrate, fps, maxPixels int, codec string) {
+	e.startEncode(paneID, sid, bitrate, fps, maxPixels)
+}
+
+func (e *pageEncoder) setCodec(string, string) {}
+
+func (e *pageEncoder) got() (pages, views []string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return slices.Clone(e.pages), slices.Clone(e.views)
+}
+
+// A browser viewer's page size goes to the host as a page size, with who
+// the viewer is; a screen viewer's view (no page size) stays a view.
+func TestMediaPageSize(t *testing.T) {
+	d, c, enc, paneID := mediaDaemon(t)
+	pe := &pageEncoder{fakeEncoder: enc}
+	d.media.sourceFor = func(*pane) frameSource { return pe }
+	sid := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{PaneId: paneID, InBand: true}}}).GetMediaTicket().SessionId
+	d.mu.Lock()
+	for cn := range d.conns {
+		cn.name = "Sam's iPhone"
+	}
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMediaView{SetMediaView: &pb.SetMediaView{SessionId: sid, PageWidth: 393, PageHeight: 700}}})
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMediaView{SetMediaView: &pb.SetMediaView{SessionId: sid, W: 1, H: 1}}})
+	pages, views := pe.got()
+	if want := []string{sid + ` 393x700 "Sam's iPhone"`}; !slices.Equal(pages, want) {
+		t.Fatalf("pages %q, want %q", pages, want)
+	}
+	if !slices.Equal(views, []string{sid}) {
+		t.Fatalf("views %q", views)
+	}
+}
+
+// A page size said before the encoder starts (over QUIC, the viewer says it
+// as soon as it has a ticket) reaches the host once it does, and again on a
+// restart: the host knows the session only from then.
+func TestMediaPageSizeBeforeEncode(t *testing.T) {
+	d, _, enc, paneID := mediaDaemon(t)
+	pe := &pageEncoder{fakeEncoder: enc}
+	s := &mediaSession{hub: d.media, id: "ms_test", paneID: paneID, src: pe}
+	s.page(393, 700, "Sam's iPhone")
+	if pages, _ := pe.got(); len(pages) != 0 {
+		t.Fatalf("sent before the encoder started: %q", pages)
+	}
+	s.startEncode(mediaStartRate)
+	s.startEncode(mediaStartRate)
+	want := `ms_test 393x700 "Sam's iPhone"`
+	if pages, _ := pe.got(); !slices.Equal(pages, []string{want, want}) {
+		t.Fatalf("pages %q", pages)
 	}
 }

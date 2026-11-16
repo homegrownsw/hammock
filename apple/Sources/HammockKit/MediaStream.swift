@@ -84,6 +84,7 @@ public final class MediaStream: @unchecked Sendable {
     private let queue = DispatchQueue(label: "hammock.media")
     private var sessionID = ""
     private var view: (CGRect, CGFloat)? // the screen viewer's (setView), on queue
+    private var page: CGSize?             // a browser viewer's (setPageSize), on queue
     private var group: NWConnectionGroup?
     private var control: NWConnection?
     private var stopped = false
@@ -139,6 +140,28 @@ public final class MediaStream: @unchecked Sendable {
                 $0.sessionID = sid
                 $0.x = Float(r.minX); $0.y = Float(r.minY); $0.w = Float(r.width); $0.h = Float(r.height)
                 $0.aspect = Float(aspect)
+            }
+        }
+    }
+
+    /// A browser pane's viewer: the size (points) it shows the page at. The
+    /// page takes it while this viewer is the last to have opened or used it,
+    /// so frames come at this size (SetMediaView's page_width).
+    public func setPageSize(_ size: CGSize) {
+        queue.async {
+            guard size.width > 0, size.height > 0, size != self.page else { return }
+            self.page = size
+            self.sendPage()
+        }
+    }
+
+    private func sendPage() {
+        guard let p = page, !sessionID.isEmpty, !stopped else { return }
+        let sid = sessionID
+        conn.send {
+            $0.setMediaView = .with {
+                $0.sessionID = sid
+                $0.pageWidth = Float(p.width); $0.pageHeight = Float(p.height)
             }
         }
     }
@@ -217,6 +240,7 @@ public final class MediaStream: @unchecked Sendable {
                     }
                     self.sessionID = t.sessionID
                     self.sendView()
+                    self.sendPage()
                     self.listenForPointer(t.sessionID)
                     if inBand {
                         self.startInBand(t.sessionID)

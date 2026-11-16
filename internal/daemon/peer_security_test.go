@@ -839,3 +839,20 @@ func TestHostClipboardOnlyAnswersCopy(t *testing.T) {
 		t.Fatal("answered long after the copy")
 	}
 }
+
+// Sizing a browser page is driving it: a guest who only views can't.
+func TestPeerPageSizeNeedsDrive(t *testing.T) {
+	for _, role := range []pb.Role{pb.Role_ROLE_VIEWER, pb.Role_ROLE_DRIVER} {
+		t.Run(role.String(), func(t *testing.T) {
+			host, _, peer, _, _, _, paneID := sharedSetupAs(t, role, true)
+			pe := &pageEncoder{fakeEncoder: &fakeEncoder{d: host, s: map[string]*fakeSession{}}}
+			host.media.sourceFor = func(*pane) frameSource { return pe }
+			sid := call(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{PaneId: paneID, InBand: true}}}).GetMediaTicket().SessionId
+			_, err := callErr(t, peer, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMediaView{SetMediaView: &pb.SetMediaView{SessionId: sid, PageWidth: 393, PageHeight: 700}}})
+			pages, _ := pe.got()
+			if drives := role == pb.Role_ROLE_DRIVER; drives != (err == nil) || drives != (len(pages) == 1) {
+				t.Fatalf("err %v, pages %q", err, pages)
+			}
+		})
+	}
+}

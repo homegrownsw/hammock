@@ -226,15 +226,20 @@ type mediaSession struct {
 	sizeStep  int
 	sizeWant  int
 	sizeSince time.Time
-	viewMu    sync.Mutex
-	viewAt    time.Time
-	viewNext  *[5]float32
-	viewTimer *time.Timer
-	sentShape map[uint32]bool // pointer shapes this viewer has the image of
-	inputAt   time.Time       // when its viewer last gave the screen input (it's controlling)
-	canHEVC   bool
-	hevc      bool
-	tierSince time.Time
+	// The page size its viewer said (page), resent each time the encoder
+	// starts: the host knows the session only from then (guarded by mu).
+	pageW, pageH float32
+	pageBy       string
+	encoding     bool
+	viewMu       sync.Mutex
+	viewAt       time.Time
+	viewNext     *[5]float32
+	viewTimer    *time.Timer
+	sentShape    map[uint32]bool // pointer shapes this viewer has the image of
+	inputAt      time.Time       // when its viewer last gave the screen input (it's controlling)
+	canHEVC      bool
+	hevc         bool
+	tierSince    time.Time
 }
 
 // The sharp tier needs a link that carries it; below this the session
@@ -273,6 +278,29 @@ func (s *mediaSession) shareLink() {
 	}
 	s.ceiling = max(ceiling, s.floor)
 	s.rate = min(s.rate, s.ceiling)
+}
+
+// pageSource is a frameSource whose pixels are a page that can take its
+// viewer's size: the browser host.
+type pageSource interface {
+	setPage(sid string, w, h float32, by string)
+}
+
+// page passes on the size a browser pane's viewer shows the page at (in
+// points), and who that viewer is (for the Mac's "Sized for …"): now, if
+// the encoder is running, and each time it starts.
+func (s *mediaSession) page(w, h float32, by string) {
+	ps, ok := s.src.(pageSource)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	s.pageW, s.pageH, s.pageBy = w, h, by
+	running := s.encoding
+	s.mu.Unlock()
+	if running {
+		ps.setPage(s.id, w, h, by)
+	}
 }
 
 // view passes a viewer's view to the source: at once on a good link, at
@@ -344,12 +372,17 @@ func (h *mediaHub) screenState(locked bool) {
 func (s *mediaSession) startEncode(rate int) {
 	s.mu.Lock()
 	hevc := s.hevc
+	s.encoding = true
+	w, h, by := s.pageW, s.pageH, s.pageBy
 	s.mu.Unlock()
 	if cs, ok := s.src.(codecSource); ok {
 		cs.encodeWith(s.paneID, s.id, rate, s.fps, s.max, codecName(hevc))
-		return
+	} else {
+		s.src.startEncode(s.paneID, s.id, rate, s.fps, s.max)
 	}
-	s.src.startEncode(s.paneID, s.id, rate, s.fps, s.max)
+	if ps, ok := s.src.(pageSource); ok && w > 0 && h > 0 {
+		ps.setPage(s.id, w, h, by)
+	}
 }
 
 // ---------- listening ----------
