@@ -108,18 +108,6 @@ final class TabPreview {
     /// Its fade in and out.
     static let fadeIn: TimeInterval = 0.12
     static let fadeOut: TimeInterval = 0.18
-    /// Room around the card for its shadow, inside the window that holds it.
-    static let margin: CGFloat = 30
-    /// Its room on each side: on the tab's side, less than the gap to the
-    /// tab, so the window never covers the tab (the pointer over it, say on
-    /// a row's close button, would be in the card's window instead, and
-    /// the tab would think it had left).
-    static func insets(_ edge: TabPreviewEdge) -> EdgeInsets {
-        switch edge {
-        case .below: EdgeInsets(top: 4, leading: margin, bottom: margin, trailing: margin)
-        case .trailing: EdgeInsets(top: margin, leading: 6, bottom: margin, trailing: margin)
-        }
-    }
 
     /// The tab the card shows.
     private weak var anchor: TabPreviewAnchorView?
@@ -137,7 +125,7 @@ final class TabPreview {
     private var panel: TabPreviewPanel?
     /// Bumped by each show and hide, so a fade that's been overtaken doesn't finish.
     private var fades = 0
-    private var size = CGSize(width: 320 + 2 * margin, height: 300 + 2 * margin)
+    private var size = CGSize(width: TabPreviewCard.width, height: 300)
     /// HMK_DEBUG_TAB_PREVIEW: a tab's preview shown on its own, and kept.
     private let debugTab = ProcessInfo.processInfo.environment["HMK_DEBUG_TAB_PREVIEW"]
     private var pinned = false
@@ -279,7 +267,7 @@ final class TabPreview {
         fades += 1
         let appearing = !panel.isVisible || anchor == nil
         if v !== anchor {
-            panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID, edge: v.edge) { [weak self] in self?.resized($0) }
+            panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID) { [weak self] in self?.resized($0) }
             size = panel.host.fittingSize
         }
         anchor = v
@@ -293,6 +281,8 @@ final class TabPreview {
         panel.ignoresMouseEvents = !Self.clickable
         if !panel.isVisible { panel.alphaValue = 0 }
         panel.orderFront(nil)
+        // Its shadow follows what it's drawn: once the card is.
+        DispatchQueue.main.async { panel.invalidateShadow() }
         if appearing || panel.alphaValue < 1 {
             NSAnimationContext.runAnimationGroup { c in
                 c.duration = Self.fadeIn
@@ -311,8 +301,7 @@ final class TabPreview {
 
     private func place() {
         guard let panel, let v = anchor, let r = v.screenRect, let window = v.window else { return }
-        let m = Self.insets(v.edge)
-        let w = size.width - m.leading - m.trailing, h = size.height - m.top - m.bottom
+        let w = size.width, h = size.height
         let screen = window.screen?.visibleFrame ?? window.frame
         var x: CGFloat, top: CGFloat
         switch v.edge {
@@ -327,7 +316,8 @@ final class TabPreview {
         }
         top = min(top, screen.maxY - 8)
         if top - h < screen.minY + 8 { top = screen.minY + 8 + h }
-        panel.setFrame(CGRect(x: x - m.leading, y: top - h - m.bottom, width: size.width, height: size.height), display: true)
+        panel.setFrame(CGRect(x: x, y: top - h, width: w, height: h), display: true)
+        panel.invalidateShadow()
     }
 
     /// Fades it away; its panes let go once it's gone.
@@ -380,9 +370,12 @@ final class TabPreview {
     }
 }
 
-/// The window the card floats in, over its tab's window: never key. The
-/// pointer goes through its clear margin (and, unless it's clickable, the
-/// card).
+/// The window the card floats in, over its tab's window: never key, the
+/// card's size and shape (its shadow the window's own, around the card's
+/// rounded corners, so the window needs no room for it, and never covers
+/// its tab: the pointer over that, say on a row's close button, would be
+/// in this window instead, and the tab would think it had left). Unless
+/// it's clickable, the pointer goes through it.
 private final class TabPreviewPanel: NSPanel {
     let host = FirstClickHostingView(rootView: TabPreviewContent(model: nil, tabID: "") { _ in })
 
@@ -390,7 +383,7 @@ private final class TabPreviewPanel: NSPanel {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false
+        hasShadow = true
         ignoresMouseEvents = !TabPreview.clickable
         isReleasedWhenClosed = false
         animationBehavior = .none
@@ -409,11 +402,10 @@ private final class FirstClickHostingView<Content: View>: NSHostingView<Content>
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// The card, with room around it for its shadow, saying when its size changes.
+/// The card, saying when its size changes.
 private struct TabPreviewContent: View {
     let model: AppModel?
     let tabID: String
-    var edge = TabPreviewEdge.below
     let resized: (CGSize) -> Void
 
     var body: some View {
@@ -424,7 +416,6 @@ private struct TabPreviewContent: View {
                     .onHover { TabPreview.shared.cardHover($0) }
             }
         }
-        .padding(TabPreview.insets(edge))
         .fixedSize()
         .onGeometryChange(for: CGSize.self) { $0.size } action: { resized($0) }
     }
@@ -460,8 +451,6 @@ struct TabPreviewCard: View {
             .frame(width: Self.width, alignment: .leading)
             .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
             .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.12), lineWidth: 0.5))
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 18, y: 10)
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 3, y: 1)
             // A click anywhere else on it goes to the tab as it is.
             .contentShape(RoundedRectangle(cornerRadius: 14))
             .onTapGesture { open?(tab.focusedPaneID) }
