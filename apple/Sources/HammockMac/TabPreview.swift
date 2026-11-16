@@ -110,6 +110,16 @@ final class TabPreview {
     static let fadeOut: TimeInterval = 0.18
     /// Room around the card for its shadow, inside the window that holds it.
     static let margin: CGFloat = 30
+    /// Its room on each side: on the tab's side, less than the gap to the
+    /// tab, so the window never covers the tab (the pointer over it, say on
+    /// a row's close button, would be in the card's window instead, and
+    /// the tab would think it had left).
+    static func insets(_ edge: TabPreviewEdge) -> EdgeInsets {
+        switch edge {
+        case .below: EdgeInsets(top: 4, leading: margin, bottom: margin, trailing: margin)
+        case .trailing: EdgeInsets(top: margin, leading: 6, bottom: margin, trailing: margin)
+        }
+    }
 
     /// The tab the card shows.
     private weak var anchor: TabPreviewAnchorView?
@@ -269,7 +279,7 @@ final class TabPreview {
         fades += 1
         let appearing = !panel.isVisible || anchor == nil
         if v !== anchor {
-            panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID) { [weak self] in self?.resized($0) }
+            panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID, edge: v.edge) { [weak self] in self?.resized($0) }
             size = panel.host.fittingSize
         }
         anchor = v
@@ -301,8 +311,8 @@ final class TabPreview {
 
     private func place() {
         guard let panel, let v = anchor, let r = v.screenRect, let window = v.window else { return }
-        let m = Self.margin
-        let w = size.width - 2 * m, h = size.height - 2 * m
+        let m = Self.insets(v.edge)
+        let w = size.width - m.leading - m.trailing, h = size.height - m.top - m.bottom
         let screen = window.screen?.visibleFrame ?? window.frame
         var x: CGFloat, top: CGFloat
         switch v.edge {
@@ -317,7 +327,7 @@ final class TabPreview {
         }
         top = min(top, screen.maxY - 8)
         if top - h < screen.minY + 8 { top = screen.minY + 8 + h }
-        panel.setFrame(CGRect(x: x - m, y: top - h - m, width: size.width, height: size.height), display: true)
+        panel.setFrame(CGRect(x: x - m.leading, y: top - h - m.bottom, width: size.width, height: size.height), display: true)
     }
 
     /// Fades it away; its panes let go once it's gone.
@@ -403,6 +413,7 @@ private final class FirstClickHostingView<Content: View>: NSHostingView<Content>
 private struct TabPreviewContent: View {
     let model: AppModel?
     let tabID: String
+    var edge = TabPreviewEdge.below
     let resized: (CGSize) -> Void
 
     var body: some View {
@@ -413,7 +424,7 @@ private struct TabPreviewContent: View {
                     .onHover { TabPreview.shared.cardHover($0) }
             }
         }
-        .padding(TabPreview.margin)
+        .padding(TabPreview.insets(edge))
         .fixedSize()
         .onGeometryChange(for: CGSize.self) { $0.size } action: { resized($0) }
     }
