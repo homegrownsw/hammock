@@ -27,7 +27,9 @@ Pane headers no longer flicker while you type.
 
 - **The first line** is `tag: NEW`, `tag: FIXED` or `tag: INTERNAL`.
 - **The second** is the date it was written, which `just note` adds.
-- **The rest** is the note, one or two sentences, or a short paragraph for a feature several changes built.
+- **The rest** is the note: one short sentence, led by the feature's name when it has one ("Tab Previews: rest
+  your cursor on a tab to see a live preview of its contents."). No details, settings or how it works: the docs
+  have those.
   NEW and FIXED are for the people using Hammock (friends testing it today), so write them for them: what they
   can do now, or what no longer goes wrong. One feature gets one note, however many commits built it: merge
   them before the release. INTERNAL can be terse; it never leaves this repo.
