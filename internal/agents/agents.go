@@ -155,6 +155,10 @@ type Screen struct {
 	Working     *regexp.Regexp // it's working (its "esc to interrupt")
 	NeedsInput  *regexp.Regexp // it's asking (a permission prompt)
 	Interrupted *regexp.Regexp // Esc stopped it: no hook says so
+	// SpinnerStops: stopped before it replied, it prints nothing (Claude
+	// puts the message back in its prompt), so its spinner (agentview's
+	// spinnerLine) going after Esc says it stopped.
+	SpinnerStops bool
 	// Idle: it's at its prompt, waiting for your next message. For an agent
 	// that shows nothing while it works (Aider streams its reply with no
 	// spinner or "esc to interrupt"): set, anything else on its screen is

@@ -52,6 +52,25 @@ func TestWindowStartCaps(t *testing.T) {
 }
 
 func TestEscInterruptMarksClaudeIdle(t *testing.T) {
+	for name, tc := range map[string]struct {
+		script string
+		stops  bool
+	}{
+		// Like Claude: a keystroke (Esc) stops it, and it says so, in
+		// fullscreen mode far above its prompt, with blank lines between.
+		"interrupted": {`stty -icanon -echo min 1; dd bs=1 count=1 >/dev/null 2>&1; echo "  ⎿  Interrupted · What should Claude do instead?"; printf "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────\n❯ \n─────\n"; exec cat`, true},
+		// Stopped before it replied, it prints nothing: its spinner goes,
+		// and the message is back in its prompt.
+		"early": {`stty -icanon -echo min 1; printf "❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ \n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H─────\n❯ go\n─────\n"; exec cat`, true},
+		// Esc only closed something (a completion menu): its spinner stays,
+		// and the last turn's "Interrupted" above doesn't count.
+		"not stopped": {`stty -icanon -echo min 1; printf "  ⎿  Interrupted · What should Claude do instead?\n\n❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ /\n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H  ⎿  Interrupted · What should Claude do instead?\n\n❯ go\n\n✻ Tomfoolering… (3s)\n─────\n❯ \n─────\n"; exec cat`, false},
+	} {
+		t.Run(name, func(t *testing.T) { testEscInterrupt(t, tc.script, tc.stops) })
+	}
+}
+
+func testEscInterrupt(t *testing.T, script string, stops bool) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	defer d.Shutdown()
@@ -59,9 +78,7 @@ func TestEscInterruptMarksClaudeIdle(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "g"}}}))
 	tab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g,
-		// Like Claude: a keystroke (Esc) stops it, and it says so, in
-		// fullscreen mode far above its prompt, with blank lines between.
-		Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", `stty -icanon -echo min 1; dd bs=1 count=1 >/dev/null 2>&1; echo "  ⎿  Interrupted · What should Claude do instead?"; printf "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────\n❯ \n─────\n"; exec cat`}}}}}))
+		Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", script}}}}}))
 	d.mu.Lock()
 	paneID := d.tabs[tab].FocusedPaneId
 	d.mu.Unlock()
@@ -74,10 +91,27 @@ func TestEscInterruptMarksClaudeIdle(t *testing.T) {
 		}
 		return false
 	})
+	d.mu.Lock()
+	p := d.panes[paneID]
+	d.mu.Unlock()
+	// Its spinner is drawn before Esc goes in.
+	for deadline := time.Now().Add(5 * time.Second); strings.Contains(script, "✻") && !strings.Contains(p.text(false), "✻"); {
+		if time.Now().After(deadline) {
+			t.Fatal("no spinner on screen")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: paneID, Data: []byte("\x1b")}}})
+	if !stops {
+		time.Sleep(time.Second) // several of the watcher's reads
+		if a := p.snapshotInfo().Agent; a.GetState() != pb.AgentState_AGENT_STATE_WORKING {
+			t.Fatalf("state %v (%q), want working", a.GetState(), a.GetSummary())
+		}
+		return
+	}
 	waitEvent(t, c, func(ev *pb.ServerMessage) bool {
 		for _, p := range ev.GetState().GetPanes() {
-			if p.Id == paneID && p.GetAgent().GetState() == pb.AgentState_AGENT_STATE_IDLE && p.GetAgent().GetSeen() {
+			if a := p.GetAgent(); p.Id == paneID && a.GetState() == pb.AgentState_AGENT_STATE_IDLE && a.GetSeen() && a.GetSummary() == "Interrupted" {
 				return true
 			}
 		}

@@ -508,27 +508,62 @@ func (h *agentHub) answered(p *pane, since int64) {
 	h.d.publish(u)
 }
 
-// interrupted watches for an agent's "Interrupted" line (Claude's) after
-// Esc was pressed in its working pane: an interrupt sends no hook, so
-// without this the pane would show working until the next prompt.
-func (h *agentHub) interrupted(p *pane) {
+// escWatch is what interrupted needs from the moment Esc goes into a pane,
+// before the agent can redraw.
+type escWatch struct {
+	ag   *agents.Agent
+	spun bool      // its spinner was on screen (Screen.SpinnerStops)
+	at   time.Time // a hook after this: it carried on, or finished, itself
+}
+
+// watchEsc is read as Esc goes into p: nil unless p's agent is working and
+// says on screen when Esc stops it.
+func (h *agentHub) watchEsc(p *pane) *escWatch {
 	a := p.snapshotInfo().Agent
 	ag := agents.Get(a.GetHarness())
 	if ag == nil || ag.Screen.Interrupted == nil || a.GetState() != pb.AgentState_AGENT_STATE_WORKING {
+		return nil
+	}
+	w := &escWatch{ag: ag, at: time.Now()}
+	w.spun = ag.Screen.SpinnerStops && agentview.ReadScreen(p.text(false)).Status != ""
+	return w
+}
+
+// interrupted watches an agent's working pane after Esc (w, from watchEsc)
+// went in: an interrupt sends no hook, so without this the pane would show
+// working until the next prompt. Stopped is its spinner gone, with no menu
+// in its place, and either its "Interrupted" line or (stopped before it
+// replied, when Claude puts the message back in its prompt and prints
+// nothing) the spinner that was there as Esc went in gone for good. An Esc
+// that only closed something (a completion menu) leaves the spinner, and a
+// hook after it means the agent moved on itself.
+func (h *agentHub) interrupted(p *pane, w *escWatch) {
+	if w == nil {
 		return
 	}
-	re := ag.Screen.Interrupted
 	go func() {
+		gone := 0
 		for range 20 {
 			time.Sleep(150 * time.Millisecond)
-			if !slices.ContainsFunc(lastLines(p.text(false), 12), re.MatchString) {
+			text := p.text(false)
+			switch sc := agentview.ReadScreen(text); {
+			case sc.Status != "" || len(sc.Options) > 0:
+				gone = 0 // still working, or asking
+				continue
+			case slices.ContainsFunc(lastLines(text, 12), w.ag.Screen.Interrupted.MatchString):
+			case w.spun:
+				// Gone twice running: not a redraw between frames.
+				if gone++; gone < 2 {
+					continue
+				}
+			default:
 				continue
 			}
 			h.d.mu.Lock()
 			defer h.d.mu.Unlock()
 			p.mu.Lock()
 			a := p.info.Agent
-			if a == nil || a.State != pb.AgentState_AGENT_STATE_WORKING {
+			if a == nil || a.State != pb.AgentState_AGENT_STATE_WORKING || p.hookAt.After(w.at) {
 				p.mu.Unlock()
 				return
 			}

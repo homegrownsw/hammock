@@ -33,7 +33,9 @@ var Claude = &Agent{
 		return typed
 	},
 	Schedulable: true,
-	Screen:      Screen{Interrupted: regexp.MustCompile(`Interrupted`)},
+	// "⎿  Interrupted · What should Claude do instead?" (or "by user"):
+	// anchored, as the word itself is often in what it printed.
+	Screen: Screen{Interrupted: regexp.MustCompile(`^\s*⎿\s+Interrupted`), SpinnerStops: true},
 
 	Roots: func() []string {
 		dirs := []string{home(".claude", "projects")}

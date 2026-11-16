@@ -1067,6 +1067,12 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if err != nil {
 			return nil, err
 		}
+		data := string(m.Input.Data)
+		esc := data == "\x1b" || data == "\x1b[27u" || data == "\x1b[27;1u"
+		var watch *escWatch
+		if esc { // before it goes in: Claude redraws at once
+			watch = d.agentHub.watchEsc(p)
+		}
 		resized, err := p.input(c, m.Input.Data)
 		if resized {
 			c.paneResized(p)
@@ -1081,8 +1087,8 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if strings.ContainsAny(string(m.Input.Data), "\r\n") {
 			d.keepRun(p) // a scheduled run you've typed into stays
 		}
-		if esc := string(m.Input.Data); esc == "\x1b" || esc == "\x1b[27u" || esc == "\x1b[27;1u" {
-			d.agentHub.interrupted(p)
+		if esc {
+			d.agentHub.interrupted(p, watch)
 		}
 		d.mu.Unlock()
 		return nil, err
