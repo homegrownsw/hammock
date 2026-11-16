@@ -63,12 +63,13 @@ final class TabPreviewAnchorView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let area { removeTrackingArea(area) }
-        let a = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        let a = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect], owner: self)
         addTrackingArea(a)
         area = a
     }
 
     override func mouseEntered(with event: NSEvent) { TabPreview.shared.entered(self) }
+    override func mouseMoved(with event: NSEvent) { TabPreview.shared.moved(self) }
     override func mouseExited(with event: NSEvent) { TabPreview.shared.exited(self) }
 
     override func viewDidMoveToWindow() {
@@ -84,8 +85,8 @@ final class TabPreviewAnchorView: NSView {
 }
 
 /// Shows and hides the preview: after the pointer rests on a tab a moment,
-/// then at once from tab to tab while one shows; gone a moment after the
-/// pointer leaves, and at once on a click, a scroll or a key.
+/// then at once from tab to tab while one shows; fading away a moment after
+/// the pointer leaves, and at once on a click, a scroll or a key.
 @MainActor
 final class TabPreview {
     static let shared = TabPreview()
@@ -95,10 +96,19 @@ final class TabPreview {
     /// How long it stays once the pointer's left the tab, and how soon
     /// after it went another tab's shows without the wait.
     static let linger: Duration = .milliseconds(200)
+    /// Its fade in and out.
+    static let fadeIn: TimeInterval = 0.12
+    static let fadeOut: TimeInterval = 0.18
     /// Room around the card for its shadow, inside the window that holds it.
     static let margin: CGFloat = 30
 
+    /// The tab the card shows.
     private weak var anchor: TabPreviewAnchorView?
+    /// The tab the pointer's on, if any.
+    private weak var under: TabPreviewAnchorView?
+    /// A tab whose card a click or key put away: none until the pointer
+    /// leaves it.
+    private weak var dismissed: TabPreviewAnchorView?
     private weak var waitingOn: TabPreviewAnchorView?
     private var waiting: Task<Void, Never>?
     private var closing: Task<Void, Never>?
@@ -106,6 +116,8 @@ final class TabPreview {
     private var scrolledAt = ContinuousClock.now - .seconds(10)
     private var monitor: Any?
     private var panel: TabPreviewPanel?
+    /// Bumped by each show and hide, so a fade that's been overtaken doesn't finish.
+    private var fades = 0
     private var size = CGSize(width: 320 + 2 * margin, height: 300 + 2 * margin)
     /// HMK_DEBUG_TAB_PREVIEW: a tab's preview shown on its own, and kept.
     private let debugTab = ProcessInfo.processInfo.environment["HMK_DEBUG_TAB_PREVIEW"]
@@ -120,52 +132,29 @@ final class TabPreview {
     static let sweep: Duration = .milliseconds(100)
     private var overCard = false
 
-    /// The pointer came onto the card or left it.
-    func cardHover(_ inside: Bool) {
-        guard Self.clickable, !pinned else { return }
-        overCard = inside
-        if inside {
-            closing?.cancel()
-            closing = nil
-            waiting?.cancel()
-            waiting = nil
-        } else {
-            closing?.cancel()
-            closing = Task {
-                try? await Task.sleep(for: Self.linger)
-                guard !Task.isCancelled else { return }
-                self.hide()
-            }
-        }
-    }
-
-    /// A pane clicked in the card: its tab selected, it focused.
-    func open(_ paneID: String) {
-        let v = anchor
-        hide(force: true)
-        v?.open(paneID)
-    }
-
     private init() {
         NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { TabPreview.shared.hide() }
         }
     }
 
-    private var showing: Bool { panel?.isVisible == true && anchor != nil }
+    private var showing: Bool { anchor != nil }
 
     func entered(_ v: TabPreviewAnchorView) {
-        guard AppConfig.shared.tabPreview, !pinned else { return }
+        under = v
+        guard AppConfig.shared.tabPreview, !pinned, dismissed !== v else { return }
         // Not mid drag, nor as a scroll carries tabs under the pointer.
         guard NSEvent.pressedMouseButtons == 0, ContinuousClock.now - scrolledAt > .milliseconds(300) else { return }
-        closing?.cancel()
-        closing = nil
-        if v === anchor, showing { return }
+        if v === anchor {
+            closing?.cancel()
+            closing = nil
+            return
+        }
         waiting?.cancel()
+        waitingOn = v
         if showing, Self.clickable {
             // On the way to the card, the pointer can cross other tabs:
             // only one it stays on takes the card.
-            waitingOn = v
             waiting = Task { [weak v] in
                 try? await Task.sleep(for: Self.sweep)
                 guard !Task.isCancelled, let v, !self.overCard else { return }
@@ -177,7 +166,6 @@ final class TabPreview {
             show(v)
             return
         }
-        waitingOn = v
         waiting = Task { [weak v] in
             try? await Task.sleep(for: Self.delay)
             guard !Task.isCancelled, let v else { return }
@@ -185,18 +173,59 @@ final class TabPreview {
         }
     }
 
+    /// The pointer moving on a tab: its card, if none shows or is on its way
+    /// (it went while the pointer stayed, or the pointer came to rest here
+    /// as something else moved).
+    func moved(_ v: TabPreviewAnchorView) {
+        if v !== under || (anchor == nil && waitingOn !== v) { entered(v) }
+    }
+
     func exited(_ v: TabPreviewAnchorView) {
+        if under === v { under = nil }
+        if dismissed === v { dismissed = nil }
         if waitingOn === v {
             waiting?.cancel()
             waiting = nil
+            waitingOn = nil
         }
-        guard v === anchor, !pinned, !overCard else { return }
+        guard v === anchor, !overCard else { return }
+        closeSoon()
+    }
+
+    /// The pointer came onto the card or left it.
+    func cardHover(_ inside: Bool) {
+        guard Self.clickable, !pinned else { return }
+        overCard = inside
+        if inside {
+            closing?.cancel()
+            closing = nil
+            waiting?.cancel()
+            waiting = nil
+            waitingOn = nil
+        } else if under !== anchor {
+            closeSoon()
+        }
+    }
+
+    /// Hidden after `linger`, unless by then the card's moved to another
+    /// tab or the pointer's come back.
+    private func closeSoon() {
+        guard !pinned else { return }
         closing?.cancel()
+        let from = anchor
         closing = Task {
             try? await Task.sleep(for: Self.linger)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, self.anchor === from, !self.overCard, self.under !== from else { return }
             self.hide()
         }
+    }
+
+    /// A pane clicked in the card: its tab selected, it focused.
+    func open(_ paneID: String) {
+        let v = anchor
+        dismissed = under
+        hide(force: true)
+        v?.open(paneID)
     }
 
     func gone(_ v: TabPreviewAnchorView) {
@@ -222,28 +251,44 @@ final class TabPreview {
         guard let window = v.window, let model = v.model, model.tabs[v.tabID] != nil else { return }
         let panel = self.panel ?? TabPreviewPanel()
         self.panel = panel
-        let moving = showing && anchor !== v
-        anchor = v
+        closing?.cancel()
+        closing = nil
+        waiting = nil
         waitingOn = nil
-        panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID) { [weak self] in self?.resized($0) }
-        size = panel.host.fittingSize
+        fades += 1
+        let appearing = !panel.isVisible || anchor == nil
+        if v !== anchor {
+            panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID) { [weak self] in self?.resized($0) }
+            size = panel.host.fittingSize
+        }
+        anchor = v
         if panel.parent !== window {
             panel.parent?.removeChildWindow(panel)
             window.addChildWindow(panel, ordered: .above)
         }
-        place(animated: moving)
+        // From tab to tab it moves at once: sliding, its new tab's card
+        // would show in a window still on its way.
+        place()
+        panel.ignoresMouseEvents = !Self.clickable
+        if !panel.isVisible { panel.alphaValue = 0 }
         panel.orderFront(nil)
+        if appearing || panel.alphaValue < 1 {
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = Self.fadeIn
+                panel.animator().alphaValue = 1
+            }
+        }
         watchEvents()
     }
 
     /// The card grew or shrank (a line of what it's up to came or went).
     private func resized(_ s: CGSize) {
-        guard s != size, s.width > 0, s.height > 0 else { return }
+        guard s != size, s.width > 0, s.height > 0, anchor != nil else { return }
         size = s
-        place(animated: false)
+        place()
     }
 
-    private func place(animated: Bool) {
+    private func place() {
         guard let panel, let v = anchor, let r = v.screenRect, let window = v.window else { return }
         let m = Self.margin
         let w = size.width - 2 * m, h = size.height - 2 * m
@@ -261,46 +306,52 @@ final class TabPreview {
         }
         top = min(top, screen.maxY - 8)
         if top - h < screen.minY + 8 { top = screen.minY + 8 + h }
-        let frame = CGRect(x: x - m, y: top - h - m, width: size.width, height: size.height)
-        if animated {
-            NSAnimationContext.runAnimationGroup { c in
-                c.duration = 0.15
-                c.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().setFrame(frame, display: true)
-            }
-        } else {
-            panel.setFrame(frame, display: true)
-        }
+        panel.setFrame(CGRect(x: x - m, y: top - h - m, width: size.width, height: size.height), display: true)
     }
 
+    /// Fades it away; its panes let go once it's gone.
     func hide(force: Bool = false) {
         guard !pinned || force else { return }
         waiting?.cancel()
         closing?.cancel()
         waiting = nil
+        waitingOn = nil
         closing = nil
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
-        guard let panel, anchor != nil || panel.isVisible else { return }
+        guard let panel, anchor != nil else { return }
         anchor = nil
         pinned = false
         overCard = false
         hiddenAt = .now
-        panel.parent?.removeChildWindow(panel)
-        panel.orderOut(nil)
-        // Its panes let go (streams detached, video stopped).
-        panel.host.rootView = TabPreviewContent(model: nil, tabID: "") { _ in }
+        panel.ignoresMouseEvents = true
+        fades += 1
+        let fade = fades
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = Self.fadeOut
+            panel.animator().alphaValue = 0
+        } completionHandler: {
+            MainActor.assumeIsolated {
+                guard TabPreview.shared.fades == fade else { return }
+                panel.parent?.removeChildWindow(panel)
+                panel.orderOut(nil)
+                // Streams detached, video stopped.
+                panel.host.rootView = TabPreviewContent(model: nil, tabID: "") { _ in }
+            }
+        }
     }
 
     /// A click, scroll or key while it shows puts it away (not one on the
-    /// card itself).
+    /// card itself); after a click or key, it stays away from the tab the
+    /// pointer's on until the pointer leaves it.
     private func watchEvents() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .keyDown]) { e in
             MainActor.assumeIsolated {
-                if e.window != nil, e.window === TabPreview.shared.panel { return }
-                if e.type == .scrollWheel { TabPreview.shared.scrolledAt = .now }
-                TabPreview.shared.hide()
+                let p = TabPreview.shared
+                if e.window != nil, e.window === p.panel { return }
+                if e.type == .scrollWheel { p.scrolledAt = .now } else { p.dismissed = p.under }
+                p.hide()
             }
             return e
         }
