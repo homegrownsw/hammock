@@ -679,7 +679,9 @@ function pinTop() {
   pin = s ? { path: s.dataset.path, off: top - s.offsetTop } : null
 }
 
+let toBottom = false // G: held at the bottom while it lays out
 function holdPin() {
+  if (toBottom) { const box = $("files"); box.scrollTop = box.scrollHeight; return }
   // The keyboard's cursor, held where it is on screen while files lay out
   // again (they mount, wrap, change layout), rather than the file at the top.
   if (hold) {
@@ -2120,8 +2122,19 @@ function switchSide(to) {
   const pos = from.state.doc.line(cur.kind === "line" ? cur.line : cur.from).from
   // Level on screen (the two columns are lined up): by the line's middle.
   const fb = from.lineBlockAt(pos)
-  const b = into.lineBlockAtHeight(fb.top + from.documentTop - into.documentTop + Math.min(fb.height, lineHeight()) / 2)
-  const n = into.state.doc.lineAt(Math.min(b.from, into.state.doc.length)).number
+  const y = fb.top + from.documentTop - into.documentTop + Math.min(fb.height, lineHeight()) / 2
+  const b = into.lineBlockAtHeight(y)
+  let n = into.state.doc.lineAt(Math.min(b.from, into.state.doc.length)).number
+  // Opposite lines the other side added there's only a gap: the nearest
+  // line, not the first after the gap (which may be far below).
+  // (The gap is drawn as part of the next line's block: where its text
+  // starts says. Not drawn, it's far off.)
+  const c = into.coordsAtPos(into.state.doc.line(n).from)
+  const textTop = c ? c.top - into.documentTop : Infinity
+  if (textTop > y + lineHeight() && n > 1) {
+    const above = into.lineBlockAt(into.state.doc.line(n - 1).from)
+    if (y - above.bottom < textTop - y) n -= 1
+  }
   setCursor(lineStop(cur.path, into, n))
   return true
 }
@@ -2130,7 +2143,10 @@ function switchSide(to) {
 // key after scrolling with the mouse, or the first ever).
 function seatCursor() {
   const box = $("files"), top = box.getBoundingClientRect().top + 44
-  const path = activePath || shownFiles()[0]?.path
+  // The file at the top of what's on screen (not the list's: it follows
+  // the cursor, which may be off screen now).
+  let path = shownFiles()[0]?.path
+  for (const sec of sectionList) { if (sec.offsetTop <= box.scrollTop + 44) path = sec.dataset.path; else break }
   if (!path) return
   const m = mounted.get(path)
   if (m && m.views.length) {
@@ -2229,8 +2245,8 @@ function holdCursor(ms) {
   const b = $("files").getBoundingClientRect()
   hold = y != null && y > -20 && y < b.height ? { y, until: performance.now() + ms } : null
 }
-for (const ev of ["wheel", "touchmove", "mousedown"]) $("files").addEventListener(ev, () => { hold = null }, { passive: true, capture: true })
-window.addEventListener("keydown", () => { hold = null }, true)
+for (const ev of ["wheel", "touchmove", "mousedown"]) $("files").addEventListener(ev, () => { hold = null; toBottom = false }, { passive: true, capture: true })
+window.addEventListener("keydown", () => { hold = null; toBottom = false }, true)
 
 function foldElement(c) {
   const m = mounted.get(c.path)
@@ -2346,11 +2362,18 @@ function goEnd(back) {
   if (!files.length) return
   if (back) { setCursor({ path: files[0].path, kind: "head" }); $("files").scrollTop = 0; return }
   const last = files[files.length - 1].path
-  // Straight to the bottom, where the last file ends: one move, not two.
+  // Straight to the bottom, where the last file ends, and kept there as
+  // the files there are drawn: one move, not several.
   const box = $("files")
+  toBottom = true
   box.scrollTop = box.scrollHeight
-  pinTop()
-  ensureMounted(last).then(() => setCursor(lastIn(last)))
+  ensureMounted(last).then(async () => {
+    for (let i = 0; i < 6 && toBottom; i++) { box.scrollTop = box.scrollHeight; await new Promise((r) => requestAnimationFrame(r)) }
+    if (!toBottom) return
+    toBottom = false
+    pinTop()
+    setCursor(lastIn(last))
+  })
 }
 
 function page(frac) {
