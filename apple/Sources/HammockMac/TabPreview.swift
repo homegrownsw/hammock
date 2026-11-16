@@ -626,10 +626,14 @@ private struct PaneTile: View {
     let focused: Bool
     let open: ((String) -> Void)?
     @State private var hovered = false
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .overlay {
+                if model.panes[paneID]?.asleep == true { asleep }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 5))
             .overlay {
                 // Clickable: the pane under the pointer lit, as it would be
@@ -642,6 +646,25 @@ private struct PaneTile: View {
             .onHover { hovered = open != nil && $0 }
             .onTapGesture { open?(paneID) }
             .accessibilityAddTraits(open != nil ? .isButton : [])
+    }
+
+    /// Its agent asleep: as the pane shows it (SleepingPaneOverlay), small:
+    /// faded towards the terminal's background, a moon in the middle.
+    private var asleep: some View {
+        let bg = AppConfig.shared.theme(isDark: scheme == .dark).background
+        return ZStack {
+            Color(.sRGB, red: Double(bg.r) / 255, green: Double(bg.g) / 255, blue: Double(bg.b) / 255).opacity(0.68)
+            ZStack {
+                Circle().fill(Color.themeAccent.opacity(0.16))
+                Circle().strokeBorder(Color.themeAccent.opacity(0.28), lineWidth: 0.5)
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.themeAccent)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .frame(width: 24, height: 24)
+        }
+        .accessibilityLabel("Asleep")
     }
 
     @ViewBuilder private var content: some View {
