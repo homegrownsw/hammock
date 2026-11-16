@@ -52,25 +52,33 @@ func TestWindowStartCaps(t *testing.T) {
 }
 
 func TestEscInterruptMarksClaudeIdle(t *testing.T) {
+	// Claude's question, waiting on you.
+	const question = `Do you prefer tea or coffee?\n\n❯ 1. Tea\n     A cup of tea\n  2. Coffee\n     A cup of coffee\n\nEnter to select · ↑/↓ to navigate · Esc to cancel\n`
 	for name, tc := range map[string]struct {
 		script string
+		asks   bool // it's waiting on its question when Esc goes in
 		stops  bool
 	}{
 		// Like Claude: a keystroke (Esc) stops it, and it says so, in
 		// fullscreen mode far above its prompt, with blank lines between.
-		"interrupted": {`stty -icanon -echo min 1; dd bs=1 count=1 >/dev/null 2>&1; echo "  ⎿  Interrupted · What should Claude do instead?"; printf "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────\n❯ \n─────\n"; exec cat`, true},
+		"interrupted": {script: `stty -icanon -echo min 1; printf "❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ \n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H❯ go\n  ⎿  Interrupted · What should Claude do instead?\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────\n❯ \n─────\n"; exec cat`, stops: true},
 		// Stopped before it replied, it prints nothing: its spinner goes,
 		// and the message is back in its prompt.
-		"early": {`stty -icanon -echo min 1; printf "❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ \n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H─────\n❯ go\n─────\n"; exec cat`, true},
+		"early": {script: `stty -icanon -echo min 1; printf "❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ \n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H─────\n❯ go\n─────\n"; exec cat`, stops: true},
 		// Esc only closed something (a completion menu): its spinner stays,
 		// and the last turn's "Interrupted" above doesn't count.
-		"not stopped": {`stty -icanon -echo min 1; printf "  ⎿  Interrupted · What should Claude do instead?\n\n❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ /\n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H  ⎿  Interrupted · What should Claude do instead?\n\n❯ go\n\n✻ Tomfoolering… (3s)\n─────\n❯ \n─────\n"; exec cat`, false},
+		"not stopped": {script: `stty -icanon -echo min 1; printf "  ⎿  Interrupted · What should Claude do instead?\n\n❯ go\n\n✻ Tomfoolering… (2s)\n─────\n❯ /\n─────\n"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H  ⎿  Interrupted · What should Claude do instead?\n\n❯ go\n\n✻ Tomfoolering… (3s)\n─────\n❯ \n─────\n"; exec cat`},
+		// Esc declines its question, which ends the turn: the menu goes,
+		// and it says only that you declined.
+		"question declined": {script: `stty -icanon -echo min 1; printf "` + question + `"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H⏺ User declined to answer questions\n  ⎿  · Do you prefer tea or coffee? (Tea / Coffee)\n\n─────\n❯ \n─────\n"; exec cat`, asks: true, stops: true},
+		// Esc only closed something (its notes field): the question stays.
+		"question kept": {script: `stty -icanon -echo min 1; printf "` + question + `"; dd bs=1 count=1 >/dev/null 2>&1; printf "\033[2J\033[H` + question + `"; exec cat`, asks: true},
 	} {
-		t.Run(name, func(t *testing.T) { testEscInterrupt(t, tc.script, tc.stops) })
+		t.Run(name, func(t *testing.T) { testEscInterrupt(t, tc.script, tc.asks, tc.stops) })
 	}
 }
 
-func testEscInterrupt(t *testing.T, script string, stops bool) {
+func testEscInterrupt(t *testing.T, script string, asks, stops bool) {
 	dir := shortDir(t)
 	d := startDaemon(t, dir)
 	defer d.Shutdown()
@@ -91,21 +99,40 @@ func testEscInterrupt(t *testing.T, script string, stops bool) {
 		}
 		return false
 	})
+	if asks {
+		sendHook(t, dir, HookEvent{PaneID: paneID, Harness: "claude", Payload: json.RawMessage(`{"hook_event_name":"PreToolUse","session_id":"s","tool_name":"AskUserQuestion","tool_input":{}}`)})
+		waitEvent(t, c, func(ev *pb.ServerMessage) bool {
+			for _, p := range ev.GetState().GetPanes() {
+				if p.Id == paneID && p.GetAgent().GetState() == pb.AgentState_AGENT_STATE_NEEDS_INPUT {
+					return true
+				}
+			}
+			return false
+		})
+	}
 	d.mu.Lock()
 	p := d.panes[paneID]
 	d.mu.Unlock()
-	// Its spinner is drawn before Esc goes in.
-	for deadline := time.Now().Add(5 * time.Second); strings.Contains(script, "✻") && !strings.Contains(p.text(false), "✻"); {
+	// Its spinner, or question, is drawn before Esc goes in.
+	shown := "✻"
+	if asks {
+		shown = "Esc to cancel"
+	}
+	for deadline := time.Now().Add(5 * time.Second); strings.Contains(script, shown) && !strings.Contains(p.text(false), shown); {
 		if time.Now().After(deadline) {
-			t.Fatal("no spinner on screen")
+			t.Fatalf("no %q on screen", shown)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Input{Input: &pb.Input{PaneId: paneID, Data: []byte("\x1b")}}})
 	if !stops {
 		time.Sleep(time.Second) // several of the watcher's reads
-		if a := p.snapshotInfo().Agent; a.GetState() != pb.AgentState_AGENT_STATE_WORKING {
-			t.Fatalf("state %v (%q), want working", a.GetState(), a.GetSummary())
+		want := pb.AgentState_AGENT_STATE_WORKING
+		if asks {
+			want = pb.AgentState_AGENT_STATE_NEEDS_INPUT
+		}
+		if a := p.snapshotInfo().Agent; a.GetState() != want {
+			t.Fatalf("state %v (%q), want %v", a.GetState(), a.GetSummary(), want)
 		}
 		return
 	}

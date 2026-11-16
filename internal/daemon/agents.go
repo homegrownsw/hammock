@@ -511,32 +511,41 @@ func (h *agentHub) answered(p *pane, since int64) {
 // escWatch is what interrupted needs from the moment Esc goes into a pane,
 // before the agent can redraw.
 type escWatch struct {
-	ag   *agents.Agent
-	spun bool      // its spinner was on screen (Screen.SpinnerStops)
-	at   time.Time // a hook after this: it carried on, or finished, itself
+	ag *agents.Agent
+	// shown: its spinner, or the question or permission menu it was
+	// waiting on, was on screen (Screen.SpinnerStops). Gone, with nothing
+	// in its place, it stopped.
+	shown bool
+	at    time.Time // a hook after this: it carried on, or finished, itself
 }
 
-// watchEsc is read as Esc goes into p: nil unless p's agent is working and
-// says on screen when Esc stops it.
+// watchEsc is read as Esc goes into p: nil unless p's agent is working (or,
+// for Claude, waiting on a question or permission, which Esc declines,
+// ending its turn) and says on screen when Esc stops it.
 func (h *agentHub) watchEsc(p *pane) *escWatch {
 	a := p.snapshotInfo().Agent
 	ag := agents.Get(a.GetHarness())
-	if ag == nil || ag.Screen.Interrupted == nil || a.GetState() != pb.AgentState_AGENT_STATE_WORKING {
+	working := a.GetState() == pb.AgentState_AGENT_STATE_WORKING
+	if ag == nil || ag.Screen.Interrupted == nil || !working && !(ag.Screen.SpinnerStops && a.GetState() == pb.AgentState_AGENT_STATE_NEEDS_INPUT) {
 		return nil
 	}
 	w := &escWatch{ag: ag, at: time.Now()}
-	w.spun = ag.Screen.SpinnerStops && agentview.ReadScreen(p.text(false)).Status != ""
+	if ag.Screen.SpinnerStops {
+		sc := agentview.ReadScreen(p.text(false))
+		w.shown = sc.Status != "" || !working && len(sc.Options) > 0
+	}
 	return w
 }
 
-// interrupted watches an agent's working pane after Esc (w, from watchEsc)
-// went in: an interrupt sends no hook, so without this the pane would show
-// working until the next prompt. Stopped is its spinner gone, with no menu
-// in its place, and either its "Interrupted" line or (stopped before it
-// replied, when Claude puts the message back in its prompt and prints
-// nothing) the spinner that was there as Esc went in gone for good. An Esc
-// that only closed something (a completion menu) leaves the spinner, and a
-// hook after it means the agent moved on itself.
+// interrupted watches an agent's pane after Esc (w, from watchEsc) went in:
+// an interrupt sends no hook, so without this the pane would show working
+// until the next prompt. Stopped is its spinner gone, with no menu in its
+// place, and either its "Interrupted" line or the spinner or menu that was
+// there as Esc went in gone for good: Claude stopped before it replied puts
+// the message back in its prompt and prints nothing, and a declined
+// question says only "User declined to answer questions". An Esc that only
+// closed something (a completion menu, a question's notes) leaves the
+// spinner or menu, and a hook after it means the agent moved on itself.
 func (h *agentHub) interrupted(p *pane, w *escWatch) {
 	if w == nil {
 		return
@@ -551,7 +560,7 @@ func (h *agentHub) interrupted(p *pane, w *escWatch) {
 				gone = 0 // still working, or asking
 				continue
 			case slices.ContainsFunc(lastLines(text, 12), w.ag.Screen.Interrupted.MatchString):
-			case w.spun:
+			case w.shown:
 				// Gone twice running: not a redraw between frames.
 				if gone++; gone < 2 {
 					continue
@@ -563,7 +572,8 @@ func (h *agentHub) interrupted(p *pane, w *escWatch) {
 			defer h.d.mu.Unlock()
 			p.mu.Lock()
 			a := p.info.Agent
-			if a == nil || a.State != pb.AgentState_AGENT_STATE_WORKING || p.hookAt.After(w.at) {
+			// Working, or still waiting (answered moves it back to working).
+			if a == nil || a.State != pb.AgentState_AGENT_STATE_WORKING && a.State != pb.AgentState_AGENT_STATE_NEEDS_INPUT || p.hookAt.After(w.at) {
 				p.mu.Unlock()
 				return
 			}
