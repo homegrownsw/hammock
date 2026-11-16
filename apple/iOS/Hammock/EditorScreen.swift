@@ -52,7 +52,7 @@ struct EditorScreen: View {
             }
         }
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
-        .safeAreaInset(edge: .bottom) { if editable, let session, !(session.canPreview && session.shownView(info) != .source) { keyBar(session) } }
+        .safeAreaInset(edge: .bottom) { if editable, let session, !session.previewOnly { keyBar(session) } }
         .toolbar {
             if chrome { ToolbarItem(placement: .primaryAction) { menu } }
         }
@@ -125,16 +125,22 @@ struct EditorScreen: View {
                 }
             }
             if let session, session.canPreview {
-                // Split shows the preview on a phone (too narrow for both).
-                // A View member's choice is this iPhone's alone.
-                if session.shownView(info) == .source {
+                // A View member's choice is this device's alone.
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    // Wide enough for both side by side (a phone shows the preview for Split).
+                    Picker("View", selection: Binding(get: { session.shownView(info) }, set: { session.setView($0, local: !canDrive) })) {
+                        Label("Source", systemImage: "chevron.left.forwardslash.chevron.right").tag(EditorInfo.View.source)
+                        Label("Source and Preview", systemImage: "rectangle.split.2x1").tag(EditorInfo.View.split)
+                        Label("Preview", systemImage: "doc.richtext").tag(EditorInfo.View.preview)
+                    }
+                } else if session.shownView(info) == .source {
                     Button("Show Preview", systemImage: "doc.richtext") { session.setView(.preview, local: !canDrive) }
                 } else {
                     Button("Show Source", systemImage: "chevron.left.forwardslash.chevron.right") { session.setView(.source, local: !canDrive) }
                 }
             }
             Button("Find", systemImage: "magnifyingglass") { session?.run("find") }
-            if !(session?.canPreview == true && session.map { $0.shownView(info) } != .source) {
+            if session?.previewOnly != true {
                 Button("Go to Line", systemImage: "arrow.right.to.line") { session?.run("gotoLine") }
             }
             if let session {

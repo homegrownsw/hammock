@@ -409,6 +409,10 @@ func TestEditorImage(t *testing.T) {
 	os.WriteFile(filepath.Join(folder, "notes.txt"), []byte("secret"), 0o644)
 	os.WriteFile(filepath.Join(outside, "away.png"), []byte("\x89PNG\r\n"), 0o644)
 	os.Symlink(filepath.Join(outside, "away.png"), filepath.Join(folder, "link.png"))
+	os.Symlink(filepath.Join(folder, "notes.txt"), filepath.Join(folder, "notes.png"))
+	os.MkdirAll(filepath.Join(folder, "docs", "img"), 0o755)
+	os.WriteFile(filepath.Join(folder, "docs", "img", "in.png"), []byte("\x89PNG\r\n"), 0o644)
+	os.WriteFile(filepath.Join(folder, "docs", "guide.md"), []byte("![x](img/in.png)\n"), 0o644)
 	d := startDaemon(t, dir)
 	c := dial(t, dir)
 	_, paneID := newEditorTab(t, d, c, folder, "doc.md")
@@ -426,6 +430,9 @@ func TestEditorImage(t *testing.T) {
 	if _, err := read("shot.png"); err == nil {
 		t.Error("took a relative path")
 	}
+	if _, err := read(filepath.Join(folder, "notes.png")); err == nil {
+		t.Error("gave a text file through a link named like an image")
+	}
 	// Outside the Group's folder: its owner's, not a guest's (even through a link).
 	if _, err := read(filepath.Join(outside, "away.png")); err != nil {
 		t.Errorf("owner, outside the folder: %v", err)
@@ -436,6 +443,14 @@ func TestEditorImage(t *testing.T) {
 		}
 	}
 	if _, err := d.readEditorImage(&pb.ReadEditorImage{PaneId: paneID, Path: filepath.Join(folder, "shot.png")}, folder, true); err != nil {
-		t.Errorf("a guest, inside the folder: %v", err)
+		t.Errorf("a guest, beside the file: %v", err)
+	}
+	// A guest on docs/guide.md: images in docs/ and below, not the rest of the Group's folder.
+	_, guide := newEditorTab(t, d, c, folder, "docs/guide.md")
+	if _, err := d.readEditorImage(&pb.ReadEditorImage{PaneId: guide, Path: filepath.Join(folder, "docs", "img", "in.png")}, folder, true); err != nil {
+		t.Errorf("a guest, below the file: %v", err)
+	}
+	if _, err := d.readEditorImage(&pb.ReadEditorImage{PaneId: guide, Path: filepath.Join(folder, "shot.png")}, folder, true); err == nil {
+		t.Error("a guest got an image outside the file's folder")
 	}
 }

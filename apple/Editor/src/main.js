@@ -318,9 +318,15 @@ window.hammock = {
   /** The buffer against the file on disk, chunk by chunk (accept or reject each). */
   showDiff(diskText) {
     if (!view) return
+    comparing = true
+    applyView()
     view.dispatch({ effects: diffC.reconfigure(unifiedMergeView({ original: diskText, mergeControls: !(config.readOnly || info.readOnly), highlightChanges: true, gutter: true })) })
   },
-  hideDiff() { if (view) view.dispatch({ effects: diffC.reconfigure([]) }) },
+  hideDiff() {
+    comparing = false
+    if (view) view.dispatch({ effects: diffC.reconfigure([]) })
+    applyView()
+  },
 
   languageNames() { return languages.map((l) => l.name).sort((a, b) => a.localeCompare(b)) },
   languageName() { return languageName === "\u0000" ? "" : languageName },
@@ -406,20 +412,24 @@ function clamp(n, text) { return Math.max(0, Math.min(n || 0, text.length)) }
 const preview = new Preview(document.getElementById("preview"), {
   post,
   // A task's checkbox: change its source line, as typing there would.
+  // Reports whether it changed it.
   editLine(n, fn) {
-    if (!view || view.state.readOnly || n > view.state.doc.lines) return
+    if (!view || view.state.readOnly || n > view.state.doc.lines) return false
     const line = view.state.doc.line(n), text = fn(line.text)
-    if (text !== line.text) view.dispatch({ changes: { from: line.from, to: line.to, insert: text }, userEvent: "input" })
+    if (text === line.text) return false
+    view.dispatch({ changes: { from: line.from, to: line.to, insert: text }, userEvent: "input" })
+    return true
   },
 })
 
 let wanted = "source" // what the pane asks for (the daemon's)
 let shown = "source"  // what shows: Markdown can preview; a narrow page shows one side
+let comparing = false // the file on disk against the buffer (showDiff): that's the source's
 
 const previewable = () => languageName === "Markdown"
 
 function applyView() {
-  let next = previewable() ? wanted : "source"
+  let next = previewable() && !comparing ? wanted : "source"
   if (next === "split" && window.innerWidth < 560) next = "preview"
   if (next === shown) return
   const before = shown
@@ -428,6 +438,7 @@ function applyView() {
   const line = before === "preview" ? preview.topLine() : editorTopLine()
   shown = next
   document.body.dataset.view = shown
+  post({ type: "shown", view: shown })
   if (shown !== "source" && view) preview.render(view.state.doc.toString())
   if (view) view.requestMeasure()
   requestAnimationFrame(() => {

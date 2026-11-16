@@ -152,6 +152,8 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
             onSave?(false)
         case "saveAs":
             onSave?(true)
+        case "shown":
+            session.pageShows(m["view"] as? String ?? "source")
         case "openFile":
             if let path = m["path"] as? String, path.hasPrefix("/") { onOpenFile?(path) }
         case "openURL":

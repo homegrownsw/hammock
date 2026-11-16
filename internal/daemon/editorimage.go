@@ -23,12 +23,17 @@ var editorImageTypes = map[string]string{
 	".svg": "image/svg+xml", ".heic": "image/heic", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon",
 }
 
-// readEditorImage answers ReadEditorImage. guest: a guest's, only inside the
-// Group's folder (else any image on this computer, as its owner may open).
+// readEditorImage answers ReadEditorImage. guest: a guest's, only beside the
+// pane's file (its folder and those in it) and in the Group's folder; else
+// any image on this computer, as its owner may open.
 func (d *Daemon) readEditorImage(m *pb.ReadEditorImage, folder string, guest bool) (*pb.ServerMessage, error) {
 	h := d.editors
 	h.mu.Lock()
-	_, err := h.buf(m.PaneId)
+	b, err := h.buf(m.PaneId)
+	docDir := ""
+	if err == nil && b.path != "" {
+		docDir = filepath.Dir(b.path)
+	}
 	h.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -36,17 +41,18 @@ func (d *Daemon) readEditorImage(m *pb.ReadEditorImage, folder string, guest boo
 	if !filepath.IsAbs(m.Path) {
 		return nil, errors.New("give an absolute path")
 	}
-	typ, ok := editorImageTypes[strings.ToLower(filepath.Ext(m.Path))]
-	if !ok {
-		return nil, fmt.Errorf("%s isn't an image", filepath.Base(m.Path))
-	}
+	// Resolved (symlinks followed), so a link can't lead out, nor pass
+	// another kind of file off as an image.
 	path, err := resolveEditorPath(m.Path, "")
 	if err != nil {
 		return nil, err
 	}
-	// Resolved (symlinks followed), so a link can't lead a guest out.
-	if guest && !insideFolder(path, folder) {
-		return nil, errors.New("only images in the Group's folder")
+	typ, ok := editorImageTypes[strings.ToLower(filepath.Ext(path))]
+	if !ok {
+		return nil, fmt.Errorf("%s isn't an image", filepath.Base(m.Path))
+	}
+	if guest && !(insideFolder(path, folder) && insideFolder(path, docDir)) {
+		return nil, errors.New("only images beside the file, in the Group's folder")
 	}
 	st, err := os.Stat(path)
 	if err != nil {

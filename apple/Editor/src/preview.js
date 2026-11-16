@@ -38,9 +38,15 @@ md.core.ruler.push("hammock_ids", (state) => {
     const n = seen.get(slug) || 0
     seen.set(slug, n + 1)
     if (n) slug += "-" + n
-    toks[i].attrSet("id", slug)
+    // Set as the id after sanitising: DOMPurify drops ids named like
+    // document's properties ("scripts", "images", "title"), and these are ours.
+    toks[i].attrSet("data-anchor", slug)
   }
 })
+
+// The checkboxes we make carry this, so ones in the Markdown's own HTML,
+// which can't know it, don't tick a line.
+const taskKey = Math.random().toString(36).slice(2, 12)
 
 // GitHub's task lists: "- [ ] x" and "- [x] x".
 md.core.ruler.push("hammock_tasks", (state) => {
@@ -54,7 +60,7 @@ md.core.ruler.push("hammock_tasks", (state) => {
     first.content = first.content.slice(m[0].length)
     const box = new state.Token("html_inline", "", 0)
     const line = toks[i - 2].map ? toks[i - 2].map[0] : -1
-    box.content = `<input type="checkbox" class="task" data-task-line="${line}"${m[1] === " " ? "" : " checked"}>`
+    box.content = `<input type="checkbox" class="task" data-task-line="${line}" data-task-key="${taskKey}"${m[1] === " " ? "" : " checked"}>`
     inline.children.unshift(box)
     toks[i - 2].attrJoin("class", "task-item")
   }
@@ -104,6 +110,10 @@ function highlightFence(code, lang) {
 let docDir = "" // the file's folder ("" while untitled)
 
 const external = /^[a-z][a-z0-9+.-]*:/i
+// What may differ in a block that hasn't changed: its lines, and a <details> opened.
+const lineAttrs = / data-(?:task-)?line(?:-end)?="\d+"| open=""/g
+// YAML front matter: --- at the very top, to --- (or ...) on a line of its own.
+const frontMatter = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/
 
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (node.tagName === "IMG") {
@@ -186,19 +196,56 @@ export class Preview {
     this.text = text
     // Front matter (--- at the top) shows as itself, not a rule and a paragraph;
     // blanked lines keep the rest's line numbers.
-    let front = ""
-    const fm = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)\r?\n/.exec(text)
+    let front = null
+    const fm = frontMatter.exec(text)
+    let frontLines = 0
     if (fm) {
-      front = fm[1]
-      text = "\n".repeat(fm[0].split("\n").length - 1) + text.slice(fm[0].length)
+      front = fm[1] || ""
+      frontLines = fm[0].split("\n").length - (fm[0].endsWith("\n") ? 1 : 0)
+      text = "\n".repeat(frontLines) + text.slice(fm[0].length)
     }
     let html = md.render(text)
-    if (front) html = `<pre class="front-matter" data-line="0" data-line-end="${fm[0].split("\n").length - 1}"><code>${escapeHTML(front)}</code></pre>` + html
-    if (!text.trim() && !front) html = `<p class="empty">Nothing to preview yet.</p>`
-    this.body.innerHTML = DOMPurify.sanitize(html, purifyConfig)
+    if (front !== null) html = `<pre class="front-matter" data-line="0" data-line-end="${frontLines}"><code>${escapeHTML(front)}</code></pre>` + html
+    if (!text.trim() && front === null) html = `<p class="empty">Nothing to preview yet.</p>`
+    const next = DOMPurify.sanitize(html, { ...purifyConfig, RETURN_DOM_FRAGMENT: true })
+    for (const el of next.querySelectorAll("[data-anchor]")) el.id = el.dataset.anchor
+    this.patch(next)
     for (const box of this.body.querySelectorAll("input.task")) box.disabled = this.readOnly
     this.markReveal()
     this.find.refresh()
+  }
+
+  /** Takes the new blocks in place of the ones that changed, keeping the
+   * rest (their images, open <details>, a selection) and renumbering their lines. */
+  patch(next) {
+    const old = Array.from(this.body.childNodes), fresh = Array.from(next.childNodes)
+    const key = (n) => n.nodeType === 1 ? n.outerHTML.replace(lineAttrs, "") : n.nodeType === 3 ? "#" + n.nodeValue : ""
+    const ok = old.map(key), nk = fresh.map(key)
+    let start = 0
+    while (start < ok.length && start < nk.length && ok[start] === nk[start]) start++
+    let end = 0
+    while (end < ok.length - start && end < nk.length - start && ok[ok.length - 1 - end] === nk[nk.length - 1 - end]) end++
+    // Kept blocks take their new line numbers.
+    const renumber = (o, n) => {
+      if (o.nodeType !== 1) return
+      const os = [o, ...o.querySelectorAll("[data-line]")], ns = [n, ...n.querySelectorAll("[data-line]")]
+      if (os.length !== ns.length) return
+      os.forEach((e, i) => {
+        for (const a of ["data-line", "data-line-end", "data-task-line"]) {
+          const v = ns[i].getAttribute(a)
+          if (v !== null) e.setAttribute(a, v)
+        }
+      })
+      for (const [i, b] of Array.from(o.querySelectorAll("input.task")).entries()) {
+        const nb = n.querySelectorAll("input.task")[i]
+        if (nb) b.dataset.taskLine = nb.dataset.taskLine
+      }
+    }
+    for (let i = 0; i < start; i++) renumber(old[i], fresh[i])
+    for (let i = 0; i < end; i++) renumber(old[old.length - 1 - i], fresh[fresh.length - 1 - i])
+    const before = old[old.length - end] || null
+    for (const n of old.slice(start, old.length - end)) n.remove()
+    for (const n of fresh.slice(start, fresh.length - end)) this.body.insertBefore(n, before)
   }
 
   setReadOnly(ro) {
@@ -210,10 +257,13 @@ export class Preview {
     const box = e.target.closest && e.target.closest("input.task")
     if (box) {
       const line = parseInt(box.dataset.taskLine, 10)
-      if (this.readOnly || !(line >= 0)) { e.preventDefault(); return }
-      this.editLine(line + 1, (s) => s.replace(/^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/, (_, a, c, b) => a + (c === " " ? "x" : " ") + b))
+      // Only ours, on a line we can change: else the box stays as the file has it.
+      const changed = !this.readOnly && box.dataset.taskKey === taskKey && line >= 0 &&
+        this.editLine(line + 1, (s) => s.replace(/^((?:\s*>)*\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/, (_, a, c, b) => a + (c === " " ? "x" : " ") + b))
+      if (!changed) e.preventDefault()
       return
     }
+    if (e.target.closest && e.target.closest("input")) { e.preventDefault(); return }
     const a = e.target.closest && e.target.closest("a[href]")
     if (!a) return
     e.preventDefault()

@@ -223,15 +223,13 @@ final class EditorUI {
 
     /// Whether the preview shows alone (no source to go to a line in).
     func previewOnly(_ model: AppModel, _ paneID: String?) -> Bool {
-        guard let id = paneID else { return false }
-        return canPreview(model, id) && view(model, id) == .preview
+        session(model, paneID)?.previewOnly == true
     }
 
-    /// Whether a view chosen here is only this Mac's: the pane can't be
-    /// changed (a View member's, or offline).
+    /// Whether a view chosen here is only this Mac's: a View member can't
+    /// change the pane, which is the host's.
     func localView(_ model: AppModel, _ paneID: String) -> Bool {
-        let g = model.group(ofPane: paneID)
-        return g?.canDrive == false || g?.offline == true
+        model.group(ofPane: paneID)?.canDrive == false
     }
 
     /// Preview (or, split, the source and preview side by side), or back to the source.
@@ -248,6 +246,7 @@ final class EditorUI {
 
     /// A link in the preview to another file: it opens beside, shown as this one is.
     func openLink(_ model: AppModel, from paneID: String, _ path: String) {
+        guard model.group(ofPane: paneID)?.canDrive != false else { return }
         let ext = (path as NSString).pathExtension.lowercased()
         let view = ["md", "markdown", "mdown", "mkd"].contains(ext) ? self.view(model, paneID) : .source
         Task {
@@ -365,7 +364,7 @@ struct EditorPaneView: View {
                 .truncationMode(.head)
             Spacer(minLength: 6)
             if let session {
-                if session.shownView(info) != .preview || !session.canPreview {
+                if !session.previewOnly {
                     Text(session.selected > 0 ? "\(session.selected) selected" : "\(session.line):\(session.column)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()

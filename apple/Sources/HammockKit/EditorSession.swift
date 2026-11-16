@@ -197,17 +197,29 @@ public final class EditorSession {
     /// How it shows here: this device's choice, else the pane's.
     public func shownView(_ info: EditorInfo) -> EditorInfo.View { localView ?? info.view }
 
+    /// What the page really shows: Split falls back to the preview alone
+    /// when it's too narrow, and to the source for a file it can't render.
+    public private(set) var pageShown: EditorInfo.View = .source
+
+    /// Whether the preview shows alone (no source to go to a line in).
+    public var previewOnly: Bool { pageShown == .preview }
+
+    func pageShows(_ name: String) {
+        let v: EditorInfo.View = switch name { case "preview": .preview; case "split": .split; default: .source }
+        if v != pageShown { pageShown = v }
+    }
+
     /// Shows the file as its source, rendered, or both: for everyone on the
     /// pane, or (local) only here.
     public func setView(_ view: EditorInfo.View, local: Bool = false) {
         if local {
             localView = view
-            bridge?.reapplyInfo()
+            for p in pages.allObjects { p.reapplyInfo() }
             return
         }
         if localView != nil {
             localView = nil
-            bridge?.reapplyInfo()
+            for p in pages.allObjects { p.reapplyInfo() }
         }
         Task { try? await command { $0.action = .setView; $0.view = view } }
     }
