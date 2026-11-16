@@ -477,16 +477,20 @@ extension AppModel {
     }
 
     /// Opens a diff of the repository dir is in: a new tab just after
-    /// afterTab (or a split beside splitPane). source nil: the branch
-    /// against its base, else what's uncommitted.
+    /// afterTab (or a split beside splitPane, or in replacePane's place).
+    /// source nil: the branch against its base, else what's uncommitted.
     public func openDiff(repo: String, groupID: String?, afterTab: String? = nil, splitPane: String? = nil,
-                         direction: SplitDirection = .horizontal, source: Hammock_V1_DiffSource? = nil) async throws {
+                         direction: SplitDirection = .horizontal, replacePane: String? = nil,
+                         source: Hammock_V1_DiffSource? = nil) async throws {
         guard let conn = connection else { throw DiffError.offline }
         let open = Hammock_V1_DiffOpen.with {
             $0.repo = repo
             if let source { $0.source = source }
         }
-        if let splitPane {
+        if let replacePane {
+            let r = try await conn.call { $0.replacePane = .with { $0.paneID = replacePane; $0.spec = .with { $0.diff = open } } }
+            focus(r.created.id)
+        } else if let splitPane {
             let r = try await conn.call {
                 $0.createPane = .with {
                     $0.splitPaneID = splitPane

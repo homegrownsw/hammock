@@ -374,7 +374,7 @@ struct NewTabMenuItems: View {
 }
 
 /// The menu at the start of every pane's header: what the pane shows
-/// (switch it to a terminal, browser or simulator in place), its agent's
+/// (Show ▸: something else in its place), its agent's
 /// actions, and moving or closing it.
 /// Close, at the far right of a pane's header (after its other controls):
 /// only where there's another pane to keep, as a tab's last pane closes
@@ -415,22 +415,7 @@ struct PaneKindMenu<Label: View>: View {
 
     private var menu: some View {
         Menu {
-            Section("Show") {
-                item("Terminal", "apple.terminal", current: pane?.kind == .terminal) { Hammock_V1_PaneSpec() }
-                if HammockTool.browser.on || pane?.kind == .browser {
-                    item("Browser", "globe", current: pane?.kind == .browser) { .with { $0.url = "about:blank" } }
-                }
-                if HammockTool.simulator.on || pane?.kind == .simulator {
-                    Menu {
-                        SimulatorItems { udid in
-                            guard pane?.kind != .simulator || pane?.deviceUdid != udid else { return }
-                            change("a simulator", .with { $0.simulator = udid })
-                        }
-                    } label: {
-                        if pane?.kind == .simulator { SwiftUI.Label("Simulator", systemImage: "checkmark") } else { Text("Simulator") }
-                    }
-                }
-            }
+            Menu("Show") { kinds }
             if let pane, pane.isEditor, model.group(ofPane: paneID)?.canDrive != false {
                 Section("Open in This Pane") {
                     Button("Quick Open…") { EditorUI.shared.showQuickOpen(model, replacePane: paneID) }
@@ -455,7 +440,7 @@ struct PaneKindMenu<Label: View>: View {
                 Toggle("Wrap Lines", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
             }
             if let pane, pane.hasAgent {
-                Section(pane.displayName.capitalized) {
+                Section(pane.agent.harness.isEmpty ? pane.displayName : AgentCatalog.shortName(of: pane.agent.harness)) {
                     if AgentCatalog.canSwitch(pane.agent.harness) {
                         ForEach(AgentCatalog.switchable, id: \.id) { k in
                             Button("Continue in \(AgentCatalog.shortName(of: k.id))") { model.switchAgent(paneID, to: k.id) }
@@ -490,26 +475,57 @@ struct PaneKindMenu<Label: View>: View {
         .task { SimulatorList.shared.refresh(model) }
     }
 
-    private func item(_ title: String, _ symbol: String, current: Bool, spec: @escaping () -> Hammock_V1_PaneSpec) -> some View {
+    /// Show ▸: what else the pane could show in its place, the current one
+    /// ticked. A sheet's (Diff…, Log…) asks before it opens, a file's once
+    /// it's chosen.
+    @ViewBuilder private var kinds: some View {
+        let kind = pane?.kind
+        let isLog = pane?.isLog == true
+        let canDrive = model.group(ofPane: paneID)?.canDrive != false
+        item("Terminal", current: kind == .terminal && !isLog) { change("a terminal", Hammock_V1_PaneSpec()) }
+        if HammockTool.browser.on || kind == .browser {
+            item("Browser", current: kind == .browser) { change("a browser", .with { $0.url = "about:blank" }) }
+        }
+        if (HammockTool.editor.on || kind == .editor) && canDrive {
+            item("Editor", current: kind == .editor) { EditorUI.shared.open(model, "", groupID: nil, replacePane: paneID) }
+            Button("File…") { EditorUI.shared.showQuickOpen(model, replacePane: paneID) }
+        }
+        if HammockTool.diff.on || kind == .diff {
+            item("Diff…", current: kind == .diff, again: true) { ask("a diff") { DiffLauncher.shared.replace(model, paneID) } }
+        }
+        if HammockTool.log.on || isLog {
+            item("Log…", current: isLog, again: true) { ask("a log") { LogUI.shared.replace(model, paneID) } }
+        }
+        if HammockTool.simulator.on || kind == .simulator {
+            Menu {
+                SimulatorItems { udid in
+                    guard kind != .simulator || pane?.deviceUdid != udid else { return }
+                    change("a simulator", .with { $0.simulator = udid })
+                }
+            } label: {
+                if kind == .simulator { SwiftUI.Label("Simulator", systemImage: "checkmark") } else { Text("Simulator") }
+            }
+        }
+    }
+
+    /// A kind to show, ticked when it's the current one (which does nothing
+    /// again, unless again: another diff or log).
+    private func item(_ title: String, current: Bool, again: Bool = false, action: @escaping () -> Void) -> some View {
         Button {
-            guard !current else { return }
-            change("a " + title.lowercased(), spec())
+            guard !current || again else { return }
+            action()
         } label: {
             if current { SwiftUI.Label(title, systemImage: "checkmark") } else { Text(title) }
         }
     }
 
-    /// Switches what the pane shows, asking first if that would close
-    /// something running in its terminal.
+    /// Shows spec in the pane's place, asking first unless nothing can be lost.
     private func change(_ what: String, _ spec: Hammock_V1_PaneSpec) {
-        confirmIfRunning("Close this terminal and show \(what) here?", "Switch") {
-            Task { await model.replacePane(paneID, with: spec) }
-        }
+        ask(what) { Task { await model.replacePane(paneID, with: spec) } }
     }
 
-    /// Runs action, or first asks if it would stop something (see CloseGuard).
-    private func confirmIfRunning(_ title: String, _ button: String, action: @escaping () -> Void) {
-        CloseGuard.confirm(model, panes: [paneID], title: title, button: button, then: action)
+    private func ask(_ what: String, then: @escaping () -> Void) {
+        CloseGuard.confirmReplace(model, paneID, title: "Show \(what) here instead?", then: then)
     }
 }
 
@@ -895,6 +911,55 @@ enum CloseGuard {
             if r == .alertFirstButtonReturn { then() }
         }
         if let w = WorkspaceWindow.current { alert.beginSheetModal(for: w, completionHandler: done) } else { done(alert.runModal()) }
+    }
+
+    /// Before something else is shown in a pane's place (its menu's Show):
+    /// goes ahead only when nothing can be lost, else asks. Stricter than
+    /// closing: an agent asks even at rest (its prompt may hold a draft), and
+    /// whatever the busy-agent setting says.
+    static func confirmReplace(_ model: AppModel, _ paneID: String, title: String, then: @escaping () -> Void) {
+        guard let p = model.panes[paneID] else { return }
+        // Unsaved edits: closing's question, which says so.
+        if p.isEditor {
+            confirm(model, panes: [paneID], title: title, button: "Replace", then: then)
+            return
+        }
+        guard let lost = replaceLoses(p, model) else { then(); return }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = lost
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        alert.buttons[0].keyEquivalent = "\r"
+        let done: (NSApplication.ModalResponse) -> Void = { r in if r == .alertFirstButtonReturn { then() } }
+        if let w = WorkspaceWindow.current { alert.beginSheetModal(for: w, completionHandler: done) } else { done(alert.runModal()) }
+    }
+
+    /// What replacing a pane would lose, or nil when it's known to be
+    /// nothing: a terminal that's exited, a log, or a shell with nothing
+    /// running; a blank page; a simulator another pane still shows; a diff
+    /// (its open threads are kept).
+    static func replaceLoses(_ p: Pane, _ model: AppModel) -> String? {
+        switch p.kind {
+        case .simulator:
+            // Its device shuts down soon after its last pane closes.
+            let shown = model.panes.values.contains { $0.id != p.id && $0.kind == .simulator && $0.deviceUdid == p.deviceUdid }
+            return shown ? nil : "\(p.title.isEmpty ? "The simulator" : p.title) may shut down, and what's running on it with it."
+        case .browser:
+            return p.url.isEmpty || p.url == "about:blank" ? nil : "This page will close, and anything typed into it will be lost."
+        case .terminal:
+            if p.exited || p.isLog { return nil }
+            if p.hasAgent, !p.isReportingProgram, p.agent.state != .exited {
+                let name = AgentCatalog.shortName(of: p.agent.harness)
+                return p.asleep ? "\(name)'s session here will close." : "\(name) will be stopped, and anything typed into it will be lost."
+            }
+            let names = p.processes.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+            guard !names.isEmpty else { return nil }
+            return ListFormatter.localizedString(byJoining: names) + (names.count == 1 ? " is" : " are") + " still running and will be stopped."
+        default:
+            return nil
+        }
     }
 
     /// For a tab: all its panes.

@@ -1110,15 +1110,18 @@ public final class AppModel {
         return nil
     }
 
-    /// Opens a log pane (LogSource): a new tab in the Group, or split beside a pane.
+    /// Opens a log pane (LogSource): a new tab in the Group, split beside a
+    /// pane, or in a pane's place (replacing).
     @discardableResult
-    public func openLog(_ source: LogSource, in groupID: String?, splitting paneID: String? = nil, direction: SplitDirection = .horizontal, cwd: String = "") async -> String? {
+    public func openLog(_ source: LogSource, in groupID: String?, splitting paneID: String? = nil, direction: SplitDirection = .horizontal,
+                        replacing: String? = nil, cwd: String = "") async -> String? {
         let size = initialSize(splitting: paneID, direction: direction)
         let spec = Hammock_V1_PaneSpec.with {
             $0.log = source
             $0.cwd = cwd
             if let s = size { $0.cols = s.cols; $0.rows = s.rows }
         }
+        if let replacing { return await replacePane(replacing, with: spec) }
         if let paneID { return await splitPane(paneID, direction: direction, spec: spec) }
         guard let groupID else { return nil }
         return await openTab(in: groupID, name: "", pane: spec)

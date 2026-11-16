@@ -15,8 +15,10 @@ final class DiffLauncher {
         let id = UUID()
         /// The Group it's in: its computer's repositories, and the new tab's.
         var groupID: String
-        /// A split beside this pane (else a new tab after afterTab).
+        /// A split beside this pane, or this pane replaced (else a new tab
+        /// after afterTab).
         var splitPane: String?
+        var replacePane: String?
         var direction: SplitDirection = .horizontal
         var afterTab: String?
         /// Where to look for a repository at first ("": the Group's folder).
@@ -29,6 +31,12 @@ final class DiffLauncher {
     func split(_ model: AppModel, _ paneID: String, _ direction: SplitDirection) {
         guard let p = model.panes[paneID], let g = model.group(ofPane: paneID) else { return }
         request = Request(groupID: g.id, splitPane: paneID, direction: direction, folder: Self.folder(of: p))
+    }
+
+    /// In paneID's place, on the repository it's in.
+    func replace(_ model: AppModel, _ paneID: String) {
+        guard let p = model.panes[paneID], let g = model.group(ofPane: paneID) else { return }
+        request = Request(groupID: g.id, replacePane: paneID, folder: Self.folder(of: p))
     }
 
     /// A new tab in groupID (the Group you're in), after the current tab.
@@ -133,7 +141,7 @@ struct OpenDiffSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle(request.splitPane == nil ? "New Diff Tab" : "Open a Diff")
+            .navigationTitle(request.splitPane == nil && request.replacePane == nil ? "New Diff Tab" : "Open a Diff")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -270,7 +278,7 @@ struct OpenDiffSheet: View {
         Task {
             do {
                 try await model.openDiff(repo: repo, groupID: r.groupID, afterTab: r.afterTab, splitPane: r.splitPane,
-                                         direction: r.direction, source: src)
+                                         direction: r.direction, replacePane: r.replacePane, source: src)
                 dismiss()
             } catch {
                 self.error = error.localizedDescription

@@ -3,12 +3,13 @@ import HammockKit
 import Observation
 import SwiftUI
 
-/// Opening a log: what the New Log sheet is for (a tab in a Group, or a
-/// split beside a pane), and what it starts with.
+/// Opening a log: what the New Log sheet is for (a tab in a Group, a split
+/// beside a pane, or a pane in its place), and what it starts with.
 struct LogRequest: Identifiable {
     let id = UUID()
     var groupID: String?
     var splitPane: String?
+    var replacePane: String?
     var direction: SplitDirection = .horizontal
     var source = LogSource()
 }
@@ -32,6 +33,19 @@ final class LogUI {
         if let p = model.panes[paneID], p.kind == .simulator {
             r.source.kind = "simulator"
             r.source.device = p.deviceUdid
+        }
+        request = r
+    }
+
+    /// The log sheet, for a log in pane's place (its own source, if a log;
+    /// its simulator's, if one).
+    func replace(_ model: AppModel, _ paneID: String) {
+        var r = LogRequest(replacePane: paneID)
+        if let p = model.panes[paneID] {
+            if p.isLog { r.source = p.log } else if p.kind == .simulator {
+                r.source.kind = "simulator"
+                r.source.device = p.deviceUdid
+            }
         }
         request = r
     }
@@ -93,7 +107,7 @@ struct NewLogSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(request.splitPane == nil ? "New Log Tab" : "Open a Log Beside")
+            Text(request.replacePane != nil ? "Open a Log Here" : request.splitPane == nil ? "New Log Tab" : "Open a Log Beside")
                 .font(.title3.weight(.semibold))
             Picker("Source", selection: $kind) {
                 ForEach(Self.kinds, id: \.0) { Text($0.1).tag($0.0) }
@@ -199,7 +213,7 @@ struct NewLogSheet: View {
         opening = true
         let r = request
         Task {
-            let id = await model.openLog(src, in: r.groupID, splitting: r.splitPane, direction: r.direction)
+            let id = await model.openLog(src, in: r.groupID, splitting: r.splitPane, direction: r.direction, replacing: r.replacePane)
             opening = false
             if id != nil { dismiss() }
         }

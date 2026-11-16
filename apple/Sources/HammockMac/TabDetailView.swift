@@ -502,6 +502,13 @@ struct PaneView: View {
         }
     }
 
+    /// The header's name: a running agent's short name ("Claude"), else the
+    /// pane's own.
+    private func headerName(_ p: Pane) -> String {
+        p.hasAgent && !p.agent.harness.isEmpty && !p.exited && p.agent.state != .exited
+            ? AgentCatalog.shortName(of: p.agent.harness) : p.displayName
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
             // What runs here: an agent's logo, else the program's icon.
@@ -511,7 +518,7 @@ struct PaneView: View {
                 ProgramIcon(program: pane.exited ? [] : pane.program, size: 14)
             }
             PaneKindMenu(model: model, paneID: paneID) {
-                Text(pane?.displayName ?? "").fontWeight(.semibold).lineLimit(1)
+                Text(pane.map(headerName) ?? "").fontWeight(.semibold).lineLimit(1)
             }
             .layoutPriority(1) // the folder gives way first
             Text(pane?.shortCwd ?? "")

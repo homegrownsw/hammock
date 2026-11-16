@@ -7,6 +7,8 @@ Besides terminals, a pane can hold a web page, an iOS simulator, a log, a file t
 
 Open them from the File and Pane menus, the toolbar's **+** and split buttons, the [command palette](/hammock/docs/workspace/#the-command-palette) (⌘K), with [`hmk`](/hammock/docs/cli/) (most commands open beside the pane you run them in), or let agents open them with Hammock's [MCP tools](/hammock/docs/agents/mcp/) (tool names below link to the [MCP reference](/hammock/docs/reference/mcp/)).
 
+To show one in place of a pane you have, click the pane's name and choose from **Show**. Hammock asks first unless nothing can be lost: a running agent, a program still running, a page, unsaved edits or the last view of a simulator.
+
 ## Turning a kind of pane off
 
 To leave one out of Hammock's menus and agents' tools, turn it off in Settings ▸ Tools, or in the config file:

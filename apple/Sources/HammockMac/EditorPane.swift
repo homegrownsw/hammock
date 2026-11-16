@@ -79,7 +79,8 @@ final class EditorUI {
         }
         // Already showing it; else ask first if its own file has unsaved edits.
         if p.isEditor, !p.editor.path.isEmpty, p.editor.path == path { return }
-        CloseGuard.confirm(model, panes: [id], title: "Open \((path as NSString).lastPathComponent) here instead?", button: "Open") {
+        let name = path.isEmpty ? "a new file" : (path as NSString).lastPathComponent
+        CloseGuard.confirmReplace(model, id, title: "Open \(name) here instead?") {
             self.openNow(model, path, groupID: groupID, splitPane: splitPane, direction: direction, replacePane: id, large: false)
         }
     }
