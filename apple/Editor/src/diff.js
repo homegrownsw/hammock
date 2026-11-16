@@ -680,6 +680,20 @@ function pinTop() {
 }
 
 function holdPin() {
+  // The keyboard's cursor, held where it is on screen while files lay out
+  // again (they mount, wrap, change layout), rather than the file at the top.
+  if (hold) {
+    if (performance.now() > hold.until) hold = null
+    else {
+      const y = cursorY()
+      if (y != null) {
+        const box = $("files")
+        if (Math.abs(y - hold.y) > 1) box.scrollTop += y - hold.y
+        pinTop()
+        return
+      }
+    }
+  }
   const s = pin && sections.get(pin.path)
   if (!s) return
   const box = $("files"), want = s.offsetTop + pin.off
@@ -718,7 +732,7 @@ function observers() {
 // screen). keepScroll: stay on the file that was at the top.
 function renderFiles(keepScroll) {
   const box = $("files")
-  if (keepScroll) pinTop()
+  if (keepScroll) { pinTop(); holdCursor(2000) }
   const anchor = keepScroll ? pin : null
   for (const p of [...mounted.keys()]) unmount(p, false)
   box.textContent = ""
@@ -739,6 +753,10 @@ function renderFiles(keepScroll) {
   sectionList = [...sections.values()]
   renderEmpty()
   if (anchor && sections.has(anchor.path)) { pin = anchor; holdPin() } else { pin = null; box.scrollTop = 0 }
+  // Those on screen whose text is here: drawn now (as renderSection's).
+  for (const [path, sec] of sections) if (texts.has(path) && uiFor(byPath.get(path)).open && (nearScreen(sec) || cur?.path === path)) mount(path)
+  holdPin()
+  redrawCursor()
   onScroll()
 }
 
@@ -831,6 +849,15 @@ function renderSection(sec, f) {
   body.append(el("div", "loading", "Loading…"))
   mountObserver?.observe(body)
   unmountObserver?.observe(body)
+  // On screen with its text here already: drawn now, not after a frame of
+  // "Loading…" at a guessed height (the page would jump, then jump back).
+  // (And the cursor's file, wherever it's gone: it's what the scroll holds to.)
+  if (sec.isConnected && texts.has(f.path) && (nearScreen(sec) || cur?.path === f.path)) mount(f.path)
+}
+
+function nearScreen(sec) {
+  const r = sec.getBoundingClientRect(), b = $("files").getBoundingClientRect()
+  return r.bottom > b.top - 1500 && r.top < b.bottom + 1500
 }
 
 function estimate(f, u) {
@@ -892,7 +919,17 @@ function mount(path) {
     body.style.minHeight = ""
     mounted.set(path, { destroy, views, thr, kb, top })
     refreshThreads(path)
+    // A line the cursor's on now folded away (whole file back to its
+    // changes): it's on the fold.
+    if (cur?.path === path && cur.kind === "line" && !cur.del && views.length) {
+      const view = viewFor(mounted.get(path), cur.side)
+      if (cur.line <= view.state.doc.lines) {
+        const st = lineStop(path, view, cur.line)
+        if (st.kind === "fold") cur = st
+      }
+    }
     drawCursor(path)
+    if (cur?.path === path) redrawCursor()
   }
 
   if (t.error) { body.append(el("div", "note", t.error)); return done() }
@@ -939,6 +976,9 @@ function mount(path) {
     lang.of([]), wholeLines, thr.of([]), kb.of([]),
     // A click in the code puts the keyboard's cursor on its line.
     EditorView.domEventHandlers({ mousedown: (e, view) => { clickLine(view, e, path); return false } }),
+    // The cursor on a fold or a line taken out is a class on CodeMirror's
+    // own elements, which it draws afresh as it updates: put it back.
+    EditorView.updateListener.of(() => { if (cur?.path === path && (cur.kind === "fold" || cur.del)) redrawSoon() }),
   ]
   const collapse = u.whole ? undefined : { margin: 3, minSize: 4 }
   const diffConfig = { scanLimit: 5000, timeout: 1500, ...(ignore ? { override: diffIgnoringSpace } : {}) }
@@ -1808,21 +1848,42 @@ function drawCursor(path) {
   }
 }
 
+let redrawQueued = false
+function redrawSoon() {
+  if (redrawQueued) return
+  redrawQueued = true
+  // (Classes only: redrawing the line's decoration would update the view again.)
+  queueMicrotask(() => { redrawQueued = false; markCursor() })
+}
+
 function redrawCursor(was) {
   if (was && was !== cur?.path) drawCursor(was)
   if (drawnPath && drawnPath !== cur?.path && drawnPath !== was) drawCursor(drawnPath)
   if (cur) drawCursor(cur.path)
   drawnPath = cur?.path || ""
-  for (const e of document.querySelectorAll(".kbfocus")) e.classList.remove("kbfocus")
-  for (const e of document.querySelectorAll(".cm-deletedLine.kbcur, .cm-deletedLine.kbrange")) e.classList.remove("kbcur", "kbrange")
-  if (area !== "diff" || !cur || !kbUsed) return
-  if (cur.del) {
-    const a = Math.min(cur.anchor || cur.line, cur.line), b = Math.max(cur.anchor || cur.line, cur.line)
-    for (let l = a; l <= b; l++) delElement({ ...cur, line: l })?.classList.add(l === cur.line ? "kbcur" : "kbrange")
+  markCursor()
+}
+
+// markCursor puts the cursor's classes on what's drawn: a file's header,
+// a thread, a fold, lines taken out.
+function markCursor() {
+  // What should have which class; only changes are made (no mutation when
+  // nothing's moved: CodeMirror watches its elements).
+  const want = new Map() // element → class
+  if (area === "diff" && cur && kbUsed) {
+    if (cur.del) {
+      const a = Math.min(cur.anchor || cur.line, cur.line), b = Math.max(cur.anchor || cur.line, cur.line)
+      for (let l = a; l <= b; l++) { const e = delElement({ ...cur, line: l }); if (e) want.set(e, l === cur.line ? "kbcur" : "kbrange") }
+    }
+    const e = cur.kind === "thread" ? document.querySelector(`.thread[data-thread="${CSS.escape(cur.thread)}"]`)
+      : cur.kind === "head" ? sectionOf(cur.path)?.querySelector(".fhead")
+      : cur.kind === "fold" ? foldElement(cur) : null
+    if (e) want.set(e, "kbfocus")
   }
-  if (cur.kind === "thread") document.querySelector(`.thread[data-thread="${CSS.escape(cur.thread)}"]`)?.classList.add("kbfocus")
-  if (cur.kind === "head") sectionOf(cur.path)?.querySelector(".fhead")?.classList.add("kbfocus")
-  if (cur.kind === "fold") foldElement(cur)?.classList.add("kbfocus")
+  for (const cls of ["kbfocus", "kbcur", "kbrange"]) {
+    for (const e of document.querySelectorAll("#files ." + cls)) if (want.get(e) !== cls) e.classList.remove(cls)
+  }
+  for (const [e, cls] of want) if (!e.classList.contains(cls)) e.classList.add(cls)
 }
 
 // setCursor moves it (show: scrolled into view; span: the last line of a
@@ -1834,7 +1895,8 @@ function setCursor(c, show = true, span = 0) {
   markTreeSel()
   redrawCursor(was)
   if (c && sections.has(c.path)) setActive(c.path)
-  if (show) showCursor(span)
+  // (Again once CodeMirror has drawn what the scroll brought on screen.)
+  if (show) { showCursor(span); redrawCursor(); requestAnimationFrame(() => { if (cur === c) redrawCursor() }) }
   // Lines taken out are drawn once near the screen: mark it then.
   if (c?.del && !delElement(c)) requestAnimationFrame(() => { if (cur === c) { redrawCursor(); if (show) showCursor(span) } })
 }
@@ -1847,8 +1909,14 @@ function lineStop(path, view, n) {
   const doc = view.state.doc
   const line = doc.line(n)
   const b = view.lineBlockAt(line.from)
-  if (b.to > line.to) {
+  if (b.to > line.to || b.from < line.from) {
     return { path, kind: "fold", side: sideOf(view), from: doc.lineAt(b.from).number, to: doc.lineAt(b.to).number }
+  }
+  // A fold to the end takes in the empty last line too (it's a block of its
+  // own, after the fold's).
+  if (line.from > 0) {
+    const p = view.lineBlockAt(line.from - 1)
+    if (p.to >= line.from && doc.lineAt(p.from).number < n) return { path, kind: "fold", side: sideOf(view), from: doc.lineAt(p.from).number, to: n }
   }
   return { path, kind: "line", side: sideOf(view), line: n }
 }
@@ -2125,7 +2193,9 @@ function showCursor(span = 0) {
   const r = cursorRect()
   if (!r) return
   const b = box.getBoundingClientRect()
-  const top = b.top + 52, bottom = b.bottom - 40
+  // Clear of its file's header, where it's stuck to the top over the code.
+  const hr = sectionOf(cur.path)?.querySelector(".fhead")?.getBoundingClientRect()
+  const top = (hr && hr.top <= b.top + 2 ? hr.bottom : b.top) + 8, bottom = b.bottom - 40
   const m = span && cur.kind === "line" ? mounted.get(cur.path) : null
   if (m) {
     const view = cur.del ? m.views[0] : viewFor(m, cur.side), doc = view.state.doc
@@ -2135,14 +2205,32 @@ function showCursor(span = 0) {
       box.scrollTop += r.top - (top + (tall < room ? Math.min(room * 0.25, room - tall) : 0))
     }
     pinTop()
+    holdCursor(600)
     onScroll()
     return
   }
   if (r.top < top) box.scrollTop -= top - r.top
   else if (r.bottom > bottom) box.scrollTop += Math.min(r.bottom - bottom, r.top - top)
   pinTop()
+  holdCursor(600)
   onScroll()
 }
+
+// hold: where the cursor's to stay on screen (y in the files), until when.
+// Set as it moves, and before the files lay out again; let go as you
+// scroll or press a key.
+let hold = null
+function cursorY() {
+  const r = kbUsed && area === "diff" ? cursorRect() : null
+  return r ? r.top - $("files").getBoundingClientRect().top : null
+}
+function holdCursor(ms) {
+  const y = cursorY()
+  const b = $("files").getBoundingClientRect()
+  hold = y != null && y > -20 && y < b.height ? { y, until: performance.now() + ms } : null
+}
+for (const ev of ["wheel", "touchmove", "mousedown"]) $("files").addEventListener(ev, () => { hold = null }, { passive: true, capture: true })
+window.addEventListener("keydown", () => { hold = null }, true)
 
 function foldElement(c) {
   const m = mounted.get(c.path)
@@ -2258,6 +2346,10 @@ function goEnd(back) {
   if (!files.length) return
   if (back) { setCursor({ path: files[0].path, kind: "head" }); $("files").scrollTop = 0; return }
   const last = files[files.length - 1].path
+  // Straight to the bottom, where the last file ends: one move, not two.
+  const box = $("files")
+  box.scrollTop = box.scrollHeight
+  pinTop()
   ensureMounted(last).then(() => setCursor(lastIn(last)))
 }
 
@@ -2358,11 +2450,16 @@ function toggleWhole(path) {
   const f = byPath.get(path), sec = sectionOf(path)
   if (!f || !sec || f.binary || f.status === "added" || f.status === "deleted") return
   const u = uiFor(f)
-  keepHeader(path)
+  // The cursor stays on its line (a fold it was on: the fold's first line)
+  // and where it is on screen, while the file lays out again.
+  if (cur?.path === path && cur.kind === "fold") cur = { path, kind: "line", side: cur.side, line: cur.from }
+  if (cur?.path === path && cur.kind !== "head") holdCursor(2000)
+  else keepHeader(path)
   u.whole = !u.whole
   u.open = true
   renderSection(sec, f)
-  setCursor({ path, kind: "head" })
+  if (cur?.path !== path) setCursor({ path, kind: "head" })
+  else redrawCursor()
 }
 
 // toggleViewed marks a file viewed (closing it, and going on to the next
