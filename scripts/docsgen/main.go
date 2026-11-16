@@ -406,7 +406,7 @@ func mcpPage(data []byte) (string, error) {
 	b.WriteString(generated)
 	b.WriteString("`hmk mcp` is an MCP server, run by your agent over stdio, that lets it see and drive your workspace. ")
 	b.WriteString("`hmk hooks install` registers it with the agents that take one; see [Controlling Hammock from agents](/hammock/docs/agents/mcp/) to set it up and for what agents may do. ")
-	b.WriteString("Tools for a kind of pane switched off in Settings ▸ Tools (`browser-enabled = false`, and so on) aren't offered.\n\n")
+	b.WriteString("Tools for anything switched off in Settings ▸ Tools (`browser-enabled = false`, `schedules-enabled = false`, and so on) aren't offered.\n\n")
 	b.WriteString("## What the server tells agents\n\nAgents read these instructions when they connect (every kind of pane on):\n\n")
 	b.WriteString("> " + text(l.Instructions) + "\n\n")
 	for _, g := range mcpGroups {

@@ -1,19 +1,24 @@
 import HammockKit
 import SwiftUI
 
-/// Hammock's tools besides terminals and agents: what a pane can show. Each
-/// can be turned off (Settings ▸ Tools, the `<kind>-enabled` keys), for
+/// Hammock's tools besides terminals and agents: what a pane can show,
+/// scheduled tasks, and agents' session search. Each can be turned off
+/// (Settings ▸ Tools, the `<tool>-enabled` keys, hammockconfig.Tools), for
 /// someone who already has their own way of doing that (another diff
-/// reviewer, say): off, it isn't offered anywhere in Hammock's menus, the
-/// command palette or shortcuts, and agents lose its tools (hmk mcp leaves
-/// them out; hmkd refuses a session that still has them). What's open
-/// already stays open.
+/// reviewer or scheduler, say): off, it isn't offered anywhere in Hammock's
+/// menus, the command palette or shortcuts, and agents lose its tools (hmk
+/// mcp leaves them out; hmkd refuses a session that still has them). What's
+/// open already stays open; schedules don't run. Session Search is the
+/// agents' alone: the session finder stays.
 enum HammockTool: String, CaseIterable, Identifiable {
-    case browser, simulator, editor, diff, log
+    case browser, simulator, editor, diff, log, schedules, sessions
 
     var id: String { rawValue }
 
     var pref: Pref { Pref("\(rawValue)-enabled", defaults: "\(rawValue)Enabled", true) }
+
+    /// A kind of pane (not scheduled tasks or session search).
+    var isPane: Bool { self != .schedules && self != .sessions }
 
     /// Turned on (the default).
     @MainActor var on: Bool { Prefs.shared.bool(pref) }
@@ -25,6 +30,8 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .editor: "Editor"
         case .diff: "Diff Viewer"
         case .log: "Log Viewer"
+        case .schedules: "Scheduled Tasks"
+        case .sessions: "Session Search"
         }
     }
 
@@ -35,6 +42,8 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .editor: "doc.text"
         case .diff: "plus.forwardslash.minus"
         case .log: "list.bullet.rectangle"
+        case .schedules: "clock"
+        case .sessions: "magnifyingglass"
         }
     }
 
@@ -45,6 +54,8 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .editor: .indigo
         case .diff: .green
         case .log: .orange
+        case .schedules: .purple
+        case .sessions: .teal
         }
     }
 
@@ -56,6 +67,8 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .editor: "Text files you can edit in Hammock. Agents can open one and point you at lines in it."
         case .diff: "Review changes like a pull request's Files Changed, and comment on them. Agents can open one to show you their work, and answer your comments."
         case .log: "Logs from a file, the Mac, a simulator or a command, as entries you can filter. Agents can open and read them."
+        case .schedules: "Agents or commands run on a schedule, each run a new tab. Agents can create and run them, with your say-so. Off, none run."
+        case .sessions: "Agents can search and read past Claude Code and Codex sessions on this Mac, to pick up earlier decisions. You can still find and resume them."
         }
     }
 
@@ -67,6 +80,8 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .editor: "text file code editor_open mcp turn off disable"
         case .diff: "git review changes pull request diff_open comments mcp turn off disable"
         case .log: "logs console logcat log_open mcp turn off disable"
+        case .schedules: "scheduled tasks cron launchd recurring automation schedule_save mcp turn off disable"
+        case .sessions: "past sessions history transcripts memory session_search mcp turn off disable"
         }
     }
 }
@@ -75,9 +90,12 @@ struct ToolsSettings: View {
     var body: some View {
         Form {
             SettingsPaneHeader(tab: .tools)
-            Section {
-                ForEach(HammockTool.allCases) { t in
-                    ToolRow(tool: t).settingAnchor("tools.\(t.rawValue)")
+            // Kinds of pane, then the rest.
+            ForEach([HammockTool.allCases.filter(\.isPane), HammockTool.allCases.filter { !$0.isPane }], id: \.self) { tools in
+                Section {
+                    ForEach(tools) { t in
+                        ToolRow(tool: t).settingAnchor("tools.\(t.rawValue)")
+                    }
                 }
             }
             Section("Agents") {

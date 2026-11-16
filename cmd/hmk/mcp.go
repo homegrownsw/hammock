@@ -71,9 +71,7 @@ func runMCP(args []string) error {
 	})
 	s.register(server)
 	s.registerKinds(server, values)
-	s.registerSessions(server)
-	s.registerSchedules(server)
-	go s.followPaneKinds(server)
+	go s.followTools(server)
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -99,7 +97,7 @@ func mcpInstructions(values map[string]string) string {
 			"Their comments on it come to you as a message: answer in the threads with review_reply, mark each addressed with review_mark_addressed once dealt with, and see them all with review_threads (when they say to check their comments). ",
 	}
 	for _, k := range []string{"browser", "simulator", "log", "editor", "diff"} {
-		if hammockconfig.PaneKindOn(values, k) {
+		if hammockconfig.ToolOn(values, k) {
 			parts = append(parts, kinds[k])
 		}
 	}
@@ -107,15 +105,16 @@ func mcpInstructions(values map[string]string) string {
 	return strings.Join(parts, "")
 }
 
-// addTool adds a tool to server, noting its name for the kind of pane
+// addTool adds a tool to server, noting its name for the Hammock tool
 // being registered (registerKinds), so it can be taken away again.
 func addTool[In, Out any](s *mcpServer, server *mcp.Server, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
 	s.kindTools[s.registering] = append(s.kindTools[s.registering], t.Name)
 	mcp.AddTool(server, t, h)
 }
 
-// registerKind adds the tools for one kind of pane (show_output is the
-// browser's: it opens a browser pane).
+// registerKind adds the MCP tools for one of Hammock's tools that can be
+// turned off (hammockconfig.Tools): a kind of pane (show_output is the
+// browser's: it opens a browser pane), schedules or sessions.
 func (s *mcpServer) registerKind(server *mcp.Server, kind string) {
 	s.registering, s.kindTools[kind] = kind, nil
 	switch kind {
@@ -131,28 +130,32 @@ func (s *mcpServer) registerKind(server *mcp.Server, kind string) {
 	case "diff":
 		s.registerDiff(server)
 		s.registerReview(server)
+	case "schedules":
+		s.registerSchedules(server)
+	case "sessions":
+		s.registerSessions(server)
 	}
 	s.registering = ""
 }
 
-// registerKinds adds the tools for each kind of pane turned on in values.
+// registerKinds adds the MCP tools for each tool turned on in values.
 func (s *mcpServer) registerKinds(server *mcp.Server, values map[string]string) {
 	s.kindTools, s.kindsOn = map[string][]string{}, map[string]bool{}
-	for _, k := range hammockconfig.PaneKinds {
-		if s.kindsOn[k] = hammockconfig.PaneKindOn(values, k); s.kindsOn[k] {
+	for _, k := range hammockconfig.Tools {
+		if s.kindsOn[k] = hammockconfig.ToolOn(values, k); s.kindsOn[k] {
 			s.registerKind(server, k)
 		}
 	}
 }
 
-// followPaneKinds adds and takes away tools as kinds of pane are turned on
-// and off in Settings while the session runs (the agent hears the list
-// changed). The daemon refuses a kind turned off whatever an agent has.
-func (s *mcpServer) followPaneKinds(server *mcp.Server) {
+// followTools adds and takes away MCP tools as Hammock's tools are turned
+// on and off in Settings while the session runs (the agent hears the list
+// changed). The daemon refuses a tool turned off whatever an agent has.
+func (s *mcpServer) followTools(server *mcp.Server) {
 	for range time.Tick(3 * time.Second) {
 		values := hammockconfig.Values()
-		for _, k := range hammockconfig.PaneKinds {
-			on := hammockconfig.PaneKindOn(values, k)
+		for _, k := range hammockconfig.Tools {
+			on := hammockconfig.ToolOn(values, k)
 			if on == s.kindsOn[k] {
 				continue
 			}

@@ -176,7 +176,9 @@ struct HammockApp: App {
                     Button("New Diff Tab…") { DiffLauncher.shared.newTab(model) }.keyboardShortcut(Keys.newDiffTab)
                         .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
                 }
-                Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
+                if HammockTool.schedules.on {
+                    Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
+                }
                 NewGroupMenuItems(model: model)
                 Button("Link a Computer…") { LinkUI.shared.open() }.keyboardShortcut(Keys.linkComputer)
                 Button("Pair a Device…") { SharingUI.shared.pairing = true }.keyboardShortcut(Keys.pairDevice)
@@ -304,7 +306,9 @@ struct HammockApp: App {
                         }
                     }
                 }
-                Button("Scheduled Tasks") { ScheduleUI.shared.showList() }.keyboardShortcut(Keys.scheduledTasks)
+                if HammockTool.schedules.on {
+                    Button("Scheduled Tasks") { ScheduleUI.shared.showList() }.keyboardShortcut(Keys.scheduledTasks)
+                }
                 if HammockTool.diff.on {
                     Button("Review Changes") { DiffUI.review(model) }.keyboardShortcut(Keys.reviewChanges)
                         .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))

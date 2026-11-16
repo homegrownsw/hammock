@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"strconv"
 	"strings"
@@ -128,20 +129,23 @@ func keepAwakeSetting() setting {
 // toolSettings turn Hammock's tools on and off (the <kind>-enabled keys,
 // shared with the Mac's Settings ▸ Tools).
 func toolSettings() []setting {
-	names := map[string]string{"browser": "Browser", "simulator": "Simulator", "editor": "Editor", "diff": "Diff viewer", "log": "Log viewer"}
+	names := map[string]string{"browser": "Browser", "simulator": "Simulator", "editor": "Editor", "diff": "Diff viewer", "log": "Log viewer",
+		"schedules": "Scheduled tasks", "sessions": "Session search"}
+	help := map[string]string{"schedules": "Off: not offered in Hammock's menus, agents don't get its tools, and schedules don't run.",
+		"sessions": "Off: agents can't search or read past sessions. You still can."}
 	var out []setting
-	for _, k := range hammockconfig.PaneKinds {
+	for _, k := range hammockconfig.Tools {
 		out = append(out, setting{"Tools: " + names[k], func(*App) string { return onOff(!toolOff(k)) }, func(a *App, _ int) {
 			v := "false"
 			if toolOff(k) {
 				v = "" // on is the default
 			}
-			if err := hammockconfig.Set(hammockconfig.PaneKindKey(k), v); err != nil {
+			if err := hammockconfig.Set(hammockconfig.ToolKey(k), v); err != nil {
 				a.flash("⚠ " + err.Error())
 				return
 			}
-			toolsOff = hammockconfig.PaneKindsOff(hammockconfig.Values())
-		}, "Off: not offered in Hammock's menus, and agents don't get its tools."})
+			toolsOff = hammockconfig.ToolsOff(hammockconfig.Values())
+		}, cmp.Or(help[k], "Off: not offered in Hammock's menus, and agents don't get its tools.")})
 	}
 	return out
 }

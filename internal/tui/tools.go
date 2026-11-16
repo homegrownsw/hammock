@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// Hammock's tools can be turned off (the <kind>-enabled keys: the Mac's
+// Hammock's tools can be turned off (the <tool>-enabled keys: the Mac's
 // Settings ▸ Tools, or the TUI's Settings): off, the TUI doesn't offer them
 // in its menus, palette or ⌃B keys either. What's open stays open.
+// Session Search is the agents' only: the session finder stays.
 
 // toolsOff is the kinds turned off, from the config file (config.load).
 var toolsOff []string
@@ -25,6 +26,8 @@ func menuTool(label string) string {
 		return "editor"
 	case label == "Review Changes":
 		return "diff"
+	case label == "Schedule This…", label == "New Scheduled Task…":
+		return "schedules"
 	}
 	return ""
 }
@@ -40,6 +43,8 @@ func paletteTool(id string) string {
 		return "editor"
 	case "review-changes":
 		return "diff"
+	case "schedules", "new-schedule", "schedule-tab":
+		return "schedules"
 	}
 	return ""
 }

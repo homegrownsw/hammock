@@ -50,7 +50,7 @@ See the [CLI reference](/hammock/docs/reference/cli/).
 
 ## Turning tools off
 
-Turn off any kind of pane you don't want in **Settings ▸ Tools** (`browser-enabled = false` and so on, in the [config file](/hammock/docs/configuration/)). Its tools then disappear from the MCP server too.
+Turn off any kind of pane you don't want in **Settings ▸ Tools** (`browser-enabled = false` and so on, in the [config file](/hammock/docs/configuration/)). Its tools then disappear from the MCP server too. The same pane turns off [scheduled tasks](/hammock/docs/scheduled-tasks/#turning-them-off) (`schedules-enabled = false`), and agents' searching of past sessions (`sessions-enabled = false`), if you handle those your own way.
 
 ## Untrusted content
 

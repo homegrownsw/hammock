@@ -75,7 +75,7 @@ extension SettingsTab: Identifiable {
         case .general: "The server, the menu bar, Groups, the hmk command and links to other apps."
         case .appearance: "Light and dark, your theme, and how the window, tabs, panes and cursor look."
         case .terminal: "The terminal's font, copying and pasting, and images programs show."
-        case .tools: "What Hammock can open beside your terminals. If you already do one of these your own way, turn it off and neither Hammock nor its agents will offer it."
+        case .tools: "What Hammock and its agents can do beside your terminals. If you already do one of these your own way, turn it off and neither Hammock nor its agents will offer it."
         case .editor: "Editor and diff panes: wrapping, line numbers, indents, font, Vim keys and how diffs are laid out."
         case .keyboard: "Change any shortcut. Search by name or keys."
         case .agents: "Closing agents at work, keeping this Mac awake while they work, putting idle ones to sleep, usage limits in the sidebar, and Hammock's hooks and tools for agents."

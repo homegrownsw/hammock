@@ -46,7 +46,7 @@ func (s *mcpServer) registerSessions(server *mcp.Server) {
 		return f()
 	}
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "session_search",
 		Description: "Search past coding-agent sessions (Claude Code, Codex and others) on this Mac (titles, folders and what was said), best match first, " +
 			"to find an earlier decision or pick up context. Searches this project's sessions; everywhere=true asks the user to look in other folders too. " +
@@ -70,7 +70,7 @@ func (s *mcpServer) registerSessions(server *mcp.Server) {
 		return textResult(formatSessionList(ss, a.Query)), nil, nil
 	})
 
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(s, server, &mcp.Tool{
 		Name: "session_read",
 		Description: "Read the parts of a past session that matter, not its whole transcript: with a query, the messages containing those words " +
 			"(each with the one before and after); without, its latest messages. Prompts and replies only, clipped.",

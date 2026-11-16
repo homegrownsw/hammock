@@ -472,7 +472,7 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	if !cl.agent {
 		return nil
 	}
-	if err := paneKindCheck(msg); err != nil {
+	if err := toolCheck(msg); err != nil {
 		return err
 	}
 	setCreator := func(spec **pb.PaneSpec) {

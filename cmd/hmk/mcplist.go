@@ -31,10 +31,8 @@ func mcpListTools() error {
 		register func(*mcpServer, *mcp.Server)
 	}{
 		{"panes", func(s *mcpServer, m *mcp.Server) { s.register(m) }},
-		{"sessions", func(s *mcpServer, m *mcp.Server) { s.registerSessions(m) }},
-		{"schedules", func(s *mcpServer, m *mcp.Server) { s.registerSchedules(m) }},
 	}
-	for _, k := range hammockconfig.PaneKinds {
+	for _, k := range hammockconfig.Tools {
 		groups = append(groups, struct {
 			name     string
 			register func(*mcpServer, *mcp.Server)

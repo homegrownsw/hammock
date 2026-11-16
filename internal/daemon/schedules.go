@@ -64,6 +64,7 @@ type schedState struct {
 	// leave): that agent may run, pause and skip it without asking again
 	// (schedulemsgs.go). Kept in the "schedule_makers" setting.
 	madeBy map[string]schedMaker
+	off    bool // Scheduled Tasks is turned off (Settings ▸ Tools): nothing runs
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent
@@ -113,7 +114,9 @@ func (d *Daemon) runSchedules() {
 	t := time.NewTicker(schedTick)
 	defer t.Stop()
 	for {
+		on := toolOn("schedules") // the config file: read outside d.mu
 		d.mu.Lock()
+		d.sched.off = !on
 		d.checkSchedules(schedNow())
 		d.mu.Unlock()
 		select {
@@ -138,7 +141,16 @@ func (d *Daemon) checkSchedules(now time.Time) {
 		if d.refreshScheduleGroup(s) {
 			changed = true
 		}
-		if awake && d.dueSchedule(s, now) {
+		switch {
+		case d.sched.off:
+			// Turned off in Settings ▸ Tools: nothing starts, and nothing
+			// counts as missed; it runs on from its next time once back on.
+			// Runs under way finish.
+			if s.NextRunUnixMs != 0 && now.UnixMilli() >= s.NextRunUnixMs {
+				d.scheduleNext(s, now)
+				changed = true
+			}
+		case awake && d.dueSchedule(s, now):
 			changed = true
 		}
 		if changed {

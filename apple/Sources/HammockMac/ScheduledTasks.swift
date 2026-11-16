@@ -76,7 +76,7 @@ final class ScheduleUI {
 
     /// Whether a tab can be scheduled from: one in a Group of this computer's.
     static func canSchedule(_ model: AppModel, _ tab: WorkspaceTab) -> Bool {
-        model.group(of: tab)?.isRemote == false
+        HammockTool.schedules.on && model.group(of: tab)?.isRemote == false
     }
 
     /// Opens a debug sheet asked for by HMK_DEBUG_SCHEDULES=edit, once the
@@ -492,7 +492,7 @@ struct ScheduleFooter: View {
     static let lead: TimeInterval = 30 * 60
 
     var body: some View {
-        if !model.schedules.isEmpty {
+        if HammockTool.schedules.on, !model.schedules.isEmpty {
             // Each minute, so "today" and "tomorrow" stay true, and it shows
             // as the next run comes within the half hour.
             TimelineView(.periodic(from: .now, by: 60)) { ctx in

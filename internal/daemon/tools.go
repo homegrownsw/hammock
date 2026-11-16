@@ -7,11 +7,12 @@ import (
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
-// Hammock's tools shown in panes can be turned off (Settings ▸ Tools, the
-// <kind>-enabled keys): someone with their own way of reviewing diffs, say, shouldn't have
-// agents opening Hammock's. hmk mcp leaves a kind's tools out; this refuses
-// agents what they'd do with one anyway (a session from before it was
-// turned off, or hmk run by an agent). People can still open one by hand.
+// Hammock's tools (its kinds of pane, Scheduled Tasks and Session Search)
+// can be turned off (Settings ▸ Tools, the <tool>-enabled keys): someone
+// with their own way of reviewing diffs, say, shouldn't have agents opening
+// Hammock's. hmk mcp leaves a tool's MCP tools out; this refuses agents
+// what they'd do with one anyway (a session from before it was turned off,
+// or hmk run by an agent). People can still open one by hand.
 
 // specKind is the kind of pane spec makes ("" for a terminal).
 func specKind(spec *pb.PaneSpec) string {
@@ -32,8 +33,8 @@ func specKind(spec *pb.PaneSpec) string {
 	return ""
 }
 
-// msgPaneKind is the kind of pane msg opens or works with, "" if none.
-func msgPaneKind(msg *pb.ClientMessage) string {
+// msgTool is the tool msg opens or works with, "" if none.
+func msgTool(msg *pb.ClientMessage) string {
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_CreatePane:
 		return specKind(m.CreatePane.Spec)
@@ -57,23 +58,29 @@ func msgPaneKind(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReadRepo,
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ListReviews, *pb.ClientMessage_ReviewCommand:
 		return "diff"
+	case *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_RunSchedule,
+		*pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun:
+		return "schedules"
+	case *pb.ClientMessage_ListSessions, *pb.ClientMessage_SessionExcerpts:
+		return "sessions"
 	}
 	return ""
 }
 
-// paneKindOn reports whether kind is turned on in the config file (read
+// toolOn reports whether tool is turned on in the config file (read
 // when an agent asks for one: it's small, and Settings may have just
 // changed it).
-var paneKindOn = func(kind string) bool {
-	return hammockconfig.PaneKindOn(hammockconfig.Values(), kind)
+var toolOn = func(tool string) bool {
+	return hammockconfig.ToolOn(hammockconfig.Values(), tool)
 }
 
 // toolName is what Settings ▸ Tools calls each kind.
-var toolName = map[string]string{"browser": "browser", "simulator": "simulator", "editor": "editor", "diff": "diff viewer", "log": "log viewer"}
+var toolName = map[string]string{"browser": "browser", "simulator": "simulator", "editor": "editor", "diff": "diff viewer", "log": "log viewer",
+	"schedules": "Scheduled Tasks", "sessions": "Session Search"}
 
-// paneKindCheck refuses an agent msg if it's for a kind of pane turned off.
-func paneKindCheck(msg *pb.ClientMessage) error {
-	if k := msgPaneKind(msg); k != "" && !paneKindOn(k) {
+// toolCheck refuses an agent msg if it's for a tool turned off.
+func toolCheck(msg *pb.ClientMessage) error {
+	if k := msgTool(msg); k != "" && !toolOn(k) {
 		return fmt.Errorf("Hammock's %s is turned off (Settings ▸ Tools): the user works without it, so don't use it or suggest it", toolName[k])
 	}
 	return nil

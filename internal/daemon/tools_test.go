@@ -9,21 +9,34 @@ import (
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
-// A kind of pane turned off in Settings is refused to agents, whatever
-// tools their session has, and only to them.
-func TestPaneKindOffRefusedToAgents(t *testing.T) {
+// A tool turned off in Settings is refused to agents, whatever MCP tools
+// their session has, and only to them.
+func TestToolOffRefusedToAgents(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("HMK_CONFIG_DIR", cfg)
-	if err := os.WriteFile(filepath.Join(cfg, "config"), []byte("diff-enabled = false\nbrowser-enabled = true\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg, "config"), []byte("diff-enabled = false\nbrowser-enabled = true\nschedules-enabled = false\nsessions-enabled = false\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	diffTab := &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{}}}}}
-	if err := paneKindCheck(diffTab); err == nil || !strings.Contains(err.Error(), "diff viewer is turned off") {
+	if err := toolCheck(diffTab); err == nil || !strings.Contains(err.Error(), "diff viewer is turned off") {
 		t.Fatalf("a diff pane: %v", err)
 	}
 	review := &pb.ClientMessage{Msg: &pb.ClientMessage_ReviewCommand{ReviewCommand: &pb.ReviewCommand{}}}
-	if err := paneKindCheck(review); err == nil {
+	if err := toolCheck(review); err == nil {
 		t.Fatal("review threads go with diff panes")
+	}
+	for _, c := range []struct {
+		m    *pb.ClientMessage
+		name string
+	}{
+		{&pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{}}}, "Scheduled Tasks"},
+		{&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{}}}, "Scheduled Tasks"},
+		{&pb.ClientMessage{Msg: &pb.ClientMessage_SessionExcerpts{SessionExcerpts: &pb.SessionExcerpts{}}}, "Session Search"},
+		{&pb.ClientMessage{Msg: &pb.ClientMessage_ListSessions{ListSessions: &pb.ListSessions{}}}, "Session Search"},
+	} {
+		if err := toolCheck(c.m); err == nil || !strings.Contains(err.Error(), c.name+" is turned off") {
+			t.Errorf("%T: %v", c.m.Msg, err)
+		}
 	}
 	for _, m := range []*pb.ClientMessage{
 		{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{Pane: &pb.PaneSpec{Url: "http://localhost:3000"}}}},
@@ -31,7 +44,7 @@ func TestPaneKindOffRefusedToAgents(t *testing.T) {
 		{Msg: &pb.ClientMessage_ShowOutput{ShowOutput: &pb.ShowOutput{}}},
 		{Msg: &pb.ClientMessage_SimulatorCall{SimulatorCall: &pb.SimulatorCall{Op: "devices"}}},
 	} {
-		if err := paneKindCheck(m); err != nil {
+		if err := toolCheck(m); err != nil {
 			t.Errorf("%T: %v", m.Msg, err)
 		}
 	}

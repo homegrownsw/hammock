@@ -172,28 +172,29 @@ func EditorSettings(values map[string]string) Editor {
 	return e
 }
 
-// PaneKinds are the tools Hammock shows in panes besides terminals, which
-// can be turned off (Settings ▸ Tools): each has a <kind>-enabled key,
-// true by default.
-// Off, Hammock doesn't offer that kind in its menus, and agents lose its
-// tools (hmk mcp) and are refused it by the daemon, so it never gets in the
-// way of how someone already works (their own diff reviewer, say).
-var PaneKinds = []string{"browser", "simulator", "editor", "diff", "log"}
+// Tools are Hammock's tools besides terminals and agents that can be
+// turned off (Settings ▸ Tools): the kinds of pane, Scheduled Tasks, and
+// agents' Session Search. Each has a <tool>-enabled key, true by default.
+// Off, Hammock doesn't offer it in its menus, and agents lose its tools
+// (hmk mcp) and are refused it by the daemon, so it never gets in the way
+// of how someone already works (their own diff reviewer, or scheduler).
+// Schedules don't run while theirs is off.
+var Tools = []string{"browser", "simulator", "editor", "diff", "log", "schedules", "sessions"}
 
-// PaneKindKey is kind's key: "diff-enabled".
-func PaneKindKey(kind string) string { return kind + "-enabled" }
+// ToolKey is tool's key: "diff-enabled".
+func ToolKey(tool string) string { return tool + "-enabled" }
 
-// PaneKindOn reports whether kind is turned on in values (Values): any
+// ToolOn reports whether tool is turned on in values (Values): any
 // value but "false" is.
-func PaneKindOn(values map[string]string, kind string) bool {
-	return strings.TrimSpace(values[PaneKindKey(kind)]) != "false"
+func ToolOn(values map[string]string, tool string) bool {
+	return strings.TrimSpace(values[ToolKey(tool)]) != "false"
 }
 
-// PaneKindsOff is the kinds turned off in values, in PaneKinds' order.
-func PaneKindsOff(values map[string]string) []string {
+// ToolsOff is the tools turned off in values, in Tools' order.
+func ToolsOff(values map[string]string) []string {
 	var off []string
-	for _, k := range PaneKinds {
-		if !PaneKindOn(values, k) {
+	for _, k := range Tools {
+		if !ToolOn(values, k) {
 			off = append(off, k)
 		}
 	}

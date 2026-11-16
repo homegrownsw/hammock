@@ -274,7 +274,9 @@ struct SidebarView: View {
                     if HammockTool.log.on {
                         Button("New Log Tab…") { LogUI.shared.request = LogRequest(groupID: group.id) }
                     }
-                    Button("New Scheduled Task…") { ScheduleUI.shared.new(model, groupID: group.id) }
+                    if HammockTool.schedules.on {
+                        Button("New Scheduled Task…") { ScheduleUI.shared.new(model, groupID: group.id) }
+                    }
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                     moveButtons(group)
                     Button("Delete Group", role: .destructive) { CloseGuard.confirm(model, group: group) { Task { await model.deleteGroup(group.id) } } }

@@ -44,9 +44,9 @@ func TestKeysAreWellFormed(t *testing.T) {
 			t.Errorf("group %s has no keys", g)
 		}
 	}
-	for _, k := range PaneKinds {
-		if KeyNamed(PaneKindKey(k)) == nil {
-			t.Errorf("%s isn't in Keys", PaneKindKey(k))
+	for _, k := range Tools {
+		if KeyNamed(ToolKey(k)) == nil {
+			t.Errorf("%s isn't in Keys", ToolKey(k))
 		}
 	}
 }

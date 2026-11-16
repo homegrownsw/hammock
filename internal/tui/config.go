@@ -66,7 +66,7 @@ func (c *config) load() {
 	defer func() {
 		iconOverrides = overrides
 		editorPrefs = hammockconfig.EditorSettings(values)
-		toolsOff = hammockconfig.PaneKindsOff(values)
+		toolsOff = hammockconfig.ToolsOff(values)
 		if animationsPref != nil {
 			animations = *animationsPref
 		}

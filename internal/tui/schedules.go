@@ -78,7 +78,7 @@ func (a *App) isRunTab(t *pb.Tab) bool {
 
 // canSchedule: new schedules can go in this Group (yours, on this computer:
 // the daemon makes them here only).
-func canSchedule(g *pb.Group) bool { return g != nil && g.HostUserId == "" }
+func canSchedule(g *pb.Group) bool { return g != nil && g.HostUserId == "" && !toolOff("schedules") }
 
 // ---------- in words ----------
 

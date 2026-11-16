@@ -86,3 +86,7 @@ hmk schedule pause "Nightly tests" # and hmk schedule resume
 ## Agents and scheduled tasks
 
 Agents can make and manage tasks with MCP tools such as [`schedule_save`](/hammock/docs/reference/mcp/#schedule_save) and [`schedule_list`](/hammock/docs/reference/mcp/#schedule_list), or `hmk schedule`. Hammock asks you before an agent adds, changes or deletes a task, or runs or pauses one it didn't make.
+
+## Turning them off
+
+If you schedule things some other way, turn Scheduled Tasks off in Settings ▸ Tools (`schedules-enabled = false`). Hammock then leaves them out of its menus, and agents can't make or run them. Your tasks are kept but don't run until you turn it back on, and none count as missed.

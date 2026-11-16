@@ -501,6 +501,47 @@ func TestScheduledCommand(t *testing.T) {
 	}
 }
 
+// With Scheduled Tasks turned off (Settings ▸ Tools) nothing due starts,
+// and nothing counts as missed: back on, it runs at its next time.
+func TestSchedulesOff(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	cfg := t.TempDir()
+	t.Setenv("HMK_CONFIG_DIR", cfg)
+	if err := os.WriteFile(filepath.Join(cfg, "config"), []byte("schedules-enabled = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 3, 2, 2, 0, 0, 0, time.Local)
+	clock := useSchedClock(t, start)
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	id := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: &pb.Schedule{
+		Kind: "command", Prompt: "true", Cwd: t.TempDir(), Cron: "0 3 * * *",
+	}}}}).GetScheduleReply().GetSchedule().GetId()
+	setOff := func(off bool) {
+		d.mu.Lock()
+		d.sched.off = off
+		d.mu.Unlock()
+	}
+	setOff(true)
+	tick(d, clock, start.Add(90*time.Minute)) // 03:30, past 03:00
+	s := schedOf(d, id)
+	if len(s.Runs) != 0 {
+		t.Fatalf("ran or noted a run while off: %v", s.Runs)
+	}
+	if want := time.Date(2026, 3, 3, 3, 0, 0, 0, time.Local).UnixMilli(); s.NextRunUnixMs != want {
+		t.Fatalf("next run: %v, want tomorrow 03:00", time.UnixMilli(s.NextRunUnixMs))
+	}
+	os.WriteFile(filepath.Join(cfg, "config"), nil, 0o644) // and runSchedules agrees
+	setOff(false)
+	tick(d, clock, time.Date(2026, 3, 3, 3, 0, 5, 0, time.Local))
+	if s := schedOf(d, id); len(s.Runs) != 1 || s.Runs[0].Status == pb.ScheduleRun_STATUS_MISSED {
+		t.Fatalf("back on, it didn't run: %v", s.Runs)
+	}
+}
+
 // An agent's schedule waits for your yes (a grant worded from the
 // schedule), then is saved; running, pausing or skipping its own is free,
 // yours asks; guests' and phones' limits are checked elsewhere

@@ -955,7 +955,9 @@ func (a *App) command(b []byte) int {
 	case 'O':
 		a.openSessionFinder("")
 	case '@':
-		a.openSchedules("")
+		if !toolOff("schedules") {
+			a.openSchedules("")
+		}
 	case ',':
 		if t != nil {
 			a.openPrompt("Rename Tab", "Name", t.Name, func(v string) { a.renameTab(t.Id, v) })

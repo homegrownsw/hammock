@@ -810,6 +810,8 @@ extension CommandPalette {
         case "new-editor-tab", "editor-wrap", "quick-open", "open-file", "split-editor", "split-editor-down": .editor
         case _ where id.hasPrefix("review-"): .diff
         case _ where id.hasPrefix("split-sim:"): .simulator
+        case "scheduled-tasks", "new-scheduled-task", "schedule-this": .schedules
+        case _ where id.hasPrefix("schedule-"): .schedules
         default: nil
         }
     }
