@@ -59,8 +59,9 @@ func TestEscInterruptMarksClaudeIdle(t *testing.T) {
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "g"}}}))
 	tab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g,
-		// Like Claude: a keystroke (Esc) stops it, and it says so.
-		Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", `stty -icanon -echo min 1; dd bs=1 count=1 >/dev/null 2>&1; echo "  ⎿  Interrupted · What should Claude do instead?"; exec cat`}}}}}))
+		// Like Claude: a keystroke (Esc) stops it, and it says so, in
+		// fullscreen mode far above its prompt, with blank lines between.
+		Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", `stty -icanon -echo min 1; dd bs=1 count=1 >/dev/null 2>&1; echo "  ⎿  Interrupted · What should Claude do instead?"; printf "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────\n❯ \n─────\n"; exec cat`}}}}}))
 	d.mu.Lock()
 	paneID := d.tabs[tab].FocusedPaneId
 	d.mu.Unlock()

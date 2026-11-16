@@ -521,8 +521,7 @@ func (h *agentHub) interrupted(p *pane) {
 	go func() {
 		for range 20 {
 			time.Sleep(150 * time.Millisecond)
-			lines := strings.Split(strings.TrimRight(p.text(false), "\n "), "\n")
-			if !slices.ContainsFunc(lines[max(0, len(lines)-12):], re.MatchString) {
+			if !slices.ContainsFunc(lastLines(p.text(false), 12), re.MatchString) {
 				continue
 			}
 			h.d.mu.Lock()
@@ -545,6 +544,20 @@ func (h *agentHub) interrupted(p *pane) {
 			return
 		}
 	}()
+}
+
+// lastLines is the screen's last n lines with text, skipping blank ones:
+// Claude's fullscreen mode pads its conversation down to the prompt with
+// blank lines, so "Interrupted" can sit far above the bottom row.
+func lastLines(screen string, n int) []string {
+	var out []string
+	lines := strings.Split(screen, "\n")
+	for i := len(lines) - 1; i >= 0 && len(out) < n; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			out = append(out, lines[i])
+		}
+	}
+	return out
 }
 
 // resumeCommand returns the command that resumes the pane's agent session
