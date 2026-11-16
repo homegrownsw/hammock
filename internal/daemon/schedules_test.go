@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -133,8 +134,9 @@ func TestToolRule(t *testing.T) {
 
 // schedClock is a test clock for the scheduler.
 type schedClock struct {
-	mu sync.Mutex
-	t  time.Time
+	mu   sync.Mutex
+	t    time.Time
+	dark atomic.Bool // in a dark wake
 }
 
 func (c *schedClock) now() time.Time  { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
@@ -142,9 +144,10 @@ func (c *schedClock) set(t time.Time) { c.mu.Lock(); c.t = t; c.mu.Unlock() }
 
 func useSchedClock(t *testing.T, start time.Time) *schedClock {
 	c := &schedClock{t: start}
-	old := schedNow
+	old, oldAwake := schedNow, schedAwake
 	schedNow = c.now
-	t.Cleanup(func() { schedNow = old })
+	schedAwake = func() bool { return !c.dark.Load() }
+	t.Cleanup(func() { schedNow, schedAwake = old, oldAwake })
 	return c
 }
 
@@ -324,7 +327,15 @@ func TestScheduledAgentRuns(t *testing.T) {
 
 	// Asleep through the 5th and 6th, awake the 6th at 18:00: one missed,
 	// one caught up (the same day).
+	// A dark wake in between (a few seconds for mail) starts nothing.
 	run3 := func() *pb.ScheduleRun { return schedOf(d, s.Id).Runs[0] }
+	nRuns := len(schedOf(d, s.Id).Runs)
+	clock.dark.Store(true)
+	tick(d, clock, day("06", "12:00"))
+	clock.dark.Store(false)
+	if got := schedOf(d, s.Id); len(got.Runs) != nRuns || got.NextRunUnixMs != day("05", "08:30").UnixMilli() {
+		t.Fatalf("ran in a dark wake: %v", got)
+	}
 	tick(d, clock, day("06", "18:00"))
 	got = schedOf(d, s.Id)
 	if r := got.Runs[0]; r.Status != pb.ScheduleRun_STATUS_RUNNING || !r.CatchUp || r.DueUnixMs != day("06", "08:30").UnixMilli() {

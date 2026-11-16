@@ -50,6 +50,11 @@ var schedTick = 15 * time.Second
 // schedNow is the clock (tests replace it).
 var schedNow = time.Now
 
+// schedAwake: the computer is fully awake (tests replace it). A Mac
+// asleep on battery wakes for seconds at a time to check mail and the
+// network (a dark wake), and sleeps again under a run started then.
+var schedAwake = fullyAwake
+
 // schedState is the daemon's scheduled tasks. Guarded by d.mu.
 type schedState struct {
 	list    map[string]*pb.Schedule // this computer's
@@ -125,12 +130,15 @@ func (d *Daemon) checkSchedules(now time.Time) {
 	if d.stopped {
 		return
 	}
+	// In a dark wake what's due waits for the computer to wake properly
+	// (it catches up then, as after any sleep).
+	awake := schedAwake()
 	for _, s := range d.sched.list {
 		changed := d.followRuns(s, now)
 		if d.refreshScheduleGroup(s) {
 			changed = true
 		}
-		if d.dueSchedule(s, now) {
+		if awake && d.dueSchedule(s, now) {
 			changed = true
 		}
 		if changed {
