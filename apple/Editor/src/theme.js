@@ -20,6 +20,10 @@ export function tint(c, f) {
   return `rgba(${x[0]}, ${x[1]}, ${x[2]}, ${f})`
 }
 
+// The highlight style themeExtension made last: Markdown's preview colours
+// its code blocks with it (preview.js).
+export let currentHighlight = null
+
 // The terminal theme's colours, as syntax colours: its palette carries the
 // theme's character into code.
 export function themeExtension(config) {
@@ -81,5 +85,6 @@ export function themeExtension(config) {
     { tag: [t.meta, t.processingInstruction, t.annotation], color: pal(13, pal(5, "#c678dd")) },
     { tag: [t.punctuation, t.separator, t.bracket], color: mix(th.foreground, th.background, 0.2) },
   ])
+  currentHighlight = style
   return [base, syntaxHighlighting(style)]
 }

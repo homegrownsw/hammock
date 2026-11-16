@@ -269,6 +269,12 @@ struct HammockApp: App {
                 if HammockTool.editor.on {
                     Toggle("Wrap Lines in Editors", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
                 }
+                if let id = focused, focusedIsEditor, EditorUI.shared.canPreview(model, id) {
+                    Button(EditorUI.shared.previewLabel(model, id)) { EditorUI.shared.togglePreview(model, id) }
+                        .keyboardShortcut(Keys.editorTogglePreview)
+                    Button(EditorUI.shared.previewLabel(model, id, split: true)) { EditorUI.shared.togglePreview(model, id, split: true) }
+                        .keyboardShortcut(Keys.editorToggleSplitPreview)
+                }
                 if model.hasLinkedComputers {
                     Menu("Show Computer") {
                         // ⌃⌘0 and ⌃⌘1…9: free in macOS (its desktops are ⌃1…9) and here (tabs are ⌘1…9).

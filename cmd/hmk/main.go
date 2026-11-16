@@ -120,14 +120,18 @@ Usage:
                                             a log pane's entries, filtered (TEXT: words, or /regex/)
   hmk log clear PANE                       forget a log pane's entries
   hmk edit FILE[:LINE[:COL][-LINE[:COL]]] [--to LINE[:COL]] [--down | --tab | --split PANE | --group G] [--large]
+           [--view source|preview|split]
                                             open a file in an editor pane beside this one (--tab: in a new
                                             tab; outside a pane, always), with those lines selected; one in
-                                            the tab already on that file is reused; --large: over 5 MB
+                                            the tab already on that file is reused; --large: over 5 MB;
+                                            --view: Markdown rendered (preview), or beside its source (split)
   hmk edit --read PANE [--numbers] [--lines FROM-TO] [--json]
                                             an editor pane's text, unsaved edits included (--json: with its
                                             file, whether it's saved, and the selection)
   hmk edit --select PANE LINE[:COL][-LINE[:COL]]
                                             select lines in an editor pane (LINE alone: all of it) and scroll to them
+  hmk edit --set-view PANE source|preview|split
+                                            show an editor pane's file as its source, rendered (Markdown), or both
   hmk diff [REV | FROM..TO | FROM...TO] [--uncommitted | --branch [--base B] [--with-uncommitted]]
            [--repo DIR] [--split | --unified] [--ignore-whitespace] [--beside PANE [--down] | --group G]
            [--name NAME] [--wait]

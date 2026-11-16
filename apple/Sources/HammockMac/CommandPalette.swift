@@ -497,6 +497,10 @@ struct CommandPalette: View {
                 action("editor-find-previous", "Find Previous", "chevron.up", .indigo, "search again back", keys: Keys.findPrevious) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "findPrevious") }
                 }
+                if ui.canPreview(model, focused) {
+                    action("editor-preview", ui.previewLabel(model, focused), "doc.richtext", .indigo, "markdown rendered read view source", keys: Keys.editorTogglePreview) { ui.togglePreview(model, focused) }
+                    action("editor-split-preview", ui.previewLabel(model, focused, split: true), "rectangle.split.2x1", .indigo, "markdown rendered side by side split view", keys: Keys.editorToggleSplitPreview) { ui.togglePreview(model, focused, split: true) }
+                }
                 if !p.editor.path.isEmpty {
                     action("editor-diff", "Compare with File on Disk", "arrow.left.arrow.right", .indigo, "diff changes conflict merge", keys: Keys.editorShowDiff) { ui.showDiff(model, focused) }
                     action("editor-reload", "Reload from Disk", "arrow.clockwise", .indigo, "revert discard changes file", keys: Keys.editorReload) { ui.reload(model, focused) }

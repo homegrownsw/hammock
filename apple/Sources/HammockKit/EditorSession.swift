@@ -180,6 +180,14 @@ public final class EditorSession {
         Task { try? await command { $0.action = .setLanguage; $0.language = name } }
     }
 
+    /// Whether the file can be shown rendered (Markdown's preview).
+    public var canPreview: Bool { languageName == "Markdown" }
+
+    /// Shows the file as its source, rendered, or both.
+    public func setView(_ view: EditorInfo.View) {
+        Task { try? await command { $0.action = .setView; $0.view = view } }
+    }
+
     private func command(_ build: @escaping (inout Hammock_V1_EditorCommand) -> Void) async throws {
         guard let conn = model?.connection else { throw EditorError.offline }
         _ = try await conn.call { m in
@@ -257,9 +265,9 @@ extension AppModel {
     /// tab in the Group, or a split beside a pane. Errors come back to show
     /// (a large file's start with "large file:", to ask and retry with large).
     public func openEditor(_ path: String, groupID: String?, splitPane: String? = nil, direction: SplitDirection = .horizontal,
-                           replacePane: String? = nil, line: Int = 0, large: Bool = false) async throws {
+                           replacePane: String? = nil, line: Int = 0, large: Bool = false, view: EditorInfo.View = .source) async throws {
         guard let conn = connection else { throw EditorError.offline }
-        let open = Hammock_V1_EditorOpen.with { $0.path = path; $0.line = UInt32(max(line, 0)); $0.large = large }
+        let open = Hammock_V1_EditorOpen.with { $0.path = path; $0.line = UInt32(max(line, 0)); $0.large = large; $0.view = view }
         if let replacePane {
             let r = try await conn.call { $0.replacePane = .with { $0.paneID = replacePane; $0.spec = .with { $0.editor = open } } }
             focus(r.created.id)

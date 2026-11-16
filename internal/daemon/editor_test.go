@@ -345,3 +345,57 @@ func TestEditorConfigAndIndent(t *testing.T) {
 		t.Fatalf("detected: %d %s", w, s)
 	}
 }
+
+func TestEditorViewIsEachPanes(t *testing.T) {
+	dir := shortDir(t)
+	folder := t.TempDir()
+	os.WriteFile(filepath.Join(folder, "doc.md"), []byte("# Doc\n"), 0o644)
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	groupID := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Ed"}}}))
+	d.mu.Lock()
+	d.groups[groupID].Folder = folder
+	d.mu.Unlock()
+	tabID := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: groupID, Pane: &pb.PaneSpec{Editor: &pb.EditorOpen{Path: "doc.md", View: pb.EditorInfo_VIEW_PREVIEW}},
+	}}}))
+	d.mu.Lock()
+	first := d.tabs[tabID].FocusedPaneId
+	d.mu.Unlock()
+	// A second pane on the same file shares its buffer, not how it's shown.
+	second := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{
+		SplitPaneId: first, Spec: &pb.PaneSpec{Editor: &pb.EditorOpen{Path: "doc.md"}},
+	}}}))
+	if v := paneEditor(d, first).GetView(); v != pb.EditorInfo_VIEW_PREVIEW {
+		t.Fatalf("first opened as %v", v)
+	}
+	if v := paneEditor(d, second).GetView(); v != pb.EditorInfo_VIEW_SOURCE {
+		t.Fatalf("second opened as %v", v)
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_EditorCommand{EditorCommand: &pb.EditorCommand{
+		PaneId: second, Action: pb.EditorCommand_ACTION_SET_VIEW, View: pb.EditorInfo_VIEW_SPLIT,
+	}}})
+	if a, b := paneEditor(d, first).GetView(), paneEditor(d, second).GetView(); a != pb.EditorInfo_VIEW_PREVIEW || b != pb.EditorInfo_VIEW_SPLIT {
+		t.Fatalf("after setting the second's: %v, %v", a, b)
+	}
+	if _, err := editorCall(c, &pb.ClientMessage{Msg: &pb.ClientMessage_EditorCommand{EditorCommand: &pb.EditorCommand{
+		PaneId: second, Action: pb.EditorCommand_ACTION_SET_VIEW, View: 99,
+	}}}); err == nil {
+		t.Fatal("an unknown view was taken")
+	}
+	// Reopening a closed pane shows it as it was.
+	d.mu.Lock()
+	spec, _ := reopenSpec(d.panes[first].snapshotInfo())
+	d.mu.Unlock()
+	if spec.GetEditor().GetView() != pb.EditorInfo_VIEW_PREVIEW {
+		t.Fatalf("reopen spec %v", spec)
+	}
+	c.Close()
+	d.Shutdown()
+	waitUnlocked(t, dir)
+
+	d = startDaemon(t, dir)
+	if a, b := paneEditor(d, first).GetView(), paneEditor(d, second).GetView(); a != pb.EditorInfo_VIEW_PREVIEW || b != pb.EditorInfo_VIEW_SPLIT {
+		t.Fatalf("after restart: %v, %v", a, b)
+	}
+}

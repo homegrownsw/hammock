@@ -30,6 +30,7 @@ type editorOpenArgs struct {
 	SplitPane string `json:"split_pane_id,omitempty" jsonschema:"pane to split; defaults to your own pane"`
 	NewTab    string `json:"new_tab_name,omitempty" jsonschema:"if set, open it in a new tab with this name instead of splitting"`
 	Large     bool   `json:"large,omitempty" jsonschema:"open a file over 5 MB (refused without it)"`
+	View      string `json:"view,omitempty" jsonschema:"'preview' shows Markdown rendered, for the user to read or review; 'split' shows its source with the rendered page beside it; 'source' (default) the text"`
 }
 
 type editorReadArgs struct {
@@ -99,7 +100,8 @@ func (s *mcpServer) registerEditor(server *mcp.Server) {
 	addTool(s, server, &mcp.Tool{
 		Name: "editor_open",
 		Description: "Show the user a file in an editor pane beside yours (or in a new tab), with a line or range selected and scrolled into view: " +
-			"use it to point them at code you're talking about. An editor pane in that tab already on the file is reused. " +
+			"use it to point them at code you're talking about, or with view 'preview' to show them a Markdown document rendered (a plan, notes, docs) to read. " +
+			"An editor pane in that tab already on the file is reused. " +
 			"It's for showing, not editing: change files on disk as you usually do, and the pane reloads them (or, if the user has unsaved edits there, offers to). " +
 			"Returns the pane id.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a editorOpenArgs) (*mcp.CallToolResult, any, error) {
@@ -107,6 +109,10 @@ func (s *mcpServer) registerEditor(server *mcp.Server) {
 			return nil, nil, errors.New("path is needed")
 		}
 		r, err := mcpRange(a.Line, a.Column, a.EndLine, a.EndColumn)
+		if err != nil {
+			return nil, nil, err
+		}
+		view, err := parseView(a.View)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -123,7 +129,7 @@ func (s *mcpServer) registerEditor(server *mcp.Server) {
 		}
 		path := resolvePath(a.Path, cwd)
 		spec := &pb.PaneSpec{Cwd: cwd, CreatedByPaneId: s.self, Editor: &pb.EditorOpen{
-			Path: path, Line: r.Line, Column: r.Col, EndLine: r.EndLine, EndColumn: r.EndCol, Large: a.Large, Cwd: cwd,
+			Path: path, Line: r.Line, Column: r.Col, EndLine: r.EndLine, EndColumn: r.EndCol, Large: a.Large, Cwd: cwd, View: view,
 		}}
 		largeErr := func(err error) error { return largeFileError(err, "large: true") }
 		if a.NewTab != "" {
@@ -147,6 +153,11 @@ func (s *mcpServer) registerEditor(server *mcp.Server) {
 			return nil, nil, fmt.Errorf("no pane %s", target)
 		}
 		if id := w.editorInTab(tp.TabId, path); id != "" && s.inScope(w, id) {
+			if a.View != "" {
+				if _, err := s.call(ctx, viewMsg(id, view)); err != nil {
+					return nil, nil, err
+				}
+			}
 			if r.Line > 0 {
 				if _, err := s.call(ctx, selectMsg(id, r)); err != nil {
 					return nil, nil, err

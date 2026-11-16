@@ -7004,6 +7004,9 @@ public nonisolated struct Hammock_V1_EditorOpen: Sendable {
   /// what a relative path is relative to (else the Group's folder)
   public var cwd: String = String()
 
+  /// how the pane shows it (Markdown: rendered, or both side by side)
+  public var view: Hammock_V1_EditorInfo.View = .source
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -7047,7 +7050,56 @@ public nonisolated struct Hammock_V1_EditorInfo: Sendable {
   /// "tabs", "spaces" or ""
   public var indent: String = String()
 
+  public var view: Hammock_V1_EditorInfo.View = .source
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  /// How this pane shows the file (each pane its own, though they share the
+  /// buffer). Clients render only what they can (Markdown), else the source;
+  /// one too narrow for both side by side shows the preview.
+  public nonisolated enum View: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+
+    /// the text, to edit
+    case source // = 0
+
+    /// rendered
+    case preview // = 1
+
+    /// the text and, beside it, rendered
+    case split // = 2
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .source
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .source
+      case 1: self = .preview
+      case 2: self = .split
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .source: return 0
+      case .preview: return 1
+      case .split: return 2
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_EditorInfo.View] = [
+      .source,
+      .preview,
+      .split,
+    ]
+
+  }
 
   public init() {}
 }
@@ -7144,6 +7196,9 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
 
   public var endColumn: UInt32 = 0
 
+  /// ACTION_SET_VIEW
+  public var view: Hammock_V1_EditorInfo.View = .source
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -7169,6 +7224,9 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
     /// folder, or absolute), unsaved edits and all; refused over another
     /// file. Still unsaved (untitled): Save As.
     case rename // = 6
+
+    /// show the pane as view (source, preview, both)
+    case setView // = 7
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -7184,6 +7242,7 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
       case 4: self = .setLanguage
       case 5: self = .select
       case 6: self = .rename
+      case 7: self = .setView
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -7197,6 +7256,7 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
       case .setLanguage: return 4
       case .select: return 5
       case .rename: return 6
+      case .setView: return 7
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -7210,6 +7270,7 @@ public nonisolated struct Hammock_V1_EditorCommand: Sendable {
       .setLanguage,
       .select,
       .rename,
+      .setView,
     ]
 
   }
@@ -22159,7 +22220,7 @@ nonisolated extension Hammock_V1_SimulatorResult: SwiftProtobuf.Message, SwiftPr
 
 nonisolated extension Hammock_V1_EditorOpen: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EditorOpen"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}line\0\u{1}column\0\u{3}end_line\0\u{3}end_column\0\u{1}large\0\u{1}cwd\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}line\0\u{1}column\0\u{3}end_line\0\u{3}end_column\0\u{1}large\0\u{1}cwd\0\u{1}view\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -22174,6 +22235,7 @@ nonisolated extension Hammock_V1_EditorOpen: SwiftProtobuf.Message, SwiftProtobu
       case 5: try { try decoder.decodeSingularUInt32Field(value: &self.endColumn) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.large) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.cwd) }()
+      case 8: try { try decoder.decodeSingularEnumField(value: &self.view) }()
       default: break
       }
     }
@@ -22201,6 +22263,9 @@ nonisolated extension Hammock_V1_EditorOpen: SwiftProtobuf.Message, SwiftProtobu
     if !self.cwd.isEmpty {
       try visitor.visitSingularStringField(value: self.cwd, fieldNumber: 7)
     }
+    if self.view != .source {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -22212,6 +22277,7 @@ nonisolated extension Hammock_V1_EditorOpen: SwiftProtobuf.Message, SwiftProtobu
     if lhs.endColumn != rhs.endColumn {return false}
     if lhs.large != rhs.large {return false}
     if lhs.cwd != rhs.cwd {return false}
+    if lhs.view != rhs.view {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -22219,7 +22285,7 @@ nonisolated extension Hammock_V1_EditorOpen: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_EditorInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EditorInfo"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}name\0\u{1}dirty\0\u{1}conflict\0\u{1}missing\0\u{3}read_only\0\u{1}language\0\u{1}folder\0\u{3}tab_width\0\u{1}indent\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}name\0\u{1}dirty\0\u{1}conflict\0\u{1}missing\0\u{3}read_only\0\u{1}language\0\u{1}folder\0\u{3}tab_width\0\u{1}indent\0\u{1}view\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -22237,6 +22303,7 @@ nonisolated extension Hammock_V1_EditorInfo: SwiftProtobuf.Message, SwiftProtobu
       case 8: try { try decoder.decodeSingularStringField(value: &self.folder) }()
       case 9: try { try decoder.decodeSingularUInt32Field(value: &self.tabWidth) }()
       case 10: try { try decoder.decodeSingularStringField(value: &self.indent) }()
+      case 11: try { try decoder.decodeSingularEnumField(value: &self.view) }()
       default: break
       }
     }
@@ -22273,6 +22340,9 @@ nonisolated extension Hammock_V1_EditorInfo: SwiftProtobuf.Message, SwiftProtobu
     if !self.indent.isEmpty {
       try visitor.visitSingularStringField(value: self.indent, fieldNumber: 10)
     }
+    if self.view != .source {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 11)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -22287,9 +22357,14 @@ nonisolated extension Hammock_V1_EditorInfo: SwiftProtobuf.Message, SwiftProtobu
     if lhs.folder != rhs.folder {return false}
     if lhs.tabWidth != rhs.tabWidth {return false}
     if lhs.indent != rhs.indent {return false}
+    if lhs.view != rhs.view {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
+}
+
+nonisolated extension Hammock_V1_EditorInfo.View: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0VIEW_SOURCE\0\u{1}VIEW_PREVIEW\0\u{1}VIEW_SPLIT\0")
 }
 
 nonisolated extension Hammock_V1_EditorPush: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
@@ -22444,7 +22519,7 @@ nonisolated extension Hammock_V1_EditorSelect: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_EditorCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".EditorCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}action\0\u{1}path\0\u{1}force\0\u{1}language\0\u{1}line\0\u{1}column\0\u{3}end_line\0\u{3}end_column\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}action\0\u{1}path\0\u{1}force\0\u{1}language\0\u{1}line\0\u{1}column\0\u{3}end_line\0\u{3}end_column\0\u{1}view\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -22461,6 +22536,7 @@ nonisolated extension Hammock_V1_EditorCommand: SwiftProtobuf.Message, SwiftProt
       case 7: try { try decoder.decodeSingularUInt32Field(value: &self.column) }()
       case 8: try { try decoder.decodeSingularUInt32Field(value: &self.endLine) }()
       case 9: try { try decoder.decodeSingularUInt32Field(value: &self.endColumn) }()
+      case 10: try { try decoder.decodeSingularEnumField(value: &self.view) }()
       default: break
       }
     }
@@ -22494,6 +22570,9 @@ nonisolated extension Hammock_V1_EditorCommand: SwiftProtobuf.Message, SwiftProt
     if self.endColumn != 0 {
       try visitor.visitSingularUInt32Field(value: self.endColumn, fieldNumber: 9)
     }
+    if self.view != .source {
+      try visitor.visitSingularEnumField(value: self.view, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -22507,13 +22586,14 @@ nonisolated extension Hammock_V1_EditorCommand: SwiftProtobuf.Message, SwiftProt
     if lhs.column != rhs.column {return false}
     if lhs.endLine != rhs.endLine {return false}
     if lhs.endColumn != rhs.endColumn {return false}
+    if lhs.view != rhs.view {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 nonisolated extension Hammock_V1_EditorCommand.Action: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SAVE\0\u{1}ACTION_RELOAD\0\u{1}ACTION_KEEP_MINE\0\u{1}ACTION_SET_LANGUAGE\0\u{1}ACTION_SELECT\0\u{1}ACTION_RENAME\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SAVE\0\u{1}ACTION_RELOAD\0\u{1}ACTION_KEEP_MINE\0\u{1}ACTION_SET_LANGUAGE\0\u{1}ACTION_SELECT\0\u{1}ACTION_RENAME\0\u{1}ACTION_SET_VIEW\0")
 }
 
 nonisolated extension Hammock_V1_ReadEditor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

@@ -137,6 +137,8 @@ enum Keys {
     static var editorGoToLine: KeyboardShortcut? { shortcut("editor_go_to_line") }
     static var editorReload: KeyboardShortcut? { shortcut("editor_reload") }
     static var editorShowDiff: KeyboardShortcut? { shortcut("editor_show_diff") }
+    static var editorTogglePreview: KeyboardShortcut? { shortcut("editor_toggle_preview") }
+    static var editorToggleSplitPreview: KeyboardShortcut? { shortcut("editor_toggle_split_preview") }
     static var editorRename: KeyboardShortcut? { shortcut("editor_rename") }
     static var editorRevealInFinder: KeyboardShortcut? { shortcut("editor_reveal_in_finder") }
     static var editorWrap: KeyboardShortcut? { shortcut("editor_wrap") }

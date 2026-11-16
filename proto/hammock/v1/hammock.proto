@@ -1823,6 +1823,7 @@ message EditorOpen {
   uint32 end_column = 5;
   bool large = 6;     // open a file over 5 MB anyway (refused without it)
   string cwd = 7;     // what a relative path is relative to (else the Group's folder)
+  EditorInfo.View view = 8;  // how the pane shows it (Markdown: rendered, or both side by side)
 }
 
 message EditorInfo {
@@ -1841,6 +1842,15 @@ message EditorInfo {
   // 0/empty: the user's settings decide).
   uint32 tab_width = 9;
   string indent = 10;   // "tabs", "spaces" or ""
+  // How this pane shows the file (each pane its own, though they share the
+  // buffer). Clients render only what they can (Markdown), else the source;
+  // one too narrow for both side by side shows the preview.
+  enum View {
+    VIEW_SOURCE = 0;   // the text, to edit
+    VIEW_PREVIEW = 1;  // rendered
+    VIEW_SPLIT = 2;    // the text and, beside it, rendered
+  }
+  View view = 11;
 }
 
 message EditorPush {
@@ -1875,6 +1885,7 @@ message EditorCommand {
     // folder, or absolute), unsaved edits and all; refused over another
     // file. Still unsaved (untitled): Save As.
     ACTION_RENAME = 6;
+    ACTION_SET_VIEW = 7;      // show the pane as view (source, preview, both)
   }
   string pane_id = 1;
   Action action = 2;
@@ -1887,6 +1898,7 @@ message EditorCommand {
   uint32 column = 7;
   uint32 end_line = 8;
   uint32 end_column = 9;
+  EditorInfo.View view = 10;  // ACTION_SET_VIEW
 }
 
 message ReadEditor {

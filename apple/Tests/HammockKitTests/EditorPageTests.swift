@@ -15,4 +15,13 @@ import Testing
         }
         #expect(!EditorBridge.isPage(nil, page))
     }
+
+    @Test func previewImagesAreLocalImagesOnly() {
+        #expect(LocalImageHandler.file(for: URL(string: "hammock-file://local/Users/me/app/docs/shot.png"))?.path == "/Users/me/app/docs/shot.png")
+        #expect(LocalImageHandler.file(for: URL(string: "hammock-file://local/Users/me/app/My%20Shot.JPG"))?.type == "image/jpeg")
+        for s in ["hammock-file://local/Users/me/.ssh/id_ed25519", "hammock-file://local/Users/me/app/../notes.txt",
+                  "hammock-file://elsewhere/Users/me/a.png", "file:///Users/me/a.png", "https://example.com/a.png"] {
+            #expect(LocalImageHandler.file(for: URL(string: s)) == nil, "\(s)")
+        }
+    }
 }

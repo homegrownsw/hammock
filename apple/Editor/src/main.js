@@ -29,7 +29,8 @@ import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } 
 import { collab, receiveUpdates, sendableUpdates, getSyncedVersion } from "@codemirror/collab"
 import { unifiedMergeView } from "@codemirror/merge"
 import { vim } from "@replit/codemirror-vim"
-import { themeExtension } from "./theme.js"
+import { themeExtension, currentHighlight } from "./theme.js"
+import { Preview } from "./preview.js"
 
 const post = (m) => {
   try { window.webkit.messageHandlers.hammock.postMessage(m) } catch (e) { console.log("hammock:", JSON.stringify(m)) }
@@ -42,7 +43,7 @@ let config = {
   font: { family: "Menlo", size: 13 },
   wrap: false, lineNumbers: true, tabWidth: 4, indent: "spaces", vim: false, readOnly: false, platform: "mac",
 }
-let info = { name: "", language: "", tabWidth: 0, indent: "", readOnly: false }
+let info = { name: "", language: "", tabWidth: 0, indent: "", readOnly: false, path: "", localFiles: false, view: "source" }
 
 const themeC = new Compartment(), wrapC = new Compartment(), numbersC = new Compartment(), tabC = new Compartment()
 const vimC = new Compartment(), langC = new Compartment(), readC = new Compartment(), diffC = new Compartment()
@@ -150,6 +151,7 @@ function clientID() {
 let selTimer = null
 function onUpdate(u) {
   if (u.docChanged) queueMicrotask(maybePush)
+  if (u.docChanged && shown !== "source") schedulePreview()
   if (u.selectionSet || u.docChanged) {
     clearTimeout(selTimer)
     selTimer = setTimeout(reportSelection, 150)
@@ -189,6 +191,7 @@ async function applyLanguage() {
   if (name === languageName && view.state.facet(EditorState.languageData).length) return
   languageName = name
   post({ type: "language", name })
+  applyView()
   if (!desc) { view.dispatch({ effects: langC.reconfigure([]) }); return }
   try {
     const support = await desc.load()
@@ -211,15 +214,30 @@ window.hammock = {
       numbersC.reconfigure(config.lineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [])]
     if (old.vim !== config.vim) effects.push(vimC.reconfigure(config.vim ? vim() : []))
     view.dispatch({ effects })
+    preview.setTheme(config, currentHighlight)
+    preview.setReadOnly(config.readOnly || info.readOnly)
+    document.body.classList.toggle("ios", config.platform === "ios")
   },
 
-  /** The file's name (for its language), a chosen language, indentation, read-only. */
+  /** The file's name (for its language) and path, a chosen language, indentation, read-only, how to show it. */
   setInfo(i) {
     const before = JSON.stringify(info)
     info = { ...info, ...i }
+    if (i.view !== undefined && i.view !== wanted) {
+      wanted = i.view || "source"
+      if (view) applyView()
+    }
     if (!view || JSON.stringify(info) === before) return
     view.dispatch({ effects: [tabC.reconfigure(tabExtension()), readC.reconfigure(readOnlyExt())] })
+    preview.setFile(info.path, info.localFiles)
+    preview.setReadOnly(config.readOnly || info.readOnly)
     applyLanguage()
+  },
+
+  /** How to show it: "source", "preview" or "split" (Markdown only; else the source). */
+  setView(v) {
+    wanted = v || "source"
+    applyView()
   },
 
   /** The buffer, afresh: on attaching, and after reconnecting. */
@@ -233,12 +251,18 @@ window.hammock = {
     const sel = m.selection ? EditorSelection.single(clamp(m.selection.anchor, m.text), clamp(m.selection.head, m.text)) : undefined
     const state = EditorState.create({ doc: m.text, selection: sel, extensions: extensions(m.version) })
     view = new EditorView({ state, parent })
+    view.scrollDOM.addEventListener("scroll", () => syncScroll("editor"))
     syncedDoc = state.doc
     languageName = "\u0000"
+    preview.setTheme(config, currentHighlight)
+    preview.setFile(info.path, info.localFiles)
+    preview.setReadOnly(config.readOnly || info.readOnly)
+    if (shown !== "source") preview.render(m.text)
     applyLanguage()
     if (m.git) view.dispatch({ effects: setGit.of(m.git) })
     if (m.selection) view.dispatch({ effects: EditorView.scrollIntoView(sel.main.head, { y: "center" }) })
     else if (keepScroll) view.scrollDOM.scrollTop = keepScroll
+    if (m.selection && shown !== "source") revealInPreview(sel.main)
     if (hadFocus || m.focus) view.focus()
     // Typed while offline (or as the daemon restarted): ours again, pushed.
     if (carried && !carried.empty && carried.length === view.state.doc.length) {
@@ -283,7 +307,13 @@ window.hammock = {
     const len = view.state.doc.length
     const sel = EditorSelection.single(Math.min(s.anchor, len), Math.min(s.head, len))
     view.dispatch({ selection: sel, effects: EditorView.scrollIntoView(sel.main, { y: "center" }) })
+    if (shown !== "source") revealInPreview(sel.main)
   },
+
+  /** What's showing: "source", "preview" or "split" (tests). */
+  shown() { return shown },
+  /** The preview (tests, and debugging in Web Inspector). */
+  preview() { return preview },
 
   /** The buffer against the file on disk, chunk by chunk (accept or reject each). */
   showDiff(diskText) {
@@ -359,6 +389,90 @@ function diffTo(a, b) {
 }
 
 function clamp(n, text) { return Math.max(0, Math.min(n || 0, text.length)) }
+
+// ---- Markdown's preview (preview.js) ----
+
+const preview = new Preview(document.getElementById("preview"), {
+  post,
+  // A task's checkbox: change its source line, as typing there would.
+  editLine(n, fn) {
+    if (!view || view.state.readOnly || n > view.state.doc.lines) return
+    const line = view.state.doc.line(n), text = fn(line.text)
+    if (text !== line.text) view.dispatch({ changes: { from: line.from, to: line.to, insert: text }, userEvent: "input" })
+  },
+})
+
+let wanted = "source" // what the pane asks for (the daemon's)
+let shown = "source"  // what shows: Markdown can preview; a narrow page shows one side
+
+const previewable = () => languageName === "Markdown"
+
+function applyView() {
+  let next = previewable() ? wanted : "source"
+  if (next === "split" && window.innerWidth < 560) next = "preview"
+  if (next === shown) return
+  const before = shown
+  // Where we are, to stay there.
+  const line = before === "preview" ? preview.topLine() : editorTopLine()
+  shown = next
+  document.body.dataset.view = shown
+  if (shown !== "source" && view) preview.render(view.state.doc.toString())
+  if (view) view.requestMeasure()
+  requestAnimationFrame(() => {
+    if (shown === "preview" || (shown === "split" && before === "source")) setScroll("preview", () => preview.scrollToLine(line))
+    else if (before === "preview") setScroll("editor", () => scrollEditorToLine(line))
+  })
+}
+
+window.addEventListener("resize", () => applyView())
+
+let previewTimer = null
+function schedulePreview() {
+  if (previewTimer) return
+  previewTimer = setTimeout(() => {
+    previewTimer = null
+    if (view && shown !== "source") preview.render(view.state.doc.toString())
+  }, 120)
+}
+
+function revealInPreview(range) {
+  if (!view || range.empty) return
+  const doc = view.state.doc
+  preview.showLines(doc.lineAt(range.from).number, doc.lineAt(range.to).number)
+}
+
+// The editor's top line (1-based, fractional), and scrolling to one.
+function editorTopLine() {
+  if (!view) return 1
+  const s = view.scrollDOM
+  const h = s.getBoundingClientRect().top - view.documentTop
+  const block = view.lineBlockAtHeight(Math.max(0, h))
+  return view.state.doc.lineAt(block.from).number + Math.max(0, Math.min(1, (h - block.top) / Math.max(1, block.height)))
+}
+
+function scrollEditorToLine(line) {
+  if (!view) return
+  const doc = view.state.doc
+  const n = Math.max(1, Math.min(doc.lines, Math.floor(line)))
+  const block = view.lineBlockAt(doc.line(n).from)
+  const s = view.scrollDOM
+  const pad = view.documentTop - s.getBoundingClientRect().top + s.scrollTop
+  s.scrollTop = block.top + (line - n) * block.height + pad
+}
+
+// Split keeps the two sides together: the one scrolled leads.
+let setBy = { side: "", at: 0 }
+function setScroll(side, fn) {
+  setBy = { side, at: performance.now() }
+  fn()
+}
+function syncScroll(side) {
+  if (shown !== "split") return
+  if (setBy.side === side && performance.now() - setBy.at < 100) return
+  if (side === "editor") setScroll("preview", () => preview.scrollToLine(editorTopLine()))
+  else setScroll("editor", () => scrollEditorToLine(preview.topLine()))
+}
+document.getElementById("preview").addEventListener("scroll", () => syncScroll("preview"))
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => post({ type: "ready" }))
 else post({ type: "ready" })

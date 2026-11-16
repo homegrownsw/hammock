@@ -329,6 +329,8 @@ public enum Keybinds {
             .init("editor_go_to_line", "Go to Line…", "Editor", c("l"), "jump line number"),
             .init("editor_reload", "Reload from Disk", "Editor", nil, "revert discard changes file"),
             .init("editor_show_diff", "Compare with File on Disk", "Editor", nil, "diff changes conflict merge"),
+            .init("editor_toggle_preview", "Show Preview", "Editor", c("v", cs), "markdown rendered read view source"),
+            .init("editor_toggle_split_preview", "Show Preview Beside Source", "Editor", nil, "markdown rendered side by side split view"),
             .init("editor_rename", "Rename…", "Editor", nil, "file name move"),
             .init("editor_reveal_in_finder", "Reveal in Finder", "Editor", nil, "show file folder finder"),
         ]

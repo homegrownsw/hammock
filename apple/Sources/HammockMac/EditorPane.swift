@@ -209,6 +209,41 @@ final class EditorUI {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
+    // MARK: Markdown's preview
+
+    /// Whether the pane's file can be shown rendered, and by you.
+    func canPreview(_ model: AppModel, _ paneID: String?) -> Bool {
+        guard let id = paneID, model.group(ofPane: id)?.canDrive != false else { return false }
+        return session(model, id)?.canPreview == true
+    }
+
+    func view(_ model: AppModel, _ paneID: String) -> EditorInfo.View { model.panes[paneID]?.editor.view ?? .source }
+
+    /// Preview (or, split, the source and preview side by side), or back to the source.
+    func togglePreview(_ model: AppModel, _ paneID: String?, split: Bool = false) {
+        guard canPreview(model, paneID), let id = paneID, let s = session(model, id) else { return }
+        let want: EditorInfo.View = split ? .split : .preview
+        s.setView(view(model, id) == want ? .source : want)
+    }
+
+    func previewLabel(_ model: AppModel, _ paneID: String, split: Bool = false) -> String {
+        let v = view(model, paneID)
+        return split ? (v == .split ? "Hide Preview" : "Show Preview Beside Source") : (v == .preview ? "Show Source" : "Show Preview")
+    }
+
+    /// A link in the preview to another file: it opens beside, shown as this one is.
+    func openLink(_ model: AppModel, from paneID: String, _ path: String) {
+        let ext = (path as NSString).pathExtension.lowercased()
+        let view = ["md", "markdown", "mdown", "mkd"].contains(ext) ? self.view(model, paneID) : .source
+        Task {
+            do {
+                try await model.openEditor(path, groupID: nil, splitPane: paneID, view: view)
+            } catch {
+                Self.show("Couldn't open \((path as NSString).lastPathComponent)", error)
+            }
+        }
+    }
+
     func showDiff(_ model: AppModel, _ paneID: String) {
         guard let s = model.editorSession(paneID) else { return }
         if s.showingDiff { s.hideDiff(); return }
@@ -315,10 +350,15 @@ struct EditorPaneView: View {
                 .truncationMode(.head)
             Spacer(minLength: 6)
             if let session {
-                Text(session.selected > 0 ? "\(session.selected) selected" : "\(session.line):\(session.column)")
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                if info.view != .preview || !session.canPreview {
+                    Text(session.selected > 0 ? "\(session.selected) selected" : "\(session.line):\(session.column)")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
                 LanguageMenu(session: session, info: info, enabled: canEdit)
+                if session.canPreview {
+                    EditorViewPicker(view: info.view, enabled: canEdit) { session.setView($0) }
+                }
             }
             AvatarStack(model.presence(inPane: paneID), size: 18)
             if model.group(ofPane: paneID)?.canDrive == false {
@@ -366,6 +406,27 @@ struct EditorPaneView: View {
         } else if info.missing {
             EditorBanner(text: "\(info.name) isn't on disk. Saving creates it.", tint: .secondary) { EmptyView() }
         }
+    }
+}
+
+/// Source, Split or Preview, for a file that can be shown rendered (Markdown).
+struct EditorViewPicker: View {
+    let view: EditorInfo.View
+    let enabled: Bool
+    let set: (EditorInfo.View) -> Void
+
+    var body: some View {
+        Picker("View", selection: Binding(get: { view }, set: set)) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right").tooltip("Source").tag(EditorInfo.View.source)
+            Image(systemName: "rectangle.split.2x1").tooltip("Source and Preview").tag(EditorInfo.View.split)
+            Image(systemName: "doc.richtext").tooltip("Preview").tag(EditorInfo.View.preview)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.mini)
+        .fixedSize()
+        .disabled(!enabled)
+        .accessibilityLabel("View")
     }
 }
 
@@ -518,17 +579,21 @@ struct EditorWebViewRep: NSViewRepresentable {
         v.paneID = paneID
         bridge.onFocus = { [model, paneID] in model.viewFocused(paneID) }
         bridge.onSave = { [model, paneID] saveAs in EditorUI.shared.save(model, paneID, saveAs: saveAs) }
+        bridge.onOpenFile = { [model, paneID] path in EditorUI.shared.openLink(model, from: paneID, path) }
         bridge.configure(config)
-        bridge.setInfo(info, readOnly: readOnly)
+        bridge.setInfo(info, readOnly: readOnly, localFiles: localFiles)
         v.isFocusTarget = isFocused
         return v
     }
 
     func updateNSView(_ v: EditorWK, context: Context) {
         context.coordinator.bridge?.configure(config)
-        context.coordinator.bridge?.setInfo(info, readOnly: readOnly)
+        context.coordinator.bridge?.setInfo(info, readOnly: readOnly, localFiles: localFiles)
         v.isFocusTarget = isFocused
     }
+
+    /// The file is this Mac's (not a Group shared with you, or on another computer).
+    private var localFiles: Bool { model.group(ofPane: paneID).map { !model.isOnLinkedComputer($0) } ?? false }
 }
 
 /// The page's view: focus as the pane's, a Mac context menu, and the Edit
@@ -587,6 +652,11 @@ final class EditorWK: WKWebView {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         menu.addItem(ClosureItem("Find…", key: "find_in_page") { ui.run(model, self.paneID, "find") })
         menu.addItem(ClosureItem("Go to Line…", key: "editor_go_to_line") { ui.run(model, self.paneID, "gotoLine") })
+        if ui.canPreview(model, paneID) {
+            menu.addItem(.separator())
+            menu.addItem(ClosureItem(ui.previewLabel(model, paneID), key: "editor_toggle_preview") { ui.togglePreview(model, self.paneID) })
+            menu.addItem(ClosureItem(ui.previewLabel(model, paneID, split: true), key: "editor_toggle_split_preview") { ui.togglePreview(model, self.paneID, split: true) })
+        }
         menu.addItem(.separator())
         if canEdit {
             menu.addItem(ClosureItem("Save", key: "editor_save") { ui.save(model, self.paneID) })

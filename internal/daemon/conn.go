@@ -1664,8 +1664,12 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReviewCommand:
 		return true
 	case *pb.ClientMessage_EditorCommand:
-		// Saving, reloading; not an agent showing you a line.
-		return m.EditorCommand.Action != pb.EditorCommand_ACTION_SELECT && m.EditorCommand.Action != pb.EditorCommand_ACTION_SET_LANGUAGE
+		// Saving, reloading; not an agent showing you a line, or how it looks.
+		switch m.EditorCommand.Action {
+		case pb.EditorCommand_ACTION_SELECT, pb.EditorCommand_ACTION_SET_LANGUAGE, pb.EditorCommand_ACTION_SET_VIEW:
+			return false
+		}
+		return true
 	case *pb.ClientMessage_FloatPane:
 		// Floating, docking and minimising; not every move or raise.
 		switch m.FloatPane.Action {

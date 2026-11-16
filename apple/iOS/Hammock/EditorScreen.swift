@@ -50,7 +50,7 @@ struct EditorScreen: View {
             }
         }
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
-        .safeAreaInset(edge: .bottom) { if editable, let session { keyBar(session) } }
+        .safeAreaInset(edge: .bottom) { if editable, let session, !(session.canPreview && info.view != .source) { keyBar(session) } }
         .toolbar {
             if chrome { ToolbarItem(placement: .primaryAction) { menu } }
         }
@@ -110,6 +110,14 @@ struct EditorScreen: View {
                 Button("Save As…", systemImage: "square.and.arrow.down.on.square") { startSaveAs() }
                 if !info.path.isEmpty {
                     Button("Rename…", systemImage: "pencil") { renameTo = info.name; askingRename = true }
+                }
+            }
+            if let session, session.canPreview, canDrive {
+                // Split shows the preview on a phone (too narrow for both).
+                if info.view == .source {
+                    Button("Show Preview", systemImage: "doc.richtext") { session.setView(.preview) }
+                } else {
+                    Button("Show Source", systemImage: "chevron.left.forwardslash.chevron.right") { session.setView(.source) }
                 }
             }
             Button("Find", systemImage: "magnifyingglass") { session?.run("find") }

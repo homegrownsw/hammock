@@ -486,7 +486,7 @@ func reopenSpec(info *pb.Pane) (*pb.PaneSpec, func(*Daemon, *pane)) {
 		if info.Editor.GetPath() == "" {
 			return nil, nil // an untitled buffer goes with its pane
 		}
-		return &pb.PaneSpec{Editor: &pb.EditorOpen{Path: info.Editor.GetPath()}}, nil
+		return &pb.PaneSpec{Editor: &pb.EditorOpen{Path: info.Editor.GetPath(), View: info.Editor.GetView()}}, nil
 	case pb.PaneKind_PANE_KIND_DIFF:
 		if info.Diff.GetRepo() == "" {
 			return nil, nil

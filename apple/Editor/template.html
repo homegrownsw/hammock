@@ -6,13 +6,18 @@
 <!-- Hammock's editor pane. Built by `just editor-js` from apple/Editor: don't edit by hand. -->
 <style>
 html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1e1e1e; -webkit-text-size-adjust: 100%; }
-#editor { height: 100%; }
+#panes { display: flex; height: 100%; }
+#editor { height: 100%; flex: 1 1 0; min-width: 0; }
+#preview { height: 100%; flex: 1 1 0; min-width: 0; display: none; }
+body[data-view="preview"] #editor { display: none; }
+body[data-view="preview"] #preview, body[data-view="split"] #preview { display: block; }
+body[data-view="split"] #preview { box-shadow: inset 1px 0 rgba(128, 128, 128, 0.25); }
 .cm-editor { height: 100%; }
 .cm-editor.cm-focused { outline: none; }
 </style>
 </head>
-<body>
-<div id="editor"></div>
+<body data-view="source">
+<div id="panes"><div id="editor"></div><div id="preview"></div></div>
 <script>
 /*SCRIPT*/
 </script>

@@ -18,9 +18,10 @@ import (
 )
 
 const editUsage = `usage: hmk edit FILE[:LINE[:COL][-LINE[:COL]]] [--line LINE[:COL]] [--to LINE[:COL]]
-                [--down | --tab | --split PANE [--down] | --group G] [--large]
+                [--down | --tab | --split PANE [--down] | --group G] [--large] [--view source|preview|split]
        hmk edit --read PANE [--numbers] [--lines FROM-TO] [--json]
-       hmk edit --select PANE LINE[:COL][-LINE[:COL]]   (LINE alone: all of it)`
+       hmk edit --select PANE LINE[:COL][-LINE[:COL]]   (LINE alone: all of it)
+       hmk edit --set-view PANE source|preview|split`
 
 // wholeLine is an end column past any line's end: the daemon clamps it, so
 // an end line without a column selects all of that line.
@@ -134,6 +135,25 @@ func (w *world) editorPane(ref string) (*pb.Pane, error) {
 	return p, nil
 }
 
+// parseView reads source, preview or split (as hmk and editor_open take them).
+func parseView(s string) (pb.EditorInfo_View, error) {
+	switch strings.ToLower(s) {
+	case "source", "":
+		return pb.EditorInfo_VIEW_SOURCE, nil
+	case "preview":
+		return pb.EditorInfo_VIEW_PREVIEW, nil
+	case "split":
+		return pb.EditorInfo_VIEW_SPLIT, nil
+	}
+	return 0, fmt.Errorf("%q isn't a view: source, preview or split", s)
+}
+
+func viewMsg(paneID string, v pb.EditorInfo_View) *pb.ClientMessage {
+	return &pb.ClientMessage{Msg: &pb.ClientMessage_EditorCommand{EditorCommand: &pb.EditorCommand{
+		PaneId: paneID, Action: pb.EditorCommand_ACTION_SET_VIEW, View: v,
+	}}}
+}
+
 func selectMsg(paneID string, r textRange) *pb.ClientMessage {
 	return &pb.ClientMessage{Msg: &pb.ClientMessage_EditorCommand{EditorCommand: &pb.EditorCommand{
 		PaneId: paneID, Action: pb.EditorCommand_ACTION_SELECT, Line: r.Line, Column: r.Col, EndLine: r.EndLine, EndColumn: r.EndCol,
@@ -194,8 +214,24 @@ func runEdit(w *world, call caller, args []string) error {
 		_, err = call(selectMsg(p.Id, r))
 		return err
 	}
+	if hasFlag(args, "--set-view") {
+		ref, rest := flagValue(args, "--set-view"), dropFlag(args, "--set-view")
+		if ref == "" || len(rest) != 1 {
+			return usage
+		}
+		p, err := w.editorPane(ref)
+		if err != nil {
+			return err
+		}
+		v, err := parseView(rest[0])
+		if err != nil {
+			return err
+		}
+		_, err = call(viewMsg(p.Id, v))
+		return err
+	}
 
-	var file, line, to, split, group string
+	var file, line, to, split, group, viewName string
 	var down, newTab, large bool
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -216,6 +252,8 @@ func runEdit(w *world, call caller, args []string) error {
 			split, err = value()
 		case "--group":
 			group, err = value()
+		case "--view":
+			viewName, err = value()
 		case "--down":
 			down = true
 		case "--tab":
@@ -234,6 +272,10 @@ func runEdit(w *world, call caller, args []string) error {
 	}
 	if file == "" {
 		return usage
+	}
+	view, err := parseView(viewName)
+	if err != nil {
+		return err
 	}
 	path, r, err := splitPathPos(file, fileExists)
 	if err != nil {
@@ -271,6 +313,11 @@ func runEdit(w *world, call caller, args []string) error {
 	}
 	if beside != "" {
 		if id := w.editorInTab(w.panes[beside].TabId, path); id != "" {
+			if viewName != "" {
+				if _, err := call(viewMsg(id, view)); err != nil {
+					return err
+				}
+			}
 			if r.Line > 0 {
 				if _, err := call(selectMsg(id, r)); err != nil {
 					return err
@@ -281,7 +328,7 @@ func runEdit(w *world, call caller, args []string) error {
 		}
 	}
 	spec := &pb.PaneSpec{CreatedByPaneId: paneEnv("PANE_ID"), Editor: &pb.EditorOpen{
-		Path: path, Line: r.Line, Column: r.Col, EndLine: r.EndLine, EndColumn: r.EndCol, Large: large, Cwd: wd,
+		Path: path, Line: r.Line, Column: r.Col, EndLine: r.EndLine, EndColumn: r.EndCol, Large: large, Cwd: wd, View: view,
 	}}
 	var m *pb.ClientMessage
 	if beside != "" {

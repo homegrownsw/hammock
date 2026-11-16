@@ -130,3 +130,16 @@ func TestLineSlice(t *testing.T) {
 		t.Errorf("beyond: %q", s)
 	}
 }
+
+func TestParseView(t *testing.T) {
+	for s, want := range map[string]pb.EditorInfo_View{
+		"": pb.EditorInfo_VIEW_SOURCE, "source": pb.EditorInfo_VIEW_SOURCE, "Preview": pb.EditorInfo_VIEW_PREVIEW, "split": pb.EditorInfo_VIEW_SPLIT,
+	} {
+		if v, err := parseView(s); err != nil || v != want {
+			t.Errorf("parseView(%q) = %v, %v", s, v, err)
+		}
+	}
+	if _, err := parseView("rendered"); err == nil {
+		t.Error("parseView took rendered")
+	}
+}

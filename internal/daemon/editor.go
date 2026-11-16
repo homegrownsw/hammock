@@ -69,6 +69,7 @@ type editorBuf struct {
 	watchers map[*conn]map[string]bool      // attached clients → the panes they attached
 	sels     map[string]editorSel           // pane → its selection, as last reported
 	reveal   map[string]*pb.EditorSelection // pane → a selection to send when it's next attached
+	views    map[string]pb.EditorInfo_View  // pane → how it shows the file (source if absent)
 
 	head      []string // the file at git's HEAD (nil: not in git)
 	headKnown bool
@@ -222,7 +223,7 @@ func (h *editorHub) load(path string, large bool) (*editorBuf, error) {
 		return b, nil
 	}
 	h.mu.Unlock()
-	b := &editorBuf{key: path, path: path, panes: map[string]bool{}, watchers: map[*conn]map[string]bool{}, sels: map[string]editorSel{}, reveal: map[string]*pb.EditorSelection{}, mode: 0o644}
+	b := &editorBuf{key: path, path: path, panes: map[string]bool{}, watchers: map[*conn]map[string]bool{}, sels: map[string]editorSel{}, reveal: map[string]*pb.EditorSelection{}, views: map[string]pb.EditorInfo_View{}, mode: 0o644}
 	data, st, err := readTextFile(path, large)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -263,7 +264,7 @@ func writable(path string) bool {
 }
 
 func newUntitled(paneID string) *editorBuf {
-	return &editorBuf{key: "untitled:" + paneID, panes: map[string]bool{}, watchers: map[*conn]map[string]bool{}, sels: map[string]editorSel{}, reveal: map[string]*pb.EditorSelection{}, mode: 0o644}
+	return &editorBuf{key: "untitled:" + paneID, panes: map[string]bool{}, watchers: map[*conn]map[string]bool{}, sels: map[string]editorSel{}, reveal: map[string]*pb.EditorSelection{}, views: map[string]pb.EditorInfo_View{}, mode: 0o644}
 }
 
 func (b *editorBuf) name() string {
@@ -273,11 +274,12 @@ func (b *editorBuf) name() string {
 	return filepath.Base(b.path)
 }
 
-// info is the pane's EditorInfo. Callers hold h.mu.
-func (b *editorBuf) info(folder string) *pb.EditorInfo {
+// info is pane id's EditorInfo. Callers hold h.mu.
+func (b *editorBuf) info(folder, id string) *pb.EditorInfo {
 	return &pb.EditorInfo{
 		Path: b.path, Name: b.name(), Dirty: b.dirty, Conflict: b.conflict, Missing: b.missing && b.path != "",
 		ReadOnly: b.readOnly, Language: b.language, Folder: folder, TabWidth: b.tabWidth, Indent: b.indent,
+		View: b.views[id],
 	}
 }
 
@@ -316,6 +318,9 @@ func (d *Daemon) startEditor(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	h.bufs[b.key] = b
 	h.pane[id] = b.key
 	b.panes[id] = true
+	if open.View != pb.EditorInfo_VIEW_SOURCE {
+		b.views[id] = open.View
+	}
 	if open.Line > 0 {
 		s := b.text.Offset(int(open.Line), int(open.Column))
 		e := s
@@ -330,7 +335,7 @@ func (d *Daemon) startEditor(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	}
 	info := &pb.Pane{
 		Id: id, TabId: t.Id, Kind: pb.PaneKind_PANE_KIND_EDITOR, Title: b.name(),
-		Cwd: editorCwd(b.path, folder, spec.Cwd), CreatedByPaneId: spec.CreatedByPaneId, Editor: b.info(folder),
+		Cwd: editorCwd(b.path, folder, spec.Cwd), CreatedByPaneId: spec.CreatedByPaneId, Editor: b.info(folder, id),
 	}
 	h.mu.Unlock()
 	h.start()
@@ -373,7 +378,7 @@ func (h *editorHub) restore(p *pane, saved map[string][]byte) {
 			b, err = h.load(ed.Path, true)
 			if err != nil {
 				h.d.log.Warn("editor pane: couldn't reopen its file", "pane", info.Id, "path", ed.Path, "err", err)
-				b = &editorBuf{key: key, path: ed.Path, panes: map[string]bool{}, watchers: map[*conn]map[string]bool{}, sels: map[string]editorSel{}, reveal: map[string]*pb.EditorSelection{}, missing: true, mode: 0o644}
+				b = &editorBuf{key: key, path: ed.Path, panes: map[string]bool{}, watchers: map[*conn]map[string]bool{}, sels: map[string]editorSel{}, reveal: map[string]*pb.EditorSelection{}, views: map[string]pb.EditorInfo_View{}, missing: true, mode: 0o644}
 			}
 		} else {
 			b = newUntitled(info.Id)
@@ -405,7 +410,10 @@ func (h *editorHub) restore(p *pane, saved map[string][]byte) {
 	h.mu.Lock()
 	b.panes[info.Id] = true
 	h.pane[info.Id] = key
-	info.Editor = b.info(ed.Folder)
+	if ed.View != pb.EditorInfo_VIEW_SOURCE {
+		b.views[info.Id] = ed.View
+	}
+	info.Editor = b.info(ed.Folder, info.Id)
 	info.Title = b.name()
 	h.mu.Unlock()
 	h.start()
@@ -428,6 +436,7 @@ func (h *editorHub) paneClosed(id string) {
 	delete(b.panes, id)
 	delete(b.sels, id)
 	delete(b.reveal, id)
+	delete(b.views, id)
 	for c, ps := range b.watchers {
 		delete(ps, id)
 		if len(ps) == 0 {
@@ -615,7 +624,7 @@ func (h *editorHub) publish(b *editorBuf) {
 			folder = d.groupFolder(g)
 		}
 		h.mu.Lock()
-		ed := b.info(folder)
+		ed := b.info(folder, id)
 		name, path := b.name(), b.path
 		h.mu.Unlock()
 		p.mu.Lock()
@@ -682,6 +691,24 @@ func (h *editorHub) command(m *pb.EditorCommand, folder string, guest bool) erro
 			return err
 		}
 		b.conflict = false
+		h.mu.Unlock()
+		h.publish(b)
+		return nil
+	case pb.EditorCommand_ACTION_SET_VIEW:
+		if _, ok := pb.EditorInfo_View_name[int32(m.View)]; !ok {
+			return fmt.Errorf("no such view: %d", m.View)
+		}
+		h.mu.Lock()
+		b, err := h.buf(m.PaneId)
+		if err != nil {
+			h.mu.Unlock()
+			return err
+		}
+		if m.View == pb.EditorInfo_VIEW_SOURCE {
+			delete(b.views, m.PaneId)
+		} else {
+			b.views[m.PaneId] = m.View
+		}
 		h.mu.Unlock()
 		h.publish(b)
 		return nil

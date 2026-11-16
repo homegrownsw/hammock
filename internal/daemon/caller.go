@@ -605,9 +605,10 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 	case *pb.ClientMessage_ReadEditor:
 		return read(m.ReadEditor.PaneId)
 	case *pb.ClientMessage_EditorCommand:
-		// Agents point you at things (select and scroll to them); they
-		// change files on disk, never your buffer, nor save it.
-		if m.EditorCommand.Action == pb.EditorCommand_ACTION_SELECT {
+		// Agents point you at things (select and scroll to them, show a
+		// file rendered); they change files on disk, never your buffer,
+		// nor save it.
+		if a := m.EditorCommand.Action; a == pb.EditorCommand_ACTION_SELECT || a == pb.EditorCommand_ACTION_SET_VIEW {
 			return read(m.EditorCommand.PaneId)
 		}
 		return errAgentEditor
