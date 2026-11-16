@@ -717,7 +717,7 @@ private final class TerminalThumb {
         v.session = session
         session.observe(self) { [weak self] in self?.drawSoon() }
         view = v
-        draw()
+        draw(fade: false) // a pane already streaming: there from the first frame
     }
 
     func stop() {
@@ -737,18 +737,20 @@ private final class TerminalThumb {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
             guard let self else { return }
             self.soon = false
-            self.draw()
+            self.draw(fade: true)
         }
     }
 
-    private func draw() {
+    private func draw(fade: Bool) {
         guard let v = view, let s = v.session, s.ready, s.engine.cols > 0, s.engine.rows > 0 else { return }
         let size = CGSize(width: CGFloat(s.engine.cols) * v.cellWidth + v.padding * 2,
                           height: CGFloat(s.engine.rows) * v.cellHeight + v.padding * 2)
         if v.frame.size != size { v.setFrameSize(size) }
         guard let i = v.previewImage(scale: 1) else { return }
-        // The first fades in; later ones (new output) replace it at once.
-        if image == nil {
+        // The first, if it comes after the card shows (the pane's screen
+        // arriving from the daemon), fades in; otherwise it's simply there,
+        // and new output replaces it at once.
+        if fade, image == nil {
             withAnimation(.easeOut(duration: 0.15)) { image = i }
         } else {
             image = i
