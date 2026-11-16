@@ -509,7 +509,8 @@ private struct TabPreviewDetails: View {
                 if !here.isEmpty {
                     AvatarStack(here, size: 16)
                     let names = ListFormatter.localizedString(byJoining: here.map(\.1.name))
-                    Text(names).foregroundStyle(.primary) + Text(here.count == 1 ? " is here" : " are here").foregroundStyle(.secondary)
+                    let verb = Text(here.count == 1 ? " is here" : " are here").foregroundStyle(.secondary)
+                    Text("\(Text(names).foregroundStyle(.primary))\(verb)")
                 } else {
                     Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
                 }
