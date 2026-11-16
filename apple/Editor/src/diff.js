@@ -1097,9 +1097,41 @@ const agentName = () => config.target ? config.target.name : "the agent"
 const sideOf = (view) => view.dom.classList.contains("cm-merge-a") ? "old" : "new"
 const isUnified = (views) => views.length === 1
 
-// posFor is where a thread's widget goes in view (after its last line), or
-// -1 when its lines aren't there (shown above the file instead).
+// aboveOf: in unified, a thread on lines a change took out is drawn right
+// under them, above the lines that replaced them: the new line it's above
+// (0: it's drawn after its line, as others are).
+function aboveOf(view, t, unified) {
+  if (!unified || t.side !== "old") return 0
+  const orig = getOriginalDoc(view.state), found = getChunks(view.state), doc = view.state.doc
+  if (!orig || !found || t.endLine > orig.lines || t.endLine < 1) return 0
+  const at = orig.line(t.endLine).from
+  for (const c of found.chunks) {
+    if (at < c.fromA) break
+    if (at < c.toA) return doc.lineAt(Math.min(c.fromB, doc.length)).number
+  }
+  return 0
+}
+
+// isRemoved: an old side's line is one a change took out (not one that's
+// the same on both sides).
+function isRemoved(path, line) {
+  const m = mounted.get(path)
+  if (!m || !m.views.length || line < 1) return false
+  const view = m.views[0]
+  let orig
+  try { orig = m.views.length > 1 ? view.state.doc : getOriginalDoc(view.state) } catch { return false }
+  const found = getChunks(view.state)
+  if (!orig || !found || line > orig.lines) return false
+  const at = orig.line(line).from
+  return found.chunks.some((c) => at >= c.fromA && at < c.toA)
+}
+
+// posFor is where a thread's widget goes in view (after its last line, or
+// above the line it's above: aboveOf), or -1 when its lines aren't there
+// (shown above the file instead).
 function posFor(view, t, unified) {
+  const above = aboveOf(view, t, unified)
+  if (above) return view.state.doc.line(above).from
   const doc = view.state.doc
   if (t.side === sideOf(view)) {
     if (t.endLine > doc.lines || t.endLine < 1) return -1
@@ -1189,7 +1221,8 @@ function refreshThreads(path) {
       const pos = posFor(view, t, unified)
       if (pos < 0) continue
       placed.add(t.id)
-      marks.push(Decoration.widget({ widget: new ThreadWidget(t, threadKey(t)), block: true, side: 1 }).range(pos))
+      // (Above a line: after the lines taken out, side -1, before the line.)
+      marks.push(Decoration.widget({ widget: new ThreadWidget(t, threadKey(t)), block: true, side: aboveOf(view, t, unified) ? -0.6 : 1 }).range(pos))
     }
     const r = dragRange
     if (r && r.path === path && r.side === side) {
@@ -1201,7 +1234,7 @@ function refreshThreads(path) {
     const c = composer
     // Unified: a comment on lines taken out goes where their threads do.
     const oldPos = c && c.path === path && c.line > 0 && unified && c.side === "old" ? posFor(view, c, true) : -1
-    if (oldPos >= 0) marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(oldPos))
+    if (oldPos >= 0) marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: aboveOf(view, c, true) ? -0.4 : 2 }).range(oldPos))
     if (c && c.path === path && c.line > 0 && (c.side === side) && c.endLine <= view.state.doc.lines) {
       marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(view.state.doc.line(c.endLine).to))
       // (While dragging out another range, that's the one highlighted.)
@@ -1456,7 +1489,13 @@ const touch = () => config.platform === "ios" || matchMedia("(pointer: coarse)")
 
 function linesText(c) {
   if (c.line === 0) return "Commenting on the file"
-  const side = c.side === "old" ? " (before the change)" : ""
+  if (c.side === "old") {
+    const what = isRemoved(c.path, c.line) ? "removed " : ""
+    const old = what ? "" : " of the old version"
+    const hint = touch() ? " · tap another line number for more lines" : ""
+    return (c.endLine > c.line ? `Commenting on ${what}lines ${c.line}–${c.endLine}` : `Commenting on ${what}line ${c.line}`) + old + hint
+  }
+  const side = ""
   const hint = touch() ? " · tap another line number for more lines" : ""
   return (c.endLine > c.line ? `Commenting on lines ${c.line}–${c.endLine}` : `Commenting on line ${c.line}`) + side + hint
 }
@@ -1598,10 +1637,12 @@ function threadDOM(t) {
     return box
   }
   const head = el("div", "thead")
-  if (t.line > 0 && t.endLine > t.line) head.append(el("span", "tlines", `Lines ${t.line}–${t.endLine}`))
-  else if (t.line > 0) head.append(el("span", "tlines", `Line ${t.line}`))
+  // On the old side: lines taken out say so; others are the old version's.
+  const removed = t.side === "old" && isRemoved(t.path, t.line)
+  const lines = t.endLine > t.line ? `ines ${t.line}–${t.endLine}` : `ine ${t.line}`
+  if (t.line > 0) head.append(el("span", "tlines", removed ? "Removed l" + lines : "L" + lines))
   else head.append(el("span", "tlines", "The file"))
-  if (t.side === "old") head.append(el("span", "badge", "Before the change"))
+  if (t.side === "old" && !removed && t.line > 0) head.append(el("span", "badge", "Old version"))
   if (t.outdated) head.append(el("span", "badge outdated", "Outdated"))
   if (t.state === "addressed") head.append(el("span", "badge addressed", "Addressed"))
   if (t.state === "resolved") {
@@ -2002,10 +2043,15 @@ function deletedStop(elx) {
 
 // threadsAt is the threads drawn under line n of view, in order.
 function threadsAt(path, view, n, unified) {
-  return threadsOf(path).filter((t) => t.line > 0 && (() => {
+  return threadsOf(path).filter((t) => t.line > 0 && !aboveOf(view, t, unified) && (() => {
     const pos = posFor(view, t, unified)
     return pos >= 0 && view.state.doc.lineAt(pos).number === n
   })())
+}
+
+// threadsAbove is the threads drawn above line n (under the lines taken out there).
+function threadsAbove(path, view, n, unified) {
+  return threadsOf(path).filter((t) => t.line > 0 && aboveOf(view, t, unified) === n)
 }
 
 // topThreads is the threads drawn above path's code (on the file, or on lines it doesn't show).
@@ -2023,6 +2069,8 @@ function threadPlace(c) {
   if (topThreads(c.path).some((t) => t.id === c.thread)) return { top: true }
   const view = viewFor(m, c.side), t = review.threads.find((x) => x.id === c.thread)
   if (!t) return { top: true }
+  const above = aboveOf(view, t, isUnified(m.views))
+  if (above) return { above }
   const pos = posFor(view, t, isUnified(m.views))
   return { line: pos >= 0 ? view.state.doc.lineAt(pos).number : 1 }
 }
@@ -2051,7 +2099,11 @@ function stepIn(c, back) {
   }
   const before = (n, plain) => { // what's before line n: the lines taken out above it, the last thread of the line above, the line above, or the top
     const d = !plain && deletionAt(view, n)
-    if (d) return { path: c.path, kind: "line", side: "old", line: d[1], del: n }
+    if (d) {
+      const ab = threadsAbove(c.path, view, n, unified)
+      if (ab.length) return { path: c.path, kind: "thread", thread: ab[ab.length - 1].id, side }
+      return { path: c.path, kind: "line", side: "old", line: d[1], del: n }
+    }
     if (n <= 1) return tops.length ? tops[tops.length - 1] : { path: c.path, kind: "head" }
     const ts = threadsAt(c.path, view, n - 1, unified)
     if (ts.length) return { path: c.path, kind: "thread", thread: ts[ts.length - 1].id, side }
@@ -2065,13 +2117,26 @@ function stepIn(c, back) {
         const d = deletionAt(view, c.del)
         if (!d) return lineStop(c.path, view, Math.min(c.del, doc.lines))
         if (back) return c.line > d[0] ? { ...c, line: c.line - 1 } : before(c.del, true)
-        return c.line < d[1] ? { ...c, line: c.line + 1 } : lineStop(c.path, view, c.del)
+        if (c.line < d[1]) return { ...c, line: c.line + 1, anchor: undefined }
+        const ab = threadsAbove(c.path, view, c.del, unified)
+        return ab.length ? { path: c.path, kind: "thread", thread: ab[0].id, side } : lineStop(c.path, view, c.del)
       }
       return back ? before(c.line) : after(c.line)
     case "fold":
       return back ? before(c.from) : (c.to < doc.lines ? enter(c.path, view, c.to + 1) : null)
     case "thread": {
       const place = threadPlace(c)
+      if (place.above) {
+        // Between the lines taken out (above) and the line they're above (below).
+        const ab = threadsAbove(c.path, view, place.above, unified), i = ab.findIndex((t) => t.id === c.thread)
+        if (back) {
+          if (i > 0) return { path: c.path, kind: "thread", thread: ab[i - 1].id, side }
+          const d = deletionAt(view, place.above)
+          return d ? { path: c.path, kind: "line", side: "old", line: d[1], del: place.above } : before(place.above, true)
+        }
+        if (i >= 0 && i < ab.length - 1) return { path: c.path, kind: "thread", thread: ab[i + 1].id, side }
+        return lineStop(c.path, view, place.above)
+      }
       if (place.top) {
         const i = tops.findIndex((t) => t.thread === c.thread)
         if (back) return i > 0 ? tops[i - 1] : { path: c.path, kind: "head" }
@@ -2339,7 +2404,7 @@ async function goChange(back) {
   const files = shownFiles()
   let i = files.findIndex((f) => f.path === cur.path)
   // (On lines taken out: the change they're in starts at the line they're above.)
-  const here = cur.kind === "line" ? (cur.del || cur.line) : cur.kind === "fold" ? (back ? cur.from : cur.to) : cur.kind === "head" ? 0 : (threadPlace(cur).line || 0)
+  const here = cur.kind === "line" ? (cur.del || cur.line) : cur.kind === "fold" ? (back ? cur.from : cur.to) : cur.kind === "head" ? 0 : (threadPlace(cur).line || threadPlace(cur).above || 0)
   for (let k = 0; k < files.length && i >= 0 && i < files.length; k++, i += back ? -1 : 1) {
     const path = files[i].path
     if (!uiFor(files[i]).open) continue
@@ -2944,7 +3009,7 @@ document.addEventListener("mouseover", (e) => {
   const line = e.target.closest?.(".fbody .cm-deletedLine")
   if (!line || line.querySelector(".dplus") || !config.canDrive) return
   const b = el("span", "dplus", "+")
-  b.title = "Comment on this line (before the change)"
+  b.title = "Comment on this removed line"
   line.append(b)
 })
 
