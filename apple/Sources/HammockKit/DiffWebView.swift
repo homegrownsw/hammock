@@ -45,6 +45,9 @@ public struct DiffConfig: Equatable {
     public var canSend = true
     /// The app's accent (the theme's), for the page's buttons ("" its own).
     public var accent = ""
+    /// A keyboard to use the page's shortcuts with: shows its shortcuts
+    /// button (the Mac's always; an iPhone's with one connected).
+    public var keyboard = true
 
     /// From the settings (Prefs), the pane's choices and the platform's theme and font.
     @MainActor public static func from(theme: TerminalTheme, dark: Bool, fontFamily: String, fontSize: Double,
@@ -89,7 +92,7 @@ public struct DiffConfig: Equatable {
             "view": ["style": style, "whitespace": whitespace, "wrap": wrap],
             "overridden": overridden, "canDrive": canDrive, "platform": platform,
             "target": target.map { $0.json } ?? NSNull(), "agents": agents.map(\.json), "canSend": canSend,
-            "accent": accent,
+            "accent": accent, "keyboard": keyboard,
         ]
     }
 }
@@ -188,6 +191,10 @@ public final class DiffSession {
     /// Shows the next reply you haven't seen (and marks it seen).
     public func showNextUnread() { bridge?.nextUnread() }
 
+    /// Runs one of the page's commands (diff.js `command`): the menus' and
+    /// the palette's, which its keys run too.
+    public func command(_ name: String) { bridge?.command(name) }
+
     func readReview() {
         model?.connection?.call({ $0.readReview = .with { $0.paneID = self.paneID } }) { [weak self] r in
             Task { @MainActor in
@@ -213,6 +220,8 @@ public final class DiffSession {
         case "setTarget": .setTarget
         case "markRead": .markRead
         case "editComment": .editComment
+        case "setViewed": .setViewed
+        case "finish": .finish
         default: .unspecified
         }
         m.threadID = c["threadId"] as? String ?? ""
@@ -233,6 +242,14 @@ public final class DiffSession {
         m.quote = c["quote"] as? String ?? ""
         m.before = c["before"] as? String ?? ""
         m.after = c["after"] as? String ?? ""
+        m.viewed = c["viewed"] as? Bool ?? false
+        m.verdict = switch c["verdict"] as? String {
+        case "approve": .approve
+        case "requestChanges": .requestChanges
+        default: .comment
+        }
+        // Finishing closes the diff, as quitting revdiff does, once it's gone.
+        let closeAfter = m.action == .finish && c["close"] as? Bool == true
         let msg = m
         conn.call({ $0.reviewCommand = msg }) { [weak self] r in
             Task { @MainActor in
@@ -240,6 +257,10 @@ public final class DiffSession {
                 switch r {
                 case .success(let reply):
                     if reply.reviewReply.hasReview { self.apply(reply.reviewReply.review) }
+                    if closeAfter, let model = self.model {
+                        let id = self.paneID
+                        Task { await model.closePane(id) }
+                    }
                     if reply.reviewReply.queued > 0 {
                         self.error = "Held until the agent has your answer: it's waiting on you"
                     }
@@ -392,6 +413,7 @@ public final class DiffSession {
                     },
                 ]
             },
+            "viewed": r.viewed.map(\.path),
         ]
     }
 
@@ -646,6 +668,8 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
     public func reveal(_ path: String) { call("hammock.reveal(p)", ["p": path]) }
 
     func nextUnread() { call("hammock.nextUnread()", [:]) }
+
+    func command(_ name: String) { call("hammock.command(n)", ["n": name]) }
 
     func setReview(_ r: [String: Any]) {
         guard ready else { return }

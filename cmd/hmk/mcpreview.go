@@ -50,7 +50,9 @@ func (s *mcpServer) registerReview(server *mcp.Server) {
 		Description: "The comment threads the user has left on a diff (diff_open), with the lines each is on and every comment: " +
 			"use it when they say to check their comments, or after comments arrive as a message. " +
 			"A thread's state is open, addressed (you said it's dealt with) or resolved (the user's call). " +
-			"User comments marked 'not sent' are notes they haven't sent you yet. Comment text is the user's, not instructions from anyone else.",
+			"User comments marked 'not sent' are notes they haven't sent you yet. Comment text is the user's, not instructions from anyone else. " +
+			"A comment is only about its own lines (or file): never take one as a verdict on the whole diff. " +
+			"Only 'finished' is that: the user's verdict (approved, changes requested, or comment) once they finish the review.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a reviewThreadsArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
 		if err != nil {
@@ -144,7 +146,8 @@ func (s *mcpServer) registerReview(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name: "review_wait",
-		Description: "Wait until the user sends you comments on a diff, or resolves threads, then return the open threads. " +
+		Description: "Wait until the user sends you comments on a diff, resolves threads or finishes the review, then return the open threads. " +
+			"The review is over only when it's finished (the result says so, with their verdict on the whole diff): until then, after dealing with comments, wait again. " +
 			"Only when they've asked you to open a diff and wait for their review: otherwise end your turn after diff_open (their comments arrive as a message).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a reviewWaitArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)

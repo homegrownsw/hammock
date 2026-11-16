@@ -2755,6 +2755,31 @@ message Review {
   repeated ReviewThread threads = 7;
   int64 updated_unix_ms = 8;
   string pane_id = 9;         // the diff pane showing it ("" none is open)
+  // Files marked viewed, as they were then: one that changes after is
+  // unmarked (the diff's next refresh), as it needs looking at again.
+  repeated ReviewViewed viewed = 10;
+  // The last time you finished it (ACTION_FINISH): your verdict on the
+  // diff as a whole.
+  ReviewFinish finished = 11;
+}
+
+message ReviewFinish {
+  enum Verdict {
+    VERDICT_COMMENT = 0;          // comments, no verdict
+    VERDICT_APPROVE = 1;          // the diff as a whole is approved
+    VERDICT_REQUEST_CHANGES = 2;  // changes wanted before it's done
+  }
+  Verdict verdict = 1;
+  string summary = 2;  // Markdown
+  int64 unix_ms = 3;
+  // Queued: held, with the comments, until the agent can take it.
+  ReviewComment.Delivery delivery = 4;
+}
+
+message ReviewViewed {
+  string path = 1;
+  string digest = 2;  // of the file's two sides when marked
+  int64 unix_ms = 3;
 }
 
 message ReviewThread {
@@ -2818,6 +2843,8 @@ message ReviewCommand {
     ACTION_SET_TARGET = 6;     // target_pane_id: the agent comments go to
     ACTION_MARK_READ = 7;      // comment_ids (empty: all)
     ACTION_EDIT_COMMENT = 8;   // comment_id, text: yours, unsent
+    ACTION_SET_VIEWED = 9;     // path, viewed: mark a file viewed, or not (the owner's)
+    ACTION_FINISH = 10;        // verdict, text (a summary): send what's unsent, with your verdict (the owner's)
   }
   string pane_id = 1;    // the diff pane; or
   string review_id = 2;  // a review whose pane is closed
@@ -2839,6 +2866,8 @@ message ReviewCommand {
   string quote = 15;
   string before = 16;
   string after = 17;
+  bool viewed = 18;
+  ReviewFinish.Verdict verdict = 19;
 }
 
 message ReviewReply {

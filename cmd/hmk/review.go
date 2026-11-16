@@ -24,16 +24,25 @@ const reviewUsage = `usage: hmk review [list] [--all] [--json]          the revi
        hmk review reply THREAD TEXT...
        hmk review address THREAD [NOTE...]           mark a thread addressed (the user resolves it)
        hmk review comment [REVIEW|PANE] FILE:LINE[-LINE] TEXT...   start a thread on the diff's new side
-       hmk review wait [REVIEW|PANE] [--timeout SECONDS]           until the user sends comments or resolves threads`
+       hmk review wait [REVIEW|PANE] [--timeout SECONDS]           until the user sends comments, resolves threads or finishes the review`
 
 // reviewView is a review as agents and hmk review --json see it.
 type reviewView struct {
-	ID      string       `json:"review_id"`
-	Title   string       `json:"title"`
-	Repo    string       `json:"repo"`
-	PaneID  string       `json:"pane_id,omitempty"` // the diff pane showing it ("" closed)
-	Target  string       `json:"comments_go_to,omitempty"`
-	Threads []threadView `json:"threads"`
+	ID     string `json:"review_id"`
+	Title  string `json:"title"`
+	Repo   string `json:"repo"`
+	PaneID string `json:"pane_id,omitempty"` // the diff pane showing it ("" closed)
+	Target string `json:"comments_go_to,omitempty"`
+	// The user's verdict on the diff as a whole, once they've finished
+	// reviewing it. A comment on a thread is only ever about its own lines.
+	Finished *finishView  `json:"finished,omitempty"`
+	Threads  []threadView `json:"threads"`
+}
+
+type finishView struct {
+	Verdict string `json:"verdict"` // approved, changes requested, or comment (neither)
+	Summary string `json:"summary,omitempty"`
+	At      string `json:"at"`
 }
 
 type threadView struct {
@@ -59,6 +68,9 @@ type commentView struct {
 
 func viewReview(rv *pb.Review, all bool) reviewView {
 	v := reviewView{ID: rv.Id, Title: rv.Title, Repo: rv.Repo, PaneID: rv.PaneId, Target: rv.TargetPaneId, Threads: []threadView{}}
+	if f := rv.Finished; f != nil && f.Delivery == pb.ReviewComment_DELIVERY_SENT {
+		v.Finished = &finishView{Verdict: verdictWords(f.Verdict), Summary: f.Summary, At: time.UnixMilli(f.UnixMs).Format(time.RFC3339)}
+	}
 	for _, t := range rv.Threads {
 		if !all && t.State == pb.ReviewThread_STATE_RESOLVED {
 			continue
@@ -85,6 +97,16 @@ func viewReview(rv *pb.Review, all bool) reviewView {
 		v.Threads = append(v.Threads, tv)
 	}
 	return v
+}
+
+func verdictWords(v pb.ReviewFinish_Verdict) string {
+	switch v {
+	case pb.ReviewFinish_VERDICT_APPROVE:
+		return "approved"
+	case pb.ReviewFinish_VERDICT_REQUEST_CHANGES:
+		return "changes requested"
+	}
+	return "comment"
 }
 
 func listReviews(call caller) ([]*pb.Review, error) {
@@ -192,7 +214,7 @@ func replyThread(call caller, threadID, text string, addressed bool) (*pb.Review
 }
 
 // waitReview waits until the user sends comments on rv, resolves (or
-// reopens) a thread, or closes its pane: what changed.
+// reopens) a thread, finishes the review, or closes its pane: what changed.
 func waitReview(ctx context.Context, call caller, rv *pb.Review) (string, *pb.Review, error) {
 	seen := map[string]bool{}
 	states := map[string]pb.ReviewThread_State{}
@@ -207,6 +229,11 @@ func waitReview(ctx context.Context, call caller, rv *pb.Review) (string, *pb.Re
 		}
 	}
 	note(rv)
+	finished := rv.GetFinished().GetUnixMs()
+	if rv.GetFinished().GetDelivery() != pb.ReviewComment_DELIVERY_SENT {
+		finished = 0
+	}
+	lastID := rv.Id
 	read := &pb.ReadReview{PaneId: rv.PaneId}
 	if rv.PaneId == "" {
 		read = &pb.ReadReview{ReviewId: rv.Id}
@@ -218,10 +245,19 @@ func waitReview(ctx context.Context, call caller, rv *pb.Review) (string, *pb.Re
 		case <-time.After(time.Second):
 		}
 		r, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_ReadReview{ReadReview: read}})
+		if err != nil && lastID != "" && read.ReviewId == "" {
+			// Its pane closed (finishing closes it): the review's kept.
+			read = &pb.ReadReview{ReviewId: lastID}
+			r, err = call(&pb.ClientMessage{Msg: &pb.ClientMessage_ReadReview{ReadReview: read}})
+		}
 		if err != nil {
 			return "the diff was closed", rv, nil
 		}
 		now := r.GetReview()
+		lastID = cmpOr(now.GetId(), lastID)
+		if f := now.GetFinished(); f != nil && f.Delivery == pb.ReviewComment_DELIVERY_SENT && f.UnixMs != finished {
+			return "the user finished the review: " + verdictWords(f.Verdict), now, nil
+		}
 		var sent []string
 		resolved := 0
 		for _, t := range now.Threads {
@@ -376,6 +412,14 @@ func printReview(v reviewView) {
 		where = "in " + v.PaneID
 	}
 	fmt.Printf("%s  %s  (%s, %s)\n", v.ID, v.Title, v.Repo, where)
+	if f := v.Finished; f != nil {
+		fmt.Printf("  finished: %s\n", f.Verdict)
+		for _, l := range strings.Split(f.Summary, "\n") {
+			if l != "" {
+				fmt.Printf("    %s\n", l)
+			}
+		}
+	}
 	if len(v.Threads) == 0 {
 		fmt.Println("  no open threads")
 	}

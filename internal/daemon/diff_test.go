@@ -304,6 +304,182 @@ func TestReviewThreads(t *testing.T) {
 	}
 }
 
+func TestReviewViewed(t *testing.T) {
+	dir := shortDir(t)
+	repo := t.TempDir()
+	if r, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = r
+	}
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "b.txt"), []byte("two\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("ONE\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "b.txt"), []byte("TWO\n"), 0o644)
+
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	open := func() string {
+		tab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+			GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo}},
+		}}}))
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.tabs[tab].FocusedPaneId
+	}
+	paneID := open()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: paneID}}})
+	setViewed := func(pane, path string, on bool) (*pb.Review, error) {
+		r, err := editorCall(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReviewCommand{ReviewCommand: &pb.ReviewCommand{
+			PaneId: pane, Action: pb.ReviewCommand_ACTION_SET_VIEWED, Path: path, Viewed: on}}})
+		return r.GetReviewReply().GetReview(), err
+	}
+	viewed := func(rv *pb.Review) (out []string) {
+		for _, v := range rv.GetViewed() {
+			out = append(out, v.Path)
+		}
+		slices.Sort(out)
+		return
+	}
+	readViewed := func(pane string) []string {
+		return viewed(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadReview{ReadReview: &pb.ReadReview{PaneId: pane}}}).GetReview())
+	}
+
+	// Marking a file viewed makes the diff's review.
+	rv, err := setViewed(paneID, "a.txt", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := viewed(rv); !slices.Equal(got, []string{"a.txt"}) || rv.Id == "" {
+		t.Fatalf("viewed %v (review %q)", got, rv.Id)
+	}
+	setViewed(paneID, "b.txt", true)
+	if _, err := setViewed(paneID, "nope.txt", true); err == nil {
+		t.Error("marked a file not in the diff")
+	}
+	// Agents and guests don't mark files.
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_SET_VIEWED, Path: "a.txt"},
+		reviewer{name: "claude", agent: true}, g); err == nil {
+		t.Error("an agent marked a file viewed")
+	}
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_SET_VIEWED, Path: "a.txt"},
+		reviewer{name: "Sam", guest: true}, g); err == nil {
+		t.Error("a guest marked a file viewed")
+	}
+
+	// b changes again: it needs looking at, so it's unmarked; a stays.
+	os.WriteFile(filepath.Join(repo, "b.txt"), []byte("TWO!\n"), 0o644)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: paneID, Refresh: true}}})
+	if got := readViewed(paneID); !slices.Equal(got, []string{"a.txt"}) {
+		t.Fatalf("after b changed: %v", got)
+	}
+
+	// With no threads, viewed files keep the review when the pane closes,
+	// and the same diff opened again has them.
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: paneID}}})
+	pane2 := open()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: pane2}}})
+	if got := readViewed(pane2); !slices.Equal(got, []string{"a.txt"}) {
+		t.Fatalf("reopened: %v", got)
+	}
+	// Unmarked, and closed with nothing else: it goes.
+	rv, _ = setViewed(pane2, "a.txt", false)
+	if len(rv.GetViewed()) != 0 {
+		t.Fatalf("unmarked: %v", viewed(rv))
+	}
+	id := rv.Id
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: pane2}}})
+	if d.diffs.reviewGroup(id) != "" {
+		t.Fatal("an empty review outlived its pane")
+	}
+}
+
+func TestReviewFinish(t *testing.T) {
+	dir := shortDir(t)
+	repo := t.TempDir()
+	if r, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = r
+	}
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\nTWO\n"), 0o644)
+
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	agentTab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Cwd: repo}}}}))
+	d.mu.Lock()
+	agentPane := d.tabs[agentTab].FocusedPaneId
+	ap := d.panes[agentPane]
+	d.mu.Unlock()
+	// Waiting on you: what's sent is held, so nothing is typed in the test.
+	ap.mu.Lock()
+	ap.info.Agent = &pb.Agent{Harness: "claude", State: pb.AgentState_AGENT_STATE_NEEDS_INPUT}
+	ap.mu.Unlock()
+	tab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo, TargetPaneId: agentPane}},
+	}}}))
+	d.mu.Lock()
+	paneID := d.tabs[tab].FocusedPaneId
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: paneID}}})
+	cmd := func(m *pb.ReviewCommand) (*pb.ReviewReply, error) {
+		m.PaneId = paneID
+		r, err := editorCall(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReviewCommand{ReviewCommand: m}})
+		return r.GetReviewReply(), err
+	}
+
+	// A comment on its own says it's only about its lines.
+	r, err := cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_ADD_THREAD, Path: "a.txt", Line: 2, Text: "This change is fine"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := reviewMessage(r.Review, []string{r.CommentId})
+	if !strings.Contains(msg, "not the diff as a whole") || !strings.Contains(msg, "nothing has been approved") {
+		t.Errorf("a comment's message doesn't say what it's about:\n%s", msg)
+	}
+
+	// Guests and agents don't finish it.
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_FINISH}, reviewer{name: "Sam", guest: true}, g); err == nil {
+		t.Error("a guest finished the review")
+	}
+	if _, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_FINISH}, reviewer{name: "claude", agent: true}, g); err == nil {
+		t.Error("an agent finished the review")
+	}
+
+	// Finished, approved: the comment goes with it (held: the agent's asking).
+	r, err = cmd(&pb.ReviewCommand{Action: pb.ReviewCommand_ACTION_FINISH, Verdict: pb.ReviewFinish_VERDICT_APPROVE, Text: "Ship it."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := r.Review.GetFinished()
+	if f.GetVerdict() != pb.ReviewFinish_VERDICT_APPROVE || f.Summary != "Ship it." || f.Delivery != pb.ReviewComment_DELIVERY_QUEUED || r.Queued != 1 {
+		t.Fatalf("finished %v, queued %d", f, r.Queued)
+	}
+	msg = reviewMessage(r.Review, []string{r.Review.Threads[0].Comments[0].Id})
+	for _, want := range []string{"finished reviewing", "Approved", "approve the diff as a whole", "Ship it.", "a.txt:2", "This change is fine"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("finish message lacks %q:\n%s", want, msg)
+		}
+	}
+	// Nothing left to send but the verdict: still a message.
+	if msg := reviewMessage(r.Review, nil); !strings.Contains(msg, "Approved") || strings.Contains(msg, "Answer in each thread") {
+		t.Errorf("verdict alone:\n%s", msg)
+	}
+
+	// Closed, its review stays, finished (what review_wait reads after).
+	id := r.Review.Id
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: paneID}}})
+	rv := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadReview{ReadReview: &pb.ReadReview{ReviewId: id}}}).GetReview()
+	if rv.GetFinished().GetVerdict() != pb.ReviewFinish_VERDICT_APPROVE {
+		t.Fatalf("after closing: %v", rv)
+	}
+}
+
 func TestReviewSharedAndHeld(t *testing.T) {
 	dir := shortDir(t)
 	repo := t.TempDir()

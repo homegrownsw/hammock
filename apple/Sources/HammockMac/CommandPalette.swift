@@ -479,6 +479,13 @@ struct CommandPalette: View {
             }
             action("split-editor", "Split Right with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorRight) { EditorUI.shared.split(model, focused, .horizontal) }
             action("split-editor-down", "Split Down with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorDown) { EditorUI.shared.split(model, focused, .vertical) }
+            if let p = model.panes[focused], p.isDiff {
+                for c in DiffUI.commands {
+                    action("diff-" + c.id, c.title, c.symbol, .orange, (Keybinds.byID["diff_" + c.id]?.keywords ?? "") + " diff", keys: Keys.diff(c.id)) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { DiffUI.run(model, focused, c) }
+                    }
+                }
+            }
             if let p = model.panes[focused], p.isEditor {
                 let ui = EditorUI.shared
                 action("editor-save", "Save", "square.and.arrow.down", .indigo, "write file disk", keys: Keys.editorSave) { ui.save(model, focused) }

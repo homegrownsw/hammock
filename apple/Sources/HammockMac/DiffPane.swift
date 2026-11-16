@@ -38,6 +38,32 @@ enum DiffUI {
         return nil
     }
 
+    /// The diff's commands for the menus and palette: the keybind id (after
+    /// `diff_`), its title, an icon, and the page's command (diff.js) it runs.
+    struct Command { let id, title, symbol, page: String }
+    static let commands: [Command] = [
+        .init(id: "finish_review", title: "Finish Review…", symbol: "checkmark.seal", page: "finish"),
+        .init(id: "mark_viewed", title: "Mark File as Viewed", symbol: "checkmark.square", page: "viewed"),
+        .init(id: "next_file", title: "Next File", symbol: "chevron.down.2", page: "nextFile"),
+        .init(id: "previous_file", title: "Previous File", symbol: "chevron.up.2", page: "previousFile"),
+        .init(id: "next_change", title: "Next Change", symbol: "chevron.down", page: "nextChange"),
+        .init(id: "previous_change", title: "Previous Change", symbol: "chevron.up", page: "previousChange"),
+        .init(id: "next_thread", title: "Next Comment", symbol: "text.bubble", page: "nextThread"),
+        .init(id: "previous_thread", title: "Previous Comment", symbol: "text.bubble", page: "previousThread"),
+        .init(id: "comment_file", title: "Comment on File", symbol: "plus.bubble", page: "fileComment"),
+        .init(id: "send_comments", title: "Send Comments", symbol: "paperplane", page: "send"),
+        .init(id: "whole_file", title: "Show Whole File or Changes", symbol: "doc.plaintext", page: "wholeFile"),
+        .init(id: "toggle_split", title: "Split or Unified", symbol: "rectangle.split.2x1", page: "split"),
+        .init(id: "toggle_wrap", title: "Wrap Long Lines", symbol: "text.word.spacing", page: "wrap"),
+        .init(id: "hide_viewed", title: "Hide Viewed Files", symbol: "eye.slash", page: "hideViewed"),
+        .init(id: "toggle_files", title: "Show or Hide Files", symbol: "sidebar.left", page: "files"),
+        .init(id: "keyboard_shortcuts", title: "Diff Keyboard Shortcuts", symbol: "keyboard", page: "help"),
+    ]
+
+    static func run(_ model: AppModel, _ paneID: String, _ c: Command) {
+        model.diffSession(paneID)?.command(c.page)
+    }
+
     static var uncommitted: Hammock_V1_DiffSource { .with { $0.kind = .uncommitted } }
     static var branch: Hammock_V1_DiffSource { .with { $0.kind = .branch; $0.withUncommitted = true } }
     static var lastCommit: Hammock_V1_DiffSource { .with { $0.kind = .commit; $0.rev = "HEAD" } }
@@ -115,7 +141,7 @@ struct DiffPaneView: View {
                         .background(Color.themeAccent, in: Capsule())
                 }
                 .buttonStyle(.plain)
-                .help("Go to the next reply you haven't seen (N in the diff)")
+                .help("Go to the next reply you haven't seen (u in the diff)")
             }
             if info.queued > 0 {
                 Text("\(info.queued) waiting to send")
@@ -244,6 +270,11 @@ final class DiffWK: WKWebView {
         while menu.items.first?.isSeparatorItem == true { menu.removeItem(at: 0) }
         guard let model, let s = bridge?.session else { return }
         if !menu.items.isEmpty { menu.addItem(.separator()) }
+        for id in ["finish_review", "mark_viewed", "keyboard_shortcuts"] {
+            guard let c = DiffUI.commands.first(where: { $0.id == id }) else { continue }
+            menu.addItem(ClosureItem(c.title, key: "diff_" + c.id) { s.command(c.page) })
+        }
+        menu.addItem(.separator())
         menu.addItem(ClosureItem("Refresh", key: nil) { s.load(refresh: true) })
         if let p = model.panes[paneID], p.isDiff, !p.diff.repo.isEmpty {
             menu.addItem(ClosureItem("Copy Repository Path", key: nil) {

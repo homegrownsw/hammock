@@ -271,6 +271,13 @@ struct HammockApp: App {
                 if HammockTool.editor.on {
                     Toggle("Wrap Lines in Editors", isOn: Prefs.shared.boolBinding(.editorWrap)).keyboardShortcut(Keys.editorWrap)
                 }
+                if let id = focused, focusedIsDiff {
+                    Menu("Diff") {
+                        ForEach(DiffUI.commands, id: \.id) { c in
+                            Button(c.title) { DiffUI.run(model, id, c) }.keyboardShortcut(Keys.diff(c.id))
+                        }
+                    }
+                }
                 if let id = focused, focusedIsEditor, EditorUI.shared.canPreview(model, id) {
                     Button(EditorUI.shared.previewLabel(model, id)) { EditorUI.shared.togglePreview(model, id) }
                         .keyboardShortcut(Keys.editorTogglePreview)
@@ -512,6 +519,8 @@ struct HammockApp: App {
     private var focusedIsLog: Bool { focused.flatMap { model.panes[$0] }?.isLog == true }
 
     private var focusedIsEditor: Bool { focused.flatMap { model.panes[$0] }?.isEditor == true }
+
+    private var focusedIsDiff: Bool { focused.flatMap { model.panes[$0] }?.isDiff == true }
 
     /// The focused pane is a page on this Mac (find in page works there).
     private var focusedIsBrowser: Bool {

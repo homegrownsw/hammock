@@ -289,6 +289,7 @@ func (h *diffHub) compute(s *diffState, refresh bool) error {
 		// Its threads, found again in the diff as it is now.
 		defer func() {
 			h.reanchor(s)
+			h.recheckViewed(s)
 			h.publish(s)
 		}()
 	}

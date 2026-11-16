@@ -858,8 +858,36 @@ enum CloseGuard {
     nonisolated static let pref = Pref("confirm-close-busy-agent", defaults: "warnCloseBusyAgent", true)
     static var warnBusy: Bool { Prefs.shared.bool(pref) }
 
-    static func confirm(_ model: AppModel, panes ids: [String], title: String? = nil, button: String = "Close", always: String? = nil, then: @escaping () -> Void) {
+    static func confirm(_ model: AppModel, panes ids: [String], title: String? = nil, button: String = "Close", always: String? = nil,
+                        askUnsent: Bool = true, then: @escaping () -> Void) {
         let panes = ids.compactMap { model.panes[$0] }
+        // A review with comments not yet sent: finish it, or close (they're
+        // kept with the review, for the same diff opened again).
+        let unsent = panes.filter { p in
+            p.isDiff && p.diff.unsent > 0 && model.group(ofPane: p.id).map { !$0.isRemote || $0.myRole == .owner } ?? true
+        }
+        if askUnsent, !unsent.isEmpty {
+            let n = unsent.reduce(0) { $0 + Int($1.diff.unsent) }
+            let a = NSAlert()
+            a.messageText = "Finish your review?"
+            a.informativeText = (n == 1 ? "A comment hasn't" : "\(n) comments haven't") + " been sent to the agent. "
+                + "Closing keeps \(n == 1 ? "it" : "them"): open the same diff again to send \(n == 1 ? "it" : "them")."
+            if unsent.count == 1 { a.addButton(withTitle: "Finish Review…") }
+            a.addButton(withTitle: "Close Anyway")
+            a.addButton(withTitle: "Cancel")
+            let done: (NSApplication.ModalResponse) -> Void = { r in
+                let finish = unsent.count == 1 && r == .alertFirstButtonReturn
+                let close = unsent.count == 1 ? r == .alertSecondButtonReturn : r == .alertFirstButtonReturn
+                if finish {
+                    model.viewFocused(unsent[0].id)
+                    model.diffSession(unsent[0].id)?.command("finish")
+                } else if close {
+                    confirm(model, panes: ids, title: title, button: button, always: always, askUnsent: false, then: then)
+                }
+            }
+            if let w = WorkspaceWindow.current { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
+            return
+        }
         // Files with unsaved edits, in their last pane (others share the buffer).
         let closing = Set(ids)
         let unsaved = panes.filter { p in

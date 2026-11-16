@@ -142,6 +142,9 @@ enum Keys {
     static var editorRename: KeyboardShortcut? { shortcut("editor_rename") }
     static var editorRevealInFinder: KeyboardShortcut? { shortcut("editor_reveal_in_finder") }
     static var editorWrap: KeyboardShortcut? { shortcut("editor_wrap") }
+
+    // Diff (only with one focused)
+    static func diff(_ id: String) -> KeyboardShortcut? { shortcut("diff_" + id) }
     static var reviewChanges: KeyboardShortcut? { shortcut("review_changes") }
     static var simShutDown: KeyboardShortcut? { shortcut("sim_shut_down") }
     static var simScreenshotFile: KeyboardShortcut? { shortcut("sim_screenshot_file") }

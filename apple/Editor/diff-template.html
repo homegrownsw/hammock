@@ -223,6 +223,63 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .fbody .cm-editor.cm-focused { outline: none; }
 .fbody .cm-mergeView { overflow: visible; }
 
+/* The keyboard's cursor: a line, a file's header, a thread, a fold; the file list's row. */
+.fbody .cm-line.cm-kbCursor { background-image: linear-gradient(color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 16%, transparent)) !important;
+  box-shadow: inset 2px 0 0 var(--accent); }
+.fbody .cm-gutterElement.cm-kbCursorGutter { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--fg); }
+.fhead.kbfocus { box-shadow: inset 0 0 0 2px var(--accent); }
+.thread.kbfocus { box-shadow: 0 0 0 2px var(--accent); }
+.fbody .cm-collapsedLines.kbfocus { box-shadow: inset 0 0 0 2px var(--accent); color: var(--fg); }
+.row.kbsel { box-shadow: inset 0 0 0 2px var(--accent); }
+body.nothreads .wwrap:has(> .thread), body.nothreads .fthreads > .thread { display: none; }
+
+/* Viewed files: a tick in the list, the header's checkbox, how many in the bar. */
+.row.viewed .name, .file.viewed .fhead .path { opacity: 0.6; }
+.vmark { display: inline-flex; color: var(--accent); vertical-align: middle; }
+.vmark .icon { width: 11px; height: 11px; }
+.fhead .vbox { gap: 5px; color: var(--dim); }
+.fhead .vbox .box { width: 14px; height: 14px; border: 1.5px solid var(--faint); border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; }
+.fhead .vbox .box .icon { width: 11px; height: 11px; visibility: hidden; }
+.fhead .vbox.on { color: var(--fg); }
+.fhead .vbox.on .box { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.fhead .vbox.on .box .icon { visibility: visible; }
+.viewedcount { display: inline-flex; align-items: center; gap: 3px; color: var(--dim); white-space: nowrap; }
+.viewedcount .icon { width: 12px; height: 12px; }
+.viewedcount.all { color: var(--accent); }
+#bar .btn.finish { border: 1px solid var(--line); font-weight: 600; }
+.pop .item .key { margin-left: auto; color: var(--faint); font-size: 11px; }
+.pop .item.on .key { margin-left: auto; margin-right: 6px; }
+.pop .item.on .key + * { margin-left: 0; }
+
+/* Sheets: finishing the review, the shortcuts. */
+#sheet { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.35); display: none; align-items: center; justify-content: center; padding: 12px; }
+#sheet.on { display: flex; }
+.sheetbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; width: min(520px, 100%);
+  max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4); font: 13px/1.45 var(--ui); outline: none; }
+.sheetbox h3 { margin: 0 0 4px; font-size: 15px; }
+.sheetbox .dim { color: var(--dim); margin: 0 0 10px; }
+.verdicts { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.verdict { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; }
+.verdict:hover { background: var(--hover); }
+.verdict input { margin-top: 3px; accent-color: var(--accent); }
+.verdict > span { display: flex; flex-direction: column; }
+.verdict .sub { color: var(--dim); font-size: 12px; }
+.sheetbox textarea { width: 100%; resize: vertical; font: 13px/1.45 var(--ui); color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 70px; }
+.sheetbox textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -1px; }
+.sheetbox .crow .btn { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); }
+.sheetbox .crow .btn.primary { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+.sheetbox .btn[disabled] { opacity: 0.45; }
+.closeit { display: flex; align-items: center; gap: 6px; color: var(--dim); }
+.sheetbox.help { width: min(860px, 100%); }
+.helphead { display: flex; align-items: center; margin-bottom: 6px; }
+.helphead .btn { height: 24px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); }
+.helpcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 20px; }
+.helpgroup h4 { margin: 10px 0 4px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.helprow { display: flex; gap: 10px; padding: 3px 0; font-size: 12px; }
+.helprow .keys { flex: none; width: 112px; font: 600 12px var(--ui); color: var(--fg); }
+.helprow > span:last-child { color: var(--dim); }
+
 /* Narrow (an iPhone, a thin split): the tree floats over the files. */
 @media (max-width: 360px) { #totals { display: none; } }
 @media (max-width: 640px) {
@@ -236,6 +293,8 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
   #totals .files { display: none; }
   #target { max-width: 120px; }
   #files { padding: 8px 6px 40vh; }
+  .viewedcount { display: none; }
+  .fhead .vbox { font-size: 0; gap: 0; }
   .fhead .seg { display: none; }
 }
 </style>
@@ -254,6 +313,7 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 <div class="pop" id="sourcePop"></div>
 <div class="pop" id="settingsPop"></div>
 <div class="pop" id="targetPop"></div>
+<div id="sheet"></div>
 <script>
 /*SCRIPT*/
 </script>

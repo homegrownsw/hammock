@@ -1,3 +1,4 @@
+import GameController
 import HammockKit
 import SwiftUI
 import WebKit
@@ -16,6 +17,8 @@ struct DiffScreen: View {
     private var session: DiffSession? { lease?.session }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.phoneTheme) private var theme
+    /// A keyboard connected: the page's shortcuts work, so its button shows.
+    @State private var keyboard = GCKeyboard.coalesced != nil
 
     private var pane: Pane? { model.panes[paneID] }
     private var info: DiffInfo { pane?.diff ?? DiffInfo() }
@@ -41,6 +44,8 @@ struct DiffScreen: View {
         // (No menu of its own: the pane's is there, and Refresh is in the page.)
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
         .onAppear { if lease == nil { lease = model.leaseDiff(paneID) } }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in keyboard = true }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect)) { _ in keyboard = GCKeyboard.coalesced != nil }
     }
 
     private var config: DiffConfig {
@@ -50,8 +55,10 @@ struct DiffScreen: View {
         // One column here, whatever the pane's choice: split needs width.
         var view = info.view
         view.style = "unified"
-        return .from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: TerminalPrefs.family, fontSize: 12, view: view,
-                     canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend, accent: theme.accent)
+        var c = DiffConfig.from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: TerminalPrefs.family, fontSize: 12, view: view,
+                                canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend, accent: theme.accent)
+        c.keyboard = keyboard
+        return c
     }
 }
 

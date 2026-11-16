@@ -30,6 +30,7 @@ let config = {
   // choose from, whether you can send (not a guest), and the Send tick.
   target: null, agents: [], canSend: true,
   accent: "", // the app's (the theme's); "" the palette's blue
+  keyboard: true, // a keyboard to use the shortcuts with: their button shows
 }
 let info = { title: "", stale: false, error: "", generation: 0, files: 0, added: 0, removed: 0, source: { kind: "uncommitted" }, branch: "" }
 let content = null // { generation, files, commits, branches, defaultBranch }
@@ -43,6 +44,11 @@ const fileUI = new Map()
 let treeHidden = false
 const closedDirs = new Set()
 let activePath = ""
+// Files you've marked viewed (the review's: the daemon unmarks one that
+// changes), and whether they're left out of the list (yours, this Mac's).
+let viewedSet = new Set()
+let hideViewed = false
+try { hideViewed = localStorage.getItem("diff.hideViewed") === "1" } catch {}
 
 const $ = (id) => document.getElementById(id)
 const el = (tag, cls, text) => {
@@ -59,6 +65,8 @@ const svg = {
   compare: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="3.5" r="1.5"/><circle cx="12" cy="12.5" r="1.5"/><path d="M4 5v4a3 3 0 0 0 3 3h3.5M12 11V7a3 3 0 0 0-3-3H5.5"/></svg>',
   comment: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 3.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H7l-3 2.5v-2.5h-.5a1 1 0 0 1-1-1z"/></svg>',
   open: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg>',
+  keyboard: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4" width="13" height="8.5" rx="1.5"/><path d="M4 6.75h.01M6.67 6.75h.01M9.33 6.75h.01M12 6.75h.01M4.5 9.75h7"/></svg>',
+  check: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
 }
 
 // ---- helpers ----
@@ -88,8 +96,8 @@ function ago(unix) {
 function uiFor(f) {
   let u = fileUI.get(f.path)
   if (!u) {
-    // Lockfiles, generated files and huge diffs start closed.
-    u = { open: !(f.generated || big(f)), whole: false }
+    // Lockfiles, generated files, huge diffs and ones you've viewed start closed.
+    u = { open: !(f.generated || big(f) || viewedSet.has(f.path)), whole: false }
     fileUI.set(f.path, u)
   }
   return u
@@ -264,7 +272,7 @@ function renderBar() {
   bar.textContent = ""
   const tree = el("button", "btn")
   tree.innerHTML = svg.sidebar
-  tree.title = treeHidden ? "Show the files" : "Hide the files"
+  tree.title = (treeHidden ? "Show the files" : "Hide the files") + " (⇧T)"
   tree.onclick = () => { treeHidden = !treeHidden; renderTreeVisibility(); renderBar() }
   bar.append(tree)
 
@@ -277,7 +285,7 @@ function renderBar() {
   const ch = el("span", "chev")
   ch.innerHTML = svg.chevron
   src.append(ch)
-  src.title = `${sourceLabel()}: choose what to compare`
+  src.title = `${sourceLabel()}: choose what to compare (c)`
   src.onclick = (e) => { e.stopPropagation(); openPop("sourcePop", src, renderSourcePop) }
   bar.append(src)
 
@@ -291,7 +299,17 @@ function renderBar() {
     totals.append(el("span", "add", `+${num(info.added)}`), " ", el("span", "del", `−${num(info.removed)}`))
     totals.title = `${plural(order.length, "file", "files")}, ${info.added.toLocaleString()} lines added, ${info.removed.toLocaleString()} removed`
   }
-  bar.append(totals, el("span", "spacer"))
+  bar.append(totals)
+  // How far through it you are: files marked viewed.
+  if (content && config.canSend && order.length) {
+    const n = order.filter((f) => viewedSet.has(f.path)).length
+    const v = el("span", "viewedcount" + (n === order.length ? " all" : ""))
+    v.innerHTML = svg.check
+    v.append(`${n} of ${order.length} viewed`)
+    v.title = "Files you've marked viewed (Space)"
+    bar.append(v)
+  }
+  bar.append(el("span", "spacer"))
 
   // Who comments go to, and sending the ones not yet sent.
   // One control: with comments to send, a split button (Send | ▾, the ▾
@@ -319,6 +337,19 @@ function renderBar() {
       to.onclick = pick(to)
       bar.append(to)
     }
+    // Done: your verdict on the whole diff, with what's not yet sent.
+    const fin = el("button", "btn finish", "Finish Review")
+    fin.title = "Send your verdict on the whole diff, with your comments (q)"
+    fin.onclick = () => openFinish()
+    bar.append(fin)
+  }
+
+  if (config.keyboard) {
+    const kb = el("button", "btn")
+    kb.innerHTML = svg.keyboard
+    kb.title = "Keyboard shortcuts (?)"
+    kb.onclick = () => openHelp()
+    bar.append(kb)
   }
 
   const gear = el("button", "btn")
@@ -464,6 +495,7 @@ function renderSettingsPop(pop) {
   const s = el("div", "seg")
   for (const [style, label] of [["unified", "Unified"], ["split", "Split"]]) {
     const b = el("button", v.style === style ? "on" : "", label)
+    b.title = "Unified or split (s)"
     b.disabled = !enabled
     b.onclick = () => { setView({ style }); closePops() }
     s.append(b)
@@ -478,7 +510,15 @@ function renderSettingsPop(pop) {
   }
   pop.append(el("hr"))
   pop.append(toggle("Ignore whitespace", v.whitespace === "ignore", () => setView({ whitespace: v.whitespace === "ignore" ? "show" : "ignore" })))
-  pop.append(toggle("Wrap long lines", !!v.wrap, () => setView({ wrap: !v.wrap })))
+  const wrap = toggle("Wrap long lines", !!v.wrap, () => setView({ wrap: !v.wrap }))
+  wrap.append(el("span", "key", "w"))
+  pop.append(wrap)
+  if (config.canSend) {
+    const hv = el("button", "item" + (hideViewed ? " on" : ""), "Hide viewed files")
+    hv.append(el("span", "key", "v"))
+    hv.onclick = () => { setHideViewed(!hideViewed); closePops() }
+    pop.append(hv)
+  }
   pop.append(el("hr"))
   pop.append(toggle("Open all files", false, () => { for (const f of order) uiFor(f).open = true; renderFiles(true) }))
   pop.append(toggle("Close all files", false, () => { for (const f of order) uiFor(f).open = false; renderFiles(true) }))
@@ -529,13 +569,14 @@ function renderTree() {
   list.textContent = ""
   if (!content) return
   const q = $("filter").value.trim().toLowerCase()
-  const match = (f) => !q || f.path.toLowerCase().includes(q)
+  const match = (f) => (!q || f.path.toLowerCase().includes(q)) && !(hideViewed && viewedSet.has(f.path))
   const root = buildTree(content.files.filter(match))
   const walk = (d, depth, prefix) => {
     const dirs = [...d.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))
     for (const c of dirs) {
       const key = prefix + c.name
       const row = el("div", "row dir")
+      row.dataset.key = "dir:" + key
       row.style.paddingLeft = `${6 + depth * 12}px`
       const closed = closedDirs.has(key) && !q
       row.append(el("span", "tw", closed ? "›" : "⌄"), el("span", "name", c.name))
@@ -544,8 +585,10 @@ function renderTree() {
       if (!closed) walk(c, depth + 1, key + "/")
     }
     for (const f of [...d.files].sort((a, b) => a.path.localeCompare(b.path))) {
-      const row = el("div", "row leaf" + (f.path === activePath ? " active" : ""))
+      const viewed = viewedSet.has(f.path)
+      const row = el("div", "row leaf" + (f.path === activePath ? " active" : "") + (viewed ? " viewed" : ""))
       row.dataset.path = f.path
+      row.dataset.key = f.path
       row.style.paddingLeft = `${6 + depth * 12}px`
       const st = el("span", "st " + statusLetter(f), statusLetter(f))
       st.title = statusWords(f)
@@ -555,6 +598,7 @@ function renderTree() {
       const fresh = unreadIn(f.path)
       if (open || fresh) n.append(bubble(open, fresh), " ")
       if (!f.binary && (f.added || f.removed)) n.append(el("span", "add", `+${f.added}`), " ", el("span", "del", `−${f.removed}`))
+      if (viewed) { const v = el("span", "vmark"); v.innerHTML = svg.check; v.title = "Viewed"; n.append(" ", v) }
       row.append(n)
       row.title = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path
       row.onclick = () => { reveal(f.path); if (window.innerWidth <= 640) { treeHidden = true; renderTreeVisibility(); renderBar() } }
@@ -562,6 +606,7 @@ function renderTree() {
     }
   }
   walk(root, 0, "")
+  markTreeSel()
 }
 
 function setActive(path) {
@@ -661,6 +706,7 @@ function renderFiles(keepScroll) {
   const q = $("filter").value.trim().toLowerCase()
   for (const f of order) {
     if (q && !f.path.toLowerCase().includes(q)) continue
+    if (hideViewed && viewedSet.has(f.path)) continue
     const sec = el("section", "file")
     sec.dataset.path = f.path
     sections.set(f.path, sec)
@@ -681,10 +727,11 @@ function renderSection(sec, f) {
   const u = uiFor(f)
   sec.textContent = ""
   sec.classList.toggle("closed", !u.open)
+  sec.classList.toggle("viewed", viewedSet.has(f.path))
   const head = el("div", "fhead")
   const tw = el("button", "btn twisty")
   tw.innerHTML = svg.chevron
-  tw.title = u.open ? "Close this file" : "Open this file"
+  tw.title = (u.open ? "Close this file" : "Open this file") + " (o)"
   tw.onclick = () => { keepHeader(f.path); u.open = !u.open; renderSection(sec, f) }
   head.append(tw)
   const st = el("span", "st " + statusLetter(f), statusLetter(f))
@@ -713,6 +760,7 @@ function renderSection(sec, f) {
     const seg = el("div", "seg")
     for (const [whole, label] of [[false, "Changes"], [true, "Whole File"]]) {
       const b = el("button", u.whole === whole ? "on" : "", label)
+      b.title = "Changes or the whole file (⇧C)"
       b.onclick = () => { if (u.whole !== whole) { keepHeader(f.path); u.whole = whole; u.open = true; renderSection(sec, f) } }
       seg.append(b)
     }
@@ -721,16 +769,25 @@ function renderSection(sec, f) {
   if (config.canDrive) {
     const cm = el("button", "btn")
     cm.innerHTML = svg.comment
-    cm.title = "Comment on This File"
+    cm.title = "Comment on This File (⇧A)"
     cm.onclick = () => { u.open = true; if (sec.classList.contains("closed")) renderSection(sec, f); openComposer({ path: f.path, side: "new", line: 0, endLine: 0 }) }
     head.append(cm)
   }
   if (f.status !== "deleted") {
     const o = el("button", "btn")
     o.innerHTML = svg.open
-    o.title = "Open in an Editor Pane"
+    o.title = "Open in an Editor Pane (e)"
     o.onclick = () => post({ type: "openFile", path: f.path })
     head.append(o)
+  }
+  if (config.canSend) {
+    const v = el("button", "btn vbox" + (viewedSet.has(f.path) ? " on" : ""))
+    const box = el("span", "box")
+    box.innerHTML = svg.check
+    v.append(box, "Viewed")
+    v.title = "Mark as viewed, and go on to the next file (Space)"
+    v.onclick = () => toggleViewed(f.path)
+    head.append(v)
   }
   head.ondblclick = (e) => { if (e.target === head || e.target.classList.contains("spacer")) { keepHeader(f.path); u.open = !u.open; renderSection(sec, f) } }
   sec.append(head)
@@ -770,7 +827,7 @@ function renderEmpty() {
     e.append(el("div", "big", "No changes"), el("div", null, `Nothing differs in ${info.title || "this diff"}.`))
     on = true
   } else if (content && sections.size === 0) {
-    e.append(el("div", null, "No files match the filter."))
+    e.append(el("div", null, hideViewed && !$("filter").value.trim() ? "You've viewed every file." : "No files match the filter."))
     on = true
   }
   e.classList.toggle("on", on)
@@ -809,10 +866,11 @@ function mount(path) {
   // File comments, and threads whose lines aren't in what's shown.
   const top = el("div", "fthreads")
   body.append(top)
-  const done = (destroy = () => {}, views = [], thr = null) => {
+  const done = (destroy = () => {}, views = [], thr = null, kb = null) => {
     body.style.minHeight = ""
-    mounted.set(path, { destroy, views, thr, top })
+    mounted.set(path, { destroy, views, thr, kb, top })
     refreshThreads(path)
+    drawCursor(path)
   }
 
   if (t.error) { body.append(el("div", "note", t.error)); return done() }
@@ -846,7 +904,7 @@ function mount(path) {
     return done()
   }
 
-  const lang = new Compartment(), thr = new Compartment()
+  const lang = new Compartment(), thr = new Compartment(), kb = new Compartment()
   const exts = [
     // Read-only, but focusable, so the code can be selected and copied;
     // no caret, and no keyboard on the iPhone.
@@ -856,7 +914,9 @@ function mount(path) {
     // The diff's colours first: of two themes, CodeMirror lets the first win.
     diffTheme(), themeExtension(config),
     config.view.wrap ? EditorView.lineWrapping : [],
-    lang.of([]), wholeLines, thr.of([]),
+    lang.of([]), wholeLines, thr.of([]), kb.of([]),
+    // A click in the code puts the keyboard's cursor on its line.
+    EditorView.domEventHandlers({ mousedown: (e, view) => { clickLine(view, e, path); return false } }),
   ]
   const collapse = u.whole ? undefined : { margin: 3, minSize: 4 }
   const diffConfig = { scanLimit: 5000, timeout: 1500, ...(ignore ? { override: diffIgnoringSpace } : {}) }
@@ -887,7 +947,7 @@ function mount(path) {
     views = [mv.a, mv.b]
     destroy = () => mv.destroy()
   }
-  done(destroy, views, thr)
+  done(destroy, views, thr, kb)
   // Highlighting comes when its language has loaded.
   const desc = LanguageDescription.matchFilename(languages, f.path.split("/").pop())
   if (desc) {
@@ -1210,7 +1270,7 @@ function updateNewPill() {
   const box = $("files")
   const up = where(next) < box.scrollTop
   pill.textContent = `${plural(list.length, "new reply", "new replies")} ${up ? "↑" : "↓"}`
-  pill.title = "Go to the next reply you haven't seen (N; ⇧N for the one before)"
+  pill.title = "Go to the next reply you haven't seen (u; ⇧U for the one before)"
   pill.classList.toggle("up", up)
   pill.classList.add("on")
 }
@@ -1222,6 +1282,7 @@ let dragRange = null // { path, side, from, to }: lines being dragged over, show
 function gutterDown(view, block, e, path) {
   if (e.button !== 0) return false
   const line = view.state.doc.lineAt(block.from).number
+  setCursor({ path, kind: "line", side: sideOf(view), line }, false)
   // Touch (no drag, no shift): with a comment box open in this file, a
   // second line stretches it over the lines between.
   if (touch() && composer && composer.path === path && composer.side === sideOf(view) && composer.line > 0) {
@@ -1322,11 +1383,11 @@ function buttons(keep, submit, cancel) {
   if (can) {
     const send = el("button", "btn primary", `Send to ${agentName()}`)
     send.onclick = () => submit(true)
-    send.title = "Post it and send it to the agent now"
-    add.title = "Post it, to send later (or keep as a note)"
+    send.title = "Post it and send it to the agent now (⌘Return)"
+    add.title = "Post it, to send later, or keep as a note (⌥⌘Return)"
     row.append(send)
   }
-  return { row, main: () => submit(can) }
+  return { row, main: () => submit(can), keep: () => submit(false) }
 }
 
 // keepInView scrolls the files so el (a comment box being typed in) is
@@ -1354,7 +1415,7 @@ for (const target of [window.visualViewport, window].filter(Boolean)) {
   target.addEventListener("resize", () => { const b = typingBox(); if (b) requestAnimationFrame(() => keepInView(b)) })
 }
 
-function textBox(key, placeholder, submit, cancel) { // submit: ⌘Return
+function textBox(key, placeholder, submit, cancel) { // submit(keep): ⌘Return (or ⇧⌘Return, as on GitHub); keep: ⌥⌘Return
   const ta = el("textarea")
   ta.addEventListener("focus", () => {
     // Now, and once the keyboard has finished coming up.
@@ -1365,7 +1426,7 @@ function textBox(key, placeholder, submit, cancel) { // submit: ⌘Return
   ta.rows = 3
   ta.oninput = () => { drafts.set(key, ta.value); grow(ta) }
   ta.onkeydown = (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit() }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(e.altKey) }
     if (e.key === "Escape") { e.preventDefault(); cancel() }
     e.stopPropagation()
   }
@@ -1407,7 +1468,7 @@ function composerDOM(c) {
     refreshThreads(c.path)
   }
   const b = buttons("Add Comment", submit, closeComposer)
-  const ta = textBox(key, "Leave a comment (Markdown)", () => b.main(), closeComposer)
+  const ta = textBox(key, "Leave a comment (Markdown)", (keep) => keep ? b.keep() : b.main(), closeComposer)
   box.append(ta, b.row)
   return box
 }
@@ -1423,7 +1484,7 @@ function when(ms) {
 }
 
 function threadDOM(t) {
-  const box = el("div", `thread st-${t.state}` + (t.outdated ? " outdated" : ""))
+  const box = el("div", `thread st-${t.state}` + (t.outdated ? " outdated" : "") + (cur?.kind === "thread" && cur.thread === t.id ? " kbfocus" : ""))
   box.dataset.thread = t.id
   const resolvedClosed = t.state === "resolved" && !shownResolved.has(t.id)
   // A resolved thread, folded to a line.
@@ -1473,7 +1534,7 @@ function threadDOM(t) {
     }
     const cancel = () => { openReplies.delete(t.id); refreshThreads(t.path) }
     const b = buttons("Reply", submit, cancel)
-    const ta = textBox(key, "Reply (Markdown)", () => b.main(), cancel)
+    const ta = textBox(key, "Reply (Markdown)", (keep) => keep ? b.keep() : b.main(), cancel)
     actions.append(ta, b.row)
     actions.classList.add("open")
     requestAnimationFrame(() => ta.focus())
@@ -1662,6 +1723,866 @@ function unsentCount() {
   return n
 }
 
+// ---- the keyboard ----
+
+// A cursor, as revdiff and pull requests' keyboards have it: on a file's
+// header, a line (of one side, in split), a thread under its line or
+// above the file, or a fold of unchanged lines. It's drawn on the line
+// (cm-kbCursor), and lines picked with ⇧↑/⇧↓ (anchor) are drawn as a
+// comment's range. The file list has its own (area "tree").
+let cur = null // { path, kind: "head"|"line"|"thread"|"fold", side, line, thread, from, to, anchor }
+let area = "diff"
+let treeSel = "" // the file list's row: a path, or "dir:" and the folder
+// Drawn once you've used the keys: clicking alone moves it unseen.
+let kbUsed = false
+
+const cursorLine = Decoration.line({ class: "cm-kbCursor" })
+const cursorGutter = new class extends GutterMarker { elementClass = "cm-kbCursorGutter" }()
+
+// (The code is editable to CodeMirror, read-only to us: not typing.)
+const typingIn = (t) => t instanceof HTMLTextAreaElement || t instanceof HTMLInputElement || t instanceof HTMLSelectElement ||
+  (!!t?.isContentEditable && !t.closest?.(".cm-content"))
+const viewFor = (m, side) => (m.views.length > 1 && side === "old" ? m.views[0] : m.views[m.views.length - 1])
+const sideFor = (m, side) => (m.views.length > 1 ? side || "new" : "new")
+const fileIndex = (path) => order.findIndex((f) => f.path === path)
+const shownFiles = () => order.filter((f) => sections.has(f.path))
+
+// drawCursor marks the cursor's line (or lines picked) in path's views.
+let drawnPath = ""
+function drawCursor(path) {
+  const m = mounted.get(path)
+  if (!m || !m.kb) return
+  for (const view of m.views) {
+    const marks = [], numbers = []
+    if (kbUsed && cur && cur.path === path && cur.kind === "line" && sideFor(m, cur.side) === sideOf(view) && area === "diff") {
+      const doc = view.state.doc
+      const a = Math.min(cur.anchor || cur.line, cur.line), b = Math.max(cur.anchor || cur.line, cur.line)
+      for (let l = a; l <= b && l <= doc.lines; l++) {
+        const from = doc.line(l).from
+        marks.push((l === cur.line ? cursorLine : rangeLine).range(from))
+        numbers.push((l === cur.line ? cursorGutter : rangeGutter).range(from))
+      }
+    }
+    view.dispatch({ effects: m.kb.reconfigure([EditorView.decorations.of(Decoration.set(marks, true)), gutterLineClass.of(RangeSet.of(numbers, true))]) })
+  }
+}
+
+function redrawCursor(was) {
+  if (was && was !== cur?.path) drawCursor(was)
+  if (drawnPath && drawnPath !== cur?.path && drawnPath !== was) drawCursor(drawnPath)
+  if (cur) drawCursor(cur.path)
+  drawnPath = cur?.path || ""
+  for (const e of document.querySelectorAll(".kbfocus")) e.classList.remove("kbfocus")
+  if (area !== "diff" || !cur || !kbUsed) return
+  if (cur.kind === "thread") document.querySelector(`.thread[data-thread="${CSS.escape(cur.thread)}"]`)?.classList.add("kbfocus")
+  if (cur.kind === "head") sectionOf(cur.path)?.querySelector(".fhead")?.classList.add("kbfocus")
+  if (cur.kind === "fold") foldElement(cur)?.classList.add("kbfocus")
+}
+
+// setCursor moves it (show: scrolled into view).
+function setCursor(c, show = true) {
+  const was = cur?.path
+  cur = c
+  area = "diff"
+  markTreeSel()
+  redrawCursor(was)
+  if (c && c.path !== activePath && show) setActive(c.path)
+  if (show) showCursor()
+}
+
+// ---- where the cursor can go ----
+
+// lineStop is line n of view as the cursor sees it: a line, or the fold
+// of unchanged lines it's hidden in.
+function lineStop(path, view, n) {
+  const doc = view.state.doc
+  const line = doc.line(n)
+  const b = view.lineBlockAt(line.from)
+  if (b.to > line.to) {
+    return { path, kind: "fold", side: sideOf(view), from: doc.lineAt(b.from).number, to: doc.lineAt(b.to).number }
+  }
+  return { path, kind: "line", side: sideOf(view), line: n }
+}
+
+// threadsAt is the threads drawn under line n of view, in order.
+function threadsAt(path, view, n, unified) {
+  return threadsOf(path).filter((t) => t.line > 0 && (() => {
+    const pos = posFor(view, t, unified)
+    return pos >= 0 && view.state.doc.lineAt(pos).number === n
+  })())
+}
+
+// topThreads is the threads drawn above path's code (on the file, or on lines it doesn't show).
+function topThreads(path) {
+  const m = mounted.get(path)
+  if (!m || !m.views.length) return threadsOf(path).filter((t) => t.line === 0)
+  const unified = isUnified(m.views)
+  return threadsOf(path).filter((t) => t.line === 0 || m.views.every((v) => posFor(v, t, unified) < 0))
+}
+
+// where a thread stop sits: above the file (top) or under line n.
+function threadPlace(c) {
+  const m = mounted.get(c.path)
+  if (!m || !m.views.length) return { top: true }
+  if (topThreads(c.path).some((t) => t.id === c.thread)) return { top: true }
+  const view = viewFor(m, c.side), t = review.threads.find((x) => x.id === c.thread)
+  if (!t) return { top: true }
+  const pos = posFor(view, t, isUnified(m.views))
+  return { line: pos >= 0 ? view.state.doc.lineAt(pos).number : 1 }
+}
+
+// next is the stop after (or before, back) c in its file, or null at its end.
+function stepIn(c, back) {
+  const m = mounted.get(c.path)
+  const f = byPath.get(c.path)
+  const open = f && uiFor(f).open
+  if (!m || !m.views.length || !open) {
+    // Not drawn (closed, binary, loading): its header and the threads above it.
+    const tops = open ? topThreads(c.path) : []
+    const list = [{ path: c.path, kind: "head" }, ...tops.map((t) => ({ path: c.path, kind: "thread", thread: t.id }))]
+    const i = list.findIndex((x) => x.kind === c.kind && (x.kind !== "thread" || x.thread === c.thread))
+    const j = i + (back ? -1 : 1)
+    return j >= 0 && j < list.length && i >= 0 ? list[j] : null
+  }
+  const side = sideFor(m, c.side)
+  const view = viewFor(m, side), doc = view.state.doc, unified = isUnified(m.views)
+  const tops = topThreads(c.path).map((t) => ({ path: c.path, kind: "thread", thread: t.id, side }))
+  const first = () => tops.length ? tops[0] : lineStop(c.path, view, 1)
+  const after = (n) => { // what follows line n: its threads, else the next line
+    const ts = threadsAt(c.path, view, n, unified)
+    if (ts.length) return { path: c.path, kind: "thread", thread: ts[0].id, side }
+    return n < doc.lines ? lineStop(c.path, view, n + 1) : null
+  }
+  const before = (n) => { // what's before line n: the last thread of the line above, the line above, or the top
+    if (n <= 1) return tops.length ? tops[tops.length - 1] : { path: c.path, kind: "head" }
+    const ts = threadsAt(c.path, view, n - 1, unified)
+    if (ts.length) return { path: c.path, kind: "thread", thread: ts[ts.length - 1].id, side }
+    return lineStop(c.path, view, n - 1)
+  }
+  switch (c.kind) {
+    case "head":
+      return back ? null : first()
+    case "line":
+      return back ? before(c.line) : after(c.line)
+    case "fold":
+      return back ? before(c.from) : (c.to < doc.lines ? lineStop(c.path, view, c.to + 1) : null)
+    case "thread": {
+      const place = threadPlace(c)
+      if (place.top) {
+        const i = tops.findIndex((t) => t.thread === c.thread)
+        if (back) return i > 0 ? tops[i - 1] : { path: c.path, kind: "head" }
+        return i >= 0 && i < tops.length - 1 ? tops[i + 1] : lineStop(c.path, view, 1)
+      }
+      const ts = threadsAt(c.path, view, place.line, unified)
+      const i = ts.findIndex((t) => t.id === c.thread)
+      if (back) return i > 0 ? { path: c.path, kind: "thread", thread: ts[i - 1].id, side } : lineStop(c.path, view, place.line)
+      if (i >= 0 && i < ts.length - 1) return { path: c.path, kind: "thread", thread: ts[i + 1].id, side }
+      return place.line < doc.lines ? lineStop(c.path, view, place.line + 1) : null
+    }
+  }
+  return null
+}
+
+// lastIn is the last stop in path (going back into it from the file below).
+function lastIn(path) {
+  const m = mounted.get(path), f = byPath.get(path)
+  if (!m || !m.views.length || !f || !uiFor(f).open) {
+    const tops = f && uiFor(f).open ? topThreads(path) : []
+    return tops.length ? { path, kind: "thread", thread: tops[tops.length - 1].id } : { path, kind: "head" }
+  }
+  const side = sideFor(m, cur?.side), view = viewFor(m, side), n = view.state.doc.lines
+  const ts = threadsAt(path, view, n, isUnified(m.views))
+  return ts.length ? { path, kind: "thread", thread: ts[ts.length - 1].id, side } : lineStop(path, view, n)
+}
+
+// move goes down (or up) one stop, on into the next file at the end of one.
+async function move(back) {
+  if (!cur || !sections.has(cur.path)) return seatCursor()
+  if (!onScreenCursor()) return seatCursor()
+  // A file still loading: its lines come first.
+  const f = byPath.get(cur.path)
+  if (f && uiFor(f).open && !mounted.get(cur.path)) await ensureMounted(cur.path)
+  const n = stepIn({ ...cur, anchor: undefined }, back)
+  if (n) return setCursor(n)
+  const files = shownFiles(), i = files.findIndex((f) => f.path === cur.path)
+  const to = files[i + (back ? -1 : 1)]
+  if (!to) return
+  if (back) {
+    await ensureMounted(to.path)
+    setCursor(lastIn(to.path))
+  } else setCursor({ path: to.path, kind: "head" })
+}
+
+// extend stretches the lines picked (⇧↑/⇧↓) a line, within one side.
+function extend(back) {
+  if (!cur || cur.kind !== "line") return
+  const m = mounted.get(cur.path)
+  if (!m) return
+  const view = viewFor(m, sideFor(m, cur.side)), n = cur.line + (back ? -1 : 1)
+  if (n < 1 || n > view.state.doc.lines) return
+  if (lineStop(cur.path, view, n).kind !== "line") return
+  setCursor({ ...cur, line: n, anchor: cur.anchor || cur.line })
+}
+
+// side switches between split's columns (the line level with this one).
+function switchSide(to) {
+  if (!cur || (cur.kind !== "line" && cur.kind !== "fold")) return false
+  const m = mounted.get(cur.path)
+  if (!m || m.views.length < 2 || sideFor(m, cur.side) === to) return false
+  const from = viewFor(m, cur.side), into = viewFor(m, to)
+  const pos = from.state.doc.line(cur.kind === "line" ? cur.line : cur.from).from
+  // Level on screen (the two columns are lined up): by the line's middle.
+  const fb = from.lineBlockAt(pos)
+  const b = into.lineBlockAtHeight(fb.top + from.documentTop - into.documentTop + Math.min(fb.height, lineHeight()) / 2)
+  const n = into.state.doc.lineAt(Math.min(b.from, into.state.doc.length)).number
+  setCursor(lineStop(cur.path, into, n))
+  return true
+}
+
+// seatCursor puts the cursor on the first line you can see (the first
+// key after scrolling with the mouse, or the first ever).
+function seatCursor() {
+  const box = $("files"), top = box.getBoundingClientRect().top + 44
+  const path = activePath || shownFiles()[0]?.path
+  if (!path) return
+  const m = mounted.get(path)
+  if (m && m.views.length) {
+    const view = m.views[m.views.length - 1]
+    if (view.documentTop < top) {
+      const b = view.lineBlockAtHeight(top - view.documentTop)
+      const n = view.state.doc.lineAt(Math.min(b.from, view.state.doc.length)).number
+      return setCursor(lineStop(path, view, n))
+    }
+  }
+  setCursor({ path, kind: "head" })
+}
+
+// ---- seeing it ----
+
+// cursorRect is where the cursor is on screen (null: not drawn).
+function cursorRect() {
+  if (!cur) return null
+  if (cur.kind === "head") return sectionOf(cur.path)?.getBoundingClientRect() ?? null
+  if (cur.kind === "thread") return document.querySelector(`.thread[data-thread="${CSS.escape(cur.thread)}"]`)?.getBoundingClientRect() ?? null
+  const m = mounted.get(cur.path)
+  if (!m || !m.views.length) return null
+  const view = viewFor(m, cur.side), doc = view.state.doc
+  const n = cur.kind === "line" ? cur.line : cur.from
+  if (n > doc.lines) return null
+  const b = view.lineBlockAt(doc.line(n).from)
+  const top = view.documentTop + b.top
+  return { top, bottom: top + b.height }
+}
+
+function onScreenCursor() {
+  const r = cursorRect()
+  if (!r) return false
+  const b = $("files").getBoundingClientRect()
+  return r.bottom > b.top && r.top < b.bottom
+}
+
+// showCursor scrolls just enough to see it, clear of the file's header.
+function showCursor() {
+  if (!cur) return
+  const box = $("files")
+  if (cur.kind === "head") {
+    const s = sectionOf(cur.path)
+    if (!s) return
+    const r = s.getBoundingClientRect(), b = box.getBoundingClientRect()
+    if (r.top < b.top + 4 || r.top > b.bottom - 80) { pin = { path: cur.path, off: -10 }; holdPin() }
+    onScroll()
+    return
+  }
+  const r = cursorRect()
+  if (!r) return
+  const b = box.getBoundingClientRect()
+  const top = b.top + 52, bottom = b.bottom - 40
+  if (r.top < top) box.scrollTop -= top - r.top
+  else if (r.bottom > bottom) box.scrollTop += Math.min(r.bottom - bottom, r.top - top)
+  pinTop()
+  onScroll()
+}
+
+function foldElement(c) {
+  const m = mounted.get(c.path)
+  if (!m) return null
+  const view = viewFor(m, c.side)
+  const pos = view.state.doc.line(c.from).from
+  for (const e of view.dom.querySelectorAll(".cm-collapsedLines")) {
+    try { if (view.lineBlockAt(view.posAtDOM(e)).from === view.lineBlockAt(pos).from) return e } catch {}
+  }
+  return null
+}
+
+// ensureMounted waits for path's code to be drawn (scrolling to it if it's
+// far away): null if it won't be (closed, or not text).
+async function ensureMounted(path) {
+  const f = byPath.get(path)
+  if (!f || !uiFor(f).open) return null
+  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  if (!mounted.get(path)?.views) {
+    const s = sectionOf(path), box = $("files")
+    if (s && Math.abs(s.offsetTop - box.scrollTop) > 1200) { pin = { path, off: -10 }; holdPin() }
+    want(path)
+    for (let i = 0; i < 300 && !mounted.get(path); i++) await frame()
+  }
+  return mounted.get(path) ?? null
+}
+
+// ---- going places ----
+
+async function goFile(back) {
+  const files = shownFiles()
+  if (!files.length) return
+  const at = cur ? files.findIndex((f) => f.path === cur.path) : files.findIndex((f) => f.path === activePath)
+  const to = files[at < 0 ? 0 : at + (back ? -1 : 1)]
+  if (to) setCursor({ path: to.path, kind: "head" })
+}
+
+// goChange goes to the next (or previous) change: in this file, else the
+// next open one's.
+async function goChange(back) {
+  if (!cur) seatCursor()
+  if (!cur) return
+  const files = shownFiles()
+  let i = files.findIndex((f) => f.path === cur.path)
+  const here = cur.kind === "line" ? cur.line : cur.kind === "fold" ? (back ? cur.from : cur.to) : cur.kind === "head" ? 0 : (threadPlace(cur).line || 0)
+  for (let k = 0; k < files.length && i >= 0 && i < files.length; k++, i += back ? -1 : 1) {
+    const path = files[i].path
+    if (!uiFor(files[i]).open) continue
+    const m = await ensureMounted(path)
+    if (!m || !m.views.length) continue
+    const view = viewFor(m, cur.path === path ? cur.side : "new"), found = getChunks(view.state)
+    if (!found) continue
+    const isA = found.side === "a", doc = view.state.doc
+    const starts = found.chunks.map((c) => doc.lineAt(Math.min(isA ? c.fromA : c.fromB, doc.length)).number)
+    const pick = k === 0
+      ? (back ? starts.filter((n) => n < here).pop() : starts.find((n) => n > here))
+      : (back ? starts[starts.length - 1] : starts[0])
+    if (pick != null) return setCursor(lineStop(path, view, pick))
+  }
+}
+
+// goThread goes to the next (or previous) thread, across files, round
+// at the ends.
+async function goThread(back) {
+  const list = []
+  for (const f of shownFiles()) for (const t of threadsOf(f.path).slice().sort((a, b) => a.line - b.line)) list.push(t)
+  if (!list.length) return
+  let j
+  const i = cur?.kind === "thread" ? list.findIndex((t) => t.id === cur.thread) : -1
+  if (i >= 0) j = i + (back ? -1 : 1)
+  else {
+    // Threads sit under their line: one on the cursor's line is ahead of it.
+    const fi = cur ? fileIndex(cur.path) : -1
+    const line = !cur ? -1 : cur.kind === "line" ? cur.line : cur.kind === "fold" ? cur.from : -1
+    const ahead = (t) => { const ti = fileIndex(t.path); return ti > fi || (ti === fi && t.line >= line) }
+    j = back ? list.findLastIndex((t) => !ahead(t)) : list.findIndex(ahead)
+  }
+  if (j < 0) j = list.length - 1
+  if (j >= list.length) j = 0
+  await showThread(list[j])
+}
+
+async function showThread(t) {
+  const f = byPath.get(t.path)
+  if (!f) return
+  if (!uiFor(f).open) { uiFor(f).open = true; renderSection(sectionOf(t.path), f) }
+  const m = await ensureMounted(t.path)
+  const side = m && m.views.length > 1 && t.side === "old" ? "old" : "new"
+  setCursor({ path: t.path, kind: "thread", thread: t.id, side })
+  // Far down a long file it's drawn only once its lines are near.
+  for (let i = 0; i < 60 && !document.querySelector(`.thread[data-thread="${CSS.escape(t.id)}"]`); i++) {
+    if (m && m.views.length) {
+      const view = viewFor(m, side), pos = posFor(view, t, isUnified(m.views))
+      if (pos >= 0) {
+        const box = $("files"), b = view.lineBlockAt(pos)
+        box.scrollTop += view.documentTop + b.bottom - box.getBoundingClientRect().top - box.clientHeight / 3
+        pinTop()
+      }
+    }
+    await new Promise((r) => requestAnimationFrame(r))
+  }
+  redrawCursor()
+  showCursor()
+}
+
+function goEnd(back) {
+  const files = shownFiles()
+  if (!files.length) return
+  if (back) { setCursor({ path: files[0].path, kind: "head" }); $("files").scrollTop = 0; return }
+  const last = files[files.length - 1].path
+  ensureMounted(last).then(() => setCursor(lastIn(last)))
+}
+
+function page(frac) {
+  const box = $("files")
+  box.scrollTop += box.clientHeight * frac
+  pinTop()
+  onScroll()
+  requestAnimationFrame(() => seatCursor())
+}
+
+// ---- acting on it ----
+
+// act is Return: comment on the line(s), open a fold, open the file, or
+// take up a thread (edit your comment not yet sent, else reply).
+function act() {
+  if (!cur) return seatCursor()
+  const f = byPath.get(cur.path)
+  if (!f) return
+  switch (cur.kind) {
+    case "head":
+      if (!uiFor(f).open) toggleOpen(cur.path)
+      else move(false)
+      return
+    case "fold":
+      foldElement(cur)?.click()
+      requestAnimationFrame(() => { const m = mounted.get(cur.path); if (m) setCursor(lineStop(cur.path, viewFor(m, cur.side), cur.from)) })
+      return
+    case "line":
+      if (!config.canDrive) return
+      openComposer({ path: cur.path, side: cur.side || "new", line: Math.min(cur.anchor || cur.line, cur.line), endLine: Math.max(cur.anchor || cur.line, cur.line) })
+      return
+    case "thread": {
+      if (!config.canDrive) return
+      const t = review.threads.find((x) => x.id === cur.thread)
+      if (!t) return
+      if (t.state === "resolved" && !shownResolved.has(t.id)) { shownResolved.add(t.id); refreshThreads(t.path); return }
+      const last = t.comments[t.comments.length - 1]
+      if (last && !last.agent && (last.delivery === "unsent" || last.delivery === "queued")) {
+        editing.add(last.id)
+        drafts.set("edit:" + last.id, last.text)
+        refreshThreads(t.path)
+        requestAnimationFrame(() => document.querySelector(`[data-comment="${CSS.escape(last.id)}"] textarea`)?.focus())
+        return
+      }
+      replyTo(t)
+    }
+  }
+}
+
+// replyTo opens a thread's reply box, quoting the text you've selected.
+function replyTo(t) {
+  if (!config.canDrive) return
+  const sel = String(window.getSelection() || "").trim()
+  if (sel && !drafts.get("reply:" + t.id)) drafts.set("reply:" + t.id, sel.split("\n").map((l) => "> " + l).join("\n") + "\n\n")
+  openReplies.add(t.id)
+  refreshThreads(t.path)
+}
+
+function curThread() {
+  return cur?.kind === "thread" ? review.threads.find((t) => t.id === cur.thread) : null
+}
+
+function resolveThread() {
+  const t = curThread()
+  if (!t || !config.canDrive) return
+  if (t.state === "resolved") post({ type: "review", command: { action: "setState", threadId: t.id, state: "open" } })
+  else { shownResolved.delete(t.id); post({ type: "review", command: { action: "setState", threadId: t.id, state: "resolved" } }) }
+}
+
+function deleteComment() {
+  const t = curThread()
+  if (!t || !config.canDrive) return
+  const mine = t.comments.filter((c) => !c.agent && (c.delivery === "unsent" || c.delivery === "queued")).pop()
+  if (mine) post({ type: "review", command: { action: "deleteComment", commentId: mine.id } })
+}
+
+function fileComment() {
+  const path = cur?.path || activePath
+  const f = byPath.get(path)
+  if (!f || !config.canDrive) return
+  const sec = sectionOf(path)
+  if (!uiFor(f).open && sec) { uiFor(f).open = true; renderSection(sec, f) }
+  openComposer({ path, side: "new", line: 0, endLine: 0 })
+}
+
+function toggleOpen(path) {
+  const f = byPath.get(path), sec = sectionOf(path)
+  if (!f || !sec) return
+  const u = uiFor(f)
+  keepHeader(path)
+  u.open = !u.open
+  renderSection(sec, f)
+  setCursor({ path, kind: "head" })
+}
+
+function toggleWhole(path) {
+  const f = byPath.get(path), sec = sectionOf(path)
+  if (!f || !sec || f.binary || f.status === "added" || f.status === "deleted") return
+  const u = uiFor(f)
+  keepHeader(path)
+  u.whole = !u.whole
+  u.open = true
+  renderSection(sec, f)
+  setCursor({ path, kind: "head" })
+}
+
+// toggleViewed marks a file viewed (closing it, and going on to the next
+// one, as GitHub does), or not.
+function toggleViewed(path) {
+  const f = byPath.get(path)
+  if (!f || !config.canSend) return
+  const on = !viewedSet.has(path)
+  if (on) viewedSet.add(path); else viewedSet.delete(path)
+  post({ type: "review", command: { action: "setViewed", path, viewed: on } })
+  const u = uiFor(f), sec = sectionOf(path)
+  const files = shownFiles(), i = files.findIndex((x) => x.path === path)
+  const next = on ? files.slice(i + 1).find((x) => !viewedSet.has(x.path)) : null
+  u.open = !on
+  if (hideViewed && on) renderFiles(true)
+  else if (sec) { keepHeader(path); renderSection(sec, f) }
+  renderTree()
+  renderBar()
+  if (next) setCursor({ path: next.path, kind: "head" })
+  else if (sections.has(path)) setCursor({ path, kind: "head" })
+}
+
+function setHideViewed(on) {
+  hideViewed = on
+  try { localStorage.setItem("diff.hideViewed", on ? "1" : "0") } catch {}
+  renderTree()
+  renderFiles(true)
+  renderBar()
+}
+
+function toggleThreads() {
+  document.body.classList.toggle("nothreads")
+}
+
+// ---- the file list ----
+
+function markTreeSel() {
+  for (const r of $("tree").querySelectorAll(".row.kbsel")) r.classList.remove("kbsel")
+  if (area !== "tree") return
+  const row = [...$("tree").querySelectorAll(".row")].find((r) => r.dataset.key === treeSel)
+  if (row) { row.classList.add("kbsel"); row.scrollIntoView({ block: "nearest" }) }
+}
+
+function enterTree() {
+  if (treeHidden) { treeHidden = false; renderTreeVisibility(); renderBar() }
+  area = "tree"
+  const rows = [...$("tree").querySelectorAll(".row")]
+  if (!rows.some((r) => r.dataset.key === treeSel)) treeSel = (cur?.path || activePath) || rows[0]?.dataset.key || ""
+  if (!rows.some((r) => r.dataset.key === treeSel)) treeSel = rows[0]?.dataset.key || ""
+  markTreeSel()
+  redrawCursor()
+}
+
+function leaveTree() {
+  area = "diff"
+  markTreeSel()
+  if (window.innerWidth <= 640) { treeHidden = true; renderTreeVisibility(); renderBar() }
+  if (!cur) seatCursor(); else redrawCursor()
+}
+
+function treeKey(e) {
+  const rows = [...$("tree").querySelectorAll(".row")]
+  const i = rows.findIndex((r) => r.dataset.key === treeSel)
+  const row = rows[i]
+  const isDir = row?.classList.contains("dir")
+  const go = (j) => { if (rows[j]) { treeSel = rows[j].dataset.key; markTreeSel() } }
+  switch (e.key) {
+    case "ArrowDown": case "j": go(Math.min(i + 1, rows.length - 1)); return true
+    case "ArrowUp": case "k": go(Math.max(i - 1, 0)); return true
+    case "Home": case "g": go(0); return true
+    case "End": case "G": go(rows.length - 1); return true
+    case "ArrowRight": case "l": case "Enter":
+      if (!row) return true
+      if (isDir) {
+        const key = treeSel.slice(4)
+        if (closedDirs.has(key)) { closedDirs.delete(key); renderTree() } else if (e.key === "Enter") { closedDirs.add(key); renderTree() } else go(i + 1)
+        return true
+      }
+      reveal(treeSel)
+      setCursor({ path: treeSel, kind: "head" })
+      leaveTree()
+      return true
+    case "ArrowLeft": case "h":
+      if (isDir && !closedDirs.has(treeSel.slice(4))) { closedDirs.add(treeSel.slice(4)); renderTree(); return true }
+      // To the folder it's in.
+      for (let j = i - 1; j >= 0; j--) {
+        if (rows[j].classList.contains("dir") && parseInt(rows[j].style.paddingLeft) < parseInt(row.style.paddingLeft)) { go(j); break }
+      }
+      return true
+    case " ":
+      if (row && !isDir) toggleViewed(treeSel)
+      markTreeSel()
+      return true
+    case "Escape": case "Tab": leaveTree(); return true
+  }
+  return false
+}
+
+// ---- sheets: finishing the review, and the shortcuts ----
+
+function closeSheet() {
+  const s = $("sheet")
+  if (!s.classList.contains("on")) return false
+  s.classList.remove("on")
+  s.textContent = ""
+  return true
+}
+
+function sheet(cls) {
+  closePops()
+  const s = $("sheet")
+  s.textContent = ""
+  s.classList.add("on")
+  const box = el("div", "sheetbox " + cls)
+  s.append(box)
+  s.onclick = (e) => { if (e.target === s) closeSheet() }
+  return box
+}
+
+const verdicts = [
+  ["comment", "Comment", "Send your comments, without a verdict on the whole diff"],
+  ["approve", "Approve", "The changes are good as a whole"],
+  ["requestChanges", "Request Changes", "They need more work before they're done"],
+]
+
+// openFinish is Finish Review: your verdict on the whole diff, a summary,
+// and what's not yet sent, as one message; then the diff closes.
+function openFinish() {
+  if (!config.canSend) return
+  const box = sheet("finish")
+  box.append(el("h3", null, "Finish Review"))
+  const n = unsentCount()
+  box.append(el("p", "dim", config.target
+    ? `Goes to ${agentName()}` + (n ? `, with ${plural(n, "comment", "comments")} not yet sent.` : ".")
+    : "Choose the agent to send your review to first, from the bar."))
+  let verdict = "comment"
+  try { verdict = localStorage.getItem("diff.verdict") || "comment" } catch {}
+  const opts = el("div", "verdicts")
+  for (const [v, label, sub] of verdicts) {
+    const lab = el("label", "verdict")
+    const r = el("input")
+    r.type = "radio"; r.name = "verdict"; r.value = v; r.checked = v === verdict
+    r.onchange = () => { verdict = v }
+    const words = el("span")
+    words.append(el("b", null, label), el("span", "sub", sub))
+    lab.append(r, words)
+    opts.append(lab)
+  }
+  box.append(opts)
+  const ta = el("textarea")
+  ta.placeholder = "Summary (optional, Markdown)"
+  ta.value = drafts.get("finish") || ""
+  ta.oninput = () => drafts.set("finish", ta.value)
+  box.append(ta)
+  let close = true
+  try { close = localStorage.getItem("diff.finishCloses") !== "0" } catch {}
+  const cl = el("label", "closeit")
+  const cb = el("input")
+  cb.type = "checkbox"; cb.checked = close
+  cl.append(cb, "Close the diff")
+  const row = el("div", "crow")
+  row.append(cl, el("span", "spacer"))
+  const no = el("button", "btn", "Cancel")
+  no.onclick = () => closeSheet()
+  const go = el("button", "btn primary", config.target ? `Finish and Send to ${agentName()}` : "Finish")
+  go.title = "⌘Return"
+  go.disabled = !config.target
+  const submit = () => {
+    if (!config.target) return
+    try { localStorage.setItem("diff.verdict", verdict); localStorage.setItem("diff.finishCloses", cb.checked ? "1" : "0") } catch {}
+    post({ type: "review", command: { action: "finish", verdict, text: ta.value.trim(), close: cb.checked } })
+    drafts.delete("finish")
+    closeSheet()
+  }
+  go.onclick = submit
+  row.append(no, go)
+  box.append(row)
+  box.onkeydown = (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit() }
+    else if (e.key === "Escape") { e.preventDefault(); closeSheet() }
+    else if ((e.target.type === "radio" || !typingIn(e.target)) && ["1", "2", "3"].includes(e.key)) {
+      const r = opts.querySelectorAll("input")[+e.key - 1]
+      r.checked = true; verdict = r.value; r.focus()
+    }
+    e.stopPropagation()
+  }
+  // On the verdict: ↑↓ or 1–3 choose, Tab goes on to the summary.
+  requestAnimationFrame(() => (opts.querySelector("input:checked") || opts.querySelector("input")).focus())
+}
+
+const helpKeys = [
+  ["Moving around", [
+    ["↓ ↑  or  j k", "Next or previous line, thread or file header"],
+    ["← →  or  h l", "Old or new side (split); ← from the left goes to the file list"],
+    ["Tab", "Between the file list and the diff"],
+    ["n p  or  ⇧J ⇧K", "Next or previous file"],
+    ["] [", "Next or previous change"],
+    ["} {", "Next or previous comment thread"],
+    ["u ⇧U", "Next or previous reply you haven't seen"],
+    ["g ⇧G", "Top or bottom"],
+    ["⌃D ⌃U, Page Down/Up", "Down or up half a page, or a page"],
+    ["/  or  t", "Filter files"],
+  ]],
+  ["Commenting", [
+    ["Return  or  a", "Comment on the line; on a thread, reply (or edit yours not yet sent)"],
+    ["⇧↓ ⇧↑", "Pick more lines to comment on"],
+    ["⇧A", "Comment on the whole file"],
+    ["r", "Reply, quoting the text you've selected"],
+    ["x", "Resolve or reopen the thread"],
+    ["d", "Delete your comment not yet sent"],
+    ["⌘Return", "In a comment: post and send it to the agent"],
+    ["⌥⌘Return", "In a comment: post it, to send later"],
+    ["⇧S", "Send every comment not yet sent"],
+    ["q", "Finish Review: your verdict on the whole diff"],
+  ]],
+  ["Files and view", [
+    ["Space", "Mark the file viewed and go on to the next"],
+    ["v", "Hide or show viewed files"],
+    ["o", "Open or close the file"],
+    ["⇧C", "The file's changes or the whole file"],
+    ["c", "Choose what to compare"],
+    ["s", "Unified or split"],
+    ["w", "Wrap long lines"],
+    ["i", "Hide or show comment threads"],
+    ["⇧T", "Hide or show the file list"],
+    ["e", "Open the file in an editor pane"],
+    ["⇧R", "Refresh"],
+    ["?", "These shortcuts"],
+  ]],
+]
+
+function openHelp() {
+  const box = sheet("help")
+  const head = el("div", "helphead")
+  head.append(el("h3", null, "Keyboard Shortcuts"))
+  const x = el("button", "btn", "Done")
+  x.onclick = () => closeSheet()
+  head.append(el("span", "spacer"), x)
+  box.append(head)
+  const cols = el("div", "helpcols")
+  for (const [title, keys] of helpKeys) {
+    const g = el("div", "helpgroup")
+    g.append(el("h4", null, title))
+    for (const [k, what] of keys) {
+      const r = el("div", "helprow")
+      r.append(el("span", "keys", k), el("span", null, what))
+      g.append(r)
+    }
+    cols.append(g)
+  }
+  box.append(cols)
+  box.tabIndex = -1
+  box.onkeydown = (e) => { if (e.key === "Escape" || e.key === "?") { e.preventDefault(); closeSheet() } e.stopPropagation() }
+  requestAnimationFrame(() => box.focus())
+}
+
+// ---- the keys ----
+
+// command runs one of the diff's commands: a key's, or the app's (its
+// menus and palette).
+function command(name) {
+  const path = cur?.path || activePath
+  switch (name) {
+    case "down": return move(false)
+    case "up": return move(true)
+    case "extendDown": return extend(false)
+    case "extendUp": return extend(true)
+    case "nextFile": return goFile(false)
+    case "previousFile": return goFile(true)
+    case "nextChange": return goChange(false)
+    case "previousChange": return goChange(true)
+    case "nextThread": return goThread(false)
+    case "previousThread": return goThread(true)
+    case "nextUnread": return jumpTo(nextUnread(false))
+    case "previousUnread": return jumpTo(nextUnread(true))
+    case "top": return goEnd(true)
+    case "bottom": return goEnd(false)
+    case "act": return act()
+    case "fileComment": return fileComment()
+    case "reply": { const t = curThread(); if (t) replyTo(t); return }
+    case "resolve": return resolveThread()
+    case "delete": return deleteComment()
+    case "send": if (unsentCount() && config.target && config.canSend) post({ type: "review", command: { action: "send" } }); return
+    case "finish": return openFinish()
+    case "viewed": if (path) toggleViewed(path); return
+    case "hideViewed": if (config.canSend) setHideViewed(!hideViewed); return
+    case "toggleOpen": if (path) toggleOpen(path); return
+    case "wholeFile": if (path) toggleWhole(path); return
+    case "compare": return openPop("sourcePop", $("source"), renderSourcePop)
+    case "split": if (config.canDrive) setView({ style: config.view.style === "split" ? "unified" : "split" }); return
+    case "wrap": if (config.canDrive) setView({ wrap: !config.view.wrap }); return
+    case "threads": return toggleThreads()
+    case "files": treeHidden = !treeHidden; renderTreeVisibility(); renderBar(); if (treeHidden && area === "tree") leaveTree(); return
+    case "filter": if (treeHidden) { treeHidden = false; renderTreeVisibility(); renderBar() } $("filter").focus(); $("filter").select(); return
+    case "openFile": { const f = byPath.get(path); if (f && f.status !== "deleted") post({ type: "openFile", path }); return }
+    case "refresh": return post({ type: "refresh" })
+    case "help": return openHelp()
+  }
+}
+
+// keyFor is the command a key press (not in a text box) is, or "".
+function keyFor(e) {
+  if (e.metaKey || e.altKey) return ""
+  if (e.ctrlKey) return { d: "halfDown", u: "halfUp" }[e.key] || ""
+  const k = e.key
+  if (e.shiftKey && (k === "ArrowDown" || k === "ArrowUp")) return k === "ArrowDown" ? "extendDown" : "extendUp"
+  return {
+    ArrowDown: "down", j: "down", ArrowUp: "up", k: "up",
+    ArrowLeft: "left", h: "left", ArrowRight: "right", l: "right",
+    Tab: "tab", n: "nextFile", J: "nextFile", p: "previousFile", K: "previousFile",
+    "]": "nextChange", "[": "previousChange", "}": "nextThread", "{": "previousThread",
+    u: "nextUnread", U: "previousUnread", g: "top", Home: "top", G: "bottom", End: "bottom",
+    PageDown: "pageDown", PageUp: "pageUp",
+    Enter: "act", a: "act", A: "fileComment", r: "reply", x: "resolve", d: "delete", S: "send", q: "finish",
+    " ": "viewed", v: "hideViewed", o: "toggleOpen", C: "wholeFile", c: "compare", s: "split", w: "wrap", i: "threads",
+    T: "files", "/": "filter", t: "filter", e: "openFile", R: "refresh", "?": "help",
+  }[k] || ""
+}
+
+function onKey(e) {
+  if (e.defaultPrevented) return
+  if (e.key === "Escape") {
+    if (closeSheet() || openPopID) { closePops(); e.preventDefault(); return }
+  }
+  if ($("sheet").classList.contains("on")) return
+  const t = e.target
+  if (typingIn(t)) {
+    // The filter: ↓ goes into the list, Return opens the first match.
+    if (t.id === "filter") {
+      if (e.key === "ArrowDown") { e.preventDefault(); t.blur(); treeSel = ""; enterTree() }
+      else if (e.key === "Enter") {
+        e.preventDefault()
+        const first = $("tree").querySelector(".row.leaf")
+        t.blur()
+        if (first) { reveal(first.dataset.path); setCursor({ path: first.dataset.path, kind: "head" }) }
+      }
+    }
+    return
+  }
+  if (openPopID) return
+  if (area === "tree" && !e.metaKey && !e.ctrlKey && !e.altKey && treeKey(e)) { e.preventDefault(); e.stopPropagation(); return }
+  if (!kbUsed && keyFor(e)) kbUsed = true
+  if (e.key === "Escape") { if (cur?.anchor) setCursor({ ...cur, anchor: undefined }, false); return }
+  const name = keyFor(e)
+  if (!name) return
+  e.preventDefault()
+  e.stopPropagation()
+  switch (name) {
+    case "tab": return enterTree()
+    case "left": if (!switchSide("old")) enterTree(); return
+    case "right": switchSide("new"); return
+    case "halfDown": return page(0.5)
+    case "halfUp": return page(-0.5)
+    case "pageDown": return page(0.9)
+    case "pageUp": return page(-0.9)
+  }
+  command(name)
+}
+
+// clickLine: a click in the code puts the cursor on its line.
+function clickLine(view, e, path) {
+  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+  if (pos == null) return
+  setCursor({ path, kind: "line", side: sideOf(view), line: view.state.doc.lineAt(pos).number }, false)
+}
+
 // ---- what the app calls (window.hammock) ----
 
 window.hammock = {
@@ -1724,8 +2645,22 @@ window.hammock = {
   /** The pane's review: its threads. */
   setReview(r) {
     review = { id: r.id || "", threads: r.threads || [] }
+    // Files marked viewed close; one the daemon unmarked (it changed since) opens.
+    const now = new Set(r.viewed || []), was = viewedSet
+    viewedSet = now
+    let reflow = false
+    for (const f of order) {
+      if (now.has(f.path) === was.has(f.path)) continue
+      const u = fileUI.get(f.path)
+      if (u) u.open = !now.has(f.path)
+      reflow = true
+    }
+    if (reflow && content) renderFiles(true)
     refreshAllThreads()
   },
+
+  /** One of the diff's commands, from the app's menus and palette. */
+  command(name) { command(name) },
 }
 
 // ---- wiring ----
@@ -1734,16 +2669,13 @@ $("refresh").onclick = () => post({ type: "refresh" })
 $("scrim").onclick = closePops
 $("files").addEventListener("scroll", onScroll, { passive: true })
 $("filter").addEventListener("input", () => { renderTree(); renderFiles(false) })
-$("filter").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.target.value = ""; renderTree(); renderFiles(false) } })
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closePops()
-  // N / ⇧N: the next (or previous) reply you haven't seen; not while typing.
-  const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement
-  if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "n") {
-    e.preventDefault()
-    jumpTo(nextUnread(e.shiftKey))
-  }
+$("filter").addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return
+  // Esc: clears it, then (empty) goes back to the files.
+  if (e.target.value) { e.target.value = ""; renderTree(); renderFiles(false) } else { e.target.blur(); leaveTree() }
 })
+// Before CodeMirror's: its read-only code would take the arrows.
+window.addEventListener("keydown", onKey, true)
 document.addEventListener("mousedown", () => post({ type: "focus" }), true)
 window.addEventListener("resize", () => { if (openPopID) closePops(); renderBar() })
 if (window.innerWidth <= 640) treeHidden = true

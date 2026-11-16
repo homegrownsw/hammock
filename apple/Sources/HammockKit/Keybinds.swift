@@ -191,11 +191,11 @@ public struct KeybindAction: Identifiable, Hashable, Sendable {
 /// Every action a shortcut can be given, in menu order. Settings lists them;
 /// `Keys` (the Mac app) binds them.
 public enum Keybinds {
-    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Window", "Simulator", "Editor", "Help"]
+    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Window", "Simulator", "Editor", "Diff", "Help"]
 
     /// Groups whose actions only apply with that kind of pane focused: two
     /// of them can share a shortcut (⌘S saves a file, or screenshots a simulator).
-    public static let paneScoped: Set<String> = ["Simulator", "Editor"]
+    public static let paneScoped: Set<String> = ["Simulator", "Editor", "Diff"]
 
     /// Whether two actions can't both be reached at once, so may share a shortcut.
     public static func apart(_ a: String, _ b: String) -> Bool {
@@ -333,6 +333,24 @@ public enum Keybinds {
             .init("editor_toggle_split_preview", "Show Preview Beside Source", "Editor", nil, "markdown rendered side by side split view"),
             .init("editor_rename", "Rename…", "Editor", nil, "file name move"),
             .init("editor_reveal_in_finder", "Reveal in Finder", "Editor", nil, "show file folder finder"),
+            // Diff (only with one focused). No defaults: the page's own keys
+            // (j, k, n, Space, q…, listed by its ? button) do these already.
+            .init("diff_finish_review", "Finish Review…", "Diff", nil, "submit approve request changes verdict done send agent"),
+            .init("diff_mark_viewed", "Mark File as Viewed", "Diff", nil, "reviewed seen done read"),
+            .init("diff_next_file", "Next File", "Diff", nil, "go jump"),
+            .init("diff_previous_file", "Previous File", "Diff", nil, "go jump back"),
+            .init("diff_next_change", "Next Change", "Diff", nil, "hunk chunk go jump"),
+            .init("diff_previous_change", "Previous Change", "Diff", nil, "hunk chunk go jump back"),
+            .init("diff_next_thread", "Next Comment", "Diff", nil, "thread review go jump"),
+            .init("diff_previous_thread", "Previous Comment", "Diff", nil, "thread review go jump back"),
+            .init("diff_comment_file", "Comment on File", "Diff", nil, "review note whole"),
+            .init("diff_send_comments", "Send Comments", "Diff", nil, "review agent unsent"),
+            .init("diff_whole_file", "Show Whole File or Changes", "Diff", nil, "context full expand unchanged"),
+            .init("diff_toggle_split", "Split or Unified", "Diff", nil, "side by side layout columns"),
+            .init("diff_toggle_wrap", "Wrap Long Lines", "Diff", nil, "soft wrap"),
+            .init("diff_hide_viewed", "Hide Viewed Files", "Diff", nil, "reviewed seen filter"),
+            .init("diff_toggle_files", "Show or Hide Files", "Diff", nil, "file list tree sidebar"),
+            .init("diff_keyboard_shortcuts", "Diff Keyboard Shortcuts", "Diff", nil, "keys help cheat sheet"),
         ]
     }()
 

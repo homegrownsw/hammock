@@ -184,7 +184,7 @@ func (h *diffHub) releaseReviewLocked(id string, leaving *diffState) {
 			break
 		}
 	}
-	if !open {
+	if !open && len(rv.Viewed) == 0 && rv.Finished == nil {
 		h.deleteReviewLocked(id)
 		return
 	}
@@ -386,7 +386,8 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 		}
 		m.Send = false
 	}
-	if who.guest && (m.Action == pb.ReviewCommand_ACTION_SEND || m.Action == pb.ReviewCommand_ACTION_SET_TARGET || m.Send) {
+	if who.guest && (m.Action == pb.ReviewCommand_ACTION_SEND || m.Action == pb.ReviewCommand_ACTION_SET_TARGET ||
+		m.Action == pb.ReviewCommand_ACTION_FINISH || m.Send) {
 		return nil, errors.New("only the Group's owner sends comments to their agents")
 	}
 	now := time.Now().UnixMilli()
@@ -421,21 +422,7 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 			h.mu.Unlock()
 			return nil, errors.New("the pane has closed")
 		}
-		rv := h.reviews[s.reviewID]
-		if rv == nil {
-			r := s.resolved
-			rv = &pb.Review{Id: newID("rv"), Repo: r.Repo, Source: proto.CloneOf(r.Source), Title: r.Title, GroupId: groupID, PaneId: s.paneID}
-			h.reviews[rv.Id] = rv
-			key := reviewKey(r)
-			h.reviewKeys[rv.Id] = key
-			s.reviewID = rv.Id
-			// Other panes on the same diff show it too.
-			for _, o := range h.st {
-				if o != s && o.reviewID == "" && o.resolved != nil && reviewKey(o.resolved) == key {
-					o.reviewID = rv.Id
-				}
-			}
-		}
+		rv := h.ensureReviewLocked(s, groupID)
 		rv.TargetPaneId = s.target
 		rv.Threads = append(rv.Threads, t)
 		h.saveReviewLocked(rv)
@@ -535,6 +522,17 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 		}
 		h.mu.Unlock()
 
+	case pb.ReviewCommand_ACTION_SET_VIEWED:
+		// Where you are in reading it: yours, not a guest's.
+		if who.guest {
+			return nil, errors.New("marking files viewed is the Group's owner's")
+		}
+		ps, err := h.setViewed(m, groupID)
+		if err != nil {
+			return nil, err
+		}
+		s = ps
+
 	case pb.ReviewCommand_ACTION_SET_TARGET:
 		h.mu.Lock()
 		ps, rv, err := h.reviewOf(m)
@@ -581,12 +579,49 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 			return nil, errors.New("there's nothing to send")
 		}
 
+	case pb.ReviewCommand_ACTION_FINISH:
+		// Your verdict on the diff as a whole, with what's not yet sent.
+		if m.PaneId == "" {
+			return nil, errors.New("open the diff to finish its review")
+		}
+		ps, err := h.state(m.PaneId)
+		if err != nil {
+			return nil, err
+		}
+		if err := h.compute(ps, false); err != nil {
+			return nil, err
+		}
+		h.mu.Lock()
+		if h.st[ps.paneID] != ps {
+			h.mu.Unlock()
+			return nil, errors.New("the pane has closed")
+		}
+		if ps.target == "" {
+			h.mu.Unlock()
+			return nil, errors.New("choose an agent to send your review to")
+		}
+		s = ps
+		rv := h.ensureReviewLocked(s, groupID)
+		rv.TargetPaneId = s.target
+		rv.Finished = &pb.ReviewFinish{Verdict: m.Verdict, Summary: strings.TrimSpace(m.Text), UnixMs: now,
+			Delivery: pb.ReviewComment_DELIVERY_UNSENT}
+		toSend = []string{}
+		for _, t := range rv.Threads {
+			for _, c := range t.Comments {
+				if c.Delivery == pb.ReviewComment_DELIVERY_UNSENT {
+					toSend = append(toSend, c.Id)
+				}
+			}
+		}
+		h.saveReviewLocked(rv)
+		h.mu.Unlock()
+
 	default:
 		return nil, fmt.Errorf("unknown review command %v", m.Action)
 	}
 
 	var sendErr error
-	if len(toSend) > 0 && s != nil {
+	if toSend != nil && s != nil {
 		h.mu.Lock()
 		rvID, target := s.reviewID, s.target
 		h.mu.Unlock()
@@ -609,6 +644,96 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 		return nil, fmt.Errorf("saved, but not sent: %w", sendErr)
 	}
 	return reply, nil
+}
+
+// ensureReviewLocked is s's review, made now if it has none (its first
+// comment, or file marked viewed). Callers hold h.mu.
+func (h *diffHub) ensureReviewLocked(s *diffState, groupID string) *pb.Review {
+	if rv := h.reviews[s.reviewID]; rv != nil {
+		return rv
+	}
+	r := s.resolved
+	rv := &pb.Review{Id: newID("rv"), Repo: r.Repo, Source: proto.CloneOf(r.Source), Title: r.Title, GroupId: groupID, PaneId: s.paneID, TargetPaneId: s.target}
+	h.reviews[rv.Id] = rv
+	key := reviewKey(r)
+	h.reviewKeys[rv.Id] = key
+	s.reviewID = rv.Id
+	// Other panes on the same diff show it too.
+	for _, o := range h.st {
+		if o != s && o.reviewID == "" && o.resolved != nil && reviewKey(o.resolved) == key {
+			o.reviewID = rv.Id
+		}
+	}
+	return rv
+}
+
+// fileDigest is what f's two sides are now: a file marked viewed stays so
+// while it's the same.
+func fileDigest(ctx context.Context, r *gitdiff.Resolved, f *pb.DiffFile) (string, error) {
+	ft, err := gitdiff.FileText(ctx, r, f)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	for _, b := range [][]byte{[]byte(f.Status.String()), []byte(f.OldPath), []byte(ft.OldText), []byte(ft.NewText), ft.OldData, ft.NewData,
+		[]byte(fmt.Sprint(ft.OldSize, ft.NewSize))} {
+		fmt.Fprintf(h, "%d:", len(b))
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil)[:16]), nil
+}
+
+// setViewed marks m.Path viewed (m.Viewed), or not, on m's pane's review.
+// Not under h.mu.
+func (h *diffHub) setViewed(m *pb.ReviewCommand, groupID string) (*diffState, error) {
+	if m.PaneId == "" {
+		return nil, errors.New("marking a file viewed is on a diff pane: name it")
+	}
+	s, err := h.state(m.PaneId)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.compute(s, false); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	r := s.resolved
+	var f *pb.DiffFile
+	for _, x := range s.files {
+		if x.Path == m.Path {
+			f = proto.CloneOf(x)
+		}
+	}
+	h.mu.Unlock()
+	if f == nil || r == nil {
+		return nil, fmt.Errorf("%s isn't in this diff", m.Path)
+	}
+	digest := ""
+	if m.Viewed {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if digest, err = fileDigest(ctx, r, f); err != nil {
+			return nil, err
+		}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.st[s.paneID] != s {
+		return nil, errors.New("the pane has closed")
+	}
+	rv := h.reviews[s.reviewID]
+	if rv == nil && !m.Viewed {
+		return s, nil
+	}
+	if rv == nil {
+		rv = h.ensureReviewLocked(s, groupID)
+	}
+	rv.Viewed = slices.DeleteFunc(rv.Viewed, func(v *pb.ReviewViewed) bool { return v.Path == m.Path })
+	if m.Viewed {
+		rv.Viewed = append(rv.Viewed, &pb.ReviewViewed{Path: m.Path, Digest: digest, UnixMs: time.Now().UnixMilli()})
+	}
+	h.saveReviewLocked(rv)
+	return s, nil
 }
 
 // newThread makes a thread on m's lines, with what they say now (to find
@@ -683,6 +808,12 @@ func splitLines(text string) []string {
 // send delivers review rvID's comments ids to the agent in pane target as
 // one message, or holds them while it's waiting on you. One send per
 // review at a time (two panes can show it). Not under h.mu or d.mu.
+// pendingFinish: rv was finished, and that's not yet with the agent.
+func pendingFinish(rv *pb.Review) bool {
+	f := rv.GetFinished()
+	return f != nil && (f.Delivery == pb.ReviewComment_DELIVERY_UNSENT || f.Delivery == pb.ReviewComment_DELIVERY_QUEUED)
+}
+
 func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, err error) {
 	h.mu.Lock()
 	if h.sending[rvID] {
@@ -719,6 +850,8 @@ func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, 
 		p.mu.Unlock()
 	}
 	d.mu.Unlock()
+	// A finish not yet sent goes with them.
+	finishing := pendingFinish(snap)
 	mark := func(to pb.ReviewComment_Delivery) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -729,6 +862,9 @@ func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, 
 						c.Delivery = to
 					}
 				}
+			}
+			if finishing && rv.Finished.GetUnixMs() == snap.Finished.GetUnixMs() {
+				rv.Finished.Delivery = to
 			}
 			h.saveReviewLocked(rv)
 		}
@@ -743,6 +879,9 @@ func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, 
 		// Typing now would answer what it's asking you.
 		mark(pb.ReviewComment_DELIVERY_QUEUED)
 		return 0, uint32(len(ids)), nil
+	}
+	if len(ids) == 0 && !finishing {
+		return 0, 0, errors.New("there's nothing to send")
 	}
 	if err := typeToAgent(p, nil, reviewMessage(snap, ids), nil); err != nil {
 		return 0, 0, err
@@ -768,8 +907,31 @@ func clip(s string, n int) string {
 // is and the lines it's about, and how to answer in the threads.
 func reviewMessage(rv *pb.Review, ids []string) string {
 	var b strings.Builder
-	where := filepath.Base(rv.Repo)
-	fmt.Fprintf(&b, "Review comments on %s (%s):\n", cmpOr(rv.Title, "the diff"), where)
+	where := fmt.Sprintf("%s (%s)", cmpOr(rv.Title, "the diff"), filepath.Base(rv.Repo))
+	// What the comments are about, said outright: a comment on one line
+	// ("this is fine") isn't a verdict on the diff; only finishing is.
+	if f := rv.GetFinished(); pendingFinish(rv) {
+		switch f.Verdict {
+		case pb.ReviewFinish_VERDICT_APPROVE:
+			fmt.Fprintf(&b, "The user has finished reviewing %s: Approved. They approve the diff as a whole.\n", where)
+		case pb.ReviewFinish_VERDICT_REQUEST_CHANGES:
+			fmt.Fprintf(&b, "The user has finished reviewing %s: Changes requested. Make the changes they ask for (below and in the threads) before it's done.\n", where)
+		default:
+			fmt.Fprintf(&b, "The user has finished reviewing %s, with comments: they neither approve the diff nor request changes.\n", where)
+		}
+		if f.Summary != "" {
+			b.WriteString("\nTheir summary:\n")
+			for _, l := range strings.Split(f.Summary, "\n") {
+				fmt.Fprintf(&b, "   %s\n", l)
+			}
+		}
+		if len(ids) > 0 {
+			b.WriteString("\nTheir comments, each about the lines quoted with it (or the file named):\n")
+		}
+	} else {
+		fmt.Fprintf(&b, "Review comments on %s. Each is about the lines quoted with it (or the file named), not the diff as a whole: "+
+			"the review isn't finished and nothing has been approved, so more may follow.\n", where)
+	}
 	n := 0
 	for _, t := range rv.Threads {
 		for i, c := range t.Comments {
@@ -783,6 +945,8 @@ func reviewMessage(rv *pb.Review, ids []string) string {
 				loc += fmt.Sprintf(":%d-%d", t.Line, t.EndLine)
 			case t.Line > 0:
 				loc += fmt.Sprintf(":%d", t.Line)
+			default:
+				loc += " (the whole file)"
 			}
 			if t.Side == pb.ReviewThread_SIDE_OLD {
 				loc += " (before the change)"
@@ -809,9 +973,11 @@ func reviewMessage(rv *pb.Review, ids []string) string {
 			}
 		}
 	}
-	b.WriteString("\nAnswer in each thread: reply (review_reply), or once it's dealt with mark it addressed (review_mark_addressed); " +
-		"review_threads lists them. Without Hammock's tools: hmk review reply|address THREAD TEXT.")
-	return b.String()
+	if n > 0 {
+		b.WriteString("\nAnswer in each thread: reply (review_reply), or once it's dealt with mark it addressed (review_mark_addressed); " +
+			"review_threads lists them. Without Hammock's tools: hmk review reply|address THREAD TEXT.")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // flushQueued sends comments held while their agent was waiting on you,
@@ -835,7 +1001,7 @@ func (h *diffHub) flushQueued() {
 				}
 			}
 		}
-		if len(ids) > 0 {
+		if len(ids) > 0 || rv.GetFinished().GetDelivery() == pb.ReviewComment_DELIVERY_QUEUED {
 			list = append(list, due{rv.Id, rv.TargetPaneId, ids})
 		}
 	}
@@ -885,6 +1051,9 @@ func (h *diffHub) unqueue(rvID string, ids []string) {
 				c.Delivery = pb.ReviewComment_DELIVERY_UNSENT
 			}
 		}
+	}
+	if f := rv.Finished; f != nil && f.Delivery == pb.ReviewComment_DELIVERY_QUEUED {
+		f.Delivery = pb.ReviewComment_DELIVERY_UNSENT
 	}
 	h.saveReviewLocked(rv)
 }
@@ -958,6 +1127,58 @@ func (h *diffHub) reanchor(s *diffState) {
 		}
 	}
 	h.mu.Unlock()
+}
+
+// recheckViewed unmarks s's files marked viewed that have changed since,
+// or gone from the diff. Not under h.mu or d.mu.
+func (h *diffHub) recheckViewed(s *diffState) {
+	h.mu.Lock()
+	rv := h.reviews[s.reviewID]
+	if rv == nil || s.resolved == nil || len(rv.Viewed) == 0 {
+		h.mu.Unlock()
+		return
+	}
+	r := s.resolved
+	files := map[string]*pb.DiffFile{}
+	for _, f := range s.files {
+		files[f.Path] = proto.CloneOf(f)
+	}
+	viewed := map[string]string{}
+	for _, v := range rv.Viewed {
+		viewed[v.Path] = v.Digest
+	}
+	rvID := rv.Id
+	h.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	drop := map[string]bool{}
+	for p, digest := range viewed {
+		f := files[p]
+		if f == nil {
+			drop[p] = true
+			continue
+		}
+		now, err := fileDigest(ctx, r, f)
+		if err != nil {
+			continue // can't tell: left as it is
+		}
+		if now != digest {
+			drop[p] = true
+		}
+	}
+	if len(drop) == 0 {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if rv := h.reviews[rvID]; rv != nil {
+		n := len(rv.Viewed)
+		rv.Viewed = slices.DeleteFunc(rv.Viewed, func(v *pb.ReviewViewed) bool { return drop[v.Path] && viewed[v.Path] == v.Digest })
+		if len(rv.Viewed) != n {
+			h.saveReviewLocked(rv)
+		}
+	}
 }
 
 // findLines finds t's lines in lines (1-based; 0 if they aren't there): of
