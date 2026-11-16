@@ -77,7 +77,7 @@ final class FullDiskAccessGuide {
             p.isOpaque = false
             p.hasShadow = true
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            let host = NSHostingView(rootView: FullDiskAccessGuideView(guide: self))
+            let host = NSHostingView(rootView: FullDiskAccessGuideView(guide: self).themeTint())
             host.frame = p.contentLayoutRect
             p.contentView = host
             panel = p

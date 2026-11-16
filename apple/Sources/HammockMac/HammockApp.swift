@@ -621,6 +621,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DebugRecord.scheduleIfRequested()
         DebugDirector.startIfRequested()
         MenuHelper.start()
+        ThemedAlerts.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
