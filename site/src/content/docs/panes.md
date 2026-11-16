@@ -106,9 +106,9 @@ Layout, whitespace and wrapping are in the pane's settings button, with defaults
 
 Comment on lines as you would on a pull request. When you send them, your comments go to the agent that opened the diff, or another in the Group that you pick. The agent answers in the threads and marks each addressed; only you resolve one. Close the diff with threads open and they come back when you open it again.
 
-**Finish Review** (q) is how you tell the agent you're done: pick Approve, Request Changes or Comment, add a summary if you like, and it goes to the agent with any comments not yet sent, then the diff closes. A comment on its own is only ever about its lines; only finishing speaks for the whole diff. Closing a diff with comments not yet sent asks whether to finish first.
+**Finish Review** (q), in the bar once an agent is waiting on the diff or you've commented, is how you tell the agent you're done: pick Approve, Request Changes or Comment, add a summary if you like, and it goes to the agent with any comments not yet sent, then the diff closes. A comment on its own is only ever about its lines; only finishing speaks for the whole diff. Closing a diff with comments not yet sent asks whether to finish first.
 
-Tick **Viewed** on a file (Space) to fold it away and move on to the next; the bar counts how many you've viewed. A file that changes after you've viewed it is unticked, so you look at it again.
+Tick **Viewed** on a file's header (Space) to fold it away and move on to the next; the bar counts how many you've viewed. A file that changes after you've viewed it is unticked, so you look at it again.
 
 ### The keyboard
 

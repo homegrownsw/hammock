@@ -300,9 +300,11 @@ function renderBar() {
     totals.title = `${plural(order.length, "file", "files")}, ${info.added.toLocaleString()} lines added, ${info.removed.toLocaleString()} removed`
   }
   bar.append(totals)
-  // How far through it you are: files marked viewed.
-  if (content && config.canSend && order.length) {
-    const n = order.filter((f) => viewedSet.has(f.path)).length
+  // How far through it you are: files marked viewed (once you've marked one).
+  const nViewed = order.filter((f) => viewedSet.has(f.path)).length
+  document.body.classList.toggle("hasviewed", nViewed > 0)
+  if (content && config.canSend && nViewed) {
+    const n = nViewed
     const v = el("span", "viewedcount" + (n === order.length ? " all" : ""))
     v.innerHTML = svg.check
     v.append(`${n} of ${order.length} viewed`)
@@ -314,7 +316,7 @@ function renderBar() {
   // Who comments go to, and sending the ones not yet sent.
   // One control: with comments to send, a split button (Send | ▾, the ▾
   // choosing the agent); without, just the agent, as a picker.
-  if (config.canSend) {
+  if (config.canSend && (reviewing() || (config.agents || []).length)) {
     const n = unsentCount()
     const pick = (anchor) => (e) => { e.stopPropagation(); openPop("targetPop", anchor, renderTargetPop) }
     const chev = () => { const c = el("span", "chev"); c.innerHTML = svg.chevron; return c }
@@ -338,10 +340,12 @@ function renderBar() {
       bar.append(to)
     }
     // Done: your verdict on the whole diff, with what's not yet sent.
-    const fin = el("button", "btn finish", "Finish Review")
-    fin.title = "Send your verdict on the whole diff, with your comments (q)"
-    fin.onclick = () => openFinish()
-    bar.append(fin)
+    if (reviewing()) {
+      const fin = el("button", "btn finish", "Finish Review")
+      fin.title = "Send your verdict on the whole diff, with your comments (q)"
+      fin.onclick = () => openFinish()
+      bar.append(fin)
+    }
   }
 
   if (config.keyboard) {
@@ -513,7 +517,7 @@ function renderSettingsPop(pop) {
   const wrap = toggle("Wrap long lines", !!v.wrap, () => setView({ wrap: !v.wrap }))
   wrap.append(el("span", "key", "w"))
   pop.append(wrap)
-  if (config.canSend) {
+  if (config.canSend && (hideViewed || viewedSet.size)) {
     const hv = el("button", "item" + (hideViewed ? " on" : ""), "Hide viewed files")
     hv.append(el("span", "key", "v"))
     hv.onclick = () => { setHideViewed(!hideViewed); closePops() }
@@ -1005,6 +1009,10 @@ const shownOutdated = new Set()
 const editing = new Set() // your comments being edited
 
 const threadsOf = (path) => review.threads.filter((t) => t.path === path)
+// A review is going: an agent waits on it (it opened the diff, or you chose
+// one) or there are comments. Until then, the diff is just for reading:
+// who to send to, and finishing, stay out of the way.
+const reviewing = () => config.canSend && (!!config.target || review.threads.length > 0)
 const agentName = () => config.target ? config.target.name : "the agent"
 
 // sideOf is which side a view shows: split's left is the old one.
@@ -2345,7 +2353,7 @@ const verdicts = [
 // openFinish is Finish Review: your verdict on the whole diff, a summary,
 // and what's not yet sent, as one message; then the diff closes.
 function openFinish() {
-  if (!config.canSend) return
+  if (!reviewing()) return
   const box = sheet("finish")
   box.append(el("h3", null, "Finish Review"))
   const n = unsentCount()
@@ -2430,7 +2438,7 @@ const helpKeys = [
     ["⌘Return", "In a comment: post and send it to the agent"],
     ["⌥⌘Return", "In a comment: post it, to send later"],
     ["⇧S", "Send every comment not yet sent"],
-    ["q", "Finish Review: your verdict on the whole diff"],
+    ["q", "Finish Review: your verdict on the whole diff (once an agent's waiting, or you've commented)"],
   ]],
   ["Files and view", [
     ["Space", "Mark the file viewed and go on to the next"],
