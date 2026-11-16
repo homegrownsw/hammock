@@ -1785,15 +1785,16 @@ function redrawCursor(was) {
   if (cur.kind === "fold") foldElement(cur)?.classList.add("kbfocus")
 }
 
-// setCursor moves it (show: scrolled into view).
-function setCursor(c, show = true) {
+// setCursor moves it (show: scrolled into view; span: the last line of a
+// change jumped to, all of which comes into view).
+function setCursor(c, show = true, span = 0) {
   const was = cur?.path
   cur = c
   area = "diff"
   markTreeSel()
   redrawCursor(was)
   if (c && c.path !== activePath && show) setActive(c.path)
-  if (show) showCursor()
+  if (show) showCursor(span)
 }
 
 // ---- where the cursor can go ----
@@ -1987,8 +1988,10 @@ function onScreenCursor() {
   return r.bottom > b.top && r.top < b.bottom
 }
 
-// showCursor scrolls just enough to see it, clear of the file's header.
-function showCursor() {
+// showCursor scrolls just enough to see it, clear of the file's header;
+// a change jumped to (span: its last line) comes all into view, a quarter
+// of the way down, or from the top if it's taller than the screen.
+function showCursor(span = 0) {
   if (!cur) return
   const box = $("files")
   if (cur.kind === "head") {
@@ -2003,6 +2006,18 @@ function showCursor() {
   if (!r) return
   const b = box.getBoundingClientRect()
   const top = b.top + 52, bottom = b.bottom - 40
+  const m = span && cur.kind === "line" ? mounted.get(cur.path) : null
+  if (m) {
+    const view = viewFor(m, cur.side), doc = view.state.doc
+    const end = view.documentTop + view.lineBlockAt(doc.line(Math.min(span, doc.lines)).from).bottom
+    if (r.top < top || end > bottom) {
+      const room = bottom - top, tall = end - r.top
+      box.scrollTop += r.top - (top + (tall < room ? Math.min(room * 0.25, room - tall) : 0))
+    }
+    pinTop()
+    onScroll()
+    return
+  }
   if (r.top < top) box.scrollTop -= top - r.top
   else if (r.bottom > bottom) box.scrollTop += Math.min(r.bottom - bottom, r.top - top)
   pinTop()
@@ -2061,11 +2076,15 @@ async function goChange(back) {
     const view = viewFor(m, cur.path === path ? cur.side : "new"), found = getChunks(view.state)
     if (!found) continue
     const isA = found.side === "a", doc = view.state.doc
-    const starts = found.chunks.map((c) => doc.lineAt(Math.min(isA ? c.fromA : c.fromB, doc.length)).number)
+    const spans = found.chunks.map((c) => {
+      const from = Math.min(isA ? c.fromA : c.fromB, doc.length), to = Math.min(isA ? c.toA : c.toB, doc.length)
+      return [doc.lineAt(from).number, doc.lineAt(Math.max(from, to - 1)).number]
+    })
+    const starts = spans.map((x) => x[0])
     const pick = k === 0
       ? (back ? starts.filter((n) => n < here).pop() : starts.find((n) => n > here))
       : (back ? starts[starts.length - 1] : starts[0])
-    if (pick != null) return setCursor(lineStop(path, view, pick))
+    if (pick != null) return setCursor(lineStop(path, view, pick), true, spans[starts.indexOf(pick)][1])
   }
 }
 
