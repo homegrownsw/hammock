@@ -31,8 +31,9 @@ func validID(id, prefix string) bool {
 func leaf(paneID string) *pb.Layout { return &pb.Layout{Node: &pb.Layout_PaneId{PaneId: paneID}} }
 
 // splitLayout inserts newPane next to target. If target's parent is already a
-// split in the same direction the new pane becomes a sibling (weights are
-// rebalanced equally); otherwise target is replaced by a two-way split.
+// split in the same direction the new pane becomes a sibling and takes half of
+// target's share, leaving the other panes as they were; otherwise target is
+// replaced by a two-way split.
 // before puts newPane ahead of target (left of it, or above). Reports
 // whether target was found.
 func splitLayout(root *pb.Layout, target, newPane string, dir pb.Split_Direction, before bool) bool {
@@ -64,8 +65,8 @@ func insertLayout(root *pb.Layout, target string, node *pb.Layout, dir pb.Split_
 					if before {
 						at = i
 					}
+					s.Weights = splitWeight(s.Weights, len(s.Children), i, at, node, len(nodes))
 					s.Children = slices.Insert(s.Children, at, nodes...)
-					s.Weights = equalWeights(len(s.Children))
 				} else {
 					s.Children[i] = &pb.Layout{Node: &pb.Layout_Split{Split: pair()}}
 				}
@@ -84,8 +85,28 @@ func insertLayout(root *pb.Layout, target string, node *pb.Layout, dir pb.Split_
 	return false
 }
 
+// splitWeight is weights (of n children) once target, at index i, gives half
+// its share to k new children inserted at index at: shared among them by the
+// subtree's own weights when it's a split of the same direction spliced in,
+// equally otherwise. The other children keep theirs.
+func splitWeight(weights []float32, n, i, at int, node *pb.Layout, k int) []float32 {
+	w := normalise(slices.Clone(weights), n)
+	half := w[i] / 2
+	w[i] = half
+	add := equalWeights(k)
+	if s := node.GetSplit(); s != nil && len(s.Children) == k {
+		add = normalise(slices.Clone(s.Weights), k)
+	}
+	for j := range add {
+		add[j] *= half
+	}
+	return slices.Insert(w, at, add...)
+}
+
 // removeFromLayout removes paneID, collapsing single-child splits. It returns
-// the new root (nil when the layout is now empty).
+// the new root (nil when the layout is now empty). The pane's share goes to
+// the one before it (or after, when it was first), so closing a pane just
+// split off returns its neighbour to the size it had before.
 func removeFromLayout(root *pb.Layout, paneID string) *pb.Layout {
 	if root == nil {
 		return nil
@@ -97,14 +118,17 @@ func removeFromLayout(root *pb.Layout, paneID string) *pb.Layout {
 	if s == nil {
 		return root
 	}
+	w := normalise(slices.Clone(s.Weights), len(s.Children))
 	var kept []*pb.Layout
 	var weights []float32
 	for i, child := range s.Children {
 		if c := removeFromLayout(child, paneID); c != nil {
 			kept = append(kept, c)
-			if i < len(s.Weights) {
-				weights = append(weights, s.Weights[i])
-			}
+			weights = append(weights, w[i])
+		} else if len(weights) > 0 {
+			weights[len(weights)-1] += w[i]
+		} else if i+1 < len(w) {
+			w[i+1] += w[i]
 		}
 	}
 	switch len(kept) {

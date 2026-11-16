@@ -73,3 +73,47 @@ func TestSplitBefore(t *testing.T) {
 		t.Fatalf("above: %v", root)
 	}
 }
+
+func TestSplitKeepsOtherPanesAndCloseRestores(t *testing.T) {
+	near := func(got, want []float32) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range got {
+			if d := got[i] - want[i]; d > 1e-5 || d < -1e-5 {
+				return false
+			}
+		}
+		return true
+	}
+	root := leaf("a")
+	splitLayout(root, "a", "b", pb.Split_DIRECTION_HORIZONTAL, false)
+	root.GetSplit().Weights = []float32{0.3, 0.7} // a narrow, b wide
+	// Splitting b halves b; a keeps its width.
+	splitLayout(root, "b", "c", pb.Split_DIRECTION_HORIZONTAL, false)
+	if w := root.GetSplit().Weights; !near(w, []float32{0.3, 0.35, 0.35}) {
+		t.Fatalf("after split: %v", w)
+	}
+	// Closing c gives b its width back.
+	root = removeFromLayout(root, "c")
+	if w := root.GetSplit().Weights; !near(w, []float32{0.3, 0.7}) {
+		t.Fatalf("after close: %v", w)
+	}
+	// Splitting before b, then closing the first pane: its share goes to the next.
+	splitLayout(root, "a", "d", pb.Split_DIRECTION_HORIZONTAL, true)
+	if w := root.GetSplit().Weights; !near(w, []float32{0.15, 0.15, 0.7}) {
+		t.Fatalf("split before: %v", w)
+	}
+	root = removeFromLayout(root, "d")
+	if w := root.GetSplit().Weights; !near(w, []float32{0.3, 0.7}) {
+		t.Fatalf("after closing first: %v", w)
+	}
+	// A spliced subtree shares half of its target by its own weights.
+	sub := leaf("e")
+	splitLayout(sub, "e", "f", pb.Split_DIRECTION_HORIZONTAL, false)
+	sub.GetSplit().Weights = []float32{0.25, 0.75}
+	insertLayout(root, "b", sub, pb.Split_DIRECTION_HORIZONTAL, false)
+	if w := root.GetSplit().Weights; !near(w, []float32{0.3, 0.35, 0.0875, 0.2625}) {
+		t.Fatalf("spliced: %v", w)
+	}
+}
