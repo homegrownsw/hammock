@@ -664,7 +664,8 @@ function bringOn(path) {
 // into it you are, and when heights change the scroll follows it.
 let pin = null
 let sectionList = []
-const resizes = new ResizeObserver(() => holdPin())
+let lastResize = 0
+const resizes = new ResizeObserver(() => { lastResize = performance.now(); holdPin() })
 
 // pinTop notes the file at the top (one whose header sits just below the
 // top counts: that's where reveal puts it).
@@ -679,9 +680,8 @@ function pinTop() {
   pin = s ? { path: s.dataset.path, off: top - s.offsetTop } : null
 }
 
-let toBottom = false // G: held at the bottom while it lays out
+let pinLocked = false // G: the pin stays on the last file's bottom while it lays out
 function holdPin() {
-  if (toBottom) { const box = $("files"); box.scrollTop = box.scrollHeight; return }
   // The keyboard's cursor, held where it is on screen while files lay out
   // again (they mount, wrap, change layout), rather than the file at the top.
   if (hold) {
@@ -698,7 +698,7 @@ function holdPin() {
   }
   const s = pin && sections.get(pin.path)
   if (!s) return
-  const box = $("files"), want = s.offsetTop + pin.off
+  const box = $("files"), want = pin.fromBottom != null ? s.offsetTop + s.offsetHeight + pin.fromBottom : s.offsetTop + pin.off
   if (Math.abs(box.scrollTop - want) > 1) box.scrollTop = want
 }
 
@@ -715,6 +715,7 @@ const sections = new Map() // path → section element
 const sectionOf = (path) => sections.get(path)
 
 let mountObserver = null, unmountObserver = null
+let heading = "" // the file a jump (G) is drawing before it gets there: kept
 
 function observers() {
   mountObserver?.disconnect()
@@ -726,7 +727,14 @@ function observers() {
   // Far off screen: let CodeMirror go, keeping the space it took.
   unmountObserver = new IntersectionObserver((entries) => {
     // (A body replaced since isn't the file's any more.)
-    for (const e of entries) if (!e.isIntersecting && e.target.isConnected) unmount(e.target.dataset.path, true)
+    // (Where it is now, not when the entry was made: a file drawn for the
+    // keyboard before a jump to it would be let go. Nor the cursor's file.)
+    for (const e of entries) {
+      if (e.isIntersecting || !e.target.isConnected || e.target.dataset.path === cur?.path || e.target.dataset.path === heading) continue
+      const r = e.target.getBoundingClientRect(), b = root.getBoundingClientRect()
+      if (r.bottom > b.top - 8000 && r.top < b.bottom + 8000) continue
+      unmount(e.target.dataset.path, true)
+    }
   }, { root, rootMargin: "8000px 0px" })
 }
 
@@ -899,6 +907,7 @@ function unmount(path, keepHeight) {
   if (!m) return
   const body = sectionOf(path)?.querySelector(".fbody")
   if (body && keepHeight) body.style.minHeight = `${body.offsetHeight}px`
+  for (const v of m.views) resizes.unobserve(v.contentDOM)
   m.destroy()
   mounted.delete(path)
   if (body && keepHeight) {
@@ -920,6 +929,9 @@ function mount(path) {
   const done = (destroy = () => {}, views = [], thr = null, kb = null) => {
     body.style.minHeight = ""
     mounted.set(path, { destroy, views, thr, kb, top })
+    // Each side's own height too: split lines its sides up with gaps, which
+    // can move the cursor's line without the file changing height.
+    for (const v of views) resizes.observe(v.contentDOM)
     refreshThreads(path)
     // A line the cursor's on now folded away (whole file back to its
     // changes): it's on the fold.
@@ -980,7 +992,11 @@ function mount(path) {
     EditorView.domEventHandlers({ mousedown: (e, view) => { clickLine(view, e, path); return false } }),
     // The cursor on a fold or a line taken out is a class on CodeMirror's
     // own elements, which it draws afresh as it updates: put it back.
-    EditorView.updateListener.of(() => { if (cur?.path === path && (cur.kind === "fold" || cur.del)) redrawSoon() }),
+    EditorView.updateListener.of((u) => {
+      if (cur?.path === path && (cur.kind === "fold" || cur.del)) redrawSoon()
+      // Laid out again (measured): the cursor held where it was, before it's painted.
+      if (hold && (u.heightChanged || u.geometryChanged)) holdPin()
+    }),
   ]
   const collapse = u.whole ? undefined : { margin: 3, minSize: 4 }
   const diffConfig = { scanLimit: 5000, timeout: 1500, ...(ignore ? { override: diffIgnoringSpace } : {}) }
@@ -1025,7 +1041,7 @@ function mount(path) {
 // The file at the top is the tree's active one.
 let scrollQueued = false
 function onScroll() {
-  pinTop()
+  if (!pinLocked) pinTop()
   if (scrollQueued) return
   scrollQueued = true
   requestAnimationFrame(() => {
@@ -1158,9 +1174,11 @@ const threadKey = (t) => JSON.stringify([t, openReplies.has(t.id), shownResolved
   t.comments.filter((c) => editing.has(c.id)).map((c) => c.id), config.target && config.target.id, config.canSend])
 
 // refreshThreads redraws a mounted file's threads: in its views, and above them.
+// (Boxes opening, closing and growing don't move the cursor on screen.)
 function refreshThreads(path) {
   const m = mounted.get(path)
   if (!m) return
+  if (kbUsed && cur) holdCursor(800)
   const all = threadsOf(path)
   const placed = new Set()
   const unified = isUnified(m.views)
@@ -1399,7 +1417,7 @@ function gutterDown(view, block, e, path) {
     // The lines the box is already on: it stays as it is.
     if (composer && composerKey(composer) === composerKey(c)) {
       refreshThreads(d.path)
-      document.querySelector(`.composer[data-key="${CSS.escape(composerKey(c))}"] textarea`)?.focus()
+      document.querySelector(`.composer[data-key="${CSS.escape(composerKey(c))}"] textarea`)?.focus({ preventScroll: true })
       return
     }
     openComposer(c)
@@ -1411,6 +1429,7 @@ function gutterDown(view, block, e, path) {
 }
 
 function openComposer(c) {
+  noteReturn()
   const was = composer
   // Stretched to more lines (or moved): what's typed comes along.
   if (was && drafts.has(composerKey(was)) && composerKey(was) !== composerKey(c)) {
@@ -1422,7 +1441,7 @@ function openComposer(c) {
   refreshThreads(c.path)
   requestAnimationFrame(() => {
     const ta = document.querySelector(`.composer[data-key="${CSS.escape(composerKey(c))}"] textarea`)
-    if (ta) { ta.focus(); ta.selectionStart = ta.value.length }
+    if (ta) { ta.focus({ preventScroll: true }); ta.selectionStart = ta.value.length }
   })
 }
 
@@ -1480,8 +1499,9 @@ function keepInView(elx) {
   const r = elx.getBoundingClientRect(), b = box.getBoundingClientRect()
   const bottom = Math.min(b.bottom, vv ? vv.offsetTop + vv.height : window.innerHeight) - 12
   const top = b.top + 8
-  if (r.bottom > bottom) box.scrollTop += Math.min(r.bottom - bottom, r.top - top)
-  else if (r.top < top) box.scrollTop -= top - r.top
+  // (Showing the box you're typing in comes first: the cursor's let go.)
+  if (r.bottom > bottom) { hold = null; box.scrollTop += Math.min(r.bottom - bottom, r.top - top) }
+  else if (r.top < top) { hold = null; box.scrollTop -= top - r.top }
   pinTop()
 }
 
@@ -1506,8 +1526,8 @@ function textBox(key, placeholder, submit, cancel) { // submit(keep): ⌘Return 
   ta.rows = 3
   ta.oninput = () => { drafts.set(key, ta.value); grow(ta) }
   ta.onkeydown = (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(e.altKey) }
-    if (e.key === "Escape") { e.preventDefault(); cancel() }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(e.altKey); returnCursor() }
+    if (e.key === "Escape") { e.preventDefault(); cancel(); returnCursor() }
     e.stopPropagation()
   }
   requestAnimationFrame(() => grow(ta))
@@ -1619,7 +1639,7 @@ function threadDOM(t) {
     needsText(ta, b.row)
     actions.append(ta, b.row)
     actions.classList.add("open")
-    requestAnimationFrame(() => ta.focus())
+    requestAnimationFrame(() => ta.focus({ preventScroll: true }))
   } else if (config.canDrive) {
     const reply = el("button", "replybox", "Reply…")
     reply.onclick = () => { openReplies.add(t.id); refreshThreads(t.path) }
@@ -2154,6 +2174,14 @@ function seatCursor() {
     if (view.documentTop < top) {
       const b = view.lineBlockAtHeight(top - view.documentTop)
       const n = view.state.doc.lineAt(Math.min(b.from, view.state.doc.length)).number
+      // Lines taken out drawn above it, on screen: the first of those.
+      const d = deletionAt(view, n)
+      if (d) {
+        for (let l = d[0]; l <= d[1]; l++) {
+          const c = { path, kind: "line", side: "old", line: l, del: n }, e = delElement(c)
+          if (e && e.getBoundingClientRect().bottom > top) return setCursor(c)
+        }
+      }
       return setCursor(lineStop(path, view, n))
     }
   }
@@ -2181,6 +2209,10 @@ function cursorRect() {
   const m = mounted.get(cur.path)
   if (!m || !m.views.length) return null
   const view = viewFor(m, cur.side), doc = view.state.doc
+  // Where it's drawn, when it is (CodeMirror's own heights lag a frame
+  // behind as it lays out again).
+  const drawn = cur.kind === "line" ? view.dom.querySelector(".cm-kbCursor") : foldElement(cur)
+  if (drawn) return drawn.getBoundingClientRect()
   const n = cur.kind === "line" ? cur.line : cur.from
   if (n > doc.lines) return null
   const b = view.lineBlockAt(doc.line(n).from)
@@ -2211,7 +2243,7 @@ function showCursor(span = 0) {
   const b = box.getBoundingClientRect()
   // Clear of its file's header, where it's stuck to the top over the code.
   const hr = sectionOf(cur.path)?.querySelector(".fhead")?.getBoundingClientRect()
-  const top = (hr && hr.top <= b.top + 2 ? hr.bottom : b.top) + 8, bottom = b.bottom - 40
+  const top = Math.max(b.top, hr && hr.top <= b.top + 2 ? hr.bottom : b.top) + 8, bottom = b.bottom - 40
   const m = span && cur.kind === "line" ? mounted.get(cur.path) : null
   if (m) {
     const view = cur.del ? m.views[0] : viewFor(m, cur.side), doc = view.state.doc
@@ -2232,6 +2264,18 @@ function showCursor(span = 0) {
   onScroll()
 }
 
+// A box opened from the keyboard (a comment, a reply, an edit) may scroll
+// to show itself; once it's done with, the cursor goes back to where it
+// was on screen.
+let returnY = null
+function noteReturn() { if (kbUsed && cur && (returnY == null || !document.querySelector("#files textarea"))) returnY = cursorY() }
+function returnCursor() {
+  if (returnY == null || !cur) return
+  hold = { y: returnY, until: performance.now() + 1500 }
+  returnY = null
+  holdPin()
+}
+
 // hold: where the cursor's to stay on screen (y in the files), until when.
 // Set as it moves, and before the files lay out again; let go as you
 // scroll or press a key.
@@ -2241,12 +2285,15 @@ function cursorY() {
   return r ? r.top - $("files").getBoundingClientRect().top : null
 }
 function holdCursor(ms) {
+  // Already holding (a layout under way): longer, from where it was, not
+  // from wherever the layout has the cursor this moment.
+  if (hold && performance.now() < hold.until) { hold.until = Math.max(hold.until, performance.now() + ms); return }
   const y = cursorY()
   const b = $("files").getBoundingClientRect()
   hold = y != null && y > -20 && y < b.height ? { y, until: performance.now() + ms } : null
 }
-for (const ev of ["wheel", "touchmove", "mousedown"]) $("files").addEventListener(ev, () => { hold = null; toBottom = false }, { passive: true, capture: true })
-window.addEventListener("keydown", () => { hold = null; toBottom = false }, true)
+for (const ev of ["wheel", "touchmove", "mousedown"]) $("files").addEventListener(ev, () => { hold = null; pinLocked = false }, { passive: true, capture: true })
+window.addEventListener("keydown", () => { hold = null; pinLocked = false }, true)
 
 function foldElement(c) {
   const m = mounted.get(c.path)
@@ -2261,13 +2308,13 @@ function foldElement(c) {
 
 // ensureMounted waits for path's code to be drawn (scrolling to it if it's
 // far away): null if it won't be (closed, or not text).
-async function ensureMounted(path) {
+async function ensureMounted(path, stay) {
   const f = byPath.get(path)
   if (!f || !uiFor(f).open) return null
   const frame = () => new Promise((r) => requestAnimationFrame(r))
   if (!mounted.get(path)?.views) {
     const s = sectionOf(path), box = $("files")
-    if (s && Math.abs(s.offsetTop - box.scrollTop) > 1200) { pin = { path, off: -10 }; holdPin() }
+    if (!stay && s && Math.abs(s.offsetTop - box.scrollTop) > 1200) { pin = { path, off: -10 }; holdPin() }
     want(path)
     for (let i = 0; i < 300 && !mounted.get(path); i++) await frame()
   }
@@ -2362,17 +2409,30 @@ function goEnd(back) {
   if (!files.length) return
   if (back) { setCursor({ path: files[0].path, kind: "head" }); $("files").scrollTop = 0; return }
   const last = files[files.length - 1].path
-  // Straight to the bottom, where the last file ends, and kept there as
-  // the files there are drawn: one move, not several.
-  const box = $("files")
-  toBottom = true
-  box.scrollTop = box.scrollHeight
-  ensureMounted(last).then(async () => {
-    for (let i = 0; i < 6 && toBottom; i++) { box.scrollTop = box.scrollHeight; await new Promise((r) => requestAnimationFrame(r)) }
-    if (!toBottom) return
-    toBottom = false
+  // The last file drawn first (where it is, off screen), then straight to
+  // the bottom, held there by the bottom of the last file as the files
+  // above are drawn and change height (held from the top they'd shift
+  // it); then the cursor on its end, already in view.
+  const frame = () => new Promise((r) => requestAnimationFrame(r))
+  heading = last
+  ensureMounted(last, true).then(async () => {
+    await frame()
+    const box = $("files"), sec = sectionOf(last)
+    box.scrollTop = box.scrollHeight
+    if (sec) { pin = { path: last, fromBottom: box.scrollTop - (sec.offsetTop + sec.offsetHeight) }; pinLocked = true }
+    // Until the files near the screen are drawn (their text comes from the
+    // app a moment later), and a frame more.
+    const drawn = () => [...sections].every(([p, sec]) => !nearScreen(sec) || !uiFor(byPath.get(p)).open || mounted.has(p))
+    for (let i = 0; i < 90 && pinLocked && !drawn(); i++) await frame()
+    // …and they've stopped changing size (measured, lined up).
+    for (let i = 0; i < 60 && pinLocked && performance.now() - lastResize < 80; i++) await frame()
+    if (!pinLocked) { heading = ""; return }
+    pinLocked = false
     pinTop()
+    heading = ""
     setCursor(lastIn(last))
+    // Files further up may still be loading: held there a while longer.
+    holdCursor(2000)
   })
 }
 
@@ -2412,10 +2472,11 @@ function act() {
       if (t.state === "resolved" && !shownResolved.has(t.id)) { shownResolved.add(t.id); refreshThreads(t.path); return }
       const last = t.comments[t.comments.length - 1]
       if (last && !last.agent && (last.delivery === "unsent" || last.delivery === "queued")) {
+        noteReturn()
         editing.add(last.id)
         drafts.set("edit:" + last.id, last.text)
         refreshThreads(t.path)
-        requestAnimationFrame(() => document.querySelector(`[data-comment="${CSS.escape(last.id)}"] textarea`)?.focus())
+        requestAnimationFrame(() => document.querySelector(`[data-comment="${CSS.escape(last.id)}"] textarea`)?.focus({ preventScroll: true }))
         return
       }
       replyTo(t)
@@ -2426,6 +2487,7 @@ function act() {
 // replyTo opens a thread's reply box, quoting the text you've selected.
 function replyTo(t) {
   if (!config.canDrive) return
+  noteReturn()
   const sel = String(window.getSelection() || "").trim()
   if (sel && !drafts.get("reply:" + t.id)) drafts.set("reply:" + t.id, sel.split("\n").map((l) => "> " + l).join("\n") + "\n\n")
   openReplies.add(t.id)
@@ -2456,7 +2518,13 @@ function fileComment() {
   if (!f || !config.canDrive) return
   const sec = sectionOf(path)
   if (!uiFor(f).open && sec) { uiFor(f).open = true; renderSection(sec, f) }
+  // Its box goes at the top of the file. With room above for it, the
+  // cursor stays where it is (the box takes the space above); without,
+  // the box pushes what's below down, once, so it's seen.
+  const r = sec?.getBoundingClientRect(), b = $("files").getBoundingClientRect()
+  const room = r ? r.top - b.top : 0
   openComposer({ path, side: "new", line: 0, endLine: 0 })
+  if (room < 160) hold = null
 }
 
 function toggleOpen(path) {
@@ -2535,8 +2603,13 @@ function enterTree() {
   if (treeHidden) { treeHidden = false; renderTreeVisibility(); renderBar() }
   area = "tree"
   const rows = [...$("tree").querySelectorAll(".row")]
-  // The file you're in: the keyboard's, or the one the list shows.
+  // The file you're in: the keyboard's, or the one the list shows, its
+  // folders opened if they were closed.
   treeSel = cur?.path || activePath || ""
+  const shut = [...closedDirs].filter((d) => treeSel.startsWith(d + "/"))
+  if (shut.length) { for (const d of shut) closedDirs.delete(d); renderTree() }
+  rows.length = 0
+  rows.push(...$("tree").querySelectorAll(".row"))
   if (!rows.some((r) => r.dataset.key === treeSel)) treeSel = rows[0]?.dataset.key || ""
   markTreeSel()
   redrawCursor()

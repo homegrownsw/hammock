@@ -58,7 +58,9 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .st.M { color: var(--mod); } .st.A { color: var(--add); } .st.D { color: var(--del); } .st.R, .st.C { color: var(--ren); } .st.T { color: var(--warn); }
 
 /* The files. */
-#files { flex: 1; overflow: auto; min-width: 0; padding: 10px 12px 40vh; position: relative; }
+/* (The page keeps your place itself, by the cursor or the file at the top:
+   the browser's own scroll anchoring would correct twice.) */
+#files { flex: 1; overflow: auto; min-width: 0; padding: 10px 12px 40vh; position: relative; overflow-anchor: none; }
 .file { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; background: var(--bg); }
 .fhead { position: sticky; top: -10px; z-index: 3; display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 8px;
   background: var(--panel); border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; }
