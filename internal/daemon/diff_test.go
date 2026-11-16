@@ -439,7 +439,8 @@ func TestReviewFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg := reviewMessage(r.Review, []string{r.CommentId})
-	if !strings.Contains(msg, "not the diff as a whole") || !strings.Contains(msg, "nothing has been approved") {
+	if !strings.Contains(msg, "not the diff as a whole") || !strings.Contains(msg, "nothing has been approved") ||
+		!strings.Contains(msg, " in "+repo+" (review "+r.Review.Id+", diff pane "+paneID+")") {
 		t.Errorf("a comment's message doesn't say what it's about:\n%s", msg)
 	}
 

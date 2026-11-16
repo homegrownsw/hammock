@@ -231,6 +231,13 @@ input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 
 .thread.kbfocus { box-shadow: 0 0 0 2px var(--accent); }
 .fbody .cm-collapsedLines.kbfocus { box-shadow: inset 0 0 0 2px var(--accent); color: var(--fg); }
 .row.kbsel { box-shadow: inset 0 0 0 2px var(--accent); }
+.fbody .cm-deletedLine { position: relative; }
+.fbody .cm-deletedLine.kbcur { background-image: linear-gradient(color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 22%, transparent)); box-shadow: inset 2px 0 0 var(--accent); }
+.fbody .cm-deletedLine.kbrange { background-image: linear-gradient(color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--accent) 24%, transparent)); }
+.fbody .cm-deletedLine .dplus { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; border-radius: 4px;
+  background: var(--accent); color: var(--on-accent); font: 600 13px/16px var(--ui); text-align: center; cursor: pointer; display: none; -webkit-user-select: none; user-select: none; }
+.fbody .cm-deletedLine:hover .dplus { display: block; }
+.crow .btn[disabled] { opacity: 0.45; pointer-events: none; }
 body.nothreads .wwrap:has(> .thread), body.nothreads .fthreads > .thread { display: none; }
 
 /* Viewed files: a tick in the list, the header's checkbox, how many in the bar. */

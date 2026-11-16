@@ -603,7 +603,11 @@ function renderTree() {
       if (viewed) { const v = el("span", "vmark"); v.innerHTML = svg.check; v.title = "Viewed"; n.append(" ", v) }
       row.append(n)
       row.title = f.oldPath ? `${f.oldPath} → ${f.path}` : f.path
-      row.onclick = () => { reveal(f.path); if (window.innerWidth <= 640) { treeHidden = true; renderTreeVisibility(); renderBar() } }
+      row.onclick = () => {
+        reveal(f.path)
+        if (cur?.path !== f.path) setCursor({ path: f.path, kind: "head" }, false)
+        if (window.innerWidth <= 640) { treeHidden = true; renderTreeVisibility(); renderBar() }
+      }
       list.append(row)
     }
   }
@@ -623,17 +627,33 @@ function setActive(path) {
   }
 }
 
-// reveal scrolls a file to the top, opening it.
+// reveal opens a file and brings it on screen, scrolling as little as
+// it can: not at all if its header's showing, just enough to show all of
+// it if it fits, else its top to the top.
 function reveal(path) {
   const f = byPath.get(path)
   if (!f) return
   const u = uiFor(f)
   const sec = sectionOf(path)
   if (!sec) return
-  if (!u.open) { u.open = true; renderSection(sec, f) }
+  if (!u.open) { u.open = true; keepHeader(path); renderSection(sec, f) }
+  bringOn(path)
+  setActive(path)
+}
+
+function bringOn(path) {
+  const sec = sectionOf(path)
+  if (!sec) return
+  const box = $("files"), r = sec.getBoundingClientRect(), b = box.getBoundingClientRect()
+  if (r.top >= b.top && r.top < b.bottom - 80) return
+  if (r.height <= b.height - 20) {
+    if (r.top < b.top) box.scrollTop -= b.top - r.top + 10
+    else box.scrollTop += r.bottom - b.bottom + 10
+    pinTop()
+    return
+  }
   pin = { path, off: -10 }
   holdPin()
-  setActive(path)
 }
 
 // ---- keeping your place ----
@@ -975,7 +995,9 @@ function onScroll() {
       else break
     }
     if (!current && sections.size) current = sections.keys().next().value
-    setActive(current)
+    // The list shows the file you're in: the keyboard's, while it's on
+    // screen, else the one at the top.
+    setActive(kbUsed && cur && sections.has(cur.path) && onScreenCursor() ? cur.path : current)
     markStuck(current)
     updateNewPill()
   })
@@ -1117,6 +1139,9 @@ function refreshThreads(path) {
       }
     }
     const c = composer
+    // Unified: a comment on lines taken out goes where their threads do.
+    const oldPos = c && c.path === path && c.line > 0 && unified && c.side === "old" ? posFor(view, c, true) : -1
+    if (oldPos >= 0) marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(oldPos))
     if (c && c.path === path && c.line > 0 && (c.side === side) && c.endLine <= view.state.doc.lines) {
       marks.push(Decoration.widget({ widget: new ComposerWidget(c), block: true, side: 2 }).range(view.state.doc.line(c.endLine).to))
       // (While dragging out another range, that's the one highlighted.)
@@ -1383,17 +1408,24 @@ function buttons(keep, submit, cancel) {
   const can = !!config.target && config.canSend
   const no = el("button", "btn", "Cancel")
   no.onclick = cancel
-  const add = el("button", can ? "btn" : "btn primary", keep)
+  const add = el("button", (can ? "btn" : "btn primary") + " needs", keep)
   add.onclick = () => submit(false)
   row.append(el("span", "spacer"), no, add)
   if (can) {
-    const send = el("button", "btn primary", `Send to ${agentName()}`)
+    const send = el("button", "btn primary needs", `Send to ${agentName()}`)
     send.onclick = () => submit(true)
     send.title = "Post it and send it to the agent now (⌘Return)"
     add.title = "Post it, to send later, or keep as a note (⌥⌘Return)"
     row.append(send)
   }
   return { row, main: () => submit(can), keep: () => submit(false) }
+}
+
+// needsText greys out row's buttons that post (.needs) while ta is empty.
+function needsText(ta, row) {
+  const sync = () => { for (const b of row.querySelectorAll(".needs")) b.disabled = !ta.value.trim() }
+  ta.addEventListener("input", sync)
+  sync()
 }
 
 // keepInView scrolls the files so el (a comment box being typed in) is
@@ -1475,6 +1507,7 @@ function composerDOM(c) {
   }
   const b = buttons("Add Comment", submit, closeComposer)
   const ta = textBox(key, "Leave a comment (Markdown)", (keep) => keep ? b.keep() : b.main(), closeComposer)
+  needsText(ta, b.row)
   box.append(ta, b.row)
   return box
 }
@@ -1541,6 +1574,7 @@ function threadDOM(t) {
     const cancel = () => { openReplies.delete(t.id); refreshThreads(t.path) }
     const b = buttons("Reply", submit, cancel)
     const ta = textBox(key, "Reply (Markdown)", (keep) => keep ? b.keep() : b.main(), cancel)
+    needsText(ta, b.row)
     actions.append(ta, b.row)
     actions.classList.add("open")
     requestAnimationFrame(() => ta.focus())
@@ -1608,11 +1642,12 @@ function commentDOM(t, c) {
     const cancel = () => { editing.delete(c.id); drafts.delete(key); refreshThreads(t.path) }
     const ta = textBox(key, "", save, cancel)
     const row = el("div", "crow")
-    const ok = el("button", "btn primary", "Save")
+    const ok = el("button", "btn primary needs", "Save")
     ok.onclick = save
     const no = el("button", "btn", "Cancel")
     no.onclick = cancel
     row.append(el("span", "spacer"), no, ok)
+    needsText(ta, row)
     box.append(ta, row)
   } else {
     const body = el("div", "md")
@@ -1760,7 +1795,7 @@ function drawCursor(path) {
   if (!m || !m.kb) return
   for (const view of m.views) {
     const marks = [], numbers = []
-    if (kbUsed && cur && cur.path === path && cur.kind === "line" && sideFor(m, cur.side) === sideOf(view) && area === "diff") {
+    if (kbUsed && cur && cur.path === path && cur.kind === "line" && !cur.del && sideFor(m, cur.side) === sideOf(view) && area === "diff") {
       const doc = view.state.doc
       const a = Math.min(cur.anchor || cur.line, cur.line), b = Math.max(cur.anchor || cur.line, cur.line)
       for (let l = a; l <= b && l <= doc.lines; l++) {
@@ -1779,7 +1814,12 @@ function redrawCursor(was) {
   if (cur) drawCursor(cur.path)
   drawnPath = cur?.path || ""
   for (const e of document.querySelectorAll(".kbfocus")) e.classList.remove("kbfocus")
+  for (const e of document.querySelectorAll(".cm-deletedLine.kbcur, .cm-deletedLine.kbrange")) e.classList.remove("kbcur", "kbrange")
   if (area !== "diff" || !cur || !kbUsed) return
+  if (cur.del) {
+    const a = Math.min(cur.anchor || cur.line, cur.line), b = Math.max(cur.anchor || cur.line, cur.line)
+    for (let l = a; l <= b; l++) delElement({ ...cur, line: l })?.classList.add(l === cur.line ? "kbcur" : "kbrange")
+  }
   if (cur.kind === "thread") document.querySelector(`.thread[data-thread="${CSS.escape(cur.thread)}"]`)?.classList.add("kbfocus")
   if (cur.kind === "head") sectionOf(cur.path)?.querySelector(".fhead")?.classList.add("kbfocus")
   if (cur.kind === "fold") foldElement(cur)?.classList.add("kbfocus")
@@ -1793,8 +1833,10 @@ function setCursor(c, show = true, span = 0) {
   area = "diff"
   markTreeSel()
   redrawCursor(was)
-  if (c && c.path !== activePath && show) setActive(c.path)
+  if (c && sections.has(c.path)) setActive(c.path)
   if (show) showCursor(span)
+  // Lines taken out are drawn once near the screen: mark it then.
+  if (c?.del && !delElement(c)) requestAnimationFrame(() => { if (cur === c) { redrawCursor(); if (show) showCursor(span) } })
 }
 
 // ---- where the cursor can go ----
@@ -1809,6 +1851,63 @@ function lineStop(path, view, n) {
     return { path, kind: "fold", side: sideOf(view), from: doc.lineAt(b.from).number, to: doc.lineAt(b.to).number }
   }
   return { path, kind: "line", side: sideOf(view), line: n }
+}
+
+// ---- lines taken out, in unified ----
+
+// Unified shows the lines a change took out above the lines that replaced
+// them (CodeMirror's deletion widget, not lines of its own): each is a stop
+// too, on the old side ({ side: "old", line, del: the new line it's above }).
+function deletionAt(view, n) {
+  // (Split's sides are in a .cm-mergeView, and have lines of their own.)
+  if (view.dom.closest(".cm-mergeView")) return null
+  let orig
+  try { orig = getOriginalDoc(view.state) } catch { return null }
+  const found = getChunks(view.state), doc = view.state.doc
+  if (!found || n < 1 || n > doc.lines) return null
+  const at = doc.line(n).from
+  for (const c of found.chunks) {
+    if (c.fromB > at) break
+    if (c.fromB === at && c.toA > c.fromA) return [orig.lineAt(c.fromA).number, orig.lineAt(Math.max(c.fromA, c.endA)).number]
+  }
+  return null
+}
+
+// enter is line n arrived at from above: the lines taken out above it first.
+function enter(path, view, n) {
+  const d = deletionAt(view, n)
+  return d ? { path, kind: "line", side: "old", line: d[0], del: n } : lineStop(path, view, n)
+}
+
+// delElement is the deleted line c is on, as drawn (null: not drawn).
+function delElement(c) {
+  const m = mounted.get(c.path)
+  if (!m || !m.views.length || !c.del) return null
+  const view = m.views[0], d = deletionAt(view, c.del)
+  if (!d) return null
+  const pos = view.state.doc.line(c.del).from
+  for (const chunk of view.dom.querySelectorAll(".cm-deletedChunk")) {
+    let at = -1
+    try { at = view.posAtDOM(chunk) } catch {}
+    if (at !== pos) continue
+    return chunk.querySelectorAll(".cm-deletedLine")[c.line - d[0]] ?? null
+  }
+  return null
+}
+
+// deletedStop is the stop for a deleted line's element (a click on it).
+function deletedStop(elx) {
+  const chunk = elx.closest(".cm-deletedChunk"), ed = elx.closest(".cm-editor"), sec = elx.closest("section.file")
+  if (!chunk || !ed || !sec) return null
+  const path = sec.dataset.path, m = mounted.get(path)
+  const view = m?.views.find((v) => v.dom === ed)
+  if (!view) return null
+  let pos
+  try { pos = view.posAtDOM(chunk) } catch { return null }
+  const n = view.state.doc.lineAt(pos).number, d = deletionAt(view, n)
+  if (!d) return null
+  const i = [...chunk.querySelectorAll(".cm-deletedLine")].indexOf(elx.closest(".cm-deletedLine"))
+  return i < 0 ? null : { path, kind: "line", side: "old", line: d[0] + i, del: n }
 }
 
 // threadsAt is the threads drawn under line n of view, in order.
@@ -1854,13 +1953,15 @@ function stepIn(c, back) {
   const side = sideFor(m, c.side)
   const view = viewFor(m, side), doc = view.state.doc, unified = isUnified(m.views)
   const tops = topThreads(c.path).map((t) => ({ path: c.path, kind: "thread", thread: t.id, side }))
-  const first = () => tops.length ? tops[0] : lineStop(c.path, view, 1)
+  const first = () => tops.length ? tops[0] : enter(c.path, view, 1)
   const after = (n) => { // what follows line n: its threads, else the next line
     const ts = threadsAt(c.path, view, n, unified)
     if (ts.length) return { path: c.path, kind: "thread", thread: ts[0].id, side }
-    return n < doc.lines ? lineStop(c.path, view, n + 1) : null
+    return n < doc.lines ? enter(c.path, view, n + 1) : null
   }
-  const before = (n) => { // what's before line n: the last thread of the line above, the line above, or the top
+  const before = (n, plain) => { // what's before line n: the lines taken out above it, the last thread of the line above, the line above, or the top
+    const d = !plain && deletionAt(view, n)
+    if (d) return { path: c.path, kind: "line", side: "old", line: d[1], del: n }
     if (n <= 1) return tops.length ? tops[tops.length - 1] : { path: c.path, kind: "head" }
     const ts = threadsAt(c.path, view, n - 1, unified)
     if (ts.length) return { path: c.path, kind: "thread", thread: ts[ts.length - 1].id, side }
@@ -1870,21 +1971,27 @@ function stepIn(c, back) {
     case "head":
       return back ? null : first()
     case "line":
+      if (c.del) {
+        const d = deletionAt(view, c.del)
+        if (!d) return lineStop(c.path, view, Math.min(c.del, doc.lines))
+        if (back) return c.line > d[0] ? { ...c, line: c.line - 1 } : before(c.del, true)
+        return c.line < d[1] ? { ...c, line: c.line + 1 } : lineStop(c.path, view, c.del)
+      }
       return back ? before(c.line) : after(c.line)
     case "fold":
-      return back ? before(c.from) : (c.to < doc.lines ? lineStop(c.path, view, c.to + 1) : null)
+      return back ? before(c.from) : (c.to < doc.lines ? enter(c.path, view, c.to + 1) : null)
     case "thread": {
       const place = threadPlace(c)
       if (place.top) {
         const i = tops.findIndex((t) => t.thread === c.thread)
         if (back) return i > 0 ? tops[i - 1] : { path: c.path, kind: "head" }
-        return i >= 0 && i < tops.length - 1 ? tops[i + 1] : lineStop(c.path, view, 1)
+        return i >= 0 && i < tops.length - 1 ? tops[i + 1] : enter(c.path, view, 1)
       }
       const ts = threadsAt(c.path, view, place.line, unified)
       const i = ts.findIndex((t) => t.id === c.thread)
       if (back) return i > 0 ? { path: c.path, kind: "thread", thread: ts[i - 1].id, side } : lineStop(c.path, view, place.line)
       if (i >= 0 && i < ts.length - 1) return { path: c.path, kind: "thread", thread: ts[i + 1].id, side }
-      return place.line < doc.lines ? lineStop(c.path, view, place.line + 1) : null
+      return place.line < doc.lines ? enter(c.path, view, place.line + 1) : null
     }
   }
   return null
@@ -1925,6 +2032,11 @@ function extend(back) {
   if (!cur || cur.kind !== "line") return
   const m = mounted.get(cur.path)
   if (!m) return
+  if (cur.del) {
+    const d = deletionAt(m.views[0], cur.del), n = cur.line + (back ? -1 : 1)
+    if (d && n >= d[0] && n <= d[1]) setCursor({ ...cur, line: n, anchor: cur.anchor || cur.line })
+    return
+  }
   const view = viewFor(m, sideFor(m, cur.side)), n = cur.line + (back ? -1 : 1)
   if (n < 1 || n > view.state.doc.lines) return
   if (lineStop(cur.path, view, n).kind !== "line") return
@@ -1971,6 +2083,17 @@ function cursorRect() {
   if (!cur) return null
   if (cur.kind === "head") return sectionOf(cur.path)?.getBoundingClientRect() ?? null
   if (cur.kind === "thread") return document.querySelector(`.thread[data-thread="${CSS.escape(cur.thread)}"]`)?.getBoundingClientRect() ?? null
+  if (cur.del) {
+    const e = delElement(cur)
+    if (e) return e.getBoundingClientRect()
+    // Not drawn yet (off screen): about where it will be, above its line.
+    const m = mounted.get(cur.path)
+    if (!m || !m.views.length) return null
+    const view = m.views[0], doc = view.state.doc, d = deletionAt(view, cur.del)
+    if (!d || cur.del > doc.lines) return null
+    const top = view.documentTop + view.lineBlockAt(doc.line(cur.del).from).top + (cur.line - d[0]) * lineHeight()
+    return { top, bottom: top + lineHeight() }
+  }
   const m = mounted.get(cur.path)
   if (!m || !m.views.length) return null
   const view = viewFor(m, cur.side), doc = view.state.doc
@@ -1995,10 +2118,7 @@ function showCursor(span = 0) {
   if (!cur) return
   const box = $("files")
   if (cur.kind === "head") {
-    const s = sectionOf(cur.path)
-    if (!s) return
-    const r = s.getBoundingClientRect(), b = box.getBoundingClientRect()
-    if (r.top < b.top + 4 || r.top > b.bottom - 80) { pin = { path: cur.path, off: -10 }; holdPin() }
+    bringOn(cur.path)
     onScroll()
     return
   }
@@ -2008,7 +2128,7 @@ function showCursor(span = 0) {
   const top = b.top + 52, bottom = b.bottom - 40
   const m = span && cur.kind === "line" ? mounted.get(cur.path) : null
   if (m) {
-    const view = viewFor(m, cur.side), doc = view.state.doc
+    const view = cur.del ? m.views[0] : viewFor(m, cur.side), doc = view.state.doc
     const end = view.documentTop + view.lineBlockAt(doc.line(Math.min(span, doc.lines)).from).bottom
     if (r.top < top || end > bottom) {
       const room = bottom - top, tall = end - r.top
@@ -2067,7 +2187,8 @@ async function goChange(back) {
   if (!cur) return
   const files = shownFiles()
   let i = files.findIndex((f) => f.path === cur.path)
-  const here = cur.kind === "line" ? cur.line : cur.kind === "fold" ? (back ? cur.from : cur.to) : cur.kind === "head" ? 0 : (threadPlace(cur).line || 0)
+  // (On lines taken out: the change they're in starts at the line they're above.)
+  const here = cur.kind === "line" ? (cur.del || cur.line) : cur.kind === "fold" ? (back ? cur.from : cur.to) : cur.kind === "head" ? 0 : (threadPlace(cur).line || 0)
   for (let k = 0; k < files.length && i >= 0 && i < files.length; k++, i += back ? -1 : 1) {
     const path = files[i].path
     if (!uiFor(files[i]).open) continue
@@ -2084,7 +2205,7 @@ async function goChange(back) {
     const pick = k === 0
       ? (back ? starts.filter((n) => n < here).pop() : starts.find((n) => n > here))
       : (back ? starts[starts.length - 1] : starts[0])
-    if (pick != null) return setCursor(lineStop(path, view, pick), true, spans[starts.indexOf(pick)][1])
+    if (pick != null) return setCursor(enter(path, view, pick), true, spans[starts.indexOf(pick)][1])
   }
 }
 
@@ -2167,7 +2288,7 @@ function act() {
       return
     case "line":
       if (!config.canDrive) return
-      openComposer({ path: cur.path, side: cur.side || "new", line: Math.min(cur.anchor || cur.line, cur.line), endLine: Math.max(cur.anchor || cur.line, cur.line) })
+      openComposer({ path: cur.path, side: cur.del ? "old" : (cur.side || "new"), line: Math.min(cur.anchor || cur.line, cur.line), endLine: Math.max(cur.anchor || cur.line, cur.line) })
       return
     case "thread": {
       if (!config.canDrive) return
@@ -2254,7 +2375,7 @@ function toggleViewed(path) {
   post({ type: "review", command: { action: "setViewed", path, viewed: on } })
   const u = uiFor(f), sec = sectionOf(path)
   const files = shownFiles(), i = files.findIndex((x) => x.path === path)
-  const next = on ? files.slice(i + 1).find((x) => !viewedSet.has(x.path)) : null
+  const next = on ? files[i + 1] : null
   u.open = !on
   if (hideViewed && on) renderFiles(true)
   else if (sec) { keepHeader(path); renderSection(sec, f) }
@@ -2282,14 +2403,20 @@ function markTreeSel() {
   for (const r of $("tree").querySelectorAll(".row.kbsel")) r.classList.remove("kbsel")
   if (area !== "tree") return
   const row = [...$("tree").querySelectorAll(".row")].find((r) => r.dataset.key === treeSel)
-  if (row) { row.classList.add("kbsel"); row.scrollIntoView({ block: "nearest" }) }
+  if (!row) return
+  row.classList.add("kbsel")
+  // (The list alone: scrollIntoView could move the page too.)
+  const list = $("tree").querySelector(".list"), rr = row.getBoundingClientRect(), lr = list.getBoundingClientRect()
+  if (rr.top < lr.top) list.scrollTop -= lr.top - rr.top
+  else if (rr.bottom > lr.bottom) list.scrollTop += rr.bottom - lr.bottom
 }
 
 function enterTree() {
   if (treeHidden) { treeHidden = false; renderTreeVisibility(); renderBar() }
   area = "tree"
   const rows = [...$("tree").querySelectorAll(".row")]
-  if (!rows.some((r) => r.dataset.key === treeSel)) treeSel = (cur?.path || activePath) || rows[0]?.dataset.key || ""
+  // The file you're in: the keyboard's, or the one the list shows.
+  treeSel = cur?.path || activePath || ""
   if (!rows.some((r) => r.dataset.key === treeSel)) treeSel = rows[0]?.dataset.key || ""
   markTreeSel()
   redrawCursor()
@@ -2320,6 +2447,8 @@ function treeKey(e) {
         if (closedDirs.has(key)) { closedDirs.delete(key); renderTree() } else if (e.key === "Enter") { closedDirs.add(key); renderTree() } else go(i + 1)
         return true
       }
+      // The file you're in: back to where you were in it.
+      if (treeSel === cur?.path) { leaveTree(); return true }
       reveal(treeSel)
       setCursor({ path: treeSel, kind: "head" })
       leaveTree()
@@ -2451,7 +2580,7 @@ const helpKeys = [
     ["⇧A", "Comment on the whole file"],
     ["r", "Reply, quoting the text you've selected"],
     ["x", "Resolve or reopen the thread"],
-    ["d", "Delete your comment not yet sent"],
+    ["d  or  Delete", "Delete your comment not yet sent"],
     ["⌘Return", "In a comment: post and send it to the agent"],
     ["⌥⌘Return", "In a comment: post it, to send later"],
     ["⇧S", "Send every comment not yet sent"],
@@ -2555,7 +2684,8 @@ function keyFor(e) {
     "]": "nextChange", "[": "previousChange", "}": "nextThread", "{": "previousThread",
     u: "nextUnread", U: "previousUnread", g: "top", Home: "top", G: "bottom", End: "bottom",
     PageDown: "pageDown", PageUp: "pageUp",
-    Enter: "act", a: "act", A: "fileComment", r: "reply", x: "resolve", d: "delete", S: "send", q: "finish",
+    Enter: "act", a: "act", A: "fileComment", r: "reply", x: "resolve", d: "delete", Backspace: "delete", Delete: "delete",
+    S: "send", q: "finish",
     " ": "viewed", v: "hideViewed", o: "toggleOpen", C: "wholeFile", c: "compare", s: "split", w: "wrap", i: "threads",
     T: "files", "/": "filter", t: "filter", e: "openFile", R: "refresh", "?": "help",
   }[k] || ""
@@ -2600,6 +2730,30 @@ function onKey(e) {
   }
   command(name)
 }
+
+// Lines taken out, in unified: a click puts the cursor on one, and the +
+// that shows on the one you point at comments on it.
+document.addEventListener("mousedown", (e) => {
+  const line = e.target.closest?.(".fbody .cm-deletedLine")
+  if (!line || e.button !== 0) return
+  const c = deletedStop(line)
+  if (!c) return
+  // (A tap on a phone, which has no + to point at: as a line number's.)
+  if (e.target.closest(".dplus") || touch()) {
+    e.preventDefault()
+    if (config.canDrive) openComposer({ path: c.path, side: "old", line: c.line, endLine: c.line })
+    setCursor(c, false)
+    return
+  }
+  setCursor(c, false)
+}, true)
+document.addEventListener("mouseover", (e) => {
+  const line = e.target.closest?.(".fbody .cm-deletedLine")
+  if (!line || line.querySelector(".dplus") || !config.canDrive) return
+  const b = el("span", "dplus", "+")
+  b.title = "Comment on this line (before the change)"
+  line.append(b)
+})
 
 // clickLine: a click in the code puts the cursor on its line.
 function clickLine(view, e, path) {

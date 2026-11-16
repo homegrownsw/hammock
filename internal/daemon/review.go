@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -907,7 +906,13 @@ func clip(s string, n int) string {
 // is and the lines it's about, and how to answer in the threads.
 func reviewMessage(rv *pb.Review, ids []string) string {
 	var b strings.Builder
-	where := fmt.Sprintf("%s (%s)", cmpOr(rv.Title, "the diff"), filepath.Base(rv.Repo))
+	// Which diff, said in full: an agent may have several open, in more than
+	// one repository (and worktrees of one have the same name).
+	where := fmt.Sprintf("%s in %s (review %s", cmpOr(rv.Title, "the diff"), rv.Repo, rv.Id)
+	if rv.PaneId != "" {
+		where += ", diff pane " + rv.PaneId
+	}
+	where += ")"
 	// What the comments are about, said outright: a comment on one line
 	// ("this is fine") isn't a verdict on the diff; only finishing is.
 	if f := rv.GetFinished(); pendingFinish(rv) {
@@ -974,8 +979,8 @@ func reviewMessage(rv *pb.Review, ids []string) string {
 		}
 	}
 	if n > 0 {
-		b.WriteString("\nAnswer in each thread: reply (review_reply), or once it's dealt with mark it addressed (review_mark_addressed); " +
-			"review_threads lists them. Without Hammock's tools: hmk review reply|address THREAD TEXT.")
+		fmt.Fprintf(&b, "\nAnswer in each thread: reply (review_reply), or once it's dealt with mark it addressed (review_mark_addressed); "+
+			"review_threads with review %s lists them. Without Hammock's tools: hmk review reply|address THREAD TEXT.", rv.Id)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
