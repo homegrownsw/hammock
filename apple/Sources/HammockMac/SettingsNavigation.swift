@@ -416,6 +416,7 @@ enum SettingsIndex {
             e(.appearance, "Tabs", "Show finished agents", "appearance.finished", "done needs you"),
             e(.appearance, "Tabs", "Show active agents in collapsed Groups", "appearance.collapsed"),
             e(.appearance, "Tabs", "Close button on hover", "appearance.closebutton", "tab close x"),
+            e(.appearance, "Tabs", "Preview on hover", "appearance.tabpreview", "tab preview thumbnail peek popover card"),
             e(.appearance, "Tabs", "Program icons", "appearance.programicons", "vim git colorful plain"),
             e(.appearance, "Panes", "Pane spacing", "appearance.spacing", "compact spacious gap"),
             e(.appearance, "Panes", "Dim inactive panes", "appearance.dim", "fade focus"),

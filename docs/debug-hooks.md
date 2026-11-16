@@ -17,6 +17,7 @@ titlebar geometry. With it:
 | `HMK_DEBUG_HOVER=1` | Hover states shown. |
 | `HMK_DEBUG_SIDEBAR_SCROLL=<pt>` | Start with the sidebar scrolled. |
 | `HMK_DEBUG_PEEK=1` | The hidden sidebar's peek panel open; pass `--args -sidebarHidden YES`. |
+| `HMK_DEBUG_TAB_PREVIEW=<n>` (or `=<text>`) | The nth tab's hover preview (in sidebar order, from 1; or the first whose title contains `<text>`) shown and kept. It floats in a window of its own, so capture the screen, not the window. |
 | `HMK_DEBUG_NOTICES=1` | Sample notification cards in the window. |
 | `HMK_DEBUG_DISK_ACCESS=0` (or `1`) | Pretend Hammock hasn't (or has) Full Disk Access, for onboarding's Full Disk Access step (`HMK_ONBOARDING=1 HMK_ONBOARDING_STEP=access`) and Settings ▸ General. |
 | `HMK_DEBUG_AGENT_CURSOR=1` | A made-up agent click in every browser pane and tap in every simulator pane, with its glow and badge, kept showing. |

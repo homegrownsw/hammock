@@ -267,8 +267,9 @@ final class TerminalNSView: NSView {
         return NSRect(x: 0, y: top, width: bounds.width, height: max(bottom - top, 0))
     }
 
-    /// What RenderBench draws, in place of AppKit's rects being drawn
-    /// (it draws outside a display pass, where needsToDraw can't answer).
+    /// What RenderBench (and a tab's preview) draws, in place of AppKit's
+    /// rects being drawn (they draw outside a display pass, where
+    /// needsToDraw can't answer).
     var benchRects: [NSRect]?
 
     private func wants(_ r: NSRect) -> Bool {
@@ -615,6 +616,22 @@ final class TerminalNSView: NSView {
         layer.contentsScale = scale
         layer.contentsGravity = .resize
         metalLayer?.isHidden = true
+    }
+
+    /// The pane as drawn at its own size, for a view of it that isn't in a
+    /// window (a tab's preview): Metal's frame read back, or CoreGraphics'
+    /// drawing cached.
+    func previewImage(scale: CGFloat) -> CGImage? {
+        guard bounds.width >= 1, bounds.height >= 1 else { return nil }
+        // All of it: outside a display pass, needsToDraw would leave only
+        // the rows output last changed (as for RenderBench).
+        let rects = benchRects
+        benchRects = [bounds]
+        defer { benchRects = rects }
+        if metal != nil { return snapshotImage(scale: scale) }
+        guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        cacheDisplay(in: bounds, to: rep)
+        return rep.cgImage
     }
 
     func endSnapshot() {

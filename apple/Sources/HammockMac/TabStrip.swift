@@ -228,7 +228,7 @@ struct TabStrip: View {
         .contentShape(Capsule())
         .onTapGesture { select(tab) }
         .onHover { hovered = $0 && dragging == nil ? tab.id : (hovered == tab.id ? nil : hovered) }
-        .tooltip(model.title(of: tab))
+        .tabPreview(model: model, tab: tab, edge: .below)
         .contextMenu {
             TabMenuItems(model: model, tab: tab)
         }

@@ -322,40 +322,13 @@ struct LayoutGlyph: View {
     var body: some View {
         Canvas { ctx, size in
             let line: CGFloat = 1.5
-            for (id, r) in Self.rects(layout, in: CGRect(origin: .zero, size: size).insetBy(dx: line / 2, dy: line / 2), gap: 3) {
+            for (id, r) in layout.rects(in: CGRect(origin: .zero, size: size).insetBy(dx: line / 2, dy: line / 2), gap: 3) {
                 let path = Path(roundedRect: r, cornerRadius: min(3, r.width / 3, r.height / 3))
                 if id == current { ctx.fill(path, with: .color(.primary)) }
                 ctx.stroke(path, with: .color(.primary), lineWidth: line)
             }
         }
         .accessibilityHidden(true)
-    }
-
-    /// Each pane's rectangle in `rect`, splits divided by their weights.
-    static func rects(_ l: PaneLayout, in rect: CGRect, gap: CGFloat) -> [(String, CGRect)] {
-        switch l.node {
-        case .paneID(let id):
-            return [(id, rect)]
-        case .split(let s):
-            let n = s.children.count
-            guard n > 0 else { return [] }
-            let side = s.direction != .vertical
-            let w = s.weights.count == n ? s.weights.map { CGFloat($0) } : Array(repeating: 1 / CGFloat(n), count: n)
-            let total = w.reduce(0, +)
-            let span = (side ? rect.width : rect.height) - gap * CGFloat(n - 1)
-            var at = side ? rect.minX : rect.minY
-            var out: [(String, CGRect)] = []
-            for (i, child) in s.children.enumerated() {
-                let len = span * (total > 0 ? w[i] / total : 1 / CGFloat(n))
-                let r = side ? CGRect(x: at, y: rect.minY, width: len, height: rect.height)
-                    : CGRect(x: rect.minX, y: at, width: rect.width, height: len)
-                out += rects(child, in: r, gap: gap)
-                at += len + gap
-            }
-            return out
-        case nil:
-            return []
-        }
     }
 }
 
@@ -598,7 +571,7 @@ struct LiveTile: View {
                 DiffTile(pane: p)
             default:
                 if !p.isLog, model.supportsAgentView(p), AgentViewPrefs.showsAgent(p.id) {
-                    AgentTail(model: model, paneID: p.id)
+                    AgentTailTile(model: model, paneID: p.id)
                 } else {
                     TerminalRepresentable(model: model, paneID: p.id, active: false, preview: true)
                 }
@@ -609,7 +582,7 @@ struct LiveTile: View {
 
 /// An agent pane's tile: the latest of its conversation, and the tool it's
 /// running.
-private struct AgentTail: View {
+private struct AgentTailTile: View {
     let model: AppModel
     let paneID: String
     @State private var session: AgentSession?
@@ -622,7 +595,7 @@ private struct AgentTail: View {
                 // Your last message and what's come since, oldest first, as
                 // the conversation reads: its words, and only its latest
                 // tools (a run of them would leave no room for the words).
-                ForEach(Self.tail(s.blocks), id: \.id) { b in
+                ForEach(AgentTail.tail(s.blocks), id: \.id) { b in
                     switch b.kind {
                     case .user:
                         Text(b.text)
@@ -638,7 +611,7 @@ private struct AgentTail: View {
                             .foregroundStyle(b.error ? Color.red : .secondary)
                             .lineLimit(1)
                     default:
-                        Text(Self.plain(b.text)).font(.caption).foregroundStyle(.primary)
+                        Text(AgentTail.plain(b.text)).font(.caption).foregroundStyle(.primary)
                     }
                 }
             }
@@ -652,39 +625,6 @@ private struct AgentTail: View {
             model.releaseAgent(paneID)
             session = nil
         }
-    }
-
-    /// What the tile shows of a conversation: your messages, the agent's
-    /// words and its tools.
-    static func shown(_ b: AgentBlock) -> Bool {
-        switch b.kind {
-        case .user, .text: !b.text.isEmpty
-        case .tool: !b.title.isEmpty
-        default: false
-        }
-    }
-
-    /// What the tile shows: your last message, the agent's last two
-    /// messages since and its last two tools, in order; before it the
-    /// agent's last words before that, when it's said nothing since.
-    static func tail(_ blocks: [AgentBlock]) -> [AgentBlock] {
-        let all = blocks.filter(shown)
-        let asked = all.lastIndex { $0.kind == .user }
-        let since = asked.map { Array(all[($0 + 1)...]) } ?? all
-        let words = Set(since.filter { $0.kind == .text }.suffix(2).map(\.id))
-        let tools = Set(since.filter { $0.kind == .tool }.suffix(2).map(\.id))
-        var out = since.filter { words.contains($0.id) || tools.contains($0.id) }
-        if let asked {
-            out.insert(all[asked], at: 0)
-            if words.isEmpty, let before = all[..<asked].last(where: { $0.kind == .text }) { out.insert(before, at: 0) }
-        }
-        return out
-    }
-
-    /// Markdown's marks dropped, for a few lines of plain text.
-    static func plain(_ md: String) -> String {
-        (try? AttributedString(markdown: md, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            .map { String($0.characters) } ?? md
     }
 }
 
@@ -805,19 +745,7 @@ private struct DiffTile: View {
     /// Made-up lines in the diff's proportions: removed, added or context,
     /// each with a length, the same every time for the same counts.
     private var lines: [(kind: Int, width: CGFloat)] {
-        let d = pane.diff
-        let total = max(Int(d.added + d.removed), 1)
-        var seed = UInt64(truncatingIfNeeded: total &* 2654435761 &+ Int(d.files))
-        func next() -> CGFloat {
-            seed = seed &* 6364136223846793005 &+ 1442695040888963407
-            return CGFloat((seed >> 33) % 1000) / 1000
-        }
-        let removedShare = Double(d.removed) / Double(total)
-        return (0..<26).map { i in
-            let r = next()
-            let kind: Int = i % 6 < 2 ? 0 : (Double(r) < removedShare ? -1 : 1)
-            return (kind, 0.3 + next() * 0.65)
-        }
+        DiffSketch.lines(added: pane.diff.added, removed: pane.diff.removed, files: pane.diff.files)
     }
 
     var body: some View {

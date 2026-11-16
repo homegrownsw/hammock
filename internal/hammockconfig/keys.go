@@ -100,6 +100,8 @@ var Keys = []Key{
 		Doc: "agent and program status in a sidebar row's icon, or at its end with the agent's logo as the icon", Only: "Mac"},
 	{Name: "tab-close-button", Group: "Window and sidebar", Value: "true", Default: "true",
 		Doc: "false: no close button on a tab you hover over, in the sidebar or the tab bar", Only: "Mac"},
+	{Name: "tab-preview", Group: "Window and sidebar", Value: "true", Default: "true",
+		Doc: "false: no preview of a tab's panes when you hover over it, only its title", Only: "Mac"},
 	{Name: "sidebar-finished", Group: "Window and sidebar", Value: "true", Default: "true",
 		Doc: "finished agents get their own list at the bottom of the sidebar", Only: "Mac"},
 	{Name: "collapsed-group-agents", Group: "Window and sidebar", Value: "false", Default: "false",

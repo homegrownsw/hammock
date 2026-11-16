@@ -2402,9 +2402,13 @@ type Pane struct {
 	// memory, its screen kept. The apps dim it under a Wake button
 	// (SleepPane with wake); typing in it or sending its agent a message
 	// also resumes the session in a new process. Focusing it doesn't.
-	Asleep        bool `protobuf:"varint,35,opt,name=asleep,proto3" json:"asleep,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Asleep bool `protobuf:"varint,35,opt,name=asleep,proto3" json:"asleep,omitempty"`
+	// Terminal panes: when it last printed anything, to within outputNews
+	// (the daemon republishes it only when it's that far behind), for "output
+	// 2m ago" in a tab's preview. 0 when it hasn't since the daemon started.
+	LastOutputUnixMs int64 `protobuf:"varint,40,opt,name=last_output_unix_ms,json=lastOutputUnixMs,proto3" json:"last_output_unix_ms,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Pane) Reset() {
@@ -2708,6 +2712,13 @@ func (x *Pane) GetAsleep() bool {
 		return x.Asleep
 	}
 	return false
+}
+
+func (x *Pane) GetLastOutputUnixMs() int64 {
+	if x != nil {
+		return x.LastOutputUnixMs
+	}
+	return 0
 }
 
 type Agent struct {
@@ -24796,7 +24807,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tDirection\x12\x19\n" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14DIRECTION_HORIZONTAL\x10\x01\x12\x16\n" +
-	"\x12DIRECTION_VERTICAL\x10\x02\"\xfc\t\n" +
+	"\x12DIRECTION_VERTICAL\x10\x02\"\xab\n" +
+	"\n" +
 	"\x04Pane\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06tab_id\x18\x02 \x01(\tR\x05tabId\x12(\n" +
@@ -24845,7 +24857,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vinterrupted\x18! \x01(\bR\vinterrupted\x12\x1d\n" +
 	"\n" +
 	"agent_held\x18\" \x01(\bR\tagentHeld\x12\x16\n" +
-	"\x06asleep\x18# \x01(\bR\x06asleep\"\xb9\x04\n" +
+	"\x06asleep\x18# \x01(\bR\x06asleep\x12-\n" +
+	"\x13last_output_unix_ms\x18( \x01(\x03R\x10lastOutputUnixMs\"\xb9\x04\n" +
 	"\x05Agent\x12\x18\n" +
 	"\aharness\x18\x01 \x01(\tR\aharness\x12\x1d\n" +
 	"\n" +

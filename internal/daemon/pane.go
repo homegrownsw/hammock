@@ -684,13 +684,14 @@ func (p *pane) read(hc *holder.Client, gen int) {
 		p.osc.Write(data)
 		p.offset = ev.Offset + uint64(len(data))
 		p.lastOut = time.Now()
+		news := noteOutput(p.info, p.lastOut)
 		if len(shown) > 0 {
 			for c := range p.attached {
 				c.sendOutput(p, p.outOffset, shown)
 			}
 			p.outOffset += uint64(len(shown))
 		}
-		changed := false
+		changed := news
 		status := p.takeStatusLocked()
 		if p.osc.Changed {
 			p.osc.Changed = false
@@ -716,6 +717,21 @@ func (p *pane) read(hc *holder.Client, gen int) {
 			p.d.mu.Unlock()
 		}
 	}
+}
+
+// outputNews is how far behind a pane's last_output_unix_ms may fall before
+// it's republished: clients show it to the minute, and a busy pane mustn't
+// update every client with every write.
+const outputNews = 30 * time.Second
+
+// noteOutput records output at now in info, reporting whether clients should
+// hear of it (the last they heard is outputNews old). Callers hold p.mu.
+func noteOutput(info *pb.Pane, now time.Time) bool {
+	if now.Sub(time.UnixMilli(info.LastOutputUnixMs)) < outputNews {
+		return false
+	}
+	info.LastOutputUnixMs = now.UnixMilli()
+	return true
 }
 
 // endedFromOutside reports whether a program ended by signal sig was ended

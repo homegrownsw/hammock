@@ -857,6 +857,14 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
     set {_uniqueStorage()._asleep = newValue}
   }
 
+  /// Terminal panes: when it last printed anything, to within outputNews
+  /// (the daemon republishes it only when it's that far behind), for "output
+  /// 2m ago" in a tab's preview. 0 when it hasn't since the daemon started.
+  public var lastOutputUnixMs: Int64 {
+    get {_storage._lastOutputUnixMs}
+    set {_uniqueStorage()._lastOutputUnixMs = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -11232,7 +11240,7 @@ nonisolated extension Hammock_V1_Split.Direction: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pane"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0\u{3}device_note\0\u{3}device_elsewhere\0\u{3}device_scale\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0\u{3}device_note\0\u{3}device_elsewhere\0\u{3}device_scale\0\u{3}last_output_unix_ms\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -11274,6 +11282,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _interrupted: Bool = false
     var _agentHeld: Bool = false
     var _asleep: Bool = false
+    var _lastOutputUnixMs: Int64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -11323,6 +11332,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _interrupted = source._interrupted
       _agentHeld = source._agentHeld
       _asleep = source._asleep
+      _lastOutputUnixMs = source._lastOutputUnixMs
     }
   }
 
@@ -11380,6 +11390,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 37: try { try decoder.decodeSingularStringField(value: &_storage._deviceNote) }()
         case 38: try { try decoder.decodeSingularBoolField(value: &_storage._deviceElsewhere) }()
         case 39: try { try decoder.decodeSingularDoubleField(value: &_storage._deviceScale) }()
+        case 40: try { try decoder.decodeSingularInt64Field(value: &_storage._lastOutputUnixMs) }()
         default: break
         }
       }
@@ -11509,6 +11520,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       if _storage._deviceScale.bitPattern != 0 {
         try visitor.visitSingularDoubleField(value: _storage._deviceScale, fieldNumber: 39)
       }
+      if _storage._lastOutputUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._lastOutputUnixMs, fieldNumber: 40)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -11557,6 +11571,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._interrupted != rhs_storage._interrupted {return false}
         if _storage._agentHeld != rhs_storage._agentHeld {return false}
         if _storage._asleep != rhs_storage._asleep {return false}
+        if _storage._lastOutputUnixMs != rhs_storage._lastOutputUnixMs {return false}
         return true
       }
       if !storagesAreEqual {return false}

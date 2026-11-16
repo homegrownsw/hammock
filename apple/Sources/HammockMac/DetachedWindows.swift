@@ -437,6 +437,7 @@ private struct DetachedGroupSidebar: View {
                         .padding(.leading, compact ? 12 : 14)
                         .frame(height: compact ? 30 : 36)
                         .background { pill(selected: tab.id == selected, hovered: hovered == tab.id) }
+                        .tabPreview(model: model, tab: tab, edge: .trailing)
                         .contentShape(Rectangle())
                         .onTapGesture { select(tab) }
                         .onHover { inside in hovered = inside ? tab.id : (hovered == tab.id ? nil : hovered) }

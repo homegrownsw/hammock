@@ -1,0 +1,754 @@
+import AppKit
+import HammockKit
+import SwiftUI
+
+// A tab's preview: the pointer resting on a tab (the tab bar's, a sidebar
+// row) brings up a card of it: its panes, live and small, in their places,
+// its whole title, and what it's up to (its agent, who's in it, its last
+// output). Settings ▸ Appearance ▸ Preview on hover (tab-preview); off, the
+// tab's title as a tooltip.
+
+/// Which side of its tab a preview stands: under a tab bar's tab, beside a
+/// sidebar row.
+enum TabPreviewEdge {
+    case below, trailing
+}
+
+extension View {
+    /// This tab's preview when the pointer rests here (or, with previews
+    /// off, its title as a tooltip).
+    func tabPreview(model: AppModel, tab: WorkspaceTab, edge: TabPreviewEdge) -> some View {
+        background(TabPreviewAnchor(model: model, tabID: tab.id, title: model.title(of: tab), edge: edge, on: AppConfig.shared.tabPreview))
+    }
+}
+
+/// Where a tab is on screen, and what the pointer does over it.
+private struct TabPreviewAnchor: NSViewRepresentable {
+    let model: AppModel
+    let tabID: String
+    let title: String
+    let edge: TabPreviewEdge
+    let on: Bool
+
+    func makeNSView(context: Context) -> TabPreviewAnchorView {
+        let v = TabPreviewAnchorView()
+        updateNSView(v, context: context)
+        return v
+    }
+
+    func updateNSView(_ v: TabPreviewAnchorView, context: Context) {
+        v.model = model
+        v.tabID = tabID
+        v.edge = edge
+        let tip = on ? nil : title
+        if v.toolTip != tip { v.toolTip = tip }
+    }
+}
+
+final class TabPreviewAnchorView: NSView {
+    weak var model: AppModel?
+    var tabID = ""
+    var edge = TabPreviewEdge.below
+    private var area: NSTrackingArea?
+
+    /// Never takes a click: the tab in front of it does.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area { removeTrackingArea(area) }
+        let a = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(a)
+        area = a
+    }
+
+    override func mouseEntered(with event: NSEvent) { TabPreview.shared.entered(self) }
+    override func mouseExited(with event: NSEvent) { TabPreview.shared.exited(self) }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { TabPreview.shared.gone(self) } else { TabPreview.shared.appeared(self) }
+    }
+
+    /// Where the tab is, in screen coordinates.
+    var screenRect: CGRect? {
+        guard let window else { return nil }
+        return window.convertToScreen(convert(bounds, to: nil))
+    }
+}
+
+/// Shows and hides the preview: after the pointer rests on a tab a moment,
+/// then at once from tab to tab while one shows; gone a moment after the
+/// pointer leaves, and at once on a click, a scroll or a key.
+@MainActor
+final class TabPreview {
+    static let shared = TabPreview()
+
+    /// The pointer's wait on a tab before its preview shows.
+    static let delay: Duration = .milliseconds(500)
+    /// How long it stays once the pointer's left the tab, and how soon
+    /// after it went another tab's shows without the wait.
+    static let linger: Duration = .milliseconds(200)
+    /// Room around the card for its shadow, inside the window that holds it.
+    static let margin: CGFloat = 30
+
+    private weak var anchor: TabPreviewAnchorView?
+    private weak var waitingOn: TabPreviewAnchorView?
+    private var waiting: Task<Void, Never>?
+    private var closing: Task<Void, Never>?
+    private var hiddenAt = ContinuousClock.now - .seconds(10)
+    private var scrolledAt = ContinuousClock.now - .seconds(10)
+    private var monitor: Any?
+    private var panel: TabPreviewPanel?
+    private var size = CGSize(width: 320 + 2 * margin, height: 300 + 2 * margin)
+    /// HMK_DEBUG_TAB_PREVIEW: a tab's preview shown on its own, and kept.
+    private let debugTab = ProcessInfo.processInfo.environment["HMK_DEBUG_TAB_PREVIEW"]
+    private var pinned = false
+
+    private init() {
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { TabPreview.shared.hide() }
+        }
+    }
+
+    private var showing: Bool { panel?.isVisible == true && anchor != nil }
+
+    func entered(_ v: TabPreviewAnchorView) {
+        guard AppConfig.shared.tabPreview, !pinned else { return }
+        // Not mid drag, nor as a scroll carries tabs under the pointer.
+        guard NSEvent.pressedMouseButtons == 0, ContinuousClock.now - scrolledAt > .milliseconds(300) else { return }
+        closing?.cancel()
+        closing = nil
+        if v === anchor, showing { return }
+        waiting?.cancel()
+        if showing || ContinuousClock.now - hiddenAt < Self.linger {
+            show(v)
+            return
+        }
+        waitingOn = v
+        waiting = Task { [weak v] in
+            try? await Task.sleep(for: Self.delay)
+            guard !Task.isCancelled, let v else { return }
+            self.show(v)
+        }
+    }
+
+    func exited(_ v: TabPreviewAnchorView) {
+        if waitingOn === v {
+            waiting?.cancel()
+            waiting = nil
+        }
+        guard v === anchor, !pinned else { return }
+        closing?.cancel()
+        closing = Task {
+            try? await Task.sleep(for: Self.linger)
+            guard !Task.isCancelled else { return }
+            self.hide()
+        }
+    }
+
+    func gone(_ v: TabPreviewAnchorView) {
+        if waitingOn === v { waiting?.cancel() }
+        if v === anchor { hide(force: true) }
+    }
+
+    func appeared(_ v: TabPreviewAnchorView) {
+        guard let debugTab, !pinned, let model = v.model else { return }
+        let tabs = model.orderedTabs
+        let id = Int(debugTab).flatMap { tabs.indices.contains($0 - 1) ? tabs[$0 - 1].id : nil }
+            ?? tabs.first { model.title(of: $0).localizedCaseInsensitiveContains(debugTab) }?.id
+        guard v.tabID == id else { return }
+        Task { [weak v] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let v, v.window != nil else { return }
+            self.show(v)
+            self.pinned = true
+        }
+    }
+
+    private func show(_ v: TabPreviewAnchorView) {
+        guard let window = v.window, let model = v.model, model.tabs[v.tabID] != nil else { return }
+        let panel = self.panel ?? TabPreviewPanel()
+        self.panel = panel
+        let moving = showing && anchor !== v
+        anchor = v
+        waitingOn = nil
+        panel.host.rootView = TabPreviewContent(model: model, tabID: v.tabID) { [weak self] in self?.resized($0) }
+        size = panel.host.fittingSize
+        if panel.parent !== window {
+            panel.parent?.removeChildWindow(panel)
+            window.addChildWindow(panel, ordered: .above)
+        }
+        place(animated: moving)
+        panel.orderFront(nil)
+        watchEvents()
+    }
+
+    /// The card grew or shrank (a line of what it's up to came or went).
+    private func resized(_ s: CGSize) {
+        guard s != size, s.width > 0, s.height > 0 else { return }
+        size = s
+        place(animated: false)
+    }
+
+    private func place(animated: Bool) {
+        guard let panel, let v = anchor, let r = v.screenRect, let window = v.window else { return }
+        let m = Self.margin
+        let w = size.width - 2 * m, h = size.height - 2 * m
+        let screen = window.screen?.visibleFrame ?? window.frame
+        var x: CGFloat, top: CGFloat
+        switch v.edge {
+        case .below:
+            // Centred under the tab, kept within the window.
+            x = min(max(r.midX - w / 2, window.frame.minX + 8), window.frame.maxX - 8 - w)
+            top = r.minY - 6
+        case .trailing:
+            // Beside the row, its picture level with it.
+            x = r.maxX + 8
+            top = r.maxY + 10
+        }
+        top = min(top, screen.maxY - 8)
+        if top - h < screen.minY + 8 { top = screen.minY + 8 + h }
+        let frame = CGRect(x: x - m, y: top - h - m, width: size.width, height: size.height)
+        if animated {
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = 0.15
+                c.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().setFrame(frame, display: true)
+            }
+        } else {
+            panel.setFrame(frame, display: true)
+        }
+    }
+
+    func hide(force: Bool = false) {
+        guard !pinned || force else { return }
+        waiting?.cancel()
+        closing?.cancel()
+        waiting = nil
+        closing = nil
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        guard let panel, anchor != nil || panel.isVisible else { return }
+        anchor = nil
+        pinned = false
+        hiddenAt = .now
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+        // Its panes let go (streams detached, video stopped).
+        panel.host.rootView = TabPreviewContent(model: nil, tabID: "") { _ in }
+    }
+
+    /// A click, scroll or key while it shows puts it away.
+    private func watchEvents() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel, .keyDown]) { e in
+            MainActor.assumeIsolated {
+                if e.type == .scrollWheel { TabPreview.shared.scrolledAt = .now }
+                TabPreview.shared.hide()
+            }
+            return e
+        }
+    }
+}
+
+/// The window the card floats in, over its tab's window: never key, and
+/// the pointer goes through it.
+private final class TabPreviewPanel: NSPanel {
+    let host = NSHostingView(rootView: TabPreviewContent(model: nil, tabID: "") { _ in })
+
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = true
+        isReleasedWhenClosed = false
+        animationBehavior = .none
+        collectionBehavior = [.transient, .ignoresCycle, .fullScreenAuxiliary]
+        host.sizingOptions = []
+        contentView = host
+    }
+
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// The card, with room around it for its shadow, saying when its size changes.
+private struct TabPreviewContent: View {
+    let model: AppModel?
+    let tabID: String
+    let resized: (CGSize) -> Void
+
+    var body: some View {
+        Group {
+            if let model, model.tabs[tabID] != nil {
+                TabPreviewCard(model: model, tabID: tabID)
+                    .id(tabID)
+            }
+        }
+        .padding(TabPreview.margin)
+        .fixedSize()
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { resized($0) }
+    }
+}
+
+// MARK: The card
+
+struct TabPreviewCard: View {
+    let model: AppModel
+    let tabID: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    static let width: CGFloat = 320
+    static let picture = CGSize(width: 304, height: 190)
+
+    var body: some View {
+        if let tab = model.tabs[tabID] {
+            VStack(alignment: .leading, spacing: 9) {
+                TabPicture(model: model, tab: tab)
+                    .frame(width: Self.picture.width, height: Self.picture.height)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(model.title(of: tab))
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    TabPreviewDetails(model: model, tab: tab)
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(EdgeInsets(top: 8, leading: 8, bottom: 11, trailing: 8))
+            .frame(width: Self.width, alignment: .leading)
+            .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 18, y: 10)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.08), radius: 3, y: 1)
+        }
+    }
+}
+
+/// What a tab is up to, a line each, each only when it has something to
+/// say: its agent, who's in it and where it runs, its panes and last output.
+private struct TabPreviewDetails: View {
+    let model: AppModel
+    let tab: WorkspaceTab
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            VStack(alignment: .leading, spacing: 5) {
+                if let p = model.shownAgentPane(of: tab), p.hasAgent, !p.exited {
+                    agentLine(p, now: context.date)
+                }
+                people
+                Text(panesLine(now: context.date))
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 11.5))
+            .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder private func agentLine(_ p: Pane, now: Date) -> some View {
+        let state = p.agent.shownState
+        let name = p.isReportingProgram ? p.displayName : AgentMark.name(of: p.agent.harness)
+        let since = p.agent.stateSinceUnixMs > 0 ? Self.ago(p.agent.stateSinceUnixMs, now: now) : nil
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                StatusIcon(state: state, size: 12, asleep: p.asleep, progress: p.agentProgress)
+                Text(Self.saying(state, name: name, asleep: p.asleep))
+                if let progress = p.agentProgress {
+                    Text("· \(progress)%").foregroundStyle(.secondary)
+                } else if let since, since != "just now" {
+                    Text("· \(since)").foregroundStyle(.secondary)
+                }
+            }
+            if let progress = p.agentProgress {
+                ProgressBar(value: Double(progress) / 100, waiting: state == .needsInput)
+                    .padding(.leading, 18)
+            }
+        }
+    }
+
+    @ViewBuilder private var people: some View {
+        let here = model.presence(in: tab)
+        let group = model.group(of: tab)
+        let elsewhere = group.map { $0.isRemote || model.computer(of: $0) != nil } ?? false
+        if !here.isEmpty || elsewhere {
+            HStack(spacing: 6) {
+                if !here.isEmpty {
+                    AvatarStack(here, size: 16)
+                    let names = ListFormatter.localizedString(byJoining: here.map(\.1.name))
+                    Text(names).foregroundStyle(.primary) + Text(here.count == 1 ? " is here" : " are here").foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "desktopcomputer").foregroundStyle(.secondary)
+                }
+                if elsewhere, let group {
+                    Text(here.isEmpty ? "On \(model.hostLabel(of: group))" : "· on \(model.hostLabel(of: group))")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func panesLine(now: Date) -> String {
+        let split = AppModel.paneIDs(tab.layout).count
+        var line = split == 1 ? "1 pane" : "\(split) panes"
+        if !tab.floating.isEmpty { line += " + \(tab.floating.count) floating" }
+        let last = AppModel.paneIDs(of: tab).compactMap { model.panes[$0]?.lastOutputUnixMs }.max() ?? 0
+        if last > 0, let ago = Self.ago(last, now: now) {
+            line += ago == "just now" ? " · output just now" : " · output \(ago) ago"
+        }
+        return line
+    }
+
+    static func saying(_ state: AgentState, name: String, asleep: Bool) -> String {
+        if asleep { return "\(name) is asleep" }
+        switch state {
+        case .needsInput: return "\(name) is waiting on you"
+        case .working, .starting: return "\(name) is working"
+        case .errored: return "\(name) stopped on an error"
+        case .idle: return "\(name) has finished"
+        default: return name
+        }
+    }
+
+    /// How long ago, to the minute ("just now", "4m", "2h", "3d").
+    static func ago(_ ms: Int64, now: Date) -> String? {
+        let s = now.timeIntervalSince1970 - Double(ms) / 1000
+        guard s > -60 else { return nil }
+        switch s {
+        case ..<60: return "just now"
+        case ..<3600: return "\(Int(s / 60))m"
+        case ..<86400: return "\(Int(s / 3600))h"
+        default: return "\(Int(s / 86400))d"
+        }
+    }
+}
+
+private struct ProgressBar: View {
+    let value: Double
+    let waiting: Bool
+
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.12))
+                Capsule().fill(waiting ? Color.orange : Color.themeAccent)
+                    .frame(width: g.size.width * min(max(value, 0), 1))
+            }
+        }
+        .frame(height: 3)
+    }
+}
+
+// MARK: The picture
+
+/// The tab as laid out in its window, each pane live and small, its floats
+/// over its splits where they float.
+private struct TabPicture: View {
+    let model: AppModel
+    let tab: WorkspaceTab
+
+    private struct Placed: Identifiable {
+        let id: String
+        let rect: CGRect
+        let floating: Bool
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let area = CGRect(origin: .zero, size: geo.size).insetBy(dx: 3, dy: 3)
+            ZStack(alignment: .topLeading) {
+                ForEach(placed(in: area)) { p in
+                    PaneTile(model: model, paneID: p.id, focused: p.id == tab.focusedPaneID)
+                        .frame(width: max(p.rect.width, 1), height: max(p.rect.height, 1))
+                        .shadow(color: .black.opacity(p.floating ? 0.3 : 0), radius: p.floating ? 6 : 0, y: p.floating ? 3 : 0)
+                        .offset(x: p.rect.minX, y: p.rect.minY)
+                }
+            }
+        }
+        .background(Color.primary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func placed(in area: CGRect) -> [Placed] {
+        var out = tab.layout.rects(in: area, gap: 3).map { Placed(id: $0.0, rect: $0.1, floating: false) }
+        // Back to front, as the tab stacks them.
+        for f in tab.floating where !f.minimised {
+            let r = f.zoomed ? area : CGRect(x: area.minX + CGFloat(f.frame.x) * area.width, y: area.minY + CGFloat(f.frame.y) * area.height,
+                                             width: CGFloat(f.frame.w) * area.width, height: CGFloat(f.frame.h) * area.height)
+            out.append(Placed(id: f.paneID, rect: r, floating: true))
+        }
+        return out
+    }
+}
+
+/// One pane, as it shows in its tab: its terminal or its agent's latest,
+/// its page or simulator's video, its file, its diff.
+private struct PaneTile: View {
+    let model: AppModel
+    let paneID: String
+    let focused: Bool
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(focused ? Color.themeAccent : Color.primary.opacity(0.1), lineWidth: focused ? 1.5 : 0.5))
+    }
+
+    @ViewBuilder private var content: some View {
+        if let p = model.panes[paneID] {
+            switch p.kind {
+            case .browser, .simulator:
+                VideoTile(model: model, pane: p)
+            case .editor:
+                FileTile(model: model, pane: p)
+            case .diff:
+                DiffTile(pane: p)
+            default:
+                if model.supportsAgentView(p), AgentModes.shared.showsAgent(p.id) {
+                    AgentTile(model: model, paneID: p.id)
+                } else {
+                    TerminalTile(model: model, paneID: p.id)
+                }
+            }
+        } else {
+            Color.clear
+        }
+    }
+}
+
+/// A terminal, drawn as it is in its pane (its own size, its theme) by a
+/// terminal view of its own out of sight, and shrunk to fit.
+private struct TerminalTile: View {
+    let model: AppModel
+    let paneID: String
+    @State private var thumb = TerminalThumb()
+
+    var body: some View {
+        GeometryReader { g in
+            if let image = thumb.image {
+                // Filling the tile from its left edge, and, if the tile is
+                // wider than the pane, from its bottom, where the latest
+                // output is.
+                let iw = CGFloat(image.width), ih = CGFloat(image.height)
+                let s = max(g.size.width / iw, g.size.height / ih)
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: iw * s, height: ih * s)
+                    .frame(width: g.size.width, height: g.size.height, alignment: .bottomLeading)
+            }
+        }
+        .background(thumb.background)
+        .clipped()
+        .onAppear { thumb.start(model, paneID) }
+        .onDisappear { thumb.stop() }
+    }
+}
+
+@MainActor
+@Observable
+private final class TerminalThumb {
+    var image: CGImage?
+    /// The terminal theme's background, behind the picture until it's drawn.
+    var background = Color.clear
+    @ObservationIgnored private var view: TerminalNSView?
+    @ObservationIgnored private weak var model: AppModel?
+    @ObservationIgnored private var soon = false
+
+    func start(_ model: AppModel, _ paneID: String) {
+        guard view == nil else { return }
+        self.model = model
+        let v = TerminalNSView(frame: .zero)
+        let session = model.acquireSession(paneID)
+        v.session = session
+        session.observe(self) { [weak self] in self?.drawSoon() }
+        view = v
+        let bg = AppConfig.shared.theme(isDark: v.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua).background
+        background = Color(.sRGB, red: Double(bg.r) / 255, green: Double(bg.g) / 255, blue: Double(bg.b) / 255)
+        draw()
+    }
+
+    func stop() {
+        guard let v = view else { return }
+        if let s = v.session {
+            s.unobserve(self)
+            v.session = nil
+            model?.releaseSession(s.paneID)
+        }
+        view = nil
+    }
+
+    /// New output: drawn a few times a second at most.
+    private func drawSoon() {
+        guard !soon else { return }
+        soon = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self else { return }
+            self.soon = false
+            self.draw()
+        }
+    }
+
+    private func draw() {
+        guard let v = view, let s = v.session, s.ready, s.engine.cols > 0, s.engine.rows > 0 else { return }
+        let size = CGSize(width: CGFloat(s.engine.cols) * v.cellWidth + v.padding * 2,
+                          height: CGFloat(s.engine.rows) * v.cellHeight + v.padding * 2)
+        if v.frame.size != size { v.setFrameSize(size) }
+        if let i = v.previewImage(scale: 1) { image = i }
+    }
+}
+
+/// An agent pane shown as its conversation: the latest of it.
+private struct AgentTile: View {
+    let model: AppModel
+    let paneID: String
+    @State private var session: AgentSession?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Spacer(minLength: 0)
+            if let s = session {
+                ForEach(AgentTail.tail(s.blocks), id: \.id) { b in
+                    switch b.kind {
+                    case .user:
+                        Text(b.text)
+                            .lineLimit(3)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 3)
+                            .background(Color.themeAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    case .tool:
+                        Label(b.title, systemImage: b.pending ? "gearshape" : b.error ? "exclamationmark.circle" : "checkmark")
+                            .font(.system(size: 6.5, design: .monospaced))
+                            .foregroundStyle(b.error ? Color.red : .secondary)
+                            .lineLimit(1)
+                    default:
+                        Text(AgentTail.plain(b.text)).foregroundStyle(.primary)
+                    }
+                }
+            }
+            if session?.blocks.isEmpty != false, let summary = model.panes[paneID]?.agent.summary, !summary.isEmpty {
+                Text(summary).foregroundStyle(.secondary)
+            }
+        }
+        .font(.system(size: 7))
+        .padding(6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .background(Color(nsColor: .textBackgroundColor))
+        .onAppear { session = model.acquireAgent(paneID) }
+        .onDisappear {
+            model.releaseAgent(paneID)
+            session = nil
+        }
+    }
+}
+
+/// A browser or simulator pane: its video, small and a few frames a second.
+private struct VideoTile: View {
+    let model: AppModel
+    let pane: Pane
+    @State private var stream: MediaStream?
+    @State private var playing = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.2)
+            if let stream, playing {
+                MediaView(stream: stream)
+            } else if pane.kind == .browser {
+                Favicon(url: pane.faviconURL, size: 18).opacity(0.7)
+            } else {
+                Image(systemName: "iphone").font(.system(size: 16)).foregroundStyle(.secondary)
+            }
+        }
+        .task(id: pane.id) { await watch() }
+    }
+
+    private func watch() async {
+        if pane.kind == .simulator, !pane.deviceBooted { return }
+        while !Task.isCancelled {
+            guard let s = model.videoStream(for: pane.id, maxPixels: 640 * 400, maxFPS: 3) else {
+                try? await Task.sleep(for: .seconds(1))
+                continue
+            }
+            let states = AsyncStream<MediaStream.State> { cont in s.onState = { cont.yield($0) } }
+            stream = s
+            s.start()
+            for await st in states {
+                if st == .playing { playing = true }
+                if case .failed = st { break }
+                if Task.isCancelled { break }
+            }
+            s.stop()
+            playing = false
+            stream = nil
+            if Task.isCancelled { break }
+            try? await Task.sleep(for: .seconds(2))
+        }
+        stream?.stop()
+        stream = nil
+        playing = false
+    }
+}
+
+/// An editor pane: the start of its file.
+private struct FileTile: View {
+    let model: AppModel
+    let pane: Pane
+    @State private var session: EditorSession?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color(nsColor: .textBackgroundColor)
+            if let text = session?.text {
+                Text(text.split(separator: "\n", omittingEmptySubsequences: false).prefix(60).joined(separator: "\n"))
+                    .font(.system(size: 6, design: .monospaced))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(5)
+            }
+        }
+        .clipped()
+        .onAppear { session = model.acquireEditor(pane.id) }
+        .onDisappear {
+            model.releaseEditor(pane.id)
+            session = nil
+        }
+    }
+}
+
+/// A diff pane: its changes in proportion, and how much.
+private struct DiffTile: View {
+    let pane: Pane
+
+    var body: some View {
+        let d = pane.diff
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(d.files == 1 ? "1 file" : "\(d.files) files")
+                Text("+\(d.added)").foregroundStyle(.green)
+                Text("−\(d.removed)").foregroundStyle(.red)
+            }
+            .font(.system(size: 6.5, design: .monospaced))
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(DiffSketch.lines(added: d.added, removed: d.removed, files: d.files).enumerated()), id: \.offset) { _, l in
+                    GeometryReader { g in
+                        Capsule()
+                            .fill(l.kind == 1 ? Color.green.opacity(0.5) : l.kind == -1 ? Color.red.opacity(0.5) : Color.secondary.opacity(0.3))
+                            .frame(width: g.size.width * l.width)
+                    }
+                    .frame(height: 3)
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .clipped()
+        }
+        .padding(5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}

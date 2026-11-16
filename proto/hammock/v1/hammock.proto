@@ -234,6 +234,10 @@ message Pane {
   // (SleepPane with wake); typing in it or sending its agent a message
   // also resumes the session in a new process. Focusing it doesn't.
   bool asleep = 35;
+  // Terminal panes: when it last printed anything, to within outputNews
+  // (the daemon republishes it only when it's that far behind), for "output
+  // 2m ago" in a tab's preview. 0 when it hasn't since the daemon started.
+  int64 last_output_unix_ms = 40;
 }
 
 enum AgentState {

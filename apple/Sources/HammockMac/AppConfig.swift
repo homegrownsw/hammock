@@ -147,6 +147,8 @@ final class AppConfig {
     private(set) var paneAnimations = true
     /// A close button on the tab under the pointer (sidebar and tab bar).
     private(set) var tabCloseButton = true
+    /// A preview of the tab under the pointer (sidebar and tab bar).
+    private(set) var tabPreview = true
     /// How terminals show their program: plain, colorful, or off.
     private(set) var programIconStyle = ProgramIconStyle.plain
     /// A border around the focused pane, in the accent colour unless
@@ -358,6 +360,7 @@ final class AppConfig {
         dimInactivePanes = ours["dim-inactive-panes"] == "true"
         paneAnimations = ours["pane-animations"] != "false"
         tabCloseButton = ours["tab-close-button"] != "false"
+        tabPreview = ours["tab-preview"] != "false"
         activePaneBorder = ours["active-pane-border"] == "true"
         activePaneBorderColorValue = ours["active-pane-border-color"].flatMap { $0.isEmpty || $0 == "accent" ? nil : $0 }
         activePaneBorderColor = WindowTheme.colorPair(activePaneBorderColorValue)

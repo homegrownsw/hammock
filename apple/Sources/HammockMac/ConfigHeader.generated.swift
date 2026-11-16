@@ -36,6 +36,7 @@ extension AppConfig {
         #   group-icons = true                     (false: no icons on Group headings in the sidebar; Mac only)
         #   tab-status = icon | trailing           (agent and program status in a sidebar row's icon, or at its end with the agent's logo as the icon; Mac only)
         #   tab-close-button = true                (false: no close button on a tab you hover over, in the sidebar or the tab bar; Mac only)
+        #   tab-preview = true                     (false: no preview of a tab's panes when you hover over it, only its title; Mac only)
         #   sidebar-finished = true                (finished agents get their own list at the bottom of the sidebar; Mac only)
         #   collapsed-group-agents = false         (true: a collapsed Group still shows its tabs with an active agent; Mac only)
         #   keep-empty-groups = true               (⌘W on a Group's last tab keeps the Group; false: closes it too; Mac only)

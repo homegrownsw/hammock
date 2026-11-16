@@ -288,6 +288,7 @@ struct SidebarView: View {
             .opacity(draggingGroup == group.id || draggingTab == tab.id ? 0.3 : 1)
             .modifier(FullRowHover())
             .background { tabPill(tab.id) }
+            .tabPreview(model: model, tab: tab, edge: .trailing)
             .onHover { inside in
                 hover(group.id, row: tab.id, inside)
                 if inside, !PaletteState.shared.isOpen, draggingTab == nil { hoveredTab = tab.id } else if hoveredTab == tab.id { hoveredTab = nil }
