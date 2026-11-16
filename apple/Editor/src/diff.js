@@ -300,11 +300,9 @@ function renderBar() {
     totals.title = `${plural(order.length, "file", "files")}, ${info.added.toLocaleString()} lines added, ${info.removed.toLocaleString()} removed`
   }
   bar.append(totals)
-  // How far through it you are: files marked viewed (once you've marked one).
-  const nViewed = order.filter((f) => viewedSet.has(f.path)).length
-  document.body.classList.toggle("hasviewed", nViewed > 0)
-  if (content && config.canSend && nViewed) {
-    const n = nViewed
+  // How far through it you are: files marked viewed.
+  if (content && config.canSend && order.length) {
+    const n = order.filter((f) => viewedSet.has(f.path)).length
     const v = el("span", "viewedcount" + (n === order.length ? " all" : ""))
     v.innerHTML = svg.check
     v.append(`${n} of ${order.length} viewed`)
@@ -517,7 +515,7 @@ function renderSettingsPop(pop) {
   const wrap = toggle("Wrap long lines", !!v.wrap, () => setView({ wrap: !v.wrap }))
   wrap.append(el("span", "key", "w"))
   pop.append(wrap)
-  if (config.canSend && (hideViewed || viewedSet.size)) {
+  if (config.canSend) {
     const hv = el("button", "item" + (hideViewed ? " on" : ""), "Hide viewed files")
     hv.append(el("span", "key", "v"))
     hv.onclick = () => { setHideViewed(!hideViewed); closePops() }

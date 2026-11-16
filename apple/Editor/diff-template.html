@@ -238,11 +238,6 @@ body.nothreads .wwrap:has(> .thread), body.nothreads .fthreads > .thread { displ
 .vmark { display: inline-flex; color: var(--accent); vertical-align: middle; }
 .vmark .icon { width: 11px; height: 11px; }
 .fhead .vbox { gap: 5px; color: var(--dim); }
-/* Shown as you need it: on the header you're pointing at, the ones viewed,
-   and all of them once you've marked any (a touch screen: always). */
-.fhead .vbox:not(.on) { visibility: hidden; }
-.fhead:hover .vbox, .fhead.kbfocus .vbox, body.hasviewed .fhead .vbox, .fhead .vbox:focus-visible { visibility: visible; }
-@media (hover: none) { .fhead .vbox:not(.on) { visibility: visible; } }
 .fhead .vbox .box { width: 14px; height: 14px; border: 1.5px solid var(--faint); border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; }
 .fhead .vbox .box .icon { width: 11px; height: 11px; visibility: hidden; }
 .fhead .vbox.on { color: var(--fg); }
