@@ -1,6 +1,11 @@
 package tui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+)
 
 // A value wider than its field scrolls to keep the cursor in view, with a
 // cell left for the cursor at the end.
@@ -38,5 +43,16 @@ func TestFieldWindowWide(t *testing.T) {
 	}
 	if got := f.runeAt(2); got != f.off+1 {
 		t.Fatalf("runeAt(2) = %d, want %d", got, f.off+1)
+	}
+}
+
+// Closing a Group of several tabs asks first.
+func TestCloseGroupAsks(t *testing.T) {
+	a := &App{panes: map[string]*pb.Pane{}, tabs: map[string]*pb.Tab{}}
+	a.groups = []*pb.Group{{Id: "g1", Name: "one", TabIds: []string{"t1"}}, {Id: "g2", Name: "two", TabIds: []string{"t2", "t3"}}}
+	a.closeGroup("g2")
+	d, ok := a.overlay.(*dialog)
+	if !ok || !strings.Contains(d.title, "two") || !strings.Contains(strings.Join(d.lines, " "), "2 tabs") {
+		t.Fatalf("a Group of two tabs asks: %#v", a.overlay)
 	}
 }

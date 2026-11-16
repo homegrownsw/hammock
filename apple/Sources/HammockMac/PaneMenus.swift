@@ -834,14 +834,15 @@ struct PaneSwapChip: View {
 /// Asks before closing panes that would stop something: an agent at work
 /// (working, waiting for you, running a command; unless that's turned off in
 /// Settings ▸ Agents) or other programs running in a terminal. An agent at
-/// rest on its own isn't asked about. A sheet on the window, so menus and
-/// shortcuts can use it as well as views.
+/// rest on its own isn't asked about, unless there's `always` to say (a
+/// Group of several tabs). A sheet on the window, so menus and shortcuts can
+/// use it as well as views.
 @MainActor
 enum CloseGuard {
     nonisolated static let pref = Pref("confirm-close-busy-agent", defaults: "warnCloseBusyAgent", true)
     static var warnBusy: Bool { Prefs.shared.bool(pref) }
 
-    static func confirm(_ model: AppModel, panes ids: [String], title: String? = nil, button: String = "Close", then: @escaping () -> Void) {
+    static func confirm(_ model: AppModel, panes ids: [String], title: String? = nil, button: String = "Close", always: String? = nil, then: @escaping () -> Void) {
         let panes = ids.compactMap { model.panes[$0] }
         // Files with unsaved edits, in their last pane (others share the buffer).
         let closing = Set(ids)
@@ -879,9 +880,10 @@ enum CloseGuard {
             for p in panes {
                 for n in p.processes where !(p.hasAgent && n.lowercased() == p.agent.harness.lowercased()) && !names.contains(n) { names.append(n) }
             }
-            guard !names.isEmpty else { then(); return }
+            guard !names.isEmpty || always != nil else { then(); return }
             alert.messageText = title ?? (panes.count == 1 ? "Close this pane?" : "Close these panes?")
-            alert.informativeText = ListFormatter.localizedString(byJoining: names) + (names.count == 1 ? " is" : " are") + " still running and will be stopped."
+            let running = names.isEmpty ? nil : ListFormatter.localizedString(byJoining: names) + (names.count == 1 ? " is" : " are") + " still running and will be stopped."
+            alert.informativeText = [always, running].compactMap { $0 }.joined(separator: " ")
         }
         alert.addButton(withTitle: button)
         alert.addButton(withTitle: "Cancel")
@@ -900,9 +902,12 @@ enum CloseGuard {
         confirm(model, panes: AppModel.paneIDs(of: tab), title: nil, button: "Close Tab", then: then)
     }
 
-    /// Deleting a Group: every pane in its tabs.
+    /// Deleting a Group: every pane in its tabs. One of several tabs always
+    /// asks, busy or not: there's no getting them back.
     static func confirm(_ model: AppModel, group: WorkspaceGroup, then: @escaping () -> Void) {
         let ids = group.tabIds.compactMap { model.tabs[$0] }.flatMap { AppModel.paneIDs(of: $0) }
-        confirm(model, panes: ids, title: nil, button: "Delete Group", then: then)
+        let tabs = group.tabIds.count
+        confirm(model, panes: ids, title: "Delete “\(model.title(of: group))”?", button: "Delete Group",
+                always: tabs > 1 ? "Its \(tabs) tabs will be closed." : nil, then: then)
     }
 }

@@ -652,16 +652,26 @@ func (a *App) reopenClosed() {
 	})
 }
 
+// closeGroup closes a Group and its tabs, first asking if it has several
+// (there's no getting them back) and about unsaved edits.
 func (a *App) closeGroup(id string) {
 	var ids []string
-	if g := a.group(id); g != nil {
+	g := a.group(id)
+	if g != nil {
 		for _, tid := range g.TabIds {
 			if t := a.tabs[tid]; t != nil {
 				ids = append(ids, tabIDs(t)...)
 			}
 		}
 	}
-	a.confirmUnsaved(ids, func() { a.closeGroupNow(id) })
+	close := func() { a.confirmUnsaved(ids, func() { a.closeGroupNow(id) }) }
+	if g == nil || len(g.TabIds) < 2 {
+		close()
+		return
+	}
+	a.openDialog(&dialog{title: "Close “" + truncate(a.groupTitle(g), 40) + "”?", okLabel: "Close Group", confirm: true,
+		lines:  []string{fmt.Sprintf("Its %d tabs will be closed, and what's running in them stopped.", len(g.TabIds))},
+		submit: func([]string) { close() }})
 }
 
 func (a *App) closeGroupNow(id string) {
