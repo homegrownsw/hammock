@@ -77,6 +77,7 @@ struct DevicesView: View {
                     Text("What your computers call this iPhone.")
                 }
             }
+            .themedScreenBackground()
             .navigationTitle("Devices")
             .onChange(of: session.model?.thisComputer?.kind, initial: true) { _, k in if let k { session.noteKind(k) } }
             .task(id: session.model?.connected == true ? session.model?.screenComputers.map(\.userID) ?? [] : []) { await checkScreens() }
@@ -193,6 +194,7 @@ struct PairingScreen: View {
                 }
             }
         }
+        .themedScreenBackground()
         .navigationTitle("Add Computer")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: session.hosts.count) { old, new in if started, new > old { done() } }

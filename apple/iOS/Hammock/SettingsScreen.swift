@@ -71,11 +71,7 @@ struct SettingsScreen: View {
                     Text("Each session remembers your choice once you switch it. Claude Code sessions only, for now.")
                 }
                 Section("Text") {
-                    Picker("Font", selection: $fontName) {
-                        Text("System").tag("")
-                        ForEach(families, id: \.self) { Text($0).font(.custom($0, size: 17)).tag($0) }
-                    }
-                    .pickerStyle(.navigationLink)
+                    FontPickerLink(title: "Font", selection: $fontName, defaultName: "System", families: families)
                     Stepper("Size: \(Int(fontSize))", value: $fontSize, in: 12...28)
                     Stepper("Line spacing: \(Int(lineSpacing))", value: $lineSpacing, in: 0...12)
                     Stepper("Code size: \(Int(codeFontSize))", value: $codeFontSize, in: 10...26)
@@ -107,11 +103,7 @@ struct SettingsScreen: View {
                 }
             } trailing: {
                 Section {
-                    Picker("Font", selection: $terminalFont) {
-                        Text("SF Mono").tag("")
-                        ForEach(monoFamilies, id: \.self) { Text($0).font(.custom($0, size: 17)).tag($0) }
-                    }
-                    .pickerStyle(.navigationLink)
+                    FontPickerLink(title: "Font", selection: $terminalFont, defaultName: "SF Mono", families: monoFamilies)
                     Stepper("Size: \(Int(terminalSize))", value: $terminalSize, in: 7...18)
                     Stepper("Line spacing: \(terminalSpacing == 0 ? "Normal" : "\(terminalSpacing > 0 ? "+" : "")\(Int(terminalSpacing))%")",
                             value: $terminalSpacing, in: -20...100, step: 5)
@@ -126,11 +118,7 @@ struct SettingsScreen: View {
                     Text("Smaller text fits more columns. Panes wider than your screen shrink to fit.")
                 }
                 Section("Editors and Diffs") {
-                    Picker("Font", selection: Prefs.shared.stringBinding(.editorFontFamily)) {
-                        Text("Same as Terminal").tag("")
-                        ForEach(monoFamilies, id: \.self) { Text($0).font(.custom($0, size: 17)).tag($0) }
-                    }
-                    .pickerStyle(.navigationLink)
+                    FontPickerLink(title: "Font", selection: Prefs.shared.stringBinding(.editorFontFamily), defaultName: "Same as Terminal", families: monoFamilies)
                 }
                 Section {
                     AppLockSettings()
@@ -163,6 +151,7 @@ struct SettingsScreen: View {
                     NavigationLink("Acknowledgements") { AcknowledgementsScreen() }
                 }
             }
+            .themedScreenBackground()
             .navigationTitle("Settings")
             #if DEBUG
             // Dev aid: HMK_DEBUG_THEME_PICKER=1 opens Theme.
@@ -180,5 +169,58 @@ extension View {
     /// Applies the Appearance setting.
     func hammockAppearance(_ a: String) -> some View {
         preferredColorScheme(a == "light" ? .light : a == "dark" ? .dark : nil)
+    }
+}
+
+/// A font setting's row, opening the fonts on a screen of their own (a
+/// navigation-link Picker's, but on the theme's background, which the
+/// system's screen can't take).
+struct FontPickerLink: View {
+    let title: String
+    @Binding var selection: String
+    /// What "" means: the default's name.
+    let defaultName: String
+    let families: [String]
+
+    var body: some View {
+        NavigationLink {
+            FontList(title: title, selection: $selection, defaultName: defaultName, families: families)
+        } label: {
+            LabeledContent(title, value: selection.isEmpty ? defaultName : selection)
+        }
+    }
+}
+
+/// FontPickerLink's screen: picking one goes back, as a Picker's does.
+private struct FontList: View {
+    let title: String
+    @Binding var selection: String
+    let defaultName: String
+    let families: [String]
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.phoneTheme) private var theme
+
+    var body: some View {
+        List {
+            row(defaultName, tag: "", font: nil)
+            ForEach(families, id: \.self) { row($0, tag: $0, font: .custom($0, size: 17)) }
+        }
+        .themedScreenBackground()
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ name: String, tag: String, font: Font?) -> some View {
+        Button {
+            selection = tag
+            dismiss()
+        } label: {
+            HStack {
+                Text(name).font(font)
+                Spacer()
+                if selection == tag { Image(systemName: "checkmark").foregroundStyle(theme.accent).fontWeight(.semibold) }
+            }
+        }
+        .tint(.primary) // the names in black or white, as Settings' rows
     }
 }

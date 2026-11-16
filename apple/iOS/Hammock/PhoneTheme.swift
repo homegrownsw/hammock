@@ -34,6 +34,12 @@ struct PhoneTheme: Equatable, Sendable {
 
     func terminal(dark isDark: Bool) -> TerminalTheme { isDark ? dark : light }
 
+    /// Behind screens of grouped rows (themedScreenBackground): the sidebar's
+    /// tint, fading down the screen. Native: none.
+    var screenWash: AnyShapeStyle? {
+        sidebar.map { AnyShapeStyle(LinearGradient(colors: [$0.opacity(0.55), $0.opacity(0.3)], startPoint: .top, endPoint: .bottom)) }
+    }
+
     /// The terminal's background, in light and dark.
     var terminalBackground: Color { AppTheme.dynamic(AppTheme.hex(light.background), AppTheme.hex(dark.background)) }
     var terminalForeground: Color { AppTheme.dynamic(AppTheme.hex(light.foreground), AppTheme.hex(dark.foreground)) }
@@ -207,6 +213,7 @@ extension View {
             .environment(\.agentBubble, t.bubble)
             .environment(\.agentAutomaticColor, t.accent)
             .environment(\.agentAutomaticBubble, t.bubble)
+            .environment(\.themedScreenWash, t.screenWash)
             .onChange(of: t, initial: true) { PhoneTheme.current = t }
     }
 }
@@ -248,6 +255,7 @@ struct ThemePicker: View {
                 ForEach(AppTheme.all) { t in row(t.name, detail: nil, theme: PhoneTheme.curated(t), tag: t.name) }
             }
         }
+        .themedScreenBackground()
         .navigationTitle("Theme")
         .navigationBarTitleDisplayMode(.inline)
     }

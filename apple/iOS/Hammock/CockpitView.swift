@@ -154,6 +154,7 @@ struct SessionsView: View {
                         finding = false
                         AgentStarter.shared.didOpen(id, origin: "sessions")
                     }
+                    .themedScreenBackground()
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { finding = false } } }
                 }
             }
@@ -480,8 +481,7 @@ struct CockpitSplit<Sidebar: View>: View {
                 // As it's always looked on the iPhone (a sidebar's own style
                 // is the default in a split view).
                 .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-                .background(Color(.systemGroupedBackground))
+                .themedScreenBackground()
                 .navigationTitle(session.host?.hostName.replacingOccurrences(of: ".local", with: "") ?? "Hammock")
                 .overlay {
                     if model.groups.isEmpty {

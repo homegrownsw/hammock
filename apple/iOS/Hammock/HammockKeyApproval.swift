@@ -128,7 +128,7 @@ struct HammockKeyApprovalSheet: View {
                 .padding(.top, 8)
                 .padding(.bottom, 16)
             }
-            .background(Color(.systemGroupedBackground))
+            .themedScreenBackground()
             // The answers stay in reach, over the content as the system's
             // bottom bar.
             .safeAreaBar(edge: .bottom) {

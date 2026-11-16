@@ -413,6 +413,7 @@ struct PairConfirmSheet: View {
                     }
                 }
             }
+            .themedScreenBackground()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

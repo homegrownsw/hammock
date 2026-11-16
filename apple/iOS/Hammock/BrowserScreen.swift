@@ -241,6 +241,7 @@ struct PageMenuSheet: View {
                     }
                 }
             }
+            .themedScreenBackground()
             .navigationTitle(menu.kind == "select" ? "Choose" : "Page")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -284,6 +284,7 @@ struct GroupEditor: View {
                     }
                 }
             }
+            .themedScreenBackground()
             .navigationTitle(group == nil ? "New Group" : "Edit Group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

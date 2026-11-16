@@ -387,6 +387,7 @@ struct ScheduledTasksScreen: View {
                 }
             }
         }
+        .themedScreenBackground()
         .navigationTitle("Scheduled Tasks")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -446,6 +447,7 @@ struct ScheduleDetailScreen: View {
                 TimelineView(.periodic(from: .now, by: 60)) { ctx in
                     content(s, now: ctx.date)
                 }
+                .themedScreenBackground()
                 .navigationTitle(s.name)
             } else {
                 ContentUnavailableView("Scheduled Task Deleted", systemImage: "clock.badge.xmark",

@@ -33,6 +33,7 @@ struct AcknowledgementsScreen: View {
                 Text("Hammock is open source, under the MIT licence, and is built with, or inspired by, this software. Each one's licence is above.")
             }
         }
+        .themedScreenBackground()
         .navigationTitle("Acknowledgements")
         #if DEBUG
         .navigationDestination(item: $debugItem) { AcknowledgementText($0).navigationTitle($0.name).navigationBarTitleDisplayMode(.inline) }

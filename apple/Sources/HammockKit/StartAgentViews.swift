@@ -174,6 +174,7 @@ public struct StartAgentView: View {
                 }
             }
             .formStyle(.grouped)
+            .themedScreenBackground()
             .navigationTitle("Start an Agent")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -317,6 +318,7 @@ public struct FolderBrowser: View {
             }
         }
         .searchable(text: $filter, prompt: "Filter folders")
+        .themedScreenBackground()
         .navigationTitle((path as NSString).lastPathComponent.isEmpty ? "/" : (path as NSString).lastPathComponent)
         .task(id: path) {
             filter = ""
