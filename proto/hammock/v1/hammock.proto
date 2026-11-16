@@ -602,6 +602,9 @@ message ClientMessage {
     // a copy. This Mac's app only; replies Ok, or an error when no app is
     // open to show it.
     OpenWindow open_window = 136;
+    // An image a Markdown file in an editor pane shows, for its preview
+    // (editorimage.go). Replies EditorImage.
+    ReadEditorImage read_editor_image = 137;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -882,6 +885,7 @@ message ServerMessage {
     RepoInfo repo_info = 69;                        // reply to ReadRepo
     AgentAction agent_action = 70;                  // to this Mac's apps: an agent acting on a browser or simulator pane
     OpenWindow open_window = 71;                    // to this Mac's app: show a pane, tab or Group in a window of its own
+    EditorImage editor_image = 72;                  // reply to ReadEditorImage
   }
 }
 
@@ -1900,6 +1904,12 @@ message EditorCommand {
   uint32 end_column = 9;
   EditorInfo.View view = 10;  // ACTION_SET_VIEW
 }
+
+// An image for an editor pane's Markdown preview: path is absolute (the
+// client resolves it against the file's folder). Images only, up to 16 MB;
+// a guest's only inside the Group's folder.
+message ReadEditorImage { string pane_id = 1; string path = 2; }
+message EditorImage { string path = 1; string media_type = 2; bytes data = 3; }
 
 message ReadEditor {
   string pane_id = 1;

@@ -1,0 +1,63 @@
+package daemon
+
+// Images for an editor pane's Markdown preview: the page shows them from
+// the daemon, so they show wherever the pane does (the iPhone, a Group on
+// another computer or shared with you), not only on the file's own Mac.
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+)
+
+// editorImageMax is the largest image the preview is sent.
+const editorImageMax = 16 << 20
+
+// editorImageTypes are the files the preview may ask for, by extension.
+var editorImageTypes = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+	".svg": "image/svg+xml", ".heic": "image/heic", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon",
+}
+
+// readEditorImage answers ReadEditorImage. guest: a guest's, only inside the
+// Group's folder (else any image on this computer, as its owner may open).
+func (d *Daemon) readEditorImage(m *pb.ReadEditorImage, folder string, guest bool) (*pb.ServerMessage, error) {
+	h := d.editors
+	h.mu.Lock()
+	_, err := h.buf(m.PaneId)
+	h.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if !filepath.IsAbs(m.Path) {
+		return nil, errors.New("give an absolute path")
+	}
+	typ, ok := editorImageTypes[strings.ToLower(filepath.Ext(m.Path))]
+	if !ok {
+		return nil, fmt.Errorf("%s isn't an image", filepath.Base(m.Path))
+	}
+	path, err := resolveEditorPath(m.Path, "")
+	if err != nil {
+		return nil, err
+	}
+	// Resolved (symlinks followed), so a link can't lead a guest out.
+	if guest && !insideFolder(path, folder) {
+		return nil, errors.New("only images in the Group's folder")
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || st.Size() > editorImageMax {
+		return nil, fmt.Errorf("%s isn't an image of 16 MB or less", filepath.Base(path))
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ServerMessage{Msg: &pb.ServerMessage_EditorImage{EditorImage: &pb.EditorImage{Path: m.Path, MediaType: typ, Data: data}}}, nil
+}

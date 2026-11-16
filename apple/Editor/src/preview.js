@@ -101,8 +101,7 @@ function highlightFence(code, lang) {
 
 // ---- sanitising, and where links and images point ----
 
-let docDir = ""        // the file's folder ("" while untitled)
-let localFiles = false // its files are this device's, to show its images
+let docDir = "" // the file's folder ("" while untitled)
 
 const external = /^[a-z][a-z0-9+.-]*:/i
 
@@ -111,7 +110,8 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     const src = node.getAttribute("src") || ""
     if (src && !external.test(src) && !src.startsWith("//")) {
       const path = resolvePath(src)
-      if (path && localFiles) node.setAttribute("src", "hammock-file://local" + encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F"))
+      // The app fetches it from the daemon (EditorWebView.swift), wherever the file is.
+      if (path) node.setAttribute("src", "hammock-file://local" + encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F"))
       else node.removeAttribute("src")
     }
     node.setAttribute("loading", "lazy")
@@ -150,6 +150,7 @@ export class Preview {
     this.host = host
     this.post = post
     this.editLine = editLine
+    this.find = new PreviewFind(this)
     this.body = document.createElement("article")
     this.body.className = "md"
     host.appendChild(this.body)
@@ -161,11 +162,10 @@ export class Preview {
     host.addEventListener("mousedown", () => { this.reveal = null; this.markReveal(); post({ type: "focus" }) })
   }
 
-  setFile(path, local) {
+  setFile(path) {
     const dir = path ? path.slice(0, path.lastIndexOf("/")) : ""
-    if (dir === docDir && local === localFiles) return
+    if (dir === docDir) return
     docDir = dir
-    localFiles = local
     if (this.text !== null) this.render(this.text, true)
   }
 
@@ -198,6 +198,7 @@ export class Preview {
     this.body.innerHTML = DOMPurify.sanitize(html, purifyConfig)
     for (const box of this.body.querySelectorAll("input.task")) box.disabled = this.readOnly
     this.markReveal()
+    this.find.refresh()
   }
 
   setReadOnly(ro) {
@@ -303,6 +304,102 @@ export class Preview {
   }
 }
 
+// ---- find, while the preview shows alone (the editor's own find is hidden) ----
+
+class PreviewFind {
+  constructor(preview) {
+    this.preview = preview
+    this.ranges = []
+    this.index = -1
+    const bar = this.bar = document.createElement("div")
+    bar.className = "find-bar"
+    bar.hidden = true
+    bar.innerHTML = `<input type="search" placeholder="Find" spellcheck="false" autocomplete="off"><span class="count"></span>` +
+      `<button class="prev" title="Previous">‹</button><button class="next" title="Next">›</button><button class="done" title="Done">×</button>`
+    preview.host.appendChild(bar)
+    this.input = bar.querySelector("input")
+    this.count = bar.querySelector(".count")
+    this.input.addEventListener("input", () => { this.index = 0; this.search(true) })
+    this.input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); this.step(e.shiftKey ? -1 : 1) }
+      else if (e.key === "Escape") { e.preventDefault(); this.close() }
+    })
+    bar.querySelector(".prev").addEventListener("click", () => this.step(-1))
+    bar.querySelector(".next").addEventListener("click", () => this.step(1))
+    bar.querySelector(".done").addEventListener("click", () => this.close())
+    bar.addEventListener("mousedown", (e) => e.stopPropagation())
+  }
+
+  get open() { return !this.bar.hidden }
+
+  show() {
+    this.bar.hidden = false
+    // What's selected in the preview, as a browser's find starts with.
+    const sel = window.getSelection().toString().trim()
+    if (sel && !sel.includes("\n")) this.input.value = sel
+    this.input.focus()
+    this.input.select()
+    this.search(true)
+  }
+
+  close() {
+    this.bar.hidden = true
+    this.ranges = []
+    this.index = -1
+    this.paint()
+  }
+
+  /** The document changed (re-rendered): find again, staying near the match we were on. */
+  refresh() { if (this.open) this.search(false) }
+
+  search(reveal) {
+    const q = this.input.value.toLowerCase()
+    this.ranges = []
+    if (q) {
+      const walk = document.createTreeWalker(this.preview.body, NodeFilter.SHOW_TEXT)
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const t = n.nodeValue.toLowerCase()
+        for (let i = t.indexOf(q); i >= 0; i = t.indexOf(q, i + q.length)) {
+          const r = new Range()
+          r.setStart(n, i)
+          r.setEnd(n, i + q.length)
+          this.ranges.push(r)
+        }
+      }
+    }
+    this.index = this.ranges.length ? Math.min(Math.max(this.index, 0), this.ranges.length - 1) : -1
+    this.paint()
+    if (reveal) this.reveal()
+  }
+
+  step(d) {
+    if (!this.open) { this.show(); return }
+    if (!this.ranges.length) return
+    this.index = (this.index + d + this.ranges.length) % this.ranges.length
+    this.paint()
+    this.reveal()
+  }
+
+  paint() {
+    const hl = globalThis.CSS && CSS.highlights
+    this.count.textContent = !this.input.value ? "" : this.ranges.length ? `${this.index + 1} of ${this.ranges.length}` : "No results"
+    if (!hl) return
+    hl.delete("find")
+    hl.delete("find-current")
+    if (!this.ranges.length) return
+    hl.set("find", new Highlight(...this.ranges))
+    hl.set("find-current", new Highlight(this.ranges[this.index]))
+  }
+
+  reveal() {
+    const r = this.ranges[this.index]
+    if (!r) return
+    const host = this.preview.host
+    const y = r.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop
+    if (y < host.scrollTop + 50 || y > host.scrollTop + host.clientHeight - 40) host.scrollTop = Math.max(0, y - host.clientHeight / 3)
+  }
+}
+
 function offsetIn(el, host) {
   return el.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop
 }
@@ -343,5 +440,16 @@ body.ios #preview .md { padding: 16px 16px 40vh; }
 .md .empty { color: ${dim}; }
 .md .revealed { background: ${tint(th.selection, 0.45)}; box-shadow: 0 0 0 6px ${tint(th.selection, 0.45)}; border-radius: 2px; }
 #preview ::selection { background: ${th.selection}; }
+::highlight(find) { background-color: ${tint(pal(3, "#e5c07b"), 0.3)}; }
+::highlight(find-current) { background-color: ${tint(pal(3, "#e5c07b"), 0.7)}; color: ${bg}; }
+#preview .find-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+  background: ${mix(bg, fg, 0.04)}; border-bottom: 1px solid ${mix(bg, fg, 0.12)}; font: 12px -apple-system, system-ui, sans-serif; color: ${fg}; }
+#preview .find-bar[hidden] { display: none; }
+#preview .find-bar input { flex: 1; min-width: 60px; max-width: 280px; font: inherit; color: ${fg}; background: ${mix(bg, fg, 0.08)};
+  border: 1px solid ${mix(bg, fg, 0.18)}; border-radius: 5px; padding: 3px 7px; outline: none; }
+#preview .find-bar .count { color: ${dim}; min-width: 5em; }
+#preview .find-bar button { font: 14px/1 -apple-system, system-ui, sans-serif; color: ${fg}; background: none; border: 0; padding: 2px 6px; border-radius: 4px; }
+#preview .find-bar button:hover { background: ${mix(bg, fg, 0.1)}; }
+body.ios #preview .find-bar { font-size: 16px; } body.ios #preview .find-bar input { font-size: 16px; }
 `
 }

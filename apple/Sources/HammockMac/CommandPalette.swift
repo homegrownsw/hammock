@@ -485,8 +485,10 @@ struct CommandPalette: View {
                 action("editor-save-as", "Save As…", "square.and.arrow.down.on.square", .indigo, "write file rename new name", keys: Keys.editorSaveAs) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.save(model, focused, saveAs: true) }
                 }
-                action("editor-go-to-line", "Go to Line…", "arrow.right.to.line", .indigo, "jump line number", keys: Keys.editorGoToLine) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "gotoLine") }
+                if !ui.previewOnly(model, focused) {
+                    action("editor-go-to-line", "Go to Line…", "arrow.right.to.line", .indigo, "jump line number", keys: Keys.editorGoToLine) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "gotoLine") }
+                    }
                 }
                 action("editor-find", "Find…", "magnifyingglass", .indigo, "search replace", keys: Keys.findInPage) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ui.run(model, focused, "find") }

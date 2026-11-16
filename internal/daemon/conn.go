@@ -761,6 +761,13 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		d.mu.Unlock()
 		return nil, d.editors.command(m.EditorCommand, folder, guest)
 
+	case *pb.ClientMessage_ReadEditorImage:
+		d.mu.Lock()
+		folder := d.folderOf(d.groupOfPane(m.ReadEditorImage.PaneId))
+		guest := c.peer != "" && !d.isLinked(c.peer)
+		d.mu.Unlock()
+		return d.readEditorImage(m.ReadEditorImage, folder, guest)
+
 	case *pb.ClientMessage_ReadEditor:
 		u, err := d.editors.read(m.ReadEditor)
 		if err != nil {

@@ -917,6 +917,8 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(pane(m.ClearLog.PaneId))
 	case *pb.ClientMessage_ReadEditor:
 		return view(pane(m.ReadEditor.PaneId))
+	case *pb.ClientMessage_ReadEditorImage:
+		return view(pane(m.ReadEditorImage.PaneId))
 	case *pb.ClientMessage_ReadDiff:
 		return view(pane(m.ReadDiff.PaneId))
 	case *pb.ClientMessage_ReadDiffFile:

@@ -211,19 +211,34 @@ final class EditorUI {
 
     // MARK: Markdown's preview
 
-    /// Whether the pane's file can be shown rendered, and by you.
+    /// Whether the pane's file can be shown rendered.
     func canPreview(_ model: AppModel, _ paneID: String?) -> Bool {
-        guard let id = paneID, model.group(ofPane: id)?.canDrive != false else { return false }
-        return session(model, id)?.canPreview == true
+        session(model, paneID)?.canPreview == true
     }
 
-    func view(_ model: AppModel, _ paneID: String) -> EditorInfo.View { model.panes[paneID]?.editor.view ?? .source }
+    func view(_ model: AppModel, _ paneID: String) -> EditorInfo.View {
+        let info = model.panes[paneID]?.editor ?? EditorInfo()
+        return session(model, paneID)?.shownView(info) ?? info.view
+    }
+
+    /// Whether the preview shows alone (no source to go to a line in).
+    func previewOnly(_ model: AppModel, _ paneID: String?) -> Bool {
+        guard let id = paneID else { return false }
+        return canPreview(model, id) && view(model, id) == .preview
+    }
+
+    /// Whether a view chosen here is only this Mac's: the pane can't be
+    /// changed (a View member's, or offline).
+    func localView(_ model: AppModel, _ paneID: String) -> Bool {
+        let g = model.group(ofPane: paneID)
+        return g?.canDrive == false || g?.offline == true
+    }
 
     /// Preview (or, split, the source and preview side by side), or back to the source.
     func togglePreview(_ model: AppModel, _ paneID: String?, split: Bool = false) {
         guard canPreview(model, paneID), let id = paneID, let s = session(model, id) else { return }
         let want: EditorInfo.View = split ? .split : .preview
-        s.setView(view(model, id) == want ? .source : want)
+        s.setView(view(model, id) == want ? .source : want, local: localView(model, id))
     }
 
     func previewLabel(_ model: AppModel, _ paneID: String, split: Bool = false) -> String {
@@ -350,14 +365,14 @@ struct EditorPaneView: View {
                 .truncationMode(.head)
             Spacer(minLength: 6)
             if let session {
-                if info.view != .preview || !session.canPreview {
+                if session.shownView(info) != .preview || !session.canPreview {
                     Text(session.selected > 0 ? "\(session.selected) selected" : "\(session.line):\(session.column)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
                 LanguageMenu(session: session, info: info, enabled: canEdit)
                 if session.canPreview {
-                    EditorViewPicker(view: info.view, enabled: canEdit) { session.setView($0) }
+                    EditorViewPicker(view: session.shownView(info)) { session.setView($0, local: EditorUI.shared.localView(model, paneID)) }
                 }
             }
             AvatarStack(model.presence(inPane: paneID), size: 18)
@@ -412,7 +427,6 @@ struct EditorPaneView: View {
 /// Source, Split or Preview, for a file that can be shown rendered (Markdown).
 struct EditorViewPicker: View {
     let view: EditorInfo.View
-    let enabled: Bool
     let set: (EditorInfo.View) -> Void
 
     var body: some View {
@@ -425,7 +439,6 @@ struct EditorViewPicker: View {
         .labelsHidden()
         .controlSize(.mini)
         .fixedSize()
-        .disabled(!enabled)
         .accessibilityLabel("View")
     }
 }
@@ -581,19 +594,16 @@ struct EditorWebViewRep: NSViewRepresentable {
         bridge.onSave = { [model, paneID] saveAs in EditorUI.shared.save(model, paneID, saveAs: saveAs) }
         bridge.onOpenFile = { [model, paneID] path in EditorUI.shared.openLink(model, from: paneID, path) }
         bridge.configure(config)
-        bridge.setInfo(info, readOnly: readOnly, localFiles: localFiles)
+        bridge.setInfo(info, readOnly: readOnly)
         v.isFocusTarget = isFocused
         return v
     }
 
     func updateNSView(_ v: EditorWK, context: Context) {
         context.coordinator.bridge?.configure(config)
-        context.coordinator.bridge?.setInfo(info, readOnly: readOnly, localFiles: localFiles)
+        context.coordinator.bridge?.setInfo(info, readOnly: readOnly)
         v.isFocusTarget = isFocused
     }
-
-    /// The file is this Mac's (not a Group shared with you, or on another computer).
-    private var localFiles: Bool { model.group(ofPane: paneID).map { !model.isOnLinkedComputer($0) } ?? false }
 }
 
 /// The page's view: focus as the pane's, a Mac context menu, and the Edit
@@ -651,7 +661,9 @@ final class EditorWK: WKWebView {
         let ui = EditorUI.shared
         if !menu.items.isEmpty { menu.addItem(.separator()) }
         menu.addItem(ClosureItem("Find…", key: "find_in_page") { ui.run(model, self.paneID, "find") })
-        menu.addItem(ClosureItem("Go to Line…", key: "editor_go_to_line") { ui.run(model, self.paneID, "gotoLine") })
+        if !ui.previewOnly(model, paneID) {
+            menu.addItem(ClosureItem("Go to Line…", key: "editor_go_to_line") { ui.run(model, self.paneID, "gotoLine") })
+        }
         if ui.canPreview(model, paneID) {
             menu.addItem(.separator())
             menu.addItem(ClosureItem(ui.previewLabel(model, paneID), key: "editor_toggle_preview") { ui.togglePreview(model, self.paneID) })

@@ -81,7 +81,7 @@ When a program changes the file on disk, the pane reloads it, or offers to if yo
 
 ### Markdown preview
 
-A Markdown file can be read rendered: the buttons in the pane's header switch between its source, the source with the preview beside it, and the preview alone (View ▸ Show Preview, ⇧⌘V). The preview follows your edits, and an agent's changes to the file, as they happen. Tick a task's checkbox to tick it in the file; a link to another file opens it beside. On the iPhone, Show Preview is in the pane's menu; the TUI shows the source.
+A Markdown file can be read rendered: the buttons in the pane's header switch between its source, the source with the preview beside it, and the preview alone (View ▸ Show Preview, ⇧⌘V). The preview follows your edits, and an agent's changes to the file, as they happen, and Find (⌘F) searches it. Tick a task's checkbox to tick it in the file; a link to another file opens it beside. In a Group shared with you to view, the view you pick is yours alone. On the iPhone, Show Preview is in the pane's menu; the TUI shows the source.
 
 ```sh
 hmk edit docs/plan.md --view preview

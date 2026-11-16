@@ -234,7 +234,7 @@ struct HammockApp: App {
                 }
                     .keyboardShortcut(Keys.findPrevious)
                     .disabled(!focusedIsBrowser && !focusedIsEditor)
-                if focusedIsEditor {
+                if focusedIsEditor, !EditorUI.shared.previewOnly(model, focused) {
                     Button("Go to Line…") { EditorUI.shared.run(model, focused, "gotoLine") }.keyboardShortcut(Keys.editorGoToLine)
                 }
             }

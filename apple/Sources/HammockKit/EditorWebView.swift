@@ -96,9 +96,11 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
         let ucc = WKUserContentController()
         conf.userContentController = ucc
         BundledFonts.addFontFaces(to: ucc, page: "editor")
-        conf.setURLSchemeHandler(LocalImageHandler(), forURLScheme: LocalImageHandler.scheme)
+        let images = PreviewImageHandler()
+        conf.setURLSchemeHandler(images, forURLScheme: PreviewImageHandler.scheme)
         webView = makeWebView(conf)
         super.init()
+        images.session = session
         ucc.add(WeakHandler(self), name: "hammock")
         webView.navigationDelegate = self
         #if os(macOS)
@@ -202,14 +204,21 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
     }
 
     /// The pane's file: its name (for the language) and path, a chosen language,
-    /// indentation, how to show it. localFiles: its files are this device's
-    /// (Markdown's preview shows its images).
-    public func setInfo(_ e: EditorInfo, readOnly: Bool, localFiles: Bool = false) {
+    /// indentation, how to show it.
+    public func setInfo(_ e: EditorInfo, readOnly: Bool) {
+        lastInfo = (e, readOnly)
         let i: [String: Any] = ["name": e.name, "language": e.language, "tabWidth": Int(e.tabWidth), "indent": e.indent, "readOnly": readOnly || e.readOnly,
-                                "path": e.path, "localFiles": localFiles, "view": Self.viewName(e.view)]
+                                "path": e.path, "view": Self.viewName(session.shownView(e))]
         guard !NSDictionary(dictionary: i).isEqual(to: info) else { return }
         info = i
         if ready { call("hammock.setInfo(i)", ["i": i]) }
+    }
+
+    private var lastInfo: (EditorInfo, Bool)?
+
+    /// The session's own view changed (EditorSession.setView, local).
+    func reapplyInfo() {
+        if let (e, ro) = lastInfo { setInfo(e, readOnly: ro) }
     }
 
     nonisolated static func viewName(_ v: EditorInfo.View) -> String {
@@ -263,40 +272,47 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
     }
 }
 
-/// Images in Markdown's preview, from the file's own folder (the page is
-/// the app's, so it can't read them itself): hammock-file://local/PATH,
-/// images only, and only this device's files.
-final class LocalImageHandler: NSObject, WKURLSchemeHandler {
-    static let scheme = "hammock-file"
-    static let types: [String: String] = [
-        "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp",
-        "svg": "image/svg+xml", "heic": "image/heic", "avif": "image/avif", "bmp": "image/bmp", "ico": "image/x-icon",
-    ]
-    static let maxSize = 32 << 20
+/// Images in Markdown's preview (hammock-file://local/PATH, PATH absolute):
+/// fetched from the daemon (ReadEditorImage), so they show wherever the
+/// pane does, not only on the file's own Mac. The page is the app's, so it
+/// can't read them itself.
+@MainActor
+final class PreviewImageHandler: NSObject, WKURLSchemeHandler {
+    nonisolated static let scheme = "hammock-file"
+    weak var session: EditorSession?
+    /// Tasks WebKit has stopped (a re-render dropped the image): not to be answered.
+    private var stopped: Set<ObjectIdentifier> = []
 
-    /// The file a request is for, if it's one to give.
-    nonisolated static func file(for url: URL?) -> (path: String, type: String)? {
+    /// The path a request is for, if it's one to ask for.
+    nonisolated static func path(for url: URL?) -> String? {
         guard let url, url.scheme == scheme, url.host == "local" else { return nil }
         let path = url.path
-        guard path.hasPrefix("/"), !path.split(separator: "/").contains(".."),
-              let type = types[(path as NSString).pathExtension.lowercased()] else { return nil }
-        return (path, type)
+        guard path.hasPrefix("/"), !path.split(separator: "/").contains("..") else { return nil }
+        return path
     }
 
     func webView(_ webView: WKWebView, start task: any WKURLSchemeTask) {
-        guard let (path, type) = Self.file(for: task.request.url),
-              let attrs = try? FileManager.default.attributesOfItem(atPath: path),
-              attrs[.type] as? FileAttributeType == .typeRegular, (attrs[.size] as? Int ?? 0) <= Self.maxSize,
-              let data = FileManager.default.contents(atPath: path) else {
+        let id = ObjectIdentifier(task)
+        guard let url = task.request.url, let path = Self.path(for: url), let session else {
             task.didFailWithError(URLError(.fileDoesNotExist))
             return
         }
-        task.didReceive(URLResponse(url: task.request.url!, mimeType: type, expectedContentLength: data.count, textEncodingName: nil))
-        task.didReceive(data)
-        task.didFinish()
+        Task {
+            let image = try? await session.readImage(path)
+            guard stopped.remove(id) == nil else { return }
+            guard let image else {
+                task.didFailWithError(URLError(.fileDoesNotExist))
+                return
+            }
+            task.didReceive(URLResponse(url: url, mimeType: image.mediaType, expectedContentLength: image.data.count, textEncodingName: nil))
+            task.didReceive(image.data)
+            task.didFinish()
+        }
     }
 
-    func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {}
+    func webView(_ webView: WKWebView, stop task: any WKURLSchemeTask) {
+        stopped.insert(ObjectIdentifier(task))
+    }
 }
 
 /// WKUserContentController keeps its handlers: this one lets the bridge go.

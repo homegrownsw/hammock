@@ -43,7 +43,7 @@ let config = {
   font: { family: "Menlo", size: 13 },
   wrap: false, lineNumbers: true, tabWidth: 4, indent: "spaces", vim: false, readOnly: false, platform: "mac",
 }
-let info = { name: "", language: "", tabWidth: 0, indent: "", readOnly: false, path: "", localFiles: false, view: "source" }
+let info = { name: "", language: "", tabWidth: 0, indent: "", readOnly: false, path: "", view: "source" }
 
 const themeC = new Compartment(), wrapC = new Compartment(), numbersC = new Compartment(), tabC = new Compartment()
 const vimC = new Compartment(), langC = new Compartment(), readC = new Compartment(), diffC = new Compartment()
@@ -229,7 +229,7 @@ window.hammock = {
     }
     if (!view || JSON.stringify(info) === before) return
     view.dispatch({ effects: [tabC.reconfigure(tabExtension()), readC.reconfigure(readOnlyExt())] })
-    preview.setFile(info.path, info.localFiles)
+    preview.setFile(info.path)
     preview.setReadOnly(config.readOnly || info.readOnly)
     applyLanguage()
   },
@@ -255,7 +255,7 @@ window.hammock = {
     syncedDoc = state.doc
     languageName = "\u0000"
     preview.setTheme(config, currentHighlight)
-    preview.setFile(info.path, info.localFiles)
+    preview.setFile(info.path)
     preview.setReadOnly(config.readOnly || info.readOnly)
     if (shown !== "source") preview.render(m.text)
     applyLanguage()
@@ -327,6 +327,17 @@ window.hammock = {
 
   command(name) {
     if (!view) return false
+    // The preview alone: find in it; the editor's panels (Go to Line) are hidden with it.
+    if (shown === "preview") {
+      const f = preview.find
+      switch (name) {
+        case "find": f.show(); return true
+        case "findNext": f.step(1); return true
+        case "findPrevious": f.step(-1); return true
+        case "closeFind": f.close(); return true
+        case "gotoLine": return false
+      }
+    }
     const cmds = {
       undo, redo, selectAll, find: openSearchPanel, closeFind: closeSearchPanel, findNext, findPrevious, gotoLine,
       left: cursorCharLeft, right: cursorCharRight, up: cursorLineUp, down: cursorLineDown,
@@ -412,6 +423,7 @@ function applyView() {
   if (next === "split" && window.innerWidth < 560) next = "preview"
   if (next === shown) return
   const before = shown
+  if (before === "preview") preview.find.close()
   // Where we are, to stay there.
   const line = before === "preview" ? preview.topLine() : editorTopLine()
   shown = next

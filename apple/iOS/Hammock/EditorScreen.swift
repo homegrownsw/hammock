@@ -44,13 +44,15 @@ struct EditorScreen: View {
                 banner(session)
                 EditorWebViewIOS(session: session, config: config, info: info, readOnly: !canDrive) { saveAs in
                     if saveAs || info.path.isEmpty { startSaveAs() } else { save() }
+                } onOpenFile: { path in
+                    openLink(path, session: session)
                 }
             } else {
                 Color.clear
             }
         }
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
-        .safeAreaInset(edge: .bottom) { if editable, let session, !(session.canPreview && info.view != .source) { keyBar(session) } }
+        .safeAreaInset(edge: .bottom) { if editable, let session, !(session.canPreview && session.shownView(info) != .source) { keyBar(session) } }
         .toolbar {
             if chrome { ToolbarItem(placement: .primaryAction) { menu } }
         }
@@ -88,6 +90,16 @@ struct EditorScreen: View {
         }
     }
 
+    /// A link in the preview to another file: it opens beside, shown as this one is.
+    private func openLink(_ path: String, session: EditorSession) {
+        guard canDrive else { return }
+        let ext = (path as NSString).pathExtension.lowercased()
+        let view: EditorInfo.View = ["md", "markdown", "mdown", "mkd"].contains(ext) ? session.shownView(info) : .source
+        Task {
+            do { try await model.openEditor(path, groupID: nil, splitPane: paneID, view: view) } catch { problem = error.localizedDescription }
+        }
+    }
+
     private var confirmTitle: String {
         switch confirm {
         case .overwrite(_, let m): m
@@ -112,16 +124,19 @@ struct EditorScreen: View {
                     Button("Rename…", systemImage: "pencil") { renameTo = info.name; askingRename = true }
                 }
             }
-            if let session, session.canPreview, canDrive {
+            if let session, session.canPreview {
                 // Split shows the preview on a phone (too narrow for both).
-                if info.view == .source {
-                    Button("Show Preview", systemImage: "doc.richtext") { session.setView(.preview) }
+                // A View member's choice is this iPhone's alone.
+                if session.shownView(info) == .source {
+                    Button("Show Preview", systemImage: "doc.richtext") { session.setView(.preview, local: !canDrive) }
                 } else {
-                    Button("Show Source", systemImage: "chevron.left.forwardslash.chevron.right") { session.setView(.source) }
+                    Button("Show Source", systemImage: "chevron.left.forwardslash.chevron.right") { session.setView(.source, local: !canDrive) }
                 }
             }
             Button("Find", systemImage: "magnifyingglass") { session?.run("find") }
-            Button("Go to Line", systemImage: "arrow.right.to.line") { session?.run("gotoLine") }
+            if !(session?.canPreview == true && session.map { $0.shownView(info) } != .source) {
+                Button("Go to Line", systemImage: "arrow.right.to.line") { session?.run("gotoLine") }
+            }
             if let session {
                 Menu("Language: \(session.languageName.isEmpty ? "Plain Text" : session.languageName)", systemImage: "chevron.left.forwardslash.chevron.right") {
                     Button("Detect from Name") { session.setLanguage("") }
@@ -261,6 +276,7 @@ struct EditorWebViewIOS: UIViewRepresentable {
     let info: EditorInfo
     let readOnly: Bool
     var onSave: (Bool) -> Void
+    var onOpenFile: (String) -> Void = { _ in }
 
     final class Coordinator {
         var bridge: EditorBridge?
@@ -272,6 +288,7 @@ struct EditorWebViewIOS: UIViewRepresentable {
         let bridge = EditorBridge(session: session) { WKWebView(frame: .zero, configuration: $0) }
         context.coordinator.bridge = bridge
         bridge.onSave = onSave
+        bridge.onOpenFile = onOpenFile
         bridge.configure(config)
         bridge.setInfo(info, readOnly: readOnly)
         return bridge.webView

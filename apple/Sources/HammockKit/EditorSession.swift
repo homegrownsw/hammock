@@ -183,8 +183,32 @@ public final class EditorSession {
     /// Whether the file can be shown rendered (Markdown's preview).
     public var canPreview: Bool { languageName == "Markdown" }
 
-    /// Shows the file as its source, rendered, or both.
-    public func setView(_ view: EditorInfo.View) {
+    /// An image the preview shows (an absolute path), from the daemon.
+    public func readImage(_ path: String) async throws -> Hammock_V1_EditorImage {
+        guard let conn = model?.connection else { throw EditorError.offline }
+        let r = try await conn.call { $0.readEditorImage = .with { $0.paneID = self.paneID; $0.path = path } }
+        return r.editorImage
+    }
+
+    /// How this device shows it, for someone who can't change the pane (a
+    /// View member of a shared Group): the pane's own view is the host's.
+    public private(set) var localView: EditorInfo.View?
+
+    /// How it shows here: this device's choice, else the pane's.
+    public func shownView(_ info: EditorInfo) -> EditorInfo.View { localView ?? info.view }
+
+    /// Shows the file as its source, rendered, or both: for everyone on the
+    /// pane, or (local) only here.
+    public func setView(_ view: EditorInfo.View, local: Bool = false) {
+        if local {
+            localView = view
+            bridge?.reapplyInfo()
+            return
+        }
+        if localView != nil {
+            localView = nil
+            bridge?.reapplyInfo()
+        }
         Task { try? await command { $0.action = .setView; $0.view = view } }
     }
 

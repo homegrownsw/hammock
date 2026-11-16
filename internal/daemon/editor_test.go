@@ -399,3 +399,43 @@ func TestEditorViewIsEachPanes(t *testing.T) {
 		t.Fatalf("after restart: %v, %v", a, b)
 	}
 }
+
+func TestEditorImage(t *testing.T) {
+	dir := shortDir(t)
+	folder := t.TempDir()
+	outside := t.TempDir()
+	os.WriteFile(filepath.Join(folder, "doc.md"), []byte("![x](shot.png)\n"), 0o644)
+	os.WriteFile(filepath.Join(folder, "shot.png"), []byte("\x89PNG\r\n"), 0o644)
+	os.WriteFile(filepath.Join(folder, "notes.txt"), []byte("secret"), 0o644)
+	os.WriteFile(filepath.Join(outside, "away.png"), []byte("\x89PNG\r\n"), 0o644)
+	os.Symlink(filepath.Join(outside, "away.png"), filepath.Join(folder, "link.png"))
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	_, paneID := newEditorTab(t, d, c, folder, "doc.md")
+	read := func(p string) (*pb.EditorImage, error) {
+		r, err := editorCall(c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadEditorImage{ReadEditorImage: &pb.ReadEditorImage{PaneId: paneID, Path: p}}})
+		return r.GetEditorImage(), err
+	}
+	img, err := read(filepath.Join(folder, "shot.png"))
+	if err != nil || img.MediaType != "image/png" || string(img.Data) != "\x89PNG\r\n" {
+		t.Fatalf("image: %v, %v", img, err)
+	}
+	if _, err := read(filepath.Join(folder, "notes.txt")); err == nil {
+		t.Error("gave a file that isn't an image")
+	}
+	if _, err := read("shot.png"); err == nil {
+		t.Error("took a relative path")
+	}
+	// Outside the Group's folder: its owner's, not a guest's (even through a link).
+	if _, err := read(filepath.Join(outside, "away.png")); err != nil {
+		t.Errorf("owner, outside the folder: %v", err)
+	}
+	for _, p := range []string{filepath.Join(outside, "away.png"), filepath.Join(folder, "link.png")} {
+		if _, err := d.readEditorImage(&pb.ReadEditorImage{PaneId: paneID, Path: p}, folder, true); err == nil {
+			t.Errorf("a guest got %s", p)
+		}
+	}
+	if _, err := d.readEditorImage(&pb.ReadEditorImage{PaneId: paneID, Path: filepath.Join(folder, "shot.png")}, folder, true); err != nil {
+		t.Errorf("a guest, inside the folder: %v", err)
+	}
+}
