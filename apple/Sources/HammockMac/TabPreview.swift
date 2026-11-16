@@ -178,6 +178,8 @@ final class TabPreview {
             guard !Task.isCancelled, let v else { return }
             self.show(v)
         }
+        // A click (on the tab, say) before it shows stops it showing.
+        watchEvents()
     }
 
     /// The pointer moving on a tab: its card, if none shows or is on its way
