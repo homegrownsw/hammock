@@ -444,6 +444,7 @@ enum SettingsIndex {
             e(.editor, "Editor panes", "Editor font", "editor.font", "typeface family diff ligatures"),
             e(.editor, "Editor panes", "Editor font size", "editor.fontsize", "text"),
             e(.editor, "Editor panes", "Vim keys", "editor.vim", "vi modal"),
+            e(.editor, "Diff panes", "Open files in", "diff.editor", "diff editor e key external vim nvim helix vscode code cursor zed sublime $EDITOR command"),
             e(.editor, "Diff panes", "Split or unified layout", "diff.style", "diff review changes side by side one column"),
             e(.editor, "Diff panes", "Ignore whitespace", "diff.whitespace", "diff review changes spaces indentation -w"),
             e(.editor, "Diff panes", "Wrap long lines", "diff.wrap", "diff review changes word wrap"),

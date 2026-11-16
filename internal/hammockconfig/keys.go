@@ -219,6 +219,9 @@ var Keys = []Key{
 		Doc: "ignore lines that differ only in their spaces, as git diff -w"},
 	{Name: "diff-wrap", Group: "Diff panes", Value: "false", Default: "false",
 		Doc: "wrap long lines instead of scrolling sideways"},
+	{Name: "diff-editor", Group: "Diff panes", Value: "$EDITOR | code | zed | COMMAND",
+		Doc:     "what e opens the file at the cursor in, the diff refreshing once you close it: unset, a Hammock editor pane; $EDITOR, your shell's editor, in a pane beside the diff; or a command, with {file} and {line} where they go. Editors with windows of their own (code, cursor, windsurf, zed, subl, mate, bbedit) open there",
+		Example: "diff-editor = $EDITOR\ndiff-editor = nvim +{line} {file}", Only: "Mac"},
 
 	// Browser panes
 	{Name: "browser-open-schemes", Group: "Browser panes", Value: "obsidian,zoommtg",

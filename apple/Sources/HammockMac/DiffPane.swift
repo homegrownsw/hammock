@@ -51,6 +51,7 @@ enum DiffUI {
         .init(id: "next_thread", title: "Next Comment", symbol: "text.bubble", page: "nextThread"),
         .init(id: "previous_thread", title: "Previous Comment", symbol: "text.bubble", page: "previousThread"),
         .init(id: "comment_file", title: "Comment on File", symbol: "plus.bubble", page: "fileComment"),
+        .init(id: "open_file", title: "Open File in Editor", symbol: "square.and.pencil", page: "openFile"),
         .init(id: "send_comments", title: "Send Comments", symbol: "paperplane", page: "send"),
         .init(id: "whole_file", title: "Show Whole File or Changes", symbol: "doc.plaintext", page: "wholeFile"),
         .init(id: "toggle_split", title: "Split or Unified", symbol: "rectangle.split.2x1", page: "split"),
@@ -111,9 +112,11 @@ struct DiffPaneView: View {
         let agents = model.diffAgents(for: paneID)
         // Sending to an agent is the Group's owner's (a guest comments only).
         let canSend = model.group(ofPane: paneID).map { !$0.isRemote || $0.myRole == .owner } ?? true
-        return .from(theme: c.theme(isDark: dark), dark: dark, fontFamily: c.fontFamily ?? "SF Mono", fontSize: c.fontSize ?? 13,
-                     view: info.view, canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend,
-                     accent: .themeAccent)
+        var conf = DiffConfig.from(theme: c.theme(isDark: dark), dark: dark, fontFamily: c.fontFamily ?? "SF Mono", fontSize: c.fontSize ?? 13,
+                                   view: info.view, canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend,
+                                   accent: .themeAccent)
+        conf.editorName = model.group(ofPane: paneID)?.isRemote == true ? "" : DiffEditing.editorName
+        return conf
     }
 
     private var header: some View {
@@ -200,17 +203,8 @@ struct DiffWebViewRep: NSViewRepresentable {
         v.model = model
         v.paneID = paneID
         bridge.onFocus = { [model, paneID] in model.viewFocused(paneID) }
-        bridge.onOpenFile = { [model, paneID] path in
-            guard let p = model.panes[paneID], p.isDiff else { return }
-            let full = (p.diff.repo as NSString).appendingPathComponent(path)
-            guard HammockTool.editor.on else {
-                // Turned off in Settings ▸ Tools: the file's own app, as a
-                // terminal's file links open (a file that would run something
-                // is shown in the Finder). Not a shared Group's: it's on its host.
-                if model.group(ofPane: paneID)?.isRemote != true { FileLink.open(full) }
-                return
-            }
-            EditorUI.shared.open(model, full, groupID: nil, splitPane: paneID, direction: .horizontal)
+        bridge.onOpenFile = { [model, paneID] path, line in
+            DiffEditing.open(model, diffPane: paneID, path: path, line: line)
         }
         bridge.configure(config)
         bridge.setInfo(info)
@@ -290,9 +284,39 @@ final class DiffWK: WKWebView {
 /// Settings ▸ Editor: diff panes (the diff-* keys).
 struct DiffSettingsSection: View {
     private var prefs: Prefs { .shared }
+    /// Custom picked, before a command's typed (an empty one is Hammock's).
+    @State private var custom = false
+
+    /// The editors to pick from: the setting's value, and its name.
+    private static let editors: [(String, String)] = [
+        ("", "Hammock Editor"), ("$EDITOR", "Your $EDITOR"), ("code", "VS Code"), ("cursor", "Cursor"),
+        ("zed", "Zed"), ("subl", "Sublime Text"),
+    ]
+
+    private var editorChoice: Binding<String> {
+        Binding(
+            get: {
+                let v = prefs.string(.diffEditor)
+                return !custom && Self.editors.contains { $0.0 == v } ? v : "custom"
+            },
+            set: { v in
+                custom = v == "custom"
+                if !custom { prefs.set(.diffEditor, v) }
+            })
+    }
 
     var body: some View {
         Section("Diff panes") {
+            Picker("Open files in", selection: editorChoice) {
+                ForEach(Self.editors, id: \.0) { Text($0.1).tag($0.0) }
+                Divider()
+                Text("Custom…").tag("custom")
+            }
+            .settingAnchor("diff.editor")
+            if editorChoice.wrappedValue == "custom" {
+                TextField("Command", text: prefs.stringBinding(.diffEditor), prompt: Text("nvim +{line} {file}"))
+                    .font(.body.monospaced())
+            }
             Picker("Layout", selection: prefs.stringBinding(.diffStyle)) {
                 Text("Unified").tag("unified")
                 Text("Split").tag("split")

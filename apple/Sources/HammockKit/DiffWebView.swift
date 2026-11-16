@@ -17,6 +17,9 @@ extension Pref {
     /// "show" or "ignore" (lines that differ only in their spaces count as the same).
     public static let diffWhitespace = Pref("diff-whitespace", defaults: "diffWhitespace", .string, "show")
     public static let diffWrap = Pref("diff-wrap", defaults: "diffWrap", false)
+    /// What e opens a file in: "" a Hammock editor pane; "$EDITOR"; an
+    /// editor's command (code, zed…), or a command with {file} and {line}.
+    public static let diffEditor = Pref("diff-editor", defaults: "diffEditor", .string, "")
 
     public static var diff: [Pref] { [diffStyle, diffWhitespace, diffWrap] }
 }
@@ -48,6 +51,8 @@ public struct DiffConfig: Equatable {
     /// A keyboard to use the page's shortcuts with: shows its shortcuts
     /// button (the Mac's always; an iPhone's with one connected).
     public var keyboard = true
+    /// What e opens files in, for its tooltips ("" a Hammock editor pane).
+    public var editorName = ""
 
     /// From the settings (Prefs), the pane's choices and the platform's theme and font.
     @MainActor public static func from(theme: TerminalTheme, dark: Bool, fontFamily: String, fontSize: Double,
@@ -92,7 +97,7 @@ public struct DiffConfig: Equatable {
             "view": ["style": style, "whitespace": whitespace, "wrap": wrap],
             "overridden": overridden, "canDrive": canDrive, "platform": platform,
             "target": target.map { $0.json } ?? NSNull(), "agents": agents.map(\.json), "canSend": canSend,
-            "accent": accent, "keyboard": keyboard,
+            "accent": accent, "keyboard": keyboard, "editorName": editorName,
         ]
     }
 }
@@ -548,8 +553,8 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
     /// only one whose messages count.
     private var page: URL?
     public var onFocus: (() -> Void)?
-    /// Open a file (relative to the repository) in an editor pane.
-    public var onOpenFile: ((String) -> Void)?
+    /// A file to open (e, or its open button), relative to the repository, at the cursor's line on its new side.
+    public var onOpenFile: ((String, Int) -> Void)?
 
     public init(session: DiffSession, makeWebView: (WKWebViewConfiguration) -> WKWebView) {
         self.session = session
@@ -610,7 +615,7 @@ public final class DiffBridge: NSObject, WKScriptMessageHandler, WKNavigationDel
                 session.setView(nil)
             }
         case "openFile":
-            if let p = m["path"] as? String { onOpenFile?(p) }
+            if let p = m["path"] as? String { onOpenFile?(p, m["line"] as? Int ?? 0) }
         case "review":
             if let c = m["command"] as? [String: Any] { session.reviewCommand(c) }
 
@@ -690,4 +695,56 @@ private final class DiffWeakHandler: NSObject, WKScriptMessageHandler {
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
         target?.userContentController(ucc, didReceive: message)
     }
+}
+
+/// The command diff-editor runs, for a login shell's -c (the Mac's e in a
+/// diff pane): the setting with the file and line put in, the way the
+/// editor takes them.
+public enum DiffEditorCommand {
+    /// Editors with windows of their own, and how to make each wait until
+    /// the file's closed (they run without a pane, waited on).
+    public static let windowed: [String: String] = [
+        "code": "--wait", "code-insiders": "--wait", "cursor": "--wait", "windsurf": "--wait",
+        "zed": "--wait", "subl": "--wait", "mate": "-w", "bbedit": "--wait",
+    ]
+
+    /// How an editor is given a line: "+N file", "file:N", or its own way.
+    /// One not known is given the file alone (+N could be taken for a file).
+    public static func lineArgs(_ name: String, file: String, line: Int) -> [String] {
+        let l = max(line, 1)
+        switch name {
+        case "vi", "vim", "nvim", "gvim", "mvim", "nano", "emacs", "emacsclient", "kak", "mg", "ne", "joe", "vis", "bbedit":
+            return ["+\(l)", file]
+        case "hx", "helix", "micro", "zed", "subl":
+            return ["\(file):\(l)"]
+        case "code", "code-insiders", "cursor", "windsurf":
+            return ["--goto", "\(file):\(l)"]
+        case "mate":
+            return ["-l", "\(l)", file]
+        default:
+            return [file]
+        }
+    }
+
+    /// The command line, and whether the editor has a window of its own.
+    /// command: an editor's name or command line ({file} and {line}, if
+    /// given, are where they go).
+    public static func commandLine(_ command: String, file: String, line: Int) -> (line: String, windowed: Bool) {
+        let words = command.split(separator: " ").map(String.init)
+        let name = ((words.first ?? "") as NSString).lastPathComponent
+        let wait = windowed[name]
+        var cmd = command
+        if let wait, !words.contains(wait), !words.contains("--wait"), !words.contains("-w") {
+            cmd += " " + wait
+        }
+        if cmd.contains("{file}") {
+            cmd = cmd.replacingOccurrences(of: "{file}", with: quote(file)).replacingOccurrences(of: "{line}", with: "\(max(line, 1))")
+        } else {
+            cmd += " " + lineArgs(name, file: file, line: line).map(quote).joined(separator: " ")
+        }
+        return (cmd, wait != nil)
+    }
+
+    /// A word for sh, quoted.
+    public static func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
 }

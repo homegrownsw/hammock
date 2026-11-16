@@ -344,6 +344,7 @@ public enum Keybinds {
             .init("diff_next_thread", "Next Comment", "Diff", nil, "thread review go jump"),
             .init("diff_previous_thread", "Previous Comment", "Diff", nil, "thread review go jump back"),
             .init("diff_comment_file", "Comment on File", "Diff", nil, "review note whole"),
+            .init("diff_open_file", "Open File in Editor", "Diff", nil, "edit vim code zed external e"),
             .init("diff_send_comments", "Send Comments", "Diff", nil, "review agent unsent"),
             .init("diff_whole_file", "Show Whole File or Changes", "Diff", nil, "context full expand unchanged"),
             .init("diff_toggle_split", "Split or Unified", "Diff", nil, "side by side layout columns"),

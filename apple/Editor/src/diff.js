@@ -31,6 +31,7 @@ let config = {
   target: null, agents: [], canSend: true,
   accent: "", // the app's (the theme's); "" the palette's blue
   keyboard: true, // a keyboard to use the shortcuts with: their button shows
+  editorName: "", // what e opens files in ("" a Hammock editor pane), for tooltips
 }
 let info = { title: "", stale: false, error: "", generation: 0, files: 0, added: 0, removed: 0, source: { kind: "uncommitted" }, branch: "" }
 let content = null // { generation, files, commits, branches, defaultBranch }
@@ -826,8 +827,8 @@ function renderSection(sec, f) {
   if (f.status !== "deleted") {
     const o = el("button", "btn")
     o.innerHTML = svg.open
-    o.title = "Open in an Editor Pane (e)"
-    o.onclick = () => post({ type: "openFile", path: f.path })
+    o.title = `Open in ${config.editorName || "an Editor Pane"} (e)`
+    o.onclick = () => openInEditor(f.path)
     head.append(o)
   }
   if (config.canSend) {
@@ -2854,7 +2855,7 @@ const helpKeys = [
     ["w", "Wrap long lines"],
     ["i", "Hide or show comment threads"],
     ["⇧T", "Hide or show the file list"],
-    ["e", "Open the file in an editor pane"],
+    ["e", "Open the file at the cursor in your editor; the diff refreshes once you close it"],
     ["⇧R", "Refresh"],
     ["?", "These shortcuts"],
   ]],
@@ -2923,7 +2924,7 @@ function command(name) {
     case "threads": return toggleThreads()
     case "files": treeHidden = !treeHidden; renderTreeVisibility(); renderBar(); if (treeHidden && area === "tree") leaveTree(); return
     case "filter": if (treeHidden) { treeHidden = false; renderTreeVisibility(); renderBar() } $("filter").focus(); $("filter").select(); return
-    case "openFile": { const f = byPath.get(path); if (f && f.status !== "deleted") post({ type: "openFile", path }); return }
+    case "openFile": return openInEditor(path)
     case "refresh": return post({ type: "refresh" })
     case "help": return openHelp()
   }
@@ -3012,6 +3013,37 @@ document.addEventListener("mouseover", (e) => {
   b.title = "Comment on this removed line"
   line.append(b)
 })
+
+// openInEditor opens path in the editor (Settings ▸ Editor), at the
+// cursor's line when it's in that file: the new side's line, or for one on
+// the old side, where it is now (the line it's above, the start of the
+// change it's in, or its place among unchanged lines).
+function openInEditor(path) {
+  const f = byPath.get(path)
+  if (!f || f.status === "deleted") return
+  let line = 1
+  if (cur?.path === path) {
+    const m = mounted.get(path)
+    if (cur.del) line = cur.del
+    else if (cur.kind === "line" && (cur.side || "new") === "new") line = cur.line
+    else if (cur.kind === "fold") line = cur.from
+    else if (cur.kind === "thread") { const p = threadPlace(cur); line = p.line || p.above || 1 }
+    else if (cur.kind === "line" && m && m.views.length > 1) {
+      // Split's old side: through the changes to the new side.
+      const found = getChunks(m.views[0].state), a = m.views[0].state.doc, b = m.views[1].state.doc
+      const at = a.line(Math.min(cur.line, a.lines)).from
+      let delta = 0, pos = -1
+      for (const c of found ? found.chunks : []) {
+        if (at < c.fromA) break
+        if (at < c.toA) { pos = c.fromB; break }
+        delta = c.toB - c.toA
+      }
+      if (pos < 0) pos = at + delta
+      line = b.lineAt(Math.min(Math.max(pos, 0), b.length)).number
+    }
+  }
+  post({ type: "openFile", path, line: Math.max(1, line) })
+}
 
 // clickLine: a click in the code puts the cursor on its line.
 function clickLine(view, e, path) {

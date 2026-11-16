@@ -1486,6 +1486,26 @@ public final class AppModel {
         return id
     }
 
+    /// Splits a pane with command running in the new one, in cwd: it closes
+    /// when the command exits cleanly (a failure stays, to be read).
+    @discardableResult
+    public func split(_ paneID: String, running command: [String], cwd: String, direction: SplitDirection = .horizontal) async -> String? {
+        let size = initialSize(splitting: paneID, direction: direction)
+        let id = await run {
+            $0.createPane = .with {
+                $0.splitPaneID = paneID
+                $0.direction = direction
+                $0.spec = .with {
+                    $0.command = command
+                    $0.cwd = cwd
+                    if let s = size { $0.cols = s.cols; $0.rows = s.rows }
+                }
+            }
+        }?.created.id
+        if let id { focus(id) }
+        return id
+    }
+
     /// A new pane's likely grid, so its shell starts at the right size instead
     /// of being resized (and redrawing its prompt) once the view measures
     /// itself: the focused pane's size for a new tab, half of it for a split.

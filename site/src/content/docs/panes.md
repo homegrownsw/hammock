@@ -112,6 +112,6 @@ Tick **Viewed** on a file's header (Space) to fold it away and move on to the ne
 
 ### The keyboard
 
-A diff pane works from the keyboard, with keys like revdiff's and GitHub's: j and k (or the arrows) move line by line, n and p from file to file, ] and [ from change to change, and Return comments on the line. Tab moves between the file list and the diff. Press ? (or the keyboard button in the pane's bar) to see them all. The Diff submenu of the View menu has the same commands, to give shortcuts of your own in Settings ▸ Keyboard.
+A diff pane works from the keyboard, with keys like revdiff's and GitHub's: j and k (or the arrows) move line by line, n and p from file to file, ] and [ from change to change, and Return comments on the line. Tab moves between the file list and the diff. Press ? (or the keyboard button in the pane's bar) to see them all. e opens the file at the cursor in your editor and, once you close it, refreshes the diff where you were: a Hammock editor pane unless you pick another in Settings ▸ Editor (VS Code, Zed, your shell's $EDITOR in a pane beside the diff, or a command of your own). The Diff submenu of the View menu has the same commands, to give shortcuts of your own in Settings ▸ Keyboard.
 
 **Agents** open a diff with [`diff_open`](/hammock/docs/reference/mcp/#diff_open) and read your comments with [`review_threads`](/hammock/docs/reference/mcp/#review_threads). An agent without the MCP tools uses `hmk review` from its shell.

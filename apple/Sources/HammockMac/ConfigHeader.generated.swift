@@ -103,6 +103,7 @@ extension AppConfig {
         #   diff-style = unified | split           (old and new in one column, or side by side; a pane's own choice beats it)
         #   diff-whitespace = show | ignore        (ignore lines that differ only in their spaces, as git diff -w)
         #   diff-wrap = false                      (wrap long lines instead of scrolling sideways)
+        #   diff-editor = $EDITOR | code | zed | COMMAND   (what e opens the file at the cursor in, the diff refreshing once you close it: unset, a Hammock editor pane; $EDITOR, your shell's editor, in a pane beside the diff; or a command, with {file} and {line} where they go. Editors with windows of their own (code, cursor, windsurf, zed, subl, mate, bbedit) open there; Mac only)
         #
         # Browser panes
         #   browser-open-schemes = obsidian,zoommtg   (links a browser pane opens in their app without asking, by scheme, with commas; unset: none; Mac only)

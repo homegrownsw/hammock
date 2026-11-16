@@ -300,25 +300,30 @@ extension AppModel {
     /// Opens a file (path empty: an untitled buffer) in an editor pane: a new
     /// tab in the Group, or a split beside a pane. Errors come back to show
     /// (a large file's start with "large file:", to ask and retry with large).
+    /// Opens an editor pane on path; the new pane (nil: a tab, or none).
+    @discardableResult
     public func openEditor(_ path: String, groupID: String?, splitPane: String? = nil, direction: SplitDirection = .horizontal,
-                           replacePane: String? = nil, line: Int = 0, large: Bool = false, view: EditorInfo.View = .source) async throws {
+                           replacePane: String? = nil, line: Int = 0, large: Bool = false, view: EditorInfo.View = .source) async throws -> String? {
         guard let conn = connection else { throw EditorError.offline }
         let open = Hammock_V1_EditorOpen.with { $0.path = path; $0.line = UInt32(max(line, 0)); $0.large = large; $0.view = view }
         if let replacePane {
             let r = try await conn.call { $0.replacePane = .with { $0.paneID = replacePane; $0.spec = .with { $0.editor = open } } }
             focus(r.created.id)
+            return r.created.id
         } else if let splitPane {
-            _ = try await conn.call {
+            let r = try await conn.call {
                 $0.createPane = .with {
                     $0.splitPaneID = splitPane
                     $0.direction = direction
                     $0.spec = .with { $0.editor = open }
                 }
             }
+            return r.created.id
         } else if let groupID {
             let r = try await conn.call { $0.createTab = .with { $0.groupID = groupID; $0.pane = .with { $0.editor = open } } }
             selectedTabID = r.created.id
         }
+        return nil
     }
 }
 
