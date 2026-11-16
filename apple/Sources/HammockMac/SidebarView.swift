@@ -283,7 +283,7 @@ struct SidebarView: View {
     }
 
     private func tabRow(_ tab: WorkspaceTab, group: WorkspaceGroup, last: Bool) -> some View {
-        TabRow(model: model, tab: tab, hovered: hoveredTab == tab.id)
+        TabRow(model: model, tab: tab, hovered: hoveredTab == tab.id || TabPreviewHold.shared.tabID == tab.id)
             .padding(.leading, layout == .compact ? 12 : 14)
             .opacity(draggingGroup == group.id || draggingTab == tab.id ? 0.3 : 1)
             .modifier(FullRowHover())
@@ -457,7 +457,7 @@ struct SidebarView: View {
     @ViewBuilder
     private func tabPill(_ id: String) -> some View {
         let selected = model.selectedTabID == id || (id.hasPrefix("group:") && model.selectedEmptyGroup.map { "group:" + $0.id } == id)
-        SidebarPill(selected: selected, hovered: hoveredTab == id)
+        SidebarPill(selected: selected, hovered: hoveredTab == id || TabPreviewHold.shared.tabID == id)
             .padding(.leading, -8)
             .padding(.trailing, -8)
             .padding(.vertical, pillInset)

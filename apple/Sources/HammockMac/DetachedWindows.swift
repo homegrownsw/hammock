@@ -432,11 +432,11 @@ private struct DetachedGroupSidebar: View {
                     .padding(.vertical, 6)
                     .contextMenu { GroupWindowMenuItems(model: model, group: group) }
                 ForEach(model.tabs(in: group)) { tab in
-                    TabRow(model: model, tab: tab, hovered: hovered == tab.id)
+                    TabRow(model: model, tab: tab, hovered: hovered == tab.id || TabPreviewHold.shared.tabID == tab.id)
                         .padding(.horizontal, 14)
                         .padding(.leading, compact ? 12 : 14)
                         .frame(height: compact ? 30 : 36)
-                        .background { pill(selected: tab.id == selected, hovered: hovered == tab.id) }
+                        .background { pill(selected: tab.id == selected, hovered: hovered == tab.id || TabPreviewHold.shared.tabID == tab.id) }
                         .tabPreview(model: model, tab: tab, edge: .trailing) { pane in
                             scope.selectedTabID = tab.id
                             model.focus(pane)

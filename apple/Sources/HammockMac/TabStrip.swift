@@ -176,7 +176,7 @@ struct TabStrip: View {
     @ViewBuilder
     private func tabView(_ tab: WorkspaceTab, width: CGFloat, divider: Bool) -> some View {
         let selected = selectedTabID == tab.id
-        let hover = hovered == tab.id && dragging == nil
+        let hover = (hovered == tab.id || TabPreviewHold.shared.tabID == tab.id) && dragging == nil
         ZStack {
             HStack(spacing: 6) {
                 if let page = model.panes[tab.focusedPaneID], page.kind == .browser, model.agentState(of: tab) == nil {
@@ -253,7 +253,7 @@ struct TabStrip: View {
     private func divides(after i: Int, in tabs: [WorkspaceTab]) -> Bool {
         guard i + 1 < tabs.count else { return false }
         return [tabs[i].id, tabs[i + 1].id].allSatisfy { id in
-            id != selectedTabID && id != dragging && (id != hovered || dragging != nil)
+            id != selectedTabID && id != dragging && ((id != hovered && id != TabPreviewHold.shared.tabID) || dragging != nil)
         }
     }
 

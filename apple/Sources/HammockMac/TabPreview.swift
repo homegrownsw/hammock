@@ -84,6 +84,15 @@ final class TabPreviewAnchorView: NSView {
     }
 }
 
+/// The tab whose card the pointer's on: it stays lit as if hovered, in the
+/// tab bar and the sidebar.
+@MainActor
+@Observable
+final class TabPreviewHold {
+    static let shared = TabPreviewHold()
+    var tabID: String?
+}
+
 /// Shows and hides the preview: after the pointer rests on a tab a moment,
 /// then at once from tab to tab while one shows; fading away a moment after
 /// the pointer leaves, and at once on a click, a scroll or a key.
@@ -196,6 +205,8 @@ final class TabPreview {
     func cardHover(_ inside: Bool) {
         guard Self.clickable, !pinned else { return }
         overCard = inside
+        let held = inside ? anchor?.tabID : nil
+        if TabPreviewHold.shared.tabID != held { TabPreviewHold.shared.tabID = held }
         if inside {
             closing?.cancel()
             closing = nil
@@ -323,6 +334,7 @@ final class TabPreview {
         anchor = nil
         pinned = false
         overCard = false
+        if TabPreviewHold.shared.tabID != nil { TabPreviewHold.shared.tabID = nil }
         hiddenAt = .now
         panel.ignoresMouseEvents = true
         fades += 1
@@ -657,6 +669,14 @@ private struct TerminalTile: View {
     let model: AppModel
     let paneID: String
     @State private var thumb = TerminalThumb()
+    @Environment(\.colorScheme) private var scheme
+
+    /// The terminal theme's background: the tile's from its first frame,
+    /// so its picture arriving doesn't flash the card's colour first.
+    private var background: Color {
+        let bg = AppConfig.shared.theme(isDark: scheme == .dark).background
+        return Color(.sRGB, red: Double(bg.r) / 255, green: Double(bg.g) / 255, blue: Double(bg.b) / 255)
+    }
 
     var body: some View {
         GeometryReader { g in
@@ -671,9 +691,10 @@ private struct TerminalTile: View {
                     .interpolation(.high)
                     .frame(width: iw * s, height: ih * s)
                     .frame(width: g.size.width, height: g.size.height, alignment: .bottomLeading)
+                    .transition(.opacity)
             }
         }
-        .background(thumb.background)
+        .background(background)
         .clipped()
         .onAppear { thumb.start(model, paneID) }
         .onDisappear { thumb.stop() }
@@ -684,8 +705,6 @@ private struct TerminalTile: View {
 @Observable
 private final class TerminalThumb {
     var image: CGImage?
-    /// The terminal theme's background, behind the picture until it's drawn.
-    var background = Color.clear
     @ObservationIgnored private var view: TerminalNSView?
     @ObservationIgnored private weak var model: AppModel?
     @ObservationIgnored private var soon = false
@@ -698,8 +717,6 @@ private final class TerminalThumb {
         v.session = session
         session.observe(self) { [weak self] in self?.drawSoon() }
         view = v
-        let bg = AppConfig.shared.theme(isDark: v.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua).background
-        background = Color(.sRGB, red: Double(bg.r) / 255, green: Double(bg.g) / 255, blue: Double(bg.b) / 255)
         draw()
     }
 
@@ -729,7 +746,13 @@ private final class TerminalThumb {
         let size = CGSize(width: CGFloat(s.engine.cols) * v.cellWidth + v.padding * 2,
                           height: CGFloat(s.engine.rows) * v.cellHeight + v.padding * 2)
         if v.frame.size != size { v.setFrameSize(size) }
-        if let i = v.previewImage(scale: 1) { image = i }
+        guard let i = v.previewImage(scale: 1) else { return }
+        // The first fades in; later ones (new output) replace it at once.
+        if image == nil {
+            withAnimation(.easeOut(duration: 0.15)) { image = i }
+        } else {
+            image = i
+        }
     }
 }
 
