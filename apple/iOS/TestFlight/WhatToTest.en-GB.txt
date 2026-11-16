@@ -1,14 +1,15 @@
 This build
 
 New
-• A tab with several panes opens straight onto one. Switch with the strip of panes along the bottom, or swipe sideways between them. The button at its left shows the whole tab, laid out as on your Mac, with every pane live.
-• Android emulators from your Mac: tap, swipe, pinch and type, with Back, Home and Recents in the bar at the bottom.
-• Apple TV simulators: tap for Select, swipe to move around, and use Back, TV, Play/Pause and Volume in the bar at the bottom.
-• When your Mac has a default agent (set in Settings ▸ Agents on the Mac), a Group's + menu, its tabs' menus and an empty Group offer it too: New Claude Code Tab, or the one picked there, starts it straight away in the Group's folder.
-• Editors follow their file when it's renamed or moved on your Mac, instead of saying it's missing, and Rename… in an editor's More menu renames it.
-• Settings ▸ Hammock Documentation opens Hammock's new documentation, with a guide to the iPhone app.
+• Your theme's colour now runs behind the Sessions, Groups, Devices and Settings screens, and the screens they open, as it does in the Mac's sidebar.
+• Markdown Preview: tap Show Preview in an editor pane's menu to read a Markdown file rendered.
+• Tick Viewed on a file in a diff to fold it away and keep track of how far through you are.
+• Diff panes work from a connected keyboard: move through lines, changes and files, comment, and press ? to see every key.
+• Finish Review: tap it in a diff to tell the agent you're done, approving the changes or asking for more, along with any comments not yet sent.
 
 Fixed
-• Opening a session straight after going back from one no longer leaves the tab bar showing over it.
-• Swiping right on a scheduled task for Run Now uses your theme's colour.
-• The first message in a new conversation no longer blinks out and back as it's sent.
+• Browser panes now fit your iPhone's screen: a page takes your iPhone's size while you're using it, and the Mac's again when someone uses it there.
+• A resumed session's tab is named after the session, not the command that resumed it.
+• Tap a line a change took out, in a diff, to comment on it.
+• Terminals in a tab with several panes no longer run behind the strip of panes at the bottom.
+• The Asleep card over a sleeping agent's pane no longer bounces in every time you switch to it.
