@@ -101,7 +101,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
                         badge.image = image
                         badge.bounds = CGRect(x: 0, y: -3, width: image.size.width, height: image.size.height)
                         if title.length > 0 { title.append(NSAttributedString(string: " ")) }
-                        title.append(NSAttributedString(attachment: badge))
+                        let attached = NSMutableAttributedString(attachment: badge)
+                        // The bar's font, so it sits the same with or without the viewers' count.
+                        attached.addAttribute(.font, value: NSFont.menuBarFont(ofSize: 0), range: NSRange(location: 0, length: attached.length))
+                        title.append(attached)
                         label += (viewers > 0 ? ", " : ": ") + (needs == 1 ? "1 needs you" : "\(needs) need you")
                     }
                 }
@@ -123,7 +126,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             "\(model.server)", "\(s.screenViewers.isEmpty)",
             running ? "\(s.remoteEnabled) \(s.remoteAddresses.first ?? "")" : "",
             running ? s.connected.map { "\($0.name)/\($0.kind)" }.joined(separator: ",") : "",
-            running && model.showAgents ? s.needsYou.prefix(5).map { "\($0.id)/\($0.state)/\($0.summary)/\(s.places[$0.paneID] ?? "")" }.joined(separator: ",") + " \(s.grants)" : "",
+            running && model.showAgents ? s.needsYou.prefix(5).map { "\($0.id)/\($0.state)/\($0.summary)/\(s.places[$0.paneID] ?? "")" }.joined(separator: ",") + " \(s.needsYou.count) \(s.grants)" : "",
             running && model.showAgents ? s.finished.prefix(5).map { "\($0.id)/\($0.summary)/\(s.places[$0.paneID] ?? "")" }.joined(separator: ",") + " \(s.finished.count)" : "",
             "\(model.server == .running ? s.productVersion + s.version : "")",
         ].joined(separator: "|")
@@ -350,16 +353,10 @@ final class MenuModel {
         return Bundle(url: url)
     }()
     static var appName: String { (app?.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? "Hammock" }
-    /// Its release version and build: "2026.5.0 (1326)".
+    /// Its release version ("2026.5.0"), as the server's is shown.
     static var appVersion: String {
-        let version = app?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        let build = app?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-        switch (version, build) {
-        case let (v?, b?): return "\(v) (\(b))"
-        case let (v?, nil): return v
-        case let (nil, b?): return b
-        default: return "?"
-        }
+        (app?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+            ?? (app?.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "?"
     }
     /// The running server's release version (an older server only has its build's).
     var serverVersion: String { status.productVersion.isEmpty ? status.version : status.productVersion }
@@ -606,6 +603,8 @@ struct MenuHeader: View {
                     if model.server == .running {
                         GridRow {
                             Text("Server").foregroundStyle(.secondary)
+                            // Builds are compared, not versions: a newer build of the same
+                            // release still asks for a restart.
                             Text(model.serverVersion + (model.versionsDiffer ? "  (restart to update)" : ""))
                                 .foregroundStyle(model.versionsDiffer ? Color.orange : .primary)
                         }
