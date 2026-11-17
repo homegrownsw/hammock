@@ -172,6 +172,9 @@ static BOOL isTV(id dev) { return [[[dev valueForKey:@"deviceType"] valueForKey:
 // Where its touches go: 0 for the usual touch screen, else a screen's own
 // (SimulatorKit: 0x40000000 | screenID; a foldable's inner screen needs it).
 @property uint32_t touchTarget;
+// The shown screen's SimScreenProperties.screenID: the display gestures on a
+// foldable's inner screen go to, through the runner.
+@property uint32_t screenID;
 @property(copy) NSString *callbackID;
 @property(strong) NSMutableArray<Session *> *sessions;
 // An Android Emulator (the daemon drives it by gRPC: internal/emulator): no
@@ -667,6 +670,7 @@ static double lit(id screen) {
   id screenProps = MSG(screen, @"screenProperties");
   uint32_t sid = screenProps ? (uint32_t)((long (*)(id, SEL))objc_msgSend)(screenProps, NSSelectorFromString(@"screenID")) : 0;
   p.touchTarget = p.foldable && sid ? (0x40000000u | sid) : 0;
+  p.screenID = sid;
   [self showSurface:p];
   p.callbackID = NSUUID.UUID.UUIDString;
   NSUUID *uuid = [[NSUUID alloc] initWithUUIDString:p.callbackID];
@@ -1566,7 +1570,8 @@ static NSString *prepareRunner(NSString **error) {
     }
     NSDictionary *cmd = @{@"cmd" : @"orientation", @"value" : m[@"value"] ?: @""};
     if ([t isEqualToString:@"gesture"]) {
-      // Fingers as they're showing, mapped onto the device's portrait.
+      // Fingers as they're showing, mapped onto the screen's own portrait (its
+      // framebuffer), however the device is turned.
       int turn = [self rotationOf:p];
       NSMutableArray *paths = [NSMutableArray array];
       for (NSArray *path in [m[@"paths"] isKindOfClass:NSArray.class] ? m[@"paths"] : @[]) {
@@ -1577,7 +1582,18 @@ static NSString *prepareRunner(NSString **error) {
         }
         [paths addObject:out];
       }
-      cmd = @{@"cmd" : @"gesture", @"paths" : paths};
+      NSMutableDictionary *g = [@{@"cmd" : @"gesture", @"paths" : paths} mutableCopy];
+      // A foldable's inner screen is a display of its own: XCTest numbers it
+      // by its screenID (the cover is the main display, 0), and takes points
+      // in its framebuffer, which isn't the size of the main screen.
+      IOSurfaceRef surface = surfaceOf(p);
+      if (p.inner && p.screenID && surface) {
+        double k = p.scale ?: 1;
+        g[@"display"] = @(p.screenID);
+        g[@"w"] = @(IOSurfaceGetWidth(surface) / k);
+        g[@"h"] = @(IOSurfaceGetHeight(surface) / k);
+      }
+      cmd = g;
     }
     [self runner:p.udid command:cmd done:reply];
     return;
