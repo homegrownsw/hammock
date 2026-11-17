@@ -901,45 +901,44 @@ struct SimulatorPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                PaneKindMenu(model: model, paneID: paneID) {
-                    Label(pane?.title ?? "Simulator", systemImage: deviceSymbol).font(.callout.weight(.medium))
-                }
-                if let note = pane?.deviceNote, !note.isEmpty {
-                    Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                } else if pane?.deviceBooted == false {
-                    Text("Booting…").font(.caption).foregroundStyle(.secondary)
-                    ProgressView().controlSize(.mini)
-                } else if model.simulatorsBusy.contains(paneID) {
-                    ProgressView().controlSize(.mini).tooltip("Waiting for the simulator (the first rotation or pinch starts its XCTest runner)")
-                }
-                Spacer()
-                if isTV {
-                    button(remoteSymbol(showsRemote), Keys.hint(showsRemote ? "Hide Remote" : "Show Remote", "sim_remote_toggle")) {
-                        Prefs.shared.toggle(.simulatorRemote)
+                HStack(spacing: 6) {
+                    PaneKindMenu(model: model, paneID: paneID) {
+                        Label(pane?.title ?? "Simulator", systemImage: deviceSymbol).font(.callout.weight(.medium))
                     }
-                } else if isAndroid {
-                    button("chevron.backward", Keys.hint("Back", "sim_back")) { model.pressSimulatorButton(paneID, "back") }
-                    button("circle", Keys.hint("Home", "sim_home")) { model.pressSimulatorButton(paneID, "home") }
-                    button("square", Keys.hint("Recents", "sim_recents")) { model.pressSimulatorButton(paneID, "recents") }
-                    button("rotate.left", Keys.hint("Rotate Left", "sim_rotate_left")) { model.rotateSimulator(paneID, "left") }
-                    button("rotate.right", Keys.hint("Rotate Right", "sim_rotate_right")) { model.rotateSimulator(paneID, "right") }
-                } else {
-                    button("house", Keys.hint("Home", "sim_home")) { ref.view?.button("home") }
-                    button("lock", Keys.hint("Lock", "sim_lock")) { ref.view?.button("lock") }
-                    button("rotate.left", Keys.hint("Rotate Left", "sim_rotate_left")) { model.rotateSimulator(paneID, "left") }
-                    button("rotate.right", Keys.hint("Rotate Right", "sim_rotate_right")) { model.rotateSimulator(paneID, "right") }
+                    if let note = pane?.deviceNote, !note.isEmpty {
+                        Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    } else if pane?.deviceBooted == false {
+                        Text("Booting…").font(.caption).foregroundStyle(.secondary)
+                        ProgressView().controlSize(.mini)
+                    } else if model.simulatorsBusy.contains(paneID) {
+                        ProgressView().controlSize(.mini).tooltip("Waiting for the simulator (the first rotation or pinch starts its XCTest runner)")
+                    }
                 }
-                if pane?.deviceFoldable == true {
-                    let open = (pane?.deviceHinge ?? 0) > 120
-                    button(open ? "book.closed" : "book", Keys.hint(open ? "Close Phone" : "Open Phone", "sim_fold")) { model.toggleFold(paneID) }
+                // Room for a few letters of the device's name before the
+                // buttons take it (the Spacer hides it beside a short name).
+                .frame(minWidth: Self.titleMinWidth, alignment: .leading)
+                Spacer()
+                // As many buttons as fit: in a narrow pane the less-used ones
+                // go into a More menu, then the hardware buttons too. Zoom and
+                // Close always show. The buttons have first claim on the
+                // header's width, after the device's name keeps titleMinWidth.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        buttons(hardwareActions)
+                        buttons(otherActions)
+                        trailingButtons
+                    }
+                    HStack(spacing: 6) {
+                        buttons(hardwareActions)
+                        moreMenu([otherActions])
+                        trailingButtons
+                    }
+                    HStack(spacing: 6) {
+                        moreMenu([hardwareActions, otherActions])
+                        trailingButtons
+                    }
                 }
-                button("camera", Keys.hint("Screenshot to File", "sim_screenshot_file")) { SimulatorShot.saveToFile(model, paneID) }
-                button("doc.on.clipboard", Keys.hint("Screenshot to Clipboard", "sim_screenshot_copy")) { SimulatorShot.copyToClipboard(model, paneID) }
-                button("power", "Shut Down Simulator (closes the pane)") { model.shutDownSimulator(paneID) }
-                button(isTV ? (showsFrame ? "tv" : "rectangle") : isAndroid ? (showsFrame ? "smartphone" : "rectangle.portrait") : (showsFrame ? "iphone.gen3" : "rectangle.portrait"),
-                       showsFrame ? "Hide Device Frame" : "Show Device Frame") { Prefs.shared.toggle(.simulatorFrame) }
-                ZoomButton(model: model, paneID: paneID)
-                PaneCloseButton(model: model, paneID: paneID)
+                .layoutPriority(1)
             }
             .padding(.leading, 15) // lined up with the window title, as the terminal's header
             .padding(.trailing, 10)
@@ -1032,6 +1031,90 @@ struct SimulatorPaneView: View {
     private func press(_ name: String, _ phase: String) {
         model.viewFocused(paneID)
         ref.view?.remotePress(name, phase)
+    }
+
+    /// The width the header keeps for the device's name (and its icon).
+    private static let titleMinWidth: CGFloat = 90
+
+    /// A button in the header, which goes in its More menu when the pane is
+    /// too narrow to show it.
+    private struct HeaderAction: Identifiable {
+        let symbol: String
+        let title: String // the menu item's
+        let help: String // the button's tooltip
+        let action: () -> Void
+        var id: String { title }
+    }
+
+    private func action(_ symbol: String, _ title: String, _ keybind: String?, help: String? = nil, _ action: @escaping () -> Void) -> HeaderAction {
+        HeaderAction(symbol: symbol, title: title, help: help ?? keybind.map { Keys.hint(title, $0) } ?? title, action: action)
+    }
+
+    /// The device's own buttons (or the TV's remote), kept longest.
+    private var hardwareActions: [HeaderAction] {
+        if isTV {
+            return [action(remoteSymbol(showsRemote), showsRemote ? "Hide Remote" : "Show Remote", "sim_remote_toggle") { Prefs.shared.toggle(.simulatorRemote) }]
+        }
+        if isAndroid {
+            return [
+                action("chevron.backward", "Back", "sim_back") { model.pressSimulatorButton(paneID, "back") },
+                action("circle", "Home", "sim_home") { model.pressSimulatorButton(paneID, "home") },
+                action("square", "Recents", "sim_recents") { model.pressSimulatorButton(paneID, "recents") },
+                action("rotate.left", "Rotate Left", "sim_rotate_left") { model.rotateSimulator(paneID, "left") },
+                action("rotate.right", "Rotate Right", "sim_rotate_right") { model.rotateSimulator(paneID, "right") },
+            ]
+        }
+        return [
+            action("house", "Home", "sim_home") { ref.view?.button("home") },
+            action("lock", "Lock", "sim_lock") { ref.view?.button("lock") },
+            action("rotate.left", "Rotate Left", "sim_rotate_left") { model.rotateSimulator(paneID, "left") },
+            action("rotate.right", "Rotate Right", "sim_rotate_right") { model.rotateSimulator(paneID, "right") },
+        ]
+    }
+
+    /// The rest, the first into the More menu.
+    private var otherActions: [HeaderAction] {
+        var a: [HeaderAction] = []
+        if pane?.deviceFoldable == true {
+            let open = (pane?.deviceHinge ?? 0) > 120
+            a.append(action(open ? "book.closed" : "book", open ? "Close Phone" : "Open Phone", "sim_fold") { model.toggleFold(paneID) })
+        }
+        a.append(action("camera", "Screenshot to File", "sim_screenshot_file") { SimulatorShot.saveToFile(model, paneID) })
+        a.append(action("doc.on.clipboard", "Screenshot to Clipboard", "sim_screenshot_copy") { SimulatorShot.copyToClipboard(model, paneID) })
+        a.append(action("power", "Shut Down Simulator", nil, help: "Shut Down Simulator (closes the pane)") { model.shutDownSimulator(paneID) })
+        let frameSymbol = isTV ? (showsFrame ? "tv" : "rectangle") : isAndroid ? (showsFrame ? "smartphone" : "rectangle.portrait") : (showsFrame ? "iphone.gen3" : "rectangle.portrait")
+        a.append(action(frameSymbol, showsFrame ? "Hide Device Frame" : "Show Device Frame", nil) { Prefs.shared.toggle(.simulatorFrame) })
+        return a
+    }
+
+    private func buttons(_ actions: [HeaderAction]) -> some View {
+        ForEach(actions) { a in button(a.symbol, a.help, action: a.action) }
+    }
+
+    /// The actions that don't fit, in groups divided from each other.
+    private func moreMenu(_ groups: [[HeaderAction]]) -> some View {
+        Menu {
+            ForEach(Array(groups.enumerated()), id: \.offset) { i, group in
+                if i > 0 { Divider() }
+                ForEach(group) { a in
+                    Button(action: a.action) { Label(a.title, systemImage: a.symbol) }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .tooltip("More")
+    }
+
+    @ViewBuilder private var trailingButtons: some View {
+        ZoomButton(model: model, paneID: paneID)
+        PaneCloseButton(model: model, paneID: paneID)
     }
 
     private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
