@@ -232,7 +232,12 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     private func decorate(_ item: NSMenuItem, icon: String?, tint: NSColor?, detail: String) {
         if !detail.isEmpty { item.subtitle = detail }
         if let icon, var image = NSImage(systemSymbolName: icon, accessibilityDescription: nil) {
-            if let tint, let tinted = image.withSymbolConfiguration(.init(paletteColors: [tint])) { image = tinted }
+            // Tinted: the mark white on the coloured shape (one colour would paint the
+            // mark the shape's colour, losing it), and in colour, never the menu's grey.
+            if let tint, let tinted = image.withSymbolConfiguration(.init(paletteColors: [.white, tint])) {
+                image = tinted
+                image.isTemplate = false
+            }
             item.image = image
         }
     }
