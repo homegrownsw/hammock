@@ -16308,9 +16308,12 @@ type ServerStatusReply struct {
 	RemoteAddresses []string               `protobuf:"bytes,5,rep,name=remote_addresses,json=remoteAddresses,proto3" json:"remote_addresses,omitempty"`
 	Connected       []*Connected           `protobuf:"bytes,6,rep,name=connected,proto3" json:"connected,omitempty"` // who's connected from elsewhere now
 	ScreenViewers   []*ScreenViewer        `protobuf:"bytes,7,rep,name=screen_viewers,json=screenViewers,proto3" json:"screen_viewers,omitempty"`
-	NeedsYou        []*AttentionItem       `protobuf:"bytes,8,rep,name=needs_you,json=needsYou,proto3" json:"needs_you,omitempty"`                  // agents waiting for you
-	Grants          uint32                 `protobuf:"varint,9,opt,name=grants,proto3" json:"grants,omitempty"`                                     // permission requests waiting
-	ScreenSharing   bool                   `protobuf:"varint,10,opt,name=screen_sharing,json=screenSharing,proto3" json:"screen_sharing,omitempty"` // Screen Sharing is on in Settings
+	NeedsYou        []*AttentionItem       `protobuf:"bytes,8,rep,name=needs_you,json=needsYou,proto3" json:"needs_you,omitempty"`                                                        // agents waiting for you
+	Grants          uint32                 `protobuf:"varint,9,opt,name=grants,proto3" json:"grants,omitempty"`                                                                           // permission requests waiting
+	ScreenSharing   bool                   `protobuf:"varint,10,opt,name=screen_sharing,json=screenSharing,proto3" json:"screen_sharing,omitempty"`                                       // Screen Sharing is on in Settings
+	Finished        []*AttentionItem       `protobuf:"bytes,11,rep,name=finished,proto3" json:"finished,omitempty"`                                                                       // agents done, not yet looked at (newest first)
+	Places          map[string]string      `protobuf:"bytes,12,rep,name=places,proto3" json:"places,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // pane id → its tab's title, for needs_you and finished
+	ProductVersion  string                 `protobuf:"bytes,13,opt,name=product_version,json=productVersion,proto3" json:"product_version,omitempty"`                                     // Hammock's release version (version is the build)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -16413,6 +16416,27 @@ func (x *ServerStatusReply) GetScreenSharing() bool {
 		return x.ScreenSharing
 	}
 	return false
+}
+
+func (x *ServerStatusReply) GetFinished() []*AttentionItem {
+	if x != nil {
+		return x.Finished
+	}
+	return nil
+}
+
+func (x *ServerStatusReply) GetPlaces() map[string]string {
+	if x != nil {
+		return x.Places
+	}
+	return nil
+}
+
+func (x *ServerStatusReply) GetProductVersion() string {
+	if x != nil {
+		return x.ProductVersion
+	}
+	return ""
 }
 
 type Connected struct {
@@ -26473,7 +26497,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05width\x18\t \x01(\x02R\x05width\x12\x16\n" +
 	"\x06height\x18\n" +
 	" \x01(\x02R\x06height\"\x0e\n" +
-	"\fServerStatus\"\xaa\x03\n" +
+	"\fServerStatus\"\x88\x05\n" +
 	"\x11ServerStatusReply\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12&\n" +
 	"\x0fstarted_unix_ms\x18\x02 \x01(\x03R\rstartedUnixMs\x12\x14\n" +
@@ -26485,7 +26509,13 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tneeds_you\x18\b \x03(\v2\x19.hammock.v1.AttentionItemR\bneedsYou\x12\x16\n" +
 	"\x06grants\x18\t \x01(\rR\x06grants\x12%\n" +
 	"\x0escreen_sharing\x18\n" +
-	" \x01(\bR\rscreenSharing\"3\n" +
+	" \x01(\bR\rscreenSharing\x125\n" +
+	"\bfinished\x18\v \x03(\v2\x19.hammock.v1.AttentionItemR\bfinished\x12A\n" +
+	"\x06places\x18\f \x03(\v2).hammock.v1.ServerStatusReply.PlacesEntryR\x06places\x12'\n" +
+	"\x0fproduct_version\x18\r \x01(\tR\x0eproductVersion\x1a9\n" +
+	"\vPlacesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"3\n" +
 	"\tConnected\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\"\xba\x01\n" +
@@ -27402,7 +27432,7 @@ func file_hammock_v1_hammock_proto_rawDescGZIP() []byte {
 }
 
 var file_hammock_v1_hammock_proto_enumTypes = make([]protoimpl.EnumInfo, 28)
-var file_hammock_v1_hammock_proto_msgTypes = make([]protoimpl.MessageInfo, 271)
+var file_hammock_v1_hammock_proto_msgTypes = make([]protoimpl.MessageInfo, 272)
 var file_hammock_v1_hammock_proto_goTypes = []any{
 	(Role)(0),                   // 0: hammock.v1.Role
 	(PaneKind)(0),               // 1: hammock.v1.PaneKind
@@ -27702,7 +27732,8 @@ var file_hammock_v1_hammock_proto_goTypes = []any{
 	(*ReviewCommand)(nil),       // 295: hammock.v1.ReviewCommand
 	(*ReviewReply)(nil),         // 296: hammock.v1.ReviewReply
 	nil,                         // 297: hammock.v1.PaneSpec.EnvEntry
-	nil,                         // 298: hammock.v1.LogEntry.FieldsEntry
+	nil,                         // 298: hammock.v1.ServerStatusReply.PlacesEntry
+	nil,                         // 299: hammock.v1.LogEntry.FieldsEntry
 }
 var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	29,  // 0: hammock.v1.Group.members:type_name -> hammock.v1.Member
@@ -27976,82 +28007,84 @@ var file_hammock_v1_hammock_proto_depIdxs = []int32{
 	185, // 268: hammock.v1.ServerStatusReply.connected:type_name -> hammock.v1.Connected
 	186, // 269: hammock.v1.ServerStatusReply.screen_viewers:type_name -> hammock.v1.ScreenViewer
 	40,  // 270: hammock.v1.ServerStatusReply.needs_you:type_name -> hammock.v1.AttentionItem
-	13,  // 271: hammock.v1.EditorOpen.view:type_name -> hammock.v1.EditorInfo.View
-	13,  // 272: hammock.v1.EditorInfo.view:type_name -> hammock.v1.EditorInfo.View
-	195, // 273: hammock.v1.EditorPush.updates:type_name -> hammock.v1.EditorChange
-	14,  // 274: hammock.v1.EditorCommand.action:type_name -> hammock.v1.EditorCommand.Action
-	13,  // 275: hammock.v1.EditorCommand.view:type_name -> hammock.v1.EditorInfo.View
-	195, // 276: hammock.v1.EditorUpdate.updates:type_name -> hammock.v1.EditorChange
-	203, // 277: hammock.v1.EditorUpdate.selection:type_name -> hammock.v1.EditorSelection
-	204, // 278: hammock.v1.EditorUpdate.git:type_name -> hammock.v1.GitMark
-	15,  // 279: hammock.v1.GitMark.kind:type_name -> hammock.v1.GitMark.Kind
-	3,   // 280: hammock.v1.LogEntry.level:type_name -> hammock.v1.LogLevel
-	298, // 281: hammock.v1.LogEntry.fields:type_name -> hammock.v1.LogEntry.FieldsEntry
-	3,   // 282: hammock.v1.LogFilter.levels:type_name -> hammock.v1.LogLevel
-	209, // 283: hammock.v1.WatchLog.filter:type_name -> hammock.v1.LogFilter
-	209, // 284: hammock.v1.ReadLog.filter:type_name -> hammock.v1.LogFilter
-	208, // 285: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
-	210, // 286: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
-	209, // 287: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
-	4,   // 288: hammock.v1.StartAgent.direction:type_name -> hammock.v1.Split.Direction
-	218, // 289: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
-	224, // 290: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
-	226, // 291: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
-	224, // 292: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
-	226, // 293: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
-	225, // 294: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
-	224, // 295: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
-	235, // 296: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
-	224, // 297: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
-	224, // 298: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
-	224, // 299: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
-	224, // 300: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
-	224, // 301: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
-	224, // 302: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
-	254, // 303: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
-	256, // 304: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
-	256, // 305: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
-	16,  // 306: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
-	17,  // 307: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
-	18,  // 308: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
-	264, // 309: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
-	19,  // 310: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
-	263, // 311: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
-	263, // 312: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
-	273, // 313: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
-	20,  // 314: hammock.v1.DiffSource.kind:type_name -> hammock.v1.DiffSource.Kind
-	274, // 315: hammock.v1.DiffOpen.source:type_name -> hammock.v1.DiffSource
-	276, // 316: hammock.v1.DiffOpen.view:type_name -> hammock.v1.DiffView
-	274, // 317: hammock.v1.DiffInfo.source:type_name -> hammock.v1.DiffSource
-	276, // 318: hammock.v1.DiffInfo.view:type_name -> hammock.v1.DiffView
-	282, // 319: hammock.v1.DiffContent.files:type_name -> hammock.v1.DiffFile
-	283, // 320: hammock.v1.DiffContent.commits:type_name -> hammock.v1.DiffCommit
-	283, // 321: hammock.v1.RepoInfo.commits:type_name -> hammock.v1.DiffCommit
-	21,  // 322: hammock.v1.DiffFile.status:type_name -> hammock.v1.DiffFile.Status
-	22,  // 323: hammock.v1.DiffCommand.action:type_name -> hammock.v1.DiffCommand.Action
-	274, // 324: hammock.v1.DiffCommand.source:type_name -> hammock.v1.DiffSource
-	276, // 325: hammock.v1.DiffCommand.view:type_name -> hammock.v1.DiffView
-	274, // 326: hammock.v1.Review.source:type_name -> hammock.v1.DiffSource
-	290, // 327: hammock.v1.Review.threads:type_name -> hammock.v1.ReviewThread
-	289, // 328: hammock.v1.Review.viewed:type_name -> hammock.v1.ReviewViewed
-	288, // 329: hammock.v1.Review.finished:type_name -> hammock.v1.ReviewFinish
-	23,  // 330: hammock.v1.ReviewFinish.verdict:type_name -> hammock.v1.ReviewFinish.Verdict
-	26,  // 331: hammock.v1.ReviewFinish.delivery:type_name -> hammock.v1.ReviewComment.Delivery
-	24,  // 332: hammock.v1.ReviewThread.side:type_name -> hammock.v1.ReviewThread.Side
-	25,  // 333: hammock.v1.ReviewThread.state:type_name -> hammock.v1.ReviewThread.State
-	291, // 334: hammock.v1.ReviewThread.comments:type_name -> hammock.v1.ReviewComment
-	26,  // 335: hammock.v1.ReviewComment.delivery:type_name -> hammock.v1.ReviewComment.Delivery
-	287, // 336: hammock.v1.ReviewList.reviews:type_name -> hammock.v1.Review
-	27,  // 337: hammock.v1.ReviewCommand.action:type_name -> hammock.v1.ReviewCommand.Action
-	24,  // 338: hammock.v1.ReviewCommand.side:type_name -> hammock.v1.ReviewThread.Side
-	25,  // 339: hammock.v1.ReviewCommand.state:type_name -> hammock.v1.ReviewThread.State
-	23,  // 340: hammock.v1.ReviewCommand.verdict:type_name -> hammock.v1.ReviewFinish.Verdict
-	287, // 341: hammock.v1.ReviewReply.review:type_name -> hammock.v1.Review
-	342, // [342:342] is the sub-list for method output_type
-	342, // [342:342] is the sub-list for method input_type
-	342, // [342:342] is the sub-list for extension type_name
-	342, // [342:342] is the sub-list for extension extendee
-	0,   // [0:342] is the sub-list for field type_name
+	40,  // 271: hammock.v1.ServerStatusReply.finished:type_name -> hammock.v1.AttentionItem
+	298, // 272: hammock.v1.ServerStatusReply.places:type_name -> hammock.v1.ServerStatusReply.PlacesEntry
+	13,  // 273: hammock.v1.EditorOpen.view:type_name -> hammock.v1.EditorInfo.View
+	13,  // 274: hammock.v1.EditorInfo.view:type_name -> hammock.v1.EditorInfo.View
+	195, // 275: hammock.v1.EditorPush.updates:type_name -> hammock.v1.EditorChange
+	14,  // 276: hammock.v1.EditorCommand.action:type_name -> hammock.v1.EditorCommand.Action
+	13,  // 277: hammock.v1.EditorCommand.view:type_name -> hammock.v1.EditorInfo.View
+	195, // 278: hammock.v1.EditorUpdate.updates:type_name -> hammock.v1.EditorChange
+	203, // 279: hammock.v1.EditorUpdate.selection:type_name -> hammock.v1.EditorSelection
+	204, // 280: hammock.v1.EditorUpdate.git:type_name -> hammock.v1.GitMark
+	15,  // 281: hammock.v1.GitMark.kind:type_name -> hammock.v1.GitMark.Kind
+	3,   // 282: hammock.v1.LogEntry.level:type_name -> hammock.v1.LogLevel
+	299, // 283: hammock.v1.LogEntry.fields:type_name -> hammock.v1.LogEntry.FieldsEntry
+	3,   // 284: hammock.v1.LogFilter.levels:type_name -> hammock.v1.LogLevel
+	209, // 285: hammock.v1.WatchLog.filter:type_name -> hammock.v1.LogFilter
+	209, // 286: hammock.v1.ReadLog.filter:type_name -> hammock.v1.LogFilter
+	208, // 287: hammock.v1.LogView.entries:type_name -> hammock.v1.LogEntry
+	210, // 288: hammock.v1.LogView.facets:type_name -> hammock.v1.LogFacet
+	209, // 289: hammock.v1.LogView.filter:type_name -> hammock.v1.LogFilter
+	4,   // 290: hammock.v1.StartAgent.direction:type_name -> hammock.v1.Split.Direction
+	218, // 291: hammock.v1.FolderList.suggestions:type_name -> hammock.v1.FolderSuggestion
+	224, // 292: hammock.v1.Computers.list:type_name -> hammock.v1.Computer
+	226, // 293: hammock.v1.Computer.chain:type_name -> hammock.v1.IntroHop
+	224, // 294: hammock.v1.StoredLink.record:type_name -> hammock.v1.Computer
+	226, // 295: hammock.v1.StoredLink.chain:type_name -> hammock.v1.IntroHop
+	225, // 296: hammock.v1.Refusal.link:type_name -> hammock.v1.StoredLink
+	224, // 297: hammock.v1.PendingUnlink.to_record:type_name -> hammock.v1.Computer
+	235, // 298: hammock.v1.DiscoveredComputers.list:type_name -> hammock.v1.DiscoveredComputer
+	224, // 299: hammock.v1.PeerLinkHello.computer:type_name -> hammock.v1.Computer
+	224, // 300: hammock.v1.PeerLinkNonce.computer:type_name -> hammock.v1.Computer
+	224, // 301: hammock.v1.PeerLinked.computers:type_name -> hammock.v1.Computer
+	224, // 302: hammock.v1.IntroduceComputers.computers:type_name -> hammock.v1.Computer
+	224, // 303: hammock.v1.PeerIntroLink.computer:type_name -> hammock.v1.Computer
+	224, // 304: hammock.v1.PeerIntroLinked.computer:type_name -> hammock.v1.Computer
+	254, // 305: hammock.v1.SshAgentReply.keys:type_name -> hammock.v1.SshAgentKey
+	256, // 306: hammock.v1.HammockKeyStatus.approvers:type_name -> hammock.v1.HammockKeyApprover
+	256, // 307: hammock.v1.HammockKeyStatus.can_add:type_name -> hammock.v1.HammockKeyApprover
+	16,  // 308: hammock.v1.HammockKeyCommand.op:type_name -> hammock.v1.HammockKeyCommand.Op
+	17,  // 309: hammock.v1.Schedule.overlap:type_name -> hammock.v1.Schedule.Overlap
+	18,  // 310: hammock.v1.Schedule.notify:type_name -> hammock.v1.Schedule.Notify
+	264, // 311: hammock.v1.Schedule.runs:type_name -> hammock.v1.ScheduleRun
+	19,  // 312: hammock.v1.ScheduleRun.status:type_name -> hammock.v1.ScheduleRun.Status
+	263, // 313: hammock.v1.SaveSchedule.schedule:type_name -> hammock.v1.Schedule
+	263, // 314: hammock.v1.ScheduleReply.schedule:type_name -> hammock.v1.Schedule
+	273, // 315: hammock.v1.ConfigWritten.entries:type_name -> hammock.v1.ConfigEntry
+	20,  // 316: hammock.v1.DiffSource.kind:type_name -> hammock.v1.DiffSource.Kind
+	274, // 317: hammock.v1.DiffOpen.source:type_name -> hammock.v1.DiffSource
+	276, // 318: hammock.v1.DiffOpen.view:type_name -> hammock.v1.DiffView
+	274, // 319: hammock.v1.DiffInfo.source:type_name -> hammock.v1.DiffSource
+	276, // 320: hammock.v1.DiffInfo.view:type_name -> hammock.v1.DiffView
+	282, // 321: hammock.v1.DiffContent.files:type_name -> hammock.v1.DiffFile
+	283, // 322: hammock.v1.DiffContent.commits:type_name -> hammock.v1.DiffCommit
+	283, // 323: hammock.v1.RepoInfo.commits:type_name -> hammock.v1.DiffCommit
+	21,  // 324: hammock.v1.DiffFile.status:type_name -> hammock.v1.DiffFile.Status
+	22,  // 325: hammock.v1.DiffCommand.action:type_name -> hammock.v1.DiffCommand.Action
+	274, // 326: hammock.v1.DiffCommand.source:type_name -> hammock.v1.DiffSource
+	276, // 327: hammock.v1.DiffCommand.view:type_name -> hammock.v1.DiffView
+	274, // 328: hammock.v1.Review.source:type_name -> hammock.v1.DiffSource
+	290, // 329: hammock.v1.Review.threads:type_name -> hammock.v1.ReviewThread
+	289, // 330: hammock.v1.Review.viewed:type_name -> hammock.v1.ReviewViewed
+	288, // 331: hammock.v1.Review.finished:type_name -> hammock.v1.ReviewFinish
+	23,  // 332: hammock.v1.ReviewFinish.verdict:type_name -> hammock.v1.ReviewFinish.Verdict
+	26,  // 333: hammock.v1.ReviewFinish.delivery:type_name -> hammock.v1.ReviewComment.Delivery
+	24,  // 334: hammock.v1.ReviewThread.side:type_name -> hammock.v1.ReviewThread.Side
+	25,  // 335: hammock.v1.ReviewThread.state:type_name -> hammock.v1.ReviewThread.State
+	291, // 336: hammock.v1.ReviewThread.comments:type_name -> hammock.v1.ReviewComment
+	26,  // 337: hammock.v1.ReviewComment.delivery:type_name -> hammock.v1.ReviewComment.Delivery
+	287, // 338: hammock.v1.ReviewList.reviews:type_name -> hammock.v1.Review
+	27,  // 339: hammock.v1.ReviewCommand.action:type_name -> hammock.v1.ReviewCommand.Action
+	24,  // 340: hammock.v1.ReviewCommand.side:type_name -> hammock.v1.ReviewThread.Side
+	25,  // 341: hammock.v1.ReviewCommand.state:type_name -> hammock.v1.ReviewThread.State
+	23,  // 342: hammock.v1.ReviewCommand.verdict:type_name -> hammock.v1.ReviewFinish.Verdict
+	287, // 343: hammock.v1.ReviewReply.review:type_name -> hammock.v1.Review
+	344, // [344:344] is the sub-list for method output_type
+	344, // [344:344] is the sub-list for method input_type
+	344, // [344:344] is the sub-list for extension type_name
+	344, // [344:344] is the sub-list for extension extendee
+	0,   // [0:344] is the sub-list for field type_name
 }
 
 func init() { file_hammock_v1_hammock_proto_init() }
@@ -28266,7 +28299,7 @@ func file_hammock_v1_hammock_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hammock_v1_hammock_proto_rawDesc), len(file_hammock_v1_hammock_proto_rawDesc)),
 			NumEnums:      28,
-			NumMessages:   271,
+			NumMessages:   272,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

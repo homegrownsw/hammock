@@ -393,6 +393,7 @@ enum SettingsIndex {
         return [
             e(.general, "Server", "Start the server at login", "general.login", "daemon background start launch"),
             e(.general, "Menu Bar", "Show Hammock in the menu bar", "general.menubar", "status item icon"),
+            e(.general, "Menu Bar", "Show agents that need you", "general.menubaragents", "badge count status item finished waiting attention"),
             e(.general, "Groups", "Keep a Group when its last tab closes", "general.keepgroups", "empty close"),
             e(.general, "Command-line tool", "Install the hmk command", "general.cli", "cli terminal path shell"),
             e(.general, "Privacy", "Full Disk Access for programs in panes", "general.fulldiskaccess", "privacy permission files 1password op tcc security"),

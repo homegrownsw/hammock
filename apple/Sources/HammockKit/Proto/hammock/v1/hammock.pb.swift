@@ -6867,6 +6867,15 @@ public nonisolated struct Hammock_V1_ServerStatusReply: Sendable {
   /// Screen Sharing is on in Settings
   public var screenSharing: Bool = false
 
+  /// agents done, not yet looked at (newest first)
+  public var finished: [Hammock_V1_AttentionItem] = []
+
+  /// pane id → its tab's title, for needs_you and finished
+  public var places: Dictionary<String,String> = [:]
+
+  /// Hammock's release version (version is the build)
+  public var productVersion: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -22093,7 +22102,7 @@ nonisolated extension Hammock_V1_ServerStatus: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_ServerStatusReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerStatusReply"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}started_unix_ms\0\u{1}panes\0\u{3}remote_enabled\0\u{3}remote_addresses\0\u{1}connected\0\u{3}screen_viewers\0\u{3}needs_you\0\u{1}grants\0\u{3}screen_sharing\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}started_unix_ms\0\u{1}panes\0\u{3}remote_enabled\0\u{3}remote_addresses\0\u{1}connected\0\u{3}screen_viewers\0\u{3}needs_you\0\u{1}grants\0\u{3}screen_sharing\0\u{1}finished\0\u{1}places\0\u{3}product_version\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -22111,6 +22120,9 @@ nonisolated extension Hammock_V1_ServerStatusReply: SwiftProtobuf.Message, Swift
       case 8: try { try decoder.decodeRepeatedMessageField(value: &self.needsYou) }()
       case 9: try { try decoder.decodeSingularUInt32Field(value: &self.grants) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.screenSharing) }()
+      case 11: try { try decoder.decodeRepeatedMessageField(value: &self.finished) }()
+      case 12: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: &self.places) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.productVersion) }()
       default: break
       }
     }
@@ -22147,6 +22159,15 @@ nonisolated extension Hammock_V1_ServerStatusReply: SwiftProtobuf.Message, Swift
     if self.screenSharing != false {
       try visitor.visitSingularBoolField(value: self.screenSharing, fieldNumber: 10)
     }
+    if !self.finished.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.finished, fieldNumber: 11)
+    }
+    if !self.places.isEmpty {
+      try visitor.visitMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: self.places, fieldNumber: 12)
+    }
+    if !self.productVersion.isEmpty {
+      try visitor.visitSingularStringField(value: self.productVersion, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -22161,6 +22182,9 @@ nonisolated extension Hammock_V1_ServerStatusReply: SwiftProtobuf.Message, Swift
     if lhs.needsYou != rhs.needsYou {return false}
     if lhs.grants != rhs.grants {return false}
     if lhs.screenSharing != rhs.screenSharing {return false}
+    if lhs.finished != rhs.finished {return false}
+    if lhs.places != rhs.places {return false}
+    if lhs.productVersion != rhs.productVersion {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

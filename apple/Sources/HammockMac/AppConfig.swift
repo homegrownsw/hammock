@@ -127,6 +127,9 @@ final class AppConfig {
     /// The menu bar item (Hammock Menu): "always", or "active" (only while a
     /// screen's shared or the server's down).
     private(set) var menuBar = "always"
+    /// The menu bar item counts agents that need you on its icon, and lists
+    /// them (and finished ones) in its menu.
+    private(set) var menuBarAgents = true
     /// ⌘W on a Group's last tab leaves the Group (empty, showing what to
     /// open next) rather than closing it too.
     private(set) var keepEmptyGroups = true
@@ -351,6 +354,7 @@ final class AppConfig {
         claudeUsageLive = ours["claude-usage-live"] == "true"
         usageLiveAgents = ours["usage-live-agents"]
         menuBar = ours["menu-bar"] == "active" ? "active" : "always"
+        menuBarAgents = ours["menu-bar-agents"] != "false"
         keepEmptyGroups = ours["keep-empty-groups"] != "false"
         tabStatus = ours["tab-status"].flatMap(TabStatus.init(rawValue:)) ?? .icon
         groupHeadings = ours["group-headings"].flatMap(GroupHeadings.init(rawValue:)) ?? .prominent
