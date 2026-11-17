@@ -14907,7 +14907,7 @@ type OpenMedia struct {
 	// A screen relayed by a linked computer for one of its own viewers (its
 	// app, or a phone paired with it): set by that computer, ignored from
 	// anyone else. Every viewer it relays shares its one connection here, so
-	// these tell them apart: ending, naming and link sharing are per viewer.
+	// these tell them apart: ending, naming, link sharing and input are per viewer.
 	ViewerId      string `protobuf:"bytes,11,opt,name=viewer_id,json=viewerId,proto3" json:"viewer_id,omitempty"`
 	ViewerName    string `protobuf:"bytes,12,opt,name=viewer_name,json=viewerName,proto3" json:"viewer_name,omitempty"` // "": the linked computer's own name
 	ViewerKind    string `protobuf:"bytes,13,opt,name=viewer_kind,json=viewerKind,proto3" json:"viewer_kind,omitempty"` // as Connected's; "": "computer"

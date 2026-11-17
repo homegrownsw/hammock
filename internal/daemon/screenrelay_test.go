@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
+	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -37,7 +40,8 @@ func TestRelayedScreenViewersApart(t *testing.T) {
 	enc := &fakeEncoder{d: b.d, s: map[string]*fakeSession{}}
 	b.d.media.screenSource = func() frameSource { return enc }
 
-	one, two, idle := a.c, dial(t, a.dir), dial(t, a.dir)
+	one, two := a.c, dial(t, a.dir)
+	idle, idleOnA := dialConn(t, a)
 	open := func(bg bool) *pb.ClientMessage {
 		return &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{Screen: true, InBand: true, ComputerId: b.uid, Background: bg}}}
 	}
@@ -79,6 +83,26 @@ func TestRelayedScreenViewersApart(t *testing.T) {
 	if _, err := idle.Call(ctx, input); err == nil || !strings.Contains(err.Error(), "open the screen") {
 		t.Fatalf("input from a client of A's not watching: %v", err)
 	}
+	// Watching one of B's panes through A isn't watching its screen.
+	a.d.mu.Lock()
+	toB := a.d.linkOf(b.uid)
+	a.d.mu.Unlock()
+	a.d.media.mu.Lock()
+	a.d.media.relays["ms_pane"] = &mediaRelay{owner: idleOnA, link: toB, paneID: "pn_b"}
+	a.d.media.mu.Unlock()
+	_, err := idle.Call(ctx, input)
+	a.d.media.mu.Lock()
+	delete(a.d.media.relays, "ms_pane")
+	a.d.media.mu.Unlock()
+	if err == nil || !strings.Contains(err.Error(), "open the screen") {
+		t.Fatalf("input from a client of A's watching a pane: %v", err)
+	}
+	// Nor is watching another display.
+	other := proto.CloneOf(input)
+	other.GetScreenInput().DisplayId = 7
+	if _, err := two.Call(ctx, other); err == nil || !strings.Contains(err.Error(), "open the screen") {
+		t.Fatalf("input for a display not watched: %v", err)
+	}
 	// Watching: it reaches B's screen host (not running here), as two's.
 	if _, err := two.Call(ctx, input); err != nil && strings.Contains(err.Error(), "open the screen") {
 		t.Fatalf("input from a watching viewer: %v", err)
@@ -105,9 +129,56 @@ func TestRelayedScreenViewersApart(t *testing.T) {
 	if ended := waitEvent(t, two, func(ev *pb.ServerMessage) bool { return ev.GetMediaEnded() != nil }).GetMediaEnded(); ended.SessionId != sidTwo {
 		t.Fatalf("ended %+v", ended)
 	}
-	time.Sleep(200 * time.Millisecond)
 	if left := screenSessions(b.d); len(left) != 2 {
 		t.Fatalf("ending one viewer's left %d sessions on B, want the other's 2", len(left))
+	}
+}
+
+// dialConn dials tc as a new client: the client, and its connection there.
+func dialConn(t *testing.T, tc *testComputer) (*client.Client, *conn) {
+	t.Helper()
+	before := map[*conn]bool{}
+	tc.d.mu.Lock()
+	for c := range tc.d.conns {
+		before[c] = true
+	}
+	tc.d.mu.Unlock()
+	cl := dial(t, tc.dir)
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		tc.d.mu.Lock()
+		for c := range tc.d.conns {
+			if !before[c] && c.peer == "" && !c.remote {
+				tc.d.mu.Unlock()
+				return cl, c
+			}
+		}
+		tc.d.mu.Unlock()
+	}
+	t.Fatal("no connection for the new client")
+	return nil, nil
+}
+
+// One viewer's background layer takes its share of that viewer's link
+// only: another viewer relayed by the same computer has a link of its own.
+func TestRelayedScreenShareLinkPerViewer(t *testing.T) {
+	h := &mediaHub{byID: map[string]*mediaSession{}}
+	a := &conn{}
+	sess := func(id, viewer string, bg bool, rate float64) *mediaSession {
+		s := &mediaSession{hub: h, id: id, paneID: screenPaneID(0), owner: a, viewer: viewer, background: bg, rate: rate, floor: mediaScreenMinRate}
+		h.byID[id] = s
+		return s
+	}
+	sess("ms_bg1", "sv_one", true, 2_000_000)
+	detail := sess("ms_two", "sv_two", false, mediaScreenMaxRate)
+	detail.linkBW = 20_000_000
+	detail.shareLink()
+	if want := min(float64(mediaScreenMaxRate), 20_000_000*0.85); detail.ceiling != want {
+		t.Fatalf("another viewer's background layer took a share: ceiling %v, want %v", detail.ceiling, want)
+	}
+	sess("ms_bg2", "sv_two", true, 2_000_000)
+	detail.shareLink()
+	if want := min(float64(mediaScreenMaxRate), 20_000_000*0.85-2_000_000); detail.ceiling != want {
+		t.Fatalf("its own background layer's share: ceiling %v, want %v", detail.ceiling, want)
 	}
 }
 

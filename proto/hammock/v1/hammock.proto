@@ -1581,7 +1581,7 @@ message OpenMedia {
   // A screen relayed by a linked computer for one of its own viewers (its
   // app, or a phone paired with it): set by that computer, ignored from
   // anyone else. Every viewer it relays shares its one connection here, so
-  // these tell them apart: ending, naming and link sharing are per viewer.
+  // these tell them apart: ending, naming, link sharing and input are per viewer.
   string viewer_id = 11;
   string viewer_name = 12;  // "": the linked computer's own name
   string viewer_kind = 13;  // as Connected's; "": "computer"

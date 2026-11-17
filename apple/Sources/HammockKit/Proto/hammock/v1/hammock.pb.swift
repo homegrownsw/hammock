@@ -6444,7 +6444,7 @@ public nonisolated struct Hammock_V1_OpenMedia: Sendable {
   /// A screen relayed by a linked computer for one of its own viewers (its
   /// app, or a phone paired with it): set by that computer, ignored from
   /// anyone else. Every viewer it relays shares its one connection here, so
-  /// these tell them apart: ending, naming and link sharing are per viewer.
+  /// these tell them apart: ending, naming, link sharing and input are per viewer.
   public var viewerID: String = String()
 
   /// "": the linked computer's own name

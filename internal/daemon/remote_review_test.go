@@ -9,8 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -43,11 +41,7 @@ func peerConn(t *testing.T, host *Daemon, uid string) *conn {
 // closes (a display is in no Group, but linked computers may watch it), and
 // keeps the menus of panes it still reaches.
 func TestLinkedScreenSurvivesPaneClose(t *testing.T) {
-	cfg := t.TempDir()
-	t.Setenv("HMK_CONFIG_DIR", cfg)
-	if err := os.WriteFile(filepath.Join(cfg, "config"), []byte("screen-sharing = true\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	screenSharingOn(t)
 	host, dir := startHost(t)
 	enc := &fakeEncoder{d: host, s: map[string]*fakeSession{}}
 	host.media.screenSource = func() frameSource { return enc }
