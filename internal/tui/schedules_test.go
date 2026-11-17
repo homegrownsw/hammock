@@ -154,7 +154,7 @@ func scheduleApp() *App {
 		"sc1": {Id: "sc1", Name: "Morning briefing", GroupId: "g", GroupName: "Work", Kind: "claude", Prompt: "/morning-briefing",
 			Cwd: "/tmp/work", Weekdays: []int32{1, 2, 3, 4, 5}, MinuteOfDay: 8*60 + 30, NextRunUnixMs: now.Add(3 * time.Hour).UnixMilli(),
 			CreatedBy: "You", Runs: []*pb.ScheduleRun{
-				{Id: "r1", Status: pb.ScheduleRun_STATUS_READY, StartedUnixMs: now.Add(-2 * time.Hour).UnixMilli(), TabId: "t1", PaneId: "p1", Note: "All caught up"},
+				{Id: "r1", Status: pb.ScheduleRun_STATUS_READY, StartedUnixMs: now.Add(-2 * time.Minute).UnixMilli(), TabId: "t1", PaneId: "p1", Note: "All caught up"},
 				{Id: "r0", Status: pb.ScheduleRun_STATUS_MISSED, DueUnixMs: now.Add(-26 * time.Hour).UnixMilli(), Note: "The computer was asleep or off", TabClosed: true},
 			}},
 		"sc2": {Id: "sc2", Name: "Hourly tests", GroupName: "CI", Kind: "command", Prompt: "make test", Cwd: "/tmp",
@@ -184,7 +184,7 @@ func TestScheduleListDraws(t *testing.T) {
 	a.scr.Clear()
 	a.overlay.draw(a)
 	out = screenText(a.scr)
-	for _, want := range []string{"Claude Code in /tmp/work: /morning-briefing", "made by You", "2 hours ago", "All caught up",
+	for _, want := range []string{"Claude Code in /tmp/work: /morning-briefing", "made by You", "2 min ago", "All caught up",
 		"● open", "missed", "asleep or off", "p Pause", "s Skip Next"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("after ↓, missing %q", want)
