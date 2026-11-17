@@ -579,9 +579,11 @@ func (d *Daemon) emulatorCall(s *emuSession, op string, args simArgs) (reply any
 			return nil, fmt.Errorf("key: usage %d isn't one an emulator takes here", args.Usage)
 		}
 		err = key(name, emulator.KeyPress)
-	case "copy":
+	case "copy", "get_clipboard":
 		text, err := c.Clipboard(ctx)
 		return map[string]any{"text": text}, err
+	case "set_clipboard":
+		err = c.SetClipboard(ctx, args.Text)
 	case "paste":
 		if err := c.SetClipboard(ctx, args.Text); err != nil {
 			return nil, err

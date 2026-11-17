@@ -221,6 +221,8 @@ struct PaneMenuItems: View {
         if model.panes[paneID]?.kind == .simulator {
             Button("Screenshot to File") { SimulatorShot.saveToFile(model, paneID) }
             Button("Screenshot to Clipboard") { SimulatorShot.copyToClipboard(model, paneID) }
+            Button("Send Clipboard to Device") { model.sendClipboardToSimulator(paneID) }
+            Button("Copy Device Clipboard") { model.copySimulatorClipboard(paneID) }
             if model.panes[paneID]?.deviceFoldable == true {
                 Button("Open Phone") { model.foldSimulator(paneID, "open") }
                 Button("Half Open Phone") { model.foldSimulator(paneID, "half") }

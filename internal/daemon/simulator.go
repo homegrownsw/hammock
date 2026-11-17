@@ -213,6 +213,26 @@ func (h *simHub) shutDown(udid string) {
 	}
 }
 
+// simPasteboardGet and simPasteboardSet read and write a simulator's
+// pasteboard (simctl pbpaste and pbcopy). Variables, for tests.
+var (
+	simPasteboardGet = func(udid string) (string, error) {
+		out, err := exec.Command("xcrun", "simctl", "pbpaste", udid).Output()
+		if err != nil {
+			return "", fmt.Errorf("the simulator's clipboard: %w", err)
+		}
+		return string(out), nil
+	}
+	simPasteboardSet = func(udid, text string) error {
+		cmd := exec.Command("xcrun", "simctl", "pbcopy", udid)
+		cmd.Stdin = strings.NewReader(text)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("the simulator's clipboard: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+)
+
 // simulatorAutoShutdown: simulators Hammock booted shut down after their last
 // pane closes, unless the config file says simulator-shutdown = false.
 func simulatorAutoShutdown() bool { return hammockconfig.Bool("simulator-shutdown", true) }
@@ -494,7 +514,7 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 	var args simArgs
 	// Your paired phones and guests may watch and touch a simulator; the
 	// rest (the device list, opening one) stays on this Mac.
-	if c.remote && !slices.Contains([]string{"screenshot", "tap", "swipe", "touch", "text", "key", "copy", "button", "rotate", "pinch", "gesture", "fold", "remote"}, m.Op) {
+	if c.remote && !slices.Contains([]string{"screenshot", "tap", "swipe", "touch", "text", "key", "copy", "get_clipboard", "set_clipboard", "button", "rotate", "pinch", "gesture", "fold", "remote"}, m.Op) {
 		return errors.New("only available on this Mac")
 	}
 	if m.ArgsJson != "" {
@@ -694,6 +714,23 @@ func (d *Daemon) simulatorCall(c *conn, reqID uint64, m *pb.SimulatorCall) error
 				return
 			}
 			reply(map[string]any{"text": r.Text}, nil)
+			return
+		case "get_clipboard":
+			// The device's pasteboard as it is (no ⌘C first).
+			text, err := simPasteboardGet(p.snapshotInfo().DeviceUdid)
+			if err != nil {
+				c.replyErr(reqID, err)
+				return
+			}
+			reply(map[string]any{"text": text}, nil)
+			return
+		case "set_clipboard":
+			// Onto the device's pasteboard, not pasted: theirs to paste where they like.
+			if err := simPasteboardSet(p.snapshotInfo().DeviceUdid, args.Text); err != nil {
+				c.replyErr(reqID, err)
+				return
+			}
+			reply(map[string]any{"ok": true}, nil)
 			return
 		case "fold":
 			// A foldable's hinge: open (180), closed (0), half (90) or degrees.

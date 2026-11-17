@@ -149,6 +149,8 @@ enum Keys {
     static var simShutDown: KeyboardShortcut? { shortcut("sim_shut_down") }
     static var simScreenshotFile: KeyboardShortcut? { shortcut("sim_screenshot_file") }
     static var simScreenshotCopy: KeyboardShortcut? { shortcut("sim_screenshot_copy") }
+    static var simClipboardSend: KeyboardShortcut? { shortcut("sim_clipboard_send") }
+    static var simClipboardGet: KeyboardShortcut? { shortcut("sim_clipboard_get") }
 
     /// ⌘1…⌘9 for the nth tab of the Group you're in.
     static func tab(_ i: Int) -> KeyboardShortcut? { member("select_tab", i) }
