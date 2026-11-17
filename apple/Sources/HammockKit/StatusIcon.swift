@@ -6,7 +6,7 @@ import UIKit
 #endif
 
 /// An agent's state as an icon ("Orbit"). Rings while all is well:
-/// grey at rest (a dot going slowly round it while shells still run), an
+/// grey at rest (a solid grey dot going slowly round it while shells still run), an
 /// indigo arc going round while it works, green with a check when it has
 /// finished. Filled when it needs you: amber with ! for input, red with ×
 /// for an error. Those three arrive with one small pop (the check is drawn
@@ -118,6 +118,8 @@ public enum StatusPalette {
     public static let green = dynamic(light: 0x248A3D, dark: 0x30D158)
     public static let amber = dynamic(light: 0xF59300, dark: 0xFF9F0A)
     public static let red = dynamic(light: 0xE5372C, dark: 0xFF453A)
+    /// The dot going round a resting agent's ring: an opaque grey, stronger than the ring.
+    public static let grey = dynamic(light: 0x6E6E73, dark: 0xAEAEB2)
 
     static func dynamic(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
         func parts(_ c: UInt32) -> (CGFloat, CGFloat, CGFloat) {
@@ -233,8 +235,9 @@ struct FinishedMark: View {
     }
 }
 
-/// An agent at rest: a grey ring; while its shells run, a dot goes slowly
-/// round it (once every 10 s). The ring stays as strong as without shells.
+/// An agent at rest: a grey ring; while its shells run, a solid grey dot
+/// goes slowly round it (once every 10 s), big enough to see at a glance. The ring stays as
+/// strong as without shells.
 /// An agent asleep: a grey moon, as quiet as the ring of one at rest.
 public struct SleepMark: View {
     var size: CGFloat
@@ -265,8 +268,8 @@ struct RestingRing: View {
                 TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion)) { context in
                     let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10) / 10
                     Circle()
-                        .fill(.secondary)
-                        .frame(width: max(2.5, 3.4 * k), height: max(2.5, 3.4 * k))
+                        .fill(StatusPalette.grey)
+                        .frame(width: max(3.5, 5 * k), height: max(3.5, 5 * k))
                         .offset(y: -7.25 * k)
                         .rotationEffect(.degrees(t * 360))
                 }
