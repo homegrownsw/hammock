@@ -74,6 +74,9 @@ func TestSimClipboard(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{`get_clipboard `, `set_clipboard {"text":"hello there"}`, `set_clipboard {"text":"from\nstdin"}`}
+	if len(sent) != len(want) {
+		t.Fatalf("%d calls, want %d", len(sent), len(want))
+	}
 	for i, s := range sent {
 		if got := s.Op + " " + s.ArgsJson; got != want[i] || s.PaneId != "p1" {
 			t.Errorf("call %d: %s", i, got)

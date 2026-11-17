@@ -258,7 +258,7 @@ Locally, the Mac app sends native events to the helper over its socket: for a br
 ### 7.4 Simulator panes
 
 - Hammock Simulator reads a booted device's framebuffer IOSurface through CoreSimulator, and injects touches, buttons and keys through SimulatorKit's HID client: no Simulator.app and no screen recording. Rotation, multi-finger gestures and the like go through an XCTest runner it starts per device; foldables through a helper inside the device. All of it is private API, kept in one helper ([internals/simulator-panes.md](internals/simulator-panes.md)).
-- MCP tools: `sim_list_devices`, `sim_open`, `sim_screenshot`, `sim_tap`, `sim_swipe`, `sim_type`, `sim_press_button`, `sim_rotate`, `sim_fold`, `sim_pinch`, `sim_remote` (an Apple TV), `sim_install_app`, `sim_launch_app`, `sim_terminate_app`, `sim_open_url`, `sim_logs`, `sim_shutdown`.
+- MCP tools: `sim_list_devices`, `sim_open`, `sim_screenshot`, `sim_tap`, `sim_swipe`, `sim_type`, `sim_press_button`, `sim_rotate`, `sim_fold`, `sim_pinch`, `sim_clipboard`, `sim_remote` (an Apple TV), `sim_install_app`, `sim_launch_app`, `sim_terminate_app`, `sim_open_url`, `sim_logs`, `sim_shutdown`.
 
 ### 7.5 Log panes
 

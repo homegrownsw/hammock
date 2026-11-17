@@ -282,9 +282,9 @@ func simulatorAction(op string, args simArgs, size [2]float64) *pb.AgentAction {
 			return nil
 		}
 		a.Kind, a.Label = "key", cmp.Or(args.Name, args.Swipe)
-	case "screenshot", "copy":
+	case "screenshot", "copy", "get_clipboard":
 		a.Kind = "look"
-	case "rotate", "fold":
+	case "rotate", "fold", "set_clipboard":
 		a.Kind = "act"
 	default:
 		return nil

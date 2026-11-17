@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -217,14 +218,18 @@ func (h *simHub) shutDown(udid string) {
 // pasteboard (simctl pbpaste and pbcopy). Variables, for tests.
 var (
 	simPasteboardGet = func(udid string) (string, error) {
-		out, err := exec.Command("xcrun", "simctl", "pbpaste", udid).Output()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, "xcrun", "simctl", "pbpaste", udid).Output()
 		if err != nil {
 			return "", fmt.Errorf("the simulator's clipboard: %w", err)
 		}
 		return string(out), nil
 	}
 	simPasteboardSet = func(udid, text string) error {
-		cmd := exec.Command("xcrun", "simctl", "pbcopy", udid)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "xcrun", "simctl", "pbcopy", udid)
 		cmd.Stdin = strings.NewReader(text)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("the simulator's clipboard: %w: %s", err, strings.TrimSpace(string(out)))
@@ -857,6 +862,8 @@ func simulatorOpRefused(platform, op string) error {
 			map[bool]string{true: "an Apple TV", false: "an Android TV"}[platform == "tvOS"])
 	case op == "remote" && !tv && platform != "":
 		return errors.New("only an Apple TV or Android TV has a remote")
+	case platform == "tvOS" && (op == "get_clipboard" || op == "set_clipboard"):
+		return errors.New("an Apple TV has no clipboard to use: type into it instead (sim_type, or hmk sim type)")
 	case op == "takeover" && platform != "Android" && platform != "Android TV" && platform != "":
 		return errors.New("only an Android emulator can be taken over")
 	}

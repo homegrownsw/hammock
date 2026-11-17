@@ -555,8 +555,10 @@ struct CommandPalette: View {
                 }
                 action("sim-shot-file", "Screenshot to File", "camera", .blue, "simulator screen capture save png picture image", keys: Keys.simScreenshotFile) { SimulatorShot.saveToFile(model, focused) }
                 action("sim-shot-copy", "Screenshot to Clipboard", "doc.on.clipboard", .blue, "simulator screen capture copy png picture image", keys: Keys.simScreenshotCopy) { SimulatorShot.copyToClipboard(model, focused) }
-                action("sim-clipboard-send", "Send Clipboard to Device", "arrow.up.doc.on.clipboard", .blue, "simulator emulator android paste pasteboard text", keys: Keys.simClipboardSend) { model.sendClipboardToSimulator(focused) }
-                action("sim-clipboard-get", "Copy Device Clipboard", "arrow.down.doc", .blue, "simulator emulator android get pasteboard text", keys: Keys.simClipboardGet) { model.copySimulatorClipboard(focused) }
+                if model.simulatorHasClipboard(focused) {
+                    action("sim-clipboard-send", "Send Clipboard to Device", "arrow.up.doc.on.clipboard", .blue, "simulator emulator android paste pasteboard text", keys: Keys.simClipboardSend) { model.sendClipboardToSimulator(focused) }
+                    action("sim-clipboard-get", "Copy Device Clipboard", "arrow.down.doc", .blue, "simulator emulator android get pasteboard text", keys: Keys.simClipboardGet) { model.copySimulatorClipboard(focused) }
+                }
                 if model.panes[focused]?.deviceFoldable == true {
                     action("sim-open", "Open Phone", "book", .blue, "simulator fold unfold foldable duo hinge", keys: Keys.simFold) { model.foldSimulator(focused, "open") }
                     action("sim-close", "Close Phone", "book.closed", .blue, "simulator fold foldable duo hinge cover", keys: Keys.simFold) { model.foldSimulator(focused, "closed") }

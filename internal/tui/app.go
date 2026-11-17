@@ -876,8 +876,9 @@ func (a *App) input(evs []event) {
 				a.editorPaste(v, ev.data)
 				continue
 			}
-			if p := a.panes[a.focus]; p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {
-				a.simClipboardSet(a.focus, string(ev.data)) // onto the device's clipboard, to paste there
+			if p := a.panes[a.focus]; p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR && !isTVPane(p) {
+				// Onto the device's clipboard, to paste there (a TV's is typed, as its remote does).
+				a.simClipboardSet(a.focus, string(ev.data))
 				continue
 			}
 			data := ev.data

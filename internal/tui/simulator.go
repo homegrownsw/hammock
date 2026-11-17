@@ -162,8 +162,10 @@ func (a *App) simItems(id string) []menuItem {
 		if a.panes[id].DeviceElsewhere {
 			items = append(items, startItem(a, id))
 		}
-		return append(items, menuItem{label: "Copy Device Clipboard", run: func() { a.simClipboardGet(id) }},
-			menuItem{label: "Screenshot to File", run: func() { a.simScreenshot(id) }})
+		if a.panes[id].DevicePlatform == "Android TV" {
+			items = append(items, menuItem{label: "Copy Device Clipboard", run: func() { a.simClipboardGet(id) }}) // an Apple TV has none
+		}
+		return append(items, menuItem{label: "Screenshot to File", run: func() { a.simScreenshot(id) }})
 	}
 	if p := a.panes[id]; p != nil && p.DevicePlatform == "Android" {
 		button := func(label, name string) menuItem {

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,13 +45,13 @@ func TestSimulatorClipboard(t *testing.T) {
 		t.Fatalf("set_clipboard left %q", board["SIM-1"])
 	}
 
-	// An Apple TV has a pasteboard too.
+	// An Apple TV has none to use (tvOS apps can't paste): it's refused.
 	p.mu.Lock()
 	p.info.DevicePlatform = "tvOS"
 	p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SimulatorCall{SimulatorCall: &pb.SimulatorCall{PaneId: p.id, Op: "get_clipboard"}}}); err != nil {
+	if _, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SimulatorCall{SimulatorCall: &pb.SimulatorCall{PaneId: p.id, Op: "get_clipboard"}}}); err == nil || !strings.Contains(err.Error(), "Apple TV") {
 		t.Fatalf("an Apple TV's clipboard: %v", err)
 	}
 }
