@@ -476,6 +476,8 @@ struct HammockApp: App {
                     Button("Screenshot to File") { SimulatorShot.saveToFile(model, id) }.keyboardShortcut(Keys.simScreenshotFile)
                     Button("Screenshot to Clipboard") { SimulatorShot.copyToClipboard(model, id) }
                         .keyboardShortcut(Keys.simScreenshotCopy)
+                    Button("Send Clipboard to Device") { model.sendClipboardToSimulator(id) }.keyboardShortcut(Keys.simClipboardSend)
+                    Button("Copy Device Clipboard") { model.copySimulatorClipboard(id) }.keyboardShortcut(Keys.simClipboardGet)
                     if model.panes[id]?.deviceFoldable == true {
                         Button((model.panes[id]?.deviceHinge ?? 0) > 120 ? "Close Phone" : "Open Phone") { model.toggleFold(id) }
                             .keyboardShortcut(Keys.simFold)

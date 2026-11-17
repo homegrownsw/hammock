@@ -309,6 +309,9 @@ public enum Keybinds {
             // Simulator.app's own Save Screen and Copy Screen.
             .init("sim_screenshot_file", "Screenshot to File", "Simulator", c("s"), "ios iphone capture save image"),
             .init("sim_screenshot_copy", "Screenshot to Clipboard", "Simulator", c("c", cc), "ios iphone capture copy image"),
+            // Simulator.app's old Send Pasteboard and Get Pasteboard: the clipboard, not pasted.
+            .init("sim_clipboard_send", "Send Clipboard to Device", "Simulator", c("v", cs), "ios iphone android emulator paste pasteboard text"),
+            .init("sim_clipboard_get", "Copy Device Clipboard", "Simulator", c("c", cs), "ios iphone android emulator get pasteboard text"),
             .init("sim_fold", "Open or Close Phone", "Simulator", c("f", co), "ios iphone fold foldable duo hinge"),
             .init("sim_half_open", "Half Open Phone", "Simulator", nil, "ios iphone fold foldable duo hinge"),
             .init("sim_shut_down", "Shut Down Simulator", "Simulator", nil, "ios iphone stop quit"),

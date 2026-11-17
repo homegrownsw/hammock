@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -49,6 +50,11 @@ type simSwipeArgs struct {
 type simTypeArgs struct {
 	PaneID string `json:"pane_id" jsonschema:"the simulator pane"`
 	Text   string `json:"text" jsonschema:"typed on the hardware keyboard into whatever has focus (US layout; \\n presses Return)"`
+}
+
+type simClipboardArgs struct {
+	PaneID string  `json:"pane_id" jsonschema:"the simulator pane"`
+	Text   *string `json:"text,omitempty" jsonschema:"put this on the device's clipboard (not pasted); leave it out to read the device's clipboard instead"`
 }
 
 type simButtonArgs struct {
@@ -286,6 +292,37 @@ func (s *mcpServer) registerSimulator(server *mcp.Server) {
 			return nil, nil, err
 		}
 		return textResult("Typed"), nil, nil
+	})
+
+	addTool(s, server, &mcp.Tool{
+		Name:        "sim_clipboard",
+		Description: "Read a simulator's or emulator's clipboard, or, given text, put it there (without pasting) for the app under test to paste.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a simClipboardArgs) (*mcp.CallToolResult, any, error) {
+		verb := "read the device's clipboard"
+		if a.Text != nil {
+			verb = "set the device's clipboard"
+		}
+		if _, err := s.simPane(ctx, a.PaneID, true, verb); err != nil {
+			return nil, nil, err
+		}
+		if a.Text != nil {
+			if _, err := s.sim(ctx, a.PaneID, "set_clipboard", map[string]string{"text": *a.Text}); err != nil {
+				return nil, nil, err
+			}
+			return textResult("Put on the device's clipboard"), nil, nil
+		}
+		r, err := s.sim(ctx, a.PaneID, "get_clipboard", nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		var j struct{ Text string }
+		if err := json.Unmarshal([]byte(r.GetJson()), &j); err != nil {
+			return nil, nil, err
+		}
+		if j.Text == "" {
+			return textResult("The device's clipboard is empty"), nil, nil
+		}
+		return textResult(j.Text), nil, nil
 	})
 
 	addTool(s, server, &mcp.Tool{

@@ -876,6 +876,10 @@ func (a *App) input(evs []event) {
 				a.editorPaste(v, ev.data)
 				continue
 			}
+			if p := a.panes[a.focus]; p != nil && p.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {
+				a.simClipboardSet(a.focus, string(ev.data)) // onto the device's clipboard, to paste there
+				continue
+			}
 			data := ev.data
 			if t := a.terms[a.focus]; t != nil && t.bracketedPaste() {
 				data = append(append([]byte("\x1b[200~"), data...), "\x1b[201~"...)

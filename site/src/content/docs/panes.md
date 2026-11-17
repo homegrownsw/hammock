@@ -47,7 +47,7 @@ hmk sim list
 hmk sim "iPhone 17 Pro" --split "$HMK_PANE_ID"
 ```
 
-Click to tap, drag to swipe, and type with your keyboard. The Pane menu has Home, Lock, rotation, the software keyboard and screenshots. Simulators Hammock booted shut down a minute after their last pane closes, unless you turn off Settings ▸ General ▸ Shut down simulators when their last pane closes.
+Click to tap, drag to swipe, and type with your keyboard. The Pane menu has Home, Lock, rotation, the software keyboard and screenshots. To move text between your Mac and the device, Send Clipboard to Device (⇧⌘V) puts your clipboard on the device, ready to paste there, and Copy Device Clipboard (⇧⌘C) brings the device's back; both are buttons in the pane's header too. Simulators Hammock booted shut down a minute after their last pane closes, unless you turn off Settings ▸ General ▸ Shut down simulators when their last pane closes.
 
 An **Apple TV** has no touch screen: drive it with the Siri Remote beside it, which Pane ▸ Show Remote (⌃⌘R) hides and shows. With the pane focused, the arrow keys are the clickpad, Return is Select, Escape is Back and Space is Play/Pause, sent as the remote sends them; other keys type. Hold a button for a long press. The Pane menu also has the remote's Play/Pause, volume, Mute and Siri.
 

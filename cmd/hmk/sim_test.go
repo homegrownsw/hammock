@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"testing"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 func TestRemoteArgs(t *testing.T) {
@@ -49,5 +53,30 @@ func TestPickSimulatorDefaultIsNotAnEmulator(t *testing.T) {
 	}
 	if _, err := pickSimulator(devs[1:], ""); err == nil {
 		t.Error("only an AVD and none named: want an error")
+	}
+}
+
+// hmk sim clipboard: no TEXT reads the device's clipboard; TEXT or - (stdin) sets it.
+func TestSimClipboard(t *testing.T) {
+	var sent []*pb.SimulatorCall
+	call := func(m *pb.ClientMessage) (*pb.ServerMessage, error) {
+		sent = append(sent, m.GetSimulatorCall())
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_SimulatorResult{SimulatorResult: &pb.SimulatorResult{Json: `{"text":"on the device"}`}}}, nil
+	}
+	var out bytes.Buffer
+	if err := simClipboard(call, "p1", nil, nil, &out); err != nil || out.String() != "on the device" {
+		t.Fatalf("get: %q %v", out.String(), err)
+	}
+	if err := simClipboard(call, "p1", []string{"hello", "there"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if err := simClipboard(call, "p1", []string{"-"}, strings.NewReader("from\nstdin"), &out); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{`get_clipboard `, `set_clipboard {"text":"hello there"}`, `set_clipboard {"text":"from\nstdin"}`}
+	for i, s := range sent {
+		if got := s.Op + " " + s.ArgsJson; got != want[i] || s.PaneId != "p1" {
+			t.Errorf("call %d: %s", i, got)
+		}
 	}
 }

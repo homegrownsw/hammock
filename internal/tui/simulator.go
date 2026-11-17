@@ -33,6 +33,49 @@ func (a *App) simOp(id, op string, args map[string]string) {
 	}()
 }
 
+// simClipboardGet copies a simulator's clipboard onto the terminal's (OSC 52).
+func (a *App) simClipboardGet(id string) {
+	m := &pb.ClientMessage{Msg: &pb.ClientMessage_SimulatorCall{SimulatorCall: &pb.SimulatorCall{PaneId: id, Op: "get_clipboard"}}}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		r, err := a.c.Call(ctx, m)
+		var j struct{ Text string }
+		if err == nil {
+			err = json.Unmarshal([]byte(r.GetSimulatorResult().GetJson()), &j)
+		}
+		a.actions <- func() {
+			switch {
+			case err != nil:
+				a.flash("⚠ " + err.Error())
+			case j.Text == "":
+				a.flash("The device's clipboard is empty")
+			default:
+				a.copyText(j.Text)
+			}
+		}
+	}()
+}
+
+// simClipboardSet puts text on a simulator's clipboard, not pasted (a paste
+// with the pane focused).
+func (a *App) simClipboardSet(id, text string) {
+	aj, _ := json.Marshal(map[string]string{"text": text})
+	m := &pb.ClientMessage{Msg: &pb.ClientMessage_SimulatorCall{SimulatorCall: &pb.SimulatorCall{PaneId: id, Op: "set_clipboard", ArgsJson: string(aj)}}}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, err := a.c.Call(ctx, m)
+		a.actions <- func() {
+			if err != nil {
+				a.flash("⚠ " + err.Error())
+			} else {
+				a.flash("✓ On the device's clipboard")
+			}
+		}
+	}()
+}
+
 // simScreenshot saves a simulator pane's screen, in the device's pixels,
 // where macOS puts screenshots (as the Mac app does).
 func (a *App) simScreenshot(id string) {
@@ -119,7 +162,8 @@ func (a *App) simItems(id string) []menuItem {
 		if a.panes[id].DeviceElsewhere {
 			items = append(items, startItem(a, id))
 		}
-		return append(items, menuItem{label: "Screenshot to File", run: func() { a.simScreenshot(id) }})
+		return append(items, menuItem{label: "Copy Device Clipboard", run: func() { a.simClipboardGet(id) }},
+			menuItem{label: "Screenshot to File", run: func() { a.simScreenshot(id) }})
 	}
 	if p := a.panes[id]; p != nil && p.DevicePlatform == "Android" {
 		button := func(label, name string) menuItem {
@@ -130,6 +174,7 @@ func (a *App) simItems(id string) []menuItem {
 			button("Volume Up", "volume_up"), button("Volume Down", "volume_down"),
 			{label: "Rotate Left", run: func() { a.simOp(id, "rotate", map[string]string{"value": "left"}) }},
 			{label: "Rotate Right", run: func() { a.simOp(id, "rotate", map[string]string{"value": "right"}) }},
+			{label: "Copy Device Clipboard", run: func() { a.simClipboardGet(id) }},
 			{label: "Screenshot to File", run: func() { a.simScreenshot(id) }},
 		}
 		if p.DeviceFoldable {
@@ -148,7 +193,8 @@ func (a *App) simItems(id string) []menuItem {
 		{label: "Rotate Left", run: func() { a.simOp(id, "rotate", map[string]string{"value": "left"}) }},
 		{label: "Rotate Right", run: func() { a.simOp(id, "rotate", map[string]string{"value": "right"}) }},
 		{label: "Toggle Software Keyboard", run: func() { a.simOp(id, "button", map[string]string{"name": "keyboard"}) }},
-		// Not to the clipboard: OSC 52 only carries text.
+		{label: "Copy Device Clipboard", run: func() { a.simClipboardGet(id) }},
+		// The screenshot not to the clipboard: OSC 52 only carries text.
 		{label: "Screenshot to File", run: func() { a.simScreenshot(id) }},
 	}
 	if p := a.panes[id]; p != nil && p.DeviceFoldable {

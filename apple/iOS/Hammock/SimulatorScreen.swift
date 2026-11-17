@@ -205,10 +205,22 @@ struct SimulatorScreen: View {
         }
     }
 
-    /// Home, Lock, rotation, typing and folding: in the bottom bar, and in
+    /// Home, Lock, rotation, typing, folding and the clipboard: in the bottom bar, and in
     /// full screen's controls. An Apple TV's are its remote's.
     @ViewBuilder private var deviceButtons: some View {
         if isTV { remoteButtons } else if isAndroidPhone { androidButtons } else { phoneButtons }
+        clipboardMenu
+    }
+
+    /// The device's clipboard, both ways: this iPhone's text onto it (not
+    /// pasted), or its text onto this iPhone's.
+    private var clipboardMenu: some View {
+        Menu {
+            Button("Send Clipboard to Device", systemImage: "arrow.up.doc.on.clipboard") { model.sendClipboardToSimulator(paneID) }
+            Button("Copy Device Clipboard", systemImage: "arrow.down.doc") { model.copySimulatorClipboard(paneID) }
+        } label: {
+            Label("Clipboard", systemImage: "clipboard")
+        }
     }
 
     /// An Apple TV's remote: Back, TV and Play/Pause; volume (touch and hold

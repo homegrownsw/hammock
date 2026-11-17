@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -130,6 +131,36 @@ func simCall(call caller, pane, op string, args any) (*pb.SimulatorResult, error
 	return r.GetSimulatorResult(), nil
 }
 
+// simClipboard handles `hmk sim clipboard PANE [TEXT|-]`: prints the device's
+// clipboard, or puts TEXT (stdin for -) on it.
+func simClipboard(call caller, pane string, args []string, stdin io.Reader, stdout io.Writer) error {
+	if len(args) == 0 {
+		r, err := simCall(call, pane, "get_clipboard", nil)
+		if err != nil {
+			return err
+		}
+		var j struct{ Text string }
+		if err := json.Unmarshal([]byte(r.GetJson()), &j); err != nil {
+			return err
+		}
+		fmt.Fprint(stdout, j.Text)
+		if j.Text != "" && !strings.HasSuffix(j.Text, "\n") && stdout == io.Writer(os.Stdout) && stdoutIsTerminal() {
+			fmt.Fprintln(stdout)
+		}
+		return nil
+	}
+	text := strings.Join(args, " ")
+	if text == "-" {
+		b, err := io.ReadAll(stdin)
+		if err != nil {
+			return err
+		}
+		text = string(b)
+	}
+	_, err := simCall(call, pane, "set_clipboard", map[string]string{"text": text})
+	return err
+}
+
 func listSimulators(call caller) ([]simDevice, error) {
 	r, err := simCall(call, "", "devices", nil)
 	if err != nil {
@@ -195,6 +226,8 @@ func runSim(w *world, call caller, args []string) error {
        hmk sim shot PANE [FILE.png] [--pixels] [--clipboard]
                                  in points to FILE (as tap takes them); with no FILE, in the device's
                                  pixels where macOS saves screenshots; --clipboard copies it instead
+       hmk sim clipboard PANE [TEXT|-]   with no TEXT, prints the device's clipboard; with TEXT (or - for
+                                 stdin), puts it on the device's clipboard (not pasted)
        hmk sim tap PANE X Y          (points, as in a screenshot)
        hmk sim type PANE TEXT
        hmk sim button PANE home|lock|side|siri|keyboard   (keyboard: show or hide the software keyboard)
@@ -240,6 +273,15 @@ func runSim(w *world, call caller, args []string) error {
 		return err
 	case "shot":
 		return simShot(w, call, args[2:], usage)
+	case "clipboard":
+		if len(args) < 3 {
+			return usage
+		}
+		pid, err := w.resolve(args[2], "pane")
+		if err != nil {
+			return err
+		}
+		return simClipboard(call, pid, args[3:], os.Stdin, os.Stdout)
 	case "remote":
 		if len(args) < 4 {
 			return usage
