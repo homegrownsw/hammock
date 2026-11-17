@@ -205,21 +205,33 @@ struct SimulatorScreen: View {
         }
     }
 
-    /// Home, Lock, rotation, typing, folding and the clipboard: in the bottom bar, and in
+    /// Home, Lock, rotation, typing and folding: in the bottom bar, and in
     /// full screen's controls. An Apple TV's are its remote's.
     @ViewBuilder private var deviceButtons: some View {
         if isTV { remoteButtons } else if isAndroidPhone { androidButtons } else { phoneButtons }
-        if model.simulatorHasClipboard(paneID) { clipboardMenu }
     }
 
-    /// The device's clipboard, both ways: this iPhone's text onto it (not
-    /// pasted), or its text onto this iPhone's.
-    private var clipboardMenu: some View {
-        Menu {
-            Button("Send Clipboard to Device", systemImage: "arrow.up.doc.on.clipboard") { model.sendClipboardToSimulator(paneID) }
-            Button("Copy Device Clipboard", systemImage: "arrow.down.doc") { model.copySimulatorClipboard(paneID) }
-        } label: {
-            Label("Clipboard", systemImage: "clipboard")
+    /// Type: tap to type; touch and hold for `more` (the device's own) and
+    /// its clipboard, both ways: this iPhone's text onto it (not pasted), or
+    /// its text onto this iPhone's. In its menu, not a button of its own, so
+    /// the bar still fits a foldable's or a TV's buttons. An Apple TV has no
+    /// clipboard: with nothing more, just the button.
+    @ViewBuilder private func typeButton(@ViewBuilder more: () -> some View = { EmptyView() }, hasMore: Bool = false) -> some View {
+        let clipboard = model.simulatorHasClipboard(paneID)
+        if clipboard || hasMore {
+            Menu {
+                more()
+                if clipboard {
+                    Button("Send Clipboard to Device", systemImage: "arrow.up.doc.on.clipboard") { model.sendClipboardToSimulator(paneID) }
+                    Button("Copy Device Clipboard", systemImage: "arrow.down.doc") { model.copySimulatorClipboard(paneID) }
+                }
+            } label: {
+                Label("Type", systemImage: "keyboard")
+            } primaryAction: {
+                typing = true
+            }
+        } else {
+            Button("Type", systemImage: "keyboard") { typing = true }
         }
     }
 
@@ -241,7 +253,7 @@ struct SimulatorScreen: View {
         } primaryAction: {
             model.pressRemote(paneID, "volume_up")
         }
-        Button("Type", systemImage: "keyboard") { typing = true }
+        typeButton()
     }
 
     /// An Android phone's: Back, Home and Recents; rotation; typing; folding.
@@ -262,7 +274,7 @@ struct SimulatorScreen: View {
         } label: {
             Label("More", systemImage: "ellipsis.circle")
         }
-        Button("Type", systemImage: "keyboard") { typing = true }
+        typeButton()
     }
 
     @ViewBuilder private var phoneButtons: some View {
@@ -270,14 +282,10 @@ struct SimulatorScreen: View {
         Button("Lock", systemImage: "lock") { button("lock") }
         Button("Rotate Left", systemImage: "rotate.left") { model.rotateSimulator(paneID, "left") }
         Button("Rotate Right", systemImage: "rotate.right") { model.rotateSimulator(paneID, "right") }
-        // Tap to type; hold for the software keyboard.
-        Menu {
+        // Tap to type; hold for the software keyboard and the clipboard.
+        typeButton(more: {
             Button("Toggle Software Keyboard", systemImage: "keyboard.chevron.compact.down") { model.pressSimulatorButton(paneID, "keyboard") }
-        } label: {
-            Label("Type", systemImage: "keyboard")
-        } primaryAction: {
-            typing = true
-        }
+        }, hasMore: true)
         if pane?.deviceFoldable == true {
             // Tap to open or close; hold for half open.
             let open = (pane?.deviceHinge ?? 0) > 120
