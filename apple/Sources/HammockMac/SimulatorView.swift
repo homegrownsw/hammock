@@ -942,7 +942,8 @@ struct SimulatorPaneView: View {
             }
             .padding(.leading, 15) // lined up with the window title, as the terminal's header
             .padding(.trailing, 10)
-            .frame(height: 28)
+            // Narrower than even the last tier: the title is cut off, not Close.
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 28, maxHeight: 28, alignment: .trailing)
             .background(isFocused ? Color.themeAccent.opacity(0.06) : Color.clear)
             .contextMenu { PaneMenuItems(model: model, paneID: paneID) }
             .paneSwapHandle(paneID, model: model)
@@ -1109,7 +1110,7 @@ struct SimulatorPaneView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .tooltip("More")
+        .tooltip("More Actions")
     }
 
     @ViewBuilder private var trailingButtons: some View {
