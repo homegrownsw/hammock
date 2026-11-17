@@ -236,7 +236,8 @@ enum DebugSnapshot {
         let delay = Double(ProcessInfo.processInfo.environment["HMK_DEBUG_DELAY"] ?? "") ?? 4
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }) else { return }
-            window.setContentSize(NSSize(width: 1280, height: 800))
+            let width = Double(ProcessInfo.processInfo.environment["HMK_DEBUG_WINDOW_WIDTH"] ?? "") ?? 1280
+            window.setContentSize(NSSize(width: width, height: 800))
             for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 NSApp.appearance = NSAppearance(named: appearance)
                 window.displayIfNeeded()
