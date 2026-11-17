@@ -564,12 +564,15 @@ enum Glyph {
             .foregroundColor: NSColor.white,
         ])
         let height: CGFloat = 15
-        let size = NSSize(width: max(height, ceil(text.size().width) + 9), height: height)
-        let img = NSImage(size: size, flipped: false) { rect in
+        // A little room between it and the ~ (or the viewers' count).
+        let gap: CGFloat = 2
+        let width = max(height, ceil(text.size().width) + 9)
+        let img = NSImage(size: NSSize(width: width + gap, height: height), flipped: false) { _ in
+            let pill = CGRect(x: gap, y: 0, width: width, height: height)
             NSColor.systemOrange.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: height / 2, yRadius: height / 2).fill()
+            NSBezierPath(roundedRect: pill, xRadius: height / 2, yRadius: height / 2).fill()
             let t = text.size()
-            text.draw(at: NSPoint(x: (rect.width - t.width) / 2, y: (rect.height - t.height) / 2))
+            text.draw(at: NSPoint(x: pill.minX + (pill.width - t.width) / 2, y: (pill.height - t.height) / 2))
             return true
         }
         img.isTemplate = false
