@@ -447,6 +447,10 @@ struct PaneView: View {
     private var isLog: Bool { pane?.isLog == true }
     private var needsInput: Bool { pane?.hasAgent == true && pane?.agent.state == .needsInput }
     private var asleep: Bool { pane?.asleep == true }
+    /// The header's name as wide as it would be, to keep some of it (headerTitleMin).
+    @State private var titleWidth: CGFloat = 0
+    /// How much of the name the header keeps before its controls give way.
+    private static let headerTitleMin: CGFloat = 80
 
     /// The terminal theme's background, so the header and gaps match the terminal.
     private var themeBackground: Color { PaneLook.background(dark: colorScheme == .dark) }
@@ -520,6 +524,13 @@ struct PaneView: View {
             PaneKindMenu(model: model, paneID: paneID) {
                 Text(pane.map(headerName) ?? "").fontWeight(.semibold).lineLimit(1)
             }
+            .background {
+                // Measured untruncated (with room for the menu's arrow), for
+                // its minimum: the menu's own label isn't laid out as a view.
+                Text(pane.map(headerName) ?? "").fontWeight(.semibold).fixedSize().hidden()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { titleWidth = $0 + 16 }
+            }
+            .frame(minWidth: min(titleWidth, Self.headerTitleMin), alignment: .leading)
             .layoutPriority(1) // the folder gives way first
             Text(pane?.shortCwd ?? "")
                 .foregroundStyle(.secondary)
@@ -541,35 +552,52 @@ struct PaneView: View {
                     .background(.quaternary, in: Capsule())
                     .help("You can watch this Group; its host hasn't let you type")
             }
-            // The pane's state comes before the buttons, so they stay put
-            // as it comes and goes.
-            if let pane, pane.exited {
-                Text("Exited \(pane.exitStatus)")
-                    .foregroundStyle(.secondary)
-            } else if let pane, pane.asleep {
-                SleepBadge(model: model, paneID: paneID)
-            } else if let pane, pane.hasAgent, pane.agent.state != .unspecified, !(pane.agent.shownState == .idle && pane.agent.seen) {
-                HStack(spacing: 5) {
-                    StatusIcon(state: pane.agent.shownState, size: 12, progress: pane.agentProgress)
-                    Text(pane.agent.runningCommand ? "Running a command" : pane.agent.state.label + (pane.agentProgress.map { " \($0)%" } ?? ""))
-                }
-                .foregroundStyle(pane.agent.state == .needsInput ? Color.orange : .secondary)
-                .fontWeight(pane.agent.state == .needsInput ? .semibold : .regular)
+            // As much as fits, after the name keeps headerTitleMin: in a thin
+            // pane the agent's state becomes its icon, then Float and Zoom go
+            // (they're in the pane's menu and the Pane menu), then the toggle.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { state(compact: false); viewToggle; ZoomButton(model: model, paneID: paneID); PaneCloseButton(model: model, paneID: paneID) }
+                HStack(spacing: 8) { state(compact: true); viewToggle; ZoomButton(model: model, paneID: paneID); PaneCloseButton(model: model, paneID: paneID) }
+                HStack(spacing: 8) { state(compact: true); viewToggle; PaneCloseButton(model: model, paneID: paneID) }
+                HStack(spacing: 8) { state(compact: true); PaneCloseButton(model: model, paneID: paneID) }
             }
-            if agentCapable {
-                AgentViewToggle(paneID: paneID)
-            } else if isLog {
-                LogViewToggle(paneID: paneID)
-            }
-            ZoomButton(model: model, paneID: paneID)
-            PaneCloseButton(model: model, paneID: paneID)
+            .layoutPriority(2)
         }
         .font(.callout)
         // The header's icon lines up with the window title above.
         .padding(.leading, 15)
         .padding(.trailing, 12)
-        .frame(height: 28)
+        // Narrower than even that: the name is cut off, not Close.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 28, maxHeight: 28, alignment: .trailing)
         .background(isFocused ? Color.themeAccent.opacity(0.06) : Color.clear)
+    }
+
+    /// The pane's state, before the buttons so they stay put as it comes and
+    /// goes. Compact, an agent's is only its icon.
+    @ViewBuilder private func state(compact: Bool) -> some View {
+        if let pane, pane.exited {
+            Text("Exited \(pane.exitStatus)")
+                .foregroundStyle(.secondary)
+        } else if let pane, pane.asleep {
+            SleepBadge(model: model, paneID: paneID)
+        } else if let pane, pane.hasAgent, pane.agent.state != .unspecified, !(pane.agent.shownState == .idle && pane.agent.seen) {
+            let label = pane.agent.runningCommand ? "Running a command" : pane.agent.state.label + (pane.agentProgress.map { " \($0)%" } ?? "")
+            HStack(spacing: 5) {
+                StatusIcon(state: pane.agent.shownState, size: 12, progress: pane.agentProgress)
+                if !compact { Text(label) }
+            }
+            .foregroundStyle(pane.agent.state == .needsInput ? Color.orange : .secondary)
+            .fontWeight(pane.agent.state == .needsInput ? .semibold : .regular)
+            .tooltip(compact ? label : "")
+        }
+    }
+
+    @ViewBuilder private var viewToggle: some View {
+        if agentCapable {
+            AgentViewToggle(paneID: paneID)
+        } else if isLog {
+            LogViewToggle(paneID: paneID)
+        }
     }
 }
 
