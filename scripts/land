@@ -54,7 +54,13 @@ fi
 cd "$main"
 just worktree-remove "$name"
 git branch -q -D "$branch" 2>/dev/null || true # rebased, so -d may not see it merged; its commits are on main
-if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-  git push -q origin --delete "$branch"
+# GitHub deletes a PR's branch itself once the push to main merges the PR, which can happen between the
+# check and the delete: a branch already gone is fine.
+if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 &&
+  ! git push -q origin --delete "$branch" 2>/dev/null &&
+  git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+  echo "land: couldn't delete $branch on origin." >&2
+  exit 1
 fi
+git remote prune origin >/dev/null 2>&1 || true
 echo "Landed $branch on main and removed its worktree."
