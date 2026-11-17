@@ -390,7 +390,7 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 	d.mu.Unlock()
 	for _, t := range to {
 		if sealed, err := seal(t.r.Key, plain); err == nil {
-			d.sendPush(t.id, t.r, sealed, n, collapse)
+			d.sendPush(t.id, t.r, sealed, n, collapse, pending)
 		}
 	}
 }
@@ -412,7 +412,7 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 		}
 		if sealed, err := seal(r.Key, plain); err == nil {
 			d.notePushed(collapse, id)
-			go d.sendPush(id, r, sealed, n, collapse)
+			go d.sendPush(id, r, sealed, n, collapse, d.stillPushed(collapse, id))
 		}
 	}
 }
@@ -522,26 +522,60 @@ func seal(key, plain []byte) ([]byte, error) {
 	return gcm.Seal(nonce, nonce, plain, nil), nil
 }
 
-func (d *Daemon) sendPush(deviceID string, r *pb.RegisterPush, sealed []byte, n pushNote, collapse string) {
+// pushRetryAfter is how long a send the relay turned away with 429 waits
+// before its one retry: past the relay's rate limit's 10-second block.
+// Replaceable in tests.
+var pushRetryAfter = 15 * time.Second
+
+// sendPush asks the relay to send a notification to a phone. If the relay
+// says slow down (429), it tries once more, pushRetryAfter later, in its own
+// goroutine (other phones' sends don't wait for it), unless pending (called
+// holding d.mu; nil for always) says it's been dealt with meanwhile.
+func (d *Daemon) sendPush(deviceID string, r *pb.RegisterPush, sealed []byte, n pushNote, collapse string, pending func() bool) {
+	if d.postPush(deviceID, r, sealed, n, collapse, false) != http.StatusTooManyRequests {
+		return
+	}
+	after := pushRetryAfter
+	go func() {
+		time.Sleep(after)
+		d.mu.Lock()
+		still := pending == nil || pending()
+		d.mu.Unlock()
+		if still {
+			d.postPush(deviceID, r, sealed, n, collapse, true)
+		}
+	}()
+}
+
+// stillPushed: pending for a note sent with notePushed, until clearPushes
+// says it's resolved. Callers hold d.mu.
+func (d *Daemon) stillPushed(collapse, deviceID string) func() bool {
+	return func() bool { return slices.Contains(d.pushSent[collapse], deviceID) }
+}
+
+// postPush makes one send to the relay, and returns its status (0 if it
+// wasn't made or got no answer). A 429 is only logged on the retry
+// (sendPush): the first one is retried.
+func (d *Daemon) postPush(deviceID string, r *pb.RegisterPush, sealed []byte, n pushNote, collapse string, retry bool) int {
 	body, _ := json.Marshal(map[string]string{
 		"id": r.RelayId, "payload": base64.StdEncoding.EncodeToString(sealed),
 		"thread":   pushTag(r.Key, "thread", cmpOr(n.Pane, n.Join, n.Grant, n.Key)),
 		"collapse": pushTag(r.Key, "collapse", collapse), "category": n.Category,
 	})
 	if !knownRelay(r.RelayUrl) {
-		return // registered before relays were checked
+		return 0 // registered before relays were checked
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayOrigin(r.RelayUrl)+"/send", bytes.NewReader(body))
 	if err != nil {
-		return
+		return 0
 	}
 	req.Header.Set("content-type", "application/json")
 	resp, err := pushClient.Do(req)
 	if err != nil {
 		d.log.Warn("push", "device", deviceID, "err", err)
-		return
+		return 0
 	}
 	defer resp.Body.Close()
 	switch {
@@ -550,9 +584,12 @@ func (d *Daemon) sendPush(deviceID string, r *pb.RegisterPush, sealed []byte, n 
 		d.mu.Lock()
 		d.persist(d.store.DeleteRecord("push", deviceID))
 		d.mu.Unlock()
+	case resp.StatusCode == http.StatusTooManyRequests && !retry:
+		d.log.Debug("push: relay says slow down, retrying", "device", deviceID, "after", pushRetryAfter)
 	case resp.StatusCode >= 300:
 		// The relay's reason (APNs' own, when it turned the push down).
 		reason, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		d.log.Warn("push", "device", deviceID, "status", resp.StatusCode, "reason", strings.TrimSpace(string(reason)))
 	}
+	return resp.StatusCode
 }

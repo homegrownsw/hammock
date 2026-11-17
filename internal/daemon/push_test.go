@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -210,6 +211,85 @@ func TestPushWhileAway(t *testing.T) {
 	locked.Store(true)
 	needsYou()
 	arrives("with the screen locked")
+}
+
+// A send the relay turns away with 429 (its rate limit) is tried once more,
+// a little later, unless it's been dealt with meanwhile; other refusals
+// aren't retried.
+func TestPushRetriesAfterSlowDown(t *testing.T) {
+	var status []int // what the relay answers, in turn (200 once they run out)
+	var mu sync.Mutex
+	sends := make(chan string, 8)
+	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		code := http.StatusOK
+		if len(status) > 0 {
+			code, status = status[0], status[1:]
+		}
+		mu.Unlock()
+		w.WriteHeader(code)
+		sends <- body["payload"]
+	}))
+	defer relay.Close()
+	oldClient, oldRelays, oldRetry := pushClient, pushRelays, pushRetryAfter
+	pushClient, pushRelays, pushRetryAfter = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond
+	defer func() { pushClient, pushRelays, pushRetryAfter = oldClient, oldRelays, oldRetry }()
+
+	d := &Daemon{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	r := &pb.RegisterPush{RelayUrl: relay.URL, RelayId: "relay-id-1", Key: make([]byte, 32)}
+	send := func(codes []int, pending func() bool) {
+		t.Helper()
+		mu.Lock()
+		status = codes
+		mu.Unlock()
+		d.sendPush("phone", r, []byte("sealed"), pushNote{}, "at_pn_1", pending)
+	}
+	count := func(want int, why string) {
+		t.Helper()
+		got := 0
+		for deadline := time.After(time.Second); ; {
+			select {
+			case p := <-sends:
+				if p != base64.StdEncoding.EncodeToString([]byte("sealed")) {
+					t.Fatalf("%s: sent %q", why, p)
+				}
+				got++
+			case <-deadline:
+				if got != want {
+					t.Fatalf("%s: %d sends, want %d", why, got, want)
+				}
+				return
+			}
+		}
+	}
+
+	send([]int{http.StatusTooManyRequests}, nil)
+	count(2, "429 then 200")
+	send([]int{http.StatusTooManyRequests, http.StatusTooManyRequests, http.StatusTooManyRequests}, nil)
+	count(2, "429 every time: one retry only")
+	answered := false
+	send([]int{http.StatusTooManyRequests}, func() bool { return !answered })
+	d.mu.Lock()
+	answered = true // dealt with before the retry
+	d.mu.Unlock()
+	count(1, "answered before the retry")
+	send([]int{http.StatusInternalServerError}, nil)
+	count(1, "500")
+
+	// A Hammock Key request's (pushNow): pending until clearPushes takes it
+	// out of pushSent.
+	d.mu.Lock()
+	d.notePushed("hk_1", "phone")
+	d.mu.Unlock()
+	send([]int{http.StatusTooManyRequests}, d.stillPushed("hk_1", "phone"))
+	count(2, "a Hammock Key request still waiting")
+	send([]int{http.StatusTooManyRequests}, d.stillPushed("hk_1", "phone"))
+	d.mu.Lock()
+	delete(d.pushSent, "hk_1")
+	d.mu.Unlock()
+	count(1, "a Hammock Key request answered before the retry")
 }
 
 // A tag is the same for the same phone and id, and tells nothing of the id:
