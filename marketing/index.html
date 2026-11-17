@@ -297,7 +297,7 @@
       radial-gradient(260px 300px at 30% 100%, rgba(191,90,242,.35), transparent 70%),
       #0b231a;
   }
-  .island { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 96px; height: 28px; border-radius: 20px; background: #000; }
+  .island { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); width: 96px; height: 28px; border-radius: 20px; background: #000; }
   .clock { text-align: center; font: 600 64px/1 var(--display); letter-spacing: -.03em; color: rgba(255,255,255,.92); }
   .date { text-align: center; color: rgba(255,255,255,.75); font-weight: 500; font-size: 14px; margin: 6px 0 26px; }
   .notif { background: rgba(255,255,255,.16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 18px; padding: 11px 12px; color: #fff; font-size: 12.5px; line-height: 1.4; margin-bottom: 8px; }
@@ -309,6 +309,127 @@
   .acts2 { display: grid; gap: 6px; margin-top: 4px; }
   .acts2 span { display: block; background: rgba(255,255,255,.16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 14px; padding: 10px 14px; color: #fff; font-weight: 600; font-size: 13.5px; }
   .acts2 span.no { color: #ff8a80; }
+
+  /* The iPhone app, drawn from its demo's screens (HMK_DEBUG_SAMPLE: dark, the Hammock theme). The lock screen
+     is the first, and all there is without JavaScript; the buttons under the phone switch between them. */
+  .screen.app { padding: 0; background: #000; }
+  .ips { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transform: scale(.97); transition: opacity 0s .4s, transform 0s .4s; pointer-events: none;
+    font: 12px/1.35 -apple-system, BlinkMacSystemFont, Inter, sans-serif; color: #f2f2f7; background: #000; }
+  /* The new screen fades in over the old, which goes once it's covered. */
+  .ips.on { z-index: 1; opacity: 1; transform: none; transition: opacity .35s ease, transform .35s cubic-bezier(.3,.7,.2,1); }
+  .ips.lock { padding: 58px 12px 12px; background:
+      radial-gradient(260px 300px at 20% 10%, rgba(97,216,54,.35), transparent 70%),
+      radial-gradient(260px 300px at 90% 60%, rgba(10,132,255,.35), transparent 70%),
+      radial-gradient(260px 300px at 30% 100%, rgba(191,90,242,.35), transparent 70%),
+      #0b231a; }
+  .ips .sbar { flex: none; display: flex; justify-content: space-between; align-items: center; height: 44px; padding: 6px 26px 0 30px; font-weight: 600; font-size: 12.5px; }
+  .ips .sbar i { display: inline-block; width: 20px; height: 9px; border-radius: 3px; border: 1px solid rgba(255,255,255,.5); position: relative; }
+  .ips .sbar i::after { content: ""; position: absolute; inset: 1px; border-radius: 1.5px; background: #fff; }
+  .ips .top { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 2px 12px 0; min-height: 34px; }
+  .ips .rb { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.08); color: #fff; }
+  .ips .rb.acc { color: #3fb88a; }
+  .ips .navt { text-align: center; font-weight: 600; font-size: 12.5px; line-height: 1.2; }
+  .ips .navt small { display: block; font-weight: 400; font-size: 9.5px; color: #8e8e93; }
+  .ips .big { font: 700 24px/1.1 -apple-system, BlinkMacSystemFont, Inter, sans-serif; margin: 6px 14px 8px; letter-spacing: -.01em; }
+  .ips .body { flex: 1; min-height: 0; overflow: hidden; padding: 0 10px; }
+  .ips h6 { margin: 10px 8px 5px; font-size: 11.5px; font-weight: 600; color: #98989f; }
+  .ips .grpcard { background: #1c1c1e; border-radius: 14px; padding: 9px 11px; }
+  .ips .grpcard + .grpcard { margin-top: 6px; }
+  .ips .row { display: grid; grid-template-columns: 15px minmax(0,1fr) auto; gap: 8px; align-items: start; }
+  .ips .row + .row { border-top: 1px solid rgba(255,255,255,.08); margin-top: 8px; padding-top: 8px; }
+  .ips .row .st { width: 13px; height: 13px; margin-top: 1px; }
+  .ips .row b { display: block; font-size: 12.5px; font-weight: 600; }
+  .ips .row span { color: #c7c7cc; font-size: 10.5px; display: block; }
+  .ips .row em { font-style: normal; color: #8e8e93; font-size: 10.5px; }
+  .ips .row code { font: 10px var(--mono); color: #e5e5ea; }
+  .ips .pills { display: flex; gap: 5px; margin-top: 7px; }
+  .ips .pill { padding: 4px 10px; border-radius: 999px; background: rgba(63,184,138,.18); color: #6fdcb0; font-size: 11px; font-weight: 500; }
+  .ips .pill.fill { margin-left: auto; background: #3fb88a; color: #062016; font-weight: 600; }
+  .ips .tabbar { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 46px; border-radius: 23px; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; padding: 0 4px;
+    background: rgba(40,40,44,.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.1); }
+  .ips .tabbar span { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 8.5px; font-weight: 500; color: #e5e5ea; }
+  .ips .tabbar span.on { color: #3fb88a; background: rgba(255,255,255,.08); border-radius: 18px; padding: 3px 0; }
+  .ips .tabbar sup { position: absolute; top: -4px; left: calc(50% + 4px); min-width: 13px; height: 13px; border-radius: 7px; background: #ff3b30; color: #fff; font-size: 8px; line-height: 13px; text-align: center; }
+  /* The agent view */
+  .ips .you { margin: 8px 0 10px auto; max-width: 82%; padding: 7px 11px; border-radius: 15px; background: #2b7a5c; color: #fff; font-size: 11.5px; }
+  .ips .said { font-size: 11.5px; margin: 0 2px 8px; }
+  .ips .tool { display: flex; align-items: center; gap: 6px; color: #c7c7cc; font-size: 11px; margin: 0 2px 7px; }
+  .ips .tool .ok { margin-left: auto; width: 11px; height: 11px; }
+  .ips .tool .g { color: #30d158; } .ips .tool .r { color: #ff453a; }
+  .ips .tool tt { font: 10.5px var(--mono); }
+  .ips .tool small { margin-left: auto; color: #8e8e93; font-size: 9px; }
+  .ips .diff { border-radius: 8px; overflow: hidden; background: #1c1c1e; font: 9.5px/1.55 var(--mono); margin: -2px 0 9px; white-space: pre; }
+  .ips .diff div { padding: 0 8px; }
+  .ips .diff .h { color: #8e8e93; padding-top: 3px; } .ips .diff .m { background: rgba(255,69,58,.28); } .ips .diff .p { background: rgba(48,209,88,.24); }
+  .ips .think { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 2px 2px; }
+  .ips .think span { color: #ff9f0a; animation: twinkle 1.6s ease-in-out infinite; }
+  @keyframes twinkle { 50% { opacity: .35; transform: scale(.85); } }
+  .ips .compose { flex: none; margin: 0 8px 10px; border-radius: 18px; background: #1c1c1e; border: 1px solid rgba(255,255,255,.08); padding: 9px 10px 7px; color: #8e8e93; font-size: 11.5px; }
+  .ips .compose div { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 9.5px; }
+  .ips .compose .c { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.1); color: #fff; }
+  .ips .compose .c.stop { margin-left: 0; background: #3fb88a; color: #062016; }
+  .ips .compose .grow { margin-right: auto; }
+  /* The terminal, with the keys a phone lacks */
+  .ips .tm { flex: 1; min-height: 0; overflow: hidden; padding: 8px 8px; font: 9.4px/1.6 var(--mono); color: #d5e5dc; white-space: pre; }
+  .ips .tm .u { color: #30d158; } .ips .tm .d { color: #64d2ff; } .ips .tm .y { color: #ffd60a; } .ips .tm .o { color: #ff9f0a; } .ips .tm .f { color: #8e8e93; } .ips .tm .rr { color: #ff6961; }
+  .ips .tm .caret { width: 5px; height: 10px; }
+  .ips .keys { flex: none; display: flex; gap: 4px; padding: 5px 6px; background: #1c1c1e; }
+  .ips .keys span { flex: 1; height: 24px; border-radius: 12px; background: #3a3a3c; display: grid; place-items: center; font-size: 10px; }
+  .ips .kb { flex: none; background: #2c2c2e; padding: 6px 3px 18px; display: grid; gap: 7px; }
+  .ips .kb div { display: flex; justify-content: center; gap: 4px; }
+  .ips .kb span { width: 20px; height: 28px; border-radius: 5px; background: #6b6b70; display: grid; place-items: center; font-size: 12px; }
+  .ips .kb span.w { width: 32px; background: #48484b; font-size: 10px; }
+  .ips .kb span.sp { width: 128px; }
+  /* Groups, and a tab's panes */
+  .ips .chips { display: flex; gap: 5px; margin: 0 12px 4px; }
+  .ips .chips span { padding: 4px 9px; border-radius: 999px; background: #1c1c1e; font-size: 10.5px; color: #e5e5ea; }
+  .ips .chips span.on { background: #fff; color: #000; font-weight: 600; }
+  .ips .gh { display: flex; align-items: center; gap: 6px; margin: 10px 6px 5px; font-weight: 600; font-size: 12px; color: #c7c7cc; }
+  .ips .gh .plus { margin-left: auto; color: #3fb88a; font-size: 16px; font-weight: 400; line-height: 1; }
+  .ips .row .tic { width: 13px; height: 11px; margin-top: 2px; border: 1px solid #8e8e93; border-radius: 2.5px; }
+  /* The section's buttons: which screen the phone shows */
+  .ipnav { display: none; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 22px auto 0; max-width: 460px; }
+  .ipnav.live { display: flex; }
+  .ipnav button { font: 500 13px Inter, sans-serif; color: var(--muted); background: var(--card); border: 1px solid var(--card-line); border-radius: 999px; padding: 6px 12px; cursor: pointer; transition: color .2s, border-color .2s, background .2s; }
+  .ipnav button:hover { color: var(--text); }
+  .ipnav button[aria-pressed="true"] { color: #06140e; background: var(--mint); border-color: var(--mint); }
+
+  /* Screen sharing: a phone on its side, showing the Mac's screen, with the viewer's controls over it */
+  .ss { container-type: inline-size; position: relative; width: 100%; max-width: 880px; margin: 44px auto 0; aspect-ratio: 19.5 / 9; border-radius: 8cqw; padding: 2.4cqw;
+    background: linear-gradient(160deg, #3a4a43, #1a2420); box-shadow: 0 40px 90px rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.12); }
+  .ss .scr { position: relative; height: 100%; border-radius: 6cqw; overflow: hidden; background: #000; display: grid; place-items: center; }
+  .ss .island { top: 50%; left: 1.6cqw; transform: translateY(-50%); width: 3.4cqw; height: 12cqw; border-radius: 2cqw; z-index: 3; }
+  /* The Mac's display, zoomed in a little to fill the phone's screen */
+  .ss .mac { position: relative; width: 100%; height: 100%; overflow: hidden; font: 1.45cqw/1.35 -apple-system, BlinkMacSystemFont, Inter, sans-serif; color: #fff;
+    background: radial-gradient(60% 80% at 25% 30%, #2e8a62, transparent 70%), radial-gradient(60% 80% at 85% 80%, #5a3aa8, transparent 70%), linear-gradient(160deg, #0f3627, #071a12); }
+  .ss .mbar { height: 3.4cqw; display: flex; align-items: center; gap: 2.2cqw; padding: 0 6cqw 0 7cqw; background: rgba(0,0,0,.35); font-size: 1.4cqw; font-weight: 500; }
+  .ss .mbar b { font-weight: 700; }
+  .ss .mbar span:last-child { margin-left: auto; }
+  .ss .mwin { position: absolute; left: 8%; top: 14%; width: 62%; height: 78%; border-radius: 1.4cqw; background: #0d2a20; border: 1px solid rgba(255,255,255,.14); box-shadow: 0 2cqw 4cqw rgba(0,0,0,.5);
+    display: grid; grid-template-columns: 26% 1fr; overflow: hidden; }
+  .ss .mwin .ms { padding: 1.6cqw 1cqw; display: grid; align-content: start; gap: 1cqw; }
+  .ss .mwin .ms i { display: block; height: 1cqw; border-radius: .5cqw; background: rgba(255,255,255,.13); }
+  .ss .mwin .ms i.on { background: rgba(255,255,255,.3); }
+  .ss .mwin .mt { margin: 3.4cqw .8cqw .8cqw 0; border-radius: 1cqw; background: #0a1a13; padding: 1.2cqw; font: 1.2cqw/1.6 var(--mono); color: #8fa89b; white-space: pre; overflow: hidden; }
+  .ss .mwin .mt b { color: #3fb88a; font-weight: 400; }
+  .ss .alert { position: absolute; left: 50%; top: 53%; transform: translate(-50%, -50%); width: 22%; padding: 2.2cqw 2cqw 1.8cqw; border-radius: 2.4cqw; text-align: center;
+    background: rgba(48,52,50,.86); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 3cqw 6cqw rgba(0,0,0,.55); }
+  .ss .alert .ai { width: 5.6cqw; height: 5.6cqw; margin: 0 auto 1.2cqw; border-radius: 1.3cqw; background: linear-gradient(160deg, #8a8f99, #4d525b); display: grid; place-items: center; font-size: 3cqw; }
+  .ss .alert b { display: block; font-size: 1.6cqw; margin-bottom: .6cqw; }
+  .ss .alert p { margin: 0 0 1.6cqw; font-size: 1.3cqw; color: #d1d1d6; }
+  .ss .alert .pw { margin: -.4cqw 0 1.4cqw; padding: .6cqw 1cqw; border-radius: .9cqw; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.18); text-align: left; font-size: 1.3cqw; letter-spacing: .1em; }
+  .ss .alert .bt { display: grid; gap: .8cqw; }
+  .ss .alert .bt span { padding: .8cqw; border-radius: 1.2cqw; background: rgba(255,255,255,.14); font-size: 1.35cqw; font-weight: 500; }
+  .ss .alert .bt span.dflt { background: #0a84ff; }
+  .ss .ptr { position: absolute; width: 2.4cqw; left: 60%; top: 87%; filter: drop-shadow(0 .2cqw .3cqw rgba(0,0,0,.5)); animation: ptr 5s cubic-bezier(.4,0,.2,1) infinite; }
+  @keyframes ptr { 0%, 12% { transform: translate(-22cqw, -16cqw); } 45%, 100% { transform: none; } 50% { scale: .85; } 55% { scale: 1; } }
+  .sspts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; margin-top: 48px; }
+  .sspts li { grid-template-columns: 20px minmax(0,1fr); gap: 10px; font-size: 15px; }
+  .ss .ctl { position: absolute; z-index: 2; right: 3.4cqw; top: 3.2cqw; display: flex; align-items: center; gap: .4cqw; padding: .5cqw; border-radius: 99px;
+    background: rgba(40,40,44,.78); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.12); color: #fff; }
+  .ss .ctl span { width: 4.6cqw; height: 4.6cqw; display: grid; place-items: center; }
+  .ss .ctl span svg { width: 2.6cqw; height: 2.6cqw; }
+  .ss .ctl span.end { border-radius: 50%; background: #ff3b30; }
 
   /* MCP */
   .log { white-space: pre; background: var(--code-bg); border: 1px solid rgba(61, 255, 162, 0.16); border-radius: 16px; padding: 18px 20px; font: 13.5px/1.75 var(--mono); color: #cfe6da; overflow-x: auto; box-shadow: 0 30px 80px rgba(0,0,0,.4); }
@@ -342,7 +463,7 @@
 
   @media (max-width: 980px) {
     .features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .more { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .more, .sspts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 820px) {
     .split { grid-template-columns: minmax(0, 1fr); gap: 44px; }
@@ -369,7 +490,7 @@
     .side-in { width: 200px; }
     .cap:nth-of-type(-n+2) { display: none; }
     .ptitle .px { display: none; }
-    .features, .more { grid-template-columns: minmax(0, 1fr); }
+    .features, .more, .sspts { grid-template-columns: minmax(0, 1fr); }
     .phone { width: 270px; height: 560px; }
     .clock { font-size: 56px; }
     .final { padding: 48px 18px; }
@@ -573,35 +694,167 @@
     <div>
       <p class="kicker">Hammock for iPhone</p>
       <h2 id="i-h">Step away.<br>Stay in the loop.</h2>
-      <p class="sub">Go and make a coffee, or swing in an actual hammock. Your Mac keeps working, and your iPhone tells you the moment an agent needs a hand.</p>
+      <p class="sub">Go and make a coffee, or swing in an actual hammock. Your Mac keeps working, and your whole workspace comes with you: every agent, every Group, every terminal.</p>
       <ul class="points">
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Answer from the notification.</strong> Allow or deny right from your lock screen.</span></li>
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Every agent, at a glance.</strong> What each one is doing, in every Group, on every linked Mac.</span></li>
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>A full terminal in your pocket.</strong> Jump into any pane and type, with Esc, Ctrl and arrows to hand.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Every agent, at a glance.</strong> Sessions puts what’s waiting on you first, then what’s working and what’s done, on every Mac you pair.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Read what it did.</strong> Each agent reads as a conversation, its edits as diffs. Reply, attach a photo or dictate, and it carries on.</span></li>
+        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>A full terminal in your pocket.</strong> Jump into any pane and type, with Esc, Ctrl and arrows to hand. Browser and simulator panes are live too.</span></li>
         <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Only one ping.</strong> If you’re at your Mac, your phone stays quiet.</span></li>
       </ul>
     </div>
-    <div aria-hidden="true">
-      <div class="phone">
-        <div class="screen">
+    <div>
+      <div class="phone" aria-hidden="true">
+        <div class="screen app">
+          <div class="ips lock on" data-ip="Lock screen">
+            <div class="clock">9:41</div>
+            <div class="date">Saturday 14 June</div>
+            <div class="notif big">
+              <div class="h"><img src="icon-256.png" alt="">HAMMOCK<em>now</em></div>
+              <b>Docs site needs you</b>
+              claude wants to run npm run check-links
+            </div>
+            <div class="acts2"><span>Allow</span><span class="no">Deny</span></div>
+            <div class="notif" style="margin-top:14px;opacity:.85">
+              <div class="h"><img src="icon-256.png" alt="">HAMMOCK<em>4m ago</em></div>
+              <b>api finished</b>
+              Added rate limiting to /login. All 212 tests pass.
+            </div>
+          </div>
+
+          <div class="ips" data-ip="Sessions">
+            <div class="sbar"><span>9:41</span><i></i></div>
+            <div class="top"><span class="rb acc"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg></span><span class="rb acc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></div>
+            <div class="big">Studio</div>
+            <div class="body">
+              <h6>Needs You</h6>
+              <div class="grpcard">
+                <div class="row"><svg class="st"><use href="#s-need"/></svg><div><b>Broken links</b><span>📖 Docs site</span><span>Bash: <code>npm run check-links</code></span>
+                  <div class="pills"><span class="pill">Deny</span><span class="pill">Open</span><span class="pill fill">Allow ⌄</span></div></div><em></em></div>
+              </div>
+              <h6>Working</h6>
+              <div class="grpcard">
+                <div class="row"><svg class="st"><use href="#s-work"/></svg><div><b>Dark mode</b><span>Editing code.css</span><span>📖 Docs site</span></div><em>4m</em></div>
+                <div class="row"><svg class="st"><use href="#s-work"/></svg><div><b>Rate limits</b><span>Running go test ./...</span><span>🧩 API</span></div><em>9m</em></div>
+              </div>
+              <h6>Recent</h6>
+              <div class="grpcard">
+                <div class="row"><svg class="st"><use href="#s-done"/></svg><div><b>Search index</b><span>Rebuilt the index: 214 pages, no broken anchors.</span><span>📖 Docs site</span></div><em>12m</em></div>
+              </div>
+            </div>
+            <div class="tabbar">
+              <span class="on"><svg width="17" height="15" viewBox="0 0 24 22" fill="currentColor"><path d="M4 2h16a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-8l-5 4v-4H4a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z"/></svg>Sessions<sup>1</sup></span>
+              <span><svg width="16" height="15" viewBox="0 0 24 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l10 5-10 5L2 7z"/><path d="M2 12l10 5 10-5M2 16.5l10 5 10-5"/></svg>Groups</span>
+              <span><svg width="17" height="15" viewBox="0 0 24 22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="13" rx="2"/><path d="M8 20h8M12 15v5"/></svg>Devices</span>
+              <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Settings</span>
+            </div>
+          </div>
+
+          <div class="ips" data-ip="Agent">
+            <div class="sbar"><span>9:41</span><i></i></div>
+            <div class="top"><span class="rb"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l-8 8 8 8"/></svg></span><div class="navt">Claude<small>Dark mode</small></div><span class="rb acc"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></span></div>
+            <div class="body">
+              <div class="you">Add a dark mode to the docs, and check it in the browser.</div>
+              <div class="said">I’ll add the colours to the theme, then look at each page.</div>
+              <div class="tool"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/></svg>Read theme.css<svg class="ok"><use href="#s-done"/></svg></div>
+              <div class="tool"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/></svg>Edited code.css <span class="g">+6</span> <span class="r">−6</span><svg class="ok"><use href="#s-done"/></svg></div>
+              <div class="diff"><div class="h">@@ -12,6 +12,6 @@</div><div class="m">-  --code-bg: #1b1f24;</div><div class="m">-  --code-fg: #6e7781;</div><div class="p">+  --code-bg: #0d1117;</div><div class="p">+  --code-fg: #c9d1d9;</div><div class="h">2 more lines</div></div>
+              <div class="tool"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>browser_screenshot<small>0m 04s</small></div>
+              <div class="said">Code blocks read well now. Checking the other pages.</div>
+              <div class="think"><span>✦</span>Checking the other pages…</div>
+            </div>
+            <div class="compose">Message Claude…<div><span class="c">+</span><span class="grow">Opus 5.5 · High</span><span class="c"><svg width="10" height="12" viewBox="0 0 20 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="6" y="1" width="8" height="14" rx="4"/><path d="M2 11a8 8 0 0 0 16 0M10 19v4"/></svg></span><span class="c stop"><svg width="8" height="8" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="currentColor"/></svg></span></div></div>
+          </div>
+
+          <div class="ips" data-ip="Terminal">
+            <div class="sbar"><span>9:41</span><i></i></div>
+            <div class="top"><span class="rb"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4l-8 8 8 8"/></svg></span><div class="navt">zsh<small>~/Developer/api</small></div><span class="rb acc"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></span></div>
+<div class="tm"><div><span class="u">~/Developer/api</span> <span class="d">main</span> ❯ git log --oneline -3</div><div><span class="y">4f2a91c</span> Rate limits on /login</div><div><span class="y">9c07e3d</span> Sessions expire after 30 days</div><div><span class="y">1b88f40</span> Quieter request logs</div><div><span class="u">~/Developer/api</span> <span class="d">main</span> ❯ go test ./...</div><div><span class="u">ok</span>  api/auth      0.41s</div><div><span class="u">ok</span>  api/limits    1.12s</div><div><span class="u">ok</span>  api/sessions  0.18s</div><div><span class="u">ok</span>  api/store     0.57s</div><div><span class="u">~/Developer/api</span> <span class="d">main</span> ❯ make dev</div><div> </div><div><span class="f">9:40:02</span> listening on <span class="d">:8080</span></div><div><span class="f">9:40:15</span> <span class="u">200</span> POST /login <span class="f">12ms</span></div><div><span class="f">9:40:16</span> <span class="o">429</span> POST /login <span class="f">1ms</span></div><div><span class="f">9:40:47</span> <span class="u">200</span> GET /health <span class="f">0ms</span></div><div>^C</div><div><span class="u">~/Developer/api</span> <span class="d">main</span> ❯ <span class="caret"></span></div></div>
+            <div class="keys"><span>esc</span><span>tab</span><span>ctrl</span><span>←</span><span>↓</span><span>↑</span><span>→</span></div>
+            <div class="kb">
+              <div><span>q</span><span>w</span><span>e</span><span>r</span><span>t</span><span>y</span><span>u</span><span>i</span><span>o</span><span>p</span></div>
+              <div><span>a</span><span>s</span><span>d</span><span>f</span><span>g</span><span>h</span><span>j</span><span>k</span><span>l</span></div>
+              <div><span class="w">⇧</span><span>z</span><span>x</span><span>c</span><span>v</span><span>b</span><span>n</span><span>m</span><span class="w">⌫</span></div>
+              <div><span class="w">123</span><span class="sp"></span><span class="w">⏎</span></div>
+            </div>
+          </div>
+
+          <div class="ips" data-ip="Groups">
+            <div class="sbar"><span>9:41</span><i></i></div>
+            <div class="top"><span class="rb acc" style="width:auto;padding:0 11px;border-radius:15px;font-size:11.5px">Edit</span><span class="rb acc"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></div>
+            <div class="big">Studio</div>
+            <div class="chips"><span class="on">All</span><span>💻 Studio</span><span>🖥 Build box</span></div>
+            <div class="body">
+              <div class="gh">📖 Docs site<span class="plus">+</span></div>
+              <div class="grpcard">
+                <div class="row"><svg class="st"><use href="#s-work"/></svg><div><b>Dark mode</b><span>Editing code.css</span></div><em>›</em></div>
+                <div class="row"><svg class="st"><use href="#s-need"/></svg><div><b>Broken links</b><span>Bash: npm run check-links</span></div><em>›</em></div>
+                <div class="row"><svg class="st"><use href="#s-done"/></svg><div><b>Search index</b><span>Rebuilt the index: 214 pages.</span></div><em>›</em></div>
+                <div class="row"><span class="tic"></span><div><b>npm run dev</b><span>localhost:4321</span></div><em>›</em></div>
+              </div>
+              <div class="gh">🧩 API<span class="plus">+</span></div>
+              <div class="grpcard">
+                <div class="row"><svg class="st"><use href="#s-work"/></svg><div><b>Rate limits</b><span>Running go test ./...</span></div><em>›</em></div>
+                <div class="row"><span class="tic"></span><div><b>zsh</b><span>~/Developer/api</span></div><em>›</em></div>
+              </div>
+            </div>
+            <div class="tabbar">
+              <span><svg width="17" height="15" viewBox="0 0 24 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 2h16a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-8l-5 4v-4H4a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z"/></svg>Sessions<sup>1</sup></span>
+              <span class="on"><svg width="16" height="15" viewBox="0 0 24 22" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l10 5-10 5L2 7z"/><path d="M2 12l10 5 10-5M2 16.5l10 5 10-5" fill="none"/></svg>Groups</span>
+              <span><svg width="17" height="15" viewBox="0 0 24 22" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="13" rx="2"/><path d="M8 20h8M12 15v5"/></svg>Devices</span>
+              <span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Settings</span>
+            </div>
+          </div>
+
           <div class="island"></div>
-          <div class="clock">9:41</div>
-          <div class="date">Saturday 14 June</div>
-          <div class="notif big">
-            <div class="h"><img src="icon-256.png" alt="">HAMMOCK<em>now</em></div>
-            <b>Docs site needs you</b>
-            claude wants to run npm run check-links
-          </div>
-          <div class="acts2"><span>Allow</span><span class="no">Deny</span></div>
-          <div class="notif" style="margin-top:14px;opacity:.85">
-            <div class="h"><img src="icon-256.png" alt="">HAMMOCK<em>4m ago</em></div>
-            <b>api finished</b>
-            Added rate limiting to /login. All 212 tests pass.
-          </div>
         </div>
+      </div>
+      <div class="ipnav" role="group" aria-label="Screens of the iPhone app"></div>
+    </div>
+  </div>
+</section>
+
+<section id="screen-sharing" aria-labelledby="ss-h">
+  <div class="center">
+    <p class="kicker">Screen sharing</p>
+    <h2 id="ss-h" style="text-wrap:balance">Your Mac’s whole screen, wherever you are.</h2>
+    <p class="sub">An agent stuck behind a macOS prompt, a Keychain dialog, an app with no command line: open your Mac’s screen on your iPhone, or on another of your Macs, and click and type as if you were sitting at it. It’s built in, with nothing else to install.</p>
+  </div>
+  <div class="ss" aria-label="An illustration of an iPhone on its side, showing a Mac’s screen with a permission prompt waiting to be answered">
+    <div class="scr" aria-hidden="true">
+      <div class="island"></div>
+      <div class="mac">
+        <div class="mbar"><span></span><b>Hammock</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Sat 14 Jun 9:41</span></div>
+        <div class="mwin">
+          <div class="ms"><i class="on"></i><i></i><i></i><i style="width:70%"></i><i></i></div>
+          <div class="mt"><b>●</b> Bash  security find-generic-password
+  ⎿ waiting for the Keychain…
+
+<b>✻</b> Waiting… (2m 10s)</div>
+        </div>
+        <div class="alert">
+          <div class="ai">🔑</div>
+          <b>security wants to use the “login” keychain.</b>
+          <p>Please enter the keychain password.</p>
+          <div class="pw">••••••••••</div>
+          <div class="bt"><span>Always Allow</span><span>Deny</span><span class="dflt">Allow</span></div>
+          <svg class="ptr" viewBox="0 0 20 28"><path d="M2 2v20l5-5 4 9 3.5-1.5-4-8.7H17z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="ctl">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M7 15h10"/></svg></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></span>
+        <span class="end"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
       </div>
     </div>
   </div>
+  <ul class="points sspts">
+    <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Smooth and sharp.</strong> Up to 60 frames a second, hardware-encoded in full-colour HEVC 4:4:4, so text stays crisp, and what’s stopped moving sharpens as it settles.</span></li>
+    <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Made for real networks.</strong> It adapts to the link as it changes, at home or over your VPN, and never stalls waiting for a lost frame.</span></li>
+    <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Pinch for the detail.</strong> Zoom in and you’re looking at the display’s own pixels. Drag like a trackpad, or just tap where you mean.</span></li>
+    <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><strong>Only your own devices.</strong> Your paired iPhones and linked Macs, never guests or agents. It works at the lock screen too.</span></li>
+  </ul>
 </section>
 
 <section id="agents" aria-labelledby="a-h">
@@ -679,6 +932,35 @@
 </footer>
 
 </div>
+<script>
+  // The iPhone section's phone: a button per screen, and it moves on by itself while it's on screen, until
+  // someone picks one (and never with Reduce Motion).
+  (() => {
+    const screens = [...document.querySelectorAll('.ips')], nav = document.querySelector('.ipnav');
+    if (!nav || screens.length < 2) return;
+    let i = 0, timer = null, seen = false;
+    const buttons = screens.map((s, n) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = s.dataset.ip;
+      b.addEventListener('click', () => { stop(); show(n); });
+      nav.append(b);
+      return b;
+    });
+    const show = n => {
+      i = n;
+      screens.forEach((s, k) => s.classList.toggle('on', k === n));
+      buttons.forEach((b, k) => b.setAttribute('aria-pressed', k === n));
+    };
+    const stop = () => { clearInterval(timer); timer = null; seen = true; };
+    show(0);
+    nav.classList.add('live');
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+    new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !timer && !seen) timer = setInterval(() => { if (!document.hidden) show((i + 1) % screens.length); }, 4000);
+      else if (!e.isIntersecting && timer) { clearInterval(timer); timer = null; }
+    }, { threshold: 0.5 }).observe(document.querySelector('.phone'));
+  })();
+</script>
 <script>
   // The headline cycles its word: terminals, agents, builds, servers. Not with Reduce Motion.
   (function () {
