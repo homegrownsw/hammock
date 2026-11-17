@@ -74,7 +74,7 @@ type conn struct {
 	fromPane string               // a CLI run inside a pane (an agent, likely)
 	auditAt  map[string]time.Time // a peer's typing, audited once a minute per pane
 	focus    string               // the pane this client last focused
-	viewerID string               // its name to linked computers whose screens it watches through this daemon (viewerID)
+	viewerID string               // its name to linked computers whose screens it watches through this daemon (made by Daemon.viewerID)
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
 	pid      int                  // a local client's process id (0 unknown)
 	tok      codesign.Token       // and its audit token as it connected (macOS)
