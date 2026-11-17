@@ -49,7 +49,7 @@ Only an XCTest session `xcodebuild` started may rotate an iOS 27 simulator or sy
 - The runner app around the test bundle is Apple's XCTRunner, from Xcode, which isn't Hammock's to redistribute. The host makes it at first use from the template in the Mac's own Xcode (`Platforms/iPhoneSimulator.platform/Developer/Library/Xcode/Agents/XCTRunner.app`), as `xcodebuild` does: copied, its executable named after the runner app and its Info.plist's placeholders filled in (`prepareRunner`). It goes into a temporary folder of the host's own, so two hosts never share one.
 - The host starts it per device on first use with `xcodebuild test-without-building -xctestrun … -destination id=UDID`, passing a socket path as `TEST_RUNNER_HMK_SIM_RUNNER_SOCKET` (xcodebuild hands it to the test as `HMK_SIM_RUNNER_SOCKET`). The test connects back and takes one JSON command per line. Starting takes several seconds; commands then take well under a second. Closing the socket ends the test, and `xcodebuild` with it; the runner stops when the device's last pane closes.
 - **Rotation:** `XCUIDevice.sharedDevice.orientation` (public API); `left` and `right` turn a quarter turn from where the device is. Every reply carries the device's `UIDeviceOrientation`.
-- **Gestures:** XCTest's private `XCSynthesizedEventRecord` and `XCPointerEventPath`, any number of fingers, points 0–1 of the device's native portrait, interface orientation 1, display 0. This follows agent-device's approach (MIT); the code is Hammock's own.
+- **Gestures:** XCTest's private `XCSynthesizedEventRecord` and `XCPointerEventPath`, any number of fingers, points 0–1 of the screen's native portrait (its framebuffer), interface orientation 1, display 0 (the main screen; a foldable's inner screen is its own, below). This follows agent-device's approach (MIT); the code is Hammock's own.
 
 ## Foldables (the iPhone Duo)
 
@@ -58,7 +58,7 @@ Only an XCTest session `xcodebuild` started may rotate an iOS 27 simulator or sy
 - **The guest helper** (`hmk-sim-guest`, started with `xcrun simctl spawn UDID`) registers a virtual HID service (`HIDVirtualEventService`) in the device, as DeviceHub's controls do, and sends vendor-defined events (usage page `0xff61`, usage `0x5b`) carrying an OSSerialized `{provider, source, type, value}`. locationd's device state relay (`CMDeviceStateRelayManager`) reads them; regular iPhones have no such relay, which is why they rotate through the runner instead.
   - **The fold:** `source = hinge-slider-control`, `type = range`, the angle in degrees (0 closed, 180 flat) as an OSSerialized number with DeviceHub's header (`0x3f`, `0x84`) then a little-endian double. SpringBoard swaps screens past about 85° opening and below 20° closing.
   - **Rotation:** `source = orientation-picker-control`, `type = enum`. Quicker than the runner, and works open or closed. This technique follows serve-sim's Duo helper (Apache-2.0); the code is Hammock's own.
-- **Not supported:** pinch on the inner screen (the runner's event record uses display 0).
+- **Gestures on the inner screen.** XCTest numbers displays by screenID (`XCUIScreen.screens`: the cover is 1, the inner screen 3), so the host sends the inner screen's screenID and its framebuffer's size in points, and the runner makes its event record on that display. Points are in its framebuffer's own portrait, like the main screen's, whichever way the device is turned. The cover stays on display 0.
 
 ## Apple TV
 

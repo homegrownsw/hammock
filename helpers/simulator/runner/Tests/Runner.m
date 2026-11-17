@@ -7,7 +7,9 @@
 //       left and right: a quarter turn of the device from where it is
 //   {"cmd":"gesture","paths":[[{"x":0.4,"y":0.5,"t":0},{"x":0.2,"y":0.5,"t":300}],[…]]}
 //       fingers' paths; x and y are 0–1 of the device's native portrait (the
-//       framebuffer, however the device is turned), t in ms
+//       framebuffer, however the device is turned), t in ms; on a foldable's
+//       inner screen also "display" (its screenID) and "w", "h" (its
+//       framebuffer, in points)
 //
 // replies {"ok":true,"device":N} or {"ok":false,"error":"…","device":N}, N being
 // the device's UIDeviceOrientation after the command.
@@ -97,12 +99,13 @@
     XCUIDevice.sharedDevice.orientation = o.integerValue;
     return nil;
   }
-  if ([cmd isEqual:@"gesture"]) return [self gesture:msg[@"paths"]];
+  if ([cmd isEqual:@"gesture"]) return [self gesture:msg];
   return [NSString stringWithFormat:@"unknown command %@", cmd];
 }
 
 // Fingers on the screen, as ratios of the device's native portrait.
-- (NSString *)gesture:(NSArray *)paths {
+- (NSString *)gesture:(NSDictionary *)msg {
+  NSArray *paths = msg[@"paths"];
   if (![paths isKindOfClass:NSArray.class] || paths.count == 0) return @"gesture: no paths";
   Class recordClass = NSClassFromString(@"XCSynthesizedEventRecord");
   Class pathClass = NSClassFromString(@"XCPointerEventPath");
@@ -111,9 +114,14 @@
   // turned: the host maps what you see onto it, as it does touches.
   CGRect frame = _springboard.frame;
   CGSize screen = CGSizeMake(MIN(frame.size.width, frame.size.height), MAX(frame.size.width, frame.size.height));
+  // A foldable's inner screen: its display (XCTest's displayID is the
+  // screen's screenID) and its framebuffer's size, from the host. Display 0
+  // is the main screen.
+  NSUInteger display = [msg[@"display"] unsignedIntegerValue];
+  if ([msg[@"w"] doubleValue] > 0 && [msg[@"h"] doubleValue] > 0) screen = CGSizeMake([msg[@"w"] doubleValue], [msg[@"h"] doubleValue]);
   NSInteger orientation = UIInterfaceOrientationPortrait;
   id record = ((id(*)(id, SEL, NSString *, NSUInteger, NSInteger))objc_msgSend)(
-      [recordClass alloc], NSSelectorFromString(@"initWithName:displayID:interfaceOrientation:"), @"Hammock gesture", 0,
+      [recordClass alloc], NSSelectorFromString(@"initWithName:displayID:interfaceOrientation:"), @"Hammock gesture", display,
       orientation);
   for (NSArray *samples in paths) {
     if (![samples isKindOfClass:NSArray.class] || samples.count == 0) return @"gesture: empty path";
