@@ -1082,8 +1082,10 @@ struct SimulatorPaneView: View {
         }
         a.append(action("camera", "Screenshot to File", "sim_screenshot_file") { SimulatorShot.saveToFile(model, paneID) })
         a.append(action("doc.on.clipboard", "Screenshot to Clipboard", "sim_screenshot_copy") { SimulatorShot.copyToClipboard(model, paneID) })
-        a.append(action("arrow.up.doc.on.clipboard", "Send Clipboard to Device", "sim_clipboard_send") { model.sendClipboardToSimulator(paneID) })
-        a.append(action("arrow.down.doc", "Copy Device Clipboard", "sim_clipboard_get") { model.copySimulatorClipboard(paneID) })
+        if model.simulatorHasClipboard(paneID) {
+            a.append(action("arrow.up.doc.on.clipboard", "Send Clipboard to Device", "sim_clipboard_send") { model.sendClipboardToSimulator(paneID) })
+            a.append(action("arrow.down.doc", "Copy Device Clipboard", "sim_clipboard_get") { model.copySimulatorClipboard(paneID) })
+        }
         a.append(action("power", "Shut Down Simulator", nil, help: "Shut Down Simulator (closes the pane)") { model.shutDownSimulator(paneID) })
         let frameSymbol = isTV ? (showsFrame ? "tv" : "rectangle") : isAndroid ? (showsFrame ? "smartphone" : "rectangle.portrait") : (showsFrame ? "iphone.gen3" : "rectangle.portrait")
         a.append(action(frameSymbol, showsFrame ? "Hide Device Frame" : "Show Device Frame", nil) { Prefs.shared.toggle(.simulatorFrame) })

@@ -209,7 +209,7 @@ struct SimulatorScreen: View {
     /// full screen's controls. An Apple TV's are its remote's.
     @ViewBuilder private var deviceButtons: some View {
         if isTV { remoteButtons } else if isAndroidPhone { androidButtons } else { phoneButtons }
-        clipboardMenu
+        if model.simulatorHasClipboard(paneID) { clipboardMenu }
     }
 
     /// The device's clipboard, both ways: this iPhone's text onto it (not

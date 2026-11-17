@@ -10,6 +10,7 @@ An iOS simulator in a pane, beside the code being built for it. People tap it in
 - `sim-apps`: install, launch, terminate (`sim_install_app`, `sim_launch_app`, `sim_terminate_app`).
 - `sim-url`: open a web page or deep link (`sim_open_url`).
 - `sim-logs`: its os_log (`sim_logs`, `hmk log sim`).
+- `sim-clipboard`: the device's clipboard both ways, not pasted (`sim_clipboard`, `hmk sim clipboard`); an Apple TV refuses it.
 - `sim-shutdown`: close the pane and shut it down (`sim_shutdown`).
 - `sim-remote`: an Apple TV's Siri Remote (`sim_remote`, `hmk sim remote`); touch tools refuse an Apple TV and point to it.
 

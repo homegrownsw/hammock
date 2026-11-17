@@ -55,10 +55,13 @@ func TestSimItemsByPlatform(t *testing.T) {
 		t.Errorf("in Studio: %v", l)
 	}
 	// Each copies the device's clipboard to the terminal's.
-	for _, id := range []string{"iphone", "appletv", "androidtv", "android"} {
+	for _, id := range []string{"iphone", "androidtv", "android"} {
 		if !slices.Contains(simLabels(a.simItems(id)), "Copy Device Clipboard") {
 			t.Errorf("%s: no Copy Device Clipboard", id)
 		}
+	}
+	if slices.Contains(simLabels(a.simItems("appletv")), "Copy Device Clipboard") {
+		t.Error("an Apple TV has no clipboard")
 	}
 	if !isTVPane(a.panes["androidtv"]) || !isTVPane(a.panes["appletv"]) || isTVPane(phone) {
 		t.Error("isTVPane")
