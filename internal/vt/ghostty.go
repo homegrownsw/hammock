@@ -43,6 +43,10 @@ func newMirror(cols, rows int) Mirror {
 	if err != nil {
 		panic("vt: libghostty terminal: " + err.Error())
 	}
+	// No limit in bytes, so the 10,000 lines govern, as in the clients
+	// (TerminalEngine.swift): libghostty's default byte limit kept only
+	// about a page of scrollback, and so did every attach's snapshot.
+	_ = t.SetScrollbackMaxBytes(nil)
 	m := &ghosttyMirror{t: t, rows: rows, cols: cols}
 	t.SetEffectWritePty(func(_ *libghostty.Terminal, data []byte) {
 		if m.resp != nil {

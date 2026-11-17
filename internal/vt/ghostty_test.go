@@ -3,6 +3,7 @@
 package vt
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -43,5 +44,33 @@ func TestGhosttyReportsClientColors(t *testing.T) {
 	m.SetColors(Colors{Foreground: 0xfffaf5, Background: 0x06070c, Dark: true})
 	if !strings.Contains(string(reply), "\x1b[?997;1n") {
 		t.Fatalf("no dark report: %q", reply)
+	}
+}
+
+// The mirror keeps 10,000 lines of scrollback, not libghostty's default byte
+// limit (about one page), so an attach replays the pane's whole history.
+func TestGhosttyKeepsScrollbackLines(t *testing.T) {
+	m := New(80, 24)
+	defer m.Close()
+	var b strings.Builder
+	for i := range 14000 {
+		fmt.Fprintf(&b, "\x1b[32mline %05d\x1b[0m some log output\r\n", i)
+	}
+	m.Write([]byte(b.String()))
+	snap := m.Snapshot()
+
+	// Replay the snapshot into a fresh terminal and count what survived.
+	r := New(80, 24)
+	defer r.Close()
+	r.Write(snap)
+	text := r.Text(true)
+	first := strings.Index(text, "line ")
+	if first < 0 {
+		t.Fatalf("no lines replayed (snapshot %d bytes)", len(snap))
+	}
+	var oldest int
+	fmt.Sscanf(text[first:], "line %d", &oldest)
+	if kept := 14000 - oldest; kept < 9000 {
+		t.Fatalf("replay kept %d lines (snapshot %d bytes), want close to 10,000", kept, len(snap))
 	}
 }
