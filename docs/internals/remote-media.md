@@ -18,6 +18,8 @@ How simulator and browser panes reach a remote viewer (the iPhone, or a guest's 
 
 A viewer on the local socket (a guest's app, whose daemon relays the host's video) takes frames in band on its control link as `MediaFrame` messages instead. The guest's daemon is the one that connects to the host over QUIC and acks, so the host paces against the real network link.
 
+A linked computer relays a screen the same way, for its own app or a phone paired with it. All its viewers share its one connection to the host, so its daemon names each one in `OpenMedia` (`viewer_id`, `viewer_name`, `viewer_kind`) and `ScreenInput` (`viewer_id`), and the host keys ending, the menu bar's names, link sharing and input on the connection and viewer together. It forwards `ScreenInput` only from a client watching that display through it. The host takes viewer fields only from a linked computer.
+
 ## Wire format
 
 - **Frame record** (stream, in band, or cut into datagrams): u32 sequence number, u8 flags, u64 presentation time (µs, host clock), u16 width, u16 height (17 bytes, big-endian), then four u16 crop fractions if cropped, then the picture as AVCC (4-byte big-endian NAL lengths). Flags: 1 keyframe, 2 refresh (predicted from an acknowledged long-term reference), 4 HEVC (else H.264), 8 cropped. A keyframe carries its parameter sets as NALs in front, so a viewer can start from any keyframe.

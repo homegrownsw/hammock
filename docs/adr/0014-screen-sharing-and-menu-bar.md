@@ -67,4 +67,4 @@ As built (2026-11-04), after measuring on an M4 Pro and testing on an iPhone 15 
 - Screen sharing, the Mac and iPhone viewers and the menu bar item are built and in use. The "As built" notes above say where each part differs from the plan.
 - No root parts are installed yet, so the first consequence above hasn't happened: sharing after a reboot, before anyone logs in, is [#30](https://github.com/homegrownsw/hammock/issues/30).
 - Media transport v2 is used for screens only; browser and simulator video keep ADR-0012's streams. The GCC-style rate controller and per-stage timestamps aren't built.
-- Follow-ups: the shared Mac's clipboard back to the viewer ([#29](https://github.com/homegrownsw/hammock/issues/29)), trying Mac to Mac end to end ([#28](https://github.com/homegrownsw/hammock/issues/28)), viewers relayed through a linked Mac ([#15](https://github.com/homegrownsw/hammock/issues/15)).
+- Follow-ups: the shared Mac's clipboard back to the viewer ([#29](https://github.com/homegrownsw/hammock/issues/29)), trying Mac to Mac end to end ([#28](https://github.com/homegrownsw/hammock/issues/28)).

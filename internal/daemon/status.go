@@ -59,10 +59,18 @@ func (d *Daemon) serverStatus() *pb.ServerMessage {
 	slices.SortFunc(r.NeedsYou, func(a, b *pb.AttentionItem) int { return int(a.CreatedUnixMs - b.CreatedUnixMs) })
 	for _, s := range d.media.matching(func(s *mediaSession) bool { return strings.HasPrefix(s.paneID, "screen:") && !s.background }) {
 		d.mu.Lock()
-		name := s.owner.name
+		name, kind := s.owner.name, kinds[s.owner]
+		if kind == "computer" {
+			if sl := d.comp.links[s.owner.peer]; sl != nil && sl.Record != nil && sl.Record.Name != "" {
+				name = sl.Record.Name // the computer's name, not its person's (as Connected)
+			}
+			if s.viewerName != "" {
+				name, kind = s.viewerName, s.viewerKind // a phone of its, say: that one
+			}
+		}
 		d.mu.Unlock()
 		s.mu.Lock()
-		v := &pb.ScreenViewer{SessionId: s.id, Name: name, Kind: kinds[s.owner], DisplayId: screenDisplayOf(s.paneID),
+		v := &pb.ScreenViewer{SessionId: s.id, Name: name, Kind: kind, DisplayId: screenDisplayOf(s.paneID),
 			SinceUnixMs: s.began.UnixMilli(), Controlling: time.Since(s.inputAt) < 5*time.Second}
 		s.mu.Unlock()
 		r.ScreenViewers = append(r.ScreenViewers, v)
@@ -73,18 +81,19 @@ func (d *Daemon) serverStatus() *pb.ServerMessage {
 // endScreenSessions ends one screen session (with its viewer's background
 // layer), or all of them, from this Mac.
 func (d *Daemon) endScreenSessions(m *pb.EndScreenSession) {
-	var owner *conn
+	var one *mediaSession
 	ended := 0
 	if !m.All {
 		for _, s := range d.media.matching(func(s *mediaSession) bool { return s.id == m.SessionId }) {
-			owner = s.owner
+			one = s
 		}
-		if owner == nil {
+		if one == nil {
 			return
 		}
 	}
+	// That viewer's, not every one a linked computer relays (sameViewer).
 	for _, s := range d.media.matching(func(s *mediaSession) bool {
-		return strings.HasPrefix(s.paneID, "screen:") && (m.All || s.owner == owner)
+		return strings.HasPrefix(s.paneID, "screen:") && (m.All || s.sameViewer(one))
 	}) {
 		s.end("ended on the Mac")
 		ended++

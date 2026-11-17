@@ -1578,6 +1578,13 @@ message OpenMedia {
   // into shards with XOR parity, never retransmitted by QUIC (only the
   // shards the viewer asks for, while the frame's fresh). See datagram.go.
   bool datagrams = 10;
+  // A screen relayed by a linked computer for one of its own viewers (its
+  // app, or a phone paired with it): set by that computer, ignored from
+  // anyone else. Every viewer it relays shares its one connection here, so
+  // these tell them apart: ending, naming and link sharing are per viewer.
+  string viewer_id = 11;
+  string viewer_name = 12;  // "": the linked computer's own name
+  string viewer_kind = 13;  // as Connected's; "": "computer"
 }
 message MediaTicket {
   string session_id = 1;
@@ -1660,6 +1667,10 @@ message ScreenInput {
   uint32 display_id = 2;
   string op = 3;
   string args_json = 4;
+  // Set by a linked computer relaying it: which of its viewers sent it (as
+  // in that viewer's OpenMedia), so only the sessions that viewer watches
+  // count. Ignored from anyone else.
+  string viewer_id = 5;
 }
 
 // A menu a page opened in answer to your BrowserInput (a <select>'s options,
