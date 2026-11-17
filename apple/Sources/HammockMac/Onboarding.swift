@@ -4,7 +4,8 @@ import SwiftUI
 
 /// First-run setup, shown in place of the workspace in the main window:
 /// Welcome → Look & feel → Keep it running → Full Disk Access → Agents →
-/// Finish. Every step can be skipped ("Set up later" jumps to the finish).
+/// (herdr, when it has a saved workspace) → Finish. Every step can be
+/// skipped ("Set up later" jumps to the finish).
 /// It shows while `onboarding.completed` is unset, and again from Help ▸
 /// Welcome to Hammock…. Quit on the Full Disk Access step (macOS asks to
 /// Quit & Reopen once it's granted), it opens on that step again.
@@ -21,8 +22,11 @@ final class Onboarding {
     static let resumeKey = "onboarding.resume"
 
     enum Step: Int, CaseIterable {
-        case welcome, look, daemon, access, agents, finish
+        case welcome, look, daemon, access, agents, herdr, finish
     }
+
+    /// The steps shown: herdr's only when there's a herdr workspace to bring.
+    let steps: [Step]
 
     var isShowing: Bool
     var step: Step = .welcome
@@ -34,6 +38,8 @@ final class Onboarding {
     var connected: [String] = []
     /// Where claude was found (from the agents step), so the finish can offer it.
     var claudeFound = false
+    /// Groups brought in from herdr.
+    var imported = 0
 
     private init() {
         let env = ProcessInfo.processInfo.environment
@@ -43,8 +49,10 @@ final class Onboarding {
         defaults.removeObject(forKey: Self.resumeKey)
         let resume = quitAt > 0 && Date().timeIntervalSince1970 - quitAt < 600
         isShowing = env["HMK_ONBOARDING"] == "1" || !defaults.bool(forKey: Self.completedKey) || resume
-        if let s = env["HMK_ONBOARDING_STEP"], let step = Step.allCases.first(where: { "\($0)" == s }) {
-            self.step = step
+        let forced = env["HMK_ONBOARDING_STEP"].flatMap { s in Step.allCases.first { "\($0)" == s } }
+        steps = Step.allCases.filter { $0 != .herdr || forced == .herdr || HerdrImport.found }
+        if let forced {
+            step = forced
         } else if resume {
             step = .access
             // What the steps before set up, for the finish screen.
@@ -70,12 +78,14 @@ final class Onboarding {
         withAnimation(.smooth(duration: 0.35)) { step = s }
     }
 
+    var index: Int { steps.firstIndex(of: step) ?? 0 }
+
     func next() {
-        if let n = Step(rawValue: step.rawValue + 1) { go(n) }
+        if index + 1 < steps.count { go(steps[index + 1]) }
     }
 
     func back() {
-        if let p = Step(rawValue: step.rawValue - 1) { go(p) }
+        if index > 0 { go(steps[index - 1]) }
     }
 
     func finish() {
@@ -105,7 +115,7 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            StepDots(step: flow.step)
+            StepDots(steps: flow.steps, index: flow.index)
                 .frame(height: 52)
             Group {
                 switch flow.step {
@@ -114,6 +124,7 @@ struct OnboardingView: View {
                 case .daemon: DaemonStep()
                 case .access: AccessStep()
                 case .agents: AgentsStep()
+                case .herdr: HerdrStep()
                 case .finish: FinishStep(model: model)
                 }
             }
@@ -153,19 +164,20 @@ struct OnboardingView: View {
 // MARK: - Chrome
 
 private struct StepDots: View {
-    let step: Onboarding.Step
+    let steps: [Onboarding.Step]
+    let index: Int
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(Onboarding.Step.allCases, id: \.self) { s in
+            ForEach(steps.indices, id: \.self) { i in
                 Capsule()
-                    .fill(s == step ? Brand.fern : s.rawValue < step.rawValue ? Brand.fern.opacity(0.45) : Color.primary.opacity(0.18))
-                    .frame(width: s == step ? 20 : 6, height: 6)
+                    .fill(i == index ? Brand.fern : i < index ? Brand.fern.opacity(0.45) : Color.primary.opacity(0.18))
+                    .frame(width: i == index ? 20 : 6, height: 6)
             }
         }
-        .animation(.smooth, value: step)
+        .animation(.smooth, value: index)
         .accessibilityElement()
-        .accessibilityLabel("Step \(step.rawValue + 1) of \(Onboarding.Step.allCases.count)")
+        .accessibilityLabel("Step \(index + 1) of \(steps.count)")
     }
 }
 

@@ -195,6 +195,10 @@ Usage:
   hmk hooks print                          show hook config for Claude Code and Codex (install covers the rest)
   hmk hooks install [--dry-run [--json]] [--harness claude,codex,…]  add Hammock hooks to your agents' config
   hmk hooks install --uninstall            remove them again
+  hmk import herdr [--dry-run [--json]] [--only WORKSPACE,...]
+                                            bring herdr's workspaces into Hammock: each a Group, with its
+                                            tabs, splits, folders and names, its agents' conversations
+                                            resumed (--dry-run: what it would make; --only: some, by id)
   hmk mcp                                  run the MCP server on stdio
   hmk tui                                  full-screen UI with mouse support (Ctrl-B prefix, Ctrl-B ? for keys)
   hmk report STATE [MESSAGE] [--progress N] [--id ID] [--title T] [--app NAME] [--kind KIND]
@@ -233,6 +237,8 @@ func main() {
 		err = runHook(args[1:])
 	case "hooks":
 		err = runHooks(args[1:])
+	case "import":
+		err = runImport(args[1:])
 	case "mcp":
 		err = runMCP(args[1:])
 	case "tui":

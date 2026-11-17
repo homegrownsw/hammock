@@ -11,8 +11,9 @@ enum HammockCLI {
         let output: String // stdout + stderr, for showing
     }
 
-    /// Runs the app's own `hmk` with args, off the main thread.
-    static func run(_ args: [String]) async -> Result {
+    /// Runs the app's own `hmk` with args (and env added to the app's
+    /// environment), off the main thread.
+    static func run(_ args: [String], env: [String: String] = [:]) async -> Result {
         guard let hammock = CommandLineTool.bundled, FileManager.default.isExecutableFile(atPath: hammock.path) else {
             return Result(ok: false, stdout: Data(), output: "hmk was not found in the app bundle.")
         }
@@ -20,6 +21,7 @@ enum HammockCLI {
             let p = Process()
             p.executableURL = hammock
             p.arguments = args
+            if !env.isEmpty { p.environment = ProcessInfo.processInfo.environment.merging(env) { $1 } }
             let out = Pipe(), err = Pipe()
             p.standardOutput = out
             p.standardError = err
@@ -990,6 +992,7 @@ struct FinishStep: View {
         if flow.diskAccess { out.append("Full Disk Access on") }
         if flow.cliPath != nil { out.append("\(CommandLineTool.linkName) command installed") }
         if !flow.connected.isEmpty { out.append(flow.connected.joined(separator: " and ") + " connected") }
+        if flow.imported > 0 { out.append(flow.imported == 1 ? "1 Group from herdr" : "\(flow.imported) Groups from herdr") }
         return out
     }
 

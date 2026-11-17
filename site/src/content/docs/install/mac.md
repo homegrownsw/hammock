@@ -23,6 +23,9 @@ The first time it opens, Hammock walks you through a short setup.
 - **Full Disk Access** (see [below](#full-disk-access)).
 - **Connect your agents:** installs Hammock's hooks and MCP tools for the coding agents it finds. See
   [Setting up agents](/hammock/docs/agents/setup/).
+- **Bring your workspace from herdr** (only if you use [herdr](https://herdr.dev)): each herdr workspace you pick
+  becomes a Group, with its tabs, splits, folders and names, and agents resume their conversations. Quit herdr
+  first. Later, `hmk import herdr` does the same.
 
 ## Keeping the Hammock Server running
 
