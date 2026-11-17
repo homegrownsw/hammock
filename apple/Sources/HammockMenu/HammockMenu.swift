@@ -231,14 +231,21 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     private func decorate(_ item: NSMenuItem, icon: String?, tint: NSColor?, detail: String) {
         if !detail.isEmpty { item.subtitle = detail }
-        if let icon, var image = NSImage(systemSymbolName: icon, accessibilityDescription: nil) {
-            // Tinted: the mark white on the coloured shape (one colour would paint the
-            // mark the shape's colour, losing it), and in colour, never the menu's grey.
-            if let tint, let tinted = image.withSymbolConfiguration(.init(paletteColors: [.white, tint])) {
-                image = tinted
-                image.isTemplate = false
-            }
-            item.image = image
+        // The icon goes in the title, before the text: a status item's menu
+        // doesn't draw items' images. Tinted, the mark is white on the
+        // coloured shape (one colour would paint the mark the shape's colour).
+        let font = NSFont.menuFont(ofSize: 0)
+        var config = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
+        if let tint { config = config.applying(.init(paletteColors: [.white, tint])) }
+        if let icon, let image = NSImage(systemSymbolName: icon, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+            image.isTemplate = tint == nil
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            attachment.bounds = CGRect(x: 0, y: (font.capHeight - image.size.height) / 2, width: image.size.width, height: image.size.height)
+            let title = NSMutableAttributedString(attachment: attachment)
+            title.append(NSAttributedString(string: "  " + item.title))
+            title.addAttribute(.font, value: font, range: NSRange(location: 0, length: title.length))
+            item.attributedTitle = title
         }
     }
 }
