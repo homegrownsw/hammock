@@ -109,7 +109,9 @@ var Keys = []Key{
 	{Name: "keep-empty-groups", Group: "Window and sidebar", Value: "true", Default: "true",
 		Doc: "⌘W on a Group's last tab keeps the Group; false: closes it too", Only: "Mac"},
 	{Name: "menu-bar", Group: "Window and sidebar", Value: "always | active", Default: "always",
-		Doc: "the menu bar item; active: only while a screen's shared or the server's down", Only: "Mac"},
+		Doc: "the menu bar item; active: only while a screen's shared, an agent needs you (menu-bar-agents) or the server's down", Only: "Mac"},
+	{Name: "menu-bar-agents", Group: "Window and sidebar", Value: "true", Default: "true",
+		Doc: "the menu bar item counts the agents that need you on its icon, and lists them and finished ones in its menu", Only: "Mac"},
 	{Name: "group-sharing", Group: "Window and sidebar", Value: "false", Default: "false",
 		Doc: "true: Share Group in the toolbar, menus and palette, to share Groups with other people", Only: "Mac"},
 

@@ -40,7 +40,8 @@ extension AppConfig {
         #   sidebar-finished = true                (finished agents get their own list at the bottom of the sidebar; Mac only)
         #   collapsed-group-agents = false         (true: a collapsed Group still shows its tabs with an active agent; Mac only)
         #   keep-empty-groups = true               (⌘W on a Group's last tab keeps the Group; false: closes it too; Mac only)
-        #   menu-bar = always | active             (the menu bar item; active: only while a screen's shared or the server's down; Mac only)
+        #   menu-bar = always | active             (the menu bar item; active: only while a screen's shared, an agent needs you (menu-bar-agents) or the server's down; Mac only)
+        #   menu-bar-agents = true                 (the menu bar item counts the agents that need you on its icon, and lists them and finished ones in its menu; Mac only)
         #   group-sharing = false                  (true: Share Group in the toolbar, menus and palette, to share Groups with other people; Mac only)
         #
         # Panes

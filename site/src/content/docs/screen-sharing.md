@@ -45,7 +45,7 @@ Screen sharing works at the lock screen while you're logged in. To unlock, type 
 
 While anyone is viewing, Hammock's menu bar icon is filled in, with the number of viewers beside it. Its menu lists each viewer with an **End** button.
 
-To show the menu bar item only then, set Settings ▸ General ▸ Menu Bar ▸ **Show Hammock in the menu bar** to **When a screen is shared or the server is down** (`menu-bar = active`).
+To show the menu bar item only then (or while an agent needs you), set Settings ▸ General ▸ Menu Bar ▸ **Show Hammock in the menu bar** to **When something needs you or the server is down** (`menu-bar = active`).
 
 ## Who can see your screen
 

@@ -4,6 +4,7 @@ package daemon
 // answer, and ending screen sessions. This Mac's own clients only.
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"time"
@@ -29,7 +30,7 @@ func (d *Daemon) connKind(c *conn) string {
 func (d *Daemon) serverStatus() *pb.ServerMessage {
 	d.mu.Lock()
 	r := &pb.ServerStatusReply{
-		Version: Version, StartedUnixMs: d.started.UnixMilli(), Panes: uint32(len(d.panes)),
+		Version: Version, ProductVersion: ProductVersion, StartedUnixMs: d.started.UnixMilli(), Panes: uint32(len(d.panes)),
 		RemoteEnabled: d.remote.on, RemoteAddresses: slices.Clone(d.remote.addrs),
 		Grants: uint32(len(d.grants)), ScreenSharing: screenSharing(),
 	}
@@ -46,9 +47,20 @@ func (d *Daemon) serverStatus() *pb.ServerMessage {
 		}
 		r.Connected = append(r.Connected, &pb.Connected{Name: name, Kind: kind})
 	}
+	// As the sidebar has them: Needs You (waiting on you, or failed), and
+	// Finished (done, not yet looked at; looking clears them).
+	r.Places = map[string]string{}
 	for _, a := range d.attention {
-		if a.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT || a.State == pb.AgentState_AGENT_STATE_ERRORED {
+		switch a.State {
+		case pb.AgentState_AGENT_STATE_NEEDS_INPUT, pb.AgentState_AGENT_STATE_ERRORED:
 			r.NeedsYou = append(r.NeedsYou, proto.CloneOf(a))
+		case pb.AgentState_AGENT_STATE_IDLE:
+			r.Finished = append(r.Finished, proto.CloneOf(a))
+		default:
+			continue
+		}
+		if d.panes[a.PaneId] != nil {
+			r.Places[a.PaneId], _ = d.pushTitle(a.PaneId)
 		}
 	}
 	kinds := map[*conn]string{}
@@ -56,7 +68,8 @@ func (d *Daemon) serverStatus() *pb.ServerMessage {
 		kinds[c] = d.connKind(c)
 	}
 	d.mu.Unlock()
-	slices.SortFunc(r.NeedsYou, func(a, b *pb.AttentionItem) int { return int(a.CreatedUnixMs - b.CreatedUnixMs) })
+	slices.SortFunc(r.NeedsYou, func(a, b *pb.AttentionItem) int { return cmp.Compare(a.CreatedUnixMs, b.CreatedUnixMs) })
+	slices.SortFunc(r.Finished, func(a, b *pb.AttentionItem) int { return cmp.Compare(b.CreatedUnixMs, a.CreatedUnixMs) })
 	for _, s := range d.media.matching(func(s *mediaSession) bool { return strings.HasPrefix(s.paneID, "screen:") && !s.background }) {
 		d.mu.Lock()
 		name, kind := s.owner.name, kinds[s.owner]

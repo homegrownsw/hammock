@@ -182,9 +182,13 @@ private struct GeneralSettings: View {
                     get: { AppConfig.shared.menuBar },
                     set: { AppConfig.shared.set("menu-bar", $0 == "active" ? "active" : nil) })) {
                     Text("Always").tag("always")
-                    Text("When a screen is shared or the server is down").tag("active")
+                    Text("When something needs you or the server is down").tag("active")
                 }
                 .settingAnchor("general.menubar")
+                Toggle("Show agents that need you", isOn: Binding(
+                    get: { AppConfig.shared.menuBarAgents },
+                    set: { AppConfig.shared.set("menu-bar-agents", $0 ? nil : "false") }))
+                    .settingAnchor("general.menubaragents")
             }
             Section("Groups") {
                 Toggle("Keep a Group when its last tab closes", isOn: Binding(

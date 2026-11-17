@@ -80,19 +80,33 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             if !model.shown { menu.cancelTracking() }
             if let button = item.button {
                 let viewers = model.status.screenViewers.count
+                let needs = model.needsCount
+                var label = "Hammock"
+                var title = NSMutableAttributedString()
                 if model.server != .running {
                     button.image = Glyph.image(.warning)
-                    button.title = ""
-                    button.setAccessibilityLabel("Hammock: the server isn’t running")
-                } else if viewers > 0 {
-                    button.image = Glyph.image(.filled)
-                    button.title = "\(viewers)"
-                    button.setAccessibilityLabel(viewers == 1 ? "Hammock: 1 screen viewer" : "Hammock: \(viewers) screen viewers")
+                    label = "Hammock: the server isn’t running"
                 } else {
-                    button.image = Glyph.image(.plain)
-                    button.title = ""
-                    button.setAccessibilityLabel("Hammock")
+                    button.image = Glyph.image(viewers > 0 ? .filled : .plain)
+                    if viewers > 0 {
+                        title = NSMutableAttributedString(string: "\(viewers)", attributes: [
+                            .font: NSFont.menuBarFont(ofSize: 0), .foregroundColor: NSColor.labelColor,
+                        ])
+                        label += viewers == 1 ? ": 1 screen viewer" : ": \(viewers) screen viewers"
+                    }
+                    if needs > 0 {
+                        // The count in an orange badge after the ~ (and any viewers).
+                        let badge = NSTextAttachment()
+                        let image = Glyph.badge(needs)
+                        badge.image = image
+                        badge.bounds = CGRect(x: 0, y: -3, width: image.size.width, height: image.size.height)
+                        if title.length > 0 { title.append(NSAttributedString(string: " ")) }
+                        title.append(NSAttributedString(attachment: badge))
+                        label += (viewers > 0 ? ", " : ": ") + (needs == 1 ? "1 needs you" : "\(needs) need you")
+                    }
                 }
+                button.attributedTitle = title
+                button.setAccessibilityLabel(label)
             }
             build()
         } onChange: { [weak self] in
@@ -109,7 +123,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             "\(model.server)", "\(s.screenViewers.isEmpty)",
             running ? "\(s.remoteEnabled) \(s.remoteAddresses.first ?? "")" : "",
             running ? s.connected.map { "\($0.name)/\($0.kind)" }.joined(separator: ",") : "",
-            running ? s.needsYou.prefix(5).map { "\($0.id)/\($0.summary)" }.joined(separator: ",") + " \(s.grants)" : "",
+            running && model.showAgents ? s.needsYou.prefix(5).map { "\($0.id)/\($0.state)/\($0.summary)/\(s.places[$0.paneID] ?? "")" }.joined(separator: ",") + " \(s.grants)" : "",
+            running && model.showAgents ? s.finished.prefix(5).map { "\($0.id)/\($0.summary)/\(s.places[$0.paneID] ?? "")" }.joined(separator: ",") + " \(s.finished.count)" : "",
+            "\(model.server == .running ? s.productVersion + s.version : "")",
         ].joined(separator: "|")
         guard shape != built else { return }
         built = shape
@@ -123,28 +139,43 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         }
         if running {
             menu.addItem(.sectionHeader(title: "Remote Access"))
+            // Chosen, each opens Settings (where Remote Access and devices
+            // are): not greyed out as information-only items would be.
+            let devices = { [model] in model.openHammock(settings: true) }
             if s.remoteEnabled {
-                menu.addItem(info("On", detail: s.remoteAddresses.first ?? ""))
+                menu.addItem(action("On", detail: s.remoteAddresses.first ?? "", run: devices))
                 for c in s.connected {
-                    menu.addItem(info(c.name.isEmpty ? "A device" : c.name,
-                                      icon: c.kind == "phone" ? "iphone" : c.kind == "guest" ? "person" : "laptopcomputer",
-                                      detail: c.kind == "guest" ? "guest" : "connected"))
+                    menu.addItem(action(c.name.isEmpty ? "A device" : c.name,
+                                        icon: c.kind == "phone" ? "iphone" : c.kind == "guest" ? "person" : "laptopcomputer",
+                                        detail: c.kind == "guest" ? "guest" : "connected", run: devices))
                 }
             } else {
-                menu.addItem(action("Off", detail: "Settings ▸ Devices") { [model] in model.openHammock(settings: true) })
+                menu.addItem(action("Off", detail: "Settings ▸ Devices", run: devices))
             }
             menu.addItem(.separator())
-            let count = s.needsYou.count + Int(s.grants)
-            if count > 0 {
-                menu.addItem(.sectionHeader(title: "Needs You · \(count)"))
-                for a in s.needsYou.prefix(5) {
-                    menu.addItem(action(a.summary.isEmpty ? "An agent is waiting" : a.summary, icon: "exclamationmark.circle.fill", tint: .systemOrange) { [model] in model.openHammock() })
+            if model.showAgents {
+                let count = s.needsYou.count + Int(s.grants)
+                if count > 0 {
+                    menu.addItem(.sectionHeader(title: "Needs You · \(count)"))
+                    for a in s.needsYou.prefix(5) {
+                        let errored = a.state == .errored
+                        let what = a.summary.isEmpty ? (errored ? "Failed" : "Waiting for you") : a.summary
+                        menu.addItem(agentItem(a, detail: what, icon: errored ? "xmark.octagon.fill" : "exclamationmark.circle.fill",
+                                               tint: errored ? .systemRed : .systemOrange))
+                    }
+                    if s.grants > 0 {
+                        let g = Int(s.grants)
+                        menu.addItem(action(g == 1 ? "1 permission request" : "\(g) permission requests", icon: "hand.raised.fill", tint: .systemOrange) { [model] in model.openHammock() })
+                    }
+                    menu.addItem(.separator())
                 }
-                if s.grants > 0 {
-                    let g = Int(s.grants)
-                    menu.addItem(action(g == 1 ? "1 permission request" : "\(g) permission requests", icon: "hand.raised.fill", tint: .systemOrange) { [model] in model.openHammock() })
+                if !s.finished.isEmpty {
+                    menu.addItem(.sectionHeader(title: "Finished · \(s.finished.count)"))
+                    for a in s.finished.prefix(5) {
+                        menu.addItem(agentItem(a, detail: a.summary.isEmpty ? "Finished" : a.summary, icon: "checkmark.circle.fill", tint: .systemGreen))
+                    }
+                    menu.addItem(.separator())
                 }
-                menu.addItem(.separator())
             }
         }
         menu.addItem(action("Open \(MenuModel.appName)") { [model] in model.openHammock() })
@@ -186,12 +217,13 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// A line that says how things are: not a command, so not chosen.
-    private func info(_ title: String, icon: String? = nil, detail: String = "") -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        decorate(item, icon: icon, tint: nil, detail: detail)
-        return item
+    /// An agent in Needs You or Finished: its tab, what it said, and chosen,
+    /// its pane in Hammock (which, for a finished one, counts as seeing it).
+    private func agentItem(_ a: Hammock_V1_AttentionItem, detail: String, icon: String, tint: NSColor) -> NSMenuItem {
+        let place = model.status.places[a.paneID] ?? ""
+        return action(place.isEmpty ? "Agent" : place, icon: icon, tint: tint, detail: detail) { [model] in
+            model.openPane(a.paneID)
+        }
     }
 
     private func decorate(_ item: NSMenuItem, icon: String?, tint: NSColor?, detail: String) {
@@ -230,7 +262,15 @@ final class MenuModel {
     /// Settings ▸ General ▸ Show Hammock in the menu bar: always (the default),
     /// or only while something's happening (a screen shared, the server down).
     private(set) var onlyWhenActive = false
-    var shown: Bool { !onlyWhenActive || server != .running || !status.screenViewers.isEmpty }
+    /// Settings ▸ General ▸ Show agents that need you (menu-bar-agents): the
+    /// icon's badge, and the Needs You and Finished sections.
+    private(set) var showAgents = true
+    /// What the badge counts: agents waiting on you (or failed) and
+    /// permission requests.
+    var needsCount: Int {
+        showAgents && server == .running ? status.needsYou.count + Int(status.grants) : 0
+    }
+    var shown: Bool { !onlyWhenActive || server != .running || !status.screenViewers.isEmpty || needsCount > 0 }
 
     @ObservationIgnored private var conn: DaemonConnection?
     @ObservationIgnored private var connected = false
@@ -270,6 +310,7 @@ final class MenuModel {
     /// Asks the server how it is (every 2 s, and when the menu opens).
     func tick() {
         onlyWhenActive = Config.value("menu-bar") == "active"
+        showAgents = Config.value("menu-bar-agents") != "false"
         guard let conn, connected else {
             if conn == nil { connect() }
             return
@@ -309,7 +350,19 @@ final class MenuModel {
         return Bundle(url: url)
     }()
     static var appName: String { (app?.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? "Hammock" }
-    static var appVersion: String { (app?.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "?" }
+    /// Its release version and build: "2026.5.0 (1326)".
+    static var appVersion: String {
+        let version = app?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = app?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        switch (version, build) {
+        case let (v?, b?): return "\(v) (\(b))"
+        case let (v?, nil): return v
+        case let (nil, b?): return b
+        default: return "?"
+        }
+    }
+    /// The running server's release version (an older server only has its build's).
+    var serverVersion: String { status.productVersion.isEmpty ? status.version : status.productVersion }
     /// The version of the server this app ships (its hmkd's), asked again
     /// only when hmkd changes (an update in place). The app's own
     /// CFBundleVersion is a build number, not comparable.
@@ -356,6 +409,15 @@ final class MenuModel {
             DistributedNotificationCenter.default().postNotificationName(.init("com.homegrownsw.hammock.openSettings"), object: id,
                                                                         userInfo: nil, deliverImmediately: true)
         }
+    }
+
+    /// Opens the app this helper is in (not whichever copy claims
+    /// hammock:// links) showing the pane, as `hmk focus` does.
+    func openPane(_ id: String) {
+        guard let app = Self.app?.bundleURL, let link = URL(string: "hammock://pane/\(id)") else { return openHammock() }
+        let cfg = NSWorkspace.OpenConfiguration()
+        cfg.activates = true
+        NSWorkspace.shared.open([link], withApplicationAt: app, configuration: cfg)
     }
 
     func endScreen(_ sessionID: String?) {
@@ -496,6 +558,26 @@ enum Glyph {
         img.isTemplate = true
         return img
     }
+
+    /// The count of what needs you: white on an orange capsule, in colour
+    /// (not a template), as tall as the mark.
+    static func badge(_ count: Int) -> NSImage {
+        let text = NSAttributedString(string: count > 99 ? "99+" : "\(count)", attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),
+            .foregroundColor: NSColor.white,
+        ])
+        let height: CGFloat = 15
+        let size = NSSize(width: max(height, ceil(text.size().width) + 9), height: height)
+        let img = NSImage(size: size, flipped: false) { rect in
+            NSColor.systemOrange.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: height / 2, yRadius: height / 2).fill()
+            let t = text.size()
+            text.draw(at: NSPoint(x: (rect.width - t.width) / 2, y: (rect.height - t.height) / 2))
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
 }
 
 // MARK: The menu's views
@@ -505,39 +587,37 @@ struct MenuHeader: View {
     let model: MenuModel
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             if let icon = MenuModel.app.map({ NSWorkspace.shared.icon(forFile: $0.bundlePath) }) {
                 Image(nsImage: icon).resizable().frame(width: 40, height: 40)
             }
+            // The versions under the title and state, on the same edge.
             VStack(alignment: .leading, spacing: 2) {
                 Text("Hammock Server").font(.headline)
                 HStack(spacing: 6) {
                     Circle().fill(dot).frame(width: 8, height: 8)
                     Text(stateLine).font(.callout).foregroundStyle(.secondary)
                 }
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 10).padding(.top, 8)
-        .overlay(alignment: .bottomLeading) { EmptyView() }
-        .safeAreaInset(edge: .bottom) {
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 2) {
-                GridRow {
-                    Text(MenuModel.appName).foregroundStyle(.secondary)
-                    Text(MenuModel.appVersion)
-                }
-                if model.server == .running {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 2) {
                     GridRow {
-                        Text("Server").foregroundStyle(.secondary)
-                        Text(model.status.version + (model.versionsDiffer ? "  (restart to update)" : ""))
-                            .foregroundStyle(model.versionsDiffer ? Color.orange : .primary)
+                        Text(MenuModel.appName).foregroundStyle(.secondary)
+                        Text(MenuModel.appVersion)
+                    }
+                    if model.server == .running {
+                        GridRow {
+                            Text("Server").foregroundStyle(.secondary)
+                            Text(model.serverVersion + (model.versionsDiffer ? "  (restart to update)" : ""))
+                                .foregroundStyle(model.versionsDiffer ? Color.orange : .primary)
+                        }
                     }
                 }
+                .font(.caption)
+                .lineLimit(1)
+                .padding(.top, 6)
             }
-            .font(.caption)
-            .lineLimit(1)
-            .padding(.leading, 62).padding(.top, 4)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
     }
 
     private var dot: Color {

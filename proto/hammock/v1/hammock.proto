@@ -1760,6 +1760,9 @@ message ServerStatusReply {
   repeated AttentionItem needs_you = 8;  // agents waiting for you
   uint32 grants = 9;                     // permission requests waiting
   bool screen_sharing = 10;              // Screen Sharing is on in Settings
+  repeated AttentionItem finished = 11;  // agents done, not yet looked at (newest first)
+  map<string, string> places = 12;       // pane id → its tab's title, for needs_you and finished
+  string product_version = 13;           // Hammock's release version (version is the build)
 }
 message Connected {
   string name = 1;
