@@ -24,6 +24,8 @@ import (
 	"syscall"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
@@ -409,8 +411,12 @@ func (d *Daemon) screenInput(c *conn, m *pb.ScreenInput) error {
 		return err
 	}
 	display := m.DisplayId
+	viewer := ""
+	if d.relaysViewers(c) {
+		viewer = m.ViewerId // one of the linked computer's viewers: only what that one watches
+	}
 	watching := d.media.matching(func(s *mediaSession) bool {
-		return s.owner == c && strings.HasPrefix(s.paneID, "screen:") && (display == 0 || s.paneID == screenPaneID(display))
+		return s.owner == c && s.viewer == viewer && strings.HasPrefix(s.paneID, "screen:") && (display == 0 || s.paneID == screenPaneID(display))
 	})
 	if len(watching) == 0 {
 		return errors.New("open the screen before sending it input")
@@ -430,6 +436,49 @@ func (d *Daemon) screenInput(c *conn, m *pb.ScreenInput) error {
 		}
 	}
 	return d.screens.send(map[string]any{"t": "input", "display": display, "op": m.Op, "args": args})
+}
+
+// relaysViewers says whether c is a linked computer, whose daemon relays
+// its own viewers' screen sessions here over its one connection, naming
+// each viewer (OpenMedia's and ScreenInput's viewer_id). Nobody else's
+// naming is taken.
+func (d *Daemon) relaysViewers(c *conn) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return c.peer != "" && d.isLinked(c.peer)
+}
+
+// relayScreenInput passes a client's ScreenInput on to the linked computer
+// whose screen it watches through this daemon (l), naming it as the viewer
+// there: only from a client watching that display through l.
+func (l *peerLink) relayScreenInput(c *conn, msg *pb.ClientMessage) (*pb.ServerMessage, error) {
+	in := msg.GetScreenInput()
+	h := l.d.media
+	h.mu.Lock()
+	watching := false
+	for _, r := range h.relays {
+		if r.owner == c && r.link == l && r.screen && (in.DisplayId == 0 || r.display == in.DisplayId) {
+			watching = true
+		}
+	}
+	h.mu.Unlock()
+	if !watching {
+		return nil, errors.New("open the screen before sending it input")
+	}
+	up := proto.CloneOf(msg)
+	up.GetScreenInput().ViewerId = l.d.viewerID(c)
+	return l.forward(c, up)
+}
+
+// viewerID is c's name as a viewer of a linked computer's screen, the same
+// for each of its sessions there (OpenMedia's viewer_id).
+func (d *Daemon) viewerID(c *conn) string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if c.viewerID == "" {
+		c.viewerID = newID("sv")
+	}
+	return c.viewerID
 }
 
 func screenDisplayOf(paneID string) uint32 {

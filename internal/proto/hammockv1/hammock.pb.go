@@ -14903,7 +14903,14 @@ type OpenMedia struct {
 	// Over QUIC, frames as datagrams (media transport v2, ADR-0014): each cut
 	// into shards with XOR parity, never retransmitted by QUIC (only the
 	// shards the viewer asks for, while the frame's fresh). See datagram.go.
-	Datagrams     bool `protobuf:"varint,10,opt,name=datagrams,proto3" json:"datagrams,omitempty"`
+	Datagrams bool `protobuf:"varint,10,opt,name=datagrams,proto3" json:"datagrams,omitempty"`
+	// A screen relayed by a linked computer for one of its own viewers (its
+	// app, or a phone paired with it): set by that computer, ignored from
+	// anyone else. Every viewer it relays shares its one connection here, so
+	// these tell them apart: ending, naming and link sharing are per viewer.
+	ViewerId      string `protobuf:"bytes,11,opt,name=viewer_id,json=viewerId,proto3" json:"viewer_id,omitempty"`
+	ViewerName    string `protobuf:"bytes,12,opt,name=viewer_name,json=viewerName,proto3" json:"viewer_name,omitempty"` // "": the linked computer's own name
+	ViewerKind    string `protobuf:"bytes,13,opt,name=viewer_kind,json=viewerKind,proto3" json:"viewer_kind,omitempty"` // as Connected's; "": "computer"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15006,6 +15013,27 @@ func (x *OpenMedia) GetDatagrams() bool {
 		return x.Datagrams
 	}
 	return false
+}
+
+func (x *OpenMedia) GetViewerId() string {
+	if x != nil {
+		return x.ViewerId
+	}
+	return ""
+}
+
+func (x *OpenMedia) GetViewerName() string {
+	if x != nil {
+		return x.ViewerName
+	}
+	return ""
+}
+
+func (x *OpenMedia) GetViewerKind() string {
+	if x != nil {
+		return x.ViewerKind
+	}
+	return ""
 }
 
 type MediaTicket struct {
@@ -15557,11 +15585,15 @@ func (x *Display) GetMain() bool {
 //
 // mods: any of "alt", "ctrl", "meta", "shift", "fn". No reply on success.
 type ScreenInput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ComputerId    string                 `protobuf:"bytes,1,opt,name=computer_id,json=computerId,proto3" json:"computer_id,omitempty"`
-	DisplayId     uint32                 `protobuf:"varint,2,opt,name=display_id,json=displayId,proto3" json:"display_id,omitempty"`
-	Op            string                 `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"`
-	ArgsJson      string                 `protobuf:"bytes,4,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	ComputerId string                 `protobuf:"bytes,1,opt,name=computer_id,json=computerId,proto3" json:"computer_id,omitempty"`
+	DisplayId  uint32                 `protobuf:"varint,2,opt,name=display_id,json=displayId,proto3" json:"display_id,omitempty"`
+	Op         string                 `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"`
+	ArgsJson   string                 `protobuf:"bytes,4,opt,name=args_json,json=argsJson,proto3" json:"args_json,omitempty"`
+	// Set by a linked computer relaying it: which of its viewers sent it (as
+	// in that viewer's OpenMedia), so only the sessions that viewer watches
+	// count. Ignored from anyone else.
+	ViewerId      string `protobuf:"bytes,5,opt,name=viewer_id,json=viewerId,proto3" json:"viewer_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -15620,6 +15652,13 @@ func (x *ScreenInput) GetOp() string {
 func (x *ScreenInput) GetArgsJson() string {
 	if x != nil {
 		return x.ArgsJson
+	}
+	return ""
+}
+
+func (x *ScreenInput) GetViewerId() string {
+	if x != nil {
+		return x.ViewerId
 	}
 	return ""
 }
@@ -26346,7 +26385,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\rSimulatorCall\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x0e\n" +
 	"\x02op\x18\x02 \x01(\tR\x02op\x12\x1b\n" +
-	"\targs_json\x18\x03 \x01(\tR\bargsJson\"\xa3\x02\n" +
+	"\targs_json\x18\x03 \x01(\tR\bargsJson\"\x82\x03\n" +
 	"\tOpenMedia\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x17\n" +
 	"\ain_band\x18\x02 \x01(\bR\x06inBand\x12\x1d\n" +
@@ -26363,7 +26402,12 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"background\x18\t \x01(\bR\n" +
 	"background\x12\x1c\n" +
 	"\tdatagrams\x18\n" +
-	" \x01(\bR\tdatagrams\"a\n" +
+	" \x01(\bR\tdatagrams\x12\x1b\n" +
+	"\tviewer_id\x18\v \x01(\tR\bviewerId\x12\x1f\n" +
+	"\vviewer_name\x18\f \x01(\tR\n" +
+	"viewerName\x12\x1f\n" +
+	"\vviewer_kind\x18\r \x01(\tR\n" +
+	"viewerKind\"a\n" +
 	"\vMediaTicket\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
@@ -26405,14 +26449,15 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05width\x18\x03 \x01(\rR\x05width\x12\x16\n" +
 	"\x06height\x18\x04 \x01(\rR\x06height\x12\x14\n" +
 	"\x05scale\x18\x05 \x01(\x01R\x05scale\x12\x12\n" +
-	"\x04main\x18\x06 \x01(\bR\x04main\"z\n" +
+	"\x04main\x18\x06 \x01(\bR\x04main\"\x97\x01\n" +
 	"\vScreenInput\x12\x1f\n" +
 	"\vcomputer_id\x18\x01 \x01(\tR\n" +
 	"computerId\x12\x1d\n" +
 	"\n" +
 	"display_id\x18\x02 \x01(\rR\tdisplayId\x12\x0e\n" +
 	"\x02op\x18\x03 \x01(\tR\x02op\x12\x1b\n" +
-	"\targs_json\x18\x04 \x01(\tR\bargsJson\"\xd3\x01\n" +
+	"\targs_json\x18\x04 \x01(\tR\bargsJson\x12\x1b\n" +
+	"\tviewer_id\x18\x05 \x01(\tR\bviewerId\"\xd3\x01\n" +
 	"\vBrowserMenu\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x10\n" +
 	"\x03seq\x18\x02 \x01(\x05R\x03seq\x12\x12\n" +

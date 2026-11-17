@@ -6441,6 +6441,18 @@ public nonisolated struct Hammock_V1_OpenMedia: Sendable {
   /// shards the viewer asks for, while the frame's fresh). See datagram.go.
   public var datagrams: Bool = false
 
+  /// A screen relayed by a linked computer for one of its own viewers (its
+  /// app, or a phone paired with it): set by that computer, ignored from
+  /// anyone else. Every viewer it relays shares its one connection here, so
+  /// these tell them apart: ending, naming and link sharing are per viewer.
+  public var viewerID: String = String()
+
+  /// "": the linked computer's own name
+  public var viewerName: String = String()
+
+  /// as Connected's; "": "computer"
+  public var viewerKind: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6635,6 +6647,11 @@ public nonisolated struct Hammock_V1_ScreenInput: Sendable {
   public var op: String = String()
 
   public var argsJson: String = String()
+
+  /// Set by a linked computer relaying it: which of its viewers sent it (as
+  /// in that viewer's OpenMedia), so only the sessions that viewer watches
+  /// count. Ignored from anyone else.
+  public var viewerID: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -21204,7 +21221,7 @@ nonisolated extension Hammock_V1_SimulatorCall: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Hammock_V1_OpenMedia: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".OpenMedia"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}in_band\0\u{3}max_pixels\0\u{1}screen\0\u{3}display_id\0\u{3}computer_id\0\u{1}codecs\0\u{3}max_fps\0\u{1}background\0\u{1}datagrams\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}in_band\0\u{3}max_pixels\0\u{1}screen\0\u{3}display_id\0\u{3}computer_id\0\u{1}codecs\0\u{3}max_fps\0\u{1}background\0\u{1}datagrams\0\u{3}viewer_id\0\u{3}viewer_name\0\u{3}viewer_kind\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -21222,6 +21239,9 @@ nonisolated extension Hammock_V1_OpenMedia: SwiftProtobuf.Message, SwiftProtobuf
       case 8: try { try decoder.decodeSingularUInt32Field(value: &self.maxFps) }()
       case 9: try { try decoder.decodeSingularBoolField(value: &self.background) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.datagrams) }()
+      case 11: try { try decoder.decodeSingularStringField(value: &self.viewerID) }()
+      case 12: try { try decoder.decodeSingularStringField(value: &self.viewerName) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.viewerKind) }()
       default: break
       }
     }
@@ -21258,6 +21278,15 @@ nonisolated extension Hammock_V1_OpenMedia: SwiftProtobuf.Message, SwiftProtobuf
     if self.datagrams != false {
       try visitor.visitSingularBoolField(value: self.datagrams, fieldNumber: 10)
     }
+    if !self.viewerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.viewerID, fieldNumber: 11)
+    }
+    if !self.viewerName.isEmpty {
+      try visitor.visitSingularStringField(value: self.viewerName, fieldNumber: 12)
+    }
+    if !self.viewerKind.isEmpty {
+      try visitor.visitSingularStringField(value: self.viewerKind, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -21272,6 +21301,9 @@ nonisolated extension Hammock_V1_OpenMedia: SwiftProtobuf.Message, SwiftProtobuf
     if lhs.maxFps != rhs.maxFps {return false}
     if lhs.background != rhs.background {return false}
     if lhs.datagrams != rhs.datagrams {return false}
+    if lhs.viewerID != rhs.viewerID {return false}
+    if lhs.viewerName != rhs.viewerName {return false}
+    if lhs.viewerKind != rhs.viewerKind {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -21619,7 +21651,7 @@ nonisolated extension Hammock_V1_Display: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ScreenInput: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ScreenInput"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}computer_id\0\u{3}display_id\0\u{1}op\0\u{3}args_json\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}computer_id\0\u{3}display_id\0\u{1}op\0\u{3}args_json\0\u{3}viewer_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -21631,6 +21663,7 @@ nonisolated extension Hammock_V1_ScreenInput: SwiftProtobuf.Message, SwiftProtob
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.displayID) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.op) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.argsJson) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.viewerID) }()
       default: break
       }
     }
@@ -21649,6 +21682,9 @@ nonisolated extension Hammock_V1_ScreenInput: SwiftProtobuf.Message, SwiftProtob
     if !self.argsJson.isEmpty {
       try visitor.visitSingularStringField(value: self.argsJson, fieldNumber: 4)
     }
+    if !self.viewerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.viewerID, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -21657,6 +21693,7 @@ nonisolated extension Hammock_V1_ScreenInput: SwiftProtobuf.Message, SwiftProtob
     if lhs.displayID != rhs.displayID {return false}
     if lhs.op != rhs.op {return false}
     if lhs.argsJson != rhs.argsJson {return false}
+    if lhs.viewerID != rhs.viewerID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -183,8 +183,11 @@ type mediaSession struct {
 	id     string
 	paneID string
 	owner  *conn
-	src    frameSource
-	max    int
+	// A screen a linked computer relays: which of its viewers this is
+	// (OpenMedia's viewer_*), "" otherwise. Its viewers all share owner.
+	viewer, viewerName, viewerKind string
+	src                            frameSource
+	max                            int
 
 	mu       sync.Mutex
 	sink     mediaSink
@@ -264,7 +267,7 @@ func codecName(hevc bool) string {
 func (s *mediaSession) shareLink() {
 	var bgRate float64
 	for _, o := range s.hub.matching(func(o *mediaSession) bool {
-		return o != s && o.owner == s.owner && o.background && o.paneID == s.paneID
+		return o != s && o.sameViewer(s) && o.background && o.paneID == s.paneID
 	}) {
 		o.mu.Lock()
 		bgRate += o.rate
@@ -278,6 +281,12 @@ func (s *mediaSession) shareLink() {
 	}
 	s.ceiling = max(ceiling, s.floor)
 	s.rate = min(s.rate, s.ceiling)
+}
+
+// sameViewer says whether two sessions are one viewer's: the same
+// connection, and the same viewer of the linked computer relaying them.
+func (s *mediaSession) sameViewer(o *mediaSession) bool {
+	return s.owner == o.owner && s.viewer == o.viewer
 }
 
 // pageSource is a frameSource whose pixels are a page that can take its
@@ -600,6 +609,9 @@ func (h *mediaHub) open(c *conn, m *pb.OpenMedia) (*pb.ServerMessage, error) {
 		s.fps = int(m.MaxFps)
 	}
 	s.background = m.Screen && m.Background
+	if m.Screen && h.d.relaysViewers(c) {
+		s.viewer, s.viewerName, s.viewerKind = m.ViewerId, m.ViewerName, m.ViewerKind
+	}
 	s.datagrams = m.Datagrams
 	t := &pb.MediaTicket{SessionId: id}
 	h.mu.Lock()

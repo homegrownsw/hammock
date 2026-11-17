@@ -33,6 +33,8 @@ type mediaRelay struct {
 	id       string // yours, to the app
 	hostID   string // the host's session
 	paneID   string
+	screen   bool   // a linked computer's display (paneID is ""), relayScreenInput
+	display  uint32 // which (0: its main display)
 	owner    *conn
 	qc       *quic.Conn
 	ctl      *quic.Stream
@@ -81,7 +83,19 @@ func (l *peerLink) openMedia(c *conn, m *pb.OpenMedia) (*pb.ServerMessage, error
 	if err != nil {
 		return nil, err
 	}
-	r, err := cl.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{PaneId: m.PaneId, MaxPixels: m.MaxPixels, Screen: m.Screen, DisplayId: m.DisplayId, Codecs: m.Codecs, MaxFps: m.MaxFps, Background: m.Background}}})
+	up := &pb.OpenMedia{PaneId: m.PaneId, MaxPixels: m.MaxPixels, Screen: m.Screen, DisplayId: m.DisplayId, Codecs: m.Codecs, MaxFps: m.MaxFps, Background: m.Background}
+	if m.Screen {
+		// One of the viewers this daemon relays (they share its one
+		// connection there): which, so the host ends, names and paces each
+		// on its own. This Mac's own apps are this computer, named there.
+		up.ViewerId = l.d.viewerID(c)
+		l.d.mu.Lock()
+		if kind := l.d.connKind(c); kind != "" {
+			up.ViewerName, up.ViewerKind = c.name, kind
+		}
+		l.d.mu.Unlock()
+	}
+	r, err := cl.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: up}})
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +122,7 @@ func (l *peerLink) openMedia(c *conn, m *pb.OpenMedia) (*pb.ServerMessage, error
 		_ = cl.Send(context.Background(), &pb.ClientMessage{Msg: &pb.ClientMessage_CloseMedia{CloseMedia: &pb.CloseMedia{SessionId: t.SessionId}}})
 		return nil, err
 	}
-	rl := &mediaRelay{hub: l.d.media, link: l, id: newID("ms"), hostID: t.SessionId, paneID: m.PaneId, owner: c, qc: qc, ctl: ctl}
+	rl := &mediaRelay{hub: l.d.media, link: l, id: newID("ms"), hostID: t.SessionId, paneID: m.PaneId, screen: m.Screen, display: m.DisplayId, owner: c, qc: qc, ctl: ctl}
 	h := l.d.media
 	h.mu.Lock()
 	h.relays[rl.id] = rl

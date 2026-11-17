@@ -74,6 +74,7 @@ type conn struct {
 	fromPane string               // a CLI run inside a pane (an agent, likely)
 	auditAt  map[string]time.Time // a peer's typing, audited once a minute per pane
 	focus    string               // the pane this client last focused
+	viewerID string               // its name to linked computers whose screens it watches through this daemon (viewerID)
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
 	pid      int                  // a local client's process id (0 unknown)
 	tok      codesign.Token       // and its audit token as it connected (macOS)
@@ -469,8 +470,11 @@ func (c *conn) route(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		if err != nil {
 			return nil, err
 		}
-		if m, ok := msg.Msg.(*pb.ClientMessage_OpenMedia); ok {
+		switch m := msg.Msg.(type) {
+		case *pb.ClientMessage_OpenMedia:
 			return l.openMedia(c, m.OpenMedia)
+		case *pb.ClientMessage_ScreenInput:
+			return l.relayScreenInput(c, msg)
 		}
 		switch msg.Msg.(type) {
 		case *pb.ClientMessage_CloseTab, *pb.ClientMessage_ClosePane:
