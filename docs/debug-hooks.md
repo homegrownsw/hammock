@@ -12,6 +12,7 @@ titlebar geometry. With it:
 | Variable | What it does |
 | --- | --- |
 | `HMK_DEBUG_TAB=<name>` | Show that tab. `HMK_DEBUG_ZOOM=<n>` zooms its nth pane. |
+| `HMK_DEBUG_WINDOW_WIDTH=<pt>` | Render the window this wide (1280 by default), to see panes narrower. |
 | `HMK_DEBUG_DELAY=<s>` | Wait before rendering. Give a scratch daemon's first launch after a rebuild 10: β restarts it. |
 | `HMK_DEBUG_PALETTE=1` (or `=<text>`) | The command palette open (searched for `<text>`). |
 | `HMK_DEBUG_HOVER=1` | Hover states shown. |
