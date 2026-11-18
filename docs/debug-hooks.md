@@ -105,6 +105,26 @@ adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainAc
 | `--ez newChat true` | As `HMK_DEBUG_NEW_CHAT=1`: the polish agent's conversation starts empty. |
 | `--es macTheme <name>\|custom` | As `HMK_DEBUG_MAC_THEME`: the sample Mac's theme. |
 | `--es hammockKey 1\|agent` | As `HMK_DEBUG_HMK_KEY`: the Mac's Hammock Key, this phone an approver, and a request waiting (`agent`: an agent's ssh login). |
+| `--es pair '<hammock://pair/… link>'` | Pair with that link at once, without the confirmation, whether the app is starting or already open (`android/scripts/dev-daemon.sh` prints one). |
 
 `DemoDaemon(pace = …)` scales its delays; its JVM tests (`./gradlew :app:testDebugUnitTest --tests '*Demo*'`) run it
 fast. Not ported yet: `HMK_DEBUG_REPLAY`, `HMK_DEBUG_TAKE` and `HMK_DEBUG_SCREENSHOT`.
+
+### Browser and simulator panes from Android
+
+`android/scripts/dev-daemon.sh` runs `bin/hmkd`, with no app to host browser or simulator panes. For those, run a
+copy of this checkout's β signed ad hoc, whose daemon then takes `--dev-pairing` (a team-signed one refuses it, and
+its hosts refuse an ad hoc daemon):
+
+```sh
+just mac-dev
+dir=$(mktemp -d /tmp/hmkb.XXXXXX) app="$dir/Hammock β adhoc.app"   # short: socket paths
+cp -R "dist/Hammock β <branch>.app" "$app" && codesign --force --deep -s - "$app"
+HMK_DIR=$dir "$app/Contents/MacOS/hmkd" --dir "$dir" --remote --remote-listen 127.0.0.1:7498 --dev-pairing &
+open -n --env HMK_DIR="$dir" "$app"          # after the daemon, so it uses that one
+adb reverse tcp:7498 tcp:7498
+HMK_DIR=$dir "$app/Contents/Helpers/hmk" pair --json | jq -r .link   # then --es pair, above
+```
+
+Unset a pane's `HMK_SOCKET` first. Against that `HMK_DIR`, `hmk group new NAME`, then `hmk browser URL` or `hmk sim DEVICE`, opens a pane to watch
+from the phone. The stream logs to logcat under `HammockVideo`.
