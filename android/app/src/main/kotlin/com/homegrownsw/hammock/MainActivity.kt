@@ -24,15 +24,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         super.onCreate(savedInstanceState)
         val session = (application as HammockApplication).session
         handle(intent)
-        // A debug build pairs straight from `adb shell am start … --es pair <link>` (android/scripts/dev-daemon.sh).
-        if (BuildConfig.DEBUG) intent.getStringExtra("pair")?.let { session.pair(it) }
-        // …and opens straight into the demo with --ez sample true (docs/debug-hooks.md).
-        if (BuildConfig.DEBUG && intent.getBooleanExtra("sample", false)) {
-            session.startDemo(com.homegrownsw.hammock.demo.DemoDaemon(
-                longChat = intent.getBooleanExtra("longChat", false), newChat = intent.getBooleanExtra("newChat", false),
-                macTheme = intent.getStringExtra("macTheme"), hammockKey = intent.getStringExtra("hammockKey"),
-            ))
-        }
+        if (savedInstanceState == null) debugExtras(intent) // (not again when it's only recreated: a rotation)
         setContent {
             val model by session.model.collectAsStateWithLifecycle()
             val themePref = rememberPref(Prefs.THEME, HammockTheme.SAME_AS_COMPUTER)
@@ -50,6 +42,24 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handle(intent)
+        debugExtras(intent)
+    }
+
+    /**
+     * A debug build pairs straight from `adb shell am start … --es pair <link>`
+     * (android/scripts/dev-daemon.sh), and opens into the demo with --ez sample
+     * true (docs/debug-hooks.md), whether it's starting or already open.
+     */
+    private fun debugExtras(intent: Intent) {
+        if (!BuildConfig.DEBUG) return
+        val session = (application as HammockApplication).session
+        intent.getStringExtra("pair")?.let { session.pair(it) }
+        if (intent.getBooleanExtra("sample", false)) {
+            session.startDemo(com.homegrownsw.hammock.demo.DemoDaemon(
+                longChat = intent.getBooleanExtra("longChat", false), newChat = intent.getBooleanExtra("newChat", false),
+                macTheme = intent.getStringExtra("macTheme"), hammockKey = intent.getStringExtra("hammockKey"),
+            ))
+        }
     }
 
     private fun handle(intent: Intent?) {
