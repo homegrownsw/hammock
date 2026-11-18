@@ -26,6 +26,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         handle(intent)
         // A debug build pairs straight from `adb shell am start … --es pair <link>` (android/scripts/dev-daemon.sh).
         if (BuildConfig.DEBUG) intent.getStringExtra("pair")?.let { session.pair(it) }
+        // …and opens straight into the demo with --ez sample true (docs/debug-hooks.md).
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("sample", false)) {
+            session.startDemo(com.homegrownsw.hammock.demo.DemoDaemon(
+                longChat = intent.getBooleanExtra("longChat", false), newChat = intent.getBooleanExtra("newChat", false),
+                macTheme = intent.getStringExtra("macTheme"), hammockKey = intent.getStringExtra("hammockKey"),
+            ))
+        }
         setContent {
             val model by session.model.collectAsStateWithLifecycle()
             val themePref = rememberPref(Prefs.THEME, HammockTheme.SAME_AS_COMPUTER)

@@ -86,3 +86,25 @@ With it:
 Screenshot with `xcrun simctl io <udid> screenshot`, after `xcrun simctl ui <udid> appearance light|dark`. Boot
 a simulator of your own (`xcrun simctl create`) and delete it afterwards. Don't open simulator panes on a
 scratch daemon against a device another session is using.
+
+## Android without a computer
+
+The Android app has the same demo (`android/app/src/main/kotlin/com/homegrownsw/hammock/demo/DemoDaemon.kt`, a
+`DaemonStandIn`, with its made-up content in `DemoContent.kt`). Its hooks are intent extras, read by a debug build
+(`com.homegrownsw.hammock.dev`) only:
+
+```sh
+adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainActivity \
+  --ez sample true --ez longChat true
+```
+
+| Extra | What it does |
+| --- | --- |
+| `--ez sample true` | Open straight into the demo, as the pairing screen's "See a demo". The others need it. |
+| `--ez longChat true` | As `HMK_DEBUG_LONG_CHAT=1`: the polish agent's long conversation, with a page before it, and Claude-like replies. |
+| `--ez newChat true` | As `HMK_DEBUG_NEW_CHAT=1`: the polish agent's conversation starts empty. |
+| `--es macTheme <name>\|custom` | As `HMK_DEBUG_MAC_THEME`: the sample Mac's theme. |
+| `--es hammockKey 1\|agent` | As `HMK_DEBUG_HMK_KEY`: the Mac's Hammock Key, this phone an approver, and a request waiting (`agent`: an agent's ssh login). |
+
+`DemoDaemon(pace = …)` scales its delays; its JVM tests (`./gradlew :app:testDebugUnitTest --tests '*Demo*'`) run it
+fast. Not ported yet: `HMK_DEBUG_REPLAY`, `HMK_DEBUG_TAKE` and `HMK_DEBUG_SCREENSHOT`.
