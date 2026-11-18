@@ -35,6 +35,7 @@ android {
         targetSdk = 35
         versionCode = buildNumber
         versionName = appVersion
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The push relay this build registers with (relay/push).
         buildConfigField("String", "PUSH_RELAY", "\"${System.getenv("HMK_PUSH_RELAY") ?: "https://push.homegrownsw.com"}\"")
         // Firebase Cloud Messaging (android/README.md): none, no notifications while the app is closed.
@@ -111,4 +112,7 @@ dependencies {
     implementation(libs.fragment.ktx)
     implementation(libs.firebase.messaging)
     testImplementation(libs.junit)
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
