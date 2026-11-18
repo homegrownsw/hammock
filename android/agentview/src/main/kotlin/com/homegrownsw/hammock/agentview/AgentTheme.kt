@@ -1,6 +1,7 @@
 package com.homegrownsw.hammock.agentview
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
@@ -8,6 +9,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.DeviceFontFamilyName
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /** The agent view's colours: the app theme's accent, and Material's scheme for the rest. */
 @Immutable
@@ -68,4 +75,77 @@ internal fun rememberAgentColors(accent: Color, bubble: Color = accent): AgentCo
             ),
         )
     }
+}
+
+/**
+ * How the conversation reads, from Settings ▸ Text (the iPhone's
+ * AgentFonts): the text's font, its size and line spacing, code's size, and
+ * which code blocks wrap. Sizes in sp; [lineSpacing] is extra space between
+ * lines.
+ */
+@Immutable
+data class AgentFonts(
+    /** A system family's name ([families]); "" the system's own. */
+    val family: String = "",
+    val size: Float = DEFAULT_SIZE,
+    val codeSize: Float = DEFAULT_SIZE - 1,
+    val lineSpacing: Float = DEFAULT_SPACING,
+    /** Which code blocks wrap: "prose" (Markdown, text and tools), "always" or "never". */
+    val codeWrap: String = "prose",
+) {
+    /** The text's font, or null for the system's. */
+    val fontFamily: FontFamily? get() = fontFamily(family)
+
+    companion object {
+        const val DEFAULT_SIZE = 16f
+        const val DEFAULT_SPACING = 4f
+
+        /**
+         * The fonts Settings offers, as name and label: the system's, then
+         * Android's generic families, which every phone has (fonts.xml).
+         */
+        val families = listOf(
+            "" to "System", "serif" to "Serif", "sans-serif-condensed" to "Condensed", "monospace" to "Monospace",
+            "serif-monospace" to "Serif Monospace", "casual" to "Casual", "cursive" to "Cursive",
+        )
+
+        /** A family by its name ("" the system's: null). */
+        fun fontFamily(name: String): FontFamily? = when (name) {
+            "" -> null
+            "serif" -> FontFamily.Serif
+            "monospace" -> FontFamily.Monospace
+            "cursive" -> FontFamily.Cursive
+            "sans-serif" -> FontFamily.SansSerif
+            else -> FontFamily(listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map { Font(DeviceFontFamilyName(name), it) })
+        }
+    }
+}
+
+internal val LocalAgentFonts = staticCompositionLocalOf { AgentFonts() }
+
+/**
+ * The app's type scale with the body and title styles at [fonts]' size (as
+ * a share of Material's 16 sp body), in its font, and the body's lines
+ * [AgentFonts.lineSpacing] apart: everything the conversation writes in
+ * body styles follows Settings, as the iPhone's fonts.body() does. Labels
+ * (captions, chips) keep the system's sizes.
+ */
+internal fun Typography.forAgent(fonts: AgentFonts): Typography {
+    val scale = fonts.size / 16f
+    val family = fonts.fontFamily
+    fun TextStyle.scaled(extra: Float = 0f) = copy(
+        fontSize = fontSize * scale,
+        lineHeight = (fontSize.value * scale * 1.25f + extra).sp,
+        fontFamily = family ?: fontFamily,
+    )
+    fun TextStyle.title() = copy(fontSize = fontSize * scale, lineHeight = lineHeight * scale, fontFamily = family ?: fontFamily)
+    // At the defaults (16 sp, 4 apart) the body styles' lines are Material's own height.
+    return copy(
+        bodyLarge = bodyLarge.scaled(fonts.lineSpacing),
+        bodyMedium = bodyMedium.scaled(fonts.lineSpacing * 0.75f),
+        bodySmall = bodySmall.scaled(fonts.lineSpacing * 0.25f),
+        titleLarge = titleLarge.title(),
+        titleMedium = titleMedium.title(),
+        titleSmall = titleSmall.title(),
+    )
 }

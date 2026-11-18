@@ -35,6 +35,26 @@ internal object PageAssets {
     fun url(page: String) = "$ORIGIN/hammock/$page"
 
     /**
+     * The terminal's bundled fonts (the terminal module's assets/fonts, in
+     * the same APK), served here so the pages can use them by name: JetBrains
+     * Mono, the editor's font unless Settings chooses another, and the
+     * prompt icons the pages ask for after it.
+     */
+    val FONTS = setOf("JetBrainsMono-VF.ttf", "JetBrainsMono-Italic-VF.ttf", "SymbolsNerdFontMono-Regular.ttf")
+    const val FONTS_PREFIX = "/hammock/fonts/"
+
+    /** A bundled font this [url] asks for, or null. */
+    fun font(url: String): String? = url.removePrefix(ORIGIN + FONTS_PREFIX).takeIf { it != url && it in FONTS }
+
+    private val FONT_FACES = """
+        <style>
+        @font-face { font-family: "JetBrains Mono"; src: url("${FONTS_PREFIX}JetBrainsMono-VF.ttf") format("truetype"); font-weight: 100 800; font-style: normal; }
+        @font-face { font-family: "JetBrains Mono"; src: url("${FONTS_PREFIX}JetBrainsMono-Italic-VF.ttf") format("truetype"); font-weight: 100 800; font-style: italic; }
+        @font-face { font-family: "Symbols Nerd Font Mono"; src: url("${FONTS_PREFIX}SymbolsNerdFontMono-Regular.ttf") format("truetype"); }
+        </style>
+    """.trimIndent()
+
+    /**
      * What the page is given before its own scripts run: window.webkit's
      * message handler, as WKWebView has it, forwarding to the listener; and
      * the preview's hammock-file:// images pointed at this origin, where
@@ -60,7 +80,7 @@ internal object PageAssets {
     /** The page's HTML with the shim first in its head. */
     fun withShim(html: String): String {
         val i = html.indexOf("<head>")
-        return if (i < 0) SHIM + html else html.substring(0, i + 6) + "\n" + SHIM + html.substring(i + 6)
+        return if (i < 0) FONT_FACES + SHIM + html else html.substring(0, i + 6) + "\n" + FONT_FACES + "\n" + SHIM + html.substring(i + 6)
     }
 }
 
@@ -190,6 +210,10 @@ internal class PageBridge(
             if (url == PageAssets.url(page)) {
                 val bytes = html ?: return refused()
                 return WebResourceResponse("text/html", "utf-8", ByteArrayInputStream(bytes))
+            }
+            PageAssets.font(url)?.let { name ->
+                val stream = try { view.context.assets.open("fonts/$name") } catch (e: Exception) { return refused(404) }
+                return WebResourceResponse("font/ttf", null, stream)
             }
             PreviewImages.path(url)?.let { path ->
                 val image = try { readImage?.invoke(path) } catch (e: Exception) { null } ?: return refused(404)

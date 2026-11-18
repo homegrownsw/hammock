@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /** An agent's Markdown: prose as selectable text, code, tables and rules as blocks of their own. */
@@ -114,7 +115,12 @@ fun CodeBlock(code: String, language: String = "", maxHeight: Dp = 420.dp, wraps
     val key = "$lang|${code.hashCode()}|${code.length}"
     val isMarkdown = lang == "markdown" || lang == "md"
     val rendered = isMarkdown && CodeBlockChoices.rendered[key] == true
-    val wraps = CodeBlockChoices.wrap[key] ?: (wrapsByDefault || lang in proseLanguages)
+    val wrapSetting = LocalAgentFonts.current.codeWrap
+    val wraps = CodeBlockChoices.wrap[key] ?: when (wrapSetting) {
+        "always" -> true
+        "never" -> false
+        else -> wrapsByDefault || lang in proseLanguages
+    }
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1200); copied = false } }
@@ -156,10 +162,11 @@ fun CodeBlock(code: String, language: String = "", maxHeight: Dp = 420.dp, wraps
     }
 }
 
+/** Code at Settings' code size, times [scale] (the iPhone's fonts.code()). */
 @Composable
-internal fun codeTextStyle(scale: Float = 0.85f): TextStyle {
-    val body = MaterialTheme.typography.bodyLarge
-    return body.copy(fontFamily = FontFamily.Monospace, fontSize = body.fontSize * scale, lineHeight = body.fontSize * scale * 1.35f)
+internal fun codeTextStyle(scale: Float = 1f): TextStyle {
+    val size = LocalAgentFonts.current.codeSize * scale
+    return MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, fontSize = size.sp, lineHeight = (size * 1.35f).sp)
 }
 
 @Composable
@@ -185,7 +192,7 @@ fun DiffView(diff: String, preview: Int? = null, onTap: (() -> Unit)? = null) {
     val all = remember(diff) { diff.split('\n').let { if (it.lastOrNull()?.isEmpty() == true) it.dropLast(1) else it } }
     val shown = all.take(preview ?: 600)
     val more = if (preview == null) 0 else all.size - shown.size
-    val style = codeTextStyle(0.8f)
+    val style = codeTextStyle(0.95f)
     BoxWithConstraints(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.fill)
             .then(if (onTap != null) Modifier.clickable(onClickLabel = "Show the whole change", onClick = onTap) else Modifier),

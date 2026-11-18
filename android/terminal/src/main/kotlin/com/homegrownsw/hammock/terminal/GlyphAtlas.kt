@@ -21,7 +21,15 @@ import kotlin.math.ceil
  * Belongs to the GL thread. When it fills, [reset] starts afresh and the
  * frame is built again.
  */
-internal class GlyphAtlas(private val fonts: TerminalFonts) {
+internal class GlyphAtlas(fonts: TerminalFonts) {
+    /** The typefaces glyphs are drawn in: changing them forgets every glyph. */
+    var fonts: TerminalFonts = fonts
+        set(value) {
+            if (value === field) return
+            field = value
+            clear()
+        }
+
     class Glyph(
         /** The slot in the texture, 0–1. */
         val u0: Float, val v0: Float, val u1: Float, val v1: Float,

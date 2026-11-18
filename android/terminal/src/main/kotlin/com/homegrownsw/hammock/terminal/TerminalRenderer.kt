@@ -25,6 +25,8 @@ internal data class RenderInputs(
     /** A point's worth of pixels (the density). */
     val onePx: Float = 3f,
     val lineSpacing: Float = 0f,
+    /** The typefaces (Settings' font); null: the renderer's own. */
+    val fonts: TerminalFonts? = null,
     /** Typing here: the cursor is drawn solid (else as a faint underline). */
     val focused: Boolean = false,
     /** A picture (a tile): the font fits the width only, showing the rows down to the cursor. */
@@ -52,7 +54,7 @@ internal class TerminalRenderer(fonts: TerminalFonts, private val onDrawn: (Draw
 
     private val frame = TerminalFrame()
     private val atlas = GlyphAtlas(fonts)
-    private val fontsRef = fonts
+    private var fontsRef = fonts
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val metricsCache = HashMap<Float, CellMetrics>()
     private var width = 0
@@ -122,6 +124,15 @@ internal class TerminalRenderer(fonts: TerminalFonts, private val onDrawn: (Draw
             clear(frame.background)
             return
         }
+        val fonts = inp.fonts ?: fontsRef
+        if (fonts !== fontsRef) {
+            // Another font: every size measures differently, and every glyph goes.
+            fontsRef = fonts
+            atlas.fonts = fonts
+            metricsCache.clear()
+            fit = null
+            fitKey = null
+        }
         val m = fitted(frame.cols, frame.rows, inp)
         atlas.use(m)
         // Kitty graphics tools and XTWINOPS are told the cell's size as drawn.
@@ -181,7 +192,7 @@ internal class TerminalRenderer(fonts: TerminalFonts, private val onDrawn: (Draw
     private fun fitted(cols: Int, rows: Int, inp: RenderInputs): CellMetrics {
         val key = listOf(cols, rows, width, height, inp.fontPx, inp.minFontPx, inp.paddingPx, inp.lineSpacing, inp.onePx, inp.preview)
         fit?.let { if (key == fitKey) return it }
-        if (fitKey != null && fitKey!![4] != inp.fontPx) metricsCache.clear()
+        if (fitKey != null && (fitKey!![4] != inp.fontPx || fitKey!![7] != inp.lineSpacing)) metricsCache.clear()
         val pad = inp.paddingPx.roundToInt() * 2f
         fun fits(m: CellMetrics) = cols * m.cellWidth + pad <= width + 0.5f && (inp.preview || rows * m.cellHeight + pad <= height)
         var px = inp.fontPx

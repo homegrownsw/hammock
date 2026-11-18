@@ -55,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +71,8 @@ import com.homegrownsw.hammock.client.AgentCatalog
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.rememberBoolPref
 import com.homegrownsw.hammock.rememberPref
+import com.homegrownsw.hammock.agentview.AgentFonts
+import com.homegrownsw.hammock.terminal.TerminalFonts
 
 /** The phone's own settings (not the computer's), in the iPhone's sections and words. */
 @Composable
@@ -80,8 +83,18 @@ fun SettingsScreen(session: Session, model: AppModel) {
     var appearance by rememberPref(Prefs.APPEARANCE, "system")
     var opensIn by rememberPref(Prefs.AGENT_TABS_OPEN_IN, "agent")
     var codeWrap by rememberPref(Prefs.CODE_WRAP, "prose")
-    var textSize by rememberPref(Prefs.TEXT_SIZE, "16")
-    var termSize by rememberPref(Prefs.TERMINAL_FONT_SIZE, "12")
+    var textFont by rememberPref(Prefs.TEXT_FONT, "")
+    var textSize by rememberPref(Prefs.TEXT_SIZE, DefaultSizes.TEXT.toString())
+    var lineSpacing by rememberPref(Prefs.LINE_SPACING, DefaultSizes.LINE_SPACING.toString())
+    var codeSize by rememberPref(Prefs.CODE_SIZE, DefaultSizes.CODE.toString())
+    var termFont by rememberPref(Prefs.TERMINAL_FONT, "")
+    var termSize by rememberPref(Prefs.TERMINAL_FONT_SIZE, DefaultSizes.TERMINAL.toString())
+    var termSpacing by rememberPref(Prefs.TERMINAL_LINE_SPACING, "0")
+    var editorFont by rememberPref(Prefs.EDITOR_FONT, "")
+    val fonts = rememberAgentFonts()
+    val terminalFont = rememberTerminalFont()
+    val bundledMono = remember { runCatching { FontFamily(Font("fonts/JetBrainsMono-VF.ttf", ctx.assets)) }.getOrDefault(FontFamily.Monospace) }
+    val monoFamily = { name: String -> monoFamily(name, bundledMono) }
     var attachSize by rememberPref(Prefs.ATTACHMENT_SIZE, "medium")
     var dictation by rememberBoolPref(Prefs.DICTATION, true)
     var lock by rememberBoolPref(Prefs.APP_LOCK, false)
@@ -135,7 +148,13 @@ fun SettingsScreen(session: Session, model: AppModel) {
             item {
                 SectionTitle("Text")
                 GroupedCard {
-                    StepperRow("Size", textSize.toIntOrNull() ?: 16, 12..28) { textSize = it.toString() }
+                    Choice("Font", textFont, AgentFonts.families, optionFont = { AgentFonts.fontFamily(it) }) { textFont = it }
+                    CardDivider()
+                    StepperRow("Size", fonts.size.toInt(), 12..28) { textSize = it.toString() }
+                    CardDivider()
+                    StepperRow("Line spacing", fonts.lineSpacing.toInt(), 0..12) { lineSpacing = it.toString() }
+                    CardDivider()
+                    StepperRow("Code size", fonts.codeSize.toInt(), 10..26) { codeSize = it.toString() }
                     CardDivider()
                     Choice("Wrap code", codeWrap, listOf("prose" to "Markdown, Text and Tools", "always" to "Every Block", "never" to "Never")) { codeWrap = it }
                 }
@@ -151,8 +170,8 @@ fun SettingsScreen(session: Session, model: AppModel) {
                         }
                         Text(buildAnnotatedString {
                             append("Here's the plan: "); pushStyle(SpanStyle(fontWeight = FontWeight.Bold)); append("two"); pop(); append(" small changes, then a test run.")
-                        }, fontSize = (textSize.toFloatOrNull() ?: 16f).sp)
-                        Text("go test ./internal/daemon/", fontFamily = FontFamily.Monospace, fontSize = ((textSize.toFloatOrNull() ?: 16f) - 1).sp,
+                        }, fontSize = fonts.size.sp, fontFamily = fonts.fontFamily, lineHeight = (fonts.size * 1.25f + fonts.lineSpacing).sp)
+                        Text("go test ./internal/daemon/", fontFamily = FontFamily.Monospace, fontSize = fonts.codeSize.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -167,12 +186,25 @@ fun SettingsScreen(session: Session, model: AppModel) {
                 SectionTitle("Terminal")
                 val term = rememberTerminalTheme(model)
                 GroupedCard {
-                    StepperRow("Size", termSize.toIntOrNull() ?: 12, 7..18) { termSize = it.toString() }
+                    Choice("Font", termFont, listOf("" to TerminalFonts.BUNDLED) + TerminalFonts.systemFamilies, optionFont = monoFamily) { termFont = it }
+                    CardDivider()
+                    StepperRow("Size", terminalFont.size.toInt(), 7..18) { termSize = it.toString() }
+                    CardDivider()
+                    val pct = termSpacing.toIntOrNull() ?: 0
+                    StepperRow("Line spacing", pct, -20..100, step = 5,
+                        shown = if (pct == 0) "Normal" else "${if (pct > 0) "+" else ""}$pct%") { termSpacing = it.toString() }
                     Text("~/Developer/app \$ just test", Modifier.fillMaxWidth().background(Color(term.background or 0xFF000000.toInt())).padding(16.dp),
-                        fontFamily = FontFamily.Monospace, fontSize = (termSize.toFloatOrNull() ?: 12f).sp, maxLines = 1,
+                        fontFamily = monoFamily(termFont), fontSize = terminalFont.size.sp, maxLines = 1,
                         color = Color(term.foreground or 0xFF000000.toInt()))
                 }
                 Footer("Smaller text fits more columns. Panes wider than your screen shrink to fit.")
+            }
+            item {
+                SectionTitle("Editors and Diffs")
+                GroupedCard {
+                    Choice("Font", editorFont, listOf("" to "Same as Terminal", TerminalFonts.BUNDLED to TerminalFonts.BUNDLED) + TerminalFonts.systemFamilies,
+                        optionFont = { if (it.isEmpty()) null else monoFamily(it) }) { editorFont = it }
+                }
             }
             item {
                 SectionTitle("Privacy")
@@ -298,9 +330,12 @@ fun ValueRow(label: String, accent: Boolean = false, onClick: (() -> Unit)? = nu
     }
 }
 
-/** A choice: its label, and what's chosen in the accent, opening a menu of the options (the iPhone's menu picker). */
+/**
+ * A choice: its label, and what's chosen in the accent, opening a menu of the options (the iPhone's menu picker).
+ * [optionFont] draws each option in a font of its own (a font setting's families).
+ */
 @Composable
-fun Choice(label: String, value: String, options: List<Pair<String, String>>, set: (String) -> Unit) {
+fun Choice(label: String, value: String, options: List<Pair<String, String>>, optionFont: ((String) -> FontFamily?)? = null, set: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     ValueRow(label, onClick = { open = true }) {
         Box {
@@ -310,7 +345,7 @@ fun Choice(label: String, value: String, options: List<Pair<String, String>>, se
                 Icon(Icons.Default.UnfoldMore, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
             }
             DropdownMenu(open, { open = false }) {
-                for ((k, v) in options) DropdownMenuItem(text = { Text(v) }, trailingIcon = { if (k == value) Icon(Icons.Default.Check, null) },
+                for ((k, v) in options) DropdownMenuItem(text = { Text(v, fontFamily = optionFont?.invoke(k)) }, trailingIcon = { if (k == value) Icon(Icons.Default.Check, null) },
                     onClick = { open = false; set(k) })
             }
         }
@@ -325,14 +360,18 @@ fun SwitchRow(label: String, on: Boolean, set: (Boolean) -> Unit) {
     }
 }
 
-/** "Size: 16", with − and + (the iPhone's stepper). */
+/** "Size: 16" (or [shown]), with − and + (the iPhone's stepper), [step] at a time. */
 @Composable
-private fun StepperRow(label: String, value: Int, range: IntRange, set: (Int) -> Unit) {
-    ValueRow("$label: $value") {
+private fun StepperRow(label: String, value: Int, range: IntRange, step: Int = 1, shown: String = "$value", set: (Int) -> Unit) {
+    ValueRow("$label: $shown") {
         Row(Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { set((value - 1).coerceIn(range)) }, enabled = value > range.first) { Icon(Icons.Default.Remove, "Smaller") }
+            IconButton(onClick = { set((value - step).coerceIn(range)) }, enabled = value > range.first) { Icon(Icons.Default.Remove, "Less") }
             VerticalDivider(Modifier.height(20.dp))
-            IconButton(onClick = { set((value + 1).coerceIn(range)) }, enabled = value < range.last) { Icon(Icons.Default.Add, "Bigger") }
+            IconButton(onClick = { set((value + step).coerceIn(range)) }, enabled = value < range.last) { Icon(Icons.Default.Add, "More") }
         }
     }
 }
+
+/** A terminal font's family for Compose: "" or its name is the bundled JetBrains Mono, from the terminal's assets. */
+private fun monoFamily(name: String, bundled: FontFamily): FontFamily =
+    if (name.isEmpty() || name == TerminalFonts.BUNDLED) bundled else AgentFonts.fontFamily(name) ?: FontFamily.Monospace

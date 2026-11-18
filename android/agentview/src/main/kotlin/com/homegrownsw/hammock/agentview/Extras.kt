@@ -279,7 +279,7 @@ internal fun SideHeader(title: String, detail: String?, status: String, working:
             }
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (detail != null) Text(detail, style = codeTextStyle(0.75f), color = c.secondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (detail != null) Text(detail, style = codeTextStyle(0.85f), color = c.secondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(status, style = MaterialTheme.typography.labelMedium, color = c.secondary, maxLines = 1)
             }
         }

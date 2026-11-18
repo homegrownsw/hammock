@@ -72,8 +72,9 @@ import kotlinx.coroutines.withTimeoutOrNull
  * [canDrive]: false for a Group shared with you to watch (no answering or
  * messaging). [onOpenTerminal] flips the pane back to its terminal (offered
  * when an answer can't be matched to the screen). [agentAccent] is the app
- * theme's accent; everything else comes from MaterialTheme. [onOpenFile]
- * opens a path the session referenced; without it, tapping one copies it.
+ * theme's accent; everything else comes from MaterialTheme. [fonts] is how
+ * it reads (Settings ▸ Text). [onOpenFile] opens a path the session
+ * referenced; without it, tapping one copies it.
  *
  * Watches the session while shown (start/stop).
  */
@@ -87,7 +88,28 @@ fun AgentConversation(
     /** Your messages' colour (the theme's bubble); the accent when not given. */
     bubble: Color = agentAccent,
     imageSize: AttachmentSize = AttachmentSize.MEDIUM,
+    fonts: AgentFonts = AgentFonts(),
     onOpenFile: ((String) -> Unit)? = null,
+) {
+    val base = MaterialTheme.typography
+    val typography = remember(base, fonts) { base.forAgent(fonts) }
+    MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = typography) {
+        CompositionLocalProvider(LocalAgentFonts provides fonts) {
+            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile)
+        }
+    }
+}
+
+@Composable
+private fun Conversation(
+    session: AgentSession,
+    canDrive: Boolean,
+    onOpenTerminal: () -> Unit,
+    modifier: Modifier,
+    agentAccent: Color,
+    bubble: Color,
+    imageSize: AttachmentSize,
+    onOpenFile: ((String) -> Unit)?,
 ) {
     val colors = rememberAgentColors(agentAccent, bubble)
     DisposableEffect(session) {

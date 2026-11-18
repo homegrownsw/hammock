@@ -368,8 +368,9 @@ private fun TerminalTile(model: AppModel, p: Pane) {
         model.attach(p.id, session)
         onDispose { model.detach(p.id, session); session.close() }
     }
+    val font = rememberTerminalFont()
     TerminalPane(session, onInput = {}, onResize = { _, _, _, _ -> }, readOnly = true, active = false, theme = rememberTerminalTheme(model),
-        fontSize = 6.sp, modifier = Modifier.fillMaxSize())
+        fontSize = 6.sp, fontFamily = font.family, lineSpacing = font.lineSpacing, modifier = Modifier.fillMaxSize())
 }
 
 /** An agent pane's tile: your last message and what's come since, its words and latest tools. */

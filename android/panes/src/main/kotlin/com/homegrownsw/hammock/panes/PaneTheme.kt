@@ -22,12 +22,12 @@ data class PaneTheme(
 
 /**
  * The editor settings the Mac keeps in its config file (editor-wrap,
- * editor-line-numbers…), with the same defaults. The app passes the
- * person's own once it has a settings screen for them.
+ * editor-line-numbers…), with the same defaults. The app passes the font
+ * from Settings ▸ Editors and Diffs (else the terminal's).
  */
 @Immutable
 data class EditorSettings(
-    /** "" is the platform's monospace. */
+    /** A family name: the bundled "JetBrains Mono" (PageAssets serves it) or a system family; "" is the platform's monospace. */
     val fontFamily: String = "",
     /** CSS pixels (dp). */
     val fontSize: Double = 13.0,

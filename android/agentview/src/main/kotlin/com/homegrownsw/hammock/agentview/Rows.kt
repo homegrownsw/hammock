@@ -246,7 +246,7 @@ private fun SentFiles(b: AgentBlock, session: AgentSession) {
         if (b.text.isNotEmpty()) MarkdownText(b.text)
         b.imagesList.forEach { AgentImage(it.ref, session, maxHeight = 360.dp) }
         val others = b.input.split('\n').filter { n -> n.isNotEmpty() && b.imagesList.none { it.ref.endsWith("/$n") } }
-        if (others.isNotEmpty()) Text(others.joinToString(", "), style = codeTextStyle(), color = c.secondary)
+        if (others.isNotEmpty()) Text(others.joinToString(", "), style = codeTextStyle(0.95f), color = c.secondary)
     }
 }
 

@@ -52,7 +52,7 @@ enum class TerminalKey(internal val keyCode: Int) {
  * pane.
  */
 class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : GLSurfaceView(context, attrs) {
-    private val fonts = TerminalFonts.get(context.assets)
+    private var fonts = TerminalFonts.get(context.assets)
     private val density = resources.displayMetrics.density
     private val renderer = TerminalRenderer(fonts) { grid -> post { drew(grid) } }
     private var observation: AutoCloseable? = null
@@ -132,6 +132,16 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             reportGrid(force = false)
         }
 
+    /** The font family people chose: "" is the bundled JetBrains Mono (TerminalFonts). */
+    var fontFamily = ""
+        set(value) {
+            if (value == field) return
+            field = value
+            fonts = TerminalFonts.get(context.assets, value)
+            pushInputs()
+            reportGrid(force = false)
+        }
+
     /** Extra row height, a fraction of the font's (negative: tighter). */
     var lineSpacing = 0f
         set(value) {
@@ -191,6 +201,7 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             paddingPx = padding,
             onePx = density,
             lineSpacing = lineSpacing,
+            fonts = fonts,
             focused = hasFocus() && keyboardVisible && !readOnly,
             preview = preview,
         )

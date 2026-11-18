@@ -61,7 +61,9 @@ import kotlinx.coroutines.launch
  * keyboard while it's up: esc, tab, a sticky ctrl, the arrows and delete
  * (which repeat while held), and a key to put the keyboard away.
  *
- * [onResize] is the grid that fits at [fontSize] and its cell in pixels,
+ * [onResize] is the grid that fits at [fontSize] (in [fontFamily], ""
+ * the bundled font, with [lineSpacing] extra row height, a fraction of the
+ * font's) and its cell in pixels,
  * reported while [active] (on screen) and when typing starts here: send it
  * to the computer when this phone drives the pane. Pads itself above the
  * keyboard (imePadding), so the activity should let the window resize
@@ -78,6 +80,8 @@ fun TerminalPane(
     active: Boolean = true,
     theme: TerminalTheme = TerminalTheme.Dark,
     fontSize: TextUnit = 11.sp,
+    fontFamily: String = "",
+    lineSpacing: Float = 0f,
     onFocus: () -> Unit = {},
     onCellSize: (widthPx: Int, heightPx: Int) -> Unit = { _, _ -> },
 ) {
@@ -124,6 +128,8 @@ fun TerminalPane(
                 v.session = session
                 v.readOnly = readOnly
                 v.theme = theme
+                v.fontFamily = fontFamily
+                v.lineSpacing = lineSpacing
                 v.fontSizePx = fontPx
                 v.keyboardVisible = imeVisible
                 v.active = active && !readOnly

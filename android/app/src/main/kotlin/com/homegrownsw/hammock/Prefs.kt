@@ -22,9 +22,15 @@ object Prefs {
     const val APPEARANCE = "appearance"         // system, light, dark
     const val THEME = "theme"                   // "" (the computer's) or a theme's name
     const val AGENT_TABS_OPEN_IN = "agentTabsOpenIn" // agent, terminal
+    const val TERMINAL_FONT = "terminalFont"    // "" (JetBrains Mono) or a system family
     const val TERMINAL_FONT_SIZE = "terminalFontSize"
+    const val TERMINAL_LINE_SPACING = "terminalLineSpacing" // percent of the row's height, -20 to 100; 0 normal
+    const val TEXT_FONT = "agentFont"           // "" (the system's) or a family (AgentFonts.families)
     const val TEXT_SIZE = "agentTextSize"
+    const val LINE_SPACING = "agentLineSpacing"
+    const val CODE_SIZE = "agentCodeSize"
     const val CODE_WRAP = "codeWrap"            // prose, always, never
+    const val EDITOR_FONT = "editorFont"        // "" (the terminal's) or a family
     const val ATTACHMENT_SIZE = "attachmentSize" // small, medium, large, original
     const val DICTATION = "dictation"
     const val APP_LOCK = "appLock"

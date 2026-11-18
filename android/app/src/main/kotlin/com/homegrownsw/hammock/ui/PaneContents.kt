@@ -17,6 +17,7 @@ import com.homegrownsw.hammock.panes.LogPane
 import com.homegrownsw.hammock.panes.PaneTheme
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.homegrownsw.hammock.terminal.TerminalFonts
 import com.homegrownsw.hammock.terminal.TerminalPane
 import com.homegrownsw.hammock.terminal.TerminalSession
 import com.homegrownsw.hammock.terminal.TerminalTheme
@@ -24,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.homegrownsw.hammock.Prefs
 import com.homegrownsw.hammock.agentview.AgentConversation
+import com.homegrownsw.hammock.agentview.AgentFonts
 import com.homegrownsw.hammock.agentview.AgentSession
 import com.homegrownsw.hammock.agentview.AttachmentSize
 import com.homegrownsw.hammock.client.AppModel
@@ -43,7 +45,56 @@ fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, openTerminal: () -
         imageSize = when (size) {
             "small" -> AttachmentSize.SMALL; "large" -> AttachmentSize.LARGE; "original" -> AttachmentSize.ORIGINAL; else -> AttachmentSize.MEDIUM
         },
+        fonts = rememberAgentFonts(),
     )
+}
+
+/** Settings ▸ Text: how agent conversations read. */
+@Composable
+fun rememberAgentFonts(): AgentFonts {
+    val family by rememberPref(Prefs.TEXT_FONT, "")
+    val size by rememberPref(Prefs.TEXT_SIZE, DefaultSizes.TEXT.toString())
+    val spacing by rememberPref(Prefs.LINE_SPACING, DefaultSizes.LINE_SPACING.toString())
+    val code by rememberPref(Prefs.CODE_SIZE, DefaultSizes.CODE.toString())
+    val wrap by rememberPref(Prefs.CODE_WRAP, "prose")
+    return remember(family, size, spacing, code, wrap) {
+        AgentFonts(
+            family = family,
+            size = size.toFloatOrNull() ?: DefaultSizes.TEXT.toFloat(),
+            codeSize = code.toFloatOrNull() ?: DefaultSizes.CODE.toFloat(),
+            lineSpacing = spacing.toFloatOrNull() ?: DefaultSizes.LINE_SPACING.toFloat(),
+            codeWrap = wrap,
+        )
+    }
+}
+
+/** Settings' sizes until they're changed (the text's are AgentFonts'; the terminal's in sp). */
+object DefaultSizes {
+    const val TEXT = AgentFonts.DEFAULT_SIZE.toInt()
+    const val CODE = TEXT - 1
+    const val LINE_SPACING = AgentFonts.DEFAULT_SPACING.toInt()
+    const val TERMINAL = 12
+}
+
+/** Settings ▸ Terminal: the font family ("" the bundled one), size in sp, and extra row height as a fraction. */
+data class TerminalFont(val family: String, val size: Float, val lineSpacing: Float)
+
+@Composable
+fun rememberTerminalFont(): TerminalFont {
+    val family by rememberPref(Prefs.TERMINAL_FONT, "")
+    val size by rememberPref(Prefs.TERMINAL_FONT_SIZE, DefaultSizes.TERMINAL.toString())
+    val spacing by rememberPref(Prefs.TERMINAL_LINE_SPACING, "0")
+    return remember(family, size, spacing) {
+        TerminalFont(family, size.toFloatOrNull() ?: DefaultSizes.TERMINAL.toFloat(), (spacing.toFloatOrNull() ?: 0f) / 100f)
+    }
+}
+
+/** Settings ▸ Editors and Diffs' font: its own, else the terminal's, as a family the pages know. */
+@Composable
+fun rememberEditorFontFamily(): String {
+    val editor by rememberPref(Prefs.EDITOR_FONT, "")
+    val terminal by rememberPref(Prefs.TERMINAL_FONT, "")
+    return editor.ifEmpty { terminal }.ifEmpty { TerminalFonts.BUNDLED }
 }
 
 /**
@@ -64,14 +115,16 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean) {
     }
     val theme = rememberTerminalTheme(model)
     LaunchedEffect(theme) { model.setColors(theme.toSetColors(isSystemInDarkThemeOr(theme))) }
-    val size by rememberPref(Prefs.TERMINAL_FONT_SIZE, "12")
+    val font = rememberTerminalFont()
     TerminalPane(
         session,
         onInput = { model.input(pane.id, it) },
         onResize = { cols, rows, w, h -> if (drive) model.resize(pane.id, cols, rows, w, h) },
         readOnly = !drive,
         theme = theme,
-        fontSize = (size.toFloatOrNull() ?: 12f).sp,
+        fontSize = font.size.sp,
+        fontFamily = font.family,
+        lineSpacing = font.lineSpacing,
         onFocus = { model.focus(pane.id) },
     )
 }
@@ -101,17 +154,17 @@ fun LogContent(model: AppModel, pane: Pane) = LogPane(model, pane, rememberPaneT
 
 @Composable
 fun EditorContent(model: AppModel, pane: Pane, drive: Boolean, paneActions: @Composable (close: () -> Unit) -> Unit) {
-    val size by rememberPref(Prefs.TERMINAL_FONT_SIZE, "12")
+    val font = rememberTerminalFont()
     EditorPane(
-        model, pane, drive, rememberPaneTheme(model), settings = EditorSettings(fontSize = (size.toDoubleOrNull() ?: 12.0) + 1),
+        model, pane, drive, rememberPaneTheme(model), settings = EditorSettings(fontFamily = rememberEditorFontFamily(), fontSize = font.size + 1.0),
         extraMenu = { close -> HorizontalDivider(); paneActions(close) },
     )
 }
 
 @Composable
 fun DiffContent(model: AppModel, pane: Pane, drive: Boolean) {
-    val size by rememberPref(Prefs.TERMINAL_FONT_SIZE, "12")
-    DiffPane(model, pane, drive, rememberPaneTheme(model), settings = DiffSettings(fontSize = size.toDoubleOrNull() ?: 12.0))
+    val font = rememberTerminalFont()
+    DiffPane(model, pane, drive, rememberPaneTheme(model), settings = DiffSettings(fontFamily = rememberEditorFontFamily(), fontSize = font.size.toDouble()))
 }
 
 /** Editor, diff and log panes in the terminal's colours, with the app's accent. */
