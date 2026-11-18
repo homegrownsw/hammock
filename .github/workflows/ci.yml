@@ -51,3 +51,32 @@ jobs:
         run: |
           just apple-deps
           cd apple && swift build
+
+  android:
+    # The Android app: libghostty-vt for Android, the app's build, its JVM tests and lint. Linux, where
+    # the runners already have the Android SDK.
+    runs-on: ubuntu-latest
+    env:
+      HMK_GHOSTTY_CACHE: ${{ github.workspace }}/../ghostty-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+      - name: NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" >/dev/null
+      - name: Cache libghostty-vt
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/../ghostty-cache
+          key: ghostty-android-${{ hashFiles('third_party/ghostty/VERSION') }}
+      - name: libghostty-vt for Android
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006" ./scripts/android-vt.sh
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and test
+        working-directory: android
+        run: ./gradlew :app:assembleDebug :client:test testDebugUnitTest lintDebug

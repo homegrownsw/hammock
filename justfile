@@ -116,6 +116,36 @@ apple-deps: deps
 linux *archs:
     ./scripts/build-linux.sh {{archs}}
 
+# libghostty-vt for Android comes first (once per Ghostty commit, into the shared cache). Gradle needs a
+# JDK 17 or later: JAVA_HOME, else Android Studio's.
+# Build the Android app (android/README.md) for debugging: android/app/build/outputs/apk/debug/app-debug.apk.
+android: deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/android-vt.sh
+    studio="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    if [ -z "${JAVA_HOME:-}" ] && [ -d "$studio" ]; then export JAVA_HOME="$studio"; fi
+    cd android && ./gradlew :app:assembleDebug
+
+# The Android app's tests: the client's, every module's JVM tests, and lint.
+android-test: deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./scripts/android-vt.sh
+    studio="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+    if [ -z "${JAVA_HOME:-}" ] && [ -d "$studio" ]; then export JAVA_HOME="$studio"; fi
+    cd android && ./gradlew :client:test testDebugUnitTest lintDebug
+
+# ANDROID_SERIAL picks one when adb sees several.
+# Build the Android app, install it on the emulator or phone adb sees, and open it.
+android-device: android
+    adb install -r -t android/app/build/outputs/apk/debug/app-debug.apk
+    adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainActivity
+
+# A scratch daemon for the Android app to pair with (android/scripts/dev-daemon.sh up|pair|hmk|down).
+android-dev-daemon *args:
+    android/scripts/dev-daemon.sh {{args}}
+
 # Build the Unraid plugin's package (.txz) and .plg into dist/unraid.
 unraid: (linux "amd64")
     ./unraid/build.sh
