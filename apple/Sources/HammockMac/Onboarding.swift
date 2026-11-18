@@ -90,7 +90,9 @@ final class Onboarding {
 
     func finish() {
         UserDefaults.standard.set(true, forKey: Self.completedKey)
-        withAnimation(.smooth) { isShowing = false }
+        // At once, not animated: the window built inside the animation left the
+        // sidebar's bottom bar (usage, this Mac) drawn over its rows, unfaded.
+        isShowing = false
     }
 }
 
