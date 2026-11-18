@@ -100,10 +100,11 @@ extension AppModel {
     }
 
     /// Runs it now, in a new tab of its Group, and goes to that tab (it
-    /// returns its id).
+    /// returns its id). early: Run Early, in place of its next run (which
+    /// moves on to the one after), not as well as it.
     @discardableResult
-    public func runScheduleNow(_ id: String, reveal: Bool = true) async throws -> String {
-        let tab = try await scheduleCall { $0.runSchedule = .with { $0.scheduleID = id } }.created.id
+    public func runScheduleNow(_ id: String, early: Bool = false, reveal: Bool = true) async throws -> String {
+        let tab = try await scheduleCall { $0.runSchedule = .with { $0.scheduleID = id; $0.early = early } }.created.id
         guard reveal, !tab.isEmpty else { return tab }
         // Its tab comes in the next state update (from another computer, a moment later).
         for _ in 0..<50 where tabs[tab] == nil { try? await Task.sleep(for: .milliseconds(40)) }
@@ -198,6 +199,46 @@ extension Schedule {
         case "": "Claude Code"
         default: AgentCatalog.name(of: kind)
         }
+    }
+
+    /// Its next run is skipped (Skip Next Run).
+    public var skipping: Bool { nextRunUnixMs > 0 && skipUntilUnixMs > nextRunUnixMs }
+    /// It will run again on its own.
+    public var upcoming: Bool { nextRunUnixMs > 0 && !paused }
+    /// Run Early can start its next run now.
+    public var canRunEarly: Bool { upcoming && !skipping }
+
+    /// How soon a next run has to be for running now to mean Run Early.
+    public static let earlyWindow: TimeInterval = 12 * 60 * 60
+
+    /// Running it now should take its next run's place, not add a run: that
+    /// run is coming up soon. What Run Now buttons do first, and say so.
+    public func runsEarlyFirst(now: Date = Date()) -> Bool {
+        canRunEarly && Double(nextRunUnixMs) / 1000 - now.timeIntervalSince1970 <= Self.earlyWindow
+    }
+
+    /// The next run, as Run Early's buttons name it: "09:00" today, else
+    /// "Tomorrow at 09:00" or "Thu 6 Nov at 09:00".
+    public func nextRunShort(now: Date = Date()) -> String {
+        let when = Self.dateText(nextRunUnixMs, now: now)
+        return when.hasPrefix("Today at ") ? String(when.dropFirst("Today at ".count)) : when
+    }
+
+    /// The next run, for a sentence: "at 09:00", "tomorrow at 09:00", "on
+    /// Thu 6 Nov at 09:00".
+    public func nextRunPhrase(now: Date = Date()) -> String {
+        let when = Self.dateText(nextRunUnixMs, now: now)
+        if when.hasPrefix("Today ") { return String(when.dropFirst("Today ".count)) }
+        if when.hasPrefix("Tomorrow ") { return "tomorrow " + when.dropFirst("Tomorrow ".count) }
+        return "on " + when
+    }
+
+    /// "Run Now Instead of 09:00".
+    public func runEarlyTitle(now: Date = Date()) -> String { "Run Now Instead of \(nextRunShort(now: now))" }
+    /// "Run Now and at 09:00 Too": Run Now, while Run Early is first.
+    public func runAsWellTitle(now: Date = Date()) -> String {
+        let when = nextRunShort(now: now)
+        return when.contains(" at ") ? "Run Now and \(when) Too" : "Run Now and at \(when) Too"
     }
 
     /// Run tabs kept (the daemon's default for 0).
@@ -295,6 +336,16 @@ extension ScheduleRun {
         let m = secs / 60
         if m < 60 { return "\(m)m" }
         return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m"
+    }
+
+    /// What a list of runs marks it with: "Instead of 09:00" (Run Early),
+    /// "Run Now", or nothing.
+    public func marker(now: Date = Date()) -> String? {
+        if early {
+            let when = Schedule.dateText(dueUnixMs, now: now)
+            return "Instead of " + (when.hasPrefix("Today at ") ? String(when.dropFirst("Today at ".count)) : when)
+        }
+        return manual ? "Run Now" : nil
     }
 
     /// When it started (or was due), for a list of runs.

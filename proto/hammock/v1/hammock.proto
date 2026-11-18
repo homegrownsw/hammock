@@ -2550,7 +2550,7 @@ message Schedule {
 
 message ScheduleRun {
   string id = 1;
-  int64 due_unix_ms = 2;          // when it was due (0: Run Now)
+  int64 due_unix_ms = 2;          // when it was due (0: Run Now; Run Early: the run it took the place of)
   int64 started_unix_ms = 3;
   int64 ended_unix_ms = 4;
   enum Status {
@@ -2577,12 +2577,15 @@ message ScheduleRun {
   bool tab_closed = 15;
   int64 waiting_since_unix_ms = 16;
   string kind = 17;               // what it ran: the schedule's kind then ("claude", "codex", "command")
+  bool early = 18;                // Run Early: started before due_unix_ms, in its place
 }
 
 // description: an agent's reason, shown (as its words) with the request.
 message SaveSchedule { Schedule schedule = 1; string description = 2; }
 message DeleteSchedule { string schedule_id = 1; string description = 2; }
-message RunSchedule { string schedule_id = 1; }
+// early: Run Early, now in place of its next run (which moves on to the
+// one after), rather than as well as it.
+message RunSchedule { string schedule_id = 1; bool early = 2; }
 message SetSchedulePaused { string schedule_id = 1; bool paused = 2; }
 // Skips the next run (skip = false: undoes that).
 message SkipScheduleRun { string schedule_id = 1; bool skip = 2; }

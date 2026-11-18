@@ -42,6 +42,11 @@ type scheduleIDArgs struct {
 	ID string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
 }
 
+type scheduleRunArgs struct {
+	ID    string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
+	Early bool   `json:"early,omitempty" jsonschema:"run it instead of at its next time, not as well"`
+}
+
 type scheduleDeleteArgs struct {
 	ID          string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
 	Description string `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
@@ -95,7 +100,7 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 		if i == 5 {
 			break
 		}
-		rv := runView{When: time.UnixMilli(max(r.StartedUnixMs, r.DueUnixMs)).Format(time.RFC3339), Status: runStatusWords[r.Status], Note: r.Note, Output: r.Output}
+		rv := runView{When: runAt(r).Format(time.RFC3339), Status: runStatusWords[r.Status], Note: r.Note, Output: r.Output}
 		if !r.TabClosed {
 			rv.Tab, rv.Pane = r.TabId, r.PaneId
 		}
@@ -226,9 +231,9 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "schedule_run",
-		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id. One you didn't save yourself asks the user first (waits for their answer).",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleIDArgs) (*mcp.CallToolResult, any, error) {
-		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID}}})
+		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. One you didn't save yourself asks the user first (waits for their answer).",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleRunArgs) (*mcp.CallToolResult, any, error) {
+		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID, Early: a.Early}}})
 		if err != nil {
 			return nil, nil, err
 		}

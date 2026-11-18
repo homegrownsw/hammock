@@ -258,6 +258,9 @@ struct ScheduleMenuItems: View {
 
     var body: some View {
         Button("Run Now") { ScheduleActions.runNow(model, schedule) }
+        if schedule.canRunEarly {
+            Button(schedule.runEarlyTitle()) { ScheduleActions.runNow(model, schedule, early: true) }
+        }
         Button(schedule.paused ? "Resume" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
         Button("Edit…") { ScheduleUI.shared.edit(schedule) }
         Divider()
@@ -268,10 +271,11 @@ struct ScheduleMenuItems: View {
 /// What the list's buttons, menus and the palette do, with errors said in a toast.
 @MainActor
 enum ScheduleActions {
-    static func runNow(_ model: AppModel, _ s: Schedule) {
+    /// early: Run Early, in place of its next run.
+    static func runNow(_ model: AppModel, _ s: Schedule, early: Bool = false) {
         ScheduleUI.shared.showingList = false
         Task {
-            do { try await model.runScheduleNow(s.id) } catch { model.showToast("Couldn’t run “\(s.name)”: \(error.localizedDescription)") }
+            do { try await model.runScheduleNow(s.id, early: early) } catch { model.showToast("Couldn’t run “\(s.name)”: \(error.localizedDescription)") }
         }
     }
 
@@ -310,9 +314,6 @@ enum ScheduleActions {
 struct ScheduleDetail: View {
     let model: AppModel
     let schedule: Schedule
-
-    /// Its next run is skipped (Skip Next Run).
-    private var skipping: Bool { schedule.nextRunUnixMs > 0 && schedule.skipUntilUnixMs > schedule.nextRunUnixMs }
 
     var body: some View {
         ScrollView {
@@ -353,14 +354,38 @@ struct ScheduleDetail: View {
         HStack(spacing: 8) {
             Button(schedule.paused ? "Resume" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
             Button("Edit…") { ScheduleUI.shared.edit(schedule) }
-            Button("Run Now") { ScheduleActions.runNow(model, schedule) }
+            runButton
             if !schedule.paused, schedule.nextRunUnixMs > 0 {
-                Button(skipping ? "Don’t Skip" : "Skip Next Run") { ScheduleActions.skip(model, schedule, !skipping) }
+                Button(schedule.skipping ? "Don’t Skip" : "Skip Next Run") { ScheduleActions.skip(model, schedule, !schedule.skipping) }
             }
             Spacer()
             Button("Delete…", role: .destructive) { ScheduleActions.confirmDelete(model, schedule) }
         }
         .controlSize(.regular)
+    }
+
+    /// Run Now, or (its next run coming up soon) Run Early, saying which,
+    /// with the other in its menu.
+    @ViewBuilder
+    private var runButton: some View {
+        if !schedule.canRunEarly {
+            Button("Run Now") { ScheduleActions.runNow(model, schedule) }
+        } else {
+            let early = schedule.runsEarlyFirst()
+            Menu {
+                if early {
+                    Button(schedule.runAsWellTitle()) { ScheduleActions.runNow(model, schedule) }
+                } else {
+                    Button(schedule.runEarlyTitle()) { ScheduleActions.runNow(model, schedule, early: true) }
+                }
+            } label: {
+                Text(early ? schedule.runEarlyTitle() : "Run Now")
+            } primaryAction: {
+                ScheduleActions.runNow(model, schedule, early: early)
+            }
+            .fixedSize()
+            .help(early ? "Runs it now, and not \(schedule.nextRunPhrase())" : "Runs it now, and \(schedule.nextRunPhrase()) as usual")
+        }
     }
 
     private var details: some View {
@@ -437,7 +462,7 @@ struct RunRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(run.whenUnixMs > 0 ? Schedule.dateText(run.whenUnixMs) : run.status.label)
-                    if run.manual { marker("Run Now") }
+                    if let m = run.marker() { marker(m) }
                     if run.catchUp { marker("catch-up") }
                     if let d = run.durationText() {
                         Text(d).foregroundStyle(.secondary).monospacedDigit()

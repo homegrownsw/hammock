@@ -248,6 +248,11 @@ struct CommandPalette: View {
         }
         for sc in model.sortedSchedules {
             action("schedule-run:" + sc.id, "Run “\(sc.name)” Now", "play.circle", .indigo, "scheduled task start") { ScheduleActions.runNow(model, sc) }
+            if sc.canRunEarly {
+                action("schedule-run-early:" + sc.id, "Run “\(sc.name)” Now Instead of \(sc.nextRunShort())", "play.circle", .indigo, "scheduled task start early bring forward skip next") {
+                    ScheduleActions.runNow(model, sc, early: true)
+                }
+            }
             action("schedule-pause:" + sc.id, sc.paused ? "Resume “\(sc.name)”" : "Pause “\(sc.name)”", sc.paused ? "play" : "pause", .indigo, "scheduled task") {
                 ScheduleActions.setPaused(model, sc, !sc.paused)
             }

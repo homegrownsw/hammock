@@ -442,6 +442,54 @@ func TestScheduledAgentRuns(t *testing.T) {
 	}
 }
 
+// Run Early takes the next run's place: recorded as due then, and the
+// schedule moves on to the time after, so it doesn't run again at 09:00.
+func TestRunEarly(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	work := t.TempDir()
+	now := time.Now()
+	at := func(dayOffset, hour, min int) time.Time {
+		return time.Date(now.Year(), now.Month(), now.Day()+dayOffset, hour, min, 0, 0, time.Local)
+	}
+	clock := useSchedClock(t, at(0, 8, 10))
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	id := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: &pb.Schedule{
+		Kind: "command", Prompt: "true", Cwd: work, MinuteOfDay: 9 * 60,
+	}}}}).GetScheduleReply().GetSchedule().GetId()
+	if s := schedOf(d, id); s.NextRunUnixMs != at(0, 9, 0).UnixMilli() {
+		t.Fatalf("next run: %v", time.UnixMilli(s.NextRunUnixMs))
+	}
+
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: id, Early: true}}})
+	s := schedOf(d, id)
+	if r := s.Runs[0]; !r.Early || !r.Manual || r.CatchUp || r.DueUnixMs != at(0, 9, 0).UnixMilli() || r.StartedUnixMs != at(0, 8, 10).UnixMilli() {
+		t.Fatalf("early run: %v", r)
+	}
+	if s.NextRunUnixMs != at(1, 9, 0).UnixMilli() {
+		t.Fatalf("next run after Run Early: %v", time.UnixMilli(s.NextRunUnixMs))
+	}
+	// 09:00 comes and goes: nothing more runs, or is noted.
+	tick(d, clock, at(0, 9, 0))
+	if s := schedOf(d, id); len(s.Runs) != 1 {
+		t.Fatalf("ran again at 09:00: %v", s.Runs)
+	}
+
+	// Not while its next run is skipped, nor paused: Run Now is for those.
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SkipScheduleRun{SkipScheduleRun: &pb.SkipScheduleRun{ScheduleId: id, Skip: true}}})
+	if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: id, Early: true}}}); err == nil {
+		t.Fatal("ran early over a skipped run")
+	}
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: id, Paused: true}}})
+	if _, err := try(c, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: id, Early: true}}}); err == nil {
+		t.Fatal("ran early while paused")
+	}
+}
+
 // A command schedule: its exit says how it went; a failure's pane stays,
 // and a success's closes when asked to.
 func TestScheduledCommand(t *testing.T) {

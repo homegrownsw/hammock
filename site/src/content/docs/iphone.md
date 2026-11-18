@@ -12,7 +12,7 @@ Sessions lists your agents, most pressing first:
 - **Needs You**: agents waiting for an answer or stopped by an error, permission requests, and people asking to join a Group you share.
 - **Ready for You**: scheduled task runs that finished while you were away.
 - **Working** and **Recent**: agents at work, then those that finished in the last 48 hours.
-- **Coming Up**: your next scheduled tasks, with **Run Now**.
+- **Coming Up**: your next scheduled tasks, with **Run** (**Run Early** when one is due within 12 hours, in place of that run).
 - **Usage Limits**, if you've chosen any in Settings.
 
 Tap a session to open it, or swipe left to close it. The **+** button starts an agent, and the clock button finds a past session to resume.

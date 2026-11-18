@@ -9412,7 +9412,7 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
     set {_uniqueStorage()._id = newValue}
   }
 
-  /// when it was due (0: Run Now)
+  /// when it was due (0: Run Now; Run Early: the run it took the place of)
   public var dueUnixMs: Int64 {
     get {_storage._dueUnixMs}
     set {_uniqueStorage()._dueUnixMs = newValue}
@@ -9499,6 +9499,12 @@ public nonisolated struct Hammock_V1_ScheduleRun: @unchecked Sendable {
   public var kind: String {
     get {_storage._kind}
     set {_uniqueStorage()._kind = newValue}
+  }
+
+  /// Run Early: started before due_unix_ms, in its place
+  public var early: Bool {
+    get {_storage._early}
+    set {_uniqueStorage()._early = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -9622,12 +9628,16 @@ public nonisolated struct Hammock_V1_DeleteSchedule: Sendable {
   public init() {}
 }
 
+/// early: Run Early, now in place of its next run (which moves on to the
+/// one after), rather than as well as it.
 public nonisolated struct Hammock_V1_RunSchedule: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   public var scheduleID: String = String()
+
+  public var early: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -26384,7 +26394,7 @@ nonisolated extension Hammock_V1_Schedule.Notify: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ScheduleRun"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}due_unix_ms\0\u{3}started_unix_ms\0\u{3}ended_unix_ms\0\u{1}status\0\u{3}tab_id\0\u{3}pane_id\0\u{3}exit_code\0\u{1}note\0\u{1}kept\0\u{3}catch_up\0\u{1}manual\0\u{1}output\0\u{3}session_id\0\u{3}tab_closed\0\u{3}waiting_since_unix_ms\0\u{1}kind\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}due_unix_ms\0\u{3}started_unix_ms\0\u{3}ended_unix_ms\0\u{1}status\0\u{3}tab_id\0\u{3}pane_id\0\u{3}exit_code\0\u{1}note\0\u{1}kept\0\u{3}catch_up\0\u{1}manual\0\u{1}output\0\u{3}session_id\0\u{3}tab_closed\0\u{3}waiting_since_unix_ms\0\u{1}kind\0\u{1}early\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -26404,6 +26414,7 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
     var _tabClosed: Bool = false
     var _waitingSinceUnixMs: Int64 = 0
     var _kind: String = String()
+    var _early: Bool = false
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -26431,6 +26442,7 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
       _tabClosed = source._tabClosed
       _waitingSinceUnixMs = source._waitingSinceUnixMs
       _kind = source._kind
+      _early = source._early
     }
   }
 
@@ -26466,6 +26478,7 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
         case 15: try { try decoder.decodeSingularBoolField(value: &_storage._tabClosed) }()
         case 16: try { try decoder.decodeSingularInt64Field(value: &_storage._waitingSinceUnixMs) }()
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._kind) }()
+        case 18: try { try decoder.decodeSingularBoolField(value: &_storage._early) }()
         default: break
         }
       }
@@ -26525,6 +26538,9 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
       if !_storage._kind.isEmpty {
         try visitor.visitSingularStringField(value: _storage._kind, fieldNumber: 17)
       }
+      if _storage._early != false {
+        try visitor.visitSingularBoolField(value: _storage._early, fieldNumber: 18)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -26551,6 +26567,7 @@ nonisolated extension Hammock_V1_ScheduleRun: SwiftProtobuf.Message, SwiftProtob
         if _storage._tabClosed != rhs_storage._tabClosed {return false}
         if _storage._waitingSinceUnixMs != rhs_storage._waitingSinceUnixMs {return false}
         if _storage._kind != rhs_storage._kind {return false}
+        if _storage._early != rhs_storage._early {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -26640,7 +26657,7 @@ nonisolated extension Hammock_V1_DeleteSchedule: SwiftProtobuf.Message, SwiftPro
 
 nonisolated extension Hammock_V1_RunSchedule: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RunSchedule"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schedule_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}schedule_id\0\u{1}early\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -26649,6 +26666,7 @@ nonisolated extension Hammock_V1_RunSchedule: SwiftProtobuf.Message, SwiftProtob
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.scheduleID) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.early) }()
       default: break
       }
     }
@@ -26658,11 +26676,15 @@ nonisolated extension Hammock_V1_RunSchedule: SwiftProtobuf.Message, SwiftProtob
     if !self.scheduleID.isEmpty {
       try visitor.visitSingularStringField(value: self.scheduleID, fieldNumber: 1)
     }
+    if self.early != false {
+      try visitor.visitSingularBoolField(value: self.early, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_RunSchedule, rhs: Hammock_V1_RunSchedule) -> Bool {
     if lhs.scheduleID != rhs.scheduleID {return false}
+    if lhs.early != rhs.early {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

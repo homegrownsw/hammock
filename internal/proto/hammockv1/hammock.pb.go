@@ -22641,7 +22641,7 @@ func (x *Schedule) GetError() string {
 type ScheduleRun struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	DueUnixMs          int64                  `protobuf:"varint,2,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"` // when it was due (0: Run Now)
+	DueUnixMs          int64                  `protobuf:"varint,2,opt,name=due_unix_ms,json=dueUnixMs,proto3" json:"due_unix_ms,omitempty"` // when it was due (0: Run Now; Run Early: the run it took the place of)
 	StartedUnixMs      int64                  `protobuf:"varint,3,opt,name=started_unix_ms,json=startedUnixMs,proto3" json:"started_unix_ms,omitempty"`
 	EndedUnixMs        int64                  `protobuf:"varint,4,opt,name=ended_unix_ms,json=endedUnixMs,proto3" json:"ended_unix_ms,omitempty"`
 	Status             ScheduleRun_Status     `protobuf:"varint,5,opt,name=status,proto3,enum=hammock.v1.ScheduleRun_Status" json:"status,omitempty"`
@@ -22656,7 +22656,8 @@ type ScheduleRun struct {
 	SessionId          string                 `protobuf:"bytes,14,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // the agent's session, to resume once its tab is gone
 	TabClosed          bool                   `protobuf:"varint,15,opt,name=tab_closed,json=tabClosed,proto3" json:"tab_closed,omitempty"`
 	WaitingSinceUnixMs int64                  `protobuf:"varint,16,opt,name=waiting_since_unix_ms,json=waitingSinceUnixMs,proto3" json:"waiting_since_unix_ms,omitempty"`
-	Kind               string                 `protobuf:"bytes,17,opt,name=kind,proto3" json:"kind,omitempty"` // what it ran: the schedule's kind then ("claude", "codex", "command")
+	Kind               string                 `protobuf:"bytes,17,opt,name=kind,proto3" json:"kind,omitempty"`    // what it ran: the schedule's kind then ("claude", "codex", "command")
+	Early              bool                   `protobuf:"varint,18,opt,name=early,proto3" json:"early,omitempty"` // Run Early: started before due_unix_ms, in its place
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -22810,6 +22811,13 @@ func (x *ScheduleRun) GetKind() string {
 	return ""
 }
 
+func (x *ScheduleRun) GetEarly() bool {
+	if x != nil {
+		return x.Early
+	}
+	return false
+}
+
 // description: an agent's reason, shown (as its words) with the request.
 type SaveSchedule struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -22915,9 +22923,12 @@ func (x *DeleteSchedule) GetDescription() string {
 	return ""
 }
 
+// early: Run Early, now in place of its next run (which moves on to the
+// one after), rather than as well as it.
 type RunSchedule struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ScheduleId    string                 `protobuf:"bytes,1,opt,name=schedule_id,json=scheduleId,proto3" json:"schedule_id,omitempty"`
+	Early         bool                   `protobuf:"varint,2,opt,name=early,proto3" json:"early,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -22957,6 +22968,13 @@ func (x *RunSchedule) GetScheduleId() string {
 		return x.ScheduleId
 	}
 	return ""
+}
+
+func (x *RunSchedule) GetEarly() bool {
+	if x != nil {
+		return x.Early
+	}
+	return false
 }
 
 type SetSchedulePaused struct {
@@ -27135,7 +27153,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0eNOTIFY_DEFAULT\x10\x00\x12\x10\n" +
 	"\fNOTIFY_READY\x10\x01\x12\x13\n" +
 	"\x0fNOTIFY_PROBLEMS\x10\x02\x12\x10\n" +
-	"\fNOTIFY_NEVER\x10\x03\"\xc5\x05\n" +
+	"\fNOTIFY_NEVER\x10\x03\"\xdb\x05\n" +
 	"\vScheduleRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x02 \x01(\x03R\tdueUnixMs\x12&\n" +
@@ -27156,7 +27174,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\n" +
 	"tab_closed\x18\x0f \x01(\bR\ttabClosed\x121\n" +
 	"\x15waiting_since_unix_ms\x18\x10 \x01(\x03R\x12waitingSinceUnixMs\x12\x12\n" +
-	"\x04kind\x18\x11 \x01(\tR\x04kind\"\xbc\x01\n" +
+	"\x04kind\x18\x11 \x01(\tR\x04kind\x12\x14\n" +
+	"\x05early\x18\x12 \x01(\bR\x05early\"\xbc\x01\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eSTATUS_RUNNING\x10\x01\x12\x12\n" +
@@ -27173,10 +27192,11 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0eDeleteSchedule\x12\x1f\n" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
 	"scheduleId\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\".\n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\"D\n" +
 	"\vRunSchedule\x12\x1f\n" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
-	"scheduleId\"L\n" +
+	"scheduleId\x12\x14\n" +
+	"\x05early\x18\x02 \x01(\bR\x05early\"L\n" +
 	"\x11SetSchedulePaused\x12\x1f\n" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
 	"scheduleId\x12\x16\n" +

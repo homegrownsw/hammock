@@ -68,21 +68,15 @@ enum ScheduleWords {
     }
 }
 
-extension Schedule {
-    /// Its next run is skipped (Skip Next Run).
-    var skipping: Bool { nextRunUnixMs > 0 && skipUntilUnixMs > nextRunUnixMs }
-    /// It will run again on its own.
-    var upcoming: Bool { nextRunUnixMs > 0 && !paused }
-}
-
 /// What the cockpit's and the list's buttons do, with errors said in a toast
 /// (the demo's "needs your Mac" in its alert, which offers to pair one).
 @MainActor
 enum ScheduleActionsIOS {
-    /// Runs it now and returns its new tab (to show), if it opened.
-    static func runNow(_ model: AppModel, _ s: Schedule) async -> String? {
+    /// Runs it now and returns its new tab (to show), if it opened. early:
+    /// Run Early, in place of its next run.
+    static func runNow(_ model: AppModel, _ s: Schedule, early: Bool = false) async -> String? {
         do {
-            let tab = try await model.runScheduleNow(s.id)
+            let tab = try await model.runScheduleNow(s.id, early: early)
             return model.tabs[tab] != nil ? tab : nil
         } catch {
             failed(model, error, "Couldn’t run “\(s.name)”: ")
@@ -277,18 +271,24 @@ struct ComingUpRow: View {
             }
             .buttonStyle(.bordered)
             .accessibilityLabel(schedule.skipping ? "Don’t Skip the Next Run" : "Skip the Next Run")
-            Button {
-                starting = true
-                Task {
-                    if let tab = await ScheduleActionsIOS.runNow(model, schedule) { push(tab) }
-                    starting = false
+            // Coming up soon, it runs early (in that run's place), and says
+            // so; the other way is in its menu.
+            let early = schedule.runsEarlyFirst(now: now)
+            Menu {
+                if early {
+                    Button(schedule.runAsWellTitle(now: now), systemImage: "play.fill") { run(early: false) }
+                } else if schedule.canRunEarly {
+                    Button(schedule.runEarlyTitle(now: now), systemImage: "play.fill") { run(early: true) }
                 }
             } label: {
-                if starting { ProgressView() } else { Text("Run") }
+                if starting { ProgressView() } else { Text(early ? "Run Early" : "Run") }
+            } primaryAction: {
+                run(early: early)
             }
+            .menuStyle(.button)
             .buttonStyle(.bordered)
             .disabled(starting)
-            .accessibilityLabel("Run Now")
+            .accessibilityLabel(early ? schedule.runEarlyTitle(now: now) : "Run Now")
         }
         .controlSize(.small)
         .buttonBorderShape(.capsule)
@@ -303,6 +303,14 @@ struct ComingUpRow: View {
         }
         .contextMenu {
             ScheduleMenuIOS(model: model, schedule: schedule, push: push)
+        }
+    }
+
+    private func run(early: Bool) {
+        starting = true
+        Task {
+            if let tab = await ScheduleActionsIOS.runNow(model, schedule, early: early) { push(tab) }
+            starting = false
         }
     }
 
@@ -326,6 +334,11 @@ struct ScheduleMenuIOS: View {
     var body: some View {
         Button("Run Now", systemImage: "play.fill") {
             Task { if let tab = await ScheduleActionsIOS.runNow(model, schedule) { push(tab) } }
+        }
+        if schedule.canRunEarly {
+            Button(schedule.runEarlyTitle(), systemImage: "play") {
+                Task { if let tab = await ScheduleActionsIOS.runNow(model, schedule, early: true) { push(tab) } }
+            }
         }
         if schedule.upcoming {
             Button(schedule.skipping ? "Don’t Skip Next Run" : "Skip Next Run", systemImage: schedule.skipping ? "arrow.uturn.backward" : "forward.end") {
@@ -497,6 +510,16 @@ struct ScheduleDetailScreen: View {
                     }
                 }
                 .disabled(starting)
+                if s.canRunEarly {
+                    Button(s.runEarlyTitle(now: now), systemImage: "play") {
+                        starting = true
+                        Task {
+                            if let tab = await ScheduleActionsIOS.runNow(model, s, early: true) { path.append(tab) }
+                            starting = false
+                        }
+                    }
+                    .disabled(starting)
+                }
                 if s.upcoming {
                     Button(s.skipping ? "Don’t Skip Next Run" : "Skip Next Run", systemImage: s.skipping ? "arrow.uturn.backward" : "forward.end") {
                         ScheduleActionsIOS.skip(model, s, !s.skipping)
@@ -590,7 +613,7 @@ struct RunRowIOS: View {
                     Text(run.whenUnixMs > 0 ? Schedule.dateText(run.whenUnixMs, now: now) : run.status.label)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
-                    if run.manual { marker("Run Now") }
+                    if let m = run.marker() { marker(m) }
                     if run.catchUp { marker("catch-up") }
                     Spacer(minLength: 4)
                     if let d = run.durationText(now: now) {

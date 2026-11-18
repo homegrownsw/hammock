@@ -70,8 +70,15 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		var do func(s *pb.Schedule) (*pb.ServerMessage, error)
 		switch m := msg.Msg.(type) {
 		case *pb.ClientMessage_RunSchedule:
+			early := m.RunSchedule.Early
 			id, verb = m.RunSchedule.ScheduleId, "run the scheduled task %s now"
+			if early {
+				verb = "run the scheduled task %s now, instead of at its next time"
+			}
 			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
+				if early {
+					return d.runEarly(s)
+				}
 				r, err := d.startRun(s, time.Time{}, true)
 				d.saveSchedule(s)
 				if err != nil {
@@ -124,6 +131,26 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 
 	}
 	return nil, errors.New("unknown schedule message")
+}
+
+// runEarly is Run Early: s's next run, started now. It's recorded as due
+// then, and s next runs at the time after it. Callers hold d.mu.
+func (d *Daemon) runEarly(s *pb.Schedule) (*pb.ServerMessage, error) {
+	if s.Paused || s.NextRunUnixMs == 0 {
+		return nil, errors.New("it isn't due to run: use Run Now")
+	}
+	if s.SkipUntilUnixMs > s.NextRunUnixMs {
+		return nil, errors.New("its next run is skipped: use Run Now")
+	}
+	due := time.UnixMilli(s.NextRunUnixMs)
+	r, err := d.startRun(s, due, true)
+	r.Early = true
+	d.scheduleNext(s, due)
+	d.saveSchedule(s)
+	if err != nil {
+		return nil, err
+	}
+	return created(r.TabId), nil
 }
 
 // askSchedule asks you whether an agent may save (or delete) a schedule:

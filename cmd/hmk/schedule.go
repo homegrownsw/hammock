@@ -33,7 +33,8 @@ const scheduleUsage = `usage:
   hmk schedule add [NAME] (--at HH:MM [--days D] | --cron EXPR) [OPTIONS] -- PROMPT|COMMAND
   hmk schedule edit SCHEDULE [OPTIONS] [-- PROMPT|COMMAND]
   hmk schedule show SCHEDULE [--json]      its settings and runs
-  hmk schedule run SCHEDULE                run it now (in a new tab)
+  hmk schedule run SCHEDULE [--early]      run it now (in a new tab); --early: instead of
+                                           at its next time, which moves on to the one after
   hmk schedule pause|resume SCHEDULE
   hmk schedule skip SCHEDULE [--undo]      skip its next run
   hmk schedule rm SCHEDULE
@@ -137,7 +138,8 @@ func runSchedule(args []string) error {
 		if err != nil {
 			return err
 		}
-		r, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id}}}, 30*time.Second)
+		early := slices.Contains(args, "--early")
+		r, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id, Early: early}}}, 30*time.Second)
 		if err != nil {
 			return err
 		}
@@ -459,7 +461,7 @@ func printSchedules(w *world) {
 		last := "never run"
 		if len(s.Runs) > 0 {
 			r := s.Runs[0]
-			last = runStatusWords[r.Status] + " " + when(time.UnixMilli(max(r.StartedUnixMs, r.DueUnixMs)))
+			last = runStatusWords[r.Status] + " " + when(runAt(r))
 		}
 		where := s.GroupName
 		if c := w.scheduleComputer(s.ComputerId); c != "" {
@@ -470,6 +472,14 @@ func printSchedules(w *world) {
 			printfSafe("    ! %s\n", s.Error)
 		}
 	}
+}
+
+// runAt is when a run started, else when it was due.
+func runAt(r *pb.ScheduleRun) time.Time {
+	if r.StartedUnixMs > 0 {
+		return time.UnixMilli(r.StartedUnixMs)
+	}
+	return time.UnixMilli(r.DueUnixMs)
 }
 
 func printSchedule(w *world, s *pb.Schedule) {
@@ -495,9 +505,12 @@ func printSchedule(w *world, s *pb.Schedule) {
 	}
 	fmt.Println("  runs:")
 	for _, r := range s.Runs {
-		t := time.UnixMilli(max(r.StartedUnixMs, r.DueUnixMs))
+		t := runAt(r)
 		extra := []string{}
-		if r.Manual {
+		switch {
+		case r.Early:
+			extra = append(extra, "run early, for "+when(time.UnixMilli(r.DueUnixMs)))
+		case r.Manual:
 			extra = append(extra, "run now")
 		}
 		if r.CatchUp {

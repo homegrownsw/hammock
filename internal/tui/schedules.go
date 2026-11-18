@@ -370,13 +370,36 @@ func (a *App) scheduleGroup(s *pb.Schedule) string {
 
 // ---------- actions ----------
 
-func (a *App) runScheduleNow(s *pb.Schedule) {
-	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id}}}, func(r *pb.ServerMessage) {
+// runScheduleNow runs s now; early: Run Early, in place of its next run
+// (which moves on to the one after), not as well as it.
+func (a *App) runScheduleNow(s *pb.Schedule, early bool) {
+	if early && !canRunEarly(s) {
+		a.flash("“" + s.Name + "” has no next run to bring forward")
+		return
+	}
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id, Early: early}}}, func(r *pb.ServerMessage) {
 		if id := client.CreatedID(r); id != "" {
 			a.selectTab(id) // on another computer, its tab shows once it comes back
 		}
 		a.flash("Running “" + s.Name + "”")
 	})
+}
+
+// canRunEarly: s has a next run, not skipped, for Run Early to bring forward.
+func canRunEarly(s *pb.Schedule) bool {
+	return !s.Paused && s.NextRunUnixMs != 0 && s.SkipUntilUnixMs <= s.NextRunUnixMs
+}
+
+// runEarlyLabel is "Run Now Instead of 09:00" (or "… of tomorrow 09:00").
+func runEarlyLabel(s *pb.Schedule, now time.Time) string {
+	if s.NextRunUnixMs == 0 {
+		return "Run Early"
+	}
+	t := time.UnixMilli(s.NextRunUnixMs).In(now.Location())
+	if y, m, d := t.Date(); y == now.Year() && m == now.Month() && d == now.Day() {
+		return "Run Now Instead of " + t.Format("15:04")
+	}
+	return "Run Now Instead of " + nextRunText(s.NextRunUnixMs, now)
 }
 
 func (a *App) setSchedulePaused(s *pb.Schedule, paused bool) {
@@ -861,6 +884,8 @@ func (v *scheduleView) draw(a *App) {
 			s.Text(in.x+3, y, 12, word, Cell{FG: fg, HasFG: true, BG: rowBG, HasBG: true, Bold: isSel})
 			when := relTime(runTime(run), now)
 			switch {
+			case run.Early:
+				when += " (Run Early)"
 			case run.Manual:
 				when += " (Run Now)"
 			case run.CatchUp:
@@ -894,9 +919,9 @@ func (v *scheduleView) draw(a *App) {
 		if sc.SkipUntilUnixMs > sc.NextRunUnixMs && sc.NextRunUnixMs != 0 {
 			skip = "s Don't Skip"
 		}
-		hints = "↵/→ Runs   r Run Now   " + pause + "   " + skip + "   e Edit   n New   ⌫ Delete   esc Close"
+		hints = "↵/→ Runs   r Run Now   R Run Early   " + pause + "   " + skip + "   e Edit   n New   ⌫ Delete   esc Close"
 		if v.runSel >= 0 {
-			hints = "↵ Go to Tab   ← Tasks   r Run Now   esc Close"
+			hints = "↵ Go to Tab   ← Tasks   r Run Now   R Run Early   esc Close"
 		}
 	}
 	s.Text(in.x+1, l.hintY+dy, in.w-2, truncate(hints, in.w-2), Cell{FG: a.th.faint, HasFG: true, BG: bg, HasBG: true})
@@ -925,9 +950,9 @@ func (v *scheduleView) key(a *App, ks []key) {
 				v.openRun(a, sc, v.runSel)
 				return
 			case "":
-				if k.r == 'r' {
+				if k.r == 'r' || k.r == 'R' {
 					a.closeOverlay()
-					a.runScheduleNow(sc)
+					a.runScheduleNow(sc, k.r == 'R')
 					return
 				}
 			}
@@ -965,9 +990,9 @@ func (v *scheduleView) key(a *App, ks []key) {
 				continue
 			}
 			switch k.r {
-			case 'r':
+			case 'r', 'R':
 				a.closeOverlay()
-				a.runScheduleNow(sc)
+				a.runScheduleNow(sc, k.r == 'R')
 				return
 			case 'p':
 				a.setSchedulePaused(sc, !sc.Paused)
@@ -1062,7 +1087,8 @@ func (a *App) scheduleMenu(sc *pb.Schedule, x, y int) {
 		skip = "Don't Skip Next Run"
 	}
 	a.openMenu(x, y, []menuItem{
-		{label: "Run Now", hint: "r", run: func() { a.runScheduleNow(sc) }},
+		{label: "Run Now", hint: "r", run: func() { a.runScheduleNow(sc, false) }},
+		{label: runEarlyLabel(sc, time.Now()), hint: "R", disabled: !canRunEarly(sc), run: func() { a.runScheduleNow(sc, true) }},
 		{label: pause, hint: "p", run: func() { a.setSchedulePaused(sc, !sc.Paused); back() }},
 		{label: skip, hint: "s", disabled: sc.NextRunUnixMs == 0, run: func() { a.toggleSkip(sc); back() }},
 		{label: "Edit…", hint: "e", run: func() { a.openScheduleDialog(sc, nil, "", back) }},
