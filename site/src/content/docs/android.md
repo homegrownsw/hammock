@@ -17,8 +17,9 @@ what you open shows beside the list.
 - **Groups** shows each Group and its tabs. Touch and hold a tab for its actions; swipe it left to close it.
 - An agent's pane shows its conversation or its terminal: choose in its ⋮ menu, which also has the tab's actions
   (**Rename…**, **Put Agent to Sleep**, **Close Tab** and the rest).
-- A tab with several panes has a strip along the bottom with a pill for each, as on the iPhone: tap one to switch,
-  or touch and hold it for more. The button at the strip's left opens Exposé, the tab laid out as on the Mac.
+- A tab with several panes has a strip along the bottom with a pill for each, as on the iPhone: tap one, or swipe
+  sideways across the pane, to switch; touch and hold a pill for more. The button at the strip's left opens Exposé,
+  the tab laid out as on the Mac.
 
 ## Terminals and the agent view
 

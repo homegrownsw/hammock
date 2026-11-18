@@ -110,7 +110,9 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
     val current = ids.getOrNull(pager.currentPage) ?: ids.first()
     fun go(id: String) { ids.indexOf(id).takeIf { it >= 0 }?.let { scope.launch { pager.animateScrollToPage(it) } } }
     Box(Modifier.fillMaxSize()) {
-        HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = false, key = { ids[it] }, beyondViewportPageCount = 0) { i ->
+        // Swiping sideways across a pane goes to the next, as on the iPhone (not on a page or a
+        // simulator's screen, whose own drags come first).
+        HorizontalPager(pager, Modifier.fillMaxSize(), key = { ids[it] }, beyondViewportPageCount = 0) { i ->
             PaneScreen(model, ids[i], nav, showBack, tabStrip = {
                 PaneStrip(model, w, tab, current, nav, select = ::go, expose = { exposing = true })
             })
