@@ -37,6 +37,8 @@ import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.StoredHost
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Link
+import com.homegrownsw.hammock.media.ScreenCards
+import com.homegrownsw.hammock.media.ScreenViewer
 
 fun computerIcon(kind: String): ImageVector = when (kind) {
     "server", "linux", "unraid" -> Icons.Default.Dns
@@ -55,9 +57,15 @@ fun DevicesScreen(session: Session, model: AppModel) {
     var adding by remember { mutableStateOf(false) }
     var forgetting by remember { mutableStateOf<StoredHost?>(null) }
     var name by remember { mutableStateOf(session.deviceName) }
+    var screen by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     // The computer shown says what kind it is: kept for its icon.
     w.computers.firstOrNull { it.thisComputer }?.kind?.let { if (it.isNotEmpty()) session.noteKind(it) }
+
+    screen?.let { (id, title) ->
+        ScreenViewer(model, id, title) { screen = null }
+        return
+    }
 
     if (adding) {
         BackHandler { adding = false }
@@ -107,6 +115,9 @@ fun DevicesScreen(session: Session, model: AppModel) {
                     headlineContent = { Text("Add Computer", color = MaterialTheme.colorScheme.primary) },
                 )
                 Footer("The phone shows one computer at a time. Tap one to switch; touch and hold to forget it.")
+            }
+            if (!session.isDemo && link == Link.Connected) item {
+                ScreenCards(model) { id, title -> screen = id to title }
             }
             item {
                 SectionTitle("This Phone")

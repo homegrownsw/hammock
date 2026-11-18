@@ -6,6 +6,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import com.homegrownsw.hammock.media.BrowserPane
+import com.homegrownsw.hammock.media.SimulatorPane
 import com.homegrownsw.hammock.panes.DiffPane
 import com.homegrownsw.hammock.panes.DiffSettings
 import com.homegrownsw.hammock.panes.EditorPane
@@ -115,7 +117,7 @@ fun rememberPaneTheme(model: AppModel): PaneTheme {
 }
 
 @Composable
-fun BrowserContent(model: AppModel, pane: Pane, drive: Boolean) = Placeholder("Browser")
+fun BrowserContent(model: AppModel, pane: Pane, drive: Boolean) = BrowserPane(model, pane, drive)
 
 @Composable
-fun SimulatorContent(model: AppModel, pane: Pane, drive: Boolean) = Placeholder("Simulator")
+fun SimulatorContent(model: AppModel, pane: Pane, drive: Boolean) = SimulatorPane(model, pane, drive)

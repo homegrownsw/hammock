@@ -23,4 +23,5 @@ include(":client")    // connection, sign-in and the model (plain JVM: tests run
 include(":terminal")  // libghostty-vt through JNI, and the GLES renderer
 include(":agentview") // the agent view
 include(":panes")     // editor, diff and log panes
+include(":media")     // browser, simulator and screen video
 include(":app")

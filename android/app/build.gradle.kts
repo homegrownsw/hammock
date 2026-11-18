@@ -67,6 +67,7 @@ dependencies {
     implementation(project(":terminal"))
     implementation(project(":agentview"))
     implementation(project(":panes"))
+    implementation(project(":media"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
