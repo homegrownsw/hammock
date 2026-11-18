@@ -1,0 +1,449 @@
+package com.homegrownsw.hammock.ui
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PanTool
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.homegrownsw.hammock.Session
+import com.homegrownsw.hammock.client.AppModel
+import com.homegrownsw.hammock.client.Link
+import com.homegrownsw.hammock.client.Workspace
+import com.homegrownsw.hammock.client.agentProgress
+import com.homegrownsw.hammock.client.agentStatusLabel
+import com.homegrownsw.hammock.client.agentNote
+import com.homegrownsw.hammock.client.canAllowAlways
+import com.homegrownsw.hammock.client.canAddTabs
+import com.homegrownsw.hammock.client.canDrive
+import com.homegrownsw.hammock.client.displayName
+import com.homegrownsw.hammock.client.elapsedString
+import com.homegrownsw.hammock.client.headlineText
+import com.homegrownsw.hammock.client.label
+import com.homegrownsw.hammock.client.originText
+import com.homegrownsw.hammock.client.shownState
+import hammock.v1.Hammock
+import hammock.v1.Hammock.AgentState
+import hammock.v1.Hammock.Pane
+import hammock.v1.Hammock.Tab
+import kotlinx.coroutines.delay
+
+/** A tab with an agent, as its most pressing agent pane. */
+data class SessionRow(val tab: Tab, val pane: Pane)
+
+data class SessionRows(val needsYou: List<SessionRow>, val working: List<SessionRow>, val recent: List<SessionRow>) {
+    val isEmpty get() = needsYou.isEmpty() && working.isEmpty() && recent.isEmpty()
+
+    companion object {
+        private val rank = mapOf(
+            AgentState.AGENT_STATE_NEEDS_INPUT to 0, AgentState.AGENT_STATE_ERRORED to 1,
+            AgentState.AGENT_STATE_WORKING to 2, AgentState.AGENT_STATE_STARTING to 2, AgentState.AGENT_STATE_IDLE to 3,
+        )
+
+        fun of(w: Workspace): SessionRows {
+            val needs = ArrayList<SessionRow>()
+            val working = ArrayList<SessionRow>()
+            val recent = ArrayList<SessionRow>()
+            for (tab in w.orderedTabs) {
+                val p = w.panes(tab).filter { it.hasAgent() && !it.exited && rank[it.agent.shownState] != null }
+                    .minByOrNull { rank[it.agent.shownState]!! } ?: continue
+                val row = SessionRow(tab, p)
+                when (p.agent.shownState) {
+                    AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_ERRORED -> needs += row
+                    AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_STARTING -> working += row
+                    else -> recent += row
+                }
+            }
+            val newest = compareByDescending<SessionRow> { it.pane.agent.stateSinceUnixMs }
+            return SessionRows(needs.sortedWith(newest), working.sortedWith(newest), recent.sortedWith(newest))
+        }
+    }
+}
+
+/** A minute-ish clock, for "3m ago" texts. */
+@Composable
+fun rememberNow(periodMs: Long = 30_000): Long {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(periodMs) {
+        while (true) {
+            delay(periodMs)
+            now = System.currentTimeMillis()
+        }
+    }
+    return now
+}
+
+/** Agents by urgency: what needs you, scheduled runs ready, what's working, what finished. */
+@Composable
+fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
+    val w by model.workspace.collectAsStateWithLifecycle()
+    val link by model.link.collectAsStateWithLifecycle()
+    val now = rememberNow()
+    var showingAllRecent by rememberSaveable { mutableStateOf(false) }
+    var finding by remember { mutableStateOf(false) }
+    var starting by remember { mutableStateOf(false) }
+    var closing by remember { mutableStateOf<Pane?>(null) }
+    val rows = SessionRows.of(w)
+    val ready = readyRuns(w, now)
+    val waiting = w.attention.filter { it.state == AgentState.AGENT_STATE_NEEDS_INPUT || it.state == AgentState.AGENT_STATE_ERRORED }
+    val readyPanes = ready.map { it.second.paneId }.toSet()
+    val others = rows.needsYou.filter { r -> waiting.none { it.paneId == r.pane.id } }
+
+    fun close(p: Pane) {
+        val tab = w.tabs[p.tabId]
+        if (tab != null && w.panes(tab).size == 1) model.closeTab(tab.id) else model.closePane(p.id)
+    }
+    fun requestClose(p: Pane) {
+        if (p.agent.shownState == AgentState.AGENT_STATE_WORKING || (w.tabs[p.tabId]?.let { w.panes(it).size } ?: 1) > 1) closing = p else close(p)
+    }
+    fun canClose(p: Pane) = w.groupOfPane(p.id)?.let { it.canDrive && !it.offline } ?: false
+
+    CockpitScaffold(session, model, actions = {
+        IconButton(onClick = { finding = true }, enabled = link == Link.Connected) { Icon(Icons.Default.History, "Find a Session") }
+        IconButton(onClick = { starting = true }, enabled = link == Link.Connected && w.groups.any { it.canAddTabs }) {
+            Icon(Icons.Default.Add, "Start an Agent")
+        }
+    }) { padding ->
+        val empty = link == Link.Connected && w.groups.isNotEmpty() && w.grants.isEmpty() && rows.isEmpty && w.schedules.isEmpty() && w.joinRequests.isEmpty()
+        if (empty) {
+            EmptyState(
+                "No Agent Sessions", "Agents running on your computer show up here.",
+                Modifier.padding(padding), action = "Start an Agent…",
+            ) { starting = true }
+            return@CockpitScaffold
+        }
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 24.dp)) {
+            if (w.grants.isNotEmpty() || waiting.isNotEmpty() || others.isNotEmpty() || w.joinRequests.isNotEmpty()) {
+                section("Needs You")
+                items(w.joinRequests, key = { "join:" + it.id }) { JoinCard(model, w, it) }
+                items(w.grants, key = { "grant:" + it.id }) { GrantCard(model, it) }
+                items(waiting, key = { "att:" + it.id }) { item ->
+                    val p = w.panes[item.paneId]
+                    Swipeable(enabled = p != null && canClose(p), onClose = { p?.let(::requestClose) }) {
+                        AttentionCard(model, w, item) { nav.open("pane:" + item.paneId) }
+                    }
+                }
+                items(others, key = { "need:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
+            }
+            if (ready.isNotEmpty()) {
+                section("Ready for You")
+                items(ready, key = { "ready:" + it.second.id }) { (s, run) -> ReadyRunRow(w, s, run, now) { openRun(nav, w, s, run, model) } }
+            }
+            val working = rows.working.filter { it.pane.id !in readyPanes }
+            if (working.isNotEmpty()) {
+                section("Working")
+                items(working, key = { "work:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
+            }
+            val recentAll = rows.recent.filter { it.pane.id !in readyPanes }
+            if (recentAll.isNotEmpty()) {
+                section("Recent")
+                // The last 48 hours', then the rest on asking (all of them when none are that new).
+                val cutoff = now - 48 * 3600 * 1000L
+                val fresh = recentAll.filter { it.pane.agent.stateSinceUnixMs >= cutoff }
+                val shown = if (showingAllRecent || fresh.isEmpty()) recentAll else fresh
+                items(shown, key = { "recent:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
+                if (fresh.isNotEmpty() && fresh.size < recentAll.size) {
+                    item(key = "more") {
+                        TextButton(onClick = { showingAllRecent = !showingAllRecent }, Modifier.padding(horizontal = 8.dp)) {
+                            Text(if (showingAllRecent) "Show Less" else "Show More…")
+                        }
+                    }
+                }
+            }
+            if (w.schedules.isNotEmpty()) comingUp(model, w, nav, now)
+            usageLimits(w, now)
+        }
+    }
+    closing?.let { p ->
+        val title = w.tabs[p.tabId]?.let { w.title(it) } ?: p.displayName
+        AlertDialog(
+            onDismissRequest = { closing = null },
+            title = { Text("Close “$title”?") },
+            text = { Text(closeWarning(w, p)) },
+            confirmButton = { TextButton(onClick = { close(p); closing = null }) { Text("Close Session", color = ErrorColor) } },
+            dismissButton = { TextButton(onClick = { closing = null }) { Text("Cancel") } },
+        )
+    }
+    if (finding) SessionFinderSheet(model, nav) { finding = false }
+    if (starting) StartAgentSheet(model, groupID = null, nav = nav) { starting = false }
+}
+
+private fun closeWarning(w: Workspace, p: Pane): String {
+    val others = w.tabs[p.tabId]?.let { w.panes(it).size - 1 } ?: 0
+    return when {
+        p.agent.shownState == AgentState.AGENT_STATE_WORKING -> "Its agent is working: it's stopped."
+        others > 0 -> "Only the agent's pane closes; the rest of its tab keeps running."
+        else -> ""
+    }
+}
+
+fun LazyListScope.section(title: String) {
+    item(key = "h:$title", contentType = "header") {
+        Text(
+            title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 6.dp),
+        )
+    }
+}
+
+/** Swipe left to close, where you can (your own Groups, or ones you drive). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun Swipeable(enabled: Boolean, onClose: () -> Unit, content: @Composable () -> Unit) {
+    if (!enabled) return content()
+    val state = rememberSwipeToDismissBoxState(confirmValueChange = {
+        if (it == SwipeToDismissBoxValue.EndToStart) onClose()
+        false // the row goes when the computer says it's closed, or stays when it asks first
+    })
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(Modifier.fillMaxSize().background(ErrorColor).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterEnd) {
+                Icon(Icons.Default.Close, "Close", tint = Color.White)
+            }
+        },
+    ) { Box(Modifier.background(MaterialTheme.colorScheme.surface)) { content() } }
+}
+
+@Composable
+private fun SessionLink(
+    model: AppModel, w: Workspace, r: SessionRow, nav: Nav,
+    canClose: (Pane) -> Boolean, close: (Pane) -> Unit, now: Long,
+) {
+    Swipeable(enabled = canClose(r.pane), onClose = { close(r.pane) }) {
+        SessionRowView(w, r, now, selected = nav.stack.lastOrNull() == "pane:" + r.pane.id) { nav.open("pane:" + r.pane.id) }
+    }
+}
+
+/**
+ * A session as a messages app shows a conversation: its name and when, its
+ * latest (the agent's reply, what it's doing, or what it's asking), then
+ * quietly its Group.
+ */
+@Composable
+fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = false, onClick: () -> Unit) {
+    val a = r.pane.agent
+    val idleSeen = a.state == AgentState.AGENT_STATE_IDLE && a.seen
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        StatusIcon(if (idleSeen) null else a.shownState, resting = idleSeen, asleep = r.pane.asleep, progress = r.pane.agentProgress,
+            modifier = Modifier.padding(top = 2.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(w.title(r.tab), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                Text(elapsedString(a.stateSinceUnixMs, now), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                plainInline(a.summary.ifEmpty { r.pane.agentStatusLabel }), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+            w.groupOf(r.tab)?.let { g ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    GroupIcon(g, 14)
+                    Text(w.title(g), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+/** Markdown's inline marks taken out, for a one-line summary. */
+fun plainInline(s: String): String = s.replace(Regex("\\*\\*|__|`"), "").replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")
+
+@Composable
+fun GroupIcon(g: Hammock.Group, sizeDp: Int) {
+    if (g.icon.isNotEmpty()) Text(g.icon, style = MaterialTheme.typography.bodySmall)
+    else Icon(Icons.Default.ViewAgenda, null, Modifier.size(sizeDp.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** A card: the Needs You items stand out from plain rows. */
+@Composable
+fun Card(content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(16.dp),
+    ) { content() }
+}
+
+/** An agent waiting on you, with Allow / Deny right there for a permission prompt. */
+@Composable
+fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, open: () -> Unit) {
+    val pane = w.panes[item.paneId]
+    val schedule = pane?.scheduleId?.let { w.schedules[it] }
+    Box(Modifier.clickable(onClick = open)) {
+        Card {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatusIcon(item.state, modifier = Modifier.padding(top = 2.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(pane?.let { w.tabs[it.tabId] }?.let { w.title(it) } ?: "Agent", style = MaterialTheme.typography.titleMedium)
+                        if (schedule != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Default.Schedule, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Scheduled · ${schedule.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Text(plainInline(item.summary.ifEmpty { item.state.label }), style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (item.state == AgentState.AGENT_STATE_NEEDS_INPUT) {
+                    if (item.question) {
+                        Row { Spacer(Modifier.weight(1f)); Button(onClick = open) { Text("Answer") } }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
+                            OutlinedButton(onClick = open) { Text("Open") }
+                            Spacer(Modifier.weight(1f))
+                            if (schedule != null && schedule.kind == "claude") AllowMenu(model, item)
+                            else Button(onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Button(onClick = { open = true }) { Text("Allow ▾") }
+        DropdownMenu(open, { open = false }) {
+            DropdownMenuItem(text = { Text("Allow Once") }, onClick = { open = false; model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) })
+            DropdownMenuItem(text = { Text("Always Allow for This Schedule") },
+                onClick = { open = false; model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE) })
+        }
+    }
+}
+
+/** An agent asking for permission to do something beyond its Group. */
+@Composable
+fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
+    Card {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Default.PanTool, null, tint = NeedsYouColor, modifier = Modifier.size(20.dp))
+                Text(grant.headlineText, style = MaterialTheme.typography.titleMedium, maxLines = if (grant.person || grant.action == "schedule") 20 else 4)
+            }
+            grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
+            grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
+                Spacer(Modifier.weight(1f))
+                if (grant.canAllowAlways) OutlinedButton(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
+                Button(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
+            }
+        }
+    }
+}
+
+/** Someone asking to join a Group you share. */
+@Composable
+fun JoinCard(model: AppModel, w: Workspace, r: Hammock.JoinRequest) {
+    val who = w.people[r.userId]
+    val group = w.groups.firstOrNull { it.id == r.groupId }
+    Card {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("${who?.name?.ifEmpty { null } ?: "Someone"} wants to join", style = MaterialTheme.typography.titleMedium)
+            Text(listOfNotNull(group?.let { w.title(it) }, who?.deviceName).filter { it.isNotEmpty() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (r.keyFingerprint.isNotEmpty()) Text("Key ${r.keyFingerprint}", fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val warning = when {
+                r.unlinkedUnixMs > 0 -> "A computer you unlinked from your computers"
+                r.nameHasOtherKey -> "${who?.name ?: "This person"} usually joins with a different key"
+                r.newKey -> "First time this key has asked to join"
+                else -> null
+            }
+            warning?.let {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = NeedsYouColor, modifier = Modifier.size(16.dp))
+                    Text(it, color = NeedsYouColor, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = { model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
+                Button(onClick = { model.respondJoin(r, Hammock.Role.ROLE_DRIVER) }) { Text("Let Drive") }
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptyState(title: String, text: String, modifier: Modifier = Modifier, action: String? = null, onAction: () -> Unit = {}) {
+    Column(
+        modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (action != null) Button(onClick = onAction, Modifier.padding(top = 8.dp)) { Text(action) }
+    }
+}

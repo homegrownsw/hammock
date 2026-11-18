@@ -1,0 +1,93 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+}
+
+// The version: the iPhone's (apple/iOS/Config/Version.xcconfig), so both
+// phones say the same release. The build number counts commits, as the
+// Apple apps' do (scripts/history-commits adds the history before this repo).
+val versionFile = rootProject.file("../apple/iOS/Config/Version.xcconfig")
+val appVersion: String = versionFile.readLines()
+    .firstOrNull { it.startsWith("HAMMOCK_ANDROID_VERSION") || it.startsWith("HAMMOCK_IOS_VERSION") }
+    ?.substringAfter('=')?.trim() ?: "0.0.0"
+val buildNumber: Int = runCatching {
+    val p = ProcessBuilder("git", "rev-list", "--count", "HEAD").directory(rootProject.projectDir).start()
+    p.inputStream.bufferedReader().readText().trim().toInt() + 831
+}.getOrDefault(1)
+
+android {
+    namespace = "com.homegrownsw.hammock"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.homegrownsw.hammock"
+        minSdk = 33
+        targetSdk = 35
+        versionCode = buildNumber
+        versionName = appVersion
+        // The push relay this build registers with (relay/push).
+        buildConfigField("String", "PUSH_RELAY", "\"${System.getenv("HMK_PUSH_RELAY") ?: "https://push.homegrownsw.com"}\"")
+        // Firebase Cloud Messaging (android/README.md): none, no notifications while the app is closed.
+        for (k in listOf("FCM_PROJECT_ID", "FCM_APP_ID", "FCM_API_KEY", "FCM_SENDER_ID")) {
+            buildConfigField("String", k, "\"${System.getenv("HMK_$k") ?: (project.findProperty("hammock.$k") as String? ?: "")}\"")
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Beside a release build on the same phone, as β is beside Hammock on a Mac.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    packaging {
+        resources.excludes += listOf("META-INF/*.kotlin_module", "META-INF/versions/**")
+    }
+}
+
+kotlin { jvmToolchain(17) }
+
+dependencies {
+    implementation(project(":client"))
+    implementation(project(":terminal"))
+    // implementation(project(":agentview")): with the agent view, next
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material3.adaptive.navigation.suite)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.tooling)
+    implementation(libs.activity.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.process)
+    implementation(libs.navigation.compose)
+    implementation(libs.core.ktx)
+    implementation(libs.coroutines.android)
+    implementation(libs.datastore.preferences)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+    implementation(libs.mlkit.barcode)
+    implementation(libs.biometric)
+    implementation(libs.fragment.ktx)
+    implementation(libs.firebase.messaging)
+    testImplementation(libs.junit)
+}
