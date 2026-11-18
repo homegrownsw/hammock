@@ -98,6 +98,16 @@ class TerminalEngine(cols: Int = 80, rows: Int = 24) : AutoCloseable {
         NativeVt.reset(it, cols, rows)
     }
 
+    /** Resets the terminal at the pane's size and replays a snapshot into it, at once: no frame is drawn between the two. */
+    fun replace(cols: Int, rows: Int, data: ByteArray) = locked {
+        if (cols > 0 && rows > 0) {
+            this.cols = cols
+            this.rows = rows
+        }
+        NativeVt.reset(it, cols, rows)
+        if (data.isNotEmpty()) NativeVt.write(it, data, 0, data.size)
+    }
+
     fun resize(cols: Int, rows: Int, cellWidthPx: Int = 0, cellHeightPx: Int = 0) = locked {
         if (cols <= 0 || rows <= 0) return@locked
         this.cols = cols

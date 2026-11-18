@@ -309,7 +309,9 @@ class VideoStream(
             val c = VideoConfig(sets, f.width, f.height)
             if (c != config || decoder == null) {
                 decoder?.release()
-                decoder = out.create(c) { why -> post { decoderFailed(why) } }
+                var made: VideoDecoder? = null
+                made = out.create(c) { why -> post { decoderFailed(made, why) } }
+                decoder = made
                 config = c
                 if (decoder == null) {
                     lose("couldn't make a decoder")
@@ -337,8 +339,9 @@ class VideoStream(
         }
     }
 
-    private fun decoderFailed(why: String) {
-        if (stopped) return
+    private fun decoderFailed(failed: VideoDecoder?, why: String) {
+        // One already replaced (or released) failing late is no news.
+        if (stopped || failed == null || failed !== decoder) return
         log("$paneID $sessionID: decoder failed: $why")
         decoder?.release()
         decoder = null

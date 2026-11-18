@@ -42,8 +42,7 @@ class TerminalSession(val paneID: String, cols: Int = 80, rows: Int = 24) : Pane
     }
 
     override fun snapshot(cols: Int, rows: Int, data: ByteArray) {
-        engine.reset(cols, rows)
-        engine.write(data)
+        engine.replace(cols, rows, data)
         _ready.value = true
         notifyChanged()
     }
