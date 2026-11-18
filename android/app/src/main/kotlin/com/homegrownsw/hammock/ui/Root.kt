@@ -114,6 +114,26 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
 
     BackHandler(nav.stack.isNotEmpty()) { nav.pop() }
 
+    // The Hammock Key: this phone's approval key, sent on every connect so the
+    // computer can let it approve; a request shown here when it may.
+    val link by model.link.collectAsStateWithLifecycle()
+    val host by session.host.collectAsStateWithLifecycle()
+    LaunchedEffect(link) {
+        if (link == com.homegrownsw.hammock.client.Link.Connected && !model.isDemo) {
+            val key = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.homegrownsw.hammock.ApprovalKey.publicKey() }
+            if (key != null) model.send {
+                setSetApprovalKey(hammock.v1.Hammock.SetApprovalKey.newBuilder().setPublicKey(com.google.protobuf.ByteString.copyFrom(key)).build())
+            }
+        }
+    }
+    var dismissedKeys by remember { mutableStateOf(setOf<String>()) }
+    val me = host?.deviceID
+    val keyRequest = if (me != null && ws.hammockKey.approversList.any { it.deviceId == me })
+        ws.hammockKeyRequests.firstOrNull { it.id !in dismissedKeys } else null
+    keyRequest?.let { r ->
+        HammockKeySheet(model, ws, r, host?.shortName ?: "your computer") { dismissedKeys = dismissedKeys + r.id }
+    }
+
     // A notification opened: its pane once the computer's state is here; Needs You at the top of Sessions.
     LaunchedEffect(opening, ws.panes.size) {
         val o = opening ?: return@LaunchedEffect

@@ -4,12 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// The version: the iPhone's (apple/iOS/Config/Version.xcconfig), so both
-// phones say the same release. The build number counts commits, as the
+// The version: HAMMOCK_ANDROID_VERSION in apple/iOS/Config/Version.xcconfig,
+// beside the Mac's and the iPhone's, on the same line of releases. The build number counts commits, as the
 // Apple apps' do (scripts/history-commits adds the history before this repo).
 val versionFile = rootProject.file("../apple/iOS/Config/Version.xcconfig")
 val appVersion: String = versionFile.readLines()
-    .firstOrNull { it.startsWith("HAMMOCK_ANDROID_VERSION") || it.startsWith("HAMMOCK_IOS_VERSION") }
+    .firstOrNull { it.startsWith("HAMMOCK_ANDROID_VERSION") }
     ?.substringAfter('=')?.trim() ?: "0.0.0"
 val buildNumber: Int = runCatching {
     val p = ProcessBuilder("git", "rev-list", "--count", "HEAD").directory(rootProject.projectDir).start()
@@ -65,7 +65,7 @@ kotlin { jvmToolchain(17) }
 dependencies {
     implementation(project(":client"))
     implementation(project(":terminal"))
-    // implementation(project(":agentview")): with the agent view, next
+    implementation(project(":agentview"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)

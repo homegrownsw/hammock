@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -172,7 +173,9 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
         actions = { PaneMenu(model, w, pane, drive, nav) },
         bottomBar = { tabStrip?.invoke() },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        // Clear of the gesture bar (the tab strip does that when it's there) and the keyboard.
+        val bottom = if (tabStrip == null) Modifier.navigationBarsPadding() else Modifier
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).then(bottom).imePadding()) {
             if (hasAgentView || logMode) {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                     val first = if (logMode) "Log" else "Conversation"

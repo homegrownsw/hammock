@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Dictation in the composer (asked for when you first tap the mic). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Finding the on-device speech recogniser (package visibility). -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+</manifest>
