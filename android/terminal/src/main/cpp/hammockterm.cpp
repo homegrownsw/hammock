@@ -494,8 +494,11 @@ JNI(jint, frame)(JNIEnv* env, jobject, jlong h, jintArray headerA, jintArray cel
                 }
                 GhosttyColorRgb c3{};
                 if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &c3) == GHOSTTY_SUCCESS) c[1] = pack(c3) | HAS;
-                if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &c3) == GHOSTTY_SUCCESS) c[2] = pack(c3) | HAS;
             }
+            // Asked of every cell, styled or not: a cell erased in a colour
+            // (an erase with a background set) has the colour but no style.
+            GhosttyColorRgb bg{};
+            if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &bg) == GHOSTTY_SUCCESS) c[2] = pack(bg) | HAS;
             bool selected = false;
             ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_SELECTED, &selected);
             if (selected) flags |= F_SELECTED;

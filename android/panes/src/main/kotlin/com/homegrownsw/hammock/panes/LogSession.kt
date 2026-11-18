@@ -158,6 +158,12 @@ class LogFeed {
         first.seq
     }
 
+    /** A page asked for from before [seq] never came: stop showing it as loading. */
+    fun olderGaveUp(seq: Long) = synchronized(lock) {
+        val s = _state.value
+        if (s.loadingOlder && s.entries.firstOrNull()?.seq == seq) _state.value = s.copy(loadingOlder = false)
+    }
+
     /** Changes the filter; whether it changed (then it's to be watched again). */
     private fun change(fn: (LogState) -> LogState?): Boolean = synchronized(lock) {
         val next = fn(_state.value) ?: return@synchronized false
@@ -222,6 +228,11 @@ class LogSession(val model: AppModel, val paneID: String) {
         val f = feed.state.value.filter
         model.send {
             setWatchLog(Hammock.WatchLog.newBuilder().setPaneId(paneID).setWatch(true).setFilter(f).setBeforeSeq(before).setLimit(500).build())
+        }
+        // No page back (the link dropped, the daemon refused): older entries can be asked for again.
+        model.scope.launch {
+            kotlinx.coroutines.delay(10_000)
+            feed.olderGaveUp(before)
         }
     }
 

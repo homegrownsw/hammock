@@ -34,7 +34,7 @@ import hammock.v1.Hammock.Pane
 
 @Composable
 fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, openTerminal: () -> Unit) {
-    val session = remember(model, pane.id) { AgentSession(model, pane.id) }
+    val session = remember(model, pane.id) { AgentSession.of(model, pane.id) }
     val size by rememberPref(Prefs.ATTACHMENT_SIZE, "medium")
     val theme = LocalHammockTheme.current
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f

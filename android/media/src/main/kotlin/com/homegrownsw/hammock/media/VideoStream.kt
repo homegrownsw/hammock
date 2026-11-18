@@ -138,7 +138,7 @@ class VideoStream(
     val paneID: String get() = request.paneId
 
     fun start() {
-        executor.execute { started = true }
+        post { started = true }
         scope.launch {
             val t = try {
                 link.open(request)
@@ -146,10 +146,10 @@ class VideoStream(
                 fail(e.message ?: "The video couldn't start.")
                 return@launch
             }
-            executor.execute {
+            post {
                 if (stopped) {
                     link.send { setCloseMedia(Hammock.CloseMedia.newBuilder().setSessionId(t.sessionId)) }
-                    return@execute
+                    return@post
                 }
                 sessionID = t.sessionId
                 val sid = t.sessionId
@@ -160,9 +160,14 @@ class VideoStream(
         }
     }
 
+    /** Work for the stream's thread; dropped once it's stopped (a late reply, a decoder's error, a view moving). */
+    private fun post(block: () -> Unit) {
+        try { executor.execute(block) } catch (_: java.util.concurrent.RejectedExecutionException) {}
+    }
+
     fun stop() {
-        executor.execute {
-            if (stopped) return@execute
+        post {
+            if (stopped) return@post
             stopped = true
             decoder?.release()
             decoder = null
@@ -193,7 +198,7 @@ class VideoStream(
     private fun changeOutput(next: () -> DecoderFactory?) {
         val done = CountDownLatch(1)
         try {
-            executor.execute {
+            post {
                 val factory = next()
                 if (output !== factory) {
                     output = factory
@@ -218,14 +223,14 @@ class VideoStream(
      * w 0 for the whole display), in frames of the viewer's shape (width over
      * height; 0: the display's). Kept, for a session still opening.
      */
-    fun setView(x: Float, y: Float, w: Float, h: Float, aspect: Float = 0f) = executor.execute {
+    fun setView(x: Float, y: Float, w: Float, h: Float, aspect: Float = 0f) = post {
         view = floatArrayOf(x, y, w, h, aspect)
         sendView()
     }
 
     /** A browser pane's viewer: the size (dp) it shows the page at, which the page takes while it's driven from here. */
-    fun setPageSize(width: Float, height: Float) = executor.execute {
-        if (width <= 0f || height <= 0f || page == width to height) return@execute
+    fun setPageSize(width: Float, height: Float) = post {
+        if (width <= 0f || height <= 0f || page == width to height) return@post
         page = width to height
         sendPage()
     }
@@ -259,13 +264,13 @@ class VideoStream(
                     seq = f.seq.toLong() and 0xffffffffL, key = f.keyframe, width = f.width, height = f.height,
                     data = f.data.toByteArray(), refresh = f.refresh, hevc = f.hevc, crop = crop,
                 )
-                executor.execute { received(frame) }
+                post { received(frame) }
             }
             ServerMessage.MsgCase.MEDIA_ENDED -> fail(msg.mediaEnded.reason.ifEmpty { "The video stopped." })
             ServerMessage.MsgCase.SCREEN_CURSOR -> {
                 val c = msg.screenCursor
                 val png = if (c.png.isEmpty) null else c.png.toByteArray()
-                executor.execute {
+                post {
                     if (png != null) shapes[c.shapeId] = png
                     _pointer.value = ScreenPointer(c.x, c.y, c.visible, c.shapeId, shapes[c.shapeId], c.hotX, c.hotY, c.width, c.height)
                 }
@@ -276,7 +281,7 @@ class VideoStream(
     }
 
     /** Hands a frame in, as if it came from the connection (tests; on the executor). */
-    internal fun receivedForTest(f: VideoFrame) = executor.execute { received(f) }
+    internal fun receivedForTest(f: VideoFrame) = post { received(f) }
 
     private fun received(f: VideoFrame) {
         if (stopped) return
@@ -304,7 +309,7 @@ class VideoStream(
             val c = VideoConfig(sets, f.width, f.height)
             if (c != config || decoder == null) {
                 decoder?.release()
-                decoder = out.create(c) { why -> executor.execute { decoderFailed(why) } }
+                decoder = out.create(c) { why -> post { decoderFailed(why) } }
                 config = c
                 if (decoder == null) {
                     lose("couldn't make a decoder")

@@ -84,6 +84,27 @@ class AgentSession(
     /** How long it keeps watching after the last [stop], so coming back shows it at once. */
     private val lingerMs: Long = 60_000,
 ) {
+    companion object {
+        /** Sessions by model, then by pane (and subagent or shell): one watch each, as the daemon keeps one per connection. */
+        private val sessions = java.util.WeakHashMap<AppModel, HashMap<String, AgentSession>>()
+
+        private fun key(paneID: String, subagentID: String, shellID: String) = "$paneID/$subagentID/$shellID"
+
+        /**
+         * The pane's session: the one still showing it, or lingering, if there
+         * is one, so coming back reuses its watch (a second session would
+         * watch again for nothing, then its linger unwatch the pane).
+         */
+        fun of(model: AppModel, paneID: String, subagentID: String = "", shellID: String = ""): AgentSession = synchronized(sessions) {
+            sessions.getOrPut(model) { HashMap() }.getOrPut(key(paneID, subagentID, shellID)) { AgentSession(model, paneID, subagentID, shellID) }
+        }
+
+        internal fun forget(s: AgentSession) = synchronized(sessions) {
+            val m = sessions[s.model] ?: return@synchronized
+            if (m[key(s.paneID, s.subagentID, s.shellID)] === s) m.remove(key(s.paneID, s.subagentID, s.shellID))
+        }
+    }
+
     private val _state = MutableStateFlow(AgentViewState())
     val state: StateFlow<AgentViewState> = _state.asStateFlow()
 
@@ -142,6 +163,7 @@ class AgentSession(
             if (lingerMs > 0) delay(lingerMs)
             synchronized(lock) {
                 if (refs > 0) return@launch
+                forget(this@AgentSession)
                 stopListening?.invoke()
                 stopRewatch?.invoke()
                 stopListening = null
@@ -265,6 +287,11 @@ class AgentSession(
             return
         }
         model.send { setWatchAgent(watchMsg(true, before = first)) }
+        // No page back (the link dropped, the daemon refused): Earlier Messages works again.
+        model.scope.launch {
+            delay(10_000)
+            _state.update { if (it.loadingOlder && it.blocks.firstOrNull()?.id == first) it.copy(loadingOlder = false) else it }
+        }
     }
 
     /**
