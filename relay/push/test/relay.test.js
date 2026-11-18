@@ -1,7 +1,7 @@
 // Runs the worker against a fake KV and a fake APNs (node --test).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import worker, { apnsJWT, resetJWT, clientKey, forgetUnused } from '../src/index.js'
+import worker, { apnsJWT, resetJWT, clientKey, forgetUnused, resetFCMToken } from '../src/index.js'
 
 // Enough of D1 for the relay's statements (counting the queries made).
 function fakeD1() {
@@ -15,13 +15,13 @@ function fakeD1() {
           return {
             run: async () => {
               db.queries++
-              if (sql.startsWith('INSERT')) rows.set(a[0], { token: a[1], sandbox: a[2], secret: a[3], last_used: a[4], created: a[4] })
+              if (sql.startsWith('INSERT')) rows.set(a[0], { token: a[1], sandbox: a[2], secret: a[3], last_used: a[4], created: a[4], provider: a[5] })
               if (sql === 'DELETE FROM devices WHERE id = ?') rows.delete(a[0])
               if (sql === 'DELETE FROM devices WHERE token = ?') for (const [id, r] of rows) if (r.token === a[0]) rows.delete(id)
               if (sql === 'DELETE FROM devices WHERE last_used < ? OR (last_used IS NULL AND created < ?)')
                 for (const [id, r] of rows) if (r.last_used == null ? r.created < a[1] : r.last_used < a[0]) rows.delete(id)
               if (sql === 'UPDATE devices SET last_used = ? WHERE id = ?' && rows.has(a[1])) rows.get(a[1]).last_used = a[0]
-              if (sql.startsWith('UPDATE devices SET token') && rows.has(a[3])) Object.assign(rows.get(a[3]), { token: a[0], sandbox: a[1], last_used: a[2] })
+              if (sql.startsWith('UPDATE devices SET token') && rows.has(a[4])) Object.assign(rows.get(a[4]), { token: a[0], sandbox: a[1], provider: a[2], last_used: a[3] })
             },
             first: async () => (db.queries++, rows.get(a[0]) ?? null),
           }
@@ -318,4 +318,166 @@ test('a clear is a silent push, with nothing but the ciphertext', async () => {
   // Checked as a send is.
   assert.equal((await worker.fetch(post('/clear', { id: 'f'.repeat(32), payload: 'eA==' }), env)).status, 404)
   assert.equal((await worker.fetch(post('/clear', { id: reg.id, payload: '<script>' }), env)).status, 400)
+})
+
+// ---------- Android phones, through FCM ----------
+
+const FCM_TOKEN = 'dGVzdC1mY20:APA91b' + 'Hx_y-Z0'.repeat(20)
+
+// A test env with a Firebase service account (a fresh RSA key) besides APNs'.
+async function fcmEnv() {
+  const { env } = await testEnv()
+  const kp = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify'])
+  const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', kp.privateKey))
+  const pem = '-----BEGIN PRIVATE KEY-----\n' + btoa(String.fromCharCode(...der)) + '\n-----END PRIVATE KEY-----\n'
+  env.FCM_SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account', project_id: 'hammock-test', private_key_id: 'kid1', private_key: pem, client_email: 'relay@hammock-test.iam.gserviceaccount.com' })
+  return { env, publicKey: kp.publicKey }
+}
+
+// Google's token endpoint and FCM, recording what's sent to each.
+function fakeGoogle(fcmResponse = () => new Response(JSON.stringify({ name: 'projects/hammock-test/messages/1' }), { status: 200 })) {
+  const calls = { token: [], fcm: [] }
+  globalThis.fetch = async (url, init) => {
+    if (url === 'https://oauth2.googleapis.com/token') {
+      calls.token.push({ url, init })
+      return new Response(JSON.stringify({ access_token: 'ya29.test', expires_in: 3599, token_type: 'Bearer' }), { status: 200 })
+    }
+    calls.fcm.push({ url, init, body: JSON.parse(init.body) })
+    return fcmResponse()
+  }
+  return calls
+}
+
+test('an Android phone registers with an FCM token', async () => {
+  const { env } = await fcmEnv()
+  const r = await worker.fetch(post('/register', { token: FCM_TOKEN, provider: 'fcm', sandbox: true }), env)
+  assert.equal(r.status, 200)
+  const reg = await r.json()
+  assert.match(reg.id, /^[0-9a-f]{32}$/)
+  assert.equal(env.DB.rows.get(reg.id).provider, 'fcm')
+  assert.equal(env.DB.rows.get(reg.id).sandbox, 0) // APNs' only
+  // Its id and secret keep it, as an iPhone's do.
+  const again = await (await worker.fetch(post('/register', { token: FCM_TOKEN + 'x', provider: 'fcm', id: reg.id, secret: reg.secret }), env)).json()
+  assert.deepEqual(again, reg)
+  assert.equal(env.DB.rows.get(reg.id).token, FCM_TOKEN + 'x')
+
+  // Tokens are checked for their provider; unknown providers are refused.
+  const bad = (body) => worker.fetch(post('/register', body), env).then((r) => r.status)
+  assert.equal(await bad({ token: 'short:1', provider: 'fcm' }), 400)
+  assert.equal(await bad({ token: FCM_TOKEN + '/', provider: 'fcm' }), 400)
+  assert.equal(await bad({ token: 'a'.repeat(1025), provider: 'fcm' }), 400)
+  assert.equal(await bad({ token: FCM_TOKEN, provider: 'apns' }), 400)
+  assert.equal(await bad({ token: FCM_TOKEN }), 400)
+  assert.equal(await bad({ token: 'ab'.repeat(32), provider: 'gcm' }), 400)
+  // A relay without Firebase's key keeps no Android phones.
+  delete env.FCM_SERVICE_ACCOUNT
+  assert.equal(await bad({ token: FCM_TOKEN, provider: 'fcm' }), 501)
+})
+
+test('iPhones register as before', async () => {
+  const { env } = await fcmEnv()
+  const token = 'a1'.repeat(32)
+  const reg = await (await worker.fetch(post('/register', { token, sandbox: true }), env)).json()
+  assert.equal(env.DB.rows.get(reg.id).provider, 'apns')
+  assert.equal(env.DB.rows.get(reg.id).sandbox, 1)
+  const explicit = await (await worker.fetch(post('/register', { token, provider: 'apns' }), env)).json()
+  assert.equal(env.DB.rows.get(explicit.id).provider, 'apns')
+  // And their sends go to Apple only.
+  resetJWT()
+  const calls = fakeGoogle()
+  const apple = []
+  const google = globalThis.fetch
+  globalThis.fetch = async (url, init) => (url.startsWith('https://api.') ? (apple.push(url), new Response(null, { status: 200 })) : google(url, init))
+  assert.equal((await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)).status, 200)
+  assert.deepEqual(apple, ['https://api.sandbox.push.apple.com/3/device/' + token])
+  assert.equal(calls.token.length + calls.fcm.length, 0)
+})
+
+test('a send to an Android phone is a data-only FCM message', async () => {
+  resetFCMToken()
+  const { env, publicKey } = await fcmEnv()
+  const reg = await (await worker.fetch(post('/register', { token: FCM_TOKEN, provider: 'fcm' }), env)).json()
+  const calls = fakeGoogle()
+  const r = await worker.fetch(post('/send', { id: reg.id, payload: 'c2VjcmV0', thread: 'pn_1', collapse: 'at_pn_1', category: 'hammockkey' }), env)
+  assert.equal(r.status, 200)
+  assert.equal(calls.fcm.length, 1)
+  assert.equal(calls.fcm[0].url, 'https://fcm.googleapis.com/v1/projects/hammock-test/messages:send')
+  assert.equal(calls.fcm[0].init.headers.authorization, 'Bearer ya29.test')
+  assert.deepEqual(calls.fcm[0].body, {
+    message: {
+      token: FCM_TOKEN,
+      data: { e: 'c2VjcmV0', category: 'hammockkey', thread: 'pn_1', collapse: 'at_pn_1' },
+      android: { priority: 'high', ttl: '3600s', collapse_key: 'at_pn_1' },
+    },
+  })
+
+  // The access token came from a JWT for the service account, signed with its key.
+  assert.equal(calls.token.length, 1)
+  const form = new URLSearchParams(calls.token[0].init.body)
+  assert.equal(form.get('grant_type'), 'urn:ietf:params:oauth:grant-type:jwt-bearer')
+  const [h, c, s] = form.get('assertion').split('.')
+  const unb64 = (x) => Uint8Array.from(atob(x.replace(/-/g, '+').replace(/_/g, '/')), (ch) => ch.charCodeAt(0))
+  assert.ok(await crypto.subtle.verify('RSASSA-PKCS1-v1_5', publicKey, unb64(s), new TextEncoder().encode(h + '.' + c)))
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(unb64(h))), { alg: 'RS256', typ: 'JWT', kid: 'kid1' })
+  const claims = JSON.parse(new TextDecoder().decode(unb64(c)))
+  assert.equal(claims.iss, 'relay@hammock-test.iam.gserviceaccount.com')
+  assert.equal(claims.scope, 'https://www.googleapis.com/auth/firebase.messaging')
+  assert.equal(claims.aud, 'https://oauth2.googleapis.com/token')
+  assert.equal(claims.exp - claims.iat, 3600)
+
+  // The next send reuses the access token; empty hints and unknown categories are left out.
+  await worker.fetch(post('/send', { id: reg.id, payload: 'eA==', category: 'evil' }), env)
+  assert.equal(calls.token.length, 1)
+  assert.deepEqual(calls.fcm[1].body.message.data, { e: 'eA==' })
+  assert.deepEqual(calls.fcm[1].body.message.android, { priority: 'high', ttl: '3600s' })
+  assert.equal(calls.fcm[1].body.message.notification, undefined)
+})
+
+test('a clear to an Android phone is a normal-priority data message', async () => {
+  resetFCMToken()
+  const { env } = await fcmEnv()
+  const reg = await (await worker.fetch(post('/register', { token: FCM_TOKEN, provider: 'fcm' }), env)).json()
+  const calls = fakeGoogle()
+  const r = await worker.fetch(post('/clear', { id: reg.id, payload: 'c2VjcmV0', thread: 't', collapse: 'c', category: 'grant' }), env)
+  assert.equal(r.status, 200)
+  assert.deepEqual(calls.fcm[0].body, { message: { token: FCM_TOKEN, data: { clear: '1', e: 'c2VjcmV0' }, android: { priority: 'normal', ttl: '3600s' } } })
+})
+
+test('an Android phone FCM no longer knows is forgotten', async () => {
+  const fcmError = (status, code, message, errorCode) => () =>
+    new Response(JSON.stringify({ error: { code: status, message, status: code, details: errorCode ? [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode }] : [] } }), { status })
+  const cases = [
+    [fcmError(404, 'NOT_FOUND', 'Requested entity was not found.', 'UNREGISTERED'), 410],
+    [fcmError(400, 'INVALID_ARGUMENT', 'The registration token is not a valid FCM registration token', 'INVALID_ARGUMENT'), 410],
+    [fcmError(403, 'PERMISSION_DENIED', 'SenderId mismatch', 'SENDER_ID_MISMATCH'), 410],
+    // Not about the token: refused, and the phone is kept.
+    [fcmError(400, 'INVALID_ARGUMENT', "Invalid value at 'message.android.ttl'", 'INVALID_ARGUMENT'), 502],
+    [fcmError(429, 'RESOURCE_EXHAUSTED', 'Quota exceeded', 'QUOTA_EXCEEDED'), 502],
+    [fcmError(503, 'UNAVAILABLE', 'The service is currently unavailable.', 'UNAVAILABLE'), 502],
+  ]
+  const oldError = console.error
+  console.error = () => {}
+  try {
+    for (const [respond, want] of cases) {
+      resetFCMToken()
+      const { env } = await fcmEnv()
+      const reg = await (await worker.fetch(post('/register', { token: FCM_TOKEN, provider: 'fcm' }), env)).json()
+      fakeGoogle(respond)
+      const r = await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)
+      assert.equal(r.status, want)
+      assert.deepEqual(await r.json(), { error: want === 410 ? 'gone' : 'refused' })
+      assert.equal(env.DB.rows.has(reg.id), want !== 410)
+    }
+    // A turned-down access token is fetched afresh next time.
+    resetFCMToken()
+    const { env } = await fcmEnv()
+    const reg = await (await worker.fetch(post('/register', { token: FCM_TOKEN, provider: 'fcm' }), env)).json()
+    const calls = fakeGoogle(fcmError(401, 'UNAUTHENTICATED', 'Request had invalid authentication credentials.'))
+    assert.equal((await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)).status, 502)
+    await worker.fetch(post('/send', { id: reg.id, payload: 'eA==' }), env)
+    assert.equal(calls.token.length, 2)
+    assert.ok(env.DB.rows.has(reg.id))
+  } finally {
+    console.error = oldError
+  }
 })

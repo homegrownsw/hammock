@@ -1,23 +1,26 @@
-// Hammock's push relay (ADR-0007): the only place that holds the APNs key.
+// Hammock's push relay (ADR-0007): the only place that holds the APNs key
+// (and Firebase's service account, for Android phones).
 //
-// A phone registers its APNs device token and gets back a random id and a
-// secret. It gives your Mac the id (never the token) and its own encryption
-// key; the Mac sends notifications for it here as ciphertext, which this
-// relay passes to Apple untouched. The phone's notification extension
-// decrypts it.
+// A phone registers its device token (APNs', or an FCM registration token)
+// and gets back a random id and a secret. It gives your Mac the id (never
+// the token) and its own encryption key; the Mac sends notifications for it
+// here as ciphertext, which this relay passes to Apple or Google untouched.
+// The phone (the iPhone's notification extension, the Android app's
+// messaging service) decrypts it.
 //
-// What the relay sees: a phone's APNs device token and whether it's a
-// development build; and for each send, the phone's id, the ciphertext,
-// when it's sent and from which address, and three hints for Apple: a
-// thread and a collapse tag (keyed hashes of a pane's or a request's id,
-// not the ids: the same for the same thing, meaningless otherwise) and
-// the category ("join", "grant" or "hammockkey": what kind of
-// notification it is). Nothing of what it says.
+// What the relay sees: a phone's device token, which service it's for, and
+// (an iPhone's) whether it's a development build; and for each send, the
+// phone's id, the ciphertext, when it's sent and from which address, and
+// three hints for Apple or Google: a thread and a collapse tag (keyed hashes
+// of a pane's or a request's id, not the ids: the same for the same thing,
+// meaningless otherwise) and the category ("join", "grant" or "hammockkey":
+// what kind of notification it is). Nothing of what it says.
 //
 // Routes (JSON in and out):
-//   POST /register   {token, sandbox, id?, secret?} → {id, secret} (the
-//                    same id, given its secret: a phone's new token, its
-//                    weekly refresh, or coming back after being forgotten)
+//   POST /register   {token, sandbox, provider?, id?, secret?} → {id, secret}
+//                    (provider "apns", the default, or "fcm"; the same id,
+//                    given its secret: a phone's new token, its weekly
+//                    refresh, or coming back after being forgotten)
 //   POST /unregister {id, secret}           → {}
 //   POST /send       {id, payload, thread?, collapse?, category?} → {}
 //   POST /clear      {id, payload}           → {} (a silent push: what a
@@ -25,7 +28,9 @@
 //                    takes it down; it says which only in the ciphertext)
 //
 // Secrets (wrangler secret put): APNS_KEY (the .p8 file's contents),
-// APNS_KEY_ID, APNS_TEAM_ID. Vars: APNS_TOPIC (the app's bundle id).
+// APNS_KEY_ID, APNS_TEAM_ID; FCM_SERVICE_ACCOUNT (a Firebase service
+// account's JSON key; its project_id is the FCM project). Vars: APNS_TOPIC
+// (the app's bundle id).
 // Bindings: DB (D1, migrations/), REQUESTS (a rate limiter,
 // per client address), SENDS (per device), REGISTERS (per client address).
 // A daily cron trigger forgets devices nothing has sent to for 60 days.
@@ -46,6 +51,9 @@ const CATEGORIES = new Set(['join', 'grant', 'hammockkey'])
 const DAY = 24 * 60 * 60 * 1000
 const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
 const SECRET = /^[0-9a-f]{48}$/ // what register hands out (randomHex(24))
+const APNS_TOKEN = /^[0-9a-f]{64,200}$/i
+const FCM_TOKEN = /^[A-Za-z0-9:_-]{20,1024}$/ // FCM registration tokens are ~160 characters
+const FCM_TTL = '3600s' // the phone shows nothing sent over an hour ago anyway
 
 export default {
   async fetch(request, env) {
@@ -113,8 +121,14 @@ export function clientKey(ip) {
   return 'v6:' + groups.slice(0, 4).map((g) => (parseInt(g, 16) || 0).toString(16)).join(':') + '::/64'
 }
 
-async function register({ token, sandbox, id, secret }, env, client) {
-  if (typeof token !== 'string' || !/^[0-9a-f]{64,200}$/i.test(token)) return json({ error: 'bad token' }, 400)
+async function register({ token, sandbox, provider, id, secret }, env, client) {
+  provider ??= 'apns'
+  if (provider !== 'apns' && provider !== 'fcm') return json({ error: 'bad provider' }, 400)
+  if (typeof token !== 'string' || !(provider === 'fcm' ? FCM_TOKEN : APNS_TOKEN).test(token)) return json({ error: 'bad token' }, 400)
+  // A relay without Firebase's key can't send to an Android phone: no row for one.
+  if (provider === 'fcm' && !env.FCM_SERVICE_ACCOUNT) return json({ error: 'fcm unavailable' }, 501)
+  // The sandbox is APNs': an Android phone's is always 0.
+  sandbox = provider === 'apns' && sandbox ? 1 : 0
   // A phone registers once per token, so a few a minute from one address is
   // plenty: no one can fill the table from a script.
   if (env.REGISTERS && !(await env.REGISTERS.limit({ key: client })).success) return json({ error: 'slow down' }, 429)
@@ -123,7 +137,7 @@ async function register({ token, sandbox, id, secret }, env, client) {
   if (validID(id) && typeof secret === 'string') {
     const dev = await device(env, id)
     if (dev && dev.secret === (await sha256(secret))) {
-      await env.DB.prepare('UPDATE devices SET token = ?, sandbox = ?, last_used = ? WHERE id = ?').bind(token, sandbox ? 1 : 0, sqlTime(Date.now()), id).run()
+      await env.DB.prepare('UPDATE devices SET token = ?, sandbox = ?, provider = ?, last_used = ? WHERE id = ?').bind(token, sandbox, provider, sqlTime(Date.now()), id).run()
       return json({ id, secret })
     }
     // Forgotten (unused for 60 days, or APNs said its token was bad): the
@@ -132,8 +146,8 @@ async function register({ token, sandbox, id, secret }, env, client) {
     // holds the id: the id is random and known only to the phone and its
     // Macs, so this can't take anyone's id over.
     if (!dev && SECRET.test(secret)) {
-      await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used) VALUES (?, ?, ?, ?, ?)')
-        .bind(id, token, sandbox ? 1 : 0, await sha256(secret), sqlTime(Date.now()))
+      await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used, provider) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(id, token, sandbox, await sha256(secret), sqlTime(Date.now()), provider)
         .run()
       return json({ id, secret })
     }
@@ -143,8 +157,8 @@ async function register({ token, sandbox, id, secret }, env, client) {
   // to cut it off), and if nothing sends to it, it's forgotten in 60 days.
   const newID = randomHex(16)
   const newSecret = randomHex(24)
-  await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used) VALUES (?, ?, ?, ?, ?)')
-    .bind(newID, token, sandbox ? 1 : 0, await sha256(newSecret), sqlTime(Date.now()))
+  await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used, provider) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(newID, token, sandbox, await sha256(newSecret), sqlTime(Date.now()), provider)
     .run()
   return json({ id: newID, secret: newSecret })
 }
@@ -168,6 +182,21 @@ async function send({ id, payload, thread, collapse, category }, env, clear = fa
   if (env.SENDS && !(await env.SENDS.limit({ key: id })).success) return json({ error: 'slow down' }, 429)
   const dev = await device(env, id)
   if (!dev) return json({ error: 'unknown device' }, 404)
+  const result = dev.provider === 'fcm' ? await fcmSend(dev, { payload, thread, collapse, category }, env, clear) : await apnsSend(dev, { payload, thread, collapse, category }, env, clear)
+  if (result === 'gone') {
+    await forget(env, id)
+    return json({ error: 'gone' }, 410)
+  }
+  if (result !== 'ok') return json({ error: 'refused' }, 502)
+  // Still in use: kept (written at most once a day).
+  if (!(Date.parse(dev.lastUsed.replace(' ', 'T') + 'Z') > Date.now() - DAY)) {
+    await env.DB.prepare('UPDATE devices SET last_used = ? WHERE id = ?').bind(sqlTime(Date.now()), id).run()
+  }
+  return json({})
+}
+
+// One push through APNs: 'ok', 'gone' (forget the phone) or 'refused'.
+async function apnsSend(dev, { payload, thread, collapse, category }, env, clear) {
   let aps, headers
   if (clear) {
     // Nothing shown: it wakes the app, which decrypts it and takes down the
@@ -213,17 +242,53 @@ async function send({ id, payload, thread, collapse, category }, env, clear = fa
     console.error('apns', r.status, text.slice(0, 200))
     // The app was removed, or the token is no good for it (another app's,
     // or the other APNs environment's): forgotten, and the Mac told it's gone.
-    if (r.status === 410 || reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic') {
-      await forget(env, id)
-      return json({ error: 'gone' }, 410)
-    }
-    return json({ error: 'refused' }, 502)
+    if (r.status === 410 || reason === 'BadDeviceToken' || reason === 'DeviceTokenNotForTopic') return 'gone'
+    return 'refused'
   }
-  // Still in use: kept (written at most once a day).
-  if (!(Date.parse(dev.lastUsed.replace(' ', 'T') + 'Z') > Date.now() - DAY)) {
-    await env.DB.prepare('UPDATE devices SET last_used = ? WHERE id = ?').bind(sqlTime(Date.now()), id).run()
+  return 'ok'
+}
+
+// One push through FCM (HTTP v1): 'ok', 'gone' (forget the phone) or
+// 'refused'. Always a data-only message: the Android app decrypts it and
+// builds the notification itself, so nothing is shown that it can't read.
+async function fcmSend(dev, { payload, thread, collapse, category }, env, clear) {
+  const sa = serviceAccount(env)
+  let data, android
+  if (clear) {
+    // Like APNs' background push: only the ciphertext, which names what to take down.
+    data = { clear: '1', e: payload }
+    android = { priority: 'normal', ttl: FCM_TTL }
+  } else {
+    data = { e: payload }
+    // Only Hammock's own categories (the phone sets it again from the note).
+    if (CATEGORIES.has(category)) data.category = category
+    if (thread) data.thread = String(thread).slice(0, 64)
+    if (collapse) data.collapse = String(collapse).slice(0, 64)
+    android = { priority: 'high', ttl: FCM_TTL }
+    if (collapse) android.collapse_key = String(collapse).slice(0, 64)
   }
-  return json({})
+  const r = await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(sa.project_id)}/messages:send`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer ' + (await fcmAccessToken(env)), 'content-type': 'application/json' },
+    body: JSON.stringify({ message: { token: dev.token, data, android } }),
+  })
+  if (r.ok) return 'ok'
+  // FCM's reason goes to the log, not the caller, as APNs' does.
+  const text = await r.text().catch(() => '')
+  let error = {}
+  try {
+    error = JSON.parse(text).error || {}
+  } catch {}
+  const code = (error.details || []).map((d) => d && d.errorCode).find(Boolean) || error.status || ''
+  console.error('fcm', r.status, text.slice(0, 200))
+  // Our access token was turned down: get a new one next time.
+  if (r.status === 401) resetFCMToken()
+  // The app was removed or the token expired (UNREGISTERED), the token is
+  // malformed (INVALID_ARGUMENT about the token), or it's another Firebase
+  // project's (SENDER_ID_MISMATCH): forgotten, and the Mac told it's gone.
+  if (code === 'UNREGISTERED' || code === 'SENDER_ID_MISMATCH') return 'gone'
+  if (code === 'INVALID_ARGUMENT' && /token/i.test(String(error.message || ''))) return 'gone'
+  return 'refused'
 }
 
 function validID(id) {
@@ -232,8 +297,8 @@ function validID(id) {
 
 async function device(env, id) {
   if (!validID(id)) return null
-  const row = await env.DB.prepare('SELECT token, sandbox, secret, last_used FROM devices WHERE id = ?').bind(id).first()
-  return row ? { token: row.token, sandbox: !!row.sandbox, secret: row.secret, lastUsed: String(row.last_used || '') } : null
+  const row = await env.DB.prepare('SELECT token, sandbox, secret, last_used, provider FROM devices WHERE id = ?').bind(id).first()
+  return row ? { token: row.token, sandbox: !!row.sandbox, secret: row.secret, lastUsed: String(row.last_used || ''), provider: row.provider || 'apns' } : null
 }
 
 // SQLite's datetime() form, in UTC: "2026-11-09 12:34:56".
@@ -261,6 +326,56 @@ export async function apnsJWT(env, now = Date.now()) {
 
 export function resetJWT() {
   cached = { jwt: '', at: 0 }
+}
+
+// ---------- FCM auth: a service account's OAuth2 access token ----------
+//
+// An RS256 JWT signed with the service account's key, exchanged at Google's
+// token endpoint for an access token (an hour's), reused until a minute
+// before it expires. Isolates are short-lived, so this is per isolate.
+
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging'
+let fcmCached = { token: '', exp: 0 }
+let saCached = { raw: '', sa: null }
+
+function serviceAccount(env) {
+  const raw = env.FCM_SERVICE_ACCOUNT
+  if (!raw) throw new Error('FCM_SERVICE_ACCOUNT is not set')
+  if (saCached.raw !== raw) {
+    const sa = JSON.parse(raw)
+    if (!sa.client_email || !sa.private_key || !sa.project_id) throw new Error('FCM_SERVICE_ACCOUNT lacks client_email, private_key or project_id')
+    saCached = { raw, sa }
+  }
+  return saCached.sa
+}
+
+export async function fcmAccessToken(env, now = Date.now()) {
+  if (fcmCached.token && now < fcmCached.exp - 60 * 1000) return fcmCached.token
+  const sa = serviceAccount(env)
+  const iat = Math.floor(now / 1000)
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT', ...(sa.private_key_id ? { kid: sa.private_key_id } : {}) }))
+  const claims = b64url(JSON.stringify({ iss: sa.client_email, scope: FCM_SCOPE, aud: GOOGLE_TOKEN_URL, iat, exp: iat + 3600 }))
+  const key = await crypto.subtle.importKey('pkcs8', pemToDer(sa.private_key), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(header + '.' + claims))
+  const assertion = header + '.' + claims + '.' + b64url(new Uint8Array(sig))
+  const r = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
+  })
+  const text = await r.text().catch(() => '')
+  let res = {}
+  try {
+    res = JSON.parse(text)
+  } catch {}
+  if (!r.ok || !res.access_token) throw new Error(`google token ${r.status}: ${text.slice(0, 200)}`)
+  fcmCached = { token: res.access_token, exp: now + (Number(res.expires_in) || 3600) * 1000 }
+  return fcmCached.token
+}
+
+export function resetFCMToken() {
+  fcmCached = { token: '', exp: 0 }
 }
 
 function pemToDer(pem) {

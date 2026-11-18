@@ -1,14 +1,17 @@
 # Hammock push relay
 
-A Cloudflare Worker that holds Hammock's APNs key and forwards notifications
-to phones. Each Mac encrypts notifications with a key only the phone has
-(AES-256-GCM), and the phone's notification extension decrypts them, so
-the relay never sees what a notification says. See ADR-0007.
+A Cloudflare Worker that holds Hammock's APNs key and Firebase service
+account, and forwards notifications to phones: iPhones through APNs,
+Android phones through Firebase Cloud Messaging (FCM). Each Mac encrypts
+notifications with a key only the phone has (AES-256-GCM), and the phone
+(the iPhone's notification extension, the Android app's messaging service)
+decrypts them, so the relay never sees what a notification says. See
+ADR-0007.
 
-What it does see: each phone's APNs device token, and whether it's a
-development build; and for each notification, the phone's relay id, the
-ciphertext, when it was sent and from which address, and three hints it
-passes to Apple: a thread and a collapse tag (keyed hashes of the pane's
+What it does see: each phone's device token, which service it's for, and
+(an iPhone's) whether it's a development build; and for each notification,
+the phone's relay id, the ciphertext, when it was sent and from which
+address, and three hints it passes to Apple or Google: a thread and a collapse tag (keyed hashes of the pane's
 or request's id, unique to the phone: they say two notifications are about
 the same thing, not what it is) and the category (`join`, `grant` or
 `hammockkey`, which says whether it's someone asking to join, an agent
@@ -29,6 +32,7 @@ nothing of one it can't decrypt or that was sent over an hour ago.
    npx wrangler secret put APNS_KEY < AuthKey_XXXXXXXXXX.p8
    echo XXXXXXXXXX | npx wrangler secret put APNS_KEY_ID
    echo 2G974K78BH | npx wrangler secret put APNS_TEAM_ID
+   npx wrangler secret put FCM_SERVICE_ACCOUNT < service-account.json
    npx wrangler deploy                         # https://hmk-push.<you>.workers.dev
    ```
 
@@ -40,6 +44,13 @@ nothing of one it can't decrypt or that was sent over an hour ago.
    record, as homegrownsw.com's DNS is on Cloudflare), the URL the iPhone app uses. It still answers at
    hmk-push.homegrownsw.workers.dev for phones registered before that; both reach the same Worker and
    database, so a phone's id works at either. Without a domain on Cloudflare, take `routes` out.
+
+   **Firebase (for Android phones).** console.firebase.google.com ▸ add a project, then add an Android
+   app to it with the Android app's package name (its `google-services.json` goes in the Android app).
+   Project settings ▸ Service accounts ▸ Generate new private key downloads the service account's JSON:
+   that whole file is `FCM_SERVICE_ACCOUNT` (the relay reads `project_id`, `client_email` and
+   `private_key` from it). Delete the download once it's a secret. Without it the relay still serves
+   iPhones, and turns Android registrations away (501).
 3. **Production.** Add the WAF rate-limiting rule (below, Costs and abuse) on push.homegrownsw.com. It only
    covers that domain: the workers.dev name bypasses it, so once phones have moved to the domain, set
    `workers_dev = false` in wrangler.toml.
@@ -55,6 +66,8 @@ In this order, each time:
 - [ ] `npx wrangler d1 migrations apply hmk-push --remote`: migrations
       first, so the new worker never runs against an old table (the old
       worker is fine with the new one: it only adds columns).
+- [ ] any new secret the change needs is set (`npx wrangler secret list`),
+      e.g. `FCM_SERVICE_ACCOUNT` for Android phones (Set up, above)
 - [ ] `npx wrangler deploy`
 - [ ] the WAF rate-limiting rule is still in place on the relay's route
       (Security ▸ WAF ▸ Rate limiting rules), blocking every other path,
@@ -65,8 +78,11 @@ they're forgotten 60 days from when they were created.
 
 ## Routes
 
-- `POST /register {token, sandbox, id?, secret?}` → `{id, secret}`: a phone
-  registering, 10 a minute per client address. With the `id` and `secret`
+- `POST /register {token, sandbox, provider?, id?, secret?}` → `{id, secret}`:
+  a phone registering, 10 a minute per client address. `provider` is
+  `"apns"` (the default: an iPhone, `token` its hex device token, `sandbox`
+  true for a development build) or `"fcm"` (an Android phone, `token` its FCM
+  registration token; `sandbox` is ignored). With the `id` and `secret`
   it had (a new token, the app reinstalled, or its weekly refresh, which
   keeps it from being forgotten), it keeps that id, and one forgotten comes
   back with the same id and secret while no other row holds it; without,
@@ -90,6 +106,18 @@ and the rest age out unused.
   send is. The relay learns when something was dealt with, not what. Macs
   ignore a relay that doesn't have it yet (a 404 here
   doesn't make them forget the phone, as one from `/send` does).
+
+To an Android phone, both go as FCM HTTP v1 **data-only** messages (no
+`notification` block, so the app always decrypts and builds the
+notification itself), with a TTL of an hour. A send is `android.priority`
+`high`, with `data` `{e, category?, thread?, collapse?}` (the ciphertext and
+the same hints Apple gets; empty ones left out) and `android.collapse_key`
+set to the collapse tag. A clear is priority `normal`, with `data`
+`{clear: "1", e}`. FCM's `UNREGISTERED`, `SENDER_ID_MISMATCH` or an
+`INVALID_ARGUMENT` about the token forgets the phone and answers 410, as
+APNs' 410 and `BadDeviceToken` do.
+
+Android needs no new routes, so no change to the WAF rule (below).
 
 Any other path or method is turned away, as is a body over 4 KB. Every
 route counts towards 200 requests a minute per client address; an IPv6
@@ -122,4 +150,4 @@ A stronger fix, not done yet: have the app prove itself to the relay with
 App Attest or DeviceCheck when it registers, so only genuine copies of
 Hammock can make ids.
 
-Tests: `npm test` (a fake D1, rate limiter and APNs).
+Tests: `npm test` (a fake D1, rate limiter, APNs, and Google's token endpoint and FCM).
