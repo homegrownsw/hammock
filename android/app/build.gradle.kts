@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,6 +17,13 @@ val buildNumber: Int = runCatching {
     val p = ProcessBuilder("git", "rev-list", "--count", "HEAD").directory(rootProject.projectDir).start()
     p.inputStream.bufferedReader().readText().trim().toInt() + 831
 }.getOrDefault(1)
+
+// Release signing: android/keystore.properties (git-ignored), naming the upload
+// key's keystore and passwords (android/README.md). Without it a release build
+// is unsigned.
+val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { f ->
+    Properties().apply { f.inputStream().use { load(it) } }
+}
 
 android {
     namespace = "com.homegrownsw.hammock"
@@ -34,6 +43,15 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystoreProps != null) create("release") {
+            storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+            storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         debug {
             // Beside a release build on the same phone, as β is beside Hammock on a Mac.
@@ -41,6 +59,7 @@ android {
             versionNameSuffix = "-dev"
         }
         release {
+            if (keystoreProps != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

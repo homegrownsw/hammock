@@ -117,14 +117,13 @@ linux *archs:
     ./scripts/build-linux.sh {{archs}}
 
 # libghostty-vt for Android comes first (once per Ghostty commit, into the shared cache). Gradle needs a
-# JDK 17 or later: JAVA_HOME, else Android Studio's.
+# JDK 17 or later (android/scripts/java.sh finds one).
 # Build the Android app (android/README.md) for debugging: android/app/build/outputs/apk/debug/app-debug.apk.
 android: deps
     #!/usr/bin/env bash
     set -euo pipefail
     ./scripts/android-vt.sh
-    studio="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-    if [ -z "${JAVA_HOME:-}" ] && [ -d "$studio" ]; then export JAVA_HOME="$studio"; fi
+    . android/scripts/java.sh
     cd android && ./gradlew :app:assembleDebug
 
 # The Android app's tests: the client's, every module's JVM tests, and lint.
@@ -132,8 +131,7 @@ android-test: deps
     #!/usr/bin/env bash
     set -euo pipefail
     ./scripts/android-vt.sh
-    studio="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-    if [ -z "${JAVA_HOME:-}" ] && [ -d "$studio" ]; then export JAVA_HOME="$studio"; fi
+    . android/scripts/java.sh
     cd android && ./gradlew :client:test testDebugUnitTest lintDebug
 
 # ANDROID_SERIAL picks one when adb sees several.
@@ -141,6 +139,22 @@ android-test: deps
 android-device: android
     adb install -r -t android/app/build/outputs/apk/debug/app-debug.apk
     adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainActivity
+
+# Signed with the key android/keystore.properties names (git-ignored; android/README.md). Push needs the
+# HMK_FCM_* variables, as for any build.
+# Build the Android app for release: dist/android/Hammock-<version>.aab for Google Play and .apk for GitHub.
+android-release: deps
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -f android/keystore.properties ] || { echo "android/keystore.properties is missing: see android/README.md" >&2; exit 1; }
+    ./scripts/android-vt.sh
+    . android/scripts/java.sh
+    (cd android && ./gradlew :app:bundleRelease :app:assembleRelease)
+    v=$(scripts/version | sed -n 's/^Android: //p')
+    mkdir -p dist/android
+    cp android/app/build/outputs/bundle/release/app-release.aab "dist/android/Hammock-$v.aab"
+    cp android/app/build/outputs/apk/release/app-release.apk "dist/android/Hammock-$v.apk"
+    ls -la dist/android
 
 # A scratch daemon for the Android app to pair with (android/scripts/dev-daemon.sh up|pair|hmk|down).
 android-dev-daemon *args:

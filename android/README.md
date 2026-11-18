@@ -53,7 +53,22 @@ decrypts each and builds the notification itself. Firebase is set up from build-
 (or `hammock.FCM_*` Gradle properties). A build without them has no notifications while the app is closed,
 and Settings says so. `HMK_PUSH_RELAY` points a build at another relay.
 
+## Releasing
+
+`just android-release` builds `dist/android/Hammock-<version>.aab` for Google Play and `.apk` for GitHub,
+signed with the upload key `android/keystore.properties` names (git-ignored, never committed):
+
+```properties
+storeFile=/path/to/upload.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+The version is `HAMMOCK_ANDROID_VERSION` in `apple/iOS/Config/Version.xcconfig`; the build number counts
+commits, as the Apple apps' do. Its release notes are `release-notes/android/` (`just note android …`).
+
 ## Not done yet
 
-Releases (a signed bundle for Play and an APK for GitHub, with `just release-android`) aren't wired up;
-neither is video over QUIC (it goes in band for now).
+Uploading to Play and freezing the notes (`scripts/release` releases the Apple apps alone), and video over
+QUIC (it goes in band for now).
