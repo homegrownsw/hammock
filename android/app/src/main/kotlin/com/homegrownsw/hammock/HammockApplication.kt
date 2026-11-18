@@ -17,8 +17,8 @@ class HammockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Notifications.createChannels(this)
-        session = Session(this)
-        session.onModel = { m, h -> Notifications.hook(this, m, h) }
+        // Hooked before the first model is made: the stored computer connects as Session starts.
+        session = Session(this) { m, h -> Notifications.hook(this, m, h) }
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 foreground = true

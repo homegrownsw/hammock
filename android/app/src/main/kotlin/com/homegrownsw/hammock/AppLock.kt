@@ -29,6 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.focusable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
@@ -41,6 +45,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
  * longer than Lock After. While it's on, the app's screen is hidden from
  * Recents and screenshots.
  */
+/** Whether the app is covered by its lock: sheets and dialogs (their own windows) don't show then. */
+val LocalAppLocked = androidx.compose.runtime.compositionLocalOf { false }
+
 @Composable
 fun AppLock(content: @Composable () -> Unit) {
     val activity = LocalContext.current as FragmentActivity
@@ -80,12 +87,19 @@ fun AppLock(content: @Composable () -> Unit) {
             .build())
     }
 
+    val covered = on && locked
     Box(Modifier.fillMaxSize()) {
-        content()
-        if (on && locked) {
+        // Locked: the app stays as it was beneath (so it comes back where you
+        // were), but nothing reaches it, by touch, keyboard or TalkBack.
+        Box(Modifier.fillMaxSize().then(if (covered) Modifier.clearAndSetSemantics { } else Modifier)) {
+            CompositionLocalProvider(LocalAppLocked provides covered) { content() }
+        }
+        if (covered) {
             LaunchedEffect(Unit) { unlock() }
             Column(
-                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)
+                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } }
+                    .focusable(),
                 verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {

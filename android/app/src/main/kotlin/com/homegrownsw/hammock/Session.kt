@@ -35,7 +35,11 @@ data class PairOffer(val code: String, val pairing: Pairing)
  * Owns the paired computers (this phone's key for each) and the live model
  * of the one shown, as the iPhone's Session does. One per app.
  */
-class Session(private val context: Context) {
+class Session(
+    private val context: Context,
+    /** Called with each model as it's made, to hook notifications to it (set before the first is made). */
+    var onModel: ((AppModel, StoredHost) -> Unit)? = null,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val store = IdentityStore(context)
     private val prefs = context.getSharedPreferences("session", Context.MODE_PRIVATE)
@@ -60,8 +64,6 @@ class Session(private val context: Context) {
     private var pending: AppModel? = null
     private var probe: Job? = null
 
-    /** Called with each model as it's made, to hook notifications to it (Push). */
-    var onModel: ((AppModel, StoredHost) -> Unit)? = null
 
     val isDemo: Boolean get() = _model.value?.isDemo == true
 
@@ -124,6 +126,15 @@ class Session(private val context: Context) {
 
     private fun pair(p: Pairing, address: String, switching: Boolean) {
         val alias = "host-" + UUID.randomUUID()
+        // Ed25519 in the Keystore needs Android 13's KeyMint: a phone upgraded
+        // from an older one may not have it.
+        try {
+            KeystoreKey.get(alias)
+        } catch (e: Exception) {
+            _pairing.value = false
+            _pairingError.value = "This phone can't keep a key for Hammock: its Keystore has no Ed25519 (${e.javaClass.simpleName})."
+            return
+        }
         val h = StoredHost(
             hostName = p.hostName, address = address, addresses = p.addressesList, lanSubnets = p.lanSubnetsList,
             certSHA256 = p.certSha256.lowercase(), deviceID = null, keyAlias = alias,
@@ -139,28 +150,39 @@ class Session(private val context: Context) {
         // Signing in failing (a used or expired code) shows here.
         scope.launch {
             val r = withTimeoutOrNull(20_000) { m.link.first { it is Link.Failed || it == Link.Connected } }
-            if (r is Link.Failed && h.deviceID == null && _hosts.value.none { it.id == h.id }) {
+            // Only this attempt's: another may have started since.
+            val ours = m === pending || m === _model.value
+            if (ours && r is Link.Failed && _hosts.value.none { it.id == h.id && it.deviceID != null }) {
                 _pairingError.value = "Couldn't pair: ${r.message}"
                 cancelPairing()
             }
-            _pairing.value = false
+            if (ours) _pairing.value = false
         }
     }
 
-    private suspend fun firstReachable(addresses: List<String>): String? = withContext(Dispatchers.IO) {
-        if (addresses.isEmpty()) return@withContext null
+    /** The first address to take a connection, as soon as one does (a probe that hangs isn't waited for). */
+    private suspend fun firstReachable(addresses: List<String>): String? {
+        if (addresses.isEmpty()) return null
         val result = MutableStateFlow<String?>(null)
-        val jobs = addresses.mapIndexed { i, a ->
-            async {
-                delay(250L * i)
-                if (result.value != null) return@async
-                val host = RemoteCandidates.host(a)
-                val port = RemoteCandidates.port(a) ?: return@async
-                val ok = runCatching { Socket().use { it.connect(InetSocketAddress(host, port), 4000) } }.isSuccess
-                if (ok && result.value == null) result.value = a
+        val left = java.util.concurrent.atomic.AtomicInteger(addresses.size)
+        val probes = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        addresses.forEachIndexed { i, a ->
+            probes.launch {
+                try {
+                    delay(250L * i)
+                    if (result.value != null) return@launch
+                    val host = RemoteCandidates.host(a)
+                    val port = RemoteCandidates.port(a) ?: return@launch
+                    val ok = runCatching { Socket().use { it.connect(InetSocketAddress(host, port), 4000) } }.isSuccess
+                    if (ok) result.compareAndSet(null, a)
+                } finally {
+                    if (left.decrementAndGet() == 0) result.compareAndSet(null, "") // all failed
+                }
             }
         }
-        withTimeoutOrNull(12_000) { result.first { it != null } } ?: run { jobs.awaitAll(); result.value }
+        val a = withTimeoutOrNull(12_000) { result.first { it != null } }
+        probes.coroutineContext[Job]?.cancel()
+        return a?.ifEmpty { null }
     }
 
     /** Stops a pairing that hasn't finished. */
@@ -270,7 +292,11 @@ class Session(private val context: Context) {
         val m = model(h, secret)
         m.onPaired = { deviceID ->
             scope.launch {
+                // A pairing cancelled, or overtaken by another, doesn't take over.
+                if (m !== pending && m !== _model.value) return@launch
                 val paired = h.copy(deviceID = deviceID)
+                // Paired again with a computer already here: its old key goes.
+                _hosts.value.firstOrNull { it.id == paired.id && it.keyAlias != paired.keyAlias }?.let { KeystoreKey.delete(it.keyAlias) }
                 _hosts.value = _hosts.value.filter { it.id != paired.id } + paired
                 _pairingError.value = null
                 _pairing.value = false

@@ -72,11 +72,22 @@ object ApprovalKey {
 
     fun expiry(): Long = HammockKeyApproval.expiry()
 
-    /** Signs message (ECDSA, DER) after asking for your fingerprint, face or screen lock. */
-    suspend fun sign(activity: FragmentActivity, message: ByteArray, reason: String): ByteArray {
+    /**
+     * Signs message (ECDSA, DER) after asking for your fingerprint, face or
+     * screen lock. A key Android has invalidated (a fingerprint or face added,
+     * the screen lock changed) is replaced, and the caller sends the computer
+     * the new one (onReplaced) before asking you to approve again.
+     */
+    suspend fun sign(activity: FragmentActivity, message: ByteArray, reason: String, onReplaced: (ByteArray) -> Unit = {}): ByteArray {
         if (publicKey() == null) throw IllegalStateException("Set a screen lock on this phone to approve with it.")
         val sig = Signature.getInstance("SHA256withECDSA")
-        sig.initSign(store().getKey(ALIAS, null) as PrivateKey)
+        try {
+            sig.initSign(store().getKey(ALIAS, null) as PrivateKey)
+        } catch (_: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            store().deleteEntry(ALIAS)
+            publicKey()?.let(onReplaced)
+            throw IllegalStateException("This phone's approval key was renewed after its fingerprints or screen lock changed: approve again.")
+        }
         val unlocked = suspendCancellableCoroutine { cont ->
             val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {

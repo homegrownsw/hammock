@@ -214,9 +214,11 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val session = (ctx.applicationContext as HammockApplication).session
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             try {
+                // All within the broadcast's time (Android allows 10 s).
+                kotlinx.coroutines.withTimeoutOrNull(8_500) {
                 val shown = session.model.value?.takeIf { session.host.value?.id == host }
-                val m = shown ?: session.briefConnection(host) ?: return@launch
-                withTimeoutOrNull(9_000) { m.link.first { it == Link.Connected } }
+                val m = shown ?: session.briefConnection(host) ?: return@withTimeoutOrNull
+                withTimeoutOrNull(6_000) { m.link.first { it == Link.Connected } }
                 if (m.link.value == Link.Connected) {
                     when (action) {
                         Notifications.ACTION_GRANT_ALLOW, Notifications.ACTION_GRANT_DENY -> m.request {
@@ -237,6 +239,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     NotificationManagerCompat.from(ctx).cancel("$host/$subject", 0)
                 }
                 if (shown == null) m.stop()
+                }
             } finally {
                 pending.finish()
             }
