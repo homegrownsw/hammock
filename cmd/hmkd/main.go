@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/homegrownsw/hammock/internal/codesign"
 	"github.com/homegrownsw/hammock/internal/daemon"
 	"github.com/homegrownsw/hammock/internal/holder"
 )
@@ -47,7 +46,7 @@ func main() {
 
 	dev := false
 	if *devPairing {
-		if s, _ := codesign.Self(); s.Team != "" {
+		if !devBuild() {
 			log.Warn("ignoring --dev-pairing: development builds only")
 		} else {
 			log.Warn("--dev-pairing: programs outside this daemon's panes may pair devices with it")
@@ -56,9 +55,9 @@ func main() {
 	}
 	var listen []string
 	if *remoteListen != "" {
-		// For development: a release (signed by a team) listens only
-		// where Remote access chooses, whoever starts it.
-		if s, _ := codesign.Self(); s.Team != "" {
+		// For development: a release listens only where Remote access
+		// chooses, whoever starts it.
+		if !devBuild() {
 			log.Warn("ignoring --remote-listen: development builds only")
 		} else {
 			listen = strings.Split(*remoteListen, ",")
