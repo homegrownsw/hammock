@@ -17,6 +17,8 @@ import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -63,6 +65,8 @@ class DaemonConnection private constructor(
 
         fun standIn(s: DaemonStandIn) = DaemonConnection(emptyList(), emptyList(), null, null, s) { emptyList() }
 
+        private val sharedClient = OkHttpClient()
+
         fun sha256Hex(b: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(b).hex()
     }
 
@@ -76,6 +80,15 @@ class DaemonConnection private constructor(
     private val queue: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "hammock-connection").apply { isDaemon = true }
     }
+    /** Work for the connection's thread; dropped once it's shut down (OkHttp calls back after a close). */
+    private fun onQueue(block: () -> Unit) {
+        try { queue.execute(block) } catch (_: RejectedExecutionException) {}
+    }
+
+    private fun later(ms: Long, block: () -> Unit): ScheduledFuture<*>? =
+        try { queue.schedule(block, ms, TimeUnit.MILLISECONDS) } catch (_: RejectedExecutionException) { null }
+
+    private val shutDown = AtomicBoolean(false)
     private var nextID = 0L
     private val pending = HashMap<Long, CompletableDeferred<ServerMessage>>()
     private var ws: WebSocket? = null
@@ -90,10 +103,10 @@ class DaemonConnection private constructor(
         var scheduled = 0
         var lastError: Throwable? = null
         var done = false
-        val timers = ArrayList<ScheduledFuture<*>>()
+        val timers = ArrayList<ScheduledFuture<*>?>()
         fun stop() {
             done = true
-            timers.forEach { it.cancel(false) }
+            timers.forEach { it?.cancel(false) }
             attempts.keys.forEach { it.cancel() }
             attempts.clear()
         }
@@ -104,7 +117,8 @@ class DaemonConnection private constructor(
         val tm = PinnedTrustManager(pin)
         val ctx = SSLContext.getInstance("TLS")
         ctx.init(null, arrayOf(tm), null)
-        OkHttpClient.Builder()
+        // One client's dispatcher and pools for every connection, each with its own pin.
+        sharedClient.newBuilder()
             .sslSocketFactory(ctx.socketFactory, tm)
             .hostnameVerifier { _, _ -> true } // the pin is the identity; the certificate names nothing reachable
             .connectionSpecs(listOf(ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS).tlsVersions(TlsVersion.TLS_1_3).build()))
@@ -118,12 +132,12 @@ class DaemonConnection private constructor(
     }
 
     fun connect() {
-        queue.execute {
-            if (closed) return@execute
+        onQueue {
+            if (closed) return@onQueue
             if (standIn != null) {
                 standInOpen = true
                 onStateChange?.invoke(true, null)
-                return@execute
+                return@onQueue
             }
             startDial()
         }
@@ -131,16 +145,17 @@ class DaemonConnection private constructor(
 
     /** Closes the connection; no callbacks after. */
     fun disconnect() {
-        queue.execute {
+        if (!shutDown.compareAndSet(false, true)) return // once: it may be asked again by whoever lost the race
+        onQueue {
             closed = true
             dial?.stop()
             dial = null
-            ws?.close(1000, null)
+            ws?.cancel() // not close(): its close handshake would call back for a minute after
             ws = null
             standInOpen = false
             failAll(DaemonException("Connection closed"))
         }
-        queue.schedule({ queue.shutdown() }, 1, TimeUnit.SECONDS)
+        later(1000) { queue.shutdown() }
     }
 
     private fun startDial() {
@@ -153,14 +168,14 @@ class DaemonConnection private constructor(
         }
         candidates.forEachIndexed { i, address ->
             d.scheduled++
-            d.timers += queue.schedule({
+            d.timers += later(STAGGER_MS * i) {
                 if (!d.done) {
                     d.scheduled--
                     attempt(address, d)
                 }
-            }, STAGGER_MS * i, TimeUnit.MILLISECONDS)
+            }
         }
-        d.timers += queue.schedule({ if (!d.done) dialFailed(d, DaemonException("The computer didn't answer.")) }, DEADLINE_MS, TimeUnit.MILLISECONDS)
+        d.timers += later(DEADLINE_MS) { if (!d.done) dialFailed(d, DaemonException("The computer didn't answer.")) }
     }
 
     private fun attempt(address: String, d: Dial) {
@@ -171,10 +186,10 @@ class DaemonConnection private constructor(
     }
 
     private inner class Listener(val address: String, val d: Dial) : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) = queue.execute {
+        override fun onOpen(webSocket: WebSocket, response: Response) = onQueue {
             if (d.done || closed) {
                 if (webSocket !== ws) webSocket.cancel()
-                return@execute
+                return@onQueue
             }
             d.attempts.remove(webSocket)
             d.stop()
@@ -186,10 +201,10 @@ class DaemonConnection private constructor(
 
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
             val data = bytes.toByteArray()
-            queue.execute {
-                if (webSocket !== ws) return@execute
-                val body = Wire.decode(data) ?: return@execute run { webSocket.cancel() }
-                val msg = try { ServerMessage.parseFrom(body) } catch (_: Exception) { return@execute }
+            onQueue {
+                if (webSocket !== ws) return@onQueue
+                val body = Wire.decode(data) ?: return@onQueue webSocket.cancel()
+                val msg = try { ServerMessage.parseFrom(body) } catch (_: Exception) { return@onQueue }
                 deliver(msg)
             }
         }
@@ -198,11 +213,11 @@ class DaemonConnection private constructor(
             webSocket.close(1000, null)
         }
 
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = queue.execute {
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onQueue {
             lost(webSocket, DaemonException(reason.ifEmpty { "Connection closed" }))
         }
 
-        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = queue.execute {
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = onQueue {
             lost(webSocket, t)
         }
 
@@ -262,7 +277,7 @@ class DaemonConnection private constructor(
     }
 
     /** Routes a media session's frames, cursor, state and end to `handler` (null stops). */
-    fun setMediaHandler(sessionID: String, handler: ((ServerMessage) -> Unit)?) = queue.execute {
+    fun setMediaHandler(sessionID: String, handler: ((ServerMessage) -> Unit)?) = onQueue {
         if (handler == null) mediaHandlers.remove(sessionID) else mediaHandlers[sessionID] = handler
     }
 
@@ -271,7 +286,7 @@ class DaemonConnection private constructor(
     private fun write(msg: ClientMessage) {
         val s = standIn
         if (s != null) {
-            s.receive(msg) { reply -> queue.execute { if (standInOpen) deliver(reply) } }
+            s.receive(msg) { reply -> onQueue { if (standInOpen) deliver(reply) } }
             return
         }
         ws?.send(msg.toByteArray().toByteString())
@@ -281,27 +296,28 @@ class DaemonConnection private constructor(
     suspend fun call(build: ClientMessage.Builder.() -> Unit): ServerMessage {
         val b = ClientMessage.newBuilder().apply(build)
         val d = CompletableDeferred<ServerMessage>()
-        queue.execute {
+        val work = Runnable {
             if (!isOpen) {
                 d.completeExceptionally(DaemonException("Not connected"))
-                return@execute
+            } else {
+                nextID++
+                b.id = nextID
+                pending[nextID] = d
+                write(b.build())
             }
-            nextID++
-            b.id = nextID
-            pending[nextID] = d
-            write(b.build())
         }
+        try { queue.execute(work) } catch (_: RejectedExecutionException) { d.completeExceptionally(DaemonException("Not connected")) }
         return d.await()
     }
 
     /** Sends a message without waiting for a reply. */
     fun send(build: ClientMessage.Builder.() -> Unit) {
         val m = ClientMessage.newBuilder().apply(build).setId(0).build()
-        queue.execute { if (isOpen) write(m) }
+        onQueue { if (isOpen) write(m) }
     }
 
     /** Runs `block` on the connection's thread. */
-    fun post(block: () -> Unit) = queue.execute(block)
+    fun post(block: () -> Unit) = onQueue(block)
 }
 
 /**

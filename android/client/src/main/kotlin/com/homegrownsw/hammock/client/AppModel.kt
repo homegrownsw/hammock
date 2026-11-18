@@ -195,11 +195,20 @@ class AppModel private constructor(
 
     fun start() = scope.launch { open() }
 
+    /** Disconnects for good, and lets the model's thread go. */
     fun stop() = scope.launch {
         stopped = true
         connection?.disconnect()
         connection = null
+        challengeWaiter?.cancel()
+        challengeWaiter = null
+        kotlinx.coroutines.delay(100) // what the stop just sent leaves first
+        scope.coroutineContext[Job]?.cancel()
+        executor.shutdown()
     }
+
+    /** Whether c is still this model's connection (a reconnect may have replaced it while it was waiting). */
+    private fun current(c: DaemonConnection) = connection === c && !stopped
 
     private fun open() {
         if (stopped) return
@@ -208,6 +217,8 @@ class AppModel private constructor(
         else DaemonConnection.remote(id!!.addresses, id.lanSubnets, id.address, id.certSHA256)
         connection = c
         challenge = null
+        challengeWaiter?.cancel() // the old connection's sign-in, if it was waiting
+        challengeWaiter = null
         _link.value = Link.Connecting
         c.onEvent = { msg -> scope.launch { if (connection === c) handle(msg) } }
         c.onStateChange = { ready, err -> scope.launch { if (connection === c) connectionChanged(c, ready, err) } }
@@ -220,6 +231,7 @@ class AppModel private constructor(
             handshake(c)
             return
         }
+        c.disconnect()
         connection = null
         _link.value = Link.Failed(friendly(err))
         val d = retryDelay
@@ -258,6 +270,7 @@ class AppModel private constructor(
     private suspend fun handshake(c: DaemonConnection) {
         try {
             identity?.let { authenticate(c, it, nextChallenge()) }
+            if (!current(c)) return
             val hello = c.call {
                 setHello(Hammock.Hello.newBuilder().setProtocolVersion(1).setClientKind(clientKind).setClientName(clientKind).build())
             }.helloReply
@@ -268,7 +281,9 @@ class AppModel private constructor(
                 identity = id
                 onIdentityChanged?.invoke(id!!)
             }
+            if (!current(c)) return
             val state = c.call { setSubscribe(Hammock.Subscribe.getDefaultInstance()) }.state
+            if (!current(c)) return
             knownAttention.clear()
             _workspace.value = _workspace.value.copy(hostName = hello.hostName, myUserID = hello.userId)
             apply(state)
@@ -283,16 +298,18 @@ class AppModel private constructor(
             rewatch.toList().forEach { it(c) }
             onConnected?.invoke(this)
         } catch (e: Exception) {
+            c.disconnect()
+            // Superseded meanwhile (reconnected, stopped): the new connection carries on.
+            if (!current(c)) return
             _link.value = Link.Failed(e.message ?: "Couldn't sign in")
             if (e is DaemonException && (e.message?.contains("not paired", true) == true || e.message?.contains("unknown device", true) == true)) {
                 stopped = true // revoked: don't keep knocking
             }
-            c.disconnect()
             connection = null
             if (!stopped) {
                 delay(retryDelay)
                 retryDelay = minOf(retryDelay * 2, 5000)
-                open()
+                if (!stopped && connection == null) open()
             }
         }
     }
@@ -313,6 +330,7 @@ class AppModel private constructor(
                 setPair(Hammock.Pair.newBuilder().setSecret(ByteString.copyFrom(secret)).setDeviceName(id.deviceName)
                     .setPlatform(id.platform).setPublicKey(ByteString.copyFrom(k.publicKey)).build())
             }
+            if (!current(c)) throw DaemonException("Pairing was cancelled")
             val newID = id.copy(deviceID = r.paired.deviceId, pairingSecret = null)
             identity = newID
             onPaired?.invoke(r.paired.deviceId)
