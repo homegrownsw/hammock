@@ -1,5 +1,6 @@
 package com.homegrownsw.hammock.ui
 
+import com.homegrownsw.hammock.LocalAppLocked
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Tab
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -76,7 +81,9 @@ fun HammockKeySheet(model: AppModel, w: Workspace, request: HammockKeyRequest, h
         scope.launch {
             try {
                 val expires = ApprovalKey.expiry()
-                val sig = ApprovalKey.sign(activity, ApprovalKey.message(request, window, expires), "Approve: ${request.what}")
+                val sig = ApprovalKey.sign(activity, ApprovalKey.message(request, window, expires), "Approve: ${request.what}",
+                    // A key Android invalidated is renewed: the computer has the new one before you approve again.
+                    onReplaced = { key -> model.send { setSetApprovalKey(Hammock.SetApprovalKey.newBuilder().setPublicKey(ByteString.copyFrom(key)).build()) } })
                 model.call {
                     setRespondHammockKey(Hammock.RespondHammockKey.newBuilder().setId(request.id).setAllow(true).setWindow(window)
                         .setSignature(ByteString.copyFrom(sig)).setExpiresUnixMs(expires).build())
@@ -89,7 +96,7 @@ fun HammockKeySheet(model: AppModel, w: Workspace, request: HammockKeyRequest, h
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDone, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    if (!LocalAppLocked.current) ModalBottomSheet(onDismissRequest = onDone, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Box(Modifier.size(56.dp).background(NeedsYouColor, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
@@ -108,7 +115,10 @@ fun HammockKeySheet(model: AppModel, w: Workspace, request: HammockKeyRequest, h
                 )
                 if (!inPane) Text(if (request.agent) "$agent outside Hammock" else "A program outside Hammock", style = MaterialTheme.typography.titleMedium)
                 if (groupName.isNotEmpty()) Text((group?.icon?.takeIf { it.isNotEmpty() }?.plus(" ") ?: "") + groupName, style = MaterialTheme.typography.titleMedium)
-                if (tabName.isNotEmpty()) Text(tabName, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (tabName.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.Tab, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tabName, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (request.command.isNotEmpty()) Text(
                     request.command, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(8.dp)).padding(10.dp),
@@ -126,7 +136,11 @@ fun HammockKeySheet(model: AppModel, w: Workspace, request: HammockKeyRequest, h
                     Text(it, color = ErrorColor)
                 }
             }
-            Button(onClick = { approve(false) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Approve") }
+            Button(onClick = { approve(false) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Fingerprint, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Approve")
+            }
             if (minutes > 0) OutlinedButton(onClick = { approve(true) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text("Approve for $minutes Minutes")
             }

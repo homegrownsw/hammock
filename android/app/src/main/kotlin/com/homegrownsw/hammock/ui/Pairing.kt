@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,55 +88,86 @@ fun PairingScreen(session: Session, firstRun: Boolean, onDemo: (() -> Unit)? = n
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp).padding(top = if (firstRun) 48.dp else 0.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 16.dp).padding(top = if (firstRun) 48.dp else 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(Modifier.widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (firstRun) Text("Connect to your computer", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text(buildAnnotatedString {
-                    append("On your Mac, open Hammock ▸ Settings ▸ Devices, turn on remote access and choose ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("Show Pairing Code") }
-                    append(". On a server, run ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("hmk pair") }
-                    append(".")
-                }, style = MaterialTheme.typography.bodyLarge)
+            // The iPhone's form: what to do on the computer, then the scanner, then the link, each in its card.
+            Column(Modifier.widthIn(max = 560.dp)) {
+                if (firstRun) Text("Connect to your computer", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = CardInset + 4.dp, vertical = 8.dp))
+                GroupedCard {
+                    Text(buildAnnotatedString {
+                        append("On your Mac, open Hammock ▸ Settings ▸ Devices, turn on remote access and choose ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)) { append("Show Pairing Code") }
+                        append(". On a server, run ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)) { append("hmk pair") }
+                        append(".")
+                    }, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+                }
 
-                Text("Scan the code", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                if (scanning) {
-                    QrScanner(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(20.dp))) { pair(it) }
-                    TextButton(onClick = { scanning = false }) { Text("Stop Scanning") }
-                } else {
-                    Button(onClick = {
-                        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
-                        else permission.launch(Manifest.permission.CAMERA)
-                    }, Modifier.fillMaxWidth(), enabled = !pairing) {
-                        Icon(Icons.Default.QrCodeScanner, null, Modifier.size(18.dp))
-                        Text("Scan Pairing Code", Modifier.padding(start = 8.dp))
+                SectionHeader("Scan the code")
+                GroupedCard {
+                    if (scanning) {
+                        QrScanner(Modifier.fillMaxWidth().height(280.dp)) { pair(it) }
+                        CardDivider()
+                        ValueRow("Stop Scanning", accent = true, onClick = { scanning = false }) {}
+                    } else {
+                        Column(
+                            Modifier.fillMaxWidth().height(200.dp), verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(Icons.Default.QrCodeScanner, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Button(onClick = {
+                                if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) scanning = true
+                                else permission.launch(Manifest.permission.CAMERA)
+                            }, enabled = !pairing) { Text("Scan Pairing Code") }
+                        }
                     }
                 }
 
-                Text("Or paste the link", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                OutlinedTextField(code, { code = it.trim() }, Modifier.fillMaxWidth(), placeholder = { Text("hammock://pair/…") }, singleLine = true)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { pair(code) }, enabled = code.isNotEmpty() && !pairing) { Text("Pair") }
-                    if (pairing) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        Text("Pairing…", style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = session::cancelPairing) { Text("Cancel") }
+                SectionHeader("Or paste the link")
+                GroupedCard {
+                    BasicTextField(
+                        code, { code = it.trim() },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        decorationBox = { inner ->
+                            if (code.isEmpty()) Text("hammock://pair/…", style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                            inner()
+                        },
+                    )
+                    CardDivider()
+                    val canPair = code.isNotEmpty() && !pairing
+                    ValueRow("Pair", accent = canPair, onClick = if (canPair) ({ pair(code) }) else null) {}
+                }
+                if (pairing) {
+                    Spacer(Modifier.size(20.dp))
+                    GroupedCard {
+                        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Pairing…", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = session::cancelPairing) { Text("Cancel") }
+                        }
                     }
                 }
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+                error?.let {
+                    Spacer(Modifier.size(20.dp))
+                    GroupedCard { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+                }
 
                 if (firstRun && onDemo != null) {
-                    Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // A side door, not the way in: a footnote, under everything.
+                    Column(Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("No Mac to hand?", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("No Mac to hand?", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = onDemo) { Text("See a demo") }
                         }
                         TextButton(onClick = {
                             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://homegrownsw.com/hammock/")))
-                        }) { Text("Hammock for Mac is free at homegrownsw.com/hammock") }
+                        }) { Text("Hammock for Mac is free at homegrownsw.com/hammock", style = MaterialTheme.typography.bodySmall) }
                     }
                 }
             }

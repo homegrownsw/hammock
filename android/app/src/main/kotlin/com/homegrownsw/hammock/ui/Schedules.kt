@@ -22,6 +22,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.outlined.PauseCircle
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -83,12 +89,12 @@ val Status.label get() = when (this) {
 }
 val Status.icon: ImageVector get() = when (this) {
     Status.STATUS_RUNNING -> Icons.Default.Sync; Status.STATUS_WAITING -> Icons.Default.Error; Status.STATUS_READY -> Icons.Default.CheckCircle
-    Status.STATUS_FAILED -> Icons.Default.Error; Status.STATUS_GAVE_UP -> Icons.Default.HourglassBottom; Status.STATUS_SKIPPED -> Icons.Default.SkipNext
+    Status.STATUS_FAILED -> Icons.Default.Cancel; Status.STATUS_GAVE_UP -> Icons.Default.HourglassBottom; Status.STATUS_SKIPPED -> Icons.Default.SkipNext
     Status.STATUS_MISSED -> Icons.Default.Bedtime; Status.STATUS_STOPPED -> Icons.Default.Block; else -> Icons.Default.RadioButtonUnchecked
 }
 @Composable fun Status.color(): Color = when (this) {
-    Status.STATUS_RUNNING -> Color(0xFF3B82F6); Status.STATUS_WAITING -> NeedsYouColor; Status.STATUS_READY -> Color(0xFF34A853)
-    Status.STATUS_FAILED, Status.STATUS_GAVE_UP -> ErrorColor; else -> MaterialTheme.colorScheme.onSurfaceVariant
+    Status.STATUS_RUNNING -> StatusPalette.indigo(); Status.STATUS_WAITING -> StatusPalette.amber(); Status.STATUS_READY -> StatusPalette.green()
+    Status.STATUS_FAILED, Status.STATUS_GAVE_UP -> StatusPalette.red(); else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
 val Schedule.skipping get() = nextRunUnixMs > 0 && skipUntilUnixMs > nextRunUnixMs
@@ -228,40 +234,53 @@ suspend fun runScheduleNow(model: AppModel, s: Schedule, early: Boolean, nav: Na
     }
 }
 
+/** A schedule's computer, when it's another of yours: its badge goes beside the name. */
+fun Workspace.computerOf(s: Schedule): Hammock.Computer? {
+    if (s.computerId.isEmpty() || s.computerId == myUserID) return null
+    return computers.firstOrNull { it.userId == s.computerId && !it.thisComputer }
+}
+
+/** A run that's ready: its schedule, Group and time, what it said, and what it showed. */
 @Composable
 fun ReadyRunRow(w: Workspace, s: Schedule, r: ScheduleRun, now: Long, onClick: () -> Unit) {
     val ctx = LocalContext.current
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Icon(r.status.icon, r.status.label, tint = r.status.color(), modifier = Modifier.size(20.dp))
+    val quiet = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        Icon(r.status.icon, r.status.label, tint = r.status.color(), modifier = Modifier.padding(top = 2.dp).size(22.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row {
-                Text(s.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.weight(1f))
-                Text(ScheduleWords.time(r.endedUnixMs, ctx), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(s.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    w.computerOf(s)?.let { ComputerIcon(it, 13.dp) }
+                }
+                Text(ScheduleWords.time(r.endedUnixMs, ctx), style = MaterialTheme.typography.bodyMedium, color = quiet)
             }
-            Text(ScheduleWords.group(w, s), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(ScheduleWords.group(w, s), style = MaterialTheme.typography.bodyMedium, color = quiet, maxLines = 1)
             if (r.note.isNotEmpty()) Text(plainInline(r.note), style = MaterialTheme.typography.bodyMedium, maxLines = 3)
-            ScheduleWords.output(r)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            ScheduleWords.output(r)?.let {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.AutoMirrored.Outlined.Article, null, Modifier.size(15.dp), tint = quiet)
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = quiet, maxLines = 1)
+                }
+            }
         }
     }
 }
 
 /** "Coming Up": the next few, with Skip and Run (Run Early when it's soon); See All opens the list. */
 fun LazyListScope.comingUp(model: AppModel, w: Workspace, nav: Nav, now: Long) {
-    item(key = "h:Coming Up") {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Coming Up", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-            TextButton(onClick = { nav.open("schedules") }) { Text("See All") }
-        }
-    }
+    section("Coming Up") { TextButton(onClick = { nav.open("schedules") }) { Text("See All") } }
     val next = sorted(w.schedules.values).filter { it.upcoming }.take(3)
     if (next.isEmpty()) {
         item(key = "nothing") {
             val paused = w.schedules.values.count { it.paused }
-            Text(if (paused > 0) "Nothing coming up: ${if (paused == 1) "1 task is" else "$paused tasks are"} paused." else "Nothing coming up.",
-                Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            CardRow(0, 1) {
+                Text(if (paused > 0) "Nothing coming up: ${if (paused == 1) "1 task is" else "$paused tasks are"} paused." else "Nothing coming up.",
+                    Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
-    items(next, key = { "next:" + it.id }) { s -> ComingUpRow(model, w, s, now, nav) }
+    cardItems(next, key = { "next:" + it.id }, dividerStart = 16.dp) { s -> ComingUpRow(model, w, s, now, nav) }
 }
 
 fun sorted(all: Collection<Schedule>): List<Schedule> = all.sortedWith { a, b ->
@@ -274,15 +293,24 @@ fun sorted(all: Collection<Schedule>): List<Schedule> = all.sortedWith { a, b ->
     }
 }
 
+/** A small tinted capsule button, as the iPhone's bordered ones. */
+@Composable
+fun SmallTonalButton(text: String, enabled: Boolean = true, onClick: () -> Unit) =
+    FilledTonalButton(onClick = onClick, enabled = enabled, colors = tintedButtonColors(), contentPadding = PaddingValues(horizontal = 14.dp), modifier = Modifier.heightIn(min = 36.dp)) { Text(text) }
+
 @Composable
 private fun ComingUpRow(model: AppModel, w: Workspace, s: Schedule, now: Long, nav: Nav) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val early = s.runsEarlyFirst(now)
-    Row(Modifier.fillMaxWidth().clickable { nav.open("schedule:" + s.id) }.padding(horizontal = 20.dp, vertical = 8.dp),
+    Row(Modifier.fillMaxWidth().clickable { nav.open("schedule:" + s.id) }.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.weight(1f)) {
-            Text(s.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(s.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                w.computerOf(s)?.let { ComputerIcon(it, 12.dp) }
+            }
             val running = s.runsList.firstOrNull()?.let { if (it.status == Status.STATUS_RUNNING || it.status == Status.STATUS_WAITING) it.status.label + " · " else "" } ?: ""
             val group = ScheduleWords.group(w, s)
             Text(
@@ -291,12 +319,8 @@ private fun ComingUpRow(model: AppModel, w: Workspace, s: Schedule, now: Long, n
                 textDecoration = if (s.skipping) TextDecoration.LineThrough else null, overflow = TextOverflow.Ellipsis,
             )
         }
-        OutlinedButton(onClick = { model.skipScheduleRun(s.id, !s.skipping) }, contentPadding = PaddingValues(horizontal = 12.dp)) {
-            Text(if (s.skipping) "Don’t Skip" else "Skip")
-        }
-        OutlinedButton(onClick = { scope.launch { runScheduleNow(model, s, early, nav) } }, contentPadding = PaddingValues(horizontal = 12.dp)) {
-            Text(if (early) "Run Early" else "Run")
-        }
+        SmallTonalButton(if (s.skipping) "Don’t Skip" else "Skip") { model.skipScheduleRun(s.id, !s.skipping) }
+        SmallTonalButton(if (early) "Run Early" else "Run") { scope.launch { runScheduleNow(model, s, early, nav) } }
     }
 }
 
@@ -310,25 +334,30 @@ fun SchedulesScreen(model: AppModel, nav: Nav, showBack: Boolean) {
     val w by model.workspace.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val now = rememberNow(60_000)
+    val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     DetailTop("Scheduled Tasks", nav, showBack) { padding ->
         if (w.schedules.isEmpty()) {
             EmptyState("No Scheduled Tasks", "Run Claude Code, Codex or a command at set times: each run opens a tab in its Group. Create scheduled tasks on your computer (or with hmk schedule).", Modifier.padding(padding))
             return@DetailTop
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
-            items(sorted(w.schedules.values), key = { it.id }) { s ->
-                ListItem(
-                    modifier = Modifier.clickable { nav.push("schedule:" + s.id) },
-                    headlineContent = { Text(s.name, fontWeight = FontWeight.Medium, maxLines = 1) },
-                    supportingContent = {
-                        Column {
-                            Text(ScheduleWords.where(w, s, ctx), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(ScheduleWords.next(s, now, ctx), style = MaterialTheme.typography.bodySmall,
-                                color = if (s.error.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else NeedsYouColor)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp)) {
+            cardItems(sorted(w.schedules.values), key = { it.id }, dividerStart = 16.dp) { s ->
+                Row(Modifier.fillMaxWidth().clickable { nav.push("schedule:" + s.id) }.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(s.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                w.computerOf(s)?.let { ComputerIcon(it, 13.dp) }
+                            }
+                            s.runsList.firstOrNull()?.let { Icon(it.status.icon, "Last run: " + it.status.label, Modifier.size(20.dp), tint = it.status.color()) }
                         }
-                    },
-                    trailingContent = { s.runsList.firstOrNull()?.let { Icon(it.status.icon, "Last run: " + it.status.label, tint = it.status.color()) } },
-                )
+                        Text(ScheduleWords.where(w, s, ctx), style = MaterialTheme.typography.bodyMedium, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(ScheduleWords.next(s, now, ctx), style = MaterialTheme.typography.bodySmall,
+                            color = if (s.error.isEmpty()) quiet.copy(alpha = 0.75f) else NeedsYouColor)
+                    }
+                    Chevron()
+                }
             }
             item { MacOnlyFooter() }
         }
@@ -338,8 +367,19 @@ fun SchedulesScreen(model: AppModel, nav: Nav, showBack: Boolean) {
 @Composable
 private fun MacOnlyFooter() = Text(
     "Create and edit scheduled tasks on your computer (or with hmk schedule).",
-    Modifier.padding(20.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Modifier.padding(horizontal = CardInset + 16.dp, vertical = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
 )
+
+/** An action in a card: its icon and words in the accent, as the iPhone's. */
+@Composable
+private fun ActionRow(text: String, icon: ImageVector, onClick: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Icon(icon, null, tint = accent)
+        Text(text, color = accent, style = MaterialTheme.typography.bodyLarge)
+    }
+}
 
 /** One scheduled task: its actions, when and what it runs, and its runs. */
 @Composable
@@ -354,52 +394,70 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
             EmptyState("Scheduled Task Deleted", "It was deleted on your computer.", Modifier.padding(padding))
             return@DetailTop
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp)) {
             item {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(s.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        if (s.paused) Text("Paused", Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
-                            .padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
-                    }
-                    Text(ScheduleWords.where(w, s, ctx), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (s.error.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Default.Warning, null, tint = NeedsYouColor, modifier = Modifier.size(18.dp))
-                        Text(s.error, color = NeedsYouColor)
+                GroupedCard {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(s.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                            w.computerOf(s)?.let { ComputerIcon(it, 16.dp) }
+                            if (s.paused) Text("Paused", Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                                .padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
+                        }
+                        Text(ScheduleWords.where(w, s, ctx), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (s.error.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Warning, null, tint = NeedsYouColor, modifier = Modifier.size(18.dp))
+                            Text(s.error, color = NeedsYouColor)
+                        }
                     }
                 }
             }
+            item { Spacer(Modifier.size(20.dp)) }
             item {
-                ListItem(modifier = Modifier.clickable { scope.launch { runScheduleNow(model, s, false, nav) } },
-                    headlineContent = { Text("Run Now") }, leadingContent = { Icon(Icons.Default.PlayArrow, null) })
-                if (s.canRunEarly) ListItem(modifier = Modifier.clickable { scope.launch { runScheduleNow(model, s, true, nav) } },
-                    headlineContent = { Text("Run Now Instead of ${ScheduleWords.nextShort(s, now, ctx)}") }, leadingContent = { Icon(Icons.Default.PlayArrow, null) })
-                if (s.upcoming) ListItem(modifier = Modifier.clickable { model.skipScheduleRun(s.id, !s.skipping) },
-                    headlineContent = { Text(if (s.skipping) "Don’t Skip Next Run" else "Skip Next Run") }, leadingContent = { Icon(Icons.Default.SkipNext, null) })
-                ListItem(modifier = Modifier.clickable { model.setSchedulePaused(s.id, !s.paused) },
-                    headlineContent = { Text(if (s.paused) "Resume" else "Pause") }, leadingContent = { Icon(if (s.paused) Icons.Default.PlayArrow else Icons.Default.Pause, null) })
-                HorizontalDivider()
+                GroupedCard {
+                    ActionRow("Run Now", Icons.Default.PlayArrow) { scope.launch { runScheduleNow(model, s, false, nav) } }
+                    if (s.canRunEarly) {
+                        CardDivider(56.dp)
+                        ActionRow("Run Now Instead of ${ScheduleWords.nextShort(s, now, ctx)}", Icons.Outlined.PlayArrow) { scope.launch { runScheduleNow(model, s, true, nav) } }
+                    }
+                    if (s.upcoming) {
+                        CardDivider(56.dp)
+                        ActionRow(if (s.skipping) "Don’t Skip Next Run" else "Skip Next Run", Icons.Default.SkipNext) { model.skipScheduleRun(s.id, !s.skipping) }
+                    }
+                    CardDivider(56.dp)
+                    ActionRow(if (s.paused) "Resume" else "Pause", if (s.paused) Icons.Default.PlayArrow else Icons.Outlined.PauseCircle) { model.setSchedulePaused(s.id, !s.paused) }
+                }
             }
             item {
-                section2("Details")
-                Detail("When", ScheduleWords.whenText(s, ctx))
-                Detail("Next Run", ScheduleWords.next(s, now, ctx).removePrefix("Next: "))
-                Detail("Runs", ScheduleWords.kindName(s.kind, w.kinds))
-                Detail(if (s.kind == "command") "Command" else "Prompt", s.prompt.ifEmpty { "None" }, mono = s.kind == "command")
-                Detail("Folder", s.cwd.replace(Regex("^/(Users|home)/[^/]+"), "~"), mono = true)
-                Detail("Group", ScheduleWords.group(w, s))
-                if (s.kind == "claude" && s.allowedToolsCount > 0) Detail("Always Allowed", s.allowedToolsList.joinToString(", "))
-                Detail("Made By", s.createdBy.ifEmpty { "You" } + if (s.createdUnixMs > 0) " · " + ScheduleWords.date(s.createdUnixMs, now, ctx) else "")
-                section2("Runs")
-                if (s.runsCount == 0) Text("None yet.", Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionHeader("Details")
+                GroupedCard {
+                    val rows = buildList {
+                        add(Triple("When", ScheduleWords.whenText(s, ctx), false))
+                        add(Triple("Next Run", ScheduleWords.next(s, now, ctx).removePrefix("Next: "), false))
+                        add(Triple("Runs", ScheduleWords.kindName(s.kind, w.kinds), false))
+                        add(Triple(if (s.kind == "command") "Command" else "Prompt", s.prompt.ifEmpty { "None" }, s.kind == "command"))
+                        add(Triple("Folder", s.cwd.replace(Regex("^/(Users|home)/[^/]+"), "~"), true))
+                        add(Triple("Group", ScheduleWords.group(w, s), false))
+                        if (s.kind == "claude" && s.allowedToolsCount > 0) add(Triple("Always Allowed", s.allowedToolsList.joinToString(", "), false))
+                        add(Triple("Made By", s.createdBy.ifEmpty { "You" } + if (s.createdUnixMs > 0) " · " + ScheduleWords.date(s.createdUnixMs, now, ctx) else "", false))
+                    }
+                    rows.forEachIndexed { i, (label, value, mono) ->
+                        if (i > 0) CardDivider()
+                        Detail(label, value, mono)
+                    }
+                }
+                SectionHeader("Runs")
             }
-            items(s.runsList, key = { it.id }) { r ->
+            if (s.runsCount == 0) item {
+                CardRow(0, 1) { Text("None yet.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            cardItems(s.runsList, key = { it.id }) { r ->
                 val linked = hasTab(w, r) || (s.kind != "command" && r.sessionId.isNotEmpty())
                 Row(
-                    Modifier.fillMaxWidth().let { if (linked) it.clickable { openRun(nav, w, s, r, model) } else it }.padding(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    Modifier.fillMaxWidth().let { if (linked) it.clickable { openRun(nav, w, s, r, model) } else it }.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(r.status.icon, r.status.label, tint = r.status.color(), modifier = Modifier.size(18.dp).padding(top = 2.dp))
+                    Icon(r.status.icon, r.status.label, tint = r.status.color(), modifier = Modifier.size(22.dp))
                     Column(Modifier.weight(1f)) {
                         Row {
                             val whenMs = if (r.startedUnixMs > 0) r.startedUnixMs else if (r.dueUnixMs > 0) r.dueUnixMs else r.endedUnixMs
@@ -407,8 +465,15 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                             ScheduleWords.duration(r, now)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                         Text(ScheduleWords.note(r, s), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                        ScheduleWords.output(r)?.let {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.AutoMirrored.Outlined.Article, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                        }
                         if (linked && !hasTab(w, r)) Text("Resume Session", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
                     }
+                    if (linked) Chevron()
                 }
             }
             item { MacOnlyFooter() }
@@ -416,14 +481,19 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
     }
 }
 
-@Composable
-private fun section2(title: String) = Text(title, Modifier.padding(start = 20.dp, top = 20.dp, bottom = 6.dp),
-    style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-
+/** A detail: its label and value on one line, or the value under it when long (a prompt, a folder). */
 @Composable
 private fun Detail(label: String, value: String, mono: Boolean = false) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, fontFamily = if (mono) FontFamily.Monospace else null)
+    val long = mono || value.length > 28
+    if (long) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = if (mono) FontFamily.Monospace else null)
+        }
+    } else {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

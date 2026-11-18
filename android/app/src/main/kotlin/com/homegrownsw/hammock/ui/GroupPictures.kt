@@ -19,6 +19,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Link
@@ -48,18 +53,17 @@ object GroupPictures {
 
 /** A Group's icon: its emoji, else its picture, else the Group glyph, so rows line up. */
 @Composable
-fun GroupIcon(g: Hammock.Group, sizeDp: Int) {
-    if (g.icon.isNotEmpty()) return Text(g.icon, style = MaterialTheme.typography.bodySmall)
+fun GroupIcon(g: Hammock.Group, sizeDp: Int, fallback: Boolean = true) {
+    if (g.icon.isNotEmpty()) return Text(g.icon, fontSize = (sizeDp * 0.8f).sp, lineHeight = sizeDp.sp)
     val model = LocalModel.current
     if (g.iconImage.isNotEmpty() && model != null) {
         // Asked again once connected: a list drawn before the link is up asks too soon.
         val link by model.link.collectAsStateWithLifecycle()
-        val picture by produceState<ImageBitmap?>(null, g.iconImage, link == Link.Connected) {
-            if (link == Link.Connected) value = GroupPictures.load(model, g)
-        }
+        var picture by remember(g.iconImage) { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(g.iconImage, link == Link.Connected) { if (link == Link.Connected) picture = GroupPictures.load(model, g) }
         picture?.let {
             return Image(it, null, Modifier.size(sizeDp.dp).clip(RoundedCornerShape((sizeDp / 4).dp)))
         }
     }
-    Icon(Icons.Default.ViewAgenda, null, Modifier.size(sizeDp.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (fallback) Icon(Icons.Default.ViewAgenda, null, Modifier.size(sizeDp.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
 }

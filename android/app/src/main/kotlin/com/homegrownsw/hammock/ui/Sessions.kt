@@ -1,5 +1,6 @@
 package com.homegrownsw.hammock.ui
 
+import com.homegrownsw.hammock.LocalAppLocked
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -35,7 +36,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -167,24 +169,27 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 24.dp)) {
             if (w.grants.isNotEmpty() || waiting.isNotEmpty() || others.isNotEmpty() || w.joinRequests.isNotEmpty()) {
                 section("Needs You")
+                // Each its own card, as the iPhone's: their buttons need the room.
                 items(w.joinRequests, key = { "join:" + it.id }) { JoinCard(model, w, it) }
                 items(w.grants, key = { "grant:" + it.id }) { GrantCard(model, it) }
                 items(waiting, key = { "att:" + it.id }) { item ->
                     val p = w.panes[item.paneId]
-                    Swipeable(enabled = p != null && canClose(p), onClose = { p?.let(::requestClose) }) {
-                        AttentionCard(model, w, item) { nav.open("pane:" + item.paneId) }
+                    Card(padded = false) {
+                        Swipeable(enabled = p != null && canClose(p), onClose = { p?.let(::requestClose) }) {
+                            AttentionCard(model, w, item) { nav.open("pane:" + item.paneId) }
+                        }
                     }
                 }
-                items(others, key = { "need:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
+                cardItems(others, key = { "need:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
             }
             if (ready.isNotEmpty()) {
                 section("Ready for You")
-                items(ready, key = { "ready:" + it.second.id }) { (s, run) -> ReadyRunRow(w, s, run, now) { openRun(nav, w, s, run, model) } }
+                cardItems(ready, key = { "ready:" + it.second.id }) { (s, run) -> ReadyRunRow(w, s, run, now) { openRun(nav, w, s, run, model) } }
             }
             val working = rows.working.filter { it.pane.id !in readyPanes }
             if (working.isNotEmpty()) {
                 section("Working")
-                items(working, key = { "work:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
+                cardItems(working, key = { "work:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
             }
             val recentAll = rows.recent.filter { it.pane.id !in readyPanes }
             if (recentAll.isNotEmpty()) {
@@ -193,11 +198,17 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
                 val cutoff = now - 48 * 3600 * 1000L
                 val fresh = recentAll.filter { it.pane.agent.stateSinceUnixMs >= cutoff }
                 val shown = if (showingAllRecent || fresh.isEmpty()) recentAll else fresh
-                items(shown, key = { "recent:" + it.tab.id }) { r -> SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) }
-                if (fresh.isNotEmpty() && fresh.size < recentAll.size) {
+                val more = fresh.isNotEmpty() && fresh.size < recentAll.size
+                val n = shown.size + if (more) 1 else 0
+                shown.forEachIndexed { i, r ->
+                    item(key = "recent:" + r.tab.id) { CardRow(i, n) { SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) } }
+                }
+                if (more) {
                     item(key = "more") {
-                        TextButton(onClick = { showingAllRecent = !showingAllRecent }, Modifier.padding(horizontal = 8.dp)) {
-                            Text(if (showingAllRecent) "Show Less" else "Show More…")
+                        CardRow(n - 1, n) {
+                            TextButton(onClick = { showingAllRecent = !showingAllRecent }, Modifier.padding(horizontal = 4.dp)) {
+                                Text(if (showingAllRecent) "Show Less" else "Show More…")
+                            }
                         }
                     }
                 }
@@ -208,7 +219,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
     }
     closing?.let { p ->
         val title = w.tabs[p.tabId]?.let { w.title(it) } ?: p.displayName
-        AlertDialog(
+        if (!LocalAppLocked.current) AlertDialog(
             onDismissRequest = { closing = null },
             title = { Text("Close “$title”?") },
             text = { Text(closeWarning(w, p)) },
@@ -229,15 +240,6 @@ private fun closeWarning(w: Workspace, p: Pane): String {
     }
 }
 
-fun LazyListScope.section(title: String) {
-    item(key = "h:$title", contentType = "header") {
-        Text(
-            title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 6.dp),
-        )
-    }
-}
-
 /** Swipe left to close, where you can (your own Groups, or ones you drive). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -251,11 +253,12 @@ fun Swipeable(enabled: Boolean, onClose: () -> Unit, content: @Composable () -> 
         state = state,
         enableDismissFromStartToEnd = false,
         backgroundContent = {
-            Box(Modifier.fillMaxSize().background(ErrorColor).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterEnd) {
+            // Only while it's swiped: drawn at rest, it shows round a card's corners.
+            if (state.dismissDirection == SwipeToDismissBoxValue.EndToStart) Box(Modifier.fillMaxSize().background(ErrorColor).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterEnd) {
                 Icon(Icons.Default.Close, "Close", tint = Color.White)
             }
         },
-    ) { Box(Modifier.background(MaterialTheme.colorScheme.surface)) { content() } }
+    ) { Box(Modifier.background(cardColor())) { content() } }
 }
 
 @Composable
@@ -281,11 +284,11 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
         Modifier.fillMaxWidth()
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
         StatusIcon(if (idleSeen) null else a.shownState, resting = idleSeen, asleep = r.pane.asleep, progress = r.pane.agentProgress,
-            modifier = Modifier.padding(top = 2.dp))
+            size = 22.dp, modifier = Modifier.align(Alignment.Top).padding(top = 1.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(w.title(r.tab), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -305,6 +308,7 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
                 }
             }
         }
+        Chevron()
     }
 }
 
@@ -314,11 +318,11 @@ fun plainInline(s: String): String = s.replace(Regex("\\*\\*|__|`"), "").replace
 
 /** A card: the Needs You items stand out from plain rows. */
 @Composable
-fun Card(content: @Composable () -> Unit) {
+fun Card(padded: Boolean = true, content: @Composable () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(16.dp),
+        Modifier.fillMaxWidth().padding(horizontal = CardInset, vertical = 5.dp)
+            .clip(RoundedCornerShape(20.dp)).background(cardColor())
+            .then(if (padded) Modifier.padding(16.dp) else Modifier),
     ) { content() }
 }
 
@@ -327,11 +331,11 @@ fun Card(content: @Composable () -> Unit) {
 fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, open: () -> Unit) {
     val pane = w.panes[item.paneId]
     val schedule = pane?.scheduleId?.let { w.schedules[it] }
-    Box(Modifier.clickable(onClick = open)) {
-        Card {
+    Box(Modifier.clickable(onClick = open).padding(16.dp)) {
+        run {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatusIcon(item.state, modifier = Modifier.padding(top = 2.dp))
+                    StatusIcon(item.state, size = 22.dp, modifier = Modifier.padding(top = 1.dp))
                     Column(Modifier.weight(1f)) {
                         Text(pane?.let { w.tabs[it.tabId] }?.let { w.title(it) } ?: "Agent", style = MaterialTheme.typography.titleMedium)
                         if (schedule != null) {
@@ -349,8 +353,8 @@ fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, op
                         Row { Spacer(Modifier.weight(1f)); Button(onClick = open) { Text("Answer") } }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedButton(onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
-                            OutlinedButton(onClick = open) { Text("Open") }
+                            FilledTonalButton(colors = tintedButtonColors(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
+                            FilledTonalButton(colors = tintedButtonColors(), onClick = open) { Text("Open") }
                             Spacer(Modifier.weight(1f))
                             if (schedule != null && schedule.kind == "claude") AllowMenu(model, item)
                             else Button(onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
@@ -366,7 +370,10 @@ fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, op
 private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
     var open by remember { mutableStateOf(false) }
     Box {
-        Button(onClick = { open = true }) { Text("Allow ▾") }
+        Button(onClick = { open = true }) {
+            Text("Allow")
+            Icon(Icons.Default.KeyboardArrowDown, "Allow options", Modifier.padding(start = 2.dp).size(18.dp))
+        }
         DropdownMenu(open, { open = false }) {
             DropdownMenuItem(text = { Text("Allow Once") }, onClick = { open = false; model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) })
             DropdownMenuItem(text = { Text("Always Allow for This Schedule") },
@@ -381,15 +388,15 @@ fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
     Card {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Default.PanTool, null, tint = NeedsYouColor, modifier = Modifier.size(20.dp))
+                StatusIcon(AgentState.AGENT_STATE_NEEDS_INPUT, size = 22.dp)
                 Text(grant.headlineText, style = MaterialTheme.typography.titleMedium, maxLines = if (grant.person || grant.action == "schedule") 20 else 4)
             }
             grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
             grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
+                FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
                 Spacer(Modifier.weight(1f))
-                if (grant.canAllowAlways) OutlinedButton(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
+                if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
                 Button(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
             }
         }
@@ -421,9 +428,9 @@ fun JoinCard(model: AppModel, w: Workspace, r: Hammock.JoinRequest) {
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
+                FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
                 Spacer(Modifier.weight(1f))
-                OutlinedButton(onClick = { model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
+                FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
                 Button(onClick = { model.respondJoin(r, Hammock.Role.ROLE_DRIVER) }) { Text("Let Drive") }
             }
         }

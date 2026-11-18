@@ -1,6 +1,7 @@
 package com.homegrownsw.hammock.ui
 
 import androidx.activity.compose.BackHandler
+import com.homegrownsw.hammock.LocalAppLocked
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -90,7 +91,7 @@ fun Root(session: Session, opening: OpenRequest?, opened: () -> Unit) {
         Workspace(session, m, opening, opened)
     }
     offer?.let { o ->
-        AlertDialog(
+        if (!LocalAppLocked.current) AlertDialog(
             onDismissRequest = session::dismissOffer,
             title = { Text("Pair with ${o.pairing.hostName.removeSuffix(".local")}?") },
             text = {

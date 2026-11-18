@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -60,12 +61,13 @@ fun CockpitScaffold(
 ) {
     val host by session.host.collectAsStateWithLifecycle()
     val link by model.link.collectAsStateWithLifecycle()
-    val behavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    // A large title that shrinks into the bar as the list scrolls, as the iPhone's.
+    val behavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(behavior.nestedScrollConnection),
         topBar = {
             Column {
-                TopAppBar(
+                LargeTopAppBar(
                     title = { Text(host?.shortName?.ifEmpty { "Hammock" } ?: "Hammock", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     actions = actions,
                     scrollBehavior = behavior,
@@ -103,11 +105,16 @@ fun DetailScaffold(
     subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    large: Boolean = false,
     content: @Composable (PaddingValues) -> Unit,
 ) {
+    // A tab's own screen (Devices, Settings) has a large title that shrinks as it scrolls, as the iPhone's.
+    val behavior = if (large) TopAppBarDefaults.exitUntilCollapsedScrollBehavior() else null
     Scaffold(
+        modifier = behavior?.let { Modifier.nestedScroll(it.nestedScrollConnection) } ?: Modifier,
         topBar = {
-            TopAppBar(
+            if (large) LargeTopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, actions = actions, scrollBehavior = behavior)
+            else TopAppBar(
                 title = {
                     Column {
                         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -131,9 +138,8 @@ fun LazyListScope.usageLimits(w: Workspace, now: Long) {
         val shown = w.usage.filter { prefs.getBoolean("usage.${it.harness}", false) }
         if (shown.isEmpty()) return@item
         Column {
-            Text("Usage Limits", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 6.dp))
-            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SectionHeader("Usage Limits")
+            GroupedCard { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 for (a in shown) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(AgentCatalog.shortName(a.harness, w.kinds), style = MaterialTheme.typography.labelLarge,
@@ -141,7 +147,7 @@ fun LazyListScope.usageLimits(w: Workspace, now: Long) {
                         for (win in a.windowsList) UsageRow(win, now)
                     }
                 }
-            }
+            }}
         }
     }
 }

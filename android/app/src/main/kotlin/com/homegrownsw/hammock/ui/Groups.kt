@@ -1,6 +1,7 @@
 package com.homegrownsw.hammock.ui
 
 import android.content.Context
+import com.homegrownsw.hammock.LocalAppLocked
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -20,6 +21,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.RemoveCircle
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.AddBox
@@ -103,7 +121,10 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
         }
     }
 
+    var editingOrder by rememberSaveable { mutableStateOf(false) }
     CockpitScaffold(session, model, actions = {
+        // The iPhone's Edit: reorder and close tabs in place.
+        if (w.groups.isNotEmpty()) TextButton(onClick = { editingOrder = !editingOrder }) { Text(if (editingOrder) "Done" else "Edit") }
         IconButton(onClick = { creating = true }, enabled = link == Link.Connected) { Icon(Icons.Outlined.AddBox, "New Group") }
     }) { padding ->
         if (link == Link.Connected && w.groups.isEmpty()) {
@@ -122,15 +143,27 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                 }
                 if (!isCollapsed) {
                     if (g.tabIdsCount == 0) item(key = "empty:" + g.id) {
-                        Text("No tabs. Open a terminal or start an agent from the Group's + menu.", Modifier.padding(horizontal = 56.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        CardRow(0, 1) {
+                            Text(
+                                if (g.canAddTabs) "Nothing open here yet." else if (g.offline) "Its computer can't be reached right now."
+                                else "Only people who can drive can open tabs here.",
+                                Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    items(w.tabs(g), key = { "t:" + it.id }) { tab ->
-                        val canClose = g.canDrive && !g.offline
-                        Swipeable(enabled = canClose, onClose = { model.closeTab(tab.id) }) {
+                    val tabs = w.tabs(g)
+                    val canClose = g.canDrive && !g.offline
+                    cardItems(tabs, key = { "t:" + it.id }) { tab ->
+                        val i = tabs.indexOf(tab)
+                        Swipeable(enabled = canClose && !editingOrder, onClose = { model.closeTab(tab.id) }) {
                             TabRow(model, w, g, tab, selected = nav.stack.lastOrNull() == "tab:" + tab.id,
                                 open = { nav.open("tab:" + tab.id) }, rename = { renaming = tab }, newTab = { newTab(g) },
-                                startAgent = { startingIn = g.id })
+                                startAgent = { startingIn = g.id },
+                                editing = if (editingOrder && canClose) TabEditing(
+                                    up = if (i > 0) ({ model.moveTab(tab.id, g.id, i - 1) }) else null,
+                                    down = if (i < tabs.size - 1) ({ model.moveTab(tab.id, g.id, i + 1) }) else null,
+                                    close = { model.closeTab(tab.id) },
+                                ) else null)
                         }
                     }
                 }
@@ -145,7 +178,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
     editing?.let { g -> GroupEditor(model, g, onDismiss = { editing = null }) { editing = null } }
     deleting?.let { g ->
         val n = g.tabIdsCount
-        AlertDialog(
+        if (!LocalAppLocked.current) AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete “${w.title(g)}”?") },
             text = { Text("Everything running in its tabs on your computer is stopped.") },
@@ -160,92 +193,143 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
     startingIn?.let { gid -> StartAgentSheet(model, groupID = gid, nav = nav) { startingIn = null } }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ComputerChips(w: Workspace, selected: String, select: (String) -> Unit) {
+    val me = w.computers.firstOrNull { it.thisComputer }
     androidx.compose.foundation.lazy.LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = CardInset, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { androidx.compose.material3.FilterChip(selected == "", { select("") }, { Text("All") }) }
-        item { androidx.compose.material3.FilterChip(selected == w.myUserID, { select(w.myUserID) }, { Text(w.hostName.removeSuffix(".local").ifEmpty { "This Computer" }) }) }
+        item { FilterChip(selected == "", { select("") }, { Text("All") }) }
+        item {
+            FilterChip(selected == w.myUserID, { select(w.myUserID) }, { Text(w.hostName.removeSuffix(".local").ifEmpty { "This Computer" }) },
+                leadingIcon = me?.let { c -> { ComputerIcon(c, 16.dp) } })
+        }
         items(w.computers.filter { !it.thisComputer }, key = { it.userId }) { c ->
-            androidx.compose.material3.FilterChip(selected == c.userId, { select(c.userId) }, { Text(c.name) })
+            FilterChip(selected == c.userId, { select(c.userId) }, { Text(c.name) }, leadingIcon = { ComputerIcon(c, 16.dp) })
         }
     }
 }
 
+/**
+ * A Group's header, as the iPhone's: its picture and name (which collapse and
+ * expand it, the chevron turning), its computer's badge or who shared it,
+ * what a collapsed one's agents are doing; then + (a terminal or an agent) and
+ * its menu.
+ */
 @Composable
 private fun GroupHeader(
     w: Workspace, g: Group, collapsed: Boolean, toggle: () -> Unit, newTab: () -> Unit, startAgent: () -> Unit,
     edit: () -> Unit, delete: () -> Unit, leave: () -> Unit,
 ) {
-    val angle by animateFloatAsState(if (collapsed) -90f else 0f, label = "chevron")
+    val angle by animateFloatAsState(if (collapsed) 0f else 90f, label = "chevron")
     var menu by remember { mutableStateOf(false) }
     var plus by remember { mutableStateOf(false) }
+    val quiet = MaterialTheme.colorScheme.onSurfaceVariant
+    val linked = if (g.isOnLinkedComputer) w.computers.firstOrNull { it.userId == g.hostUserId } else null
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = toggle).padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 4.dp),
+        Modifier.fillMaxWidth().padding(start = CardInset + 4.dp, end = CardInset - 8.dp, top = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Default.ExpandMore, if (collapsed) "Expand" else "Collapse", Modifier.rotate(angle).size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Box(Modifier.padding(horizontal = 8.dp)) { GroupIcon(g, 18) }
-        Column(Modifier.weight(1f)) {
-            Text(w.title(g), style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (g.isRemote && !g.isOnLinkedComputer) {
+        Box(Modifier.weight(1f)) { Row(
+            Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = toggle).padding(vertical = 10.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            GroupIcon(g, 24, fallback = false)
+            Text(w.title(g), style = MaterialTheme.typography.titleSmall, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false))
+            if (linked != null) {
+                ComputerIcon(linked, 14.dp)
+                if (g.offline) Text("asleep", style = MaterialTheme.typography.bodySmall, color = quiet)
+            } else if (g.isRemote) {
                 val host = w.people[g.hostUserId]?.name ?: "someone"
-                Text(if (g.offline) "Shared by $host · offline" else "Shared by $host", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("· $host" + if (g.offline) " · offline" else "", style = MaterialTheme.typography.bodyMedium, color = quiet, maxLines = 1)
             }
-        }
-        if (g.canAddTabs) Box {
-            IconButton(onClick = { plus = true }) { Icon(Icons.Default.Add, "New Tab") }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, if (collapsed) "Expand" else "Collapse", Modifier.rotate(angle).size(18.dp),
+                tint = quiet.copy(alpha = 0.6f))
+            if (collapsed) {
+                val states = w.tabs(g).mapNotNull { w.agentState(it) }
+                listOf(AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_ERRORED, AgentState.AGENT_STATE_WORKING,
+                    AgentState.AGENT_STATE_IDLE, AgentState.AGENT_STATE_STARTING).firstOrNull { it in states }?.let { StatusIcon(it, size = 16.dp) }
+                if (g.tabIdsCount > 0) Text("${g.tabIdsCount}", style = MaterialTheme.typography.bodyMedium, color = quiet)
+            }
+        } }
+        val accent = MaterialTheme.colorScheme.primary
+        Box {
+            IconButton(onClick = { plus = true }, enabled = g.canAddTabs) { Icon(Icons.Default.Add, "New Tab", tint = if (g.canAddTabs) accent else quiet.copy(alpha = 0.4f)) }
             DropdownMenu(plus, { plus = false }) {
-                DropdownMenuItem(text = { Text("Terminal") }, onClick = { plus = false; newTab() })
-                DropdownMenuItem(text = { Text("Agent…") }, onClick = { plus = false; startAgent() })
+                DropdownMenuItem(text = { Text("Terminal") }, leadingIcon = { Icon(Icons.Outlined.Terminal, null) }, onClick = { plus = false; newTab() })
+                DropdownMenuItem(text = { Text("Agent…") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }, onClick = { plus = false; startAgent() })
             }
         }
         Box {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Group Actions") }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Group Actions", tint = accent) }
             DropdownMenu(menu, { menu = false }) {
                 if (g.isRemote && !g.isOnLinkedComputer) {
-                    DropdownMenuItem(text = { Text("Leave Group") }, onClick = { menu = false; leave() })
+                    DropdownMenuItem(text = { Text("Leave Group", color = ErrorColor) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = ErrorColor) },
+                        onClick = { menu = false; leave() })
                 } else {
-                    DropdownMenuItem(text = { Text("Edit Group…") }, onClick = { menu = false; edit() })
-                    DropdownMenuItem(text = { Text("Delete Group…", color = ErrorColor) }, onClick = { menu = false; delete() })
+                    DropdownMenuItem(text = { Text("Edit Group…") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; edit() })
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("Delete Group", color = ErrorColor) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = ErrorColor) },
+                        onClick = { menu = false; delete() })
                 }
             }
         }
     }
 }
 
-/** A tab: its state, its name, and its agent's latest. Long-press for its actions. */
+/** Edit mode's controls on a tab's row: move it up or down its Group, or close it. */
+class TabEditing(val up: (() -> Unit)?, val down: (() -> Unit)?, val close: () -> Unit)
+
+/** A tab: its state (or program), its name, and its agent's latest. Long-press for its actions. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: Boolean, open: () -> Unit, rename: () -> Unit,
-                   newTab: () -> Unit, startAgent: () -> Unit) {
+                   newTab: () -> Unit, startAgent: () -> Unit, editing: TabEditing? = null) {
     var menu by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     val agent = w.shownAgentPane(tab)
     val state = w.agentState(tab)
     val resting = agent != null && !agent.exited && agent.agent.shownState == AgentState.AGENT_STATE_IDLE && agent.agent.seen
     val schedule = w.panes(tab).firstNotNullOfOrNull { p -> p.scheduleId.takeIf { it.isNotEmpty() }?.let { w.schedules[it] } }
+    val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     Box {
         Row(
             Modifier.fillMaxWidth()
                 .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                 .combinedClickable(onClick = open, onLongClick = { menu = true })
-                .padding(start = 44.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 16.dp, end = 12.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            StatusIcon(state, resting = resting, asleep = agent?.asleep == true, progress = agent?.agentProgress)
+            if (editing != null) {
+                IconButton(onClick = editing.close, Modifier.size(24.dp)) { Icon(Icons.Default.RemoveCircle, "Close Tab", tint = ErrorColor) }
+            }
+            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                if (state != null || resting || agent?.asleep == true) {
+                    StatusIcon(state, resting = resting, asleep = agent?.asleep == true, progress = agent?.agentProgress, size = 22.dp)
+                } else {
+                    CompositionLocalProvider(LocalContentColor provides quiet) {
+                        PaneIcon(w.panes[tab.focusedPaneId] ?: w.panes(tab).firstOrNull(), 20.dp)
+                    }
+                }
+            }
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(w.title(tab), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(w.title(tab), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
                     if (schedule != null) Icon(Icons.Default.Schedule, "Scheduled run of ${schedule.name}", Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        tint = quiet.copy(alpha = 0.6f))
                 }
                 val summary = w.panes(tab).firstOrNull { it.hasAgent() }?.agent?.summary.orEmpty()
                 if (summary.isNotEmpty()) Text(plainInline(summary), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (editing != null) {
+                IconButton(onClick = { editing.up?.invoke() }, Modifier.size(32.dp), enabled = editing.up != null) { Icon(Icons.Default.KeyboardArrowUp, "Move Up") }
+                IconButton(onClick = { editing.down?.invoke() }, Modifier.size(32.dp), enabled = editing.down != null) { Icon(Icons.Default.KeyboardArrowDown, "Move Down") }
+            } else {
+                Chevron()
             }
         }
         DropdownMenu(menu, { menu = false }) {
@@ -283,7 +367,7 @@ fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> U
 @Composable
 fun TextPrompt(title: String, initial: String, label: String, confirm: String = "Save", onDismiss: () -> Unit, onDone: (String) -> Unit) {
     var text by remember { mutableStateOf(initial) }
-    AlertDialog(
+    if (!LocalAppLocked.current) AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { OutlinedTextField(text, { text = it }, label = { Text(label) }, singleLine = true) },
@@ -299,7 +383,7 @@ fun GroupEditor(model: AppModel, group: Group?, onDismiss: () -> Unit, onDone: (
     var name by remember { mutableStateOf(group?.name ?: "") }
     var icon by remember { mutableStateOf(group?.icon ?: "") }
     val scope = rememberCoroutineScope()
-    AlertDialog(
+    if (!LocalAppLocked.current) AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (group == null) "New Group" else "Edit Group") },
         text = {

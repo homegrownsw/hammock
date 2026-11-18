@@ -26,6 +26,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.outlined.AddBox
+import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.StopCircle
+import androidx.compose.runtime.saveable.rememberSaveable
+import hammock.v1.Hammock.AgentState
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -68,7 +77,7 @@ import hammock.v1.Hammock.PaneKind
 import kotlinx.coroutines.launch
 
 /** Each pane's choice of conversation or terminal, once switched: kept per pane. */
-private object PaneModes {
+internal object PaneModes {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("paneModes", Context.MODE_PRIVATE)
     fun get(ctx: Context, paneID: String): Boolean? = prefs(ctx).let { if (it.contains(paneID)) it.getBoolean(paneID, true) else null }
     fun set(ctx: Context, paneID: String, agent: Boolean) = prefs(ctx).edit().putBoolean(paneID, agent).apply()
@@ -88,7 +97,7 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
         DetailScaffold("Tab", if (showBack) nav::pop else null) { EmptyState("Tab Closed", "It was closed on your computer.", Modifier.padding(it)) }
         return
     }
-    val ids = tab.allPaneIDs().filter { w.panes[it] != null }
+    val ids = stripPaneIDs(tab).filter { w.panes[it] != null }
     if (ids.size <= 1) {
         ids.firstOrNull()?.let { PaneScreen(model, it, nav, showBack) }
             ?: DetailScaffold(w.title(tab), if (showBack) nav::pop else null) { EmptyState("Starting…", "", Modifier.padding(it)) }
@@ -97,30 +106,16 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
     val start = ids.indexOf(tab.focusedPaneId).coerceAtLeast(0)
     val pager = rememberPagerState(start) { ids.size }
     val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxSize()) {
-        HorizontalPager(pager, Modifier.weight(1f), userScrollEnabled = false, key = { ids[it] }, beyondViewportPageCount = 0) { i ->
+    var exposing by rememberSaveable { mutableStateOf(false) }
+    val current = ids.getOrNull(pager.currentPage) ?: ids.first()
+    fun go(id: String) { ids.indexOf(id).takeIf { it >= 0 }?.let { scope.launch { pager.animateScrollToPage(it) } } }
+    Box(Modifier.fillMaxSize()) {
+        HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = false, key = { ids[it] }, beyondViewportPageCount = 0) { i ->
             PaneScreen(model, ids[i], nav, showBack, tabStrip = {
-                LazyRow(
-                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).navigationBarsPadding(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    itemsIndexed(ids, key = { _, id -> id }) { j, id ->
-                        val p = w.panes[id] ?: return@itemsIndexed
-                        val selected = j == pager.currentPage
-                        Row(
-                            Modifier.clip(RoundedCornerShape(50))
-                                .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                                .clickable { scope.launch { pager.animateScrollToPage(j) } }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            if (p.hasAgent()) StatusIcon(p.agent.state, size = 14.dp)
-                            Text(stripName(p, w), style = MaterialTheme.typography.labelLarge, maxLines = 1)
-                        }
-                    }
-                }
+                PaneStrip(model, w, tab, current, nav, select = ::go, expose = { exposing = true })
             })
         }
+        if (exposing) ExposeScreen(model, w, tab, current, nav, pick = { go(it); exposing = false }, dismiss = { exposing = false })
     }
 }
 
@@ -232,7 +227,7 @@ private fun PaneMenu(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, 
             }
             if (tab != null && tab.allPaneIDs().size > 1) {
                 HorizontalDivider()
-                PaneMenuItems(model, w, pane, drive, nav) { open = false }
+                PaneMenuItems(model, w, pane, drive, nav, close = { open = false })
             }
         }
         DropdownMenu(moving, { moving = false }) {
@@ -256,37 +251,46 @@ fun stripName(p: Pane, w: Workspace): String = when (p.kind) {
 
 /** A pane's actions, in its ⋮ menu (or an editor's own, which carries them). */
 @Composable
-fun PaneMenuItems(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, nav: Nav, close: () -> Unit) {
+fun PaneMenuItems(
+    model: AppModel, w: Workspace, pane: Pane, drive: Boolean, nav: Nav, close: () -> Unit,
+    popAfterClose: Boolean = true, floatActions: (@Composable () -> Unit)? = null,
+) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    if (pane.hasAgent() && drive) {
-        DropdownMenuItem(text = { Text("Interrupt") }, onClick = { close(); model.interrupt(pane.id) })
+    if (pane.hasAgent() && !pane.exited && drive) {
+        val s = pane.agent.state
+        if (s == AgentState.AGENT_STATE_WORKING || s == AgentState.AGENT_STATE_NEEDS_INPUT) {
+            DropdownMenuItem(text = { Text("Interrupt") }, leadingIcon = { Icon(Icons.Outlined.StopCircle, null) }, onClick = { close(); model.interrupt(pane.id) })
+        }
         AgentCatalog.other(pane.agent.harness, w.kinds)?.let { other ->
-            DropdownMenuItem(text = { Text("Continue in ${AgentCatalog.shortName(other, w.kinds)}") },
+            DropdownMenuItem(text = { Text("Continue in ${AgentCatalog.shortName(other, w.kinds)}") }, leadingIcon = { Icon(Icons.Default.SwapHoriz, null) },
                 onClick = { close(); model.switchAgent(pane.id, other) })
         }
-        if (pane.asleep) DropdownMenuItem(text = { Text("Wake Agent") }, onClick = { close(); model.sleepPane(pane.id, wake = true) })
-        else if (pane.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, onClick = { close(); model.sleepPane(pane.id) })
+        if (pane.asleep) DropdownMenuItem(text = { Text("Wake Agent") }, leadingIcon = { Icon(Icons.Outlined.LightMode, null) },
+            onClick = { close(); model.sleepPane(pane.id, wake = true) })
+        else if (pane.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, leadingIcon = { Icon(Icons.Outlined.Bedtime, null) },
+            onClick = { close(); model.sleepPane(pane.id) })
     }
     pane.sessionURL?.let { url ->
-        DropdownMenuItem(text = { Text("Copy Session Link") }, onClick = {
+        DropdownMenuItem(text = { Text("Copy Session Link") }, leadingIcon = { Icon(Icons.Default.Link, null) }, onClick = {
             close()
             ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Session link", url))
         })
     }
     val tab = w.tabs[pane.tabId]
-    if (drive && tab != null && tab.allPaneIDs().size > 1) {
-        DropdownMenuItem(text = { Text("Move to New Tab") }, onClick = {
+    if (pane.hasAgent() || pane.sessionURL != null) HorizontalDivider()
+    if (floatActions != null) floatActions()
+    else if (drive && tab != null && tab.allPaneIDs().size > 1) {
+        DropdownMenuItem(text = { Text("Move to New Tab") }, leadingIcon = { Icon(Icons.Outlined.AddBox, null) }, onClick = {
             close()
             scope.launch { model.breakOut(pane.id)?.let { nav.open("tab:$it") } }
         })
     }
     if (drive) {
-        HorizontalDivider()
-        DropdownMenuItem(text = { Text("Close Pane", color = ErrorColor) }, onClick = {
+        DropdownMenuItem(text = { Text("Close Pane", color = ErrorColor) }, leadingIcon = { Icon(Icons.Default.Close, null, tint = ErrorColor) }, onClick = {
             close()
             if (tab != null && tab.allPaneIDs().size == 1) model.closeTab(tab.id) else model.closePane(pane.id)
-            nav.pop()
+            if (popAfterClose) nav.pop()
         })
     }
 }
