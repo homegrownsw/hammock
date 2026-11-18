@@ -461,12 +461,17 @@ class AppModel private constructor(
 
     // MARK: Pane streams
 
-    /** Shows a pane's terminal in `sink`: attaches on the first, re-sent after reconnecting. */
+    /**
+     * Shows a pane's terminal in `sink`: attaches for each new one (attaching
+     * again re-sends the snapshot, which a second view of a pane needs to
+     * start from), and again after reconnecting.
+     */
     fun attach(paneID: String, sink: PaneSink) = scope.launch {
         detachJobs.remove(paneID)?.cancel()
         val list = sinks.getOrPut(paneID) { ArrayList() }
-        if (sink !in list) list.add(sink)
-        if (list.size == 1) connection?.send { setAttachPane(Hammock.AttachPane.newBuilder().setPaneId(paneID).build()) }
+        if (sink in list) return@launch
+        list.add(sink)
+        connection?.send { setAttachPane(Hammock.AttachPane.newBuilder().setPaneId(paneID).build()) }
     }
 
     /** Stops showing it there; the last one off detaches after a while, so coming back is instant. */
