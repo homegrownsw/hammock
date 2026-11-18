@@ -170,7 +170,8 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
     }
     DetailScaffold(
         title, if (showBack) nav::pop else null, subtitle = subtitle,
-        actions = { PaneMenu(model, w, pane, drive, nav) },
+        // An editor draws its own ⋮, with these in it.
+        actions = { if (pane.kind != PaneKind.PANE_KIND_EDITOR) PaneMenu(model, w, pane, drive, nav) },
         bottomBar = { tabStrip?.invoke() },
     ) { padding ->
         // Clear of the gesture bar (the tab strip does that when it's there) and the keyboard.
@@ -197,7 +198,7 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
                 } else when {
                     hasAgentView && showAgent -> AgentContent(model, pane, drive) { showAgent = false; PaneModes.set(ctx, paneID, false) }
                     logMode && showLog -> LogContent(model, pane)
-                    pane.kind == PaneKind.PANE_KIND_EDITOR -> EditorContent(model, pane, drive)
+                    pane.kind == PaneKind.PANE_KIND_EDITOR -> EditorContent(model, pane, drive) { close -> PaneMenuItems(model, w, pane, drive, nav, close) }
                     pane.kind == PaneKind.PANE_KIND_DIFF -> DiffContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_BROWSER -> BrowserContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_SIMULATOR -> SimulatorContent(model, pane, drive)
@@ -210,42 +211,46 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
 
 @Composable
 private fun PaneMenu(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, nav: Nav) {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Pane Actions") }
-        DropdownMenu(open, { open = false }) {
-            if (pane.hasAgent() && drive) {
-                DropdownMenuItem(text = { Text("Interrupt") }, onClick = { open = false; model.interrupt(pane.id) })
-                AgentCatalog.other(pane.agent.harness, w.kinds)?.let { other ->
-                    DropdownMenuItem(text = { Text("Continue in ${AgentCatalog.shortName(other, w.kinds)}") },
-                        onClick = { open = false; model.switchAgent(pane.id, other) })
-                }
-                if (pane.asleep) DropdownMenuItem(text = { Text("Wake Agent") }, onClick = { open = false; model.sleepPane(pane.id, wake = true) })
-                else if (pane.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, onClick = { open = false; model.sleepPane(pane.id) })
-            }
-            pane.sessionURL?.let { url ->
-                DropdownMenuItem(text = { Text("Copy Session Link") }, onClick = {
-                    open = false
-                    ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Session link", url))
-                })
-            }
-            val tab = w.tabs[pane.tabId]
-            if (drive && tab != null && tab.allPaneIDs().size > 1) {
-                DropdownMenuItem(text = { Text("Move to New Tab") }, onClick = {
-                    open = false
-                    scope.launch { model.breakOut(pane.id)?.let { nav.open("tab:$it") } }
-                })
-            }
-            if (drive) {
-                HorizontalDivider()
-                DropdownMenuItem(text = { Text("Close Pane", color = ErrorColor) }, onClick = {
-                    open = false
-                    if (tab != null && tab.allPaneIDs().size == 1) model.closeTab(tab.id) else model.closePane(pane.id)
-                    nav.pop()
-                })
-            }
+        DropdownMenu(open, { open = false }) { PaneMenuItems(model, w, pane, drive, nav) { open = false } }
+    }
+}
+
+/** A pane's actions, in its ⋮ menu (or an editor's own, which carries them). */
+@Composable
+fun PaneMenuItems(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, nav: Nav, close: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    if (pane.hasAgent() && drive) {
+        DropdownMenuItem(text = { Text("Interrupt") }, onClick = { close(); model.interrupt(pane.id) })
+        AgentCatalog.other(pane.agent.harness, w.kinds)?.let { other ->
+            DropdownMenuItem(text = { Text("Continue in ${AgentCatalog.shortName(other, w.kinds)}") },
+                onClick = { close(); model.switchAgent(pane.id, other) })
         }
+        if (pane.asleep) DropdownMenuItem(text = { Text("Wake Agent") }, onClick = { close(); model.sleepPane(pane.id, wake = true) })
+        else if (pane.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, onClick = { close(); model.sleepPane(pane.id) })
+    }
+    pane.sessionURL?.let { url ->
+        DropdownMenuItem(text = { Text("Copy Session Link") }, onClick = {
+            close()
+            ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Session link", url))
+        })
+    }
+    val tab = w.tabs[pane.tabId]
+    if (drive && tab != null && tab.allPaneIDs().size > 1) {
+        DropdownMenuItem(text = { Text("Move to New Tab") }, onClick = {
+            close()
+            scope.launch { model.breakOut(pane.id)?.let { nav.open("tab:$it") } }
+        })
+    }
+    if (drive) {
+        HorizontalDivider()
+        DropdownMenuItem(text = { Text("Close Pane", color = ErrorColor) }, onClick = {
+            close()
+            if (tab != null && tab.allPaneIDs().size == 1) model.closeTab(tab.id) else model.closePane(pane.id)
+            nav.pop()
+        })
     }
 }

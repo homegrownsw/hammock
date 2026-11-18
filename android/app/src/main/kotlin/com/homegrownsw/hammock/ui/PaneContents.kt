@@ -1,5 +1,6 @@
 package com.homegrownsw.hammock.ui
 
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -97,9 +98,12 @@ fun TerminalTheme.toSetColors(dark: Boolean): hammock.v1.Hammock.SetColors = ham
 fun LogContent(model: AppModel, pane: Pane) = LogPane(model, pane, rememberPaneTheme(model))
 
 @Composable
-fun EditorContent(model: AppModel, pane: Pane, drive: Boolean) {
+fun EditorContent(model: AppModel, pane: Pane, drive: Boolean, paneActions: @Composable (close: () -> Unit) -> Unit) {
     val size by rememberPref(Prefs.TERMINAL_FONT_SIZE, "12")
-    EditorPane(model, pane, drive, rememberPaneTheme(model), settings = EditorSettings(fontSize = (size.toDoubleOrNull() ?: 12.0) + 1))
+    EditorPane(
+        model, pane, drive, rememberPaneTheme(model), settings = EditorSettings(fontSize = (size.toDoubleOrNull() ?: 12.0) + 1),
+        extraMenu = { close -> HorizontalDivider(); paneActions(close) },
+    )
 }
 
 @Composable
