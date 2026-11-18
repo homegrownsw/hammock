@@ -22,4 +22,5 @@ include(":proto")     // the daemon's protocol, generated from ../proto
 include(":client")    // connection, sign-in and the model (plain JVM: tests run without an emulator)
 include(":terminal")  // libghostty-vt through JNI, and the GLES renderer
 include(":agentview") // the agent view
+include(":panes")     // editor, diff and log panes
 include(":app")
