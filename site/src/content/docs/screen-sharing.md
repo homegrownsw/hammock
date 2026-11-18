@@ -1,9 +1,9 @@
 ---
 title: Screen sharing
-description: See and control your Mac's whole screen from your iPhone or another of your Macs.
+description: See and control your Mac's whole screen from your phone or another of your Macs.
 ---
 
-Screen sharing shows a Mac's whole screen on your iPhone or another of your Macs, and lets you click and type on it: for a macOS prompt an agent is stuck behind, a Keychain dialog, or an app with no command line. It goes over [remote access](/hammock/docs/remote/), with nothing extra to set up.
+Screen sharing shows a Mac's whole screen on your iPhone, Android phone or another of your Macs, and lets you click and type on it: for a macOS prompt an agent is stuck behind, a Keychain dialog, or an app with no command line. It goes over [remote access](/hammock/docs/remote/), with nothing extra to set up.
 
 ## Turning it on
 
@@ -18,14 +18,14 @@ Or set `screen-sharing = true` in the [config file](/hammock/docs/configuration/
 
 In System Settings, Screen Recording lists the helper as **Hammock**, and Accessibility as **Hammock Screen Sharing**. See [Permissions](/hammock/docs/permissions/#accessibility-and-screen--system-audio-recording).
 
-## Viewing from your iPhone
+## Viewing from your phone
 
-Your iPhone must be [paired](/hammock/docs/remote/) with the Mac. In the **Devices** tab, tap the Mac under **Show Screen**. If a Mac isn't listed, check that screen sharing is on there and both permissions are allowed.
+Your iPhone or Android phone must be [paired](/hammock/docs/remote/) with the Mac. In the **Devices** tab, tap the Mac under **Show Screen**. If a Mac isn't listed, check that screen sharing is on there and both permissions are allowed.
 
 - **Trackpad** (the default): drag to move the pointer, tap to click, two fingers to scroll or right-click, pinch to zoom.
 - **Touch**: tap where you mean to click.
 
-The controls also have a keyboard, a display picker, and a button that types your iPhone's clipboard on the Mac. Tap the red **×** to end the session.
+The controls also have a keyboard, a display picker, and a button that types your phone's clipboard on the Mac. Tap the red **×** to end the session.
 
 ## Viewing from another Mac
 
@@ -49,7 +49,7 @@ To show the menu bar item only then (or while an agent needs you), set Settings 
 
 ## Who can see your screen
 
-- **Only your own devices:** iPhones paired with the Mac, and your linked computers. Not people you've shared a Group with, and not agents, even on the Mac itself.
+- **Only your own devices:** phones paired with the Mac, and your linked computers. Not people you've shared a Group with, and not agents, even on the Mac itself.
 - **Only Hammock's own server can use the helper**, so a program in a pane can't use it to see or control your screen.
 - Each viewing session is recorded in the audit log.
 

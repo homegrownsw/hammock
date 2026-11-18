@@ -130,7 +130,7 @@ private fun ScreenCard(model: AppModel, computer: Hammock.Computer, visits: Int,
     val caption = when {
         asleep && taken > 0 -> "Display Asleep · " + DateUtils.getRelativeTimeSpanString(taken, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
         asleep -> "Display Asleep"
-        computer.thisComputer -> "The computer this phone is connected to"
+        computer.thisComputer -> "The Mac this phone is connected to"
         else -> (computer.model.ifEmpty { "Mac" }) + " · online"
     }
     Box(

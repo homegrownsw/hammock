@@ -28,6 +28,9 @@ back; touch and hold to paste. In the agent view, type in the box at the bottom 
 agent works, the same button stops it. **+** attaches pictures, and the microphone dictates on the phone itself,
 where Android has the language installed.
 
+Browser and simulator panes show live, and you can tap, scroll and type in them. A Mac with screen sharing on appears
+in **Devices** under **Show Screen**: see [Screen sharing](/hammock/docs/screen-sharing/).
+
 ## Notifications and the Hammock Key
 
 Notifications come while you're away from your Mac. **Allow** and **Deny** on a permission request, and **Let View**

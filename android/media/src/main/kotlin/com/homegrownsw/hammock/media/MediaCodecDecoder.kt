@@ -27,6 +27,12 @@ class MediaCodecDecoder private constructor(
     private val queued = ArrayDeque<Input>()
     private var released = false
     @Volatile private var onError: (String) -> Unit = {}
+    @Volatile private var shown: ((Long) -> Unit)? = null
+
+    override fun onShown(shown: (ptsUs: Long) -> Unit): Boolean {
+        this.shown = shown
+        return true
+    }
 
     override fun decode(annexB: ByteArray, key: Boolean, ptsUs: Long): Boolean = synchronized(lock) {
         if (released) return false
@@ -73,6 +79,7 @@ class MediaCodecDecoder private constructor(
                 try {
                     // Shown now: it's live video, not a clip to keep time with.
                     codec.releaseOutputBuffer(index, info.size > 0)
+                    if (info.size > 0) shown?.invoke(info.presentationTimeUs)
                 } catch (e: Exception) {
                     Log.w(TAG, "showing a frame failed", e)
                 }

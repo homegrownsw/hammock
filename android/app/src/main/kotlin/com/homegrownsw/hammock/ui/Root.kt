@@ -172,7 +172,8 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     val needsYou = ws.joinRequests.size + ws.grants.size + ws.attention.count {
         it.state == AgentState.AGENT_STATE_NEEDS_INPUT || it.state == AgentState.AGENT_STATE_ERRORED
     }
-    val layout = if (showingDetail && !wide) NavigationSuiteType.None
+    var fullScreen by remember { mutableStateOf(false) }
+    val layout = if (fullScreen || (showingDetail && !wide)) NavigationSuiteType.None
     else NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(androidx.compose.material3.adaptive.currentWindowAdaptiveInfo())
 
     androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model) {
@@ -201,7 +202,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
                 Dest.Sessions, Dest.Groups -> ListDetail(wide, nav, model) {
                     if (nav.dest == Dest.Sessions) SessionsScreen(session, model, nav) else GroupsScreen(session, model, nav)
                 }
-                Dest.Devices -> DevicesScreen(session, model)
+                Dest.Devices -> DevicesScreen(session, model, onFullScreen = { fullScreen = it })
                 Dest.Settings -> SettingsScreen(session, model)
             }
             toast?.let { t ->

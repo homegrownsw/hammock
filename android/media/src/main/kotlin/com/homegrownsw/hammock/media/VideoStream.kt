@@ -72,6 +72,12 @@ interface VideoDecoder {
     /** Queues an Annex-B frame. False if it couldn't (the decoder is behind or broken): it has lost its place. */
     fun decode(annexB: ByteArray, key: Boolean, ptsUs: Long): Boolean
     fun release()
+    /**
+     * Calls `shown` with each picture's ptsUs as it goes to the surface, from
+     * the decoder's thread. False if it can't say (a stream then takes a
+     * frame's place as shown once it's queued).
+     */
+    fun onShown(shown: (ptsUs: Long) -> Unit): Boolean = false
 }
 
 /** Makes decoders for one output (a surface). onError: the decoder failed later, from its own thread. */
@@ -159,6 +165,8 @@ class VideoStream(
     private var view: FloatArray? = null // x, y, w, h, aspect
     private var page: Pair<Float, Float>? = null
     private val shapes = HashMap<Int, ByteArray>()
+    /** Frames decoding, by seq: where each is from, till it's shown (a decoder that says so). */
+    private val placing = java.util.TreeMap<Long, Crop>()
     /** Counts, for diagnostics and tests. */
     var received = 0
         private set
@@ -385,16 +393,29 @@ class VideoStream(
                 made = out.create(c) { why -> post { decoderFailed(made, why) } }
                 decoder = made
                 config = c
-                if (decoder == null) {
+                if (made == null) {
                     lose("couldn't make a decoder")
                     return
                 }
+                synchronized(placing) { placing.clear() }
+                // A zoomed screen's frame moves to its place as it's shown, not
+                // before (it'd show the last picture in the new place first).
+                val reports = made.onShown { pts -> shown(pts) }
+                synchronized(placing) { reportsShown = reports }
             }
         }
         val d = decoder
         if (d == null || !H264.hasPicture(f.data)) {
             if (f.key) lose("unreadable keyframe")
             return
+        }
+        // Its place noted before it's queued: the decoder may show it at once.
+        val later = synchronized(placing) {
+            if (reportsShown) {
+                placing[f.seq] = f.crop
+                while (placing.size > 32) placing.pollFirstEntry()
+            }
+            reportsShown
         }
         if (!d.decode(H264.annexB(f.data), f.key, f.seq)) {
             d.release()
@@ -404,11 +425,25 @@ class VideoStream(
             return
         }
         decoded++
-        if (_crop.value != f.crop) _crop.value = f.crop
+        if (!later && _crop.value != f.crop) _crop.value = f.crop
         if (f.key && _state.value != State.Playing && !stopped) {
             log("$paneID $sessionID: playing")
             _state.value = State.Playing
         }
+    }
+
+    /** Under placing's lock. */
+    private var reportsShown = false
+
+    /** A picture's gone to the surface (the decoder's thread): its place is the frame's. */
+    private fun shown(pts: Long) {
+        val c = synchronized(placing) {
+            val c = placing[pts] ?: return
+            // It and those before it are done with.
+            placing.headMap(pts, true).clear()
+            c
+        }
+        if (_crop.value != c) _crop.value = c
     }
 
     private fun decoderFailed(failed: VideoDecoder?, why: String) {

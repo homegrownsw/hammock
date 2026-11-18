@@ -226,4 +226,41 @@ class VideoStreamTest {
         assertEquals(Crop.WHOLE, v.crop.value)
         assertNull(v.pointer.value)
     }
+
+    /** A decoder that says when it shows each picture, as MediaCodec's does. */
+    private class ShowingDecoder : VideoDecoder {
+        val queued = ArrayList<Long>()
+        var shown: ((Long) -> Unit)? = null
+        override fun decode(annexB: ByteArray, key: Boolean, ptsUs: Long): Boolean {
+            queued += ptsUs
+            return true
+        }
+        override fun release() {}
+        override fun onShown(shown: (ptsUs: Long) -> Unit): Boolean {
+            this.shown = shown
+            return true
+        }
+    }
+
+    @Test fun aCroppedFrameTakesItsPlaceAsItsShownNotBefore() {
+        val d = ShowingDecoder()
+        val v = VideoStream(link, Hammock.OpenMedia.newBuilder().setScreen(true).setInBand(true).build(), direct, clock = { now }, log = {})
+        v.setOutput { _, _ -> d }
+        v.start()
+        val deadline = System.currentTimeMillis() + 3000
+        while (v.sessionID.isEmpty() && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        val f = frame(1, key = true).mediaFrame.toBuilder().setCropX(0.25f).setCropY(0.5f).setCropW(0.5f).setCropH(0.25f)
+        link.deliver(ServerMessage.newBuilder().setMediaFrame(f).build())
+        link.deliver(frame(2))
+        assertEquals(listOf(1L, 2L), d.queued)
+        // Queued, not shown yet: the last picture is still where it was.
+        assertEquals(Crop.WHOLE, v.crop.value)
+        d.shown!!(1)
+        assertEquals(Crop(0.25f, 0.5f, 0.5f, 0.25f), v.crop.value)
+        d.shown!!(2)
+        assertEquals(Crop.WHOLE, v.crop.value)
+        // A late report of one already passed changes nothing.
+        d.shown!!(1)
+        assertEquals(Crop.WHOLE, v.crop.value)
+    }
 }

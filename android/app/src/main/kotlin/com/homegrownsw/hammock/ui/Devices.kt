@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +59,7 @@ import com.homegrownsw.hammock.media.ScreenViewer
 /** Your paired computers: which is shown, switching, forgetting, adding; and this phone's name. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DevicesScreen(session: Session, model: AppModel) {
+fun DevicesScreen(session: Session, model: AppModel, onFullScreen: (Boolean) -> Unit = {}) {
     val hosts by session.hosts.collectAsStateWithLifecycle()
     val host by session.host.collectAsStateWithLifecycle()
     val link by model.link.collectAsStateWithLifecycle()
@@ -71,6 +72,12 @@ fun DevicesScreen(session: Session, model: AppModel) {
     // The computer shown says what kind it is: kept for its icon.
     w.computers.firstOrNull { it.thisComputer }?.kind?.let { if (it.isNotEmpty()) session.noteKind(it) }
 
+    // A Mac's screen takes the whole window: no tabs beside or under it.
+    val showingScreen = screen != null
+    DisposableEffect(showingScreen) {
+        onFullScreen(showingScreen)
+        onDispose { onFullScreen(false) }
+    }
     screen?.let { (id, title) ->
         ScreenViewer(model, id, title) { screen = null }
         return
