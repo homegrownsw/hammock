@@ -222,13 +222,16 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
                 },
             contentAlignment = Alignment.Center,
         ) {
-            if (stream != null && live.playing) {
+            // The surface is there from the start, hidden until the video
+            // plays: frames are decoded onto it, so it can't wait for them.
+            if (stream != null) {
                 with(density) {
                     VideoSurface(
                         stream,
                         Modifier
                             .size(fitted.width.toDp(), fitted.height.toDp())
                             .graphicsLayer {
+                                alpha = if (live.playing) 1f else 0f
                                 scaleX = zoom
                                 scaleY = zoom
                                 translationX = pan.x
@@ -236,10 +239,10 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
                             },
                     )
                 }
-            } else if (live.failure != null) {
-                Unavailable("Can't See This Page", "Its computer isn't answering.")
-            } else {
-                CircularProgressIndicator()
+            }
+            if (!live.playing) {
+                if (live.failure != null) Unavailable("Can't See This Page", "Its computer isn't answering.")
+                else CircularProgressIndicator()
             }
             KeyCatcher(typing && canDrive, onTyped = ::typed, onDismissed = { typing = false }, modifier = Modifier.size(1.dp))
         }

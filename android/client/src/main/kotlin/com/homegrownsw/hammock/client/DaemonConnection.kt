@@ -76,6 +76,22 @@ class DaemonConnection private constructor(
     @Volatile var onStateChange: ((Boolean, Throwable?) -> Unit)? = null
     /** In-band video by media session id (MediaFrame, MediaEnded). */
     private val mediaHandlers = HashMap<String, (ServerMessage) -> Unit>()
+    /**
+     * A session's messages that came before its handler: the daemon starts
+     * sending as soon as it answers OpenMedia, before the stream has the
+     * ticket. Handed over in order when the handler arrives (unacked, the
+     * first frames would hold up the rest). A few sessions, a few seconds' worth.
+     */
+    private val earlyMedia = object : LinkedHashMap<String, ArrayList<ServerMessage>>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ArrayList<ServerMessage>>) = size > 4
+    }
+
+    private fun media(id: String, msg: ServerMessage, end: Boolean = false) {
+        val h = if (end) mediaHandlers.remove(id) else mediaHandlers[id]
+        if (h != null) { h(msg); return }
+        val q = earlyMedia.getOrPut(id) { ArrayList() }
+        if (q.size < 60) q.add(msg)
+    }
 
     private val queue: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "hammock-connection").apply { isDaemon = true }
@@ -254,6 +270,7 @@ class DaemonConnection private constructor(
         p.forEach { it.completeExceptionally(t) }
         val media = mediaHandlers.toMap()
         mediaHandlers.clear()
+        earlyMedia.clear()
         media.forEach { (id, h) ->
             h(ServerMessage.newBuilder().setMediaEnded(hammock.v1.Hammock.MediaEnded.newBuilder().setSessionId(id).setReason("The connection to Hammock closed.")).build())
         }
@@ -261,10 +278,10 @@ class DaemonConnection private constructor(
 
     private fun deliver(msg: ServerMessage) {
         when (msg.msgCase) {
-            ServerMessage.MsgCase.MEDIA_FRAME -> { mediaHandlers[msg.mediaFrame.sessionId]?.invoke(msg); return }
-            ServerMessage.MsgCase.MEDIA_ENDED -> { mediaHandlers.remove(msg.mediaEnded.sessionId)?.invoke(msg); return }
-            ServerMessage.MsgCase.SCREEN_CURSOR -> { mediaHandlers[msg.screenCursor.sessionId]?.invoke(msg); return }
-            ServerMessage.MsgCase.SCREEN_STATE -> { mediaHandlers[msg.screenState.sessionId]?.invoke(msg); return }
+            ServerMessage.MsgCase.MEDIA_FRAME -> { media(msg.mediaFrame.sessionId, msg); return }
+            ServerMessage.MsgCase.MEDIA_ENDED -> { media(msg.mediaEnded.sessionId, msg, end = true); return }
+            ServerMessage.MsgCase.SCREEN_CURSOR -> { media(msg.screenCursor.sessionId, msg); return }
+            ServerMessage.MsgCase.SCREEN_STATE -> { media(msg.screenState.sessionId, msg); return }
             else -> {}
         }
         val cb = if (msg.replyTo != 0L) pending.remove(msg.replyTo) else null
@@ -278,7 +295,19 @@ class DaemonConnection private constructor(
 
     /** Routes a media session's frames, cursor, state and end to `handler` (null stops). */
     fun setMediaHandler(sessionID: String, handler: ((ServerMessage) -> Unit)?) = onQueue {
-        if (handler == null) mediaHandlers.remove(sessionID) else mediaHandlers[sessionID] = handler
+        if (handler == null) {
+            mediaHandlers.remove(sessionID)
+            earlyMedia.remove(sessionID)
+        } else {
+            mediaHandlers[sessionID] = handler
+            earlyMedia.remove(sessionID)?.forEach { msg ->
+                // (One that ended meanwhile takes its handler with it.)
+                if (mediaHandlers[sessionID] === handler) {
+                    if (msg.msgCase == ServerMessage.MsgCase.MEDIA_ENDED) mediaHandlers.remove(sessionID)
+                    handler(msg)
+                }
+            }
+        }
     }
 
     private val isOpen get() = ws != null || standInOpen

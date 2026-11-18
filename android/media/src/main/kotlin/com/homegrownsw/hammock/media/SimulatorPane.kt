@@ -61,6 +61,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -259,8 +260,11 @@ private fun DeviceSurface(
             }
         }
         val stream = live.stream
+        // The surface is there from the start, hidden until the video plays:
+        // frames are decoded onto it, so it can't wait for them.
+        if (stream != null) VideoSurface(stream, size.clip(shape).graphicsLayer { alpha = if (live.playing) 1f else 0f }.then(gestures))
         when {
-            stream != null && live.playing -> VideoSurface(stream, size.clip(shape).then(gestures))
+            stream != null && live.playing -> {}
             image != null -> Image(image, null, size.clip(shape).then(gestures), contentScale = ContentScale.FillBounds)
             failed -> Unavailable("Can't See This Simulator", "Its computer isn't answering, or it's still booting.")
             else -> CircularProgressIndicator()
