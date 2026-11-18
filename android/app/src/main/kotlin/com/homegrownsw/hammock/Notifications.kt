@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Link
+import com.homegrownsw.hammock.client.PushCrypto
 import hammock.v1.Hammock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,11 +67,7 @@ object Notifications {
         val sealed = runCatching { Base64.getDecoder().decode(e) }.getOrNull() ?: return null
         if (sealed.size < 12 + 16) return null
         for ((host, key) in Push.allKeys(ctx)) {
-            val plain = runCatching {
-                val c = Cipher.getInstance("AES/GCM/NoPadding")
-                c.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, sealed, 0, 12))
-                c.doFinal(sealed, 12, sealed.size - 12)
-            }.getOrNull() ?: continue
+            val plain = PushCrypto.open(key, sealed) ?: continue
             val note = runCatching { JSONObject(String(plain)) }.getOrNull() ?: continue
             if (note.optString("host").equals(host, ignoreCase = true)) return note
         }

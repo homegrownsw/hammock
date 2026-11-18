@@ -1,0 +1,68 @@
+{
+  "auth": [
+    {
+      "cert": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+      "nonce_hex": "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9",
+      "message_hex": "686d6b2d6465766963652d617574682d763100396632633465316137623364356338653066316132623363346435653666373038313932613362346335643665376638303931613262336334643565366637300000070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9"
+    },
+    {
+      "cert": "9F2C4E1A7B3D5C8E0F1A2B3C4D5E6F708192A3B4C5D6E7F8091A2B3C4D5E6F70",
+      "nonce_hex": "00070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9",
+      "message_hex": "686d6b2d6465766963652d617574682d763100396632633465316137623364356338653066316132623363346435653666373038313932613362346335643665376638303931613262336334643565366637300000070e151c232a31383f464d545b626970777e858c939aa1a8afb6bdc4cbd2d9"
+    }
+  ],
+  "pairing": [
+    {
+      "link": "hammock://pair/CgxTdHVkaW8ubG9jYWwSDzEwMC42NC4wLjI6NzQzMxIRMTkyLjE2OC4xLjIwOjc0MzMaQDlmMmM0ZTFhN2IzZDVjOGUwZjFhMmIzYzRkNWU2ZjcwODE5MmEzYjRjNWQ2ZTdmODA5MWEyYjNjNGQ1ZTZmNzAiGMjHxsXEw8LBwL--vby7urm4t7a1tLOysSiAoPHCsTQwAToOMTkyLjE2OC4xLjAvMjQ",
+      "host_name": "Studio.local",
+      "addresses": [
+        "100.64.0.2:7433",
+        "192.168.1.20:7433"
+      ],
+      "lan_subnets": [
+        "192.168.1.0/24"
+      ],
+      "cert_sha256": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+      "secret_hex": "c8c7c6c5c4c3c2c1c0bfbebdbcbbbab9b8b7b6b5b4b3b2b1",
+      "remote_enabled": true
+    }
+  ],
+  "push": [
+    {
+      "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+      "key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "sealed_b64": "fegwy+7eywYNJKnxXPMRw5v1YVHfdvaz1i+buXF2VVsPjqrr1upp3EicK9CqVB6n7+eCgfPuEzTOuYAfiGX3+ONn67/Jrxl7mzq78TxxkXQJqvExybaTBKn1j+nhPzN20sy0twgg7lEjuZ+HdPjeNT6GqyirNKMUl2g/xMljtSV1JvSsLw+5dqIGnWcfJzavyIU1zfOfQCm+1KqeJ+Zan6qC3iO3RbTerdJRG/kYdha4XxlFpB/GzTFExnIw9EoEDxXZpS/5+n6gEQ1Gr2jrtx1MNGg3SPU9iL80WmnMJNZgNmPwQ4JKAAwB4Ytf5w==",
+      "note": {
+        "t": "Claude needs you",
+        "s": "Web ▸ api",
+        "b": "Allow Bash: npm test?",
+        "c": "grant",
+        "grant": "gr_1",
+        "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+        "id": "c_1",
+        "at": 1800000000,
+        "live": true
+      }
+    }
+  ],
+  "approval": [
+    {
+      "key_id": "k1",
+      "id": "fk_1",
+      "data_hash": "ab",
+      "pane_id": "pn_1",
+      "window": true,
+      "expires_unix_ms": 123,
+      "message": "hmk-key-approval-v2\nk1\nfk_1\nab\nwindow\npn_1\n123"
+    },
+    {
+      "key_id": "k1",
+      "id": "fk_1",
+      "data_hash": "ab",
+      "pane_id": "pn_1",
+      "window": false,
+      "expires_unix_ms": 123,
+      "message": "hmk-key-approval-v2\nk1\nfk_1\nab\nonce\npn_1\n123"
+    }
+  ]
+}

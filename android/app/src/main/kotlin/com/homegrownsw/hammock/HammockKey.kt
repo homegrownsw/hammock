@@ -8,6 +8,7 @@ import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.homegrownsw.hammock.client.HammockKeyApproval
 import hammock.v1.Hammock.HammockKeyRequest
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.security.KeyPairGenerator
@@ -66,12 +67,10 @@ object ApprovalKey {
         null
     }
 
-    /** What the phone signs to approve a request (helpers/key's approvalMessage; hammockkey_test.go has a test vector). */
-    fun message(r: HammockKeyRequest, window: Boolean, expires: Long): ByteArray =
-        "hmk-key-approval-v2\n${r.keyId}\n${r.id}\n${r.dataHash}\n${if (window) "window" else "once"}\n${r.paneId}\n$expires".toByteArray()
+    /** What the phone signs to approve a request (testdata/client/vectors.json). */
+    fun message(r: HammockKeyRequest, window: Boolean, expires: Long): ByteArray = HammockKeyApproval.message(r, window, expires)
 
-    /** How long an approval lasts: it signs the request as it is now. */
-    fun expiry(): Long = System.currentTimeMillis() + 120_000
+    fun expiry(): Long = HammockKeyApproval.expiry()
 
     /** Signs message (ECDSA, DER) after asking for your fingerprint, face or screen lock. */
     suspend fun sign(activity: FragmentActivity, message: ByteArray, reason: String): ByteArray {
