@@ -311,11 +311,6 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
 /** Markdown's inline marks taken out, for a one-line summary. */
 fun plainInline(s: String): String = s.replace(Regex("\\*\\*|__|`"), "").replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")
 
-@Composable
-fun GroupIcon(g: Hammock.Group, sizeDp: Int) {
-    if (g.icon.isNotEmpty()) Text(g.icon, style = MaterialTheme.typography.bodySmall)
-    else Icon(Icons.Default.ViewAgenda, null, Modifier.size(sizeDp.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-}
 
 /** A card: the Needs You items stand out from plain rows. */
 @Composable

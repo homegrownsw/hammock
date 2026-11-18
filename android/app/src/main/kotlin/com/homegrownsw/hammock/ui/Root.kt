@@ -174,6 +174,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     val layout = if (showingDetail && !wide) NavigationSuiteType.None
     else NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(androidx.compose.material3.adaptive.currentWindowAdaptiveInfo())
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model) {
     NavigationSuiteScaffold(
         layoutType = layout,
         navigationSuiteItems = {
@@ -206,6 +207,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
                 Snackbar(Modifier.align(Alignment.BottomCenter).padding(16.dp)) { Text(t) }
             }
         }
+    }
     }
 }
 
