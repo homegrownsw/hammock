@@ -3,6 +3,9 @@ package daemon
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -776,5 +779,44 @@ func TestScriptsStatusNeverAsks(t *testing.T) {
 	d.mu.Unlock()
 	if n != 0 {
 		t.Errorf("%d requests made", n)
+	}
+}
+
+// A scratch daemon started with --dev-pairing (Config.DevPairing) makes
+// pairing codes for programs outside its panes, as a script or an agent
+// building the phone apps runs; an agent in one of its panes is still refused.
+func TestDevPairing(t *testing.T) {
+	dir := shortDir(t)
+	d, err := New(Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DevPairing: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go d.Serve()
+	defer d.Shutdown()
+	waitFor(t, "the daemon", func() bool {
+		c, err := net.Dial("unix", SocketPath(dir))
+		if err == nil {
+			c.Close()
+		}
+		return err == nil
+	})
+	ui := dial(t, dir)
+	call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	g := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "a"}}}))
+	tab := client.CreatedID(call(t, ui, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g, Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	pane := d.tabs[tab].FocusedPaneId
+	d.mu.Unlock()
+	asPerson(t, nobody)
+	asPlain(t, inPaneShell)
+	pairing := &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}
+
+	detached := dialAs(t, dir, nil, "cli")
+	if r, err := try(detached, pairing); err != nil || r.GetPairing() == nil {
+		t.Fatalf("outside its panes: %v %v", r, err)
+	}
+	agent := dialAs(t, dir, &caller{pane: pane, agent: true}, "cli")
+	if _, err := try(agent, pairing); err == nil || err.Error() != errAgentOnly.Error() {
+		t.Fatalf("an agent in its pane: %v", err)
 	}
 }

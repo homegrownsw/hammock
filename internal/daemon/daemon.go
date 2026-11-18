@@ -53,6 +53,12 @@ type Config struct {
 	// SetRemoteAccess). RemoteListen overrides the listen addresses (tests).
 	Remote       bool
 	RemoteListen []string
+	// DevPairing lets a program outside this daemon's panes (a script, an
+	// agent building the phone apps) make pairing codes and set up remote
+	// access, which are otherwise yours alone: for a scratch daemon in
+	// development (hmkd --dev-pairing, development builds only), never
+	// your own.
+	DevPairing bool
 }
 
 // Daemon is a running hmkd.

@@ -65,6 +65,18 @@ func personOnly(msg *pb.ClientMessage) bool {
 	return !agentReachable(msg)
 }
 
+// devPairingMsg reports whether msg is what a scratch daemon started with
+// --dev-pairing (Config.DevPairing) takes from any program outside its
+// panes: pairing a phone, and the remote access it pairs over.
+func devPairingMsg(msg *pb.ClientMessage) bool {
+	switch msg.Msg.(type) {
+	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_SetRemoteAccess, *pb.ClientMessage_SetRemoteNetworks,
+		*pb.ClientMessage_ListDevices, *pb.ClientMessage_RevokeDevice:
+		return true
+	}
+	return false
+}
+
 // plainAllowed reports whether msg, refused to agents, is still yours to
 // send without asking from a pane's shell or a terminal (not the app): it
 // does no more than what those may anyway (typing into a browser pane as
@@ -139,6 +151,9 @@ func (c *conn) personCheck(msg *pb.ClientMessage) error {
 	c.scope()
 	cl := c.caller
 	if c.remote || c.personOK.Load() || cl.isAgent() && (!cl.scoped || agentReachable(msg)) {
+		return nil
+	}
+	if c.d.cfg.DevPairing && (cl == nil || cl.pane == "" || cl.pane == outsidePane) && devPairingMsg(msg) {
 		return nil
 	}
 	if plainAllowed(msg) {

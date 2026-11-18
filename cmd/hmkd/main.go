@@ -31,6 +31,7 @@ func main() {
 	verbose := flag.Bool("v", false, "debug logging")
 	remote := flag.Bool("remote", false, "enable remote access on Tailscale addresses (also: hmk remote on)")
 	remoteListen := flag.String("remote-listen", "", "comma-separated addresses for remote access instead of the Tailscale ones (development)")
+	devPairing := flag.Bool("dev-pairing", false, "let scripts and agents outside this daemon's panes make pairing codes and set up remote access (development builds only: a scratch daemon for building the phone apps)")
 	version := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *version {
@@ -44,6 +45,15 @@ func main() {
 	}
 	log := slog.New(slog.NewTextHandler(logOutput(*dir), &slog.HandlerOptions{Level: level}))
 
+	dev := false
+	if *devPairing {
+		if s, _ := codesign.Self(); s.Team != "" {
+			log.Warn("ignoring --dev-pairing: development builds only")
+		} else {
+			log.Warn("--dev-pairing: programs outside this daemon's panes may pair devices with it")
+			dev = true
+		}
+	}
 	var listen []string
 	if *remoteListen != "" {
 		// For development: a release (signed by a team) listens only
@@ -54,7 +64,7 @@ func main() {
 			listen = strings.Split(*remoteListen, ",")
 		}
 	}
-	d, err := daemon.New(daemon.Config{Dir: *dir, HolderPath: *holderPath, Log: log, Remote: *remote, RemoteListen: listen})
+	d, err := daemon.New(daemon.Config{Dir: *dir, HolderPath: *holderPath, Log: log, Remote: *remote, RemoteListen: listen, DevPairing: dev})
 	if err != nil {
 		if errors.Is(err, daemon.ErrAlreadyRunning) {
 			// Not a failure: launchd (KeepAlive) mustn't keep trying.
