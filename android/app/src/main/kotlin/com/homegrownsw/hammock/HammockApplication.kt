@@ -22,8 +22,10 @@ class HammockApplication : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 foreground = true
-                // Back from the background: a link that died meanwhile is dialled again at once.
+                // Back from the background: a link that died meanwhile is dialled again at once,
+                // and the computer hears the phone is showing it (it holds pushes then).
                 session.model.value?.reconnectNow()
+                session.model.value?.reportPresence(emptyList(), true)
             }
 
             override fun onStop(owner: LifecycleOwner) {

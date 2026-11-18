@@ -158,9 +158,10 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
     var showLog by remember(paneID) { mutableStateOf(true) }
 
     LaunchedEffect(paneID) { model.focus(paneID) }
+    // The computer knows which pane the phone shows: it doesn't notify about it then.
     DisposableEffect(paneID) {
         model.reportPresence(listOf(paneID), true, paneID)
-        onDispose { }
+        onDispose { model.reportPresence(emptyList(), true) }
     }
 
     val title = w.tabs[pane.tabId]?.let { w.title(it) } ?: pane.displayName

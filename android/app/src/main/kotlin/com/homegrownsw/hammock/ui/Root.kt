@@ -119,11 +119,27 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     val link by model.link.collectAsStateWithLifecycle()
     val host by session.host.collectAsStateWithLifecycle()
     LaunchedEffect(link) {
+        if (link == com.homegrownsw.hammock.client.Link.Connected) model.reportPresence(emptyList(), true)
         if (link == com.homegrownsw.hammock.client.Link.Connected && !model.isDemo) {
             val key = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.homegrownsw.hammock.ApprovalKey.publicKey() }
             if (key != null) model.send {
                 setSetApprovalKey(hammock.v1.Hammock.SetApprovalKey.newBuilder().setPublicKey(com.google.protobuf.ByteString.copyFrom(key)).build())
             }
+        }
+    }
+    // Notifications need asking for (Android 13 and later): once, when a computer's paired.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val askNotify = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { }
+    LaunchedEffect(link, host?.deviceID) {
+        if (link != com.homegrownsw.hammock.client.Link.Connected || model.isDemo || host?.deviceID == null) return@LaunchedEffect
+        val prefs = com.homegrownsw.hammock.Prefs.of(ctx)
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted && !prefs.getBoolean("askedNotify", false)) {
+            prefs.edit().putBoolean("askedNotify", true).apply()
+            askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
     var dismissedKeys by remember { mutableStateOf(setOf<String>()) }
