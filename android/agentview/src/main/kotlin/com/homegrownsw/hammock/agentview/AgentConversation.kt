@@ -263,7 +263,8 @@ private fun Conversation(session: AgentSession, state: AgentViewState, modifier:
             reverseLayout = true,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom),
+            // A short conversation starts at the top, under the bar, as on the iPhone.
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
         ) {
             item(key = "tail", contentType = "tail") { Centered { Tail(session, state) } }
             items(n, key = { items[n - 1 - it].id }, contentType = { items[n - 1 - it].kind }) { i ->
