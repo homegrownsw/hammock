@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.activity.enableEdgeToEdge
 import hammock.v1.Hammock.HostTheme
 
 /**
@@ -126,6 +127,13 @@ fun HammockMaterialTheme(theme: HammockTheme, appearance: String, content: @Comp
         "light" -> false
         "dark" -> true
         else -> isSystemInDarkTheme()
+    }
+    // The system bars' icons follow the app's appearance, not the phone's (Settings ▸ Appearance can differ).
+    val activity = androidx.compose.ui.platform.LocalContext.current as? androidx.activity.ComponentActivity
+    androidx.compose.runtime.LaunchedEffect(dark) {
+        val style = if (dark) androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        activity?.enableEdgeToEdge(style, style)
     }
     CompositionLocalProvider(LocalHammockTheme provides theme) {
         MaterialTheme(colorScheme = theme.colorScheme(dark), content = content)

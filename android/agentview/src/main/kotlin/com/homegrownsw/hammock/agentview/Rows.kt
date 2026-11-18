@@ -152,17 +152,17 @@ internal fun UserBubble(text: String, rich: String, refs: List<String>, local: L
             if (text.isNotEmpty() || rich.isNotEmpty()) {
                 // A message with attachments in it marks each one's place
                 // (U+FFFC): shown as its number, as the composer numbers them.
-                val shown = if (rich.isEmpty()) Markdown.inline(text, c.md.copy(link = c.onAccent)) else buildAnnotatedString {
+                val shown = if (rich.isEmpty()) Markdown.inline(text, c.md.copy(link = Color.White)) else buildAnnotatedString {
                     val parts = rich.split('￼')
                     parts.forEachIndexed { k, part ->
-                        append(Markdown.inline(part, c.md.copy(link = c.onAccent)))
+                        append(Markdown.inline(part, c.md.copy(link = Color.White)))
                         if (k < parts.size - 1) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("[${k + 1}]") }
                     }
                 }
                 SelectionContainer {
                     Text(
-                        shown, style = MaterialTheme.typography.bodyLarge, color = c.onAccent,
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(c.accent).padding(horizontal = 15.dp, vertical = 10.dp),
+                        shown, style = MaterialTheme.typography.bodyLarge, color = Color.White,
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(c.bubble).padding(horizontal = 15.dp, vertical = 10.dp),
                     )
                 }
             }

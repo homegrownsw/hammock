@@ -36,8 +36,10 @@ import hammock.v1.Hammock.Pane
 fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, openTerminal: () -> Unit) {
     val session = remember(model, pane.id) { AgentSession(model, pane.id) }
     val size by rememberPref(Prefs.ATTACHMENT_SIZE, "medium")
+    val theme = LocalHammockTheme.current
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     AgentConversation(
-        session, canDrive = drive, onOpenTerminal = openTerminal,
+        session, canDrive = drive, onOpenTerminal = openTerminal, bubble = theme.bubble(dark),
         imageSize = when (size) {
             "small" -> AttachmentSize.SMALL; "large" -> AttachmentSize.LARGE; "original" -> AttachmentSize.ORIGINAL; else -> AttachmentSize.MEDIUM
         },

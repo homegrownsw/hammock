@@ -84,10 +84,12 @@ fun AgentConversation(
     onOpenTerminal: () -> Unit,
     modifier: Modifier = Modifier,
     agentAccent: Color = MaterialTheme.colorScheme.primary,
+    /** Your messages' colour (the theme's bubble); the accent when not given. */
+    bubble: Color = agentAccent,
     imageSize: AttachmentSize = AttachmentSize.MEDIUM,
     onOpenFile: ((String) -> Unit)? = null,
 ) {
-    val colors = rememberAgentColors(agentAccent)
+    val colors = rememberAgentColors(agentAccent, bubble)
     DisposableEffect(session) {
         session.start()
         onDispose { session.stop() }

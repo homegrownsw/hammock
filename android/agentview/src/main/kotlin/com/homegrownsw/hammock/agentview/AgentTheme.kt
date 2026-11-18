@@ -14,6 +14,8 @@ import androidx.compose.ui.graphics.luminance
 data class AgentColors(
     val accent: Color,
     val onAccent: Color,
+    /** Your messages: the theme's deeper shade, for white text in light and dark alike. */
+    val bubble: Color,
     val secondary: Color,
     val tertiary: Color,
     /** Cards, code and quiet fills (the iPhone's quaternary). */
@@ -35,15 +37,16 @@ internal val LocalAgentColors = staticCompositionLocalOf<AgentColors> { error("A
 internal val LocalOpenImage = compositionLocalOf<(androidx.compose.ui.graphics.ImageBitmap) -> Unit> { {} }
 
 @Composable
-internal fun rememberAgentColors(accent: Color): AgentColors {
+internal fun rememberAgentColors(accent: Color, bubble: Color = accent): AgentColors {
     val cs = MaterialTheme.colorScheme
     val body = MaterialTheme.typography.bodyLarge.fontSize
     val dark = cs.surface.luminance() < 0.4f
-    return remember(accent, cs, body) {
+    return remember(accent, bubble, cs, body) {
         val secondary = cs.onSurfaceVariant
         AgentColors(
             accent = accent,
             onAccent = if (accent.luminance() > 0.6f) Color.Black else Color.White,
+            bubble = bubble,
             secondary = secondary,
             tertiary = secondary.copy(alpha = 0.6f),
             fill = cs.onSurface.copy(alpha = 0.07f),
