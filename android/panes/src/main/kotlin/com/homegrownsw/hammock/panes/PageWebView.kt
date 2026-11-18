@@ -81,7 +81,12 @@ internal class PageBridge(
     /** An image the preview shows (an absolute path): its media type and bytes, or null. Called off the main thread. */
     private val readImage: ((String) -> Pair<String, ByteArray>?)? = null,
 ) {
-    val webView = WebView(context)
+    // Filling its parent: AndroidView otherwise lays it out wrap_content, and a
+    // wrap_content WebView gives the page a zero-height viewport, so the pages
+    // (sized at 100% of it) draw nothing.
+    val webView = WebView(context).apply {
+        layoutParams = android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+    }
     var ready = false
         private set
     // Compose state: a page that stops (its renderer gone) says so where it was.
@@ -116,7 +121,7 @@ internal class PageBridge(
         webView.webViewClient = Client()
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(m: ConsoleMessage): Boolean {
-                Log.d(TAG, "$page: ${m.message()}")
+                Log.i(TAG, "$page:${m.lineNumber()} ${m.message()}")
                 return true
             }
         }
