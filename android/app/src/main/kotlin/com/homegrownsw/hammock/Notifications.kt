@@ -145,7 +145,10 @@ object Notifications {
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)))
             }
         }
-        runCatching { nm.notify(tag(host, subject), 0, n.build()) } // without permission to notify: nothing to show
+        // Without permission to notify (turned off in Android's settings): nothing to show.
+        if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) nm.notify(tag(host, subject), 0, n.build())
     }
 
     const val ACTION_GRANT_ALLOW = "com.homegrownsw.hammock.GRANT_ALLOW"

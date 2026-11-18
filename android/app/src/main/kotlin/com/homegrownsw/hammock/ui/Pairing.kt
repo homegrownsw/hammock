@@ -143,6 +143,7 @@ fun PairingScreen(session: Session, firstRun: Boolean, onDemo: (() -> Unit)? = n
  * The camera, reading QR codes with ML Kit's model bundled in the app (no
  * Google Play services needed), until one is a Hammock pairing link.
  */
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
 fun QrScanner(modifier: Modifier, onCode: (String) -> Unit) {
     val ctx = LocalContext.current
