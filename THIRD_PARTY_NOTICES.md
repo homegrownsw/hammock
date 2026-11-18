@@ -10,8 +10,8 @@ which reads this table and the sections below; "Ships in" says which apps).
 
 | Project | Used for | Licence | Ships in |
 |---|---|---|---|
-| [LobeHub Icons](https://github.com/lobehub/lobe-icons) | Agents' logo paths (`apple/Sources/HammockKit/AgentMark.swift`) | MIT | Mac, iPhone |
-| [Simple Icons](https://github.com/simple-icons/simple-icons) | Program icon paths and colours (`scripts/program-icons`, `ProgramIconData.swift`) | CC0 1.0 | Mac, iPhone |
+| [LobeHub Icons](https://github.com/lobehub/lobe-icons) | Agents' logo paths (`apple/Sources/HammockKit/AgentMark.swift`, `AgentMarkData.kt`) | MIT | Mac, iPhone, Android |
+| [Simple Icons](https://github.com/simple-icons/simple-icons) | Program icon paths and colours (`scripts/program-icons`, `ProgramIconData.swift`, `ProgramIconData.kt`) | CC0 1.0 | Mac, iPhone, Android |
 | [Nerd Fonts](https://github.com/ryanoasis/nerd-fonts) | The TUI's program glyph table, from its `glyphnames.json` | MIT | Mac, Linux |
 | [T3 Code](https://github.com/pingdotgg/t3code) | Usage-limit endpoints and Grok ACP message shapes (`internal/agents`, `internal/agentview/grok.go`) | MIT | Mac, Linux |
 | [CodexBar](https://github.com/steipete/CodexBar) | Usage-limit endpoints and response shapes (`internal/agents/live_*.go`) | MIT | Mac, Linux |
