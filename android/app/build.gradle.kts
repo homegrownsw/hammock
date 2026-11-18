@@ -82,6 +82,34 @@ android {
 
 kotlin { jvmToolchain(17) }
 
+/**
+ * Settings ▸ Acknowledgements: the files `just acknowledgements` makes
+ * (internal/acknowledgements: every app's, and what only Android ships),
+ * copied into generated assets, not into git.
+ */
+abstract class CopyAcknowledgements : DefaultTask() {
+    @get:InputFiles abstract val sources: ConfigurableFileCollection
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        for (f in sources.files) f.copyTo(out.resolve(f.name), overwrite = true)
+    }
+}
+
+val copyAcknowledgements = tasks.register<CopyAcknowledgements>("copyAcknowledgements") {
+    sources.from(rootProject.file("../internal/acknowledgements/Acknowledgements.json"),
+        rootProject.file("../internal/acknowledgements/Acknowledgements-android.json"))
+    outputDir.set(layout.buildDirectory.dir("generated/acknowledgements"))
+}
+
+androidComponents {
+    onVariants { v -> v.sources.assets?.addGeneratedSourceDirectory(copyAcknowledgements, CopyAcknowledgements::outputDir) }
+}
+
 dependencies {
     implementation(project(":client"))
     implementation(project(":terminal"))

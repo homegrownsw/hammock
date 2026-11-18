@@ -3,8 +3,11 @@
     "What `just acknowledgements` (internal/acknowledgements/gen) can't find in a lock file, and how it",
     "names what it does find. It finds by itself: the Go modules linked into hmk, hmkd and pane-holder (for",
     "macOS and Linux), the Swift packages in apple/Package.resolved, the npm packages bundled into",
-    "apple/Resources/editor.html, and the rows of THIRD_PARTY_NOTICES.md. The licence texts come from those",
-    "packages' own files, never typed here. {ghostty_src}, {cef_dir}, {goroot} and {repo} are filled in by it;",
+    "apple/Resources/editor.html, the Maven artifacts in the Android app's release build (from Gradle), and the",
+    "rows of THIRD_PARTY_NOTICES.md. Each Maven artifact goes in the component whose \"maven\" (group:artifact",
+    "prefixes) matches it, and must match one; \"aarNotices\" adds the notices Google's AARs carry for what they",
+    "bundle, from the artifacts its prefixes match. The licence texts come from those packages' own files, never typed here: \"{maven:group:artifact}!path\"",
+    "is a file inside that artifact. {ghostty_src}, {cef_dir}, {goroot} and {repo} are filled in by it;",
     "{ghostty}, {cef} and {go} are their versions. A missing file stops it: fix the path here (a new Ghostty",
     "commit can move its dependencies' folders in {ghostty_src}/zig-pkg)."
   ],
@@ -32,13 +35,13 @@
       "name": "Ghostty (libghostty-vt)",
       "version": "{ghostty}",
       "url": "https://ghostty.org",
-      "apps": ["mac", "ios", "linux"],
+      "apps": ["mac", "ios", "android", "linux"],
       "files": ["{ghostty_src}/LICENSE"]
     },
     {
       "name": "uucode",
       "url": "https://github.com/jacobsandlund/uucode",
-      "apps": ["mac", "ios", "linux"],
+      "apps": ["mac", "ios", "android", "linux"],
       "note": "Unicode tables in libghostty-vt.",
       "files": ["{ghostty_src}/zig-pkg/uucode-0.2.0-ZZjBPoGFVgCiflJNFc6Io8xzC67B6PA5bUkk4LT0kCxg/LICENSE.md"]
     },
@@ -46,7 +49,7 @@
       "name": "Highway",
       "url": "https://github.com/google/highway",
       "license": "BSD-3-Clause",
-      "apps": ["mac", "ios", "linux"],
+      "apps": ["mac", "ios", "android", "linux"],
       "note": "In libghostty-vt. Highway is dual-licensed (Apache 2.0 or BSD); Hammock uses it under the BSD licence below.",
       "files": ["{ghostty_src}/zig-pkg/N-V-__8AAGmZhABbsPJLfbqrh6JTHsXhY6qCaLAQyx25e0XE/LICENSE-BSD3"]
     },
@@ -54,7 +57,7 @@
       "name": "simdutf",
       "url": "https://github.com/simdutf/simdutf",
       "license": "MIT",
-      "apps": ["mac", "ios", "linux"],
+      "apps": ["mac", "ios", "android", "linux"],
       "note": "In libghostty-vt. simdutf is dual-licensed (Apache 2.0 or MIT); Hammock uses it under the MIT licence below.",
       "files": ["{repo}/third_party/licenses/simdutf-LICENSE-MIT"]
     },
@@ -62,7 +65,7 @@
       "name": "Wuffs",
       "url": "https://github.com/google/wuffs",
       "license": "MIT",
-      "apps": ["mac", "ios", "linux"],
+      "apps": ["mac", "ios", "android", "linux"],
       "note": "In libghostty-vt. Wuffs is dual-licensed (Apache 2.0 or MIT); Hammock uses it under the MIT licence below.",
       "files": ["{ghostty_src}/zig-pkg/N-V-__8AAP5JWgCGP_AD0teWpa4krRvE9VPZzvviGdbmN4jI/LICENSE-MIT"]
     },
@@ -70,7 +73,7 @@
       "name": "Unicode Character Database",
       "url": "https://www.unicode.org/license.txt",
       "license": "Unicode-3.0",
-      "apps": ["mac", "ios", "linux"],
+      "apps": ["mac", "ios", "android", "linux"],
       "note": "Unicode's data: libghostty-vt's tables, and the emoji picker's list.",
       "files": ["{repo}/third_party/licenses/unicode-LICENSE"]
     },
@@ -106,7 +109,7 @@
       "version": "2.304",
       "url": "https://www.jetbrains.com/lp/mono/",
       "license": "OFL-1.1",
-      "apps": ["mac", "ios"],
+      "apps": ["mac", "ios", "android"],
       "note": "A terminal font.",
       "files": ["{repo}/third_party/licenses/JetBrainsMono-OFL.txt"]
     },
@@ -124,9 +127,72 @@
       "version": "3.5.1",
       "url": "https://github.com/ryanoasis/nerd-fonts",
       "license": "MIT",
-      "apps": ["mac", "ios"],
+      "apps": ["mac", "ios", "android"],
       "note": "Nerd Fonts' icons, shown after any terminal font. The icon sets in it keep their own licences, listed below.",
       "files": ["{repo}/third_party/licenses/SymbolsNerdFont-LICENSE", "{repo}/third_party/licenses/SymbolsNerdFont-README.md"]
+    },
+    {
+      "name": "AndroidX",
+      "url": "https://developer.android.com/jetpack/androidx",
+      "license": "Apache-2.0",
+      "apps": ["android"],
+      "note": "Android Jetpack: Compose and Material 3, Activity, Lifecycle, Navigation, Core, CameraX, Biometric, Fragment, WebKit, DataStore, and what they use.",
+      "maven": ["androidx."],
+      "files": ["{maven:androidx.core:core}!META-INF/androidx/core/core/LICENSE.txt"]
+    },
+    {
+      "name": "Kotlin",
+      "url": "https://kotlinlang.org",
+      "license": "Apache-2.0",
+      "apps": ["android"],
+      "note": "The Kotlin standard library, kotlinx.coroutines, kotlinx.serialization and JetBrains' annotations.",
+      "maven": ["org.jetbrains"],
+      "files": ["{maven:androidx.core:core}!META-INF/androidx/core/core/LICENSE.txt"]
+    },
+    {
+      "name": "Protocol Buffers for Java",
+      "url": "https://protobuf.dev",
+      "license": "BSD-3-Clause",
+      "apps": ["android"],
+      "note": "The lite runtime, for the messages the app and your computer send each other.",
+      "maven": ["com.google.protobuf:"],
+      "files": ["{repo}/third_party/licenses/protobuf-LICENSE"]
+    },
+    {
+      "name": "OkHttp and Okio",
+      "url": "https://square.github.io/okhttp/",
+      "license": "Apache-2.0 AND MPL-2.0",
+      "apps": ["android"],
+      "note": "The connection to your computer. OkHttp includes the Public Suffix List, under the Mozilla Public License 2.0.",
+      "maven": ["com.squareup."],
+      "files": ["{maven:androidx.core:core}!META-INF/androidx/core/core/LICENSE.txt", "{maven:com.squareup.okhttp3:okhttp}!okhttp3/internal/publicsuffix/NOTICE"]
+    },
+    {
+      "name": "Firebase Cloud Messaging",
+      "url": "https://firebase.google.com/docs/cloud-messaging",
+      "license": "Apache-2.0",
+      "apps": ["android"],
+      "note": "Notifications while the app is closed.",
+      "maven": ["com.google.firebase:", "com.google.android.datatransport:"],
+      "files": ["{maven:androidx.core:core}!META-INF/androidx/core/core/LICENSE.txt"]
+    },
+    {
+      "name": "ML Kit and Google Play services",
+      "url": "https://developers.google.com/ml-kit",
+      "license": "LicenseRef-ML-Kit-Terms AND LicenseRef-Android-SDK-License",
+      "apps": ["android"],
+      "note": "Scanning a computer's pairing code (ML Kit's barcode scanner, with its model in the app), and the Google Play services Firebase Cloud Messaging uses. Google's own software, used under the ML Kit Terms of Service (https://developers.google.com/ml-kit/terms) and the Android Software Development Kit License (https://developer.android.com/studio/terms). The open-source software in it and in Firebase's libraries, and its licences, are below.",
+      "maven": ["com.google.mlkit:", "com.google.android.gms:", "com.google.android.odml:"],
+      "aarNotices": ["com.google."]
+    },
+    {
+      "name": "Guava and Java annotations",
+      "url": "https://github.com/google/guava",
+      "license": "Apache-2.0",
+      "apps": ["android"],
+      "note": "Guava's ListenableFuture, and Error Prone's, AutoValue's and javax.inject's annotations, which the Google libraries above use.",
+      "maven": ["com.google.guava:", "com.google.errorprone:", "com.google.auto.value:", "javax.inject:"],
+      "files": ["{maven:androidx.core:core}!META-INF/androidx/core/core/LICENSE.txt"]
     },
     {
       "name": "Go",

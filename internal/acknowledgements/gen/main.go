@@ -1,12 +1,19 @@
 // Command gen writes internal/acknowledgements/Acknowledgements.json: the
 // third-party software each Hammock app ships, with each one's licence text,
-// for the apps' Acknowledgements and `hmk acknowledgements`. Run by
-// `just acknowledgements` from the repository's root:
+// for the apps' Acknowledgements and `hmk acknowledgements`; what only the
+// Android app ships goes in Acknowledgements-android.json beside it (the same
+// schema), which only that app bundles. Run by `just acknowledgements` from
+// the repository's root; it needs the Android toolchain (a JDK, the SDK, and
+// Gradle's cache: android/README.md), as `just android` does:
 //
 //   - Go modules: those linked into ./cmd/... (hmk, hmkd, pane-holder) for
 //     macOS (the Mac app) and Linux (the tarballs), from `go list -deps`.
 //   - Swift packages: apple/Package.resolved's pins, from their checkouts.
-//   - npm packages: those esbuild bundles into apple/Resources/editor.html and diff.html.
+//   - npm packages: those esbuild bundles into apple/Resources/editor.html and diff.html
+//     (in the Mac, iPhone and Android apps).
+//   - Maven artifacts: those in the Android app's release build, from Gradle
+//     (`:app:dependencies`), each in the third_party/acknowledgements.json
+//     component whose "maven" prefixes match it.
 //   - Code copied into the repo: THIRD_PARTY_NOTICES.md's table and sections.
 //   - The rest (libghostty-vt and what it vendors, Go itself, CEF):
 //     third_party/acknowledgements.json, with texts from their own files.
@@ -16,9 +23,11 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +55,12 @@ type manual struct {
 	Note    string   `json:"note"`
 	Credits string   `json:"credits"`
 	Files   []string `json:"files"`
+	// Maven: the Android artifacts (group:artifact prefixes) it is, listed as
+	// its packages; every artifact the Android app ships must be in one.
+	Maven []string `json:"maven"`
+	// AARNotices adds the notices Google's AARs carry for what they bundle
+	// (third_party_licenses.txt), from the artifacts these prefixes match.
+	AARNotices []string `json:"aarNotices"`
 }
 
 type manifest struct {
@@ -110,8 +125,12 @@ func run() error {
 	pkgs = append(pkgs, npmPkgs...)
 
 	comps := group_(pkgs, m.Groups)
+	android, err := androidArtifacts(root, m.Components)
+	if err != nil {
+		return err
+	}
 	for _, c := range m.Components {
-		comp, err := manualComponent(c, vars)
+		comp, err := manualComponent(c, vars, android)
 		if err != nil {
 			return err
 		}
@@ -132,18 +151,33 @@ func run() error {
 			return fmt.Errorf("two components are named %q", comps[i].Name)
 		}
 	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", " ")
-	if err := enc.Encode(acknowledgements.File{Components: comps}); err != nil {
-		return err
+	// What only the Android app ships has a file of its own, so the Mac, the
+	// iPhone and hmk don't carry it.
+	var shared, androidOnly []acknowledgements.Component
+	for _, c := range comps {
+		if slices.Equal(c.Apps, []string{"android"}) {
+			androidOnly = append(androidOnly, c)
+		} else {
+			shared = append(shared, c)
+		}
 	}
-	out := filepath.Join(root, "internal/acknowledgements/Acknowledgements.json")
-	if err := os.WriteFile(out, buf.Bytes(), 0o644); err != nil {
-		return err
+	for name, cs := range map[string][]acknowledgements.Component{
+		"Acknowledgements.json":         shared,
+		"Acknowledgements-android.json": androidOnly,
+	} {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", " ")
+		if err := enc.Encode(acknowledgements.File{Components: cs}); err != nil {
+			return err
+		}
+		out := filepath.Join(root, "internal/acknowledgements", name)
+		if err := os.WriteFile(out, buf.Bytes(), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("%s: %d components, %d bytes\n", out, len(cs), buf.Len())
 	}
-	fmt.Printf("%s: %d components, %d bytes\n", out, len(comps), buf.Len())
 	return nil
 }
 
@@ -369,7 +403,7 @@ func npmPackages(root string) ([]pkg, error) {
 		}
 		pkgs = append(pkgs, pkg{
 			name: name, version: pj.Version, url: url, license: license,
-			apps: []string{"mac", "ios"}, texts: texts,
+			apps: []string{"mac", "ios", "android"}, texts: texts,
 		})
 	}
 	return pkgs, nil
@@ -470,7 +504,7 @@ func joinTexts(ts []text, labelled bool) string {
 }
 
 func sortedApps(apps []string) []string {
-	order := []string{"mac", "ios", "linux"}
+	order := []string{"mac", "ios", "android", "linux"}
 	out := slices.Clone(apps)
 	sort.Slice(out, func(i, j int) bool { return slices.Index(order, out[i]) < slices.Index(order, out[j]) })
 	return out
@@ -478,15 +512,31 @@ func sortedApps(apps []string) []string {
 
 // MARK: Hand-listed
 
-func manualComponent(c manual, vars map[string]string) (acknowledgements.Component, error) {
+func manualComponent(c manual, vars map[string]string, android *androidBuild) (acknowledgements.Component, error) {
 	fill := func(s string) string {
 		for k, v := range vars {
 			s = strings.ReplaceAll(s, k, v)
 		}
 		return s
 	}
+	var arts []artifact
+	if len(c.Maven) > 0 {
+		arts = android.of(c.Maven)
+		if len(arts) == 0 {
+			return acknowledgements.Component{}, fmt.Errorf("%s: the Android app ships none of %v (remove it from third_party/acknowledgements.json, or fix its \"maven\")", c.Name, c.Maven)
+		}
+	}
 	var ts []text
 	for _, f := range c.Files {
+		// "{maven:group:artifact}!path": a file inside that artifact, as the Android app ships it.
+		if coord, member, ok := strings.Cut(f, "!"); ok && strings.HasPrefix(coord, "{maven:") {
+			body, err := android.member(strings.TrimSuffix(strings.TrimPrefix(coord, "{maven:"), "}"), member)
+			if err != nil {
+				return acknowledgements.Component{}, fmt.Errorf("%s: %w", c.Name, err)
+			}
+			ts = append(ts, text{label: member[strings.LastIndex(member, "/")+1:], body: clean(body)})
+			continue
+		}
 		// "a|b": the first of them there (Homebrew's Go keeps LICENSE above GOROOT).
 		var path string
 		var b []byte
@@ -506,10 +556,214 @@ func manualComponent(c manual, vars map[string]string) (acknowledgements.Compone
 	if license == "" {
 		license = classify(ts)
 	}
-	return acknowledgements.Component{
+	labelled := false
+	if len(c.AARNotices) > 0 {
+		notices, err := android.notices(android.of(c.AARNotices))
+		if err != nil {
+			return acknowledgements.Component{}, fmt.Errorf("%s: %w", c.Name, err)
+		}
+		labelled = len(notices) > 0
+		ts = append(ts, notices...)
+	}
+	comp := acknowledgements.Component{
 		Name: c.Name, Version: fill(c.Version), URL: c.URL, License: license, Apps: sortedApps(c.Apps),
-		Note: c.Note, Credits: c.Credits, Text: joinTexts(ts, false),
-	}, nil
+		Note: c.Note, Credits: c.Credits, Text: joinTexts(ts, labelled),
+	}
+	for _, a := range arts {
+		comp.Packages = append(comp.Packages, acknowledgements.Package{Name: a.group + ":" + a.name, Version: a.version})
+	}
+	// One version for all of them: the component's.
+	if len(arts) > 0 && !slices.ContainsFunc(arts, func(a artifact) bool { return a.version != arts[0].version }) {
+		comp.Version = arts[0].version
+	}
+	return comp, nil
+}
+
+// MARK: Android
+
+// artifact is a Maven artifact in the Android app.
+type artifact struct{ group, name, version string }
+
+func (a artifact) coord() string { return a.group + ":" + a.name }
+
+// androidBuild is what the Android app's release build ships, as Gradle
+// resolves it, and where Gradle keeps the files.
+type androidBuild struct {
+	artifacts []artifact
+	cache     string // Gradle's modules-2/files-2.1
+}
+
+// androidArtifacts asks Gradle for the Android app's release runtime
+// classpath, and checks every artifact on it is in a component.
+func androidArtifacts(root string, comps []manual) (*androidBuild, error) {
+	dir := filepath.Join(root, "android")
+	out, err := output(dir, nil, "bash", "-c",
+		`. scripts/java.sh && ./gradlew -q --console=plain :app:dependencies --configuration releaseRuntimeClasspath`)
+	if err != nil {
+		return nil, fmt.Errorf("%w (the Android app's dependencies need its toolchain: android/README.md)", err)
+	}
+	// "+--- group:artifact:version", "\--- group:artifact:1.0 -> 1.1 (*)",
+	// "+--- group:artifact -> 1.1" (a BOM's); not constraints (c) or
+	// unresolved (n), or projects.
+	line := regexp.MustCompile(`[+\\]--- ([^:\s]+):([^:\s]+)(?::(\S+))?(?: -> (\S+))?(?: \((\*|c|n)\))?$`)
+	seen := map[string]bool{}
+	b := &androidBuild{}
+	for _, l := range strings.Split(out, "\n") {
+		m := line.FindStringSubmatch(strings.TrimRight(l, " "))
+		if m == nil || m[1] == "project" || m[5] == "c" || m[5] == "n" {
+			continue
+		}
+		a := artifact{group: m[1], name: m[2], version: m[3]}
+		if m[4] != "" {
+			a.version = m[4]
+		}
+		// A BOM only pins others' versions: nothing of it ships.
+		if strings.HasSuffix(a.name, "-bom") || seen[a.coord()] {
+			continue
+		}
+		seen[a.coord()] = true
+		b.artifacts = append(b.artifacts, a)
+	}
+	if len(b.artifacts) == 0 {
+		return nil, fmt.Errorf("gradle listed no dependencies for the Android app:\n%s", out)
+	}
+	sort.Slice(b.artifacts, func(i, j int) bool { return b.artifacts[i].coord() < b.artifacts[j].coord() })
+	var prefixes []string
+	for _, c := range comps {
+		prefixes = append(prefixes, c.Maven...)
+	}
+	for _, a := range b.artifacts {
+		if !slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(a.coord(), p) }) {
+			return nil, fmt.Errorf("the Android app ships %s %s, which no component in third_party/acknowledgements.json lists (add its group to one's \"maven\", or a component for it)", a.coord(), a.version)
+		}
+	}
+	home := os.Getenv("GRADLE_USER_HOME")
+	if home == "" {
+		home = filepath.Join(os.Getenv("HOME"), ".gradle")
+	}
+	b.cache = filepath.Join(home, "caches/modules-2/files-2.1")
+	return b, nil
+}
+
+// of is the artifacts whose group:artifact starts with one of prefixes.
+func (b *androidBuild) of(prefixes []string) []artifact {
+	var out []artifact
+	for _, a := range b.artifacts {
+		if slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(a.coord(), p) }) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// file is an artifact's AAR or jar in Gradle's cache.
+func (b *androidBuild) file(a artifact) (string, error) {
+	for _, ext := range []string{".aar", ".jar"} {
+		m, _ := filepath.Glob(filepath.Join(b.cache, a.group, a.name, a.version, "*", a.name+"-"+a.version+ext))
+		if len(m) > 0 {
+			sort.Strings(m)
+			return m[0], nil
+		}
+	}
+	return "", fmt.Errorf("%s %s isn't in Gradle's cache (%s): build the Android app (`just android`) to fetch it", a.coord(), a.version, b.cache)
+}
+
+// member reads a file inside an artifact the Android app ships.
+func (b *androidBuild) member(coord, name string) (string, error) {
+	i := slices.IndexFunc(b.artifacts, func(a artifact) bool { return a.coord() == coord })
+	if i < 0 {
+		return "", fmt.Errorf("the Android app doesn't ship %s", coord)
+	}
+	f, err := b.file(b.artifacts[i])
+	if err != nil {
+		return "", err
+	}
+	files, err := readZip(f, name)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := files[name]; !ok {
+		return "", fmt.Errorf("%s has no %s", f, name)
+	}
+	return string(files[name]), nil
+}
+
+// notices are the licences Google's AARs list for what they bundle
+// (third_party_licenses.json names each one's place in the .txt), each
+// different text once, under the names that have it.
+func (b *androidBuild) notices(arts []artifact) ([]text, error) {
+	byName := map[string]string{}
+	for _, a := range arts {
+		f, err := b.file(a)
+		if err != nil {
+			return nil, err
+		}
+		files, err := readZip(f, "third_party_licenses.json", "third_party_licenses.txt")
+		if err != nil {
+			return nil, err
+		}
+		var index map[string]struct{ Start, Length int }
+		if len(bytes.TrimSpace(files["third_party_licenses.json"])) == 0 {
+			continue
+		}
+		if err := json.Unmarshal(files["third_party_licenses.json"], &index); err != nil {
+			return nil, fmt.Errorf("%s: third_party_licenses.json: %w", f, err)
+		}
+		txt := files["third_party_licenses.txt"]
+		for name, at := range index {
+			if at.Start < 0 || at.Length < 0 || at.Start+at.Length > len(txt) {
+				return nil, fmt.Errorf("%s: %s's notice is outside third_party_licenses.txt", f, name)
+			}
+			if _, ok := byName[name]; !ok {
+				byName[name] = clean(string(txt[at.Start : at.Start+at.Length]))
+			}
+		}
+	}
+	names := make([]string, 0, len(byName))
+	for n := range byName {
+		names = append(names, n)
+	}
+	sort.Slice(names, func(i, j int) bool { return strings.ToLower(names[i]) < strings.ToLower(names[j]) })
+	var out []text
+	// The same text, laid out differently, is the same.
+	idx := map[string]int{}
+	for _, n := range names {
+		body := byName[n]
+		key := strings.Join(strings.Fields(body), " ")
+		if i, ok := idx[key]; ok {
+			out[i].label += ", " + n
+			continue
+		}
+		idx[key] = len(out)
+		out = append(out, text{label: n, body: body})
+	}
+	return out, nil
+}
+
+// readZip reads the named files of a zip (an AAR or jar); those it lacks are left out.
+func readZip(file string, names ...string) (map[string][]byte, error) {
+	r, err := zip.OpenReader(file)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	out := map[string][]byte{}
+	for _, f := range r.File {
+		if !slices.Contains(names, f.Name) {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+		b, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, err
+		}
+		out[f.Name] = b
+	}
+	return out, nil
 }
 
 // noticesComponents reads THIRD_PARTY_NOTICES.md: its table (name, link,
@@ -551,10 +805,12 @@ func noticesComponents(path string) ([]acknowledgements.Component, error) {
 				apps = append(apps, "mac")
 			case "iPhone":
 				apps = append(apps, "ios")
+			case "Android":
+				apps = append(apps, "android")
 			case "Linux":
 				apps = append(apps, "linux")
 			default:
-				return nil, fmt.Errorf("THIRD_PARTY_NOTICES.md: %s ships in %q (Mac, iPhone or Linux)", name, a)
+				return nil, fmt.Errorf("THIRD_PARTY_NOTICES.md: %s ships in %q (Mac, iPhone, Android or Linux)", name, a)
 			}
 		}
 		// The note says what of it Hammock has, without the repo's paths.

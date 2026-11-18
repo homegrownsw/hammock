@@ -89,9 +89,10 @@ proto-swift:
 editor-js:
     ./apple/Editor/build.sh
 
-# Regenerate the apps' Acknowledgements (internal/acknowledgements/Acknowledgements.json): the
-# third-party software each app ships and its licences, from go list, Package.resolved, the editor's
-# bundle, THIRD_PARTY_NOTICES.md and third_party/acknowledgements.json. `just test` fails when it's stale.
+# Regenerate the apps' Acknowledgements (internal/acknowledgements/Acknowledgements.json, and
+# Acknowledgements-android.json for what only Android ships): the third-party software each app ships and
+# its licences, from go list, Package.resolved, the editor's bundle, Gradle (it needs the Android
+# toolchain), THIRD_PARTY_NOTICES.md and third_party/acknowledgements.json. `just test` fails when it's stale.
 acknowledgements: deps
     ./scripts/fetch-cef.sh >/dev/null
     go run ./internal/acknowledgements/gen

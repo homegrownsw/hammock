@@ -5,15 +5,33 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 )
 
+var apps = []string{"mac", "ios", "android", "linux"}
+
 const stale = "Acknowledgements.json is out of date: run `just acknowledgements`"
 
+// androidOnly is Acknowledgements-android.json: what only the Android app
+// ships, which it bundles beside Acknowledgements.json (hmk doesn't embed it).
+func androidOnly(t *testing.T) []Component {
+	t.Helper()
+	b, err := os.ReadFile("Acknowledgements-android.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f File
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	return f.Components
+}
+
 func TestEveryComponentHasItsLicence(t *testing.T) {
-	cs := All()
+	cs := append(All(), androidOnly(t)...)
 	if len(cs) == 0 {
 		t.Fatal("no components")
 	}
@@ -22,22 +40,32 @@ func TestEveryComponentHasItsLicence(t *testing.T) {
 			t.Errorf("%q lacks a name, licence, text or apps", c.Name)
 		}
 		for _, a := range c.Apps {
-			if a != "mac" && a != "ios" && a != "linux" {
+			if !slices.Contains(apps, a) {
 				t.Errorf("%s: unknown app %q", c.Name, a)
 			}
 		}
 	}
-	for _, app := range []string{"mac", "ios", "linux"} {
+	for _, app := range apps {
 		if len(For(app)) == 0 {
 			t.Errorf("nothing in the %s app", app)
 		}
 	}
+	for _, c := range All() {
+		if slices.Equal(c.Apps, []string{"android"}) {
+			t.Errorf("%s is only in the Android app, so belongs in Acknowledgements-android.json. %s", c.Name, stale)
+		}
+	}
+	for _, c := range androidOnly(t) {
+		if !slices.Equal(c.Apps, []string{"android"}) {
+			t.Errorf("%s is in Acknowledgements-android.json but ships in %v. %s", c.Name, c.Apps, stale)
+		}
+	}
 }
 
-// versions is every package listed, name to version.
-func versions() map[string]string {
+// versions is every package listed, name to version (and, with more, theirs).
+func versions(more ...Component) map[string]string {
 	out := map[string]string{}
-	for _, c := range All() {
+	for _, c := range append(All(), more...) {
 		if c.Version != "" && len(c.Packages) == 0 {
 			out[c.Name] = c.Version
 		}
@@ -147,6 +175,67 @@ func TestEditorPackagesAreCurrent(t *testing.T) {
 		if name != "esbuild" && have[name] == "" {
 			t.Errorf("the editor's dependency %s isn't listed. %s", name, stale)
 		}
+	}
+}
+
+// The Android app's libraries, as android/gradle/libs.versions.toml pins
+// them, for those its modules use outside their tests: from the committed
+// files, without Gradle or the Android SDK (CI has neither). What they bring
+// with them is only in Gradle: `just acknowledgements` asks it.
+func TestAndroidLibrariesAreCurrent(t *testing.T) {
+	catalog, err := os.ReadFile("../../android/gradle/libs.versions.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := map[string]string{}
+	type lib struct{ module, version string }
+	libs := map[string]lib{} // by accessor: compose-ui is libs.compose.ui
+	section := ""
+	versionLine := regexp.MustCompile(`^([\w-]+) = "([^"]+)"`)
+	libLine := regexp.MustCompile(`^([\w-]+) = \{ module = "([^"]+)"(?:, version.ref = "([^"]+)")? \}`)
+	for _, l := range strings.Split(string(catalog), "\n") {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "[") {
+			section = l
+			continue
+		}
+		if m := versionLine.FindStringSubmatch(l); m != nil && section == "[versions]" {
+			pinned[m[1]] = m[2]
+		}
+		if m := libLine.FindStringSubmatch(l); m != nil && section == "[libraries]" {
+			libs[strings.NewReplacer("-", ".", "_", ".").Replace(m[1])] = lib{m[2], pinned[m[3]]}
+		}
+	}
+	builds, err := filepath.Glob("../../android/*/build.gradle.kts")
+	if err != nil || len(builds) == 0 {
+		t.Fatalf("no Android modules: %v", err)
+	}
+	use := regexp.MustCompile(`(?m)^\s*(?:implementation|api)\((?:platform\()?libs\.([\w.]+)\)`)
+	have := versions(androidOnly(t)...)
+	n := 0
+	for _, b := range builds {
+		src, err := os.ReadFile(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range use.FindAllStringSubmatch(string(src), -1) {
+			l, ok := libs[m[1]]
+			if !ok {
+				t.Errorf("%s uses libs.%s, which isn't in libs.versions.toml", b, m[1])
+				continue
+			}
+			// A BOM ships nothing; what it pins, Gradle resolves.
+			if l.version == "" || strings.HasSuffix(l.module, "-bom") {
+				continue
+			}
+			n++
+			if have[l.module] != l.version {
+				t.Errorf("the Android app uses %s %s, listed as %q. %s", l.module, l.version, have[l.module], stale)
+			}
+		}
+	}
+	if n == 0 {
+		t.Error("no Android libraries found")
 	}
 }
 

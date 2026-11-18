@@ -68,6 +68,12 @@ fun SettingsScreen(session: Session, model: AppModel) {
     var lock by rememberBoolPref(Prefs.APP_LOCK, false)
     var lockAfter by rememberPref(Prefs.LOCK_AFTER, "0")
     val computerTheme = HammockTheme.resolve("", w.hostTheme)
+    var acknowledgements by remember { mutableStateOf(false) }
+    if (acknowledgements) {
+        androidx.activity.compose.BackHandler { acknowledgements = false }
+        AcknowledgementsScreen(onBack = { acknowledgements = false })
+        return
+    }
 
     fun reRegister() {
         val h = session.host.value ?: return
@@ -156,6 +162,7 @@ fun SettingsScreen(session: Session, model: AppModel) {
                     modifier = Modifier.clickable { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://homegrownsw.com/hammock/docs/"))) },
                     headlineContent = { Text("Hammock Documentation") },
                 )
+                ListItem(modifier = Modifier.clickable { acknowledgements = true }, headlineContent = { Text("Acknowledgements") })
             }
         }
     }
