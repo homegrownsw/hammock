@@ -1,0 +1,13 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+.cxx/
+captures/
+# Release signing (android/README.md): never committed.
+keystore.properties
+*.jks
+*.keystore
+google-services.json
