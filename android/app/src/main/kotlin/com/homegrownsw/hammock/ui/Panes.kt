@@ -24,6 +24,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -32,9 +33,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -57,6 +55,7 @@ import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Workspace
 import com.homegrownsw.hammock.client.agentStatusLabel
 import com.homegrownsw.hammock.client.allPaneIDs
+import com.homegrownsw.hammock.client.canAddTabs
 import com.homegrownsw.hammock.client.canDrive
 import com.homegrownsw.hammock.client.canSleep
 import com.homegrownsw.hammock.client.displayName
@@ -116,7 +115,7 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             if (p.hasAgent()) StatusIcon(p.agent.state, size = 14.dp)
-                            Text(paneLabel(p), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                            Text(stripName(p, w), style = MaterialTheme.typography.labelLarge, maxLines = 1)
                         }
                     }
                 }
@@ -125,14 +124,6 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
     }
 }
 
-fun paneLabel(p: Pane): String = when {
-    p.hasAgent() && p.agent.harness.isNotEmpty() -> p.agent.harness.replaceFirstChar { it.uppercase() }
-    p.kind == PaneKind.PANE_KIND_BROWSER -> p.title.ifEmpty { "Browser" }
-    p.kind == PaneKind.PANE_KIND_SIMULATOR -> p.title.ifEmpty { "Simulator" }
-    p.isLog -> "Log"
-    p.isDiff -> "Diff"
-    else -> p.displayName
-}
 
 /**
  * One pane, by its kind. An agent's offers its conversation or its terminal
@@ -164,30 +155,34 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
         onDispose { model.reportPresence(emptyList(), true) }
     }
 
-    val title = w.tabs[pane.tabId]?.let { w.title(it) } ?: pane.displayName
-    val subtitle = when {
-        pane.hasAgent() -> listOf(AgentCatalog.shortName(pane.agent.harness, w.kinds), pane.agentStatusLabel).filter { it.isNotEmpty() }.joinToString(" · ")
-        else -> pane.cwd.replace(Regex("^/(Users|home)/[^/]+"), "~")
-    }
+    // As on the iPhone: an agent's or a log's pane (which switches its view)
+    // and one of several in its tab go by their own name, the tab's under
+    // it; a tab's only pane, by the tab's.
+    val tab = w.tabs[pane.tabId]
+    val switchesView = hasAgentView || logMode
+    val several = tab != null && tab.allPaneIDs().size > 1
+    val title = if (switchesView || several || tab == null) stripName(pane, w) else w.title(tab)
+    val subtitle = if ((switchesView || several) && tab != null) w.title(tab) else null
     DetailScaffold(
         title, if (showBack) nav::pop else null, subtitle = subtitle,
-        // An editor draws its own ⋮, with these in it.
-        actions = { if (pane.kind != PaneKind.PANE_KIND_EDITOR) PaneMenu(model, w, pane, drive, nav) },
+        // One ⋮: which view an agent's or a log's pane shows, then the tab's
+        // actions (an editor draws its own ⋮, with them in it).
+        actions = {
+            if (pane.kind != PaneKind.PANE_KIND_EDITOR) PaneMenu(model, w, pane, drive, nav, view = {
+                close ->
+                if (switchesView) {
+                    val on = if (logMode) showLog else showAgent
+                    ViewChoice(if (logMode) "Log" else "Conversation", on) { close(); if (logMode) showLog = true else { showAgent = true; PaneModes.set(ctx, paneID, true) } }
+                    ViewChoice("Terminal", !on) { close(); if (logMode) showLog = false else { showAgent = false; PaneModes.set(ctx, paneID, false) } }
+                    HorizontalDivider()
+                }
+            })
+        },
         bottomBar = { tabStrip?.invoke() },
     ) { padding ->
         // Clear of the gesture bar (the tab strip does that when it's there) and the keyboard.
         val bottom = if (tabStrip == null) Modifier.navigationBarsPadding() else Modifier
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).then(bottom).imePadding()) {
-            if (hasAgentView || logMode) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                    val first = if (logMode) "Log" else "Conversation"
-                    val on = if (logMode) showLog else showAgent
-                    SegmentedButton(on, { if (logMode) showLog = true else { showAgent = true; PaneModes.set(ctx, paneID, true) } },
-                        SegmentedButtonDefaults.itemShape(0, 2)) { Text(first) }
-                    SegmentedButton(!on, { if (logMode) showLog = false else { showAgent = false; PaneModes.set(ctx, paneID, false) } },
-                        SegmentedButtonDefaults.itemShape(1, 2)) { Text("Terminal") }
-                }
-            }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (pane.asleep && pane.hasAgent()) {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -211,12 +206,52 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
 }
 
 @Composable
-private fun PaneMenu(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, nav: Nav) {
+private fun ViewChoice(label: String, on: Boolean, pick: () -> Unit) = DropdownMenuItem(
+    text = { Text(label) }, onClick = pick,
+    leadingIcon = { if (on) Icon(Icons.Default.Check, "Shown") else Box(Modifier.size(24.dp)) },
+)
+
+/** The pane's ⋮: [view] first (which view it shows), then the tab's actions, then the pane's own when the tab has several. */
+@Composable
+private fun PaneMenu(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, nav: Nav, view: @Composable (close: () -> Unit) -> Unit = {}) {
     var open by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var moving by remember { mutableStateOf(false) }
+    var starting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val tab = w.tabs[pane.tabId]
+    val group = tab?.let { w.groupOf(it) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Pane Actions") }
-        DropdownMenu(open, { open = false }) { PaneMenuItems(model, w, pane, drive, nav) { open = false } }
+        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Tab Actions") }
+        DropdownMenu(open, { open = false }) {
+            view { open = false }
+            if (tab != null && group != null) {
+                TabActions(model, w, group, tab, close = { open = false }, rename = { renaming = true },
+                    newTab = { scope.launch { model.createTab(group.id)?.let { nav.open("tab:$it") } } },
+                    startAgent = { starting = true }, move = { moving = true })
+            }
+            if (tab != null && tab.allPaneIDs().size > 1) {
+                HorizontalDivider()
+                PaneMenuItems(model, w, pane, drive, nav) { open = false }
+            }
+        }
+        DropdownMenu(moving, { moving = false }) {
+            for (other in w.groups.filter { it.id != group?.id && it.canAddTabs }) {
+                DropdownMenuItem(text = { Text(w.title(other)) }, onClick = { moving = false; tab?.let { model.moveTab(it.id, other.id, other.tabIdsCount) } })
+            }
+        }
     }
+    if (renaming && tab != null) TextPrompt("Rename Tab", w.title(tab), "Name", onDismiss = { renaming = false }) { model.renameTab(tab.id, it); renaming = false }
+    if (starting && group != null) StartAgentSheet(model, groupID = group.id, nav = nav) { starting = false }
+}
+
+/** What a pane goes by (the iPhone's stripName): an agent by its name, a browser by its page, an editor by its file. */
+fun stripName(p: Pane, w: Workspace): String = when (p.kind) {
+    PaneKind.PANE_KIND_BROWSER -> p.title.ifEmpty { "Browser" }
+    PaneKind.PANE_KIND_SIMULATOR -> p.title.ifEmpty { "Simulator" }
+    PaneKind.PANE_KIND_EDITOR -> p.editor.name.ifEmpty { p.displayName }
+    PaneKind.PANE_KIND_DIFF -> p.diff.title.ifEmpty { "Diff" }
+    else -> if (p.hasAgent() && p.agent.harness.isNotEmpty()) AgentCatalog.shortName(p.agent.harness, w.kinds) else p.displayName
 }
 
 /** A pane's actions, in its ⋮ menu (or an editor's own, which carries them). */

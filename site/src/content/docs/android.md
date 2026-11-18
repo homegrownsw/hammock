@@ -15,8 +15,8 @@ what you open shows beside the list.
 - **Sessions** lists your agents, most pressing first, as on the iPhone. **Allow**, **Deny** and **Open** answer a
   permission request where it is. Swipe a session left to close it.
 - **Groups** shows each Group and its tabs. Touch and hold a tab for its actions; swipe it left to close it.
-- An agent's pane offers **Conversation** or **Terminal** at the top; the ⋮ menu has **Interrupt**, **Continue in…**,
-  **Put Agent to Sleep** and **Close Pane**.
+- An agent's pane shows its conversation or its terminal: choose in its ⋮ menu, which also has the tab's actions
+  (**Rename…**, **Put Agent to Sleep**, **Close Tab** and the rest).
 
 ## Terminals and the agent view
 
