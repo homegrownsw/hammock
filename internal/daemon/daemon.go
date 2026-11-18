@@ -872,7 +872,7 @@ var newPaneSizeWait = 250 * time.Millisecond
 // kind it says it is. Callers hold d.mu.
 func (d *Daemon) hasViewerLocked() bool {
 	for c := range d.conns {
-		if c.subscribed && c.caller == nil && (c.kind == "mac" || c.kind == "ios" || c.kind == "tui") {
+		if c.subscribed && c.caller == nil && (c.kind == "mac" || c.kind == "ios" || c.kind == "android" || c.kind == "tui") {
 			return true
 		}
 	}

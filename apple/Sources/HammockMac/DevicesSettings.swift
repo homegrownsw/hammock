@@ -101,7 +101,7 @@ struct DevicesSettings: View {
                 }
                 ForEach(status.devices) { d in
                     HStack {
-                        Image(systemName: d.platform == "ios" ? "iphone" : "laptopcomputer")
+                        Image(systemName: d.platform == "ios" ? "iphone" : d.platform == "android" ? "candybarphone" : "laptopcomputer")
                         VStack(alignment: .leading) {
                             Text(d.name)
                             Text("Last seen \(Date(timeIntervalSince1970: Double(d.lastSeenUnixMs) / 1000).formatted(.relative(presentation: .named)))")

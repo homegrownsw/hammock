@@ -136,7 +136,7 @@ func (c *conn) bootstrap(msg *pb.ClientMessage) bool {
 }
 
 // afterBootstrap shuts the window once something is first paired or
-// linked (what: "Paired Alex's iPhone"; device or computer: which), and
+// linked (what: "Paired Sam's iPhone"; device or computer: which), and
 // says, if a terminal did what only you may while it was open, that it
 // did. Callers hold d.mu.
 func (d *Daemon) afterBootstrap(what, device, computer string) {

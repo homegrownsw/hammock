@@ -203,11 +203,14 @@ func (d *Daemon) auditWho(actor string) (who, kind string) {
 			return outsideWho, "agent"
 		}
 		return "An agent", "agent"
-	case "ios", "device", "remote":
+	case "ios", "android", "device", "remote":
 		switch name {
-		case "", "ios":
+		case "", "ios", "android":
 			if k == "remote" {
 				return "A device", "device"
+			}
+			if k == "android" || name == "android" {
+				return "Your Android phone", "device"
 			}
 			return "Your iPhone", "device"
 		}
