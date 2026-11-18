@@ -13,7 +13,10 @@
 
 # The platforms with notes, and the name each goes by in tags, commits and summaries.
 PLATFORMS_ALL="mac ios"
-label() { case "$1" in mac) echo Mac ;; ios) echo iOS ;; esac; }
+# Every app with notes: the Android app's are written and checked like the others', and released on their own
+# (android/README.md), not by scripts/release yet.
+NOTE_PLATFORMS="mac ios android"
+label() { case "$1" in mac) echo Mac ;; ios) echo iOS ;; android) echo Android ;; esac; }
 
 note_tag() { head -n1 "$1" | sed -E 's/^tag:[[:space:]]*//' | tr '[:lower:]' '[:upper:]'; }
 note_body() { tail -n +2 "$1" | sed -E '/^date:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}$/d; /^order:[[:space:]]*[0-9]+[[:space:]]*$/d; /^image:/d' | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ +//; s/ +$//'; }
@@ -149,7 +152,7 @@ lines_to_html() { # lines_to_html <rendered lines> [<ref>]
 # Each app's version, from apple/iOS/Config/Version.xcconfig: YYYY.N.P, the year, its Nth joint release of both
 # apps, and a patch (the Mac's releases between joint ones, or an iPhone hotfix).
 version_file() { echo "$1/apple/iOS/Config/Version.xcconfig"; } # version_file <repo-root>
-version_key() { case "$1" in mac) echo HAMMOCK_MAC_VERSION ;; ios) echo HAMMOCK_IOS_VERSION ;; esac; }
+version_key() { case "$1" in mac) echo HAMMOCK_MAC_VERSION ;; ios) echo HAMMOCK_IOS_VERSION ;; android) echo HAMMOCK_ANDROID_VERSION ;; esac; }
 read_version() { # read_version <repo-root> <mac|ios>
   sed -nE "s/^$(version_key "$2") = ([^ ]+).*$/\1/p" "$(version_file "$1")"
 }

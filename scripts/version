@@ -7,8 +7,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/release-notes.sh
 . "$ROOT/scripts/lib/release-notes.sh"
 case "${1:-}" in
-  "") for p in $PLATFORMS_ALL; do echo "$(label "$p"): $(read_version "$ROOT" "$p")"; done; exit 0 ;;
-  mac | ios) apps="$1"; ver="${2:-}" ;;
+  "") for p in $NOTE_PLATFORMS; do v=$(read_version "$ROOT" "$p"); if [ -n "$v" ]; then echo "$(label "$p"): $v"; fi; done; exit 0 ;;
+  mac | ios | android) apps="$1"; ver="${2:-}" ;;
   *) apps="$PLATFORMS_ALL"; ver="$1" ;;
 esac
 version_ok "$ver" || { echo "'$ver' isn't a version like 2026.1.0." >&2; exit 2; }
