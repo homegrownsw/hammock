@@ -26,13 +26,41 @@ interface MediaLink {
     fun send(build: ClientMessage.Builder.() -> Unit)
     /** Routes a session's MediaFrame, MediaEnded, ScreenCursor and ScreenState to `handler` (null stops). */
     fun setHandler(sessionID: String, handler: ((ServerMessage) -> Unit)?)
+    /** Where video can come over QUIC (the connection's own host and pin); null: in band. */
+    val quic: QuicTarget? get() = null
+    val dialer: QuicDialer get() = Quic
+    /** QUIC couldn't connect: later streams on this connection go in band. */
+    fun quicFailed() {}
 }
+
+/** A daemon to take video from over QUIC: the host the control link reached, and its certificate's pin. */
+data class QuicTarget(val host: String, val pin: String)
 
 class ConnectionLink(private val conn: DaemonConnection) : MediaLink {
     override suspend fun open(request: Hammock.OpenMedia): Hammock.MediaTicket = conn.call { setOpenMedia(request) }.mediaTicket
     override fun send(build: ClientMessage.Builder.() -> Unit) = conn.send(build)
     override fun setHandler(sessionID: String, handler: ((ServerMessage) -> Unit)?) {
         conn.setMediaHandler(sessionID, handler)
+    }
+    override val quic: QuicTarget?
+        get() {
+            if (synchronized(noQuic) { noQuic[conn] } == true) return null
+            val address = conn.connectedAddress ?: return null
+            val pin = conn.certSHA256 ?: return null
+            return QuicTarget(hostOf(address), pin)
+        }
+    override fun quicFailed() { synchronized(noQuic) { noQuic[conn] = true } }
+
+    companion object {
+        /** Connections whose QUIC failed (UDP blocked on the way): their video goes in band. */
+        private val noQuic = java.util.WeakHashMap<DaemonConnection, Boolean>()
+
+        /** The host of "host:port", "[v6]:port" or a bare host. */
+        fun hostOf(address: String): String = when {
+            address.startsWith("[") && address.contains("]") -> address.substring(1, address.indexOf(']'))
+            address.count { it == ':' } == 1 -> address.substringBefore(':')
+            else -> address
+        }
     }
 }
 
@@ -120,7 +148,9 @@ class VideoStream(
     @Volatile var sessionID = ""
         private set
     private var started = false
-    private var stopped = false
+    @Volatile private var stopped = false
+    /** The session's QUIC, once connected (null in band). */
+    @Volatile private var quic: QuicSession? = null
     private val order = FrameOrder(clock)
     private var output: DecoderFactory? = null
     private var decoder: VideoDecoder? = null
@@ -139,9 +169,14 @@ class VideoStream(
 
     fun start() {
         post { started = true }
+        // Over QUIC when the link can (remote, and not a linked computer's
+        // screen, which comes through it), screens as datagrams; else in band.
+        val target = if (!request.inBand && request.computerId.isEmpty()) link.quic else null
+        val req = if (target == null) request.toBuilder().setInBand(true).build()
+        else request.toBuilder().setInBand(false).setDatagrams(request.screen).build()
         scope.launch {
             val t = try {
-                link.open(request)
+                link.open(req)
             } catch (e: Exception) {
                 fail(e.message ?: "The video couldn't start.")
                 return@launch
@@ -156,8 +191,44 @@ class VideoStream(
                 link.setHandler(sid) { msg -> message(sid, msg) }
                 sendView()
                 sendPage()
+                if (target != null) startQuic(target, t, req.datagrams)
             }
         }
+    }
+
+    /**
+     * Takes the session's frames over QUIC on a thread of its own (each
+     * acked by the transport as it comes). Connecting failing turns QUIC off
+     * for the connection, and the next stream goes in band.
+     */
+    private fun startQuic(target: QuicTarget, t: Hammock.MediaTicket, datagrams: Boolean) {
+        val sid = t.sessionId
+        Thread({
+            val q = try {
+                link.dialer.open(target.host, t.quicPort, target.pin, t.ticket.toByteArray(), datagrams)
+            } catch (e: Exception) {
+                link.quicFailed()
+                fail("No video over QUIC (${e.message}): in band from now on.")
+                return@Thread
+            }
+            quic = q
+            if (stopped) {
+                q.close()
+                return@Thread
+            }
+            log("$paneID $sid: over QUIC" + if (datagrams) " (datagrams)" else "")
+            while (!stopped) {
+                val rec = try {
+                    q.next(500)
+                } catch (e: Exception) {
+                    if (!stopped) fail(e.message ?: "The video stopped.")
+                    break
+                } ?: continue
+                val f = parseRecord(rec) ?: continue
+                post { received(f) }
+            }
+            q.close()
+        }, "hammock-quic").apply { isDaemon = true }.start()
     }
 
     /** Work for the stream's thread; dropped once it's stopped (a late reply, a decoder's error, a view moving). */
@@ -169,6 +240,7 @@ class VideoStream(
         post {
             if (stopped) return@post
             stopped = true
+            quic?.close()
             decoder?.release()
             decoder = null
             val sid = sessionID
@@ -362,7 +434,7 @@ class VideoStream(
         if (sid.isEmpty() || stopped) return
         lastKeyRequest = now
         log("$paneID $sid: keyframe requested ($why)")
-        link.send { setMediaAck(Hammock.MediaAck.newBuilder().setSessionId(sid).setKeyframe(true)) }
+        quic?.keyframe() ?: link.send { setMediaAck(Hammock.MediaAck.newBuilder().setSessionId(sid).setKeyframe(true)) }
     }
 
     private fun fail(reason: String) {
@@ -374,7 +446,7 @@ class VideoStream(
     companion object {
         /** A browser or simulator pane's video. maxPixels: at most this many (0: the pane's own size). */
         fun pane(link: MediaLink, paneID: String, maxPixels: Int = 0): VideoStream =
-            VideoStream(link, Hammock.OpenMedia.newBuilder().setPaneId(paneID).setInBand(true).setMaxPixels(maxPixels).build())
+            VideoStream(link, Hammock.OpenMedia.newBuilder().setPaneId(paneID).setMaxPixels(maxPixels).build())
 
         /**
          * A display's video (0: the main one) on the computer named ("" for
@@ -384,8 +456,31 @@ class VideoStream(
         fun screen(link: MediaLink, display: Int, computerID: String, maxPixels: Int, maxFPS: Int = 0, background: Boolean = false): VideoStream =
             VideoStream(
                 link,
-                Hammock.OpenMedia.newBuilder().setScreen(true).setDisplayId(display).setComputerId(computerID).setInBand(true)
+                Hammock.OpenMedia.newBuilder().setScreen(true).setDisplayId(display).setComputerId(computerID)
                     .setMaxPixels(maxPixels).setMaxFps(maxFPS).setBackground(background).build(),
             )
     }
+}
+
+/**
+ * A frame record as QUIC carries it (docs/internals/remote-media.md): u32
+ * seq, u8 flags (1 keyframe, 2 refresh, 4 HEVC, 8 cropped), u64 pts, u16
+ * width, u16 height, the crop's four u16 fractions when cropped, then the
+ * picture (AVCC). Null if it's too short to be one.
+ */
+internal fun parseRecord(b: ByteArray): VideoFrame? {
+    if (b.size < 17) return null
+    val bb = java.nio.ByteBuffer.wrap(b)
+    val flags = b[4].toInt()
+    fun u16(at: Int) = bb.getShort(at).toInt() and 0xffff
+    var crop = Crop.WHOLE
+    var off = 17
+    if (flags and 8 != 0 && b.size >= 25) {
+        crop = Crop(u16(17) / 65535f, u16(19) / 65535f, u16(21) / 65535f, u16(23) / 65535f)
+        off = 25
+    }
+    return VideoFrame(
+        seq = bb.getInt(0).toLong() and 0xffffffffL, key = flags and 1 != 0, width = u16(13), height = u16(15),
+        data = b.copyOfRange(off, b.size), refresh = flags and 2 != 0, hevc = flags and 4 != 0, crop = crop,
+    )
 }

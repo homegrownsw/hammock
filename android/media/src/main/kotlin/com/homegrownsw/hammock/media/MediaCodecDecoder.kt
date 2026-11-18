@@ -139,7 +139,9 @@ class MediaCodecDecoder private constructor(
             }
         }
 
-        private fun format(c: VideoConfig): MediaFormat = MediaFormat.createVideoFormat(MIME, c.width, c.height).apply {
+        // Even: some decoders (the emulator's among them) refuse an odd size, and
+        // it's only a hint, the stream's own parameter sets say the real one.
+        private fun format(c: VideoConfig): MediaFormat = MediaFormat.createVideoFormat(MIME, (c.width + 1) and 1.inv(), (c.height + 1) and 1.inv()).apply {
             setByteBuffer("csd-0", ByteBuffer.wrap(c.sets.csd0))
             setByteBuffer("csd-1", ByteBuffer.wrap(c.sets.csd1))
             // A keyframe of a busy screen can be big: room for an uncompressed picture.

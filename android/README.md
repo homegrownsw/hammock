@@ -12,9 +12,10 @@ just android-test     # JVM tests and lint
 ```
 
 It needs a JDK 17 or later (`JAVA_HOME`, else Android Studio's), the Android SDK (`ANDROID_HOME`, else
-`~/Library/Android/sdk`) with NDK 27.1, and Zig (as the rest of Hammock does). libghostty-vt is built once
-per pinned Ghostty commit into the cache every checkout shares (`scripts/android-vt.sh`), as the Linux
-builds are. A debug build is `com.homegrownsw.hammock.dev`, so it sits beside a release build.
+`~/Library/Android/sdk`) with NDK 27.1, Zig and Go (as the rest of Hammock does). libghostty-vt is built
+once per pinned Ghostty commit into the cache every checkout shares (`scripts/android-vt.sh`), as the Linux
+builds are. libhmkquic.so, the video's QUIC (the daemon's own quic-go: `cmd/hmkquic`, `internal/mediaview`),
+is built by `:media`'s Gradle task (`scripts/android-quic.sh`). A debug build is `com.homegrownsw.hammock.dev`, so it sits beside a release build.
 
 ## Modules
 
@@ -25,7 +26,7 @@ builds are. A debug build is `com.homegrownsw.hammock.dev`, so it sits beside a 
 | `:terminal` | libghostty-vt through JNI, a GLES 3 renderer, and input (the keyboard, IME, the accessory bar). |
 | `:agentview` | The agent view: the conversation, prompt cards and the composer. |
 | `:panes` | Editor and diff panes (the Mac's and iPhone's CodeMirror pages in a WebView) and log panes. |
-| `:media` | Browser, simulator and screen-sharing panes: the computer's H.264 video, in band on the WebSocket. |
+| `:media` | Browser, simulator and screen-sharing panes: the computer's H.264 video over QUIC (screens as datagrams), or in band on the WebSocket where UDP doesn't get through. |
 | `:app` | The app: pairing, Sessions, Groups, Devices, Settings, notifications, the Hammock Key, the demo. |
 
 ## Trying it against a daemon
@@ -70,5 +71,4 @@ commits, as the Apple apps' do. Its release notes are `release-notes/android/` (
 
 ## Not done yet
 
-Uploading to Play and freezing the notes (`scripts/release` releases the Apple apps alone), and video over
-QUIC (it goes in band for now).
+Uploading to Play and freezing the notes (`scripts/release` releases the Apple apps alone).

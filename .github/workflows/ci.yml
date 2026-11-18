@@ -53,8 +53,8 @@ jobs:
           cd apple && swift build
 
   android:
-    # The Android app: libghostty-vt for Android, the app's build, its JVM tests and lint. Linux, where
-    # the runners already have the Android SDK.
+    # The Android app: libghostty-vt and libhmkquic (Go: its QUIC video) for Android, the app's build, its
+    # JVM tests and lint. Linux, where the runners already have the Android SDK.
     runs-on: ubuntu-latest
     env:
       HMK_GHOSTTY_CACHE: ${{ github.workspace }}/../ghostty-cache
@@ -67,6 +67,9 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.1
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - name: NDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" >/dev/null
       - name: Cache libghostty-vt
@@ -79,4 +82,4 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test
         working-directory: android
-        run: ./gradlew :app:assembleDebug :client:test testDebugUnitTest lintDebug
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006" ./gradlew :app:assembleDebug :client:test testDebugUnitTest lintDebug

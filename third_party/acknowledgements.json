@@ -2,7 +2,7 @@
   "_": [
     "What `just acknowledgements` (internal/acknowledgements/gen) can't find in a lock file, and how it",
     "names what it does find. It finds by itself: the Go modules linked into hmk, hmkd and pane-holder (for",
-    "macOS and Linux), the Swift packages in apple/Package.resolved, the npm packages bundled into",
+    "macOS and Linux) and libhmkquic (for Android), the Swift packages in apple/Package.resolved, the npm packages bundled into",
     "apple/Resources/editor.html, the Maven artifacts in the Android app's release build (from Gradle), and the",
     "rows of THIRD_PARTY_NOTICES.md. Each Maven artifact goes in the component whose \"maven\" (group:artifact",
     "prefixes) matches it, and must match one; \"aarNotices\" adds the notices Google's AARs carry for what they",
@@ -199,8 +199,8 @@
       "version": "{go}",
       "url": "https://go.dev",
       "license": "BSD-3-Clause",
-      "apps": ["mac", "linux"],
-      "note": "The Go standard library and runtime, in hmk, hmkd and pane-holder.",
+      "apps": ["mac", "android", "linux"],
+      "note": "The Go standard library and runtime, in hmk, hmkd and pane-holder, and the Android app's QUIC video (libhmkquic).",
       "files": ["{goroot}/LICENSE|{goroot}/../LICENSE", "{goroot}/PATENTS|{goroot}/../PATENTS"]
     },
     {

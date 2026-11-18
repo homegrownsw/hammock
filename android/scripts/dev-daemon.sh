@@ -5,7 +5,8 @@
 # only), so this script (and an agent running it) can make its pairing codes.
 #
 #   android/scripts/dev-daemon.sh up [PORT]   start it; prints its state dir, and the pairing link on stderr
-#   android/scripts/dev-daemon.sh pair DIR    a fresh pairing link (single use, 10 minutes)
+#   android/scripts/dev-daemon.sh pair DIR [--emulator]   a fresh pairing link (single use, 10 minutes);
+#                                             --emulator: at 10.0.2.2, for video over QUIC (UDP) from an emulator
 #   android/scripts/dev-daemon.sh hmk DIR …   hmk against it
 #   android/scripts/dev-daemon.sh down DIR    stop it and delete its state
 #
@@ -26,6 +27,21 @@ use() {
 }
 
 link() { "$hmk" pair --json | jq -r .link; }
+
+# The link with 127.0.0.1 changed to 10.0.2.2, the emulator's name for this
+# Mac's loopback: UDP gets there (video over QUIC), where adb reverse is TCP
+# only. Needs protoc.
+emulator_link() {
+  local b64 pad
+  b64="$(link | sed 's|^hammock://pair/||' | tr '_-' '/+')"
+  pad=$(( (4 - ${#b64} % 4) % 4 ))
+  b64="$b64$(printf '%*s' "$pad" '' | tr ' ' '=')"
+  printf 'hammock://pair/%s\n' "$(printf '%s' "$b64" | base64 -d \
+    | protoc -I "$root/proto" --decode=hammock.v1.Pairing hammock/v1/hammock.proto \
+    | sed 's/"127\.0\.0\.1:/"10.0.2.2:/' \
+    | protoc -I "$root/proto" --encode=hammock.v1.Pairing hammock/v1/hammock.proto \
+    | base64 | tr -d '=\n' | tr '/+' '_-')"
+}
 
 case "${1:-}" in
 up)
@@ -52,7 +68,7 @@ up)
   ;;
 pair)
   use "${2:-}"
-  link
+  if [ "${3:-}" = --emulator ]; then emulator_link; else link; fi
   ;;
 hmk)
   use "${2:-}"
@@ -67,7 +83,7 @@ down)
   rm -rf "$2"
   ;;
 *)
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
   ;;
 esac

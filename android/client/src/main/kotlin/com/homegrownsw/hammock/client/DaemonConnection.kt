@@ -114,6 +114,9 @@ class DaemonConnection private constructor(
     @Volatile var connectedAddress: String? = null
         private set
 
+    /** The pin of the computer's certificate (hex SHA-256 of its DER); null for a stand-in. */
+    val certSHA256: String? get() = pin
+
     private class Dial {
         val attempts = HashMap<WebSocket, String>()
         var scheduled = 0

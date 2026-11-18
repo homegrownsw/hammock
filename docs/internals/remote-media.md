@@ -8,6 +8,7 @@ How simulator and browser panes reach a remote viewer (the iPhone, or a guest's 
 - [`internal/daemon/peermedia.go`](../../internal/daemon/peermedia.go): a guest's daemon relaying a host's video to its app.
 - [`helpers/media/encoder.m`](../../helpers/media/encoder.m) (`HammockEncoder`): VideoToolbox encoding, shared by the helpers.
 - [`apple/Sources/HammockKit/MediaStream.swift`](../../apple/Sources/HammockKit/MediaStream.swift): the viewer.
+- [`internal/mediaview`](../../internal/mediaview/viewer.go): the viewer's end in Go (streams, and datagrams put back together), the Android app's through [`cmd/hmkquic`](../../cmd/hmkquic/main.go) (`libhmkquic.so`, JNI), where QUIC failing to connect sends that connection's later video in band.
 
 ## The path
 

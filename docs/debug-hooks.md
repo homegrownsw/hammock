@@ -123,7 +123,11 @@ cp -R "dist/Hammock β <branch>.app" "$app" && codesign --force --deep -s - "$ap
 HMK_DIR=$dir "$app/Contents/MacOS/hmkd" --dir "$dir" --remote --remote-listen 127.0.0.1:7498 --dev-pairing &
 open -n --env HMK_DIR="$dir" "$app"          # after the daemon, so it uses that one
 adb reverse tcp:7498 tcp:7498
-HMK_DIR=$dir "$app/Contents/Helpers/hmk" pair --json | jq -r .link   # then --es pair, above
+HMK_DIR=$dir "$app/Contents/Helpers/hmk" pair --json 
+From an emulator, pair with `android/scripts/dev-daemon.sh pair "$dir" --emulator` instead (no `adb reverse`): its
+link names `10.0.2.2`, the emulator's way to this Mac's loopback, which UDP reaches too, so video comes over QUIC.
+Over `adb reverse` (TCP only) QUIC can't connect, and the video falls back to in band after a few seconds.
+| jq -r .link   # then --es pair, above
 ```
 
 Unset a pane's `HMK_SOCKET` first. Against that `HMK_DIR`, `hmk group new NAME`, then `hmk browser URL` or `hmk sim DEVICE`, opens a pane to watch

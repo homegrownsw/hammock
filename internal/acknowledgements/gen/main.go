@@ -7,7 +7,8 @@
 // Gradle's cache: android/README.md), as `just android` does:
 //
 //   - Go modules: those linked into ./cmd/... (hmk, hmkd, pane-holder) for
-//     macOS (the Mac app) and Linux (the tarballs), from `go list -deps`.
+//     macOS (the Mac app) and Linux (the tarballs), and into cmd/hmkquic for
+//     Android (the app's QUIC video), from `go list -deps`.
 //   - Swift packages: apple/Package.resolved's pins, from their checkouts.
 //   - npm packages: those esbuild bundles into apple/Resources/editor.html and diff.html
 //     (in the Mac, iPhone and Android apps).
@@ -238,15 +239,16 @@ func variables(root string) (map[string]string, error) {
 
 // MARK: Go
 
-// goModules lists the modules linked into ./cmd/... for macOS and Linux.
+// goModules lists the modules linked into ./cmd/... for macOS and Linux, and
+// into cmd/hmkquic (the Android app's QUIC video) for Android.
 func goModules(root string) ([]pkg, error) {
 	type mod struct{ path, version, dir string }
 	found := map[string]*mod{}
 	apps := map[string][]string{}
-	for _, target := range []struct{ goos, app string }{{"darwin", "mac"}, {"linux", "linux"}} {
+	for _, target := range []struct{ goos, app, pkgs string }{{"darwin", "mac", "./cmd/..."}, {"linux", "linux", "./cmd/..."}, {"android", "android", "./cmd/hmkquic"}} {
 		out, err := output(root, []string{"GOOS=" + target.goos, "GOARCH=arm64", "CGO_ENABLED=1"},
 			"go", "list", "-deps", "-tags", "ghostty",
-			"-f", "{{with .Module}}{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}", "./cmd/...")
+			"-f", "{{with .Module}}{{if not .Main}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}", target.pkgs)
 		if err != nil {
 			return nil, err
 		}
