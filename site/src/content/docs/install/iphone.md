@@ -8,8 +8,9 @@ later**, and pairs with your own computer directly, with no account.
 
 ## Get the app
 
-The iPhone app is in beta on **TestFlight**. Install TestFlight from the App Store, then Hammock from your
-TestFlight invitation.
+The iPhone app is in beta on **TestFlight**, open to anyone: on your iPhone, open
+[the public TestFlight link](https://testflight.apple.com/join/sxdESS64), install TestFlight from the App Store if
+it asks, then install Hammock.
 
 ## Pair with your Mac
 
