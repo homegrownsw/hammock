@@ -294,6 +294,11 @@ enum PaneLook {
     /// focused one's border (when on) takes the place of.
     static let outlineWidth: CGFloat = 1
     static func outlineColor(dark: Bool) -> Color { Color.primary.opacity(dark ? 0.16 : 0.2) }
+    /// How far inside its shape a pane's content is clipped: spacious, half
+    /// the outline, so the content's soft edge is under the outline. Clipped
+    /// to the shape itself, the content's edge pixels on the corners'
+    /// curves showed through the translucent outline, outside it.
+    static var contentInset: CGFloat { spacious ? outlineWidth / 2 : 0 }
 
     /// The fade for focus moving: border and dimming.
     static let fade = Animation.easeInOut(duration: 0.16)

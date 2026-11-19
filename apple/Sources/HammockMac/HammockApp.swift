@@ -896,20 +896,66 @@ extension View {
     }
 }
 
-/// Liquid Glass as AppKit draws behind the sidebar column on macOS 26: an
-/// NSGlassEffectView in the sidebar's own variant, which isn't public. Set
-/// only if AppKit still has it; otherwise plain glass, a shade off.
+/// Liquid Glass as AppKit draws behind the sidebar column: an
+/// NSGlassEffectView in the sidebar's own variant, which isn't public and
+/// changes between releases (17 on macOS 26, 18 on 27.2), so it's copied
+/// from the sidebar column's own glass once in the window, and again as the
+/// window becomes or stops being key. Until then (or if AppKit has none),
+/// macOS 26's.
 struct ColumnGlass: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSGlassEffectView {
-        let v = NSGlassEffectView()
-        v.cornerRadius = 0
-        for (key, value) in [("_variant", 17), ("_adaptiveAppearance", 1)] where v.responds(to: NSSelectorFromString(key)) {
-            v.setValue(value, forKey: key)
-        }
-        return v
-    }
-
+    func makeNSView(context: Context) -> NSGlassEffectView { MatchedGlass() }
     func updateNSView(_ v: NSGlassEffectView, context: Context) {}
+
+    final class MatchedGlass: NSGlassEffectView {
+        /// The sidebar glass's private state that decides how it looks.
+        private static let keys = ["_variant", "_subvariant", "_subduedState", "_scrimState", "_contentLensing", "_adaptiveAppearance", "_tintOpacityReduced"]
+        private var observers: [NSObjectProtocol] = []
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            cornerRadius = 0
+            for (key, value) in [("_variant", 17), ("_adaptiveAppearance", 1)] where responds(to: NSSelectorFromString(key)) {
+                setValue(value, forKey: key)
+            }
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification, NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.match() }
+                })
+            }
+            match()
+            // The sidebar column comes with SwiftUI's first passes, after this.
+            DispatchQueue.main.async { [weak self] in self?.match() }
+        }
+
+        /// AppKit's glass behind the sidebar column: the one an NSSplitView
+        /// item's wrapper holds directly, other than this.
+        private func sidebarGlass() -> NSGlassEffectView? {
+            func find(_ v: NSView) -> NSGlassEffectView? {
+                if let g = v as? NSGlassEffectView, !(g is MatchedGlass), v.superview?.superview is NSSplitView { return g }
+                for s in v.subviews { if let g = find(s) { return g } }
+                return nil
+            }
+            return window?.contentView?.superview.flatMap(find)
+        }
+
+        private func match() {
+            guard let source = sidebarGlass() else { return }
+            for key in Self.keys where source.responds(to: NSSelectorFromString(key)) && responds(to: NSSelectorFromString("set\(key):")) {
+                // nil only for an object (_subvariant): a scalar set to nil throws.
+                guard let wanted = source.value(forKey: key) else { continue }
+                if (wanted as AnyObject).isEqual(value(forKey: key)) != true { setValue(wanted, forKey: key) }
+            }
+        }
+    }
 }
 
 /// The hairline AppKit draws between a split view's sidebar and its detail

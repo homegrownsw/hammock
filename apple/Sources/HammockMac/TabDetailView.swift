@@ -176,7 +176,7 @@ struct LayoutView: View {
     private func tile(_ t: PanePlan.Tile, in area: CGRect) -> some View {
         let shape = shape(at: t.clip, in: area)
         return PaneView(model: model, paneID: t.id, isFocused: t.id == focusedPaneID)
-            .clipShape(shape)
+            .clipShape(shape.inset(by: PaneLook.contentInset))
             .modifier(PaneFocusLook(isFocused: t.id == focusedPaneID, among: sharesTab(t.id), shape: shape))
             .environment(\.paneFolded, t.folded)
             .allowsHitTesting(!t.folded)
@@ -186,7 +186,7 @@ struct LayoutView: View {
             .frame(width: t.rect.width, height: t.rect.height)
             .offset(x: t.rect.minX - t.clip.minX, y: t.rect.minY - t.clip.minY)
             .frame(width: t.clip.width, height: t.clip.height, alignment: .topLeading)
-            .clipShape(shape)
+            .clipShape(shape.inset(by: PaneLook.contentInset))
             .offset(x: t.clip.minX, y: t.clip.minY)
             // Opened or closed, it grows from or shrinks to no size at its
             // neighbour's edge (OpenCloseMotion); floated or docked, its card

@@ -297,7 +297,12 @@ enum DebugSnapshot {
                     lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height)\(extra)")
                 }
                 if let g = v as? NSGlassEffectView {
-                    lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height) style=\(g.style.rawValue) radius=\(g.cornerRadius)")
+                    // Its private state too, to match ColumnGlass to the sidebar's.
+                    let state = ["_variant", "_subvariant", "_subduedState", "_scrimState", "_contentLensing", "_adaptiveAppearance", "_tintOpacityReduced",
+                                 "_groupIdentifier", "_backdropGroupName", "tintColor"]
+                        .filter { g.responds(to: NSSelectorFromString($0)) }
+                        .map { "\($0)=\(g.value(forKey: $0).map { "\($0)" } ?? "nil")" }.joined(separator: " ")
+                    lines.append(String(repeating: "  ", count: depth) + "\(cls) x=\(r.minX) w=\(r.width) y=\(r.minY) h=\(r.height) style=\(g.style.rawValue) radius=\(g.cornerRadius) key=\(window.isKeyWindow) \(state)")
                 }
                 // The glass: which material where, blending with what.
                 if let e = v as? NSVisualEffectView {

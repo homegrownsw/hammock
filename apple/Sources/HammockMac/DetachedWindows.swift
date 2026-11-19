@@ -399,7 +399,7 @@ private struct DetachedPane: View {
             let area = CGRect(origin: .zero, size: geo.size)
             let shape = PaneLook.shape(at: area, in: area, sidebarHidden: true)
             PaneView(model: model, paneID: paneID, isFocused: true)
-                .clipShape(shape)
+                .clipShape(shape.inset(by: PaneLook.contentInset))
                 .overlay {
                     if PaneLook.spacious {
                         shape.strokeBorder(PaneLook.outlineColor(dark: colorScheme == .dark), lineWidth: PaneLook.outlineWidth)
