@@ -38,6 +38,16 @@ exit 0
 EOF
 chmod +x "$tmp/ios-testflight"
 export HMK_RELEASE_IOS_TESTFLIGHT="$tmp/ios-testflight"
+# And for scripts/android-apk, as "android <step> <n>": FAKE_ANDROID_BUILD_FAIL=1 fails a build, and the
+# notes it was given go to $tmp/android-notes.html.
+cat >"$tmp/android-apk" <<EOF
+#!/usr/bin/env bash
+echo "android \$1 \$2" >>"$tmp/mac-update.log"
+if [ "\$1" = build ]; then cp "\$3" "$tmp/android-notes.html"; [ "\${FAKE_ANDROID_BUILD_FAIL:-}" != 1 ] || exit 1; fi
+exit 0
+EOF
+chmod +x "$tmp/android-apk"
+export HMK_RELEASE_ANDROID_APK="$tmp/android-apk"
 # And for scripts/site-deploy, into a log of its own: FAKE_SITE_FAIL=1 fails it.
 cat >"$tmp/site-deploy" <<EOF
 #!/usr/bin/env bash
@@ -69,13 +79,13 @@ contains() { if printf '%s' "$2" | grep -qF -- "$1"; then echo yes; else echo no
 # each app (one for people to read, one INTERNAL).
 fixture() { # fixture <version> [ios version]
   local dir="$tmp/repo-$RANDOM$RANDOM"
-  mkdir -p "$dir"/{scripts/lib,apple/iOS/Config,release-notes/mac/pending,release-notes/ios/pending}
+  mkdir -p "$dir"/{scripts/lib,apple/iOS/Config,marketing,release-notes/mac/pending,release-notes/ios/pending,release-notes/android/pending}
   cp "$REPO"/scripts/{release,release-review,note,note-check,version,commit-number} "$dir/scripts/"
   echo 0 >"$dir/scripts/history-commits"
   cp "$REPO/scripts/lib/release-notes.sh" "$dir/scripts/lib/"
-  printf 'HAMMOCK_MAC_VERSION = %s\nHAMMOCK_IOS_VERSION = %s\nCURRENT_PROJECT_VERSION = 0\n' "$1" "${2:-$1}" \
+  printf 'HAMMOCK_MAC_VERSION = %s\nHAMMOCK_IOS_VERSION = %s\nHAMMOCK_ANDROID_VERSION = %s\nCURRENT_PROJECT_VERSION = 0\n' "$1" "${2:-$1}" "${3:-$1}" \
     >"$dir/apple/iOS/Config/Version.xcconfig"
-  for p in mac ios; do
+  for p in mac ios android; do
     printf 'tag: FIXED\ndate: 2026-11-01\nA <thing> & more works now.\n' >"$dir/release-notes/$p/pending/1-a-thing.md"
     printf 'tag: NEW\ndate: 2026-11-01\nA new thing.\n' >"$dir/release-notes/$p/pending/new-thing.md"
     printf 'tag: INTERNAL\ndate: 2026-11-01\nPlumbing.\n' >"$dir/release-notes/$p/pending/plumbing.md"
@@ -192,7 +202,7 @@ d=$(fixture 0.4.0)
 mark_released "$d" Mac 0.4.0
 mark_released "$d" iOS 0.4.0
 check "joint: from 0.x to this year's first" "release: v2026.1.0" "$(dry apple next)"
-check "just version shows both" "Mac: 0.4.0|iOS: 0.4.0" "$( (cd "$d" && ./scripts/version) | tr '\n' '|' | sed 's/|$//')"
+check "just version shows each app" "Mac: 0.4.0|iOS: 0.4.0|Android: 0.4.0" "$( (cd "$d" && ./scripts/version) | tr '\n' '|' | sed 's/|$//')"
 (cd "$d" && ./scripts/version ios 2026.1.0 >/dev/null)
 check "just version sets one" "0.4.0 2026.1.0" "$(sed -nE 's/^HAMMOCK_(MAC|IOS)_VERSION = (.*)/\2/p' "$d/apple/iOS/Config/Version.xcconfig" | tr '\n' ' ' | sed 's/ $//')"
 
@@ -428,6 +438,30 @@ d=$(fixture 2026.1.0)
 check "approved with no reading first is refused" fails "$(agent mac next approved >/dev/null && echo passes || echo fails)"
 check "a run outside a pane and a terminal (CI) just releases" "2" "$( (cd "$d" && ./scripts/release mac next </dev/null >/dev/null 2>&1); count "$d.remote" main)"
 calls >/dev/null
+
+echo "android:"
+d=$(fixture 2026.1.0 2026.1.0 2026.5.0)
+release "$d" android next
+check "tagged, at its own version (in the file, not yet released)" "Android-v2026.5.0-r2" "$(remote_tags "$d")"
+check "built, then published after the push" "android build 2
+android upload 2" "$(calls)"
+check "the notes it publishes leave INTERNAL out" "no yes" \
+  "$(contains Plumbing "$(cat "$tmp/android-notes.html")") $(contains 'A new thing.' "$(cat "$tmp/android-notes.html")")"
+check "its update feed, in the release commit" \
+  '2026.5.0 2 https://github.com/homegrownsw/hammock/releases/download/Android-v2026.5.0-r2/Hammock-2026.5.0.apk' \
+  "$(git -C "$d" show HEAD:marketing/android.json | jq -r '"\(.version) \(.build) \(.apk)"')"
+check "the Mac's and iPhone's versions and notes are left alone" "2026.1.0 2026.1.0 3 3" \
+  "$(ver "$d" MAC) $(ver "$d" IOS) $(ls "$d/release-notes/mac/pending" | wc -l | tr -d ' ') $(ls "$d/release-notes/ios/pending" | wc -l | tr -d ' ')"
+check "the Android notes move under the version" "3" "$(ls "$d/release-notes/android/v2026.5.0" | wc -l | tr -d ' ')"
+check "a version released already isn't again" fails "$(release "$d" android 2026.5.0 allow-empty && echo passes || echo fails)"
+release "$d" android next allow-empty
+check "the next is a patch" "Android-v2026.5.1-r3" "$(git -C "$d" describe --tags --abbrev=0 HEAD)"
+calls >/dev/null
+d=$(fixture 2026.1.0 2026.1.0 2026.5.0)
+check "a build that fails" fails "$(FAKE_ANDROID_BUILD_FAIL=1 release "$d" android next && echo passes || echo fails)"
+check "…takes the release back" "1 " "$(count "$d") $(git -C "$d" tag -l | tr '\n' ' ' | sed 's/ $//')"
+check "…and discards what it built" "android build 2
+android discard 2" "$(calls)"
 
 echo "preflight:"
 d=$(fixture 2026.1.0)

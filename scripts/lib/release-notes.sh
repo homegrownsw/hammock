@@ -14,7 +14,7 @@
 # The platforms with notes, and the name each goes by in tags, commits and summaries.
 PLATFORMS_ALL="mac ios"
 # Every app with notes: the Android app's are written and checked like the others', and released on their own
-# (android/README.md), not by scripts/release yet.
+# (scripts/release android), not in the joint release.
 NOTE_PLATFORMS="mac ios android"
 label() { case "$1" in mac) echo Mac ;; ios) echo iOS ;; android) echo Android ;; esac; }
 

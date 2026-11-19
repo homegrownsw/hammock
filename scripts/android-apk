@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# The Android app's releases, for scripts/release (release-notes/README.md): an APK on a GitHub Release.
+#
+#   scripts/android-apk build <n> <notes.html>   build the Android app at HEAD (build number n, which must be
+#                                                HEAD's number on main, tagged Android-v<x.y.z>-r<n>), signed
+#                                                for release, to dist/android/Hammock-<x.y.z>.apk
+#   scripts/android-apk upload <n>               publish it as the tag's GitHub Release, with the notes
+#   scripts/android-apk discard <n>              forget a build n that was made but never published
+#
+# The build number is the release's r<n>, main's commit count, as for the Apple apps: Android only installs
+# an update whose versionCode is higher, and the count only goes up. Release builds and checks before the
+# push (the APK's version, and that it's signed with Hammock's key: CERT_SHA256), and uploads after it.
+#
+# Signing and Firebase come from the environment, as scripts/release reads them from 1Password:
+# HMK_ANDROID_KEYSTORE, HMK_ANDROID_KEYSTORE_PASSWORD, HMK_ANDROID_KEY_ALIAS and HMK_ANDROID_FIREBASE_JSON
+# (android/app/build.gradle.kts). A release without Firebase would have no notifications, so it's required.
+#
+# An Android release is never GitHub's Latest: the Mac's update feed and download follow Latest
+# (scripts/mac-update). The app finds its updates at homegrownsw.com/hammock/android.json instead, which the
+# release commit writes (marketing/android.json) and the website deploy publishes.
+set -euo pipefail
+shopt -s nullglob
+root="$(cd "$(dirname "$0")/.." && pwd)"
+[ ! -f "$root/.release.env" ] || { set -a; . "$root/.release.env"; set +a; }
+repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
+out="$root/dist/android"
+# The SHA-256 of the certificate that signs every release (the key HMK_ANDROID_KEY_ITEM names). Android
+# refuses an update signed with another, so a build signed with anything else is stopped here.
+CERT_SHA256="3e004932943b43d6389483e921f1b9fb9c7ff37d03f624124dad0db9ce99671b"
+
+cmd="${1:-}"
+n="${2:-}"
+[[ "$n" =~ ^[0-9]+$ ]] || { echo "usage: scripts/android-apk build <n> <notes.html> | upload <n> | discard <n>" >&2; exit 2; }
+
+# Release n's tag, made by scripts/release before build runs.
+release_tag() {
+  local t
+  t="$(git -C "$root" tag --list "Android-v*-r$n")"
+  [ -n "$t" ] && [ "$(wc -l <<<"$t")" -eq 1 ] || { echo "No single Android-v*-r$n tag (found: ${t:-none})." >&2; exit 1; }
+  echo "$t"
+}
+version_of() { sed -E 's/^Android-v(.*)-r[0-9]+$/\1/' <<<"$1"; }
+build_tools() { { ls -d "${ANDROID_HOME:-$HOME/Library/Android/sdk}"/build-tools/* 2>/dev/null || true; } | sort -V | tail -1; }
+
+case "$cmd" in
+  build)
+    notes="${3:?the notes, as HTML}"
+    [ "$("$root/scripts/commit-number" "$root")" = "$n" ] ||
+      { echo "HEAD is commit $("$root/scripts/commit-number" "$root") on main, not $n." >&2; exit 1; }
+    tag="$(release_tag)"
+    version="$(sed -nE 's/^HAMMOCK_ANDROID_VERSION = ([^ ]+).*$/\1/p' "$root/apple/iOS/Config/Version.xcconfig")"
+    [ "$tag" = "Android-v${version}-r${n}" ] ||
+      { echo "$tag doesn't match the Android app's version, $version." >&2; exit 1; }
+    for v in HMK_ANDROID_KEYSTORE HMK_ANDROID_KEYSTORE_PASSWORD HMK_ANDROID_FIREBASE_JSON; do
+      [ -n "${!v:-}" ] || { echo "$v isn't set (scripts/release reads it from 1Password)." >&2; exit 1; }
+    done
+    ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1 || { echo "$tag is already released." >&2; exit 1; }
+
+    (cd "$root" && ./scripts/android-vt.sh)
+    # shellcheck source=/dev/null
+    . "$root/android/scripts/java.sh"
+    export PATH="$JAVA_HOME/bin:$PATH" # (apksigner runs on the java it finds first)
+    rm -f "$root/android/app/build/outputs/apk/release/"*.apk
+    (cd "$root/android" && ./gradlew --quiet :app:assembleRelease)
+    apk="$root/android/app/build/outputs/apk/release/app-release.apk"
+    [ -f "$apk" ] || { echo "No signed APK: is the key set? (an unsigned build is app-release-unsigned.apk)" >&2; exit 1; }
+
+    bt="$(build_tools)"
+    [ -n "$bt" ] || { echo "No Android build-tools to check the APK with." >&2; exit 1; }
+    # What Android will see: the version, and the certificate (an update with another is refused).
+    badging="$("$bt/aapt2" dump badging "$apk" | sed -n 1p)" # (sed, not head: head closing the pipe fails it)
+    grep -q "versionCode='$n'" <<<"$badging" || { echo "The APK's versionCode isn't $n: $badging" >&2; exit 1; }
+    grep -q "versionName='$version'" <<<"$badging" || { echo "The APK's versionName isn't $version: $badging" >&2; exit 1; }
+    cert="$("$bt/apksigner" verify --print-certs "$apk" | sed -nE 's/^Signer #1 certificate SHA-256 digest: //p')"
+    [ "$cert" = "$CERT_SHA256" ] ||
+      { echo "The APK is signed with ${cert:-nothing}, not Hammock's key ($CERT_SHA256)." >&2; exit 1; }
+
+    mkdir -p "$out"
+    cp "$apk" "$out/Hammock-$version.apk"
+    cp "$notes" "$out/Hammock-$n.html"
+    echo "$version" >"$out/Hammock-$n.version" # (for discard, once the tag is gone)
+    echo "Hammock for Android $version (build $n): $out/Hammock-$version.apk"
+    ;;
+  upload)
+    tag="$(release_tag)"
+    version="$(version_of "$tag")"
+    apk="$out/Hammock-$version.apk"
+    [ -f "$apk" ] && [ -f "$out/Hammock-$n.html" ] || { echo "Build $n isn't in $out: build it first." >&2; exit 1; }
+    # A draft until the APK is up, then published, never as Latest (above). Again after a failed upload: the
+    # draft is still there, and its file is replaced.
+    if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+      gh release upload "$tag" --repo "$repo" --clobber "$apk"
+    else
+      gh release create "$tag" --repo "$repo" --verify-tag --draft --latest=false \
+        --title "Hammock for Android $version (build $n)" --notes-file "$out/Hammock-$n.html" "$apk"
+    fi
+    gh release edit "$tag" --repo "$repo" --draft=false --latest=false
+    echo "Hammock for Android build $n: https://github.com/$repo/releases/tag/$tag"
+    ;;
+  discard)
+    if [ -f "$out/Hammock-$n.version" ]; then rm -f "$out/Hammock-$(cat "$out/Hammock-$n.version").apk"; fi
+    rm -f "$out/Hammock-$n.html" "$out/Hammock-$n.version"
+    ;;
+  *) echo "usage: scripts/android-apk build <n> <notes.html> | upload <n> | discard <n>" >&2; exit 2 ;;
+esac

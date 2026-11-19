@@ -18,10 +18,19 @@ val buildNumber: Int = runCatching {
     p.inputStream.bufferedReader().readText().trim().toInt() + 831
 }.getOrDefault(1)
 
-// Release signing: android/keystore.properties (git-ignored), naming the upload
-// key's keystore and passwords (android/README.md). Without it a release build
-// is unsigned.
-val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { f ->
+// Release signing: HMK_ANDROID_KEYSTORE, _KEYSTORE_PASSWORD and _KEY_ALIAS (what
+// scripts/release passes, from 1Password), else android/keystore.properties
+// (git-ignored), naming the keystore and its passwords (android/README.md).
+// Without either a release build is unsigned.
+val keystoreProps: Properties? = System.getenv("HMK_ANDROID_KEYSTORE")?.let { path ->
+    val pw = System.getenv("HMK_ANDROID_KEYSTORE_PASSWORD") ?: throw GradleException("HMK_ANDROID_KEYSTORE_PASSWORD isn't set")
+    Properties().apply {
+        setProperty("storeFile", path)
+        setProperty("storePassword", pw)
+        setProperty("keyAlias", System.getenv("HMK_ANDROID_KEY_ALIAS") ?: "hammock")
+        setProperty("keyPassword", pw)
+    }
+} ?: rootProject.file("keystore.properties").takeIf { it.exists() }?.let { f ->
     Properties().apply { f.inputStream().use { load(it) } }
 }
 
@@ -67,7 +76,7 @@ android {
 
     signingConfigs {
         if (keystoreProps != null) create("release") {
-            storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+            storeFile = rootProject.file(keystoreProps.getProperty("storeFile")) // (an absolute path stays as it is)
             storePassword = keystoreProps.getProperty("storePassword")
             keyAlias = keystoreProps.getProperty("keyAlias")
             keyPassword = keystoreProps.getProperty("keyPassword")
@@ -83,7 +92,8 @@ android {
         }
         release {
             if (keystoreProps != null) signingConfig = signingConfigs.getByName("release")
-            fcm(this, "google-services.json", "com.homegrownsw.hammock")
+            // HMK_ANDROID_FIREBASE_JSON: the release's, from 1Password (scripts/release).
+            fcm(this, System.getenv("HMK_ANDROID_FIREBASE_JSON") ?: "google-services.json", "com.homegrownsw.hammock")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

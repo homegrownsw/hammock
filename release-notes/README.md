@@ -2,11 +2,11 @@
 
 One small file per change, for each app it reaches. When a release is cut, an app's pending notes are
 frozen into it: on the Mac they become the notes in Sparkle's update window (embedded in the appcast on
-the update server), on iOS TestFlight's "What to Test". This follows the release
-machinery of the owner's other apps; the TUI will get notes of its own later.
+the update server), on iOS TestFlight's "What to Test", on Android its GitHub Release's notes. This follows
+the release machinery of the owner's other apps; the TUI will get notes of its own later.
 
 ```
-release-notes/mac/        and the same for release-notes/ios/
+release-notes/mac/        and the same for release-notes/ios/ and release-notes/android/
   pending/        one file per change not yet in a release
   v<x.y.z>/       the notes frozen into releases of that version
   v<x.y.z>.md     the version's summary, written when the version is bumped
@@ -85,10 +85,11 @@ working tree (committed or not) with where this checkout left `origin/main`. Run
 - **A change nobody using Hammock will notice** (a refactor, a test-only change) can skip it:
   `NO_RELEASE_NOTE=1 just note-check`. When in doubt, add an `internal` note.
 
-## Cutting releases: `just release-mac`, `release-ios` and `release-apple`
+## Cutting releases: `just release-mac`, `release-ios`, `release-apple` and `release-android`
 
-All three run `scripts/release`: for the Mac (a Sparkle update), for iOS (a TestFlight build), or both in
-one step. A release pushes straight to `main`, so it's the owner's to run, or an agent's when asked.
+All four run `scripts/release`: for the Mac (a Sparkle update), for iOS (a TestFlight build), both in one
+step, or for Android (an APK on a GitHub Release, never marked Latest, and the app's update feed:
+android/README.md). A release pushes straight to `main`, so it's the owner's to run, or an agent's when asked.
 
 ### Versions and numbers
 
@@ -101,6 +102,8 @@ Each app has its own version, `YYYY.N.P`, in `apple/iOS/Config/Version.xcconfig`
   every Mac release a new version. A new iPhone version costs an App Review (TestFlight's too), so the iPhone
   gets more TestFlight builds of its `YYYY.N.0` instead, and a patch only for a hotfix (it takes the iPhone's
   own next patch, whatever the Mac's of that number held).
+- **Android** (`HAMMOCK_ANDROID_VERSION`) ships on its own, like the Mac: every release a new version, a patch
+  between joint releases (which are the Apple apps' alone).
 - A new year starts again at `.1.0`: `2027.1.0` follows `2026.5.x`.
 
 The release commit itself sets the version, so the file holds each app's latest release (or the next one, if
@@ -111,9 +114,10 @@ one, only to release at a version `next` wouldn't choose.
 | --- | --- | --- |
 | Mac (Sparkle) | `CFBundleShortVersionString`, `HAMMOCK_MAC_VERSION` | `CFBundleVersion`: the release commit's number on `main` (`git rev-list --count`), which Sparkle compares |
 | iOS | `CFBundleShortVersionString`, `HAMMOCK_IOS_VERSION` | `CFBundleVersion`: the same, the release commit's number, which App Store Connect asks only to go up |
+| Android | `versionName`, `HAMMOCK_ANDROID_VERSION` | `versionCode`: the same, which Android needs to go up to install an update |
 
-A release is tagged `Mac-v<x.y.z>-r<n>` or `iOS-v<x.y.z>-r<n>`, where **n is the release commit's number on
-`main`**: so `Mac-v2026.1.0-r1040` is Mac build 1040, and an iOS release cut alongside it is
+A release is tagged `Mac-v<x.y.z>-r<n>`, `iOS-v<x.y.z>-r<n>` or `Android-v<x.y.z>-r<n>`, where **n is the
+release commit's number on `main`**: so `Mac-v2026.1.0-r1040` is Mac build 1040, and an iOS release cut alongside it is
 `iOS-v2026.1.0-r1040`, iPhone build 1040. Every cut makes a commit, so no two releases share a number.
 (Earlier TestFlight builds came from Xcode Cloud, with its own, lower, build numbers.) The committed `CURRENT_PROJECT_VERSION` is **0**, meaning "not a counted build".
 
@@ -181,6 +185,7 @@ just release-ios build                    # another TestFlight build of the iPho
 just release-ios next                     # an iPhone hotfix, 2026.1.1 (App Review again)
 just release-apple next                   # both apps' next joint release, 2026.2.0
 just release-apple 2026.3.0               # …or a version of your choosing
+just release-android next                 # an Android release: 2026.5.0 → 2026.5.1 (run it in a Hammock pane: 1Password)
 just release-mac next allow-empty         # a release with no notes for people to read
 just release-mac next approved            # an agent's second run, once you've read the notes (step 3)
 HMK_RELEASE_DRYRUN=1 just release-apple next   # print the plan, change nothing

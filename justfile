@@ -6,7 +6,7 @@
 # (git-ignored, KEY=value lines): UPDATE_HOST,
 # UPDATE_DIR and UPDATE_CONTAINER for scripts/mac-update, HMK_SHARE_OP_ITEM and
 # HMK_SHARE_OP_ACCOUNT for `just share`, HMK_SITE_REMOTE for `just site-deploy`, HMK_DSYM_REMOTE for
-# scripts/dsyms.
+# scripts/dsyms, HMK_ANDROID_KEY_ITEM and HMK_ANDROID_FIREBASE_ITEM for `just release-android`.
 set dotenv-filename := ".release.env"
 set dotenv-load
 
@@ -141,22 +141,6 @@ android-device: android
     adb install -r -t android/app/build/outputs/apk/debug/app-debug.apk
     adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainActivity
 
-# Signed with the key android/keystore.properties names (git-ignored; android/README.md). Push needs the
-# HMK_FCM_* variables, as for any build.
-# Build the Android app for release: dist/android/Hammock-<version>.aab for Google Play and .apk for GitHub.
-android-release: deps
-    #!/usr/bin/env bash
-    set -euo pipefail
-    [ -f android/keystore.properties ] || { echo "android/keystore.properties is missing: see android/README.md" >&2; exit 1; }
-    ./scripts/android-vt.sh
-    . android/scripts/java.sh
-    (cd android && ./gradlew :app:bundleRelease :app:assembleRelease)
-    v=$(scripts/version | sed -n 's/^Android: //p')
-    mkdir -p dist/android
-    cp android/app/build/outputs/bundle/release/app-release.aab "dist/android/Hammock-$v.aab"
-    cp android/app/build/outputs/apk/release/app-release.apk "dist/android/Hammock-$v.apk"
-    ls -la dist/android
-
 # A scratch daemon for the Android app to pair with (android/scripts/dev-daemon.sh up|pair|hmk|down).
 android-dev-daemon *args:
     android/scripts/dev-daemon.sh {{args}}
@@ -283,6 +267,12 @@ release-ios *args:
 release-apple *args:
     scripts/release apple "$@"
 
+# Cut an Android release (an APK on a GitHub Release, signed with the key in 1Password; scripts/android-apk):
+# `just release-android next` (the next patch) or a version (+ allow-empty).
+[positional-arguments]
+release-android *args:
+    scripts/release android "$@"
+
 # The iPhone app's App Store listing and TestFlight test information come from marketing/appstore/ (its README).
 # Install Fastlane and Playwright (for the marketing images) into marketing/, once per machine (Ruby 3.3, Node 24).
 appstore-install:
@@ -354,6 +344,8 @@ site: docs
     sips -Z 512 apple/Resources/AppIcon-1024.png --out "$out/icon-512.png" >/dev/null
     sips -Z 256 apple/Resources/AppIcon-1024.png --out "$out/icon-256.png" >/dev/null
     cp -R site/dist "$out/docs"
+    # The Android app's update feed (scripts/release writes it), at homegrownsw.com/hammock/android.json.
+    if [ -f marketing/android.json ]; then cp marketing/android.json "$out/"; fi
     find "$out" -type f -exec chmod 644 {} +
     echo "Built $out ($(find "$out" -type f | wc -l | tr -d ' ') files)."
 

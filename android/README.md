@@ -58,19 +58,19 @@ and Settings says so. `HMK_PUSH_RELAY` points a build at another relay.
 
 ## Releasing
 
-`just android-release` builds `dist/android/Hammock-<version>.aab` for Google Play and `.apk` for GitHub,
-signed with the upload key `android/keystore.properties` names (git-ignored, never committed):
+`just release-android next` (or a version) cuts a release (`scripts/release`, release-notes/README.md): it
+freezes `release-notes/android/` into the version, commits `marketing/android.json` (the update feed, which
+the website deploy publishes at homegrownsw.com/hammock/android.json) and tags `Android-v<x.y.z>-r<n>`, builds
+the APK from that commit and checks it (`scripts/android-apk`), pushes, then publishes the APK as a GitHub
+Release, never marked Latest (the Mac's download and update feed follow Latest). Run it in a Hammock pane, where
+`op` can reach 1Password: `.release.env` names the item holding the signing key (`HMK_ANDROID_KEY_ITEM`, with
+fields `keystore`, `password` and `alias`) and the release build's `google-services.json`
+(`HMK_ANDROID_FIREBASE_ITEM`). Lose the key and nobody
+can update: Android refuses an update signed with another.
 
-```properties
-storeFile=/path/to/upload.jks
-storePassword=…
-keyAlias=upload
-keyPassword=…
-```
+The version is `HAMMOCK_ANDROID_VERSION` in `apple/iOS/Config/Version.xcconfig`, released on its own like the
+Mac's (each release a new version); the build number counts commits, as the Apple apps' do, and is the APK's
+`versionCode`. A release build checks the feed once a day and offers a newer APK (`UpdateCheck.kt`).
 
-The version is `HAMMOCK_ANDROID_VERSION` in `apple/iOS/Config/Version.xcconfig`; the build number counts
-commits, as the Apple apps' do. Its release notes are `release-notes/android/` (`just note android …`).
-
-## Not done yet
-
-Uploading to Play and freezing the notes (`scripts/release` releases the Apple apps alone).
+For a signed build outside a release, `android/keystore.properties` (git-ignored) can name a keystore:
+`storeFile`, `storePassword`, `keyAlias`, `keyPassword`.

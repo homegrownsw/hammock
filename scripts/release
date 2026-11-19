@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Cuts a release (release-notes/README.md): of the Mac app (a Sparkle update), the iOS app (a TestFlight
-# build), or both at once. `just release-mac`, `just release-ios` and `just release-apple` run it.
+# build), both at once, or the Android app (an APK on a GitHub Release). `just release-mac`, `just
+# release-ios`, `just release-apple` and `just release-android` run it.
 #
-#   scripts/release <mac|ios|apple>                     prompts with gum
-#   scripts/release <mac|ios|apple> next [allow-empty]  the app's next version (below)
-#   scripts/release ios build [allow-empty]             another TestFlight build of the iPhone's version
-#   scripts/release <mac|ios|apple> <x.y.z> [...]       a version of your choosing
+#   scripts/release <mac|ios|apple|android>                     prompts with gum
+#   scripts/release <mac|ios|apple|android> next [allow-empty]  the app's next version (below)
+#   scripts/release ios build [allow-empty]                     another TestFlight build of the iPhone's version
+#   scripts/release <mac|ios|apple|android> <x.y.z> [...]       a version of your choosing
 #
 # Each app has its own version, YYYY.N.P (apple/iOS/Config/Version.xcconfig): the year, its Nth joint release,
 # and a patch. A joint release (apple) is both apps at the next YYYY.N.0; the Mac ships patches in between
@@ -29,6 +30,12 @@
 #          build); a failure there takes the release back. After the push it uploads the build to TestFlight
 #          with What to Test (scripts/ios-testflight upload).
 #   apple  both, in one release commit carrying both tags.
+#   android
+#          tag Android-v<x.y.z>-r<n>, and marketing/android.json, where the app looks for updates (the
+#          website publishes it). Before anything is pushed it builds the tagged commit's APK, signed with
+#          Hammock's key, and checks it (scripts/android-apk build); a failure there takes the release back.
+#          After the push it publishes the APK as a GitHub Release, never marked Latest (scripts/android-apk
+#          upload). Its version is its own, released like the Mac's: each release a new version.
 #
 # An app moving on from a version gets that version's summary, release-notes/<app>/v<old>.md, in the commit.
 #
@@ -42,8 +49,9 @@
 #
 # HMK_RELEASE_DRYRUN=1 prints the plan (the notes each release would carry, the notes it would move, the
 # tags, the versions) and changes nothing, skipping the preflight so it runs anywhere.
-# HMK_RELEASE_MAC_UPDATE and HMK_RELEASE_IOS_TESTFLIGHT name stand-ins for scripts/mac-update and
-# scripts/ios-testflight (the tests use them); HMK_RELEASE_YEAR the year.
+# HMK_RELEASE_MAC_UPDATE, HMK_RELEASE_IOS_TESTFLIGHT and HMK_RELEASE_ANDROID_APK name stand-ins for
+# scripts/mac-update, scripts/ios-testflight and scripts/android-apk (the tests use them); HMK_RELEASE_YEAR
+# the year.
 set -euo pipefail
 shopt -s nullglob
 
@@ -51,6 +59,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRYRUN="${HMK_RELEASE_DRYRUN:-}"
 MAC_UPDATE="${HMK_RELEASE_MAC_UPDATE:-$ROOT/scripts/mac-update}"
 IOS_TESTFLIGHT="${HMK_RELEASE_IOS_TESTFLIGHT:-$ROOT/scripts/ios-testflight}"
+ANDROID_APK="${HMK_RELEASE_ANDROID_APK:-$ROOT/scripts/android-apk}"
+# Where the Android app looks for updates: homegrownsw.com/hammock/android.json once the website's deployed.
+ANDROID_FEED="$ROOT/marketing/android.json"
+# 1Password (.release.env): HMK_ANDROID_KEY_ITEM, the item holding the key that signs the Android app (its
+# fields keystore, a file, password and alias), and HMK_ANDROID_FIREBASE_ITEM, the release build's
+# google-services.json, as op:// references.
+[ ! -f "$ROOT/.release.env" ] || { set -a; . "$ROOT/.release.env"; set +a; }
+ANDROID_KEY_ITEM="${HMK_ANDROID_KEY_ITEM:-}"
+ANDROID_FIREBASE_ITEM="${HMK_ANDROID_FIREBASE_ITEM:-}"
+ANDROID_SECRETS=""
+secrets_gone() { if [ -n "$ANDROID_SECRETS" ]; then rm -rf "$ANDROID_SECRETS"; ANDROID_SECRETS=""; fi; }
 # The website and docs, deployed once a release is pushed (scripts/site-deploy; tests fake it).
 SITE_DEPLOY="${HMK_RELEASE_SITE_DEPLOY:-$ROOT/scripts/site-deploy}"
 
@@ -63,7 +82,8 @@ case "$TARGET" in
   mac) PLATFORMS="mac" ;;
   ios) PLATFORMS="ios" ;;
   apple) PLATFORMS="mac ios" ;;
-  *) echo "usage: scripts/release <mac|ios|apple> [next | build | <x.y.z>] [allow-empty]" >&2; exit 2 ;;
+  android) PLATFORMS="android" ;;
+  *) echo "usage: scripts/release <mac|ios|apple|android> [next | build | <x.y.z>] [allow-empty]" >&2; exit 2 ;;
 esac
 shift
 has() { [[ " $PLATFORMS " == *" $1 "* ]]; }
@@ -78,7 +98,7 @@ usage() {
 usage: scripts/release $TARGET [next | build | <x.y.z>] [allow-empty]
 
   (no arguments)   prompts with gum
-  next             the next version: a patch for the Mac or iOS (2026.1.0 → 2026.1.1),
+  next             the next version: a patch for the Mac, iOS or Android (2026.1.0 → 2026.1.1),
                    the next joint release for both (→ 2026.2.0, or 2027.1.0 in a new year)
   build            iOS only: another TestFlight build of the iPhone's version
   <x.y.z>          this version, higher than the app's last
@@ -190,6 +210,25 @@ if [ -z "$DRYRUN" ] && [ "$REVIEW" != pane ]; then
     APP_PASSWORD="$(op read "$HMK_SHARE_OP_ITEM/password" --account "$HMK_SHARE_OP_ACCOUNT")"
     export APPLE_ID APP_PASSWORD
   fi
+  # Android: the signing key and the release build's Firebase config, in a 0700 directory of their own that
+  # goes once the APK's built, and on every way out (secrets_gone, in each EXIT trap below).
+  if has android && [ "$ANDROID_APK" = "$ROOT/scripts/android-apk" ] && [ -z "${HMK_ANDROID_KEYSTORE:-}" ]; then
+    if [ -z "$ANDROID_KEY_ITEM" ] || [ -z "$ANDROID_FIREBASE_ITEM" ]; then
+      echo "The Android release needs HMK_ANDROID_KEY_ITEM and HMK_ANDROID_FIREBASE_ITEM (.release.env)." >&2
+      exit 1
+    fi
+    echo "1Password: the Android app's signing key and Firebase config"
+    export OP_BIOMETRIC_UNLOCK_ENABLED=true
+    ANDROID_SECRETS="$(mktemp -d)"
+    chmod 700 "$ANDROID_SECRETS"
+    trap secrets_gone EXIT
+    op read --out-file "$ANDROID_SECRETS/release.jks" "$ANDROID_KEY_ITEM/keystore" >/dev/null
+    op read --out-file "$ANDROID_SECRETS/google-services.json" "$ANDROID_FIREBASE_ITEM" >/dev/null
+    HMK_ANDROID_KEYSTORE_PASSWORD="$(op read "$ANDROID_KEY_ITEM/password")"
+    HMK_ANDROID_KEY_ALIAS="$(op read "$ANDROID_KEY_ITEM/alias")"
+    export HMK_ANDROID_KEYSTORE="$ANDROID_SECRETS/release.jks" HMK_ANDROID_FIREBASE_JSON="$ANDROID_SECRETS/google-services.json"
+    export HMK_ANDROID_KEYSTORE_PASSWORD HMK_ANDROID_KEY_ALIAS
+  fi
 fi
 
 # ---- the versions and number -------------------------------------------------------------------------------
@@ -197,7 +236,8 @@ fi
 set_var() { printf -v "$1_$2" '%s' "$3"; }
 get_var() { local n="$1_$2"; printf '%s' "${!n}"; }
 
-for p in $PLATFORMS_ALL; do
+# (Android's only when it's released: its own version, not in the joint release.)
+for p in $PLATFORMS_ALL $(if has android; then echo android; fi); do
   cur=$(read_version "$ROOT" "$p")
   version_ok "$cur" ||
     { echo "$(version_file "$ROOT") sets $(version_key "$p") to '$cur'; it should be x.y.z." >&2; exit 1; }
@@ -252,8 +292,8 @@ for p in $PLATFORMS; do
   esac
   version_ok "$ver" || { echo "'$ver' isn't a version like 2026.1.0." >&2; exit 1; }
   if [ "$ver" = "$cur" ]; then
-    if [ "$p" = mac ] && is_released "$ROOT" mac "$cur"; then
-      echo "The Mac has a release of ${cur} already; each Mac release is a new version (next: $(next_for mac))." >&2
+    if [ "$p" != ios ] && is_released "$ROOT" "$p" "$cur"; then
+      echo "The $(label "$p") app has a release of ${cur} already; each of its releases is a new version (next: $(next_for "$p"))." >&2
       exit 1
     fi
   elif ! version_gt "$ver" "$cur"; then
@@ -303,7 +343,7 @@ review_title() {
 
 case "$REVIEW" in
   terminal)
-    trap edits_left EXIT
+    trap 'edits_left; secrets_gone' EXIT
     review_args=()
     for p in $PLATFORMS; do review_args+=("$p=$(get_var VER "$p")"); done
     REVIEW_RESULT="$(mktemp -d)/result"
@@ -342,7 +382,7 @@ case "$REVIEW" in
       echo "without 'approved' first, so they can read them." >&2
       exit 1
     fi
-    trap edits_left EXIT
+    trap 'edits_left; secrets_gone' EXIT
     ;;
 esac
 if [ -z "$DRYRUN" ]; then rm -f "$REVIEW_RECORD"; fi
@@ -394,15 +434,26 @@ ios_notes() {
 # Mac: the same, as HTML for Sparkle's update window (embedded in the appcast by scripts/mac-update, and the
 # GitHub Release's notes). Sparkle shows only the newest release's notes, so someone skipping patches still
 # sees what the ones they skipped brought.
-mac_notes_html() {
+# Android: the same, for its GitHub Release (notes_html android).
+notes_html() { # notes_html <mac|android>
   local this prev
-  this=$(get_var THIS mac)
-  prev=$(get_var PREV mac)
-  if [ -n "$this" ]; then lines_to_html "$this" "$(get_var TAG mac)"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
+  this=$(get_var THIS "$1")
+  prev=$(get_var PREV "$1")
+  if [ -n "$this" ]; then lines_to_html "$this" "$(get_var TAG "$1")"; else echo "<p>Behind-the-scenes improvements.</p>"; fi
   if [ -n "$prev" ]; then
-    echo "<h3>Earlier in $(version_family "$(get_var VER mac)")</h3>"
-    lines_to_html "$prev" "$(get_var TAG mac)"
+    echo "<h3>Earlier in $(version_family "$(get_var VER "$1")")</h3>"
+    lines_to_html "$prev" "$(get_var TAG "$1")"
   fi
+}
+mac_notes_html() { notes_html mac; }
+# Android: its update feed (ANDROID_FEED): this release's version and build, its APK and its notes. The APK's
+# name is scripts/android-apk's.
+android_feed() {
+  local ver tag repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
+  ver=$(get_var VER android)
+  tag=$(get_var TAG android)
+  jq -n --arg v "$ver" --argjson b "$N" --arg apk "https://github.com/$repo/releases/download/$tag/Hammock-$ver.apk" \
+    --arg notes "https://github.com/$repo/releases/tag/$tag" '{version: $v, build: $b, apk: $apk, notes: $notes}'
 }
 
 if [ "$TARGET" = apple ]; then
@@ -434,6 +485,7 @@ render_consolidated() { # render_consolidated <platform> <version>
 # ---- do it (or, in a dry run, say what would happen) -------------------------------------------------------
 UPLOAD_RESULT=""
 IOS_RESULT=""
+ANDROID_RESULT=""
 if [ -n "$DRYRUN" ]; then
   for p in $PLATFORMS; do
     echo
@@ -444,6 +496,10 @@ if [ -n "$DRYRUN" ]; then
       mac) echo "[dry run] the Mac update's notes, in Sparkle's window (HTML in the appcast):"
            echo "────────────────────────────────────────"; mac_notes_html
            echo "────────────────────────────────────────" ;;
+      android) echo "[dry run] the Android release's notes, on its GitHub Release (HTML):"
+           echo "────────────────────────────────────────"; notes_html android
+           echo "────────────────────────────────────────"
+           echo "[dry run] its update feed, into ${ANDROID_FEED#"$ROOT"/}:"; android_feed ;;
     esac
     echo "[dry run] $(label "$p"): $(get_var CUR "$p") → $(get_var VER "$p")"
     echo "[dry run] move the pending notes into release-notes/$p/v$(get_var VER "$p")/:"
@@ -457,14 +513,17 @@ if [ -n "$DRYRUN" ]; then
   echo "[dry run] commit '${RELEASE_MSG}' and tag it ${TAGS// / and }"
   if has mac; then echo "[dry run] build Hammock $(get_var VER mac) (${N}) from it, notarize it and make its appcast (scripts/mac-update build)"; fi
   if has ios; then echo "[dry run] archive the iPhone's $(get_var VER ios) (${N}) from it, signed for App Store Connect (scripts/ios-testflight build)"; fi
+  if has android; then echo "[dry run] build the Android app's $(get_var VER android) (${N}) from it, signed and checked (scripts/android-apk build)"; fi
   echo "[dry run] push main and ${TAGS// / and } together"
   if has mac; then echo "[dry run] upload the update (scripts/mac-update upload ${N})"; fi
   if has ios; then echo "[dry run] upload the iPhone's build to TestFlight (scripts/ios-testflight upload ${N})"; fi
+  if has android; then echo "[dry run] publish the APK as a GitHub Release, not Latest (scripts/android-apk upload ${N})"; fi
 else
   if [ "$NONINTERACTIVE" != 1 ]; then
     building=""
     if has mac; then building+=", build the Mac app"; fi
     if has ios; then building+=", build the iPhone app"; fi
+    if has android; then building+=", build the Android app"; fi
     gum confirm "Freeze the notes, commit, tag ${TAGS// / and }${building} and push?" || stop
   fi
   START=$(git -C "$ROOT" rev-parse HEAD)
@@ -476,6 +535,10 @@ else
   if has mac; then
     MAC_NOTES="$(mktemp -d)/notes.html"
     mac_notes_html >"$MAC_NOTES"
+  fi
+  if has android; then
+    ANDROID_NOTES="$(mktemp -d)/notes.html"
+    notes_html android >"$ANDROID_NOTES"
   fi
   for p in $PLATFORMS; do
     ver=$(get_var VER "$p")
@@ -491,6 +554,10 @@ else
       mkdir -p "$IOS_NOTES_DIR"
       for locale in $IOS_NOTES_LOCALES; do printf '%s\n' "$(ios_notes)" >"$IOS_NOTES_DIR/WhatToTest.$locale.txt"; done
       git -C "$ROOT" add -A -- "$IOS_NOTES_DIR"
+    fi
+    if [ "$p" = android ]; then
+      android_feed >"$ANDROID_FEED"
+      git -C "$ROOT" add -- "$ANDROID_FEED"
     fi
   done
   while read -r p old; do
@@ -519,14 +586,19 @@ else
     fi
     if has mac; then "$MAC_UPDATE" discard "$N" || true; fi
     if has ios; then "$IOS_TESTFLIGHT" discard "$N" || true; fi
+    if has android; then "$ANDROID_APK" discard "$N" || true; fi
     echo "Nothing was published; the release commit and tags (${TAGS}) are gone." >&2
     edits_left
     rm -f "$RELEASE_LOCK"
   }
-  trap undo EXIT
+  trap 'undo; secrets_gone' EXIT
   for t in $TAGS; do git -C "$ROOT" tag "$t"; done
   if has mac; then "$MAC_UPDATE" build "$N" "$MAC_NOTES"; fi
   if has ios; then "$IOS_TESTFLIGHT" build "$N"; fi
+  if has android; then
+    "$ANDROID_APK" build "$N" "$ANDROID_NOTES"
+    secrets_gone # the key's done its work
+  fi
   if [ "$(git -C "$ROOT" rev-parse HEAD)" != "$RELEASE_SHA" ]; then
     echo "Something was committed on top of the release commit while it built; stopping before the push." >&2
     exit 1
@@ -539,7 +611,7 @@ else
     echo "The push was rejected (did main move?)." >&2
     exit 1
   fi
-  trap - EXIT
+  trap secrets_gone EXIT
   rm -f "$RELEASE_LOCK"
 
   # Pushed, so from here nothing fails the release: an upload that doesn't go through says how to retry.
@@ -555,6 +627,13 @@ else
       IOS_RESULT="uploaded to TestFlight"
     else
       IOS_RESULT="NOT uploaded (see above); the release is cut. Retry: scripts/ios-testflight upload ${N}"
+    fi
+  fi
+  if has android; then
+    if "$ANDROID_APK" upload "$N"; then
+      ANDROID_RESULT="published; the app finds it once the website's deployed (below)"
+    else
+      ANDROID_RESULT="NOT published (see above); the release is cut. Retry: scripts/android-apk upload ${N}"
     fi
   fi
   # The website and its docs, built from the release commit, so What's new and the docs match what shipped.
@@ -584,6 +663,10 @@ for p in $PLATFORMS; do
     ios)
       echo "iOS build:     ${N}"
       if [ -n "$IOS_RESULT" ]; then echo "TestFlight:    ${IOS_RESULT}"; fi
+      ;;
+    android)
+      echo "Android build: ${N}"
+      if [ -n "$ANDROID_RESULT" ]; then echo "APK:           ${ANDROID_RESULT}"; fi
       ;;
   esac
 done
