@@ -182,7 +182,7 @@ struct TabStrip: View {
                 if let page = model.panes[tab.focusedPaneID], page.kind == .browser, model.agentState(of: tab) == nil {
                     Favicon(url: page.faviconURL, size: 14)
                 } else {
-                    StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), size: 14,
+                    StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab), size: 14,
                                program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
                 }
                 Text(model.title(of: tab))

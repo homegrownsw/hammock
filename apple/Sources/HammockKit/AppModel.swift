@@ -903,6 +903,11 @@ public final class AppModel {
         panes(in: tab).contains { $0.hasAgent && !$0.exited && $0.agent.seen && $0.agent.restingWithWork }
     }
 
+    /// A resting agent in the tab still has subagents running: its dot is indigo.
+    public func hasRestingAgentWithSubagents(_ tab: WorkspaceTab) -> Bool {
+        panes(in: tab).contains { $0.hasAgent && !$0.exited && $0.agent.seen && $0.agent.restingWithSubagents }
+    }
+
     public var selectedTab: WorkspaceTab? { selectedTabID.flatMap { tabs[$0] } }
 
     // MARK: Pane sessions

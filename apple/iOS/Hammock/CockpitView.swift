@@ -567,6 +567,8 @@ struct StateGlyph: View {
     var resting = false
     /// At rest with shells still running: a dot going round the ring.
     var shells = false
+    /// At rest with subagents still running: the dot is indigo.
+    var subagents = false
     /// With no agent state: the program running.
     var program: [String] = []
     /// Its agent asleep: a moon.
@@ -574,7 +576,7 @@ struct StateGlyph: View {
     /// Working, how far along (OSC 7501): a ring filling.
     var progress: Int?
     var body: some View {
-        StatusIcon(state: state, resting: resting, shells: shells, size: 17, program: program, asleep: asleep, progress: progress)
+        StatusIcon(state: state, resting: resting, shells: shells, subagents: subagents, size: 17, program: program, asleep: asleep, progress: progress)
     }
 }
 
@@ -583,7 +585,7 @@ struct TabRowIOS: View {
     let tab: WorkspaceTab
     var body: some View {
         HStack {
-            StateGlyph(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab),
+            StateGlyph(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab),
                        program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
             VStack(alignment: .leading) {
                 HStack(spacing: 5) {

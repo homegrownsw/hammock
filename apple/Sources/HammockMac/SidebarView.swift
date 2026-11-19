@@ -899,7 +899,7 @@ struct TabRow: View {
             } else if trailing {
                 StatusIcon(state: nil, size: compact ? 16 : 17, program: model.focusedProgram(of: tab))
             } else {
-                StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), size: compact ? 16 : 17,
+                StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab), size: compact ? 16 : 17,
                            program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
             }
             Text(model.title(of: tab))
@@ -964,7 +964,7 @@ struct TabRow: View {
     @ViewBuilder
     private var trailingStatus: some View {
         if model.shownAgentPane(of: tab) != nil {
-            StatusIcon(state: model.agentState(of: tab), resting: true, shells: model.hasRestingAgentWithWork(tab),
+            StatusIcon(state: model.agentState(of: tab), resting: true, shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab),
                        size: compact ? 13 : 14, quietAtRest: true, asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
         }
     }

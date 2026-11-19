@@ -154,4 +154,8 @@ extension Hammock_V1_Agent {
     /// server; subagents that run on after its turn): shown a little
     /// differently from plain rest.
     public var restingWithWork: Bool { state == .idle && !runningCommand && (shells > 0 || subagents > 0) }
+
+    /// At rest with subagents still running: its dot goes round in the
+    /// working indigo rather than grey.
+    public var restingWithSubagents: Bool { state == .idle && !runningCommand && subagents > 0 }
 }

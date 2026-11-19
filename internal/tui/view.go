@@ -255,10 +255,14 @@ func (a *App) tabGlyph(t *pb.Tab) (glyph, bool) {
 		return glyph{"≡", a.th.dim, false}, false
 	}
 	// An agent at rest (finished and looked at): an empty circle, with a
-	// dot in it while its shells (background tasks) or subagents still run.
+	// dot in it while its shells (background tasks) or subagents still run,
+	// in the working indigo for subagents.
 	for _, id := range tabIDs(t) {
 		if p := a.panes[id]; p != nil && p.Agent != nil && !p.Exited && p.Agent.State == pb.AgentState_AGENT_STATE_IDLE {
-			if p.Agent.Shells > 0 || p.Agent.Subagents > 0 {
+			if p.Agent.Subagents > 0 {
+				return glyph{"⊙", a.th.indigo, false}, false
+			}
+			if p.Agent.Shells > 0 {
 				return glyph{"⊙", a.th.dim, false}, false
 			}
 			return glyph{"○", a.th.dim, false}, false

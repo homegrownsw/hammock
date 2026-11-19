@@ -6,7 +6,8 @@ import UIKit
 #endif
 
 /// An agent's state as an icon ("Orbit"). Rings while all is well:
-/// grey at rest (a solid grey dot going slowly round it while shells still run), an
+/// grey at rest (a solid dot going slowly round it while work still runs:
+/// grey for shells, indigo for subagents), an
 /// indigo arc going round while it works, green with a check when it has
 /// finished. Filled when it needs you: amber with ! for input, red with ×
 /// for an error. Those three arrive with one small pop (the check is drawn
@@ -20,6 +21,8 @@ public struct StatusIcon: View {
     var resting: Bool
     /// At rest with shells still running (background tasks).
     var shells: Bool
+    /// At rest with subagents still running: the dot is indigo, not grey.
+    var subagents: Bool
     var size: CGFloat
     /// At rest without shells, draw nothing (and take no width), for a
     /// status shown beside something else.
@@ -32,11 +35,12 @@ public struct StatusIcon: View {
     var progress: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(state: AgentState?, resting: Bool = false, shells: Bool = false, size: CGFloat = 15, quietAtRest: Bool = false, program: [String] = [],
-                asleep: Bool = false, progress: Int? = nil) {
+    public init(state: AgentState?, resting: Bool = false, shells: Bool = false, subagents: Bool = false, size: CGFloat = 15, quietAtRest: Bool = false,
+                program: [String] = [], asleep: Bool = false, progress: Int? = nil) {
         self.state = state
         self.resting = resting
-        self.shells = shells
+        self.shells = shells || subagents
+        self.subagents = subagents
         self.size = size
         self.quietAtRest = quietAtRest
         self.program = program
@@ -102,8 +106,8 @@ public struct StatusIcon: View {
             if blank {
                 EmptyView()
             } else if resting {
-                RestingRing(shells: shells, size: size)
-                    .accessibilityLabel(shells ? "Agent idle, shells running" : "Agent idle")
+                RestingRing(shells: shells, subagents: subagents, size: size)
+                    .accessibilityLabel(subagents ? "Agent idle, subagents running" : shells ? "Agent idle, shells running" : "Agent idle")
             } else {
                 ProgramIcon(program: program, size: size)
             }
@@ -255,6 +259,8 @@ public struct SleepMark: View {
 
 struct RestingRing: View {
     let shells: Bool
+    /// Subagents running: the dot is the working indigo.
+    var subagents = false
     let size: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -268,7 +274,7 @@ struct RestingRing: View {
                 TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion)) { context in
                     let t = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10) / 10
                     Circle()
-                        .fill(StatusPalette.grey)
+                        .fill(subagents ? StatusPalette.indigo : StatusPalette.grey)
                         .frame(width: max(3.5, 5 * k), height: max(3.5, 5 * k))
                         .offset(y: -7.25 * k)
                         .rotationEffect(.degrees(t * 360))
