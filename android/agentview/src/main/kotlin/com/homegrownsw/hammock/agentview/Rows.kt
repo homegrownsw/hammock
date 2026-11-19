@@ -12,9 +12,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Reply
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -53,6 +56,8 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +66,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -141,6 +147,7 @@ private fun RevealsReply(id: String, length: Int, session: AgentSession, content
 }
 
 /** Your message: on the right, in the accent, with its pictures above it. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun UserBubble(text: String, rich: String, refs: List<String>, local: List<OutgoingAttachment>, session: AgentSession, pending: Boolean = false) {
     val c = LocalAgentColors.current
@@ -159,11 +166,31 @@ internal fun UserBubble(text: String, rich: String, refs: List<String>, local: L
                         if (k < parts.size - 1) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append("[${k + 1}]") }
                     }
                 }
-                SelectionContainer {
-                    Text(
-                        shown, style = MaterialTheme.typography.bodyLarge, color = Color.White,
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(c.bubble).padding(horizontal = 15.dp, vertical = 10.dp),
-                    )
+                val bubble = Modifier.clip(RoundedCornerShape(20.dp)).background(c.bubble)
+                if (pending) {
+                    // Waiting to be taken: not selectable, so touching and
+                    // holding it opens its menu (Send Now).
+                    var menu by remember { mutableStateOf(false) }
+                    Box {
+                        Text(
+                            shown, style = MaterialTheme.typography.bodyLarge, color = Color.White,
+                            modifier = bubble.combinedClickable(onClick = {}, onLongClickLabel = "More", onLongClick = { menu = true })
+                                .padding(horizontal = 15.dp, vertical = 10.dp),
+                        )
+                        DropdownMenu(menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Send Now") }, leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Send, null) },
+                                enabled = session.canSendNow, onClick = { menu = false; session.sendNow() },
+                            )
+                        }
+                    }
+                } else {
+                    SelectionContainer {
+                        Text(
+                            shown, style = MaterialTheme.typography.bodyLarge, color = Color.White,
+                            modifier = bubble.padding(horizontal = 15.dp, vertical = 10.dp),
+                        )
+                    }
                 }
             }
         }
@@ -309,24 +336,38 @@ private fun StatusDot(b: AgentBlock) {
     }
 }
 
-/** A tool call: its title, how it went, an edit's diff, and what it ran and printed a tap away. */
+/**
+ * A tool call: its title, how it went, an edit's diff, and what it ran and
+ * printed a tap away. A "!" command you ran shows as you typed it, with
+ * what it printed open to start with.
+ */
 @Composable
-private fun ToolRow(b: AgentBlock, session: AgentSession, compact: Boolean = false) {
+internal fun ToolRow(b: AgentBlock, session: AgentSession, compact: Boolean = false) {
     val c = LocalAgentColors.current
-    val open = session.isOpen(b.id)
-    // A Read's path is in its title already.
-    val showsInput = b.input.isNotEmpty() && (b.tool == "Bash" || !b.tool.startsWith("Read"))
+    val bang = b.isBang()
+    val toggled = session.isOpen(b.id)
+    val open = if (bang) !toggled else toggled
+    // A Read's path is in its title already, and a one-line "!" command in its row.
+    val showsInput = b.input.isNotEmpty() && (b.tool == "Bash" || !b.tool.startsWith("Read")) && !(bang && '\n' !in b.input)
     val opens = b.diff.isNotEmpty() || showsInput || b.output.isNotEmpty()
     Column(Modifier.padding(vertical = if (compact) 1.dp else 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(enabled = opens) { session.setOpen(b.id, !open) },
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(enabled = opens) { session.setOpen(b.id, !toggled) },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(toolIcon(b), null, tint = c.tertiary, modifier = Modifier.size(18.dp))
-            Text(
-                Markdown.inline(b.title.ifEmpty { b.tool }, c.md, links = false), style = MaterialTheme.typography.bodyMedium, color = c.secondary,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
-            )
+            if (bang) {
+                Text("!", style = codeTextStyle(0.88f), fontWeight = FontWeight.Bold, color = c.shell, textAlign = TextAlign.Center, modifier = Modifier.width(18.dp))
+                Text(
+                    b.input.lineSequence().first(), style = codeTextStyle(0.88f), color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                )
+            } else {
+                Icon(toolIcon(b), null, tint = c.tertiary, modifier = Modifier.size(18.dp))
+                Text(
+                    Markdown.inline(b.title.ifEmpty { b.tool }, c.md, links = false), style = MaterialTheme.typography.bodyMedium, color = c.secondary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                )
+            }
             if (b.added > 0 || b.removed > 0) {
                 Text("+${b.added}", style = MaterialTheme.typography.bodyMedium, color = c.added)
                 Text("−${b.removed}", style = MaterialTheme.typography.bodyMedium, color = c.removed)

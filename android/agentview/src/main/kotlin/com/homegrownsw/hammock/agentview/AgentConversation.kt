@@ -365,8 +365,15 @@ private fun Centered(modifier: Modifier = Modifier, content: @Composable () -> U
 @Composable
 private fun Tail(session: AgentSession, state: AgentViewState) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // A "!" command runs at once, and the transcript only has it when it's
+        // done: shown running, as it then will be, with what it's printed so far
+        // (the first one waiting is the one running).
+        val running = state.pendingSends.firstOrNull { it.isBang }?.id
         for (p in state.pendingSends) {
-            key(p.id) { UserBubble(p.text, "", emptyList(), p.attachments, session, pending = true) }
+            key(p.id) {
+                val run = p.bangRun(if (p.id == running) state.bangOutput else "")
+                if (run != null) ToolRow(run, session) else UserBubble(p.text, "", emptyList(), p.attachments, session, pending = true)
+            }
         }
         AnimatedVisibility(state.working, enter = fadeIn(tween(250)), exit = fadeOut(tween(0))) { WorkingRow(state.status) }
     }

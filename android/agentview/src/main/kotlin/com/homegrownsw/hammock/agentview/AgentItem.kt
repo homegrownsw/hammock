@@ -110,4 +110,35 @@ data class PendingSend(
     /** As the transcript will show it, to know it there by. */
     val text: String,
     val attachments: List<OutgoingAttachment> = emptyList(),
-)
+) {
+    /**
+     * A "!" command (an agent's shell mode), as the Bash run it's shown as
+     * once the transcript has it, still running, with [output] so far. Null:
+     * a message.
+     */
+    fun bangRun(output: String = ""): AgentBlock? {
+        if (attachments.isNotEmpty() || !text.startsWith("!")) return null
+        val cmd = text.drop(1).trim()
+        if (cmd.isEmpty()) return null
+        return AgentBlock.newBuilder().setId(RUN_PREFIX + id).setKind(AgentBlock.Kind.KIND_TOOL).setTool("Bash")
+            .setInput(cmd).setTitle("Ran `" + cmd.lineSequence().first() + "`").setOutput(output).setPending(true).build()
+    }
+
+    val isBang: Boolean get() = bangRun() != null
+
+    companion object {
+        const val RUN_PREFIX = "pending-run-"
+    }
+}
+
+/**
+ * A block that's something you sent: a message, or a "!" command, which is a
+ * Bash run that's a turn of its own (the agent's own runs are in the turn of
+ * the message they answer).
+ */
+internal fun AgentBlock.sentByYou(): Boolean =
+    kind == AgentBlock.Kind.KIND_USER || (kind == AgentBlock.Kind.KIND_TOOL && tool == "Bash" && turnId == id)
+
+/** A "!" command you ran, from the transcript or still running: shown as you typed it. */
+internal fun AgentBlock.isBang(): Boolean =
+    tool == "Bash" && (turnId == id || id.startsWith(PendingSend.RUN_PREFIX))

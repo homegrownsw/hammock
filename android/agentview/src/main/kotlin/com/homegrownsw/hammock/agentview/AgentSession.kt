@@ -43,6 +43,8 @@ data class AgentViewState(
     val status: String = "",
     /** What's typed in the agent's input box in the terminal. */
     val draft: String = "",
+    /** A "!" command's output so far, while it runs (from the screen: the transcript has it once it's done). */
+    val bangOutput: String = "",
     val commands: List<String> = emptyList(),
     /** Those of [commands] that only run at the start of a message (built-ins). */
     val startCommands: Set<String> = emptySet(),
@@ -240,7 +242,7 @@ class AgentSession(
         if (!v.older) {
             n = n.copy(
                 model = v.model, effort = v.effort, contextTokens = v.contextTokens, contextWindow = v.contextWindow,
-                prompt = v.prompt, working = v.working, status = v.status, error = v.error,
+                prompt = v.prompt, working = v.working, status = v.status, error = v.error, bangOutput = v.bangOutput,
                 // What's typed in its input box in the terminal (the composer
                 // offers it; sending replaces it).
                 draft = if (subagentID.isEmpty()) v.draft else n.draft,
@@ -251,22 +253,38 @@ class AgentSession(
         // agent works arrives reworded (spacing, image references).
         if (n.pendingSends.isNotEmpty()) {
             if (v.older) {
-                n.blocks.filter { it.kind == AgentBlock.Kind.KIND_USER }.forEach { seenUserIDs.add(it.id) } // history, not new
+                n.blocks.filter { it.sentByYou() }.forEach { seenUserIDs.add(it.id) } // history, not new
             } else {
                 val pending = n.pendingSends.toMutableList()
                 for (b in n.blocks) {
                     if (pending.isEmpty()) break
-                    if (b.kind != AgentBlock.Kind.KIND_USER || !seenUserIDs.add(b.id)) continue
-                    val t = squashed(b.text)
+                    if (!b.sentByYou() || !seenUserIDs.add(b.id)) continue
+                    // A "!" command is recorded as the Bash run it is, not a message.
+                    val t = if (b.kind == AgentBlock.Kind.KIND_USER) squashed(b.text) else "!" + squashed(b.input)
                     val i = pending.indexOfFirst { val p = squashed(it.text); t.contains(p) || p.contains(t) }
                     if (i >= 0) pending.removeAt(i) else pending.removeAt(0)
                 }
                 if (pending.size != n.pendingSends.size) n = n.copy(pendingSends = pending)
             }
+            if (s.working && !n.working && !v.older) dropUntaken(n.pendingSends.map { it.id }.toSet())
         }
         // Only a real change is a new value (StateFlow drops equal ones too,
         // but equality of a big snapshot isn't free while the status ticks).
         if (n != s) _state.value = n
+    }
+
+    /**
+     * Done working, with messages it never took (a "!" command stopped in
+     * the terminal, messages Esc took back into its input box): they aren't
+     * coming. A moment later, in case one's on its way still.
+     */
+    private fun dropUntaken(ids: Set<Long>) {
+        model.scope.launch {
+            delay(3_000)
+            synchronized(lock) {
+                _state.update { s -> if (s.working) s else s.copy(pendingSends = s.pendingSends.filter { it.id !in ids }) }
+            }
+        }
     }
 
     private fun squashed(s: String) = s.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
@@ -325,9 +343,23 @@ class AgentSession(
     internal fun addPending(p: PendingSend) = synchronized(lock) {
         val s = _state.value
         if (s.pendingSends.isEmpty()) {
-            seenUserIDs = s.blocks.filter { it.kind == AgentBlock.Kind.KIND_USER }.mapTo(HashSet()) { it.id }
+            seenUserIDs = s.blocks.filter { it.sentByYou() }.mapTo(HashSet()) { it.id }
         }
         _state.value = s.copy(pendingSends = s.pendingSends + p)
+    }
+
+    /** Messages sent while it works can be sent now: Claude Code holds them until its turn ends, and its Ctrl+Enter sends them at once. */
+    val canSendNow: Boolean get() = subagentID.isEmpty() && shellID.isEmpty() && harness == "claude"
+
+    /** Sends the messages Claude Code is holding now, not when its turn ends (Ctrl+Enter in its terminal). */
+    fun sendNow() {
+        model.scope.launch {
+            try {
+                model.call { setAgentSend(Hammock.AgentSend.newBuilder().setPaneId(paneID).setSendNow(true).build()) }
+            } catch (e: Exception) {
+                _state.update { it.copy(answerError = e.message ?: "Couldn't send it now") }
+            }
+        }
     }
 
     /** Switches the agent's model (Claude's /model, with an alias such as "opus" or "sonnet[1m]"). */

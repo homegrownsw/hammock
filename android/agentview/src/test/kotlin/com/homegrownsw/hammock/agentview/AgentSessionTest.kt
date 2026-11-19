@@ -117,6 +117,26 @@ class AgentSessionTest {
     }
 
     @Test
+    fun aBangCommandGoesWhenItsRunIsRecorded() {
+        val s = session()
+        s.apply(view(block("u1", Kind.KIND_USER, "Earlier")) { replace = true })
+        s.addPending(PendingSend(1, "!echo  hi"))
+        s.addPending(PendingSend(2, "And then this"))
+        // It's shown as a running command, with what it's printed so far.
+        val run = s.state.value.pendingSends[0].bangRun("hi")!!
+        assertTrue(run.isBang() && run.pending)
+        assertEquals("echo  hi", run.input)
+        assertEquals("hi", run.output)
+        assertEquals(null, s.state.value.pendingSends[1].bangRun())
+        // The agent's own Bash run (in the turn of a message) isn't it.
+        s.apply(view(block("t1", Kind.KIND_TOOL) { tool = "Bash"; input = "echo hi"; turnId = "u1" }))
+        assertEquals(2, s.state.value.pendingSends.size)
+        // Claude Code records it as a Bash run that's a turn of its own.
+        s.apply(view(block("b1", Kind.KIND_TOOL) { tool = "Bash"; input = "echo hi"; turnId = "b1" }))
+        assertEquals(listOf(2L), s.state.value.pendingSends.map { it.id })
+    }
+
+    @Test
     fun extrasChangeOnlyWhenSent() {
         val s = session()
         val task = Hammock.AgentTask.newBuilder().setId("1").setSubject("Run the tests").build()
