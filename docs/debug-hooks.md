@@ -106,6 +106,7 @@ adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainAc
 | `--es macTheme <name>\|custom` | As `HMK_DEBUG_MAC_THEME`: the sample Mac's theme. |
 | `--es hammockKey 1\|agent` | As `HMK_DEBUG_HMK_KEY`: the Mac's Hammock Key, this phone an approver, and a request waiting (`agent`: an agent's ssh login). |
 | `--es pair '<hammock://pair/… link>'` | Pair with that link at once, without the confirmation, whether the app is starting or already open (`android/scripts/dev-daemon.sh` prints one). |
+| `--es updateFeed <url>` | Check that feed for updates now, as a release build checks homegrownsw.com/hammock/android.json once a day (`UpdateCheck.kt`): a higher build in it is offered. Debug builds allow plain HTTP to this Mac, so serve one at `http://10.0.2.2:<port>/` (the emulator) or over `adb reverse`. |
 
 `DemoDaemon(pace = …)` scales its delays; its JVM tests (`./gradlew :app:testDebugUnitTest --tests '*Demo*'`) run it
 fast. Not ported yet: `HMK_DEBUG_REPLAY`, `HMK_DEBUG_TAKE` and `HMK_DEBUG_SCREENSHOT`.
@@ -123,12 +124,12 @@ cp -R "dist/Hammock β <branch>.app" "$app" && codesign --force --deep -s - "$ap
 HMK_DIR=$dir "$app/Contents/MacOS/hmkd" --dir "$dir" --remote --remote-listen 127.0.0.1:7498 --dev-pairing &
 open -n --env HMK_DIR="$dir" "$app"          # after the daemon, so it uses that one
 adb reverse tcp:7498 tcp:7498
-HMK_DIR=$dir "$app/Contents/Helpers/hmk" pair --json 
+HMK_DIR=$dir "$app/Contents/Helpers/hmk" pair --json | jq -r .link   # then --es pair, above
+```
+
 From an emulator, pair with `android/scripts/dev-daemon.sh pair "$dir" --emulator` instead (no `adb reverse`): its
 link names `10.0.2.2`, the emulator's way to this Mac's loopback, which UDP reaches too, so video comes over QUIC.
 Over `adb reverse` (TCP only) QUIC can't connect, and the video falls back to in band after a few seconds.
-| jq -r .link   # then --es pair, above
-```
 
-Unset a pane's `HMK_SOCKET` first. Against that `HMK_DIR`, `hmk group new NAME`, then `hmk browser URL` or `hmk sim DEVICE`, opens a pane to watch
-from the phone. The stream logs to logcat under `HammockVideo`.
+Unset a pane's `HMK_SOCKET` first. Against that `HMK_DIR`, `hmk group new NAME`, then `hmk browser URL` or
+`hmk sim DEVICE`, opens a pane to watch from the phone. The stream logs to logcat under `HammockVideo`.

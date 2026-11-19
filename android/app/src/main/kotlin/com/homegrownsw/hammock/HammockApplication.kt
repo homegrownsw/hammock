@@ -26,6 +26,8 @@ class HammockApplication : Application() {
                 // and the computer hears the phone is showing it (it holds pushes then).
                 session.model.value?.reconnectNow()
                 session.model.value?.reportPresence(emptyList(), true)
+                // An APK's own updates (UpdateCheck), at most once a day.
+                UpdateCheck.checkIfDue(this@HammockApplication)
             }
 
             override fun onStop(owner: LifecycleOwner) {

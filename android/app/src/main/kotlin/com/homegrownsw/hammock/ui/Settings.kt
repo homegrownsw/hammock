@@ -262,6 +262,25 @@ fun SettingsScreen(session: Session, model: AppModel) {
                 GroupedCard {
                     ValueRow("Version") { Text(BuildConfig.VERSION_NAME, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     CardDivider()
+                    if (com.homegrownsw.hammock.UpdateCheck.enabled) {
+                        val update by com.homegrownsw.hammock.UpdateCheck.available.collectAsStateWithLifecycle()
+                        val checking by com.homegrownsw.hammock.UpdateCheck.status.collectAsStateWithLifecycle()
+                        val u = update
+                        if (u != null) {
+                            ValueRow("Update to ${u.version}", accent = true, onClick = { com.homegrownsw.hammock.UpdateCheck.download(ctx, u) }) {}
+                        } else {
+                            ValueRow("Check for Updates", accent = true, onClick = { com.homegrownsw.hammock.UpdateCheck.check(ctx) }) {
+                                val s = when (checking) {
+                                    com.homegrownsw.hammock.UpdateCheck.Status.Checking -> "Checking…"
+                                    com.homegrownsw.hammock.UpdateCheck.Status.UpToDate -> "Up to date"
+                                    com.homegrownsw.hammock.UpdateCheck.Status.Failed -> "Couldn't check"
+                                    com.homegrownsw.hammock.UpdateCheck.Status.Idle -> ""
+                                }
+                                if (s.isNotEmpty()) Text(s, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        CardDivider()
+                    }
                     ValueRow("Hammock Documentation", accent = true, onClick = {
                         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://homegrownsw.com/hammock/docs/")))
                     }) {}

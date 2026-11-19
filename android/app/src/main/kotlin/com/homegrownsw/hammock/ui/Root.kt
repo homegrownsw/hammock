@@ -101,6 +101,33 @@ fun Root(session: Session, opening: OpenRequest?, opened: () -> Unit) {
             dismissButton = { TextButton(onClick = session::dismissOffer) { Text("Cancel") } },
         )
     }
+    UpdatePrompt()
+}
+
+/** A newer release (UpdateCheck), offered once: Download, What's New, or Later (it stays in Settings ▸ About). */
+@Composable
+private fun UpdatePrompt() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val update by com.homegrownsw.hammock.UpdateCheck.available.collectAsStateWithLifecycle()
+    var answered by remember { mutableStateOf(0) }
+    val u = update ?: return
+    if (answered == u.build || !com.homegrownsw.hammock.UpdateCheck.shouldPrompt(ctx, u) || LocalAppLocked.current) return
+    fun done() {
+        com.homegrownsw.hammock.UpdateCheck.answered(ctx, u)
+        answered = u.build
+    }
+    AlertDialog(
+        onDismissRequest = ::done,
+        title = { Text("Hammock ${u.version} is available") },
+        text = { Text("You have ${com.homegrownsw.hammock.BuildConfig.VERSION_NAME}. Download the new version, then open it to install it over this one: your computers and settings stay.") },
+        confirmButton = { TextButton(onClick = { done(); com.homegrownsw.hammock.UpdateCheck.download(ctx, u) }) { Text("Download") } },
+        dismissButton = {
+            Row {
+                if (u.notes.isNotEmpty()) TextButton(onClick = { com.homegrownsw.hammock.UpdateCheck.whatsNew(ctx, u) }) { Text("What's New") }
+                TextButton(onClick = ::done) { Text("Later") }
+            }
+        },
+    )
 }
 
 @Composable

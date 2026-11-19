@@ -1,6 +1,6 @@
 ---
 title: Install on Android
-description: Build the Android app, pair it with your Mac and turn on notifications.
+description: Install the Android app, pair it with your Mac and turn on notifications.
 ---
 
 Hammock for Android shows the workspace on your Mac (or a Linux server running Hammock), live, on Android phones,
@@ -8,8 +8,17 @@ foldables and tablets. It needs **Android 13 or later**, and pairs with your own
 
 ## Get the app
 
-The Android app is in development and isn't on Google Play yet. To try it now, build it from the source
-(`android/README.md` in the repository) and install it with `just android-device`.
+Hammock for Android isn't on Google Play: it comes as an APK. On your phone, open the newest
+[Android release](https://github.com/homegrownsw/hammock/releases?q=Android-v&expanded=true) and download
+`Hammock-<version>.apk`, then open it. The first time, Android asks you to let your browser install apps:
+allow it, then go back and install.
+
+Hammock checks for a new version once a day and offers it; **Settings ▸ Check for Updates** looks now. Install
+an update the same way, over the app you have: your computers and settings stay.
+
+Every release is signed with the same key. To check an APK, `apksigner verify --print-certs` shows its
+certificate's SHA-256 digest, which should be
+`3e004932943b43d6389483e921f1b9fb9c7ff37d03f624124dad0db9ce99671b`.
 
 ## Pair with your Mac
 

@@ -54,6 +54,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         if (!BuildConfig.DEBUG) return
         val session = (application as HammockApplication).session
         intent.getStringExtra("pair")?.let { session.pair(it) }
+        // A feed for the update check to try (UpdateCheck), as a release build would read its own.
+        intent.getStringExtra("updateFeed")?.let { UpdateCheck.feedOverride = it; UpdateCheck.check(this) }
         if (intent.getBooleanExtra("sample", false)) {
             session.startDemo(com.homegrownsw.hammock.demo.DemoDaemon(
                 longChat = intent.getBooleanExtra("longChat", false), newChat = intent.getBooleanExtra("newChat", false),
