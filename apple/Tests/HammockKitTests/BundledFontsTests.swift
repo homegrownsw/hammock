@@ -86,3 +86,32 @@ private let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponen
     #expect(fontsUsed.filter { $0 == BundledFonts.symbolsName }.count == 2)
     #expect(!fontsUsed.contains("LastResort"))
 }
+
+/// A character the font hasn't got (⌘ in Hack and many other fonts) comes
+/// from a fallback font, often wider than the cell: it shrinks to fit its
+/// cell rather than overlapping the next character.
+@MainActor @Test func fallbackGlyphsFitTheirCell() throws {
+    BundledFonts.register(bundle: try #require(Bundle(url: resources)))
+    // Hack Nerd Font's ⌘ comes from Lucida Grande, 13pt wide in a 9pt cell.
+    let cascade = CTFontDescriptorCreateWithNameAndSize("LucidaGrande" as CFString, 15)
+    let hack = CTFontCreateWithFontDescriptor(CTFontDescriptorCreateWithAttributes([
+        kCTFontNameAttribute: "Hack-Regular", kCTFontCascadeListAttribute: [cascade]] as CFDictionary), 15, nil)
+    try #require(CTFontCopyPostScriptName(hack) as String == "Hack-Regular")
+    var units = Array("⌘".utf16), glyphs = [CGGlyph](repeating: 0, count: 1)
+    try #require(!CTFontGetGlyphsForCharacters(hack, &units, &glyphs, 1), "Hack has ⌘ now: pick another character")
+    let fonts = TerminalFonts(regular: hack, bold: hack, italic: hack, boldItalic: hack,
+                              cellWidth: 9, cellHeight: 18, baseline: 14, scale: 2)
+    let layout = TerminalLineLayout(fonts: fonts, palette: TerminalPalette(foreground: RGB(r: 0, g: 0, b: 0), background: RGB(r: 255, g: 255, b: 255),
+                                                                           selection: RGB(r: 0, g: 0, b: 255), selectionForeground: nil))
+    let line = layout.line(["a", "⌘", "D"].map { TerminalCell(text: $0) })
+    var fitted = 0
+    for t in line.text {
+        guard case .fitted(let g) = t else { continue }
+        fitted += 1
+        var glyph = g.glyph, b = CGRect.zero
+        CTFontGetBoundingRectsForGlyphs(g.font, .horizontal, &glyph, &b, 1)
+        let ink = b.applying(g.transform)
+        #expect(ink.minX >= 9 - 0.01 && ink.maxX <= 18 + 0.01, "⌘ drawn at \(ink.minX)...\(ink.maxX), outside its cell 9...18")
+    }
+    #expect(fitted == 1)
+}

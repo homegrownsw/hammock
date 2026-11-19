@@ -15,6 +15,9 @@ public struct TerminalFonts {
     /// system's monospaced font, SF Mono, ignores one). Nil when it isn't
     /// registered.
     public let symbols: CTFont?
+    /// The PostScript names of the fonts above: a glyph in any other font
+    /// came from the system's fallback.
+    let ownFonts: Set<String>
 
     public init(regular: CTFont, bold: CTFont, italic: CTFont, boldItalic: CTFont,
                 cellWidth: CGFloat, cellHeight: CGFloat, baseline: CGFloat, scale: CGFloat) {
@@ -28,6 +31,7 @@ public struct TerminalFonts {
         self.scale = scale
         let symbols = CTFontCreateWithName(BundledFonts.symbolsName as CFString, CTFontGetSize(regular), nil)
         self.symbols = CTFontCopyPostScriptName(symbols) as String == BundledFonts.symbolsName ? symbols : nil
+        ownFonts = Set([regular, bold, italic, boldItalic].map { CTFontCopyPostScriptName($0) as String } + [BundledFonts.symbolsName])
     }
 
     func font(_ i: Int) -> CTFont { i == 4 ? symbols ?? regular : [regular, bold, italic, boldItalic][i] }
@@ -269,6 +273,7 @@ public final class TerminalLineLayout {
             let n = CTRunGetGlyphCount(run)
             guard n > 0 else { continue }
             let runFont = (CTRunGetAttributes(run) as NSDictionary)[kCTFontAttributeName] as! CTFont
+            let fallback = !f.ownFonts.contains(CTFontCopyPostScriptName(runFont) as String)
             var glyphs = [CGGlyph](repeating: 0, count: n)
             var positions = [CGPoint](repeating: .zero, count: n)
             var indices = [CFIndex](repeating: 0, count: n)
@@ -289,7 +294,7 @@ public final class TerminalLineLayout {
                 clusterStart[col] = startX
                 let x = CGFloat(col) * cw + (positions[g].x - startX)
                 let color = palette.foreground(of: cell)
-                if let (fit, clip) = symbolFit(glyph: glyphs[g], font: runFont, col: col, row: row, x: x) {
+                if let (fit, clip) = symbolFit(glyph: glyphs[g], font: runFont, fallback: fallback, col: col, row: row, x: x) {
                     line.text.append(.fitted(.init(font: runFont, color: color, glyph: glyphs[g], transform: fit, clip: clip)))
                 } else if let last = plain.last, last.color == color {
                     plain[plain.count - 1].glyphs.append(glyphs[g])
@@ -307,13 +312,15 @@ public final class TerminalLineLayout {
     /// Powerline separators are stretched to fill their cell exactly so
     /// segments join seamlessly; other icons shrink to the space they have
     /// (two cells when followed by a blank, as Ghostty does). Box drawing
-    /// spans the cell's height. nil = draw as is.
+    /// spans the cell's height. A glyph from a fallback font (⌘ when the
+    /// font hasn't got it) shrinks to fit its cell, centred, as Ghostty
+    /// does, rather than overlapping the next character. nil = draw as is.
     ///
     /// Glyphs made to fill their cell are clipped to it: their anti-aliased
     /// edges would otherwise bleed half a pixel into the next row, there
     /// after a whole redraw and gone after that row alone is redrawn (a
     /// faint line under a powerline prompt that came and went as you typed).
-    private func symbolFit(glyph: CGGlyph, font: CTFont, col: Int, row: [TerminalCell], x: CGFloat) -> (CGAffineTransform, CGRect?)? {
+    private func symbolFit(glyph: CGGlyph, font: CTFont, fallback: Bool, col: Int, row: [TerminalCell], x: CGFloat) -> (CGAffineTransform, CGRect?)? {
         guard col < row.count, let scalar = row[col].text.unicodeScalars.first else { return nil }
         let cw = fonts.cellWidth, ch = fonts.cellHeight
         if (0x2500...0x257F).contains(scalar.value) || (0x1FB00...0x1FBFF).contains(scalar.value) {
@@ -325,12 +332,19 @@ public final class TerminalLineLayout {
             // Across the row only: lines reach past the cell sideways to join.
             return (CGAffineTransform(translationX: x, y: a * sy).scaledBy(x: 1, y: sy), CGRect(x: x - cw, y: 0, width: cw * 3, height: ch))
         }
-        guard (0xE000...0xF8FF).contains(scalar.value) || scalar.value >= 0xF0000 else { return nil }
+        let icon = (0xE000...0xF8FF).contains(scalar.value) || scalar.value >= 0xF0000
+        guard icon || fallback else { return nil }
         var g = glyph
         var b = CGRect.zero
         CTFontGetBoundingRectsForGlyphs(font, .horizontal, &g, &b, 1)
         guard b.width > 0, b.height > 0 else { return nil }
         let left = CGFloat(col) * cw
+        if !icon {
+            let room = cw * (row[col].wide ? 2 : 1)
+            guard x == left, b.maxX > room + 0.5 else { return nil } // not a combining mark
+            let s = min(1, room / b.width)
+            return (CGAffineTransform(translationX: left + (room - b.width * s) / 2 - b.minX * s, y: fonts.baseline + (b.midY * s - b.midY)).scaledBy(x: s, y: s), nil)
+        }
         if (0xE0B0...0xE0D7).contains(scalar.value) {
             // Map the glyph's bounds onto the cell.
             let sx = cw / b.width, sy = ch / b.height
