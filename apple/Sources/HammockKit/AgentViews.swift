@@ -1184,6 +1184,33 @@ public enum AgentLink {
         }
     }
 
+    /// A link in a terminal of a Group on another computer (shared with
+    /// you, or another of yours): its programs run there, so a file link
+    /// with no host, localhost or that computer's name (`hostNames`: what
+    /// it's called, as Hammock knows it) is that computer's file, the path
+    /// as it is there. Any other host, this Mac's too, is `.elsewhere`.
+    public static func opening(_ url: URL, onHostNamed hostNames: [String]) -> Opening {
+        guard url.scheme?.lowercased() == "file" else { return opening(url) }
+        return opening(url, localNames: hostNames.flatMap(hostNameForms))
+    }
+
+    /// A computer's name as programs on it give it: as it is ("Studio"),
+    /// and as macOS makes its hostname from it ("Sam's MacBook Pro" →
+    /// "Sams-MacBook-Pro").
+    static func hostNameForms(_ name: String) -> [String] {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        var dashed = ""
+        for ch in name where ch != "'" && ch != "\u{2019}" {
+            if ch.isASCII, ch.isLetter || ch.isNumber {
+                dashed.append(ch)
+            } else if !dashed.isEmpty, !dashed.hasSuffix("-") {
+                dashed.append("-")
+            }
+        }
+        while dashed.hasSuffix("-") { dashed.removeLast() }
+        return Array(Set([name, dashed])).filter { !$0.isEmpty }
+    }
+
     /// Whether a file URL's host names this machine: empty, localhost, or
     /// one of its names. Programs send `gethostname()`, which may or may not
     /// carry .local (or the domain), so names also match by their first

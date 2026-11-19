@@ -1224,6 +1224,19 @@ struct TerminalView: NSViewRepresentable {
     /// Finder instead, and any other scheme (which could launch any app, or
     /// mount a server) asks first.
     static func open(_ url: URL, in target: LinkTarget? = nil, beside paneID: String, model: AppModel) {
+        // A Group on another computer: its programs link to files there,
+        // opened there, never whatever is at that path on this Mac.
+        if let g = model.group(ofPane: paneID), g.isRemote {
+            switch AgentLink.opening(url, onHostNamed: model.hostNames(of: g)) {
+            case .file(let path):
+                FileLink.openRemote(path, beside: paneID, model: model)
+                return
+            case .elsewhere:
+                return sayElsewhere(url)
+            default:
+                break
+            }
+        }
         switch AgentLink.opening(url) {
         case .web:
             openWeb(url, in: target ?? AppConfig.shared.linkOpen, beside: paneID, model: model)

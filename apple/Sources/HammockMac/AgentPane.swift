@@ -165,6 +165,38 @@ enum FileLink {
         }
     }
 
+    /// A file a terminal in a Group on another computer linked to: it's on
+    /// that computer, so it opens there, in an editor pane beside `paneID`
+    /// (text only; the host says why when it won't), never whatever is at
+    /// the path on this Mac. A relative path is the pane's folder's, as the
+    /// host reports it.
+    @MainActor static func openRemote(_ path: String, beside paneID: String, model: AppModel) {
+        guard FileOpening.acceptable(path) else { NSSound.beep(); return }
+        var path = path
+        if !path.hasPrefix("/"), !path.hasPrefix("~/"), let cwd = model.panes[paneID]?.cwd, !cwd.isEmpty {
+            path = (cwd as NSString).appendingPathComponent(path)
+        }
+        let name = (path as NSString).lastPathComponent
+        guard model.group(ofPane: paneID)?.canDrive != false else {
+            return say("Only people who can drive can open files.", path)
+        }
+        guard HammockTool.editor.on else {
+            return say("\(name) is on another computer", "Turn on editor panes in Settings ▸ Tools to open it there.")
+        }
+        EditorUI.shared.open(model, path, groupID: nil, splitPane: paneID)
+    }
+
+    @MainActor private static func say(_ message: String, _ info: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = info
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
+    }
+
     /// Symlinks and Finder aliases followed to what they point at (opening
     /// an alias to an app launches the app).
     static func resolved(_ url: URL) -> URL {

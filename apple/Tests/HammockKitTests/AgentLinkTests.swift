@@ -44,6 +44,33 @@ import Testing
         #expect(AgentLink.opening(URL(string: "file://localhost/tmp/a.txt")!, localNames: []) == .file("/tmp/a.txt"))
     }
 
+    /// In a Group on another computer, a file link with no host, or naming
+    /// that computer, is its file; one naming any other (this Mac too) isn't.
+    @Test func fileLinksInAGroupOnAnotherComputerAreItsFiles() {
+        let host = ["Sam’s MacBook Pro", "Build Box"]
+        for s in ["file:///tmp/a.txt", "file://localhost/tmp/a.txt", "file://Sams-MacBook-Pro.local/tmp/a.txt",
+                  "file://sams-macbook-pro/tmp/a.txt", "file://build-box.example.com/tmp/a.txt"] {
+            #expect(AgentLink.opening(URL(string: s)!, onHostNamed: host) == .file("/tmp/a.txt"), "\(s)")
+        }
+        for s in ["file://other-mac/tmp/a.txt", "file://100.64.0.2/tmp/a.txt", "file://sams/tmp/a.txt"] {
+            #expect(AgentLink.opening(URL(string: s)!, onHostNamed: host) == .elsewhere, "\(s)")
+        }
+        // This Mac's own name isn't the host's.
+        for name in AgentLink.localHostNames() {
+            guard let url = URL(string: "file://\(name)/tmp/a.txt") else { continue }
+            #expect(AgentLink.opening(url, onHostNamed: host) == .elsewhere, "\(name)")
+        }
+        // Not file links: as anywhere.
+        #expect(AgentLink.opening(URL(string: "https://example.com")!, onHostNamed: host) == .web)
+        #expect(AgentLink.opening(URL(string: "vscode://file/x")!, onHostNamed: host) == .ask)
+    }
+
+    @Test func hostNameForms() {
+        #expect(Set(AgentLink.hostNameForms("Sam's MacBook Pro")) == ["Sam's MacBook Pro", "Sams-MacBook-Pro"])
+        #expect(AgentLink.hostNameForms("Studio") == ["Studio"])
+        #expect(AgentLink.hostNameForms("  ").isEmpty)
+    }
+
     #if os(macOS)
     /// This Mac's own hostname, as `ls --hyperlink` writes it, is local.
     @Test func thisMacsHostnameIsLocal() {

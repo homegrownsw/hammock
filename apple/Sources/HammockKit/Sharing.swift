@@ -67,6 +67,15 @@ extension AppModel {
         panes[id].flatMap { tabs[$0.tabID] }.flatMap { group(of: $0) }
     }
 
+    /// What the computer a Group runs on is called (its device name, and
+    /// as a linked computer), for the file links its programs print: none
+    /// for this Mac's own Groups.
+    public func hostNames(of group: WorkspaceGroup) -> [String] {
+        guard group.isRemote else { return [] }
+        let names = [people[group.hostUserID]?.deviceName ?? "", computer(group.hostUserID)?.name ?? ""]
+        return names.filter { !$0.isEmpty }
+    }
+
     /// The Mac a shared Group runs on, as "Sam's Mac" (its owner and device).
     public func hostLabel(of group: WorkspaceGroup) -> String {
         if let c = computer(of: group) { return c.name }
