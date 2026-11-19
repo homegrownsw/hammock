@@ -890,7 +890,9 @@ func (d *Daemon) deleteSchedule(id string) error {
 
 // toolRule is the --allowedTools rule for a tool call, as Claude's own
 // "don't ask again" words it: a Bash command by its first word or two, a
-// web fetch by its site, anything else by the tool's name.
+// web fetch by its site, anything else by the tool's name. noRule for a
+// command whose first word runs whatever follows it (runsAnything): its
+// rule would allow nearly anything in every run.
 func toolRule(tool string, input map[string]any) string {
 	switch tool {
 	case "":
@@ -898,8 +900,8 @@ func toolRule(tool string, input map[string]any) string {
 	case "Bash":
 		cmd, _ := input["command"].(string)
 		f := strings.Fields(firstLine(cmd))
-		if len(f) == 0 {
-			return "Bash"
+		if len(f) == 0 || runsAnything(f) {
+			return noRule
 		}
 		prefix := f[0]
 		if len(f) > 1 && !strings.HasPrefix(f[1], "-") && !strings.ContainsAny(f[1], "/.'\"$|&;<>") {
@@ -914,6 +916,46 @@ func toolRule(tool string, input map[string]any) string {
 		}
 	}
 	return tool
+}
+
+// noRule is toolRule's answer for a command no rule should allow in every
+// run: Always Allow for This Schedule says so, and allows nothing.
+const noRule = "-"
+
+// runsAnything: a command's words f begin with something that runs
+// whatever follows it, so a rule by its first word or two would allow
+// nearly anything: a shell or interpreter (bash -c, python3 -c), a command
+// runner (env, sudo, xargs, npx; the launchers in program.go), a variable
+// set first (FOO=1 cmd), or a package manager or tool running a command
+// (uv run, npm exec, pnpm dlx) or with only flags to go by (npm -y …).
+func runsAnything(f []string) bool {
+	base := normalizeProgram(filepath.Base(f[0]))
+	if strings.ContainsAny(f[0], "=$`(") || shells[base] || commandRunners[base] {
+		return true
+	}
+	if !launchers[base] {
+		return false
+	}
+	if !withSubcommands[base] {
+		return true // an interpreter, or a command runner
+	}
+	return len(f) < 2 || strings.HasPrefix(f[1], "-") || launcherVerbs[f[1]] || f[1] == "dlx" || f[1] == "x"
+}
+
+// commandRunners run a command given them, beyond program.go's launchers.
+var commandRunners = map[string]bool{
+	"xargs": true, "eval": true, "exec": true, "command": true, "builtin": true, "source": true, ".": true,
+	"osascript": true, "parallel": true, "script": true, "unbuffer": true, "stdbuf": true, "chroot": true,
+	"flock": true, "ssh": true, "screen": true, "tmux": true,
+}
+
+// withSubcommands are launchers whose own subcommands are worth a rule
+// (npm test, uv sync, bundle install) but for run, exec and the like.
+var withSubcommands = map[string]bool{
+	"npm": true, "pnpm": true, "yarn": true, "bun": true, "deno": true, "uv": true, "corepack": true,
+	"bundle": true, "poetry": true, "pipx": true, "pipenv": true, "hatch": true, "pdm": true, "rye": true,
+	"pixi": true, "conda": true, "mamba": true, "mise": true, "devbox": true, "op": true, "doppler": true,
+	"dotenvx": true,
 }
 
 // scheduleToolFor is the rule to remember for the tool p's agent is asking
@@ -932,7 +974,10 @@ func (d *Daemon) scheduleToolFor(p *pane, screen string) (string, error) {
 	p.mu.Lock()
 	rule, asked := p.askedRule, p.askedFor
 	p.mu.Unlock()
-	if rule == "" || !askedAbout(asked, rule) || !commandShown(screen, rule) {
+	if rule == noRule && askedAbout(asked, "Bash") {
+		return "", errors.New("this command could run anything, so it can't be allowed in every run: allow it once instead")
+	}
+	if rule == "" || rule == noRule || !askedAbout(asked, rule) || !commandShown(screen, rule) {
 		return "", errors.New("can't tell which tool it's asking for: allow it once instead")
 	}
 	return rule, nil
@@ -941,7 +986,7 @@ func (d *Daemon) scheduleToolFor(p *pane, screen string) (string, error) {
 // rememberScheduleTool adds rule to p's schedule's allowed tools. Callers hold d.mu.
 func (d *Daemon) rememberScheduleTool(p *pane, rule string) {
 	s := d.sched.list[p.snapshotInfo().ScheduleId]
-	if s == nil || rule == "" || slices.Contains(s.AllowedTools, rule) {
+	if s == nil || rule == "" || rule == noRule || slices.Contains(s.AllowedTools, rule) {
 		return
 	}
 	s.AllowedTools = append(s.AllowedTools, rule)

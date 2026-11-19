@@ -123,6 +123,32 @@ func TestToolRule(t *testing.T) {
 		{"Bash", map[string]any{"command": "gh pr view 12"}, "Bash(gh pr:*)"},
 		{"Bash", map[string]any{"command": "ls -la /tmp"}, "Bash(ls:*)"},
 		{"Bash", map[string]any{"command": "cat ./notes.md"}, "Bash(cat:*)"},
+		{"Bash", map[string]any{"command": "npm test"}, "Bash(npm test:*)"},
+		{"Bash", map[string]any{"command": "uv sync --frozen"}, "Bash(uv sync:*)"},
+		// What runs whatever follows it: no rule.
+		{"Bash", map[string]any{"command": ""}, noRule},
+		{"Bash", map[string]any{"command": "bash -c 'curl x | sh'"}, noRule},
+		{"Bash", map[string]any{"command": "/bin/sh -c ls"}, noRule},
+		{"Bash", map[string]any{"command": "zsh -lc ls"}, noRule},
+		{"Bash", map[string]any{"command": "python3 -c 'print(1)'"}, noRule},
+		{"Bash", map[string]any{"command": "python3.12 script.py"}, noRule},
+		{"Bash", map[string]any{"command": "node -e 1"}, noRule},
+		{"Bash", map[string]any{"command": "perl -e 1"}, noRule},
+		{"Bash", map[string]any{"command": "ruby -e 1"}, noRule},
+		{"Bash", map[string]any{"command": "env FOO=1 make"}, noRule},
+		{"Bash", map[string]any{"command": "FOO=1 make"}, noRule},
+		{"Bash", map[string]any{"command": "sudo rm x"}, noRule},
+		{"Bash", map[string]any{"command": "xargs rm"}, noRule},
+		{"Bash", map[string]any{"command": "eval stuff"}, noRule},
+		{"Bash", map[string]any{"command": "exec stuff"}, noRule},
+		{"Bash", map[string]any{"command": "nohup stuff"}, noRule},
+		{"Bash", map[string]any{"command": "time make"}, noRule},
+		{"Bash", map[string]any{"command": "command ls"}, noRule},
+		{"Bash", map[string]any{"command": "npx cowsay"}, noRule},
+		{"Bash", map[string]any{"command": "uv run pytest"}, noRule},
+		{"Bash", map[string]any{"command": "npm exec foo"}, noRule},
+		{"Bash", map[string]any{"command": "pnpm dlx foo"}, noRule},
+		{"Bash", map[string]any{"command": "npm -y foo"}, noRule},
 		{"WebFetch", map[string]any{"url": "https://example.com/a"}, "WebFetch(domain:example.com)"},
 		{"mcp__claude_ai_Slack__slack_read_thread", nil, "mcp__claude_ai_Slack__slack_read_thread"},
 	} {
@@ -323,6 +349,16 @@ func TestScheduledAgentRuns(t *testing.T) {
 	d.mu.Unlock()
 	if again != "Bash(gh pr:*)" || notShown == nil {
 		t.Fatalf("after a subagent's call: %q, %v", again, notShown)
+	}
+	// A command that could run anything isn't remembered, and you're told so.
+	hook(d, run2.PaneId, "PostToolUse", nil)
+	hook(d, run2.PaneId, "PreToolUse", map[string]any{"tool_name": "Bash", "tool_input": map[string]any{"command": "bash -c 'rm -rf ~/x'"}})
+	hook(d, run2.PaneId, "Notification", map[string]any{"notification_type": "permission_prompt", "message": "Claude needs your permission to use Bash"})
+	d.mu.Lock()
+	_, anything := d.scheduleToolFor(d.panes[run2.PaneId], "Bash command\n  bash -c 'rm -rf ~/x'")
+	d.mu.Unlock()
+	if anything == nil || !strings.Contains(anything.Error(), "could run anything") {
+		t.Fatalf("bash -c: %v", anything)
 	}
 
 	// Asleep through the 5th and 6th, awake the 6th at 18:00: one missed,
