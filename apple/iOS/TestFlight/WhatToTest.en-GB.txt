@@ -1,15 +1,8 @@
 This build
 
 New
-• Your theme's colour now runs behind the Sessions, Groups, Devices and Settings screens, and the screens they open, as it does in the Mac's sidebar.
-• Markdown Preview: tap Show Preview in an editor pane's menu to read a Markdown file rendered.
-• Tick Viewed on a file in a diff to fold it away and keep track of how far through you are.
-• Diff panes work from a connected keyboard: move through lines, changes and files, comment, and press ? to see every key.
-• Finish Review: tap it in a diff to tell the agent you're done, approving the changes or asking for more, along with any comments not yet sent.
+• Simulator clipboard: touch and hold Type under a simulator or Android emulator to send your iPhone's clipboard to it, or copy its clipboard to your iPhone.
+• Run Early: run a scheduled task now instead of at its next time, so it doesn’t run twice.
 
 Fixed
-• Browser panes now fit your iPhone's screen: a page takes your iPhone's size while you're using it, and the Mac's again when someone uses it there.
-• A resumed session's tab is named after the session, not the command that resumed it.
-• Tap a line a change took out, in a diff, to comment on it.
-• Terminals in a tab with several panes no longer run behind the strip of panes at the bottom.
-• The Asleep card over a sleeping agent's pane no longer bounces in every time you switch to it.
+• The dot that goes round a resting agent's icon while its shells run is now bigger and easier to spot.
