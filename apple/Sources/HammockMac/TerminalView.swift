@@ -1231,8 +1231,24 @@ struct TerminalView: NSViewRepresentable {
             NSWorkspace.shared.open(url)
         case .file(let path):
             FileLink.open(path)
+        case .elsewhere:
+            sayElsewhere(url)
         case .ask:
             askToOpen(url)
+        }
+    }
+
+    /// A file link to another computer (a program on an ssh host links to
+    /// its own files): opening it would mount a server, or open whatever is
+    /// at that path on this Mac, so it isn't opened.
+    @MainActor private static func sayElsewhere(_ url: URL) {
+        let alert = NSAlert()
+        alert.messageText = "This file isn’t on this Mac"
+        alert.informativeText = url.absoluteString
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
         }
     }
 
@@ -1253,7 +1269,9 @@ struct TerminalView: NSViewRepresentable {
 
     /// "Open this link?", showing where it really goes. Cancel comes first,
     /// so NSAlert gives it Escape; Open has no key, so Return opens nothing.
+    /// Never a file link: NSWorkspace would run a script or app it names.
     @MainActor private static func askToOpen(_ url: URL) {
+        guard !url.isFileURL else { return sayElsewhere(url) }
         let alert = NSAlert()
         alert.messageText = "Open this link?"
         alert.informativeText = "It isn’t a web page: it could open another app, or connect to a server.\n\n\(url.absoluteString)"

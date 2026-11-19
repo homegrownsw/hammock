@@ -18,11 +18,43 @@ import Testing
         #expect(AgentLink.opening(URL(string: "mailto:a@b.c")!) == .direct)
         #expect(AgentLink.opening(URL(string: "file:///tmp/evil.command")!) == .file("/tmp/evil.command"))
         #expect(AgentLink.opening(URL(string: "file://localhost/tmp/a%20b.txt")!) == .file("/tmp/a b.txt"))
-        for s in ["file://attacker.example/share/x.command", "smb://attacker.example/share", "vscode://file/x",
+        for s in ["smb://attacker.example/share", "vscode://file/x",
                   "x-apple.systempreferences:foo", "afp://host/vol", "javascript:alert(1)"] {
             #expect(AgentLink.opening(URL(string: s)!) == .ask, "\(s)")
         }
+        // A file on another computer is never opened, nor asked about.
+        #expect(AgentLink.opening(URL(string: "file://attacker.example/share/x.command")!, localNames: ["Studio.local"]) == .elsewhere)
     }
+
+    /// `ls --hyperlink`, `eza`, `rg` and `fd` put this machine's hostname in
+    /// their links, with or without .local or a domain.
+    @Test func fileLinksNamingThisMacAreLocal() {
+        let names = ["Studio.local", "studio-2.local"]
+        for s in ["file://Studio.local/tmp/a.txt", "file://studio/tmp/a.txt", "file://STUDIO.LOCAL/tmp/a.txt",
+                  "file://studio.example.com/tmp/a.txt", "file://studio-2/tmp/a.txt", "file://localhost/tmp/a.txt",
+                  "file:///tmp/a.txt"] {
+            #expect(AgentLink.opening(URL(string: s)!, localNames: names) == .file("/tmp/a.txt"), "\(s)")
+        }
+        for s in ["file://studio2.local/tmp/a.txt", "file://other-mac/tmp/a.txt", "file://100.64.0.2/tmp/a.txt",
+                  "file://studio.local"] {
+            #expect(AgentLink.opening(URL(string: s)!, localNames: names) == .elsewhere, "\(s)")
+        }
+        // No names known (the iPhone): only empty and localhost.
+        #expect(AgentLink.opening(URL(string: "file://studio/tmp/a.txt")!, localNames: []) == .elsewhere)
+        #expect(AgentLink.opening(URL(string: "file://localhost/tmp/a.txt")!, localNames: []) == .file("/tmp/a.txt"))
+    }
+
+    #if os(macOS)
+    /// This Mac's own hostname, as `ls --hyperlink` writes it, is local.
+    @Test func thisMacsHostnameIsLocal() {
+        let names = AgentLink.localHostNames()
+        #expect(!names.isEmpty)
+        for name in names {
+            guard let url = URL(string: "file://\(name)/tmp/a.txt") else { continue }
+            #expect(AgentLink.opening(url) == .file("/tmp/a.txt"), "\(name)")
+        }
+    }
+    #endif
 
     @Test func destinationsLeaveOutLinksThatShowThemselves() {
         let text = Markdown.inline("See [the docs](https://example.com/docs), /tmp/notes.md and [this](vscode://open)")

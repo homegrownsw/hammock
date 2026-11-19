@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 #if canImport(AppKit)
 import AppKit
+import SystemConfiguration
 typealias PlatformImage = NSImage
 #else
 import UIKit
@@ -471,7 +472,10 @@ public struct AgentConversationView: View {
                 return .handled
             }
             if AgentLink.opensDirectly(url) { return .systemAction }
-            if url.isFileURL, let open = onOpenFile {
+            if url.isFileURL {
+                // Never to the system as it is: that would run a script or
+                // app with no further check.
+                guard let open = onOpenFile, !url.path.isEmpty else { return .discarded }
                 open(url.path)
                 return .handled
             }
@@ -1158,21 +1162,57 @@ public enum AgentLink {
         case direct
         /// A file on this Mac (the path): opened unless it would run something.
         case file(String)
-        /// Any other scheme, or a file on another host: ask first.
+        /// A file on another computer (file://server/…), or no path: not
+        /// opened. Opening it would reach out to that server, or open the
+        /// same path on this Mac, which isn't the file the link means.
+        case elsewhere
+        /// Any other scheme: ask first.
         case ask
     }
 
-    public static func opening(_ url: URL) -> Opening {
+    /// `localNames`: this machine's host names (localHostNames), which
+    /// `ls`, `eza`, `rg` and the like put in their file links.
+    public static func opening(_ url: URL, localNames: [String] = localHostNames()) -> Opening {
         switch url.scheme?.lowercased() ?? "" {
         case "http", "https": return .web
         case "mailto": return .direct
         case "file":
-            // file://server/share… would reach out to another machine.
             let host = url.host(percentEncoded: false) ?? ""
-            guard host.isEmpty || host.lowercased() == "localhost", !url.path.isEmpty else { return .ask }
+            guard isLocalHost(host, localNames: localNames), !url.path.isEmpty else { return .elsewhere }
             return .file(url.path)
         default: return .ask
         }
+    }
+
+    /// Whether a file URL's host names this machine: empty, localhost, or
+    /// one of its names. Programs send `gethostname()`, which may or may not
+    /// carry .local (or the domain), so names also match by their first
+    /// label, as the daemon does for a shell's working directory (OSC 7).
+    static func isLocalHost(_ host: String, localNames: [String]) -> Bool {
+        if host.isEmpty || host.caseInsensitiveCompare("localhost") == .orderedSame { return true }
+        func first(_ s: String) -> Substring { s.prefix { $0 != "." } }
+        return localNames.contains { name in
+            !name.isEmpty && (host.caseInsensitiveCompare(name) == .orderedSame
+                || first(host).caseInsensitiveCompare(first(name)) == .orderedSame)
+        }
+    }
+
+    /// This Mac's host names: its hostname (`gethostname`, what terminal
+    /// programs use) and its Bonjour name (Sharing's Local Hostname, with
+    /// .local). Read on each click, since either can change with the
+    /// network. None on the iPhone: a file link there is the Mac's, not its.
+    public static func localHostNames() -> [String] {
+        #if os(macOS)
+        var names: [String] = []
+        var buf = [CChar](repeating: 0, count: 256)
+        if gethostname(&buf, buf.count) == 0 {
+            names.append(String(decoding: buf.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self))
+        }
+        if let local = SCDynamicStoreCopyLocalHostName(nil) as String? { names.append(local + ".local") }
+        return names.filter { !$0.isEmpty }
+        #else
+        return []
+        #endif
     }
 
     /// Where the links in some text go, one per line, leaving out those whose
