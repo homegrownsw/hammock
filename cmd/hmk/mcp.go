@@ -84,7 +84,8 @@ func mcpInstructions(values map[string]string) string {
 		"To hand the user a TUI and carry on when they quit it (a diff reviewer, an editor), run it with --wait as a background shell command instead of create_pane: " +
 		"`hmk tab new --name NAME --wait -- CMD` for a new tab, or `hmk split \"$HMK_PANE_ID\" --wait -- CMD` beside your pane. " +
 		"The pane closes when CMD exits cleanly and the command returns with its exit status, with no time limit, so you're woken without blocking. " +
-		"If the pane's terminal couldn't start, it exits 125 and says why on stderr: CMD never ran, so the user never saw it. "}
+		"If the pane's terminal couldn't start, it exits 125 and says why on stderr: CMD never ran, so the user never saw it. " +
+		"Commands in panes run as the user, outside any sandbox you have: from a sandboxed shell, hmk asks the user first. "}
 	kinds := map[string]string{
 		"browser": "Browser panes are real Chromium pages the user can see: open one with browser_open (e.g. your dev server), read it with browser_snapshot, " +
 			"act with browser_click/browser_type, and check browser_console and browser_network when debugging. ",
@@ -491,7 +492,7 @@ func (s *mcpServer) register(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_pane",
-		Description: "Start a command in a new pane (split next to your pane, or in a new tab) so it keeps running visibly in the user's workspace. Returns the new pane id. When the command ends, a shell stays behind in the pane unless close_on_exit; wait_for_pane with until_exit waits for it to end. For a TUI the user works in for a while, prefer its hmk --wait form (hmk tab new or hmk split; see the server's instructions) as a background shell command: you're woken when they quit, without blocking or a time limit.",
+		Description: "Start a command in a new pane (split next to your pane, or in a new tab) so it keeps running visibly in the user's workspace. It runs as the user, outside any sandbox you have. Returns the new pane id. When the command ends, a shell stays behind in the pane unless close_on_exit; wait_for_pane with until_exit waits for it to end. For a TUI the user works in for a while, prefer its hmk --wait form (hmk tab new or hmk split; see the server's instructions) as a background shell command: you're woken when they quit, without blocking or a time limit.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a createArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
 		if err != nil {
@@ -625,7 +626,7 @@ func (s *mcpServer) register(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "send_to_pane",
-		Description: "Type text into a pane you created, then press keys (keys: escape, ctrl-c, arrows…) and Enter. Control characters in text aren't sent: name them in keys.",
+		Description: "Type text into a pane you created, then press keys (keys: escape, ctrl-c, arrows…) and Enter. Anything it starts runs as the user, outside any sandbox you have. Control characters in text aren't sent: name them in keys.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a sendArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
 		if err != nil {

@@ -34,4 +34,14 @@ func (Token) Live() bool                         { return false }
 func (Token) SameProcess(Token) bool             { return false }
 func CheckToken(Token, string) (Signature, bool) { return Signature{}, false }
 
+// Sandboxed is never known here. (Linux has no one question for it: an
+// agent harness's sandbox there is namespaces, seccomp or Landlock, say
+// bubblewrap's; telling it would mean comparing the process's namespaces
+// and status with hmkd's. Not done yet: a sandboxed agent's commands are
+// taken as its own.)
+func (Token) Sandboxed() bool { return false }
+
+// PIDSandboxed: as Sandboxed.
+func PIDSandboxed(int) bool { return false }
+
 var errNoToken = errors.New("no audit tokens here")

@@ -27,6 +27,8 @@ To use a browser or simulator pane yourself, click **Take Over** on its agent ba
 
 :::caution
 This is a guardrail, not a sandbox. It stops an agent wandering into panes you didn't give it, but an agent can still run anything you can from its own shell. For a real boundary, use your agent's own sandbox.
+
+A command run in a pane runs outside that sandbox, so on macOS a sandboxed command asks you before `hmk` runs or types anything, even in the agent's own panes. On Linux, Hammock can't yet tell a sandboxed command from the agent.
 :::
 
 ## Answering an agent's request

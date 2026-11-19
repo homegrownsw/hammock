@@ -410,15 +410,7 @@ func runCommand(args []string) error {
 	}
 	call := func(m *pb.ClientMessage) (*pb.ServerMessage, error) {
 		r, err := c.Call(ctx, m)
-		if err != nil && strings.HasPrefix(err.Error(), "out of scope") {
-			// Run by an agent, beyond what it may do on its own: ask the
-			// person (Needs You, the phone, hmk grant), and if they allow
-			// it, try again.
-			if action, target := grantFor(m); target != "" {
-				return askAndRetry(c, m, action, target, err)
-			}
-		}
-		return r, err
+		return askIfRefused(c, m, r, err)
 	}
 
 	// --on COMPUTER: a linked computer's sessions (the daemon passes it on).
@@ -1530,6 +1522,26 @@ func grantFor(m *pb.ClientMessage) (action, target string) {
 		return "sessions", paneEnv("PANE_ID")
 	}
 	return "", ""
+}
+
+// askIfRefused passes on m's reply, unless it was refused as out of scope:
+// run by an agent beyond what it may do on its own, or from a sandbox
+// (what it runs would run outside it), it asks the person (Needs You, the
+// phone, hmk grant), and if they allow it, tries again.
+func askIfRefused(c *client.Client, m *pb.ClientMessage, r *pb.ServerMessage, err error) (*pb.ServerMessage, error) {
+	if err == nil || !strings.HasPrefix(err.Error(), "out of scope") {
+		return r, err
+	}
+	if strings.HasPrefix(err.Error(), daemon.SandboxRefusal) {
+		if action, target, ok := daemon.SandboxGrant(m); ok {
+			return askAndRetry(c, m, action, target, err) // target "": its own pane
+		}
+		return r, err
+	}
+	if action, target := grantFor(m); target != "" {
+		return askAndRetry(c, m, action, target, err)
+	}
+	return r, err
 }
 
 // askAndRetry asks the person to allow an agent's refused message, waiting

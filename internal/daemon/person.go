@@ -212,10 +212,13 @@ func (c *conn) scope() {
 			c.personOK.Store(true)
 			return
 		}
-		if c.d.plainCaller(c.caller, c.pid, c.tok) {
+		// A sandboxed process is never plainly yours: what it runs through
+		// Hammock would run outside its sandbox (sandbox.go).
+		if !c.sandboxed && c.d.plainCaller(c.caller, c.pid, c.tok) {
 			return
 		}
 		cl := c.d.scopedCaller(c.caller, c.pid)
+		cl.sandboxed = c.sandboxed
 		c.d.mu.Lock()
 		c.caller = cl // (read by other connections under d.mu)
 		c.d.mu.Unlock()

@@ -78,6 +78,9 @@ type conn struct {
 	caller   *caller              // a local client's process, as the daemon sees it (caller.go)
 	pid      int                  // a local client's process id (0 unknown)
 	tok      codesign.Token       // and its audit token as it connected (macOS)
+	// sandboxed: a local client's process runs in a sandbox (sandbox.go),
+	// told as it connected: scope keeps it scoped as an agent.
+	sandboxed bool
 	// Refused attempts audited (auditRefused, guarded by d.mu): since
 	// refusedAt, how many, and how many more not recorded one by one.
 	refusedAt             time.Time
@@ -132,13 +135,13 @@ func (d *Daemon) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.SetReadLimit(32 << 20)
 	lp, _ := r.Context().Value(peerPIDKey{}).(localPeer)
-	cl := d.identify(lp.pid)
-	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller, c.pid, c.tok = cl, lp.pid, lp.tok })
+	cl, sandboxed := d.identifyPeer(lp)
+	d.serveConnWith(&wsTransport{ws: ws}, func(c *conn) { c.caller, c.pid, c.tok, c.sandboxed = cl, lp.pid, lp.tok, sandboxed })
 }
 
 func (d *Daemon) serveFrames(nc net.Conn, r *bufio.Reader, lp localPeer) {
-	cl := d.identify(lp.pid)
-	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller, c.pid, c.tok = cl, lp.pid, lp.tok })
+	cl, sandboxed := d.identifyPeer(lp)
+	d.serveConnWith(&frameTransport{c: nc, r: r}, func(c *conn) { c.caller, c.pid, c.tok, c.sandboxed = cl, lp.pid, lp.tok, sandboxed })
 }
 
 func (d *Daemon) serveConn(t transport) { d.serveConnWith(t, nil) }

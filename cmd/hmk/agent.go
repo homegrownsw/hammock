@@ -209,7 +209,9 @@ func runStartAgent(harness string, args []string) error {
 	if err := w.placeAgent(req, groupRef, on, paneGroup); err != nil {
 		return err
 	}
-	r, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: req}})
+	m := &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: req}}
+	r, err := c.Call(ctx, m)
+	r, err = askIfRefused(c, m, r, err)
 	if err != nil {
 		return err
 	}

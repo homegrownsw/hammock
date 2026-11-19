@@ -25,7 +25,9 @@ import (
 // (directly or through panes they made), and anything else only with your
 // grant (agentCheck; tech spec §8). There's no opt-out: these limits are guardrails
 // against an agent wandering, not a boundary (an agent can run anything the
-// user can); a real boundary is the agent harness's own sandbox.
+// user can); a real boundary is the agent harness's own sandbox. So Hammock
+// mustn't be a way out of one: a caller in a sandbox asks for anything that
+// runs or types something, even in its own panes (sandbox.go).
 // Everything outside Hammock's panes (the Mac app, the
 // TUI in another terminal, launchd) and people's own commands in panes are
 // unaffected.
@@ -41,6 +43,9 @@ type caller struct {
 	// pane's own shell, a terminal: person.go), so scoped as one: in pane
 	// (outsidePane if it's in none).
 	scoped bool
+	// sandboxed: running in a sandbox (an agent harness's, say: sandbox.go),
+	// so scoped as an agent, and asking for anything that runs or types.
+	sandboxed bool
 }
 
 // outsidePane is the pane, as far as agent scoping goes, of a local
@@ -434,9 +439,12 @@ var (
 
 // agentCheck applies agent scoping to a local message before it's handled:
 // an agent's own claims about who it is are replaced with what the daemon
-// worked out, and what it asks for must be in its scope or granted.
-func (c *conn) agentCheck(msg *pb.ClientMessage) error {
+// worked out, and what it asks for must be in its scope or granted (and,
+// from a sandbox, what runs or types something granted: sandboxCheck).
+func (c *conn) agentCheck(msg *pb.ClientMessage) (err error) {
 	c.scope()
+	// (Deferred first, so it runs last: after d.mu is let go below.)
+	defer func() { err = c.sandboxCheck(msg, err) }()
 	cl := c.caller
 	if !cl.isAgent() {
 		ownPaneClaims(cl, msg)
@@ -578,6 +586,11 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) error {
 		// asked for (and worded, and then let through: page above).
 		if r := m.RequestGrant; r.Action == "browse" {
 			r.TargetPaneId = page(r.TargetPaneId)
+		}
+		// Running something from a sandbox with no pane to name (a new
+		// tab, an agent in a Group): asked about its own pane.
+		if r := m.RequestGrant; r.Action == grantSandboxRun && r.TargetPaneId == "" {
+			r.TargetPaneId = self
 		}
 		return nil
 

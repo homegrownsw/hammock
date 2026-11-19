@@ -41,8 +41,11 @@ func grantKey(requester, action, group string) string { return requester + "|" +
 func (d *Daemon) requestGrant(c *conn, replyTo uint64, m *pb.RequestGrant) (*pb.ServerMessage, error) {
 	// Asking about a pane that's gone (you closed it first) would only ask
 	// you to allow nothing: the agent hears it's closed instead.
-	if err := d.paneGone(m.TargetPaneId); err != nil {
-		return nil, err
+	// (Asking about its own pane, it may have none: outsidePane.)
+	if m.TargetPaneId != m.RequesterPaneId {
+		if err := d.paneGone(m.TargetPaneId); err != nil {
+			return nil, err
+		}
 	}
 	group := d.groupOfPane(m.RequesterPaneId)
 	headline := d.grantHeadline(m.RequesterPaneId, m.Action, m.TargetPaneId)
@@ -167,8 +170,16 @@ var grantVerbs = map[string]string{
 // anything, so clients show this as the request. Callers hold d.mu.
 func (d *Daemon) grantHeadline(requester, action, target string) string {
 	who := d.agentWho(requester)
-	if action == "sessions" {
+	switch action {
+	case "sessions":
 		return who + " wants to search and read your agent sessions from other folders"
+	case grantSandboxSend:
+		return fmt.Sprintf("%s wants to type into %s, outside its sandbox", who, d.paneLabel(target))
+	case grantSandboxRun:
+		if target == requester || target == "" {
+			return who + " wants to run a command outside its sandbox"
+		}
+		return fmt.Sprintf("%s wants to run a command outside its sandbox, in or beside %s", who, d.paneLabel(target))
 	}
 	verb := grantVerbs[action]
 	if verb == "" {

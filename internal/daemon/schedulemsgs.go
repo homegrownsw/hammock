@@ -116,9 +116,16 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		if err != nil {
 			return nil, err
 		}
-		if agent && !d.agentsSchedule(c, id) {
-			// Not one it made: you say whether it may (as for saving one).
-			headline := d.agentWho(c.caller.pane) + " wants to " + fmt.Sprintf(verb, scheduleSummary(s))
+		_, run := msg.Msg.(*pb.ClientMessage_RunSchedule)
+		sandboxRun := run && agent && c.caller.sandboxed
+		if agent && (!d.agentsSchedule(c, id) || sandboxRun) {
+			// Not one it made, or run from a sandbox (its run is outside
+			// it: sandbox.go): you say whether it may (as for saving one).
+			who := d.agentWho(c.caller.pane)
+			if sandboxRun {
+				who += sandboxedWho
+			}
+			headline := who + " wants to " + fmt.Sprintf(verb, scheduleSummary(s))
 			return nil, d.askScheduleGrant(c, msg.Id, headline, "", func() (*pb.ServerMessage, error) {
 				s, err := find(id)
 				if err != nil {
@@ -178,6 +185,9 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 		verb := "schedule"
 		if s.Id != "" {
 			verb = "change the scheduled task to"
+		}
+		if c.caller.sandboxed {
+			who += sandboxedWho
 		}
 		headline = who + " wants to " + verb + " " + scheduleSummary(s)
 
