@@ -266,8 +266,14 @@ final class AppConfig {
 
     // MARK: Loading
 
+    /// A config file's text: what isn't UTF-8 (a stray Latin-1 byte) read as
+    /// U+FFFD, so one bad byte doesn't lose every setting, as the daemon reads it.
+    private static func text(_ url: URL) -> String? {
+        (try? Data(contentsOf: url)).map { String(decoding: $0, as: UTF8.self) }
+    }
+
     private static func read(_ url: URL) -> [String: String] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [:] }
+        guard let text = text(url) else { return [:] }
         var out: [String: String] = [:]
         for line in text.split(whereSeparator: \.isNewline) {
             let t = line.trimmingCharacters(in: .whitespaces)
@@ -281,7 +287,7 @@ final class AppConfig {
 
     /// Every value of a repeatable key, in order.
     private static func readAll(_ url: URL, key: String) -> [String] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        guard let text = text(url) else { return [] }
         return text.split(whereSeparator: \.isNewline).compactMap { line in
             let t = line.trimmingCharacters(in: .whitespaces)
             guard !t.hasPrefix("#"), let eq = t.firstIndex(of: "="), t[..<eq].trimmingCharacters(in: .whitespaces) == key else { return nil }
@@ -628,10 +634,14 @@ final class AppConfig {
 
     private func set(_ changes: [(String, [String])]) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        var lines = (try? String(contentsOf: fileURL, encoding: .utf8))?.components(separatedBy: "\n") ?? [Self.header]
+        guard var lines = Self.fileLines(fileURL) else {
+            // There but unreadable: written over, it'd lose everything in it.
+            NSLog("Hammock: couldn't read %@, so Settings didn't change it", fileURL.path)
+            return
+        }
         for (key, values) in changes { Self.replace(key, values, in: &lines) }
         // Through a symlink (dotfiles), so it stays one.
-        try? lines.joined(separator: "\n").write(to: fileURL.resolvingSymlinksInPath(), atomically: true, encoding: .utf8)
+        try? Self.fileData(lines).write(to: fileURL.resolvingSymlinksInPath(), options: .atomic)
         // The daemon warns about security settings loosened in the file by
         // anything else (configwatch.go): these were you, in Settings.
         let security = changes.filter { Self.securityKeys.contains($0.0) }
@@ -645,9 +655,45 @@ final class AppConfig {
         "browser-open-schemes", "clipboard-paste-protection",
     ]
 
+    /// Marks a line of the file that isn't UTF-8, kept as Latin-1 (a byte a
+    /// character) to be written back byte for byte.
+    private static let notUTF8: Character = "\u{0}"
+
+    /// The file's lines, to edit: the header for a new file, nil for one
+    /// that's there but can't be read. A line that isn't UTF-8 is kept as
+    /// its bytes (notUTF8), so writing it back changes nothing else.
+    private static func fileLines(_ url: URL) -> [String]? {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return [header]
+        } catch {
+            return nil
+        }
+        return data.split(separator: UInt8(ascii: "\n"), omittingEmptySubsequences: false).map { line in
+            String(data: line, encoding: .utf8) ?? String(notUTF8) + String(line.map { Character(UnicodeScalar($0)) })
+        }
+    }
+
+    /// fileLines' lines as the file's bytes.
+    private static func fileData(_ lines: [String]) -> Data {
+        var out = Data()
+        for (i, line) in lines.enumerated() {
+            if i > 0 { out.append(UInt8(ascii: "\n")) }
+            if line.first == notUTF8 {
+                out.append(contentsOf: line.dropFirst().unicodeScalars.map { UInt8(truncatingIfNeeded: $0.value) })
+            } else {
+                out.append(contentsOf: Array(line.utf8))
+            }
+        }
+        return out
+    }
+
     private static func replace(_ key: String, _ values: [String], in lines: inout [String]) {
         let isKey: (String) -> Bool = { line in
-            let t = line.trimmingCharacters(in: .whitespaces)
+            // (A line that isn't UTF-8 is still that key's, to replace.)
+            let t = (line.first == notUTF8 ? String(line.dropFirst()) : line).trimmingCharacters(in: .whitespaces)
             guard !t.hasPrefix("#"), let eq = t.firstIndex(of: "=") else { return false }
             return t[..<eq].trimmingCharacters(in: .whitespaces) == key
         }
