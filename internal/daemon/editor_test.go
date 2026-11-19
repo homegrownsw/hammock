@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -329,6 +330,49 @@ func TestListFilesRanks(t *testing.T) {
 	list, _ := scanFiles(folder)
 	if len(list) != 1 || list[0] != "src/main.go" {
 		t.Fatalf("scan: %v", list)
+	}
+}
+
+// The editor's git (HEAD's side for the gutter marks, the file list) runs
+// nothing a repository's own config or attributes name.
+func TestEditorGitRunsNothingTheRepositoryNames(t *testing.T) {
+	repo := t.TempDir()
+	if r, err := filepath.EvalSymlinks(repo); err == nil {
+		repo = r
+	}
+	markers, bin := t.TempDir(), t.TempDir()
+	evil := func(name string) string {
+		p := filepath.Join(bin, name)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\ntouch '"+filepath.Join(markers, name)+"'\ncat\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, ".gitattributes"), []byte("*.txt filter=x diff=t\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	gitIn(t, repo, "config", "core.fsmonitor", evil("fsmonitor"))
+	gitIn(t, repo, "config", "filter.x.clean", evil("clean"))
+	gitIn(t, repo, "config", "filter.x.smudge", evil("smudge"))
+	gitIn(t, repo, "config", "diff.t.textconv", evil("textconv"))
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\nTWO\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "new.txt"), nil, 0o644)
+
+	list, _ := scanFiles(repo)
+	slices.Sort(list)
+	if !slices.Equal(list, []string{".gitattributes", "a.txt", "new.txt"}) {
+		t.Errorf("scan: %v", list)
+	}
+	h := &editorHub{}
+	b := &editorBuf{path: filepath.Join(repo, "a.txt")}
+	h.loadHead(b)
+	if !b.headKnown || strings.Join(b.head, "|") != "one|two|" {
+		t.Errorf("HEAD's side: %v %q", b.headKnown, b.head)
+	}
+	if es, _ := os.ReadDir(markers); len(es) > 0 {
+		t.Errorf("the repository's config ran %s", es[0].Name())
 	}
 }
 

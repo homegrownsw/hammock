@@ -2,13 +2,14 @@ package daemon
 
 import (
 	"bufio"
+	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/homegrownsw/hammock/internal/gitcmd"
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
@@ -232,7 +233,8 @@ func (d *Daemon) sshSetup(m *pb.SshSetup) (*pb.SshSetupReply, error) {
 
 // gitSSHProgram is your own gpg.ssh.program (git's global config).
 func gitSSHProgram() string {
-	out, err := exec.Command("git", "config", "--global", "--get", "gpg.ssh.program").Output()
+	home, _ := os.UserHomeDir()
+	out, err := gitcmd.Output(context.Background(), home, "config", "--global", "--get", "gpg.ssh.program")
 	if err != nil {
 		return ""
 	}

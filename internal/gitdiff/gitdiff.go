@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -21,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/homegrownsw/hammock/internal/gitcmd"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -56,18 +56,15 @@ func (r *Resolved) Live() bool {
 	return k == pb.DiffSource_KIND_UNCOMMITTED || k == pb.DiffSource_KIND_BRANCH
 }
 
-// git runs git in dir and returns its output.
+// git runs git in dir (through gitcmd, which keeps the repository's config
+// from running anything) and returns its output.
 func git(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	full := append([]string{"-C", dir, "-c", "core.quotepath=off", "-c", "color.ui=false", "--no-pager"}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	// Reading never takes the index lock (git status refreshes it otherwise,
-	// and an agent's git add would then fail).
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_TERMINAL_PROMPT=0")
+	cmd := gitcmd.Command(ctx, dir, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -324,7 +321,7 @@ func (r *Resolved) diffArgs() []string {
 // Files lists what differs, sorted by path as git gives them, untracked
 // files (for a working-tree diff) after.
 func Files(ctx context.Context, r *Resolved) ([]*pb.DiffFile, error) {
-	common := []string{"diff", "-z", "-M", "--no-ext-diff", "--no-textconv", "--ignore-submodules=dirty"}
+	common := []string{"diff", "-z", "-M", "--ignore-submodules=dirty"} // (gitcmd adds --no-ext-diff --no-textconv)
 	st, err := git(ctx, r.Repo, append(append(append([]string{}, common...), "--name-status"), r.diffArgs()...)...)
 	if err != nil {
 		return nil, err

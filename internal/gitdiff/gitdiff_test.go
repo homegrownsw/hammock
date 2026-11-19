@@ -5,8 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
@@ -218,5 +220,148 @@ func TestGoneOrNot(t *testing.T) {
 	}
 	if _, err := Resolve(ctx, filepath.Join(dir, "missing"), nil); err == nil || IsGone(err) {
 		t.Errorf("a folder that isn't there isn't gone for good: %v", err)
+	}
+}
+
+// hostile makes dir's config and attributes name commands git would run
+// (each leaves a marker in the folder it returns): what an agent able to
+// write a repository could do. Its files are changed (same sizes, so git
+// has to read them), not committed.
+func hostile(t *testing.T, dir string) (markers string) {
+	t.Helper()
+	markers, bin := t.TempDir(), t.TempDir()
+	evil := func(name string) string {
+		p := filepath.Join(bin, name)
+		if err := os.WriteFile(p, []byte("#!/bin/sh\ntouch '"+filepath.Join(markers, name)+"'\ncat\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	write(t, dir, "c.md", "see\n")
+	write(t, dir, "p.bin", "pea\n")
+	write(t, dir, ".gitattributes", "*.txt filter=x\n*.md filter=y\n*.bin diff=t\n")
+	run(t, dir, "add", ".")
+	run(t, dir, "commit", "-q", "-m", "More")
+
+	hooks := filepath.Join(bin, "hooks")
+	if err := os.Mkdir(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(evil("hook"), filepath.Join(hooks, "post-index-change")); err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range [][2]string{
+		{"core.fsmonitor", evil("fsmonitor")},
+		{"core.hooksPath", hooks},
+		{"filter.x.clean", evil("clean")},
+		{"filter.x.smudge", evil("smudge")},
+		{"filter.x.required", "true"},
+		{"diff.external", evil("external")},
+		{"diff.t.textconv", evil("textconv")},
+		{"diff.t.command", evil("command")},
+		{"log.showSignature", "true"},
+		{"gpg.program", evil("gpg")},
+	} {
+		run(t, dir, "config", kv[0], kv[1])
+	}
+	// One through an include, which counts as the repository's.
+	inc := filepath.Join(bin, "included")
+	if err := os.WriteFile(inc, []byte("[filter \"y\"]\n\tprocess = "+evil("process")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(t, dir, "config", "include.path", inc)
+
+	write(t, dir, "a.txt", "uno\ntwo\nthree\n")
+	write(t, dir, "c.md", "sea\n")
+	write(t, dir, "p.bin", "pee\n")
+	return markers
+}
+
+func ran(t *testing.T, markers string) []string {
+	t.Helper()
+	es, err := os.ReadDir(markers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range es {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// A repository's config and attributes can't get the diff pane's git to
+// run a command, and the diff still shows.
+func TestHostileRepositoryRunsNothing(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	run(t, dir, "checkout", "-q", "main")
+	markers := hostile(t, dir)
+
+	// Plain git does run them: the test would catch each.
+	for _, args := range [][]string{{"status"}, {"diff", "HEAD"}, {"diff", "--no-ext-diff", "HEAD"}} {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		_ = cmd.Run()
+	}
+	for _, want := range []string{"fsmonitor", "clean", "process", "external", "textconv", "hook"} {
+		if !slices.Contains(ran(t, markers), want) {
+			t.Fatalf("plain git didn't run %s (ran %v): the test doesn't test it", want, ran(t, markers))
+		}
+	}
+	if err := os.RemoveAll(markers); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(markers, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"a.txt", "c.md", "p.bin"} {
+		later := time.Now().Add(time.Minute)
+		if err := os.Chtimes(filepath.Join(dir, f), later, later); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	r, err := Resolve(ctx, dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Fingerprint(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	files, err := Files(ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := byPath(files)
+	for _, p := range []string{"a.txt", "c.md", "p.bin"} {
+		if m[p] == nil || m[p].Status != pb.DiffFile_STATUS_MODIFIED {
+			t.Errorf("%s = %v", p, m[p])
+			continue
+		}
+		if _, err := FileText(ctx, r, m[p]); err != nil {
+			t.Errorf("%s: %v", p, err)
+		}
+	}
+	if a := m["a.txt"]; a != nil && (a.Added != 1 || a.Removed != 1) {
+		t.Errorf("a.txt +%d -%d", a.Added, a.Removed)
+	}
+	if text, err := FileText(ctx, r, m["a.txt"]); err != nil || text.OldText != "one\ntwo\nthree\n" || text.NewText != "uno\ntwo\nthree\n" {
+		t.Errorf("a.txt: %v %v", text, err)
+	}
+	if cs := Commits(ctx, dir, 5); len(cs) != 3 {
+		t.Errorf("commits = %v", cs)
+	}
+	if bs := Branches(ctx, dir, DefaultBranch(ctx, dir)); len(bs) != 2 {
+		t.Errorf("branches = %v", bs)
+	}
+	feature, err := Resolve(ctx, dir, &pb.DiffSource{Kind: pb.DiffSource_KIND_RANGE, Base: "main", Rev: "feature"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fs, err := Files(ctx, feature); err != nil || len(fs) == 0 {
+		t.Errorf("main..feature: %v %v", fs, err)
+	}
+	if got := ran(t, markers); len(got) > 0 {
+		t.Errorf("the repository's config ran %v", got)
 	}
 }

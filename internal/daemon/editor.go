@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -25,6 +24,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/homegrownsw/hammock/internal/gitcmd"
 	"github.com/homegrownsw/hammock/internal/gitdiff"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/textbuf"
@@ -1041,14 +1041,14 @@ func (h *editorHub) loadHead(b *editorBuf) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		dir := filepath.Dir(path)
-		top, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+		top, err := gitcmd.Output(ctx, dir, "rev-parse", "--show-toplevel")
 		if err == nil {
 			root := strings.TrimSpace(string(top))
 			if r, err := filepath.EvalSymlinks(root); err == nil {
 				root = r
 			}
 			if rel, err := filepath.Rel(root, path); err == nil {
-				out, err := exec.CommandContext(ctx, "git", "-C", root, "show", "HEAD:"+filepath.ToSlash(rel)).Output()
+				out, err := gitcmd.Output(ctx, root, "cat-file", "blob", "HEAD:"+filepath.ToSlash(rel))
 				if err == nil {
 					t, _ := normaliseText(out)
 					head, known = textbuf.Lines(t), true
@@ -1324,8 +1324,7 @@ func (h *editorHub) listFiles(folder, query string, limit int) (*pb.FileList, er
 func scanFiles(folder string) ([]string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", folder, "ls-files", "-co", "--exclude-standard", "-z")
-	if out, err := cmd.Output(); err == nil {
+	if out, err := gitcmd.Output(ctx, folder, "ls-files", "-co", "--exclude-standard", "-z"); err == nil {
 		var paths []string
 		seen := map[string]bool{}
 		for _, p := range strings.Split(string(out), "\x00") {
