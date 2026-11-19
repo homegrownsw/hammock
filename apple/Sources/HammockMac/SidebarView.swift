@@ -498,14 +498,54 @@ struct SidebarView: View {
             let bottom = position == .single || position == .bottom ? r : 0
             UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bottom, bottomTrailingRadius: bottom, topTrailingRadius: top)
                 .fill(Color.primary.opacity(0.035))
+                // A hairline round the whole group, as in Dia: each slice
+                // strokes only its outer edges, so they join into one.
+                .overlay(GroupSliceOutline(top: top, bottom: bottom).stroke(Color.primary.opacity(0.08), lineWidth: 1))
                 .padding(.horizontal, 4)
                 .padding(.top, top > 0 ? 2 : 0)
-                // Room below the last tab's pill, as at its sides and between
-                // pills (4pt): drawn past the row rather than padding it, so a
-                // tab doesn't change height when it becomes (or stops being)
-                // the last one, e.g. on collapse.
-                .padding(.bottom, bottom > 0 ? (position == .bottom ? -3 : 2) : 0)
+                // The last tab's slice ends at its row's edge: the List clips
+                // row backgrounds to the row, so drawn past it the rounded
+                // corners and the outline's bottom were cut off.
+                .padding(.bottom, position == .single ? 2 : 0)
         }
+    }
+}
+
+/// One row's slice of a hovered Group's outline: its sides, plus its top or
+/// bottom (rounded) when it's the Group's first or last row. Left open where
+/// it meets the next slice, so the slices draw one border. Drawn half a
+/// point in, so the 1pt stroke stays inside the fill.
+private struct GroupSliceOutline: Shape {
+    var top: CGFloat
+    var bottom: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: 0.5, dy: 0)
+        let minY = top > 0 ? r.minY + 0.5 : r.minY
+        let maxY = bottom > 0 ? r.maxY - 0.5 : r.maxY
+        let t = max(0, top - 0.5), b = max(0, bottom - 0.5)
+        var p = Path()
+        // Down the left, along the bottom (if any), up the right, along the top (if any).
+        if top > 0 {
+            p.move(to: CGPoint(x: r.maxX - t, y: minY))
+            p.addLine(to: CGPoint(x: r.minX + t, y: minY))
+            p.addArc(center: CGPoint(x: r.minX + t, y: minY + t), radius: t, startAngle: .degrees(270), endAngle: .degrees(180), clockwise: true)
+        } else {
+            p.move(to: CGPoint(x: r.minX, y: minY))
+        }
+        p.addLine(to: CGPoint(x: r.minX, y: maxY - b))
+        if bottom > 0 {
+            p.addArc(center: CGPoint(x: r.minX + b, y: maxY - b), radius: b, startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
+            p.addLine(to: CGPoint(x: r.maxX - b, y: maxY))
+            p.addArc(center: CGPoint(x: r.maxX - b, y: maxY - b), radius: b, startAngle: .degrees(90), endAngle: .degrees(0), clockwise: true)
+        } else {
+            p.move(to: CGPoint(x: r.maxX, y: maxY))
+        }
+        p.addLine(to: CGPoint(x: r.maxX, y: minY + t))
+        if top > 0 {
+            p.addArc(center: CGPoint(x: r.maxX - t, y: minY + t), radius: t, startAngle: .degrees(0), endAngle: .degrees(270), clockwise: true)
+        }
+        return p
     }
 }
 
