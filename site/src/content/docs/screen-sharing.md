@@ -10,7 +10,7 @@ Screen sharing shows a Mac's whole screen on your iPhone, Android phone or anoth
 On the Mac you want to see:
 
 1. Open Hammock ▸ Settings ▸ Devices ▸ **Screen Sharing**.
-2. Turn on **Let your iPhone and other Macs see and control this Mac's screen**.
+2. Turn on **Let your phone and other Macs see and control this Mac's screen**.
 3. Click **Allow…** beside **Allow Accessibility**, and allow it in System Settings.
 4. Then click **Allow…** beside **Allow Screen Recording**, and allow that too.
 
@@ -57,4 +57,4 @@ For the technical details, see [SECURITY.md](https://github.com/homegrownsw/hamm
 
 ## Turning it off
 
-Turn off **Let your iPhone and other Macs see and control this Mac's screen** in Settings ▸ Devices ▸ Screen Sharing, or remove `screen-sharing = true` from the config file. Anyone viewing is disconnected. To take the permissions back too, turn Hammock off in both lists in System Settings ▸ Privacy & Security.
+Turn off **Let your phone and other Macs see and control this Mac's screen** in Settings ▸ Devices ▸ Screen Sharing, or remove `screen-sharing = true` from the config file. Anyone viewing is disconnected. To take the permissions back too, turn Hammock off in both lists in System Settings ▸ Privacy & Security.

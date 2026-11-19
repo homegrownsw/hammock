@@ -475,7 +475,7 @@ final class MenuModel {
     func confirmStop(quitting: Bool) -> Bool? {
         let a = NSAlert()
         a.messageText = quitting ? "Quit \(Self.appName) and stop the Hammock Server?" : "Stop the Hammock Server?"
-        var lost = ["your iPhone and other Macs can’t reach this Mac", "agents don’t notify you"]
+        var lost = ["your phone and other Macs can’t reach this Mac", "agents don’t notify you"]
         let viewers = status.screenViewers.count
         if viewers > 0 { lost.append(viewers == 1 ? "1 screen session ends" : "\(viewers) screen sessions end") }
         let back = quitting ? "when you next open \(Self.appName)" : "when it starts"

@@ -104,7 +104,7 @@ struct SSHSettings: View {
                 Text("This Mac has no Secure Enclave, so it can't have a Hammock Key.")
                     .foregroundStyle(.secondary)
             } else {
-                Text("An SSH key in this Mac's Secure Enclave that signs only when you approve, with Touch ID here or Face ID on your iPhone. For ssh, git push and signing commits.")
+                Text("An SSH key in this Mac's Secure Enclave that signs only when you approve, with Touch ID here, or Face ID or a fingerprint on your phone. For ssh, git push and signing commits.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 HStack {
@@ -141,13 +141,13 @@ struct SSHSettings: View {
                 LabeledContent(a.name) {
                     Button("Allow…") { run { try await model.hammockKeyCommand(.addApprover, deviceID: a.deviceID) } }
                         .disabled(busy)
-                        .help("With Touch ID: from then on it can approve the Hammock Key with Face ID.")
+                        .help("With Touch ID: from then on it can approve the Hammock Key.")
                 }
             }
         } header: {
             Text("Who Can Approve")
         } footer: {
-            Text("Paired iPhones appear here once Hammock has been opened on them.")
+            Text("Paired phones appear here once Hammock has been opened on them.")
         }
     }
 

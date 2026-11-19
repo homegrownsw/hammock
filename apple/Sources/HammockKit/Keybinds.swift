@@ -233,7 +233,7 @@ public enum Keybinds {
             .init("new_group_in_directory", "New Group in Directory…", "File", c("n", cs), "create folder project open path cwd workspace"),
             .init("new_group_on_computer", "New Group on Computer 1…9", "File", c(KeyChord.digits, cco), "create linked computer mac remote"),
             .init("link_computer", "Link a Computer…", "File", c("l", cc), "pair mac another machine linux tailscale local network vpn"),
-            .init("pair_device", "Pair a Device…", "File", nil, "iphone phone ipad link"),
+            .init("pair_device", "Pair a Device…", "File", nil, "iphone android phone ipad link"),
             .init("join_shared_group", "Join Shared Group…", "File", nil, "invite share link"),
             .init("rename_tab", "Rename Tab…", "File", c("r", cs), "name title label"),
             .init("configure_group", "Configure Group…", "File", c("g", co), "rename name icon emoji picture edit settings"),

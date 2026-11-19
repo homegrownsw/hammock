@@ -677,7 +677,7 @@ func (a *App) paletteItems() []paletteItem {
 			act("close-group", "Close Group", "", "delete remove", func() { a.closeGroup(sp.Id) })
 		}
 	}
-	act("pair-device", "Pair a Device…", "", "iphone phone ios remote qr pairing code", a.showPairing)
+	act("pair-device", "Pair a Device…", "", "iphone android phone ios remote qr pairing code", a.showPairing)
 	act("remote-networks", "Remote Access Networks…", "", "remote access network wifi lan local vpn wireguard tailscale subnet address", a.openRemoteNetworks)
 	act("hmk-key", "Hammock Key…", "", "ssh key public secure enclave github authorized_keys git signing", a.showHammockKey)
 	act("settings", "Settings…", "⌃B s", "preferences layout horizontal vertical tabs animations sidebar", a.openSettings)

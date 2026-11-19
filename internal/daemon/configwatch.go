@@ -102,7 +102,7 @@ func turnedOn(old, now []string) bool { return now[0] == "true" && old[0] != "tr
 var configChecks = []configCheck{
 	{"screen-sharing", parseBool(false), func(old, now []string) string {
 		if turnedOn(old, now) {
-			return "Screen sharing was turned on: your iPhone and other Macs may see and control this Mac's screen"
+			return "Screen sharing was turned on: your phone and other Macs may see and control this Mac's screen"
 		}
 		return ""
 	}},

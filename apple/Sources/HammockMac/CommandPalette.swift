@@ -672,7 +672,7 @@ struct CommandPalette: View {
             NSWorkspace.shared.open(HammockLinks.docs)
         }
         action("hmk", "Install the hmk Command", "terminal", .green, "cli shell") { _ = try? CommandLineTool.install() }
-        action("pair", "Pair a Device…", "iphone", .blue, "iphone phone ios remote qr pairing code", keys: Keys.pairDevice) { SharingUI.shared.pairing = true }
+        action("pair", "Pair a Device…", "iphone", .blue, "iphone android phone ios remote qr pairing code", keys: Keys.pairDevice) { SharingUI.shared.pairing = true }
         if Updater.shared.isAvailable {
             action("updates", "Check for Updates…", "arrow.down.circle", .blue, "update upgrade version release new", keys: Keys.checkForUpdates) { Updater.shared.checkForUpdates() }
         }

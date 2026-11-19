@@ -82,7 +82,7 @@ extension SettingsTab: Identifiable {
         case .agentView: "How agent panes open, and the agent view's colour and fonts."
         case .notifications: "Hear about agents that need you, in the Hammock window or as macOS notifications."
         case .sharing: "Your name and picture, and the Groups you share with other people."
-        case .devices: "Your other computers, the iPhones paired with this Mac, remote access and screen sharing."
+        case .devices: "Your other computers, the phones paired with this Mac, remote access and screen sharing."
         case .ssh: "Your Hammock Key, and lending SSH keys between your computers."
         case .about: "Its version, updates, quitting with the server, uninstalling, and the software Hammock includes."
         }
@@ -490,9 +490,9 @@ enum SettingsIndex {
             e(.sharing, "Sharing", "Shared Groups", nil, "people guests"),
 
             e(.devices, "Your Computers", "Your computers", nil, "linked mac linux"),
-            e(.devices, "Remote access", "Allow paired devices to connect remotely", "devices.remote", "iphone phone tailscale"),
-            e(.devices, "Pair a Device", "Pair a device", nil, "iphone phone code qr"),
-            e(.devices, "Paired Devices", "Paired devices", nil, "iphone phone revoke"),
+            e(.devices, "Remote access", "Allow paired devices to connect remotely", "devices.remote", "iphone android phone tailscale"),
+            e(.devices, "Pair a Device", "Pair a device", nil, "iphone android phone code qr"),
+            e(.devices, "Paired Devices", "Paired devices", nil, "iphone android phone revoke"),
             e(.devices, "Screen Sharing", "Screen sharing", nil, "watching screen vnc"),
 
             e(.ssh, "Hammock Key", "Hammock Key", nil, "secure enclave touch id signing github"),

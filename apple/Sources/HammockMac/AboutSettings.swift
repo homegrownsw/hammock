@@ -127,7 +127,7 @@ struct AboutSettings: View {
     private func quitAndStop() {
         let a = NSAlert()
         a.messageText = "Quit \(appName) and stop the server?"
-        a.informativeText = "Unless you end them, your panes keep running and come back when you next open \(appName). Until then, your iPhone and other Macs can't reach this Mac, and agents don't notify you."
+        a.informativeText = "Unless you end them, your panes keep running and come back when you next open \(appName). Until then, your phone and other Macs can't reach this Mac, and agents don't notify you."
         a.addButton(withTitle: "Quit and Stop")
         a.addButton(withTitle: "Cancel")
         a.buttons.first?.hasDestructiveAction = true

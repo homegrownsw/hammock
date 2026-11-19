@@ -145,7 +145,7 @@ func configPage() string {
 	b.WriteString("Hammock's settings live in `~/.config/hammock/config`, in [Ghostty's syntax](https://ghostty.org/docs/config): one `key = value` per line, `#` for comments. ")
 	b.WriteString("Settings writes the same keys, and changes you make to the file apply within a couple of seconds. ")
 	b.WriteString("A key you leave out takes its default. See [Configuration](/hammock/docs/configuration/) for how the file works.\n\n")
-	b.WriteString("Keys marked *Mac only*, *hmk tui only* or *Mac and hmk tui only* are read there alone; the rest are read by the Mac app, `hmk tui` and the Hammock Server wherever they make sense. The iPhone app keeps its own settings, on the phone, in its Settings tab.\n\n")
+	b.WriteString("Keys marked *Mac only*, *hmk tui only* or *Mac and hmk tui only* are read there alone; the rest are read by the Mac app, `hmk tui` and the Hammock Server wherever they make sense. The iPhone and Android apps keep their own settings, on the phone, in their Settings tab.\n\n")
 	for _, g := range hammockconfig.Groups {
 		fmt.Fprintf(&b, "## %s\n\n", g)
 		for _, k := range hammockconfig.Keys {
@@ -238,7 +238,7 @@ var cliSections = []struct {
 	{"Workspace", "Groups, tabs and panes, and what's in them.", []string{"ls", "focus", "group", "tab", "split", "float", "dock", "minimise", "floats", "close", "reopen", "attach", "send", "read", "theme"}},
 	{"Browser, simulator, log, editor and diff panes", "Panes that aren't terminals.", []string{"browser", "nav", "devtools", "show", "sim", "log", "edit", "diff", "review"}},
 	{"Agents", "Starting, finding and resuming agents, and what they may do.", []string{"agent", "switch", "sleep", "wake", "session-link", "sessions", "resume", "grant", "audit", "schedule", "hook", "hooks", "mcp"}},
-	{"Devices, linked computers and sharing", "Your iPhone, your other computers, and other people.", []string{"remote", "pair", "devices", "link", "computers", "share", "approve", "unshare", "join", "leave"}},
+	{"Devices, linked computers and sharing", "Your phone, your other computers, and other people.", []string{"remote", "pair", "devices", "link", "computers", "share", "approve", "unshare", "join", "leave"}},
 	{"Keys and SSH", "The Hammock Key, and SSH in Hammock's panes.", []string{"key", "ssh"}},
 	{"The Hammock Server, the TUI and more", "Running Hammock itself.", []string{"tui", "stop", "status", "service", "docs", "acknowledgements"}},
 }

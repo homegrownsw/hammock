@@ -167,7 +167,7 @@ struct PairingCodeView: View {
                 QRCodeView(text: url.absoluteString)
                     .frame(width: 160, height: 160)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Scan with Hammock on your iPhone, or open this link on it:")
+                    Text("Scan with Hammock on your phone, or open this link on it:")
                         .font(.callout)
                     Text(url.absoluteString)
                         .font(.system(.caption2, design: .monospaced))
@@ -226,7 +226,7 @@ struct PairingSheet: View {
     @ViewBuilder private var pairingView: some View {
         Text("Pair a Device").font(.title3.weight(.semibold))
         if !remote {
-            Text("Remote access is off, so your iPhone can't reach this Mac yet.")
+            Text("Remote access is off, so your phone can't reach this Mac yet.")
                 .foregroundStyle(.secondary)
             Button("Turn On Remote Access") {
                 Task {

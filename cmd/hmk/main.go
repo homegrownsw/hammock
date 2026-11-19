@@ -976,7 +976,7 @@ func runCommand(args []string) error {
 		if !p.RemoteEnabled {
 			fmt.Println("note: remote access is off; turn it on with: hmk remote on")
 		}
-		fmt.Println("Pairing code (valid 10 minutes, single use): scan it in Hammock on your iPhone (Devices ▸ Add Mac).")
+		fmt.Println("Pairing code (valid 10 minutes, single use): scan it in Hammock on your phone (Devices ▸ Add Computer).")
 		if q, err := qrText(link); err == nil && stdoutIsTerminal() {
 			fmt.Print("\n" + q)
 		}

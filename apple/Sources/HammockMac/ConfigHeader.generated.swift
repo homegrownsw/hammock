@@ -58,12 +58,12 @@ extension AppConfig {
         #   confirm-close-busy-agent = true        (ask before closing a pane or tab whose agent is at work; Mac only)
         #
         # Agent view
-        #   agent-default-view = terminal | agent   (which view agent panes open in; unset: terminal on the Mac, agent on the iPhone)
+        #   agent-default-view = terminal | agent   (which view agent panes open in; unset: terminal)
         #   agent-font-family = NAME               (the agent view's text; unset: the system font)
-        #   agent-font-size = 14                   (the agent view's text size, in points; 18 on the iPhone)
-        #   agent-line-spacing = 3                 (the agent view's line spacing, in points; 4 on the iPhone)
-        #   agent-code-font-family = NAME          (the agent view's code; unset: the terminal's font on the Mac, the system's monospaced one on the iPhone)
-        #   agent-code-font-size = 13              (the agent view's code size, in points; 17 on the iPhone)
+        #   agent-font-size = 14                   (the agent view's text size, in points)
+        #   agent-line-spacing = 3                 (the agent view's line spacing, in points)
+        #   agent-code-font-family = NAME          (the agent view's code; unset: the terminal's font)
+        #   agent-code-font-size = 13              (the agent view's code size, in points)
         #   agent-code-wrap = prose | always | never   (which code blocks wrap long lines; prose: Markdown, text and tool calls)
         #   agent-image-size = original | large | medium | small   (the size pictures you attach in the agent view are sent at)
         #   agent-image-size-remote = original | large | medium | small   (the same, for an agent on a linked computer)
@@ -130,7 +130,7 @@ extension AppConfig {
         # Remote access and linked computers
         #   remote-network = tailscale             (one line per network remote access listens on: tailscale, or a subnet like 192.168.1.0/24; none set: Tailscale only)
         #   remote-address = HOST[:PORT]           (one line per extra address given out in pairing codes and links: a DNS name, a VPN endpoint, a forwarded port)
-        #   screen-sharing = false                 (your iPhone and other Macs may see and control this Mac's screen; Mac only)
+        #   screen-sharing = false                 (your phone and other Macs may see and control this Mac's screen; Mac only)
         #   ssh-agent-forwarding = true            (panes on your linked computers use the SSH keys of the one you're at)
         #   ssh-upstream-agent = PATH              (the SSH agent Hammock's passes requests on to; unset: ~/.ssh/config's IdentityAgent for every host, else SSH_AUTH_SOCK)
         #

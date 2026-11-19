@@ -2,7 +2,7 @@ import AppKit
 import HammockKit
 import SwiftUI
 
-/// Settings ▸ Devices ▸ Screen Sharing (ADR-0014): whether your iPhone and
+/// Settings ▸ Devices ▸ Screen Sharing (ADR-0014): whether your phone and
 /// other Macs may see and control this Mac's screen (screen-sharing in the
 /// config file, read by the daemon), and the permissions macOS needs to
 /// give Hammock Screen Sharing for it.
@@ -17,8 +17,8 @@ struct ScreenSharingSection: View {
     var body: some View {
         Section {
             Toggle(isOn: Binding(get: { on }, set: { AppConfig.shared.set("screen-sharing", $0 ? "true" : nil) })) {
-                Text("Let your iPhone and other Macs see and control this Mac’s screen")
-                Text("Never guests or agents. Your iPhone asks for Face ID first.")
+                Text("Let your phone and other Macs see and control this Mac’s screen")
+                Text("Never guests or agents.")
             }
             if on {
                 // Accessibility first: macOS has Hammock Screen Sharing quit and
