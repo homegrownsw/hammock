@@ -180,6 +180,9 @@ struct AttentionCard: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            if let preview = item.promptPreview {
+                PromptPreviewView(preview)
+            }
             if item.state == .needsInput, item.question {
                 HStack(spacing: 6) {
                     Spacer()
@@ -191,8 +194,15 @@ struct AttentionCard: View {
                 HStack(spacing: 6) {
                     Spacer()
                     Button("Deny") { respond(allow: false) }
-                    Button("Reply…") { model.reveal(paneID: item.paneID) }
-                    if let s = schedule, s.kind == "claude" {
+                    if item.allowsFromCard {
+                        Button("Reply…") { model.reveal(paneID: item.paneID) }
+                    }
+                    if !item.allowsFromCard {
+                        // More than the card shows: see all of it in the pane first.
+                        Button("Review…") { model.reveal(paneID: item.paneID) }
+                            .buttonStyle(.borderedProminent)
+                            .help("Open the pane to see the whole request")
+                    } else if let s = schedule, s.kind == "claude" {
                         // A scheduled Claude run: allow it in every run from now on.
                         Menu("Allow") {
                             Button("Allow Once") { respond(allow: true) }

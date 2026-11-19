@@ -444,9 +444,11 @@ func (a *App) confirmDeleteSchedule(s *pb.Schedule) {
 }
 
 // answerAgent is Needs You's Allow / Deny (and Always Allow for This
-// Schedule) for an agent's pane, typed by the daemon while it shows a prompt.
-func (a *App) answerAgent(paneID string, d pb.AgentAnswer_Decision) {
-	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_AgentAnswer{AgentAnswer: &pb.AgentAnswer{PaneId: paneID, Decision: d}}}, func(*pb.ServerMessage) {
+// Schedule) for an agent's pane, typed by the daemon while it shows a
+// prompt, and an Allow only while it's the one at's row showed.
+func (a *App) answerAgent(at *pb.AttentionItem, d pb.AgentAnswer_Decision) {
+	m := &pb.AgentAnswer{PaneId: at.PaneId, Decision: d, PromptId: at.PromptId, Bound: true}
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_AgentAnswer{AgentAnswer: m}}, func(*pb.ServerMessage) {
 		if d == pb.AgentAnswer_DECISION_ALLOW_SCHEDULE {
 			a.flash("Allowed, and for this schedule's later runs")
 		}
@@ -467,17 +469,60 @@ func (a *App) needsMenu(id string, x, y int) {
 		return
 	}
 	pane := at.PaneId
-	items := []menuItem{{label: truncate(cmp.Or(oneLine(at.Summary), "Needs you"), 60), disabled: true}, {sep: true},
-		{label: "Show", run: func() { a.reveal(pane) }}}
-	if at.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT && !at.Question {
-		items = append(items, menuItem{sep: true},
-			menuItem{label: "Allow", run: func() { a.answerAgent(pane, pb.AgentAnswer_DECISION_ALLOW) }})
-		if s := a.runSchedule(a.panes[pane]); s != nil && s.Kind == "claude" {
-			items = append(items, menuItem{label: "Always Allow for This Schedule", run: func() { a.answerAgent(pane, pb.AgentAnswer_DECISION_ALLOW_SCHEDULE) }})
+	items := []menuItem{{label: truncate(cmp.Or(oneLine(at.Summary), "Needs you"), 60), disabled: true}}
+	asking := at.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT && !at.Question
+	complete := true
+	if asking && at.Detail != "" {
+		// The prompt, every line of it that fits; more, and it's reviewed
+		// in its pane before it's allowed.
+		lines, more, whole := promptPreview(at.Detail)
+		items = append(items, menuItem{sep: true})
+		for _, l := range lines {
+			items = append(items, menuItem{label: " " + cmp.Or(l, " "), disabled: true})
 		}
-		items = append(items, menuItem{label: "Deny", danger: true, run: func() { a.answerAgent(pane, pb.AgentAnswer_DECISION_DENY) }})
+		if more > 0 {
+			items = append(items, menuItem{label: " +" + plural(more, "more line"), disabled: true})
+		}
+		complete = whole
+	}
+	items = append(items, menuItem{sep: true}, menuItem{label: "Show", run: func() { a.reveal(pane) }})
+	if asking {
+		items = append(items, menuItem{sep: true})
+		if complete {
+			items = append(items, menuItem{label: "Allow", run: func() { a.answerAgent(at, pb.AgentAnswer_DECISION_ALLOW) }})
+			if s := a.runSchedule(a.panes[pane]); s != nil && s.Kind == "claude" {
+				items = append(items, menuItem{label: "Always Allow for This Schedule", run: func() { a.answerAgent(at, pb.AgentAnswer_DECISION_ALLOW_SCHEDULE) }})
+			}
+		} else {
+			items = append(items, menuItem{label: "Review the Whole Request", run: func() { a.reveal(pane) }})
+		}
+		items = append(items, menuItem{label: "Deny", danger: true, run: func() { a.answerAgent(at, pb.AgentAnswer_DECISION_DENY) }})
 	}
 	a.openMenu(x, y, items)
+}
+
+// The most of a prompt a Needs You menu shows: lines, and cells a line.
+const (
+	previewLines = 10
+	previewWidth = 72
+)
+
+// promptPreview is what a Needs You menu shows of a prompt's text: its
+// first lines, each cut to fit, how many lines it leaves out, and whether
+// that's the whole of it.
+func promptPreview(detail string) (lines []string, more int, whole bool) {
+	all := strings.Split(strings.ReplaceAll(detail, "\t", "    "), "\n")
+	whole = !strings.HasPrefix(detail, "…\n") // "…" first: it ran off the top of its pane's screen
+	if len(all) > previewLines {
+		more, all, whole = len(all)-previewLines, all[:previewLines], false
+	}
+	for _, l := range all {
+		if textWidth(l) > previewWidth {
+			whole = false
+		}
+		lines = append(lines, truncate(l, previewWidth))
+	}
+	return lines, more, whole
 }
 
 // ---------- the dialog ----------

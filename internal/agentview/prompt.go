@@ -2,10 +2,14 @@ package agentview
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
@@ -53,6 +57,92 @@ type Screen struct {
 	// and Enter, and notes can go with it ("n", the text, Enter).
 	Previews     bool
 	NotesEditing bool // its notes field is open (typing goes there, Esc closes it)
+	// Body is the prompt's whole text above its options, as shown (the
+	// command a permission prompt asks about, every line of it), and Key
+	// which prompt it is: a digest of that text and the options, the same
+	// however the selection moves, what's ticked, or the terminal's width
+	// wraps it. Empty with no menu.
+	Body string
+	Key  string
+}
+
+// promptBody is the text of the dialog above a menu whose first option is
+// on line start: up to its top rule (Claude's), or with none, the
+// conversation above it (Codex's • and └, Claude's ⏺ and ⎿), with box
+// sides and dashed rules dropped, indentation shared by every line taken
+// off, and runs of blank lines made one. A dialog that runs off the top of
+// the screen starts with "…": its first lines aren't there to show.
+func promptBody(lines []string, start int) string {
+	// Claude's top rule: a line of ─ across the screen.
+	rule := func(t string) bool { return utf8.RuneCountInString(t) >= 10 && strings.Trim(t, "─━") == "" }
+	ruled := false // everything under it is the dialog's
+	for i := start - 1; i >= 0 && !ruled; i-- {
+		ruled = rule(strings.TrimSpace(lines[i]))
+	}
+	var body []string
+	whole := false
+	for i := start - 1; i >= 0; i-- {
+		t := strings.TrimSpace(lines[i])
+		if rule(t) || !ruled && (strings.HasPrefix(t, "⏺") || strings.HasPrefix(t, "⎿") || strings.HasPrefix(t, "•") ||
+			strings.HasPrefix(t, "└") || strings.HasPrefix(t, "●") || strings.HasPrefix(t, "✔") ||
+			strings.HasPrefix(t, "╭") || strings.HasPrefix(t, "╰") || strings.HasPrefix(t, "┌")) {
+			whole = true
+			break
+		}
+		if strings.Trim(t, "╌┄ ") == "" && t != "" {
+			continue // a dashed rule around the command
+		}
+		l := strings.TrimRight(lines[i], " ")
+		// Box sides: "│ text │".
+		if s := strings.TrimLeft(l, " "); strings.HasPrefix(s, "│") || strings.HasPrefix(s, "┃") {
+			l = strings.TrimRight(strings.TrimSuffix(strings.TrimSuffix(strings.TrimRight(s[len("│"):], " "), "│"), "┃"), " ")
+		}
+		body = append(body, l)
+	}
+	slices.Reverse(body)
+	indent := -1
+	for _, l := range body {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if n := len(l) - len(strings.TrimLeft(l, " ")); indent < 0 || n < indent {
+			indent = n
+		}
+	}
+	var out []string
+	for _, l := range body {
+		if strings.TrimSpace(l) == "" {
+			if len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+			continue
+		}
+		out = append(out, l[indent:])
+	}
+	if !whole && len(out) > 0 {
+		out = append([]string{"…"}, out...)
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// promptKey is the digest naming a prompt: its text and options, with
+// every space taken out, so wrapping it differently doesn't change it.
+func promptKey(body string, options []string) string {
+	nospace := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, s)
+	}
+	h := sha256.New()
+	h.Write([]byte(nospace(body)))
+	for _, o := range options {
+		h.Write([]byte{0})
+		h.Write([]byte(nospace(o)))
+	}
+	return hex.EncodeToString(h.Sum(nil)[:12])
 }
 
 // A question whose options have previews puts each option's beside the
@@ -230,7 +320,9 @@ func ReadScreen(text string) Screen {
 				break
 			}
 		}
+		sc.Body = promptBody(lines, start)
 	}
+	sc.Key = promptKey(sc.Body, sc.Options)
 	return sc
 }
 
@@ -320,6 +412,7 @@ func readArrowMenu(sc *Screen, lines []string, footer int) {
 	}
 	flush()
 	sc.Title = strings.Join(paras, "\n\n")
+	sc.Body, sc.Key = sc.Title, promptKey(sc.Title, sc.Options)
 }
 
 // otherOption is the option that takes typed text, if any.
@@ -339,7 +432,8 @@ func Prompt(sc Screen, pending *pb.AgentBlock) *pb.AgentPrompt {
 		return &pb.AgentPrompt{}
 	}
 	p := &pb.AgentPrompt{Kind: pb.AgentPrompt_KIND_QUESTION, Title: sc.Title, Options: sc.Options, Selected: int32(sc.Selected),
-		Descriptions: sc.Descriptions, MultiSelect: sc.Multi, Tabs: sc.Tabs, Other: int32(otherOption(sc.Options)), Notes: sc.Previews}
+		Descriptions: sc.Descriptions, MultiSelect: sc.Multi, Tabs: sc.Tabs, Other: int32(otherOption(sc.Options)), Notes: sc.Previews,
+		PromptId: sc.Key}
 	if sc.Multi {
 		p.Checked, p.Checkboxes = sc.Checked, int32(sc.Checkboxes)
 	}

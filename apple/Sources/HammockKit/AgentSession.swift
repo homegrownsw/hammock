@@ -289,6 +289,7 @@ public final class AgentSession {
     private func answer(_ build: @escaping (inout Hammock_V1_AgentAnswer) -> Void) async {
         guard let conn = model?.connection else { return }
         let seen = prompt.options
+        let promptID = prompt.promptID
         answering = true
         answerError = nil
         defer { answering = false }
@@ -297,6 +298,7 @@ public final class AgentSession {
                 $0.agentAnswer = .with {
                     $0.paneID = self.paneID
                     $0.optionsSeen = seen
+                    $0.promptID = promptID // only into the prompt shown
                     build(&$0)
                 }
             }

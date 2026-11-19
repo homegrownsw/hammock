@@ -209,20 +209,20 @@ func TestDecisionSteps(t *testing.T) {
 	for _, f := range []string{"permission.txt", "codex-permission.txt"} {
 		b, _ := os.ReadFile("testdata/" + f)
 		sc := ReadScreen(string(b))
-		allow, err := DecisionSteps(sc, true, true)
+		allow, err := DecisionSteps(sc, "", true, true)
 		if err != nil || len(allow) != 1 || string(allow[0].Keys) != "\x1b[13u" || !allow[0].Ready(sc) {
 			t.Errorf("%s allow: %v, %v", f, allow, err)
 		}
-		deny, _ := DecisionSteps(sc, false, false)
+		deny, _ := DecisionSteps(sc, "", false, false)
 		if len(deny) != 1 || string(deny[0].Keys) != "\x1b" || !deny[0].Ready(sc) || deny[0].Ready(Screen{}) {
 			t.Errorf("%s deny: %v", f, deny)
 		}
 	}
 	// Moved off the first option: its number instead of Enter.
-	if s, _ := DecisionSteps(Screen{Options: []string{"Yes", "No"}, Selected: 2}, true, false); string(s[0].Keys) != "1" {
+	if s, _ := DecisionSteps(Screen{Options: []string{"Yes", "No"}, Selected: 2}, "", true, false); string(s[0].Keys) != "1" {
 		t.Errorf("allow with No selected: %q", s[0].Keys)
 	}
-	if _, err := DecisionSteps(ReadScreen("$ ls\nfoo bar\n$ "), true, false); err != ErrNotAsking {
+	if _, err := DecisionSteps(ReadScreen("$ ls\nfoo bar\n$ "), "", true, false); err != ErrNotAsking {
 		t.Errorf("want ErrNotAsking, got %v", err)
 	}
 }
@@ -259,7 +259,7 @@ func TestTrustDialog(t *testing.T) {
 		t.Errorf("enter only: %v", steps)
 	}
 	// Needs You's Allow trusts the folder, not option 1 ("No, exit").
-	if allow, err := DecisionSteps(sc, true, true); err != nil || len(allow) != 2 || string(allow[0].Keys) != "\x1b[B" {
+	if allow, err := DecisionSteps(sc, "", true, true); err != nil || len(allow) != 2 || string(allow[0].Keys) != "\x1b[B" {
 		t.Errorf("allow %v, %v", allow, err)
 	}
 	// Typed text has nowhere to go.

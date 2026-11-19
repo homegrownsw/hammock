@@ -377,9 +377,10 @@ class AgentSession(
 
     private suspend fun answer(build: Hammock.AgentAnswer.Builder.() -> Unit) {
         val seen = _state.value.prompt.optionsList
+        val promptID = _state.value.prompt.promptId // only into the prompt shown
         _state.update { it.copy(answering = true, answerError = null) }
         try {
-            val a = Hammock.AgentAnswer.newBuilder().setPaneId(paneID).addAllOptionsSeen(seen).apply(build).build()
+            val a = Hammock.AgentAnswer.newBuilder().setPaneId(paneID).addAllOptionsSeen(seen).setPromptId(promptID).apply(build).build()
             model.call { setAgentAnswer(a) }
         } catch (e: Exception) {
             _state.update { it.copy(answerError = e.message ?: "Couldn't answer") }

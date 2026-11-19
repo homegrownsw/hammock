@@ -632,16 +632,22 @@ class AppModel private constructor(
 
     fun clearAttention(id: String) = send { setClearAttention(Hammock.ClearAttention.newBuilder().setId(id).build()) }
 
-    /** Needs You's Allow / Deny (or allowSchedule): typed only while the agent still asks. */
+    /**
+     * Needs You's Allow / Deny (or allowSchedule): typed only while the agent still asks, and an Allow only
+     * while it asks what the card showed (its prompt id); if it changed, the card comes back as it is now.
+     */
     fun decide(item: AttentionItem, decision: Hammock.AgentAnswer.Decision) = scope.launch {
         clearAttention(item.id)
         _workspace.value = _workspace.value.let { it.copy(attention = it.attention.filter { a -> a.id != item.id }) }
         if (_workspace.value.groupOfPane(item.paneId)?.canDrive == false) return@launch
         val name = _workspace.value.panes[item.paneId]?.displayName?.replaceFirstChar { it.uppercase() } ?: "The agent"
         try {
-            call { setAgentAnswer(Hammock.AgentAnswer.newBuilder().setPaneId(item.paneId).setDecision(decision).build()) }
+            call {
+                setAgentAnswer(Hammock.AgentAnswer.newBuilder().setPaneId(item.paneId).setDecision(decision)
+                    .setPromptId(item.promptId).setBound(true).build())
+            }
         } catch (e: DaemonException) {
-            showToast("$name isn’t asking any more")
+            showToast(if (e.message?.contains("request changed") == true) "The request changed: look again" else "$name isn’t asking any more")
         } catch (e: Exception) {
             showToast(e.message ?: "Couldn't answer")
         }

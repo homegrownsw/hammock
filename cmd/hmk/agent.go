@@ -78,7 +78,7 @@ func runAgent(args []string) error {
 		if v.Prompt == nil || v.Prompt.Kind == pb.AgentPrompt_KIND_NONE {
 			return fmt.Errorf("no prompt showing")
 		}
-		a := &pb.AgentAnswer{PaneId: pane, OptionsSeen: v.Prompt.Options}
+		a := &pb.AgentAnswer{PaneId: pane, OptionsSeen: v.Prompt.Options, PromptId: v.Prompt.PromptId}
 		if len(args) < 3 {
 			return fmt.Errorf("usage: hmk agent %s PANE …", args[0])
 		}

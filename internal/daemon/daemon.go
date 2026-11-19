@@ -1233,6 +1233,7 @@ func (d *Daemon) pollCwds() {
 				d.paneChanged(p)
 			}
 			d.pollStatus(p)
+			d.refreshPrompt(p)
 		}
 		d.detectAgents()
 		d.keepAwake()

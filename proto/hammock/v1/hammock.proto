@@ -303,6 +303,13 @@ message AttentionItem {
   // A program that isn't an agent, reporting its own status (OSC 7501):
   // its notifications have their own settings (notify-program-*).
   bool program = 7;
+  // Waiting on a prompt the daemon can read on the pane's screen: which
+  // one (AgentPrompt.prompt_id), sent back with Allow (AgentAnswer.prompt_id)
+  // so a stale card never answers a different prompt; and its whole text as
+  // the screen shows it, above the options (the command, every line).
+  // Empty until the screen shows it.
+  string prompt_id = 8;
+  string detail = 9;
 }
 
 // A batch of state changes. The first update after Subscribe has full=true
@@ -1258,6 +1265,9 @@ message AgentPrompt {
   // Multi-select: options 1 to this are checkboxes (ticked with toggles);
   // those after them ("Chat about this") are picked at once, with option.
   int32 checkboxes = 13;
+  // Which prompt this is: a digest of its text and options as the screen
+  // shows them (not the selection or ticks). Sent back with an answer.
+  string prompt_id = 14;
 }
 
 message AgentView {
@@ -1354,6 +1364,14 @@ message AgentAnswer {
   // the first option, or Esc, typed only while the screen shows a prompt.
   // With none on screen nothing is typed and the reply is an error.
   Decision decision = 6;
+  // The prompt answered (AgentPrompt.prompt_id, AttentionItem.prompt_id).
+  // Set, anything but a No or Deny is typed only while the screen shows
+  // that prompt; otherwise the reply is an error ("the request changed").
+  // Empty (an older client): only the options are checked.
+  string prompt_id = 8;
+  // The client sends prompt_id whenever it has one: empty, its card didn't
+  // have the prompt yet, so an Allow is refused like a stale one's.
+  bool bound = 9;
   enum Decision {
     DECISION_UNSPECIFIED = 0;
     DECISION_ALLOW = 1;

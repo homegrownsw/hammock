@@ -266,6 +266,44 @@ func TestNeedsMenuOffersTheSchedule(t *testing.T) {
 	}
 }
 
+// The menu shows the prompt, every line; more than it can show, and it's
+// reviewed in its pane rather than allowed from the menu.
+func TestNeedsMenuShowsThePrompt(t *testing.T) {
+	a := scheduleApp()
+	short := "Bash command\n\n  cd /work\n  rm -rf build\n\nDo you want to proceed?"
+	a.attention = []*pb.AttentionItem{{Id: "at", PaneId: "p1", State: pb.AgentState_AGENT_STATE_NEEDS_INPUT, Summary: "Bash: cd /work (+1 more line)", Detail: short}}
+	labels := func() string {
+		var out []string
+		for _, it := range a.overlay.(*menu).items {
+			out = append(out, it.label)
+		}
+		return strings.Join(out, "\n")
+	}
+	a.needsMenu("at", 1, 1)
+	if l := labels(); !strings.Contains(l, "   rm -rf build") || !strings.Contains(l, "\nAllow\n") || strings.Contains(l, "Review") {
+		t.Errorf("short prompt:\n%s", l)
+	}
+	long := short
+	for i := range 12 {
+		long += "\necho " + string(rune('a'+i))
+	}
+	a.attention[0].Detail = long
+	a.needsMenu("at", 1, 1)
+	if l := labels(); !strings.Contains(l, "+8 more lines") || strings.Contains(l, "\nAllow\n") || !strings.Contains(l, "Review the Whole Request") || !strings.Contains(l, "Deny") {
+		t.Errorf("long prompt:\n%s", l)
+	}
+	a.attention[0].Detail = "Bash command\n  " + strings.Repeat("x", 100)
+	a.needsMenu("at", 1, 1)
+	if l := labels(); strings.Contains(l, "\nAllow\n") {
+		t.Errorf("a line cut short, still allowed:\n%s", l)
+	}
+	a.attention[0].Detail = "…\n  rm -rf build\nDo you want to proceed?" // ran off its screen
+	a.needsMenu("at", 1, 1)
+	if l := labels(); strings.Contains(l, "\nAllow\n") {
+		t.Errorf("the top cut off, still allowed:\n%s", l)
+	}
+}
+
 func TestRunTabsWearAClock(t *testing.T) {
 	a := scheduleApp()
 	if got := a.tabDetail(a.tabs["t1"]); got != "◷" {

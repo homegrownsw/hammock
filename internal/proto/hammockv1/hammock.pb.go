@@ -3125,7 +3125,14 @@ type AttentionItem struct {
 	Question      bool                   `protobuf:"varint,6,opt,name=question,proto3" json:"question,omitempty"` // the agent asked you something: answer it, there's nothing to allow
 	// A program that isn't an agent, reporting its own status (OSC 7501):
 	// its notifications have their own settings (notify-program-*).
-	Program       bool `protobuf:"varint,7,opt,name=program,proto3" json:"program,omitempty"`
+	Program bool `protobuf:"varint,7,opt,name=program,proto3" json:"program,omitempty"`
+	// Waiting on a prompt the daemon can read on the pane's screen: which
+	// one (AgentPrompt.prompt_id), sent back with Allow (AgentAnswer.prompt_id)
+	// so a stale card never answers a different prompt; and its whole text as
+	// the screen shows it, above the options (the command, every line).
+	// Empty until the screen shows it.
+	PromptId      string `protobuf:"bytes,8,opt,name=prompt_id,json=promptId,proto3" json:"prompt_id,omitempty"`
+	Detail        string `protobuf:"bytes,9,opt,name=detail,proto3" json:"detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3207,6 +3214,20 @@ func (x *AttentionItem) GetProgram() bool {
 		return x.Program
 	}
 	return false
+}
+
+func (x *AttentionItem) GetPromptId() string {
+	if x != nil {
+		return x.PromptId
+	}
+	return ""
+}
+
+func (x *AttentionItem) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
 }
 
 // A batch of state changes. The first update after Subscribe has full=true
@@ -12159,7 +12180,10 @@ type AgentPrompt struct {
 	Notes    bool     `protobuf:"varint,12,opt,name=notes,proto3" json:"notes,omitempty"` // notes can go with the pick (AgentAnswer.notes)
 	// Multi-select: options 1 to this are checkboxes (ticked with toggles);
 	// those after them ("Chat about this") are picked at once, with option.
-	Checkboxes    int32 `protobuf:"varint,13,opt,name=checkboxes,proto3" json:"checkboxes,omitempty"`
+	Checkboxes int32 `protobuf:"varint,13,opt,name=checkboxes,proto3" json:"checkboxes,omitempty"`
+	// Which prompt this is: a digest of its text and options as the screen
+	// shows them (not the selection or ticks). Sent back with an answer.
+	PromptId      string `protobuf:"bytes,14,opt,name=prompt_id,json=promptId,proto3" json:"prompt_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12283,6 +12307,13 @@ func (x *AgentPrompt) GetCheckboxes() int32 {
 		return x.Checkboxes
 	}
 	return 0
+}
+
+func (x *AgentPrompt) GetPromptId() string {
+	if x != nil {
+		return x.PromptId
+	}
+	return ""
 }
 
 type AgentView struct {
@@ -13038,7 +13069,15 @@ type AgentAnswer struct {
 	// Needs You's Allow / Deny, for any agent and without the agent view:
 	// the first option, or Esc, typed only while the screen shows a prompt.
 	// With none on screen nothing is typed and the reply is an error.
-	Decision      AgentAnswer_Decision `protobuf:"varint,6,opt,name=decision,proto3,enum=hammock.v1.AgentAnswer_Decision" json:"decision,omitempty"`
+	Decision AgentAnswer_Decision `protobuf:"varint,6,opt,name=decision,proto3,enum=hammock.v1.AgentAnswer_Decision" json:"decision,omitempty"`
+	// The prompt answered (AgentPrompt.prompt_id, AttentionItem.prompt_id).
+	// Set, anything but a No or Deny is typed only while the screen shows
+	// that prompt; otherwise the reply is an error ("the request changed").
+	// Empty (an older client): only the options are checked.
+	PromptId string `protobuf:"bytes,8,opt,name=prompt_id,json=promptId,proto3" json:"prompt_id,omitempty"`
+	// The client sends prompt_id whenever it has one: empty, its card didn't
+	// have the prompt yet, so an Allow is refused like a stale one's.
+	Bound         bool `protobuf:"varint,9,opt,name=bound,proto3" json:"bound,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13120,6 +13159,20 @@ func (x *AgentAnswer) GetDecision() AgentAnswer_Decision {
 		return x.Decision
 	}
 	return AgentAnswer_DECISION_UNSPECIFIED
+}
+
+func (x *AgentAnswer) GetPromptId() string {
+	if x != nil {
+		return x.PromptId
+	}
+	return ""
+}
+
+func (x *AgentAnswer) GetBound() bool {
+	if x != nil {
+		return x.Bound
+	}
+	return false
 }
 
 // Sends a message to the agent (queued by it while it works).
@@ -25468,7 +25521,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05title\x18\x06 \x01(\tR\x05title\x12\x18\n" +
 	"\amessage\x18\a \x01(\tR\amessage\x12\x12\n" +
 	"\x04seen\x18\b \x01(\bR\x04seenB\v\n" +
-	"\t_progress\"\xde\x01\n" +
+	"\t_progress\"\x93\x02\n" +
 	"\rAttentionItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\apane_id\x18\x02 \x01(\tR\x06paneId\x12,\n" +
@@ -25476,7 +25529,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\asummary\x18\x04 \x01(\tR\asummary\x12&\n" +
 	"\x0fcreated_unix_ms\x18\x05 \x01(\x03R\rcreatedUnixMs\x12\x1a\n" +
 	"\bquestion\x18\x06 \x01(\bR\bquestion\x12\x18\n" +
-	"\aprogram\x18\a \x01(\bR\aprogram\"\xf6\t\n" +
+	"\aprogram\x18\a \x01(\bR\aprogram\x12\x1b\n" +
+	"\tprompt_id\x18\b \x01(\tR\bpromptId\x12\x16\n" +
+	"\x06detail\x18\t \x01(\tR\x06detail\"\xf6\t\n" +
 	"\vStateUpdate\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\x04R\aversion\x12\x12\n" +
 	"\x04full\x18\x02 \x01(\bR\x04full\x12)\n" +
@@ -26207,7 +26262,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"AgentImage\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x1d\n" +
 	"\n" +
-	"media_type\x18\x02 \x01(\tR\tmediaType\"\xd1\x03\n" +
+	"media_type\x18\x02 \x01(\tR\tmediaType\"\xee\x03\n" +
 	"\vAgentPrompt\x120\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1c.hammock.v1.AgentPrompt.KindR\x04kind\x12\x19\n" +
 	"\bblock_id\x18\x02 \x01(\tR\ablockId\x12\x14\n" +
@@ -26224,7 +26279,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05notes\x18\f \x01(\bR\x05notes\x12\x1e\n" +
 	"\n" +
 	"checkboxes\x18\r \x01(\x05R\n" +
-	"checkboxes\"L\n" +
+	"checkboxes\x12\x1b\n" +
+	"\tprompt_id\x18\x0e \x01(\tR\bpromptId\"L\n" +
 	"\x04Kind\x12\r\n" +
 	"\tKIND_NONE\x10\x00\x12\x11\n" +
 	"\rKIND_QUESTION\x10\x01\x12\x13\n" +
@@ -26310,7 +26366,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0fbefore_block_id\x18\x03 \x01(\tR\rbeforeBlockId\x12\x1f\n" +
 	"\vsubagent_id\x18\x04 \x01(\tR\n" +
 	"subagentId\x12\x19\n" +
-	"\bshell_id\x18\x05 \x01(\tR\ashellId\"\xcd\x02\n" +
+	"\bshell_id\x18\x05 \x01(\tR\ashellId\"\x80\x03\n" +
 	"\vAgentAnswer\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12!\n" +
 	"\foptions_seen\x18\x02 \x03(\tR\voptionsSeen\x12\x16\n" +
@@ -26318,7 +26374,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x04text\x18\x04 \x01(\tR\x04text\x12\x18\n" +
 	"\atoggles\x18\x05 \x03(\x05R\atoggles\x12\x14\n" +
 	"\x05notes\x18\a \x01(\tR\x05notes\x12<\n" +
-	"\bdecision\x18\x06 \x01(\x0e2 .hammock.v1.AgentAnswer.DecisionR\bdecision\"h\n" +
+	"\bdecision\x18\x06 \x01(\x0e2 .hammock.v1.AgentAnswer.DecisionR\bdecision\x12\x1b\n" +
+	"\tprompt_id\x18\b \x01(\tR\bpromptId\x12\x14\n" +
+	"\x05bound\x18\t \x01(\bR\x05bound\"h\n" +
 	"\bDecision\x12\x18\n" +
 	"\x14DECISION_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eDECISION_ALLOW\x10\x01\x12\x11\n" +

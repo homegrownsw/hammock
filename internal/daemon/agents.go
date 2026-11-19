@@ -216,7 +216,7 @@ func toolSummary(p agents.Hook) string {
 	_ = json.Unmarshal(p.ToolInput, &in)
 	switch {
 	case in.Command != "":
-		return p.ToolName + ": " + firstLine(in.Command)
+		return p.ToolName + ": " + firstLineMore(in.Command)
 	case in.FilePath != "":
 		return p.ToolName + ": " + in.FilePath
 	}
@@ -225,7 +225,7 @@ func toolSummary(p agents.Hook) string {
 
 func needsSummary(p agents.Hook) string {
 	if p.Message != "" {
-		return firstLine(p.Message)
+		return firstLineMore(p.Message)
 	}
 	if p.ToolName != "" {
 		return "Allow " + toolSummary(p) + "?"
@@ -243,6 +243,24 @@ func firstLine(s string) string {
 		s = string(r[:237]) + "…"
 	}
 	return s
+}
+
+// firstLineMore is firstLine, saying how many lines it leaves out (a
+// command's, which would otherwise read as only its first): "cd x (+2 more
+// lines)".
+func firstLineMore(s string) string {
+	s = strings.TrimSpace(s)
+	more := 0
+	if _, rest, ok := strings.Cut(s, "\n"); ok {
+		more = len(strings.Split(rest, "\n"))
+	}
+	switch more {
+	case 0:
+		return firstLine(s)
+	case 1:
+		return firstLine(s) + " (+1 more line)"
+	}
+	return fmt.Sprintf("%s (+%d more lines)", firstLine(s), more)
 }
 
 // handle applies a hook event. Callers hold d.mu.
@@ -722,10 +740,91 @@ func (d *Daemon) raiseAttentionAs(p *pane, state pb.AgentState, summary string, 
 		}
 	}
 	p.mu.Unlock()
+	if item.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT {
+		setPrompt(item, agentview.ReadScreen(p.text(false)))
+	}
 	d.attention[item.Id] = item
 	d.persist(d.store.PutRecord(attentionRecord, item.Id, item)) // still there after a restart
 	u.Attention = append(u.Attention, proto.CloneOf(item))
 	d.pushAttention(item)
+	if item.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT && item.PromptId == "" {
+		go d.awaitPrompt(p, item)
+	}
+}
+
+// promptDetailMax caps the text of a prompt a card carries.
+const promptDetailMax = 16 << 10
+
+// setPrompt gives a waiting agent's item the prompt sc shows (which it is,
+// and its whole text), reporting whether that changed it. No menu on
+// screen leaves it as it was: the prompt may be redrawing.
+func setPrompt(item *pb.AttentionItem, sc agentview.Screen) bool {
+	if sc.Key == "" || sc.Key == item.PromptId {
+		return false
+	}
+	detail := sc.Body
+	if len(detail) > promptDetailMax {
+		cut := strings.LastIndexByte(detail[:promptDetailMax], '\n')
+		if cut < 0 {
+			cut = promptDetailMax
+		}
+		detail = strings.ToValidUTF8(detail[:cut], "") + "\n…"
+	}
+	item.PromptId, item.Detail = sc.Key, detail
+	return true
+}
+
+// refreshPrompt brings p's Needs You item up to date with the prompt its
+// screen shows now, publishing it if that changed: a card always carries
+// the prompt that Allow would answer. Callers hold d.mu.
+func (d *Daemon) refreshPrompt(p *pane) {
+	item := d.attention["at_"+p.id]
+	if item == nil || item.State != pb.AgentState_AGENT_STATE_NEEDS_INPUT {
+		return
+	}
+	if setPrompt(item, agentview.ReadScreen(p.text(false))) {
+		d.persist(d.store.PutRecord(attentionRecord, item.Id, item))
+		d.publish(&pb.StateUpdate{Attention: []*pb.AttentionItem{proto.CloneOf(item)}})
+	}
+}
+
+// awaitPrompt reads p's screen for the prompt its agent's hook said was
+// coming (a hook can come before the menu is drawn), until it's there, or
+// item is no longer p's (the 2s poll keeps it up to date after that).
+func (d *Daemon) awaitPrompt(p *pane, item *pb.AttentionItem) {
+	for range 15 {
+		time.Sleep(150 * time.Millisecond)
+		d.mu.Lock()
+		if d.attention[item.Id] != item {
+			d.mu.Unlock()
+			return
+		}
+		d.refreshPrompt(p)
+		found := item.PromptId != ""
+		d.mu.Unlock()
+		if found {
+			return
+		}
+	}
+}
+
+// reraisePrompt puts p's Needs You card back, as its screen shows the
+// prompt now, after an Allow for another prompt was refused (the card was
+// cleared as it was answered). No push: you're looking. Callers hold d.mu.
+func (d *Daemon) reraisePrompt(p *pane) {
+	a := p.snapshotInfo().Agent
+	if a.GetState() != pb.AgentState_AGENT_STATE_NEEDS_INPUT {
+		return
+	}
+	item := d.attention["at_"+p.id]
+	if item == nil {
+		item = &pb.AttentionItem{Id: "at_" + p.id, PaneId: p.id, State: a.State, Summary: a.Summary,
+			CreatedUnixMs: time.Now().UnixMilli(), Program: a.Reported}
+		d.attention[item.Id] = item
+	}
+	setPrompt(item, agentview.ReadScreen(p.text(false)))
+	d.persist(d.store.PutRecord(attentionRecord, item.Id, item))
+	d.publish(&pb.StateUpdate{Attention: []*pb.AttentionItem{proto.CloneOf(item)}})
 }
 
 // attentionRecord is the store's kind for an agent's Needs You item, kept

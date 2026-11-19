@@ -1900,8 +1900,10 @@ extension AppModel {
     }
 
     /// Needs You's Allow / Deny. The daemon types it only while the pane
-    /// still shows the agent's prompt, so a stale card types nothing; the
-    /// card clears either way, and says so if nothing was asking.
+    /// still shows the agent's prompt, and an Allow only while it's the one
+    /// the card showed (its prompt id), so a stale card types nothing; the
+    /// card clears either way, says so if nothing was asking, and comes
+    /// back as the pane is now if the request changed.
     public func decide(_ item: AttentionItem, allow: Bool) {
         decide(item, allow ? .allow : .deny)
     }
@@ -1914,7 +1916,17 @@ extension AppModel {
         let name = panes[item.paneID].map { $0.displayName.capitalized } ?? "The agent"
         Task {
             do {
-                _ = try await conn.call { $0.agentAnswer = .with { $0.paneID = item.paneID; $0.decision = decision } }
+                _ = try await conn.call {
+                    $0.agentAnswer = .with {
+                        $0.paneID = item.paneID
+                        $0.decision = decision
+                        $0.promptID = item.promptID
+                        $0.bound = true
+                    }
+                }
+            } catch DaemonError.server(let m) where m.contains("request changed") {
+                // Another prompt is showing now: its card is back.
+                showToast("The request changed: look again")
             } catch DaemonError.server {
                 // No prompt on screen, or it changed before the key went in.
                 showToast("\(name) isn’t asking any more")

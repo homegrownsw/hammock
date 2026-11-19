@@ -66,7 +66,10 @@ import com.homegrownsw.hammock.client.restingWithSubagents
 import com.homegrownsw.hammock.client.restingWithWork
 import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.client.Workspace
+import com.homegrownsw.hammock.client.PromptPreview
 import com.homegrownsw.hammock.client.agentProgress
+import com.homegrownsw.hammock.client.allowsFromCard
+import com.homegrownsw.hammock.client.promptPreview
 import com.homegrownsw.hammock.client.agentStatusLabel
 import com.homegrownsw.hammock.client.agentNote
 import com.homegrownsw.hammock.client.canAllowAlways
@@ -351,20 +354,37 @@ fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, op
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                item.promptPreview?.let { PromptPreviewBlock(it) }
                 if (item.state == AgentState.AGENT_STATE_NEEDS_INPUT) {
                     if (item.question) {
                         Row { Spacer(Modifier.weight(1f)); Button(onClick = open) { Text("Answer") } }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             FilledTonalButton(colors = tintedButtonColors(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
-                            FilledTonalButton(colors = tintedButtonColors(), onClick = open) { Text("Open") }
+                            if (item.allowsFromCard) FilledTonalButton(colors = tintedButtonColors(), onClick = open) { Text("Open") }
                             Spacer(Modifier.weight(1f))
-                            if (schedule != null && schedule.kind == "claude") AllowMenu(model, item)
+                            // More than the card shows: see all of it in the pane first.
+                            if (!item.allowsFromCard) Button(onClick = open) { Text("Review") }
+                            else if (schedule != null && schedule.kind == "claude") AllowMenu(model, item)
                             else Button(onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** A Needs You card's prompt: its text in a monospaced block, and how much was left out. */
+@Composable
+private fun PromptPreviewBlock(preview: PromptPreview) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(preview.text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        preview.moreLabel?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

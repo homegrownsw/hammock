@@ -24,6 +24,11 @@ type Step struct {
 // ErrMismatch: the screen didn't show the prompt an answer was for.
 var ErrMismatch = errors.New("couldn't match Claude's prompt on screen")
 
+// ErrChanged: the screen shows a prompt, but not the one the answer was
+// for (Screen.Key): a stale card, or one prompt after another with the
+// same options.
+var ErrChanged = errors.New("the request changed: look again")
+
 var (
 	keyRight = []byte("\x1b[C")
 	keyUp    = []byte("\x1b[A")
@@ -79,12 +84,21 @@ func sameOptions(a, b []string) bool {
 
 // AnswerSteps scripts an answer to the menu on screen. cur is the prompt as
 // last read (arrows: its options have no numbers); a.OptionsSeen is what the
-// client answered.
+// client answered, and a.PromptId, when it says, which prompt (an older
+// client doesn't: its options alone are checked).
 func AnswerSteps(cur *pb.AgentPrompt, a *pb.AgentAnswer, arrows, kitty bool) ([]Step, error) {
-	if cur == nil || len(cur.Options) == 0 || !sameOptions(cur.Options, a.OptionsSeen) {
+	if cur == nil || len(cur.Options) == 0 {
 		return nil, ErrMismatch
 	}
-	showing := func(sc Screen) bool { return sameOptions(sc.Options, a.OptionsSeen) }
+	if a.PromptId != "" && a.PromptId != cur.PromptId {
+		return nil, ErrChanged
+	}
+	if !sameOptions(cur.Options, a.OptionsSeen) {
+		return nil, ErrMismatch
+	}
+	showing := func(sc Screen) bool {
+		return sameOptions(sc.Options, a.OptionsSeen) && (a.PromptId == "" || sc.Key == a.PromptId)
+	}
 	n := len(a.OptionsSeen)
 	valid := func(o int32) bool { return o >= 1 && int(o) <= n }
 	switch {
@@ -228,20 +242,30 @@ var ErrNotAsking = errors.New("the agent isn't asking any more")
 // it's selected, else its number; in a menu without numbers, the option
 // starting "Yes", as the trust dialog's first is "No, exit") or Deny (Esc)
 // for the prompt on screen, typed only while the screen still shows that
-// prompt.
-func DecisionSteps(sc Screen, allow, kitty bool) ([]Step, error) {
+// prompt. An Allow given promptID (the card's AttentionItem.prompt_id) is
+// only for that prompt: any other on screen is ErrChanged. Without one (an
+// older client) it's for whichever is showing, as is a Deny: Esc only
+// turns a request down.
+func DecisionSteps(sc Screen, promptID string, allow, kitty bool) ([]Step, error) {
 	if len(sc.Options) == 0 {
 		return nil, ErrNotAsking
 	}
-	seen := sc.Options
-	showing := func(s Screen) bool { return sameOptions(s.Options, seen) }
+	seen, key := sc.Options, sc.Key
 	if !allow {
-		return []Step{{Ready: showing, Keys: keyEsc, What: "deny"}}, nil
+		asking := func(s Screen) bool { return sameOptions(s.Options, seen) }
+		return []Step{{Ready: asking, Keys: keyEsc, What: "deny"}}, nil
+	}
+	showing := func(s Screen) bool { return sameOptions(s.Options, seen) && s.Key == key }
+	if promptID != "" && promptID != key {
+		return nil, ErrChanged
 	}
 	if sc.Arrows {
 		for i, o := range seen {
 			if strings.HasPrefix(o, "Yes") {
-				return arrowSteps(sc.Selected, i+1, seen, kitty), nil
+				steps := arrowSteps(sc.Selected, i+1, seen, kitty)
+				first := steps[0].Ready
+				steps[0].Ready = func(s Screen) bool { return first(s) && s.Key == key }
+				return steps, nil
 			}
 		}
 		return nil, errors.New("answer this prompt in the agent view")

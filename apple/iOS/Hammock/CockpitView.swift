@@ -632,6 +632,9 @@ struct AttentionRow: View {
                     Text(item.summary.isEmpty ? item.state.label : item.summary).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
+            if let preview = item.promptPreview {
+                PromptPreviewView(preview, font: .footnote)
+            }
             if item.state == .needsInput, item.question {
                 HStack {
                     Spacer()
@@ -640,9 +643,16 @@ struct AttentionRow: View {
             } else if item.state == .needsInput {
                 HStack {
                     Button("Deny") { answer(false) }.buttonStyle(.bordered)
-                    Button("Open") { openPane() }.buttonStyle(.bordered)
+                    if item.allowsFromCard {
+                        Button("Open") { openPane() }.buttonStyle(.bordered)
+                    }
                     Spacer()
-                    if let s = schedule, s.kind == "claude" {
+                    if !item.allowsFromCard {
+                        // More than the card shows: see all of it in the pane first.
+                        Button("Review") { openPane() }
+                            .prominentButton()
+                            .accessibilityHint("Opens the pane to see the whole request")
+                    } else if let s = schedule, s.kind == "claude" {
                         // A scheduled Claude run: allow it in every run from now on.
                         Menu {
                             Button("Allow Once", systemImage: "checkmark") { answer(true) }

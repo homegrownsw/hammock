@@ -1058,6 +1058,15 @@ public nonisolated struct Hammock_V1_AttentionItem: Sendable {
   /// its notifications have their own settings (notify-program-*).
   public var program: Bool = false
 
+  /// Waiting on a prompt the daemon can read on the pane's screen: which
+  /// one (AgentPrompt.prompt_id), sent back with Allow (AgentAnswer.prompt_id)
+  /// so a stale card never answers a different prompt; and its whole text as
+  /// the screen shows it, above the options (the command, every line).
+  /// Empty until the screen shows it.
+  public var promptID: String = String()
+
+  public var detail: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -5286,6 +5295,10 @@ public nonisolated struct Hammock_V1_AgentPrompt: Sendable {
   /// those after them ("Chat about this") are picked at once, with option.
   public var checkboxes: Int32 = 0
 
+  /// Which prompt this is: a digest of its text and options as the screen
+  /// shows them (not the selection or ticks). Sent back with an answer.
+  public var promptID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Kind: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -5758,6 +5771,16 @@ public nonisolated struct Hammock_V1_AgentAnswer: Sendable {
   /// the first option, or Esc, typed only while the screen shows a prompt.
   /// With none on screen nothing is typed and the reply is an error.
   public var decision: Hammock_V1_AgentAnswer.Decision = .unspecified
+
+  /// The prompt answered (AgentPrompt.prompt_id, AttentionItem.prompt_id).
+  /// Set, anything but a No or Deny is typed only while the screen shows
+  /// that prompt; otherwise the reply is an error ("the request changed").
+  /// Empty (an older client): only the options are checked.
+  public var promptID: String = String()
+
+  /// The client sends prompt_id whenever it has one: empty, its card didn't
+  /// have the prompt yet, so an Allow is refused like a stale one's.
+  public var bound: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -12144,7 +12167,7 @@ nonisolated extension Hammock_V1_ProgramStatus: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AttentionItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}pane_id\0\u{1}state\0\u{1}summary\0\u{3}created_unix_ms\0\u{1}question\0\u{1}program\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}pane_id\0\u{1}state\0\u{1}summary\0\u{3}created_unix_ms\0\u{1}question\0\u{1}program\0\u{3}prompt_id\0\u{1}detail\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -12159,6 +12182,8 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
       case 5: try { try decoder.decodeSingularInt64Field(value: &self.createdUnixMs) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.question) }()
       case 7: try { try decoder.decodeSingularBoolField(value: &self.program) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.promptID) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.detail) }()
       default: break
       }
     }
@@ -12186,6 +12211,12 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
     if self.program != false {
       try visitor.visitSingularBoolField(value: self.program, fieldNumber: 7)
     }
+    if !self.promptID.isEmpty {
+      try visitor.visitSingularStringField(value: self.promptID, fieldNumber: 8)
+    }
+    if !self.detail.isEmpty {
+      try visitor.visitSingularStringField(value: self.detail, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -12197,6 +12228,8 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
     if lhs.createdUnixMs != rhs.createdUnixMs {return false}
     if lhs.question != rhs.question {return false}
     if lhs.program != rhs.program {return false}
+    if lhs.promptID != rhs.promptID {return false}
+    if lhs.detail != rhs.detail {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -19399,7 +19432,7 @@ nonisolated extension Hammock_V1_AgentImage: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentPrompt"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}block_id\0\u{1}title\0\u{1}options\0\u{1}selected\0\u{1}descriptions\0\u{3}multi_select\0\u{1}checked\0\u{1}tabs\0\u{1}other\0\u{1}previews\0\u{1}notes\0\u{1}checkboxes\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}block_id\0\u{1}title\0\u{1}options\0\u{1}selected\0\u{1}descriptions\0\u{3}multi_select\0\u{1}checked\0\u{1}tabs\0\u{1}other\0\u{1}previews\0\u{1}notes\0\u{1}checkboxes\0\u{3}prompt_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -19420,6 +19453,7 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
       case 11: try { try decoder.decodeRepeatedStringField(value: &self.previews) }()
       case 12: try { try decoder.decodeSingularBoolField(value: &self.notes) }()
       case 13: try { try decoder.decodeSingularInt32Field(value: &self.checkboxes) }()
+      case 14: try { try decoder.decodeSingularStringField(value: &self.promptID) }()
       default: break
       }
     }
@@ -19465,6 +19499,9 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
     if self.checkboxes != 0 {
       try visitor.visitSingularInt32Field(value: self.checkboxes, fieldNumber: 13)
     }
+    if !self.promptID.isEmpty {
+      try visitor.visitSingularStringField(value: self.promptID, fieldNumber: 14)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -19482,6 +19519,7 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
     if lhs.previews != rhs.previews {return false}
     if lhs.notes != rhs.notes {return false}
     if lhs.checkboxes != rhs.checkboxes {return false}
+    if lhs.promptID != rhs.promptID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -20064,7 +20102,7 @@ nonisolated extension Hammock_V1_WatchAgent: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_AgentAnswer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentAnswer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}options_seen\0\u{1}option\0\u{1}text\0\u{1}toggles\0\u{1}decision\0\u{1}notes\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{3}options_seen\0\u{1}option\0\u{1}text\0\u{1}toggles\0\u{1}decision\0\u{1}notes\0\u{3}prompt_id\0\u{1}bound\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -20079,6 +20117,8 @@ nonisolated extension Hammock_V1_AgentAnswer: SwiftProtobuf.Message, SwiftProtob
       case 5: try { try decoder.decodeRepeatedInt32Field(value: &self.toggles) }()
       case 6: try { try decoder.decodeSingularEnumField(value: &self.decision) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.notes) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.promptID) }()
+      case 9: try { try decoder.decodeSingularBoolField(value: &self.bound) }()
       default: break
       }
     }
@@ -20106,6 +20146,12 @@ nonisolated extension Hammock_V1_AgentAnswer: SwiftProtobuf.Message, SwiftProtob
     if !self.notes.isEmpty {
       try visitor.visitSingularStringField(value: self.notes, fieldNumber: 7)
     }
+    if !self.promptID.isEmpty {
+      try visitor.visitSingularStringField(value: self.promptID, fieldNumber: 8)
+    }
+    if self.bound != false {
+      try visitor.visitSingularBoolField(value: self.bound, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -20117,6 +20163,8 @@ nonisolated extension Hammock_V1_AgentAnswer: SwiftProtobuf.Message, SwiftProtob
     if lhs.toggles != rhs.toggles {return false}
     if lhs.notes != rhs.notes {return false}
     if lhs.decision != rhs.decision {return false}
+    if lhs.promptID != rhs.promptID {return false}
+    if lhs.bound != rhs.bound {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

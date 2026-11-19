@@ -26,10 +26,10 @@ func TestCodexApprovalPrompt(t *testing.T) {
 		t.Fatalf("kind %v", p.Kind)
 	}
 	// Allow: Enter on the selected Yes. Deny: Esc.
-	if s, _ := DecisionSteps(sc, true, false); len(s) != 1 || string(s[0].Keys) != "\r" {
+	if s, _ := DecisionSteps(sc, "", true, false); len(s) != 1 || string(s[0].Keys) != "\r" {
 		t.Fatalf("allow: %v", s)
 	}
-	if s, _ := DecisionSteps(sc, false, false); len(s) != 1 || string(s[0].Keys) != "\x1b" {
+	if s, _ := DecisionSteps(sc, "", false, false); len(s) != 1 || string(s[0].Keys) != "\x1b" {
 		t.Fatalf("deny: %v", s)
 	}
 	// Choosing an option presses its key: a number only moves Codex's

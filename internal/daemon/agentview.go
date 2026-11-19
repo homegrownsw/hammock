@@ -778,7 +778,8 @@ func (d *Daemon) answerAgent(c *conn, id uint64, m *pb.AgentAnswer) error {
 
 // decideAgent is Needs You's Allow / Deny for any agent's pane: typed only
 // while its screen shows a prompt, so a stale card never types into
-// whatever the pane shows now.
+// whatever the pane shows now, and an Allow only while it shows the prompt
+// its card did (m.PromptId; an older client sends none).
 func (d *Daemon) decideAgent(c *conn, id uint64, m *pb.AgentAnswer) error {
 	d.mu.Lock()
 	p := d.panes[m.PaneId]
@@ -788,9 +789,19 @@ func (d *Daemon) decideAgent(c *conn, id uint64, m *pb.AgentAnswer) error {
 	}
 	allow := m.Decision == pb.AgentAnswer_DECISION_ALLOW || m.Decision == pb.AgentAnswer_DECISION_ALLOW_SCHEDULE
 	screen := p.text(false)
-	steps, err := agentview.DecisionSteps(agentview.ReadScreen(screen), allow, p.kittyKeys())
+	want := m.PromptId
+	if m.Bound && want == "" {
+		want = "unread" // its card didn't have the prompt yet: never the one showing
+	}
+	steps, err := agentview.DecisionSteps(agentview.ReadScreen(screen), want, allow, p.kittyKeys())
 	if err != nil {
 		d.log.Info("agent decision refused", "pane", p.id, "err", err)
+		if errors.Is(err, agentview.ErrChanged) {
+			// Its card was for another prompt: put it back as it is now.
+			d.mu.Lock()
+			d.reraisePrompt(p)
+			d.mu.Unlock()
+		}
 		return err
 	}
 	if m.Decision == pb.AgentAnswer_DECISION_ALLOW_SCHEDULE {
