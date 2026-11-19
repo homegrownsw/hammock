@@ -67,6 +67,12 @@ class Session(
 
     val isDemo: Boolean get() = _model.value?.isDemo == true
 
+    /**
+     * Whether the app is in use (HammockApplication): the computer shown is
+     * only connected then, not when a push wakes the app in the background.
+     */
+    private var active = false
+
     init {
         val stored = store.load()
         _hosts.value = stored.hosts
@@ -75,6 +81,18 @@ class Session(
             _host.value = h
             _model.value = connect(h, null)
         }
+    }
+
+    /** The app's in use: the computer shown connects (or checks its link still carries). */
+    fun resume() {
+        active = true
+        _model.value?.let { it.resume(); it.checkConnection() }
+    }
+
+    /** The app's been away a while: the computer shown hangs up until [resume]. */
+    fun pause() {
+        active = false
+        _model.value?.takeIf { !it.isDemo }?.pause()
     }
 
     /** What this phone calls itself to its computers (Devices ▸ This Phone). */
@@ -306,6 +324,7 @@ class Session(
                         _model.value?.stop()
                         _model.value = m
                         _host.value = paired
+                        if (!active) m.pause()
                     } else {
                         persist()
                         Push.register(context, m, paired.id)
@@ -332,7 +351,8 @@ class Session(
             }
         }
         onModel?.invoke(m, h)
-        m.start()
+        // (A pairing goes ahead regardless: it's the app's own doing.)
+        m.start(paused = !active && secret == null)
         return m
     }
 }

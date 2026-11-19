@@ -34,6 +34,8 @@ object Notifications {
     const val EXTRA_PANE = "pane"
     const val EXTRA_HOST = "host"
     const val EXTRA_NEEDS_YOU = "needsYou"
+    /** When the computer sent what a notification shows (its note's "at", by its clock). */
+    private const val EXTRA_SENT = "com.homegrownsw.hammock.sent"
 
     const val CH_NEEDS_YOU = "needs_you"
     const val CH_FINISHED = "finished"
@@ -94,7 +96,7 @@ object Notifications {
         val subject = subject(note)
         val nm = NotificationManagerCompat.from(ctx)
         if (note.optBoolean("clear")) {
-            if (subject.isNotEmpty()) nm.cancel(tag(host, subject), 0)
+            if (subject.isNotEmpty()) clear(ctx, tag(host, subject), note.optLong("at", 0))
             return
         }
         // The app is showing this computer: the computer doesn't push then, but a late one is dropped too.
@@ -125,21 +127,22 @@ object Notifications {
             .setGroup(host + "/" + (pane.ifEmpty { subject }))
             .setCategory(if (category == "hammockkey") NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_MESSAGE)
             .setContentIntent(PendingIntent.getActivity(ctx, (host + subject).hashCode(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            .addExtras(android.os.Bundle().apply { putLong(EXTRA_SENT, note.optLong("at", 0)) })
         val id = note.optString("grant").ifEmpty { note.optString("join").ifEmpty { note.optString("key") } }
         when (category) {
             "grant" -> {
-                n.addAction(action(ctx, "Deny", ACTION_GRANT_DENY, host, id, subject))
-                n.addAction(action(ctx, "Allow", ACTION_GRANT_ALLOW, host, id, subject))
+                n.addAction(action(ctx, "Deny", ACTION_GRANT_DENY, host, id, subject, open))
+                n.addAction(action(ctx, "Allow", ACTION_GRANT_ALLOW, host, id, subject, open))
             }
             "join" -> {
-                n.addAction(action(ctx, "Decline", ACTION_JOIN_DECLINE, host, id, subject))
-                n.addAction(action(ctx, "Let View", ACTION_JOIN_VIEW, host, id, subject))
+                n.addAction(action(ctx, "Decline", ACTION_JOIN_DECLINE, host, id, subject, open))
+                n.addAction(action(ctx, "Let View", ACTION_JOIN_VIEW, host, id, subject, open))
                 // Letting someone drive means typing on your computer: in the app, where you see who.
                 n.addAction(NotificationCompat.Action(0, "Let Drive…", PendingIntent.getActivity(ctx, (host + id + "drive").hashCode(), open,
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)))
             }
             "hammockkey" -> {
-                n.addAction(action(ctx, "Don't Allow", ACTION_KEY_DENY, host, id, subject))
+                n.addAction(action(ctx, "Don't Allow", ACTION_KEY_DENY, host, id, subject, open))
                 // Approving needs your fingerprint or face: in the app.
                 n.addAction(NotificationCompat.Action(0, "Approve…", PendingIntent.getActivity(ctx, (host + id + "key").hashCode(), open,
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)))
@@ -157,13 +160,37 @@ object Notifications {
     const val ACTION_JOIN_DECLINE = "com.homegrownsw.hammock.JOIN_DECLINE"
     const val ACTION_KEY_DENY = "com.homegrownsw.hammock.KEY_DENY"
 
-    private fun action(ctx: Context, title: String, action: String, host: String, id: String, subject: String): NotificationCompat.Action {
-        val i = Intent(ctx, NotificationActionReceiver::class.java).setAction(action)
-            .putExtra("host", host).putExtra("id", id).putExtra("subject", subject)
-        val pi = PendingIntent.getBroadcast(ctx, (action + host + id).hashCode(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    private fun action(ctx: Context, title: String, action: String, host: String, id: String, subject: String, open: Intent): NotificationCompat.Action {
+        val answer = NotificationAnswer(action, host, id, subject)
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        // With the app's own lock on (Require Unlock), every answer opens the
+        // app, whose lock asks first, and is sent once it's open, as on the
+        // iPhone; else it's answered from the shade.
+        val pi = if (Prefs.of(ctx).getBoolean(Prefs.APP_LOCK, false)) {
+            PendingIntent.getActivity(ctx, (action + host + id).hashCode(), answer.into(Intent(open)), flags)
+        } else {
+            PendingIntent.getBroadcast(ctx, (action + host + id).hashCode(), answer.into(Intent(ctx, NotificationActionReceiver::class.java)), flags)
+        }
         // Answering for you needs the phone unlocked, as on the iPhone.
         return NotificationCompat.Action.Builder(0, title, pi).setAuthenticationRequired(true).build()
     }
+
+    /**
+     * A computer's clear: its notification goes, unless it was sent after the
+     * clear (a late one, held back by Doze): the same thing can need you
+     * again since, as on the iPhone (DeliveredNotes.clear).
+     */
+    private fun clear(ctx: Context, tag: String, at: Long) {
+        val nm = NotificationManagerCompat.from(ctx)
+        for (sbn in ctx.getSystemService(NotificationManager::class.java).activeNotifications) {
+            if (sbn.tag != tag) continue
+            val sent = sbn.notification.extras.getLong(EXTRA_SENT, 0)
+            if (clears(sent, at)) nm.cancel(tag, sbn.id)
+        }
+    }
+
+    /** Whether a clear sent at `at` takes down a notification sent at `sent` (either unknown: it does). */
+    fun clears(sent: Long, at: Long) = at == 0L || sent == 0L || sent <= at
 
     /** Takes down what a computer showed about things now resolved (answered here, on the computer, anywhere). */
     fun withdraw(ctx: Context, host: String, ids: Collection<String>) {
@@ -200,47 +227,79 @@ object Notifications {
     }
 }
 
+/** An answer chosen on a notification (Allow, Deny, Let View…), from the shade or once the app opens. */
+data class NotificationAnswer(val action: String, val host: String, val id: String, val subject: String) {
+    /** Puts it in an intent: the receiver's, or the app's with the lock on. */
+    fun into(i: Intent): Intent = i.putExtra(EXTRA_ACTION, action).putExtra(EXTRA_HOST, host).putExtra(EXTRA_ID, id).putExtra(EXTRA_SUBJECT, subject)
+
+    /** Tells the computer, over a model signed in to it. */
+    suspend fun send(m: AppModel) {
+        val about = id // (in the builders below, `id` is the message's own)
+        when (action) {
+            Notifications.ACTION_GRANT_ALLOW, Notifications.ACTION_GRANT_DENY -> m.request {
+                setRespondGrant(Hammock.RespondGrant.newBuilder().setId(about).setDecision(
+                    if (action == Notifications.ACTION_GRANT_ALLOW) Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE
+                    else Hammock.RespondGrant.Decision.DECISION_DENY,
+                ).build())
+            }
+            Notifications.ACTION_JOIN_VIEW, Notifications.ACTION_JOIN_DECLINE -> m.request {
+                setRespondJoin(Hammock.RespondJoin.newBuilder().setId(about).setRole(
+                    if (action == Notifications.ACTION_JOIN_VIEW) Hammock.Role.ROLE_VIEWER else Hammock.Role.ROLE_UNSPECIFIED,
+                ).build())
+            }
+            Notifications.ACTION_KEY_DENY -> m.request {
+                setRespondHammockKey(Hammock.RespondHammockKey.newBuilder().setId(about).setAllow(false).build())
+            }
+        }
+    }
+
+    /** Takes its notification down. */
+    fun answered(ctx: Context) = NotificationManagerCompat.from(ctx).cancel("$host/$subject", 0)
+
+    companion object {
+        private const val EXTRA_ACTION = "answer"
+        private const val EXTRA_HOST = "answerHost"
+        private const val EXTRA_ID = "answerID"
+        private const val EXTRA_SUBJECT = "answerSubject"
+
+        fun from(i: Intent): NotificationAnswer? {
+            val action = i.getStringExtra(EXTRA_ACTION) ?: return null
+            val host = i.getStringExtra(EXTRA_HOST) ?: return null
+            val id = i.getStringExtra(EXTRA_ID) ?: return null
+            return NotificationAnswer(action, host, id, i.getStringExtra(EXTRA_SUBJECT) ?: "")
+        }
+    }
+}
+
 /**
  * A notification's action answered from the shade: over the computer's
- * connection if it's the one shown, else a brief one of its own.
+ * connection if the app has it open, else a brief one of its own.
  */
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        val host = intent.getStringExtra("host") ?: return
-        val id = intent.getStringExtra("id") ?: return
-        val subject = intent.getStringExtra("subject") ?: ""
-        val action = intent.action ?: return
+        val answer = NotificationAnswer.from(intent) ?: return
+        // The app's lock turned on since it was shown: answered in the app,
+        // once unlocked (tapping the notification opens it), not from here.
+        if (Prefs.of(ctx).getBoolean(Prefs.APP_LOCK, false)) return
         val pending = goAsync()
         val session = (ctx.applicationContext as HammockApplication).session
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            var brief: AppModel? = null
             try {
                 // All within the broadcast's time (Android allows 10 s).
-                kotlinx.coroutines.withTimeoutOrNull(8_500) {
-                val shown = session.model.value?.takeIf { session.host.value?.id == host }
-                val m = shown ?: session.briefConnection(host) ?: return@withTimeoutOrNull
-                withTimeoutOrNull(6_000) { m.link.first { it == Link.Connected } }
-                if (m.link.value == Link.Connected) {
-                    when (action) {
-                        Notifications.ACTION_GRANT_ALLOW, Notifications.ACTION_GRANT_DENY -> m.request {
-                            setRespondGrant(Hammock.RespondGrant.newBuilder().setId(id).setDecision(
-                                if (action == Notifications.ACTION_GRANT_ALLOW) Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE
-                                else Hammock.RespondGrant.Decision.DECISION_DENY,
-                            ).build())
-                        }
-                        Notifications.ACTION_JOIN_VIEW, Notifications.ACTION_JOIN_DECLINE -> m.request {
-                            setRespondJoin(Hammock.RespondJoin.newBuilder().setId(id).setRole(
-                                if (action == Notifications.ACTION_JOIN_VIEW) Hammock.Role.ROLE_VIEWER else Hammock.Role.ROLE_UNSPECIFIED,
-                            ).build())
-                        }
-                        Notifications.ACTION_KEY_DENY -> m.request {
-                            setRespondHammockKey(Hammock.RespondHammockKey.newBuilder().setId(id).setAllow(false).build())
-                        }
+                withTimeoutOrNull(8_500) {
+                    // The app's own connection only while it's up (it hangs up in the background).
+                    val shown = session.model.value?.takeIf { session.host.value?.id == answer.host && it.link.value == Link.Connected }
+                    val m = shown ?: session.briefConnection(answer.host)?.also { brief = it } ?: return@withTimeoutOrNull
+                    withTimeoutOrNull(6_000) { m.link.first { it == Link.Connected } }
+                    if (m.link.value == Link.Connected) {
+                        answer.send(m)
+                        answer.answered(ctx)
                     }
-                    NotificationManagerCompat.from(ctx).cancel("$host/$subject", 0)
-                }
-                if (shown == null) m.stop()
                 }
             } finally {
+                // Stopped however it ends (the time running out too), or it would keep dialling.
+                brief?.stop()
                 pending.finish()
             }
         }

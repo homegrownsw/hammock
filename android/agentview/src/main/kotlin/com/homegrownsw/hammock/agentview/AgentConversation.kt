@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,7 @@ import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.homegrownsw.hammock.client.AppCover
 import hammock.v1.Hammock.AgentBlock
 import hammock.v1.Hammock.AgentPrompt
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -212,7 +214,8 @@ private fun Conversation(
             }
         }
         viewed?.let { ImageViewer(it) { viewed = null } }
-        asking?.let { url ->
+        val locked by AppCover.locked.collectAsState()
+        if (!locked) asking?.let { url ->
             AlertDialog(
                 onDismissRequest = { asking = null },
                 title = { Text("Open this link?") },

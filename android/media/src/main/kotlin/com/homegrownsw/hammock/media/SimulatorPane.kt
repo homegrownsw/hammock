@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +83,7 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.homegrownsw.hammock.client.AppCover
 import com.homegrownsw.hammock.client.AppModel
 import hammock.v1.Hammock
 import kotlinx.coroutines.Dispatchers
@@ -165,8 +167,10 @@ fun SimulatorPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifi
         }
     }
 
-    if (fullScreen) FullScreen(model, pane, canDrive, onExit = { fullScreen = false }, onType = { typing = true }, surface = surface)
-    if (typing) TypeDialog(model, pane, canDrive) { typing = false }
+    // (Windows of their own, over the app's lock: not while it covers the app.)
+    val locked by AppCover.locked.collectAsState()
+    if (fullScreen && !locked) FullScreen(model, pane, canDrive, onExit = { fullScreen = false }, onType = { typing = true }, surface = surface)
+    if (typing && !locked) TypeDialog(model, pane, canDrive) { typing = false }
 }
 
 /** The device: its video, else its screenshots, fitted, taking touches. */

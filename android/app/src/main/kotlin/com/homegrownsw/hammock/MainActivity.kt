@@ -14,7 +14,11 @@ import com.homegrownsw.hammock.ui.HammockTheme
 import com.homegrownsw.hammock.ui.Root
 
 /** Where a notification or a link asked to go, for Root to open once it can. */
-data class OpenRequest(val hostID: String? = null, val paneID: String? = null, val needsYou: Boolean = false)
+data class OpenRequest(
+    val hostID: String? = null, val paneID: String? = null, val needsYou: Boolean = false,
+    /** A notification's answer, sent once the app's lock is open (Require Unlock). */
+    val answer: NotificationAnswer? = null,
+)
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
     private var opening by mutableStateOf<OpenRequest?>(null)
@@ -76,7 +80,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         val pane = intent.getStringExtra(Notifications.EXTRA_PANE)
         val host = intent.getStringExtra(Notifications.EXTRA_HOST)
         if (pane != null || intent.getBooleanExtra(Notifications.EXTRA_NEEDS_YOU, false)) {
-            opening = OpenRequest(host, pane, needsYou = pane == null)
+            // (Not again when opened from Recents, which hands back the intent that started it.)
+            val fresh = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
+            opening = OpenRequest(host, pane, needsYou = pane == null, answer = if (fresh) NotificationAnswer.from(intent) else null)
         }
     }
 }

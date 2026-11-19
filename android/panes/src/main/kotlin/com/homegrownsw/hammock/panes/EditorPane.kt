@@ -68,6 +68,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.homegrownsw.hammock.client.AppCover
 import com.homegrownsw.hammock.client.AppModel
 import hammock.v1.Hammock
 import hammock.v1.Hammock.EditorInfo
@@ -215,7 +216,9 @@ fun EditorPane(
             }
         }
     }
-    confirmOverwrite?.let { (path, message) ->
+    // (Windows of their own, over the app's lock: not while it covers the app.)
+    val locked by AppCover.locked.collectAsState()
+    if (!locked) confirmOverwrite?.let { (path, message) ->
         AlertDialog(
             onDismissRequest = { confirmOverwrite = null },
             text = { Text(message) },
@@ -223,7 +226,7 @@ fun EditorPane(
             dismissButton = { TextButton(onClick = { confirmOverwrite = null }) { Text("Cancel") } },
         )
     }
-    if (confirmReload) {
+    if (confirmReload && !locked) {
         AlertDialog(
             onDismissRequest = { confirmReload = false },
             text = { Text("Discard your changes to ${info.name}?") },
@@ -231,7 +234,7 @@ fun EditorPane(
             dismissButton = { TextButton(onClick = { confirmReload = false }) { Text("Cancel") } },
         )
     }
-    problem?.let { p ->
+    if (!locked) problem?.let { p ->
         AlertDialog(onDismissRequest = { problem = null }, text = { Text(p) }, confirmButton = { TextButton(onClick = { problem = null }) { Text("OK") } })
     }
     if (pickingLanguage) {
@@ -402,6 +405,8 @@ internal fun TextPrompt(
     onConfirm: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf(initial) }
+    // (A window of its own, over the app's lock: not while it covers the app.)
+    if (AppCover.locked.collectAsState().value) return
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -424,6 +429,7 @@ internal fun TextPrompt(
 private fun LanguagePicker(names: List<String>, current: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
     var query by remember { mutableStateOf("") }
     val shown = remember(names, query) { names.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) } }
+    if (AppCover.locked.collectAsState().value) return
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Language") },

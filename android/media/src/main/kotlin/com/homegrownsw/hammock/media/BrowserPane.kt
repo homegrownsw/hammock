@@ -43,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,6 +65,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.homegrownsw.hammock.client.AppCover
 import com.homegrownsw.hammock.client.AppModel
 import hammock.v1.Hammock
 import hammock.v1.Hammock.ServerMessage
@@ -268,7 +270,9 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
         }
     }
 
-    menu?.let { m -> PageMenuSheet(m) { i -> menu = null; model.answerBrowserMenu(m, i) } }
+    // (A window of its own, over the app's lock: not while it covers the app.)
+    val locked by AppCover.locked.collectAsState()
+    menu?.let { m -> if (!locked) PageMenuSheet(m) { i -> menu = null; model.answerBrowserMenu(m, i) } }
 }
 
 /** A menu the page opened (a <select>'s options or a right-click), as a list to pick from; dismissed is -1. */

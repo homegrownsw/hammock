@@ -136,7 +136,8 @@ interface PaneSink {
 sealed class Link {
     data object Connecting : Link()
     data object Connected : Link()
-    data class Failed(val message: String) : Link()
+    /** Can't connect; unpaired: the computer removed this phone, and it stopped trying (pair again). */
+    data class Failed(val message: String, val unpaired: Boolean = false) : Link()
 }
 
 /**
@@ -153,6 +154,15 @@ class AppModel private constructor(
     companion object {
         fun remote(identity: RemoteIdentity, key: DeviceKey, clientKind: String = "android") = AppModel(identity, key, null, clientKind)
         fun standIn(s: DaemonStandIn, clientKind: String = "android") = AppModel(null, null, s, clientKind)
+
+        /**
+         * The computer refused this phone's sign-in for good: it doesn't know
+         * the device (removed in Settings ▸ Devices) or its key. The daemon
+         * says "authentication failed" for either (internal/daemon/remote.go
+         * authenticate), and something else for what may pass (its store, a
+         * dropped connection).
+         */
+        fun signInRefused(e: Throwable): Boolean = e is DaemonException && e.message.equals("authentication failed", ignoreCase = true)
     }
 
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "hammock-model").apply { isDaemon = true } }
@@ -182,6 +192,8 @@ class AppModel private constructor(
     @Volatile var connection: DaemonConnection? = null
         private set
     private var stopped = false
+    private var paused = false
+    private var checking = false
     private var retryDelay = 200L
     private var challenge: ByteArray? = null
     private var challengeWaiter: kotlinx.coroutines.CompletableDeferred<ByteArray>? = null
@@ -193,7 +205,34 @@ class AppModel private constructor(
     private var toastJob: Job? = null
     private val rewatch = ArrayList<(DaemonConnection) -> Unit>()
 
-    fun start() = scope.launch { open() }
+    /** Connects, or (paused) waits for [resume] first: the app not on screen yet. */
+    fun start(paused: Boolean = false) = scope.launch {
+        this@AppModel.paused = paused
+        open()
+    }
+
+    /**
+     * Hangs up until [resume]: the app in the background. A phone that stays
+     * signed in tells its computer you're on it (pushes and Hammock Key
+     * requests go straight there), and dials and pings for nothing.
+     */
+    fun pause() = scope.launch {
+        if (stopped || paused) return@launch
+        paused = true
+        connection?.disconnect()
+        connection = null
+        challengeWaiter?.cancel()
+        challengeWaiter = null
+        if (_link.value == Link.Connected) _link.value = Link.Connecting
+    }
+
+    /** Connects again after [pause]. */
+    fun resume() = scope.launch {
+        if (stopped || !paused) return@launch
+        paused = false
+        retryDelay = 200
+        open()
+    }
 
     /** Disconnects for good, and lets the model's thread go. */
     fun stop() = scope.launch {
@@ -211,7 +250,7 @@ class AppModel private constructor(
     private fun current(c: DaemonConnection) = connection === c && !stopped
 
     private fun open() {
-        if (stopped) return
+        if (stopped || paused) return
         val id = identity
         val c = if (standIn != null) DaemonConnection.standIn(standIn)
         else DaemonConnection.remote(id!!.addresses, id.lanSubnets, id.address, id.certSHA256)
@@ -242,12 +281,44 @@ class AppModel private constructor(
 
     /** Dials again now (back in the foreground, or the network changed), unless connected. */
     fun reconnectNow() = scope.launch {
-        if (stopped) return@launch
+        if (stopped || paused) return@launch
         if (_link.value !is Link.Connected) {
             connection?.disconnect()
             connection = null
             retryDelay = 200
             open()
+        }
+    }
+
+    /**
+     * Back in the foreground, or on another network: a link waiting to dial
+     * again dials now, and one that says it's connected is asked something
+     * (its pings only notice a dead one after 20 s): no answer in [timeoutMs],
+     * and it's dialled again, as the iPhone's checkConnection.
+     */
+    fun checkConnection(timeoutMs: Long = 5_000) = scope.launch {
+        if (stopped || paused) return@launch
+        when (_link.value) {
+            is Link.Failed -> reconnectNow()
+            Link.Connecting -> {}
+            Link.Connected -> {
+                val c = connection ?: return@launch
+                if (checking) return@launch
+                checking = true
+                val alive = try {
+                    // Hello: answered by any daemon, and changes nothing.
+                    kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+                        c.call { setHello(Hammock.Hello.newBuilder().setProtocolVersion(1).setClientKind(clientKind).setClientName(clientKind).build()) }
+                    } != null
+                } catch (_: DaemonException) {
+                    true // an answer, even a refusal
+                } catch (_: Exception) {
+                    false
+                } finally {
+                    checking = false
+                }
+                if (!alive && current(c)) connectionChanged(c, false, java.net.SocketTimeoutException())
+            }
         }
     }
 
@@ -301,11 +372,14 @@ class AppModel private constructor(
             c.disconnect()
             // Superseded meanwhile (reconnected, stopped): the new connection carries on.
             if (!current(c)) return
-            _link.value = Link.Failed(e.message ?: "Couldn't sign in")
-            if (e is DaemonException && (e.message?.contains("not paired", true) == true || e.message?.contains("unknown device", true) == true)) {
-                stopped = true // revoked: don't keep knocking
-            }
             connection = null
+            if (identity?.deviceID != null && signInRefused(e)) {
+                // Removed on the computer: don't keep knocking; pair again.
+                _link.value = Link.Failed("This phone was removed from the computer. Pair it again to connect.", unpaired = true)
+                stopped = true
+                return
+            }
+            _link.value = Link.Failed(e.message ?: "Couldn't sign in")
             if (!stopped) {
                 delay(retryDelay)
                 retryDelay = minOf(retryDelay * 2, 5000)

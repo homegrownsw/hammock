@@ -34,7 +34,8 @@ in **Devices** under **Show Screen**: see [Screen sharing](/hammock/docs/screen-
 ## Notifications and the Hammock Key
 
 Notifications come while you're away from your Mac. **Allow** and **Deny** on a permission request, and **Let View**
-on a join request, answer it once you've unlocked the phone. A request to sign with your Mac's
+on a join request, answer it once you've unlocked the phone; with **Require Unlock** on, they open Hammock and answer
+once you've unlocked it. A request to sign with your Mac's
 [Hammock Key](/hammock/docs/remote/#the-hammock-key) opens Hammock, where **Approve** asks for your fingerprint, face
 or screen lock.
 

@@ -136,6 +136,8 @@ fun AppLock(content: @Composable () -> Unit) {
     }
 
     val covered = on && locked
+    // For the panes' own dialogs and sheets, in modules that can't see LocalAppLocked.
+    androidx.compose.runtime.SideEffect { com.homegrownsw.hammock.client.AppCover.locked.value = covered }
     Box(Modifier.fillMaxSize()) {
         // Locked: the app stays as it was beneath (so it comes back where you
         // were), but nothing reaches it, by touch, keyboard or TalkBack.

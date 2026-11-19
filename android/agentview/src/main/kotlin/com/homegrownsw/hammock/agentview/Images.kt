@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.homegrownsw.hammock.client.AppCover
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -143,6 +145,9 @@ fun AgentImage(ref: String, session: AgentSession, maxHeight: Dp = 260.dp) {
 /** A picture full screen: pinch to zoom, drag to pan, double-tap to zoom in or out, drag down (unzoomed) to close. */
 @Composable
 fun ImageViewer(image: ImageBitmap, onDismiss: () -> Unit) {
+    // (A window of its own, over the app's lock: not while it covers the app.)
+    val locked by AppCover.locked.collectAsState()
+    if (locked) return
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         var scale by remember { mutableFloatStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }

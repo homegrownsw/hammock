@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -47,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.OpenRequest
@@ -54,6 +56,7 @@ import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.PairingCodes
 import hammock.v1.Hammock.AgentState
+import kotlinx.coroutines.launch
 
 /** The four tabs, as on the iPhone. */
 enum class Dest(val label: String, val icon: ImageVector) {
@@ -88,7 +91,9 @@ fun Root(session: Session, opening: OpenRequest?, opened: () -> Unit) {
     if (m == null) {
         PairingScreen(session, firstRun = true, onDemo = { DemoMac.start(session) })
     } else {
-        Workspace(session, m, opening, opened)
+        val link by m.link.collectAsStateWithLifecycle()
+        if ((link as? com.homegrownsw.hammock.client.Link.Failed)?.unpaired == true) Removed(session)
+        else Workspace(session, m, opening, opened)
     }
     offer?.let { o ->
         if (!LocalAppLocked.current) AlertDialog(
@@ -102,6 +107,24 @@ fun Root(session: Session, opening: OpenRequest?, opened: () -> Unit) {
         )
     }
     UpdatePrompt()
+}
+
+/** The computer shown removed this phone (Settings ▸ Devices there): pair again with a new code, or forget it. */
+@Composable
+private fun Removed(session: Session) {
+    val host by session.host.collectAsStateWithLifecycle()
+    val name = host?.shortName?.ifEmpty { null } ?: "Your computer"
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(top = 32.dp)) {
+                Text("$name removed this phone", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Pair it again with a new pairing code to connect.", style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                host?.let { h -> TextButton(onClick = { session.forget(h) }, Modifier.padding(top = 4.dp)) { Text("Forget $name") } }
+            }
+            Box(Modifier.weight(1f)) { PairingScreen(session, firstRun = false) }
+        }
+    }
 }
 
 /** A newer release (UpdateCheck), offered once: Download, What's New, or Later (it stays in Settings ▸ About). */
@@ -178,6 +201,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
         HammockKeySheet(model, ws, r, host?.shortName ?: "your computer") { dismissedKeys = dismissedKeys + r.id }
     }
 
+    var answer by remember { mutableStateOf<com.homegrownsw.hammock.NotificationAnswer?>(null) }
     // A notification opened: its pane once the computer's state is here; Needs You at the top of Sessions.
     LaunchedEffect(opening, ws.panes.size) {
         val o = opening ?: return@LaunchedEffect
@@ -193,7 +217,18 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
             nav.dest = Dest.Sessions
             nav.stack.clear()
         }
+        o.answer?.let { answer = it }
         opened()
+    }
+    // A notification's answer (with Require Unlock on, it opened the app):
+    // sent once the lock's open and the computer's connected.
+    val locked = LocalAppLocked.current
+    LaunchedEffect(answer, locked, link) {
+        val a = answer ?: return@LaunchedEffect
+        if (locked || link != com.homegrownsw.hammock.client.Link.Connected || session.host.value?.id != a.host) return@LaunchedEffect
+        answer = null
+        a.answered(ctx)
+        model.scope.launch { a.send(model) } // (not this effect's: clearing answer ends it)
     }
 
     val needsYou = ws.joinRequests.size + ws.grants.size + ws.attention.count {
