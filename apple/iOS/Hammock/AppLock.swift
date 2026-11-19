@@ -5,7 +5,8 @@ import SwiftUI
 // Settings ▸ Privacy ▸ Require Face ID (off by default): the whole app
 // behind Face ID (or the passcode), from launch and each time it comes
 // back from the background. While it's not in front, a cover hides it
-// (the app switcher's picture too).
+// (the app switcher's picture too). The cover is a window of its own, above
+// the app's, so nothing it presents (a sheet, the Mac's screen) shows through.
 
 enum AppLock {
     static let key = "requireFaceID"
@@ -85,17 +86,23 @@ private struct AppLockCover: ViewModifier {
     // second more, and the cover needn't wait for it.
     @State private var justUnlocked = false
 
+    @Environment(\.phoneTheme) private var theme
+
     func body(content: Content) -> some View {
+        // Due as well as locked: coming back, the first frame is drawn
+        // before onChange(of: phase) locks, and it mustn't show the app.
+        let covered = required && (locked || (phase != .active && !justUnlocked) || (askOnReturn && AppLock.due))
         content
-            .overlay {
-                // Due as well as locked: coming back, the first frame is drawn
-                // before onChange(of: phase) locks, and it mustn't show the app.
-                if required && (locked || (phase != .active && !justUnlocked) || (askOnReturn && AppLock.due)) {
-                    LockScreen(asking: asking, opening: opening, showButton: locked && phase == .active && !asking && !opening) { ask() }
-                        .transition(.opacity.combined(with: .scale(scale: 1.04)))
-                }
+            // In case the cover's window isn't up yet (the scene's first frame).
+            .overlay { if covered { Color.black.ignoresSafeArea() } }
+            // The cover itself, in a window above the app's: over its sheets,
+            // full-screen covers and alerts too, which an overlay here isn't.
+            .background {
+                CoverWindow(covered: covered, locked: locked,
+                            cover: LockScreen(asking: asking, opening: opening, showButton: locked && phase == .active && !asking && !opening) { ask() }
+                                .phoneTheme(theme))
             }
-            .animation(.smooth(duration: 0.25), value: locked)
+            .onChange(of: locked, initial: true) { _, now in AppLockState.shared.shut = now }
             .onChange(of: phase, initial: true) { _, p in
                 guard required else {
                     if p == .active { askOnReturn = false }  // off: nothing to ask on the next return either
@@ -108,6 +115,9 @@ private struct AppLockCover: ViewModifier {
                     askOnReturn = true
                     justUnlocked = false
                     opening = false  // the next time it covers, it's shut
+                    // Locks at once: what's live (the Mac's screen) stops now,
+                    // not on the way back in.
+                    if UserDefaults.standard.integer(forKey: AppLock.afterKey) == 0 { AppLockState.shared.shut = true }
                 case .active:
                     justUnlocked = false  // in front: covered again whenever it isn't
                     if !locked { settle() }
@@ -125,6 +135,7 @@ private struct AppLockCover: ViewModifier {
                 askOnReturn = false
                 justUnlocked = required  // and no cover while its prompt closes
                 AppLock.open = true
+                AppLockState.shared.shut = false
             }
             .onChange(of: locked) { _, now in if !now { settle() } }
     }
@@ -203,8 +214,161 @@ private struct LockScreen: View {
                 .padding(.bottom, 40)
             }
             .padding(.horizontal, 24)
+            // Its own window's: ask()'s withAnimation doesn't reach it.
+            .animation(.spring(duration: 0.25), value: opening)
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// Whether the lock's shut (it wants Face ID before anything's used): what's
+/// live behind it (the Mac's screen) stops meanwhile, and starts again once
+/// it's unlocked.
+@MainActor
+@Observable
+final class AppLockState {
+    static let shared = AppLockState()
+    var shut = AppLock.dueOnLaunch
+}
+
+/// Shows the cover in a window of its own, above the scene's other windows
+/// and whatever they present, and takes the keyboard from them while it's up.
+private struct CoverWindow<Cover: View>: UIViewRepresentable {
+    let covered: Bool
+    let locked: Bool
+    let cover: Cover
+
+    func makeCoordinator() -> CoverWindowController { CoverWindowController() }
+
+    func makeUIView(context: Context) -> WindowProbe {
+        let v = WindowProbe()
+        v.isUserInteractionEnabled = false
+        let c = context.coordinator
+        v.onWindow = { [weak c] w in c?.attach(to: w) }
+        return v
+    }
+
+    func updateUIView(_ v: WindowProbe, context: Context) {
+        context.coordinator.update(covered: covered, locked: locked, cover: AnyView(cover))
+    }
+
+    static func dismantleUIView(_ v: WindowProbe, coordinator: CoverWindowController) { coordinator.tearDown() }
+}
+
+/// The cover's dark, whatever the app's appearance: so is the status bar on it.
+private final class CoverHost: UIHostingController<AnyView> {
+    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+}
+
+/// Says which window (and so which scene) it's in.
+final class WindowProbe: UIView {
+    var onWindow: ((UIWindow?) -> Void)?
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        onWindow?(window)
+    }
+}
+
+/// One scene's cover window. Shown as SwiftUI says, and also straight away as
+/// the scene leaves the front, before SwiftUI has redrawn, so the app
+/// switcher's picture is of the cover.
+@MainActor
+final class CoverWindowController {
+    private var window: UIWindow?
+    private var host: UIHostingController<AnyView>?
+    private weak var appWindow: UIWindow?
+    private var cover = AnyView(EmptyView())
+    private var covered = false
+    private var locked = false
+    private var observers: [NSObjectProtocol] = []
+    /// Bumped on each show: a fade that's been overtaken doesn't hide it.
+    private var generation = 0
+
+    func attach(to w: UIWindow?) {
+        guard let w, w !== window, let scene = w.windowScene else { return }
+        appWindow = w
+        if window?.windowScene !== scene { build(in: scene) }
+        if covered { show() }
+        if locked { takeKeyboard() }
+    }
+
+    func update(covered: Bool, locked: Bool, cover: AnyView) {
+        self.cover = cover
+        host?.rootView = cover
+        if locked != self.locked {
+            self.locked = locked
+            if locked { takeKeyboard() }
+        }
+        guard covered != self.covered else { return }
+        self.covered = covered
+        if covered { show() } else { hide() }
+    }
+
+    func tearDown() {
+        for o in observers { NotificationCenter.default.removeObserver(o) }
+        observers = []
+        window?.isHidden = true
+        window = nil
+        host = nil
+    }
+
+    private func build(in scene: UIWindowScene) {
+        tearDown()
+        let host = CoverHost(rootView: cover)
+        host.view.backgroundColor = .black
+        let window = UIWindow(windowScene: scene)
+        window.windowLevel = .alert + 1
+        window.rootViewController = host
+        window.isHidden = true
+        self.host = host
+        self.window = window
+        for name in [UIScene.willDeactivateNotification, UIScene.didEnterBackgroundNotification] {
+            let background = name == UIScene.didEnterBackgroundNotification
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: scene, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.leaving(background: background) }
+            })
+        }
+    }
+
+    /// Going from the front: covered now, whatever SwiftUI gets round to.
+    private func leaving(background: Bool) {
+        guard UserDefaults.standard.bool(forKey: AppLock.key) else { return }
+        show()
+        // Locks at once: the keyboard goes too (it's drawn above any window).
+        if background, UserDefaults.standard.integer(forKey: AppLock.afterKey) == 0 { takeKeyboard() }
+    }
+
+    private func show() {
+        guard let window, let host else { return }
+        generation += 1
+        window.layer.removeAllAnimations()
+        host.view.layer.removeAllAnimations()
+        window.alpha = 1
+        host.view.transform = .identity
+        if !window.isKeyWindow || window.isHidden { window.makeKeyAndVisible() }
+        window.layoutIfNeeded()
+    }
+
+    private func hide() {
+        guard let window, let host, !window.isHidden else { return }
+        let g = generation
+        appWindow?.makeKey()
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
+            window.alpha = 0
+            host.view.transform = CGAffineTransform(scaleX: 1.04, y: 1.04)
+        } completion: { [weak self] _ in
+            guard let self, self.generation == g, !self.covered else { return }
+            window.isHidden = true
+            window.alpha = 1
+            host.view.transform = .identity
+        }
+    }
+
+    /// Nothing behind the lock keeps the keyboard (a pane's, the Mac's
+    /// screen's): ended, rather than left to type into what's covered.
+    private func takeKeyboard() {
+        guard let scene = appWindow?.windowScene else { return }
+        for w in scene.windows where w !== window { w.endEditing(true) }
     }
 }
 

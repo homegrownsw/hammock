@@ -40,6 +40,7 @@ struct PhoneScreenViewer: View {
     /// the curve when it's half open, and there already when it's flat, so
     /// nothing moves as it bends. Nil without such a fold.
     @State private var besideFold: CGFloat?
+    private var appLock: AppLockState { AppLockState.shared }
 
     var body: some View {
         ZStack {
@@ -47,7 +48,9 @@ struct PhoneScreenViewer: View {
             if let unavailable {
                 ContentUnavailableView("Can’t Share \(request.name)’s Screen", systemImage: "rectangle.on.rectangle.slash", description: Text(unavailable))
                     .foregroundStyle(.white)
-            } else {
+            } else if !appLock.shut {
+                // Behind a shut app lock: no stream and no input, until it's
+                // unlocked (a new stream then).
                 ScreenTouch(model: model, computerID: request.computerID, display: display, trackpad: trackpad,
                             macWidth: CGFloat((displays.first { display == 0 ? $0.main : $0.id == display } ?? displays.first)?.width ?? 0),
                             keyboard: $keyboard, state: $state, locked: $locked, onEnd: { dismiss() })
@@ -132,7 +135,7 @@ struct PhoneScreenViewer: View {
         // before it suspends it. Away longer, it picks up again on return.
         .onChange(of: phase) { _, p in
             switch p {
-            case .background: grace.begin()
+            case .background: if !appLock.shut { grace.begin() }
             case .active:
                 grace.end()
                 returnedAt = .now
@@ -150,6 +153,14 @@ struct PhoneScreenViewer: View {
             resume = false
             state = .connecting
             session += 1
+        }
+        .onChange(of: appLock.shut) { _, shut in
+            if shut {
+                keyboard = false
+                grace.end()
+            } else {
+                state = .connecting
+            }
         }
         .onDisappear { grace.end() }
     }
