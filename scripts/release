@@ -371,9 +371,11 @@ case "$REVIEW" in
     done
     echo
     if notes_edited; then echo "(edited: the changes are in release-notes/, uncommitted)"; fi
-    echo "Not released yet. Show the person these notes and ask whether to release them. If they say to:"
-    echo "  scripts/release $TARGET ${ARGS[*]} approved"
-    echo "If not, stop here: their edits stay in release-notes/, uncommitted."
+    echo "Not released yet. Show the person these notes, then ask with a multiple-choice question (AskUserQuestion"
+    echo "in Claude Code): Release, Edit the notes again, or Stop."
+    echo "  Release:              scripts/release $TARGET ${ARGS[*]} approved"
+    echo "  Edit the notes again: scripts/release $TARGET ${ARGS[*]}   (this step again: the notes reopen, edits kept)"
+    echo "  Stop:                 nothing more; their edits stay in release-notes/, uncommitted."
     exit 3
     ;;
   approved)
