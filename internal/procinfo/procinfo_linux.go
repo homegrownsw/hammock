@@ -19,10 +19,12 @@ func Cwd(pid int) (string, error) { return os.Readlink(fmt.Sprintf("/proc/%d/cwd
 // Path returns the path of pid's executable (links resolved).
 func Path(pid int) (string, error) { return os.Readlink(fmt.Sprintf("/proc/%d/exe", pid)) }
 
-// Name returns the short command name of pid.
+// Name returns the short command name of pid, as UTF-8: the kernel cuts
+// names at 15 bytes, mid-character perhaps, and what's left of a cut
+// character is dropped.
 func Name(pid int) (string, error) {
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
-	return strings.TrimSpace(string(b)), err
+	return strings.ToValidUTF8(strings.TrimSpace(string(b)), ""), err
 }
 
 // Children returns the direct child process ids of pid: from

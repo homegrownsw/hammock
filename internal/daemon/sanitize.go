@@ -5,6 +5,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -107,4 +110,71 @@ func cleanComputer(r *pb.Computer) {
 	r.Name, r.Model = cleanLine(strings.TrimSpace(r.Name), nameMax), cleanLine(r.Model, nameMax)
 	r.Kind, r.Os = cleanLine(r.Kind, nameMax), cleanLine(r.Os, nameMax)
 	r.DefaultAgent = cleanLine(r.DefaultAgent, nameMax)
+}
+
+// withValidUTF8 is a copy of m whose strings are all UTF-8 (what isn't is
+// replaced by U+FFFD), for a message protobuf refused to marshal: one bad
+// string mustn't keep a client from its whole state.
+func withValidUTF8(m proto.Message) proto.Message {
+	m = proto.Clone(m)
+	fixUTF8(m.ProtoReflect())
+	return m
+}
+
+func fixUTF8(m protoreflect.Message) {
+	fix := func(v protoreflect.Value) protoreflect.Value {
+		return protoreflect.ValueOfString(strings.ToValidUTF8(v.String(), "�"))
+	}
+	type set struct {
+		fd protoreflect.FieldDescriptor
+		v  protoreflect.Value
+	}
+	var sets []set // after Range: a message mustn't change while it's ranged over
+	m.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		str, msg := fd.Kind() == protoreflect.StringKind, fd.Message() != nil
+		switch {
+		case fd.IsMap():
+			mp := v.Map()
+			keys, vals := fd.MapKey().Kind() == protoreflect.StringKind, fd.MapValue()
+			var bad []protoreflect.MapKey
+			mp.Range(func(k protoreflect.MapKey, mv protoreflect.Value) bool {
+				switch {
+				case keys && !utf8.ValidString(k.String()):
+					bad = append(bad, k)
+				case vals.Kind() == protoreflect.StringKind:
+					mp.Set(k, fix(mv))
+				case vals.Message() != nil:
+					fixUTF8(mv.Message())
+				}
+				return true
+			})
+			for _, k := range bad {
+				mv := mp.Get(k)
+				mp.Clear(k)
+				if vals.Kind() == protoreflect.StringKind {
+					mv = fix(mv)
+				} else if vals.Message() != nil {
+					fixUTF8(mv.Message())
+				}
+				mp.Set(fix(k.Value()).MapKey(), mv)
+			}
+		case fd.IsList():
+			l := v.List()
+			for i := range l.Len() {
+				if str {
+					l.Set(i, fix(l.Get(i)))
+				} else if msg {
+					fixUTF8(l.Get(i).Message())
+				}
+			}
+		case str && !utf8.ValidString(v.String()):
+			sets = append(sets, set{fd, fix(v)})
+		case msg:
+			fixUTF8(v.Message())
+		}
+		return true
+	})
+	for _, s := range sets {
+		m.Set(s.fd, s.v)
+	}
 }

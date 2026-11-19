@@ -701,11 +701,13 @@ func (p *pane) read(hc *holder.Client, gen int) {
 		status := p.takeStatusLocked()
 		if p.osc.Changed {
 			p.osc.Changed = false
-			if p.osc.Title != "" && p.osc.Title != p.info.Title {
+			// A title names the tab, and the phone's Needs You: without
+			// control characters or bidi overrides (sanitize.go).
+			if title := cleanLine(p.osc.Title, titleMax); title != "" && title != p.info.Title {
 				// A spinner frame isn't news: kept, but clients hear of it
 				// with the next real change.
-				changed = changed || !spinnerFrame(p.info.Title, p.osc.Title)
-				p.info.Title = p.osc.Title
+				changed = changed || !spinnerFrame(p.info.Title, title)
+				p.info.Title = title
 			}
 			if p.osc.Cwd != "" && p.osc.Cwd != p.info.Cwd && isDir(p.osc.Cwd) {
 				p.info.Cwd, changed = p.osc.Cwd, true
@@ -1062,8 +1064,8 @@ func (p *pane) refreshCwd() bool {
 		return false
 	}
 	cwd, err := procinfo.Cwd(p.pid)
-	if err != nil || cwd == p.info.Cwd {
-		return false
+	if err != nil || cwd == p.info.Cwd || cwd != cleanLine(cwd, pathMax) {
+		return false // as OSC 7's: UTF-8, without control characters
 	}
 	p.info.Cwd = cwd
 	return true
@@ -1191,7 +1193,7 @@ func (p *pane) refreshProcesses() bool {
 				if h != "" {
 					name = h
 				}
-				names = append(names, name)
+				names = append(names, cleanLine(name, nameMax)) // a file's name: anything goes
 				if h == "" {
 					continue
 				}

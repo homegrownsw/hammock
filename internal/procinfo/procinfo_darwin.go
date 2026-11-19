@@ -30,6 +30,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -73,12 +74,14 @@ func Children(pid int) []int {
 	return out
 }
 
-// Name returns the short command name of pid.
+// Name returns the short command name of pid, as UTF-8: the kernel cuts
+// names by byte (32, or 16 for another user's), mid-character perhaps,
+// and what's left of a cut character is dropped.
 func Name(pid int) (string, error) {
 	buf := make([]byte, 2*C.MAXCOMLEN+1)
 	n := C.proc_name(C.int(pid), unsafe.Pointer(&buf[0]), C.uint32_t(len(buf)))
 	if n > 0 {
-		return string(buf[:n]), nil
+		return strings.ToValidUTF8(string(buf[:n]), ""), nil
 	}
 	// Another user's process (a setuid one, like top) refuses proc_name;
 	// the kernel's short name is there for anyone.
@@ -93,7 +96,7 @@ func Name(pid int) (string, error) {
 	if len(comm) == 0 {
 		return "", errors.New("procinfo: name unavailable")
 	}
-	return string(comm), nil
+	return strings.ToValidUTF8(string(comm), ""), nil
 }
 
 // Parent returns pid's parent process id.

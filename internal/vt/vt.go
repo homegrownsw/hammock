@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // Mirror consumes every byte a pane's PTY produces and can reproduce the
@@ -124,6 +125,10 @@ func (o *OSC) finish() {
 	code, val := s[:i], s[i+1:]
 	switch code {
 	case "0", "2":
+		// A program's bytes, perhaps not UTF-8 (a Latin-1 title) or cut
+		// mid-character at maxOSC: what isn't UTF-8 is dropped, or the pane's
+		// state couldn't be sent to anyone (protobuf strings must be).
+		val = strings.ToValidUTF8(val, "")
 		if val != o.Title {
 			o.Title, o.Changed = val, true
 		}
@@ -137,7 +142,7 @@ func (o *OSC) finish() {
 // fileURLPath extracts the path from file://host/path, percent-decoding it.
 // Only this Mac's cwd is taken: the host must be empty, localhost or this
 // machine (not a program on an ssh host, or one making things up), and the
-// path absolute, clean and free of control characters.
+// path absolute, clean, UTF-8 and free of control characters.
 func fileURLPath(u string) string {
 	const prefix = "file://"
 	if len(u) < len(prefix) || u[:len(prefix)] != prefix {
@@ -149,7 +154,7 @@ func fileURLPath(u string) string {
 		return ""
 	}
 	p := percentDecode(rest[slash:])
-	if strings.IndexFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f || r >= 0x80 && r < 0xa0 }) >= 0 {
+	if !utf8.ValidString(p) || strings.IndexFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f || r >= 0x80 && r < 0xa0 }) >= 0 {
 		return ""
 	}
 	c := path.Clean(p)

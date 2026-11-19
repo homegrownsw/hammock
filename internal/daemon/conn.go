@@ -286,7 +286,17 @@ func (c *conn) writeLoop() {
 			c.taken(msg)
 			b, err := proto.Marshal(msg)
 			if err != nil {
-				continue
+				// A string that isn't UTF-8, most likely: sent with it
+				// mended rather than not at all (a client waiting on its
+				// state would wait for ever).
+				kind := "?"
+				if f := msg.ProtoReflect().WhichOneof(msg.ProtoReflect().Descriptor().Oneofs().ByName("msg")); f != nil {
+					kind = string(f.Name())
+				}
+				c.d.log.Error("can't send message", "client", c.kind, "msg", kind, "err", err)
+				if b, err = proto.Marshal(withValidUTF8(msg)); err != nil {
+					continue
+				}
 			}
 			wctx, cancel := context.WithTimeout(c.ctx, 10*time.Second)
 			if wt, ok := c.t.(*wsTransport); ok {

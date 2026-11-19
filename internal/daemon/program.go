@@ -93,6 +93,9 @@ func (p *pane) refreshProgram() bool {
 	if !exited && pid != 0 {
 		names = foregroundProgram(pid)
 	}
+	for i, n := range names { // from its name and arguments: anything goes
+		names[i] = cleanLine(n, nameMax)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if slices.Equal(names, p.info.Program) {

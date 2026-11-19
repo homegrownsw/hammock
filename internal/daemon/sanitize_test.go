@@ -1,9 +1,13 @@
 package daemon
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
+	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -58,5 +62,55 @@ func TestPeerLinkCleansHostState(t *testing.T) {
 	}
 	if p := a.people["us_a"]; p.Name != "Host" || p.DeviceName != "Mac" {
 		t.Errorf("person %q %q", p.Name, p.DeviceName)
+	}
+}
+
+// A program's title that isn't UTF-8 (Latin-1 café), with a bidi override,
+// still lets clients have their state: kept as the UTF-8 it has, cleaned
+// as a host's titles are.
+func TestPaneTitleNotUTF8(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	groupID := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "G"}}}))
+	tabID := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: groupID, Name: "main",
+		Pane: &pb.PaneSpec{Command: []string{"/bin/sh", "-c", `printf '\033]0;caf\351\342\200\256x\007'; exec cat`}, Cwd: "/tmp"},
+	}}}))
+	d.mu.Lock()
+	paneID := d.tabs[tabID].FocusedPaneId
+	p := d.panes[paneID]
+	d.mu.Unlock()
+	waitFor(t, "the title", func() bool { return p.snapshotInfo().Title == "cafx" })
+
+	c2 := dial(t, dir)
+	full := call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}}).GetState()
+	if !slices.ContainsFunc(full.GetPanes(), func(p *pb.Pane) bool { return p.Id == paneID && p.Title == "cafx" }) {
+		t.Fatalf("pane missing from the state: %v", full.GetPanes())
+	}
+}
+
+// A message protobuf won't marshal (a string that isn't UTF-8) is sent
+// mended rather than dropped.
+func TestWithValidUTF8(t *testing.T) {
+	bad := &pb.ServerMessage{Msg: &pb.ServerMessage_State{State: &pb.StateUpdate{
+		Panes: []*pb.Pane{{Id: "pn_a", Title: "caf\xe9", Processes: []string{"ok", "na\xc3"}}},
+	}}}
+	if _, err := proto.Marshal(bad); err == nil {
+		t.Fatal("marshalled invalid UTF-8")
+	}
+	b, err := proto.Marshal(withValidUTF8(bad))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got pb.ServerMessage
+	if err := proto.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if p := got.GetState().Panes[0]; p.Title != "caf�" || p.Processes[1] != "na�" {
+		t.Fatalf("got %q %q", p.Title, p.Processes)
+	}
+	if bad.GetState().Panes[0].Title != "caf\xe9" {
+		t.Fatal("the original changed")
 	}
 }
