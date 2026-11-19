@@ -263,6 +263,14 @@ func (h *agentHub) handle(ev HookEvent) {
 	if !ok {
 		return
 	}
+	// A subagent's hook: its work goes on beside the agent's turn, and after
+	// it in the background, so it doesn't make the agent working (nor is a
+	// message sent to it, in the terminal, the agent's turn). It can still
+	// ask for you, and its tool going ahead ends that.
+	sub := payload.AgentID != ""
+	if sub && event != "PreToolUse" && event != "PostToolUse" && event != "Notification" && event != "PermissionRequest" {
+		return
+	}
 	sid := payload.SessionID
 	// Its web link (Remote Control), looked for as a turn starts and ends:
 	// it comes and goes with Remote Control, which isn't a hook event.
@@ -298,6 +306,8 @@ func (h *agentHub) handle(ev HookEvent) {
 		var in map[string]any
 		_ = json.Unmarshal(payload.ToolInput, &in)
 		p.pendingTool = toolRule(payload.ToolName, in)
+	case sub:
+		// (Its tool done isn't the agent's.)
 	case event == "PostToolUse" || event == "UserPromptSubmit" || event == "Stop":
 		p.pendingTool, p.askedFor, p.askedRule = "", "", "" // done with, or never asked about
 	}
@@ -307,6 +317,7 @@ func (h *agentHub) handle(ev HookEvent) {
 	// Claude's question tool, in full, for the agent view's prompt (the
 	// screen cuts it to the terminal's width).
 	switch {
+	case sub:
 	case event == "PreToolUse" && payload.ToolName == "AskUserQuestion":
 		p.asking = &pb.AgentBlock{Id: "asking", Kind: pb.AgentBlock_KIND_QUESTION, Pending: true, Questions: agentview.Questions(payload.ToolInput)}
 	case event == "PostToolUse" || event == "UserPromptSubmit" || event == "Stop" || event == "StopFailure":
@@ -319,6 +330,21 @@ func (h *agentHub) handle(ev HookEvent) {
 	if a == nil {
 		a = &pb.Agent{}
 		p.info.Agent = a
+	}
+	answered := false // a subagent's question, answered
+	if sub && state == pb.AgentState_AGENT_STATE_WORKING {
+		if a.State != pb.AgentState_AGENT_STATE_NEEDS_INPUT || p.asking != nil {
+			p.mu.Unlock()
+			return
+		}
+		answered = true
+		state, summary = pb.AgentState_AGENT_STATE_IDLE, p.beforeAsk.summary
+		if p.beforeAsk.state == pb.AgentState_AGENT_STATE_WORKING {
+			state = pb.AgentState_AGENT_STATE_WORKING
+		}
+	}
+	if state == pb.AgentState_AGENT_STATE_NEEDS_INPUT && a.State != state {
+		p.beforeAsk.state, p.beforeAsk.summary = a.State, a.Summary
 	}
 	// Its hooks tell from now on: what it reports (OSC 7501) is only kept.
 	a.Heuristic, a.Reported, a.Progress = false, false, nil
@@ -351,7 +377,7 @@ func (h *agentHub) handle(ev HookEvent) {
 		a.Seen = state == pb.AgentState_AGENT_STATE_IDLE && (prev != pb.AgentState_AGENT_STATE_WORKING || h.d.watched(p.id) || quiet && !waiting)
 	}
 	seen := a.Seen
-	if summary != "" {
+	if summary != "" || answered {
 		a.Summary = summary
 	}
 	p.mu.Unlock()
@@ -361,7 +387,7 @@ func (h *agentHub) handle(ev HookEvent) {
 	case state == pb.AgentState_AGENT_STATE_NEEDS_INPUT, state == pb.AgentState_AGENT_STATE_ERRORED,
 		state == pb.AgentState_AGENT_STATE_IDLE && prev == pb.AgentState_AGENT_STATE_WORKING && !seen && !quiet:
 		h.d.raiseAttention(p, state, summary, u)
-	case (state == pb.AgentState_AGENT_STATE_WORKING || state == pb.AgentState_AGENT_STATE_STARTING) && !progress:
+	case (state == pb.AgentState_AGENT_STATE_WORKING || state == pb.AgentState_AGENT_STATE_STARTING) && !progress, answered:
 		// (A progress turn leaves an earlier finish waiting for you.)
 		h.d.clearAttentionForPane(p.id, u)
 	}

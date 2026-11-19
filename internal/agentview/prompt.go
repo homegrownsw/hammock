@@ -393,13 +393,7 @@ func matchQuestion(qs []*pb.AgentQuestion, shown []string) *pb.AgentQuestion {
 // clear before typing a message into it.
 func InputLines(text string) int {
 	lines := strings.Split(strings.TrimRight(text, "\n "), "\n")
-	start := -1
-	for i, l := range lines {
-		t := strings.TrimLeft(l, " ")
-		if strings.HasPrefix(t, "❯") || strings.HasPrefix(t, "›") {
-			start = i
-		}
-	}
+	start := inputStart(lines, "❯", "›")
 	if start < 0 {
 		return 1
 	}
@@ -411,6 +405,72 @@ func InputLines(text string) int {
 		n++
 	}
 	return min(n, 40)
+}
+
+// inputStart is the line the agent's input box starts on (the last that
+// starts with one of marks, Claude Code's ❯ or Codex's ›), -1 if none: not
+// a row of Claude Code's agent list under it, which ❯ marks when it's
+// selected.
+func inputStart(lines []string, marks ...string) int {
+	for i := len(lines) - 1; i >= 0; i-- {
+		t := strings.TrimLeft(lines[i], " ")
+		for _, m := range marks {
+			if strings.HasPrefix(t, m) && !agentRow.MatchString(lines[i]) {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// agentRow is a row of the agent list Claude Code shows under its input
+// box while subagents run, ⏺ marking the conversation the terminal shows
+// (Enter on a row shows that one, and the input box then messages it), ❯
+// the row selected (↓ from the input box selects; typing goes back to it):
+//
+//	❯ ◯ main
+//	  ⏺ general-purpose  Run the tests                 19s · ↓ 42.5k tokens
+var agentRow = regexp.MustCompile(`^(❯ |  )([⏺◯]) (\S.*)$`)
+
+// AgentList is Claude Code's agent list, as ReadAgentList finds it.
+type AgentList struct {
+	Rows     int // 0: none shown
+	Main     int // the main conversation's row
+	Shown    int // the row the terminal shows (⏺)
+	Selected int // the row selected, -1 when the input box has the keys
+}
+
+// ViewingSubagent: the terminal shows a subagent's conversation, not the
+// main one, so what's typed goes to the subagent.
+func (l AgentList) ViewingSubagent() bool { return l.Rows > 0 && l.Shown != l.Main }
+
+// ReadAgentList finds Claude Code's agent list at the bottom of the screen
+// (its last rows, after the input box's footer).
+func ReadAgentList(text string) AgentList {
+	lines := strings.Split(strings.TrimRight(text, "\n "), "\n")
+	l := AgentList{Main: -1, Shown: -1, Selected: -1}
+	end := len(lines)
+	start := end
+	for start > 0 && agentRow.MatchString(lines[start-1]) {
+		start--
+	}
+	for i, line := range lines[start:end] {
+		m := agentRow.FindStringSubmatch(line)
+		if m[1] == "❯ " {
+			l.Selected = i
+		}
+		if m[2] == "⏺" {
+			l.Shown = i
+		}
+		if strings.TrimSpace(m[3]) == "main" {
+			l.Main = i
+		}
+	}
+	if l.Main < 0 || l.Shown < 0 {
+		return AgentList{Main: -1, Shown: -1, Selected: -1} // not the list
+	}
+	l.Rows = end - start
+	return l
 }
 
 // ClearInput is the keys that empty an agent's input box of n lines (Ctrl+E
@@ -425,13 +485,7 @@ func ClearInput(n int) []byte {
 // continuation lines' indent dropped.
 func InputDraft(text string) string {
 	lines := strings.Split(strings.TrimRight(text, "\n "), "\n")
-	start := -1
-	for i, l := range lines {
-		t := strings.TrimLeft(l, " ")
-		if strings.HasPrefix(t, "❯") || strings.HasPrefix(t, "›") {
-			start = i
-		}
-	}
+	start := inputStart(lines, "❯", "›")
 	if start < 0 {
 		return ""
 	}
@@ -459,11 +513,8 @@ var bangFooter = regexp.MustCompile(`^\((\d+[hms] ?)+\)$|^\(ctrl\+b to run in ba
 func BangOutput(text string) (out string, running bool) {
 	lines := strings.Split(text, "\n")
 	end := len(lines)
-	for i := len(lines) - 1; i >= 0; i-- {
-		if t := strings.TrimLeft(lines[i], " "); strings.HasPrefix(t, "❯") {
-			end = i
-			break
-		}
+	if i := inputStart(lines, "❯"); i >= 0 {
+		end = i
 	}
 	// The input box's top rule, and blank lines above it.
 	for end > 0 && (strings.TrimSpace(lines[end-1]) == "" || strings.HasPrefix(strings.TrimSpace(lines[end-1]), "─")) {

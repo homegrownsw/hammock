@@ -403,7 +403,13 @@ func (w *agentWatch) refresh() *pb.AgentView {
 		text := w.p.text(false)
 		sc = agentview.ReadScreen(text)
 		w.readScreenModel(text)
-		if len(sc.Options) == 0 {
+		// The terminal showing a subagent's conversation: its spinner,
+		// input box and "!" output are the subagent's, not this one's.
+		other := agentview.ReadAgentList(text).ViewingSubagent()
+		if other {
+			sc.Working, sc.Status = false, ""
+		}
+		if len(sc.Options) == 0 && !other {
 			// A menu hides the input box: its ❯ line isn't a draft.
 			draft = agentview.InputDraft(w.p.bottomText(20))
 		}
@@ -412,7 +418,7 @@ func (w *agentWatch) refresh() *pb.AgentView {
 		if a := w.p.snapshotInfo().Agent; a != nil && a.State == pb.AgentState_AGENT_STATE_WORKING {
 			working = true
 		}
-		if w.harness == "claude" {
+		if w.harness == "claude" && !other {
 			// A "!" command running: its output so far (its transcript
 			// has it once it's done). It's working, though nothing else says
 			// so. From the whole screen: bottomText blanks faint text, and
@@ -904,6 +910,9 @@ func sendNow(p *pane, c *conn) error {
 	if !p.kittyKeys() {
 		return errors.New("the agent isn't ready for Send Now")
 	}
+	if agentview.ReadAgentList(p.text(false)).ViewingSubagent() {
+		return errors.New("the terminal is showing a subagent: go back to the main conversation first")
+	}
 	if agentview.InputDraft(p.bottomText(20)) != "" {
 		return errors.New("something's typed in the terminal's message box: send or clear it first")
 	}
@@ -982,6 +991,9 @@ func typeParts(p *pane, c *conn, parts []sendPart) error {
 	// does): a pasted image path becomes [Image #n], and newlines stay in
 	// the message instead of sending it line by line.
 	paste := func(s string) []byte { return firstPromptPaste(s, p.bracketedPaste()) }
+	if err := showMain(p, c); err != nil {
+		return err
+	}
 	var steps []agentview.Step
 	// Whatever was typed into its input box in the terminal goes first:
 	// the message goes in alone.
@@ -1005,6 +1017,27 @@ func typeParts(p *pane, c *conn, parts []sendPart) error {
 	}
 	return nil
 }
+
+// showMain takes the terminal back to the agent's own conversation and its
+// input box when it's showing one of its subagents' (Claude Code's agent
+// list), where a message typed would go to the subagent, or the list has
+// the keys: a key at a time, reading the screen after each.
+func showMain(p *pane, c *conn) error {
+	for range 12 {
+		key := agentview.ToMainInput(agentview.ReadAgentList(p.text(false)), p.kittyKeys())
+		if key == nil {
+			return nil
+		}
+		if _, err := p.input(c, key); err != nil {
+			return err
+		}
+		time.Sleep(showMainWait)
+	}
+	return errors.New("the terminal is showing a subagent: go back to the main conversation to send")
+}
+
+// showMainWait is how long Claude Code is given to draw a key's effect.
+var showMainWait = 150 * time.Millisecond
 
 // saveAttachment writes an attachment where its path needs no quoting (the
 // state dir has a space in it), for pasting as a path.

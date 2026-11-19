@@ -44,6 +44,25 @@ func Enter(kitty bool) []byte {
 // Send Now (chat:sendNow) for messages it's holding while it works.
 var CtrlEnter = []byte("\x1b[13;5u")
 
+// ToMainInput is the next key that takes the terminal from a subagent's
+// conversation back to the main one's input box, in Claude Code's agent
+// list l: ↓ into the list, ↑ or ↓ to main's row, Enter, then ↑ until the
+// input box has the keys again. Nil: it has them, in the main one.
+func ToMainInput(l AgentList, kitty bool) []byte {
+	switch {
+	case !l.ViewingSubagent():
+		if l.Selected >= 0 {
+			return keyUp
+		}
+		return nil
+	case l.Selected < 0, l.Selected < l.Main:
+		return keyDown
+	case l.Selected > l.Main:
+		return keyUp
+	}
+	return Enter(kitty)
+}
+
 func digit(n int) []byte { return []byte(fmt.Sprint(n)) }
 
 func sameOptions(a, b []string) bool {

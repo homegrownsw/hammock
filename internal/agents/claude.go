@@ -22,6 +22,7 @@ var Claude = &Agent{
 	ShellMode:   true,
 	Install:     "curl -fsSL https://claude.ai/install.sh | bash",
 	Hooks:       true,
+	ParseHook:   claudeHook,
 	Resume:      func(id string) string { return "claude --resume " + Quote(id) },
 	ResumeFlags: claudeResumeFlags,
 	Schedule: func(s *pb.Schedule) string {
@@ -81,6 +82,18 @@ var Claude = &Agent{
 	SessionURL:    claudeSessionURL,
 	Usage:         claudeUsage,
 	LiveUsage:     claudeLiveUsage,
+}
+
+// claudeHook reads a hook event of Claude Code's as ParseHook does, and
+// whether a subagent sent it (agent_id: only then).
+func claudeHook(event string, payload []byte) Hook {
+	h := ParseHook(event, payload, nil)
+	var p struct {
+		AgentID string `json:"agent_id"`
+	}
+	_ = json.Unmarshal(payload, &p)
+	h.AgentID = p.AgentID
+	return h
 }
 
 // bridgeID is a Remote Control session's id, as claude.ai's links have it.

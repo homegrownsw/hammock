@@ -22,6 +22,10 @@ type Hook struct {
 	LastMessage      string // its reply, on Stop
 	Error            string // StopFailure's kind: rate_limit, server_error…
 	ErrorDetails     string
+	// AgentID: a subagent's hook, not the agent's own (Claude Code's
+	// agent_id, set only when the hook fires inside one; Kimi's means
+	// something else, so it's read for Claude Code alone).
+	AgentID string
 }
 
 // ReadHook reads an event from a: with its own ParseHook, else generically.
