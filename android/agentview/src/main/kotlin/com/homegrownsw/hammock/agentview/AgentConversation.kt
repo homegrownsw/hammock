@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -279,11 +280,27 @@ private fun Conversation(session: AgentSession, state: AgentViewState, modifier:
         if (over > 0) list.animateScrollToItem(info.index, over)
     }
 
+    // Dragging the conversation down puts the keyboard away, as on the iPhone
+    // (there it follows the finger; here it goes once the drag does).
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val hideOnDrag = remember(keyboard, focus) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput && available.y > 4f) {
+                    keyboard?.hide()
+                    focus.clearFocus()
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+        }
+    }
+
     Box(modifier) {
         LazyColumn(
             state = list,
             reverseLayout = true,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().nestedScroll(hideOnDrag),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
             // A short conversation starts at the top, under the bar, as on the iPhone.
             verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
