@@ -156,6 +156,54 @@ func TestAnswerSteps(t *testing.T) {
 	}
 }
 
+// Claude Code's multi-select question, as it shows it: a number toggles a
+// box without moving the selection, and "Type something" takes text only
+// while selected (typing ticks it).
+func TestMultiSelectSteps(t *testing.T) {
+	b, err := os.ReadFile("testdata/multi-select.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := ReadScreen(string(b))
+	cur := Prompt(sc, nil)
+	if !cur.MultiSelect || cur.Checkboxes != 4 || cur.Other != 4 || cur.Selected != 3 || len(cur.Options) != 5 ||
+		cur.Descriptions[3] != "" || !cur.Checked[1] || cur.Checked[0] {
+		t.Fatalf("prompt %+v", cur)
+	}
+	keys := func(steps []Step) string {
+		var k []string
+		for _, s := range steps {
+			k = append(k, strings.NewReplacer("\x1b[A", "↑", "\x1b[B", "↓", "\x1b[C", "→").Replace(string(s.Keys)))
+		}
+		return strings.Join(k, " ")
+	}
+	// Ticks only.
+	steps, err := AnswerSteps(cur, &pb.AgentAnswer{OptionsSeen: cur.Options, Toggles: []int32{1, 3}}, false, true)
+	if err != nil || keys(steps) != "1 2 3 →" || !steps[0].Ready(sc) {
+		t.Fatalf("ticks: %q, %v", keys(steps), err)
+	}
+	// Ticks and typed text: down to "Type something", the text, up out of it, →.
+	steps, err = AnswerSteps(cur, &pb.AgentAnswer{OptionsSeen: cur.Options, Toggles: []int32{2}, Text: "Mango"}, false, true)
+	if err != nil || keys(steps) != "↓ Mango ↑ →" || !steps[0].Ready(sc) {
+		t.Fatalf("typed: %q, %v", keys(steps), err)
+	}
+	typing := sc
+	typing.Selected = 4
+	if steps[0].Ready(typing) || !steps[1].Ready(typing) {
+		t.Error("text typed before the selection reached it")
+	}
+	// An older client's typed answer: the text alone.
+	steps, _ = AnswerSteps(cur, &pb.AgentAnswer{OptionsSeen: cur.Options, Option: 4, Text: "Mango"}, false, true)
+	if keys(steps) != "2 ↓ Mango ↑ →" {
+		t.Errorf("text alone: %q", keys(steps))
+	}
+	// Chat about this is picked, not ticked.
+	steps, _ = AnswerSteps(cur, &pb.AgentAnswer{OptionsSeen: cur.Options, Option: 5}, false, true)
+	if keys(steps) != "5" {
+		t.Errorf("chat: %q", keys(steps))
+	}
+}
+
 // Needs You's Allow / Deny: only while a prompt shows, and only into that one.
 func TestDecisionSteps(t *testing.T) {
 	for _, f := range []string{"permission.txt", "codex-permission.txt"} {

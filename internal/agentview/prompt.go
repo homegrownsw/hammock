@@ -42,6 +42,7 @@ type Screen struct {
 	Descriptions []string
 	Checked      []bool
 	Multi        bool
+	Checkboxes   int    // multi-select: options 1 to this are checkboxes
 	Selected     int    // 1-based
 	Title        string // the paragraph above the menu
 	Tabs         string // the question tool's tab bar (several questions)
@@ -135,8 +136,8 @@ func ReadScreen(text string) Screen {
 	// Options are the numbered lines above the footer, read upward; the lines
 	// between them are their descriptions.
 	type opt struct {
-		label, desc string
-		checked     bool
+		label, desc  string
+		checked, box bool
 	}
 	opts := map[int]*opt{}
 	start, sel := -1, 0
@@ -148,7 +149,9 @@ func ReadScreen(text string) Screen {
 			if start >= 0 && (t == "" || strings.HasSuffix(t, "?")) && i < start-1 {
 				break
 			}
-			if t != "" && !strings.HasPrefix(t, "─") && !strings.HasPrefix(t, "╌") {
+			// (A multi-select question's "Submit" line under its options is
+			// the form's, not a description.)
+			if t != "" && t != "Submit" && !strings.HasPrefix(t, "─") && !strings.HasPrefix(t, "╌") {
 				desc = append([]string{t}, desc...)
 			} else {
 				desc = nil
@@ -173,7 +176,7 @@ func ReadScreen(text string) Screen {
 			o.label, desc = strings.TrimSpace(l), []string{strings.TrimSpace(d)}
 		}
 		if cb := checkbox.FindStringSubmatch(o.label); cb != nil {
-			o.checked = cb[1] != " "
+			o.checked, o.box = cb[1] != " ", true
 			o.label = strings.TrimSpace(o.label[len(cb[0]):])
 			sc.Multi = true
 		}
@@ -195,6 +198,9 @@ func ReadScreen(text string) Screen {
 		sc.Options = append(sc.Options, o.label)
 		sc.Descriptions = append(sc.Descriptions, o.desc)
 		sc.Checked = append(sc.Checked, o.checked)
+		if o.box {
+			sc.Checkboxes = n
+		}
 	}
 	sc.Selected = sel
 	if len(sc.Options) == 0 {
@@ -335,7 +341,7 @@ func Prompt(sc Screen, pending *pb.AgentBlock) *pb.AgentPrompt {
 	p := &pb.AgentPrompt{Kind: pb.AgentPrompt_KIND_QUESTION, Title: sc.Title, Options: sc.Options, Selected: int32(sc.Selected),
 		Descriptions: sc.Descriptions, MultiSelect: sc.Multi, Tabs: sc.Tabs, Other: int32(otherOption(sc.Options)), Notes: sc.Previews}
 	if sc.Multi {
-		p.Checked = sc.Checked
+		p.Checked, p.Checkboxes = sc.Checked, int32(sc.Checkboxes)
 	}
 	if pending != nil {
 		p.BlockId = pending.Id

@@ -372,8 +372,8 @@ class AgentSession(
     suspend fun answer(option: Int, text: String = "", notes: String = "") =
         answer { setOption(option).setText(text).setNotes(notes) }
 
-    /** Multi-select: tick exactly these options (1-based), then move on. */
-    suspend fun answer(ticking: List<Int>) = answer { addAllToggles(ticking) }
+    /** Multi-select: tick exactly these options (1-based), and the "other" option with text typed into it if there is any, then move on. */
+    suspend fun answer(ticking: List<Int>, text: String = "") = answer { addAllToggles(ticking); setText(text) }
 
     private suspend fun answer(build: Hammock.AgentAnswer.Builder.() -> Unit) {
         val seen = _state.value.prompt.optionsList

@@ -88,26 +88,8 @@ func AnswerSteps(cur *pb.AgentPrompt, a *pb.AgentAnswer, arrows, kitty bool) ([]
 	n := len(a.OptionsSeen)
 	valid := func(o int32) bool { return o >= 1 && int(o) <= n }
 	switch {
-	case cur.MultiSelect && a.Text == "" && a.Option == 0:
-		// Tick exactly the chosen options, then move on.
-		want := map[int32]bool{}
-		for _, o := range a.Toggles {
-			if !valid(o) {
-				return nil, fmt.Errorf("no option %d", o)
-			}
-			want[o] = true
-		}
-		var steps []Step
-		for i := range cur.Options {
-			o := int32(i + 1)
-			checked := i < len(cur.Checked) && cur.Checked[i]
-			if want[o] != checked {
-				steps = append(steps, Step{Keys: digit(int(o)), What: cur.Options[i]})
-			}
-		}
-		steps = append(steps, Step{Keys: keyRight, What: "next"})
-		steps[0].Ready = showing
-		return steps, nil
+	case cur.MultiSelect && (a.Option == 0 || a.Text != "" && a.Option == cur.Other):
+		return multiSteps(cur, a, showing)
 	case !valid(a.Option):
 		return nil, fmt.Errorf("no option %d", a.Option)
 	case a.Notes != "" && !cur.Notes:
@@ -137,21 +119,71 @@ func AnswerSteps(cur *pb.AgentPrompt, a *pb.AgentAnswer, arrows, kitty bool) ([]
 	case arrows:
 		return nil, errors.New("this prompt doesn't take typed text")
 	case a.Text != "":
-		// The "other" option takes text typed into it, then Enter (→ for a
-		// multi-select question).
+		// The "other" option takes text typed into it, then Enter.
 		o := int(a.Option)
-		next := Enter(kitty)
-		if cur.MultiSelect {
-			next = keyRight
-		}
 		return []Step{
 			{Ready: showing, Keys: digit(o), What: cur.Options[o-1]},
 			{Ready: func(sc Screen) bool { return sc.Selected == o }, Keys: []byte(oneLine(a.Text)), What: "text"},
-			{Keys: next, What: "enter"},
+			{Keys: Enter(kitty), What: "enter"},
 		}, nil
 	default:
 		return []Step{{Ready: showing, Keys: optionKey(cur.Options[a.Option-1], int(a.Option)), What: cur.Options[a.Option-1]}}, nil
 	}
+}
+
+// multiSteps answers a multi-select question: a number toggles its box
+// (leaving the selection where it is), so the chosen options are toggled
+// to match, then → moves on. Typed text goes in the "other" option, which
+// takes it only while selected: ↑ or ↓ to it, the text (which ticks it),
+// then ↑ out of its field, as → in it only moves the cursor.
+func multiSteps(cur *pb.AgentPrompt, a *pb.AgentAnswer, showing func(Screen) bool) ([]Step, error) {
+	n := len(a.OptionsSeen)
+	other := int(cur.Other)
+	text := oneLine(a.Text)
+	if text != "" && (other == 0 || cur.Selected < 1) {
+		return nil, errors.New("this prompt doesn't take typed text")
+	}
+	want := map[int32]bool{}
+	for _, o := range a.Toggles {
+		if o < 1 || int(o) > n {
+			return nil, fmt.Errorf("no option %d", o)
+		}
+		want[o] = true
+	}
+	var steps []Step
+	for i := range cur.Options {
+		o := int32(i + 1)
+		if text != "" && int(o) == other {
+			continue // ticked by typing into it
+		}
+		checked := i < len(cur.Checked) && cur.Checked[i]
+		if want[o] != checked {
+			steps = append(steps, Step{Keys: digit(int(o)), What: cur.Options[i]})
+		}
+	}
+	if text != "" {
+		at := func(k int) func(Screen) bool {
+			return func(sc Screen) bool { return sameOptions(sc.Options, a.OptionsSeen) && sc.Selected == k }
+		}
+		move, d := keyDown, 1
+		if other < int(cur.Selected) {
+			move, d = keyUp, -1
+		}
+		for k := int(cur.Selected); k != other; k += d {
+			steps = append(steps, Step{Ready: at(k), Keys: move, What: "move to " + cur.Options[k+d-1]})
+		}
+		steps = append(steps,
+			Step{Ready: at(other), Keys: []byte(text), What: "text"},
+			// (Once typed, the option shows the text instead of its label.)
+			Step{Keys: keyUp, What: "leave the text"},
+			Step{Ready: func(sc Screen) bool { return sc.Selected == other-1 }, Keys: keyRight, What: "next"})
+	} else {
+		steps = append(steps, Step{Keys: keyRight, What: "next"})
+	}
+	if steps[0].Ready == nil {
+		steps[0].Ready = showing
+	}
+	return steps, nil
 }
 
 // optionShortcut is the key a Codex option names at its end: "(y)", "(esc)".

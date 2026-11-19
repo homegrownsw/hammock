@@ -5282,6 +5282,10 @@ public nonisolated struct Hammock_V1_AgentPrompt: Sendable {
   /// notes can go with the pick (AgentAnswer.notes)
   public var notes: Bool = false
 
+  /// Multi-select: options 1 to this are checkboxes (ticked with toggles);
+  /// those after them ("Chat about this") are picked at once, with option.
+  public var checkboxes: Int32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Kind: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -5741,7 +5745,7 @@ public nonisolated struct Hammock_V1_AgentAnswer: Sendable {
   /// the 1-based option (with text: the "other" option)
   public var option: Int32 = 0
 
-  /// typed text for the "other" option
+  /// typed text for the "other" option (multi-select: with toggles, ticked too)
   public var text: String = String()
 
   /// multi-select: the options to tick (all others unticked), then next
@@ -19395,7 +19399,7 @@ nonisolated extension Hammock_V1_AgentImage: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentPrompt"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}block_id\0\u{1}title\0\u{1}options\0\u{1}selected\0\u{1}descriptions\0\u{3}multi_select\0\u{1}checked\0\u{1}tabs\0\u{1}other\0\u{1}previews\0\u{1}notes\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}block_id\0\u{1}title\0\u{1}options\0\u{1}selected\0\u{1}descriptions\0\u{3}multi_select\0\u{1}checked\0\u{1}tabs\0\u{1}other\0\u{1}previews\0\u{1}notes\0\u{1}checkboxes\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -19415,6 +19419,7 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
       case 10: try { try decoder.decodeSingularInt32Field(value: &self.other) }()
       case 11: try { try decoder.decodeRepeatedStringField(value: &self.previews) }()
       case 12: try { try decoder.decodeSingularBoolField(value: &self.notes) }()
+      case 13: try { try decoder.decodeSingularInt32Field(value: &self.checkboxes) }()
       default: break
       }
     }
@@ -19457,6 +19462,9 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
     if self.notes != false {
       try visitor.visitSingularBoolField(value: self.notes, fieldNumber: 12)
     }
+    if self.checkboxes != 0 {
+      try visitor.visitSingularInt32Field(value: self.checkboxes, fieldNumber: 13)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -19473,6 +19481,7 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
     if lhs.other != rhs.other {return false}
     if lhs.previews != rhs.previews {return false}
     if lhs.notes != rhs.notes {return false}
+    if lhs.checkboxes != rhs.checkboxes {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

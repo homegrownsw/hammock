@@ -96,6 +96,7 @@ func runAgent(args []string) error {
 				i, _ := strconv.Atoi(n)
 				a.Toggles = append(a.Toggles, int32(i))
 			}
+			a.Text = strings.Join(args[3:], " ") // typed into the "other" option too
 		}
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()

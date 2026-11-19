@@ -1,0 +1,18 @@
+❯ Ask me which fruits I like.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☐ Fruits  ✔ Submit  →
+
+Which fruits do you like?
+
+  1. [ ] Apple
+         Crisp and sweet, widely available
+  2. [✔] Banana
+         Soft, potassium-rich, easy to eat
+❯ 3. [ ] Cherry
+         Small, sweet or tart stone fruit
+  4. [ ] Type something
+     Submit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

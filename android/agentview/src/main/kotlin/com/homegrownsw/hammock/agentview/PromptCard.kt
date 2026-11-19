@@ -124,11 +124,22 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
         tapped = option
         scope.launch { session.answer(option, text, n) }
     }
+    // Multi-select's Continue: the ticked options, and what's typed in the
+    // "other" option's field (ticked along with them).
+    fun sendTicked() {
+        if (state.answering) return
+        val t = if (typing) otherText.trim() else ""
+        scope.launch { session.answer(ticked.sorted(), t) }
+    }
     fun sendOther() {
         val t = otherText.trim()
         if (t.isEmpty() || state.answering) return
-        answer(p.other, t)
+        if (p.multiSelect) sendTicked() else answer(p.other, t)
     }
+    // In a multi-select question, whether option n is a checkbox: the
+    // options after them ("Chat about this") answer at once. (A daemon that
+    // doesn't say: all of them.)
+    fun isCheckbox(n: Int) = p.multiSelect && (p.checkboxes == 0 || n <= p.checkboxes)
     fun sendChosen() {
         if (chosen < 1 || state.answering) return
         answer(chosen, n = notes.trim())
@@ -174,14 +185,15 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                     } else {
                         val desc = p.descriptionsList.getOrElse(i) { "" }
                         val isOther = n == p.other
+                        val isBox = isCheckbox(n) && !isOther
                         val picked = p.notes && n == chosen
                         OptionRow(
-                            n, label, desc, isOther = isOther, multi = p.multiSelect, ticked = n in ticked, picked = picked,
+                            n, label, desc, isOther = isOther, multi = isBox, ticked = n in ticked, picked = picked,
                             spinning = tapped == n && state.answering, enabled = !state.answering,
                         ) {
                             when {
                                 isOther -> typing = true
-                                p.multiSelect -> ticked = if (n in ticked) ticked - n else ticked + n
+                                isBox -> ticked = if (n in ticked) ticked - n else ticked + n
                                 p.notes -> { chosen = n; haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
                                 else -> answer(n)
                             }
@@ -220,7 +232,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
             if (p.multiSelect) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     Button(
-                        onClick = { scope.launch { session.answer(ticked.sorted()) } }, enabled = !state.answering,
+                        onClick = ::sendTicked, enabled = !state.answering,
                         colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                     ) { Text("Continue") }
                 }

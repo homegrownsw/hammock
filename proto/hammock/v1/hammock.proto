@@ -1255,6 +1255,9 @@ message AgentPrompt {
   // ("" when none), from the question call.
   repeated string previews = 11;
   bool notes = 12;                   // notes can go with the pick (AgentAnswer.notes)
+  // Multi-select: options 1 to this are checkboxes (ticked with toggles);
+  // those after them ("Chat about this") are picked at once, with option.
+  int32 checkboxes = 13;
 }
 
 message AgentView {
@@ -1344,7 +1347,7 @@ message AgentAnswer {
   string pane_id = 1;
   repeated string options_seen = 2;  // the prompt's options as the client saw them
   int32 option = 3;                  // the 1-based option (with text: the "other" option)
-  string text = 4;                   // typed text for the "other" option
+  string text = 4;                   // typed text for the "other" option (multi-select: with toggles, ticked too)
   repeated int32 toggles = 5;        // multi-select: the options to tick (all others unticked), then next
   string notes = 7;                  // with option, when the prompt takes notes (AgentPrompt.notes)
   // Needs You's Allow / Deny, for any agent and without the agent view:

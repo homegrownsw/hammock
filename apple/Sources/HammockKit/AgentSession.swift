@@ -280,9 +280,10 @@ public final class AgentSession {
         await answer { $0.option = Int32(option); $0.text = text; $0.notes = notes }
     }
 
-    /// Multi-select: tick exactly these options (1-based), then move on.
-    public func answer(ticking options: [Int]) async {
-        await answer { $0.toggles = options.map(Int32.init) }
+    /// Multi-select: tick exactly these options (1-based), and the "other"
+    /// option with text typed into it if there's any, then move on.
+    public func answer(ticking options: [Int], text: String = "") async {
+        await answer { $0.toggles = options.map(Int32.init); $0.text = text }
     }
 
     private func answer(_ build: @escaping (inout Hammock_V1_AgentAnswer) -> Void) async {

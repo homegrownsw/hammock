@@ -12155,8 +12155,11 @@ type AgentPrompt struct {
 	// A question with previews (Claude Code shows each option's beside the
 	// list, and takes notes with the pick instead of typed text): per option
 	// ("" when none), from the question call.
-	Previews      []string `protobuf:"bytes,11,rep,name=previews,proto3" json:"previews,omitempty"`
-	Notes         bool     `protobuf:"varint,12,opt,name=notes,proto3" json:"notes,omitempty"` // notes can go with the pick (AgentAnswer.notes)
+	Previews []string `protobuf:"bytes,11,rep,name=previews,proto3" json:"previews,omitempty"`
+	Notes    bool     `protobuf:"varint,12,opt,name=notes,proto3" json:"notes,omitempty"` // notes can go with the pick (AgentAnswer.notes)
+	// Multi-select: options 1 to this are checkboxes (ticked with toggles);
+	// those after them ("Chat about this") are picked at once, with option.
+	Checkboxes    int32 `protobuf:"varint,13,opt,name=checkboxes,proto3" json:"checkboxes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12273,6 +12276,13 @@ func (x *AgentPrompt) GetNotes() bool {
 		return x.Notes
 	}
 	return false
+}
+
+func (x *AgentPrompt) GetCheckboxes() int32 {
+	if x != nil {
+		return x.Checkboxes
+	}
+	return 0
 }
 
 type AgentView struct {
@@ -13022,7 +13032,7 @@ type AgentAnswer struct {
 	PaneId      string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
 	OptionsSeen []string               `protobuf:"bytes,2,rep,name=options_seen,json=optionsSeen,proto3" json:"options_seen,omitempty"` // the prompt's options as the client saw them
 	Option      int32                  `protobuf:"varint,3,opt,name=option,proto3" json:"option,omitempty"`                             // the 1-based option (with text: the "other" option)
-	Text        string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`                                  // typed text for the "other" option
+	Text        string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`                                  // typed text for the "other" option (multi-select: with toggles, ticked too)
 	Toggles     []int32                `protobuf:"varint,5,rep,packed,name=toggles,proto3" json:"toggles,omitempty"`                    // multi-select: the options to tick (all others unticked), then next
 	Notes       string                 `protobuf:"bytes,7,opt,name=notes,proto3" json:"notes,omitempty"`                                // with option, when the prompt takes notes (AgentPrompt.notes)
 	// Needs You's Allow / Deny, for any agent and without the agent view:
@@ -26197,7 +26207,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"AgentImage\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x1d\n" +
 	"\n" +
-	"media_type\x18\x02 \x01(\tR\tmediaType\"\xb1\x03\n" +
+	"media_type\x18\x02 \x01(\tR\tmediaType\"\xd1\x03\n" +
 	"\vAgentPrompt\x120\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1c.hammock.v1.AgentPrompt.KindR\x04kind\x12\x19\n" +
 	"\bblock_id\x18\x02 \x01(\tR\ablockId\x12\x14\n" +
@@ -26211,7 +26221,10 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05other\x18\n" +
 	" \x01(\x05R\x05other\x12\x1a\n" +
 	"\bpreviews\x18\v \x03(\tR\bpreviews\x12\x14\n" +
-	"\x05notes\x18\f \x01(\bR\x05notes\"L\n" +
+	"\x05notes\x18\f \x01(\bR\x05notes\x12\x1e\n" +
+	"\n" +
+	"checkboxes\x18\r \x01(\x05R\n" +
+	"checkboxes\"L\n" +
 	"\x04Kind\x12\r\n" +
 	"\tKIND_NONE\x10\x00\x12\x11\n" +
 	"\rKIND_QUESTION\x10\x01\x12\x13\n" +

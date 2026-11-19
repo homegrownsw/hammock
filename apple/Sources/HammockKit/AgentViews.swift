@@ -2344,7 +2344,7 @@ struct PromptCard: View {
             if p.multiSelect {
                 HStack {
                     Spacer()
-                    Button("Continue") { Task { await session.answer(ticking: ticked.sorted()) } }
+                    Button("Continue", action: sendTicked)
                         .prominentButton()
                         .keyboardShortcut(.defaultAction)
                 }
@@ -2405,13 +2405,14 @@ struct PromptCard: View {
     private func optionButton(_ n: Int, _ label: String) -> some View {
         let desc = n - 1 < p.descriptions.count ? p.descriptions[n - 1] : ""
         let isOther = n == Int(p.other)
+        let isBox = isCheckbox(n) && !isOther
         let picked = p.notes && n == chosen
         let (text, isRecommended) = Self.recommended(label)
         Button {
             if isOther {
                 typing = true
                 focus = .other
-            } else if p.multiSelect {
+            } else if isBox {
                 if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
             } else if p.notes {
                 chosen = n // answered with Answer, under its preview
@@ -2421,7 +2422,7 @@ struct PromptCard: View {
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                if p.multiSelect, !isOther {
+                if isBox {
                     Image(systemName: ticked.contains(n) ? "checkmark.square.fill" : "square").foregroundStyle(accent)
                 } else if isOther {
                     Image(systemName: "pencil").font(.caption.weight(.semibold))
@@ -2569,9 +2570,26 @@ struct PromptCard: View {
     private func sendOther() {
         let t = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, !session.answering else { return }
+        if p.multiSelect { return sendTicked() } // with the ticked options
         tapped = Int(p.other)
         focus = nil
         Task { await session.answer(option: Int(p.other), text: t) }
+    }
+
+    /// Multi-select's Continue: the ticked options, and what's typed in the
+    /// "other" option's field (ticked along with them).
+    private func sendTicked() {
+        guard !session.answering else { return }
+        let t = typing ? otherText.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        focus = nil
+        Task { await session.answer(ticking: ticked.sorted(), text: t) }
+    }
+
+    /// In a multi-select question, whether option n is a checkbox: the
+    /// options after them ("Chat about this") answer at once. (A daemon that
+    /// doesn't say: all of them.)
+    private func isCheckbox(_ n: Int) -> Bool {
+        p.multiSelect && (p.checkboxes == 0 || n <= Int(p.checkboxes))
     }
 }
 
