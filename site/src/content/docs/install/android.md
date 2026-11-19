@@ -22,11 +22,31 @@ certificate's SHA-256 digest, which should be
 
 ## Pair with your Mac
 
-Turn on remote access on the Mac and show its pairing code as for the iPhone ([steps 1–3](/hammock/docs/install/iphone/#pair-with-your-mac)),
-then open Hammock on Android and tap **Scan Pairing Code**, or paste the code's link and tap **Pair**. Your phone has
-to be on one of the [networks](/hammock/docs/install/iphone/#networks) remote access listens on.
+1. On the Mac, open Hammock ▸ Settings ▸ Devices.
+2. Turn on **Allow paired devices to connect remotely**, and choose the networks your phone will reach the Mac on
+   (see [below](#networks)).
+3. Under **Pair a Device**, choose **Show Pairing Code** (or File ▸ Pair a Device…). A code works once, for 10
+   minutes.
+4. On the phone, open Hammock and tap **Scan Pairing Code**, or paste the code's link and tap **Pair**.
 
-To pair another computer, tap **Add Computer** in the **Devices** tab.
+If you open a pairing link outside the app, only pair if you've just asked that computer for a code.
+
+### More than one computer
+
+To pair another Mac, or a Linux server, tap **Add Computer** in the **Devices** tab. On a server, `hmk pair` prints
+the code in the terminal ([Linux](/hammock/docs/install/linux/#pair-your-phone)). Revoke a paired phone in the
+Mac's Settings ▸ Devices ▸ **Paired Devices**.
+
+## Networks
+
+Your phone reaches your Mac only on the networks you chose in step 2:
+
+- **Tailscale** works from anywhere. Install it on the Mac and the phone, signed in to the same tailnet.
+- **A local network**, such as your home Wi-Fi, works while the phone is on it, not when you're out on mobile data.
+- **Your own VPN** (WireGuard, OpenVPN, ZeroTier and the like) works while the phone is connected to it.
+
+If the phone can't connect, check it's on one of those, with the VPN app on. [Remote access](/hammock/docs/remote/#remote-access)
+has the rest: VPNs, DNS names and forwarded ports, and choosing networks with `hmk`.
 
 ## Notifications
 

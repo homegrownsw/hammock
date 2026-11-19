@@ -26,7 +26,7 @@ Check each of these:
 - The Mac is awake and the Hammock Server is running (below).
 
 `hmk remote networks` lists the Mac's networks, with the chosen ones marked `*`. See
-[Install on iPhone](/hammock/docs/install/iphone/#networks).
+[Remote access](/hammock/docs/remote/#remote-access).
 
 ## I don't get notifications on my phone
 

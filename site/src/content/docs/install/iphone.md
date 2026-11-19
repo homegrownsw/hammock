@@ -26,30 +26,19 @@ If you open a pairing link outside the app, only pair if you've just asked that 
 ### More than one computer
 
 To pair another Mac, or a Linux server, tap **Add Computer** in the **Devices** tab. On a server, `hmk pair` prints
-the code in the terminal ([Linux](/hammock/docs/install/linux/#pair-your-iphone)). Revoke a paired iPhone in the
+the code in the terminal ([Linux](/hammock/docs/install/linux/#pair-your-phone)). Revoke a paired iPhone in the
 Mac's Settings ▸ Devices ▸ **Paired Devices**.
 
 ## Networks
 
-Your iPhone has to be on one of the networks remote access listens on:
+Your iPhone reaches your Mac only on the networks you chose in step 2:
 
-- **Tailscale** works from anywhere. Install it on the Mac and the iPhone, on the same tailnet.
-- **A local network**, such as your home Wi-Fi (`192.168.1.0/24`), works while the iPhone is on it.
-- **Your own VPN** (WireGuard, OpenVPN, ZeroTier and the like) is listed as a network of its own while the Mac is
-  connected to it: choose it like any other. If the iPhone reaches the Mac at an address the Mac can't see itself, such
-  as a VPN endpoint, a DNS name or a forwarded port, add it as an extra address so pairing codes include it.
+- **Tailscale** works from anywhere. Install it on the Mac and the iPhone, signed in to the same tailnet.
+- **A local network**, such as your home Wi-Fi, works while the iPhone is on it, not when you're out.
+- **Your own VPN** (WireGuard, OpenVPN, ZeroTier and the like) works while the iPhone is connected to it.
 
-Change them in Settings ▸ Devices ▸ Remote Access, or with `hmk`:
-
-```sh
-hmk remote networks                  # the networks this Mac is on; * chosen
-hmk remote enable tailscale
-hmk remote enable 192.168.1.0/24
-hmk remote address add mac.example.net   # an extra address
-hmk remote on
-```
-
-See [Remote access](/hammock/docs/remote/) for linked computers, sharing Groups and extra addresses.
+If the iPhone can't connect, check it's on one of those, with the VPN app on. [Remote access](/hammock/docs/remote/#remote-access)
+has the rest: VPNs, DNS names and forwarded ports, and choosing networks with `hmk`.
 
 ## Notifications
 

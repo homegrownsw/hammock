@@ -10,13 +10,15 @@ Reach your panes from your iPhone or Android phone, your other computers, and ot
 Remote access lets your paired devices and linked computers connect to this Mac directly, encrypted, with no server of ours in between. It listens only on the networks you choose:
 
 - **Tailscale**, from anywhere on your tailnet.
-- **A local network or a VPN**, by its subnet (`192.168.1.0/24` for home Wi-Fi, say), only while this Mac is on it.
+- **A local network**, by its subnet (`192.168.1.0/24` for home Wi-Fi, say), only while this Mac is on it.
+- **Your own VPN** (WireGuard, OpenVPN, ZeroTier and the like), listed as a network of its own while this Mac is
+  connected to it.
 
 Every device and computer still has to be paired or linked first, and signs in with its own key.
 
 Turn it on in Settings ▸ Devices: switch on **Allow paired devices to connect remotely**, then choose the networks under **Networks Hammock listens on**. It can't be turned off while any computers are linked.
 
-**Extra addresses**, such as a DNS name or a port forwarded from your router (`mac.example.net:7433`), go into pairing codes and links too. Hammock's usual port is 7433.
+**Extra addresses**, such as a DNS name, a VPN endpoint or a port forwarded from your router (`mac.example.net:7433`), go into pairing codes and links too: add one when your phone reaches this Mac at an address the Mac can't see itself. Hammock's usual port is 7433.
 
 From the command line (or `remote-network` and `remote-address` in the [config file](/hammock/docs/reference/config/)):
 
