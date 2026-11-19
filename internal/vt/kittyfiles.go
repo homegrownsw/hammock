@@ -20,12 +20,17 @@ import (
 // the daemon reads it once and every client gets the image itself.
 //
 // Only what's plainly an image is read: a regular file of at most
-// MaxImageFile bytes whose content is what the command says (a PNG for
-// f=100, exactly width × height pixels for raw RGB or RGBA; checked after
-// decompressing when it's compressed, o=z, and sent on still compressed).
-// Anything else
-// passes through as it came: a program's path to some other file never
-// reaches a client as that file's bytes.
+// MaxImageFile bytes whose content is what the command says (checked after
+// decompressing when it's compressed, o=z, and sent on still compressed):
+//
+//   - a PNG (f=100): the whole file, from its signature to its IEND chunk,
+//     never a part of it (O and S);
+//   - raw RGB or RGBA (f=24, f=32), exactly width × height pixels: only from
+//     Kitty's kind of temporary file (kittyTempFile), as any slice of any
+//     file can be made that size.
+//
+// Anything else passes through as it came: a program's path to some other
+// file never reaches a client as that file's bytes.
 type KittyFiles struct {
 	held []byte // a command (or the start of one) split across reads
 }
@@ -194,7 +199,8 @@ func inlineImage(keys, payload string) ([]byte, bool) {
 }
 
 // readImageFile reads a regular file (or the part the command names, O
-// and S) if it's what the command says it is.
+// and S, of a temporary file of raw pixels) if it's what the command says
+// it is (KittyFiles).
 func readImageFile(path string, keys string) ([]byte, bool) {
 	if !filepath.IsAbs(path) {
 		return nil, false
@@ -225,19 +231,24 @@ func readImageFile(path string, keys string) ([]byte, bool) {
 	}
 	pixels := data
 	if keyValue(keys, "o") == "z" {
-		z, err := zlib.NewReader(bytes.NewReader(data))
+		r := bytes.NewReader(data)
+		z, err := zlib.NewReader(r)
 		if err != nil {
 			return nil, false
 		}
 		pixels, err = io.ReadAll(io.LimitReader(z, 4*MaxImageFile+1))
-		if err != nil || len(pixels) > 4*MaxImageFile {
-			return nil, false
+		if err != nil || len(pixels) > 4*MaxImageFile || r.Len() > 0 {
+			return nil, false // nothing may follow the image unchecked
 		}
 	}
 	switch format := keyValue(keys, "f"); format {
 	case "100":
-		return data, bytes.HasPrefix(pixels, []byte("\x89PNG\r\n\x1a\n"))
+		whole := offset == 0 && size == st.Size()
+		return data, whole && bytes.HasPrefix(pixels, pngSignature) && bytes.HasSuffix(pixels, pngEnd)
 	case "24", "32", "":
+		if !kittyTempFile(path) {
+			return nil, false
+		}
 		w, _ := strconv.Atoi(keyValue(keys, "s"))
 		h, _ := strconv.Atoi(keyValue(keys, "v"))
 		bpp := 4
@@ -248,6 +259,13 @@ func readImageFile(path string, keys string) ([]byte, bool) {
 	}
 	return nil, false
 }
+
+// A PNG begins with its signature and ends with its IEND chunk (empty, and
+// so always these bytes).
+var (
+	pngSignature = []byte("\x89PNG\r\n\x1a\n")
+	pngEnd       = []byte("\x00\x00\x00\x00IEND\xae\x42\x60\x82")
+)
 
 // kittyTempFile is Kitty's rule for t=t: a file in a temporary directory
 // whose name says it's for this protocol (so a program can't have the

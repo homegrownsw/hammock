@@ -7,12 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// A tiny but real PNG header; KittyFiles only checks the signature.
-var pngBytes = append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{7}, 100)...)
+// A PNG's signature and IEND chunk around junk: KittyFiles only checks
+// those.
+var pngBytes = fakePNG(100)
+
+func fakePNG(n int) []byte {
+	return slices.Concat(pngSignature, bytes.Repeat([]byte{7}, n), pngEnd)
+}
 
 func fileCmd(keys, path string) string {
 	return "\x1b_G" + keys + ";" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x1b\\"
@@ -77,25 +84,41 @@ func TestKittyFilesInlinesAPNG(t *testing.T) {
 func TestKittyFilesLeavesWhatIsntAnImage(t *testing.T) {
 	dir := t.TempDir()
 	secret := writeFile(t, dir, "id_ed25519", []byte("-----BEGIN OPENSSH PRIVATE KEY-----"))
-	raw := writeFile(t, dir, "pixels", make([]byte, 2*2*4))
+	raw := writeFile(t, os.TempDir(), "tty-graphics-protocol-pixels", make([]byte, 2*2*4))
+	t.Cleanup(func() { os.Remove(raw) })
+	// Any file has a slice of the right size for raw pixels; a PNG can be
+	// followed by anything, or be a part of a file.
+	secretPNG := writeFile(t, dir, "png-and-more", slices.Concat(pngBytes, []byte("secret")))
+	inPNG := writeFile(t, dir, "secret-around-png", slices.Concat([]byte("secret"), pngBytes, []byte("secret")))
+	zMore := compressed(t, dir, "zmore", pngBytes)
+	if f, err := os.OpenFile(zMore, os.O_APPEND|os.O_WRONLY, 0); err == nil {
+		f.WriteString("secret")
+		f.Close()
+	}
 	for name, in := range map[string]string{
-		"not a PNG":        fileCmd("a=T,f=100,t=f", secret),
-		"raw, wrong size":  fileCmd("a=T,f=32,s=3,v=2,t=f", raw),
-		"compressed text":  fileCmd("a=T,f=100,o=z,t=f", compressed(t, dir, "z", []byte("not an image"))),
-		"other compressor": fileCmd("a=T,f=100,o=x,t=f", secret),
-		"a directory":      fileCmd("a=T,f=100,t=f", dir),
-		"relative path":    fileCmd("a=T,f=100,t=f", "id_ed25519"),
-		"missing":          fileCmd("a=T,f=100,t=f", filepath.Join(dir, "nope.png")),
-		"inline already":   "\x1b_Ga=T,f=100,m=1;" + base64.StdEncoding.EncodeToString(pngBytes[:30]) + "\x1b\\",
-		"not graphics APC": "\x1b_Xsomething\x1b\\",
+		"not a PNG":            fileCmd("a=T,f=100,t=f", secret),
+		"raw, wrong size":      fileCmd("a=T,f=32,s=3,v=2,t=f", raw),
+		"raw, any file":        fileCmd("a=T,f=32,s=2,v=2,t=f,S=16", secret),
+		"raw, no format":       fileCmd("a=T,s=1,v=1,t=f,O=1,S=4", secret),
+		"PNG, then more":       fileCmd("a=T,f=100,t=f", secretPNG),
+		"PNG, part of a file":  fileCmd("a=T,f=100,t=f,O=6,S="+strconv.Itoa(len(pngBytes)), inPNG),
+		"PNG, its start only":  fileCmd("a=T,f=100,t=f,S=50", writeFile(t, dir, "shot.png", pngBytes)),
+		"compressed, and more": fileCmd("a=T,f=100,o=z,t=f", zMore),
+		"compressed text":      fileCmd("a=T,f=100,o=z,t=f", compressed(t, dir, "z", []byte("not an image"))),
+		"other compressor":     fileCmd("a=T,f=100,o=x,t=f", secret),
+		"a directory":          fileCmd("a=T,f=100,t=f", dir),
+		"relative path":        fileCmd("a=T,f=100,t=f", "id_ed25519"),
+		"missing":              fileCmd("a=T,f=100,t=f", filepath.Join(dir, "nope.png")),
+		"inline already":       "\x1b_Ga=T,f=100,m=1;" + base64.StdEncoding.EncodeToString(pngBytes[:30]) + "\x1b\\",
+		"not graphics APC":     "\x1b_Xsomething\x1b\\",
 	} {
 		var k KittyFiles
 		if out := string(k.Rewrite([]byte(in))); out != in {
 			t.Errorf("%s: changed to %q", name, out)
 		}
 	}
-	// The right size for raw RGBA is inlined, and so is a compressed PNG,
-	// still compressed.
+	// The right size for raw RGBA, in Kitty's kind of temporary file, is
+	// inlined, and so is a compressed PNG, still compressed.
 	var k KittyFiles
 	z := compressed(t, dir, "zpng", pngBytes)
 	if out := string(k.Rewrite([]byte(fileCmd("a=T,f=100,o=z,t=f", z)))); !strings.Contains(out, "o=z") || !strings.Contains(out, "t=d") {
@@ -122,7 +145,7 @@ func TestKittyFilesAcrossReads(t *testing.T) {
 }
 
 func TestKittyFilesChunksBigImages(t *testing.T) {
-	big := append(append([]byte(nil), pngBytes...), bytes.Repeat([]byte{9}, 20000)...)
+	big := fakePNG(20000)
 	p := writeFile(t, t.TempDir(), "big.png", big)
 	var k KittyFiles
 	out := string(k.Rewrite([]byte(fileCmd("a=T,f=100,t=f,q=2", p))))
