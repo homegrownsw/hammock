@@ -1219,16 +1219,45 @@ struct UserBubble: View {
                     }
                     .font(fonts.body())
                     .lineSpacing(fonts.spacing)
-                    .textSelection(.enabled)
+                    .modifier(SelectableUnlessPending(pending: pending))
                     .foregroundStyle(.white)
                     .tint(.white)
                     .padding(.horizontal, 15)
                     .padding(.vertical, 10)
                     .background(accent.gradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    #if os(iOS)
+                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    #endif
                 }
             }
             .environment(\.previewGroup, attachments.map { $0.preview(session) })
             .opacity(pending ? 0.7 : 1)
+            .modifier(PendingMenu(pending: pending, session: session))
+        }
+    }
+}
+
+/// A message waiting to be taken isn't selectable, so right-clicking or
+/// touching and holding it opens its menu (Send Now) rather than the text's.
+private struct SelectableUnlessPending: ViewModifier {
+    let pending: Bool
+    func body(content: Content) -> some View {
+        if pending { content } else { content.textSelection(.enabled) }
+    }
+}
+
+/// A waiting message's menu: Send Now, while Claude Code holds it.
+private struct PendingMenu: ViewModifier {
+    let pending: Bool
+    let session: AgentSession
+    func body(content: Content) -> some View {
+        if pending {
+            content.contextMenu {
+                Button { session.sendNow() } label: { Label("Send Now", systemImage: "paperplane") }
+                    .disabled(!session.canSendNow)
+            }
+        } else {
+            content
         }
     }
 }
@@ -1631,7 +1660,15 @@ struct TranscriptTail: View {
         // makes, centred, so Working… sat in the middle under what was sent.
         VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(session.pendingSends.enumerated()), id: \.offset) { _, p in
-                UserBubble(text: p.text, rich: p.rich, attachments: p.attachments, session: session, pending: true)
+                Group {
+                    // A "!" command runs at once, and the transcript only has
+                    // it when it's done: shown running, as it then will be.
+                    if let run = p.bangRun(output: session.runningBang == p.id ? session.bangOutput : "") {
+                        ToolRow(block: run, session: session)
+                    } else {
+                        UserBubble(text: p.text, rich: p.rich, attachments: p.attachments, session: session, pending: true)
+                    }
+                }
                     // Sent: up from the message box, growing into place. It goes
                     // at once when the transcript shows it (in the same place).
                     .transition(.asymmetric(
@@ -1774,23 +1811,41 @@ struct ToolRow: View {
     let block: AgentBlock
     let session: AgentSession
     var compact = false
-    private var open: Bool { session.isOpen(block.id) }
+    /// Opened, or for a "!" command (open to start with), closed.
+    private var toggled: Bool { session.isOpen(block.id) }
+    private var open: Bool { bang ? !toggled : toggled }
     @Environment(\.agentFonts) private var fonts
 
-    /// The command or input shown when open (a Read's path is in its title already).
-    private var showsInput: Bool { !block.input.isEmpty && (block.tool == "Bash" || !block.tool.hasPrefix("Read")) }
+    /// A "!" command you ran (a Bash run that's a turn of its own), not one
+    /// of the agent's: shown as you typed it, with what it printed.
+    private var bang: Bool { block.tool == "Bash" && (block.turnID == block.id || block.id.hasPrefix(PendingSend.runPrefix)) }
+    /// The command or input shown when open (a Read's path is in its title
+    /// already, and a "!" command's one line in its row).
+    private var showsInput: Bool {
+        !block.input.isEmpty && (block.tool == "Bash" || !block.tool.hasPrefix("Read"))
+            && !(bang && !block.input.contains("\n"))
+    }
     /// Opening shows something more than the row (and its pictures) does.
     private var opens: Bool { !block.diff.isEmpty || showsInput || !block.output.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button { if opens { withAnimation(.snappy) { session.setOpen(block.id, !open) } } } label: {
+            Button { if opens { withAnimation(.snappy) { session.setOpen(block.id, !toggled) } } } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: toolIcon(block)).frame(width: 18).foregroundStyle(.tertiary)
-                    Text(Markdown.inlineText(block.title.isEmpty ? block.tool : block.title))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    if bang {
+                        Text("!").font(fonts.code(0.88)).fontWeight(.bold).foregroundStyle(Composer.shellTint).frame(width: 18)
+                        Text(block.input.split(separator: "\n").first.map(String.init) ?? block.input)
+                            .font(fonts.code(0.88))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Image(systemName: toolIcon(block)).frame(width: 18).foregroundStyle(.tertiary)
+                        Text(Markdown.inlineText(block.title.isEmpty ? block.tool : block.title))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     if block.added > 0 || block.removed > 0 {
                         Text("+\(block.added)").foregroundStyle(.green)
                         Text("−\(block.removed)").foregroundStyle(.red)
@@ -2747,7 +2802,7 @@ struct Composer: View {
         doc.chips.isEmpty && AgentCatalog.hasShellMode(harness)
             && text.drop(while: { $0.isWhitespace }).hasPrefix("!")
     }
-    private static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
+    static let shellTint = Color(red: 0.99, green: 0.36, blue: 0.69)
 
     private var canSend: Bool {
         (!doc.plain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !doc.chips.isEmpty) && !waitingOnAttachment

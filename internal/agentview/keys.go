@@ -40,6 +40,10 @@ func Enter(kitty bool) []byte {
 	return []byte("\r")
 }
 
+// CtrlEnter is Ctrl+Enter under the kitty keyboard protocol: Claude Code's
+// Send Now (chat:sendNow) for messages it's holding while it works.
+var CtrlEnter = []byte("\x1b[13;5u")
+
 func digit(n int) []byte { return []byte(fmt.Sprint(n)) }
 
 func sameOptions(a, b []string) bool {

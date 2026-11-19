@@ -21,6 +21,7 @@ import (
 //	hmk agent answer PANE N [TEXT]    pick option N of the prompt on screen (with TEXT: typed into it)
 //	hmk agent pick PANE N[,N]         multi-select: tick these, then next
 //	hmk agent send PANE TEXT          send a message
+//	hmk agent send-now PANE          send the messages Claude Code is holding now
 func runAgent(args []string) error {
 	if len(args) > 0 && agents.Get(args[0]) != nil {
 		return runStartAgent(args[0], args[1:])
@@ -29,7 +30,7 @@ func runAgent(args []string) error {
 		return runStartAgent("", args) // none named: the computer's default agent
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [PROMPT]   (AGENT: %s; none: the default-agent)\n       hmk agent watch|answer|pick|send PANE …", agentIDs())
+		return fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [PROMPT]   (AGENT: %s; none: the default-agent)\n       hmk agent watch|answer|pick|send|send-now PANE …", agentIDs())
 	}
 	ctx := context.Background()
 	c, err := connect(ctx)
@@ -105,6 +106,11 @@ func runAgent(args []string) error {
 		defer cancel()
 		_, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_AgentSend{AgentSend: &pb.AgentSend{PaneId: pane, Text: strings.Join(args[2:], " ")}}})
 		return err
+	case "send-now":
+		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		_, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_AgentSend{AgentSend: &pb.AgentSend{PaneId: pane, SendNow: true}}})
+		return err
 	}
 	return fmt.Errorf("unknown agent command %q", args[0])
 }
@@ -112,6 +118,9 @@ func runAgent(args []string) error {
 func printView(v *pb.AgentView) {
 	if v.Error != "" {
 		fmt.Fprintln(os.Stderr, "error:", termSafe(v.Error))
+	}
+	if v.BangOutput != "" {
+		printfSafe("── ! output so far: %q\n", v.BangOutput)
 	}
 	if v.Replace {
 		printfSafe("── session %s (%d blocks, more: %v)\n", v.SessionId, len(v.Blocks), v.HasMore)

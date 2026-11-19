@@ -12294,6 +12294,7 @@ type AgentView struct {
 	ContextTokens int64                  `protobuf:"varint,15,opt,name=context_tokens,json=contextTokens,proto3" json:"context_tokens,omitempty"` // the context it took
 	ContextWindow int64                  `protobuf:"varint,16,opt,name=context_window,json=contextWindow,proto3" json:"context_window,omitempty"` // the window those count against
 	Draft         string                 `protobuf:"bytes,17,opt,name=draft,proto3" json:"draft,omitempty"`                                       // what's typed in its input box in the terminal (not its placeholder)
+	BangOutput    string                 `protobuf:"bytes,25,opt,name=bang_output,json=bangOutput,proto3" json:"bang_output,omitempty"`           // a "!" command's output so far, while it runs (the screen's; the transcript has it once it's done)
 	Shells        []*AgentShell          `protobuf:"bytes,18,rep,name=shells,proto3" json:"shells,omitempty"`                                     // the session's background shells (sent when they change)
 	ShellId       string                 `protobuf:"bytes,19,opt,name=shell_id,json=shellId,proto3" json:"shell_id,omitempty"`                    // set: this is a view of that shell's output
 	ShellOutput   string                 `protobuf:"bytes,20,opt,name=shell_output,json=shellOutput,proto3" json:"shell_output,omitempty"`        // its output, ANSI stripped: all of it kept (replace) or what's new
@@ -12450,6 +12451,13 @@ func (x *AgentView) GetContextWindow() int64 {
 func (x *AgentView) GetDraft() string {
 	if x != nil {
 		return x.Draft
+	}
+	return ""
+}
+
+func (x *AgentView) GetBangOutput() string {
+	if x != nil {
+		return x.BangOutput
 	}
 	return ""
 }
@@ -13107,12 +13115,15 @@ func (x *AgentAnswer) GetDecision() AgentAnswer_Decision {
 // Sends a message to the agent (queued by it while it works).
 // inline: text holds U+FFFC where each attachment goes, in order (the
 // composer's chips), and they're pasted there; otherwise they go first.
+// send_now, with no text: the messages Claude Code holds while it works go
+// to it now (its Ctrl+Enter), not when its turn ends.
 type AgentSend struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PaneId        string                 `protobuf:"bytes,1,opt,name=pane_id,json=paneId,proto3" json:"pane_id,omitempty"`
 	Text          string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	Attachments   []*AgentAttachment     `protobuf:"bytes,3,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	Inline        bool                   `protobuf:"varint,4,opt,name=inline,proto3" json:"inline,omitempty"`
+	SendNow       bool                   `protobuf:"varint,5,opt,name=send_now,json=sendNow,proto3" json:"send_now,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13171,6 +13182,13 @@ func (x *AgentSend) GetAttachments() []*AgentAttachment {
 func (x *AgentSend) GetInline() bool {
 	if x != nil {
 		return x.Inline
+	}
+	return false
+}
+
+func (x *AgentSend) GetSendNow() bool {
+	if x != nil {
+		return x.SendNow
 	}
 	return false
 }
@@ -26198,7 +26216,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tKIND_NONE\x10\x00\x12\x11\n" +
 	"\rKIND_QUESTION\x10\x01\x12\x13\n" +
 	"\x0fKIND_PERMISSION\x10\x02\x12\r\n" +
-	"\tKIND_PLAN\x10\x03\"\xb3\x06\n" +
+	"\tKIND_PLAN\x10\x03\"\xd4\x06\n" +
 	"\tAgentView\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x18\n" +
 	"\areplace\x18\x02 \x01(\bR\areplace\x12.\n" +
@@ -26219,7 +26237,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x05model\x18\x0e \x01(\tR\x05model\x12%\n" +
 	"\x0econtext_tokens\x18\x0f \x01(\x03R\rcontextTokens\x12%\n" +
 	"\x0econtext_window\x18\x10 \x01(\x03R\rcontextWindow\x12\x14\n" +
-	"\x05draft\x18\x11 \x01(\tR\x05draft\x12.\n" +
+	"\x05draft\x18\x11 \x01(\tR\x05draft\x12\x1f\n" +
+	"\vbang_output\x18\x19 \x01(\tR\n" +
+	"bangOutput\x12.\n" +
 	"\x06shells\x18\x12 \x03(\v2\x16.hammock.v1.AgentShellR\x06shells\x12\x19\n" +
 	"\bshell_id\x18\x13 \x01(\tR\ashellId\x12!\n" +
 	"\fshell_output\x18\x14 \x01(\tR\vshellOutput\x12/\n" +
@@ -26290,12 +26310,13 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x14DECISION_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eDECISION_ALLOW\x10\x01\x12\x11\n" +
 	"\rDECISION_DENY\x10\x02\x12\x1b\n" +
-	"\x17DECISION_ALLOW_SCHEDULE\x10\x03\"\x8f\x01\n" +
+	"\x17DECISION_ALLOW_SCHEDULE\x10\x03\"\xaa\x01\n" +
 	"\tAgentSend\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12=\n" +
 	"\vattachments\x18\x03 \x03(\v2\x1b.hammock.v1.AgentAttachmentR\vattachments\x12\x16\n" +
-	"\x06inline\x18\x04 \x01(\bR\x06inline\"M\n" +
+	"\x06inline\x18\x04 \x01(\bR\x06inline\x12\x19\n" +
+	"\bsend_now\x18\x05 \x01(\bR\asendNow\"M\n" +
 	"\x0fAgentAttachment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x12\n" +

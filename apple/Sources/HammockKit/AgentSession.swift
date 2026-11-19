@@ -40,6 +40,9 @@ public final class AgentSession {
     public private(set) var status = ""
     /// What's typed in the agent's input box in the terminal.
     public private(set) var draft = ""
+    /// A "!" command's output so far, while it runs (from the screen: the
+    /// transcript has it once it's done).
+    public private(set) var bangOutput = ""
     public private(set) var hasMore = false
     public private(set) var commands: [String] = []
     /// Those of `commands` that only run at the start of a message (the
@@ -210,7 +213,9 @@ public final class AgentSession {
             set(\.contextTokens, v.contextTokens)
             set(\.contextWindow, v.contextWindow)
             set(\.prompt, v.prompt)
+            if working, !v.working, !pendingSends.isEmpty { dropUntaken() }
             set(\.working, v.working)
+            set(\.bangOutput, v.bangOutput)
             set(\.status, v.status)
             // What's typed in its input box in the terminal (the message box
             // offers it; sending replaces it).
@@ -221,11 +226,12 @@ public final class AgentSession {
         // appears in the transcript. Not by exact text: one queued while
         // Claude works arrives reworded (spacing, image references).
         if !pendingSends.isEmpty, v.older {
-            seenUserIDs.formUnion(blocks.filter { $0.kind == .user }.map(\.id)) // history paged in, not new
+            seenUserIDs.formUnion(blocks.filter(Self.sentByYou).map(\.id)) // history paged in, not new
         } else if !pendingSends.isEmpty {
-            for b in blocks where b.kind == .user && !seenUserIDs.contains(b.id) {
+            for b in blocks where Self.sentByYou(b) && !seenUserIDs.contains(b.id) {
                 seenUserIDs.insert(b.id)
-                let n = Self.squashed(b.text)
+                // A "!" command is recorded as the Bash run it is, not a message.
+                let n = b.kind == .user ? Self.squashed(b.text) : "!" + Self.squashed(b.input)
                 if let i = pendingSends.firstIndex(where: { let p = Self.squashed($0.text); return n.contains(p) || p.contains(n) }) {
                     pendingSends.remove(at: i)
                 } else if !pendingSends.isEmpty {
@@ -313,7 +319,7 @@ public final class AgentSession {
                             rich: inline && !local.isEmpty ? text.trimmingCharacters(in: .whitespacesAndNewlines) : "",
                             attachments: local)
         if pending {
-            if pendingSends.isEmpty { seenUserIDs = Set(blocks.filter { $0.kind == .user }.map(\.id)) }
+            if pendingSends.isEmpty { seenUserIDs = Set(blocks.filter(Self.sentByYou).map(\.id)) }
             if !p.text.isEmpty || !p.attachments.isEmpty { pendingSends.append(p) }
         }
         do {
@@ -343,8 +349,50 @@ public final class AgentSession {
         await send(text, attachments: [], pending: pending)
     }
 
+    /// The "!" command waiting that's running: the first (they run in turn).
+    var runningBang: UUID? { pendingSends.first(where: \.isBang)?.id }
+
+    /// Done working, with messages it never took (a "!" command stopped
+    /// in the terminal, messages Esc took back into its input box): they
+    /// aren't coming. A moment later, in case one's on its way still.
+    private func dropUntaken() {
+        let ids = Set(pendingSends.map(\.id))
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, !self.working else { return }
+            self.pendingSends.removeAll { ids.contains($0.id) }
+        }
+    }
+
+    /// A block that's something you sent: a message, or a "!" command,
+    /// which is a Bash run that's a turn of its own (Claude's own runs are
+    /// in the turn of the message they answer).
+    private static func sentByYou(_ b: AgentBlock) -> Bool {
+        b.kind == .user || (b.kind == .tool && b.tool == "Bash" && b.turnID == b.id)
+    }
+
     private static func squashed(_ s: String) -> String {
         s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// Whether messages sent while it works can be sent now: Claude Code
+    /// holds them until its turn ends, and its Ctrl+Enter sends them at once.
+    public var canSendNow: Bool {
+        let h = model?.panes[paneID]?.agent.harness ?? ""
+        return subagentID.isEmpty && pastSession == nil && (h.isEmpty || h == "claude")
+    }
+
+    /// Sends the messages Claude Code is holding now, not when its turn ends
+    /// (Ctrl+Enter in its terminal).
+    public func sendNow() {
+        guard let conn = model?.connection else { return }
+        Task {
+            do {
+                _ = try await conn.call { $0.agentSend = .with { $0.paneID = self.paneID; $0.sendNow = true } }
+            } catch {
+                answerError = error.localizedDescription
+            }
+        }
     }
 
     /// Stops the agent (Esc).
@@ -439,6 +487,27 @@ public struct PendingSend: Identifiable {
     /// With its chips' marks (none: "").
     let rich: String
     let attachments: [BubbleAttachment]
+
+    /// A "!" command (an agent's shell mode), as the Bash run it's shown as
+    /// once the transcript has it, still running. Nil: a message.
+    static let runPrefix = "pending-run-"
+
+    func bangRun(output: String = "") -> AgentBlock? {
+        guard attachments.isEmpty, text.hasPrefix("!") else { return nil }
+        let cmd = text.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cmd.isEmpty else { return nil }
+        return .with {
+            $0.id = Self.runPrefix + id.uuidString
+            $0.kind = .tool
+            $0.tool = "Bash"
+            $0.input = cmd
+            $0.title = "Ran `" + (cmd.split(separator: "\n").first.map(String.init) ?? cmd) + "`"
+            $0.output = output
+            $0.pending = true
+        }
+    }
+
+    var isBang: Bool { bangRun() != nil }
 }
 
 /// A view's hold on an agent session (AppModel.acquireAgent): released when

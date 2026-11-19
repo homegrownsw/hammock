@@ -446,3 +446,65 @@ func InputDraft(text string) string {
 	}
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
+
+// bangFooter: lines Claude Code shows under a running "!" command that
+// aren't its output: how long it's run, and the key to background it.
+var bangFooter = regexp.MustCompile(`^\((\d+[hms] ?)+\)$|^\(ctrl\+b to run in background\)$|^Running…$`)
+
+// BangOutput is what a "!" command running at Claude Code's prompt has
+// printed so far, from the screen (its transcript only has it when it's
+// done): the lines under the last "! cmd" above the input box, after its
+// ⎿. Running: one is (its timer or Running… shows: Claude Code's spinner
+// doesn't, nor do its hooks say it's working).
+func BangOutput(text string) (out string, running bool) {
+	lines := strings.Split(text, "\n")
+	end := len(lines)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if t := strings.TrimLeft(lines[i], " "); strings.HasPrefix(t, "❯") {
+			end = i
+			break
+		}
+	}
+	// The input box's top rule, and blank lines above it.
+	for end > 0 && (strings.TrimSpace(lines[end-1]) == "" || strings.HasPrefix(strings.TrimSpace(lines[end-1]), "─")) {
+		end--
+	}
+	start := -1
+	for i := end - 1; i >= 0; i-- {
+		l := lines[i]
+		if strings.HasPrefix(l, "! ") {
+			start = i
+			break
+		}
+		// Only the command's own lines: its output, indented, or its
+		// command's wrapped lines.
+		if !strings.HasPrefix(l, "  ") {
+			return "", false
+		}
+	}
+	if start < 0 {
+		return "", false
+	}
+	var printed []string
+	in := false
+	for _, l := range lines[start+1 : end] {
+		if t, ok := strings.CutPrefix(l, "  ⎿"); ok {
+			// Its first line: ⎿ then a space and a no-break space.
+			in = true
+			l = strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(t, " "), "\u00a0"), " ")
+		} else if !in {
+			continue // the command, wrapped
+		} else {
+			l = strings.TrimPrefix(l, "     ")
+		}
+		if bangFooter.MatchString(strings.TrimSpace(l)) {
+			running = true
+			continue
+		}
+		printed = append(printed, strings.TrimRight(l, " "))
+	}
+	if !running {
+		return "", false // done: its transcript has it
+	}
+	return strings.Trim(strings.Join(printed, "\n"), "\n"), true
+}

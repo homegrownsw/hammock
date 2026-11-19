@@ -5436,6 +5436,12 @@ public nonisolated struct Hammock_V1_AgentView: @unchecked Sendable {
     set {_uniqueStorage()._draft = newValue}
   }
 
+  /// a "!" command's output so far, while it runs (the screen's; the transcript has it once it's done)
+  public var bangOutput: String {
+    get {_storage._bangOutput}
+    set {_uniqueStorage()._bangOutput = newValue}
+  }
+
   /// the session's background shells (sent when they change)
   public var shells: [Hammock_V1_AgentShell] {
     get {_storage._shells}
@@ -5802,6 +5808,8 @@ public nonisolated struct Hammock_V1_AgentAnswer: Sendable {
 /// Sends a message to the agent (queued by it while it works).
 /// inline: text holds U+FFFC where each attachment goes, in order (the
 /// composer's chips), and they're pasted there; otherwise they go first.
+/// send_now, with no text: the messages Claude Code holds while it works go
+/// to it now (its Ctrl+Enter), not when its turn ends.
 public nonisolated struct Hammock_V1_AgentSend: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -5814,6 +5822,8 @@ public nonisolated struct Hammock_V1_AgentSend: Sendable {
   public var attachments: [Hammock_V1_AgentAttachment] = []
 
   public var inline: Bool = false
+
+  public var sendNow: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -19474,7 +19484,7 @@ nonisolated extension Hammock_V1_AgentPrompt.Kind: SwiftProtobuf._ProtoNameProvi
 
 nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentView"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}replace\0\u{1}blocks\0\u{1}older\0\u{3}has_more\0\u{1}prompt\0\u{1}working\0\u{1}status\0\u{1}commands\0\u{3}session_id\0\u{1}error\0\u{1}subagents\0\u{3}subagent_id\0\u{1}model\0\u{3}context_tokens\0\u{3}context_window\0\u{1}draft\0\u{1}shells\0\u{3}shell_id\0\u{3}shell_output\0\u{1}tasks\0\u{1}links\0\u{3}start_commands\0\u{1}effort\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}replace\0\u{1}blocks\0\u{1}older\0\u{3}has_more\0\u{1}prompt\0\u{1}working\0\u{1}status\0\u{1}commands\0\u{3}session_id\0\u{1}error\0\u{1}subagents\0\u{3}subagent_id\0\u{1}model\0\u{3}context_tokens\0\u{3}context_window\0\u{1}draft\0\u{1}shells\0\u{3}shell_id\0\u{3}shell_output\0\u{1}tasks\0\u{1}links\0\u{3}start_commands\0\u{1}effort\0\u{3}bang_output\0")
 
   fileprivate class _StorageClass {
     var _paneID: String = String()
@@ -19494,6 +19504,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
     var _contextTokens: Int64 = 0
     var _contextWindow: Int64 = 0
     var _draft: String = String()
+    var _bangOutput: String = String()
     var _shells: [Hammock_V1_AgentShell] = []
     var _shellID: String = String()
     var _shellOutput: String = String()
@@ -19528,6 +19539,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
       _contextTokens = source._contextTokens
       _contextWindow = source._contextWindow
       _draft = source._draft
+      _bangOutput = source._bangOutput
       _shells = source._shells
       _shellID = source._shellID
       _shellOutput = source._shellOutput
@@ -19577,6 +19589,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
         case 22: try { try decoder.decodeSingularMessageField(value: &_storage._links) }()
         case 23: try { try decoder.decodeRepeatedStringField(value: &_storage._startCommands) }()
         case 24: try { try decoder.decodeSingularStringField(value: &_storage._effort) }()
+        case 25: try { try decoder.decodeSingularStringField(value: &_storage._bangOutput) }()
         default: break
         }
       }
@@ -19661,6 +19674,9 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
       if !_storage._effort.isEmpty {
         try visitor.visitSingularStringField(value: _storage._effort, fieldNumber: 24)
       }
+      if !_storage._bangOutput.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._bangOutput, fieldNumber: 25)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -19687,6 +19703,7 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
         if _storage._contextTokens != rhs_storage._contextTokens {return false}
         if _storage._contextWindow != rhs_storage._contextWindow {return false}
         if _storage._draft != rhs_storage._draft {return false}
+        if _storage._bangOutput != rhs_storage._bangOutput {return false}
         if _storage._shells != rhs_storage._shells {return false}
         if _storage._shellID != rhs_storage._shellID {return false}
         if _storage._shellOutput != rhs_storage._shellOutput {return false}
@@ -20102,7 +20119,7 @@ nonisolated extension Hammock_V1_AgentAnswer.Decision: SwiftProtobuf._ProtoNameP
 
 nonisolated extension Hammock_V1_AgentSend: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentSend"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}text\0\u{1}attachments\0\u{1}inline\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}text\0\u{1}attachments\0\u{1}inline\0\u{3}send_now\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -20114,6 +20131,7 @@ nonisolated extension Hammock_V1_AgentSend: SwiftProtobuf.Message, SwiftProtobuf
       case 2: try { try decoder.decodeSingularStringField(value: &self.text) }()
       case 3: try { try decoder.decodeRepeatedMessageField(value: &self.attachments) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.inline) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.sendNow) }()
       default: break
       }
     }
@@ -20132,6 +20150,9 @@ nonisolated extension Hammock_V1_AgentSend: SwiftProtobuf.Message, SwiftProtobuf
     if self.inline != false {
       try visitor.visitSingularBoolField(value: self.inline, fieldNumber: 4)
     }
+    if self.sendNow != false {
+      try visitor.visitSingularBoolField(value: self.sendNow, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -20140,6 +20161,7 @@ nonisolated extension Hammock_V1_AgentSend: SwiftProtobuf.Message, SwiftProtobuf
     if lhs.text != rhs.text {return false}
     if lhs.attachments != rhs.attachments {return false}
     if lhs.inline != rhs.inline {return false}
+    if lhs.sendNow != rhs.sendNow {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

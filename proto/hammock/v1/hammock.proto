@@ -1275,6 +1275,7 @@ message AgentView {
   int64 context_tokens = 15;         // the context it took
   int64 context_window = 16;         // the window those count against
   string draft = 17;                 // what's typed in its input box in the terminal (not its placeholder)
+  string bang_output = 25;           // a "!" command's output so far, while it runs (the screen's; the transcript has it once it's done)
   repeated AgentShell shells = 18;   // the session's background shells (sent when they change)
   string shell_id = 19;              // set: this is a view of that shell's output
   string shell_output = 20;          // its output, ANSI stripped: all of it kept (replace) or what's new
@@ -1363,7 +1364,9 @@ message AgentAnswer {
 // Sends a message to the agent (queued by it while it works).
 // inline: text holds U+FFFC where each attachment goes, in order (the
 // composer's chips), and they're pasted there; otherwise they go first.
-message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachment attachments = 3; bool inline = 4; }
+// send_now, with no text: the messages Claude Code holds while it works go
+// to it now (its Ctrl+Enter), not when its turn ends.
+message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachment attachments = 3; bool inline = 4; bool send_now = 5; }
 // path, in place of data: a file on the daemon's own computer, cloned into
 // the attachments folder (a video to an agent on this Mac goes as it is,
 // whatever its size). Only from the Hammock app on that computer.

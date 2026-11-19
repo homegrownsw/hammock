@@ -77,6 +77,7 @@ type agentWatch struct {
 	working bool
 	status  string
 	draft   string  // what's typed in its input box in the terminal
+	bang    string  // a running "!" command's output so far, from the screen
 	ctx     ctxInfo // the model and context last sent
 	// Claude's model and effort level as its start screen says, for before
 	// its transcript does (its first reply).
@@ -396,7 +397,7 @@ func (w *agentWatch) refresh() *pb.AgentView {
 	}
 	var sc agentview.Screen
 	var prompt *pb.AgentPrompt
-	draft := ""
+	draft, bang := "", ""
 	working := false
 	if w.sub == "" {
 		text := w.p.text(false)
@@ -410,6 +411,16 @@ func (w *agentWatch) refresh() *pb.AgentView {
 		working = sc.Working
 		if a := w.p.snapshotInfo().Agent; a != nil && a.State == pb.AgentState_AGENT_STATE_WORKING {
 			working = true
+		}
+		if w.harness == "claude" {
+			// A "!" command running: its output so far (its transcript
+			// has it once it's done). It's working, though nothing else says
+			// so. From the whole screen: bottomText blanks faint text, and
+			// Claude Code draws the output faint.
+			var running bool
+			if bang, running = agentview.BangOutput(text); running {
+				working = true
+			}
 		}
 		if subs := w.listSubagents(path); agents.Get(w.harness).Subagents && !slices.EqualFunc(subs, w.subs, func(a, b *pb.AgentSubagent) bool { return proto.Equal(a, b) }) {
 			w.subs = subs
@@ -440,15 +451,17 @@ func (w *agentWatch) refresh() *pb.AgentView {
 		w.prompt, w.working, w.status, w.ctx = prompt, working, sc.Status, ctx
 		snap.Prompt, snap.Working, snap.Status = prompt, working, sc.Status
 		w.draft, snap.Draft = draft, draft
+		w.bang, snap.BangOutput = bang, bang
 		return snap
 	}
-	same := proto.Equal(prompt, w.prompt) && working == w.working && sc.Status == w.status && ctx == w.ctx && draft == w.draft
+	same := proto.Equal(prompt, w.prompt) && working == w.working && sc.Status == w.status && ctx == w.ctx && draft == w.draft && bang == w.bang
 	if len(changed) == 0 && same && len(u.Subagents) == 0 && len(u.Shells) == 0 && u.Tasks == nil && u.Links == nil {
 		return nil
 	}
 	w.prompt, w.working, w.status, w.ctx = prompt, working, sc.Status, ctx
 	u.Blocks, u.Prompt, u.Working, u.Status = changed, prompt, working, sc.Status
 	w.draft, u.Draft = draft, draft
+	w.bang, u.BangOutput = bang, bang
 	ctx.set(u)
 	return u
 }
@@ -847,6 +860,9 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 	if p == nil {
 		return fmt.Errorf("no such pane %q", m.PaneId)
 	}
+	if m.SendNow {
+		return sendNow(p, c)
+	}
 	var paths []string
 	for _, a := range m.Attachments {
 		if a.Path != "" && !c.isOwnApp() {
@@ -875,6 +891,24 @@ func (d *Daemon) sendAgent(c *conn, id uint64, m *pb.AgentSend) error {
 		c.send(&pb.ServerMessage{ReplyTo: id, Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}})
 	}()
 	return errDeferred
+}
+
+// sendNow presses Claude Code's Ctrl+Enter, which gives it the messages it's
+// holding while it works now rather than at the end of its turn. Not while
+// something's typed in its input box in the terminal: Ctrl+Enter would send
+// that too.
+func sendNow(p *pane, c *conn) error {
+	if h := p.snapshotInfo().Agent.GetHarness(); h != "" && h != "claude" {
+		return fmt.Errorf("only Claude Code can be sent a waiting message now")
+	}
+	if !p.kittyKeys() {
+		return errors.New("the agent isn't ready for Send Now")
+	}
+	if agentview.InputDraft(p.bottomText(20)) != "" {
+		return errors.New("something's typed in the terminal's message box: send or clear it first")
+	}
+	_, err := p.input(c, agentview.CtrlEnter)
+	return err
 }
 
 // isOwnApp is whether c is the Hammock app on this computer, the person
