@@ -93,6 +93,7 @@ type Daemon struct {
 	// the one before it rather than the first in the layout. In memory only.
 	focusOrder   map[string][]string
 	closedTabs   []*closedTab    // Reopen Closed Tab (reopen.go)
+	closedProfs  map[string]bool // closed Groups whose browser profiles Reopen Closed keeps (dropGoneProfiles)
 	usage        *pb.UsageLimits // agents' usage limits (usage.go)
 	theme        *pb.HostTheme   // this Mac's theme, for the iPhone (theme.go)
 	cfgw         configWatch     // security settings in the config file (configwatch.go; its own lock)
@@ -1063,6 +1064,8 @@ func (d *Daemon) closeGroup(id string, remember bool) error {
 	delete(d.groups, id)
 	d.persist(d.store.DeleteGroup(id))
 	_ = os.Remove(d.storedPicture(id))
+	// Its browsers' logins and cookies go with it once it can't be reopened.
+	d.closedGroupProfile(id)
 	u := &pb.StateUpdate{DeletedGroupIds: []string{id}}
 	// A shared Group's link stops working, and those waiting on it are
 	// turned away.
@@ -1460,7 +1463,11 @@ func (d *Daemon) moveTab(tabID, groupID string, index int) error {
 	}
 	index = max(0, min(index, len(dst.TabIds)))
 	dst.TabIds = slices.Insert(dst.TabIds, index, tabID)
+	moved := t.GroupId != groupID
 	t.GroupId = groupID
+	if moved {
+		d.regroupBrowsers(tabPanes(t)) // into the new Group's browser profile
+	}
 	d.persist(d.store.PutGroup(dst))
 	d.persist(d.store.PutTab(t))
 	u.Groups = append(u.Groups, proto.CloneOf(dst))
@@ -1529,6 +1536,9 @@ func (d *Daemon) mergeTab(tabID, intoPaneID string, dir pb.Split_Direction) erro
 	}
 	if g := d.groups[src.GroupId]; g != nil && src.GroupId != dst.GroupId && slices.Contains(tabPanes(src), g.LastFocusedPaneId) {
 		g.LastFocusedPaneId = ""
+	}
+	if src.GroupId != dst.GroupId {
+		d.regroupBrowsers(tabPanes(src)) // into the new Group's browser profile
 	}
 	dst.FocusedPaneId = src.FocusedPaneId
 	d.persist(d.store.PutTab(dst))

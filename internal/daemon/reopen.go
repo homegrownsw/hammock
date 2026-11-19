@@ -110,12 +110,14 @@ func (d *Daemon) pushClosed(ct *closedTab) {
 			}
 		}
 	}
+	d.dropGoneProfiles() // a closed Group's last entry pushed out
 }
 
 // dropClosedOf forgets what an unlinked computer closed here, and the
 // markers of closes on it. Callers hold d.mu.
 func (d *Daemon) dropClosedOf(uid string) {
 	d.closedTabs = slices.DeleteFunc(d.closedTabs, func(ct *closedTab) bool { return ct.by == uid || ct.on == uid })
+	d.dropGoneProfiles()
 }
 
 // dropClosed forgets entry ct (reopened, or its close didn't happen).
@@ -195,6 +197,9 @@ func (d *Daemon) nextClosed() *closedTab {
 // used up either way. Callers hold d.mu.
 func (d *Daemon) reopenEntry(ct *closedTab) (*pb.Tab, error) {
 	d.dropClosed(ct)
+	// Once it's open again (its Group back, with its browser profile), or
+	// failed to: not while its Group is neither here nor on the list.
+	defer d.dropGoneProfiles()
 	if ct.pane != "" && d.tabs[ct.tabID] != nil {
 		return d.reopenPane(ct)
 	}

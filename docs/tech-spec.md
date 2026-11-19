@@ -106,7 +106,7 @@ The state dir is `~/Library/Application Support/Hammock` on a Mac (the app's `Ha
 | `run/` | sockets and locks: `hmkd.sock`, `hooks.sock`, `daemon.lock`, `panes/<pane>.sock`, the helpers' `browser-host.sock`, `simulator-host.sock`, `screen-host.sock`, and `ssh-agent.sock` |
 | `scrollback/` | each terminal pane's last saved screen (`<pane>.vt`, `.offset`) |
 | `logs/` | the daemon's and helpers' logs |
-| `browser-profile/` | the one Chromium profile every browser pane shares |
+| `browser-profile/` | Chromium's profiles: one per Group (`group-<Group id>/`), shared by its browser panes |
 | `panelogs/`, `grouppics/` | log panes' parsed entries; Groups' pictures |
 | `person.key` | Unraid only (§5.6) |
 
@@ -249,7 +249,7 @@ Locally, the Mac app sends native events to the helper over its socket: for a br
 
 ### 7.3 Browser panes
 
-- **Engine:** CEF in Hammock Browser, one process per daemon (one profile, so one set of logins), started by the daemon and outliving the app (and the daemon) like holders. Each pane is a windowed Chromium browser in a hidden, transparent window behind the pane (ADR-0011; [internals/browser-panes.md](internals/browser-panes.md)). After a reboot the daemon reopens each at its stored URL.
+- **Engine:** CEF in Hammock Browser, one process per daemon (a profile per Group, so each Group has its own logins), started by the daemon and outliving the app (and the daemon) like holders. Each pane is a windowed Chromium browser in a hidden, transparent window behind the pane (ADR-0011; [internals/browser-panes.md](internals/browser-panes.md)). After a reboot the daemon reopens each at its stored URL.
 - **Bundled:** CEF ships inside the app (`Contents/Helpers/Hammock Browser.app`).
 - **Agent control:** the daemon reaches each page through CEF's in-process DevTools channel and exposes MCP tools (`browser_open`, `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press_key`, `browser_evaluate`, `browser_screenshot`, `browser_console`, `browser_network`, `browser_wait_for`). Read-only scripts run wherever an agent may read; anything else only where it may control (§8).
 - **DevTools:** opened in a pane of its own (`hmk-devtools:<page>`, `devtools.go`), for a page in the same Group, from Show DevTools or `hmk devtools`, never from a page's link or address. Chromium's frontend talks to the page through a WebSocket on 127.0.0.1 that takes only that page's token (an HMAC of its pane id under a secret per daemon run) and only the frontend's `Origin`. The pane's URL and title never carry the frontend's address. A DevTools pane can do anything in its page, so for agents it *is* its page (§8).

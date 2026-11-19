@@ -31,6 +31,15 @@
 //                   menu, context and clipboard go to a remote viewer instead
 //                   (through the daemon) when its input came last
 //
+// Profiles: each Group's browsers share a profile of their own (cookies,
+// logins, local storage, cache), in <profile>/group-<group>, so a page (or
+// an agent driving it) in one Group never sees another's logins. create
+// carries the Group ("group"); a create for a browser that's in another
+// Group's profile reopens it there, at that URL (a live page can't change
+// profile). hello lists each browser's ("groups": id -> group). dropProfile
+// {group} deletes a closed Group's profile once its browsers have closed. A
+// browser with no (or an odd) Group gets an in-memory profile, never kept.
+//
 // Remote viewers (ADR-0012): the daemon opens a second connection and sends
 // {"t":"media"}; the host answers {"t":"mediaReady"} and from then on takes
 // encode {id, sid, bitrate, fps, maxPixels}, rate {sid, bitrate, fps},
@@ -125,6 +134,9 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
   CefRefPtr<CefRegistration> devtools;
 }
 @property(copy) NSString *bid;
+// Its Group's profile ("": the in-memory fallback). While it closes to
+// reopen in another Group's (reopenURL set), the profile and URL to reopen with.
+@property(copy) NSString *profile, *reopenURL, *reopenProfile;
 @property(strong) ShadowWindow *window;
 @property(weak) Conn *viewer;  // the client showing this browser
 @property uint32_t lastCtx;
@@ -214,6 +226,8 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 
 @interface Host : NSObject
 @property(copy) NSString *socketPath;
+@property(copy) NSString *profileRoot;  // --profile: Chromium's root_cache_path
+@property(strong) NSMutableSet<NSString *> *dropping;  // closed Groups' profiles, deleted once their browsers close
 @property(strong) NSMutableDictionary<NSString *, Browser *> *browsers;
 @property(strong) NSMutableArray<Conn *> *conns;
 @property(strong) dispatch_source_t acceptSrc;
@@ -236,6 +250,43 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 @end
 
 static Host *gHost;
+
+#pragma mark - Profiles
+
+// Each Group's profile, made when its first browser opens and kept while the
+// host runs ("": the in-memory fallback), even once its Group is closed:
+// letting go of a profile Chromium is still tearing down crashes the host.
+static std::map<std::string, CefRefPtr<CefRequestContext>> gProfiles;
+
+// A Group's profile, as the daemon names it: its id when that's safe as a
+// directory name, else "" (the fallback).
+static NSString *profileKey(id v) {
+  static NSCharacterSet *bad =
+      [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"]
+          .invertedSet;
+  if (![v isKindOfClass:NSString.class]) return @"";
+  NSString *s = v;
+  return s.length && s.length <= 64 && [s rangeOfCharacterFromSet:bad].location == NSNotFound ? s : @"";
+}
+
+// Right inside root_cache_path: Chromium makes a profile nowhere else (as
+// the daemon names them: browserProfileDir).
+static NSString *profileDir(NSString *key) {
+  return [gHost.profileRoot stringByAppendingPathComponent:[@"group-" stringByAppendingString:key]];
+}
+
+static CefRefPtr<CefRequestContext> profileContext(NSString *key) {
+  auto it = gProfiles.find(key.UTF8String);
+  if (it != gProfiles.end()) return it->second;
+  CefRequestContextSettings s;
+  if (key.length) {
+    CefString(&s.cache_path) = profileDir(key).UTF8String;
+    s.persist_session_cookies = true;  // kept across restarts, as a browser restoring its session does
+  }
+  CefRefPtr<CefRequestContext> ctx = CefRequestContext::CreateContext(s, nullptr);
+  gProfiles[key.UTF8String] = ctx;
+  return ctx;
+}
 
 #pragma mark - DevTools protocol
 
@@ -1089,7 +1140,10 @@ static time_t mtimeOf(const char *path) {
     dispatch_resume(conn.src);
     [self.conns addObject:conn];
     self.lonelySince = 0;
-    [self send:@{@"t" : @"hello", @"pid" : @(getpid()), @"ids" : self.browsers.allKeys, @"built" : @(self.built)} to:conn];
+    NSMutableDictionary *groups = [NSMutableDictionary dictionary];
+    for (Browser *b in self.browsers.allValues) groups[b.bid] = b.reopenURL ? b.reopenProfile : b.profile;
+    [self send:@{@"t" : @"hello", @"pid" : @(getpid()), @"ids" : self.browsers.allKeys, @"groups" : groups, @"built" : @(self.built)}
+            to:conn];
     for (Browser *b in self.browsers.allValues) [self sendState:b to:conn];
   });
   dispatch_resume(self.acceptSrc);
@@ -1205,11 +1259,22 @@ static time_t mtimeOf(const char *path) {
   return v;
 }
 
-- (void)create:(NSString *)bid url:(NSString *)url {
-  if (self.browsers[bid] || self.quitting) return;
+- (void)create:(NSString *)bid url:(NSString *)url profile:(NSString *)profile {
+  if (self.quitting) return;
+  if (Browser *old = self.browsers[bid]) {
+    // Its pane moved to another Group: a live page can't change profile, so
+    // it reopens in the new one, at the same address (browserClosed).
+    if ((old.closing && !old.reopenURL) || ([old.profile isEqualToString:profile] && !old.reopenURL)) return;
+    old.reopenURL = url.length ? url : @"about:blank";
+    old.reopenProfile = profile;
+    [self closeBrowser:old];
+    return;
+  }
+  [self.dropping removeObject:profile];  // its Group is back (Reopen Closed Tab)
   Browser *b = [Browser new];
   b.bid = bid;
   b.url = url;
+  b.profile = profile;
   NSRect r = NSMakeRect(0, 0, 1000, 700);
   ShadowWindow *w = [[ShadowWindow alloc] initWithContentRect:r styleMask:NSWindowStyleMaskBorderless
                                                       backing:NSBackingStoreBuffered defer:NO];
@@ -1228,7 +1293,8 @@ static time_t mtimeOf(const char *path) {
   CefWindowInfo info;
   info.SetAsChild((__bridge CefWindowHandle)w.contentView, CefRect(0, 0, (int)r.size.width, (int)r.size.height));
   CefBrowserSettings bs;
-  CefBrowserHost::CreateBrowser(info, new Client(b), url.length ? url.UTF8String : "about:blank", bs, nullptr, nullptr);
+  CefBrowserHost::CreateBrowser(info, new Client(b), url.length ? url.UTF8String : "about:blank", bs, nullptr,
+                                profileContext(profile));
 }
 
 - (void)closeBrowser:(Browser *)b {
@@ -1243,10 +1309,47 @@ static time_t mtimeOf(const char *path) {
   [gDragSources removeObjectForKey:b.bid];
   b->devtools = nullptr;
   b->cef = nullptr;
+  if (self.browsers[b.bid] == b) [self.browsers removeObjectForKey:b.bid];
+  if (b.reopenURL && !self.quitting) {
+    // Reopened in its new Group's profile, where the old one was: the same
+    // viewer and place, so the pane shows it as soon as it draws.
+    [self create:b.bid url:b.reopenURL profile:b.reopenProfile];
+    Browser *nb = self.browsers[b.bid];
+    nb.viewer = b.viewer;
+    nb.paneRect = b.paneRect;
+    nb.window.spoofKey = b.window.spoofKey;
+    [nb.window orderWindow:NSWindowAbove relativeTo:b.window.windowNumber];
+    [self layoutPage:nb];
+  }
   [b.window orderOut:nil];
   [b.window close];
-  [self.browsers removeObjectForKey:b.bid];
+  // Not from inside Chromium's close callback.
+  dispatch_async(dispatch_get_main_queue(), ^{ [self dropProfiles]; });
   if (self.quitting && !self.browsers.count) CefQuitMessageLoop();
+}
+
+- (BOOL)profileUsed:(NSString *)key {
+  for (Browser *b in self.browsers.allValues) {
+    if ([b.profile isEqualToString:key] || [b.reopenProfile isEqualToString:key]) return YES;
+  }
+  return NO;
+}
+
+// Deletes the profiles of closed Groups (dropProfile) once none of their
+// browsers are left: the cookies at once (Chromium keeps the profile loaded),
+// then, a moment later, its directory, unless the Group came back meanwhile
+// (Reopen Closed Tab).
+- (void)dropProfiles {
+  for (NSString *key in [self.dropping copy]) {
+    if ([self profileUsed:key]) continue;
+    [self.dropping removeObject:key];
+    auto it = gProfiles.find(key.UTF8String);
+    if (it != gProfiles.end()) it->second->GetCookieManager(nullptr)->DeleteCookies("", "", nullptr);
+    NSString *dir = profileDir(key);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+      if (![self profileUsed:key]) [NSFileManager.defaultManager removeItemAtPath:dir error:nil];
+    });
+  }
 }
 
 - (void)quit {
@@ -1267,7 +1370,13 @@ static time_t mtimeOf(const char *path) {
 - (void)handle:(NSDictionary *)m from:(Conn *)c {
   NSString *t = m[@"t"];
   if ([t isEqualToString:@"create"]) {
-    [self create:m[@"id"] url:m[@"url"]];
+    [self create:m[@"id"] url:m[@"url"] profile:profileKey(m[@"group"])];
+    return;
+  }
+  if ([t isEqualToString:@"dropProfile"]) {
+    NSString *key = profileKey(m[@"group"]);
+    if (key.length) [self.dropping addObject:key];
+    [self dropProfiles];
     return;
   }
   if ([t isEqualToString:@"quit"]) {
@@ -2140,11 +2249,12 @@ int main(int argc, char *argv[]) {
     CefString(&settings.framework_dir_path) =
         [bundle stringByAppendingPathComponent:@"Contents/Frameworks/Chromium Embedded Framework.framework"].UTF8String;
     settings.log_severity = LOGSEVERITY_WARNING;
-    // A persistent profile (cookies, logins, local storage) shared by every
-    // browser pane, kept across restarts with session cookies included.
+    // Every browser opens in its Group's profile (profileContext), under
+    // this root; the global one, which none use, is kept in memory. (The
+    // daemon deletes the Default profile all panes once shared.)
+    gHost.profileRoot = profile;
+    gHost.dropping = [NSMutableSet set];
     CefString(&settings.root_cache_path) = profile.UTF8String;
-    CefString(&settings.cache_path) = [profile stringByAppendingPathComponent:@"Default"].UTF8String;
-    settings.persist_session_cookies = true;
     if (!CefInitialize(args, settings, new App, nullptr)) return CefGetExitCode();
     [gHost listen];
     CefRunMessageLoop();

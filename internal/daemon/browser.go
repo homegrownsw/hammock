@@ -25,17 +25,142 @@ import (
 )
 
 // Browser panes run in one browser host process per daemon ("Hammock
-// Browser", helpers/browser): Chromium can't share a profile between
-// processes, and one profile means one set of logins for every pane. The
-// daemon owns which browsers exist and at what URL; clients that can show
-// them (the Mac app) talk to the host directly for pixels and input.
+// Browser", helpers/browser): Chromium can't share its profiles between
+// processes. Each Group has a profile of its own (cookies, logins, local
+// storage, cache), so a page in one Group, or an agent driving it, never
+// sees another Group's logins. The daemon owns which browsers exist, at what
+// URL and in which Group; clients that can show them (the Mac app) talk to
+// the host directly for pixels and input.
 //
 // The host outlives the daemon like pane holders do. On (re)connecting, the
 // daemon recreates any browser the host doesn't have (after a reboot, at the
-// stored URL) and closes any it no longer wants.
+// stored URL), reopens any that's in another Group's profile, and closes any
+// it no longer wants.
 
 // BrowserSocketPath is the browser host's socket for a state dir.
 func BrowserSocketPath(dir string) string { return filepath.Join(dir, "run", "browser-host.sock") }
+
+// browserProfileRoot holds the browser host's profiles (Chromium's
+// root_cache_path): each Group's in browserProfileDir.
+func browserProfileRoot(dir string) string { return filepath.Join(dir, "browser-profile") }
+
+// groupProfilePrefix starts each Group's profile's directory name: right in
+// the root, since Chromium makes a profile nowhere else. The host names
+// them the same way.
+const groupProfilePrefix = "group-"
+
+// browserProfileDir is a Group's profile (key: browserProfileKey).
+func browserProfileDir(root, key string) string { return filepath.Join(root, groupProfilePrefix+key) }
+
+// profilesMarker, in the root, says the old shared profile has been deleted.
+const profilesMarker = ".group-profiles"
+
+var profileKeyChars = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+// browserProfileKey names a Group's browser profile: its id, when that's
+// safe as a directory name (as newID makes them), else "", which the host
+// keeps in memory only. The host checks it the same way.
+func browserProfileKey(groupID string) string {
+	if profileKeyChars.MatchString(groupID) {
+		return groupID
+	}
+	return ""
+}
+
+// prepareBrowserProfiles readies the profiles before the host starts, while
+// nothing has them open: the first time (no marker yet), it deletes the one
+// profile every pane used to share (Default), so its logins don't linger on
+// disk; every time, it deletes the profiles of Groups that are gone (one
+// closed while the host wasn't running to do it). Anything else in root
+// (Chromium's own Local State, and the Default it now keeps in memory) is
+// left alone.
+func prepareBrowserProfiles(root string, live map[string]bool) error {
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	marker := filepath.Join(root, profilesMarker)
+	if _, err := os.Stat(marker); errors.Is(err, os.ErrNotExist) {
+		if err := os.RemoveAll(filepath.Join(root, "Default")); err != nil {
+			return err
+		}
+		if err := os.WriteFile(marker, nil, 0o600); err != nil {
+			return err
+		}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, e := range entries {
+		if key, ok := strings.CutPrefix(e.Name(), groupProfilePrefix); ok && e.IsDir() && !live[key] {
+			errs = append(errs, os.RemoveAll(browserProfileDir(root, key)))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// browserProfiles is the profile key of every Group here.
+func (d *Daemon) browserProfiles() map[string]bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	live := map[string]bool{}
+	for id := range d.reopenableGroups() {
+		if k := browserProfileKey(id); k != "" {
+			live[k] = true
+		}
+	}
+	return live
+}
+
+// reopenableGroups is every Group here, and every closed one Reopen Closed
+// can still bring back (an entry that remembers it). Callers hold d.mu.
+func (d *Daemon) reopenableGroups() map[string]bool {
+	ids := map[string]bool{}
+	for id := range d.groups {
+		ids[id] = true
+	}
+	for _, ct := range d.closedTabs {
+		if ct.group != nil {
+			ids[ct.groupID] = true
+		}
+	}
+	return ids
+}
+
+// closedGroupProfile keeps a closed Group's browser profile (its logins)
+// while Reopen Closed can bring the Group back, and drops it once it can't.
+// Callers hold d.mu.
+func (d *Daemon) closedGroupProfile(id string) {
+	if d.closedProfs == nil {
+		d.closedProfs = map[string]bool{}
+	}
+	d.closedProfs[id] = true
+	d.dropGoneProfiles()
+}
+
+// dropGoneProfiles drops the browser profiles of closed Groups that are
+// gone for good: their last entry fell off Reopen Closed (or was reopened
+// elsewhere). One whose Group is back keeps it. Called whenever entries
+// leave the list. Callers hold d.mu.
+func (d *Daemon) dropGoneProfiles() {
+	if len(d.closedProfs) == 0 {
+		return
+	}
+	keep := d.reopenableGroups()
+	for id := range d.closedProfs {
+		if _, back := d.groups[id]; back {
+			delete(d.closedProfs, id)
+		} else if !keep[id] {
+			delete(d.closedProfs, id)
+			d.browsers.dropProfile(browserProfileKey(id))
+		}
+	}
+}
+
+// browserGroup is the profile key of the Group a browser pane is in.
+// Callers hold d.mu.
+func (d *Daemon) browserGroup(id string) string { return browserProfileKey(d.groupOfPane(id)) }
 
 type browserHub struct {
 	d     *Daemon
@@ -107,9 +232,20 @@ func (h *browserHub) send(m map[string]any) {
 	}
 }
 
-func (h *browserHub) create(id, url string) {
+// create opens a browser in its Group's profile (group: browserGroup). For
+// one the host has in another Group's profile, it reopens it in this one.
+func (h *browserHub) create(id, url, group string) {
 	h.ensure()
-	h.send(map[string]any{"t": "create", "id": id, "url": h.hostURL(url)})
+	h.send(map[string]any{"t": "create", "id": id, "url": h.hostURL(url), "group": group})
+}
+
+// dropProfile deletes a closed Group's browser profile, once the host has
+// closed its browsers. With no host running, the next one's start does it
+// (prepareBrowserProfiles).
+func (h *browserHub) dropProfile(group string) {
+	if group != "" {
+		h.send(map[string]any{"t": "dropProfile", "group": group})
+	}
 }
 
 func (h *browserHub) close(id string) {
@@ -180,9 +316,13 @@ func (h *browserHub) spawn() error {
 		return err
 	}
 	defer logf.Close()
+	root := browserProfileRoot(dir)
+	if err := prepareBrowserProfiles(root, h.d.browserProfiles()); err != nil {
+		h.d.log.Error("browser profiles", "err", err)
+	}
 	// It talks only to hmkd and the Hammock app, by their code signatures
 	// (helpers/common/peer.h).
-	cmd := exec.Command(h.path, "--socket="+BrowserSocketPath(dir), "--profile="+filepath.Join(dir, "browser-profile"))
+	cmd := exec.Command(h.path, "--socket="+BrowserSocketPath(dir), "--profile="+root)
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.Env = baseEnv()
 	// Its own session, so it outlives the daemon (as pane holders do).
@@ -196,21 +336,22 @@ func (h *browserHub) spawn() error {
 }
 
 type hostMsg struct {
-	T       string   `json:"t"`
-	ID      string   `json:"id"`
-	IDs     []string `json:"ids"`
-	Built   int64    `json:"built"`
-	Pid     int      `json:"pid"`
-	URL     string   `json:"url"`
-	Title   string   `json:"title"`
-	Icon    string   `json:"icon"`
-	Loading bool     `json:"loading"`
-	Back    bool     `json:"back"`
-	Fwd     bool     `json:"fwd"`
-	Path    string   `json:"path"`
-	Done    bool     `json:"done"`
-	Failed  bool     `json:"failed"`
-	Page    bool     `json:"page"` // popup: the page opened it (target=_blank, window.open), not the person's Open Link in New Tab
+	T       string            `json:"t"`
+	ID      string            `json:"id"`
+	IDs     []string          `json:"ids"`
+	Groups  map[string]string `json:"groups"` // hello: each browser's Group profile
+	Built   int64             `json:"built"`
+	Pid     int               `json:"pid"`
+	URL     string            `json:"url"`
+	Title   string            `json:"title"`
+	Icon    string            `json:"icon"`
+	Loading bool              `json:"loading"`
+	Back    bool              `json:"back"`
+	Fwd     bool              `json:"fwd"`
+	Path    string            `json:"path"`
+	Done    bool              `json:"done"`
+	Failed  bool              `json:"failed"`
+	Page    bool              `json:"page"` // popup: the page opened it (target=_blank, window.open), not the person's Open Link in New Tab
 	// DevTools
 	Seq    int             `json:"seq"`
 	OK     bool            `json:"ok"`
@@ -253,7 +394,7 @@ func (h *browserHub) read(c net.Conn) {
 				continue
 			}
 			h.send(map[string]any{"t": "cdpEvents"})
-			h.sync(m.IDs)
+			h.sync(m.IDs, m.Groups)
 		case "cdpResult":
 			h.reply(m)
 		case "cdpEvent":
@@ -274,25 +415,40 @@ func (h *browserHub) read(c net.Conn) {
 	}
 }
 
-// sync makes the host's browsers match the daemon's browser panes.
-func (h *browserHub) sync(have []string) {
+// sync makes the host's browsers match the daemon's browser panes, each in
+// its Group's profile (groups: the host's, by browser).
+func (h *browserHub) sync(have []string, groups map[string]string) {
 	d := h.d
+	type browser struct{ url, group string }
 	d.mu.Lock()
-	want := map[string]string{}
+	want := map[string]browser{}
 	for id, p := range d.panes {
 		if info := p.snapshotInfo(); info.Kind == pb.PaneKind_PANE_KIND_BROWSER {
-			want[id] = info.Url
+			want[id] = browser{info.Url, d.browserGroup(id)}
 		}
 	}
 	d.mu.Unlock()
-	for id, u := range want {
-		if !slices.Contains(have, id) {
-			h.send(map[string]any{"t": "create", "id": id, "url": h.hostURL(u)})
+	for id, b := range want {
+		if !slices.Contains(have, id) || groups[id] != b.group {
+			h.create(id, b.url, b.group)
 		}
 	}
 	for _, id := range have {
 		if _, ok := want[id]; !ok {
 			h.send(map[string]any{"t": "close", "id": id})
+		}
+	}
+}
+
+// regroupBrowsers reopens the browser panes among ids in the profile of the
+// Group they're now in (their tab moved to another Group, or was merged into
+// one of its tabs). Chromium can't move a live page between profiles, so the
+// page loads again at its address, without what was on it (a form, where it
+// was scrolled to). Callers hold d.mu.
+func (d *Daemon) regroupBrowsers(ids []string) {
+	for _, id := range ids {
+		if p := d.panes[id]; p != nil && p.isBrowser() {
+			d.browsers.create(id, p.snapshotInfo().Url, d.browserGroup(id))
 		}
 	}
 }
@@ -348,7 +504,7 @@ func (d *Daemon) startBrowser(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	p := newPane(d, info)
 	d.panes[info.Id] = p
 	d.persist(d.store.PutPane(info))
-	d.browsers.create(info.Id, u)
+	d.browsers.create(info.Id, u, browserProfileKey(t.GroupId))
 	return p, nil
 }
 

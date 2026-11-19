@@ -25,7 +25,7 @@ Settings ▸ Tools also has Show what agents do in browsers and simulators (`age
 
 ## Browser
 
-A browser pane is a real Chromium page. All browser panes share one profile, so logins and cookies carry over and are kept when you quit.
+A browser pane is a real Chromium page. Each Group has its own browser logins and cookies, shared by its browser panes and kept when you quit, so an agent in one Group sees only that Group's. A browser tab moved to another Group reloads with that Group's logins. A closed Group's are deleted once it can no longer be reopened.
 
 Open one with File ▸ New Browser Tab (⇧⌘B) or Pane ▸ Split Right with Browser (⌥⌘B). In a terminal, ⇧⌘-click a link to open it in a browser pane beside it; to make that the default for a plain ⌘-click, change Settings ▸ General ▸ Links ▸ Clicked links open in (`link-open`).
 
