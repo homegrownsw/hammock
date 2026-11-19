@@ -68,6 +68,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.client.AgentCatalog
 import com.homegrownsw.hammock.client.AppModel
+import com.homegrownsw.hammock.client.restingWithSubagents
+import com.homegrownsw.hammock.client.restingWithWork
 import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.client.Workspace
 import com.homegrownsw.hammock.client.agentProgress
@@ -307,7 +309,8 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
             }
             Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                 if (state != null || resting || agent?.asleep == true) {
-                    StatusIcon(state, resting = resting, asleep = agent?.asleep == true, progress = agent?.agentProgress, size = 22.dp)
+                    StatusIcon(state, resting = resting, shells = agent?.agent?.restingWithWork == true,
+                        subagents = agent?.agent?.restingWithSubagents == true, asleep = agent?.asleep == true, progress = agent?.agentProgress, size = 22.dp)
                 } else {
                     CompositionLocalProvider(LocalContentColor provides quiet) {
                         PaneIcon(w.panes[tab.focusedPaneId] ?: w.panes(tab).firstOrNull(), 20.dp)

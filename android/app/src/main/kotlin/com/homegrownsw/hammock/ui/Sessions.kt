@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.client.AppModel
+import com.homegrownsw.hammock.client.restingWithSubagents
+import com.homegrownsw.hammock.client.restingWithWork
 import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.client.Workspace
 import com.homegrownsw.hammock.client.agentProgress
@@ -287,7 +289,8 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
             .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatusIcon(if (idleSeen) null else a.shownState, resting = idleSeen, asleep = r.pane.asleep, progress = r.pane.agentProgress,
+        StatusIcon(if (idleSeen) null else a.shownState, resting = idleSeen, shells = idleSeen && a.restingWithWork,
+            subagents = idleSeen && a.restingWithSubagents, asleep = r.pane.asleep, progress = r.pane.agentProgress,
             size = 22.dp, modifier = Modifier.align(Alignment.Top).padding(top = 1.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

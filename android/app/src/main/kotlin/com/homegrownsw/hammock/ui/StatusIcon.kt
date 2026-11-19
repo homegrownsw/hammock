@@ -42,6 +42,8 @@ object StatusPalette {
     @Composable fun green() = pick(Color(0xFF248A3D), Color(0xFF30D158))
     @Composable fun amber() = pick(Color(0xFFF59300), Color(0xFFFF9F0A))
     @Composable fun red() = pick(Color(0xFFE5372C), Color(0xFFFF453A))
+    /** The dot going round a resting agent's ring while shells run: an opaque grey, stronger than the ring. */
+    @Composable fun grey() = pick(Color(0xFF6E6E73), Color(0xFFAEAEB2))
 
     @Composable
     private fun pick(light: Color, dark: Color) = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) dark else light
@@ -49,7 +51,8 @@ object StatusPalette {
 
 /**
  * An agent's state as an icon (the iPhone's "Orbit"): rings while all is
- * well (grey at rest, an indigo arc going round while it works, green with a
+ * well (grey at rest, with a dot going slowly round it while work still runs:
+ * grey for shells, indigo for subagents; an indigo arc going round while it works, green with a
  * check once it's finished); filled when it needs you (amber with ! for input,
  * red with × for an error). Asleep, a grey moon. No agent: the terminal glyph.
  * Drawn on the iPhone's 20-point grid, scaled to [size].
@@ -58,6 +61,8 @@ object StatusPalette {
 fun StatusIcon(
     state: AgentState?,
     resting: Boolean = false,
+    shells: Boolean = false,
+    subagents: Boolean = false,
     asleep: Boolean = false,
     progress: Int? = null,
     size: Dp = 18.dp,
@@ -82,10 +87,7 @@ fun StatusIcon(
                     drawGlyph(Glyph.Check, green, maxOf(1f, 1.9f * k))
                 }
             }
-            resting -> Canvas(Modifier.size(size).semantics { contentDescription = "Agent idle" }) {
-                val k = this.size.width / 20
-                drawCircle(quiet, radius = 7.25f * k, style = Stroke(maxOf(1f, 1.5f * k)))
-            }
+            resting -> Resting(quiet, size, shells, subagents)
             else -> ProgramIcon(emptyList(), size)
         }
     }
@@ -136,6 +138,31 @@ private fun Working(color: Color, size: Dp, progress: Int?, starting: Boolean) {
             drawArc(color, -90f, 360f * progress.coerceIn(2, 100) / 100f, false, topLeft, arc, style = Stroke(w, cap = StrokeCap.Round))
         } else {
             drawArc(color.copy(alpha = if (starting) 0.55f else 1f), angle - 90f, 0.28f * 360f, false, topLeft, arc, style = Stroke(w, cap = StrokeCap.Round))
+        }
+    }
+}
+
+/**
+ * At rest: a grey ring. While work still runs, a solid dot goes slowly round
+ * it (once every 10 s): grey for shells, the working indigo for subagents.
+ */
+@Composable
+private fun Resting(ring: Color, size: Dp, shells: Boolean, subagents: Boolean) {
+    val dot = if (subagents) StatusPalette.indigo() else StatusPalette.grey()
+    val label = when {
+        subagents -> "Agent idle, subagents running"
+        shells -> "Agent idle, shells running"
+        else -> "Agent idle"
+    }
+    val t = rememberInfiniteTransition(label = "resting")
+    val angle by t.animateFloat(0f, 360f, infiniteRepeatable(tween(10_000, easing = LinearEasing), RepeatMode.Restart), label = "orbit")
+    Canvas(Modifier.size(size).semantics { contentDescription = label }) {
+        val k = this.size.width / 20
+        drawCircle(ring, radius = 7.25f * k, style = Stroke(maxOf(1f, 1.5f * k)))
+        if (shells || subagents) {
+            val r = maxOf(3.5f, 5f * k) / 2
+            val a = Math.toRadians((angle - 90f).toDouble())
+            drawCircle(dot, radius = r, center = Offset(center.x + 7.25f * k * Math.cos(a).toFloat(), center.y + 7.25f * k * Math.sin(a).toFloat()))
         }
     }
 }

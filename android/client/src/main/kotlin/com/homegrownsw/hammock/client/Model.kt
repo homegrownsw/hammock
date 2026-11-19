@@ -20,6 +20,9 @@ val Agent.shownState: AgentState get() = if (runningCommand && state == AgentSta
 /** At rest with work still going on (background shells, subagents). */
 val Agent.restingWithWork: Boolean get() = state == AgentState.AGENT_STATE_IDLE && !runningCommand && (shells > 0 || subagents > 0)
 
+/** At rest with subagents still running: its dot goes round in the working indigo. */
+val Agent.restingWithSubagents: Boolean get() = state == AgentState.AGENT_STATE_IDLE && !runningCommand && subagents > 0
+
 val AgentState.label: String get() = when (this) {
     AgentState.AGENT_STATE_NEEDS_INPUT -> "Waiting for you"
     AgentState.AGENT_STATE_WORKING -> "Working"
