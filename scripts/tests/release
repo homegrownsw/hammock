@@ -457,6 +457,13 @@ check "a version released already isn't again" fails "$(release "$d" android 202
 release "$d" android next allow-empty
 check "the next is a patch" "Android-v2026.5.1-r3" "$(git -C "$d" describe --tags --abbrev=0 HEAD)"
 calls >/dev/null
+d=$(fixture 2026.5.0 2026.5.0 2026.5.0)
+mark_released "$d" Mac 2026.5.0
+release "$d" android next
+check "with the Mac's release of its version, the APK goes on that one" \
+  'https://github.com/homegrownsw/hammock/releases/download/Mac-v2026.5.0-r1/Hammock-2026.5.0.apk' \
+  "$(git -C "$d" show HEAD:marketing/android.json | jq -r .apk)"
+calls >/dev/null
 d=$(fixture 2026.1.0 2026.1.0 2026.5.0)
 check "a build that fails" fails "$(FAKE_ANDROID_BUILD_FAIL=1 release "$d" android next && echo passes || echo fails)"
 check "…takes the release back" "1 " "$(count "$d") $(git -C "$d" tag -l | tr '\n' ' ' | sed 's/ $//')"

@@ -86,8 +86,21 @@ case "$cmd" in
     version="$(version_of "$tag")"
     apk="$out/Hammock-$version.apk"
     [ -f "$apk" ] && [ -f "$out/Hammock-$n.html" ] || { echo "Build $n isn't in $out: build it first." >&2; exit 1; }
-    # A draft until the APK is up, then published, never as Latest (above). Again after a failed upload: the
-    # draft is still there, and its file is replaced.
+    # The Mac's release of the same version, if there is one, is this one's too: the APK goes on it, and its
+    # notes gain an Android section (once), its title and Latest left as they are.
+    home="$(git -C "$root" tag --list "Mac-v${version}-r*" | tail -1)"
+    if [ -n "$home" ] && gh release view "$home" --repo "$repo" >/dev/null 2>&1; then
+      gh release upload "$home" --repo "$repo" --clobber "$apk"
+      body="$(gh release view "$home" --repo "$repo" --json body -q .body)"
+      if ! grep -qF '<!-- android -->' <<<"$body"; then
+        { printf '%s\n\n<!-- android -->\n<h2>Android</h2>\n' "$body"; cat "$out/Hammock-$n.html"; } >"$out/Hammock-$n.release.html"
+        gh release edit "$home" --repo "$repo" --notes-file "$out/Hammock-$n.release.html"
+      fi
+      echo "Hammock for Android build $n: on https://github.com/$repo/releases/tag/$home"
+      exit 0
+    fi
+    # Otherwise a release of its own: a draft until the APK is up, then published, never as Latest (above).
+    # Again after a failed upload: the draft is still there, and its file is replaced.
     if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
       gh release upload "$tag" --repo "$repo" --clobber "$apk"
     else

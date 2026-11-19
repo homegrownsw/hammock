@@ -34,8 +34,10 @@
 #          tag Android-v<x.y.z>-r<n>, and marketing/android.json, where the app looks for updates (the
 #          website publishes it). Before anything is pushed it builds the tagged commit's APK, signed with
 #          Hammock's key, and checks it (scripts/android-apk build); a failure there takes the release back.
-#          After the push it publishes the APK as a GitHub Release, never marked Latest (scripts/android-apk
-#          upload). Its version is its own, released like the Mac's: each release a new version.
+#          After the push it puts the APK on the Mac's GitHub Release of the same version, with an Android
+#          section in its notes, or on a release of its own, never marked Latest, when the Mac has none
+#          (scripts/android-apk upload). Its version is its own, released like the Mac's: each release a new
+#          version; give it the Mac's to ship beside it.
 #
 # An app moving on from a version gets that version's summary, release-notes/<app>/v<old>.md, in the commit.
 #
@@ -454,6 +456,10 @@ android_feed() {
   local ver tag repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
   ver=$(get_var VER android)
   tag=$(get_var TAG android)
+  # On the Mac's GitHub Release of the same version when there is one (scripts/android-apk upload).
+  local mac
+  mac=$(git -C "$ROOT" tag -l "Mac-v${ver}-r*" | tail -1)
+  if [ -n "$mac" ]; then tag="$mac"; fi
   jq -n --arg v "$ver" --argjson b "$N" --arg apk "https://github.com/$repo/releases/download/$tag/Hammock-$ver.apk" \
     --arg notes "https://github.com/$repo/releases/tag/$tag" '{version: $v, build: $b, apk: $apk, notes: $notes}'
 }

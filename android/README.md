@@ -61,8 +61,9 @@ and Settings says so. `HMK_PUSH_RELAY` points a build at another relay.
 `just release-android next` (or a version) cuts a release (`scripts/release`, release-notes/README.md): it
 freezes `release-notes/android/` into the version, commits `marketing/android.json` (the update feed, which
 the website deploy publishes at homegrownsw.com/hammock/android.json) and tags `Android-v<x.y.z>-r<n>`, builds
-the APK from that commit and checks it (`scripts/android-apk`), pushes, then publishes the APK as a GitHub
-Release, never marked Latest (the Mac's download and update feed follow Latest). Run it in a Hammock pane, where
+the APK from that commit and checks it (`scripts/android-apk`), pushes, then puts the APK on the Mac's GitHub
+Release of the same version (with an Android section in its notes), or, when the Mac has none, on a release of
+its own, never marked Latest (the Mac's download and update feed follow Latest). Run it in a Hammock pane, where
 `op` can reach 1Password: `.release.env` names the item holding the signing key (`HMK_ANDROID_KEY_ITEM`, with
 fields `keystore`, `password` and `alias`) and the release build's `google-services.json`
 (`HMK_ANDROID_FIREBASE_ITEM`). Lose the key and nobody
