@@ -25,6 +25,31 @@ val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists()
     Properties().apply { f.inputStream().use { load(it) } }
 }
 
+// Firebase Cloud Messaging (android/README.md): each build type's values from
+// the google-services.json Firebase gives for its package (git-ignored:
+// app/google-services.json, app/src/debug/google-services.json), or HMK_FCM_*
+// (or hammock.FCM_* Gradle properties), which win. None: no notifications
+// while the app is closed.
+fun fcm(type: com.android.build.api.dsl.ApplicationBuildType, file: String, pkg: String) {
+    val found = HashMap<String, String>()
+    project.file(file).takeIf { it.exists() }?.let { f ->
+        @Suppress("UNCHECKED_CAST")
+        val json = groovy.json.JsonSlurper().parse(f) as Map<String, Any?>
+        val info = json["project_info"] as Map<String, Any?>
+        val client = (json["client"] as List<Map<String, Any?>>).firstOrNull {
+            ((it["client_info"] as Map<String, Any?>)["android_client_info"] as Map<String, Any?>)["package_name"] == pkg
+        } ?: throw GradleException("$file has no app for $pkg")
+        found["FCM_PROJECT_ID"] = info["project_id"] as String
+        found["FCM_SENDER_ID"] = info["project_number"] as String
+        found["FCM_APP_ID"] = (client["client_info"] as Map<String, Any?>)["mobilesdk_app_id"] as String
+        found["FCM_API_KEY"] = ((client["api_key"] as List<Map<String, Any?>>).first())["current_key"] as String
+    }
+    for (k in listOf("FCM_PROJECT_ID", "FCM_APP_ID", "FCM_API_KEY", "FCM_SENDER_ID")) {
+        val v = System.getenv("HMK_$k") ?: project.findProperty("hammock.$k") as String? ?: found[k] ?: ""
+        type.buildConfigField("String", k, "\"$v\"")
+    }
+}
+
 android {
     namespace = "com.homegrownsw.hammock"
     compileSdk = 35
@@ -38,10 +63,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The push relay this build registers with (relay/push).
         buildConfigField("String", "PUSH_RELAY", "\"${System.getenv("HMK_PUSH_RELAY") ?: "https://push.homegrownsw.com"}\"")
-        // Firebase Cloud Messaging (android/README.md): none, no notifications while the app is closed.
-        for (k in listOf("FCM_PROJECT_ID", "FCM_APP_ID", "FCM_API_KEY", "FCM_SENDER_ID")) {
-            buildConfigField("String", k, "\"${System.getenv("HMK_$k") ?: (project.findProperty("hammock.$k") as String? ?: "")}\"")
-        }
     }
 
     signingConfigs {
@@ -57,10 +78,12 @@ android {
         debug {
             // Beside a release build on the same phone, as β is beside Hammock on a Mac.
             applicationIdSuffix = ".dev"
+            fcm(this, "src/debug/google-services.json", "com.homegrownsw.hammock.dev")
             versionNameSuffix = "-dev"
         }
         release {
             if (keystoreProps != null) signingConfig = signingConfigs.getByName("release")
+            fcm(this, "google-services.json", "com.homegrownsw.hammock")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

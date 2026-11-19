@@ -49,9 +49,11 @@ just android-dev-daemon down "$dir"
 ## Notifications
 
 Pushes come through the relay (`relay/push`) and Firebase Cloud Messaging, end-to-end encrypted: the app
-decrypts each and builds the notification itself. Firebase is set up from build-time values, not a
-`google-services.json`: `HMK_FCM_PROJECT_ID`, `HMK_FCM_APP_ID`, `HMK_FCM_API_KEY` and `HMK_FCM_SENDER_ID`
-(or `hammock.FCM_*` Gradle properties). A build without them has no notifications while the app is closed,
+decrypts each and builds the notification itself. Firebase is set up from build-time values, read from
+the `google-services.json` Firebase gives for each app (git-ignored: `app/google-services.json` for
+`com.homegrownsw.hammock`, `app/src/debug/google-services.json` for `.dev`; no Google Services plugin), or
+`HMK_FCM_PROJECT_ID`, `HMK_FCM_APP_ID`, `HMK_FCM_API_KEY` and `HMK_FCM_SENDER_ID` (or `hammock.FCM_*` Gradle
+properties), which win. A build without them has no notifications while the app is closed,
 and Settings says so. `HMK_PUSH_RELAY` points a build at another relay.
 
 ## Releasing
