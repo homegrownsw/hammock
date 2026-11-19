@@ -3,7 +3,7 @@ title: Groups, tabs and panes
 description: How Hammock organises your work into Groups, tabs and panes, and how to arrange, float, move and close them.
 ---
 
-Everything in Hammock lives in one workspace, and the Mac app, the iPhone app, [the TUI](/hammock/docs/tui/) and the [`hmk` CLI](/hammock/docs/cli/) all show the same one.
+Everything in Hammock lives in one workspace, and the Mac app, the iPhone and Android apps, [the TUI](/hammock/docs/tui/) and the [`hmk` CLI](/hammock/docs/cli/) all show the same one.
 
 - A **Group** is a project: a set of tabs, usually opened in one folder. Groups are listed in the sidebar.
 - A **tab** holds one or more panes, split side by side or floating over each other.
@@ -90,4 +90,4 @@ hmk window open tab TAB
 
 ## Notifications
 
-Hammock tells you when an agent is waiting for you, asks for permission, finishes, hits an error, or replies to your [review comments](/hammock/docs/panes/#diff). Choose which, where they appear and their sounds in Settings ▸ Notifications. With an iPhone paired, they reach it when you're away: see [Hammock on iPhone](/hammock/docs/iphone/). Every setting is in the [config reference](/hammock/docs/reference/config/#notifications).
+Hammock tells you when an agent is waiting for you, asks for permission, finishes, hits an error, or replies to your [review comments](/hammock/docs/panes/#diff). Choose which, where they appear and their sounds in Settings ▸ Notifications. With a phone paired, they reach it when you're away: see [Hammock on iPhone](/hammock/docs/iphone/) or [on Android](/hammock/docs/android/). Every setting is in the [config reference](/hammock/docs/reference/config/#notifications).

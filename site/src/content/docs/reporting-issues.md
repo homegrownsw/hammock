@@ -8,8 +8,8 @@ description: How to report a bug, ask for a feature, or report a security vulner
 Hammock's issues are on GitHub: [homegrownsw/hammock](https://github.com/homegrownsw/hammock/issues). Search first, then [open a new issue](https://github.com/homegrownsw/hammock/issues/new). A good bug report says:
 
 - **What you did, what you expected, and what happened instead**, step by step if you can.
-- **Which version** of Hammock (Hammock ▸ About Hammock, or `hmk status`) and macOS, or of the iPhone app.
-- **Where it happened:** the Mac app, the iPhone app, `hmk tui` or `hmk`, and whether a linked computer or a shared Group was involved.
+- **Which version** of Hammock (Hammock ▸ About Hammock, or `hmk status`) and macOS, or of the iPhone or Android app.
+- **Where it happened:** the Mac app, the iPhone or Android app, `hmk tui` or `hmk`, and whether a linked computer or a shared Group was involved.
 - **For an agent problem,** which agent and version, and whether you've installed hooks (`hmk hooks install`).
 - **A screenshot or recording**, if it shows the problem.
 

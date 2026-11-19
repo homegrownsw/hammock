@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Run a coding agent in any Hammock pane and Hammock notices it. You see at a glance which agent is working, which needs you and which has finished, across every Group, on the Mac and on your iPhone. The [supported agents](/hammock/docs/reference/agents/) table says what Hammock can do with each.
+Run a coding agent in any Hammock pane and Hammock notices it. You see at a glance which agent is working, which needs you and which has finished, across every Group, on the Mac and on your phone. The [supported agents](/hammock/docs/reference/agents/) table says what Hammock can do with each.
 
 ## How Hammock recognises an agent
 
@@ -24,7 +24,7 @@ Run a coding agent in any Hammock pane and Hammock notices it. You see at a glan
 | Exited | The agent quit. |
 | Asleep | Hammock ended its process to free memory. See [Sleep and wake](#sleep-and-wake). |
 
-You see them on each tab's icon in the sidebar, in the sidebar's **Needs You** and **Finished** lists, as notifications, as a count on the Dock icon, as an orange count beside Hammock's menu bar icon (whose menu lists them, opening each agent's tab when you choose it), and on your [paired iPhone](/hammock/docs/iphone/). Each can be turned off in Settings.
+You see them on each tab's icon in the sidebar, in the sidebar's **Needs You** and **Finished** lists, as notifications, as a count on the Dock icon, as an orange count beside Hammock's menu bar icon (whose menu lists them, opening each agent's tab when you choose it), and on your paired [iPhone](/hammock/docs/iphone/) or [Android phone](/hammock/docs/android/). Each can be turned off in Settings.
 
 ## The agent view
 

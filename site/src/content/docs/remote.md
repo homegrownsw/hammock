@@ -1,9 +1,9 @@
 ---
 title: Away from your Mac
-description: Remote access, pairing your iPhone, linking your other computers, sharing a Group with other people, and the Hammock Key.
+description: Remote access, pairing your phone, linking your other computers, sharing a Group with other people, and the Hammock Key.
 ---
 
-Reach your panes from your iPhone, your other computers, and other people. Everything here is off until you turn it on.
+Reach your panes from your iPhone or Android phone, your other computers, and other people. Everything here is off until you turn it on.
 
 ## Remote access
 
@@ -34,7 +34,7 @@ A network chosen by its subnet also matches any other network with the same subn
 
 ## Pairing devices
 
-In Settings ▸ Devices, click **Show Pairing Code** (or File ▸ Pair a Device…) and scan it with Hammock on your iPhone. A code works once, for 10 minutes. See [Installing on iPhone](/hammock/docs/install/iphone/). On a Linux server, `hmk pair --print` prints the code in the terminal.
+In Settings ▸ Devices, click **Show Pairing Code** (or File ▸ Pair a Device…) and scan it with Hammock on your iPhone or Android phone. A code works once, for 10 minutes. See [Installing on iPhone](/hammock/docs/install/iphone/) or [on Android](/hammock/docs/install/android/). On a Linux server, `hmk pair --print` prints the code in the terminal.
 
 **Revoke** a device under **Paired Devices** to cut it off, or with `hmk devices revoke ID`. What paired devices do is logged in **Recent Activity**, or `hmk audit`.
 
@@ -94,7 +94,7 @@ Turn on **Allow Group sharing** in Settings ▸ Sharing. Then:
 3. They open it in Hammock (File ▸ Join Shared Group…, or `hmk join LINK`) and ask to join. You see their name and their key's fingerprint.
 4. Let them in to view or to drive, or decline. You approve each person once per Group.
 
-Requests also appear in Needs You on your Mac and iPhone. **Let Drive…** opens the app first, so you can see their key.
+Requests also appear in Needs You on your Mac and phone. **Let Drive…** opens the app first, so you can see their key.
 
 People you share with reach your Mac over Tailscale only, so remote access must listen on Tailscale. If they're on another tailnet, share your Mac with them in Tailscale first.
 
@@ -112,11 +112,11 @@ hmk leave GROUP              # leave a Group someone shared with you
 
 ## Screen sharing
 
-Your iPhone and your other Macs can also see and control this Mac's whole screen, say for a macOS prompt an agent is stuck behind. Turn it on in Settings ▸ Devices ▸ Screen Sharing. See [Screen sharing](/hammock/docs/screen-sharing/).
+Your phone and your other Macs can also see and control this Mac's whole screen, say for a macOS prompt an agent is stuck behind. Turn it on in Settings ▸ Devices ▸ Screen Sharing. See [Screen sharing](/hammock/docs/screen-sharing/).
 
 ## The Hammock Key
 
-The Hammock Key is an SSH key kept in your Mac's Secure Enclave. It never leaves the Mac, and signs only when you approve, with Touch ID on the Mac or Face ID on your iPhone. Use it for `ssh`, `git push` and signing commits, so nothing on your Mac, an agent included, can use it without you.
+The Hammock Key is an SSH key kept in your Mac's Secure Enclave. It never leaves the Mac, and signs only when you approve, with Touch ID on the Mac, Face ID on your iPhone, or your fingerprint, face or screen lock on Android. Use it for `ssh`, `git push` and signing commits, so nothing on your Mac, an agent included, can use it without you.
 
 Create it in Hammock ▸ Settings ▸ SSH, with **Create Hammock Key…**, or:
 
@@ -128,7 +128,7 @@ hmk key copy-id me@mac.example.net   # add it to a server's authorized_keys
 
 Settings ▸ SSH also has **Add to GitHub…** and **Copy to a Server…**. You can approve a signature once, or for a while in that pane (up to 10 minutes, or 5 for an agent).
 
-To approve from your iPhone, allow it under **Who Can Approve**, or with `hmk key allow DEVICE`. Requests then reach it as a notification.
+To approve from your phone, allow it under **Who Can Approve**, or with `hmk key allow DEVICE`. Requests then reach it as a notification.
 
 `ssh` and `git` in Hammock's panes go through Hammock's own SSH agent, which offers your usual keys and the Hammock Key. If your `~/.ssh/config` sends ssh to another agent (a password manager's, say), run `hmk ssh setup` to check, and `hmk ssh setup --apply` to fix it for Hammock's panes only. Settings ▸ SSH ▸ Your SSH Setup does the same.
 
@@ -137,7 +137,7 @@ See [Permissions](/hammock/docs/permissions/#touch-id-and-the-hammock-key) for T
 ## What keeps this safe
 
 - **Pinned keys.** Every device and computer signs in with the key recorded when it was paired or linked, over TLS pinned to this Mac's certificate.
-- **You, not your agents.** Pairing, linking, sharing, turning on remote access and answering permission requests happen directly only in the Hammock app. Asked from anywhere else, such as `hmk`, they wait for you to allow them on your Mac or iPhone. Agents are refused them outright.
+- **You, not your agents.** Pairing, linking, sharing, turning on remote access and answering permission requests happen directly only in the Hammock app. Asked from anywhere else, such as `hmk`, they wait for you to allow them on your Mac or phone. Agents are refused them outright.
 - **The audit log.** What paired devices, linked computers and agents do is logged: `hmk audit`.
 
 Agents, and anything else running as you, could in the end do what you can. For a real boundary around an agent, use its own sandbox.

@@ -9,5 +9,6 @@ Hammock is in rapid development, and should be treated as **beta software**.
 - **Expect rough edges.** Some agents Hammock supports were built from their source and documentation rather than tried day to day (see [Supported agents](/hammock/docs/reference/agents/)).
 - **Panes survive crashes and updates**, as they live in their own processes. Still, don't let Hammock be the only place something important lives.
 - **The iPhone app is in beta on TestFlight.** Keep it and the Mac app up to date together.
+- **The Android app is new**, installed as an APK from [GitHub Releases](/hammock/docs/install/android/). Keep it up to date with the Mac app too.
 
 Bugs and ideas are welcome: see [Reporting bugs and security issues](/hammock/docs/reporting-issues/).

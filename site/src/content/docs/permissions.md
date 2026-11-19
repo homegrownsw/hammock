@@ -45,7 +45,7 @@ macOS treats everything in a pane as part of Hammock. When a program in a pane w
 
 ## Accessibility and Screen & System Audio Recording
 
-**What they're for.** [Screen sharing](/hammock/docs/screen-sharing/) only: letting your iPhone and other Macs see this Mac's screen (Screen Recording) and click and type on it (Accessibility). Browser and simulator panes don't need them.
+**What they're for.** [Screen sharing](/hammock/docs/screen-sharing/) only: letting your phone and other Macs see this Mac's screen (Screen Recording) and click and type on it (Accessibility). Browser and simulator panes don't need them.
 
 **When.** Once you turn on screen sharing in Settings ▸ Devices ▸ Screen Sharing and click **Allow…** beside each step. Allow Accessibility first.
 
@@ -77,3 +77,13 @@ Hammock on the iPhone asks for:
 - **Face ID**, if you turn on **Require Face ID** in its Settings tab.
 
 Change any of them in the Settings app ▸ Apps ▸ Hammock. See [Using the iPhone app](/hammock/docs/iphone/).
+
+## On Android
+
+Hammock on Android asks for:
+
+- **Camera**, to scan the pairing code.
+- **Notifications**, for agents that need you.
+- **Microphone**, to dictate to your agents.
+
+**Require Unlock** and approving the Hammock Key use your fingerprint, face or screen lock, with nothing to grant. Change any of them in Android's Settings ▸ Apps ▸ Hammock ▸ Permissions. See [Using the Android app](/hammock/docs/android/).

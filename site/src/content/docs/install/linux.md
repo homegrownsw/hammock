@@ -4,7 +4,7 @@ description: Run the Hammock Server, hmk and the TUI on a Linux server or Unraid
 ---
 
 The Hammock Server (`hmkd`) and its CLI and TUI (`hmk`) run on Linux: a VPS, a home server, an Unraid box. Your Mac
-shows its Groups as a [linked computer](/hammock/docs/remote/), and your iPhone can pair with it.
+shows its Groups as a [linked computer](/hammock/docs/remote/), and your phone can pair with it.
 
 There's no app on Linux: everything is `hmk`, so it can be set up over SSH. Use `hmk tui` for the
 [full-screen workspace](/hammock/docs/tui/).
@@ -57,14 +57,17 @@ hmk link --accept       # waits for your Mac, shows its code, asks whether it ma
 Then on the Mac, choose File ▸ Link a Computer… and pick the server (or paste the link `hmk link --invite` prints).
 Both show a six-digit code: if they match, confirm on both. `hmk computers` lists linked computers.
 
-## Pair your iPhone
+<span id="pair-your-iphone"></span>
+
+## Pair your phone
 
 ```sh
 hmk pair                # a QR code in the terminal
 ```
 
-Scan it in Hammock on the iPhone (Devices ▸ Add Computer). `hmk devices revoke ID` removes a paired device. A server
-notifies your iPhone only while none of your linked Macs is in use.
+Scan it in Hammock on your [iPhone](/hammock/docs/install/iphone/) or [Android phone](/hammock/docs/install/android/)
+(Devices ▸ Add Computer). `hmk devices revoke ID` removes a paired device. A server notifies your phone only while none
+of your linked Macs is in use.
 
 ## Unraid
 

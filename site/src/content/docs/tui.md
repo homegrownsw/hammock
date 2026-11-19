@@ -23,7 +23,7 @@ Browser and simulator panes show live pictures in terminals that can draw them (
 
 ## Editor panes
 
-The TUI draws editor panes itself, without syntax colours, and edits the same buffer as the Mac and iPhone apps ([keys below](#keys)). To use `$VISUAL` or `$EDITOR` instead, set `editor-tui-external = true`: focusing an editor pane opens the file there, and Hammock takes each save.
+The TUI draws editor panes itself, without syntax colours, and edits the same buffer as the Mac and phone apps ([keys below](#keys)). To use `$VISUAL` or `$EDITOR` instead, set `editor-tui-external = true`: focusing an editor pane opens the file there, and Hammock takes each save.
 
 ## Keys
 

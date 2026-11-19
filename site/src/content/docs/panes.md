@@ -69,7 +69,7 @@ hmk log -- pnpm dev
 
 ## Editor
 
-An editor pane shows a text file, with syntax highlighting, find and go to line. Hammock keeps its buffer, so unsaved edits survive closing the app, and you can edit the same file from your Mac, your iPhone or [the TUI](/hammock/docs/tui/#editor-panes).
+An editor pane shows a text file, with syntax highlighting, find and go to line. Hammock keeps its buffer, so unsaved edits survive closing the app, and you can edit the same file from your Mac, your phone or [the TUI](/hammock/docs/tui/#editor-panes).
 
 Open one with File ▸ Quick Open… (⌘P), File ▸ Open File… (⌘O), or Pane ▸ Split Right with Editor (⌃⌘E):
 
@@ -81,7 +81,7 @@ When a program changes the file on disk, the pane reloads it, or offers to if yo
 
 ### Markdown preview
 
-A Markdown file can be read rendered: the buttons in the pane's header switch between its source, the source with the preview beside it, and the preview alone (View ▸ Show Preview, ⇧⌘V). The preview follows your edits, and an agent's changes to the file, as they happen, and Find (⌘F) searches it. Tick a task's checkbox to tick it in the file; a link to another file opens it beside. In a Group shared with you to view, the view you pick is yours alone. On the iPhone, Show Preview is in the pane's menu; the TUI shows the source.
+A Markdown file can be read rendered: the buttons in the pane's header switch between its source, the source with the preview beside it, and the preview alone (View ▸ Show Preview, ⇧⌘V). The preview follows your edits, and an agent's changes to the file, as they happen, and Find (⌘F) searches it. Tick a task's checkbox to tick it in the file; a link to another file opens it beside. In a Group shared with you to view, the view you pick is yours alone. On a phone, Show Preview is in the pane's menu; the TUI shows the source.
 
 ```sh
 hmk edit docs/plan.md --view preview

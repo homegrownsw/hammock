@@ -34,7 +34,7 @@ This is a guardrail, not a sandbox. It stops an agent wandering into panes you d
 Answer wherever is handiest; the agent waits until you do.
 
 - **In the Mac app**, in the sidebar's **Needs You** list: **Allow Once**, **Always in Group** (where offered), or **Deny**.
-- **On your iPhone**, in the app or from the notification.
+- **On your phone**, in the app or from the notification.
 - **From a terminal:** `hmk ls` lists pending requests, and `hmk grant allow|always|deny ID` answers one.
 
 ## Using `hmk` from the agent's shell

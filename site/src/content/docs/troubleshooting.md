@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Answers to common problems with Hammock on the Mac, the iPhone and the command line.
+description: Answers to common problems with Hammock on the Mac, your phone and the command line.
 ---
 
 ## Programs in my panes can't read files, or another app's data
@@ -15,22 +15,23 @@ Install Hammock's hooks: Settings ▸ Agents ▸ **Install Hooks & Tools**, or `
 Hammock guesses the state from the agent's screen and can't resume its session. See
 [Setting up agents](/hammock/docs/agents/setup/).
 
-## My iPhone can't connect to my Mac
+## My phone can't connect to my Mac
 
 Check each of these:
 
 - On the Mac, Settings ▸ Devices: **Allow paired devices to connect remotely** is on.
-- Under Remote Access, the network the iPhone is on is chosen. With none chosen, Hammock listens on Tailscale only.
-- If you use Tailscale, it's connected on both the Mac and the iPhone.
-- If you use your local network, the iPhone is on that Wi-Fi, not mobile data.
+- Under Remote Access, the network the phone is on is chosen. With none chosen, Hammock listens on Tailscale only.
+- If you use Tailscale, it's connected on both the Mac and the phone.
+- If you use your local network, the phone is on that Wi-Fi, not mobile data.
 - The Mac is awake and the Hammock Server is running (below).
 
 `hmk remote networks` lists the Mac's networks, with the chosen ones marked `*`. See
 [Install on iPhone](/hammock/docs/install/iphone/#networks).
 
-## I don't get notifications on my iPhone
+## I don't get notifications on my phone
 
-Allow notifications for Hammock in the iPhone's Settings, and open the app once while it's connected to your Mac.
+Allow notifications for Hammock in the phone's Settings (on Android, Settings ▸ Apps ▸ Hammock ▸ Notifications), and
+open the app once while it's connected to your Mac.
 The Mac only sends them while you're away from it: when its screen is locked, or you haven't touched it for a couple
 of minutes.
 
