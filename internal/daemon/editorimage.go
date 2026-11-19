@@ -7,11 +7,11 @@ package daemon
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 )
 
 // editorImageMax is the largest image the preview is sent.
@@ -54,14 +54,10 @@ func (d *Daemon) readEditorImage(m *pb.ReadEditorImage, folder string, guest boo
 	if guest && !(insideFolder(path, folder) && insideFolder(path, docDir)) {
 		return nil, errors.New("only images beside the file, in the Group's folder")
 	}
-	st, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !st.Mode().IsRegular() || st.Size() > editorImageMax {
+	data, err := regfile.ReadFile(path, editorImageMax)
+	if errors.Is(err, regfile.ErrNotRegular) || errors.Is(err, regfile.ErrTooLarge) {
 		return nil, fmt.Errorf("%s isn't an image of 16 MB or less", filepath.Base(path))
 	}
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/gitcmd"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 )
 
 // EmptyTree is git's empty tree: the base of a root commit, or of a
@@ -453,12 +455,12 @@ func splitZ(out []byte) []string {
 // countLines reads a file not yet in git: whether it looks binary (a NUL
 // early on, as git decides) and how many lines it has.
 func countLines(p string) (binary bool, n uint32, err error) {
-	f, err := os.Open(p)
+	f, _, err := regfile.Open(p) // not a FIFO swapped in since it was listed
 	if err != nil {
 		return false, 0, err
 	}
 	defer f.Close()
-	br := bufio.NewReaderSize(f, 64<<10)
+	br := bufio.NewReaderSize(io.LimitReader(f, MaxSide), 64<<10)
 	head, _ := br.Peek(8000)
 	if bytes.IndexByte(head, 0) >= 0 {
 		return true, 0, nil
@@ -654,7 +656,10 @@ func worktreeFile(p string) ([]byte, uint64, error) {
 	if n > MaxSide {
 		return nil, n, nil
 	}
-	b, err := os.ReadFile(p)
+	b, err := regfile.ReadFile(p, MaxSide)
+	if errors.Is(err, regfile.ErrTooLarge) || errors.Is(err, regfile.ErrNotRegular) {
+		return nil, n, nil // grown, or swapped, since the Lstat
+	}
 	return b, uint64(len(b)), err
 }
 

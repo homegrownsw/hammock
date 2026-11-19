@@ -15,6 +15,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/agentview"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 )
 
 // Background shells in the agent view: the main view lists the session's
@@ -123,15 +124,11 @@ func (w *agentWatch) refreshShell() *pb.AgentView {
 		w.errText = ""
 		u.Replace = true
 	}
-	f, err := os.Open(path)
+	f, st, err := regfile.Open(path) // checked by shellFile, but could be swapped for a FIFO since
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil
-	}
 	if path != w.path || st.Size() < w.off {
 		// First look, or it was rewritten: its last part.
 		w.path, w.off, w.partial, w.shellText = path, max(0, st.Size()-shellTail), nil, nil

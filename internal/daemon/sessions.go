@@ -21,6 +21,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/holder"
 	"github.com/homegrownsw/hammock/internal/procinfo"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 	"github.com/homegrownsw/hammock/internal/sessions"
 	"github.com/homegrownsw/hammock/internal/thread"
 )
@@ -470,9 +471,9 @@ func gitRepo(git string) bool {
 		return false
 	}
 	if fi.Mode().IsRegular() {
-		b, err := os.ReadFile(git)
+		b, err := regfile.ReadFile(git, 4096)
 		target, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "gitdir: ")
-		if err != nil || !ok || fi.Size() > 4096 {
+		if err != nil || !ok {
 			return false
 		}
 		if !filepath.IsAbs(target) {

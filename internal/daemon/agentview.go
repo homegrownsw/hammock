@@ -26,6 +26,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/agentview"
 	"github.com/homegrownsw/hammock/internal/procinfo"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 )
 
 // The agent view (Phase 7): for each pane someone is watching, the daemon
@@ -1135,7 +1136,7 @@ func pruneAttachments(dir string, now time.Time) {
 
 // copyFile copies src to a new file dst (removed again if it fails).
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, _, err := regfile.Open(src) // not a FIFO swapped in since it was checked
 	if err != nil {
 		return err
 	}
@@ -1221,7 +1222,7 @@ func pastedOriginal(img agentview.Image) []byte {
 	if err != nil || !st.Mode().IsRegular() || st.Size() > agentFileLimit || st.ModTime().After(img.Sent.Add(5*time.Second)) {
 		return nil
 	}
-	data, err := os.ReadFile(img.Original)
+	data, err := regfile.ReadFile(img.Original, agentFileLimit)
 	if err != nil || !pngHasAlpha(data) {
 		return nil
 	}
@@ -1244,20 +1245,35 @@ func pngHasAlpha(data []byte) bool {
 
 // readReferencedFile reads a file an agent's session referenced, for the
 // agent view. A viewer gets it only if it's an image, by its content.
+// Only a regular file (a device or a FIFO would never end, or never
+// start), of agentFileLimit at most however much it grows; a viewer's is
+// sniffed before the rest is read.
 func readReferencedFile(path string, viewer bool) (mediaType string, data []byte, err error) {
-	st, err := os.Stat(path)
-	if err != nil || st.IsDir() || st.Size() > agentFileLimit {
-		return "", nil, errors.New("can't read that file")
+	cant := errors.New("can't read that file")
+	f, st, err := regfile.Open(path)
+	if err != nil || st.Size() > agentFileLimit {
+		return "", nil, cant
 	}
-	data, err = os.ReadFile(path)
+	defer f.Close()
+	head := make([]byte, 512) // all http.DetectContentType looks at
+	n, err := io.ReadFull(f, head)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", nil, err
+	}
+	head = head[:n]
+	sniffed := http.DetectContentType(head)
+	if viewer && !strings.HasPrefix(sniffed, "image/") {
+		return "", nil, errViewerFile
+	}
+	rest, err := regfile.Read(f, agentFileLimit-int64(n))
+	if errors.Is(err, regfile.ErrTooLarge) {
+		return "", nil, cant
+	}
 	if err != nil {
 		return "", nil, err
 	}
-	sniffed := http.DetectContentType(data)
+	data = append(head, rest...)
 	if viewer {
-		if !strings.HasPrefix(sniffed, "image/") {
-			return "", nil, errViewerFile
-		}
 		return sniffed, data, nil
 	}
 	mt := mime.TypeByExtension(filepath.Ext(path))

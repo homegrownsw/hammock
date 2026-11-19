@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"os"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+
+	"github.com/homegrownsw/hammock/internal/regfile"
 )
 
 const showCSS = `:root{color-scheme:light dark}body{font:15px/1.55 -apple-system,BlinkMacSystemFont,sans-serif;max-width:760px;margin:32px auto;padding:0 20px;color:#1d1d1f;background:#fff}
@@ -25,14 +28,10 @@ table{border-collapse:collapse}th,td{border:1px solid #d2d2d7;padding:4px 8px}im
 
 // renderMarkdownFile renders path to an HTML page and returns the page's path.
 func (d *Daemon) renderMarkdownFile(path string) (string, error) {
-	st, err := os.Stat(path)
-	if err != nil {
-		return "", err
-	}
-	if !st.Mode().IsRegular() || st.Size() > 8<<20 {
+	src, err := regfile.ReadFile(path, 8<<20)
+	if errors.Is(err, regfile.ErrNotRegular) || errors.Is(err, regfile.ErrTooLarge) {
 		return "", fmt.Errorf("%s isn't a file of 8 MB or less", path)
 	}
-	src, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}

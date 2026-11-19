@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/gitcmd"
 	"github.com/homegrownsw/hammock/internal/gitdiff"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 	"github.com/homegrownsw/hammock/internal/textbuf"
 	"google.golang.org/protobuf/proto"
 )
@@ -137,22 +139,30 @@ func (h *editorHub) close() {
 
 // readTextFile reads path for the editor, refusing what isn't text.
 func readTextFile(path string, large bool) (data []byte, st fs.FileInfo, err error) {
-	st, err = os.Stat(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	if st.IsDir() {
-		return nil, nil, fmt.Errorf("%s is a folder", filepath.Base(path))
-	}
-	if !st.Mode().IsRegular() {
+	f, st, err := regfile.Open(path)
+	if errors.Is(err, regfile.ErrNotRegular) {
+		if st.IsDir() {
+			return nil, nil, fmt.Errorf("%s is a folder", filepath.Base(path))
+		}
 		// A pipe, a device or a socket: reading one could block (or never
 		// end), and the daemon reads while holding its lock.
 		return nil, nil, fmt.Errorf("%s isn't a regular file", filepath.Base(path))
 	}
-	if st.Size() > editorLargeFile && !large {
-		return nil, nil, fmt.Errorf("%s%s is %s: open it anyway?", errLargeFile, filepath.Base(path), humanSize(st.Size()))
+	if err != nil {
+		return nil, nil, err
 	}
-	data, err = os.ReadFile(path)
+	defer f.Close()
+	tooLarge := func(size int64) error {
+		return fmt.Errorf("%s%s is %s: open it anyway?", errLargeFile, filepath.Base(path), humanSize(size))
+	}
+	if st.Size() > editorLargeFile && !large {
+		return nil, nil, tooLarge(st.Size())
+	}
+	if large {
+		data, err = io.ReadAll(f)
+	} else if data, err = regfile.Read(f, editorLargeFile); errors.Is(err, regfile.ErrTooLarge) {
+		return nil, nil, tooLarge(editorLargeFile + 1) // grew since
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1155,12 +1165,15 @@ func indentFor(path string, text textbuf.Text) (uint32, string) {
 	return 0, ""
 }
 
+// editorConfigMax is the most of an .editorconfig file read.
+const editorConfigMax = 1 << 20
+
 // editorConfig reads the indentation .editorconfig files give path.
 func editorConfig(path string) (width uint32, style string, found bool) {
 	var files []string
 	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
 		f := filepath.Join(dir, ".editorconfig")
-		if data, err := os.ReadFile(f); err == nil {
+		if data, err := regfile.ReadFile(f, editorConfigMax); err == nil {
 			files = append(files, f)
 			if regexpRoot(data) {
 				break
@@ -1172,7 +1185,7 @@ func editorConfig(path string) (width uint32, style string, found bool) {
 	}
 	// Nearest last: it wins.
 	for i := len(files) - 1; i >= 0; i-- {
-		data, _ := os.ReadFile(files[i])
+		data, _ := regfile.ReadFile(files[i], editorConfigMax)
 		rel, _ := filepath.Rel(filepath.Dir(files[i]), path)
 		section := false
 		for _, raw := range strings.Split(string(data), "\n") {

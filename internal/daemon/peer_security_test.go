@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -562,6 +563,65 @@ func TestViewerReadsOnlyImages(t *testing.T) {
 		}
 		if !tc.ok && tc.viewer && err != errViewerFile {
 			t.Errorf("%s: %v, want the viewer's message", filepath.Base(tc.path), err)
+		}
+	}
+}
+
+// The agent view reads only regular files, of agentFileLimit at most: a
+// device would never end (/dev/zero reports a size of 0) and a FIFO would
+// block the connection for good.
+func TestReferencedFileOnlyRegular(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	big := filepath.Join(dir, "big.log")
+	if err := os.WriteFile(big, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(big, agentFileLimit+1); err != nil { // sparse
+		t.Fatal(err)
+	}
+	fits := filepath.Join(dir, "fits.log")
+	if err := os.WriteFile(fits, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(fits, agentFileLimit); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path       string
+		viewer, ok bool
+	}{
+		{"/dev/zero", false, false},
+		{"/dev/zero", true, false},
+		{"/dev/null", false, false},
+		{fifo, false, false},
+		{fifo, true, false},
+		{dir, false, false},
+		{big, false, false},
+		{fits, false, true},
+		{fits, true, false}, // zeros aren't an image: refused before the rest is read
+	} {
+		done := make(chan error, 1)
+		go func() {
+			_, data, err := readReferencedFile(tc.path, tc.viewer)
+			if err == nil && len(data) != agentFileLimit {
+				t.Errorf("%s: read %d bytes", tc.path, len(data))
+			}
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if (err == nil) != tc.ok {
+				t.Errorf("%s (viewer %v): %v", filepath.Base(tc.path), tc.viewer, err)
+			}
+			if tc.viewer && tc.path == fits && err != errViewerFile {
+				t.Errorf("%s: %v, want the viewer's message", filepath.Base(tc.path), err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s (viewer %v): blocked", tc.path, tc.viewer)
 		}
 	}
 }

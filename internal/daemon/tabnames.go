@@ -11,6 +11,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/agents"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 )
 
 // Smart names for unnamed tabs, with no setup: an agent tab is named after
@@ -146,7 +147,7 @@ func gitBranch(dir string) string {
 		head := filepath.Join(g, "HEAD")
 		if !st.IsDir() {
 			// A worktree: ".git" names the real git dir.
-			b, err := os.ReadFile(g)
+			b, err := regfile.ReadFile(g, 4096) // not a FIFO in some folder the shell's in
 			if err != nil {
 				return ""
 			}
@@ -159,7 +160,7 @@ func gitBranch(dir string) string {
 			}
 			head = filepath.Join(gd, "HEAD")
 		}
-		b, err := os.ReadFile(head)
+		b, err := regfile.ReadFile(head, 4096)
 		if err != nil {
 			return ""
 		}

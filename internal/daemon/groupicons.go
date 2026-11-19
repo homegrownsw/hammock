@@ -23,6 +23,7 @@ import (
 	"time"
 
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/regfile"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -150,7 +151,7 @@ func encodePNG(img image.Image) []byte {
 
 // loadIcon reads, checks and shrinks the picture at path.
 func loadIcon(path string) (*groupIcon, error) {
-	data, err := os.ReadFile(path)
+	data, err := regfile.ReadFile(path, iconMaxFile)
 	if err != nil {
 		return nil, err
 	}
