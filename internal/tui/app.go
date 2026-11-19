@@ -1013,6 +1013,8 @@ func (a *App) command(b []byte) int {
 		}
 	case 'z':
 		a.arrange(a.focus, pb.FloatPane_ACTION_ZOOM)
+	case 'r':
+		a.rotateSplit(a.focus)
 	case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		if t != nil {
 			if sp := a.group(t.GroupId); sp != nil {
@@ -1041,6 +1043,28 @@ func (a *App) mergeTab(id string, into *pb.Tab) {
 	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_MergeTab{MergeTab: &pb.MergeTab{TabId: id, IntoPaneId: into.FocusedPaneId, Direction: pb.Split_DIRECTION_HORIZONTAL}}}, func(*pb.ServerMessage) {
 		a.selectTab(into.Id)
 	})
+}
+
+// canRotateSplit says whether a pane is in a split, for Rotate Split.
+func (a *App) canRotateSplit(paneID string) bool {
+	if p := a.panes[paneID]; p != nil {
+		return client.RotateSplit(a.tabs[p.TabId].GetLayout(), paneID) != nil
+	}
+	return false
+}
+
+// rotateSplit turns the split a pane is in from side by side to stacked,
+// or back.
+func (a *App) rotateSplit(paneID string) {
+	p := a.panes[paneID]
+	if p == nil {
+		return
+	}
+	t := a.tabs[p.TabId]
+	if l := client.RotateSplit(t.GetLayout(), paneID); l != nil {
+		t.Layout = l // ahead of the daemon's update
+		a.sendLayout(t, true)
+	}
 }
 
 // breakOut moves a pane into a new tab of its own, and shows it.

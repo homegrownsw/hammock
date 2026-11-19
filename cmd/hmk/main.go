@@ -99,6 +99,7 @@ Usage:
                                             split a pane (to the right by default); --wait as for tab new
   hmk split PANE --float [--cwd DIR] [--wait] [-- CMD...]
                                             open a pane floating over PANE's tab
+  hmk rotate PANE                          turn the split PANE is in from side by side to stacked, or back
   hmk float PANE [--at X,Y,W,H]            lift a pane out of its tab's splits to float over them
                                             (--at: where, in fractions of the tab, e.g. 0.5,0.5,0.45,0.45)
   hmk dock PANE [--beside PANE [--down|--left|--up]]
@@ -1104,6 +1105,22 @@ func runCommand(args []string) error {
 		}
 		fmt.Println(client.CreatedID(r))
 		return nil
+
+	case "rotate":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: hmk rotate PANE")
+		}
+		pid, err := w.resolve(args[1], "pane")
+		if err != nil {
+			return err
+		}
+		t := w.tabs[w.panes[pid].GetTabId()]
+		l := client.RotateSplit(t.GetLayout(), pid)
+		if l == nil {
+			return fmt.Errorf("pane %s isn't in a split", pid)
+		}
+		_, err = call(&pb.ClientMessage{Msg: &pb.ClientMessage_SetLayout{SetLayout: &pb.SetLayout{TabId: t.Id, Layout: l}}})
+		return err
 
 	case "float", "dock", "minimise", "minimize", "restore":
 		if len(args) < 2 {

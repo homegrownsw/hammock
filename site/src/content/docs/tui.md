@@ -45,6 +45,7 @@ Press ⌃B, let go, then the key. ⌃B ? shows this list in the TUI.
 | ⌃B E | New editor tab |
 | ⌃B % or ⌃B \| | Split right |
 | ⌃B " or ⌃B - | Split down |
+| ⌃B r | Rotate split |
 | ⌃B x | Close pane |
 | ⌃B T | Reopen closed tab or pane |
 | ⌃B f | New floating pane |

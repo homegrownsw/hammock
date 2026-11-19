@@ -289,6 +289,8 @@ public enum Keybinds {
             .init("split_editor_down", "Split Down with Editor", "Pane", c("e", [.command, .control, .shift]), "pane text file code untitled"),
             .init("show_simulator_log", "Show Simulator Log", "Pane", nil, "logs console ios iphone"),
             .init("zoom_pane", "Zoom Pane", "Pane", c("return", cs), "maximise maximize fullscreen focus unzoom"),
+            // ⌥⇧⌘D: beside the splits' ⌘D and ⇧⌘D, and free in macOS (⌥⌘D is the Dock's).
+            .init("rotate_split", "Rotate Split", "Pane", c("d", cos), "turn flip orientation direction horizontal vertical side by side stacked layout"),
             .init("move_pane_to_new_tab", "Move Pane to New Tab", "Pane", nil, "break out detach"),
             .init("close_pane", "Close Pane", "Pane", nil),
             // Floating panes (⌘M is the window's Minimize, ⌥⌘F the simulator's fold)

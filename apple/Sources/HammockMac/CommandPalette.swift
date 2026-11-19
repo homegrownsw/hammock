@@ -589,6 +589,11 @@ struct CommandPalette: View {
                 action("zoom", zoomed ? "Unzoom Pane" : "Zoom Pane", "arrow.up.left.and.arrow.down.right", .teal, "pane maximize fill focus", keys: Keys.zoomPane) {
                     PaneZoom.shared.toggle(focused, model: model)
                 }
+                if model.canRotateSplit(focused) {
+                    action("rotate-split", "Rotate Split", "rectangle.2.swap", .teal, "pane turn flip orientation direction horizontal vertical side by side stacked layout", keys: Keys.rotateSplit) {
+                        withAnimation(PaneMotion.when(.snappy(duration: 0.22))) { model.rotateSplit(focused) }
+                    }
+                }
                 action("break-out", "Move Pane to New Tab", "rectangle.badge.plus", .teal, "pane tab break out", keys: Keys.movePaneToNewTab) { Task { await model.breakOut(focused) } }
             }
             // Floating panes.

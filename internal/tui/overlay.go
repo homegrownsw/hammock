@@ -465,6 +465,7 @@ func (a *App) paneMenu(id string, x, y int) {
 	items = append(items, a.floatMenuItems(id)...)
 	items = append(items,
 		menuItem{sep: true},
+		menuItem{label: "Rotate Split", hint: "⌃B r", disabled: !a.canRotateSplit(id), run: func() { a.rotateSplit(id) }},
 		menuItem{label: "Move to New Tab", disabled: a.paneCount(p.TabId) < 2, run: func() { a.breakOut(id) }},
 		menuItem{label: "Close Pane", hint: "⌃B x", danger: true, run: func() { a.closePane(id) }},
 	)
@@ -640,6 +641,9 @@ func (a *App) paletteItems() []paletteItem {
 		if t := a.tabs[a.selTab]; t != nil && len(t.Floating) > 0 {
 			tid := t.Id
 			act("toggle-floats", "Show/Hide Floating Panes", "⌃B j", "float floating minimize restore all shelf", func() { a.toggleFloats(tid) })
+		}
+		if a.canRotateSplit(f) {
+			act("rotate-split", "Rotate Split", "⌃B r", "pane turn flip orientation direction horizontal vertical side by side stacked layout", func() { a.rotateSplit(f) })
 		}
 		if p := a.panes[f]; p != nil && a.paneCount(p.TabId) > 1 {
 			act("break-out", "Move Pane to New Tab", "", "pane tab break out", func() { a.breakOut(f) })
@@ -1063,6 +1067,7 @@ func (a *App) openHelp() {
 		"⌃B @   Scheduled tasks",
 		"⌃B e   Quick Open (a file)        ⌃B E   New editor tab",
 		"⌃B %   Split right                ⌃B \"   Split down",
+		"⌃B r   Rotate split",
 		"⌃B f   New floating pane          ⌃B F   Float / dock pane",
 		"⌃B m   Minimise floating pane     ⌃B j   Hide / show floats",
 		"⌃B z   Zoom floating pane",

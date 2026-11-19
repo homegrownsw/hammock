@@ -52,6 +52,7 @@ At the bottom, **Needs You** lists agents waiting on you, and **Finished** those
 
 - **Split Right** (⌘D) and **Split Down** (⇧⌘D). The toolbar's split buttons split with other kinds of pane.
 - Move between panes with ⌘] and ⌘[, and drag the line between them to resize.
+- **Rotate Split** (⌥⇧⌘D) turns the split the focused pane is in from side by side to stacked, or back.
 - **Zoom Pane** (⇧⌘↩) fills the tab with the focused pane, and puts it back.
 
 ```sh

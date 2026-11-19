@@ -198,6 +198,8 @@ struct PaneMenuItems: View {
         Menu("New Floating Pane") { SplitMenuItems(model: model, paneID: paneID, floating: true) }
         Divider()
         FloatPaneItems(model: model, paneID: paneID)
+        Button("Rotate Split") { withAnimation(PaneMotion.when(.snappy(duration: 0.22))) { model.rotateSplit(paneID) } }
+            .disabled(!model.canRotateSplit(paneID))
         Button("Move to New Tab") { Task { await model.breakOut(paneID) } }
             .disabled(tabPaneCount < 2)
         OpenInNewWindowButton(model: model, subject: .pane(paneID))
@@ -462,6 +464,8 @@ struct PaneKindMenu<Label: View>: View {
             }
             Divider()
             FloatPaneItems(model: model, paneID: paneID)
+            Button("Rotate Split") { withAnimation(PaneMotion.when(.snappy(duration: 0.22))) { model.rotateSplit(paneID) } }
+                .disabled(!model.canRotateSplit(paneID))
             Button("Move to New Tab") { Task { await model.breakOut(paneID) } }
                 .disabled(tabPaneCount < 2)
             Button("Close Pane", role: .destructive) {

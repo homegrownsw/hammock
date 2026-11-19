@@ -1850,6 +1850,41 @@ extension AppModel {
         }
         Task { _ = await run { $0.setLayout = .with { $0.tabID = tabID; $0.layout = layout } } }
     }
+
+    /// Whether a pane is in a split (not floating, nor its tab's only pane),
+    /// which Rotate Split turns.
+    public func canRotateSplit(_ paneID: String) -> Bool {
+        guard let t = panes[paneID].flatMap({ tabs[$0.tabID] }) else { return false }
+        return Self.rotatingSplit(t.layout, around: paneID) != nil
+    }
+
+    /// Rotate Split: the split a pane is in turns from side by side to
+    /// stacked, or back, keeping its panes' sizes.
+    public func rotateSplit(_ paneID: String) {
+        guard let t = panes[paneID].flatMap({ tabs[$0.tabID] }),
+              let l = Self.rotatingSplit(t.layout, around: paneID) else { return }
+        setLayout(t.id, l)
+    }
+
+    /// A layout with the split directly holding paneID turned the other way,
+    /// or nil when no split holds it.
+    public static func rotatingSplit(_ l: PaneLayout, around paneID: String) -> PaneLayout? {
+        guard case .split(var s) = l.node else { return nil }
+        var l = l
+        if s.children.contains(where: { $0.paneID == paneID }) {
+            s.direction = s.direction == .vertical ? .horizontal : .vertical
+            l.split = s
+            return l
+        }
+        for (i, c) in s.children.enumerated() {
+            if let turned = rotatingSplit(c, around: paneID) {
+                s.children[i] = turned
+                l.split = s
+                return l
+            }
+        }
+        return nil
+    }
 }
 
 extension AppModel {

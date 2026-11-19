@@ -101,6 +101,7 @@ enum Keys {
     static var splitEditorDown: KeyboardShortcut? { shortcut("split_editor_down") }
     static var showSimulatorLog: KeyboardShortcut? { shortcut("show_simulator_log") }
     static var zoomPane: KeyboardShortcut? { shortcut("zoom_pane") }
+    static var rotateSplit: KeyboardShortcut? { shortcut("rotate_split") }
     static var movePaneToNewTab: KeyboardShortcut? { shortcut("move_pane_to_new_tab") }
     static var closePane: KeyboardShortcut? { shortcut("close_pane") }
     // Floating panes

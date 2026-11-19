@@ -493,6 +493,9 @@ struct HammockApp: App {
                 }
                 .keyboardShortcut(Keys.zoomPane)
                 .disabled(focused.flatMap { model.floating($0) } == nil && (shownTab.map { AppModel.paneIDs($0.layout).count < 2 } ?? true))
+                Button("Rotate Split") { if let id = focused { withAnimation(PaneMotion.when(.snappy(duration: 0.22))) { model.rotateSplit(id) } } }
+                    .keyboardShortcut(Keys.rotateSplit)
+                    .disabled(!(focused.map(model.canRotateSplit) ?? false))
                 Button("Move Pane to New Tab") { if let id = focused { Task { await model.breakOut(id) } } }
                     .keyboardShortcut(Keys.movePaneToNewTab)
                     .disabled(shownTab.map { AppModel.paneIDs(of: $0).count < 2 } ?? true)
