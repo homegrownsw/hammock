@@ -239,6 +239,8 @@ public struct AgentConversationView: View {
     @State private var landingTick = 0
     /// Scrolled to the end of the conversation (as the scroll view last said).
     @State private var atBottom = true
+    /// The last row there was when you scrolled up from the end (Latest counts from it).
+    @State private var seenLast: String?
     /// A glide to the end (following what arrives) waiting for new rows to
     /// measure. A reference, so setting it redraws nothing.
     @State private var glide = GlideState()
@@ -692,7 +694,7 @@ public struct AgentConversationView: View {
                     }
                     // Latest once well up from the end; gone again near it (a gap
                     // between the two, so it doesn't flicker at the line).
-                    if new.gap > 350 { atBottom = false } else if new.gap < 150 { atBottom = true }
+                    if new.gap > 350, atBottom { atBottom = false; seenLast = s.items.last?.id } else if new.gap < 150 { atBottom = true }
                 }
                 .onScrollGeometryChange(for: RowRevealer.Visible.self) { g in
                     RowRevealer.Visible(top: g.visibleRect.minY + g.contentInsets.top,
@@ -806,7 +808,12 @@ public struct AgentConversationView: View {
                 // What you answer or send with (the model and context in it):
                 // glass floating over the conversation, which scrolls beneath.
                 .overlay(alignment: .bottom) {
-                    LatestButton(session: s, shown: !atBottom && landed, atBottom: atBottom) { jumpToEnd(proxy) }
+                    // Only while scrolled up: watching the session from the
+                    // overlay at the end too, rows arriving there snapped.
+                    if !atBottom, landed {
+                        LatestButton(session: s, seenLast: seenLast) { jumpToEnd(proxy) }
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
                 }
                 .animation(.snappy(duration: 0.2), value: atBottom)
                 .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar(s, proxy) }
@@ -834,15 +841,13 @@ public struct AgentConversationView: View {
 }
 
 /// Latest, over the conversation while you're scrolled up from its end:
-/// how many rows have come since you left it ("3 new"), and a dot when the
-/// agent finished or asked you something meanwhile.
+/// how many rows have come since you left it ("3 new", counted from
+/// seenLast, the last row there was then), and a dot when the agent
+/// finishes or asks you something meanwhile.
 struct LatestButton: View {
     let session: AgentSession
-    let shown: Bool
-    let atBottom: Bool
+    let seenLast: String?
     let action: () -> Void
-    /// The last row there was when you scrolled up from the end.
-    @State private var seenLast: String?
     @State private var attention = false
     @Environment(\.agentAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -855,38 +860,29 @@ struct LatestButton: View {
 
     var body: some View {
         let n = count
-        ZStack {
-            if shown {
-                Button(action: action) {
-                    Label(n > 0 ? "\(n) new" : "Latest", systemImage: "arrow.down")
-                        .font(.callout.weight(.semibold))
-                        .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(n)))
-                }
-                .agentGlassButton()
-                .buttonBorderShape(.capsule)
-                .overlay(alignment: .topTrailing) {
-                    if attention {
-                        Circle().fill(accent).frame(width: 9, height: 9).offset(x: 1, y: -1)
-                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
-                            .accessibilityHidden(true)
-                    }
-                }
-                .help("Jump to the latest")
-                .accessibilityLabel(n > 0 ? "Jump to the latest, \(n) new" : "Jump to the latest")
-                .accessibilityValue(attention ? "\(session.agentName) needs you" : "")
-                .padding(.bottom, 10)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
+        Button(action: action) {
+            Label(n > 0 ? "\(n) new" : "Latest", systemImage: "arrow.down")
+                .font(.callout.weight(.semibold))
+                .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(n)))
+        }
+        .agentGlassButton()
+        .buttonBorderShape(.capsule)
+        .overlay(alignment: .topTrailing) {
+            if attention {
+                Circle().fill(accent).frame(width: 9, height: 9).offset(x: 1, y: -1)
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                    .accessibilityHidden(true)
             }
         }
+        .help("Jump to the latest")
+        .accessibilityLabel(n > 0 ? "Jump to the latest, \(n) new" : "Jump to the latest")
+        .accessibilityValue(attention ? "\(session.agentName) needs you" : "")
+        .padding(.bottom, 10)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: n)
         .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: attention)
-        .onChange(of: atBottom, initial: true) { _, at in
-            seenLast = at ? nil : session.items.last?.id
-            attention = false
-        }
         // Done, or asking something, while you read further up.
-        .onChange(of: session.working) { was, now in if was, !now, !atBottom { attention = true } }
-        .onChange(of: session.prompt.kind) { _, k in if k != .none, !atBottom { attention = true } }
+        .onChange(of: session.working) { was, now in if was, !now { attention = true } }
+        .onChange(of: session.prompt.kind) { _, k in if k != .none { attention = true } }
     }
 }
 
@@ -1890,6 +1886,7 @@ struct RunningTime: View {
                 Text(Self.format(ctx.date.timeIntervalSince(start)))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.tertiary)
+                    .accessibilityLabel(ToolWords.running(ctx.date.timeIntervalSince(start)))
             }
         }
     }
@@ -1907,16 +1904,13 @@ struct StatusDot: View {
 
     var body: some View {
         if block.pending {
-            // Said as it reads: "Running, 12 seconds", kept up to date.
-            let start = Date(timeIntervalSince1970: TimeInterval(block.timeUnixMs) / 1000)
-            TimelineView(.periodic(from: start, by: 1)) { ctx in
-                HStack(spacing: 6) {
-                    RunningTime(sinceUnixMs: block.timeUnixMs)
-                    ProgressView().controlSize(.mini)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(ToolWords.running(block.timeUnixMs > 0 ? ctx.date.timeIntervalSince(start) : nil))
+            // Said as it reads: "Running, 12 seconds" (RunningTime's own
+            // label, kept up to date as it ticks).
+            HStack(spacing: 6) {
+                RunningTime(sinceUnixMs: block.timeUnixMs)
+                ProgressView().controlSize(.mini).accessibilityHidden(true)
             }
+            .accessibilityElement(children: .combine)
         } else if block.error {
             Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
                 .accessibilityLabel(ToolWords.failed)
@@ -2081,41 +2075,32 @@ extension EnvironmentValues {
     }
 }
 
-/// An edit's diff: a header naming its file (with Copy, and Open in Diff
-/// Pane where there is one), and its lines tinted green and red, numbered
-/// in a gutter where its hunks say where they are.
-struct DiffView: View {
+/// A diff's header: its file (the edit's, else those the diff names), Copy,
+/// and Open in Diff Pane where there is one. A view of its own, so what it
+/// reads and keeps (the opener, Copy's tick) doesn't redraw the lines.
+struct DiffHeader: View, Equatable {
     let diff: String
-    /// Show only this many lines (and how many more there are), unscrolled.
-    var preview: Int? = nil
-    /// The file it changes ("" for a command's or a patch's, which name
-    /// theirs in "@@ path" lines).
-    var path = ""
+    let path: String
+    /// The files the diff's "@@ path" lines name.
+    let files: [String]
     @Environment(\.agentFonts) private var fonts
     @Environment(\.agentOpenDiff) private var openDiff
-    /// The card's width: each line's tint runs all the way across it.
-    @State private var width: CGFloat = 0
     @State private var copied = false
 
-    private var allLines: [DiffLines.Line] {
-        RenderCache.get("difflines\u{0}" + diff) { DiffLines.numbered(diff) }
-    }
+    static func == (a: Self, b: Self) -> Bool { a.diff == b.diff && a.path == b.path }
 
-    /// The header's file: the edit's, else those the diff names.
-    private func title(_ lines: [DiffLines.Line]) -> (name: String, folder: String) {
+    private var title: (name: String, folder: String) {
         if !path.isEmpty {
-            let folder = (path as NSString).deletingLastPathComponent
-            return ((path as NSString).lastPathComponent, folder)
+            return ((path as NSString).lastPathComponent, (path as NSString).deletingLastPathComponent)
         }
-        let files = DiffLines.files(lines)
         guard let first = files.first else { return ("Changes", "") }
         let name = (first as NSString).lastPathComponent
         return files.count == 1 ? (name, (first as NSString).deletingLastPathComponent) : ("\(name) and \(files.count - 1) more", "")
     }
 
-    private func header(_ lines: [DiffLines.Line]) -> some View {
-        let t = title(lines)
-        return HStack(spacing: 6) {
+    var body: some View {
+        let t = title
+        HStack(spacing: 6) {
             Image(systemName: "doc.text").foregroundStyle(.tertiary).accessibilityHidden(true)
             Text(t.name).font(fonts.code(0.85)).fontWeight(.medium).lineLimit(1).layoutPriority(1)
             if !t.folder.isEmpty {
@@ -2135,8 +2120,7 @@ struct DiffView: View {
             .help("Copy the diff")
             .accessibilityLabel(copied ? "Copied" : "Copy the diff")
             if let openDiff {
-                let target = path.isEmpty ? (DiffLines.files(lines).first ?? "") : path
-                Button { openDiff(target) } label: {
+                Button { openDiff(path.isEmpty ? (files.first ?? "") : path) } label: {
                     Image(systemName: "rectangle.split.2x1").frame(width: 22, height: 18).contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
@@ -2150,6 +2134,25 @@ struct DiffView: View {
         .padding(.top, 7)
         .padding(.bottom, 2)
     }
+}
+
+/// An edit's diff: a header naming its file (with Copy, and Open in Diff
+/// Pane where there is one), and its lines tinted green and red, numbered
+/// in a gutter where its hunks say where they are.
+struct DiffView: View {
+    let diff: String
+    /// Show only this many lines (and how many more there are), unscrolled.
+    var preview: Int? = nil
+    /// The file it changes ("" for a command's or a patch's, which name
+    /// theirs in "@@ path" lines).
+    var path = ""
+    @Environment(\.agentFonts) private var fonts
+    /// The card's width: each line's tint runs all the way across it.
+    @State private var width: CGFloat = 0
+
+    private var allLines: [DiffLines.Line] {
+        RenderCache.get("difflines\u{0}" + diff) { DiffLines.numbered(diff) }
+    }
 
     /// The gutter's width: room for the widest number.
     private func digits(_ lines: [DiffLines.Line]) -> Int {
@@ -2157,35 +2160,33 @@ struct DiffView: View {
         return top == 0 ? 0 : String(top).count
     }
 
-    private func number(_ n: Int?, _ digits: Int) -> some View {
-        Text(String(repeating: "8", count: digits)).hidden()
-            .overlay(alignment: .trailing) { Text(n.map(String.init) ?? "") }
-            .font(fonts.code(0.8).monospacedDigit())
-            .foregroundStyle(.tertiary)
-            .accessibilityHidden(true)
+    /// A line, its numbers ahead of it in the gutter: one Text, as light to
+    /// lay out as the line alone (a stack per line made rows arriving below
+    /// snap, the conversation slower to lay out).
+    private func lineText(_ line: DiffLines.Line, digits: Int) -> Text {
+        let body = Text(line.text.isEmpty ? " " : line.text)
+            .fontWeight(line.kind == .file ? .semibold : .regular)
+            .foregroundStyle(line.kind == .hunk || line.kind == .file ? Color.secondary : Color.primary)
+        guard digits > 0 else { return body }
+        func pad(_ n: Int?) -> String {
+            let s = n.map(String.init) ?? ""
+            return String(repeating: " ", count: max(0, digits - s.count)) + s
+        }
+        return Text(pad(line.old) + " " + pad(line.new) + "  ").foregroundStyle(.tertiary) + body
     }
 
     private func linesView(_ shown: [DiffLines.Line], more: Int, digits: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if digits > 0 {
-                        number(line.old, digits)
-                        number(line.new, digits)
+                lineText(line, digits: digits)
+                    .font(fonts.code(0.95))
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Square rows that meet, one band per run of lines (a
+                    // plain colour here can take the card's rounded corners).
+                    .background {
+                        Rectangle().fill(line.kind == .added ? Color.green.opacity(0.14) : line.kind == .removed ? Color.red.opacity(0.14) : .clear)
                     }
-                    Text(line.text.isEmpty ? " " : line.text)
-                        .font(fonts.code(0.95))
-                        .fontWeight(line.kind == .file ? .semibold : .regular)
-                        .foregroundStyle(line.kind == .hunk || line.kind == .file ? Color.secondary : Color.primary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, line.kind == .file ? 4 : 0)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // Square rows that meet, one band per run of lines (a
-                // plain colour here can take the card's rounded corners).
-                .background {
-                    Rectangle().fill(line.kind == .added ? Color.green.opacity(0.14) : line.kind == .removed ? Color.red.opacity(0.14) : .clear)
-                }
             }
         }
         .frame(minWidth: width, alignment: .leading)
@@ -2194,13 +2195,14 @@ struct DiffView: View {
         .padding(.bottom, more > 0 ? 4 : 8)
     }
 
+
     var body: some View {
         let all = allLines
         let shown = Array(all.prefix(preview ?? 600))
         let more = preview == nil ? 0 : all.count - shown.count
         let d = digits(all)
         VStack(alignment: .leading, spacing: 0) {
-            header(all)
+            DiffHeader(diff: diff, path: path, files: DiffLines.files(all)).equatable()
             if preview != nil {
                 // A glance: no scrolling of its own (a tap shows it all).
                 ScrollView(.horizontal, showsIndicators: false) { linesView(shown, more: more, digits: d) }
