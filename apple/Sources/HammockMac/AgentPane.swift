@@ -107,14 +107,14 @@ extension AgentPaneView {
     /// without one.
     func openDiff(_ path: String) {
         let cwd = model.panes[paneID]?.cwd ?? ""
-        var folder = cwd
-        if !path.isEmpty {
-            let full = path.hasPrefix("/") || cwd.isEmpty ? path : (cwd as NSString).appendingPathComponent(path)
-            folder = (full as NSString).deletingLastPathComponent
-        }
+        // A Group on another computer: its folders are there, not checked here.
+        let remote = model.group(ofPane: paneID)?.isRemote == true
+        let folder = DiffFolder.repo(for: path, cwd: cwd) { remote || FileManager.default.fileExists(atPath: $0) }
         Task {
             do {
-                try await model.openDiff(repo: folder, groupID: nil, splitPane: paneID, direction: .horizontal, source: DiffUI.branch)
+                // What Review Changes shows (the daemon's choice of source):
+                // works in a repository with no commits, or no main branch.
+                try await model.openDiff(repo: folder, groupID: nil, splitPane: paneID, direction: .horizontal, source: nil)
             } catch {
                 let a = NSAlert()
                 a.messageText = "Couldn't show the changes"

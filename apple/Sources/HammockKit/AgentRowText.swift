@@ -177,3 +177,15 @@ enum ToolWords {
         return parts.joined(separator: ", ")
     }
 }
+
+/// Where Open in Diff Pane looks for a repository: the changed file's
+/// folder (relative to the agent's, or in full), or the agent's own folder
+/// when there's no file or its folder's gone.
+public enum DiffFolder {
+    public static func repo(for path: String, cwd: String, exists: (String) -> Bool) -> String {
+        guard !path.isEmpty else { return cwd }
+        let full = path.hasPrefix("/") || cwd.isEmpty ? path : (cwd as NSString).appendingPathComponent(path)
+        let folder = (full as NSString).deletingLastPathComponent
+        return !folder.isEmpty && exists(folder) ? folder : cwd
+    }
+}

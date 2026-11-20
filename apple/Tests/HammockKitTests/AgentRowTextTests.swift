@@ -107,3 +107,13 @@ import Testing
         #expect(m.toast?.contains("/compact") == true)
     }
 }
+
+@Suite struct DiffFolderTests {
+    @Test func looksInTheFilesFolderElseTheAgents() {
+        let there: (String) -> Bool = { $0 == "/Users/me/app/src" }
+        #expect(DiffFolder.repo(for: "src/a.go", cwd: "/Users/me/app", exists: there) == "/Users/me/app/src")
+        #expect(DiffFolder.repo(for: "gone/a.go", cwd: "/Users/me/app", exists: there) == "/Users/me/app")
+        #expect(DiffFolder.repo(for: "", cwd: "/Users/me/app", exists: there) == "/Users/me/app")
+        #expect(DiffFolder.repo(for: "/Users/me/app/src/b.go", cwd: "/x", exists: there) == "/Users/me/app/src")
+    }
+}
