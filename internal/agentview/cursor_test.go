@@ -2,6 +2,7 @@ package agentview
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -83,5 +84,16 @@ func TestCursorUserText(t *testing.T) {
 	}
 	if _, at := CursorUserText("<timestamp>Monday, Nov 2, 2026, 9:05 AM (UTC-5:30)</timestamp>hi"); !at.Equal(time.Date(2026, 11, 2, 14, 35, 0, 0, time.UTC)) {
 		t.Errorf("offset: %v", at.UTC())
+	}
+}
+
+// A patch arrives as its raw "*** Begin Patch" text: shown as the other
+// agents' patches are, a diff of each file with "@@ path" before it.
+func TestCursorPatchIsADiff(t *testing.T) {
+	c := NewCursor("/Users/me/app")
+	in, _ := json.Marshal(map[string]string{"patch": "*** Begin Patch\n*** Update File: a.go\n@@\n-old\n+new\n*** End Patch"})
+	b := c.tool("ApplyPatch", in)
+	if b.Diff != "@@ a.go\n-old\n+new\n" || b.Title != "Edited a.go" || b.Input != "a.go" || b.Added != 1 || b.Removed != 1 {
+		t.Fatalf("got diff %q title %q input %q +%d -%d", b.Diff, b.Title, b.Input, b.Added, b.Removed)
 	}
 }

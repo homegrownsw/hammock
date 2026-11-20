@@ -155,8 +155,14 @@ func (c *Cursor) tool(name string, raw json.RawMessage) *pb.AgentBlock {
 			b.Diff, b.Added = clip(addedDiff(code), maxDiff), int32(lines(code))
 		}
 	case "applypatch":
-		p := str("patch", "input")
-		b.Input, b.Title, b.Diff = p, "Edited files", clip(p, maxDiff)
+		// The raw "*** Begin Patch" text as a diff of its files, as the
+		// other agents' patches are: "@@ path" before each file's lines.
+		cx := NewCodex(c.Cwd)
+		p := cx.patch(str("patch", "input"))
+		for f := range cx.files {
+			c.files[f] = true
+		}
+		b.Input, b.Title, b.Diff, b.Added, b.Removed = p.Input, p.Title, p.Diff, p.Added, p.Removed
 	case "delete", "deletefile":
 		p := path()
 		b.Input, b.Title = p, "Deleted "+p
