@@ -359,3 +359,14 @@ class RoundFiveTest {
         assertEquals(true, PromptKeys.acceptsPick(9000, 1000, 1000, 3000, fieldFocusedAtMs = 6000))
     }
 }
+
+class RoundSixTest {
+    @Test
+    fun aFieldsSendAnswersOnceTypedIn() {
+        // Tapped "Type something", "yes" typed, the IME's Send at once (not quiet): answers.
+        assertEquals(true, PromptKeys.fieldSubmits(edited = true, quiet = false))
+        // Tabbed in, Enter or Send with nothing typed, before the quiet: not yet.
+        assertEquals(false, PromptKeys.fieldSubmits(edited = false, quiet = false))
+        assertEquals(true, PromptKeys.fieldSubmits(edited = false, quiet = true))
+    }
+}

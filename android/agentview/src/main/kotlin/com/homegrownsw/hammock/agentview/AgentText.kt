@@ -637,6 +637,9 @@ object PromptKeys {
     fun acceptsPick(nowMs: Long, shownAtMs: Long, keysTakenAtMs: Long, lastKeyAtMs: Long, fieldFocusedAtMs: Long = 0) =
         nowMs - maxOf(maxOf(shownAtMs, keysTakenAtMs), maxOf(lastKeyAtMs, fieldFocusedAtMs)) >= SETTLE_MS
 
+    /** A field's Return or Send answers once something's been typed in it since it took the keyboard, or else after the quiet. */
+    fun fieldSubmits(edited: Boolean, quiet: Boolean) = edited || quiet
+
     /** How long typing in the message box keeps the card from taking keys, in ms. */
     const val TYPING_MS = 1000L
 

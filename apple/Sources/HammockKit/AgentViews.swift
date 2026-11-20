@@ -2480,6 +2480,8 @@ struct PromptCard: View {
     @State private var lastKeyAt: TimeInterval = 0
     /// When one of the card's fields last took the keyboard.
     @State private var fieldFocusedAt: TimeInterval = 0
+    /// Something's been typed in that field since it took the keyboard.
+    @State private var fieldEdited = false
     @FocusState private var focus: Field?
     /// The card itself has the keyboard (its number keys and arrows).
     @FocusState private var keysFocused: Bool
@@ -2519,7 +2521,7 @@ struct PromptCard: View {
         .modifier(PromptKeys(focused: $keysFocused, handle: key, take: { takeKeys() }, paneFocused: paneFocused))
         // Back from typing an answer or notes: the keys are the card's again.
         .onChange(of: focus) { old, new in
-            if new != nil { fieldFocusedAt = PromptKey.now }
+            if new != nil { fieldFocusedAt = PromptKey.now; fieldEdited = false }
             if old != nil, new == nil, !typing { takeKeys(force: true) }
         }
         // A new prompt with the same options is still a new prompt: its own
@@ -2581,8 +2583,7 @@ struct PromptCard: View {
         let quiet = PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt)
         lastKeyAt = PromptKey.now
         // Return, or the keypad's Enter.
-        let k: PromptKey.Key = press.key == .escape ? .escape : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right
-            : press.key == .return || press.characters == "\u{3}" ? .submit : press.key == .tab ? .tab : .other
+        let k = PromptKey.key(press.key, characters: press.characters)
         // A held key's repeats count as typing, but only its first press acts.
         if press.phase == .repeat { return k == .left || k == .right ? .ignored : .handled }
         // Tab and ⇧Tab move on only after the quiet: else into the notes
@@ -2693,6 +2694,7 @@ struct PromptCard: View {
                     Text(err).font(.caption)
                     Spacer()
                     Button("Answer in Terminal") { session.answerError = nil; onShowTerminal() }
+                        .modifier(OutOfKeyFocus(on: true))
                 }
             }
         }
@@ -2828,6 +2830,7 @@ struct PromptCard: View {
                 .onSubmit { sendOther(fromKeys: true) }
                 .onChange(of: otherText) { _, t in
                     // Return in a field that grows: send, not a new line.
+                    if !t.contains("\n") { fieldEdited = true }
                     if t.contains("\n") {
                         otherText = t.replacingOccurrences(of: "\n", with: "")
                         sendOther(fromKeys: true)
@@ -2843,6 +2846,8 @@ struct PromptCard: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
+            // Not by Tab and Space: that would send past the field's rule.
+            .modifier(OutOfKeyFocus(on: true))
             .help(empty ? "Cancel" : "Send")
             .keyboardShortcut(empty ? .cancelAction : nil) // (Return is the field's own onSubmit)
         }
@@ -2882,6 +2887,7 @@ struct PromptCard: View {
                 .submitLabel(.send)
                 .onSubmit { sendChosen(fromKeys: true) }
                 .onChange(of: notes) { _, t in
+                    if !t.contains("\n") { fieldEdited = true }
                     if t.contains("\n") {
                         notes = t.replacingOccurrences(of: "\n", with: "")
                         sendChosen(fromKeys: true)
@@ -2909,7 +2915,8 @@ struct PromptCard: View {
     /// field took the keyboard and after the card's last key: a Tab into it
     /// then Return doesn't; a click in, a note typed and Return does.
     private var fieldQuiet: Bool {
-        PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt, fieldFocusedAt: fieldFocusedAt)
+        PromptKey.fieldSubmits(edited: fieldEdited,
+                               quiet: PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt, fieldFocusedAt: fieldFocusedAt))
     }
 
     private func sendChosen(fromKeys: Bool = false) {
@@ -2951,6 +2958,28 @@ enum PromptKey: Equatable {
     case pick(Int), previous, next, escape, submit
 
     enum Key { case escape, left, right, submit, tab, other }
+
+    /// A key as the card reads it: Return or the keypad's Enter ("\u{3}")
+    /// submits; Tab, and ⇧Tab (which the Mac sends as back-tab, "\u{19}"),
+    /// are Tab.
+    static func key(_ k: KeyEquivalent, characters: String) -> Key {
+        switch k {
+        case .escape: return .escape
+        case .leftArrow: return .left
+        case .rightArrow: return .right
+        case .return: return .submit
+        case .tab: return .tab
+        default:
+            if characters == "\u{3}" { return .submit }
+            if characters == "\u{19}" || characters == "\t" { return .tab }
+            return .other
+        }
+    }
+
+    /// A field's Return or Send answers once something's been typed in the
+    /// field since it took the keyboard (that's deliberate), or else after
+    /// the quiet (not a Tab in and Return straight after).
+    static func fieldSubmits(edited: Bool, quiet: Bool) -> Bool { edited || quiet }
 
     /// Tab (and ⇧Tab) moves focus on from the card only after the quiet:
     /// before it, it's taken (and counts as a key).

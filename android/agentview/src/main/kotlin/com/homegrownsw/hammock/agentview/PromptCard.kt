@@ -164,7 +164,11 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
     // took the keyboard and after the card's last key (not a Tab in, then Return);
     // a tap in, a note typed and Return does. A tap on a button isn't gated.
     var fieldFocusedAt by remember { mutableLongStateOf(0L) }
-    fun fieldQuiet() = PromptKeys.acceptsPick(PromptKeys.now(), shownAt, keysTakenAt, lastKeyAt, fieldFocusedAt)
+    // Something's been typed in that field since it took the keyboard: then its
+    // Return or Send answers at once (typing is deliberate).
+    var fieldEdited by remember { mutableStateOf(false) }
+    fun fieldFocused() { fieldFocusedAt = PromptKeys.now(); fieldEdited = false }
+    fun fieldQuiet() = PromptKeys.fieldSubmits(fieldEdited, PromptKeys.acceptsPick(PromptKeys.now(), shownAt, keysTakenAt, lastKeyAt, fieldFocusedAt))
     fun sendOther(fromKeys: Boolean = false) {
         val t = otherText.trim()
         if (t.isEmpty() || state.answering || (fromKeys && !fieldQuiet())) return
@@ -281,9 +285,9 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                         OtherField(
                             text = otherText, onText = { t ->
                                 // Return in a field that grows: send, not a new line.
-                                if (t.contains('\n')) { otherText = t.replace("\n", ""); sendOther(fromKeys = true) } else otherText = t
+                                if (t.contains('\n')) { otherText = t.replace("\n", ""); sendOther(fromKeys = true) } else { if (t != otherText) fieldEdited = true; otherText = t }
                             },
-                            onFocused = { fieldFocusedAt = PromptKeys.now() },
+                            onFocused = ::fieldFocused, keyFocus = !hardKeyboard,
                             placeholder = if (p.kind == AgentPrompt.Kind.KIND_PLAN) "What should $name change?" else "Your answer",
                             sending = state.answering && tapped == n,
                             onSend = { fromKeys -> sendOther(fromKeys) }, onCancel = { typing = false; otherText = "" },
@@ -315,12 +319,12 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(c.fill).padding(horizontal = 12.dp, vertical = 10.dp)) {
                         if (notes.isEmpty()) Text("Notes (optional)", style = MaterialTheme.typography.bodyLarge, color = c.tertiary)
                         BasicTextField(
-                            notes, { t -> if (t.contains('\n')) { notes = t.replace("\n", ""); sendChosen(fromKeys = true) } else notes = t },
+                            notes, { t -> if (t.contains('\n')) { notes = t.replace("\n", ""); sendChosen(fromKeys = true) } else { if (t != notes) fieldEdited = true; notes = t } },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = SolidColor(c.accent), maxLines = 5,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendChosen(fromKeys = true) }),
                             // Esc leaves the notes, the keys back to the card (not Back out of the pane).
-                            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) fieldFocusedAt = PromptKeys.now() }.onPreviewKeyEvent { e ->
+                            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) fieldFocused() }.onPreviewKeyEvent { e ->
                                 if (e.type == KeyEventType.KeyDown && e.key == Key.Escape && hardKeyboard) { runCatching { keys.requestFocus() }; true } else false
                             },
                         )
@@ -344,7 +348,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Outlined.Warning, null, tint = c.warning, modifier = Modifier.size(16.dp))
                     Text(err, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { session.clearAnswerError(); onOpenTerminal() }) { Text("Answer in Terminal") }
+                    TextButton(onClick = { session.clearAnswerError(); onOpenTerminal() }, modifier = Modifier.focusProperties { canFocus = !hardKeyboard }) { Text("Answer in Terminal") }
                 }
             }
         }
@@ -399,6 +403,8 @@ private fun OtherField(
     text: String, onText: (String) -> Unit, placeholder: String, sending: Boolean,
     /** Sends: true from the keyboard (Return, the IME's Send), false from its button. */
     onSend: (Boolean) -> Unit, onCancel: () -> Unit, onFocused: () -> Unit = {},
+    /** Whether its Send button may take keyboard focus (not with a hardware keyboard: Tab then Enter would send past the field's rule). */
+    keyFocus: Boolean = true,
 ) {
     val c = LocalAgentColors.current
     val focus = remember { FocusRequester() }
@@ -422,7 +428,7 @@ private fun OtherField(
             )
         }
         if (sending) CircularProgressIndicator(Modifier.padding(10.dp).size(18.dp), strokeWidth = 2.dp)
-        else IconButton(onClick = { if (empty) onCancel() else onSend(false) }) {
+        else IconButton(onClick = { if (empty) onCancel() else onSend(false) }, modifier = Modifier.focusProperties { canFocus = keyFocus }) {
             Icon(if (empty) Icons.Outlined.Close else Icons.Outlined.ArrowUpward, if (empty) "Cancel" else "Send", tint = if (empty) c.secondary else c.accent)
         }
     }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import SwiftUI
 @testable import HammockKit
 
 @Suite struct PromptKeyTests {
@@ -320,5 +321,28 @@ func t(_ l: ComposerHistory<String>.Line??) -> String? {
         // Clicked into notes, typed a note for 3 s, Return: yes (typing in the
         // field isn't the card's keys).
         #expect(PromptKey.acceptsPick(now: t0 + 8, shownAt: t0, keysTakenAt: t0, lastKeyAt: t0 + 2, fieldFocusedAt: t0 + 5))
+    }
+}
+
+@Suite struct PromptRoundSixTests {
+    @Test func aFieldAnswersOnceTypedIn() {
+        // Clicked in, "ok" typed, Return straight away (not quiet): answers.
+        #expect(PromptKey.fieldSubmits(edited: true, quiet: false))
+        // Tabbed in, Return with nothing typed, before the quiet: not yet.
+        #expect(!PromptKey.fieldSubmits(edited: false, quiet: false))
+        // Tabbed in, a second's quiet, Return: answers.
+        #expect(PromptKey.fieldSubmits(edited: false, quiet: true))
+    }
+
+    @Test func mapsTheKeysAsTheCardReadsThem() {
+        #expect(PromptKey.key(.tab, characters: "\t") == .tab)
+        // ⇧Tab arrives on the Mac as back-tab.
+        #expect(PromptKey.key(KeyEquivalent("\u{19}"), characters: "\u{19}") == .tab)
+        #expect(PromptKey.key(.return, characters: "\r") == .submit)
+        // The keypad's Enter.
+        #expect(PromptKey.key(KeyEquivalent("\u{3}"), characters: "\u{3}") == .submit)
+        #expect(PromptKey.key(.escape, characters: "\u{1b}") == .escape)
+        #expect(PromptKey.key(.leftArrow, characters: "") == .left)
+        #expect(PromptKey.key(KeyEquivalent("2"), characters: "2") == .other)
     }
 }
