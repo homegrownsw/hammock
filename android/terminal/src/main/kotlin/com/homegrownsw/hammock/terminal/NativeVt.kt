@@ -26,4 +26,12 @@ internal object NativeVt {
     external fun pasteIsSafe(text: ByteArray): Boolean
     external fun encodePaste(h: Long, text: ByteArray): ByteArray
     external fun encodeMouse(h: Long, action: Int, button: Int, x: Float, y: Float, mods: Int, geometry: FloatArray): ByteArray?
+    external fun selectWord(h: Long, x: Int, y: Int): Boolean
+    external fun extendWord(h: Long, x: Int, y: Int)
+    external fun selectScreen(h: Long)
+    external fun clearSelection(h: Long)
+    external fun moveSelection(h: Long, edge: Int, x: Int, y: Int): Int
+    external fun selectionBounds(h: Long, out: IntArray): Boolean
+    external fun selectionText(h: Long): ByteArray?
+    external fun screenText(h: Long): ByteArray?
 }

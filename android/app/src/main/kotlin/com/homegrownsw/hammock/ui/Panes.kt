@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.AddBox
@@ -72,6 +73,7 @@ import com.homegrownsw.hammock.client.isDiff
 import com.homegrownsw.hammock.client.isLog
 import com.homegrownsw.hammock.client.isTerminal
 import com.homegrownsw.hammock.client.sessionURL
+import com.homegrownsw.hammock.terminal.TerminalSession
 import hammock.v1.Hammock.Pane
 import hammock.v1.Hammock.PaneKind
 import kotlinx.coroutines.launch
@@ -144,6 +146,8 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
     }
     val logMode = pane.isLog
     var showLog by remember(paneID) { mutableStateOf(true) }
+    // The terminal on screen, for Copy Screen.
+    var terminal by remember(paneID) { mutableStateOf<TerminalSession?>(null) }
 
     LaunchedEffect(paneID) { model.focus(paneID) }
     // The computer knows which pane the phone shows: it doesn't notify about it then.
@@ -173,6 +177,13 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
                     ViewChoice("Terminal", !on) { close(); if (logMode) showLog = false else { showAgent = false; PaneModes.set(ctx, paneID, false) } }
                     HorizontalDivider()
                 }
+                terminal?.let { t ->
+                    DropdownMenuItem(text = { Text("Copy Screen") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = {
+                        close()
+                        t.engine.screenText()?.let { ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Terminal", it)) }
+                    })
+                    HorizontalDivider()
+                }
             })
         },
         bottomBar = { tabStrip?.invoke() },
@@ -195,7 +206,7 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
                     pane.kind == PaneKind.PANE_KIND_DIFF -> DiffContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_BROWSER -> BrowserContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_SIMULATOR -> SimulatorContent(model, pane, drive)
-                    else -> TerminalContent(model, pane, drive)
+                    else -> TerminalContent(model, pane, drive) { terminal = it }
                 }
             }
         }

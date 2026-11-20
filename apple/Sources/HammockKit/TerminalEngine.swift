@@ -94,6 +94,9 @@ public final class TerminalEngine {
     var mouseButtonDown = false
     var selectionGesture: GhosttySelectionGesture?
     var selectionEvents: [Int32: GhosttySelectionGestureEvent] = [:]
+    /// The word a touch and hold selected, in screen coordinates: dragging
+    /// on from it selects whole words, keeping this one.
+    var wordAnchor: (start: GhosttyPointCoordinate, end: GhosttyPointCoordinate)?
     public private(set) var cols: Int
     public private(set) var rows: Int
     public var theme: TerminalTheme = .light {

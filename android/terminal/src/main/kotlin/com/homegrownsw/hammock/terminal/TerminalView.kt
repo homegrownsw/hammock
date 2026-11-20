@@ -1,10 +1,12 @@
 package com.homegrownsw.hammock.terminal
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Rect
 import android.opengl.GLSurfaceView
+import android.os.Bundle
 import android.text.InputType
 import android.util.AttributeSet
 import android.util.TypedValue
@@ -19,10 +21,12 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.pow
 
@@ -43,7 +47,8 @@ enum class TerminalKey(internal val keyCode: Int) {
  * back through the pane (or to send the wheel to programs that track the
  * mouse, or arrow keys to full-screen programs that don't), tap to click in
  * programs that track the mouse or else to show or hide the keyboard,
- * touch and hold to paste.
+ * touch and hold to select text (then drag its handles, and copy or paste
+ * from its menu).
  *
  * The pane keeps its computer's size, and the font shrinks so it fits
  * (both ways, so the prompt stays in sight). While [active], the view
@@ -63,7 +68,12 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             if (value === field) return
             observation?.close()
             field = value
-            observation = value?.observe { requestRender() }
+            observation = value?.observe {
+                requestRender()
+                // Output moves (or clears) a selection: its handles follow.
+                if (selectionShown) post(selectionMoved)
+            }
+            if (selectionShown) post(selectionMoved)
             value?.engine?.theme = theme
             lastGrid = null
             pushInputs()
@@ -245,6 +255,8 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
     override fun onDetachedFromWindow() {
         stopMomentum()
+        stopAutoscroll()
+        selectionMenu?.finish()
         super.onDetachedFromWindow()
     }
 
@@ -424,7 +436,7 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
         }
 
         override fun onLongPress(e: MotionEvent) {
-            if (readOnly || dragging) return
+            if (dragging || !selectable) return
             longPressed(e.x, e.y)
         }
 
@@ -452,6 +464,54 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
     })
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // A selection handle caught, or a touch and hold dragging on: they
+        // take the whole gesture (not the scrolling, nor the pager's swipe).
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && selectionShown) {
+            handleAt(event.x, event.y)?.let { (edge, caretX, caretY) ->
+                stopMomentum()
+                handleDrag = HandleDrag(edge, event.x - caretX, event.y - caretY)
+                parent?.requestDisallowInterceptTouchEvent(true)
+                hideSelectionMenu()
+                return true
+            }
+        }
+        handleDrag?.let { drag ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    val x = event.x - drag.dx
+                    val y = event.y - drag.dy
+                    selectPoint = x to y
+                    moveHandle(x, y)
+                    updateAutoscroll(y)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handleDrag = null
+                    selectPoint = null
+                    stopAutoscroll()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    showSelectionMenu(null)
+                }
+            }
+            return true
+        }
+        if (wordDragging) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    selectPoint = event.x to event.y
+                    extendWord(event.x, event.y)
+                    updateAutoscroll(event.y)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    wordDragging = false
+                    selectPoint = null
+                    stopAutoscroll()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    showSelectionMenu(event.x to event.y)
+                }
+            }
+            gestures.onTouchEvent(event)
+            return true
+        }
         val handled = gestures.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             if (dragging) parent?.requestDisallowInterceptTouchEvent(false)
@@ -502,6 +562,7 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             else -> {
                 engine.scroll(-lines)
                 requestRender()
+                if (selectionShown) selectionMoved.run() // the selection scrolls with the text
             }
         }
     }
@@ -517,6 +578,16 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
     private fun tapped(x: Float, y: Float) {
         stopMomentum()
+        // A tap puts a selection away, and does nothing else.
+        if (selectionShown || session?.engine?.selectionBounds() != null) {
+            clearSelection()
+            return
+        }
+        // And a menu without one (Select all, Paste).
+        if (selectionMenu != null) {
+            hideSelectionMenu(clearing = true)
+            return
+        }
         if (readOnly) return
         // Programs that track the mouse get the tap as a click.
         if (session?.engine?.mouseTracking == true) {
@@ -528,29 +599,272 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
         if (keyboardShown && hasFocus()) hideKeyboard() else showKeyboard()
     }
 
+    // MARK: Selection
+
+    /** Touch and hold selects text (a tile's screen doesn't). */
+    var selectable = true
+
+    /**
+     * Where the selection's handles go, for the Compose overlay to draw
+     * (TerminalPane), or null with nothing selected. Main thread.
+     */
+    var onSelectionHandles: ((SelectionHandles?) -> Unit)? = null
+
+    private class HandleDrag(var edge: SelectionEdge, val dx: Float, val dy: Float)
+
+    private var handleDrag: HandleDrag? = null
+    /** A touch and hold is dragging on, a word at a time. */
+    private var wordDragging = false
+    /** Where the finger (or a dragged handle's caret) is, for scrolling on past the screen's edge. */
+    private var selectPoint: Pair<Float, Float>? = null
+    private var lastHandleCell: Cell? = null
+    private var selectionMenu: ActionMode? = null
+    /** Finishing the menu to show it again elsewhere, not to put the selection away. */
+    private var menuMoving = false
+    private var handles: SelectionHandles? = null
+
+    /** The accessibility action Copy Screen's id. */
+    private val copyScreenAction = View.generateViewId()
+
+    /** There's a selection (its handles show): output and scrolling move it. Read on the model's thread too. */
+    @Volatile
+    private var selectionShown = false
+
+    private val touchGrid: TouchGrid?
+        get() {
+            val d = drawn ?: return null
+            return TouchGrid(d.originX, d.originY, d.cellWidth, d.cellHeight, d.cols, d.rows)
+        }
+
+    /** How far from a handle's knob a finger still catches it. */
+    private val handleReach = 28 * density
+
+    /** The handle under a point, if any: its end, and its caret's place (x, the row's middle). */
+    private fun handleAt(x: Float, y: Float): Triple<SelectionEdge, Float, Float>? {
+        val h = handles ?: return null
+        return listOfNotNull(h.start, h.end)
+            .map { it to hypot(x - it.knobX(density), y - it.knobY(density)) }
+            .filter { it.second <= handleReach }
+            .minByOrNull { it.second }
+            ?.first?.let { Triple(it.edge, it.x, (it.top + it.bottom) / 2) }
+    }
+
+    /** Touch and hold: selects the word under the finger, and dragging on selects more, a word at a time. */
     private fun longPressed(x: Float, y: Float) {
-        val clipboard = context.getSystemService(ClipboardManager::class.java)
-        if (clipboard?.hasPrimaryClip() != true) return
+        val engine = session?.engine ?: return
+        val g = touchGrid ?: return
+        stopMomentum()
+        hideSelectionMenu()
+        val c = g.cell(x, y)
+        engine.selectWord(c.x, c.y)
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        startActionMode(object : ActionMode.Callback2() {
+        wordDragging = true
+        selectPoint = x to y
+        parent?.requestDisallowInterceptTouchEvent(true)
+        selectionChanged()
+    }
+
+    private fun extendWord(x: Float, y: Float) {
+        val engine = session?.engine ?: return
+        val c = touchGrid?.cell(x, y) ?: return
+        engine.extendWordSelection(c.x, c.y)
+        selectionChanged()
+    }
+
+    /** A handle dragged to (x, y), its caret's place: moves its end, a cell at a time. */
+    private fun moveHandle(x: Float, y: Float) {
+        val engine = session?.engine ?: return
+        val drag = handleDrag ?: return
+        val c = touchGrid?.handleCell(x, y, drag.edge) ?: return
+        drag.edge = engine.moveSelection(drag.edge, c.x, c.y)
+        if (c != lastHandleCell) {
+            if (lastHandleCell != null) performHapticFeedback(HapticFeedbackConstants.TEXT_HANDLE_MOVE)
+            lastHandleCell = c
+        }
+        selectionChanged()
+    }
+
+    /**
+     * Selecting past the screen's top or bottom scrolls back or forward, a
+     * row at a time, while the finger stays there (not in full-screen
+     * programs, which have no scrollback here).
+     */
+    private fun updateAutoscroll(y: Float) {
+        val engine = session?.engine
+        if (engine == null || engine.isAlternateScreen || (touchGrid?.overscroll(y) ?: 0) == 0) return stopAutoscroll()
+        if (!autoscrolling) {
+            autoscrolling = true
+            postDelayed(autoscroll, 70)
+        }
+    }
+
+    private var autoscrolling = false
+
+    private val autoscroll = object : Runnable {
+        override fun run() {
+            val engine = session?.engine
+            val p = selectPoint
+            val over = p?.let { touchGrid?.overscroll(it.second) } ?: 0
+            if (engine == null || p == null || over == 0) return stopAutoscroll()
+            engine.scroll(if (over < 0) -1 else 1)
+            if (handleDrag != null) moveHandle(p.first, p.second) else extendWord(p.first, p.second)
+            requestRender()
+            postDelayed(this, 70)
+        }
+    }
+
+    private fun stopAutoscroll() {
+        autoscrolling = false
+        removeCallbacks(autoscroll)
+    }
+
+    /** The selection changed: redraw it, and move its handles and menu. */
+    private fun selectionChanged() {
+        requestRender()
+        selectionMoved.run()
+    }
+
+    /** Puts the handles where the selection is now, or puts them away when there's none (output can clear it). */
+    private val selectionMoved = Runnable {
+        val bounds = session?.engine?.selectionBounds()
+        val g = touchGrid
+        if (bounds == null || g == null) {
+            if (selectionShown) {
+                selectionShown = false
+                handleDrag = null
+                wordDragging = false
+                lastHandleCell = null
+                stopAutoscroll()
+                hideSelectionMenu(clearing = true)
+            }
+            if (handles != null) {
+                handles = null
+                onSelectionHandles?.invoke(null)
+            }
+            return@Runnable
+        }
+        selectionShown = true
+        fun place(c: Cell, edge: SelectionEdge) =
+            if (g.shows(c)) SelectionHandle(edge, g.caretX(c, edge), g.rowTop(c.y), g.rowBottom(c.y)) else null
+        val h = SelectionHandles(place(bounds.start, SelectionEdge.START), place(bounds.end, SelectionEdge.END))
+        if (h != handles) {
+            handles = h
+            onSelectionHandles?.invoke(h)
+            selectionMenu?.invalidateContentRect()
+        }
+    }
+
+    private fun clearSelection() {
+        session?.engine?.clearSelection()
+        selectionChanged()
+    }
+
+    /** Copies the selection, as plain text (trailing spaces trimmed, wrapped lines joined, as the Mac copies). */
+    fun copySelection(): Boolean {
+        val text = session?.engine?.selectionText() ?: return false
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Terminal", text))
+        return true
+    }
+
+    /** Selects the screen as it shows. */
+    fun selectScreen() {
+        session?.engine?.selectScreen() ?: return
+        selectionChanged()
+        showSelectionMenu(null)
+    }
+
+    private fun hideSelectionMenu(clearing: Boolean = false) {
+        val m = selectionMenu ?: return
+        menuMoving = !clearing
+        selectionMenu = null
+        m.finish()
+        menuMoving = false
+    }
+
+    /** The floating menu (Copy, Select all, Paste), over the selection, or at [at] without one. */
+    private fun showSelectionMenu(at: Pair<Float, Float>?) {
+        hideSelectionMenu()
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        val canPaste = !readOnly && clipboard?.hasPrimaryClip() == true
+        val selected = session?.engine?.selectionBounds() != null
+        if (!selected && !canPaste && at == null) return
+        selectionMenu = startActionMode(object : ActionMode.Callback2() {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                menu.add(Menu.NONE, android.R.id.paste, Menu.NONE, android.R.string.paste)
+                if (selected) menu.add(Menu.NONE, android.R.id.copy, 0, android.R.string.copy)
+                menu.add(Menu.NONE, android.R.id.selectAll, 1, android.R.string.selectAll)
+                if (canPaste) menu.add(Menu.NONE, android.R.id.paste, 2, android.R.string.paste)
                 return true
             }
 
             override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
 
             override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-                if (item.itemId == android.R.id.paste) paste()
-                mode.finish()
+                when (item.itemId) {
+                    android.R.id.copy -> {
+                        copySelection()
+                        // As a text field does: copied, the selection goes.
+                        clearSelection()
+                    }
+                    android.R.id.selectAll -> selectScreen()
+                    android.R.id.paste -> {
+                        mode.finish()
+                        clearSelection()
+                        paste()
+                    }
+                }
                 return true
             }
 
-            override fun onDestroyActionMode(mode: ActionMode) {}
+            override fun onDestroyActionMode(mode: ActionMode) {
+                if (selectionMenu === mode) selectionMenu = null
+                // Back, or the system closing it: the selection goes with it.
+                if (!menuMoving && selectionShown) clearSelection()
+            }
 
             override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
-                outRect.set(x.toInt(), y.toInt(), x.toInt() + 1, y.toInt() + 1)
+                val b = session?.engine?.selectionBounds()
+                val r = b?.let { touchGrid?.rect(it.start, it.end) }
+                if (r != null) {
+                    outRect.set(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt())
+                } else {
+                    val (x, y) = at ?: (width / 2f to height / 2f)
+                    outRect.set(x.toInt(), y.toInt(), x.toInt() + 1, y.toInt() + 1)
+                }
             }
         }, ActionMode.TYPE_FLOATING)
     }
+
+    override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        if (selectionShown) info.addAction(AccessibilityNodeInfo.AccessibilityAction(android.R.id.copy, context.getString(android.R.string.copy)))
+        info.addAction(AccessibilityNodeInfo.AccessibilityAction(copyScreenAction, "Copy Screen"))
+    }
+
+    override fun performAccessibilityAction(action: Int, arguments: Bundle?): Boolean = when (action) {
+        android.R.id.copy -> copySelection()
+        copyScreenAction -> copyScreen()
+        else -> super.performAccessibilityAction(action, arguments)
+    }
+
+    /** Copies the screen as it shows (Copy Screen). */
+    fun copyScreen(): Boolean {
+        val text = session?.engine?.screenText() ?: return false
+        context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Terminal", text))
+        return true
+    }
+
 }
+
+/** A selection handle's place: its end, the caret's x, and its row's top and bottom, in the view's pixels. */
+data class SelectionHandle(val edge: SelectionEdge, val x: Float, val top: Float, val bottom: Float) {
+    /** The knob's middle: below the row, to the left of the caret for the start and the right for the end, as Android's. */
+    fun knobX(density: Float) = x + (if (edge == SelectionEdge.START) -1 else 1) * KNOB_RADIUS_DP * density
+    fun knobY(density: Float) = bottom + KNOB_RADIUS_DP * density
+
+    companion object {
+        const val KNOB_RADIUS_DP = 11f
+    }
+}
+
+/** Where the handles go (an end off the screen has none). */
+data class SelectionHandles(val start: SelectionHandle?, val end: SelectionHandle?)

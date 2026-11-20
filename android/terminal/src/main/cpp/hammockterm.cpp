@@ -33,6 +33,10 @@ struct Term {
     bool hasTheme = false;
     GhosttyColorRgb bg{}, fg{}, cursor{};
     GhosttyColorRgb palette[256]{};
+    // The word a touch and hold selected, in screen coordinates: dragging on
+    // from it selects whole words, keeping this one (extendWord).
+    bool hasAnchor = false;
+    GhosttyPointCoordinate anchorStart{}, anchorEnd{};
 };
 
 Term* T(jlong h) { return reinterpret_cast<Term*>(h); }
@@ -625,4 +629,181 @@ JNI(jbyteArray, encodeMouse)(JNIEnv* env, jobject, jlong h, jint action, jint bu
     size_t len = 0;
     if (ghostty_mouse_encoder_encode(t->mouseEncoder, t->mouseEvent, out, sizeof(out), &len) != GHOSTTY_SUCCESS || len == 0) return nullptr;
     return bytes(env, out, len);
+}
+
+// Touch selection, as TerminalEngine+Selection.swift does it on the iPhone.
+// Cells are in the viewport; a selection's ends can be off the screen.
+
+namespace {
+
+bool gridRef(Term* t, GhosttyPointTag tag, uint16_t x, uint32_t y, GhosttyGridRef* out) {
+    *out = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    GhosttyPoint pt{};
+    pt.tag = tag;
+    pt.value.coordinate = GhosttyPointCoordinate{x, y};
+    return ghostty_terminal_grid_ref(t->terminal, pt, out) == GHOSTTY_SUCCESS;
+}
+
+// A viewport cell, held to the screen.
+bool viewportRef(Term* t, jint x, jint y, GhosttyGridRef* out) {
+    jint cx = x < 0 ? 0 : (x >= t->cols ? t->cols - 1 : x);
+    jint cy = y < 0 ? 0 : (y >= t->rowsN ? t->rowsN - 1 : y);
+    return gridRef(t, GHOSTTY_POINT_TAG_VIEWPORT, uint16_t(cx), uint32_t(cy), out);
+}
+
+bool screenPoint(Term* t, GhosttyGridRef ref, GhosttyPointCoordinate* out) {
+    return ghostty_terminal_point_from_grid_ref(t->terminal, &ref, GHOSTTY_POINT_TAG_SCREEN, out) == GHOSTTY_SUCCESS;
+}
+
+bool screenRef(Term* t, GhosttyPointCoordinate p, GhosttyGridRef* out) {
+    return gridRef(t, GHOSTTY_POINT_TAG_SCREEN, p.x, p.y, out);
+}
+
+bool before(GhosttyPointCoordinate a, GhosttyPointCoordinate b) { return a.y != b.y ? a.y < b.y : a.x < b.x; }
+
+GhosttySelection selection(GhosttyGridRef start, GhosttyGridRef end) {
+    GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+    s.start = start;
+    s.end = end;
+    s.rectangle = false;
+    return s;
+}
+
+void install(Term* t, GhosttySelection s) { ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &s); }
+
+// The current selection, its ends in reading order.
+bool ordered(Term* t, GhosttySelection* out) {
+    GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+    if (ghostty_terminal_get(t->terminal, GHOSTTY_TERMINAL_DATA_SELECTION, &s) != GHOSTTY_SUCCESS) return false;
+    *out = GHOSTTY_INIT_SIZED(GhosttySelection);
+    return ghostty_terminal_selection_ordered(t->terminal, &s, GHOSTTY_SELECTION_ORDER_FORWARD, out) == GHOSTTY_SUCCESS;
+}
+
+// The word at a cell, first cell to last, in screen coordinates.
+bool wordAt(Term* t, GhosttyGridRef ref, GhosttyPointCoordinate* lo, GhosttyPointCoordinate* hi) {
+    GhosttyTerminalSelectWordOptions o = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
+    o.ref = ref;
+    GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+    if (ghostty_terminal_select_word(t->terminal, &o, &s) != GHOSTTY_SUCCESS) return false;
+    GhosttyPointCoordinate a{}, b{};
+    if (!screenPoint(t, s.start, &a) || !screenPoint(t, s.end, &b)) return false;
+    *lo = before(b, a) ? b : a;
+    *hi = before(b, a) ? a : b;
+    return true;
+}
+
+jbyteArray format(JNIEnv* env, Term* t, const GhosttySelection* sel) {
+    GhosttyTerminalSelectionFormatOptions o = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
+    o.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+    o.unwrap = true;  // soft-wrapped lines joined
+    o.trim = true;    // trailing spaces trimmed
+    o.selection = sel;
+    uint8_t* ptr = nullptr;
+    size_t len = 0;
+    if (ghostty_terminal_selection_format_alloc(t->terminal, nullptr, o, &ptr, &len) != GHOSTTY_SUCCESS || !ptr || len == 0) {
+        if (ptr) ghostty_free(nullptr, ptr, len);
+        return nullptr;
+    }
+    jbyteArray out = bytes(env, ptr, len);
+    ghostty_free(nullptr, ptr, len);
+    return out;
+}
+
+}  // namespace
+
+// Selects the word at a cell; false, selecting nothing, on a blank.
+JNI(jboolean, selectWord)(JNIEnv*, jobject, jlong h, jint x, jint y) {
+    Term* t = T(h);
+    t->hasAnchor = false;
+    GhosttyGridRef ref;
+    GhosttyPointCoordinate lo{}, hi{};
+    GhosttyGridRef a, b;
+    if (!viewportRef(t, x, y, &ref) || !wordAt(t, ref, &lo, &hi) || !screenRef(t, lo, &a) || !screenRef(t, hi, &b)) {
+        ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_SELECTION, nullptr);
+        return false;
+    }
+    t->hasAnchor = true;
+    t->anchorStart = lo;
+    t->anchorEnd = hi;
+    install(t, selection(a, b));
+    return true;
+}
+
+// From the word selectWord selected to the word at a cell (or the cell, between words).
+JNI(void, extendWord)(JNIEnv*, jobject, jlong h, jint x, jint y) {
+    Term* t = T(h);
+    if (!t->hasAnchor) return;
+    GhosttyGridRef a, b, ref;
+    GhosttyPointCoordinate here{};
+    if (!screenRef(t, t->anchorStart, &a) || !screenRef(t, t->anchorEnd, &b) || !viewportRef(t, x, y, &ref) || !screenPoint(t, ref, &here)) return;
+    GhosttyPointCoordinate lo = here, hi = here;
+    wordAt(t, ref, &lo, &hi);
+    GhosttyGridRef r;
+    if (before(lo, t->anchorStart)) {
+        install(t, selection(screenRef(t, lo, &r) ? r : ref, b));
+    } else if (before(t->anchorEnd, hi)) {
+        install(t, selection(a, screenRef(t, hi, &r) ? r : ref));
+    } else {
+        install(t, selection(a, b));
+    }
+}
+
+// Selects the screen as it shows (the Mac's Select All).
+JNI(void, selectScreen)(JNIEnv*, jobject, jlong h) {
+    Term* t = T(h);
+    t->hasAnchor = false;
+    GhosttyGridRef a, b;
+    if (!viewportRef(t, 0, 0, &a) || !viewportRef(t, t->cols - 1, t->rowsN - 1, &b)) return;
+    install(t, selection(a, b));
+}
+
+JNI(void, clearSelection)(JNIEnv*, jobject, jlong h) {
+    Term* t = T(h);
+    t->hasAnchor = false;
+    ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_SELECTION, nullptr);
+}
+
+// Moves one end of the selection (edge 0 the start, 1 the end) to a cell,
+// keeping the other. Returns which end the moved one is now.
+JNI(jint, moveSelection)(JNIEnv*, jobject, jlong h, jint edge, jint x, jint y) {
+    Term* t = T(h);
+    t->hasAnchor = false;
+    GhosttySelection s;
+    GhosttyGridRef ref;
+    if (!ordered(t, &s) || !viewportRef(t, x, y, &ref)) return edge;
+    GhosttyGridRef fixed = edge == 0 ? s.end : s.start;
+    GhosttyPointCoordinate fixedAt{}, here{};
+    if (!screenPoint(t, fixed, &fixedAt) || !screenPoint(t, ref, &here)) return edge;
+    if (before(here, fixedAt)) {
+        install(t, selection(ref, fixed));
+        return 0;
+    }
+    install(t, selection(fixed, ref));
+    return 1;
+}
+
+// The selection's first and last cells into out[0..3] (x, y, x, y), in the
+// viewport: a row above the screen is negative. False when there's none.
+JNI(jboolean, selectionBounds)(JNIEnv* env, jobject, jlong h, jintArray out) {
+    Term* t = T(h);
+    GhosttySelection s;
+    GhosttyGridRef top;
+    GhosttyPointCoordinate topAt{}, a{}, b{};
+    if (!ordered(t, &s) || !viewportRef(t, 0, 0, &top) || !screenPoint(t, top, &topAt) || !screenPoint(t, s.start, &a) ||
+        !screenPoint(t, s.end, &b)) return false;
+    jint v[4] = {jint(a.x), jint(a.y) - jint(topAt.y), jint(b.x), jint(b.y) - jint(topAt.y)};
+    env->SetIntArrayRegion(out, 0, 4, v);
+    return true;
+}
+
+// The selected text (UTF-8), or null.
+JNI(jbyteArray, selectionText)(JNIEnv* env, jobject, jlong h) { return format(env, T(h), nullptr); }
+
+// The screen as it shows, as text the way a selection of it copies (Copy Screen).
+JNI(jbyteArray, screenText)(JNIEnv* env, jobject, jlong h) {
+    Term* t = T(h);
+    GhosttyGridRef a, b;
+    if (!viewportRef(t, 0, 0, &a) || !viewportRef(t, t->cols - 1, t->rowsN - 1, &b)) return nullptr;
+    GhosttySelection s = selection(a, b);
+    return format(env, t, &s);
 }

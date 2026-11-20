@@ -104,11 +104,13 @@ fun rememberEditorFontFamily(): String {
  * chosen in Settings.
  */
 @Composable
-fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean) {
+fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (TerminalSession?) -> Unit = {}) {
     val session = remember(model, pane.id) { TerminalSession(pane.id, pane.cols.coerceAtLeast(1), pane.rows.coerceAtLeast(1)) }
     DisposableEffect(session) {
         model.attach(pane.id, session)
+        onSession(session)
         onDispose {
+            onSession(null)
             model.detach(pane.id, session)
             session.close()
         }

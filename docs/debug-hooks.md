@@ -74,6 +74,7 @@ With it:
 | `HMK_DEBUG_BOTTOM=1` | Scroll Sessions to Coming Up (a schedule's page to its runs). |
 | `HMK_DEBUG_MAC_THEME=<name>\|custom` | The sample Mac's theme (Tokyo Night otherwise). |
 | `HMK_DEBUG_KEYBOARD=1` | Focus a terminal as it opens, keyboard up. |
+| `HMK_DEBUG_SELECT=<col>,<row>` | Select the word at that cell of a terminal as it opens, handles and edit menu showing, as a touch and hold does (`HMK_DEBUG_PATH=p_shell`: the demo's shell). |
 | `HMK_DEBUG_EXPOSE=1` | Open Exposé over a tab of several panes as it opens (`HMK_DEBUG_PATH=t_site`: the demo's tab of several panes). |
 | `HMK_DEBUG_TAKE=<steps>` | Play a take in the demo (`DemoDirector.swift`: wait, mark, tab, open, back, allow, type, say, and in the agent view compose, submit, dismiss, scroll), for the App Store's videos and for checking the agent view. |
 | `HMK_DEBUG_LONG_CHAT=1` | The demo's polish agent (`p_polish`) has a long conversation of rows of very different heights, and answers a message as Claude does: thinking, a run of tool calls arriving one after another, then a reply. |

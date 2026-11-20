@@ -223,6 +223,40 @@ class TerminalEngine(cols: Int = 80, rows: Int = 24) : AutoCloseable {
             NativeVt.encodeMouse(it, action.raw, button?.raw ?: 0, x, y, mods, g)
         }
 
+    // MARK: Selection (touch and hold, and its handles)
+
+    /** Selects the word at a viewport cell (Ghostty's rules); false, selecting nothing, on a blank. */
+    fun selectWord(x: Int, y: Int): Boolean = locked(false) { NativeVt.selectWord(it, x, y) }
+
+    /** Dragging on from a touch and hold: from the word it selected to the word at a cell (or the cell, between words). */
+    fun extendWordSelection(x: Int, y: Int) = locked { NativeVt.extendWord(it, x, y) }
+
+    /** Selects the screen as it shows now. */
+    fun selectScreen() = locked { NativeVt.selectScreen(it) }
+
+    fun clearSelection() = locked { NativeVt.clearSelection(it) }
+
+    /**
+     * Moves one end of the selection to a viewport cell, keeping the other
+     * (a handle dragged). Returns which end the moved one is now: dragged
+     * past the other, the start becomes the end.
+     */
+    fun moveSelection(edge: SelectionEdge, x: Int, y: Int): SelectionEdge = locked(edge) {
+        if (NativeVt.moveSelection(it, edge.ordinal, x, y) == 0) SelectionEdge.START else SelectionEdge.END
+    }
+
+    /** The selection's first and last cells in the viewport (rows off the screen are negative, or [rows] or more), or null. */
+    fun selectionBounds(): SelectionBounds? = locked(null) {
+        val out = IntArray(4)
+        if (NativeVt.selectionBounds(it, out)) SelectionBounds(Cell(out[0], out[1]), Cell(out[2], out[3])) else null
+    }
+
+    /** The selected text, plain, with trailing spaces trimmed and wrapped lines joined (as the Mac copies), or null. */
+    fun selectionText(): String? = locked(null) { NativeVt.selectionText(it)?.toString(Charsets.UTF_8) }
+
+    /** The screen as it shows now, as text the way a selection of it copies (Copy Screen), or null. */
+    fun screenText(): String? = locked(null) { NativeVt.screenText(it)?.toString(Charsets.UTF_8) }
+
     override fun close() {
         synchronized(lock) {
             if (handle == 0L) return

@@ -944,6 +944,16 @@ public final class AppModel {
         return s
     }
 
+    /// A terminal pane's screen as plain text (Copy Screen), while this
+    /// device has it: nil for a pane it isn't showing, or hasn't drawn yet.
+    public func screenText(_ paneID: String) -> String? {
+        guard let s = sessions[paneID], s.ready else { return nil }
+        return s.engine.screenText()
+    }
+
+    /// Whether this device has a terminal pane's screen (for Copy Screen).
+    public func hasScreen(_ paneID: String) -> Bool { sessions[paneID]?.ready == true }
+
     public func releaseSession(_ paneID: String) {
         guard let s = sessions[paneID] else { return }
         s.refs -= 1

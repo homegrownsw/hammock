@@ -2,6 +2,7 @@ package com.homegrownsw.hammock.terminal
 
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -37,11 +39,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -67,7 +73,8 @@ import kotlinx.coroutines.launch
  * reported while [active] (on screen) and when typing starts here: send it
  * to the computer when this phone drives the pane. Pads itself above the
  * keyboard (imePadding), so the activity should let the window resize
- * for it (edge to edge, or adjustResize).
+ * for it (edge to edge, or adjustResize). Touch and hold selects text,
+ * with handles to drag and a menu to copy it, unless not [selectable].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -84,6 +91,7 @@ fun TerminalPane(
     lineSpacing: Float = 0f,
     onFocus: () -> Unit = {},
     onCellSize: (widthPx: Int, heightPx: Int) -> Unit = { _, _ -> },
+    selectable: Boolean = true,
 ) {
     val input by rememberUpdatedState(onInput)
     val resize by rememberUpdatedState(onResize)
@@ -92,6 +100,7 @@ fun TerminalPane(
     var view by remember { mutableStateOf<TerminalView?>(null) }
     var focused by remember { mutableStateOf(false) }
     var ctrl by remember { mutableStateOf(false) }
+    var handles by remember { mutableStateOf<SelectionHandles?>(null) }
     val imeVisible = WindowInsets.isImeVisible
     val fontPx = with(LocalDensity.current) { fontSize.toPx() }
 
@@ -111,35 +120,42 @@ fun TerminalPane(
     }
 
     Column(modifier.imePadding()) {
-        AndroidView(
-            factory = { context ->
-                TerminalView(context).apply {
-                    this.onInput = { input(it) }
-                    this.onResize = { c, r, w, h -> resize(c, r, w, h) }
-                    this.onFocus = { focus() }
-                    this.onCellSize = { w, h -> cellSize(w, h) }
-                    this.onCtrlChanged = { ctrl = it }
-                    onFocusChangeListener = View.OnFocusChangeListener { _, has -> focused = has }
-                    view = this
-                }
-            },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            update = { v ->
-                v.session = session
-                v.readOnly = readOnly
-                v.theme = theme
-                v.fontFamily = fontFamily
-                v.lineSpacing = lineSpacing
-                v.fontSizePx = fontPx
-                v.keyboardVisible = imeVisible
-                v.active = active && !readOnly
-            },
-            onRelease = { v ->
-                v.session = null
-                v.onFocusChangeListener = null
-                view = null
-            },
-        )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            AndroidView(
+                factory = { context ->
+                    TerminalView(context).apply {
+                        this.onInput = { input(it) }
+                        this.onResize = { c, r, w, h -> resize(c, r, w, h) }
+                        this.onFocus = { focus() }
+                        this.onCellSize = { w, h -> cellSize(w, h) }
+                        this.onCtrlChanged = { ctrl = it }
+                        this.onSelectionHandles = { handles = it }
+                        onFocusChangeListener = View.OnFocusChangeListener { _, has -> focused = has }
+                        view = this
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                update = { v ->
+                    v.selectable = selectable
+                    v.session = session
+                    v.readOnly = readOnly
+                    v.theme = theme
+                    v.fontFamily = fontFamily
+                    v.lineSpacing = lineSpacing
+                    v.fontSizePx = fontPx
+                    v.keyboardVisible = imeVisible
+                    v.active = active && !readOnly
+                },
+                onRelease = { v ->
+                    v.session = null
+                    v.onFocusChangeListener = null
+                    v.onSelectionHandles = null
+                    handles = null
+                    view = null
+                },
+            )
+            handles?.let { SelectionHandlesOverlay(it, MaterialTheme.colorScheme.primary) }
+        }
         val v = view
         if (v != null && imeVisible && focused && !readOnly) {
             KeyBar(v, ctrl)
@@ -236,6 +252,27 @@ private fun RowScope.BarKey(
             } else if (text != null) {
                 Text(text, fontSize = 15.sp, maxLines = 1, softWrap = false)
             }
+        }
+    }
+}
+
+/**
+ * The selection's handles over the terminal, Android's teardrops: a knob
+ * hanging under the selection's first and last cells. Drawn only; the
+ * terminal takes the touches (TerminalView.handleAt).
+ */
+@Composable
+private fun SelectionHandlesOverlay(handles: SelectionHandles, color: Color) {
+    val density = LocalDensity.current.density
+    Canvas(Modifier.fillMaxSize().clearAndSetSemantics {}) {
+        for (h in listOfNotNull(handles.start, handles.end)) {
+            val r = SelectionHandle.KNOB_RADIUS_DP * density
+            val cx = h.knobX(density)
+            val cy = h.knobY(density)
+            drawCircle(color, r, Offset(cx, cy))
+            // The corner that points at the caret.
+            val left = if (h.edge == SelectionEdge.START) cx else cx - r
+            drawRect(color, Offset(left, cy - r), Size(r, r))
         }
     }
 }

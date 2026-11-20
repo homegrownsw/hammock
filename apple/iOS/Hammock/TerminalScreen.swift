@@ -101,12 +101,14 @@ enum TerminalPrefs {
 
 /// Draws a pane from its TerminalEngine and takes software-keyboard input.
 /// Drag to scroll (or to send the wheel to programs that track the mouse),
-/// tap to click in those programs, long-press to paste.
+/// tap to click in those programs, touch and hold to select text (handles
+/// extend it; the edit menu copies, selects the screen and pastes).
 final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     var session: PaneSession? {
         didSet {
             oldValue?.unobserve(self)
             if oldValue !== session { metal?.forgetImages() }
+            if oldValue !== session, selectionShown { handleDrag = nil; placeHandles() }
             session?.observe(self) { [weak self] in self?.setNeedsDisplay() }
             applyTheme()
             setNeedsDisplay()
@@ -193,6 +195,11 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
 
     @objc private func tapped(_ g: UITapGestureRecognizer) {
         stopMomentum()
+        // A tap puts a selection away, and does nothing else.
+        if selectionShown || session?.engine.selectionBounds() != nil {
+            clearSelection()
+            return
+        }
         // Programs that track the mouse get the tap as a click.
         if let engine = session?.engine, engine.mouseTracking {
             sendMouse(.press, button: .left, at: g.location(in: self))
@@ -231,6 +238,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         case .began:
             stopMomentum()
             scrollAccumulator = 0
+            editMenu.dismissMenu()
         case .changed:
             scroll(by: g.translation(in: self).y)
             g.setTranslation(.zero, in: self)
@@ -240,6 +248,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
                 let link = CADisplayLink(target: self, selector: #selector(glide))
                 link.add(to: .main, forMode: .common)
                 momentumLink = link
+            } else if selectionShown {
+                showEditMenu(at: nil)
             }
         default:
             break
@@ -250,7 +260,10 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         let dt = CGFloat(link.targetTimestamp - link.timestamp)
         scroll(by: momentum * dt)
         momentum *= pow(0.12, dt) // decays like a scroll view's fling
-        if abs(momentum) < 40 { stopMomentum() }
+        if abs(momentum) < 40 {
+            stopMomentum()
+            if selectionShown { showEditMenu(at: nil) }
+        }
     }
 
     private func stopMomentum() {
@@ -277,26 +290,242 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
             }
         } else {
             engine.scroll(by: -lines)
-            setNeedsDisplay()
+            selectionChanged() // the selection scrolls with the text
         }
     }
 
-    // MARK: Paste
+    // MARK: Selection
 
+    /// The grid as last drawn, for turning touches into cells.
+    private var touchGrid: TerminalTouchGrid {
+        TerminalTouchGrid(origin: drawn.origin, cellWidth: drawn.cw, cellHeight: drawn.ch,
+                          cols: session?.engine.cols ?? 1, rows: session?.engine.rows ?? 1)
+    }
+
+    private lazy var startHandle = makeHandle(.start)
+    private lazy var endHandle = makeHandle(.end)
+    /// The handle being dragged: which end it moves now (it swaps on
+    /// passing the other), and how far the finger is from its caret.
+    private var handleDrag: (edge: SelectionEdge, offset: CGPoint)?
+    /// Where the finger is while it selects (a touch and hold's drag, or a
+    /// handle's caret), for scrolling on past the screen's edge.
+    private var selectPoint: CGPoint?
+    private var autoscroll: Timer?
+    private let selectionHaptic = UIImpactFeedbackGenerator(style: .medium)
+    /// Handles are showing (the engine has a selection on the screen).
+    private var selectionShown = false
+
+    private func makeHandle(_ edge: SelectionEdge) -> SelectionHandleView {
+        let h = SelectionHandleView(edge: edge)
+        h.color = UIColor(PhoneTheme.current.accent)
+        h.isHidden = true
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePanned))
+        pan.maximumNumberOfTouches = 1
+        h.addGestureRecognizer(pan)
+        addSubview(h)
+        return h
+    }
+
+    /// Touch and hold: selects the word under the finger, and dragging on
+    /// selects more, a word at a time; letting go shows Copy and Paste.
     @objc private func longPressed(_ g: UILongPressGestureRecognizer) {
-        guard g.state == .began else { return }
-        stopMomentum()
-        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: g.location(in: self)))
+        guard let engine = session?.engine else { return }
+        let p = g.location(in: self)
+        switch g.state {
+        case .began:
+            stopMomentum()
+            editMenu.dismissMenu()
+            let c = touchGrid.cell(at: p)
+            engine.selectWord(x: c.x, y: c.y)
+            selectionHaptic.impactOccurred()
+            selectPoint = p
+            selectionChanged()
+        case .changed:
+            selectPoint = p
+            extendWordSelection(at: p)
+            updateAutoscroll(at: p)
+        case .ended, .cancelled, .failed:
+            stopAutoscroll()
+            selectPoint = nil
+            showEditMenu(at: p)
+        default:
+            break
+        }
+    }
+
+    private func extendWordSelection(at p: CGPoint) {
+        guard let engine = session?.engine else { return }
+        let c = touchGrid.cell(at: p)
+        engine.extendWordSelection(toX: c.x, y: c.y)
+        selectionChanged()
+    }
+
+    /// A handle dragged: moves its end of the selection, a cell at a time.
+    @objc private func handlePanned(_ g: UIPanGestureRecognizer) {
+        guard session != nil, let handle = g.view as? SelectionHandleView else { return }
+        let p = g.location(in: self)
+        switch g.state {
+        case .began:
+            stopMomentum()
+            editMenu.dismissMenu()
+            let caret = handle.caret
+            handleDrag = (handle.edge, CGPoint(x: p.x - caret.midX, y: p.y - caret.midY))
+            selectionHaptic.prepare()
+        case .changed:
+            guard let drag = handleDrag else { return }
+            let at = CGPoint(x: p.x - drag.offset.x, y: p.y - drag.offset.y)
+            selectPoint = at
+            moveHandle(to: at)
+            updateAutoscroll(at: at)
+        case .ended, .cancelled, .failed:
+            stopAutoscroll()
+            handleDrag = nil
+            selectPoint = nil
+            showEditMenu(at: nil)
+        default:
+            break
+        }
+    }
+
+    private func moveHandle(to p: CGPoint) {
+        guard let engine = session?.engine, let drag = handleDrag else { return }
+        let c = touchGrid.handleCell(at: p, edge: drag.edge)
+        handleDrag?.edge = engine.moveSelection(drag.edge, toX: c.x, y: c.y)
+        selectionChanged()
+    }
+
+    /// Selecting past the screen's top or bottom scrolls back or forward,
+    /// a row at a time, while the finger stays there (not in full-screen
+    /// programs, which have no scrollback here).
+    private func updateAutoscroll(at p: CGPoint) {
+        guard let engine = session?.engine, !engine.isAlternateScreen, touchGrid.overscroll(at: p.y) != 0 else { return stopAutoscroll() }
+        guard autoscroll == nil else { return }
+        let t = Timer(timeInterval: 0.07, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.autoscrollTick() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        autoscroll = t
+    }
+
+    private func autoscrollTick() {
+        guard let engine = session?.engine, let p = selectPoint else { return stopAutoscroll() }
+        let over = touchGrid.overscroll(at: p.y)
+        guard over != 0 else { return stopAutoscroll() }
+        engine.scroll(by: over < 0 ? -1 : 1)
+        if handleDrag != nil { moveHandle(to: p) } else { extendWordSelection(at: p) }
+        setNeedsDisplay()
+    }
+
+    private func stopAutoscroll() {
+        autoscroll?.invalidate()
+        autoscroll = nil
+    }
+
+    /// The selection changed: redraw it, and put the handles where it is.
+    private func selectionChanged() {
+        setNeedsDisplay()
+        placeHandles()
+    }
+
+    /// Puts the handles at the selection's ends (hidden when an end is off
+    /// the screen), or hides them when there's none: output can clear it.
+    private func placeHandles() {
+        guard let engine = session?.engine, let b = engine.selectionBounds() else {
+            if selectionShown {
+                selectionShown = false
+                stopAutoscroll()
+                editMenu.dismissMenu()
+            }
+            startHandle.isHidden = true
+            endHandle.isHidden = true
+            return
+        }
+        selectionShown = true
+        let accent = UIColor(PhoneTheme.current.accent)
+        startHandle.color = accent
+        endHandle.color = accent
+        let g = touchGrid
+        startHandle.place(caret: g.caret(b.start, edge: .start), shown: g.shows(b.start))
+        endHandle.place(caret: g.caret(b.end, edge: .end), shown: g.shows(b.end))
+    }
+
+    private func clearSelection() {
+        guard selectionShown || session?.engine.selectionBounds() != nil else { return }
+        session?.engine.clearSelection()
+        handleDrag = nil
+        stopAutoscroll()
+        editMenu.dismissMenu()
+        selectionChanged()
+    }
+
+    /// Shows the edit menu over the selection, or at a point without one.
+    private func showEditMenu(at p: CGPoint?) {
+        let rect = selectionRect
+        guard let at = rect.map({ CGPoint(x: $0.midX, y: $0.minY) }) ?? p else { return }
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: at))
+    }
+
+    /// What the selection covers on the screen, if any of it shows.
+    private var selectionRect: CGRect? {
+        guard let b = session?.engine.selectionBounds() else { return nil }
+        return touchGrid.rect(from: b.start, to: b.end)
     }
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
                              suggestedActions: [UIMenuElement]) -> UIMenu? {
-        guard UIPasteboard.general.hasStrings else { return nil }
-        return UIMenu(children: [UIAction(title: "Paste") { [weak self] _ in self?.paste(nil) }])
+        var items: [UIMenuElement] = []
+        if session?.engine.selectionBounds() != nil {
+            items.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in self?.copy(nil) })
+        }
+        items.append(UIAction(title: "Select All", image: UIImage(systemName: "selection.pin.in.out")) { [weak self] _ in self?.selectAll(nil) })
+        if UIPasteboard.general.hasStrings {
+            items.append(UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in self?.paste(nil) })
+        }
+        return UIMenu(children: items)
+    }
+
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, targetRectFor configuration: UIEditMenuConfiguration) -> CGRect {
+        selectionRect ?? CGRect(origin: configuration.sourcePoint, size: .zero)
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        action == #selector(paste(_:)) ? UIPasteboard.general.hasStrings : super.canPerformAction(action, withSender: sender)
+        switch action {
+        case #selector(paste(_:)): UIPasteboard.general.hasStrings
+        case #selector(copy(_:)): session?.engine.selectionBounds() != nil
+        case #selector(selectAll(_:)): session != nil
+        default: super.canPerformAction(action, withSender: sender)
+        }
+    }
+
+    /// Copies the selection as plain text: trailing spaces trimmed and
+    /// wrapped lines joined, as the Mac copies.
+    override func copy(_ sender: Any?) {
+        guard let text = session?.engine.selectionText() else { return }
+        UIPasteboard.general.string = text
+    }
+
+    /// Selects the screen as it shows (the Mac's Select All).
+    override func selectAll(_ sender: Any?) {
+        guard let engine = session?.engine else { return }
+        engine.selectScreen()
+        selectionChanged()
+        showEditMenu(at: nil)
+    }
+
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get {
+            var actions: [UIAccessibilityCustomAction] = []
+            if session?.engine.selectionBounds() != nil {
+                actions.append(UIAccessibilityCustomAction(name: "Copy") { [weak self] _ in self?.copy(nil); return true })
+            }
+            actions.append(UIAccessibilityCustomAction(name: "Copy Screen") { [weak self] _ in
+                guard let text = self?.session?.engine.screenText() else { return false }
+                UIPasteboard.general.string = text
+                return true
+            })
+            return actions
+        }
+        set {}
     }
 
     override func paste(_ sender: Any?) {
@@ -366,6 +595,17 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         if window != nil, active, ProcessInfo.processInfo.environment["HMK_DEBUG_KEYBOARD"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in _ = self?.becomeFirstResponder() }
         }
+        // HMK_DEBUG_SELECT=<col>,<row> selects the word there once the screen's drawn, as a touch and hold does, menu and all.
+        if window != nil, active, let spot = ProcessInfo.processInfo.environment["HMK_DEBUG_SELECT"] {
+            let n = spot.split(separator: ",").compactMap { Int($0) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, n.count == 2, let engine = session?.engine else { return }
+                engine.selectWord(x: n[0], y: n[1])
+                selectionHaptic.impactOccurred()
+                selectionChanged()
+                showEditMenu(at: touchGrid.caret(TerminalCellPoint(x: n[0], y: n[1]), edge: .start).origin)
+            }
+        }
         #endif
     }
 
@@ -411,6 +651,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     }
 
     override func display(_ layer: CALayer) {
+        // Output and scrolling move a selection: its handles follow, once drawn.
+        if selectionShown { DispatchQueue.main.async { [weak self] in self?.placeHandles() } }
         guard let metal, let metalLayer else {
             // No Metal: CoreGraphics, into the layer.
             let image = UIGraphicsImageRenderer(bounds: bounds).image { _ in draw(bounds) }
@@ -906,4 +1148,54 @@ extension TerminalUIView {
     func closestPosition(to point: CGPoint) -> UITextPosition? { endOfDocument }
     func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? { range.end }
     func characterRange(at point: CGPoint) -> UITextRange? { nil }
+}
+
+/// One of a terminal selection's two handles, as a text view's: a line
+/// the height of a row at the selection's edge, with a knob above it (the
+/// start) or below it (the end). Its frame is bigger than it looks, so
+/// it's easy to catch with a finger.
+final class SelectionHandleView: UIView {
+    let edge: SelectionEdge
+    /// The line it draws, in its superview's coordinates.
+    private(set) var caret = CGRect.zero
+    var color: UIColor = .label {
+        didSet { if color != oldValue { stem.fillColor = color.cgColor; knob.fillColor = color.cgColor } }
+    }
+    private let stem = CAShapeLayer()
+    private let knob = CAShapeLayer()
+    private static let reach: CGFloat = 22
+    private static let knobRadius: CGFloat = 5.5
+
+    init(edge: SelectionEdge) {
+        self.edge = edge
+        super.init(frame: .zero)
+        layer.addSublayer(stem)
+        layer.addSublayer(knob)
+        isAccessibilityElement = true
+        accessibilityLabel = edge == .start ? "Selection start" : "Selection end"
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func place(caret c: CGRect, shown: Bool) {
+        isHidden = !shown
+        guard shown, c != caret || stem.path == nil else { return }
+        caret = c
+        let r = Self.reach
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        frame = CGRect(x: c.minX - r, y: c.minY - r, width: r * 2, height: c.height + r * 2)
+        stem.path = UIBezierPath(rect: CGRect(x: r - 1, y: r, width: 2, height: c.height)).cgPath
+        let k = Self.knobRadius
+        let cy = edge == .start ? r - k + 1 : r + c.height + k - 1
+        knob.path = UIBezierPath(ovalIn: CGRect(x: r - k, y: cy - k, width: k * 2, height: k * 2)).cgPath
+        stem.fillColor = color.cgColor
+        knob.fillColor = color.cgColor
+        CATransaction.commit()
+    }
+
+    /// Only its own drag: not the terminal's scrolling, nor the pager's swipe.
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        g.view === self
+    }
 }

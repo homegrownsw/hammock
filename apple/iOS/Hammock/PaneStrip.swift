@@ -367,6 +367,10 @@ struct PaneMenu: View {
                 Button("Copy Session Link", systemImage: "link") { UIPasteboard.general.url = url }
             }
         }
+        // A terminal this phone has on screen (or kept): its text as it shows.
+        if model.hasScreen(paneID) {
+            Button("Copy Screen", systemImage: "doc.on.doc") { if let text = model.screenText(paneID) { UIPasteboard.general.string = text } }
+        }
         Section {
             if let f = floating {
                 if f.minimised {
