@@ -107,7 +107,7 @@ func (l *peerLink) openMedia(c *conn, m *pb.OpenMedia) (*pb.ServerMessage, error
 	if err != nil {
 		return nil, err
 	}
-	qc, err := quic.DialAddr(ctx, net.JoinHostPort(host, strconv.Itoa(int(t.QuicPort))), pinnedTLS(l.tok.CertSha256),
+	qc, err := dialQUIC(ctx, net.JoinHostPort(host, strconv.Itoa(int(t.QuicPort))), pinnedTLS(l.tok.CertSha256),
 		&quic.Config{MaxIncomingUniStreams: 256, MaxIdleTimeout: 20 * time.Second, KeepAlivePeriod: 5 * time.Second})
 	if err != nil {
 		_ = cl.Send(context.Background(), &pb.ClientMessage{Msg: &pb.ClientMessage_CloseMedia{CloseMedia: &pb.CloseMedia{SessionId: t.SessionId}}})

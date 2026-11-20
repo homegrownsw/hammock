@@ -697,18 +697,8 @@ func restartComputer(t *testing.T, tc *testComputer) *testComputer {
 	t.Helper()
 	tc.c.Close()
 	tc.d.Shutdown()
-	var d *Daemon
-	var err error
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
-		d, err = New(Config{Dir: tc.dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Remote: true, RemoteListen: []string{tc.addr}})
-		if err == nil || time.Now().After(deadline) {
-			break
-		}
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := newDaemon(t, Config{Dir: tc.dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Remote: true, RemoteListen: []string{tc.addr}})
 	go d.Serve()
 	t.Cleanup(d.Shutdown)
 	for deadline := time.Now().Add(5 * time.Second); len(d.RemoteAddrs()) == 0; time.Sleep(10 * time.Millisecond) {

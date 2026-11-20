@@ -105,7 +105,7 @@ func TestMediaDatagrams(t *testing.T) {
 	host, _, _ := net.SplitHostPort(d.RemoteAddrs()[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	qc, err := quic.DialAddr(ctx, net.JoinHostPort(host, strconv.Itoa(int(ticket.QuicPort))),
+	qc, err := dialQUIC(ctx, net.JoinHostPort(host, strconv.Itoa(int(ticket.QuicPort))),
 		&tls.Config{InsecureSkipVerify: true, NextProtos: []string{mediaALPN}}, &quic.Config{EnableDatagrams: true, MaxIncomingUniStreams: 1 << 20})
 	if err != nil {
 		t.Fatal(err)

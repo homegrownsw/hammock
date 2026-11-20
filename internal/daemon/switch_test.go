@@ -51,8 +51,14 @@ func TestSwitchAgentConvertsAndResumes(t *testing.T) {
 	roots := allowTranscripts(t)
 	transcript := filepath.Join(roots, "t.jsonl")
 	os.WriteFile(transcript, []byte("fix the bug"), 0o600)
-	thread.Register(fakeCodec{name: "claude", dir: roots})
-	thread.Register(fakeCodec{name: "codex", dir: roots})
+	// The real codecs back afterwards: later tests read and resume sessions with them (#11, the
+	// package run twice).
+	for _, h := range []string{"claude", "codex"} {
+		if old, ok := thread.CodecFor(h); ok {
+			t.Cleanup(func() { thread.Register(old) })
+		}
+		thread.Register(fakeCodec{name: h, dir: roots})
+	}
 
 	d := startDaemon(t, dir)
 	defer d.Shutdown()

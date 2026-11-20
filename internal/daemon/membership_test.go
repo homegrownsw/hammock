@@ -271,8 +271,13 @@ func TestMembershipRenameDoesntRelink(t *testing.T) {
 	name := "Renamed after its unlink"
 	call(t, x.c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetProfile{SetProfile: &pb.SetProfile{Name: "You", DeviceName: &name}}})
 	d = restartComputer(t, d)
-	waitComputers(t, d, "d drops x", linkedWith(a.uid))
+	// Gone from d's list, not just not back yet: until a's request reaches d, d and x (neither
+	// has heard) link again as before, and a can be back on d before x is.
+	waitComputers(t, d, "d drops x", func(cs *pb.Computers) bool {
+		return linkedWith(a.uid)(cs) && !hasComputer(x.uid, false)(cs)
+	})
 	holdComputers(t, d, "d stays without x", hold, linkedWith(a.uid))
+	waitComputers(t, a, "a with d again", linkedWith(d.uid)) // (its own link to d, redialling)
 	holdComputers(t, a, "a stays without x", hold, linkedWith(d.uid))
 	holdComputers(t, x, "x stays out", hold, alone)
 }
@@ -294,6 +299,9 @@ func TestMembershipResetComputer(t *testing.T) {
 	holdComputers(t, a, "and never as linked", hold, notWith(b.uid))
 	link(t, a, b)
 	waitComputers(t, a, "linked again", linkedWith(b.uid))
+	// (b's own link to a comes up a moment after a's to b: b may dial before a has finished
+	// linking, and tries again.)
+	waitComputers(t, b, "b linked again", linkedWith(a.uid))
 	holdComputers(t, b, "b with a", hold, linkedWith(a.uid))
 }
 

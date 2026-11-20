@@ -137,24 +137,41 @@ func (f *fakeEncoder) count(n *int) int {
 	return *n
 }
 
-func mediaDaemon(t *testing.T) (*Daemon, *client.Client, *fakeEncoder, string) {
-	dir := shortDir(t)
-	d, err := New(Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Remote: true, RemoteListen: []string{"127.0.0.1:0"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc := &fakeEncoder{d: d, s: map[string]*fakeSession{}}
-	d.media.sourceFor = func(*pane) frameSource { return enc }
-	go d.Serve()
-	t.Cleanup(d.Shutdown)
-	deadline := time.Now().Add(5 * time.Second)
-	for len(d.RemoteAddrs()) == 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("remote listener did not start")
+// startMediaHost starts a daemon with remote access on a port of its own on 127.0.0.1, and its
+// video's QUIC on the same port number over UDP, with enc as its panes' video. That UDP port
+// can be taken already (the TCP one is picked without looking at UDP, and a QUIC client's socket
+// may have it): then it starts again, on another.
+func startMediaHost(t *testing.T, enc *fakeEncoder) (*Daemon, string) {
+	t.Helper()
+	for range 10 {
+		dir := shortDir(t)
+		d := newDaemon(t, Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Remote: true, RemoteListen: []string{"127.0.0.1:0"}})
+		if enc != nil {
+			enc.d = d
+			d.media.sourceFor = func(*pane) frameSource { return enc }
 		}
-		time.Sleep(10 * time.Millisecond)
+		go d.Serve()
+		for deadline := time.Now().Add(5 * time.Second); len(d.RemoteAddrs()) == 0; time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("remote listener did not start")
+			}
+		}
+		d.media.mu.Lock()
+		listening := len(d.media.lns) > 0
+		d.media.mu.Unlock()
+		if listening {
+			return d, dir
+		}
+		d.Shutdown()
 	}
+	t.Fatal("video never listened")
+	return nil, ""
+}
+
+func mediaDaemon(t *testing.T) (*Daemon, *client.Client, *fakeEncoder, string) {
+	enc := &fakeEncoder{s: map[string]*fakeSession{}}
+	d, dir := startMediaHost(t, enc)
 	c := dial(t, dir)
 	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
 	gid := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Media"}}}))
@@ -187,7 +204,7 @@ func dialMedia(t *testing.T, d *Daemon, ticket *pb.MediaTicket) *quicViewer {
 	host, _, _ := net.SplitHostPort(d.RemoteAddrs()[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	qc, err := quic.DialAddr(ctx, net.JoinHostPort(host, strconv.Itoa(int(ticket.QuicPort))),
+	qc, err := dialQUIC(ctx, net.JoinHostPort(host, strconv.Itoa(int(ticket.QuicPort))),
 		&tls.Config{InsecureSkipVerify: true, NextProtos: []string{mediaALPN}}, &quic.Config{MaxIncomingUniStreams: 1 << 20})
 	if err != nil {
 		t.Fatal(err)
@@ -305,7 +322,7 @@ func TestMediaOverQUIC(t *testing.T) {
 	host, _, _ := net.SplitHostPort(d.RemoteAddrs()[0])
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	qc2, err := quic.DialAddr(ctx, net.JoinHostPort(host, strconv.Itoa(int(ticket.QuicPort))),
+	qc2, err := dialQUIC(ctx, net.JoinHostPort(host, strconv.Itoa(int(ticket.QuicPort))),
 		&tls.Config{InsecureSkipVerify: true, NextProtos: []string{mediaALPN}}, nil)
 	if err == nil {
 		st, _ := qc2.OpenStream()
@@ -367,21 +384,9 @@ func TestMediaMissingPane(t *testing.T) {
 // A guest's app watches a shared pane: its daemon relays the host's video
 // (QUIC between the daemons) in band to the app. View is enough.
 func TestSharedMedia(t *testing.T) {
-	hostDir, guestDir := shortDir(t), shortDir(t)
-	host, err := New(Config{Dir: hostDir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Remote: true, RemoteListen: []string{"127.0.0.1:0"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc := &fakeEncoder{d: host, s: map[string]*fakeSession{}}
-	host.media.sourceFor = func(*pane) frameSource { return enc }
-	go host.Serve()
-	defer host.Shutdown()
-	for deadline := time.Now().Add(5 * time.Second); len(host.RemoteAddrs()) == 0; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("remote listener did not start")
-		}
-	}
+	enc := &fakeEncoder{s: map[string]*fakeSession{}}
+	host, hostDir := startMediaHost(t, enc)
+	guestDir := shortDir(t)
 	addrs := host.RemoteAddrs()
 	host.mu.Lock()
 	host.cfg.RemoteListen = addrs
@@ -771,7 +776,7 @@ func TestMediaQUICPendingCap(t *testing.T) {
 	dialOne := func() *quic.Conn {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		qc, err := quic.DialAddr(ctx, addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{mediaALPN}}, &quic.Config{})
+		qc, err := dialQUIC(ctx, addr, &tls.Config{InsecureSkipVerify: true, NextProtos: []string{mediaALPN}}, &quic.Config{})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -155,12 +156,32 @@ func shortDirTB(t testing.TB) string {
 	return dir
 }
 
+// newDaemon is New, for a test, waiting while the state dir's lock is still taken: a process this
+// test binary forks (any test's pane holder or command) has a copy of every descriptor until it
+// execs, the lock of a daemon on dir that just shut down among them. Starting again on that dir
+// can find it taken for a moment (most starts do while other tests are spawning).
+//
+// It's shut down when the test ends, if the test hasn't: one left running polls its panes and
+// watches its files for the rest of the package, its share of the machine taken from the tests
+// timing real daemons (the membership ones, side by side at the end).
+func newDaemon(t testing.TB, cfg Config) *Daemon {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		d, err := New(cfg)
+		if err == nil {
+			t.Cleanup(d.Shutdown)
+			return d
+		}
+		taken := errors.Is(err, ErrAlreadyRunning) || errors.Is(err, syscall.EWOULDBLOCK) // (the dir's own flock)
+		if !taken || time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+	}
+}
+
 func startDaemonTB(t testing.TB, dir string) *Daemon {
 	t.Helper()
-	d, err := New(Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := newDaemon(t, Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	go d.Serve()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

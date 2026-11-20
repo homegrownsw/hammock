@@ -432,6 +432,51 @@ func (h *mediaHub) listen(addrs []string, cert tls.Certificate, ifaceFor func(st
 	}
 }
 
+// dialQUIC is quic.DialAddr from a UDP port bound by its number. macOS can give a socket bound
+// to port 0 a port another socket on this computer already has bound to one of its addresses
+// (binding that port by number is refused; the port it picks itself isn't checked the same way).
+// The answers, sent to that address and port, then go to the other socket, and the handshake
+// never finishes: a daemon dialling another on the same computer (the tests' daemons, all on
+// 127.0.0.1) could pick the other's own media port. So a port is picked, then bound by number.
+func dialQUIC(ctx context.Context, addr string, tlsConf *tls.Config, conf *quic.Config) (*quic.Conn, error) {
+	to, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	network, every := "udp4", net.IPv4zero
+	if to.IP.To4() == nil {
+		network, every = "udp6", net.IPv6unspecified
+	}
+	var udp *net.UDPConn
+	for range 10 {
+		pick, err := net.ListenUDP(network, &net.UDPAddr{IP: every})
+		if err != nil {
+			return nil, err
+		}
+		port := pick.LocalAddr().(*net.UDPAddr).Port
+		pick.Close()
+		if udp, err = net.ListenUDP(network, &net.UDPAddr{IP: every, Port: port}); err == nil {
+			break // (refused: it's taken, or was taken meanwhile: another)
+		}
+	}
+	if udp == nil {
+		return nil, errors.New("no free UDP port to dial from")
+	}
+	tr := &quic.Transport{Conn: udp}
+	qc, err := tr.Dial(ctx, to, tlsConf, conf)
+	if err != nil {
+		tr.Close()
+		udp.Close()
+		return nil, err
+	}
+	go func() {
+		<-qc.Context().Done()
+		tr.Close()
+		udp.Close()
+	}()
+	return qc, nil
+}
+
 // stopListening closes the listeners now (so turning remote access straight
 // back on can listen again), and ends every QUIC session in the background.
 func (h *mediaHub) stopListening() {

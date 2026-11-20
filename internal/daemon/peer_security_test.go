@@ -6,8 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"io"
-	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -25,20 +23,7 @@ import (
 // startHost runs a daemon with a remote listener on loopback.
 func startHost(t *testing.T) (*Daemon, string) {
 	t.Helper()
-	dir := shortDir(t)
-	d, err := New(Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Remote: true, RemoteListen: []string{"127.0.0.1:0"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	go d.Serve()
-	t.Cleanup(d.Shutdown)
-	for deadline := time.Now().Add(5 * time.Second); len(d.RemoteAddrs()) == 0; time.Sleep(10 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("remote listener did not start")
-		}
-	}
-	return d, dir
+	return startMediaHost(t, nil)
 }
 
 // A guest only signs in to the host its invite named.

@@ -28,10 +28,7 @@ func startDaemonWithHolder(t *testing.T, dir, script string) *Daemon {
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script+"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	d, err := New(Config{Dir: dir, HolderPath: path, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := newDaemon(t, Config{Dir: dir, HolderPath: path, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	go d.Serve()
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		if c, err := client.Dial(context.Background(), SocketPath(dir), "test", "probe"); err == nil {

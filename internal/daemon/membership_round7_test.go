@@ -419,11 +419,8 @@ func TestLinkFromWildcardListen(t *testing.T) {
 	first, b := startComputer(t), startComputer(t)
 	stop(first)
 	emptyCache()
-	d, err := New(Config{Dir: first.dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	d := newDaemon(t, Config{Dir: first.dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		RemoteListen: []string{"0.0.0.0:0"}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	go d.Serve()
 	t.Cleanup(d.Shutdown)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
