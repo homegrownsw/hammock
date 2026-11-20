@@ -205,7 +205,9 @@ func (d *Daemon) scheduleNext(s *pb.Schedule, t time.Time) {
 // and moves each schedule's next run to its time in the new zone, telling
 // the apps. Where the clock jumped forward, a time it skipped is due now,
 // once, and catches up as after a sleep (the same day; within one interval
-// for cron); none runs twice. Callers hold d.mu.
+// for cron). Where it went back, a time already run waits for the next
+// (a daily task runs once a day by the clock); nothing runs twice within
+// one interval. Callers hold d.mu.
 func (d *Daemon) followZone(now time.Time) {
 	old, loc := d.sched.zone, now.Location()
 	if old == loc {
@@ -240,12 +242,27 @@ func (d *Daemon) followZone(now time.Time) {
 		if jump > 0 {
 			from = now.Add(-jump)
 		}
+		var last time.Time // the latest due time run, skipped or missed
 		for _, r := range s.Runs {
-			if r.DueUnixMs != 0 && r.DueUnixMs >= from.UnixMilli() {
-				from = time.UnixMilli(r.DueUnixMs).In(loc)
+			if r.DueUnixMs != 0 && (last.IsZero() || r.DueUnixMs > last.UnixMilli()) {
+				last = time.UnixMilli(r.DueUnixMs)
 			}
 		}
+		if !last.IsZero() && last.After(from) {
+			from = last.In(loc)
+		}
 		n := spec.next(from)
+		// Going west the clock goes back: a time it reads again that's
+		// already had its run (08:30 in London, then 08:30 in New York
+		// the same day) waits for the next. Only within one interval of
+		// the last run, so an hourly one doesn't wait hours.
+		if !last.IsZero() {
+			if after := spec.next(last.In(old)); !after.IsZero() {
+				for every := after.Sub(last); !n.IsZero() && n.Sub(last) < every && !wallClock(n).After(wallClock(last.In(old))); {
+					n = spec.next(n)
+				}
+			}
+		}
 		// Of the times jumped over, only the latest catches up: the rest
 		// weren't missed while asleep.
 		for !n.IsZero() && !n.After(now) {
@@ -268,6 +285,12 @@ func (d *Daemon) followZone(now time.Time) {
 		s.NextRunUnixMs = next
 		d.saveSchedule(s)
 	}
+}
+
+// wallClock is t as its clock reads (its date and time, in no zone), to
+// compare times in two zones as their clocks read.
+func wallClock(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
 }
 
 // catchUpOK: a run due at due may still start at now. A daily (weekday)

@@ -910,6 +910,24 @@ func TestSchedulesFollowTimeZone(t *testing.T) {
 	if n, _ := ran(); n != 2 {
 		t.Fatalf("ran again: %d runs", n)
 	}
+
+	// West the same day as a run: once a day, by the clock. Back to London
+	// (09:00 there), it runs at London's 08:30 tomorrow; then on to New
+	// York (05:00 there), New York's 08:30 that day waits a day.
+	zone.Store(lon)
+	tick(d, clock, utc("05", "09:00"))
+	next(time.Date(2026, 11, 6, 8, 30, 0, 0, lon))
+	tick(d, clock, utc("06", "08:30"))
+	if n, catchUp := ran(); n != 3 || catchUp {
+		t.Fatalf("at London's 08:30: %d runs (catch-up %v), want a third on time", n, catchUp)
+	}
+	zone.Store(ny)
+	tick(d, clock, utc("06", "10:00"))
+	next(time.Date(2026, 11, 7, 8, 30, 0, 0, ny))
+	tick(d, clock, utc("06", "13:30")) // 08:30 in New York
+	if n, _ := ran(); n != 3 {
+		t.Fatalf("ran twice in a day going west: %d runs", n)
+	}
 }
 
 // The zone is read from where /etc/localtime points.
