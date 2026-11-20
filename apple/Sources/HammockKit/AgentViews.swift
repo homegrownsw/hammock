@@ -4600,7 +4600,18 @@ public struct ComposerSample: View {
                 $0.output = " M internal/agentview/claude.go\n M internal/agentview/codex.go\n?? notes.txt"; $0.turnID = "b1" },
             .with { $0.id = "b2"; $0.kind = .tool; $0.tool = "Bash"; $0.title = "Ran `sleep`"; $0.input = "sleep"
                 $0.output = "usage: sleep number[unit] [...]"; $0.error = true; $0.turnID = "b2" },
+            // An edit (its diff numbered from its hunk), then a run of tools.
+            .with { $0.id = "e1"; $0.kind = .tool; $0.tool = "Edit"; $0.title = "Edited internal/agentview/claude.go"; $0.input = "internal/agentview/claude.go"
+                $0.diff = "@@ -648 +648 @@\n \tswitch b.Name {\n-\tcase \"Bash\":\n+\tcase \"Bash\", \"Shell\":\n \t\tblk.Input = str(\"command\")\n"
+                $0.added = 1; $0.removed = 1; $0.turnID = "u1" },
+            .with { $0.id = "g1"; $0.kind = .tool; $0.tool = "Read"; $0.title = "Read a.go"; $0.input = "a.go"; $0.turnID = "u1" },
+            .with { $0.id = "g2"; $0.kind = .tool; $0.tool = "Read"; $0.title = "Read b.go"; $0.input = "b.go"; $0.turnID = "u1" },
+            .with { $0.id = "g3"; $0.kind = .tool; $0.tool = "Bash"; $0.title = "Ran `go test ./...`"; $0.input = "go test ./..."; $0.error = true; $0.turnID = "u1" },
+            .with { $0.id = "g4"; $0.kind = .tool; $0.tool = "Edit"; $0.title = "Edited a.go"; $0.input = "a.go"; $0.turnID = "u1" },
         ]
+        // For "/" completion.
+        v.commands = ["/clear", "/compact", "/context", "/review", "/review-pr", "/plugin:pr-tidy", "/approve", "/prompts:draft"]
+        v.startCommands = ["/clear", "/compact", "/context", "/review"]
         session.apply(v)
         session.setOpen("b1", true)
         session.setOpen("b2", true)
@@ -4609,9 +4620,10 @@ public struct ComposerSample: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if pictures.isEmpty {
-                ForEach(session.blocks, id: \.id) { b in
+                ForEach(session.blocks.prefix(4), id: \.id) { b in
                     if b.kind == .tool { ToolRow(block: b, session: session) } else { UserBubble(text: b.text, attachments: [], session: session).frame(maxWidth: .infinity, alignment: .trailing) }
                 }
+                ToolGroup(id: "g", tools: Array(session.blocks.dropFirst(4)), session: session)
             } else {
                 // A sent message with its chips, as from the composer.
                 let sent = pictures.prefix(2).enumerated().map { BubbleAttachment.local(id: UUID(uuidString: "00000000-0000-0000-0000-00000000000\($0.offset)")!, name: $0.element.name, data: $0.element.data) }

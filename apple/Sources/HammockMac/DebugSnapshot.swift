@@ -243,7 +243,7 @@ enum DebugSnapshot {
                 try? await Task.sleep(for: .seconds(1))
                 guard let model = AppModelRegistry.shared else { return }
                 render(ComposerSample(model: model, text: typed, dictating: env["HMK_DEBUG_DICTATION"] == "1"),
-                       size: NSSize(width: 560, height: 420), to: "\(prefix)-composer")
+                       size: NSSize(width: 560, height: 700), to: "\(prefix)-composer")
             }
         }
         // HMK_DEBUG_COMPUTER_LOOK=symbols|emoji[:search]: the icon and colour
