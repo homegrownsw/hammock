@@ -329,9 +329,15 @@ private fun RunningTime(sinceUnixMs: Long) {
 }
 
 @Composable
-private fun StatusDot(b: AgentBlock) {
+private fun StatusDot(b: AgentBlock, speaks: Boolean = true) {
     val c = LocalAgentColors.current
     when {
+        // In a row that speaks for itself (ToolRow clears its children's
+        // semantics): no description, and no state ticking for one.
+        b.pending && !speaks -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            RunningTime(b.timeUnixMs)
+            CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+        }
         b.pending -> {
             // Said as it reads: "Running, 12 seconds".
             var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -397,7 +403,7 @@ internal fun ToolRow(b: AgentBlock, session: AgentSession, compact: Boolean = fa
                 Text("−${b.removed}", style = MaterialTheme.typography.bodyMedium, color = c.removed)
             }
             Spacer(Modifier.weight(1f).width(4.dp))
-            StatusDot(b)
+            StatusDot(b, speaks = false)
             Icon(if (open) Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight, null, tint = c.tertiary.copy(alpha = if (opens) 1f else 0f), modifier = Modifier.size(16.dp))
         }
         // Pictures it read or made show without opening it.

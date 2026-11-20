@@ -1906,11 +1906,16 @@ struct StatusDot: View {
         if block.pending {
             // Said as it reads: "Running, 12 seconds" (RunningTime's own
             // label, kept up to date as it ticks).
-            HStack(spacing: 6) {
-                RunningTime(sinceUnixMs: block.timeUnixMs)
-                ProgressView().controlSize(.mini).accessibilityHidden(true)
+            if block.timeUnixMs > 0 {
+                HStack(spacing: 6) {
+                    RunningTime(sinceUnixMs: block.timeUnixMs)
+                    ProgressView().controlSize(.mini).accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .combine)
+            } else {
+                // No start to count from: just "Running".
+                ProgressView().controlSize(.mini).accessibilityLabel(ToolWords.running(nil))
             }
-            .accessibilityElement(children: .combine)
         } else if block.error {
             Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
                 .accessibilityLabel(ToolWords.failed)
@@ -2180,6 +2185,8 @@ struct DiffView: View {
             ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
                 lineText(line, digits: digits)
                     .font(fonts.code(0.95))
+                    // The line as VoiceOver reads it: without the gutter's numbers.
+                    .accessibilityLabel(line.text)
                     .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Square rows that meet, one band per run of lines (a
