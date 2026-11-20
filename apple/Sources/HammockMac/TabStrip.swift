@@ -155,7 +155,7 @@ struct TabStrip: View {
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: Circle())
                 .disabled(group.isRemote && (!group.canDrive || group.offline))
-                .tooltip(Keys.hint("New Tab", "new_tab"))
+                .tooltip(Keys.hint("New Tab", "new_tab"), label: "New Tab")
             }
         }
         .frame(height: height)
@@ -204,7 +204,7 @@ struct TabStrip: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .opacity(hover && AppConfig.shared.tabCloseButton ? 1 : 0)
-                .tooltip("Close Tab")
+                .tooltip("Close Tab", label: "Close Tab")
                 Spacer()
             }
             .padding(.leading, 4)

@@ -430,9 +430,9 @@ struct EditorViewPicker: View {
 
     var body: some View {
         Picker("View", selection: Binding(get: { view }, set: set)) {
-            Image(systemName: "chevron.left.forwardslash.chevron.right").tooltip("Source").tag(EditorInfo.View.source)
-            Image(systemName: "rectangle.split.2x1").tooltip("Source and Preview").tag(EditorInfo.View.split)
-            Image(systemName: "doc.richtext").tooltip("Preview").tag(EditorInfo.View.preview)
+            Image(systemName: "chevron.left.forwardslash.chevron.right").tooltip("Source", label: "Source").tag(EditorInfo.View.source)
+            Image(systemName: "rectangle.split.2x1").tooltip("Source and Preview", label: "Source and Preview").tag(EditorInfo.View.split)
+            Image(systemName: "doc.richtext").tooltip("Preview", label: "Preview").tag(EditorInfo.View.preview)
         }
         .pickerStyle(.segmented)
         .labelsHidden()

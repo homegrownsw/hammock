@@ -1103,7 +1103,7 @@ struct SimulatorPaneView: View {
     }
 
     private func buttons(_ actions: [HeaderAction]) -> some View {
-        ForEach(actions) { a in button(a.symbol, a.help, action: a.action) }
+        ForEach(actions) { a in button(a.symbol, a.help, label: a.title, action: a.action) }
     }
 
     /// The actions that don't fit, in groups divided from each other.
@@ -1124,7 +1124,7 @@ struct SimulatorPaneView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .tooltip("More Actions")
+        .tooltip("More Actions", label: "More Actions")
     }
 
     @ViewBuilder private var trailingButtons: some View {
@@ -1132,7 +1132,7 @@ struct SimulatorPaneView: View {
         PaneCloseButton(model: model, paneID: paneID)
     }
 
-    private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
+    private func button(_ symbol: String, _ help: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
@@ -1140,6 +1140,6 @@ struct SimulatorPaneView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .tooltip(help)
+        .tooltip(help, label: label)
     }
 }

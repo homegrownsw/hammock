@@ -996,16 +996,16 @@ struct BrowserPaneView: View {
     private var toolbar: some View {
         HStack(spacing: 2) {
             PaneKindMenu(model: model, paneID: paneID) {
-                Image(systemName: "globe")
+                Image(systemName: "globe").accessibilityLabel("Browser")
             }
             .fixedSize() // only an icon: never squeezed away
             .padding(.trailing, 4)
-            button("chevron.left", "Back (⌘←)", enabled: pane?.canGoBack == true) { run(.back) }
-            button("chevron.right", "Forward (⌘→)", enabled: pane?.canGoForward == true) { run(.forward) }
+            button("chevron.left", "Back (⌘←)", label: "Back", enabled: pane?.canGoBack == true) { run(.back) }
+            button("chevron.right", "Forward (⌘→)", label: "Forward", enabled: pane?.canGoForward == true) { run(.forward) }
             if pane?.loading == true {
-                button("xmark", "Stop") { model.navigate(paneID, "stop") }
+                button("xmark", "Stop", label: "Stop") { model.navigate(paneID, "stop") }
             } else {
-                button("arrow.clockwise", "Reload (⌘R)") { run(.reload) }
+                button("arrow.clockwise", "Reload (⌘R)", label: "Reload") { run(.reload) }
             }
             TextField("Search or enter address", text: $address)
                 .textFieldStyle(.plain)
@@ -1035,7 +1035,7 @@ struct BrowserPaneView: View {
         .background(isFocused ? Color.themeAccent.opacity(0.06) : Color.clear)
     }
 
-    private func button(_ symbol: String, _ help: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+    private func button(_ symbol: String, _ help: String, label: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
@@ -1044,7 +1044,7 @@ struct BrowserPaneView: View {
         }
         .buttonStyle(.borderless)
         .disabled(!enabled)
-        .tooltip(help)
+        .tooltip(help, label: label)
     }
 
     private func run(_ c: BrowserCommand) {
@@ -1104,8 +1104,8 @@ struct BrowserPaneView: View {
                     .monospacedDigit()
                     .foregroundStyle(matches == 0 ? Color.red.opacity(0.8) : .secondary)
             }
-            button("chevron.up", Keys.hint("Previous", "find_previous"), enabled: matches > 0) { search(findText, next: true, backward: true) }
-            button("chevron.down", Keys.hint("Next", "find_next"), enabled: matches > 0) { search(findText, next: true) }
+            button("chevron.up", Keys.hint("Previous", "find_previous"), label: "Previous Match", enabled: matches > 0) { search(findText, next: true, backward: true) }
+            button("chevron.down", Keys.hint("Next", "find_next"), label: "Next Match", enabled: matches > 0) { search(findText, next: true) }
             Button("Done") { endFind() }
                 .buttonStyle(.borderless)
                 .font(.callout)

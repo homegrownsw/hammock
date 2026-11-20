@@ -72,8 +72,8 @@ struct LogViewToggle: View {
 
     var body: some View {
         Picker("View", selection: Binding(get: { ui.showsRaw(paneID) }, set: { ui.setRaw(paneID, $0) })) {
-            Image(systemName: "apple.terminal").tag(true)
-            Image(systemName: "list.bullet.rectangle").tag(false)
+            Image(systemName: "apple.terminal").accessibilityLabel("Terminal").tag(true)
+            Image(systemName: "list.bullet.rectangle").accessibilityLabel("Log").tag(false)
         }
         .pickerStyle(.segmented)
         .labelsHidden()

@@ -401,7 +401,7 @@ struct PaneCloseButton: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
-            .tooltip("Close Pane")
+            .tooltip("Close Pane", label: "Close Pane")
         }
     }
 }
@@ -596,7 +596,7 @@ struct ZoomButton: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(on ? Color.themeAccent : .secondary)
-            .tooltip(Keys.hint(on ? "Unzoom Pane" : "Zoom Pane", "zoom_pane"))
+            .tooltip(Keys.hint(on ? "Unzoom Pane" : "Zoom Pane", "zoom_pane"), label: on ? "Unzoom Pane" : "Zoom Pane")
         }
     }
 }

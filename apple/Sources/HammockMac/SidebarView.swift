@@ -855,7 +855,7 @@ struct GroupRow: View {
                 Image(systemName: "person.2.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .tooltip("Shared")
+                    .tooltip("Shared", label: "Shared")
             }
             if collapsed {
                 AvatarStack(model.members(of: group).filter { $0.0.online && $0.0.userID != model.myUserID && !$0.0.tabID.isEmpty }, size: 16)
@@ -944,7 +944,7 @@ struct TabRow: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .tooltip("Close Tab")
+        .tooltip("Close Tab", label: "Close Tab")
         .accessibilityLabel("Close Tab")
     }
 

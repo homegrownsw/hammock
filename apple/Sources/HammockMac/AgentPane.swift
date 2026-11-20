@@ -56,8 +56,8 @@ struct AgentViewToggle: View {
     var body: some View {
         let on = modes.showsAgent(paneID)
         Picker("View", selection: Binding(get: { on }, set: { modes.set(paneID, $0) })) {
-            Image(systemName: "apple.terminal").tag(false)
-            Image(systemName: "text.bubble").tag(true)
+            Image(systemName: "apple.terminal").accessibilityLabel("Terminal").tag(false)
+            Image(systemName: "text.bubble").accessibilityLabel("Agent View").tag(true)
         }
         .pickerStyle(.segmented)
         .labelsHidden()

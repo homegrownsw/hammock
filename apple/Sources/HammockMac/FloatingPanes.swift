@@ -540,18 +540,18 @@ struct FloatButtons: View {
     var body: some View {
         let floats = model.floating(paneID) != nil
         if floats {
-            button("minus", Keys.hint("Minimise", "minimise_float"), on: false) {
+            button("minus", Keys.hint("Minimise", "minimise_float"), label: "Minimise", on: false) {
                 FloatMotion.shared.minimise(model, paneID)
             }
         }
         if floats || model.canFloat(paneID) {
-            button("macwindow.on.rectangle", floats ? Keys.hint("Dock Pane", "float_or_dock") + "; or drag it with ⌥ held" : Keys.hint("Float Pane", "float_or_dock"), on: floats) {
+            button("macwindow.on.rectangle", floats ? Keys.hint("Dock Pane", "float_or_dock") + "; or drag it with ⌥ held" : Keys.hint("Float Pane", "float_or_dock"), label: floats ? "Dock Pane" : "Float Pane", on: floats) {
                 FloatMotion.shared.toggle(model, paneID)
             }
         }
     }
 
-    private func button(_ symbol: String, _ help: String, on: Bool, action: @escaping () -> Void) -> some View {
+    private func button(_ symbol: String, _ help: String, label: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .medium))
@@ -560,7 +560,7 @@ struct FloatButtons: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(on ? Color.themeAccent : .secondary)
-        .tooltip(help)
+        .tooltip(help, label: label)
     }
 }
 

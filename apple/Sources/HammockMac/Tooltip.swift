@@ -11,6 +11,16 @@ extension View {
         background(TooltipView(text: text))
             .accessibilityHint(text)
     }
+
+    /// The same, for a control that shows only an icon: `label` is also what
+    /// VoiceOver calls it, which it would otherwise read as the symbol's name
+    /// ("chevron.left"). Not on the plain one, which would replace the text
+    /// label of a control that has one.
+    func tooltip(_ text: String, label: String) -> some View {
+        background(TooltipView(text: text))
+            .accessibilityLabel(label)
+            .accessibilityHint(text == label ? "" : text)
+    }
 }
 
 private struct TooltipView: NSViewRepresentable {
