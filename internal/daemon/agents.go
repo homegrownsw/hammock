@@ -850,6 +850,9 @@ func (d *Daemon) clearAttention(id string) {
 	if _, ok := d.attention[id]; ok {
 		d.forgetAttention(id)
 		d.publish(&pb.StateUpdate{ClearedAttentionIds: []string{id}})
+	} else if l := d.routes[id]; l != nil && !l.online {
+		// Another computer's (or a shared Group's host's), asleep or away.
+		l.dismissOffline(id)
 	}
 }
 

@@ -196,17 +196,13 @@ func (d *Daemon) loadComputers() {
 		}
 	}
 	caches, _ := d.store.Records("peercache")
+	dismissed, _ := d.store.Records("peerdismissed")
 	for uid := range d.comp.links {
 		if !d.isLinked(uid) {
 			continue
 		}
 		if l := d.ensureLink(uid); l != nil && len(l.groups) == 0 {
-			if c, ok := caches[linkKey(l.tok)]; ok {
-				u := &pb.StateUpdate{}
-				if proto.Unmarshal(c, u) == nil {
-					l.applyLocked(u, false)
-				}
-			}
+			l.restore(caches[linkKey(l.tok)], dismissed[linkKey(l.tok)])
 		}
 	}
 }
@@ -758,7 +754,7 @@ func (d *Daemon) closeLink(key string, l *peerLink) {
 	l.online, l.gone = false, true
 	delete(d.links, key)
 	d.persist(d.store.DeleteRecord("peerlink", key))
-	d.persist(d.store.DeleteRecord("peercache", key))
+	d.deleteLinkCache(key)
 	go l.close()
 }
 

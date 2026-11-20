@@ -1648,3 +1648,75 @@ func TestValidIcon(t *testing.T) {
 		}
 	}
 }
+
+// Clearing what needs you on a computer that's asleep clears it here, and
+// it stays cleared through a restart and its coming back, until it's raised
+// again there.
+func TestClearAttentionWhileLinkedOffline(t *testing.T) {
+	a := startComputer(t)
+	a.d.mu.Lock()
+	defer a.d.mu.Unlock()
+	l := fakeLinked(t, a.d)
+	l.applyLocked(linkedState(true, pb.AgentState_AGENT_STATE_NEEDS_INPUT), true)
+	l.online = false
+	clear := &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: "at_pn_s"}}}
+	a.d.mu.Unlock()
+	route, err := a.d.routeFor(nil, clear)
+	a.d.mu.Lock()
+	if route != nil || err != nil {
+		t.Fatalf("offline: routed to %v, %v; want cleared here", route, err)
+	}
+	a.d.clearAttention("at_pn_s")
+	if l.attn["at_pn_s"] != nil || a.d.routes["at_pn_s"] != nil || l.dismissed["at_pn_s"] == nil {
+		t.Fatal("not cleared here")
+	}
+	// A restart: the cache and what was dismissed come back, the item doesn't.
+	caches, _ := a.d.store.Records("peercache")
+	dismissed, _ := a.d.store.Records("peerdismissed")
+	for id, o := range a.d.routes {
+		if o == l {
+			delete(a.d.routes, id) // (the daemon that had them is gone)
+		}
+	}
+	r := newLink(a.d, l.tok)
+	r.linked = true
+	a.d.links["cert_studio"] = r
+	r.restore(caches["cert_studio"], dismissed["cert_studio"])
+	if r.attn["at_pn_s"] != nil || r.dismissed["at_pn_s"] == nil {
+		t.Fatalf("after a restart: attn %v, dismissed %v", r.attn, r.dismissed)
+	}
+	// Back, still waiting there: kept from you.
+	r.online = true
+	r.applyLocked(linkedState(true, pb.AgentState_AGENT_STATE_NEEDS_INPUT), true)
+	if r.attn["at_pn_s"] != nil {
+		t.Fatal("came back when its computer did")
+	}
+	// Raised again there: news.
+	again := linkedState(false, pb.AgentState_AGENT_STATE_NEEDS_INPUT)
+	again.Attention[0].CreatedUnixMs = 42
+	r.applyLocked(again, true)
+	if r.attn["at_pn_s"] == nil || r.dismissed["at_pn_s"] != nil {
+		t.Fatal("raised again, but not shown")
+	}
+	if recs, _ := a.d.store.Records("peerdismissed"); recs["cert_studio"] != nil {
+		t.Fatal("dismissed record kept with nothing dismissed")
+	}
+}
+
+// Cleared there while you cleared it here: nothing left to clear.
+func TestDismissedGoesWhenClearedThere(t *testing.T) {
+	a := startComputer(t)
+	a.d.mu.Lock()
+	defer a.d.mu.Unlock()
+	l := fakeLinked(t, a.d)
+	l.applyLocked(linkedState(true, pb.AgentState_AGENT_STATE_IDLE), true)
+	l.online = false
+	a.d.clearAttention("at_pn_s")
+	l.online = true
+	none := linkedState(true, pb.AgentState_AGENT_STATE_IDLE)
+	none.Attention = nil
+	l.applyLocked(none, true)
+	if len(l.dismissed) != 0 {
+		t.Fatalf("dismissed %v, want none", l.dismissed)
+	}
+}

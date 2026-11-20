@@ -39,30 +39,34 @@ type peerLink struct {
 	redial chan struct{} // dial again now, not after the backoff (kick: the network changed)
 
 	// guarded by d.mu
-	groups   map[string]*pb.Group
-	tabs     map[string]*pb.Tab
-	panes    map[string]*pb.Pane
-	attn     map[string]*pb.AttentionItem
-	grants   map[string]*pb.GrantRequest // a linked computer's agents asking you (not cached: they wait on it)
-	scheds   map[string]*pb.Schedule     // a linked computer's scheduled tasks (schedules.go)
-	people   map[string]*pb.Person
-	online   bool
-	onlineAt time.Time                 // (guarded by d.mu) when it last came online
-	attached map[string]map[*conn]bool // remote pane → your clients viewing it
-	watching map[string]map[*conn]bool // remote pane → your clients watching its agent
-	paging   map[string]*conn          // remote pane → who asked for older agent history
-	logs     map[string]*pb.WatchLog   // remote log pane → the watch your client last sent (one client at a time)
-	logTo    map[string]*conn
-	inputs   map[string]*conn          // remote browser pane → who last gave it input (gets its menus)
-	copyAsk  map[string][]copyRequest  // remote browser pane → copies your clients asked of it, not yet answered (oldest first)
-	menus    map[int32]*pb.BrowserMenu // menus shown to your clients, by the host's seq (dismissed if they leave)
-	menuTo   map[int32]*conn
-	sentAt   string // the presence last sent
-	pending  int    // joins waiting on the host
-	savedAt  time.Time
-	linked   bool // a linked computer of yours (computers.go): every Group, as owner
-	notYet   bool // (guarded by d.mu) it didn't link with this one yet: sign in again shortly
-	gone     bool // closed (left, unlinked): shows nothing more
+	groups map[string]*pb.Group
+	tabs   map[string]*pb.Tab
+	panes  map[string]*pb.Pane
+	attn   map[string]*pb.AttentionItem
+	// What needs you there, cleared here while it was offline (as it was
+	// then): kept from you, and cleared there, when it's back, unless it was
+	// raised again meanwhile. Saved with its cache ("peerdismissed").
+	dismissed map[string]*pb.AttentionItem
+	grants    map[string]*pb.GrantRequest // a linked computer's agents asking you (not cached: they wait on it)
+	scheds    map[string]*pb.Schedule     // a linked computer's scheduled tasks (schedules.go)
+	people    map[string]*pb.Person
+	online    bool
+	onlineAt  time.Time                 // (guarded by d.mu) when it last came online
+	attached  map[string]map[*conn]bool // remote pane → your clients viewing it
+	watching  map[string]map[*conn]bool // remote pane → your clients watching its agent
+	paging    map[string]*conn          // remote pane → who asked for older agent history
+	logs      map[string]*pb.WatchLog   // remote log pane → the watch your client last sent (one client at a time)
+	logTo     map[string]*conn
+	inputs    map[string]*conn          // remote browser pane → who last gave it input (gets its menus)
+	copyAsk   map[string][]copyRequest  // remote browser pane → copies your clients asked of it, not yet answered (oldest first)
+	menus     map[int32]*pb.BrowserMenu // menus shown to your clients, by the host's seq (dismissed if they leave)
+	menuTo    map[int32]*conn
+	sentAt    string // the presence last sent
+	pending   int    // joins waiting on the host
+	savedAt   time.Time
+	linked    bool // a linked computer of yours (computers.go): every Group, as owner
+	notYet    bool // (guarded by d.mu) it didn't link with this one yet: sign in again shortly
+	gone      bool // closed (left, unlinked): shows nothing more
 }
 
 func linkKey(t *pb.InviteToken) string { return t.CertSha256 }
@@ -148,7 +152,7 @@ func (l *peerLink) setCopyAsk(pane string, q []copyRequest) {
 func newLink(d *Daemon, tok *pb.InviteToken) *peerLink {
 	return &peerLink{d: d, tok: tok, ready: make(chan struct{}), stop: make(chan struct{}), redial: make(chan struct{}, 1),
 		groups: map[string]*pb.Group{}, tabs: map[string]*pb.Tab{}, panes: map[string]*pb.Pane{},
-		attn: map[string]*pb.AttentionItem{}, grants: map[string]*pb.GrantRequest{}, scheds: map[string]*pb.Schedule{}, people: map[string]*pb.Person{},
+		attn: map[string]*pb.AttentionItem{}, dismissed: map[string]*pb.AttentionItem{}, grants: map[string]*pb.GrantRequest{}, scheds: map[string]*pb.Schedule{}, people: map[string]*pb.Person{},
 		attached: map[string]map[*conn]bool{}, watching: map[string]map[*conn]bool{}, paging: map[string]*conn{}, logs: map[string]*pb.WatchLog{}, logTo: map[string]*conn{}, inputs: map[string]*conn{}, copyAsk: map[string][]copyRequest{}, menus: map[int32]*pb.BrowserMenu{}, menuTo: map[int32]*conn{}}
 }
 
@@ -160,6 +164,7 @@ func (d *Daemon) loadLinks() {
 	}
 	recs, _ := d.store.Records("peerlink")
 	caches, _ := d.store.Records("peercache")
+	dismissed, _ := d.store.Records("peerdismissed")
 	for key, b := range recs {
 		tok := &pb.InviteToken{}
 		if proto.Unmarshal(b, tok) != nil {
@@ -167,12 +172,7 @@ func (d *Daemon) loadLinks() {
 		}
 		tok.HostName, tok.GroupName = cleanLine(tok.HostName, nameMax), cleanLine(tok.GroupName, nameMax) // (kept by an earlier build)
 		l := newLink(d, tok)
-		if c, ok := caches[key]; ok {
-			u := &pb.StateUpdate{}
-			if proto.Unmarshal(c, u) == nil {
-				l.applyLocked(u, false)
-			}
-		}
+		l.restore(caches[key], dismissed[key])
 		d.links[key] = l
 		go l.run()
 	}
@@ -287,7 +287,7 @@ func (l *peerLink) tidy() {
 	l.gone = true
 	delete(d.links, linkKey(l.tok))
 	d.persist(d.store.DeleteRecord("peerlink", linkKey(l.tok)))
-	d.persist(d.store.DeleteRecord("peercache", linkKey(l.tok)))
+	d.deleteLinkCache(linkKey(l.tok))
 	go l.close()
 }
 
@@ -514,6 +514,11 @@ func (l *peerLink) signIn(ctx context.Context, cl *client.Client) error {
 	for _, w := range l.logs {
 		_ = cl.Send(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_WatchLog{WatchLog: w}})
 	}
+	// What you cleared here while it was away, still waiting there (the
+	// full state just applied dropped the rest): cleared there too.
+	for id := range l.dismissed {
+		_ = cl.Send(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_ClearAttention{ClearAttention: &pb.ClearAttention{Id: id}}})
+	}
 	d.mu.Unlock()
 	l.cmu.Lock()
 	if l.closed {
@@ -681,6 +686,12 @@ func (l *peerLink) applyLocked(u *pb.StateUpdate, publish bool) {
 				out.ClearedAttentionIds = append(out.ClearedAttentionIds, id)
 			}
 		}
+		// Gone there too: nothing left to clear. (Not from the cache, offline.)
+		for id := range l.dismissed {
+			if l.online && !keep[id] {
+				l.undismiss(id)
+			}
+		}
 		for _, g := range u.Grants {
 			keep[g.Id] = true
 		}
@@ -759,6 +770,12 @@ func (l *peerLink) applyLocked(u *pb.StateUpdate, publish bool) {
 		if d.attention[a.Id] != nil || local(a.Id) || l.panes[a.PaneId] == nil {
 			continue
 		}
+		if was := l.dismissed[a.Id]; was != nil {
+			if sameAttention(was, a) {
+				continue // cleared here while it was offline: on its way to being cleared there
+			}
+			l.undismiss(a.Id) // raised again since: news
+		}
 		// For a linked computer's phones: only items raised since the last
 		// update are news (not those a reconnect's full update sends again).
 		if was := l.attn[a.Id]; l.linked && l.online && (was == nil || !sameAttention(was, a)) {
@@ -794,6 +811,9 @@ func (l *peerLink) applyLocked(u *pb.StateUpdate, publish bool) {
 		p.Me = false
 		l.people[p.UserId] = p
 		out.People = append(out.People, p)
+	}
+	for _, id := range u.ClearedAttentionIds {
+		l.undismiss(id)
 	}
 	gone := &pb.StateUpdate{DeletedGroupIds: u.DeletedGroupIds, DeletedTabIds: u.DeletedTabIds,
 		DeletedPaneIds: u.DeletedPaneIds, ClearedAttentionIds: u.ClearedAttentionIds, ResolvedGrantIds: u.ResolvedGrantIds,
@@ -870,6 +890,74 @@ func (l *peerLink) save(now bool) {
 	snap := &pb.StateUpdate{Full: true}
 	l.fill(snap)
 	l.d.persist(l.d.store.PutRecord("peercache", linkKey(l.tok), snap))
+}
+
+// dismissOffline clears, here, an item of the host's while it's offline
+// (where clearing it can't reach): it's cleared there once it's back.
+// Callers hold d.mu.
+func (l *peerLink) dismissOffline(id string) {
+	a := l.attn[id]
+	if a == nil {
+		return
+	}
+	l.dismissed[id] = a
+	l.saveDismissed()
+	u := &pb.StateUpdate{ClearedAttentionIds: []string{id}}
+	l.drop(u)
+	l.save(true)
+	l.d.publish(u)
+}
+
+// undismiss forgets a dismissed item: cleared there, or raised again.
+// Callers hold d.mu.
+func (l *peerLink) undismiss(id string) {
+	if l.dismissed[id] != nil {
+		delete(l.dismissed, id)
+		l.saveDismissed()
+	}
+}
+
+// saveDismissed keeps the dismissed items, for when this daemon restarts
+// before the host is back. Callers hold d.mu.
+func (l *peerLink) saveDismissed() {
+	if l.gone {
+		return
+	}
+	key := linkKey(l.tok)
+	if len(l.dismissed) == 0 {
+		l.d.persist(l.d.store.DeleteRecord("peerdismissed", key))
+		return
+	}
+	u := &pb.StateUpdate{}
+	for _, a := range l.dismissed {
+		u.Attention = append(u.Attention, a)
+	}
+	l.d.persist(l.d.store.PutRecord("peerdismissed", key, u))
+}
+
+// restore brings back, at startup, the host's state as last seen and what
+// was cleared here while it was away. Callers hold d.mu.
+func (l *peerLink) restore(cache, dismissed []byte) {
+	if dismissed != nil {
+		u := &pb.StateUpdate{}
+		if proto.Unmarshal(dismissed, u) == nil {
+			for _, a := range u.Attention {
+				l.dismissed[a.Id] = a
+			}
+		}
+	}
+	if cache != nil {
+		u := &pb.StateUpdate{}
+		if proto.Unmarshal(cache, u) == nil {
+			l.applyLocked(u, false)
+		}
+	}
+}
+
+// deleteLinkCache forgets what a host showed. Callers hold d.mu.
+func (d *Daemon) deleteLinkCache(key string) {
+	d.persist(d.store.DeleteRecord("peercache", key))
+	d.persist(d.store.DeleteRecord("peerdismissed", key))
 }
 
 // fill adds the host's Groups (and what's in them) to u. Callers hold d.mu.
@@ -1086,6 +1174,9 @@ func (d *Daemon) routeFor(c *conn, msg *pb.ClientMessage) (*peerLink, error) {
 	l := d.routes[id]
 	if l == nil {
 		return nil, nil
+	}
+	if _, ok := msg.Msg.(*pb.ClientMessage_ClearAttention); ok && !l.online {
+		return nil, nil // cleared here for now (clearAttention)
 	}
 	if l.linked {
 		// Your own computer: its Groups are yours to change.

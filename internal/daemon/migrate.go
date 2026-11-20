@@ -120,12 +120,12 @@ func (d *Daemon) migrateComputers() {
 			d.persist(d.store.PutRecord("complink", uid, sl))
 		case refuse[uid]:
 			d.persist(d.store.PutRecord("compdeny", uid, &pb.Refusal{UserId: uid, Name: r.Name, UnixMs: time.Now().UnixMilli()}))
-			d.persist(d.store.DeleteRecord("peercache", r.CertSha256))
+			d.deleteLinkCache(r.CertSha256)
 		default:
 			if !r.Unlinked {
 				again = append(again, cmpOr(r.Name, keyFingerprint(uid)))
 			}
-			d.persist(d.store.DeleteRecord("peercache", r.CertSha256))
+			d.deleteLinkCache(r.CertSha256)
 		}
 	}
 	for uid := range refuse {
