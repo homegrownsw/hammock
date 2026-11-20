@@ -244,7 +244,9 @@ public struct AgentConversationView: View {
     /// A glide to the end (following what arrives) waiting for new rows to
     /// measure. A reference, so setting it redraws nothing.
     @State private var glide = GlideState()
-    private final class GlideState { var pending = false; var tick = 0; var gap: CGFloat = 0 }
+    /// target: where the last glide was going (ScrollPosition's y), until
+    /// it's there or out of reach (glide(toEndWith:)).
+    private final class GlideState { var pending = false; var tick = 0; var gap: CGFloat = 0; var target: CGFloat? }
     /// The width the conversation is laid out at. While the pane changes
     /// size (a zoom animating, a divider or the window dragged), it stays
     /// at the old width, so the text doesn't reflow every frame (each reflow
@@ -410,20 +412,53 @@ public struct AgentConversationView: View {
         // there; Latest is for the rest.
         if let s = viewing != nil ? subSession : session,
            let reply = s.items.last(where: { $0.block?.kind == .text && (s.arrived[$0.id].map { Date.now.timeIntervalSince($0) < 2 } ?? false) }),
-           let top = revealer.replyTops[reply.id] {
-            // Where the top of what shows would be, at the end.
-            let topAtEnd = revealer.visible.top + glide.gap + revealer.visible.under
-            if top < topAtEnd + 8 {
-                // A little below the toolbar: right under it (scrollTo(id,
-                // anchor: .top)), the first line was blurred by its soft edge.
-                withAnimation(.smooth(duration: 0.35)) { position.scrollTo(y: max(0, top - 24)) }
-                return
-            }
+           let top = revealer.replyTops[reply.id], top < revealer.topAtEnd + 8 {
+            // A little below the toolbar: right under it (scrollTo(id,
+            // anchor: .top)), the first line was blurred by its soft edge.
+            if JankProbe.enabled { DevLog.agent("glide to reply's top \(Int(top))") }
+            glide.target = max(0, top - 24)
+            withAnimation(.smooth(duration: 0.35)) { position.scrollTo(y: max(0, top - 24)) }
+            return
         }
-        // To the end as laid out (the marker under the lazy rows):
-        // scrollTo(edge:) aims at their estimated height, even once they've
-        // measured, overshooting into blank space and springing back.
-        withAnimation(.smooth(duration: 0.3)) { revealer.proxy?.scrollTo("bottom", anchor: .bottom) }
+        glide(toEndWith: .smooth(duration: 0.3))
+    }
+
+    /// To the end, moving: to where the end is now, a point, not the marker
+    /// under the rows ("bottom"). An animated scroll to a view keeps aiming
+    /// at it until SwiftUI counts the animation complete, which can be
+    /// seconds after it's stopped moving (a spring's tail; a scroll with
+    /// nowhere to go): a row arriving meanwhile moved the marker down, and
+    /// the scroll view jumped after it in a frame, a new reply's whole height
+    /// (blank, the reply still to fade in). Rows arriving after this one are
+    /// followed by a glide of their own, as the content grows (below). Not
+    /// scrollTo(edge:): it aims at the lazy rows' estimated height, even once
+    /// they've measured, overshooting into blank space and springing back.
+    /// A point can end up past the end too (settleGlide), and none is asked
+    /// for when the view's there already: a scroll with nowhere to go never
+    /// completes either.
+    private func glide(toEndWith animation: Animation) {
+        let v = revealer.visible
+        guard v.gap + v.under > 0.5 else { return }
+        if JankProbe.enabled { DevLog.agent("glide to end \(Int(v.gap + v.under))") }
+        glide.target = revealer.topAtEnd
+        withAnimation(animation) { position.scrollTo(y: revealer.topAtEnd) }
+    }
+
+    /// The last glide there, or its point now past the end with the view at
+    /// the end (the keyboard or a prompt gone, the message box or a row
+    /// shorter): SwiftUI never counts an animated scroll to a point it can't
+    /// reach complete, and kept the view pinned to the end, rows that came
+    /// next jumping into view. Put there without an animation, ending it.
+    private func settleGlide(_ v: RowRevealer.Visible) {
+        guard let target = glide.target else { return }
+        let end = v.top + v.gap + v.under
+        if abs(v.top - target) < 0.5 {
+            glide.target = nil
+        } else if target > end + 0.5, v.gap + v.under < 0.5 {
+            glide.target = nil
+            if JankProbe.enabled { DevLog.agent("glide past the end by \(Int(target - end)): ended") }
+            position.scrollTo(y: end)
+        }
     }
 
     /// What floats at the bottom: jump to latest (scrolled up), then the
@@ -626,6 +661,8 @@ public struct AgentConversationView: View {
                 // keeping the end in view snapped everything up a row's height
                 // in one frame.
                 .scrollPosition($position)
+                // A finger on it ends any glide (settleGlide).
+                .onScrollPhaseChange { _, phase in if phase == .tracking || phase == .interacting { glide.target = nil } }
                 .jankScroll()
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
                 .defaultScrollAnchor(settling || holdingEnd ? .bottom : nil, for: .sizeChanges)
@@ -651,7 +688,7 @@ public struct AgentConversationView: View {
                     }
                     // Not with a picture open: it zooms back to where its picture is.
                     let wasNear = old.gap < 60 && viewedImage == nil
-                    if JankProbe.enabled, abs(new.content - old.content) > 0.5, wasNear { DevLog.agent("grow \(Int(new.content - old.content)) gap \(Int(old.gap))→\(Int(new.gap)) settling=\(settling) holding=\(holdingEnd) follow=\(revealer.holdingFollow) pending=\(glide.pending)") }
+                    if JankProbe.enabled, abs(new.content - old.content) > 0.5, wasNear { DevLog.agent("grow \(Int(new.content - old.content)) gap \(Int(old.gap))→\(Int(new.gap)) settling=\(settling) holding=\(holdingEnd) follow=\(revealer.holdingFollow) pending=\(glide.pending) phase=\(JankProbe.shared.phase)") }
                     if settling {
                         // Just loaded: the anchor keeps the end in view as rows
                         // measure their real heights.
@@ -689,8 +726,9 @@ public struct AgentConversationView: View {
                     } else if new.container < old.container - 0.5, wasNear, !holdingEnd {
                         // Shorter (a prompt card, the message box growing; not
                         // the keyboard, held at the end meanwhile): to the very
-                        // end, moving, not jumping the height in a frame.
-                        withAnimation(.smooth(duration: 0.35)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        // end, moving, not jumping the height in a frame. Once
+                        // what's in view has caught up (RowRevealer.visible).
+                        Task { @MainActor in glide(toEndWith: .smooth(duration: 0.35)) }
                     }
                     // Latest once well up from the end; gone again near it (a gap
                     // between the two, so it doesn't flicker at the line).
@@ -703,13 +741,15 @@ public struct AgentConversationView: View {
                                         under: g.contentInsets.bottom, over: g.contentInsets.top)
                 } action: { old, new in
                     revealer.visible = new
-                    if JankProbe.enabled, abs(new.top - old.top) > 20 { DevLog.agent("scrolled \(Int(new.top - old.top)) to \(Int(new.top))") }
+                    settleGlide(new)
+                    if JankProbe.enabled, abs(new.top - old.top) > 20 { DevLog.agent("scrolled \(Int(new.top - old.top)) to \(Int(new.top)) gap \(Int(old.gap))→\(Int(new.gap)) under \(Int(new.under)) phase=\(JankProbe.shared.phase)") }
                 }
                 // Switching to this view with the conversation already loaded:
                 // the anchor alone can land short of the end while lazy rows
                 // above measure their real heights, so land again once they have.
                 .onAppear {
                     revealer.proxy = proxy
+                    revealer.toEnd = { glide(toEndWith: .smooth(duration: 0.3)) }
                     let loaded = !s.blocks.isEmpty
                     // Watched a long time, the live end can grow long: shown
                     // again, it starts afresh, with what's well above lazy.
@@ -790,7 +830,7 @@ public struct AgentConversationView: View {
                     withAnimation(.easeInOut(duration: 0.6)) {
                         switch to {
                         case "top": position.scrollTo(y: 0)
-                        case "bottom": proxy.scrollTo("bottom", anchor: .bottom)
+                        case "bottom": glide.target = revealer.topAtEnd; position.scrollTo(y: revealer.topAtEnd)
                         default: position.scrollTo(y: max(0, revealer.visible.top + (Double(to) ?? 0)))  // by that many points
                         }
                     }
@@ -803,7 +843,7 @@ public struct AgentConversationView: View {
                 .onChange(of: s.prompt.options) {
                     // A prompt that came with the first load is already in view.
                     guard let shownAt, Date.now.timeIntervalSince(shownAt) > 0.5 else { return }
-                    withAnimation(.snappy) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    Task { @MainActor in glide(toEndWith: .snappy) }
                 }
                 // What you answer or send with (the model and context in it):
                 // glass floating over the conversation, which scrolls beneath.
@@ -933,6 +973,11 @@ struct ScrollEdge: Equatable {
     struct Visible: Equatable { var top: CGFloat = 0, bottom: CGFloat = 0, gap: CGFloat = 0, under: CGFloat = 0, over: CGFloat = 0 }
     var visible = Visible()
     var proxy: ScrollViewProxy?
+    /// Glides to the end (AgentConversationView.glide(toEndWith:)).
+    var toEnd: (() -> Void)?
+    /// Where the top of what shows would be with the end in view: what
+    /// ScrollPosition.scrollTo(y:) takes to show the end.
+    var topAtEnd: CGFloat { visible.top + visible.gap + visible.under }
     /// Where each reply that arrived while watched starts, in the content's
     /// coordinates (RevealsReply): a glide to the end goes no further than
     /// the newest one's first line.
@@ -956,11 +1001,14 @@ struct ScrollEdge: Equatable {
         guard let proxy, frame.height > 0 else { return }
         let height = visible.bottom - visible.top
         // At the end when opened: back there, if the whole row shows from there.
-        let toEnd = visible.gap - gapAtOpen
+        if gapAtOpen < 60, frame.minY >= visible.top + visible.gap - gapAtOpen {
+            // Not to the marker under the rows: an animated scroll to it kept
+            // aiming there, and jumped after it when rows arrived.
+            toEnd?()
+            return
+        }
         withAnimation(.smooth(duration: 0.3)) {
-            if gapAtOpen < 60, frame.minY >= visible.top + toEnd {
-                proxy.scrollTo("bottom", anchor: .bottom)
-            } else if frame.height > height || frame.minY < visible.top {
+            if frame.height > height || frame.minY < visible.top {
                 proxy.scrollTo(id, anchor: .top)
             } else if frame.maxY > visible.bottom {
                 proxy.scrollTo(id, anchor: .bottom)

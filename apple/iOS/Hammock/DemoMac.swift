@@ -463,6 +463,12 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             }
         }
         t += 0.6
+        // "right after" in the message: a note, and the reply a moment after it, while the view's still gliding
+        // to the note.
+        if text.contains("right after") {
+            later(t) { self.add(paneID, Self.block("b_note_\(n)", .thinking, text: "Writing it up.")) }
+            t += 0.55
+        }
         later(t) {
             self.working[paneID] = nil
             // "medium" in the message: a reply a little taller than what shows above the keyboard.

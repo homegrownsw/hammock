@@ -42,3 +42,8 @@ replay|HMK_DEBUG_REPLAY=$REPLAY|open:p_polish;wait:2500;compose:p_polish:$REPLAY
 # A reply a little taller than what shows above the keyboard: it glides to its first line, not to its end with that
 # line cut off at the top; and it fades in.
 medium-reply-keyboard|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Another, medium length.;wait:800;submit:p_polish;wait:16000
+
+# A long reply arriving right after a row, while the view's scroll to that row may still be finishing: it glides to the
+# reply's first line, not jumping to its end first (the whole view blank, the reply still to fade in). Timing: it
+# showed on main about half the time.
+reply-right-after|HMK_DEBUG_LONG_CHAT=1|open:p_polish;wait:2500;compose:p_polish:Write it up right after a note.;wait:800;submit:p_polish;wait:16000

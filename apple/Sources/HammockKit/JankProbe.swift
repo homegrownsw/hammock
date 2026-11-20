@@ -61,6 +61,8 @@ final class JankProbe {
     private var events = ProcessInfo.processInfo.environment["HMK_DEBUG_JANK_EVENTS"] != nil
     var userScrolling = false
     var animatingScroll = false
+    /// The scroll view's phase, for DevLog lines.
+    var phase = "idle"
 
     // This window's counts.
     private var windowStart: CFTimeInterval = 0
@@ -283,6 +285,7 @@ extension View {
     func jankScroll() -> some View {
         if JankProbe.enabled {
             onScrollPhaseChange { _, phase in
+                JankProbe.shared.phase = "\(phase)"
                 JankProbe.shared.userScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
                 JankProbe.shared.animatingScroll = phase == .animating
             }
@@ -292,3 +295,4 @@ extension View {
         }
     }
 }
+
