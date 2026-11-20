@@ -35,6 +35,9 @@ class DaemonException(message: String) : Exception(message)
  */
 interface DaemonStandIn {
     fun receive(msg: ClientMessage, reply: (ServerMessage) -> Unit)
+
+    /** The connection opened: what a daemon says first, unasked (a sign-in challenge), goes through `send`. */
+    fun opened(send: (ServerMessage) -> Unit) {}
 }
 
 /**
@@ -155,6 +158,7 @@ class DaemonConnection private constructor(
             if (closed) return@onQueue
             if (standIn != null) {
                 standInOpen = true
+                standIn.opened { m -> onQueue { if (standInOpen) deliver(m) } }
                 onStateChange?.invoke(true, null)
                 return@onQueue
             }

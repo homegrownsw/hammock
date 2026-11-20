@@ -146,7 +146,7 @@ sealed class Link {
  * [workspace] and call the actions from anywhere.
  */
 class AppModel private constructor(
-    private var identity: RemoteIdentity?,
+    @Volatile private var identity: RemoteIdentity?,
     private val key: DeviceKey?,
     private val standIn: DaemonStandIn?,
     private val clientKind: String,
@@ -154,6 +154,8 @@ class AppModel private constructor(
     companion object {
         fun remote(identity: RemoteIdentity, key: DeviceKey, clientKind: String = "android") = AppModel(identity, key, null, clientKind)
         fun standIn(s: DaemonStandIn, clientKind: String = "android") = AppModel(null, null, s, clientKind)
+        /** A stand-in that signs in (or pairs) as a remote one does, for tests. */
+        internal fun standIn(s: DaemonStandIn, identity: RemoteIdentity, key: DeviceKey) = AppModel(identity, key, s, "android")
 
         /**
          * The computer refused this phone's sign-in for good: it doesn't know
@@ -178,6 +180,8 @@ class AppModel private constructor(
 
     val isDemo get() = standIn != null
     val certSHA256: String? get() = identity?.certSHA256
+    /** Signing in with a pairing code, not paired yet. */
+    val isPairing: Boolean get() = identity?.let { it.deviceID == null && it.pairingSecret != null } == true
 
     // Hooks for the app (all called on the model's thread).
     var onPaired: ((deviceID: String) -> Unit)? = null
@@ -193,6 +197,8 @@ class AppModel private constructor(
         private set
     private var stopped = false
     private var paused = false
+    /** Paused while pairing: it waits until the pairing's done (paired, or failed). */
+    private var pauseWanted = false
     private var checking = false
     private var retryDelay = 200L
     private var challenge: ByteArray? = null
@@ -214,10 +220,15 @@ class AppModel private constructor(
     /**
      * Hangs up until [resume]: the app in the background. A phone that stays
      * signed in tells its computer you're on it (pushes and Hammock Key
-     * requests go straight there), and dials and pings for nothing.
+     * requests go straight there), and dials and pings for nothing. A pairing
+     * under way finishes first: hung up halfway, it never would.
      */
-    fun pause() = scope.launch {
-        if (stopped || paused) return@launch
+    fun pause() = scope.launch { pauseNow() }
+
+    private fun pauseNow() {
+        if (stopped || paused) return
+        if (isPairing) { pauseWanted = true; return }
+        pauseWanted = false
         paused = true
         connection?.disconnect()
         connection = null
@@ -228,6 +239,7 @@ class AppModel private constructor(
 
     /** Connects again after [pause]. */
     fun resume() = scope.launch {
+        pauseWanted = false
         if (stopped || !paused) return@launch
         paused = false
         retryDelay = 200
@@ -273,10 +285,19 @@ class AppModel private constructor(
         c.disconnect()
         connection = null
         _link.value = Link.Failed(friendly(err))
+        if (pausedAfterFailing()) return
         val d = retryDelay
         retryDelay = minOf(retryDelay * 2, 5000)
         delay(d)
         if (!stopped && connection == null) open()
+    }
+
+    /** A pause that waited on a pairing (or on signing in after it) that's failed: it takes effect, rather than dialling again. */
+    private fun pausedAfterFailing(): Boolean {
+        if (!pauseWanted || stopped) return false
+        pauseWanted = false
+        paused = true
+        return true
     }
 
     /** Dials again now (back in the foreground, or the network changed), unless connected. */
@@ -368,6 +389,8 @@ class AppModel private constructor(
             }
             rewatch.toList().forEach { it(c) }
             onConnected?.invoke(this)
+            // Paired while the app was away: it hangs up now, as it would have.
+            if (pauseWanted) pauseNow()
         } catch (e: Exception) {
             c.disconnect()
             // Superseded meanwhile (reconnected, stopped): the new connection carries on.
@@ -380,6 +403,7 @@ class AppModel private constructor(
                 return
             }
             _link.value = Link.Failed(e.message ?: "Couldn't sign in")
+            if (pausedAfterFailing()) return
             if (!stopped) {
                 delay(retryDelay)
                 retryDelay = minOf(retryDelay * 2, 5000)

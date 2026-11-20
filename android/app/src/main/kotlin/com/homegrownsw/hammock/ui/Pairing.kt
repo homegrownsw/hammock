@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,10 +81,20 @@ fun PairingScreen(session: Session, firstRun: Boolean, onDemo: (() -> Unit)? = n
     val ctx = LocalContext.current
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> scanning = granted }
 
+    // Stays until the pairing's done: one that fails says why here.
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(started, pairing, error) {
+        // (The session's own values: the collected ones may be a frame behind.)
+        if (started && !session.pairing.value) {
+            started = false
+            if (session.pairingError.value == null) onDone?.invoke()
+        }
+    }
+
     fun pair(c: String) {
         scanning = false
         session.pair(c, switching = true)
-        onDone?.invoke()
+        started = true
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {

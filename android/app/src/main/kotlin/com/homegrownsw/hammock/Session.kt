@@ -168,9 +168,10 @@ class Session(
         // Signing in failing (a used or expired code) shows here.
         scope.launch {
             val r = withTimeoutOrNull(20_000) { m.link.first { it is Link.Failed || it == Link.Connected } }
-            // Only this attempt's: another may have started since.
+            // Only this attempt's: another may have started since. Failing
+            // once paired (signing in after) isn't the pairing's: it retries.
             val ours = m === pending || m === _model.value
-            if (ours && r is Link.Failed && _hosts.value.none { it.id == h.id && it.deviceID != null }) {
+            if (ours && r is Link.Failed && m.isPairing) {
                 _pairingError.value = "Couldn't pair: ${r.message}"
                 cancelPairing()
             }
@@ -351,7 +352,8 @@ class Session(
             }
         }
         onModel?.invoke(m, h)
-        // (A pairing goes ahead regardless: it's the app's own doing.)
+        // (A pairing goes ahead regardless: it's the app's own doing. Paused
+        // while it's pairing, it hangs up once paired: AppModel.pause.)
         m.start(paused = !active && secret == null)
         return m
     }
