@@ -20,7 +20,7 @@ Choose File ▸ New Scheduled Task… (⌥⇧⌘N), or right-click a tab in the 
 - **Give up after** (agents): stop a run that's waited on you this long.
 - **Keep the last** few runs' tabs; older ones close, unless you've typed in them.
 - **Notify me:** when a run is ready, only about problems, or never.
-- For Claude Code, **Remembered tools**, allowed in every run: **Always Allow for This Schedule** in Needs You adds to them (a command by its first word or two, but never one that runs whatever follows it, like `bash -c`, `python3 -c` or `sudo`: allow those once). For Codex, its sandbox and approval policy.
+- For Claude Code, **Remembered tools**, allowed in every run: **Always Allow for This Schedule** in Needs You adds to them (a command by its first word or two, but never one that runs whatever follows it, like `bash -c`, `python3 -c`, `sudo`, `find` or `awk`: allow those once). For Codex, its sandbox and approval policy.
 
 A run that asks you something goes to Needs You, like any agent.
 

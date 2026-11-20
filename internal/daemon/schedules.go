@@ -1052,10 +1052,14 @@ func runsAnything(f []string) bool {
 }
 
 // commandRunners run a command given them, beyond program.go's launchers.
+// find (-exec, -ok), fd (--exec) and awk (system(), pipes) are everyday
+// commands, but a rule is a prefix: Bash(find:*) remembered for a plain
+// find would allow a later find -exec too.
 var commandRunners = map[string]bool{
 	"xargs": true, "eval": true, "exec": true, "command": true, "builtin": true, "source": true, ".": true,
 	"osascript": true, "parallel": true, "script": true, "unbuffer": true, "stdbuf": true, "chroot": true,
 	"flock": true, "ssh": true, "screen": true, "tmux": true,
+	"find": true, "gfind": true, "fd": true, "awk": true, "gawk": true, "mawk": true, "nawk": true,
 }
 
 // withSubcommands are launchers whose own subcommands are worth a rule
