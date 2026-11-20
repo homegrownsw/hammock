@@ -14,6 +14,8 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
+	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
@@ -358,10 +360,40 @@ func pickTailscale(said []net.IP, asked bool, addrs []ifAddr) tsNet {
 }
 
 // loadOrCreateCert returns the daemon's TLS certificate, creating a
-// self-signed one on first use.
+// self-signed one on first use: only when neither tls/cert.pem nor
+// tls/key.pem exists.
+//
+// Paired phones and linked computers pin this certificate, so it's never
+// replaced: one of the two missing, or either unreadable or unparsable, is
+// an error (remote access stays off, and pairing or turning it on says
+// why), and the files are left as they are. To recover, fix them (their
+// permissions, a backup), or delete both to make a new certificate: phones
+// then pair again and computers link again.
 func loadOrCreateCert(dir string) (tls.Certificate, string, error) {
 	certPath, keyPath := filepath.Join(dir, "tls", "cert.pem"), filepath.Join(dir, "tls", "key.pem")
-	if c, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil {
+	certPEM, certErr := readRetry(certPath)
+	keyPEM, keyErr := readRetry(keyPath)
+	certGone, keyGone := errors.Is(certErr, fs.ErrNotExist), errors.Is(keyErr, fs.ErrNotExist)
+	damaged := func(err error) error {
+		return fmt.Errorf("this computer's remote access certificate (%s) can't be used: %w. Not making a new one, which would unpair your phones and linked computers: fix the files, or delete both cert.pem and key.pem to make a new one", filepath.Dir(certPath), err)
+	}
+	switch {
+	case certGone && keyGone: // first use: made below
+	case certGone || keyGone:
+		missing := certPath
+		if keyGone {
+			missing = keyPath
+		}
+		return tls.Certificate{}, "", damaged(fmt.Errorf("%s is missing", filepath.Base(missing)))
+	case certErr != nil:
+		return tls.Certificate{}, "", damaged(certErr)
+	case keyErr != nil:
+		return tls.Certificate{}, "", damaged(keyErr)
+	default:
+		c, err := tls.X509KeyPair(certPEM, keyPEM)
+		if err != nil {
+			return tls.Certificate{}, "", damaged(err)
+		}
 		sum := sha256.Sum256(c.Certificate[0])
 		return c, hex.EncodeToString(sum[:]), nil
 	}
@@ -388,14 +420,16 @@ func loadOrCreateCert(dir string) (tls.Certificate, string, error) {
 	if err != nil {
 		return tls.Certificate{}, "", err
 	}
-	kb, _ := x509.MarshalECPrivateKey(key)
-	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+	kb, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
 		return tls.Certificate{}, "", err
 	}
-	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb}), 0o600); err != nil {
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: kb})
+	if err := writeFilesAtomic(privateFile{keyPath, keyPEM}, privateFile{certPath, certPEM}); err != nil {
 		return tls.Certificate{}, "", err
 	}
-	c, err := tls.LoadX509KeyPair(certPath, keyPath)
+	c, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return tls.Certificate{}, "", err
 	}

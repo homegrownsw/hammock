@@ -44,6 +44,13 @@ hmk start
 Opening the Hammock app also starts it. If it won't start, read its log at
 `~/Library/Application Support/Hammock/logs/hmkd.log` (`~/.local/state/hammock/logs/hmkd.log` on Linux).
 
+## The log says this computer's identity or certificate is damaged
+
+Hammock won't replace `identity.key`, or `tls/cert.pem` and `tls/key.pem`, in its state folder when it can't read
+them, since your phones, linked computers and shared Groups know this computer by them. Restore them from a backup,
+or fix their permissions. If they're lost, delete them (both `tls` files together) and restart the server: it makes
+new ones, and you pair your phones and link your computers again.
+
 ## My panes keep running after I quit the app
 
 That's by design. To stop everything, choose **Quit and Stop Server…** in Settings ▸ About and tick **Also end
