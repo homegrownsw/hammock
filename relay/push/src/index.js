@@ -19,8 +19,9 @@
 // Routes (JSON in and out):
 //   POST /register   {token, sandbox, provider?, id?, secret?} → {id, secret}
 //                    (provider "apns", the default, or "fcm"; the same id,
-//                    given its secret: a phone's new token, its weekly
-//                    refresh, or coming back after being forgotten)
+//                    given its secret, while the relay has it: a phone's
+//                    new token or its weekly refresh. A forgotten id, or
+//                    one the relay never made, gets a new one)
 //   POST /unregister {id, secret}           → {}
 //   POST /send       {id, payload, thread?, collapse?, category?} → {}
 //   POST /clear      {id, payload}           → {} (a silent push: what a
@@ -50,7 +51,6 @@ const ROUTES = new Set(['/register', '/unregister', '/send', '/clear'])
 const CATEGORIES = new Set(['join', 'grant', 'hammockkey'])
 const DAY = 24 * 60 * 60 * 1000
 const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
-const SECRET = /^[0-9a-f]{48}$/ // what register hands out (randomHex(24))
 const APNS_TOKEN = /^[0-9a-f]{64,200}$/i
 const FCM_TOKEN = /^[A-Za-z0-9:_-]{20,1024}$/ // FCM registration tokens are ~160 characters
 const FCM_TTL = '3600s' // the phone shows nothing sent over an hour ago anyway
@@ -133,28 +133,24 @@ async function register({ token, sandbox, provider, id, secret }, env, client) {
   // plenty: no one can fill the table from a script.
   if (env.REGISTERS && !(await env.REGISTERS.limit({ key: client })).success) return json({ error: 'slow down' }, 429)
   // A phone that has an id already (a new token, or reinstalled) keeps it,
-  // proving it's that phone with the id's secret.
+  // proving it's that phone with the id's secret, while its row is here.
   if (validID(id) && typeof secret === 'string') {
     const dev = await device(env, id)
     if (dev && dev.secret === (await sha256(secret))) {
       await env.DB.prepare('UPDATE devices SET token = ?, sandbox = ?, provider = ?, last_used = ? WHERE id = ?').bind(token, sandbox, provider, sqlTime(Date.now()), id).run()
       return json({ id, secret })
     }
-    // Forgotten (unused for 60 days, or APNs said its token was bad): the
-    // phone comes back with the same id and secret, so Macs still holding
-    // the id reach it again without being told a new one. Only while no row
-    // holds the id: the id is random and known only to the phone and its
-    // Macs, so this can't take anyone's id over.
-    if (!dev && SECRET.test(secret)) {
-      await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used, provider) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(id, token, sandbox, await sha256(secret), sqlTime(Date.now()), provider)
-        .run()
-      return json({ id, secret })
-    }
   }
-  // Otherwise a new id. Any earlier one for the same token stays: only its
-  // secret could replace it (whoever learnt a phone's token mustn't be able
-  // to cut it off), and if nothing sends to it, it's forgotten in 60 days.
+  // Otherwise a new id, always made here: an id is never taken from the
+  // client, so one forgotten (unused for 60 days, its token gone, or
+  // unregistered) never comes back. It couldn't safely: every Mac the phone
+  // ever paired with knows its id, unpaired ones too, and one bringing it
+  // back with its own token would get the other Macs' pushes, which it can
+  // decrypt (it has the phone's key). A forgotten phone gets a new id here
+  // and tells each Mac when it next connects to it. Any earlier id for the
+  // same token stays: only its secret could replace it (whoever learnt a
+  // phone's token mustn't be able to cut it off), and if nothing sends to
+  // it, it's forgotten in 60 days.
   const newID = randomHex(16)
   const newSecret = randomHex(24)
   await env.DB.prepare('INSERT INTO devices (id, token, sandbox, secret, last_used, provider) VALUES (?, ?, ?, ?, ?, ?)')

@@ -88,10 +88,14 @@ they're forgotten 60 days from when they were created.
   true for a development build) or `"fcm"` (an Android phone, `token` its FCM
   registration token; `sandbox` is ignored). With the `id` and `secret`
   it had (a new token, the app reinstalled, or its weekly refresh, which
-  keeps it from being forgotten), it keeps that id, and one forgotten comes
-  back with the same id and secret while no other row holds it; without,
-  it gets a new one, and an earlier id for the same token stays (whoever
-  learnt a phone's token can't cut it off) until it goes unused.
+  keeps it from being forgotten), it keeps that id while the relay has it.
+  Otherwise it gets a new one, which the relay makes: an id is never taken
+  from the client, so a forgotten one never comes back (every Mac the phone
+  ever paired with knows it, and could otherwise bring it back with its own
+  token and read the other Macs' pushes). The phone then tells each Mac its
+  new id when it next connects to it; until then that Mac's sends get a 404,
+  and it stops sending to the phone. An earlier id for the same token stays
+  (whoever learnt a phone's token can't cut it off) until it goes unused.
 - `POST /unregister {id, secret}`: a phone dropping an id it no longer
   uses (the one it kept before its credentials moved to the Keychain).
 

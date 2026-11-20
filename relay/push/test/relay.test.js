@@ -149,32 +149,66 @@ test('a phone keeps its id with its secret; nobody else can take it', async () =
   assert.equal(sent[0], 'https://api.sandbox.push.apple.com/3/device/' + token2)
 })
 
-test('a forgotten phone comes back with its id and secret, and sends reach it', async () => {
+test('a refresh keeps a phone from being forgotten', async () => {
   resetJWT()
   const { env } = await testEnv()
   const token = '21'.repeat(32)
   const first = await (await worker.fetch(post('/register', { token }), env)).json()
-  // Unused for 60 days: forgotten; a Mac sending to it is told it's gone.
   env.DB.rows.get(first.id).last_used = '2000-01-01 00:00:00'
-  await worker.scheduled({}, env)
-  assert.ok(!env.DB.rows.has(first.id))
-  globalThis.fetch = async () => new Response(null, { status: 200 })
-  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 404)
-  // Its weekly refresh brings the same id back, with the same secret.
   const back = await (await worker.fetch(post('/register', { token, id: first.id, secret: first.secret }), env)).json()
   assert.deepEqual(back, first)
-  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 200)
-  // A refresh keeps it from being forgotten.
-  env.DB.rows.get(first.id).last_used = '2000-01-01 00:00:00'
-  await worker.fetch(post('/register', { token, id: first.id, secret: first.secret }), env)
   await worker.scheduled({}, env)
   assert.ok(env.DB.rows.has(first.id))
-  // Once it's back, nobody else can claim the id; and a secret that isn't
-  // one the relay could have handed out doesn't bring an id back.
-  const other = await (await worker.fetch(post('/register', { token: '43'.repeat(32), id: first.id, secret: 'f'.repeat(48) }), env)).json()
-  assert.notEqual(other.id, first.id)
-  const made = await (await worker.fetch(post('/register', { token, id: 'e'.repeat(32), secret: 'short' }), env)).json()
+  globalThis.fetch = async () => new Response(null, { status: 200 })
+  assert.equal((await worker.fetch(post('/send', { id: first.id, payload: 'eA==' }), env)).status, 200)
+})
+
+// Every Mac a phone paired with knows its id (and its key), unpaired ones
+// too: an id the relay forgot must never come back, or such a Mac could
+// bring it back with its own token and get the other Macs' pushes.
+test('a forgotten id never comes back, however it was forgotten', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const forgetters = {
+    unused: async (id) => {
+      env.DB.rows.get(id).last_used = '2000-01-01 00:00:00'
+      await worker.scheduled({}, env)
+    },
+    'its token gone': async (id) => {
+      globalThis.fetch = async () => new Response(JSON.stringify({ reason: 'Unregistered' }), { status: 410 })
+      assert.equal((await worker.fetch(post('/send', { id, payload: 'eA==' }), env)).status, 410)
+    },
+    unregistered: async (id, secret) => {
+      assert.equal((await worker.fetch(post('/unregister', { id, secret }), env)).status, 200)
+    },
+  }
+  let n = 0
+  for (const [how, forgetIt] of Object.entries(forgetters)) {
+    const token = (++n).toString(16).padStart(2, '0').repeat(32)
+    const phone = await (await worker.fetch(post('/register', { token }), env)).json()
+    await forgetIt(phone.id, phone.secret)
+    assert.ok(!env.DB.rows.has(phone.id), how)
+    globalThis.fetch = async () => new Response(null, { status: 200 })
+    assert.equal((await worker.fetch(post('/send', { id: phone.id, payload: 'eA==' }), env)).status, 404, how)
+    // An old Mac tries to take the id over, with its own token and a secret
+    // of the relay's form: a new id, and the old one stays gone.
+    const thief = await (await worker.fetch(post('/register', { token: 'ab'.repeat(32), id: phone.id, secret: 'f'.repeat(48) }), env)).json()
+    assert.notEqual(thief.id, phone.id, how)
+    assert.ok(!env.DB.rows.has(phone.id), how)
+    // The phone itself, with its own secret, gets a new id too (and tells
+    // its Macs when it next connects to each).
+    const back = await (await worker.fetch(post('/register', { token, id: phone.id, secret: phone.secret }), env)).json()
+    assert.notEqual(back.id, phone.id, how)
+    assert.notEqual(back.secret, phone.secret, how)
+    assert.ok(env.DB.rows.has(back.id), how)
+    assert.ok(!env.DB.rows.has(phone.id), how)
+    assert.equal((await worker.fetch(post('/send', { id: back.id, payload: 'eA==' }), env)).status, 200, how)
+    assert.equal((await worker.fetch(post('/send', { id: phone.id, payload: 'eA==' }), env)).status, 404, how)
+  }
+  // Nor can a client pick an id the relay never made.
+  const made = await (await worker.fetch(post('/register', { token: 'cd'.repeat(32), id: 'e'.repeat(32), secret: 'f'.repeat(48) }), env)).json()
   assert.notEqual(made.id, 'e'.repeat(32))
+  assert.ok(!env.DB.rows.has('e'.repeat(32)))
 })
 
 test('registrations are rate limited per address', async () => {
