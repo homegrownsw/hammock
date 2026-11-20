@@ -226,6 +226,8 @@ struct LinkComputerSheet: View {
                 Button("Not listed? Type its address or use a link…") { showLink = true }
                     .buttonStyle(.link)
                 Spacer()
+                Button("Search Again") { Task { await discover() } }
+                    .disabled(searching || linking != nil)
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
             }
         }
@@ -334,6 +336,7 @@ struct LinkComputerSheet: View {
 
     private func discover() async {
         searching = true
+        discoveryError = nil
         defer { searching = false }
         do {
             let r = try await model.discoverComputers()
