@@ -177,3 +177,35 @@ class ToolWordsTest {
         assertEquals("Shell command: ls, running", ToolWords.row("Bash", "", "ls", true, true, false, 0, 0))
     }
 }
+
+class ReviewFixesTest {
+    @Test
+    fun editingABroughtBackMessageEndsStepping() {
+        val h = ComposerHistory<String>()
+        h.up("draft") { listOf("one", "two") }
+        h.edited("two")
+        assertEquals(true, h.browsing)
+        h.edited("two, edited")
+        assertEquals(false, h.browsing)
+    }
+
+    @Test
+    fun keepsTheLastFortyPanes() {
+        val order = (1..40).map { "p$it" }
+        assertEquals(order.drop(1) + "new" to listOf("p1"), ComposerHistory.panesKept(order, "new"))
+        assertEquals((order - "p5") + "p5" to emptyList(), ComposerHistory.panesKept(order, "p5"))
+    }
+
+    @Test
+    fun returnTakesOnlyOnceMoved() {
+        assertEquals(false, SlashToken.returnTakes(suggesting = true, moved = false))
+        assertEquals(true, SlashToken.returnTakes(suggesting = true, moved = true))
+    }
+
+    @Test
+    fun promptCardSettles() {
+        assertEquals(false, PromptKeys.acceptsPick(1000, 1200))
+        assertEquals(true, PromptKeys.acceptsPick(1000, 1600))
+        assertEquals(false, PromptKeys.takesKeysOnAppear(typingElsewhere = true))
+    }
+}

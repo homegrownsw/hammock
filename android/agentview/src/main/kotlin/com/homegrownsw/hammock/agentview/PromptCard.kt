@@ -53,6 +53,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.focusable
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -82,8 +89,9 @@ import kotlinx.coroutines.launch
  * [maxHeight]. When an answer can't be matched to the screen, "Answer in
  * Terminal" takes you there.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight: Dp, onOpenTerminal: () -> Unit) {
+internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight: Dp, onOpenTerminal: () -> Unit, active: Boolean = true) {
     val c = LocalAgentColors.current
     val p = state.prompt
     val scope = rememberCoroutineScope()
@@ -165,15 +173,31 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
     }
 
     // A hardware keyboard: the card takes 1–9, ← and → and Esc while you're
-    // not typing in one of its fields.
+    // not typing in one of its fields. By itself as it appears only in the
+    // pane on screen ([active]), with nothing else being typed in (the
+    // message box it replaced, the software keyboard up); else once tapped.
+    // Focusable only with a hardware keyboard, so it's no extra TalkBack stop.
+    val hardKeyboard = LocalConfiguration.current.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+    val imeUp = WindowInsets.isImeVisible
     val keys = remember { FocusRequester() }
     var keysFocused by remember { mutableStateOf(false) }
-    LaunchedEffect(key, typing) { if (!typing) runCatching { keys.requestFocus() } }
+    // When this question appeared: number keys only count a moment after.
+    val shownAt = remember(key) { System.currentTimeMillis() }
+    // Whether the message box had the keyboard as the card took its place.
+    val composerHad = remember { session.composerHadFocus }
+    var cameBack by remember { mutableStateOf(false) }
+    LaunchedEffect(key, typing, hardKeyboard, active) {
+        if (!hardKeyboard || typing || !active) return@LaunchedEffect
+        if (cameBack || PromptKeys.takesKeysOnAppear(typingElsewhere = composerHad || imeUp)) runCatching { keys.requestFocus() }
+    }
+    LaunchedEffect(typing) { if (typing) cameBack = true }
+    // Gone (answered): the keyboard back to the message box that comes back.
+    DisposableEffect(Unit) { onDispose { if (keysFocused || composerHad) session.focusComposerNext = true } }
 
     Surface(
         shape = RoundedCornerShape(24.dp), tonalElevation = 3.dp, shadowElevation = 6.dp,
         modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight).focusRequester(keys)
-            .onFocusChanged { keysFocused = it.isFocused }.focusable().onPreviewKeyEvent { e ->
+            .onFocusChanged { keysFocused = it.isFocused }.focusable(enabled = hardKeyboard).onPreviewKeyEvent { e ->
             // Only the card's own focus: not while typing in one of its fields.
             if (e.type != KeyEventType.KeyDown || !keysFocused) return@onPreviewKeyEvent false
             val k = when (e.key) {
@@ -188,8 +212,10 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                 Key.Seven, Key.NumPad7 -> 7; Key.Eight, Key.NumPad8 -> 8; Key.Nine, Key.NumPad9 -> 9
                 else -> 0
             }
-            when (val a = PromptKeys.action(digit, k, e.isCtrlPressed || e.isMetaPressed || e.isAltPressed, p.optionsCount, position != null)) {
-                is PromptKeys.Action.Pick -> if (!state.answering) pick(a.n)
+            // Shift with a digit is its symbol ("!"), as on the Mac: not a pick.
+            val mods = e.isCtrlPressed || e.isMetaPressed || e.isAltPressed || (digit > 0 && e.isShiftPressed)
+            when (val a = PromptKeys.action(digit, k, mods, p.optionsCount, position != null)) {
+                is PromptKeys.Action.Pick -> if (!state.answering && PromptKeys.acceptsPick(shownAt, System.currentTimeMillis())) pick(a.n)
                 PromptKeys.Action.Previous -> if ((position?.first ?: 0) > 1) session.keys("\u001b[D")
                 PromptKeys.Action.Next -> session.keys("\u001b[C")
                 PromptKeys.Action.Escape -> onOpenTerminal()
@@ -348,7 +374,10 @@ private fun OtherField(text: String, onText: (String) -> Unit, placeholder: Stri
                 text, onText, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(c.accent), maxLines = 6,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { onSend() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                // Esc stops typing the answer, as on the iPhone and the Mac.
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).onPreviewKeyEvent { e ->
+                    if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) { onCancel(); true } else false
+                },
             )
         }
         if (sending) CircularProgressIndicator(Modifier.padding(10.dp).size(18.dp), strokeWidth = 2.dp)

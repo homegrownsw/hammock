@@ -121,6 +121,24 @@ class AgentSession(
     fun isOpen(id: String) = opened[id] == true
     fun setOpen(id: String, open: Boolean) { if (open) opened[id] = true else opened.remove(id) }
 
+    // The composer has the keyboard, and when it last let it go: a prompt card
+    // that takes its place doesn't take keys meant for it.
+    @Volatile private var composerFocused = false
+    @Volatile private var composerBlurredAtMs = 0L
+
+    fun composerFocus(on: Boolean, nowMs: Long = System.currentTimeMillis()) {
+        if (composerFocused && !on) composerBlurredAtMs = nowMs
+        composerFocused = on
+    }
+
+    /** The composer had the keyboard, or had it a moment ago. */
+    fun composerHadFocus(nowMs: Long = System.currentTimeMillis()) = composerFocused || nowMs - composerBlurredAtMs < 1500
+
+    val composerHadFocus: Boolean get() = composerHadFocus()
+
+    /** A prompt card that had the keyboard is gone: the composer that comes back takes it. */
+    @Volatile var focusComposerNext = false
+
     /** Who's in the pane, as people say it: "Claude", "Codex". */
     val agentName: String get() {
         val h = harness
@@ -403,6 +421,8 @@ class AgentSession(
         val l = model.call { setListFiles(Hammock.ListFiles.newBuilder().setPaneId(paneID).setQuery(query).setLimit(limit)) }.fileList
         val cwd = model.workspace.value.panes[paneID]?.cwd ?: ""
         l.pathsList.map { SlashToken.mentionPath(it, l.folder, cwd) }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (e: Exception) {
         emptyList()
     }

@@ -115,7 +115,7 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
         // Swiping sideways across a pane goes to the next, as on the iPhone (not on a page or a
         // simulator's screen, whose own drags come first).
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { ids[it] }, beyondViewportPageCount = 0) { i ->
-            PaneScreen(model, ids[i], nav, showBack, tabStrip = {
+            PaneScreen(model, ids[i], nav, showBack, active = i == pager.currentPage, tabStrip = {
                 PaneStrip(model, w, tab, current, nav, select = ::go, expose = { exposing = true })
             })
         }
@@ -130,7 +130,7 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
  * computer it's being looked at (Focus), which marks a finished agent seen.
  */
 @Composable
-fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tabStrip: (@Composable () -> Unit)? = null) {
+fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, active: Boolean = true, tabStrip: (@Composable () -> Unit)? = null) {
     val ctx = LocalContext.current
     val w by model.workspace.collectAsStateWithLifecycle()
     val pane = w.panes[paneID]
@@ -200,7 +200,7 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, tab
                         if (drive) Button(onClick = { model.sleepPane(paneID, wake = true) }) { Text("Wake Agent") }
                     }
                 } else when {
-                    hasAgentView && showAgent -> AgentContent(model, pane, drive) { showAgent = false; PaneModes.set(ctx, paneID, false) }
+                    hasAgentView && showAgent -> AgentContent(model, pane, drive, active) { showAgent = false; PaneModes.set(ctx, paneID, false) }
                     logMode && showLog -> LogContent(model, pane)
                     pane.kind == PaneKind.PANE_KIND_EDITOR -> EditorContent(model, pane, drive) { close -> PaneMenuItems(model, w, pane, drive, nav, close) }
                     pane.kind == PaneKind.PANE_KIND_DIFF -> DiffContent(model, pane, drive)

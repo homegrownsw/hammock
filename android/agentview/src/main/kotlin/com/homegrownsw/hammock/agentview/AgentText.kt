@@ -140,6 +140,9 @@ object SlashToken {
             .sortedWith(compareBy({ it.first }, { it.second })).take(8).map { it.third }
     }
 
+    /** Whether Return takes the highlighted suggestion: only once it's been moved with ↑ or ↓. */
+    fun returnTakes(suggesting: Boolean, moved: Boolean) = suggesting && moved
+
     /** A file as an "@" mention: quoted when it has a space in it. */
     fun mention(path: String) = if (path.any { it.isWhitespace() }) "@\"$path\"" else "@$path"
 
@@ -355,8 +358,23 @@ class ComposerHistory<D> {
 
     fun reset() { index = null; draft = null; entries = emptyList() }
 
+    /** The text now in the box: once it's not the entry brought back (it's been edited), stepping ends. */
+    fun edited(text: String) {
+        val i = index ?: return
+        if (entries[i] != text) reset()
+    }
+
     companion object {
         const val CAP = 50
+        /** Panes whose history is kept: those written to last. */
+        const val PANES = 40
+
+        /** The panes kept once [pane] is written to ([order] oldest first), and those to drop. */
+        fun panesKept(order: List<String>, pane: String, cap: Int = PANES): Pair<List<String>, List<String>> {
+            val all = order.filter { it != pane } + pane
+            val keep = all.takeLast(cap)
+            return keep to all.dropLast(keep.size)
+        }
         /** Longer messages (a pasted log) aren't kept. */
         const val LONGEST = 4000
 
@@ -556,6 +574,15 @@ object PromptKeys {
      * questions when there are several; Esc is Esc. Nothing with Ctrl, Meta
      * or Alt held.
      */
+    /** How long after a card appears its number keys start to count, in ms. */
+    const val SETTLE_MS = 500L
+
+    /** A number key now picks an option: not in the moment after the card appeared (a key meant for what it replaced). */
+    fun acceptsPick(shownAtMs: Long, nowMs: Long) = nowMs - shownAtMs >= SETTLE_MS
+
+    /** The card takes the keyboard by itself as it appears only when nothing else is being typed in. */
+    fun takesKeysOnAppear(typingElsewhere: Boolean) = !typingElsewhere
+
     fun action(digit: Int, key: Key, modifiers: Boolean, options: Int, multipleQuestions: Boolean): Action? {
         if (modifiers) return null
         return when (key) {

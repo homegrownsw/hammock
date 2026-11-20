@@ -134,3 +134,51 @@ import Testing
         #expect(ComposerSuggestion.mention("ab.txt") == "@ab.txt")
     }
 }
+
+@Suite struct PromptKeyTakingTests {
+    @Test func numberKeysWaitForTheCardToSettle() {
+        let shown = Date(timeIntervalSince1970: 1000)
+        #expect(!PromptKey.acceptsPick(since: shown, now: shown.addingTimeInterval(0.2)))
+        #expect(PromptKey.acceptsPick(since: shown, now: shown.addingTimeInterval(0.6)))
+    }
+
+    @Test func doesntTakeKeysFromTyping() {
+        #expect(PromptKey.takesKeysOnAppear(typingElsewhere: false))
+        #expect(!PromptKey.takesKeysOnAppear(typingElsewhere: true))
+    }
+
+    @MainActor @Test func remembersTheComposerHadTheKeyboard() {
+        let m = AppModel(socketPath: "/nonexistent", clientKind: "test")
+        let s = AgentSession(paneID: "p", model: m)
+        #expect(!s.composerHadFocus)
+        s.composerFocus(true)
+        #expect(s.composerHadFocus)
+        s.composerFocus(false)
+        #expect(s.composerHadFocus)  // a moment ago: the card that replaced it doesn't take its keys
+        s.composerBlurredAt = .now.addingTimeInterval(-5)
+        #expect(!s.composerHadFocus)
+    }
+}
+
+@Suite struct ComposerReviewFixTests {
+    @Test func editingABroughtBackMessageEndsStepping() {
+        var h = ComposerHistory<String>()
+        _ = h.up(from: "draft", entries: ["one", "two"])
+        h.edited("two")          // unchanged: still stepping
+        #expect(h.browsing)
+        h.edited("two, edited")  // edited: ↑ moves the cursor now, not the message
+        #expect(!h.browsing)
+        #expect(!ComposerHistory<String>.steps(up: true, text: "two, edited", cursor: 11, browsing: h.browsing))
+    }
+
+    @Test func keepsAMessagesSpacing() {
+        #expect(ComposerHistoryStore.recordable("fix this:\n    let x = 1\n") == "fix this:\n    let x = 1")
+        #expect(ComposerHistoryStore.recordable("compare \u{FFFC} with \u{FFFC} now") == "compare with now")
+    }
+
+    @Test func returnTakesASuggestionOnlyOnceMoved() {
+        #expect(!ComposerSuggestion.returnTakes(suggesting: true, moved: false))
+        #expect(ComposerSuggestion.returnTakes(suggesting: true, moved: true))
+        #expect(!ComposerSuggestion.returnTakes(suggesting: false, moved: true))
+    }
+}

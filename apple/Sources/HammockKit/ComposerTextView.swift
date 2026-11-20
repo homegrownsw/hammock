@@ -161,6 +161,17 @@ final class ComposerTextController: NSObject {
         replace(r, with: NSAttributedString(string: string, attributes: typing()))
     }
 
+    /// An input method is still composing (Japanese, Chinese…): its keys
+    /// (↑, ↓, Return, Esc) are its own, and the word isn't typed yet.
+    var composing: Bool {
+        guard let v = view else { return false }
+        #if os(macOS)
+        return v.hasMarkedText()
+        #else
+        return v.markedTextRange != nil
+        #endif
+    }
+
     /// Where the cursor is (UTF-16), nil while text is selected.
     var caret: Int? {
         guard let v = view else { return nil }
@@ -695,7 +706,8 @@ final class ComposerUITextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if let k = Self.keys[action] { return controller?.wantsKey(k) ?? false }
+        // An input method composing a word has the keys: never taken from it.
+        if let k = Self.keys[action] { return markedTextRange == nil && (controller?.wantsKey(k) ?? false) }
         if action == #selector(paste(_:)), UIPasteboard.general.hasImages { return true }
         return super.canPerformAction(action, withSender: sender)
     }

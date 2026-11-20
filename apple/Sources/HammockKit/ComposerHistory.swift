@@ -43,6 +43,12 @@ struct ComposerHistory<Draft> {
         return (nil, d)
     }
 
+    /// The text now in the box: once it's not the entry brought back (it's
+    /// been edited), stepping ends, and the edit is what you're typing.
+    mutating func edited(_ text: String) {
+        if let i = index, entries[i] != text { reset() }
+    }
+
     mutating func reset() {
         index = nil
         draft = nil
@@ -102,10 +108,25 @@ enum ComposerHistoryStore {
         var sent: [String]
     }
 
+    /// A message as kept: its attachments' marks out, its spacing (an
+    /// indented snippet) as typed, as the transcript has it.
+    static func recordable(_ text: String) -> String {
+        // Each chip goes with the space put in after it.
+        text.replacingOccurrences(of: "\u{FFFC} ", with: "").replacingOccurrences(of: "\u{FFFC}", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The last list decoded, by the bytes it came from: decoded again only
+    /// when they change, not on each ↑.
+    nonisolated(unsafe) private static var cache: (data: Data, list: [Pane])?
+
     /// Most recently written last.
     private static func all(_ d: UserDefaults) -> [Pane] {
         guard let data = d.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([Pane].self, from: data)) ?? []
+        if let c = cache, c.data == data { return c.list }
+        let list = (try? JSONDecoder().decode([Pane].self, from: data)) ?? []
+        cache = (data, list)
+        return list
     }
 
     static func sent(_ paneID: String, defaults d: UserDefaults = .standard) -> [String] {

@@ -75,11 +75,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
@@ -131,10 +133,18 @@ private object History {
         val a = org.json.JSONArray(prefs(context).getString(pane, "[]") ?: "[]")
         List(a.length()) { a.getString(it) }
     }.getOrDefault(emptyList())
-    fun record(context: Context, pane: String, text: String) {
-        val list = ComposerHistory.recorded(load(context, pane), text)
-        prefs(context).edit().putString(pane, org.json.JSONArray(list).toString()).apply()
+    /** Keeps [list] as [pane]'s, for the [ComposerHistory.PANES] panes written to last (the rest dropped). Off the main thread. */
+    @Synchronized fun save(context: Context, pane: String, list: List<String>) {
+        val p = prefs(context)
+        val order = runCatching { org.json.JSONArray(p.getString(ORDER, "[]") ?: "[]").let { a -> List(a.length()) { a.getString(it) } } }.getOrDefault(emptyList())
+        val (kept, dropped) = ComposerHistory.panesKept(order, pane)
+        p.edit().apply {
+            putString(pane, org.json.JSONArray(list).toString())
+            putString(ORDER, org.json.JSONArray(kept).toString())
+            dropped.forEach { remove(it) }
+        }.apply()
     }
+    private const val ORDER = "\u0000order"
 }
 
 /** Your messages in the conversation, oldest first, and "!" commands as you typed them. */
@@ -183,29 +193,38 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     val text = value.text
     val shellCommand = attachments.isEmpty() && session.hasShellMode && text.trimStart().startsWith("!")
     val token = if (value.selection.collapsed) SlashToken.at(value.selection.start, text) else null
+    // An input method still composing a word (Japanese, Chinese…): its keys
+    // are its own, and the word isn't typed yet.
+    val composing = value.composition != null
     // An "@file" being typed (Claude Code and Codex take file mentions).
     val mention = if (token == null && value.selection.collapsed && session.harness in setOf("claude", "codex")) SlashToken.at(value.selection.start, text, '@') else null
     val mentionQuery = mention?.let { text.substring(it.first + 1, it.last + 1) }
+    // The files last found, this pane's, shown until those for what's typed
+    // now come (not blinking out with each key).
     var files by remember(session.paneID) { mutableStateOf<Pair<String, List<String>>?>(null) }
-    LaunchedEffect(mentionQuery) {
+    LaunchedEffect(mentionQuery, composing) {
         val q = mentionQuery ?: return@LaunchedEffect
+        if (composing) return@LaunchedEffect
         delay(120)
-        files = q to session.mentionFiles(q)
+        files = session.paneID to session.mentionFiles(q)
     }
-    // Esc puts the suggestions away for the token they were for.
-    var dismissed by remember(session.paneID) { mutableStateOf<String?>(null) }
     val tokenText = (token ?: mention)?.let { text.substring(it.first, it.last + 1) }
+    // Esc puts the suggestions away for the token they were for, while it's typed.
+    var dismissed by remember(session.paneID) { mutableStateOf<String?>(null) }
+    LaunchedEffect(tokenText) { if (tokenText != dismissed) dismissed = null }
     val suggestions: List<Suggestion> = when {
         tokenText != null && tokenText == dismissed -> emptyList()
         token != null -> SlashToken.suggestions(token, text, state.commands, state.startCommands).map { Suggestion(it, it) }
-        mentionQuery != null && files?.first == mentionQuery -> files!!.second.map {
+        mentionQuery != null && files?.first == session.paneID -> files!!.second.map {
             Suggestion(SlashToken.mention(it), it.substringAfterLast('/'), it.substringBeforeLast('/', ""), file = true)
         }
         else -> emptyList()
     }
-    // The highlighted one (↑ and ↓ move it; Return and Tab take it), from the top of each new list.
+    // The highlighted one (↑ and ↓ move it; Tab takes it, and Return once it's
+    // been moved), from the top of each new list.
     var picked by remember { mutableIntStateOf(0) }
-    LaunchedEffect(suggestions) { picked = 0 }
+    var pickedByKey by remember { mutableStateOf(false) }
+    LaunchedEffect(suggestions) { picked = 0; pickedByKey = false }
     val highlighted = suggestions.getOrNull(picked.coerceIn(0, maxOf(suggestions.size - 1, 0)))
     val canSend = (text.isNotBlank() || attachments.isNotEmpty()) && loading == 0
     val stops = state.working && text.isEmpty() && attachments.isEmpty() && !dictation.active
@@ -224,14 +243,17 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     fun setText(t: String) { value = TextFieldValue(t, TextRange(t.length)) }
 
     // ↑ and ↓ on a hardware keyboard: what's been sent from this pane, as a
-    // shell's history, keeping what you were typing to come back to.
+    // shell's history, keeping what you were typing to come back to. What's
+    // been sent from here is read once, off the main thread.
     val history = remember(session.paneID) { ComposerHistory<String>() }
+    var sentHere by remember(session.paneID) { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(session.paneID) { sentHere = withContext(Dispatchers.IO) { History.load(context, session.paneID) } }
     fun historyKey(up: Boolean): Boolean {
-        if (dictation.active) return false
+        if (dictation.active || composing) return false
         val cursor = if (value.selection.collapsed) value.selection.start else null
         if (!ComposerHistory.steps(up, text, cursor, history.browsing)) return false
         val shown = if (up) {
-            history.up(text) { ComposerHistory.merged(History.load(context, session.paneID), sentMessages(state)) } ?: return false
+            history.up(text) { ComposerHistory.merged(sentHere, sentMessages(state)) } ?: return false
         } else {
             val (entry, draft) = history.down() ?: return false
             entry ?: draft ?: ""
@@ -247,19 +269,21 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         val tk = (if (s.file) mention else token) ?: return
         val (t, cursor) = SlashToken.complete(tk, s.insert, text)
         if (state.sendError != null) session.clearSendError() // edited, as typing does
+        history.edited(t)
         value = TextFieldValue(t, TextRange(cursor.coerceAtMost(t.length)))
     }
 
-    // A hardware keyboard over the suggestions: ↑ and ↓ move, Return and Tab
-    // take the highlighted one (Return sends when it's typed in full), Esc
-    // puts them away.
+    // A hardware keyboard over the suggestions: ↑ and ↓ move, Tab takes the
+    // highlighted one, Return too once it's been moved (else Return starts a
+    // line, as it always does here), Esc puts them away.
     fun suggestionKey(key: Key): Boolean {
+        if (composing) return false
         val h = highlighted ?: return false
         when (key) {
-            Key.DirectionUp -> picked = (picked - 1 + suggestions.size) % suggestions.size
-            Key.DirectionDown -> picked = (picked + 1) % suggestions.size
+            Key.DirectionUp -> { picked = (picked - 1 + suggestions.size) % suggestions.size; pickedByKey = true }
+            Key.DirectionDown -> { picked = (picked + 1) % suggestions.size; pickedByKey = true }
             Key.Tab -> complete(h)
-            Key.Enter -> if (tokenText.equals(h.insert, ignoreCase = true)) return false else complete(h)
+            Key.Enter -> if (SlashToken.returnTakes(suggesting = true, moved = pickedByKey)) complete(h) else return false
             Key.Escape -> dismissed = tokenText
             else -> return false
         }
@@ -315,7 +339,9 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         }
         if (!canSend) return
         val sentText = text
-        History.record(context, session.paneID, sentText)
+        sentHere = ComposerHistory.recorded(sentHere, sentText)
+        val keep = sentHere
+        scope.launch(Dispatchers.IO) { History.save(context, session.paneID, keep) }
         history.reset()
         dismissed = null
         val sent = attachments.toList()
@@ -354,12 +380,23 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     }
     val showsTerminalDraft = !awaitingClear && state.draft.isNotEmpty() && text != tookDraft && !text.contains(state.draft) && !isGhost(state.draft)
 
-    // Saved once typing pauses, and on leaving.
-    LaunchedEffect(text) { delay(400); Drafts.save(context, session.paneID, text) }
+    // Saved once typing pauses, and on leaving. While stepping through what
+    // was sent, what you were typing is the draft, not the message shown.
+    LaunchedEffect(text) { delay(400); Drafts.save(context, session.paneID, history.draft ?: text) }
     DisposableEffect(session.paneID) {
         onDispose {
             dictation.cancel()
-            Drafts.save(context, session.paneID, value.text)
+            Drafts.save(context, session.paneID, history.draft ?: value.text)
+            // Taken away (a prompt card in its place) while it had the keyboard.
+            session.composerFocus(false)
+        }
+    }
+    // Back after a prompt card that had the keyboard: it's the box's again.
+    LaunchedEffect(Unit) {
+        if (session.focusComposerNext) {
+            session.focusComposerNext = false
+            delay(100)
+            runCatching { focus.requestFocus() }
         }
     }
     // A new chat (an agent just started): straight to typing.
@@ -447,19 +484,25 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                         value, {
                             // Editing the message that didn't go: its error's done with.
                             if (it.text != value.text && state.sendError != null) session.clearSendError()
+                            // Editing a message brought back: it's what you're typing now.
+                            if (it.text != value.text) history.edited(it.text)
                             value = it
                         },
                         textStyle = textStyle, cursorBrush = SolidColor(c.accent), maxLines = 8,
                         visualTransformation = transformation,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp).focusRequester(focus).onPreviewKeyEvent { e ->
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp).focusRequester(focus)
+                            .onFocusChanged { session.composerFocus(it.isFocused) }.onPreviewKeyEvent { e ->
                             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when {
-                                // A hardware keyboard: ⌘/Ctrl-Return sends, Tab takes the top suggestion.
+                                // A hardware keyboard: ⌘/Ctrl-Return sends; Return alone starts a line, as
+                                // it always has here (or takes a suggestion once ↑ or ↓ has moved to it).
                                 e.key == Key.Enter && (e.isCtrlPressed || e.isMetaPressed) -> { if (stops) session.interrupt() else send(); true }
                                 e.key == Key.Escape && dictation.active -> { dictation.stop(); true }
-                                !e.isShiftPressed && suggestionKey(e.key) -> true
-                                e.key == Key.DirectionUp || e.key == Key.DirectionDown -> historyKey(e.key == Key.DirectionUp)
+                                // Not with Shift (selecting), Ctrl, Alt or Meta held: those are the field's.
+                                !e.isShiftPressed && !e.isCtrlPressed && !e.isAltPressed && !e.isMetaPressed && suggestionKey(e.key) -> true
+                                (e.key == Key.DirectionUp || e.key == Key.DirectionDown) &&
+                                    !e.isShiftPressed && !e.isCtrlPressed && !e.isAltPressed && !e.isMetaPressed -> historyKey(e.key == Key.DirectionUp)
                                 else -> false
                             }
                         },

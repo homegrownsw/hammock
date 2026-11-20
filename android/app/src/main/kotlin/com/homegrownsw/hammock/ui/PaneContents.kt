@@ -35,7 +35,7 @@ import hammock.v1.Hammock.Pane
 // What each kind of pane shows. Filled in as each view lands.
 
 @Composable
-fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, openTerminal: () -> Unit) {
+fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, active: Boolean = true, openTerminal: () -> Unit) {
     val session = remember(model, pane.id) { AgentSession.of(model, pane.id) }
     val size by rememberPref(Prefs.ATTACHMENT_SIZE, "medium")
     val theme = LocalHammockTheme.current
@@ -46,6 +46,7 @@ fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, openTerminal: () -
             "small" -> AttachmentSize.SMALL; "large" -> AttachmentSize.LARGE; "original" -> AttachmentSize.ORIGINAL; else -> AttachmentSize.MEDIUM
         },
         fonts = rememberAgentFonts(),
+        active = active,
     )
 }
 

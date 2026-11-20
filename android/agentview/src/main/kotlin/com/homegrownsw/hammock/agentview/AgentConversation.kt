@@ -100,12 +100,14 @@ fun AgentConversation(
     imageSize: AttachmentSize = AttachmentSize.MEDIUM,
     fonts: AgentFonts = AgentFonts(),
     onOpenFile: ((String) -> Unit)? = null,
+    /** The pane on screen (not a neighbouring page): its prompt card may take a hardware keyboard's keys by itself. */
+    active: Boolean = true,
 ) {
     val base = MaterialTheme.typography
     val typography = remember(base, fonts) { base.forAgent(fonts) }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = typography) {
         CompositionLocalProvider(LocalAgentFonts provides fonts) {
-            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile)
+            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile, active)
         }
     }
 }
@@ -120,6 +122,7 @@ private fun Conversation(
     bubble: Color,
     imageSize: AttachmentSize,
     onOpenFile: ((String) -> Unit)?,
+    active: Boolean,
 ) {
     val colors = rememberAgentColors(agentAccent, bubble)
     DisposableEffect(session) {
@@ -213,7 +216,7 @@ private fun Conversation(
                                 }
                             }
                             state.prompt.kind != AgentPrompt.Kind.KIND_NONE && state.prompt.kind != AgentPrompt.Kind.UNRECOGNIZED ->
-                                PromptCard(session, state, maxHeight = maxOf(300.dp, height * 0.7f), onOpenTerminal = onOpenTerminal)
+                                PromptCard(session, state, maxHeight = maxOf(300.dp, height * 0.7f), onOpenTerminal = onOpenTerminal, active = active)
                             else -> Composer(session, state, imageSize)
                         }
                     }
