@@ -91,8 +91,9 @@ enum DiffLines {
     }
 
     static func numbered(_ diff: String) -> [Line] {
-        // Any line break ("\r\n" is one Character, a newline).
-        var lines = diff.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
+        // "\n", "\r\n" (one Character) or a lone "\r": not the other
+        // characters isNewline counts (form feed, U+2028…), which are text.
+        var lines = diff.split(omittingEmptySubsequences: false) { $0 == "\n" || $0 == "\r\n" || $0 == "\r" }.map(String.init)
         if lines.last?.isEmpty == true { lines.removeLast() }
         var o: Int?, n: Int?
         return lines.map { s in

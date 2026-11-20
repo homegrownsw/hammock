@@ -149,3 +149,10 @@ import Testing
         #expect(ToolSummary.diffPath(tool: "Bash", input: "sed -i s/a/b/ x", diff: "@@ x\n-a\n+b\n") == "")
     }
 }
+
+@Suite struct DiffLineBreaksTests {
+    @Test func onlyLineBreaksSplitLines() {
+        let l = DiffLines.numbered("@@ -1 +1 @@\n+a\u{2028}b\u{0C}c\r+d\n")
+        #expect(l.map(\.text) == ["@@ -1 +1 @@", "+a\u{2028}b\u{0C}c", "+d"])
+    }
+}
