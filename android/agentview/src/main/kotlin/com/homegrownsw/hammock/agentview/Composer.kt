@@ -465,7 +465,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                 Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box {
                         IconButton(onClick = { attachMenu = true }, colors = IconButtonDefaults.iconButtonColors(containerColor = c.fill), modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Outlined.Add, "Attach pictures")
+                            Icon(Icons.Outlined.Add, "Attach files or photos")
                         }
                         DropdownMenu(attachMenu, onDismissRequest = { attachMenu = false }) {
                             DropdownMenuItem(text = { Text("Photos") }, leadingIcon = { Icon(Icons.Outlined.Photo, null) }, onClick = {

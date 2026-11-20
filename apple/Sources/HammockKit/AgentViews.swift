@@ -3472,7 +3472,8 @@ struct Composer: View {
                     .agentGlassButton()
                     .buttonBorderShape(.circle)
                     .fixedSize()
-                    .help("Attach images")
+                    .help("Attach files or photos")
+                    .accessibilityLabel("Attach files or photos")
                     if preparing {
                         ProgressView().controlSize(.small)
                         Text(attachments.contains { $0.preparing && !$0.isVideo } ? "Loading…" : "Preparing video…")
