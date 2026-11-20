@@ -2166,7 +2166,7 @@ struct DiffView: View {
     private func lineText(_ line: DiffLines.Line, digits: Int) -> Text {
         let body = Text(line.text.isEmpty ? " " : line.text)
             .fontWeight(line.kind == .file ? .semibold : .regular)
-            .foregroundStyle(line.kind == .hunk || line.kind == .file ? Color.secondary : Color.primary)
+            .foregroundStyle([.hunk, .file, .note].contains(line.kind) ? Color.secondary : Color.primary)
         guard digits > 0 else { return body }
         func pad(_ n: Int?) -> String {
             let s = n.map(String.init) ?? ""

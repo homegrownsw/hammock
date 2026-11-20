@@ -74,7 +74,7 @@ enum ToolSummary {
 /// "@@ -12 +14 @@" hunk headers (DiffView's gutter). Lines before any (an
 /// edit not yet done, whose place isn't known) have none.
 enum DiffLines {
-    enum Kind: Equatable { case context, added, removed, hunk, file }
+    enum Kind: Equatable { case context, added, removed, hunk, file, note }
 
     struct Line: Equatable {
         var text: String
@@ -84,7 +84,8 @@ enum DiffLines {
     }
 
     static func numbered(_ diff: String) -> [Line] {
-        var lines = diff.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        // Any line break ("\r\n" is one Character, a newline).
+        var lines = diff.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         if lines.last?.isEmpty == true { lines.removeLast() }
         var o: Int?, n: Int?
         return lines.map { s in
@@ -99,6 +100,8 @@ enum DiffLines {
                 n = nil
                 return Line(text: s, kind: .file)
             }
+            // "\ No newline at end of file": about the line before, not one of the file's.
+            if s.hasPrefix("\\") { return Line(text: s, kind: .note) }
             if s.hasPrefix("+") {
                 defer { n = n.map { $0 + 1 } }
                 return Line(text: s, kind: .added, new: n)

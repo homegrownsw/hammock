@@ -218,3 +218,14 @@ class TokensLeftTest {
         assertEquals("0 tokens left", ModelNames.tokensLeft(-3))
     }
 }
+
+class DiffLinesEdgeTest {
+    @Test
+    fun notesAndLineBreaks() {
+        val l = DiffLines.numbered("@@ -5 +5 @@\r\n-old\r\n\\ No newline at end of file\r\n+new\r\n")
+        assertEquals(listOf(DiffLines.Kind.HUNK, DiffLines.Kind.REMOVED, DiffLines.Kind.NOTE, DiffLines.Kind.ADDED), l.map { it.kind })
+        assertEquals(5, l[3].new)
+        assertNull(l[2].old)
+        assertEquals(emptyList(), DiffLines.numbered(""))
+    }
+}

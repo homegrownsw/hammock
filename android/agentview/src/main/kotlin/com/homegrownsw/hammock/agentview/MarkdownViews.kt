@@ -197,7 +197,7 @@ fun DiffView(diff: String, preview: Int? = null, path: String = "", onTap: (() -
     val style = codeTextStyle(0.95f)
     val gutter = codeTextStyle(0.8f)
     // The gutter's width: room for the widest number (none without hunks).
-    val digits = remember(all) { all.maxOf { maxOf(it.old ?: 0, it.new ?: 0) }.let { if (it == 0) 0 else it.toString().length } }
+    val digits = remember(all) { (all.maxOfOrNull { maxOf(it.old ?: 0, it.new ?: 0) } ?: 0).let { if (it == 0) 0 else it.toString().length } }
     BoxWithConstraints(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.fill)
             .then(if (onTap != null) Modifier.clickable(onClickLabel = "Show the whole change", onClick = onTap) else Modifier),
@@ -214,7 +214,7 @@ fun DiffView(diff: String, preview: Int? = null, path: String = "", onTap: (() -
                         DiffLines.Kind.REMOVED -> c.removed.copy(alpha = 0.16f)
                         else -> Color.Transparent
                     }
-                    val header = line.kind == DiffLines.Kind.HUNK || line.kind == DiffLines.Kind.FILE
+                    val header = line.kind == DiffLines.Kind.HUNK || line.kind == DiffLines.Kind.FILE || line.kind == DiffLines.Kind.NOTE
                     Row(
                         Modifier.fillMaxWidth().background(bg).padding(horizontal = 10.dp)
                             .padding(top = if (line.kind == DiffLines.Kind.FILE) 4.dp else 0.dp),

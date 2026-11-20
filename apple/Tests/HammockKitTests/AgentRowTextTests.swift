@@ -117,3 +117,18 @@ import Testing
         #expect(DiffFolder.repo(for: "/Users/me/app/src/b.go", cwd: "/x", exists: there) == "/Users/me/app/src")
     }
 }
+
+@Suite struct DiffLinesEdgeTests {
+    @Test func aNoteNeitherNumberedNorCounted() {
+        let l = DiffLines.numbered("@@ -5 +5 @@\n-old\n\\ No newline at end of file\n+new\n")
+        #expect(l.map(\.kind) == [.hunk, .removed, .note, .added])
+        #expect(l[2].old == nil && l[2].new == nil)
+        #expect(l[3].new == 5)
+    }
+
+    @Test func splitsWindowsLineBreaks() {
+        let l = DiffLines.numbered("@@ -1 +1 @@\r\n-a\r\n+b\r\n")
+        #expect(l.map(\.text) == ["@@ -1 +1 @@", "-a", "+b"])
+        #expect(l[2].new == 1)
+    }
+}

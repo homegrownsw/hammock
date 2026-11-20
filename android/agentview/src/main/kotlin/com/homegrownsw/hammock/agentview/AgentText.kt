@@ -489,12 +489,13 @@ object ToolSummary {
  * hunk headers (DiffView's gutter; the iPhone's DiffLines). Lines before any have none.
  */
 object DiffLines {
-    enum class Kind { CONTEXT, ADDED, REMOVED, HUNK, FILE }
+    enum class Kind { CONTEXT, ADDED, REMOVED, HUNK, FILE, NOTE }
 
     data class Line(val text: String, val kind: Kind, val old: Int? = null, val new: Int? = null)
 
     fun numbered(diff: String): List<Line> {
-        val lines = diff.split('\n').let { if (it.lastOrNull()?.isEmpty() == true) it.dropLast(1) else it }
+        // Any line break, "\r\n" included.
+        val lines = diff.split(Regex("\r\n|\n|\r")).let { if (it.lastOrNull()?.isEmpty() == true) it.dropLast(1) else it }
         var o: Int? = null
         var n: Int? = null
         return lines.map { s ->
@@ -506,6 +507,8 @@ object DiffLines {
                     // "@@ path": which file follows (a command's edits, Codex's patches).
                     Line(s, if (h != null) Kind.HUNK else Kind.FILE)
                 }
+                // "\ No newline at end of file": about the line before, not one of the file's.
+                s.startsWith("\\") -> Line(s, Kind.NOTE)
                 s.startsWith("+") -> Line(s, Kind.ADDED, new = n).also { n = n?.plus(1) }
                 s.startsWith("-") -> Line(s, Kind.REMOVED, old = o).also { o = o?.plus(1) }
                 else -> Line(s, Kind.CONTEXT, o, n).also { o = o?.plus(1); n = n?.plus(1) }
