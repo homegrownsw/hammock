@@ -9,7 +9,7 @@ description: hmk tui, Hammock's workspace in a terminal, with mouse support and 
 hmk tui
 ```
 
-Quit with ⌃B q; your panes keep running.
+Quit with ⌃B q; your panes keep running. If hmkd stops or restarts, the TUI stays open and reconnects when it's back.
 
 ## The layout
 

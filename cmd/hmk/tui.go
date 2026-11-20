@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/tui"
 )
 
@@ -17,5 +18,11 @@ func runTUI() error {
 	}
 	defer c.Close()
 	c.OnApproval = nil // the TUI's screen is its own (it shows the request in Needs You)
-	return tui.Run(c, os.Stdin, os.Stdout)
+	return tui.Run(c, func(ctx context.Context) (*client.Client, error) {
+		c, err := connect(ctx)
+		if err == nil {
+			c.OnApproval = nil
+		}
+		return c, err
+	}, os.Stdin, os.Stdout)
 }

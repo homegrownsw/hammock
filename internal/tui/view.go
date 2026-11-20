@@ -109,6 +109,7 @@ func (a *App) render() {
 	a.drawToolbar()
 	a.drawTabBar()
 	a.drawPanes()
+	a.drawOffline()
 	a.drawDragGhost()
 	a.drawToast()
 	if a.overlay != nil {
@@ -742,6 +743,8 @@ func (a *App) drawSidebar() {
 	hint, col := sidebarHint, th.faint
 	if a.prefix {
 		hint, col = "⌃B …  waiting for a key", th.accent
+	} else if a.offline {
+		hint, col = reconnecting, th.orange
 	}
 	s.Text(2, a.h-1, sw-3, truncate(hint, sw-3), Cell{FG: col, HasFG: true, BG: th.sidebar, HasBG: true, Bold: a.prefix})
 

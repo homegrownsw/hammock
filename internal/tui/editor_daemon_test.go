@@ -66,7 +66,7 @@ func TestEditorAgainstDaemon(t *testing.T) {
 	}
 
 	c := dial()
-	a := &App{c: c, anim: newSprings(), th: newTheme(RGB{0, 0, 0}, RGB{255, 255, 255}), scr: NewScreen(80, 24),
+	a := &App{c: newLink(c), anim: newSprings(), th: newTheme(RGB{0, 0, 0}, RGB{255, 255, 255}), scr: NewScreen(80, 24),
 		tabs: map[string]*pb.Tab{}, panes: map[string]*pb.Pane{}, terms: map[string]*paneTerm{}, sizes: map[string][2]int{},
 		editors: map[string]*editorView{}, paneRects: map[string]rect{}, actions: make(chan func(), 64)}
 	a.apply(call(c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}}).GetState())

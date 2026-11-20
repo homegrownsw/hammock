@@ -33,13 +33,17 @@ func (r rect) contains(x, y int) bool { return x >= r.x && y >= r.y && x < r.x+r
 // and tabs, a toolbar, the selected tab's panes with headers) drawn in the
 // terminal, driven by keyboard and mouse.
 type App struct {
-	c   *client.Client
-	in  *os.File
-	out io.Writer
-	scr *Screen
-	w   int
-	h   int
-	th  theme
+	c      *link
+	redial Dialer          // connects again when the connection drops (reconnect.go)
+	stop   context.Context // done when the TUI quits
+	// hmkd went away: the panes are dimmed while it's dialled again.
+	offline bool
+	in      *os.File
+	out     io.Writer
+	scr     *Screen
+	w       int
+	h       int
+	th      theme
 
 	groups    []*pb.Group
 	tabs      map[string]*pb.Tab
@@ -113,8 +117,10 @@ type App struct {
 	dock       *dockTarget
 }
 
-// Run takes over the terminal on in/out until the user quits.
-func Run(c *client.Client, in *os.File, out io.Writer) error {
+// Run takes over the terminal on in/out until the user quits. When the
+// connection to hmkd drops, it stays up and dials it again with redial (nil:
+// it waits to be quit).
+func Run(c *client.Client, redial Dialer, in *os.File, out io.Writer) error {
 	if !Available {
 		_, err := newPaneTerm(1, 1)
 		return err
@@ -140,7 +146,7 @@ func Run(c *client.Client, in *os.File, out io.Writer) error {
 
 	w, h, _ := term.GetSize(fd)
 	a := &App{
-		c: c, in: in, out: out, w: w, h: h, scr: NewScreen(w, h), th: newTheme(bg, fg),
+		c: newLink(c), redial: redial, in: in, out: out, w: w, h: h, scr: NewScreen(w, h), th: newTheme(bg, fg),
 		tabs: map[string]*pb.Tab{}, panes: map[string]*pb.Pane{},
 		terms: map[string]*paneTerm{}, sizes: map[string][2]int{},
 		actions: make(chan func(), 64), anim: newSprings(), prefs: loadPrefs(), cfg: newConfig(),
@@ -155,11 +161,20 @@ func Run(c *client.Client, in *os.File, out io.Writer) error {
 		return err
 	}
 	a.apply(r.GetState())
+	// Clients dialled again are the TUI's to close; c is its caller's.
+	defer func() {
+		if cur := a.c.client(); cur != c {
+			cur.Close()
+		}
+	}()
 	return a.loop(stdin, rest)
 }
 
 func (a *App) loop(stdin <-chan []byte, initial []byte) error {
 	defer a.dropLive()
+	stop, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a.stop = stop
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
 	defer signal.Stop(winch)
@@ -173,10 +188,15 @@ func (a *App) loop(stdin <-chan []byte, initial []byte) error {
 	a.syncPanes()
 	a.dirty = true
 	for !a.quit {
+		var events <-chan *pb.ServerMessage // none while it's away
+		if !a.offline {
+			events = a.c.client().Events
+		}
 		select {
-		case ev, ok := <-a.c.Events:
+		case ev, ok := <-events:
 			if !ok {
-				return fmt.Errorf("connection to hmkd lost")
+				a.lost()
+				continue
 			}
 			a.handle(ev)
 		case b, ok := <-stdin:
