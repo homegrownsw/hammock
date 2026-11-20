@@ -75,7 +75,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
@@ -129,12 +128,18 @@ private object Drafts {
 /** What's been sent from each pane's composer, for ↑ to bring back ([ComposerHistory]). */
 private object History {
     private fun prefs(context: Context) = context.getSharedPreferences("hammock.agentview.history", Context.MODE_PRIVATE)
-    fun load(context: Context, pane: String): List<String> = runCatching {
+    @Synchronized fun load(context: Context, pane: String): List<String> = runCatching {
         val a = org.json.JSONArray(prefs(context).getString(pane, "[]") ?: "[]")
         List(a.length()) { a.getString(it) }
     }.getOrDefault(emptyList())
-    /** Keeps [list] as [pane]'s, for the [ComposerHistory.PANES] panes written to last (the rest dropped). Off the main thread. */
-    @Synchronized fun save(context: Context, pane: String, list: List<String>) {
+    /**
+     * Adds [text] to [pane]'s, read and written here under one lock (a send
+     * before the composer's own read finishes can't wipe the rest), for the
+     * [ComposerHistory.PANES] panes written to last (the rest dropped). Off the
+     * main thread.
+     */
+    @Synchronized fun record(context: Context, pane: String, text: String) {
+        val list = ComposerHistory.recorded(load(context, pane), text)
         val p = prefs(context)
         val order = runCatching { org.json.JSONArray(p.getString(ORDER, "[]") ?: "[]").let { a -> List(a.length()) { a.getString(it) } } }.getOrDefault(emptyList())
         val (kept, dropped) = ComposerHistory.panesKept(order, pane)
@@ -169,7 +174,7 @@ private const val MAX_ATTACHMENTS = 8
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: AttachmentSize) {
+internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: AttachmentSize, active: Boolean = true) {
     val c = LocalAgentColors.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -201,12 +206,14 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     val mentionQuery = mention?.let { text.substring(it.first + 1, it.last + 1) }
     // The files last found, this pane's, shown until those for what's typed
     // now come (not blinking out with each key).
-    var files by remember(session.paneID) { mutableStateOf<Pair<String, List<String>>?>(null) }
+    // (pane, query) they were found for, and the files.
+    var files by remember(session.paneID) { mutableStateOf<Triple<String, String, List<String>>?>(null) }
     LaunchedEffect(mentionQuery, composing) {
-        val q = mentionQuery ?: return@LaunchedEffect
+        // The "@" word's done: its files aren't offered for the next.
+        val q = mentionQuery ?: run { files = null; return@LaunchedEffect }
         if (composing) return@LaunchedEffect
         delay(120)
-        files = session.paneID to session.mentionFiles(q)
+        files = Triple(session.paneID, q, session.mentionFiles(q))
     }
     val tokenText = (token ?: mention)?.let { text.substring(it.first, it.last + 1) }
     // Esc puts the suggestions away for the token they were for, while it's typed.
@@ -215,7 +222,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     val suggestions: List<Suggestion> = when {
         tokenText != null && tokenText == dismissed -> emptyList()
         token != null -> SlashToken.suggestions(token, text, state.commands, state.startCommands).map { Suggestion(it, it) }
-        mentionQuery != null && files?.first == session.paneID -> files!!.second.map {
+        mentionQuery != null && files.let { f -> f != null && SlashToken.mentionShows(f.first, f.second, session.paneID, mentionQuery) } -> files!!.third.map {
             Suggestion(SlashToken.mention(it), it.substringAfterLast('/'), it.substringBeforeLast('/', ""), file = true)
         }
         else -> emptyList()
@@ -246,12 +253,19 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     // shell's history, keeping what you were typing to come back to. What's
     // been sent from here is read once, off the main thread.
     val history = remember(session.paneID) { ComposerHistory<String>() }
+    // A cache of what's kept on disk (History does the read-modify-write), with
+    // what's been sent since it was read laid on top: a load finishing after a
+    // send doesn't drop it.
     var sentHere by remember(session.paneID) { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(session.paneID) { sentHere = withContext(Dispatchers.IO) { History.load(context, session.paneID) } }
+    val sentSince = remember(session.paneID) { mutableListOf<String>() }
+    LaunchedEffect(session.paneID) {
+        val loaded = withContext(Dispatchers.IO) { History.load(context, session.paneID) }
+        sentHere = ComposerHistory.withSent(loaded, sentSince)
+    }
     fun historyKey(up: Boolean): Boolean {
         if (dictation.active || composing) return false
         val cursor = if (value.selection.collapsed) value.selection.start else null
-        if (!ComposerHistory.steps(up, text, cursor, history.browsing)) return false
+        if (!ComposerHistory.steps(up, text, cursor, history.browsing || (!up && history.keepsDraft))) return false
         val shown = if (up) {
             history.up(text) { ComposerHistory.merged(sentHere, sentMessages(state)) } ?: return false
         } else {
@@ -339,11 +353,13 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         }
         if (!canSend) return
         val sentText = text
+        sentSince.add(sentText)
         sentHere = ComposerHistory.recorded(sentHere, sentText)
-        val keep = sentHere
-        scope.launch(Dispatchers.IO) { History.save(context, session.paneID, keep) }
+        val pane = session.paneID
+        scope.launch(Dispatchers.IO) { History.record(context, pane, sentText) }
         history.reset()
         dismissed = null
+        files = null
         val sent = attachments.toList()
         attachments.clear()
         setText("")
@@ -382,22 +398,20 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
 
     // Saved once typing pauses, and on leaving. While stepping through what
     // was sent, what you were typing is the draft, not the message shown.
-    LaunchedEffect(text) { delay(400); Drafts.save(context, session.paneID, history.draft ?: text) }
+    LaunchedEffect(text) { delay(400); Drafts.save(context, session.paneID, history.savedDraft ?: text) }
     DisposableEffect(session.paneID) {
         onDispose {
             dictation.cancel()
-            Drafts.save(context, session.paneID, history.draft ?: value.text)
-            // Taken away (a prompt card in its place) while it had the keyboard.
-            session.composerFocus(false)
+            Drafts.save(context, session.paneID, history.savedDraft ?: value.text)
         }
     }
-    // Back after a prompt card that had the keyboard: it's the box's again.
+    // Back as a prompt that had the keyboard ends, in the pane on screen with a
+    // hardware keyboard: the keyboard's the box's again (as on the iPhone).
+    val hardKeyboard = androidx.compose.ui.platform.LocalConfiguration.current.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
     LaunchedEffect(Unit) {
-        if (session.focusComposerNext) {
-            session.focusComposerNext = false
-            delay(100)
-            runCatching { focus.requestFocus() }
-        }
+        val retake = PromptKeys.composerRetakes(session.promptHadKeys, session.promptEndedAtMs, System.currentTimeMillis(), active, hardKeyboard)
+        session.promptHadKeys = false
+        if (retake) { delay(100); runCatching { focus.requestFocus() } }
     }
     // A new chat (an agent just started): straight to typing.
     LaunchedEffect(state.heard, state.blocks.isEmpty()) {
@@ -485,14 +499,18 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                             // Editing the message that didn't go: its error's done with.
                             if (it.text != value.text && state.sendError != null) session.clearSendError()
                             // Editing a message brought back: it's what you're typing now.
-                            if (it.text != value.text) history.edited(it.text)
+                            if (it.text != value.text) {
+                                history.edited(it.text)
+                                // Typing: a prompt card coming now waits before taking the keys.
+                                session.composerEditedAtMs = System.currentTimeMillis()
+                            }
                             value = it
                         },
                         textStyle = textStyle, cursorBrush = SolidColor(c.accent), maxLines = 8,
                         visualTransformation = transformation,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 24.dp).focusRequester(focus)
-                            .onFocusChanged { session.composerFocus(it.isFocused) }.onPreviewKeyEvent { e ->
+                            .onPreviewKeyEvent { e ->
                             if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when {
                                 // A hardware keyboard: ⌘/Ctrl-Return sends; Return alone starts a line, as

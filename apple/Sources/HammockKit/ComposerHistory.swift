@@ -16,6 +16,15 @@ struct ComposerHistory<Draft> {
 
     var browsing: Bool { index != nil }
 
+    /// What you were typing is kept to come back to: while stepping, and
+    /// after a message brought back has been edited (↓ from its last line
+    /// still brings it back, as readline does).
+    var keepsDraft: Bool { draft != nil }
+
+    /// What to save as the draft now: what you were typing while a message
+    /// brought back is shown unedited; else (nil) what's in the box.
+    var savedDraft: Draft? { browsing ? draft : nil }
+
     /// One further back: entries are set as stepping starts.
     mutating func up(from current: Draft, entries all: @autoclosure () -> [String]) -> String? {
         if let i = index {
@@ -26,14 +35,21 @@ struct ComposerHistory<Draft> {
         let e = all()
         guard !e.isEmpty else { return nil }
         entries = e
-        draft = current
+        // Stepping again after an edit: what you were typing first is still
+        // the one to come back to.
+        if draft == nil { draft = current }
         index = e.count - 1
         return e[e.count - 1]
     }
 
     /// One forward: the next entry, or past the newest, what you were typing.
     mutating func down() -> (entry: String?, draft: Draft?)? {
-        guard let i = index else { return nil }
+        guard let i = index else {
+            // An edited message: ↓ brings back what you were typing.
+            guard let d = draft else { return nil }
+            reset()
+            return (nil, d)
+        }
         if i + 1 < entries.count {
             index = i + 1
             return (entries[i + 1], nil)
@@ -44,9 +60,10 @@ struct ComposerHistory<Draft> {
     }
 
     /// The text now in the box: once it's not the entry brought back (it's
-    /// been edited), stepping ends, and the edit is what you're typing.
+    /// been edited), stepping ends (↑ and ↓ move the cursor through it), but
+    /// what you were typing is kept for ↓ to bring back.
     mutating func edited(_ text: String) {
-        if let i = index, entries[i] != text { reset() }
+        if let i = index, entries[i] != text { index = nil }
     }
 
     mutating func reset() {
@@ -119,13 +136,14 @@ enum ComposerHistoryStore {
     /// The last list decoded, by the bytes it came from: decoded again only
     /// when they change, not on each ↑.
     nonisolated(unsafe) private static var cache: (data: Data, list: [Pane])?
+    private static let cacheLock = NSLock()
 
     /// Most recently written last.
     private static func all(_ d: UserDefaults) -> [Pane] {
         guard let data = d.data(forKey: key) else { return [] }
-        if let c = cache, c.data == data { return c.list }
+        if let c = cacheLock.withLock({ cache }), c.data == data { return c.list }
         let list = (try? JSONDecoder().decode([Pane].self, from: data)) ?? []
-        cache = (data, list)
+        cacheLock.withLock { cache = (data, list) }
         return list
     }
 

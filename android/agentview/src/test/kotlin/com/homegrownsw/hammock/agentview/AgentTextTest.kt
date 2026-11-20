@@ -206,7 +206,6 @@ class ReviewFixesTest {
     fun promptCardSettles() {
         assertEquals(false, PromptKeys.acceptsPick(1000, 1200))
         assertEquals(true, PromptKeys.acceptsPick(1000, 1600))
-        assertEquals(false, PromptKeys.takesKeysOnAppear(typingElsewhere = true))
     }
 }
 
@@ -240,5 +239,51 @@ class OtherAgentsToolsTest {
         assertEquals("exec_command: ls, succeeded", ToolWords.row("exec_command", "Ran `ls`", "ls", false, false, false, 0, 0))
         assertEquals("a.go", ToolSummary.diffPath("edit", "a.go", "-x\n+y\n"))
         assertEquals("", ToolSummary.diffPath("apply_patch", "a.go\nb.go", "@@ a.go\n+x\n"))
+    }
+}
+
+class RoundTwoTest {
+    @Test
+    fun editingKeepsTheDraftForDown() {
+        val h = ComposerHistory<String>()
+        h.up("my draft") { listOf("one", "two") }
+        h.edited("two, edited")
+        assertEquals(false, h.browsing)
+        assertEquals(true, h.keepsDraft)
+        assertNull(h.savedDraft)
+        assertEquals(null to "my draft", h.down())
+        assertEquals(false, h.keepsDraft)
+        // Stepping again after an edit keeps the first draft.
+        val g = ComposerHistory<String>()
+        g.up("first") { listOf("a") }
+        g.edited("a!")
+        g.up("a!") { listOf("a") }
+        assertEquals("first", g.savedDraft)
+    }
+
+    @Test
+    fun aLateLoadKeepsWhatWasSent() {
+        assertEquals(listOf("old", "new"), ComposerHistory.withSent(listOf("old"), listOf("new")))
+        assertEquals(listOf("b", "a"), ComposerHistory.withSent(listOf("a", "b"), listOf("a")))
+    }
+
+    @Test
+    fun staleFilesOnlyForTheSameWord() {
+        assertEquals(true, SlashToken.mentionShows("p1", "src", "p1", "src/a"))
+        assertEquals(false, SlashToken.mentionShows("p1", "src", "p1", "doc"))
+        assertEquals(false, SlashToken.mentionShows("p1", "src", "p2", "src"))
+        assertEquals(false, SlashToken.mentionShows("p1", null, "p1", ""))
+    }
+
+    @Test
+    fun cardWaitsOutTyping() {
+        assertEquals(0L, PromptKeys.keyDelayMs(0, 10_000))
+        assertEquals(700L, PromptKeys.keyDelayMs(10_000, 10_300))
+        assertEquals(0L, PromptKeys.keyDelayMs(10_000, 11_200))
+        assertEquals(true, PromptKeys.composerRetakes(true, 10_000, 10_400, active = true, hardKeyboard = true))
+        assertEquals(false, PromptKeys.composerRetakes(true, 10_000, 99_000, active = true, hardKeyboard = true))
+        assertEquals(false, PromptKeys.composerRetakes(true, 10_000, 10_400, active = false, hardKeyboard = true))
+        assertEquals(false, PromptKeys.composerRetakes(true, 10_000, 10_400, active = true, hardKeyboard = false))
+        assertEquals(false, PromptKeys.composerRetakes(false, 10_000, 10_400, active = true, hardKeyboard = true))
     }
 }

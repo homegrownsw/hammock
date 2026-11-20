@@ -115,7 +115,7 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
         // Swiping sideways across a pane goes to the next, as on the iPhone (not on a page or a
         // simulator's screen, whose own drags come first).
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { ids[it] }, beyondViewportPageCount = 0) { i ->
-            PaneScreen(model, ids[i], nav, showBack, active = i == pager.currentPage, tabStrip = {
+            PaneScreen(model, ids[i], nav, showBack, active = i == pager.settledPage, tabStrip = {
                 PaneStrip(model, w, tab, current, nav, select = ::go, expose = { exposing = true })
             })
         }

@@ -149,6 +149,9 @@ object SlashToken {
     /** Whether Return takes the highlighted suggestion: only once it's been moved with ↑ or ↓. */
     fun returnTakes(suggesting: Boolean, moved: Boolean) = suggesting && moved
 
+    /** Whether files found for [foundFor] (in [foundIn]) show for what's typed after "@" now: this pane's, for that or for the start of it while the rest is looked up. */
+    fun mentionShows(foundIn: String, foundFor: String?, pane: String, query: String) = foundIn == pane && foundFor != null && query.startsWith(foundFor)
+
     /** A file as an "@" mention: quoted when it has a space in it. */
     fun mention(path: String) = if (path.any { it.isWhitespace() }) "@\"$path\"" else "@$path"
 
@@ -334,6 +337,12 @@ class ComposerHistory<D> {
     var draft: D? = null; private set
     val browsing get() = index != null
 
+    /** What you were typing is kept to come back to: while stepping, and after a message brought back is edited (↓ from its last line brings it back). */
+    val keepsDraft get() = draft != null
+
+    /** What to save as the draft now: what you were typing while a message brought back is shown unedited; else (null) what's in the box. */
+    val savedDraft: D? get() = if (browsing) draft else null
+
     /** One further back; [all] is read as stepping starts. */
     fun up(current: D, all: () -> List<String>): String? {
         val i = index
@@ -345,14 +354,20 @@ class ComposerHistory<D> {
         val e = all()
         if (e.isEmpty()) return null
         entries = e
-        draft = current
+        // Stepping again after an edit: what you were typing first is still the one to come back to.
+        if (draft == null) draft = current
         index = e.size - 1
         return e.last()
     }
 
     /** One forward: the next entry (first), or past the newest, what you were typing (second). */
     fun down(): Pair<String?, D?>? {
-        val i = index ?: return null
+        val i = index ?: run {
+            // An edited message: ↓ brings back what you were typing.
+            val d = draft ?: return null
+            reset()
+            return null to d
+        }
         if (i + 1 < entries.size) {
             index = i + 1
             return entries[i + 1] to null
@@ -364,10 +379,10 @@ class ComposerHistory<D> {
 
     fun reset() { index = null; draft = null; entries = emptyList() }
 
-    /** The text now in the box: once it's not the entry brought back (it's been edited), stepping ends. */
+    /** The text now in the box: once it's not the entry brought back (it's been edited), stepping ends, but what you were typing is kept for ↓. */
     fun edited(text: String) {
         val i = index ?: return
-        if (entries[i] != text) reset()
+        if (entries[i] != text) index = null
     }
 
     companion object {
@@ -417,6 +432,9 @@ class ComposerHistory<D> {
             for (m in (older.filter { it !in inConv } + conv + newer.filter { it !in inConv }).asReversed()) if (seen.add(m)) out.add(m)
             return out.take(cap).asReversed()
         }
+
+        /** What was read from disk with what's been sent since laid on top, in order. */
+        fun withSent(loaded: List<String>, sentSince: List<String>) = sentSince.fold(loaded) { acc, t -> recorded(acc, t) }
 
         /** [sent] with [text] added last (once). */
         fun recorded(sent: List<String>, text: String): List<String> {
@@ -604,8 +622,15 @@ object PromptKeys {
     /** A number key now picks an option: not in the moment after the card appeared (a key meant for what it replaced). */
     fun acceptsPick(shownAtMs: Long, nowMs: Long) = nowMs - shownAtMs >= SETTLE_MS
 
-    /** The card takes the keyboard by itself as it appears only when nothing else is being typed in. */
-    fun takesKeysOnAppear(typingElsewhere: Boolean) = !typingElsewhere
+    /** How long typing in the message box keeps the card from taking keys, in ms. */
+    const val TYPING_MS = 1000L
+
+    /** How long to wait before the card takes the keyboard: 0, now (nothing typed for a second); else what's left of that second, after which it tries again. */
+    fun keyDelayMs(lastEditMs: Long, nowMs: Long): Long = maxOf(0L, TYPING_MS - (nowMs - lastEditMs))
+
+    /** Whether the message box coming back after a prompt takes the keyboard: the card had it, the prompt ended just now, in the pane on screen, with a hardware keyboard. */
+    fun composerRetakes(cardHadKeys: Boolean, promptEndedAtMs: Long, nowMs: Long, active: Boolean, hardKeyboard: Boolean) =
+        cardHadKeys && active && hardKeyboard && nowMs - promptEndedAtMs in 0..TYPING_MS
 
     fun action(digit: Int, key: Key, modifiers: Boolean, options: Int, multipleQuestions: Boolean): Action? {
         if (modifiers) return null

@@ -121,23 +121,14 @@ class AgentSession(
     fun isOpen(id: String) = opened[id] == true
     fun setOpen(id: String, open: Boolean) { if (open) opened[id] = true else opened.remove(id) }
 
-    // The composer has the keyboard, and when it last let it go: a prompt card
-    // that takes its place doesn't take keys meant for it.
-    @Volatile private var composerFocused = false
-    @Volatile private var composerBlurredAtMs = 0L
+    /** When the message box's text last changed by typing: a prompt card that takes its place waits a second after it before taking the keys. */
+    @Volatile var composerEditedAtMs = 0L
 
-    fun composerFocus(on: Boolean, nowMs: Long = System.currentTimeMillis()) {
-        if (composerFocused && !on) composerBlurredAtMs = nowMs
-        composerFocused = on
-    }
+    /** The prompt card on screen had the keyboard (it or one of its fields). */
+    @Volatile var promptHadKeys = false
 
-    /** The composer had the keyboard, or had it a moment ago. */
-    fun composerHadFocus(nowMs: Long = System.currentTimeMillis()) = composerFocused || nowMs - composerBlurredAtMs < 1500
-
-    val composerHadFocus: Boolean get() = composerHadFocus()
-
-    /** A prompt card that had the keyboard is gone: the composer that comes back takes it. */
-    @Volatile var focusComposerNext = false
+    /** When a prompt last ended (one shown, then none), for the message box to take back the keyboard it had. */
+    @Volatile var promptEndedAtMs = 0L
 
     /** Who's in the pane, as people say it: "Claude", "Codex". */
     val agentName: String get() {
@@ -260,6 +251,7 @@ class AgentSession(
             n = n.copy(shellOutput = ShellOutput.append(if (v.replace) "" else s.shellOutput, v.shellOutput))
         }
         if (!v.older) {
+            if (s.prompt.kind != AgentPrompt.Kind.KIND_NONE && v.prompt.kind == AgentPrompt.Kind.KIND_NONE) promptEndedAtMs = nowMs
             n = n.copy(
                 model = v.model, effort = v.effort, contextTokens = v.contextTokens, contextWindow = v.contextWindow,
                 prompt = v.prompt, working = v.working, status = v.status, error = v.error, bangOutput = v.bangOutput,

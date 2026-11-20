@@ -57,7 +57,10 @@ import android.content.res.Configuration
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.focus.FocusRequester
@@ -97,8 +100,9 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val pending = remember(state.blocks, p.blockId) { state.blocks.lastOrNull { it.id == p.blockId } }
-    // Reset whenever the prompt's options change (the next question).
-    val key = p.optionsList
+    // Reset whenever the prompt changes: the next question, or a new prompt
+    // with the same options (its own state, and its own moment before keys count).
+    val key = p.promptId to p.optionsList
     var ticked by remember(key) { mutableStateOf(p.checkedList.withIndex().filter { it.value }.map { it.index + 1 }.toSet()) }
     var typing by remember(key) { mutableStateOf(false) }
     var otherText by remember(key) { mutableStateOf("") }
@@ -173,31 +177,32 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
     }
 
     // A hardware keyboard: the card takes 1–9, ← and → and Esc while you're
-    // not typing in one of its fields. By itself as it appears only in the
-    // pane on screen ([active]), with nothing else being typed in (the
-    // message box it replaced, the software keyboard up); else once tapped.
+    // not typing in one of its fields. By itself in the pane on screen
+    // ([active]): at once when nothing's been typed in the message box for a
+    // second, else once that second's passed; not while the software keyboard
+    // is up for another field. A tap on the card gives them to it too.
     // Focusable only with a hardware keyboard, so it's no extra TalkBack stop.
     val hardKeyboard = LocalConfiguration.current.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
-    val imeUp = WindowInsets.isImeVisible
+    val imeUp by rememberUpdatedState(WindowInsets.isImeVisible)
     val keys = remember { FocusRequester() }
     var keysFocused by remember { mutableStateOf(false) }
     // When this question appeared: number keys only count a moment after.
     val shownAt = remember(key) { System.currentTimeMillis() }
-    // Whether the message box had the keyboard as the card took its place.
-    val composerHad = remember { session.composerHadFocus }
-    var cameBack by remember { mutableStateOf(false) }
     LaunchedEffect(key, typing, hardKeyboard, active) {
         if (!hardKeyboard || typing || !active) return@LaunchedEffect
-        if (cameBack || PromptKeys.takesKeysOnAppear(typingElsewhere = composerHad || imeUp)) runCatching { keys.requestFocus() }
+        val wait = PromptKeys.keyDelayMs(session.composerEditedAtMs, System.currentTimeMillis())
+        if (wait > 0) delay(wait)
+        if (!imeUp) runCatching { keys.requestFocus() }
     }
-    LaunchedEffect(typing) { if (typing) cameBack = true }
-    // Gone (answered): the keyboard back to the message box that comes back.
-    DisposableEffect(Unit) { onDispose { if (keysFocused || composerHad) session.focusComposerNext = true } }
-
     Surface(
         shape = RoundedCornerShape(24.dp), tonalElevation = 3.dp, shadowElevation = 6.dp,
         modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight).focusRequester(keys)
-            .onFocusChanged { keysFocused = it.isFocused }.focusable(enabled = hardKeyboard).onPreviewKeyEvent { e ->
+            // Whether the card (or one of its fields) has the keyboard, for the
+            // message box after it; and a tap on its background gives it the keys
+            // (an option's own tap is taken first).
+            .onFocusChanged { keysFocused = it.isFocused; if (it.hasFocus) session.promptHadKeys = true }
+            .pointerInput(hardKeyboard) { if (hardKeyboard) detectTapGestures { runCatching { keys.requestFocus() } } }
+            .focusable(enabled = hardKeyboard).onPreviewKeyEvent { e ->
             // Only the card's own focus: not while typing in one of its fields.
             if (e.type != KeyEventType.KeyDown || !keysFocused) return@onPreviewKeyEvent false
             val k = when (e.key) {
@@ -288,7 +293,10 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = SolidColor(c.accent), maxLines = 5,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendChosen() }),
-                            modifier = Modifier.fillMaxWidth(),
+                            // Esc leaves the notes, the keys back to the card (not Back out of the pane).
+                            modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { e ->
+                                if (e.type == KeyEventType.KeyDown && e.key == Key.Escape && hardKeyboard) { runCatching { keys.requestFocus() }; true } else false
+                            },
                         )
                     }
                     Button(onClick = ::sendChosen, enabled = chosen >= 1 && !state.answering, colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)) {

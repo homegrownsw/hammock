@@ -2512,8 +2512,11 @@ struct PromptCard: View {
         .sensoryFeedback(.selection, trigger: chosen)
         .disabled(session.answering)
         .modifier(PromptKeys(focused: $keysFocused, handle: key, take: { takeKeys() }, paneFocused: paneFocused))
-        // Back from typing an answer: the keys are the card's again.
-        .onChange(of: focus) { old, new in if old == .other, new == nil, !typing { takeKeys(force: true) } }
+        // Back from typing an answer or notes: the keys are the card's again.
+        .onChange(of: focus) { old, new in if old != nil, new == nil, !typing { takeKeys(force: true) } }
+        // A new prompt with the same options is still a new prompt: its own
+        // state, and its own moment before number keys count.
+        .onChange(of: p.promptID) { reset(); takeKeys() }
         .onChange(of: typing) { _, on in if !on, focus == nil { takeKeys(force: true) } }
     }
 
@@ -2529,24 +2532,34 @@ struct PromptCard: View {
         #endif
     }
 
-    /// Something else is being typed in: the message box had the keyboard
-    /// as the card took its place, or (on the Mac) another text field in
-    /// the window has it.
-    private var typingElsewhere: Bool {
+    /// Another live text field has the keyboard (on the Mac: one in the
+    /// window, a sidebar rename, say), not the message box this card has
+    /// just replaced, whose text view can still be first responder as it
+    /// fades out.
+    private var otherFieldFocused: Bool {
         #if os(macOS)
-        if NSApp.keyWindow?.firstResponder is NSText { return true }
+        if let t = NSApp.keyWindow?.firstResponder as? NSText, !(t is ComposerNSTextView) { return true }
         #endif
-        return session.composerHadFocus
+        return false
     }
 
     /// The card takes the keys (1–9, ←, →, Esc) by itself as it appears in
-    /// the pane you're in, unless something else is being typed in (then
-    /// it takes them once clicked, or tabbed to). `force`: back from its
-    /// own answer field.
+    /// the pane you're in: at once when nothing's been typed in the message
+    /// box for a second (PromptKey.keyDelay), else once that second's
+    /// passed; never while another text field has the keyboard (a click or
+    /// Tab gives them to it then). `force`: back from its own fields.
     private func takeKeys(force: Bool = false) {
-        guard focus == nil, paneFocused else { return }
-        if !force, !PromptKey.takesKeysOnAppear(typingElsewhere: typingElsewhere) { return }
-        DispatchQueue.main.async { if focus == nil { keysFocused = true } }
+        guard focus == nil, paneFocused, !otherFieldFocused else { return }
+        if !force, let wait = PromptKey.keyDelay(lastEdit: session.composerEditedAt) {
+            let prompt = p.promptID
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(wait))
+                // Still this question, nothing typed meanwhile.
+                if p.promptID == prompt, PromptKey.keyDelay(lastEdit: session.composerEditedAt) == nil { takeKeys(force: true) }
+            }
+            return
+        }
+        DispatchQueue.main.async { if focus == nil, !otherFieldFocused { keysFocused = true } }
     }
 
     /// A key pressed with the card focused: 1–9 picks that option (as a
@@ -2910,9 +2923,17 @@ enum PromptKey: Equatable {
         now.timeIntervalSince(shown) >= settle
     }
 
-    /// The card takes the keyboard by itself as it appears only when
-    /// nothing else is being typed in.
-    static func takesKeysOnAppear(typingElsewhere: Bool) -> Bool { !typingElsewhere }
+    /// How long typing in the message box keeps the card from taking keys.
+    static let typingWindow: TimeInterval = 1
+
+    /// How long to wait before the card takes the keyboard: nil, now
+    /// (nothing typed in the message box for a second); else what's left
+    /// of that second, after which it tries again.
+    static func keyDelay(lastEdit: Date?, now: Date = .now) -> TimeInterval? {
+        guard let lastEdit else { return nil }
+        let left = typingWindow - now.timeIntervalSince(lastEdit)
+        return left > 0 ? left : nil
+    }
 
     static func action(characters: String, key: Key, hasModifiers: Bool, options: Int, multipleQuestions: Bool) -> PromptKey? {
         guard !hasModifiers else { return nil }
@@ -3134,6 +3155,14 @@ struct MentionFiles: Equatable {
     var pane = ""
     var query: String?
     var paths: [String] = []
+
+    /// Whether these show for what's typed after "@" now: this pane's, for
+    /// that, or for the start of it while the lookup for the rest is on its
+    /// way (not those for another word: Tab would take one).
+    func shows(pane: String, query q: String) -> Bool {
+        guard pane == self.pane, let query else { return false }
+        return q.hasPrefix(query)
+    }
 }
 
 struct Composer: View {
@@ -3187,6 +3216,8 @@ struct Composer: View {
     @State private var mentionFiles = MentionFiles()
     /// The highlight was moved with ↑ or ↓ (Return then takes it).
     @State private var pickedByKey = false
+    /// An input method is composing a word in the box.
+    @State private var composing = false
     @Environment(\.agentFonts) private var fonts
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openAgentImage) private var open
@@ -3225,7 +3256,7 @@ struct Composer: View {
         }
         // The files last found, this pane's, until those for what's typed now
         // come (not blinking out with each key).
-        if let r = mentionToken, String(text[r]) != dismissedToken, mentionFiles.pane == session.paneID, mentionFiles.query != nil {
+        if let r = mentionToken, String(text[r]) != dismissedToken, mentionFiles.shows(pane: session.paneID, query: String(text[r].dropFirst())) {
             return mentionFiles.paths.map { ComposerSuggestion(insert: ComposerSuggestion.mention($0), label: ($0 as NSString).lastPathComponent,
                                                                detail: ($0 as NSString).deletingLastPathComponent, file: true) }
         }
@@ -3331,6 +3362,11 @@ struct Composer: View {
         c.onChange = { d, at in
             // Editing the message that didn't go: its error's done with.
             if d.text != doc.text { session.sendError = nil }
+            // An input method composing, or done: "@" lookups wait for it.
+            let composingNow = controller.composing
+            if composingNow != composing { composing = composingNow }
+            // Typing: a prompt card coming now waits before taking the keys.
+            if d.text != doc.text { session.composerEditedAt = .now }
             // Editing a message brought back: it's what you're typing now,
             // and ↑ and ↓ move the cursor through it, not swap it away.
             history.edited(d.text)
@@ -3345,7 +3381,7 @@ struct Composer: View {
         }
         c.onFiles = { urls in Task { await attachFiles(urls) } }
         c.onImages = { images in for d in images { attach(name: "pasted-\(attachments.count + 1).png", data: d) } }
-        c.onFocus = { on in focused = on; session.composerFocus(on) }
+        c.onFocus = { focused = $0 }
         c.onCancel = {
             guard dictation.active else { return false }
             Task { await dictation.finish() }
@@ -3431,7 +3467,7 @@ struct Composer: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(s == top ? "Complete (Tab or Return)" : "")
+                .help(s == top ? "Complete (Tab; Return once picked with ↑ or ↓)" : "")
                 .accessibilityAddTraits(s == top ? .isSelected : [])
             }
         }
@@ -3447,11 +3483,17 @@ struct Composer: View {
         ComposerTextView(controller: configured(), chipsKey: chipsKey, text: text)
             .onChange(of: suggestions) { picked = 0; pickedByKey = false }
             // Esc's "put away" lasts while that token's typed, not after.
-            .onChange(of: tokenText) { _, t in if t != dismissedToken { dismissedToken = nil } }
+            .onChange(of: tokenText) { _, t in
+                if t != dismissedToken { dismissedToken = nil }
+                // The "@" word's done: its files aren't offered for the next.
+                if mentionToken == nil { mentionFiles = MentionFiles() }
+            }
             .onChange(of: session.paneID) { dismissedToken = nil; pickedByKey = false }
-            .task(id: mentionToken.map { String(text[$0].dropFirst()) }) {
+            // Again when an input method's done composing, even if committing
+            // left the text as it was.
+            .task(id: mentionToken.map { String(text[$0].dropFirst()) + (composing ? "\u{0}" : "") }) {
                 // Not while an input method is still composing the word.
-                guard let r = mentionToken, !controller.composing else { return }
+                guard let r = mentionToken, !composing else { return }
                 let q = String(text[r].dropFirst())
                 try? await Task.sleep(for: .milliseconds(120))
                 guard !Task.isCancelled else { return }
@@ -3729,8 +3771,6 @@ struct Composer: View {
             DictationRequests.shared.set(session.paneID, listening: false)
             DictationRequests.shared.set(session.paneID, composer: false)
             saveDraft(key: draftKey, pane: session.paneID)
-            // Taken away (a prompt card in its place) while it had the keyboard.
-            if focused { session.composerFocus(false) }
         }
         .onChange(of: scenePhase) { _, phase in
             // Before the app can be killed in the background.
@@ -3926,7 +3966,7 @@ struct Composer: View {
     /// history does (ComposerHistory): not while dictating.
     private func historyWants(_ k: ComposerKey) -> Bool {
         guard !dictation.active,
-              ComposerHistory<ComposerDoc>.steps(up: k == .up, text: text, cursor: controller.caret, browsing: history.browsing) else { return false }
+              ComposerHistory<ComposerDoc>.steps(up: k == .up, text: text, cursor: controller.caret, browsing: history.browsing || (k == .down && history.keepsDraft)) else { return false }
         return k == .down || history.browsing || !historyEntries.isEmpty
     }
 
@@ -3957,6 +3997,7 @@ struct Composer: View {
         ComposerHistoryStore.record(session.paneID, ComposerHistoryStore.recordable(doc.text))
         history.reset()
         dismissedToken = nil
+        mentionFiles = MentionFiles()
     }
 
     // MARK: Drafts
@@ -3970,7 +4011,7 @@ struct Composer: View {
         let d = UserDefaults.standard
         // Stepping through what was sent: what you were typing is the draft,
         // not the message shown.
-        let doc = history.draft ?? self.doc
+        let doc = history.savedDraft ?? self.doc
         // One still being prepared isn't kept (it has nothing to keep yet):
         // its chip goes with it if the draft's loaded before it's ready.
         let attachments = attachments.filter { !$0.preparing }

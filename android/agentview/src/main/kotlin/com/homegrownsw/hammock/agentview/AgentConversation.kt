@@ -217,7 +217,7 @@ private fun Conversation(
                             }
                             state.prompt.kind != AgentPrompt.Kind.KIND_NONE && state.prompt.kind != AgentPrompt.Kind.UNRECOGNIZED ->
                                 PromptCard(session, state, maxHeight = maxOf(300.dp, height * 0.7f), onOpenTerminal = onOpenTerminal, active = active)
-                            else -> Composer(session, state, imageSize)
+                            else -> Composer(session, state, imageSize, active)
                         }
                     }
                 }

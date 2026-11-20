@@ -72,21 +72,10 @@ public final class AgentSession {
     /// Why the last message from the composer didn't go (shown by the
     /// composer, with Retry): cleared by sending again, or editing it.
     public var sendError: String?
-    /// The composer has the keyboard, and when it last let it go: a prompt
-    /// card that takes its place doesn't take keys meant for it (a "2"
-    /// typed as the card appears would answer it).
-    @ObservationIgnored var composerFocused = false
-    @ObservationIgnored var composerBlurredAt: Date?
-
-    func composerFocus(_ on: Bool) {
-        if composerFocused, !on { composerBlurredAt = .now }
-        composerFocused = on
-    }
-
-    /// The composer had the keyboard, or had it a moment ago.
-    var composerHadFocus: Bool {
-        composerFocused || composerBlurredAt.map { Date.now.timeIntervalSince($0) < 1.5 } ?? false
-    }
+    /// When the message box's text last changed by typing: a prompt card
+    /// that takes its place waits until typing's a second past before it
+    /// takes the keyboard (a "2" typed as it appears would answer it).
+    @ObservationIgnored var composerEditedAt: Date?
 
     weak var model: AppModel?
     /// Set: a past session read through the session finder (no pane).

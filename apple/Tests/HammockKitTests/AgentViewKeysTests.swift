@@ -142,21 +142,16 @@ import Testing
         #expect(PromptKey.acceptsPick(since: shown, now: shown.addingTimeInterval(0.6)))
     }
 
-    @Test func doesntTakeKeysFromTyping() {
-        #expect(PromptKey.takesKeysOnAppear(typingElsewhere: false))
-        #expect(!PromptKey.takesKeysOnAppear(typingElsewhere: true))
-    }
-
-    @MainActor @Test func remembersTheComposerHadTheKeyboard() {
-        let m = AppModel(socketPath: "/nonexistent", clientKind: "test")
-        let s = AgentSession(paneID: "p", model: m)
-        #expect(!s.composerHadFocus)
-        s.composerFocus(true)
-        #expect(s.composerHadFocus)
-        s.composerFocus(false)
-        #expect(s.composerHadFocus)  // a moment ago: the card that replaced it doesn't take its keys
-        s.composerBlurredAt = .now.addingTimeInterval(-5)
-        #expect(!s.composerHadFocus)
+    @Test func waitsOutTypingInTheMessageBox() {
+        let now = Date(timeIntervalSince1970: 1000)
+        // Nothing typed, or not for a second: at once.
+        #expect(PromptKey.keyDelay(lastEdit: nil, now: now) == nil)
+        #expect(PromptKey.keyDelay(lastEdit: now.addingTimeInterval(-1.5), now: now) == nil)
+        // Typed just now: again once the second's up.
+        let wait = PromptKey.keyDelay(lastEdit: now.addingTimeInterval(-0.3), now: now)
+        #expect(wait != nil && abs(wait! - 0.7) < 0.001)
+        // The retry then finds nothing typed meanwhile: it takes them.
+        #expect(PromptKey.keyDelay(lastEdit: now.addingTimeInterval(-0.3), now: now.addingTimeInterval(wait!)) == nil)
     }
 }
 
@@ -180,5 +175,41 @@ import Testing
         #expect(!ComposerSuggestion.returnTakes(suggesting: true, moved: false))
         #expect(ComposerSuggestion.returnTakes(suggesting: true, moved: true))
         #expect(!ComposerSuggestion.returnTakes(suggesting: false, moved: true))
+    }
+}
+
+@Suite struct HistoryKeepsTheDraftTests {
+    @Test func editingABroughtBackMessageKeepsWhatYouWereTyping() {
+        var h = ComposerHistory<String>()
+        _ = h.up(from: "my draft", entries: ["one", "two"])
+        h.edited("two, edited")
+        #expect(!h.browsing)
+        #expect(h.keepsDraft)
+        #expect(h.savedDraft == nil)  // not stepping: what's in the box is saved
+        // ↓ from its last line brings the draft back.
+        #expect(ComposerHistory<String>.steps(up: false, text: "two, edited", cursor: 11, browsing: h.keepsDraft))
+        let back = h.down()
+        #expect(back?.entry == nil && back?.draft == "my draft")
+        #expect(!h.keepsDraft)
+    }
+
+    @Test func steppingAgainKeepsTheFirstDraft() {
+        var h = ComposerHistory<String>()
+        _ = h.up(from: "my draft", entries: ["one", "two"])
+        h.edited("edited")
+        #expect(h.up(from: "edited", entries: ["one", "two"]) == "two")
+        #expect(h.savedDraft == "my draft")
+    }
+}
+
+@Suite struct MentionFilesTests {
+    @Test func showsOnlyForTheWordTheyWereFoundFor() {
+        let f = MentionFiles(pane: "p1", query: "src", paths: ["src/a.go"])
+        #expect(f.shows(pane: "p1", query: "src"))
+        #expect(f.shows(pane: "p1", query: "src/a"))   // still typing it: until the new ones come
+        #expect(!f.shows(pane: "p1", query: "doc"))    // another word
+        #expect(!f.shows(pane: "p1", query: "sr"))
+        #expect(!f.shows(pane: "p2", query: "src"))    // another pane
+        #expect(!MentionFiles().shows(pane: "", query: ""))
     }
 }

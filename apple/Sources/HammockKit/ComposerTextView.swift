@@ -706,8 +706,10 @@ final class ComposerUITextView: UITextView {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        // An input method composing a word has the keys: never taken from it.
+        // An input method composing a word has the keys: never taken from it
+        // (⌘↩ would send a word not yet committed, Tab take a suggestion).
         if let k = Self.keys[action] { return markedTextRange == nil && (controller?.wantsKey(k) ?? false) }
+        if action == #selector(tabPressed) || action == #selector(sendPressed) { return markedTextRange == nil }
         if action == #selector(paste(_:)), UIPasteboard.general.hasImages { return true }
         return super.canPerformAction(action, withSender: sender)
     }
