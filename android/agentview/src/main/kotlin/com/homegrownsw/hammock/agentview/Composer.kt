@@ -237,6 +237,8 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
             entry ?: draft ?: ""
         }
         justSent = null // brought back on purpose, not a ghost of what was sent
+        // Another message in the box: a failed send's error (and Retry) is done with, as typing does.
+        if (state.sendError != null) session.clearSendError()
         setText(shown)
         return true
     }
@@ -244,6 +246,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     fun complete(s: Suggestion) {
         val tk = (if (s.file) mention else token) ?: return
         val (t, cursor) = SlashToken.complete(tk, s.insert, text)
+        if (state.sendError != null) session.clearSendError() // edited, as typing does
         value = TextFieldValue(t, TextRange(cursor.coerceAtMost(t.length)))
     }
 
