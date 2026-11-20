@@ -1,8 +1,17 @@
 This build
 
 New
-• Simulator clipboard: touch and hold Type under a simulator or Android emulator to send your iPhone's clipboard to it, or copy its clipboard to your iPhone.
-• Run Early: run a scheduled task now instead of at its next time, so it doesn’t run twice.
+• An agent at rest with subagents still running shows an indigo dot going round its ring, so you can tell it apart from one with only shells running.
+• Send Now: touch and hold a message waiting for Claude to finish and tap Send Now to give it to Claude straight away.
+• Shell commands: a command you run with ! shows its output as it runs, and stays open with its output once it's done.
 
 Fixed
-• The dot that goes round a resting agent's icon while its shells run is now bigger and easier to spot.
+• A message that the agent never took, such as a ! command you stopped in the terminal, no longer waits in the conversation forever.
+• Agents with subagents: messages from the agent view reach the agent even when its terminal is showing a subagent, the message box no longer fills with a subagent's details, and an agent no longer shows as working while only its subagents are.
+• An agent that crashes or is killed no longer stays working or waiting for you, and a scheduled run of it ends.
+• An iPhone removed from your Mac now asks you to pair it again, instead of trying to connect forever.
+• Answering a notification works even when Hammock wasn't open.
+• Require Face ID now covers everything, including your Mac's screen and sheets you left open.
+• Sessions shows all of what an agent asks to run, and Allow answers only the request its card shows, never one that came after it.
+• Symbols your terminal font hasn't got, such as ⌘ and ⌥, no longer overlap the next character.
+• When Claude asks a question you can give several answers to, an answer you type yourself is now sent, along with the options you ticked.
