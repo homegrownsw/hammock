@@ -301,6 +301,9 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
 
     // MARK: Agents
 
+    /// The demo agents' commands, for "/" completion.
+    static let commands = ["/clear", "/compact", "/context", "/model", "/review", "/code-review", "/review-pr", "/simplify", "/security-review"]
+
     private func sendView(_ paneID: String, replace: Bool = false, blocks: [AgentBlock]? = nil) {
         guard watched.contains(paneID) else { return }
         send(.with {
@@ -311,6 +314,13 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 $0.sessionID = "demo-" + paneID
                 $0.model = "claude-opus-5-5"
                 $0.effort = "high"
+                // How full its context is (the gauge's menu), and commands to complete.
+                $0.contextTokens = 312_000
+                $0.contextWindow = 1_000_000
+                if replace {
+                    $0.commands = Self.commands
+                    $0.startCommands = Self.commands.filter { ["/clear", "/compact", "/context", "/model", "/review"].contains($0) }
+                }
                 if let p = prompts[paneID] { $0.prompt = p }
                 if let w = working[paneID] { $0.working = true; $0.status = w }
                 #if DEBUG

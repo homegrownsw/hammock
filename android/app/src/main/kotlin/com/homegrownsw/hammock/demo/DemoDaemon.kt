@@ -33,6 +33,9 @@ import kotlinx.coroutines.launch
  * theme, [hammockKey] ("1" or "agent") adds the Hammock Key with a request
  * waiting. [pace] scales every delay (tests run it fast).
  */
+/** The demo agents' commands, for "/" completion. */
+private val DEMO_COMMANDS = listOf("/clear", "/compact", "/context", "/model", "/review", "/code-review", "/review-pr", "/simplify", "/security-review")
+
 class DemoDaemon(
     private val longChat: Boolean = false,
     private val newChat: Boolean = false,
@@ -319,6 +322,9 @@ class DemoDaemon(
         val v = Hammock.AgentView.newBuilder().setPaneId(paneID).setReplace(replace)
             .addAllBlocks(blocks ?: transcripts[paneID] ?: emptyList())
             .setSessionId("demo-$paneID").setModel("claude-opus-5-5").setEffort("high")
+            // How full its context is (the gauge's menu), and commands to complete.
+            .setContextTokens(312_000).setContextWindow(1_000_000)
+        if (replace) v.addAllCommands(DEMO_COMMANDS).addAllStartCommands(DEMO_COMMANDS.filter { it in setOf("/clear", "/compact", "/context", "/model", "/review") })
         prompts[paneID]?.let { v.prompt = it }
         working[paneID]?.let { v.working = true; v.status = it }
         if (replace && longChat && paneID == "p_polish") v.hasMore = true
