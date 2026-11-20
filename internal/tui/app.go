@@ -937,6 +937,10 @@ func (a *App) keys(b []byte) {
 			b = b[n:]
 			continue
 		}
+		if a.emptyKey(b[0]) {
+			b = b[1:]
+			continue
+		}
 		i := slices.Index(b, prefixKey)
 		if i < 0 {
 			a.send(b)

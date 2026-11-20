@@ -892,6 +892,8 @@ func (a *App) drawPanes() {
 		bg := mix(th.menu, th.accent, 0.3+0.4*a.hoverAmount("empty", a.hovered(zEmpty, "")))
 		s.Text(bx, area.y+area.h/2+1, textWidth(btn), btn, Cell{FG: th.fg, HasFG: true, BG: bg, HasBG: true})
 		a.addZone(zone{r: rect{bx, area.y + area.h/2 + 1, textWidth(btn), 1}, kind: zEmpty})
+		hint := "↵ New Tab"
+		s.Text(area.x+(area.w-textWidth(hint))/2, area.y+area.h/2+3, area.w, hint, Cell{FG: th.faint, HasFG: true})
 		return
 	}
 	// Dividers.
