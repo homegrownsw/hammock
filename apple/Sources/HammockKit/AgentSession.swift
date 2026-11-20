@@ -75,7 +75,7 @@ public final class AgentSession {
     /// When the message box's text last changed by typing: a prompt card
     /// that takes its place waits until typing's a second past before it
     /// takes the keyboard (a "2" typed as it appears would answer it).
-    @ObservationIgnored var composerEditedAt: Date?
+    @ObservationIgnored var composerEditedAt: TimeInterval?  // on PromptKey.clock
 
     weak var model: AppModel?
     /// Set: a past session read through the session finder (no pane).

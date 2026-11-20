@@ -12,7 +12,14 @@ struct ComposerHistory<Draft> {
     /// The lines you've edited while stepping, by index: kept as edited (as
     /// readline does), so stepping away and back finds the edit, not the
     /// original. Sending records only what's sent.
-    private(set) var edits: [Int: String] = [:]
+    /// Each kept as it was in the box (a composer's, chips and all) and its text.
+    private(set) var edits: [Int: (kept: Draft, text: String)] = [:]
+
+    /// A line to put in the box: one as sent, or one as you left it.
+    enum Line {
+        case sent(String)
+        case kept(Draft)
+    }
     /// Which line is shown: an entry's index, or entries.count for what you
     /// were typing. nil: not stepping.
     private(set) var position: Int?
@@ -33,11 +40,13 @@ struct ComposerHistory<Draft> {
     func unchanged(_ text: String) -> Bool { browsing && shown == text }
 
     /// Line i as it is now: as edited, else as sent.
-    func line(_ i: Int) -> String { edits[i] ?? entries[i] }
+    func line(_ i: Int) -> Line { edits[i].map { .kept($0.kept) } ?? .sent(entries[i]) }
+
+    private func lineText(_ i: Int) -> String { edits[i]?.text ?? entries[i] }
 
     /// One further back, keeping what's in the box (text, and the draft
     /// itself) as that line's working copy. Entries are set as stepping starts.
-    mutating func up(from current: Draft, text: String, entries all: @autoclosure () -> [String]) -> String? {
+    mutating func up(from current: Draft, text: String, entries all: @autoclosure () -> [String]) -> Line? {
         if position == nil {
             let e = all()
             guard !e.isEmpty else { return nil }
@@ -48,19 +57,19 @@ struct ComposerHistory<Draft> {
         guard let p = position, p > 0 else { return nil }
         keep(current, text, at: p)
         position = p - 1
-        shown = line(p - 1)
-        return shown
+        shown = lineText(p - 1)
+        return line(p - 1)
     }
 
     /// One forward: the next line, or past the newest, what you were typing.
     /// What's in the box is kept as its line's working copy first.
-    mutating func down(from current: Draft, text: String) -> (entry: String?, draft: Draft?)? {
+    mutating func down(from current: Draft, text: String) -> (entry: Line?, draft: Draft?)? {
         guard let p = position, p < entries.count else { return nil }
         keep(current, text, at: p)
         position = p + 1
         if p + 1 < entries.count {
-            shown = line(p + 1)
-            return (shown, nil)
+            shown = lineText(p + 1)
+            return (line(p + 1), nil)
         }
         shown = nil
         return (nil, draft)
@@ -70,7 +79,7 @@ struct ComposerHistory<Draft> {
         if p == entries.count {
             draft = current
         } else {
-            edits[p] = text == entries[p] ? nil : text
+            edits[p] = text == entries[p] ? nil : (current, text)
         }
     }
 

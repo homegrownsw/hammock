@@ -413,7 +413,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     // hardware keyboard: the keyboard's the box's again (as on the iPhone).
     val hardKeyboard = androidx.compose.ui.platform.LocalConfiguration.current.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO
     LaunchedEffect(Unit) {
-        val retake = PromptKeys.composerRetakes(session.promptHadKeys, session.promptEndedAtMs, System.currentTimeMillis(), active, hardKeyboard)
+        val retake = PromptKeys.composerRetakes(session.promptHadKeys, session.promptEndedAtMs, PromptKeys.now(), active, hardKeyboard)
         session.promptHadKeys = false
         if (retake) { delay(100); runCatching { focus.requestFocus() } }
     }
@@ -504,7 +504,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                             if (it.text != value.text && state.sendError != null) session.clearSendError()
                             if (it.text != value.text) {
                                 // Typing: a prompt card coming now waits before taking the keys.
-                                session.composerEditedAtMs = System.currentTimeMillis()
+                                session.composerEditedAtMs = PromptKeys.now()
                             }
                             value = it
                         },

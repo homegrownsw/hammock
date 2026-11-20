@@ -2474,10 +2474,10 @@ struct PromptCard: View {
     /// The option just answered with, for its row's spinner.
     @State private var tapped = 0
     /// When this question appeared: number keys only count a moment after.
-    @State private var shownAt = Date.now
+    @State private var shownAt = PromptKey.now
     /// When the card took the keyboard, and when it last saw a key.
-    @State private var keysTakenAt = Date.distantPast
-    @State private var lastKeyAt = Date.distantPast
+    @State private var keysTakenAt: TimeInterval = 0
+    @State private var lastKeyAt: TimeInterval = 0
     @FocusState private var focus: Field?
     /// The card itself has the keyboard (its number keys and arrows).
     @FocusState private var keysFocused: Bool
@@ -2521,7 +2521,7 @@ struct PromptCard: View {
         // state, and its own moment before number keys count.
         .onChange(of: p.promptID) { reset(); takeKeys() }
         .onChange(of: typing) { _, on in if !on, focus == nil { takeKeys(force: true) } }
-        .onChange(of: keysFocused) { _, on in if on { keysTakenAt = .now } }
+        .onChange(of: keysFocused) { _, on in if on { keysTakenAt = PromptKey.now } }
     }
 
     // MARK: Keys
@@ -2574,8 +2574,12 @@ struct PromptCard: View {
         // Every key the card sees counts as typing, ignored ones too: a
         // digit only picks after a second's quiet (PromptKey.acceptsPick).
         let quiet = PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt)
-        lastKeyAt = .now
-        switch PromptKey.action(characters: press.characters, key: press.key == .escape ? .escape : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right : .other,
+        lastKeyAt = PromptKey.now
+        let k: PromptKey.Key = press.key == .escape ? .escape : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right
+            : press.key == .return ? .submit : .other
+        // A held key's repeats count as typing, but only its first press acts.
+        if press.phase == .repeat { return k == .other || k == .submit ? .handled : .ignored }
+        switch PromptKey.action(characters: press.characters, key: k,
                                 hasModifiers: !press.modifiers.subtracting([.shift, .numericPad, .function, .capsLock]).isEmpty,
                                 options: p.options.count, multipleQuestions: questionPosition != nil) {
         case .pick(let n):
@@ -2587,6 +2591,11 @@ struct PromptCard: View {
         case .next: nextQuestion()
         case .escape:
             if typing { typing = false; otherText = "" } else { onShowTerminal() }
+        case .submit:
+            // Return answers as Answer or Continue would: after the same quiet
+            // ("…tests⏎" typed as the card came doesn't answer option 1).
+            guard !session.answering, quiet else { return .handled }
+            if p.notes { sendChosen() } else if p.multiSelect { sendTicked() }
         case nil: return .ignored
         }
         return .handled
@@ -2596,7 +2605,7 @@ struct PromptCard: View {
     private func nextQuestion() { session.model?.send(session.paneID, Data("\u{1b}[C".utf8)) }
 
     private func reset() {
-        shownAt = .now
+        shownAt = PromptKey.now
         ticked = Set(p.checked.enumerated().filter(\.element).map { $0.offset + 1 })
         typing = false
         otherText = ""
@@ -2659,9 +2668,11 @@ struct PromptCard: View {
             if p.multiSelect {
                 HStack {
                     Spacer()
+                    // Return goes through the card's keys (after a second's quiet),
+                    // not the window's default button.
                     Button("Continue", action: sendTicked)
                         .prominentButton()
-                        .keyboardShortcut(.defaultAction)
+                        .modifier(OutOfKeyFocus(on: keysFocused))
                 }
             }
             if let err = session.answerError {
@@ -2756,6 +2767,9 @@ struct PromptCard: View {
             .background(rowBackground(highlighted: picked))
         }
         .buttonStyle(.plain)
+        // Not reachable by Tab and Space (Full Keyboard Access) while the
+        // card has the keys: those would answer past the quiet rule.
+        .modifier(OutOfKeyFocus(on: keysFocused))
     }
 
     /// Option n chosen, by a click or its number key.
@@ -2874,7 +2888,7 @@ struct PromptCard: View {
                 }
             }
             .prominentButton()
-            .keyboardShortcut(.defaultAction)
+            .modifier(OutOfKeyFocus(on: keysFocused)) // Return: the card's keys, after the quiet
             .disabled(chosen < 1)
         }
     }
@@ -2915,22 +2929,24 @@ struct PromptCard: View {
 /// What a key does on the prompt card (PromptCard's keys), apart from the
 /// view so it can be tested.
 enum PromptKey: Equatable {
-    case pick(Int), previous, next, escape
+    case pick(Int), previous, next, escape, submit
 
-    enum Key { case escape, left, right, other }
+    enum Key { case escape, left, right, submit, other }
 
-    /// 1–9 picks that option (when there is one); ← and → move between
-    /// questions, when there are several; Esc is Esc. Nothing with ⌘, ⌥ or
-    /// ⌃ held: those are the menus'.
-    /// How quiet the keyboard must have been for a number key to pick.
+    /// The clock its times are on: monotonic (seconds since boot), so a wall
+    /// clock jumping can't let a key through or block them; a test sets it.
+    nonisolated(unsafe) static var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    static var now: TimeInterval { clock() }
+
+    /// How quiet the keyboard must have been for a key to answer.
     static let settle: TimeInterval = 1
 
-    /// A number key now picks an option only after a second's quiet: since
-    /// the card appeared, since it took the keyboard, and since the last
-    /// key it saw (any key: someone still typing a sentence, "add 2 tests",
-    /// keeps putting it off, so no digit in it answers the prompt).
-    static func acceptsPick(now: Date = .now, shownAt: Date, keysTakenAt: Date, lastKeyAt: Date) -> Bool {
-        now.timeIntervalSince(max(shownAt, keysTakenAt, lastKeyAt)) >= settle
+    /// A key that answers (a number, Return) does only after a second's
+    /// quiet: since the card appeared, since it took the keyboard, and since
+    /// the last key it saw (any key, repeats too: someone still typing a
+    /// sentence, "add 2 tests", keeps putting it off). Times on `clock`.
+    static func acceptsPick(now: TimeInterval = PromptKey.now, shownAt: TimeInterval, keysTakenAt: TimeInterval, lastKeyAt: TimeInterval) -> Bool {
+        now - max(shownAt, keysTakenAt, lastKeyAt) >= settle
     }
 
     /// How long typing in the message box keeps the card from taking keys.
@@ -2938,23 +2954,37 @@ enum PromptKey: Equatable {
 
     /// How long to wait before the card takes the keyboard: nil, now
     /// (nothing typed in the message box for a second); else what's left
-    /// of that second, after which it tries again.
-    static func keyDelay(lastEdit: Date?, now: Date = .now) -> TimeInterval? {
+    /// of that second, after which it tries again. Times on `clock`.
+    static func keyDelay(lastEdit: TimeInterval?, now: TimeInterval = PromptKey.now) -> TimeInterval? {
         guard let lastEdit else { return nil }
-        let left = typingWindow - now.timeIntervalSince(lastEdit)
+        let left = typingWindow - (now - lastEdit)
         return left > 0 ? left : nil
     }
 
+    /// 1–9 picks that option (when there is one); ← and → move between
+    /// questions, when there are several; Return submits (Answer,
+    /// Continue); Esc is Esc. Nothing with ⌘, ⌥ or ⌃ held: those are the
+    /// menus'.
     static func action(characters: String, key: Key, hasModifiers: Bool, options: Int, multipleQuestions: Bool) -> PromptKey? {
         guard !hasModifiers else { return nil }
         switch key {
         case .escape: return .escape
+        case .submit: return .submit
         case .left: return multipleQuestions ? .previous : nil
         case .right: return multipleQuestions ? .next : nil
         case .other: break
         }
         guard characters.count == 1, let n = Int(characters), (1...9).contains(n), n <= options else { return nil }
         return .pick(n)
+    }
+}
+
+/// Kept out of keyboard focus (Tab, Full Keyboard Access) while `on`: a
+/// prompt card's buttons, while the card's own keys answer for them.
+struct OutOfKeyFocus: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on { content.focusable(false) } else { content }
     }
 }
 
@@ -2971,7 +3001,7 @@ private struct PromptKeys: ViewModifier {
             .focusable()
             .focusEffectDisabled()
             .focused(focused)
-            .onKeyPress(phases: .down, action: handle)
+            .onKeyPress(phases: [.down, .repeat], action: handle)
             .onAppear(perform: take)
             .onChange(of: paneFocused) { _, on in if on { take() } }
     }
@@ -3376,7 +3406,7 @@ struct Composer: View {
             let composingNow = controller.composing
             if composingNow != composing { composing = composingNow }
             // Typing: a prompt card coming now waits before taking the keys.
-            if d.text != doc.text { session.composerEditedAt = .now }
+            if d.text != doc.text { session.composerEditedAt = PromptKey.now }
             doc = d
             cursor = at
         }
@@ -3988,10 +4018,19 @@ struct Composer: View {
     private func stepHistory(_ k: ComposerKey) {
         if k == .up {
             guard let e = history.up(from: doc, text: text, entries: historyEntries) else { return }
-            recall(ComposerDoc(plain: e))
+            recall(Self.doc(e))
         } else if let s = history.down(from: doc, text: text) {
             // Past the newest: what you were typing, attachments and all.
-            recall(s.entry.map { ComposerDoc(plain: $0) } ?? s.draft ?? ComposerDoc())
+            recall(s.entry.map(Self.doc) ?? s.draft ?? ComposerDoc())
+        }
+    }
+
+    /// A line from history as the box has it: one as sent, or one you'd
+    /// edited, as you left it (its attachments' chips too).
+    private static func doc(_ l: ComposerHistory<ComposerDoc>.Line) -> ComposerDoc {
+        switch l {
+        case .sent(let t): ComposerDoc(plain: t)
+        case .kept(let d): d
         }
     }
 

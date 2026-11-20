@@ -604,13 +604,21 @@ object ToolWords {
 
 /** What a hardware keyboard's key does on the prompt card (the iPhone's PromptKey). */
 object PromptKeys {
-    enum class Key { ESCAPE, LEFT, RIGHT, OTHER }
+    enum class Key { ESCAPE, LEFT, RIGHT, SUBMIT, NAVIGATE, OTHER }
+
+    /** The clock its times are on: monotonic (ms since boot), so a wall clock jumping can't let a key through or block them; a test sets it. */
+    @Volatile var clock: () -> Long = { android.os.SystemClock.uptimeMillis() }
+    fun now() = clock()
 
     sealed class Action {
         data class Pick(val n: Int) : Action()
         data object Previous : Action()
         data object Next : Action()
         data object Escape : Action()
+        /** Return: Answer or Continue, after the same quiet as a number. */
+        data object Submit : Action()
+        /** Tab or ↑/↓: taken by the card (not moving focus to an option, where Enter would click it). */
+        data object Swallow : Action()
     }
 
     /**
@@ -645,6 +653,8 @@ object PromptKeys {
             Key.ESCAPE -> Action.Escape
             Key.LEFT -> if (multipleQuestions) Action.Previous else null
             Key.RIGHT -> if (multipleQuestions) Action.Next else null
+            Key.SUBMIT -> Action.Submit
+            Key.NAVIGATE -> Action.Swallow
             Key.OTHER -> if (digit in 1..9 && digit <= options) Action.Pick(digit) else null
         }
     }

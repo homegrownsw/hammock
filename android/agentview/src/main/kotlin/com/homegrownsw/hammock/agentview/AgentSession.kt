@@ -121,7 +121,7 @@ class AgentSession(
     fun isOpen(id: String) = opened[id] == true
     fun setOpen(id: String, open: Boolean) { if (open) opened[id] = true else opened.remove(id) }
 
-    /** When the message box's text last changed by typing: a prompt card that takes its place waits a second after it before taking the keys. */
+    /** When the message box's text last changed by typing (on PromptKeys' clock): a prompt card that takes its place waits a second after it before taking the keys. */
     @Volatile var composerEditedAtMs = 0L
 
     /** The prompt card on screen had the keyboard (it or one of its fields). */
@@ -251,7 +251,7 @@ class AgentSession(
             n = n.copy(shellOutput = ShellOutput.append(if (v.replace) "" else s.shellOutput, v.shellOutput))
         }
         if (!v.older) {
-            if (s.prompt.kind != AgentPrompt.Kind.KIND_NONE && v.prompt.kind == AgentPrompt.Kind.KIND_NONE) promptEndedAtMs = nowMs
+            if (s.prompt.kind != AgentPrompt.Kind.KIND_NONE && v.prompt.kind == AgentPrompt.Kind.KIND_NONE) promptEndedAtMs = PromptKeys.now()
             n = n.copy(
                 model = v.model, effort = v.effort, contextTokens = v.contextTokens, contextWindow = v.contextWindow,
                 prompt = v.prompt, working = v.working, status = v.status, error = v.error, bangOutput = v.bangOutput,

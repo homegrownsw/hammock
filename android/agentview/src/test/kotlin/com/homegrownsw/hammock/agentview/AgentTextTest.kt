@@ -299,3 +299,39 @@ class RoundTwoTest {
         assertEquals(false, PromptKeys.composerRetakes(false, 10_000, 10_400, active = true, hardKeyboard = true))
     }
 }
+
+class RoundFourTest {
+    @Test
+    fun returnSubmitsAfterQuietAndTabIsTheCards() {
+        assertEquals(PromptKeys.Action.Submit, PromptKeys.action(0, PromptKeys.Key.SUBMIT, false, 3, false))
+        assertNull(PromptKeys.action(0, PromptKeys.Key.SUBMIT, true, 3, false))
+        // Tab and ↑/↓ are consumed by the card: focus never moves to an option row.
+        assertEquals(PromptKeys.Action.Swallow, PromptKeys.action(0, PromptKeys.Key.NAVIGATE, false, 3, false))
+        // "…tests⏎" as the card came: not quiet, no answer; after a second's quiet, yes.
+        assertEquals(false, PromptKeys.acceptsPick(1400, 1000, 1000, 1300))
+        assertEquals(true, PromptKeys.acceptsPick(2500, 1000, 1000, 1400))
+    }
+
+    @Test
+    fun aRepeatCountsAsAKey() {
+        // Delete held for 1.5 s (each repeat a key down), then "2" at once: no.
+        var last = 0L
+        for (k in 0..15) last = 1000L + k * 100
+        assertEquals(false, PromptKeys.acceptsPick(last + 50, 0, 0, last))
+    }
+
+    @Test
+    fun timesComeFromTheInjectedClock() {
+        val real = PromptKeys.clock
+        try {
+            var t = 50_000L
+            PromptKeys.clock = { t }
+            assertEquals(50_000L, PromptKeys.now())
+            assertEquals(false, PromptKeys.acceptsPick(PromptKeys.now(), 49_500, 0, 0))
+            t = 51_000
+            assertEquals(true, PromptKeys.acceptsPick(PromptKeys.now(), 49_500, 0, 0))
+        } finally {
+            PromptKeys.clock = real
+        }
+    }
+}
