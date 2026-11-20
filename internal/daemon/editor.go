@@ -820,10 +820,7 @@ func (h *editorHub) save(m *pb.EditorCommand, folder string, guest bool) error {
 	h.mu.Unlock()
 
 	out, wrote := eol.render(text, disk)
-	if st, err := os.Stat(target); err == nil {
-		mode = st.Mode().Perm()
-	}
-	if err := writeFileAtomic(target, out, mode); err != nil {
+	if err := saveFile(target, out, mode); err != nil {
 		return err
 	}
 	st, _ := os.Stat(target)
@@ -850,31 +847,6 @@ func (h *editorHub) save(m *pb.EditorCommand, folder string, guest bool) error {
 		h.mu.Unlock()
 	}
 	h.publish(b)
-	return nil
-}
-
-func writeFileAtomic(path string, data []byte, mode fs.FileMode) error {
-	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".hammock-*")
-	if err != nil {
-		// A folder we can't create in: write in place.
-		return os.WriteFile(path, data, mode)
-	}
-	tmp := f.Name()
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	_ = os.Chmod(tmp, mode)
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
 	return nil
 }
 
