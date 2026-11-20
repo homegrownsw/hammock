@@ -265,11 +265,14 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     fun historyKey(up: Boolean): Boolean {
         if (dictation.active || composing) return false
         val cursor = if (value.selection.collapsed) value.selection.start else null
-        if (!ComposerHistory.steps(up, text, cursor, history.browsing || (!up && history.keepsDraft))) return false
+        // ↑ steps on from anywhere on the first line of a line brought back
+        // unedited (edited, from its very start); ↓ from the last line of any
+        // brought back, its edit kept.
+        if (!ComposerHistory.steps(up, text, cursor, if (up) history.unchanged(text) else history.browsing)) return false
         val shown = if (up) {
-            history.up(text) { ComposerHistory.merged(sentHere, sentMessages(state)) } ?: return false
+            history.up(text, text) { ComposerHistory.merged(sentHere, sentMessages(state)) } ?: return false
         } else {
-            val (entry, draft) = history.down() ?: return false
+            val (entry, draft) = history.down(text, text) ?: return false
             entry ?: draft ?: ""
         }
         justSent = null // brought back on purpose, not a ghost of what was sent
@@ -283,7 +286,6 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         val tk = (if (s.file) mention else token) ?: return
         val (t, cursor) = SlashToken.complete(tk, s.insert, text)
         if (state.sendError != null) session.clearSendError() // edited, as typing does
-        history.edited(t)
         value = TextFieldValue(t, TextRange(cursor.coerceAtMost(t.length)))
     }
 
@@ -351,7 +353,9 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
             scope.launch { delay(600); send() }
             return
         }
-        if (!canSend) return
+        // A prompt's on screen (the card is taking this box's place): the agent's
+        // terminal shows it, so a send mustn't type into it. The text stays.
+        if (!canSend || state.prompt.kind != hammock.v1.Hammock.AgentPrompt.Kind.KIND_NONE) return
         val sentText = text
         sentSince.add(sentText)
         sentHere = ComposerHistory.recorded(sentHere, sentText)
@@ -498,9 +502,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                         value, {
                             // Editing the message that didn't go: its error's done with.
                             if (it.text != value.text && state.sendError != null) session.clearSendError()
-                            // Editing a message brought back: it's what you're typing now.
                             if (it.text != value.text) {
-                                history.edited(it.text)
                                 // Typing: a prompt card coming now waits before taking the keys.
                                 session.composerEditedAtMs = System.currentTimeMillis()
                             }

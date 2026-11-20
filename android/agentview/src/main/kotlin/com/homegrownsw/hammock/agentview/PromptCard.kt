@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -188,6 +189,9 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
     var keysFocused by remember { mutableStateOf(false) }
     // When this question appeared: number keys only count a moment after.
     val shownAt = remember(key) { System.currentTimeMillis() }
+    // When the card took the keyboard, and when it last saw a key (any key).
+    var keysTakenAt by remember { mutableLongStateOf(0L) }
+    var lastKeyAt by remember { mutableLongStateOf(0L) }
     LaunchedEffect(key, typing, hardKeyboard, active) {
         if (!hardKeyboard || typing || !active) return@LaunchedEffect
         val wait = PromptKeys.keyDelayMs(session.composerEditedAtMs, System.currentTimeMillis())
@@ -200,11 +204,20 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
             // Whether the card (or one of its fields) has the keyboard, for the
             // message box after it; and a tap on its background gives it the keys
             // (an option's own tap is taken first).
-            .onFocusChanged { keysFocused = it.isFocused; if (it.hasFocus) session.promptHadKeys = true }
+            .onFocusChanged {
+                if (it.isFocused && !keysFocused) keysTakenAt = System.currentTimeMillis()
+                keysFocused = it.isFocused
+                if (it.hasFocus) session.promptHadKeys = true
+            }
             .pointerInput(hardKeyboard) { if (hardKeyboard) detectTapGestures { runCatching { keys.requestFocus() } } }
             .focusable(enabled = hardKeyboard).onPreviewKeyEvent { e ->
             // Only the card's own focus: not while typing in one of its fields.
             if (e.type != KeyEventType.KeyDown || !keysFocused) return@onPreviewKeyEvent false
+            // Every key the card sees counts as typing, ignored ones too: a digit
+            // only picks after a second's quiet (PromptKeys.acceptsPick).
+            val now = System.currentTimeMillis()
+            val quiet = PromptKeys.acceptsPick(now, shownAt, keysTakenAt, lastKeyAt)
+            lastKeyAt = now
             val k = when (e.key) {
                 Key.Escape -> PromptKeys.Key.ESCAPE
                 Key.DirectionLeft -> PromptKeys.Key.LEFT
@@ -220,7 +233,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
             // Shift with a digit is its symbol ("!"), as on the Mac: not a pick.
             val mods = e.isCtrlPressed || e.isMetaPressed || e.isAltPressed || (digit > 0 && e.isShiftPressed)
             when (val a = PromptKeys.action(digit, k, mods, p.optionsCount, position != null)) {
-                is PromptKeys.Action.Pick -> if (!state.answering && PromptKeys.acceptsPick(shownAt, System.currentTimeMillis())) pick(a.n)
+                is PromptKeys.Action.Pick -> if (!state.answering && quiet) pick(a.n)
                 PromptKeys.Action.Previous -> if ((position?.first ?: 0) > 1) session.keys("\u001b[D")
                 PromptKeys.Action.Next -> session.keys("\u001b[C")
                 PromptKeys.Action.Escape -> onOpenTerminal()

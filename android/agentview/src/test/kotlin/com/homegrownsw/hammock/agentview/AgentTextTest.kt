@@ -96,12 +96,12 @@ class AgentTextTest {
     fun composerHistory() {
         val h = ComposerHistory<String>()
         val all = listOf("one", "two")
-        assertEquals("two", h.up("draft") { all })
-        assertEquals("one", h.up("") { all })
-        assertNull(h.up("") { all })
-        assertEquals("two" to null, h.down())
-        assertEquals(null to "draft", h.down())
-        assertNull(h.down())
+        assertEquals("two", h.up("draft", "draft") { all })
+        assertEquals("one", h.up("", "two") { all })
+        assertNull(h.up("", "one") { all })
+        assertEquals("two" to null, h.down("", "one"))
+        assertEquals(null to "draft", h.down("", "two"))
+        assertNull(h.down("draft", "draft"))
         assertEquals(true, ComposerHistory.steps(true, "", 0, false))
         assertEquals(false, ComposerHistory.steps(true, "hello", 5, false))
         assertEquals(true, ComposerHistory.steps(true, "hello", 5, true))
@@ -180,13 +180,13 @@ class ToolWordsTest {
 
 class ReviewFixesTest {
     @Test
-    fun editingABroughtBackMessageEndsStepping() {
+    fun anEditedLineMovesTheCursorNotTheHistory() {
         val h = ComposerHistory<String>()
-        h.up("draft") { listOf("one", "two") }
-        h.edited("two")
-        assertEquals(true, h.browsing)
-        h.edited("two, edited")
-        assertEquals(false, h.browsing)
+        h.up("draft", "draft") { listOf("one", "two") }
+        assertEquals(true, h.unchanged("two"))
+        assertEquals(false, h.unchanged("two, edited"))
+        assertEquals(false, ComposerHistory.steps(true, "two, edited", 11, h.unchanged("two, edited")))
+        assertEquals(true, ComposerHistory.steps(true, "two, edited", 0, h.unchanged("two, edited")))
     }
 
     @Test
@@ -204,8 +204,22 @@ class ReviewFixesTest {
 
     @Test
     fun promptCardSettles() {
-        assertEquals(false, PromptKeys.acceptsPick(1000, 1200))
-        assertEquals(true, PromptKeys.acceptsPick(1000, 1600))
+        assertEquals(false, PromptKeys.acceptsPick(1500, 1000, 0, 0))
+        assertEquals(true, PromptKeys.acceptsPick(2100, 1000, 0, 0))
+        // Taken late (the retry) with the person typing on: a digit just after doesn't pick.
+        assertEquals(false, PromptKeys.acceptsPick(2150, 1000, 2050, 0))
+        // Taken at once after a pause: a digit 0.5–1 s later doesn't either.
+        assertEquals(false, PromptKeys.acceptsPick(1800, 1000, 1000, 0))
+        // Three seconds of typing at 8 keys a second, digits among them: never picks.
+        var last = 0L
+        var picked = false
+        for (k in 0 until 24) {
+            val now = 1000L + k * 125
+            if (k % 5 == 2 && PromptKeys.acceptsPick(now, 1000, 1000, last)) picked = true
+            last = now
+        }
+        assertEquals(false, picked)
+        assertEquals(true, PromptKeys.acceptsPick(last + 1010, 1000, 1000, last))
     }
 }
 
@@ -244,21 +258,19 @@ class OtherAgentsToolsTest {
 
 class RoundTwoTest {
     @Test
-    fun editingKeepsTheDraftForDown() {
+    fun editsAreKeptStepping() {
         val h = ComposerHistory<String>()
-        h.up("my draft") { listOf("one", "two") }
-        h.edited("two, edited")
-        assertEquals(false, h.browsing)
-        assertEquals(true, h.keepsDraft)
+        val all = listOf("run tests", "deploy")
+        assertEquals("deploy", h.up("my draft", "my draft") { all })
+        assertEquals("run tests", h.up("", "deploy") { all })
+        // Edited, then ↓ out of habit: the edit's kept, and ↑ comes back to it.
+        assertEquals("deploy" to null, h.down("", "run the unit tests"))
+        assertEquals("run the unit tests", h.up("", "deploy") { all })
+        assertEquals("my draft", h.savedDraft)
+        // And the draft still comes back.
+        assertEquals("deploy" to null, h.down("", "run the unit tests"))
+        assertEquals(null to "my draft", h.down("", "deploy"))
         assertNull(h.savedDraft)
-        assertEquals(null to "my draft", h.down())
-        assertEquals(false, h.keepsDraft)
-        // Stepping again after an edit keeps the first draft.
-        val g = ComposerHistory<String>()
-        g.up("first") { listOf("a") }
-        g.edited("a!")
-        g.up("a!") { listOf("a") }
-        assertEquals("first", g.savedDraft)
     }
 
     @Test

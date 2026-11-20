@@ -2475,6 +2475,9 @@ struct PromptCard: View {
     @State private var tapped = 0
     /// When this question appeared: number keys only count a moment after.
     @State private var shownAt = Date.now
+    /// When the card took the keyboard, and when it last saw a key.
+    @State private var keysTakenAt = Date.distantPast
+    @State private var lastKeyAt = Date.distantPast
     @FocusState private var focus: Field?
     /// The card itself has the keyboard (its number keys and arrows).
     @FocusState private var keysFocused: Bool
@@ -2518,6 +2521,7 @@ struct PromptCard: View {
         // state, and its own moment before number keys count.
         .onChange(of: p.promptID) { reset(); takeKeys() }
         .onChange(of: typing) { _, on in if !on, focus == nil { takeKeys(force: true) } }
+        .onChange(of: keysFocused) { _, on in if on { keysTakenAt = .now } }
     }
 
     // MARK: Keys
@@ -2567,12 +2571,16 @@ struct PromptCard: View {
     /// switches to the terminal (or stops typing an answer).
     private func key(_ press: KeyPress) -> KeyPress.Result {
         guard focus == nil else { return .ignored }
+        // Every key the card sees counts as typing, ignored ones too: a
+        // digit only picks after a second's quiet (PromptKey.acceptsPick).
+        let quiet = PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt)
+        lastKeyAt = .now
         switch PromptKey.action(characters: press.characters, key: press.key == .escape ? .escape : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right : .other,
                                 hasModifiers: !press.modifiers.subtracting([.shift, .numericPad, .function, .capsLock]).isEmpty,
                                 options: p.options.count, multipleQuestions: questionPosition != nil) {
         case .pick(let n):
-            // Not a key typed for something else just as the card came.
-            guard !session.answering, PromptKey.acceptsPick(since: shownAt) else { return .handled }
+            // Not a key typed for something else as the card came, or mid-sentence.
+            guard !session.answering, quiet else { return .handled }
             pick(n)
         case .previous:
             if let (i, _) = questionPosition, i > 1 { previousQuestion() }
@@ -2914,13 +2922,15 @@ enum PromptKey: Equatable {
     /// 1–9 picks that option (when there is one); ← and → move between
     /// questions, when there are several; Esc is Esc. Nothing with ⌘, ⌥ or
     /// ⌃ held: those are the menus'.
-    /// How long after a card appears its number keys start to count.
-    static let settle: TimeInterval = 0.5
+    /// How quiet the keyboard must have been for a number key to pick.
+    static let settle: TimeInterval = 1
 
-    /// A number key now picks an option: not in the moment after the card
-    /// appeared (a key meant for what it replaced).
-    static func acceptsPick(since shown: Date, now: Date = .now) -> Bool {
-        now.timeIntervalSince(shown) >= settle
+    /// A number key now picks an option only after a second's quiet: since
+    /// the card appeared, since it took the keyboard, and since the last
+    /// key it saw (any key: someone still typing a sentence, "add 2 tests",
+    /// keeps putting it off, so no digit in it answers the prompt).
+    static func acceptsPick(now: Date = .now, shownAt: Date, keysTakenAt: Date, lastKeyAt: Date) -> Bool {
+        now.timeIntervalSince(max(shownAt, keysTakenAt, lastKeyAt)) >= settle
     }
 
     /// How long typing in the message box keeps the card from taking keys.
@@ -3367,9 +3377,6 @@ struct Composer: View {
             if composingNow != composing { composing = composingNow }
             // Typing: a prompt card coming now waits before taking the keys.
             if d.text != doc.text { session.composerEditedAt = .now }
-            // Editing a message brought back: it's what you're typing now,
-            // and ↑ and ↓ move the cursor through it, not swap it away.
-            history.edited(d.text)
             doc = d
             cursor = at
         }
@@ -3966,7 +3973,11 @@ struct Composer: View {
     /// history does (ComposerHistory): not while dictating.
     private func historyWants(_ k: ComposerKey) -> Bool {
         guard !dictation.active,
-              ComposerHistory<ComposerDoc>.steps(up: k == .up, text: text, cursor: controller.caret, browsing: history.browsing || (k == .down && history.keepsDraft)) else { return false }
+                            // ↑ steps on from anywhere on the first line of a line brought
+              // back unedited (edited, from its very start); ↓ from the last
+              // line of any brought back, its edit kept.
+              ComposerHistory<ComposerDoc>.steps(up: k == .up, text: text, cursor: controller.caret,
+                                                 browsing: k == .up ? history.unchanged(text) : history.browsing) else { return false }
         return k == .down || history.browsing || !historyEntries.isEmpty
     }
 
@@ -3976,9 +3987,9 @@ struct Composer: View {
 
     private func stepHistory(_ k: ComposerKey) {
         if k == .up {
-            guard let e = history.up(from: doc, entries: historyEntries) else { return }
+            guard let e = history.up(from: doc, text: text, entries: historyEntries) else { return }
             recall(ComposerDoc(plain: e))
-        } else if let s = history.down() {
+        } else if let s = history.down(from: doc, text: text) {
             // Past the newest: what you were typing, attachments and all.
             recall(s.entry.map { ComposerDoc(plain: $0) } ?? s.draft ?? ComposerDoc())
         }
@@ -4072,7 +4083,10 @@ struct Composer: View {
             }
             return
         }
-        guard canSend else { return }
+        // A prompt's on screen (this box fading out as its card comes): the
+        // agent's terminal is showing the prompt, so Return mustn't type
+        // into it. The text stays in the box.
+        guard canSend, session.prompt.kind == .none else { return }
         rememberSent()
         // A chip pasted in twice goes once, where it first is.
         var d = ComposerDoc()

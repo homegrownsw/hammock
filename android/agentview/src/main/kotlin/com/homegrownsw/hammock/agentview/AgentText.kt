@@ -332,58 +332,60 @@ object LinkPolicy {
  */
 class ComposerHistory<D> {
     var entries: List<String> = emptyList(); private set
-    /** Which entry is shown (null: what you were typing). */
-    var index: Int? = null; private set
+    /** The lines you've edited while stepping, by index: kept as edited (as readline does). Sending records only what's sent. */
+    private val edits = HashMap<Int, String>()
+    /** Which line is shown: an entry's index, or entries.size for what you were typing. Null: not stepping. */
+    var position: Int? = null; private set
+    /** What you were typing, kept while you step through the others. */
     var draft: D? = null; private set
-    val browsing get() = index != null
+    /** The text of the line last brought back, to tell an edit from it. */
+    private var shown: String? = null
 
-    /** What you were typing is kept to come back to: while stepping, and after a message brought back is edited (↓ from its last line brings it back). */
-    val keepsDraft get() = draft != null
+    /** A line from history is in the box (not what you were typing). */
+    val browsing get() = position.let { it != null && it < entries.size }
 
-    /** What to save as the draft now: what you were typing while a message brought back is shown unedited; else (null) what's in the box. */
+    /** What to save as the draft now: what you were typing, while a line from history is in the box; else (null) what's in the box. */
     val savedDraft: D? get() = if (browsing) draft else null
 
-    /** One further back; [all] is read as stepping starts. */
-    fun up(current: D, all: () -> List<String>): String? {
-        val i = index
-        if (i != null) {
-            if (i == 0) return null
-            index = i - 1
-            return entries[i - 1]
+    /** The box still holds the line as it was brought back: ↑ steps on from anywhere on its first line. */
+    fun unchanged(text: String) = browsing && shown == text
+
+    /** Line i as it is now: as edited, else as sent. */
+    fun line(i: Int) = edits[i] ?: entries[i]
+
+    /** One further back, keeping what's in the box ([text], and [current] itself for the draft) as that line's working copy. [all] is read as stepping starts. */
+    fun up(current: D, text: String, all: () -> List<String>): String? {
+        if (position == null) {
+            val e = all()
+            if (e.isEmpty()) return null
+            entries = e
+            edits.clear()
+            position = e.size
         }
-        val e = all()
-        if (e.isEmpty()) return null
-        entries = e
-        // Stepping again after an edit: what you were typing first is still the one to come back to.
-        if (draft == null) draft = current
-        index = e.size - 1
-        return e.last()
+        val p = position ?: return null
+        if (p == 0) return null
+        keep(current, text, p)
+        position = p - 1
+        return line(p - 1).also { shown = it }
     }
 
-    /** One forward: the next entry (first), or past the newest, what you were typing (second). */
-    fun down(): Pair<String?, D?>? {
-        val i = index ?: run {
-            // An edited message: ↓ brings back what you were typing.
-            val d = draft ?: return null
-            reset()
-            return null to d
-        }
-        if (i + 1 < entries.size) {
-            index = i + 1
-            return entries[i + 1] to null
-        }
-        val d = draft
-        reset()
-        return null to d
+    /** One forward: the next line (first), or past the newest, what you were typing (second). What's in the box is kept as its line's working copy first. */
+    fun down(current: D, text: String): Pair<String?, D?>? {
+        val p = position ?: return null
+        if (p >= entries.size) return null
+        keep(current, text, p)
+        position = p + 1
+        if (p + 1 < entries.size) return line(p + 1).also { shown = it } to null
+        shown = null
+        return null to draft
     }
 
-    fun reset() { index = null; draft = null; entries = emptyList() }
-
-    /** The text now in the box: once it's not the entry brought back (it's been edited), stepping ends, but what you were typing is kept for ↓. */
-    fun edited(text: String) {
-        val i = index ?: return
-        if (entries[i] != text) index = null
+    private fun keep(current: D, text: String, p: Int) {
+        if (p == entries.size) draft = current else if (text == entries[p]) edits.remove(p) else edits[p] = text
     }
+
+    /** Sent (or another pane): stepping, its working copies and draft, over. */
+    fun reset() { position = null; draft = null; entries = emptyList(); edits.clear(); shown = null }
 
     companion object {
         const val CAP = 50
@@ -616,11 +618,16 @@ object PromptKeys {
      * questions when there are several; Esc is Esc. Nothing with Ctrl, Meta
      * or Alt held.
      */
-    /** How long after a card appears its number keys start to count, in ms. */
-    const val SETTLE_MS = 500L
+    /** How quiet the keyboard must have been for a number key to pick, in ms. */
+    const val SETTLE_MS = 1000L
 
-    /** A number key now picks an option: not in the moment after the card appeared (a key meant for what it replaced). */
-    fun acceptsPick(shownAtMs: Long, nowMs: Long) = nowMs - shownAtMs >= SETTLE_MS
+    /**
+     * A number key now picks an option only after a second's quiet: since the
+     * card appeared, since it took the keyboard, and since the last key it saw
+     * (any key: someone still typing "add 2 tests" keeps putting it off).
+     */
+    fun acceptsPick(nowMs: Long, shownAtMs: Long, keysTakenAtMs: Long, lastKeyAtMs: Long) =
+        nowMs - maxOf(shownAtMs, keysTakenAtMs, lastKeyAtMs) >= SETTLE_MS
 
     /** How long typing in the message box keeps the card from taking keys, in ms. */
     const val TYPING_MS = 1000L

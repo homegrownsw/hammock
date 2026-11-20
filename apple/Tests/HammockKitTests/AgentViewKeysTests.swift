@@ -31,21 +31,21 @@ import Testing
     @Test func stepsBackAndForthKeepingTheDraft() {
         var h = H()
         let all = ["one", "two", "three"]
-        #expect(h.up(from: "draft", entries: all) == "three")
-        #expect(h.up(from: "ignored", entries: all) == "two")
-        #expect(h.up(from: "", entries: all) == "one")
-        #expect(h.up(from: "", entries: all) == nil)  // the oldest: stays
-        #expect(h.down()?.entry == "two")
-        #expect(h.down()?.entry == "three")
-        let back = h.down()
+        #expect(h.up(from: "draft", text: "draft", entries: all) == "three")
+        #expect(h.up(from: "", text: "three", entries: all) == "two")
+        #expect(h.up(from: "", text: "two", entries: all) == "one")
+        #expect(h.up(from: "", text: "one", entries: all) == nil)  // the oldest: stays
+        #expect(h.down(from: "", text: "one")?.entry == "two")
+        #expect(h.down(from: "", text: "two")?.entry == "three")
+        let back = h.down(from: "", text: "three")
         #expect(back?.entry == nil && back?.draft == "draft")
         #expect(!h.browsing)
-        #expect(h.down() == nil)
+        #expect(h.down(from: "draft", text: "draft") == nil)
     }
 
     @Test func nothingToStepThrough() {
         var h = H()
-        #expect(h.up(from: "x", entries: []) == nil)
+        #expect(h.up(from: "x", text: "x", entries: []) == nil)
         #expect(!h.browsing)
     }
 
@@ -136,10 +136,35 @@ import Testing
 }
 
 @Suite struct PromptKeyTakingTests {
-    @Test func numberKeysWaitForTheCardToSettle() {
-        let shown = Date(timeIntervalSince1970: 1000)
-        #expect(!PromptKey.acceptsPick(since: shown, now: shown.addingTimeInterval(0.2)))
-        #expect(PromptKey.acceptsPick(since: shown, now: shown.addingTimeInterval(0.6)))
+    @Test func numberKeysWaitForQuiet() {
+        let t0 = Date(timeIntervalSince1970: 1000)
+        let never = Date.distantPast
+        func ok(_ at: Double, shown: Double = 0, taken: Date = .distantPast, last: Date = .distantPast) -> Bool {
+            PromptKey.acceptsPick(now: t0.addingTimeInterval(at), shownAt: t0.addingTimeInterval(shown), keysTakenAt: taken, lastKeyAt: last)
+        }
+        #expect(!ok(0.5))
+        #expect(ok(1.1))
+        // Taken late (the retry, ~1 s after it appeared, the person typing on):
+        // a "2" just after doesn't pick.
+        #expect(!ok(1.15, taken: t0.addingTimeInterval(1.05), last: never))
+        // Taken at once after a pause, a digit 0.5–1 s later doesn't either.
+        #expect(!ok(0.8, taken: t0, last: never))
+    }
+
+    @Test func typingASentenceNeverPicks() {
+        // Three seconds of typing at 8 keys a second, digits among them.
+        let t0 = Date(timeIntervalSince1970: 1000)
+        var last = Date.distantPast
+        var picked = false
+        for k in 0..<24 {
+            let now = t0.addingTimeInterval(Double(k) / 8)
+            let isDigit = k % 5 == 2
+            if isDigit, PromptKey.acceptsPick(now: now, shownAt: t0, keysTakenAt: t0, lastKeyAt: last) { picked = true }
+            last = now
+        }
+        #expect(!picked)
+        // A second after the last key: a deliberate digit picks.
+        #expect(PromptKey.acceptsPick(now: last.addingTimeInterval(1.01), shownAt: t0, keysTakenAt: t0, lastKeyAt: last))
     }
 
     @Test func waitsOutTypingInTheMessageBox() {
@@ -156,14 +181,13 @@ import Testing
 }
 
 @Suite struct ComposerReviewFixTests {
-    @Test func editingABroughtBackMessageEndsStepping() {
+    @Test func anEditedLineMovesTheCursorNotTheHistory() {
         var h = ComposerHistory<String>()
-        _ = h.up(from: "draft", entries: ["one", "two"])
-        h.edited("two")          // unchanged: still stepping
-        #expect(h.browsing)
-        h.edited("two, edited")  // edited: ↑ moves the cursor now, not the message
-        #expect(!h.browsing)
-        #expect(!ComposerHistory<String>.steps(up: true, text: "two, edited", cursor: 11, browsing: h.browsing))
+        _ = h.up(from: "draft", text: "draft", entries: ["one", "two"])
+        #expect(h.unchanged("two"))
+        #expect(!h.unchanged("two, edited"))  // ↑ then only from its very start
+        #expect(!ComposerHistory<String>.steps(up: true, text: "two, edited", cursor: 11, browsing: h.unchanged("two, edited")))
+        #expect(ComposerHistory<String>.steps(up: true, text: "two, edited", cursor: 0, browsing: h.unchanged("two, edited")))
     }
 
     @Test func keepsAMessagesSpacing() {
@@ -178,27 +202,36 @@ import Testing
     }
 }
 
-@Suite struct HistoryKeepsTheDraftTests {
-    @Test func editingABroughtBackMessageKeepsWhatYouWereTyping() {
+@Suite struct HistoryKeepsEditsTests {
+    @Test func downThenUpComesBackToTheEdit() {
         var h = ComposerHistory<String>()
-        _ = h.up(from: "my draft", entries: ["one", "two"])
-        h.edited("two, edited")
-        #expect(!h.browsing)
-        #expect(h.keepsDraft)
-        #expect(h.savedDraft == nil)  // not stepping: what's in the box is saved
-        // ↓ from its last line brings the draft back.
-        #expect(ComposerHistory<String>.steps(up: false, text: "two, edited", cursor: 11, browsing: h.keepsDraft))
-        let back = h.down()
-        #expect(back?.entry == nil && back?.draft == "my draft")
-        #expect(!h.keepsDraft)
+        let all = ["run tests", "deploy"]
+        #expect(h.up(from: "my draft", text: "my draft", entries: all) == "deploy")
+        #expect(h.up(from: "", text: "deploy", entries: all) == "run tests")
+        // Edited, then ↓ out of habit: the edit's kept…
+        #expect(h.down(from: "", text: "run the unit tests")?.entry == "deploy")
+        // …and ↑ comes back to it, not the original.
+        #expect(h.up(from: "", text: "deploy", entries: all) == "run the unit tests")
+        #expect(h.savedDraft == "my draft")
     }
 
-    @Test func steppingAgainKeepsTheFirstDraft() {
+    @Test func theDraftStillComesBack() {
         var h = ComposerHistory<String>()
-        _ = h.up(from: "my draft", entries: ["one", "two"])
-        h.edited("edited")
-        #expect(h.up(from: "edited", entries: ["one", "two"]) == "two")
-        #expect(h.savedDraft == "my draft")
+        let all = ["one"]
+        _ = h.up(from: "my draft", text: "my draft", entries: all)
+        let back = h.down(from: "", text: "one, edited")
+        #expect(back?.draft == "my draft")
+        #expect(h.savedDraft == nil)  // what's in the box is the draft now
+        // And the edit's still there going back up.
+        #expect(h.up(from: "my draft", text: "my draft", entries: all) == "one, edited")
+    }
+
+    @Test func editingTheDraftAfterSteppingKeepsIt() {
+        var h = ComposerHistory<String>()
+        _ = h.up(from: "a", text: "a", entries: ["x"])
+        _ = h.down(from: "", text: "x")
+        #expect(h.up(from: "a, more", text: "a, more", entries: ["x"]) == "x")
+        #expect(h.down(from: "", text: "x")?.draft == "a, more")
     }
 }
 

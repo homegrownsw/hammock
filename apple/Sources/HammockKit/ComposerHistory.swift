@@ -9,67 +9,78 @@ import Foundation
 /// before a /clear, or not in the transcript yet) kept on this device.
 struct ComposerHistory<Draft> {
     private(set) var entries: [String] = []
-    /// Which entry is shown (nil: what you were typing).
-    private(set) var index: Int?
-    /// What you were typing when you started stepping back.
+    /// The lines you've edited while stepping, by index: kept as edited (as
+    /// readline does), so stepping away and back finds the edit, not the
+    /// original. Sending records only what's sent.
+    private(set) var edits: [Int: String] = [:]
+    /// Which line is shown: an entry's index, or entries.count for what you
+    /// were typing. nil: not stepping.
+    private(set) var position: Int?
+    /// What you were typing, kept while you step through the others.
     private(set) var draft: Draft?
+    /// The text of the line last brought back, to tell an edit from it.
+    private(set) var shown: String?
 
-    var browsing: Bool { index != nil }
+    /// A line from history is in the box (not what you were typing).
+    var browsing: Bool { position.map { $0 < entries.count } ?? false }
 
-    /// What you were typing is kept to come back to: while stepping, and
-    /// after a message brought back has been edited (↓ from its last line
-    /// still brings it back, as readline does).
-    var keepsDraft: Bool { draft != nil }
-
-    /// What to save as the draft now: what you were typing while a message
-    /// brought back is shown unedited; else (nil) what's in the box.
+    /// What to save as the draft now: what you were typing, while a line
+    /// from history is in the box; else (nil) what's in the box.
     var savedDraft: Draft? { browsing ? draft : nil }
 
-    /// One further back: entries are set as stepping starts.
-    mutating func up(from current: Draft, entries all: @autoclosure () -> [String]) -> String? {
-        if let i = index {
-            guard i > 0 else { return nil }
-            index = i - 1
-            return entries[i - 1]
+    /// The box still holds the line as it was brought back (not edited
+    /// since): ↑ and ↓ step on from anywhere on its first or last line.
+    func unchanged(_ text: String) -> Bool { browsing && shown == text }
+
+    /// Line i as it is now: as edited, else as sent.
+    func line(_ i: Int) -> String { edits[i] ?? entries[i] }
+
+    /// One further back, keeping what's in the box (text, and the draft
+    /// itself) as that line's working copy. Entries are set as stepping starts.
+    mutating func up(from current: Draft, text: String, entries all: @autoclosure () -> [String]) -> String? {
+        if position == nil {
+            let e = all()
+            guard !e.isEmpty else { return nil }
+            entries = e
+            edits = [:]
+            position = e.count
         }
-        let e = all()
-        guard !e.isEmpty else { return nil }
-        entries = e
-        // Stepping again after an edit: what you were typing first is still
-        // the one to come back to.
-        if draft == nil { draft = current }
-        index = e.count - 1
-        return e[e.count - 1]
+        guard let p = position, p > 0 else { return nil }
+        keep(current, text, at: p)
+        position = p - 1
+        shown = line(p - 1)
+        return shown
     }
 
-    /// One forward: the next entry, or past the newest, what you were typing.
-    mutating func down() -> (entry: String?, draft: Draft?)? {
-        guard let i = index else {
-            // An edited message: ↓ brings back what you were typing.
-            guard let d = draft else { return nil }
-            reset()
-            return (nil, d)
+    /// One forward: the next line, or past the newest, what you were typing.
+    /// What's in the box is kept as its line's working copy first.
+    mutating func down(from current: Draft, text: String) -> (entry: String?, draft: Draft?)? {
+        guard let p = position, p < entries.count else { return nil }
+        keep(current, text, at: p)
+        position = p + 1
+        if p + 1 < entries.count {
+            shown = line(p + 1)
+            return (shown, nil)
         }
-        if i + 1 < entries.count {
-            index = i + 1
-            return (entries[i + 1], nil)
-        }
-        let d = draft
-        reset()
-        return (nil, d)
+        shown = nil
+        return (nil, draft)
     }
 
-    /// The text now in the box: once it's not the entry brought back (it's
-    /// been edited), stepping ends (↑ and ↓ move the cursor through it), but
-    /// what you were typing is kept for ↓ to bring back.
-    mutating func edited(_ text: String) {
-        if let i = index, entries[i] != text { index = nil }
+    private mutating func keep(_ current: Draft, _ text: String, at p: Int) {
+        if p == entries.count {
+            draft = current
+        } else {
+            edits[p] = text == entries[p] ? nil : text
+        }
     }
 
+    /// Sent (or another pane): stepping, its working copies and draft, over.
     mutating func reset() {
-        index = nil
+        position = nil
         draft = nil
         entries = []
+        edits = [:]
+        shown = nil
     }
 
     /// Whether ↑ (up) or ↓ steps through the history rather than moving the
