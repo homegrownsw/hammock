@@ -1,7 +1,10 @@
 package com.homegrownsw.hammock.agentview
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -27,6 +30,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -57,6 +62,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.client.AppCover
@@ -258,6 +265,23 @@ private fun Conversation(session: AgentSession, state: AgentViewState, modifier:
             if (gap > showAt) latest = true else if (gap < hideAt) latest = false
         }
     }
+    // While scrolled up: how many rows have come since you left the end (from
+    // the last one there was then), and whether the agent finished or asked
+    // you something meanwhile (a dot on Latest).
+    var seenLast by remember { mutableStateOf<String?>(null) }
+    var attention by remember { mutableStateOf(false) }
+    LaunchedEffect(latest) {
+        seenLast = if (latest) items.lastOrNull()?.id else null
+        attention = false
+    }
+    var wasWorking by remember { mutableStateOf(state.working) }
+    LaunchedEffect(state.working) {
+        if (wasWorking && !state.working && latest) attention = true
+        wasWorking = state.working
+    }
+    LaunchedEffect(state.prompt.kind) {
+        if (latest && state.prompt.kind != AgentPrompt.Kind.KIND_NONE) attention = true
+    }
     // Sent while scrolled up: down to see it go.
     var sent by remember { mutableStateOf(state.pendingSends.size) }
     LaunchedEffect(state.pendingSends.size) {
@@ -337,13 +361,24 @@ private fun Conversation(session: AgentSession, state: AgentViewState, modifier:
             latest, enter = fadeIn() + scaleIn(initialScale = 0.6f), exit = fadeOut() + scaleOut(targetScale = 0.6f),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
         ) {
-            ExtendedFloatingActionButton(
-                onClick = { scope.launch { list.animateScrollToItem(0) } },
-                icon = { Icon(Icons.Outlined.ArrowDownward, null) },
-                text = { Text("Latest") },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = c.accent,
-            )
+            val n = seenLast?.let { id -> items.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { items.size - 1 - it } } ?: 0
+            BadgedBox(badge = { if (attention) Badge(containerColor = c.accent) }) {
+                ExtendedFloatingActionButton(
+                    onClick = { scope.launch { list.animateScrollToItem(0) } },
+                    icon = { Icon(Icons.Outlined.ArrowDownward, null) },
+                    text = {
+                        AnimatedContent(n, transitionSpec = { (fadeIn() togetherWith fadeOut()).using(SizeTransform(clip = false)) }, label = "new") { k ->
+                            Text(if (k > 0) "$k new" else "Latest")
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = c.accent,
+                    modifier = Modifier.semantics {
+                        contentDescription = (if (n > 0) "Jump to the latest, $n new" else "Jump to the latest") +
+                            if (attention) ", ${session.agentName} needs you" else ""
+                    },
+                )
+            }
         }
     }
 }

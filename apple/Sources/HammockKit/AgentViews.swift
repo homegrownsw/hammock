@@ -806,19 +806,7 @@ public struct AgentConversationView: View {
                 // What you answer or send with (the model and context in it):
                 // glass floating over the conversation, which scrolls beneath.
                 .overlay(alignment: .bottom) {
-                    if !atBottom, landed {
-                        Button {
-                            jumpToEnd(proxy)
-                        } label: {
-                            Label("Latest", systemImage: "arrow.down")
-                                .font(.callout.weight(.semibold))
-                        }
-                        .agentGlassButton()
-                        .buttonBorderShape(.capsule)
-                        .help("Jump to the latest")
-                        .padding(.bottom, 10)
-                        .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
+                    LatestButton(session: s, shown: !atBottom && landed, atBottom: atBottom) { jumpToEnd(proxy) }
                 }
                 .animation(.snappy(duration: 0.2), value: atBottom)
                 .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar(s, proxy) }
@@ -842,6 +830,63 @@ public struct AgentConversationView: View {
                     .onChange(of: g.size.width) { _, w in resized(to: w) }
             }
         }
+    }
+}
+
+/// Latest, over the conversation while you're scrolled up from its end:
+/// how many rows have come since you left it ("3 new"), and a dot when the
+/// agent finished or asked you something meanwhile.
+struct LatestButton: View {
+    let session: AgentSession
+    let shown: Bool
+    let atBottom: Bool
+    let action: () -> Void
+    /// The last row there was when you scrolled up from the end.
+    @State private var seenLast: String?
+    @State private var attention = false
+    @Environment(\.agentAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Rows that came since.
+    private var count: Int {
+        guard let seenLast, let i = session.items.firstIndex(where: { $0.id == seenLast }) else { return 0 }
+        return session.items.count - 1 - i
+    }
+
+    var body: some View {
+        let n = count
+        ZStack {
+            if shown {
+                Button(action: action) {
+                    Label(n > 0 ? "\(n) new" : "Latest", systemImage: "arrow.down")
+                        .font(.callout.weight(.semibold))
+                        .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(n)))
+                }
+                .agentGlassButton()
+                .buttonBorderShape(.capsule)
+                .overlay(alignment: .topTrailing) {
+                    if attention {
+                        Circle().fill(accent).frame(width: 9, height: 9).offset(x: 1, y: -1)
+                            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                            .accessibilityHidden(true)
+                    }
+                }
+                .help("Jump to the latest")
+                .accessibilityLabel(n > 0 ? "Jump to the latest, \(n) new" : "Jump to the latest")
+                .accessibilityValue(attention ? "\(session.agentName) needs you" : "")
+                .padding(.bottom, 10)
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: n)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: attention)
+        .onChange(of: atBottom, initial: true) { _, at in
+            seenLast = at ? nil : session.items.last?.id
+            attention = false
+        }
+        // Done, or asking something, while you read further up.
+        .onChange(of: session.working) { was, now in if was, !now, !atBottom { attention = true } }
+        .onChange(of: session.prompt.kind) { _, k in if k != .none, !atBottom { attention = true } }
     }
 }
 
