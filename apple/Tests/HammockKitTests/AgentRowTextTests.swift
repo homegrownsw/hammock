@@ -132,3 +132,20 @@ import Testing
         #expect(l[2].new == 1)
     }
 }
+
+@Suite struct OtherAgentsToolsTests {
+    private func tool(_ name: String, _ input: String = "") -> AgentBlock { .with { $0.kind = .tool; $0.tool = name; $0.input = input } }
+
+    @Test func knowsCodexsAndLowercaseNames() {
+        #expect(ToolSummary.words([tool("exec_command"), tool("exec"), tool("web_search"), tool("apply_patch", "a.go")]) == "Ran 2 commands · searched once · edited 1 file")
+        #expect(ToolSummary.words([tool("bash"), tool("read", "a"), tool("edit", "a")]) == "Ran 1 command · read 1 file · edited 1 file")
+        #expect(ToolWords.row(tool: "exec_command", title: "Ran `ls`", input: "ls", bang: false, pending: false, error: false, added: 0, removed: 0, open: nil) == "exec_command: ls, succeeded")
+    }
+
+    @Test func namesTheDiffsFile() {
+        #expect(ToolSummary.diffPath(tool: "edit", input: "a.go", diff: "-x\n+y\n") == "a.go")
+        #expect(ToolSummary.diffPath(tool: "apply_patch", input: "a.go\nb.go", diff: "@@ a.go\n+x\n") == "")
+        #expect(ToolSummary.diffPath(tool: "str_replace_editor", input: "src/a.go", diff: "-x\n+y\n") == "src/a.go")
+        #expect(ToolSummary.diffPath(tool: "Bash", input: "sed -i s/a/b/ x", diff: "@@ x\n-a\n+b\n") == "")
+    }
+}

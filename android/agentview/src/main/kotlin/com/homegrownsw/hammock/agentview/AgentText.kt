@@ -429,18 +429,34 @@ class ComposerHistory<D> {
 
 /** What a run of tool calls did, in words: "Read 4 files · ran 2 commands · edited 1 file" (the iPhone's ToolSummary). */
 object ToolSummary {
-    private enum class Kind { READ, EDIT, WRITE, RUN, SEARCH, FETCH, TASKS, SKILL, MCP, OTHER }
+    internal enum class Kind { READ, EDIT, WRITE, RUN, SEARCH, FETCH, TASKS, SKILL, MCP, OTHER }
 
-    private fun kind(tool: String) = when (tool) {
-        "Read" -> Kind.READ
-        "Edit", "MultiEdit", "NotebookEdit" -> Kind.EDIT
-        "Write" -> Kind.WRITE
-        "Bash" -> Kind.RUN
-        "Grep", "Glob", "WebSearch" -> Kind.SEARCH
-        "WebFetch" -> Kind.FETCH
-        "TodoWrite", "TaskCreate", "TaskUpdate" -> Kind.TASKS
-        "Skill" -> Kind.SKILL
-        else -> if (tool.startsWith("mcp__")) Kind.MCP else Kind.OTHER
+    /** By name, whoever's: Claude's ("Bash"), Codex's ("exec_command", "apply_patch", "web_search") and the others' spellings, ignoring case, "_" and "-". */
+    internal fun kind(tool: String): Kind {
+        if (tool.startsWith("mcp__")) return Kind.MCP
+        return when (tool.lowercase().replace("_", "").replace("-", "")) {
+            "read", "readfile", "view", "viewimage", "cat" -> Kind.READ
+            "edit", "multiedit", "notebookedit", "editnotebook", "strreplace", "searchreplace", "editfile", "applypatch", "patch" -> Kind.EDIT
+            "write", "createfile", "writefile" -> Kind.WRITE
+            "bash", "shell", "exec", "execcommand", "localshell", "shellcommand", "runterminalcmd", "terminal", "writestdin" -> Kind.RUN
+            "grep", "glob", "websearch", "search", "find", "rg", "ripgrep", "grepsearch", "globfilesearch", "codebasesearch", "semanticsearch" -> Kind.SEARCH
+            "webfetch", "fetch" -> Kind.FETCH
+            "todowrite", "taskcreate", "taskupdate", "updateplan", "plan" -> Kind.TASKS
+            "skill" -> Kind.SKILL
+            else -> Kind.OTHER
+        }
+    }
+
+    /** Its input says best what it did (a command, a path, a pattern). */
+    fun saysInput(tool: String) = kind(tool) in setOf(Kind.READ, Kind.EDIT, Kind.WRITE, Kind.RUN, Kind.SEARCH, Kind.FETCH)
+
+    /** The file a diff is of, for its header: an edit's or a write's input; another tool's when its diff names none and its input is one path. */
+    fun diffPath(tool: String, input: String, diff: String): String {
+        val single = input.isNotEmpty() && '\n' !in input
+        val k = kind(tool)
+        if ((k == Kind.EDIT || k == Kind.WRITE) && single) return input
+        if (!single || ' ' in input || DiffLines.files(DiffLines.numbered(diff)).isNotEmpty()) return ""
+        return input
     }
 
     private fun words(k: Kind, n: Int, alone: Boolean): String {
@@ -550,14 +566,13 @@ object ToolWords {
 
     fun toolName(tool: String) = if (tool.startsWith("mcp__")) tool.removePrefix("mcp__").replace("__", " ") else tool
 
-    private val saysInput = setOf("Bash", "Read", "Edit", "MultiEdit", "NotebookEdit", "Write", "Grep", "Glob", "WebFetch", "WebSearch")
 
     /** A tool row as one: "Bash: npm test, failed" (whether it's open is its state, said apart). */
     fun row(tool: String, title: String, input: String, bang: Boolean, pending: Boolean, error: Boolean, added: Int, removed: Int): String {
         val first = input.substringBefore('\n')
         val what = when {
             bang -> "Shell command: $first"
-            tool in saysInput && first.isNotEmpty() -> toolName(tool) + ": " + first
+            ToolSummary.saysInput(tool) && first.isNotEmpty() -> toolName(tool) + ": " + first
             else -> title.replace("`", "").replace("**", "").let { if (it.isEmpty()) toolName(tool) else toolName(tool) + ": " + it }
         }
         val parts = mutableListOf(what)

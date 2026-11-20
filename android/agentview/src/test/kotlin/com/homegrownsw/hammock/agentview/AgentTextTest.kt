@@ -229,3 +229,16 @@ class DiffLinesEdgeTest {
         assertEquals(emptyList(), DiffLines.numbered(""))
     }
 }
+
+class OtherAgentsToolsTest {
+    @Test
+    fun names() {
+        assertEquals(
+            "Ran 2 commands · searched once · edited 1 file",
+            ToolSummary.words(listOf("exec_command" to "", "exec" to "", "web_search" to "", "apply_patch" to "a.go")),
+        )
+        assertEquals("exec_command: ls, succeeded", ToolWords.row("exec_command", "Ran `ls`", "ls", false, false, false, 0, 0))
+        assertEquals("a.go", ToolSummary.diffPath("edit", "a.go", "-x\n+y\n"))
+        assertEquals("", ToolSummary.diffPath("apply_patch", "a.go\nb.go", "@@ a.go\n+x\n"))
+    }
+}

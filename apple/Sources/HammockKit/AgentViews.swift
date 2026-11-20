@@ -1943,7 +1943,7 @@ struct ToolRow: View {
     private var opens: Bool { !block.diff.isEmpty || showsInput || !block.output.isEmpty }
     /// The file an edit changed, for its diff's header (a command's edits
     /// and a patch's name theirs in the diff).
-    private var diffPath: String { ["Edit", "MultiEdit", "NotebookEdit", "Write"].contains(block.tool) ? block.input : "" }
+    private var diffPath: String { ToolSummary.diffPath(tool: block.tool, input: block.input, diff: block.diff) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

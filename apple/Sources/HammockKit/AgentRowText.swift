@@ -6,19 +6,26 @@ enum ToolSummary {
     enum Kind: Equatable {
         case read, edit, write, run, search, fetch, tasks, skill, mcp, other
 
+        /// By name, whoever's: Claude's ("Bash", "Read"), Codex's
+        /// ("exec_command", "apply_patch", "web_search"), and the other
+        /// agents' lowercase or snake_case spellings, ignoring case, "_" and "-".
         init(tool: String) {
-            switch tool {
-            case "Read": self = .read
-            case "Edit", "MultiEdit", "NotebookEdit": self = .edit
-            case "Write": self = .write
-            case "Bash": self = .run
-            case "Grep", "Glob", "WebSearch": self = .search
-            case "WebFetch": self = .fetch
-            case "TodoWrite", "TaskCreate", "TaskUpdate": self = .tasks
-            case "Skill": self = .skill
-            default: self = tool.hasPrefix("mcp__") ? .mcp : .other
+            if tool.hasPrefix("mcp__") { self = .mcp; return }
+            switch tool.lowercased().replacingOccurrences(of: "_", with: "").replacingOccurrences(of: "-", with: "") {
+            case "read", "readfile", "view", "viewimage", "cat": self = .read
+            case "edit", "multiedit", "notebookedit", "editnotebook", "strreplace", "searchreplace", "editfile", "applypatch", "patch": self = .edit
+            case "write", "createfile", "writefile": self = .write
+            case "bash", "shell", "exec", "execcommand", "localshell", "shellcommand", "runterminalcmd", "terminal", "writestdin": self = .run
+            case "grep", "glob", "websearch", "search", "find", "rg", "ripgrep", "grepsearch", "globfilesearch", "codebasesearch", "semanticsearch": self = .search
+            case "webfetch", "fetch": self = .fetch
+            case "todowrite", "taskcreate", "taskupdate", "updateplan", "plan": self = .tasks
+            case "skill": self = .skill
+            default: self = .other
             }
         }
+
+        /// Its input says best what it did (a command, a path, a pattern).
+        var saysInput: Bool { [.read, .edit, .write, .run, .search, .fetch].contains(self) }
 
         /// Files are counted once each (read twice, it's one file).
         var byFile: Bool { [.read, .edit, .write].contains(self) }
@@ -157,8 +164,6 @@ enum ToolWords {
         return tool.dropFirst(5).replacingOccurrences(of: "__", with: " ")
     }
 
-    /// Tools whose input says best what they did (a command, a path, a pattern).
-    private static let saysInput: Set = ["Bash", "Read", "Edit", "MultiEdit", "NotebookEdit", "Write", "Grep", "Glob", "WebFetch", "WebSearch"]
 
     /// A tool row as one: "Bash: npm test, failed, collapsed".
     static func row(tool: String, title: String, input: String, bang: Bool, pending: Bool, error: Bool,
@@ -167,7 +172,7 @@ enum ToolWords {
         var what: String
         if bang {
             what = "Shell command: " + first
-        } else if saysInput.contains(tool), !first.isEmpty {
+        } else if ToolSummary.Kind(tool: tool).saysInput, !first.isEmpty {
             what = toolName(tool) + ": " + first
         } else {
             let plain = title.replacingOccurrences(of: "`", with: "").replacingOccurrences(of: "**", with: "")
@@ -190,5 +195,18 @@ public enum DiffFolder {
         let full = path.hasPrefix("/") || cwd.isEmpty ? path : (cwd as NSString).appendingPathComponent(path)
         let folder = (full as NSString).deletingLastPathComponent
         return !folder.isEmpty && exists(folder) ? folder : cwd
+    }
+}
+
+extension ToolSummary {
+    /// The file an edit's diff is of, for its header: an edit's or a write's
+    /// input; another tool's when its diff names no file of its own ("@@
+    /// path") and its input is one path. "" when there's none to name.
+    static func diffPath(tool: String, input: String, diff: String) -> String {
+        let single = !input.isEmpty && !input.contains("\n")
+        let k = Kind(tool: tool)
+        if k == .edit || k == .write, single { return input }
+        guard single, !input.contains(" "), DiffLines.files(DiffLines.numbered(diff)).isEmpty else { return "" }
+        return input
     }
 }
