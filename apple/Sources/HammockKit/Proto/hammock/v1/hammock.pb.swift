@@ -10677,6 +10677,11 @@ public nonisolated struct Hammock_V1_ReviewComment: Sendable {
   /// the agent's pane
   public var authorPaneID: String = String()
 
+  /// Whose it is, to change: a guest's user id; "" the host's (this Mac's
+  /// person, and a guest's comment from before this field, which only the
+  /// host may then change). Never decided by author, a name anyone can take.
+  public var authorID: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Delivery: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -28103,7 +28108,7 @@ nonisolated extension Hammock_V1_ReviewThread.State: SwiftProtobuf._ProtoNamePro
 
 nonisolated extension Hammock_V1_ReviewComment: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ReviewComment"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}author\0\u{1}agent\0\u{1}text\0\u{3}unix_ms\0\u{1}delivery\0\u{1}unread\0\u{3}author_pane_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}author\0\u{1}agent\0\u{1}text\0\u{3}unix_ms\0\u{1}delivery\0\u{1}unread\0\u{3}author_pane_id\0\u{3}author_id\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -28119,6 +28124,7 @@ nonisolated extension Hammock_V1_ReviewComment: SwiftProtobuf.Message, SwiftProt
       case 6: try { try decoder.decodeSingularEnumField(value: &self.delivery) }()
       case 7: try { try decoder.decodeSingularBoolField(value: &self.unread) }()
       case 8: try { try decoder.decodeSingularStringField(value: &self.authorPaneID) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.authorID) }()
       default: break
       }
     }
@@ -28149,6 +28155,9 @@ nonisolated extension Hammock_V1_ReviewComment: SwiftProtobuf.Message, SwiftProt
     if !self.authorPaneID.isEmpty {
       try visitor.visitSingularStringField(value: self.authorPaneID, fieldNumber: 8)
     }
+    if !self.authorID.isEmpty {
+      try visitor.visitSingularStringField(value: self.authorID, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -28161,6 +28170,7 @@ nonisolated extension Hammock_V1_ReviewComment: SwiftProtobuf.Message, SwiftProt
     if lhs.delivery != rhs.delivery {return false}
     if lhs.unread != rhs.unread {return false}
     if lhs.authorPaneID != rhs.authorPaneID {return false}
+    if lhs.authorID != rhs.authorID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

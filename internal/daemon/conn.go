@@ -866,7 +866,8 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 				}
 			}
 		} else if c.peer != "" && !d.isLinked(c.peer) {
-			who.guest, who.name = true, c.name
+			// Named for showing ("" would read as "You"); owning by user id.
+			who.guest, who.name, who.id = true, cmp.Or(c.name, "Guest"), c.peer
 		}
 		group := d.groupOfPane(m.ReviewCommand.PaneId)
 		d.mu.Unlock()

@@ -24856,15 +24856,19 @@ func (x *ReviewThread) GetCreatedUnixMs() int64 {
 }
 
 type ReviewComment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Author        string                 `protobuf:"bytes,2,opt,name=author,proto3" json:"author,omitempty"` // a person's name ("" you), or the agent's ("claude")
-	Agent         bool                   `protobuf:"varint,3,opt,name=agent,proto3" json:"agent,omitempty"`
-	Text          string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"` // Markdown
-	UnixMs        int64                  `protobuf:"varint,5,opt,name=unix_ms,json=unixMs,proto3" json:"unix_ms,omitempty"`
-	Delivery      ReviewComment_Delivery `protobuf:"varint,6,opt,name=delivery,proto3,enum=hammock.v1.ReviewComment_Delivery" json:"delivery,omitempty"`
-	Unread        bool                   `protobuf:"varint,7,opt,name=unread,proto3" json:"unread,omitempty"`                                  // an agent's you haven't seen
-	AuthorPaneId  string                 `protobuf:"bytes,8,opt,name=author_pane_id,json=authorPaneId,proto3" json:"author_pane_id,omitempty"` // the agent's pane
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Id           string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Author       string                 `protobuf:"bytes,2,opt,name=author,proto3" json:"author,omitempty"` // a person's name ("" you), or the agent's ("claude")
+	Agent        bool                   `protobuf:"varint,3,opt,name=agent,proto3" json:"agent,omitempty"`
+	Text         string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"` // Markdown
+	UnixMs       int64                  `protobuf:"varint,5,opt,name=unix_ms,json=unixMs,proto3" json:"unix_ms,omitempty"`
+	Delivery     ReviewComment_Delivery `protobuf:"varint,6,opt,name=delivery,proto3,enum=hammock.v1.ReviewComment_Delivery" json:"delivery,omitempty"`
+	Unread       bool                   `protobuf:"varint,7,opt,name=unread,proto3" json:"unread,omitempty"`                                  // an agent's you haven't seen
+	AuthorPaneId string                 `protobuf:"bytes,8,opt,name=author_pane_id,json=authorPaneId,proto3" json:"author_pane_id,omitempty"` // the agent's pane
+	// Whose it is, to change: a guest's user id; "" the host's (this Mac's
+	// person, and a guest's comment from before this field, which only the
+	// host may then change). Never decided by author, a name anyone can take.
+	AuthorId      string `protobuf:"bytes,9,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -24951,6 +24955,13 @@ func (x *ReviewComment) GetUnread() bool {
 func (x *ReviewComment) GetAuthorPaneId() string {
 	if x != nil {
 		return x.AuthorPaneId
+	}
+	return ""
+}
+
+func (x *ReviewComment) GetAuthorId() string {
+	if x != nil {
+		return x.AuthorId
 	}
 	return ""
 }
@@ -27478,7 +27489,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\n" +
 	"STATE_OPEN\x10\x00\x12\x13\n" +
 	"\x0fSTATE_ADDRESSED\x10\x01\x12\x12\n" +
-	"\x0eSTATE_RESOLVED\x10\x02\"\xd4\x02\n" +
+	"\x0eSTATE_RESOLVED\x10\x02\"\xf1\x02\n" +
 	"\rReviewComment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06author\x18\x02 \x01(\tR\x06author\x12\x14\n" +
@@ -27487,7 +27498,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\aunix_ms\x18\x05 \x01(\x03R\x06unixMs\x12>\n" +
 	"\bdelivery\x18\x06 \x01(\x0e2\".hammock.v1.ReviewComment.DeliveryR\bdelivery\x12\x16\n" +
 	"\x06unread\x18\a \x01(\bR\x06unread\x12$\n" +
-	"\x0eauthor_pane_id\x18\b \x01(\tR\fauthorPaneId\"Z\n" +
+	"\x0eauthor_pane_id\x18\b \x01(\tR\fauthorPaneId\x12\x1b\n" +
+	"\tauthor_id\x18\t \x01(\tR\bauthorId\"Z\n" +
 	"\bDelivery\x12\x11\n" +
 	"\rDELIVERY_NONE\x10\x00\x12\x13\n" +
 	"\x0fDELIVERY_UNSENT\x10\x01\x12\x13\n" +

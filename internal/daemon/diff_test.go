@@ -396,6 +396,94 @@ func TestReviewViewed(t *testing.T) {
 	}
 }
 
+// Comments are changed only by whoever wrote them, known by user id: a
+// guest's name proves nothing, "" (which the owner's comments have) included.
+func TestReviewCommentOwner(t *testing.T) {
+	dir := shortDir(t)
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\ntwo\n"), 0o644)
+	gitIn(t, repo, "add", ".")
+	gitIn(t, repo, "commit", "-q", "-m", "First")
+	os.WriteFile(filepath.Join(repo, "a.txt"), []byte("ONE\nTWO\n"), 0o644)
+
+	d := startDaemon(t, dir)
+	c := dial(t, dir)
+	g := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Work"}}}))
+	tab := client.CreatedID(call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{
+		GroupId: g, Pane: &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo}},
+	}}}))
+	d.mu.Lock()
+	paneID := d.tabs[tab].FocusedPaneId
+	d.mu.Unlock()
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ReadDiff{ReadDiff: &pb.ReadDiff{PaneId: paneID}}})
+
+	host := reviewer{}
+	samA := reviewer{name: "Sam", id: "u-sam-a", guest: true}
+	samB := reviewer{name: "Sam", id: "u-sam-b", guest: true}
+	nameless := reviewer{id: "u-nameless", guest: true}
+	posing := reviewer{name: "Alex", id: "u-posing", guest: true} // the host's own name
+	add := func(who reviewer, line uint32) string {
+		t.Helper()
+		r, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_ADD_THREAD,
+			Path: "a.txt", Line: line, Text: "Look"}, who, g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.CommentId
+	}
+	edit := func(who reviewer, id string) error {
+		_, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_EDIT_COMMENT,
+			CommentId: id, Text: "Changed"}, who, g)
+		return err
+	}
+	del := func(who reviewer, id string) error {
+		_, err := d.diffs.reviewCommand(&pb.ReviewCommand{PaneId: paneID, Action: pb.ReviewCommand_ACTION_DELETE_COMMENT,
+			CommentId: id}, who, g)
+		return err
+	}
+
+	hostC, aC := add(host, 1), add(samA, 2)
+	for _, who := range []reviewer{nameless, posing, samA} {
+		if edit(who, hostC) == nil || del(who, hostC) == nil {
+			t.Errorf("guest %q (%s) changed the owner's comment", who.name, who.id)
+		}
+	}
+	if edit(samB, aC) == nil || del(samB, aC) == nil {
+		t.Error("a guest changed another's comment of the same name")
+	}
+	if edit(host, aC) == nil || del(host, aC) == nil {
+		t.Error("the owner changed a guest's comment")
+	}
+	if err := edit(samA, aC); err != nil {
+		t.Errorf("a guest editing its own comment: %v", err)
+	}
+	if err := edit(host, hostC); err != nil {
+		t.Errorf("the owner editing their own comment: %v", err)
+	}
+	if err := del(samA, aC); err != nil {
+		t.Errorf("a guest deleting its own comment: %v", err)
+	}
+	if err := del(host, hostC); err != nil {
+		t.Errorf("the owner deleting their own comment: %v", err)
+	}
+
+	// A guest's comment from before comments kept their author's id: the
+	// owner's to change, never a guest's, whatever its name.
+	oldC := add(samA, 1)
+	d.diffs.mu.Lock()
+	_, rv, _ := d.diffs.reviewOf(&pb.ReviewCommand{PaneId: paneID})
+	_, old := findComment(rv, oldC)
+	old.AuthorId = ""
+	d.diffs.mu.Unlock()
+	if edit(samA, oldC) == nil || edit(samB, oldC) == nil {
+		t.Error("a guest changed a comment kept without its author's id")
+	}
+	if err := edit(host, oldC); err != nil {
+		t.Errorf("the owner editing an old guest comment: %v", err)
+	}
+}
+
 func TestReviewFinish(t *testing.T) {
 	dir := shortDir(t)
 	repo := t.TempDir()

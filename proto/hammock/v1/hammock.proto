@@ -2864,6 +2864,10 @@ message ReviewComment {
   Delivery delivery = 6;
   bool unread = 7;            // an agent's you haven't seen
   string author_pane_id = 8;  // the agent's pane
+  // Whose it is, to change: a guest's user id; "" the host's (this Mac's
+  // person, and a guest's comment from before this field, which only the
+  // host may then change). Never decided by author, a name anyone can take.
+  string author_id = 9;
 }
 
 // A pane's review (pane_id), or one by id.

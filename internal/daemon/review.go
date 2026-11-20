@@ -41,7 +41,8 @@ const (
 
 // reviewer is who's acting on a review.
 type reviewer struct {
-	name  string // "" you; a guest's name; an agent's harness
+	name  string // "" you; a guest's name; an agent's harness (for showing)
+	id    string // who owns what they write: a guest's user id; "" you
 	agent bool
 	pane  string // the agent's pane
 	guest bool
@@ -391,7 +392,7 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 	}
 	now := time.Now().UnixMilli()
 	comment := func(text string) *pb.ReviewComment {
-		c := &pb.ReviewComment{Id: newID("rc"), Author: who.name, Agent: who.agent, Text: strings.TrimSpace(text), UnixMs: now}
+		c := &pb.ReviewComment{Id: newID("rc"), Author: who.name, AuthorId: who.id, Agent: who.agent, Text: strings.TrimSpace(text), UnixMs: now}
 		if who.agent {
 			c.Unread, c.AuthorPaneId = true, who.pane
 		} else {
@@ -478,8 +479,10 @@ func (h *diffHub) reviewCommand(m *pb.ReviewCommand, who reviewer, groupID strin
 			return nil, fmt.Errorf("no comment %s", m.CommentId)
 		}
 		// Yours (not the owner's if you're a guest, nor a guest's if you're
-		// the owner), not yet sent: unsent, or held for a busy agent.
-		if c.Agent || c.Author != who.name || c.Delivery != pb.ReviewComment_DELIVERY_UNSENT && c.Delivery != pb.ReviewComment_DELIVERY_QUEUED {
+		// the owner), not yet sent: unsent, or held for a busy agent. Yours
+		// by id, never by name: a guest can call itself anything, "" too.
+		if who.agent || who.guest && who.id == "" || c.Agent || c.AuthorId != who.id ||
+			c.Delivery != pb.ReviewComment_DELIVERY_UNSENT && c.Delivery != pb.ReviewComment_DELIVERY_QUEUED {
 			h.mu.Unlock()
 			return nil, errors.New("only your own comments, before they're sent, can be changed")
 		}
