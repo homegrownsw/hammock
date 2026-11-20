@@ -2924,6 +2924,8 @@ struct Composer: View {
     @State private var focused = false
     /// Words going in as you say them (the mic button).
     @State private var dictation = ComposerDictation()
+    /// Stepping back through what's been sent (↑ and ↓).
+    @State private var history = ComposerHistory<ComposerDoc>()
     @Environment(\.agentFonts) private var fonts
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openAgentImage) private var open
@@ -3052,7 +3054,18 @@ struct Composer: View {
             Task { await dictation.finish() }
             return true
         }
+        c.wantsKey = { composerWants($0) }
+        c.onKey = { composerKey($0) }
         return c
+    }
+
+    /// A key the composer takes before the text view (ComposerKey).
+    private func composerWants(_ k: ComposerKey) -> Bool {
+        historyWants(k)
+    }
+
+    private func composerKey(_ k: ComposerKey) {
+        stepHistory(k)
     }
 
     private func platformFont(code: Bool) -> PlatformFont {
@@ -3340,6 +3353,7 @@ struct Composer: View {
             saveDraft(key: "agentDraft." + old, pane: old)
             attachments = []
             thumbs = [:]
+            history.reset()
             loadDraft()
         }
         .onChange(of: text) { old, t in
@@ -3552,6 +3566,42 @@ struct Composer: View {
         setDoc(d)
     }
 
+    // MARK: History
+
+    /// ↑ and ↓ step through what's been sent from this pane, as a shell's
+    /// history does (ComposerHistory): not while dictating.
+    private func historyWants(_ k: ComposerKey) -> Bool {
+        guard !dictation.active,
+              ComposerHistory<ComposerDoc>.steps(up: k == .up, text: text, cursor: controller.caret, browsing: history.browsing) else { return false }
+        return k == .down || history.browsing || !historyEntries.isEmpty
+    }
+
+    private var historyEntries: [String] {
+        ComposerHistory<ComposerDoc>.merged(sent: ComposerHistoryStore.sent(session.paneID), conversation: session.sentMessages)
+    }
+
+    private func stepHistory(_ k: ComposerKey) {
+        if k == .up {
+            guard let e = history.up(from: doc, entries: historyEntries) else { return }
+            recall(ComposerDoc(plain: e))
+        } else if let s = history.down() {
+            // Past the newest: what you were typing, attachments and all.
+            recall(s.entry.map { ComposerDoc(plain: $0) } ?? s.draft ?? ComposerDoc())
+        }
+    }
+
+    private func recall(_ d: ComposerDoc) {
+        // Brought back on purpose: not the keyboard giving back what was just sent.
+        justSent = nil
+        setDoc(d)
+    }
+
+    /// What's being sent, for ↑ to bring back.
+    private func rememberSent() {
+        ComposerHistoryStore.record(session.paneID, doc.plain)
+        history.reset()
+    }
+
     // MARK: Drafts
 
     /// What a saved draft depends on: saved again when it changes.
@@ -3622,6 +3672,7 @@ struct Composer: View {
             return
         }
         guard canSend else { return }
+        rememberSent()
         // A chip pasted in twice goes once, where it first is.
         var d = ComposerDoc()
         var k = 0

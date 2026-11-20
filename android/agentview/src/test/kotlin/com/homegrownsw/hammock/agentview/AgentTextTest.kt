@@ -76,6 +76,29 @@ class AgentTextTest {
     }
 
     @Test
+    fun composerHistory() {
+        val h = ComposerHistory<String>()
+        val all = listOf("one", "two")
+        assertEquals("two", h.up("draft") { all })
+        assertEquals("one", h.up("") { all })
+        assertNull(h.up("") { all })
+        assertEquals("two" to null, h.down())
+        assertEquals(null to "draft", h.down())
+        assertNull(h.down())
+        assertEquals(true, ComposerHistory.steps(true, "", 0, false))
+        assertEquals(false, ComposerHistory.steps(true, "hello", 5, false))
+        assertEquals(true, ComposerHistory.steps(true, "hello", 5, true))
+        assertEquals(false, ComposerHistory.steps(true, "a\nb", 3, true))
+        assertEquals(true, ComposerHistory.steps(false, "a\nb", 3, true))
+        assertEquals(false, ComposerHistory.steps(false, "", 0, false))
+        assertEquals(
+            listOf("old one", "typed in the terminal", "fix it", "not there yet"),
+            ComposerHistory.merged(listOf("old one", "fix it", "not there yet"), listOf("typed in the terminal", "fix it")),
+        )
+        assertEquals(listOf("b", "a"), ComposerHistory.recorded(listOf("a", "b"), " a "))
+    }
+
+    @Test
     fun promptKeys() {
         val other = PromptKeys.Key.OTHER
         assertEquals(PromptKeys.Action.Pick(2), PromptKeys.action(2, other, false, options = 3, multipleQuestions = false))

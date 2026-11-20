@@ -123,6 +123,28 @@ private object Drafts {
     }
 }
 
+/** What's been sent from each pane's composer, for ↑ to bring back ([ComposerHistory]). */
+private object History {
+    private fun prefs(context: Context) = context.getSharedPreferences("hammock.agentview.history", Context.MODE_PRIVATE)
+    fun load(context: Context, pane: String): List<String> = runCatching {
+        val a = org.json.JSONArray(prefs(context).getString(pane, "[]") ?: "[]")
+        List(a.length()) { a.getString(it) }
+    }.getOrDefault(emptyList())
+    fun record(context: Context, pane: String, text: String) {
+        val list = ComposerHistory.recorded(load(context, pane), text)
+        prefs(context).edit().putString(pane, org.json.JSONArray(list).toString()).apply()
+    }
+}
+
+/** Your messages in the conversation, oldest first, and "!" commands as you typed them. */
+private fun sentMessages(state: AgentViewState): List<String> = state.blocks.mapNotNull { b ->
+    when {
+        b.kind == hammock.v1.Hammock.AgentBlock.Kind.KIND_USER -> b.text
+        b.sentByYou() -> "!" + b.input
+        else -> null
+    }
+}
+
 /** The most attached to one message. */
 private const val MAX_ATTACHMENTS = 8
 
@@ -173,6 +195,24 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     }
 
     fun setText(t: String) { value = TextFieldValue(t, TextRange(t.length)) }
+
+    // ↑ and ↓ on a hardware keyboard: what's been sent from this pane, as a
+    // shell's history, keeping what you were typing to come back to.
+    val history = remember(session.paneID) { ComposerHistory<String>() }
+    fun historyKey(up: Boolean): Boolean {
+        if (dictation.active) return false
+        val cursor = if (value.selection.collapsed) value.selection.start else null
+        if (!ComposerHistory.steps(up, text, cursor, history.browsing)) return false
+        val shown = if (up) {
+            history.up(text) { ComposerHistory.merged(History.load(context, session.paneID), sentMessages(state)) } ?: return false
+        } else {
+            val (entry, draft) = history.down() ?: return false
+            entry ?: draft ?: ""
+        }
+        justSent = null // brought back on purpose, not a ghost of what was sent
+        setText(shown)
+        return true
+    }
 
     fun complete(command: String) {
         val tk = token ?: return
@@ -229,6 +269,8 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         }
         if (!canSend) return
         val sentText = text
+        History.record(context, session.paneID, sentText)
+        history.reset()
         val sent = attachments.toList()
         attachments.clear()
         setText("")
@@ -361,6 +403,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                                 e.key == Key.Enter && (e.isCtrlPressed || e.isMetaPressed) -> { if (stops) session.interrupt() else send(); true }
                                 e.key == Key.Tab && suggestions.isNotEmpty() -> { complete(suggestions.first()); true }
                                 e.key == Key.Escape && dictation.active -> { dictation.stop(); true }
+                                e.key == Key.DirectionUp || e.key == Key.DirectionDown -> historyKey(e.key == Key.DirectionUp)
                                 else -> false
                             }
                         },

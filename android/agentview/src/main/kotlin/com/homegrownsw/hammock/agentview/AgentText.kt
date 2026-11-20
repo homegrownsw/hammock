@@ -271,6 +271,96 @@ object LinkPolicy {
     }
 }
 
+/**
+ * The composer's message history, as a shell's (the iPhone's ComposerHistory):
+ * ↑ brings back what you sent before, ↓ goes the other way, back to what you
+ * were typing.
+ */
+class ComposerHistory<D> {
+    var entries: List<String> = emptyList(); private set
+    /** Which entry is shown (null: what you were typing). */
+    var index: Int? = null; private set
+    var draft: D? = null; private set
+    val browsing get() = index != null
+
+    /** One further back; [all] is read as stepping starts. */
+    fun up(current: D, all: () -> List<String>): String? {
+        val i = index
+        if (i != null) {
+            if (i == 0) return null
+            index = i - 1
+            return entries[i - 1]
+        }
+        val e = all()
+        if (e.isEmpty()) return null
+        entries = e
+        draft = current
+        index = e.size - 1
+        return e.last()
+    }
+
+    /** One forward: the next entry (first), or past the newest, what you were typing (second). */
+    fun down(): Pair<String?, D?>? {
+        val i = index ?: return null
+        if (i + 1 < entries.size) {
+            index = i + 1
+            return entries[i + 1] to null
+        }
+        val d = draft
+        reset()
+        return null to d
+    }
+
+    fun reset() { index = null; draft = null; entries = emptyList() }
+
+    companion object {
+        const val CAP = 50
+        /** Longer messages (a pasted log) aren't kept. */
+        const val LONGEST = 4000
+
+        /**
+         * Whether ↑ ([up]) or ↓ steps through the history rather than moving the
+         * cursor: ↑ with only the first line before the cursor, in an empty box,
+         * at its start, or while stepping; ↓ while stepping, with only the last
+         * line after the cursor. Never with text selected ([cursor] null).
+         */
+        fun steps(up: Boolean, text: String, cursor: Int?, browsing: Boolean): Boolean {
+            val at = (cursor ?: return false).coerceIn(0, text.length)
+            if (up) {
+                if ('\n' in text.substring(0, at)) return false
+                return text.isEmpty() || browsing || at == 0
+            }
+            return browsing && '\n' !in text.substring(at)
+        }
+
+        /**
+         * The steps: the conversation's messages in order, with those sent from
+         * here it doesn't have: older ones (before a /clear) ahead of it, newer
+         * ones (not in the transcript yet) after it. Each once, at its latest.
+         */
+        fun merged(sent: List<String>, conversation: List<String>, cap: Int = CAP): List<String> {
+            fun clean(s: List<String>) = s.map { it.trim() }.filter { it.isNotEmpty() && it.length <= LONGEST }
+            val conv = clean(conversation)
+            val mine = clean(sent)
+            val inConv = conv.toSet()
+            val last = mine.indexOfLast { it in inConv }
+            val older = if (last >= 0) mine.subList(0, last) else emptyList()
+            val newer = if (last >= 0) mine.subList(last + 1, mine.size) else mine
+            val seen = HashSet<String>()
+            val out = ArrayList<String>()
+            for (m in (older.filter { it !in inConv } + conv + newer.filter { it !in inConv }).asReversed()) if (seen.add(m)) out.add(m)
+            return out.take(cap).asReversed()
+        }
+
+        /** [sent] with [text] added last (once). */
+        fun recorded(sent: List<String>, text: String): List<String> {
+            val t = text.trim()
+            if (t.isEmpty() || t.length > LONGEST) return sent
+            return (sent.filter { it != t } + t).takeLast(CAP)
+        }
+    }
+}
+
 /** What a hardware keyboard's key does on the prompt card (the iPhone's PromptKey). */
 object PromptKeys {
     enum class Key { ESCAPE, LEFT, RIGHT, OTHER }

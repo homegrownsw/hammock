@@ -61,6 +61,9 @@ private final class ChipCell: NSTextAttachmentCell {
 }
 #endif
 
+/// A key the composer handles itself, ahead of the text view.
+enum ComposerKey { case up, down }
+
 /// The composer's text view's settings, and its callbacks: the view's
 /// coordinator, which the composer also keeps to edit the text (insert a
 /// chip, complete a command) as typing would, undoably.
@@ -87,6 +90,10 @@ final class ComposerTextController: NSObject {
     var onFocus: (Bool) -> Void = { _ in }
     /// Esc (the Mac): true if it was used (dictation stopped).
     var onCancel: () -> Bool = { false }
+    /// Keys the composer may take before the text view does (↑ and ↓ to step
+    /// through what you've sent): wantsKey says whether it would, onKey does.
+    var wantsKey: (ComposerKey) -> Bool = { _ in false }
+    var onKey: (ComposerKey) -> Void = { _ in }
     /// Typing or clicking in the text while dictating: the dictation stops,
     /// keeping what it's put in.
     var onDictationInterrupted: () -> Void = {}
@@ -151,6 +158,13 @@ final class ComposerTextController: NSObject {
 
     func replace(_ r: NSRange, with string: String) {
         replace(r, with: NSAttributedString(string: string, attributes: typing()))
+    }
+
+    /// Where the cursor is (UTF-16), nil while text is selected.
+    var caret: Int? {
+        guard let v = view else { return nil }
+        let r = selected(v)
+        return r.length == 0 ? r.location : nil
     }
 
     func focus() {
@@ -628,6 +642,11 @@ extension ComposerTextController: NSTextViewDelegate {
         case #selector(NSResponder.cancelOperation(_:)):
             // Esc stops dictating, before anything else it does.
             return onCancel()
+        case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
+            let k: ComposerKey = sel == #selector(NSResponder.moveUp(_:)) ? .up : .down
+            guard wantsKey(k) else { return false }
+            onKey(k)
+            return true
         default:
             return false
         }
@@ -640,11 +659,6 @@ extension ComposerTextController: NSTextViewDelegate {
 
 final class ComposerUITextView: UITextView {
     weak var controller: ComposerTextController?
-
-    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(paste(_:)), UIPasteboard.general.hasImages { return true }
-        return super.canPerformAction(action, withSender: sender)
-    }
 
     /// A picture on its own (no text with it: a web snippet carries both)
     /// is attached; anything else pastes as usual.
@@ -664,11 +678,26 @@ final class ComposerUITextView: UITextView {
         let tab = UIKeyCommand(input: "\t", modifierFlags: [], action: #selector(tabPressed))
         tab.wantsPriorityOverSystemBehavior = true
         let send = UIKeyCommand(input: "\r", modifierFlags: .command, action: #selector(sendPressed))
-        return [tab, send]
+        // A hardware keyboard's arrows: only taken when the composer wants
+        // them (canPerformAction), else they move the cursor as usual.
+        let up = UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(upPressed))
+        let down = UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(downPressed))
+        for c in [up, down] { c.wantsPriorityOverSystemBehavior = true }
+        return [tab, send, up, down]
     }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if let k = Self.keys[action] { return controller?.wantsKey(k) ?? false }
+        if action == #selector(paste(_:)), UIPasteboard.general.hasImages { return true }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    private static let keys: [Selector: ComposerKey] = [#selector(upPressed): .up, #selector(downPressed): .down]
 
     @objc private func tabPressed() { _ = controller?.onTab() }
     @objc private func sendPressed() { controller?.onSubmit() }
+    @objc private func upPressed() { controller?.onKey(.up) }
+    @objc private func downPressed() { controller?.onKey(.down) }
 }
 
 struct ComposerTextView: UIViewRepresentable {

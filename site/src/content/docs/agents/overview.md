@@ -28,7 +28,7 @@ You see them on each tab's icon in the sidebar, in the sidebar's **Needs You** a
 
 ## The agent view
 
-For most agents Hammock can show the conversation as a native, readable view instead of the terminal: your messages, the agent's replies and its tool calls. You can send messages from it, attach pictures and dictate. A message sent while Claude Code works can wait until its turn ends: right-click it (touch and hold on a phone) and choose **Send Now** to give it to Claude straight away, as Ctrl+Enter does in its terminal.
+For most agents Hammock can show the conversation as a native, readable view instead of the terminal: your messages, the agent's replies and its tool calls. You can send messages from it, attach pictures and dictate. As in a shell, ↑ in an empty message box brings back what you sent before, and ↓ returns to what you were typing. A message sent while Claude Code works can wait until its turn ends: right-click it (touch and hold on a phone) and choose **Send Now** to give it to Claude straight away, as Ctrl+Enter does in its terminal.
 
 When the agent asks for permission or asks a question, its options appear as a card: click one, or press its number (1–9). ← and → move between questions, and Esc switches to the terminal.
 

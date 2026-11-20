@@ -381,6 +381,15 @@ public final class AgentSession {
         b.kind == .user || (b.kind == .tool && b.tool == "Bash" && b.turnID == b.id)
     }
 
+    /// What you've sent in the conversation, oldest first: your messages,
+    /// and "!" commands as you typed them (the composer's history).
+    var sentMessages: [String] {
+        blocks.compactMap { b in
+            if b.kind == .user { return b.text }
+            return Self.sentByYou(b) ? "!" + b.input : nil
+        }
+    }
+
     private static func squashed(_ s: String) -> String {
         s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
