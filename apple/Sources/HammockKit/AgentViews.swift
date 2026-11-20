@@ -1907,14 +1907,22 @@ struct StatusDot: View {
 
     var body: some View {
         if block.pending {
-            HStack(spacing: 6) {
-                RunningTime(sinceUnixMs: block.timeUnixMs)
-                ProgressView().controlSize(.mini)
+            // Said as it reads: "Running, 12 seconds", kept up to date.
+            let start = Date(timeIntervalSince1970: TimeInterval(block.timeUnixMs) / 1000)
+            TimelineView(.periodic(from: start, by: 1)) { ctx in
+                HStack(spacing: 6) {
+                    RunningTime(sinceUnixMs: block.timeUnixMs)
+                    ProgressView().controlSize(.mini)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(ToolWords.running(block.timeUnixMs > 0 ? ctx.date.timeIntervalSince(start) : nil))
             }
         } else if block.error {
             Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                .accessibilityLabel(ToolWords.failed)
         } else {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green.opacity(0.8))
+                .accessibilityLabel(ToolWords.succeeded)
         }
     }
 }
@@ -1955,7 +1963,7 @@ struct ToolRow: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     } else {
-                        Image(systemName: toolIcon(block)).frame(width: 18).foregroundStyle(.tertiary)
+                        Image(systemName: toolIcon(block)).frame(width: 18).foregroundStyle(.tertiary).accessibilityHidden(true)
                         Text(Markdown.inlineText(block.title.isEmpty ? block.tool : block.title))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -1974,6 +1982,9 @@ struct ToolRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // One element: "Bash: npm test, failed, collapsed".
+            .accessibilityLabel(ToolWords.row(tool: block.tool, title: block.title, input: block.input, bang: bang, pending: block.pending,
+                                              error: block.error, added: Int(block.added), removed: Int(block.removed), open: opens ? open : nil))
             // Pictures it read or made show without opening it, as in the Claude app.
             if !block.images.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -2022,7 +2033,7 @@ struct ToolGroup: View {
         VStack(alignment: .leading, spacing: 6) {
             Button { withAnimation(.snappy) { session.setOpen(id, !open) } } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "square.stack.3d.up").frame(width: 18).foregroundStyle(.tertiary)
+                    Image(systemName: "square.stack.3d.up").frame(width: 18).foregroundStyle(.tertiary).accessibilityHidden(true)
                     Text(summary).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(1)
                     if let failed = ToolSummary.failed(tools) {
                         Text("· " + failed).foregroundStyle(.orange).lineLimit(1).fixedSize().layoutPriority(2)
@@ -2041,6 +2052,8 @@ struct ToolGroup: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel([summary, ToolSummary.failed(tools), tools.contains(where: \.pending) ? "running" : nil, open ? "expanded" : "collapsed"]
+                .compactMap { $0 }.joined(separator: ", "))
             if open {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(tools, id: \.id) { ToolRow(block: $0, session: session, compact: true) }
@@ -2290,7 +2303,7 @@ struct SubagentCard: View {
         Card(tint: .teal) {
             Button { withAnimation(.snappy) { session.setOpen(block.id, !open) } } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "person.2.wave.2").foregroundStyle(.teal)
+                    Image(systemName: "person.2.wave.2").foregroundStyle(.teal).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(block.title.isEmpty ? "Subagent" : block.title).font(fonts.body(weight: .medium))
                         if !block.text.isEmpty { Text(block.text).font(.caption).foregroundStyle(.secondary) }

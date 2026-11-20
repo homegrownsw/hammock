@@ -165,3 +165,15 @@ class ContextActionsTest {
         assertEquals(emptyList(), ModelNames.contextActions("droid", emptyList()))
     }
 }
+
+class ToolWordsTest {
+    @Test
+    fun words() {
+        assertEquals("Running, 12 seconds", ToolWords.running(12))
+        assertEquals("Running, 1 minute, 5 seconds", ToolWords.running(65))
+        assertEquals("Running", ToolWords.running(null))
+        assertEquals("Bash: npm test, failed", ToolWords.row("Bash", "Run the tests", "npm test\nx", false, false, true, 0, 0))
+        assertEquals("Edit: a.go, 3 added, 1 removed, succeeded", ToolWords.row("Edit", "Edited a.go", "a.go", false, false, false, 3, 1))
+        assertEquals("Shell command: ls, running", ToolWords.row("Bash", "", "ls", true, true, false, 0, 0))
+    }
+}

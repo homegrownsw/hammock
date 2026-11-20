@@ -126,3 +126,54 @@ enum DiffLines {
         lines.filter { $0.kind == .file && !$0.text.hasPrefix("@@ and ") }.map { String($0.text.dropFirst(3)) }
     }
 }
+
+/// What VoiceOver says for a tool call's row and how it went.
+enum ToolWords {
+    static let succeeded = "Succeeded"
+    static let failed = "Failed"
+
+    /// "Running, 12 seconds" (just "Running" without a start).
+    static func running(_ seconds: TimeInterval?) -> String {
+        guard let seconds else { return "Running" }
+        return "Running, " + duration(seconds)
+    }
+
+    /// "12 seconds", "1 minute, 5 seconds", "2 hours, 3 minutes".
+    static func duration(_ seconds: TimeInterval) -> String {
+        let s = max(Int(seconds), 0)
+        func unit(_ n: Int, _ name: String) -> String { "\(n) \(name)\(n == 1 ? "" : "s")" }
+        if s < 60 { return unit(s, "second") }
+        if s < 3600 { return unit(s / 60, "minute") + (s % 60 == 0 ? "" : ", " + unit(s % 60, "second")) }
+        return unit(s / 3600, "hour") + ((s % 3600) / 60 == 0 ? "" : ", " + unit((s % 3600) / 60, "minute"))
+    }
+
+    /// The tool as said: Claude's names as they are, an MCP tool's without
+    /// its "mcp__" ("hammock list_panes").
+    static func toolName(_ tool: String) -> String {
+        guard tool.hasPrefix("mcp__") else { return tool }
+        return tool.dropFirst(5).replacingOccurrences(of: "__", with: " ")
+    }
+
+    /// Tools whose input says best what they did (a command, a path, a pattern).
+    private static let saysInput: Set = ["Bash", "Read", "Edit", "MultiEdit", "NotebookEdit", "Write", "Grep", "Glob", "WebFetch", "WebSearch"]
+
+    /// A tool row as one: "Bash: npm test, failed, collapsed".
+    static func row(tool: String, title: String, input: String, bang: Bool, pending: Bool, error: Bool,
+                    added: Int, removed: Int, open: Bool?) -> String {
+        let first = input.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
+        var what: String
+        if bang {
+            what = "Shell command: " + first
+        } else if saysInput.contains(tool), !first.isEmpty {
+            what = toolName(tool) + ": " + first
+        } else {
+            let plain = title.replacingOccurrences(of: "`", with: "").replacingOccurrences(of: "**", with: "")
+            what = plain.isEmpty ? toolName(tool) : toolName(tool) + ": " + plain
+        }
+        var parts = [what]
+        if added > 0 || removed > 0 { parts.append("\(added) added, \(removed) removed") }
+        parts.append(pending ? "running" : error ? "failed" : "succeeded")
+        if let open { parts.append(open ? "expanded" : "collapsed") }
+        return parts.joined(separator: ", ")
+    }
+}

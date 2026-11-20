@@ -502,6 +502,44 @@ object DiffLines {
     fun files(lines: List<Line>) = lines.filter { it.kind == Kind.FILE && !it.text.startsWith("@@ and ") }.map { it.text.drop(3) }
 }
 
+/** What TalkBack says for a tool call's row and how it went (the iPhone's ToolWords). */
+object ToolWords {
+    const val SUCCEEDED = "Succeeded"
+    const val FAILED = "Failed"
+
+    /** "Running, 12 seconds" (just "Running" without a start). */
+    fun running(seconds: Long?): String = if (seconds == null) "Running" else "Running, " + duration(seconds)
+
+    /** "12 seconds", "1 minute, 5 seconds", "2 hours, 3 minutes". */
+    fun duration(seconds: Long): String {
+        val s = maxOf(seconds, 0)
+        fun unit(n: Long, name: String) = "$n $name" + if (n == 1L) "" else "s"
+        return when {
+            s < 60 -> unit(s, "second")
+            s < 3600 -> unit(s / 60, "minute") + if (s % 60 == 0L) "" else ", " + unit(s % 60, "second")
+            else -> unit(s / 3600, "hour") + if ((s % 3600) / 60 == 0L) "" else ", " + unit((s % 3600) / 60, "minute")
+        }
+    }
+
+    fun toolName(tool: String) = if (tool.startsWith("mcp__")) tool.removePrefix("mcp__").replace("__", " ") else tool
+
+    private val saysInput = setOf("Bash", "Read", "Edit", "MultiEdit", "NotebookEdit", "Write", "Grep", "Glob", "WebFetch", "WebSearch")
+
+    /** A tool row as one: "Bash: npm test, failed" (whether it's open is its state, said apart). */
+    fun row(tool: String, title: String, input: String, bang: Boolean, pending: Boolean, error: Boolean, added: Int, removed: Int): String {
+        val first = input.substringBefore('\n')
+        val what = when {
+            bang -> "Shell command: $first"
+            tool in saysInput && first.isNotEmpty() -> toolName(tool) + ": " + first
+            else -> title.replace("`", "").replace("**", "").let { if (it.isEmpty()) toolName(tool) else toolName(tool) + ": " + it }
+        }
+        val parts = mutableListOf(what)
+        if (added > 0 || removed > 0) parts.add("$added added, $removed removed")
+        parts.add(if (pending) "running" else if (error) "failed" else "succeeded")
+        return parts.joinToString(", ")
+    }
+}
+
 /** What a hardware keyboard's key does on the prompt card (the iPhone's PromptKey). */
 object PromptKeys {
     enum class Key { ESCAPE, LEFT, RIGHT, OTHER }

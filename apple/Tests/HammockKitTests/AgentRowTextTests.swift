@@ -65,3 +65,25 @@ import Testing
         #expect(commands("droid") == [])
     }
 }
+
+@Suite struct ToolWordsTests {
+    @Test func saysHowLongItsRun() {
+        #expect(ToolWords.running(12) == "Running, 12 seconds")
+        #expect(ToolWords.running(1) == "Running, 1 second")
+        #expect(ToolWords.running(65) == "Running, 1 minute, 5 seconds")
+        #expect(ToolWords.running(120) == "Running, 2 minutes")
+        #expect(ToolWords.running(3720) == "Running, 1 hour, 2 minutes")
+        #expect(ToolWords.running(nil) == "Running")
+    }
+
+    @Test func saysARowAsOne() {
+        #expect(ToolWords.row(tool: "Bash", title: "Run the tests", input: "npm test\nmore", bang: false, pending: false, error: true,
+                              added: 0, removed: 0, open: false) == "Bash: npm test, failed, collapsed")
+        #expect(ToolWords.row(tool: "Edit", title: "Edited a.go", input: "a.go", bang: false, pending: false, error: false,
+                              added: 3, removed: 1, open: true) == "Edit: a.go, 3 added, 1 removed, succeeded, expanded")
+        #expect(ToolWords.row(tool: "mcp__hammock__list_panes", title: "Listed `panes`", input: "{}", bang: false, pending: true, error: false,
+                              added: 0, removed: 0, open: nil) == "hammock list_panes: Listed panes, running")
+        #expect(ToolWords.row(tool: "Bash", title: "", input: "ls", bang: true, pending: false, error: false,
+                              added: 0, removed: 0, open: nil) == "Shell command: ls, succeeded")
+    }
+}

@@ -80,6 +80,12 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -326,12 +332,21 @@ private fun RunningTime(sinceUnixMs: Long) {
 private fun StatusDot(b: AgentBlock) {
     val c = LocalAgentColors.current
     when {
-        b.pending -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            RunningTime(b.timeUnixMs)
-            CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+        b.pending -> {
+            // Said as it reads: "Running, 12 seconds".
+            var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(b.timeUnixMs) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
+            val said = ToolWords.running(if (b.timeUnixMs > 0) (now - b.timeUnixMs) / 1000 else null)
+            Row(
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.clearAndSetSemantics { contentDescription = said },
+            ) {
+                RunningTime(b.timeUnixMs)
+                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
+            }
         }
-        b.error -> Icon(Icons.Outlined.Cancel, "Failed", tint = c.removed, modifier = Modifier.size(15.dp))
-        else -> Icon(Icons.Outlined.CheckCircle, "Done", tint = c.success, modifier = Modifier.size(15.dp))
+        b.error -> Icon(Icons.Outlined.Cancel, ToolWords.FAILED, tint = c.removed, modifier = Modifier.size(15.dp))
+        else -> Icon(Icons.Outlined.CheckCircle, ToolWords.SUCCEEDED, tint = c.success, modifier = Modifier.size(15.dp))
     }
 }
 
@@ -350,8 +365,18 @@ internal fun ToolRow(b: AgentBlock, session: AgentSession, compact: Boolean = fa
     val showsInput = b.input.isNotEmpty() && (b.tool == "Bash" || !b.tool.startsWith("Read")) && !(bang && '\n' !in b.input)
     val opens = b.diff.isNotEmpty() || showsInput || b.output.isNotEmpty()
     Column(Modifier.padding(vertical = if (compact) 1.dp else 3.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // One element for TalkBack: "Bash: npm test, failed", collapsed.
+        val said = ToolWords.row(b.tool, b.title, b.input, bang, b.pending, b.error, b.added, b.removed)
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(enabled = opens) { session.setOpen(b.id, !toggled) },
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable(enabled = opens) { session.setOpen(b.id, !toggled) }
+                .clearAndSetSemantics {
+                    contentDescription = said
+                    if (opens) {
+                        stateDescription = if (open) "Expanded" else "Collapsed"
+                        role = Role.Button
+                        onClick(if (open) "Close" else "Open") { session.setOpen(b.id, !toggled); true }
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (bang) {
@@ -399,18 +424,24 @@ private fun ToolGroup(id: String, tools: List<AgentBlock>, session: AgentSession
     val c = LocalAgentColors.current
     val open = session.isOpen(id)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val summary = ToolSummary.words(tools.map { it.tool to it.input })
+        val failed = ToolSummary.failed(tools.count { it.error && !it.pending })
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable { session.setOpen(id, !open) }.padding(vertical = 3.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable { session.setOpen(id, !open) }.padding(vertical = 3.dp)
+                .clearAndSetSemantics {
+                    contentDescription = listOfNotNull(summary, failed, if (tools.any { it.pending }) "running" else null).joinToString(", ")
+                    stateDescription = if (open) "Expanded" else "Collapsed"
+                    role = Role.Button
+                    onClick(if (open) "Close" else "Open") { session.setOpen(id, !open); true }
+                },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(Icons.Outlined.Layers, null, tint = c.tertiary, modifier = Modifier.size(18.dp))
             Text(
-                ToolSummary.words(tools.map { it.tool to it.input }), style = MaterialTheme.typography.bodyMedium, color = c.secondary,
+                summary, style = MaterialTheme.typography.bodyMedium, color = c.secondary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
             )
-            ToolSummary.failed(tools.count { it.error && !it.pending })?.let {
-                Text("· $it", style = MaterialTheme.typography.bodyMedium, color = c.warning, maxLines = 1)
-            }
+            failed?.let { Text("· $it", style = MaterialTheme.typography.bodyMedium, color = c.warning, maxLines = 1) }
             val last = tools.last()
             if (last.pending) {
                 Text(
