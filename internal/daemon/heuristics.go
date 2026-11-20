@@ -155,6 +155,10 @@ func (d *Daemon) detectAgents() {
 		if exited || pid == 0 || reported {
 			continue // (what a program reports beats reading its screen)
 		}
+		if hookedAgentGone(p) {
+			d.endHookedAgent(p) // crashed or killed: no SessionEnd to say so
+			continue
+		}
 		if time.Since(hookAt) < hookFreshness {
 			d.screenAsks(p, screen)
 			continue

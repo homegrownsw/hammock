@@ -29,6 +29,8 @@ type HookEvent struct {
 	Harness string          `json:"harness"` // an agents.Agent's ID: "claude", "codex"…
 	Event   string          `json:"event"`   // optional override of the payload's event name
 	Payload json.RawMessage `json:"payload"`
+
+	from []int // the sender and its ancestors, nearest first (agentexit.go)
 }
 
 // agentHub tracks agent state from hook events and maintains the attention queue.
@@ -104,6 +106,7 @@ func (h *agentHub) serve(c net.Conn) {
 		return
 	}
 	learnTranscriptRoots(procinfo.Env(peerPID(c)))
+	ev.from = procAncestors(peerPID(c))
 	h.d.mu.Lock()
 	h.handle(ev)
 	h.d.mu.Unlock()
@@ -271,6 +274,7 @@ func (h *agentHub) handle(ev HookEvent) {
 		// don't end it here (sleep.go).
 		return
 	}
+	noteAgentProc(p, ev.from) // whose ending, unannounced, ends it (agentexit.go)
 	harness := ev.Harness
 	if harness == "" {
 		harness = p.snapshotInfo().Agent.GetHarness()

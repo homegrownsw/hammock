@@ -82,6 +82,12 @@ type pane struct {
 	resumeAt   uint64    // …and the holder offset it was saved at
 	savedAt    time.Time // when the scrollback snapshot was last written
 
+	// The process its hooked agent runs as, from its hooks, and when that
+	// began; how many polls running it's been missing (agentexit.go).
+	agentProc      int
+	agentProcStart time.Time
+	agentGone      int
+
 	// awaitSize, set before a new pane spawns, has its holder hold the
 	// program back until a client says the pane's size (or this long);
 	// awaitingSize until one has, whose first resize then goes to the
