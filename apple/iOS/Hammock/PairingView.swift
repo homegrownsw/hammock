@@ -22,6 +22,35 @@ struct PairingView: View {
     }
 }
 
+/// The Mac shown removed this iPhone (AppModel.unpaired): it stopped trying
+/// to connect. Pair it again, or forget that Mac.
+struct RemovedView: View {
+    let session: Session
+
+    var body: some View {
+        let name = session.host?.displayName ?? ""
+        let shown = name.isEmpty ? "Your computer" : name
+        NavigationStack {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(shown) removed this iPhone").font(.title2.bold())
+                    Text("Pair it again with a new pairing code to connect.").foregroundStyle(.secondary)
+                    if let h = session.host {
+                        Button("Forget \(name.isEmpty ? "This Computer" : name)", role: .destructive) { session.forget(h) }
+                            .padding(.top, 4)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                PairingScreen(session: session)
+            }
+            .navigationTitle("Hammock")
+            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+}
+
 /// Above the demo's tab bar: what it is, and the way out to pairing.
 struct DemoBar: View {
     let session: Session

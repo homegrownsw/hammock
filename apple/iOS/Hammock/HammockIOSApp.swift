@@ -451,7 +451,11 @@ struct RootView: View {
     }
 
     var body: some View {
-        if let model = session.model, session.host?.deviceID != nil || model.connected {
+        // Removed on the Mac: it stopped trying; pair again (it gives way
+        // to the new connection once paired).
+        if let model = session.model, model.unpaired {
+            RemovedView(session: session)
+        } else if let model = session.model, session.host?.deviceID != nil || model.connected {
             CockpitView(model: model, session: session)
                 // In the demo, what would change the Mac says it needs one.
                 .alert("This Needs Your Mac", isPresented: Binding(

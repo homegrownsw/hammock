@@ -93,6 +93,10 @@ public final class PaneSession {
 @Observable
 public final class AppModel {
     public private(set) var connected = false
+    /// Remotely: the Mac refused this device's sign-in for good (it was
+    /// removed there, or doesn't know its key), so it stopped trying. Pair
+    /// again to connect.
+    public private(set) var unpaired = false
     public internal(set) var hostName = ""
     /// Whether the daemon accepts paired devices (local clients only).
     public internal(set) var remoteEnabled = false
@@ -359,7 +363,23 @@ public final class AppModel {
             reattachDiffs()
         } catch {
             lastError = error.localizedDescription
+            if remoteIdentity?.deviceID != nil, Self.signInRefused(error) {
+                // Removed on the Mac: don't keep knocking (it hangs up on
+                // each try); pair again.
+                unpaired = true
+                stop()
+            }
         }
+    }
+
+    /// The Mac refused a paired device's sign-in for good: it doesn't know
+    /// the device (removed in Settings ▸ Devices) or its key. The daemon
+    /// says "authentication failed" for either (internal/daemon/remote.go
+    /// authenticate), and something else for what may pass (its store, a
+    /// dropped connection).
+    nonisolated static func signInRefused(_ error: Error) -> Bool {
+        guard case DaemonError.server(let m) = error else { return false }
+        return m.caseInsensitiveCompare("authentication failed") == .orderedSame
     }
 
     /// Messages from the daemon waiting for the main thread (`start`).
