@@ -499,6 +499,10 @@ func (a *App) agentActive(t *pb.Tab) bool {
 	return ok
 }
 
+// sidebarHint is the sidebar's last line: the keys after ⌃B, as command()
+// takes them (lowercase k: K isn't bound).
+const sidebarHint = "⌃B k  Commands   ⌃B ?  Keys"
+
 func (a *App) drawSidebar() {
 	sw := a.sidebarWidth()
 	if sw == 0 {
@@ -735,7 +739,7 @@ func (a *App) drawSidebar() {
 	}
 
 	// Hint line.
-	hint, col := "⌃B K  Commands   ⌃B ?  Keys", th.faint
+	hint, col := sidebarHint, th.faint
 	if a.prefix {
 		hint, col = "⌃B …  waiting for a key", th.accent
 	}
