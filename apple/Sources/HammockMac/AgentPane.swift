@@ -246,7 +246,7 @@ struct AgentViewSettings: View {
                     CurrentMiniWindow { $0.agentView = v == "agent"; $0.border = true }
                 }
                 .settingAnchor("agentview.default")
-                Text("\(Keys.label("toggle_agent_view").map { "Switch a pane with \($0). " } ?? "")Claude Code only, for now.")
+                Text("\(Keys.label("toggle_agent_view").map { "Switch a pane with \($0). " } ?? "")For \(AgentCatalog.agentViewNames).")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Colour") {

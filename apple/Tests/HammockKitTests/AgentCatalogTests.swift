@@ -37,6 +37,16 @@ final class AgentCatalogTests: XCTestCase {
         XCTAssertEqual(AgentCatalog.shortName(of: "", in: kinds), "Agent")
     }
 
+    func testAgentViewNames() {
+        XCTAssertEqual(AgentCatalog.agentViewNames(in: AgentCatalog.resolve([])), "Claude Code and Codex")
+        var aider = kind("aider", name: "Aider")
+        aider.agentView = true
+        let kinds = AgentCatalog.resolve([]) + [kind("gemini", name: "Gemini CLI"), aider]
+        XCTAssertEqual(AgentCatalog.agentViewNames(in: kinds), "Claude Code, Codex and Aider")
+        XCTAssertEqual(AgentCatalog.agentViewNames(in: [aider]), "Aider")
+        XCTAssertEqual(AgentCatalog.agentViewNames(in: [kind("gemini")]), "")
+    }
+
     func testOther() {
         let kinds = AgentCatalog.resolve([]) + [kind("gemini", canSwitch: true), kind("aider")]
         XCTAssertEqual(AgentCatalog.other(of: "claude", in: kinds), "codex")

@@ -32,6 +32,8 @@ public final class AgentCatalog {
 
     /// Whether the agent view reads this agent's sessions.
     public static func hasAgentView(_ id: String) -> Bool { kind(id)?.agentView ?? false }
+    /// "Claude Code and Codex": the agents the agent view reads, for Settings.
+    public static var agentViewNames: String { agentViewNames(in: shared.kinds) }
     /// Whether a conversation in this agent can continue in another.
     public static func canSwitch(_ id: String) -> Bool { kind(id)?.canSwitch ?? false }
     /// Whether a message starting with "!" runs as a shell command in it.
@@ -87,6 +89,14 @@ public final class AgentCatalog {
                 $0.shellMode = true
             }
         }
+    }
+
+    /// The names of the agents in kinds whose sessions the agent view reads,
+    /// as a sentence would list them: "Claude Code, Codex and Aider".
+    public nonisolated static func agentViewNames(in kinds: [Hammock_V1_AgentKind]) -> String {
+        let names = kinds.filter(\.agentView).map { name(of: $0.id, in: kinds) }
+        guard let last = names.last else { return "" }
+        return names.count == 1 ? last : names.dropLast().joined(separator: ", ") + " and " + last
     }
 
     public nonisolated static func name(of id: String, in kinds: [Hammock_V1_AgentKind]) -> String {

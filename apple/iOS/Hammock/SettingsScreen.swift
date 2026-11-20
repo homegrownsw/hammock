@@ -68,7 +68,7 @@ struct SettingsScreen: View {
                 } header: {
                     Text("Agent View")
                 } footer: {
-                    Text("Each session remembers your choice once you switch it. Claude Code sessions only, for now.")
+                    Text("Each session remembers your choice once you switch it. For \(AgentCatalog.agentViewNames) sessions.")
                 }
                 Section("Text") {
                     FontPickerLink(title: "Font", selection: $fontName, defaultName: "System", families: families)
