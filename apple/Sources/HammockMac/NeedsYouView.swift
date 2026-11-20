@@ -21,13 +21,6 @@ struct NeedsYouView: View {
     let model: AppModel
     private var showFinished: Bool { Prefs.shared.bool(FinishedPrefs.pref) }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// "+N more" pressed: the list shows every card, scrolling, until it's
-    /// short enough again.
-    @State private var allNeeds = false
-    @State private var allFinished = false
-
-    /// How many cards a list shows before "+N more".
-    static let shownCards = 6
 
     private var needs: [AttentionItem] { model.needsYou }
     private var finished: [AttentionItem] { showFinished ? model.attention.filter { $0.state == .idle } : [] }
@@ -65,23 +58,20 @@ struct NeedsYouView: View {
                     .padding(.bottom, 6)
                     .transition(.opacity)
             }
-            cards(maxHeight: 220) {
+            FittedCards(ids: Self.incomingLinks(model).map(\.id) + model.joinRequests.map(\.id) + model.grants.map(\.id) + needs.map(\.id),
+                        maxHeight: 220) {
                 ForEach(Self.incomingLinks(model), id: \.id) { req in
-                    LinkRequestCard(model: model, request: req)
+                    LinkRequestCard(model: model, request: req).cardFrame(req.id)
                 }
                 ForEach(model.joinRequests, id: \.id) { req in
-                    JoinCard(model: model, request: req)
+                    JoinCard(model: model, request: req).cardFrame(req.id)
                 }
                 ForEach(model.grants) { grant in
-                    GrantCard(model: model, grant: grant)
+                    GrantCard(model: model, grant: grant).cardFrame(grant.id)
                 }
-                ForEach(needs.prefix(allNeeds ? needs.count : Self.shownCards)) { item in
-                    AttentionCard(model: model, item: item)
+                ForEach(needs) { item in
+                    AttentionCard(model: model, item: item).cardFrame(item.id)
                 }
-            }
-            // Under the list, not in it: seen without scrolling.
-            if !allNeeds, needs.count > Self.shownCards {
-                moreRow(needs.count - Self.shownCards) { allNeeds = true }
             }
             if !finished.isEmpty {
                 HStack {
@@ -97,50 +87,18 @@ struct NeedsYouView: View {
                 .padding(.bottom, 6)
                 .transition(.opacity)
             }
-            cards(maxHeight: 160) {
-                ForEach(finished.prefix(allFinished ? finished.count : Self.shownCards)) { item in
-                    AttentionCard(model: model, item: item)
+            FittedCards(ids: finished.map(\.id), maxHeight: 160) {
+                ForEach(finished) { item in
+                    AttentionCard(model: model, item: item).cardFrame(item.id)
                 }
             }
-            if !allFinished, finished.count > Self.shownCards {
-                moreRow(finished.count - Self.shownCards) { allFinished = true }
-            }
         }
-        .onChange(of: needs.count <= Self.shownCards) { _, short in if short { allNeeds = false } }
-        .onChange(of: finished.count <= Self.shownCards) { _, short in if short { allFinished = false } }
         .padding(.horizontal, 8)
         .padding(.top, shows ? 4 : 0)
     }
 
-    /// A list of cards, as tall as they are up to maxHeight, then scrolling;
-    /// no height at all when empty.
-    private func cards(maxHeight: CGFloat, @ViewBuilder _ content: () -> some View) -> some View {
-        ScrollView {
-            VStack(spacing: 6) { content() }
-        }
-        .frame(maxHeight: maxHeight)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// "+N more": the cards a list is hiding, shown in place on a click.
-    private func moreRow(_ hidden: Int, show: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { show() }
-        } label: {
-            Text("+\(hidden) more")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Show every card")
-        .transition(.opacity)
-    }
-
     /// Clear: the finished cards leave one after another, top first, rather
-    /// than all at once (any not shown go with the last). Each only if it's
+    /// than all at once (after the sixth, the rest together). Each only if it's
     /// still finished by then: a pane's item keeps its id, and may be asking
     /// something new.
     private func clearFinished() {
@@ -440,4 +398,108 @@ extension View {
     func cardMotion(_ exit: CardExit, cornerRadius: CGFloat, style: RoundedCornerStyle = .circular) -> some View {
         modifier(CardMotion(exit: exit, cornerRadius: cornerRadius, style: style))
     }
+}
+
+/// Needs You's (or Finished's) cards: as tall as they are up to maxHeight,
+/// then scrolling. When they overflow, the list stops at the last card that
+/// fits whole, so none is cut off at rest, and "+N more" under it counts the
+/// cards below its bottom edge; clicking it scrolls the first of them to the
+/// top. No height at all when empty.
+struct FittedCards<Content: View>: View {
+    /// The cards' ids, in order: each card reports its frame (`cardFrame`).
+    let ids: [String]
+    let maxHeight: CGFloat
+    @ViewBuilder let content: Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Each card's frame in the list's content, and how far it's scrolled.
+    @State private var frames: [String: CGRect] = [:]
+    @State private var offset: CGFloat = 0
+    @State private var space = UUID()
+
+    private var bottoms: [(id: String, maxY: CGFloat)] { ids.compactMap { id in frames[id].map { (id, $0.maxY) } } }
+
+    /// Overflowing, the bottom of the last card that fits whole (the cap
+    /// itself when not even the first does); else the cap, as tall as the
+    /// cards are.
+    private var height: CGFloat {
+        guard let last = bottoms.last, last.maxY > maxHeight else { return maxHeight }
+        return bottoms.last { $0.maxY <= maxHeight + 0.5 }?.maxY ?? maxHeight
+    }
+
+    /// The cards below the list's bottom edge, the first of them partly.
+    private var below: [String] {
+        let edge = offset + min(height, bottoms.last?.maxY ?? 0) + 0.5
+        return bottoms.filter { $0.maxY > edge }.map(\.id)
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 6) { content }
+                        .coordinateSpace(.named(space))
+                        .onPreferenceChange(CardFrames.self) { frames = $0 }
+                        .onGeometryChange(for: CGFloat.self) { -$0.frame(in: .named("scroll" + space.uuidString)).minY } action: { offset = $0 }
+                }
+                .coordinateSpace(.named("scroll" + space.uuidString))
+                .frame(maxHeight: height)
+                .fixedSize(horizontal: false, vertical: true)
+                .environment(\.cardSpace, space)
+                if let first = below.first {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { proxy.scrollTo(first, anchor: .top) }
+                    } label: {
+                        Text("+\(below.count) more")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 6)
+                            .padding(.bottom, 2)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Scroll to the cards below")
+                    .transition(.opacity)
+                }
+            }
+        }
+    }
+}
+
+private struct CardFrames: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+private struct CardSpaceKey: EnvironmentKey {
+    static let defaultValue = UUID()
+}
+
+extension EnvironmentValues {
+    /// The FittedCards list a card is in, which it measures itself against.
+    fileprivate var cardSpace: UUID {
+        get { self[CardSpaceKey.self] }
+        set { self[CardSpaceKey.self] = newValue }
+    }
+}
+
+private struct CardFrame: ViewModifier {
+    let id: String
+    @Environment(\.cardSpace) private var space
+
+    func body(content: Content) -> some View {
+        content
+            .id(id)
+            .background(GeometryReader { g in
+                Color.clear.preference(key: CardFrames.self, value: [id: g.frame(in: .named(space))])
+            })
+    }
+}
+
+extension View {
+    /// A FittedCards card: its frame, for the list's height and "+N more",
+    /// and its id, to scroll to.
+    func cardFrame(_ id: String) -> some View { modifier(CardFrame(id: id)) }
 }

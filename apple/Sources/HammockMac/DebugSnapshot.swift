@@ -101,7 +101,7 @@ enum DebugSnapshot {
                         $0.summary = i >= n ? "Claude finished" : i % 3 == 2 ? "Claude hit an error" : i % 3 == 1 ? "Claude asks: Which branch?" : "Bash: npm test"
                     } }
                 })
-                let size = NSSize(width: 280, height: 900)
+                let size = NSSize(width: 272, height: 900) // the sidebar's ideal width
                 let host = NSHostingView(rootView: VStack { NeedsYouView(model: model); Spacer(minLength: 0) }
                     .frame(width: size.width, height: size.height).background(Color(nsColor: .windowBackgroundColor)))
                 let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
