@@ -19,6 +19,7 @@ import (
 	"github.com/coder/websocket"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/homegrownsw/hammock/internal/linkalive"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/wirezstd"
 )
@@ -44,6 +45,7 @@ type Client struct {
 	Events chan *pb.ServerMessage
 	err    error
 	done   chan struct{}
+	live   *linkalive.Watch // when the daemon was last heard from (KeepAlive)
 }
 
 // Dial connects to the daemon's Unix socket and says hello.
@@ -117,8 +119,10 @@ func DialRemoteLearning(ctx context.Context, addr, kind, name string) (*Client, 
 }
 
 func dialURL(ctx context.Context, url string, hc *http.Client, kind, name string) (*Client, error) {
+	live := linkalive.New()
 	ws, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
 		HTTPClient: hc, Subprotocols: []string{wirezstd.Subprotocol, wirezstd.Plain},
+		OnPongReceived: func(context.Context, []byte) { live.Heard() },
 	})
 	if err != nil {
 		return nil, err
@@ -130,7 +134,7 @@ func dialURL(ctx context.Context, url string, hc *http.Client, kind, name string
 	}
 	cctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		ws: ws, zr: zr, ctx: cctx, cancel: cancel,
+		ws: ws, zr: zr, ctx: cctx, cancel: cancel, live: live,
 		pending:   map[uint64]chan *pb.ServerMessage{},
 		approvals: map[uint64]chan *pb.ApprovalPending{},
 		Events:    make(chan *pb.ServerMessage, 4096),
@@ -157,6 +161,9 @@ func (c *Client) readLoop() {
 	defer close(c.Events)
 	for {
 		_, b, err := c.ws.Read(c.ctx)
+		if err == nil {
+			c.live.Heard()
+		}
 		if err == nil && c.zr != nil {
 			b, err = c.zr.Decode(b)
 		}
@@ -289,6 +296,34 @@ func (c *Client) write(ctx context.Context, msg *pb.ClientMessage) error {
 
 // Compressed says whether the daemon sends compressed messages (wirezstd).
 func (c *Client) Compressed() bool { return c.zr != nil }
+
+// KeepAlive pings the daemon every every and drops the connection (Events
+// and Done close, as when the daemon hangs up) once nothing, not even a
+// pong, has come back for two of those, or, after CheckAlive, within within:
+// a connection that died silently (a network change, sleep) is noticed
+// in seconds, not when TCP gives up minutes later. Every daemon answers
+// pings, old ones too.
+func (c *Client) KeepAlive(every, within time.Duration) {
+	// Events full: its reader is behind, and nothing more is read meanwhile.
+	c.live.Busy = func() bool { return len(c.Events) == cap(c.Events) }
+	go func() {
+		if c.live.Run(c.ctx, every, within, c.ws.Ping) == nil {
+			return
+		}
+		c.mu.Lock()
+		if c.err == nil {
+			c.err = linkalive.ErrSilent
+		}
+		c.mu.Unlock()
+		c.cancel()
+		_ = c.ws.CloseNow() // (no closing handshake: nothing would answer it)
+	}()
+}
+
+// CheckAlive makes sure of the connection now, when it may have died (the
+// network changed, the computer woke): with KeepAlive, it's dropped if no
+// answer comes back within KeepAlive's within.
+func (c *Client) CheckAlive() { c.live.Check() }
 
 // Close closes the connection.
 func (c *Client) Close() error {

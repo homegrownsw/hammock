@@ -33,6 +33,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/linkalive"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/state"
 )
@@ -561,7 +562,11 @@ func (d *Daemon) handleRemoteWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	// Compressed when the client offers it (wirezstd); plain otherwise.
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{wirezstd.Subprotocol, wirezstd.Plain}})
+	live := linkalive.New()
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		Subprotocols:   []string{wirezstd.Subprotocol, wirezstd.Plain},
+		OnPongReceived: func(context.Context, []byte) { live.Heard() },
+	})
 	if err != nil {
 		return
 	}
@@ -573,6 +578,8 @@ func (d *Daemon) handleRemoteWS(w http.ResponseWriter, r *http.Request) {
 	d.serveConnWith(t, func(c *conn) {
 		cc = c
 		c.remote, c.nonce, c.srcIP, c.localAt = true, nonce, ip, localAt
+		c.live, live.Busy = live, c.busy.Load
+		go c.keepAlive(ws)
 		d.mu.Lock()
 		if d.remote.preAuth == nil {
 			d.remote.preAuth = map[*conn]func(){}

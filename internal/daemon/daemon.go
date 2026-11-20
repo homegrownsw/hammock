@@ -138,6 +138,7 @@ type Daemon struct {
 	joins       map[string]*pendingJoin // join request id → the guest waiting on it
 	typing      map[string]*time.Timer  // user id → clears their typing glow
 	links       map[string]*peerLink    // host cert fingerprint → our link to that host
+	linkT       linkTimings             // (liveness.go: fixed when it starts)
 	remoteOrder map[string]int32        // where you've put Groups shared with you (order.go)
 	routes      map[string]*peerLink    // a remote Group/tab/pane/attention id → its link
 	comp        computerSet             // linked computers (computers.go)
@@ -245,7 +246,7 @@ func New(cfg Config) (*Daemon, error) {
 		return nil, err
 	}
 	d := &Daemon{
-		cfg: cfg, log: cfg.Log, store: st, lock: lock, started: time.Now(),
+		cfg: cfg, log: cfg.Log, store: st, lock: lock, started: time.Now(), linkT: currentLinkTimings(),
 		groups: map[string]*pb.Group{}, tabs: map[string]*pb.Tab{},
 		panes: map[string]*pane{}, attention: map[string]*pb.AttentionItem{}, focusOrder: map[string][]string{},
 		conns:  map[*conn]struct{}{},
@@ -551,7 +552,8 @@ func (d *Daemon) Serve() error {
 		d.mu.Unlock()
 	}()
 	go d.watchInput()
-	go d.runIntros() // introduced links (links.go)
+	go d.runIntros()  // introduced links (links.go)
+	go d.watchLinks() // checked on a network change or wake (liveness.go)
 	d.mu.Lock()
 	d.deliverUnlinks() // requests kept from before
 	d.mu.Unlock()

@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/homegrownsw/hammock/internal/codesign"
+	"github.com/homegrownsw/hammock/internal/linkalive"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/state"
 	"github.com/homegrownsw/hammock/internal/vt"
@@ -116,6 +117,12 @@ type conn struct {
 
 	once   sync.Once
 	hangUp atomic.Bool // close once the message being handled is answered
+
+	// A remote client's liveness (liveness.go): when it was last heard
+	// from; set before it's served. busy: the read loop is handling a
+	// message, so isn't reading what comes meanwhile (pongs included).
+	live *linkalive.Watch
+	busy atomic.Bool
 }
 
 var engineName = sync.OnceValue(func() string {
@@ -321,9 +328,14 @@ func (c *conn) writeLoop() {
 
 func (c *conn) readLoop() {
 	for {
+		c.busy.Store(false)
 		b, err := c.t.Read(c.ctx)
 		if err != nil {
 			return
+		}
+		c.busy.Store(true)
+		if c.live != nil {
+			c.live.Heard()
 		}
 		c.read++
 		msg := &pb.ClientMessage{}

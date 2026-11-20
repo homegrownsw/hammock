@@ -36,6 +36,7 @@ type peerLink struct {
 	ready  chan struct{} // closed while connected; replaced on each reconnect
 	stop   chan struct{}
 	closed bool
+	redial chan struct{} // dial again now, not after the backoff (kick: the network changed)
 
 	// guarded by d.mu
 	groups   map[string]*pb.Group
@@ -145,7 +146,7 @@ func (l *peerLink) setCopyAsk(pane string, q []copyRequest) {
 }
 
 func newLink(d *Daemon, tok *pb.InviteToken) *peerLink {
-	return &peerLink{d: d, tok: tok, ready: make(chan struct{}), stop: make(chan struct{}),
+	return &peerLink{d: d, tok: tok, ready: make(chan struct{}), stop: make(chan struct{}), redial: make(chan struct{}, 1),
 		groups: map[string]*pb.Group{}, tabs: map[string]*pb.Tab{}, panes: map[string]*pb.Pane{},
 		attn: map[string]*pb.AttentionItem{}, grants: map[string]*pb.GrantRequest{}, scheds: map[string]*pb.Schedule{}, people: map[string]*pb.Person{},
 		attached: map[string]map[*conn]bool{}, watching: map[string]map[*conn]bool{}, paging: map[string]*conn{}, logs: map[string]*pb.WatchLog{}, logTo: map[string]*conn{}, inputs: map[string]*conn{}, copyAsk: map[string][]copyRequest{}, menus: map[int32]*pb.BrowserMenu{}, menuTo: map[int32]*conn{}}
@@ -340,12 +341,13 @@ func (l *peerLink) connected(ctx context.Context, wait time.Duration) (*client.C
 var errNotLinkedYet = errors.New("not linked there yet")
 
 // peerRedial is run's first wait before dialling again, doubling up to peerRedialMax (variables for
-// tests, whose computers go off and on in seconds).
+// tests, whose computers go off and on in seconds; a daemon takes them as it starts: linkTimings).
 var peerRedial, peerRedialMax = time.Second, 30 * time.Second
 
 // run keeps the link up, reconnecting with backoff.
 func (l *peerLink) run() {
-	backoff := peerRedial
+	lt := l.d.linkT
+	backoff := lt.redial
 	for {
 		select {
 		case <-l.stop:
@@ -354,7 +356,7 @@ func (l *peerLink) run() {
 		}
 		cl, err := l.dial()
 		if err == nil {
-			backoff = peerRedial
+			backoff = lt.redial
 			// In no Group there and no join waiting (removed, its Groups
 			// closed or unshared, or left while it was away): the link ends
 			// here, rather than signing in again and again as a stranger.
@@ -370,9 +372,13 @@ func (l *peerLink) run() {
 		select {
 		case <-l.stop:
 			return
+		case <-l.redial:
+			// The network changed or the computer woke: it may be in reach now.
+			backoff = lt.redial
+			continue
 		case <-time.After(backoff):
 		}
-		backoff = min(backoff*2, peerRedialMax) // (a link just made, too: its grace is short)
+		backoff = min(backoff*2, lt.redialMax) // (a link just made, too: its grace is short)
 	}
 }
 
@@ -523,6 +529,9 @@ func (l *peerLink) signIn(ctx context.Context, cl *client.Client) error {
 // serve relays what the host sends until the connection ends.
 func (l *peerLink) serve(cl *client.Client) {
 	d := l.d
+	// A host that stops answering (a network change, sleep) is dropped,
+	// and dialled again, in seconds (liveness.go).
+	cl.KeepAlive(d.linkT.every, d.linkT.within)
 	for ev := range cl.Events {
 		d.mu.Lock()
 		if !l.current() {
