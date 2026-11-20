@@ -15,6 +15,23 @@ final class AgentSendErrorTests: XCTestCase {
         XCTAssertTrue(s.pendingSends.isEmpty)
     }
 
+    /// A Mac that's still being dialled (a connection, no link yet, as a
+    /// phone has): the send fails at once, not after waiting on a reply.
+    func testASendWhileDiallingFailsAtOnce() async throws {
+        let m = AppModel(standIn: Silent(), clientKind: "test")
+        m.start()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(m.connection)
+        XCTAssertFalse(m.connected)
+        let s = AgentSession(paneID: "p1", model: m)
+        let started = Date()
+        let went = await s.send("hello")
+        XCTAssertFalse(went)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.5)
+        XCTAssertEqual(s.sendError, "Not connected. Your message wasn't sent.")
+        m.stop()
+    }
+
     func testANewPromptClearsTheLastOnesAnswerError() {
         let m = AppModel(socketPath: "/nonexistent", clientKind: "test")
         let s = AgentSession(paneID: "p1", model: m)
@@ -25,4 +42,9 @@ final class AgentSendErrorTests: XCTestCase {
         s.apply(.with { $0.prompt = .with { $0.promptID = "b" } })
         XCTAssertNil(s.answerError)
     }
+}
+
+/// A pretend daemon that never answers: connected to, never subscribed.
+private final class Silent: DaemonStandIn, @unchecked Sendable {
+    func receive(_ msg: ClientMessage, reply: @escaping @Sendable (ServerMessage) -> Void) {}
 }

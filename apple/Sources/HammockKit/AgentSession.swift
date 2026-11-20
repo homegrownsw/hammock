@@ -325,7 +325,9 @@ public final class AgentSession {
     @discardableResult
     func send(_ text: String, attachments: [(name: String, data: Data, path: String?)], inline: Bool = false, local: [BubbleAttachment] = [], pending: Bool = true) async -> Bool {
         sendError = nil
-        guard let conn = model?.connection else {
+        // Not connected yet (a phone still dialling has a connection, not a
+        // link): say so at once, rather than waiting on a call that may never go.
+        guard let conn = model?.connection, model?.connected == true else {
             sendError = "Not connected. Your message wasn't sent."
             return false
         }
@@ -363,7 +365,7 @@ public final class AgentSession {
     /// (whose Retry would send what's typed there) is left alone.
     public func runCommand(_ command: String) {
         Task {
-            guard let conn = model?.connection else {
+            guard let conn = model?.connection, model?.connected == true else {
                 model?.showToast("Not connected: \(command) didn't run.")
                 return
             }

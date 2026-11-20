@@ -334,7 +334,8 @@ class AgentSession(
      */
     suspend fun send(text: String, attachments: List<OutgoingAttachment> = emptyList(), pending: Boolean = true): Boolean {
         _state.update { it.copy(sendError = null) }
-        if (model.connection == null) {
+        // Not connected yet (still dialling): say so at once, not after a call that may never go.
+        if (model.connection == null || model.link.value != com.homegrownsw.hammock.client.Link.Connected) {
             _state.update { it.copy(sendError = "Not connected. Your message wasn't sent.") }
             return false
         }
@@ -388,7 +389,10 @@ class AgentSession(
      */
     fun runCommand(command: String) {
         model.scope.launch {
-            if (model.connection == null) { model.showToast("Not connected: $command didn't run."); return@launch }
+            if (model.connection == null || model.link.value != com.homegrownsw.hammock.client.Link.Connected) {
+                model.showToast("Not connected: $command didn't run.")
+                return@launch
+            }
             try {
                 model.call { setAgentSend(Hammock.AgentSend.newBuilder().setPaneId(paneID).setText(command).build()) }
             } catch (e: kotlinx.coroutines.CancellationException) {
