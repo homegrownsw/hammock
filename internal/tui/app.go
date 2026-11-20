@@ -19,6 +19,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/agents"
 	"github.com/homegrownsw/hammock/internal/client"
+	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -124,6 +125,7 @@ func Run(c *client.Client, in *os.File, out io.Writer) error {
 		return err
 	}
 	io.WriteString(out, ttyEnter)
+	hammockconfig.Warn = func(string, ...any) {} // its stderr is this screen
 	defer func() {
 		io.WriteString(out, ttyLeave)
 		term.Restore(fd, old)

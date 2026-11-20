@@ -285,8 +285,11 @@ func SetRepeated(key string, values []string) error {
 // Unset removes a key's lines.
 func Unset(key string) error { return Set(key, "") }
 
-// rewrite applies edit to the file's lines and writes it back.
+// rewrite applies edit to the file's lines and writes it back, holding the
+// writers' lock throughout (lock.go), so another writer's change in the
+// meantime isn't lost.
 func rewrite(edit func([]string) []string) error {
+	defer lock()()
 	path := Path()
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		path = real

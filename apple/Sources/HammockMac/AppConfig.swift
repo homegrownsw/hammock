@@ -634,19 +634,50 @@ final class AppConfig {
 
     private func set(_ changes: [(String, [String])]) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        guard var lines = Self.fileLines(fileURL) else {
-            // There but unreadable: written over, it'd lose everything in it.
-            NSLog("Hammock: couldn't read %@, so Settings didn't change it", fileURL.path)
-            return
+        let written: Bool = withWriteLock {
+            guard var lines = Self.fileLines(fileURL) else {
+                // There but unreadable: written over, it'd lose everything in it.
+                NSLog("Hammock: couldn't read %@, so Settings didn't change it", fileURL.path)
+                return false
+            }
+            for (key, values) in changes { Self.replace(key, values, in: &lines) }
+            // Through a symlink (dotfiles), so it stays one.
+            try? Self.fileData(lines).write(to: fileURL.resolvingSymlinksInPath(), options: .atomic)
+            return true
         }
-        for (key, values) in changes { Self.replace(key, values, in: &lines) }
-        // Through a symlink (dotfiles), so it stays one.
-        try? Self.fileData(lines).write(to: fileURL.resolvingSymlinksInPath(), options: .atomic)
+        guard written else { return }
         // The daemon warns about security settings loosened in the file by
         // anything else (configwatch.go): these were you, in Settings.
         let security = changes.filter { Self.securityKeys.contains($0.0) }
         if !security.isEmpty { AppModelRegistry.shared?.noteConfigWritten(security.map { (key: $0.0, values: $0.1) }) }
         load()
+    }
+
+    /// Runs a read, edit and write of the file holding the writers' lock,
+    /// an exclusive flock on .config.lock in `dir` (beside the config's own
+    /// entry, never a symlink's target): the daemon, hmk and the TUI take the
+    /// same one (hammockconfig's lock.go), so a change one of them makes
+    /// meanwhile isn't lost. Readers don't need it: writes are renames. When
+    /// it can't be had within 2 s, the write goes ahead without it rather
+    /// than hang Settings.
+    private func withWriteLock<T>(_ body: () -> T) -> T {
+        let path = dir.appendingPathComponent(".config.lock").path
+        let fd = Darwin.open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard fd >= 0 else {
+            NSLog("Hammock: config written without its lock (%@: %@)", path, String(cString: strerror(errno)))
+            return body()
+        }
+        defer { Darwin.close(fd) }
+        let deadline = Date().addingTimeInterval(2)
+        var locked = false
+        while true {
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 { locked = true; break }
+            let e = errno
+            guard e == EWOULDBLOCK || e == EINTR, Date() < deadline else { break }
+            usleep(20_000)
+        }
+        if !locked { NSLog("Hammock: config written without its lock (%@ is held)", path) }
+        return body() // closing fd lets the lock go
     }
 
     /// The keys the daemon watches for being loosened behind your back.
@@ -749,7 +780,11 @@ final class AppConfig {
     func ensureFile() {
         guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? (Self.header + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
+        withWriteLock {
+            // Another writer may have made it meanwhile.
+            guard !FileManager.default.fileExists(atPath: fileURL.path) else { return }
+            try? (Self.header + "\n").write(to: fileURL, atomically: true, encoding: .utf8)
+        }
     }
 }
 
