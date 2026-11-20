@@ -106,13 +106,23 @@ struct CommandPalette: View {
                 .padding(.horizontal, 18)
                 .frame(height: 56)
 
-                Divider().opacity(results.isEmpty ? 0 : 1)
+                let noMatches = results.isEmpty && !query.trimmingCharacters(in: .whitespaces).isEmpty
+                Divider().opacity(results.isEmpty && !noMatches ? 0 : 1)
 
-                KeyboardList(items: results, id: \.id, selection: $selection, query: query, maxHeight: 360,
-                             choose: { selection = $0; confirm(results) }) { item, selected in
-                    PaletteRow(item: item, selected: selected, flashing: confirming == item.id)
+                if noMatches {
+                    Text("No matches")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .padding(.vertical, 4)
+                } else {
+                    KeyboardList(items: results, id: \.id, selection: $selection, query: query, maxHeight: 360,
+                                 choose: { selection = $0; confirm(results) }) { item, selected in
+                        PaletteRow(item: item, selected: selected, flashing: confirming == item.id)
+                    }
+                    .opacity(results.isEmpty ? 0 : 1)
                 }
-                .opacity(results.isEmpty ? 0 : 1)
             }
             .frame(width: 620)
             .background {
