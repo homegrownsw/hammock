@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 	"google.golang.org/protobuf/proto"
@@ -1065,8 +1066,30 @@ func (a *App) command(b []byte) int {
 			}
 			return 3
 		}
+		// Escape alone: a change of mind, not a mistake.
+	default:
+		r, n := utf8.DecodeRune(b)
+		a.flash(keyName(r) + " isn't a shortcut · ⌃B ? lists them")
+		return n
 	}
 	return 1
+}
+
+// keyName is how the flash for an unknown ⌃B key writes it.
+func keyName(r rune) string {
+	switch {
+	case r == '\r' || r == '\n':
+		return "Return"
+	case r == '\t':
+		return "Tab"
+	case r == 0x7f || r == 0x08:
+		return "Delete"
+	case r < 0x20:
+		return "⌃" + string('@'+r)
+	case r == utf8.RuneError:
+		return "That key"
+	}
+	return string(r)
 }
 
 // mergeTab puts a tab's panes beside the focused pane of another, and shows it.

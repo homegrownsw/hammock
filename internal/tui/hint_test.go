@@ -28,3 +28,24 @@ func TestSidebarHintKeysWork(t *testing.T) {
 		}
 	}
 }
+
+// A key ⌃B doesn't know says so, and where to find the ones it does;
+// Escape, to change your mind, says nothing.
+func TestUnknownPrefixKeyFlashes(t *testing.T) {
+	for key, want := range map[string]string{
+		"g":      "g isn't a shortcut · ⌃B ? lists them",
+		"é":      "é isn't a shortcut · ⌃B ? lists them",
+		"\x07":   "⌃G isn't a shortcut · ⌃B ? lists them",
+		"\r":     "Return isn't a shortcut · ⌃B ? lists them",
+		"\x1b":   "",
+		"\x1b[A": "",
+	} {
+		a, _ := paletteApp()
+		if n := a.command([]byte(key)); n != len(key) {
+			t.Errorf("%q: consumed %d bytes, want %d", key, n, len(key))
+		}
+		if a.toast != want {
+			t.Errorf("%q: flashed %q, want %q", key, a.toast, want)
+		}
+	}
+}
