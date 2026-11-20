@@ -85,25 +85,25 @@ working tree (committed or not) with where this checkout left `origin/main`. Run
 - **A change nobody using Hammock will notice** (a refactor, a test-only change) can skip it:
   `NO_RELEASE_NOTE=1 just note-check`. When in doubt, add an `internal` note.
 
-## Cutting releases: `just release-mac`, `release-ios`, `release-apple` and `release-android`
+## Cutting releases: `just release-mac`, `release-ios`, `release-apple`, `release-android` and `release-all`
 
-All four run `scripts/release`: for the Mac (a Sparkle update), for iOS (a TestFlight build), both in one
-step, or for Android (an APK on a GitHub Release, never marked Latest, and the app's update feed:
-android/README.md). A release pushes straight to `main`, so it's the owner's to run, or an agent's when asked.
+All five run `scripts/release`: for the Mac (a Sparkle update), for iOS (a TestFlight build), both in one
+step, for Android (an APK on a GitHub Release, never marked Latest, and the app's update feed:
+android/README.md), or all three in one step, with one read of every app's notes. A release pushes straight to `main`, so it's the owner's to run, or an agent's when asked.
 
 ### Versions and numbers
 
 Each app has its own version, `YYYY.N.P`, in `apple/iOS/Config/Version.xcconfig` (`HAMMOCK_MAC_VERSION` and
 `HAMMOCK_IOS_VERSION`, which the targets make their `MARKETING_VERSION`):
 
-- **YYYY** is the year the release ships, and **N** counts the year's joint releases: both apps, cut together
-  with `release-apple`, at `YYYY.N.0`. When the first two numbers match, the apps line up.
+- **YYYY** is the year the release ships, and **N** counts the year's joint releases: the apps, cut together
+  with `release-all` (or the Apple apps alone with `release-apple`), at `YYYY.N.0`. When the first two numbers match, the apps line up.
 - **P** is a patch. Mac releases cost nothing, so between joint releases the Mac ships `2026.1.1`, `2026.1.2`…,
   every Mac release a new version. A new iPhone version costs an App Review (TestFlight's too), so the iPhone
   gets more TestFlight builds of its `YYYY.N.0` instead, and a patch only for a hotfix (it takes the iPhone's
   own next patch, whatever the Mac's of that number held).
-- **Android** (`HAMMOCK_ANDROID_VERSION`) ships on its own, like the Mac: every release a new version, a patch
-  between joint releases (which are the Apple apps' alone).
+- **Android** (`HAMMOCK_ANDROID_VERSION`) ships like the Mac: every release a new version, a patch between
+  joint releases, and the joint version in `release-all`.
 - A new year starts again at `.1.0`: `2027.1.0` follows `2026.5.x`.
 
 The release commit itself sets the version, so the file holds each app's latest release (or the next one, if
@@ -158,7 +158,7 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
      commit, cut at TestFlight's 4000 characters.
 5. **Files** the pending notes under `release-notes/<app>/v<version>/`; an app moving on from a version gets
    that version's summary, `release-notes/<app>/v<old>.md` (INTERNAL included). It **commits**
-   `release(mac): v<version> (r<n>)` (or `release(ios): …`, or for both `release: v<version> (r<n>, Mac and iOS)`)
+   `release(mac): v<version> (r<n>)` (or `release(ios): …`, for both `release: v<version> (r<n>, Mac and iOS)`, for all three `… (r<n>, Mac, iOS and Android)`)
    and **tags** it.
 6. **Builds the Mac update** from the tagged commit (`scripts/mac-update build`): `UPDATES=1 just share`
    (Developer ID, notarized; 1Password asks first), then `generate_appcast` signs it with the EdDSA key
@@ -174,7 +174,7 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
 9. **Uploads the iPhone's build to TestFlight** (`scripts/ios-testflight upload <n>`), with What to Test from
    the tag, and waits for App Store Connect to process it. A failed upload doesn't undo the release either.
 
-`next` is the next patch for the Mac or iOS (`2026.1.0` → `2026.1.1`) and the next joint release for both
+`next` is the next patch for one app (`2026.1.0` → `2026.1.1`) and the next joint release for `apple` or `all`
 (→ `2026.2.0`, or `2027.1.0` in a new year). An app whose version in the file hasn't been released yet is
 released at that version instead. `build` (iOS only) is another TestFlight build of the iPhone's version.
 
@@ -183,7 +183,8 @@ just release-mac                          # prompts (gum)
 just release-mac next                     # a Mac update: 2026.1.0 → 2026.1.1
 just release-ios build                    # another TestFlight build of the iPhone's 2026.1.0
 just release-ios next                     # an iPhone hotfix, 2026.1.1 (App Review again)
-just release-apple next                   # both apps' next joint release, 2026.2.0
+just release-all next                     # every app's next joint release, 2026.2.0, one read of the notes
+just release-apple next                   # the Mac's and iPhone's alone
 just release-apple 2026.3.0               # …or a version of your choosing
 just release-android next                 # an Android release: 2026.5.0 → 2026.5.1 (run it in a Hammock pane: 1Password)
 just release-mac next allow-empty         # a release with no notes for people to read

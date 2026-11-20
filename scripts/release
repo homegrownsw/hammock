@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Cuts a release (release-notes/README.md): of the Mac app (a Sparkle update), the iOS app (a TestFlight
-# build), both at once, or the Android app (an APK on a GitHub Release). `just release-mac`, `just
-# release-ios`, `just release-apple` and `just release-android` run it.
+# build), both at once, the Android app (an APK on a GitHub Release), or all three at once. `just
+# release-mac`, `just release-ios`, `just release-apple`, `just release-android` and `just release-all` run it.
 #
-#   scripts/release <mac|ios|apple|android>                     prompts with gum
-#   scripts/release <mac|ios|apple|android> next [allow-empty]  the app's next version (below)
-#   scripts/release ios build [allow-empty]                     another TestFlight build of the iPhone's version
-#   scripts/release <mac|ios|apple|android> <x.y.z> [...]       a version of your choosing
+#   scripts/release <mac|ios|apple|android|all>                     prompts with gum
+#   scripts/release <mac|ios|apple|android|all> next [allow-empty]  the app's next version (below)
+#   scripts/release ios build [allow-empty]                         another TestFlight build of the iPhone's version
+#   scripts/release <mac|ios|apple|android|all> <x.y.z> [...]       a version of your choosing
 #
 # Each app has its own version, YYYY.N.P (apple/iOS/Config/Version.xcconfig): the year, its Nth joint release,
-# and a patch. A joint release (apple) is both apps at the next YYYY.N.0; the Mac ships patches in between
+# and a patch. A joint release (apple, or all with Android) is the apps at the next YYYY.N.0, in one release
+# commit, with one read of every app's notes; the Mac ships patches in between
 # (2026.1.1, 2026.1.2…), each its own version, while the iPhone gets more TestFlight builds of its YYYY.N.0
-# (a new iOS version means another App Review), or a patch for a hotfix. `next` is, for the Mac or iOS, the
-# next patch, and for both the next joint release; an app whose version in the file hasn't been released yet
+# (a new iOS version means another App Review), or a patch for a hotfix. `next` is, for one app, the
+# next patch, and for a joint release the next joint version; an app whose version in the file hasn't been released yet
 # (set ahead with `just version`) is released at that version instead. The release commit itself sets the
 # version, since a build is made from exactly the tagged commit and checks its version against the tag.
 #
@@ -30,6 +31,8 @@
 #          build); a failure there takes the release back. After the push it uploads the build to TestFlight
 #          with What to Test (scripts/ios-testflight upload).
 #   apple  both, in one release commit carrying both tags.
+#   all    the Mac, iOS and Android, in one release commit carrying the three tags; the APK goes on the Mac's
+#          GitHub Release.
 #   android
 #          tag Android-v<x.y.z>-r<n>, and marketing/android.json, where the app looks for updates (the
 #          website publishes it). Before anything is pushed it builds the tagged commit's APK, signed with
@@ -85,7 +88,8 @@ case "$TARGET" in
   ios) PLATFORMS="ios" ;;
   apple) PLATFORMS="mac ios" ;;
   android) PLATFORMS="android" ;;
-  *) echo "usage: scripts/release <mac|ios|apple|android> [next | build | <x.y.z>] [allow-empty]" >&2; exit 2 ;;
+  all) PLATFORMS="mac ios android" ;;
+  *) echo "usage: scripts/release <mac|ios|apple|android|all> [next | build | <x.y.z>] [allow-empty]" >&2; exit 2 ;;
 esac
 shift
 has() { [[ " $PLATFORMS " == *" $1 "* ]]; }
@@ -101,7 +105,7 @@ usage: scripts/release $TARGET [next | build | <x.y.z>] [allow-empty]
 
   (no arguments)   prompts with gum
   next             the next version: a patch for the Mac, iOS or Android (2026.1.0 → 2026.1.1),
-                   the next joint release for both (→ 2026.2.0, or 2027.1.0 in a new year)
+                   the next joint release for apple or all (→ 2026.2.0, or 2027.1.0 in a new year)
   build            iOS only: another TestFlight build of the iPhone's version
   <x.y.z>          this version, higher than the app's last
   allow-empty      cut a release even with no new notes for people to read
@@ -270,9 +274,9 @@ if [ "$NONINTERACTIVE" != 1 ]; then
   else
     case "$TARGET" in
       mac) MODE=next ;;
-      apple)
+      apple | all)
         MODE=version
-        ASKED_VER=$(gum input --header "Both apps' version (a joint release)" --value "$(next_joint_for)") ;;
+        ASKED_VER=$(gum input --header "The apps' version (a joint release)" --value "$(next_joint_for)") ;;
       ios)
         if is_released "$ROOT" ios "$(get_var CUR ios)"; then
           build="Another TestFlight build of $(get_var CUR ios)"
@@ -290,7 +294,7 @@ for p in $PLATFORMS; do
   case "$MODE" in
     build) ver="$cur" ;;
     version) ver="$ASKED_VER" ;;
-    next) if [ "$TARGET" = apple ]; then ver=$(next_joint_for); else ver=$(next_for "$p"); fi ;;
+    next) if [ "$TARGET" = apple ] || [ "$TARGET" = all ]; then ver=$(next_joint_for); else ver=$(next_for "$p"); fi ;;
   esac
   version_ok "$ver" || { echo "'$ver' isn't a version like 2026.1.0." >&2; exit 1; }
   if [ "$ver" = "$cur" ]; then
@@ -459,6 +463,8 @@ android_feed() {
   # On the Mac's GitHub Release of the same version when there is one (scripts/android-apk upload).
   local mac
   mac=$(git -C "$ROOT" tag -l "Mac-v${ver}-r*" | tail -1)
+  # Released beside it (all): the Mac's tag isn't made yet.
+  if has mac && [ "$(get_var VER mac)" = "$ver" ]; then mac=$(get_var TAG mac); fi
   if [ -n "$mac" ]; then tag="$mac"; fi
   jq -n --arg v "$ver" --argjson b "$N" --arg apk "https://github.com/$repo/releases/download/$tag/Hammock-$ver.apk" \
     --arg notes "https://github.com/$repo/releases/tag/$tag" '{version: $v, build: $b, apk: $apk, notes: $notes}'
@@ -466,6 +472,8 @@ android_feed() {
 
 if [ "$TARGET" = apple ]; then
   RELEASE_MSG="release: v$(get_var VER mac) (r${N}, Mac and iOS)"
+elif [ "$TARGET" = all ]; then
+  RELEASE_MSG="release: v$(get_var VER mac) (r${N}, Mac, iOS and Android)"
 else
   RELEASE_MSG="release(${TARGET}): v$(get_var VER "$TARGET") (r${N})"
 fi

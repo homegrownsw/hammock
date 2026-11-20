@@ -470,6 +470,26 @@ check "…takes the release back" "1 " "$(count "$d") $(git -C "$d" tag -l | tr 
 check "…and discards what it built" "android build 2
 android discard 2" "$(calls)"
 
+echo "all:"
+d=$(fixture 2026.6.0 2026.6.0 2026.6.0)
+for a in Mac iOS Android; do mark_released "$d" "$a" 2026.6.0; done
+check "next is the next joint release, for Android too" "release: v2026.7.0" "$(dry all next)"
+release "$d" all next
+check "one release commit, with the three tags" "release: v2026.7.0 (r2, Mac, iOS and Android)|Android-v2026.7.0-r2 iOS-v2026.7.0-r2 Mac-v2026.7.0-r2" \
+  "$(git -C "$d" log -1 --format=%s)|$(git -C "$d" tag --points-at HEAD | LC_ALL=C sort -f | tr '\n' ' ' | sed 's/ $//')"
+check "every app at the version" "2026.7.0 2026.7.0 2026.7.0" "$(ver "$d" MAC) $(ver "$d" IOS) $(ver "$d" ANDROID)"
+check "each built, then uploaded, the Mac's before the APK goes on its release" \
+  "build 2|ios build 2|android build 2|upload 2|ios upload 2|android upload 2|" "$(calls | tr '\n' '|')"
+check "the APK goes on the Mac's release of the version, though its tag is new" \
+  'https://github.com/homegrownsw/hammock/releases/download/Mac-v2026.7.0-r2/Hammock-2026.7.0.apk' \
+  "$(git -C "$d" show HEAD:marketing/android.json | jq -r .apk)"
+check "every app's notes move under the version" "3 3 3" \
+  "$(for p in mac ios android; do ls "$d/release-notes/$p/v2026.7.0" | wc -l | tr -d ' '; done | tr '\n' ' ' | sed 's/ $//')"
+d=$(fixture 2026.6.0 2026.6.0 2026.6.0)
+check "a failed Android build takes the whole release back" "fails 1 " \
+  "$(FAKE_ANDROID_BUILD_FAIL=1 release "$d" all 2026.7.0 && echo passes || echo fails) $(count "$d") $(git -C "$d" tag -l | tr '\n' ' ' | sed 's/ $//')"
+calls >/dev/null
+
 echo "preflight:"
 d=$(fixture 2026.1.0)
 echo dirty >"$d/x"

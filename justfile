@@ -273,6 +273,12 @@ release-apple *args:
 release-android *args:
     scripts/release android "$@"
 
+# Cut every app's joint release in one release commit, with one read of all their notes: `just release-all next`
+# (→ 2026.2.0) or a version. The APK goes on the Mac's GitHub Release.
+[positional-arguments]
+release-all *args:
+    scripts/release all "$@"
+
 # The iPhone app's App Store listing and TestFlight test information come from marketing/appstore/ (its README).
 # Install Fastlane and Playwright (for the marketing images) into marketing/, once per machine (Ruby 3.3, Node 24).
 appstore-install:
