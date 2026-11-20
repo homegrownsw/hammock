@@ -180,6 +180,12 @@ func (a *App) mouse(m mouseEv) {
 		a.wheel(z, m)
 	case m.press && m.button == 0:
 		a.leftPress(z, m)
+	case m.press && m.button == 1:
+		// Middle-click closes a tab, as in a browser (asking first, as
+		// any close does, if it would stop an agent at work).
+		if z.kind == zTab || z.kind == zBarTab || z.kind == zBarClose {
+			a.closeTab(z.id)
+		}
 	case m.press && m.button == 2:
 		a.rightPress(z, m)
 	}
@@ -193,6 +199,9 @@ func (a *App) wheel(z zone, m mouseEv) {
 	switch z.kind {
 	case zSidebar, zTab, zGroup, zNewGroup:
 		a.sideScroll = max(0, a.sideScroll+m.wheel*2)
+	case zBarTab, zBarClose:
+		// Over the tab bar: the next or previous of its tabs.
+		a.stepTabInGroup(m.wheel)
 	case zPane:
 		pt := a.terms[z.id]
 		if pt == nil {

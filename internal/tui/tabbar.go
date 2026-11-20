@@ -96,3 +96,23 @@ func (a *App) openGroup(id string) {
 	}
 	a.selectTab(sp.TabIds[0])
 }
+
+// stepTabInGroup selects the tab d places along from the selected one in
+// its Group, stopping at either end, for the wheel over the tab bar.
+func (a *App) stepTabInGroup(d int) {
+	t := a.tabs[a.selTab]
+	if t == nil {
+		return
+	}
+	sp := a.group(t.GroupId)
+	if sp == nil {
+		return
+	}
+	i := slices.Index(sp.TabIds, a.selTab)
+	if i < 0 {
+		return
+	}
+	if j := max(0, min(i+d, len(sp.TabIds)-1)); j != i {
+		a.selectTab(sp.TabIds[j])
+	}
+}
