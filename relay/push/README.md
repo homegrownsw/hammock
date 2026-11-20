@@ -41,9 +41,11 @@ nothing of one it can't decrypt or that was sent over an hour ago.
    creates what's missing.)
 
    Ours also answers at https://push.homegrownsw.com (`routes` in wrangler.toml; the deploy makes its DNS
-   record, as homegrownsw.com's DNS is on Cloudflare), the URL the iPhone app uses. It still answers at
-   hmk-push.homegrownsw.workers.dev for phones registered before that; both reach the same Worker and
-   database, so a phone's id works at either. Without a domain on Cloudflare, take `routes` out.
+   record, as homegrownsw.com's DNS is on Cloudflare), the URL the Android app and iPhone builds after
+   iOS-v2026.6.0 use. It still answers at hmk-push.homegrownsw.workers.dev, where iPhone builds up to
+   iOS-v2026.6.0 register; both reach the same Worker and database, so a phone's id works at either. Macs
+   send to the domain even for a phone that names the workers.dev address (`relayMoved` in
+   `internal/daemon/push.go`). Without a domain on Cloudflare, take `routes` out.
 
    **Firebase (for Android phones).** console.firebase.google.com ▸ add a project, then add an Android
    app to it with the Android app's package name (its `google-services.json` goes in the Android app).
@@ -52,11 +54,13 @@ nothing of one it can't decrypt or that was sent over an hour ago.
    `private_key` from it). Delete the download once it's a secret. Without it the relay still serves
    iPhones, and turns Android registrations away (501).
 3. **Production.** Add the WAF rate-limiting rule (below, Costs and abuse) on push.homegrownsw.com. It only
-   covers that domain: the workers.dev name bypasses it, so once phones have moved to the domain, set
-   `workers_dev = false` in wrangler.toml.
+   covers that domain: the workers.dev name bypasses it. Once the first iPhone release after iOS-v2026.6.0
+   (the first built for the domain) is out and installed, set `workers_dev = false` in wrangler.toml and
+   deploy. Not before: older iPhones still register there.
 4. **The app.** Build the iOS app with the relay's URL:
    `HMK_PUSH_RELAY=https://hmk-push.<you>.workers.dev` as a build setting
-   (`just ios-device` passes it through).
+   (`just ios-device` and `scripts/ios-testflight` pass it through, defaulting to ours,
+   https://push.homegrownsw.com).
 
 ## Deploying a change
 

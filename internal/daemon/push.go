@@ -46,7 +46,8 @@ const awayAfter = 2 * time.Minute
 var pushClient = http.DefaultClient
 
 // pushRelays are the relays a phone may name: ours (at its own domain, and
-// at the workers.dev name phones registered before that use), plus any in
+// at the workers.dev name phones registered before that use, which sends go
+// to the domain instead of: relayMoved), plus any in
 // HMK_PUSH_RELAY (comma-separated, as the iPhone build takes it) for a
 // relay of your own. Replaceable in tests.
 var pushRelays = func() []string {
@@ -74,6 +75,28 @@ func relayOrigin(raw string) string {
 func knownRelay(raw string) bool {
 	o := relayOrigin(raw)
 	return o != "" && slices.Contains(pushRelays, o)
+}
+
+// relayMoved maps a relay's old origin to where it's reached now. Ours left
+// workers.dev for its own domain (behind the WAF's rules); phones built
+// before still name the old one, which reaches the same Worker and
+// database, so their relay ids work at the new one. Replaceable in tests.
+var relayMoved = map[string]string{
+	"https://hmk-push.homegrownsw.workers.dev": "https://push.homegrownsw.com",
+}
+
+// relayEndpoint is the origin to contact for a phone's registered relay URL
+// (sends, clears), moved if it has (relayMoved); "" if it isn't a known
+// relay.
+func relayEndpoint(raw string) string {
+	if !knownRelay(raw) {
+		return ""
+	}
+	o := relayOrigin(raw)
+	if to, ok := relayMoved[o]; ok {
+		return to
+	}
+	return o
 }
 
 // pushNote is what a phone shows (encrypted as JSON).
@@ -486,14 +509,15 @@ var clearDelay = 2 * time.Second
 // before clears answers 404 for the path, which says nothing about the
 // phone (unlike a send's), and the app tidies up when it next opens anyway.
 func (d *Daemon) sendClear(deviceID string, r *pb.RegisterPush, sealed []byte) {
-	if !knownRelay(r.RelayUrl) {
+	relay := relayEndpoint(r.RelayUrl)
+	if relay == "" {
 		return
 	}
 	time.Sleep(clearDelay)
 	body, _ := json.Marshal(map[string]string{"id": r.RelayId, "payload": base64.StdEncoding.EncodeToString(sealed)})
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayOrigin(r.RelayUrl)+"/clear", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relay+"/clear", bytes.NewReader(body))
 	if err != nil {
 		return
 	}
@@ -562,12 +586,13 @@ func (d *Daemon) postPush(deviceID string, r *pb.RegisterPush, sealed []byte, n 
 		"thread":   pushTag(r.Key, "thread", cmpOr(n.Pane, n.Join, n.Grant, n.Key)),
 		"collapse": pushTag(r.Key, "collapse", collapse), "category": n.Category,
 	})
-	if !knownRelay(r.RelayUrl) {
+	relay := relayEndpoint(r.RelayUrl)
+	if relay == "" {
 		return 0 // registered before relays were checked
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relayOrigin(r.RelayUrl)+"/send", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, relay+"/send", bytes.NewReader(body))
 	if err != nil {
 		return 0
 	}

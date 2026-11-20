@@ -325,3 +325,48 @@ func TestKnownRelays(t *testing.T) {
 		}
 	}
 }
+
+// Phones that registered at the workers.dev name are sent to at the domain;
+// unknown relays at nowhere.
+func TestRelayEndpoint(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://hmk-push.homegrownsw.workers.dev":  "https://push.homegrownsw.com",
+		"https://HMK-PUSH.homegrownsw.workers.dev/": "https://push.homegrownsw.com",
+		"https://push.homegrownsw.com":              "https://push.homegrownsw.com",
+		"https://evil.example":                      "",
+		"http://hmk-push.homegrownsw.workers.dev":   "",
+	} {
+		if got := relayEndpoint(raw); got != want {
+			t.Errorf("relayEndpoint(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// A send and a clear for a phone registered at a relay's old origin go to
+// its new one.
+func TestPushGoesToMovedRelay(t *testing.T) {
+	paths := make(chan string, 4)
+	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { paths <- r.URL.Path }))
+	defer relay.Close()
+	const old = "https://old-relay.example"
+	oldClient, oldRelays, oldMoved, oldDelay := pushClient, pushRelays, relayMoved, clearDelay
+	pushClient, pushRelays, relayMoved, clearDelay = relay.Client(), []string{relayOrigin(relay.URL), old}, map[string]string{old: relayOrigin(relay.URL)}, 0
+	defer func() { pushClient, pushRelays, relayMoved, clearDelay = oldClient, oldRelays, oldMoved, oldDelay }()
+
+	d := &Daemon{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	r := &pb.RegisterPush{RelayUrl: old, RelayId: "relay-id-1", Key: make([]byte, 32)}
+	if code := d.postPush("phone", r, []byte("sealed"), pushNote{}, "", false); code != http.StatusOK {
+		t.Fatalf("send: status %d", code)
+	}
+	d.sendClear("phone", r, []byte("sealed"))
+	for _, want := range []string{"/send", "/clear"} {
+		select {
+		case p := <-paths:
+			if p != want {
+				t.Fatalf("got %s, want %s", p, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("no %s at the new relay", want)
+		}
+	}
+}

@@ -220,7 +220,7 @@ it ends, so nothing is left to time out an hour in. Run releases outside an agen
 App Manager with access to cloud-managed distribution certificates. `HMK_TESTFLIGHT_GROUPS=Group,Other` also
 sends the build to those external testers' groups; internal groups get it as App Store Connect is set up to.
 
-The push relay (`relay/push`, a Cloudflare Worker) is at https://hmk-push.homegrownsw.workers.dev, built into
+The push relay (`relay/push`, a Cloudflare Worker) is at https://push.homegrownsw.com, built into
 the app (`HMK_PUSH_RELAY` overrides it). Phones built from Xcode use APNs' sandbox and TestFlight builds its
 production environment, so the relay's APNs key must allow both (Apple turns a key down for the wrong one with
 `BadEnvironmentKeyInToken`, which the daemon log shows).

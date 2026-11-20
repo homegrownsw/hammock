@@ -3,9 +3,11 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 
 # Served at push.homegrownsw.com (homegrownsw.com's DNS is on Cloudflare; the deploy makes the record), and
-# still at hmk-push.homegrownsw.workers.dev, which phones registered before the move use. Both are the same
-# Worker and database, so a phone's relay id works at either. The WAF rule (README) only covers the domain,
-# so once phones have moved to it, turn workers_dev off.
+# still at hmk-push.homegrownsw.workers.dev, where iPhone builds up to iOS-v2026.6.0 (r1398) register.
+# Both are the same Worker and database, so a phone's relay id works at either. Macs send to the domain
+# whichever a phone names (relayMoved in internal/daemon/push.go), and iPhone builds after iOS-v2026.6.0
+# use the domain. The WAF rule (README) only covers the domain, so once the next iPhone release is out and
+# installed, set workers_dev = false and deploy.
 workers_dev = true
 routes = [{ pattern = "push.homegrownsw.com", custom_domain = true }]
 
