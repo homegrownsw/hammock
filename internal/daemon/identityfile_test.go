@@ -3,11 +3,14 @@ package daemon
 import (
 	"bytes"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 	"github.com/homegrownsw/hammock/internal/state"
 )
 
@@ -23,7 +26,7 @@ func identityDaemon(t *testing.T, dir string) *Daemon {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return &Daemon{cfg: Config{Dir: dir}, store: st}
+	return &Daemon{cfg: Config{Dir: dir}, store: st, log: slog.New(slog.DiscardHandler)}
 }
 
 // files lists what's in dir, but the state database's.
@@ -72,8 +75,8 @@ func TestIdentityKeyMadeOnceThenKept(t *testing.T) {
 	}
 }
 
-// An identity key that can't be read, or isn't one, is an error, and is
-// left as it is: never replaced by a new identity.
+// An identity key that can't be read, or isn't one, is left as it is,
+// never replaced by a new identity: the daemon gets a stand-in, and says why.
 func TestIdentityKeyDamagedIsKept(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -99,13 +102,15 @@ func TestIdentityKeyDamagedIsKept(t *testing.T) {
 			}
 			t.Cleanup(func() { os.Chmod(path, 0o600) })
 			d := identityDaemon(t, dir)
-			if err := d.loadIdentity(); err == nil {
-				t.Fatalf("loaded: %s", d.id.me.GetUserId())
-			} else {
-				t.Log(err)
+			if err := d.loadIdentity(); err != nil {
+				t.Fatal(err)
 			}
-			if d.id.me != nil {
-				t.Fatal("an identity was set")
+			if d.idErr == nil {
+				t.Fatalf("loaded: %s", d.id.me.GetUserId())
+			}
+			t.Log(d.idErr)
+			if d.id.me.GetUserId() == "" || d.id.key == nil {
+				t.Fatal("no stand-in")
 			}
 			os.Chmod(path, 0o600)
 			if got, _ := os.ReadFile(path); !bytes.Equal(got, tc.data) {
@@ -122,6 +127,107 @@ func noRetryWait(t *testing.T) {
 	old := readRetryWait
 	readRetryWait = 0
 	t.Cleanup(func() { readRetryWait = old })
+}
+
+// With a damaged identity the daemon still starts, and what's on this
+// computer works; what needs the identity (pairing, remote access, joining
+// and sharing Groups, linking) is refused, saying why, as Settings ▸
+// Devices does; and no new identity (or certificate) is made.
+func TestDamagedIdentityStartsLocalOnly(t *testing.T) {
+	noRetryWait(t)
+	dir := shortDir(t)
+	key := filepath.Join(dir, "identity.key")
+	if err := os.WriteFile(key, []byte("short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	if _, err := callErr(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	if _, err := callErr(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Local"}}}); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if uid := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Hello{Hello: &pb.Hello{ClientKind: "test"}}}).GetHelloReply().GetUserId(); uid == "" {
+		t.Fatal("no user id (stand-in)")
+	}
+	for name, m := range map[string]*pb.ClientMessage{
+		"pairing":     {Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}},
+		"remote on":   {Msg: &pb.ClientMessage_SetRemoteAccess{SetRemoteAccess: &pb.SetRemoteAccess{Enabled: true}}},
+		"join":        {Msg: &pb.ClientMessage_JoinShared{JoinShared: &pb.JoinShared{Link: "hammock://join/x"}}},
+		"link invite": {Msg: &pb.ClientMessage_CreateLinkInvite{CreateLinkInvite: &pb.CreateLinkInvite{}}},
+		"invite":      {Msg: &pb.ClientMessage_CreateInvite{CreateInvite: &pb.CreateInvite{}}},
+	} {
+		if _, err := callErr(t, c, m); err == nil || !strings.Contains(err.Error(), "identity.key") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	d.mu.Lock()
+	on := d.remote.on
+	d.mu.Unlock()
+	if on {
+		t.Fatal("remote access is on")
+	}
+	devs := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ListDevices{ListDevices: &pb.ListDevices{}}}).GetDevices()
+	if !strings.Contains(devs.GetRemoteUnavailable(), "identity.key") {
+		t.Fatalf("devices: %q", devs.GetRemoteUnavailable())
+	}
+	if b, _ := os.ReadFile(key); string(b) != "short" {
+		t.Fatalf("identity.key rewritten: %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "tls")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a certificate was made: %v", err)
+	}
+	if recs, _ := d.store.Records("computerself"); len(recs) != 0 {
+		t.Fatal("this computer's record was kept with the stand-in")
+	}
+}
+
+// A damaged certificate is said in Settings ▸ Devices once remote access
+// couldn't come on, and no longer once it's fixed.
+func TestDamagedCertShownInDevices(t *testing.T) {
+	noRetryWait(t)
+	dir := shortDir(t)
+	if _, _, err := loadOrCreateCert(dir); err != nil {
+		t.Fatal(err)
+	}
+	certPath := filepath.Join(dir, "tls", "cert.pem")
+	good, _ := os.ReadFile(certPath)
+	if err := os.WriteFile(certPath, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	reason := func() string {
+		return call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_ListDevices{ListDevices: &pb.ListDevices{}}}).GetDevices().GetRemoteUnavailable()
+	}
+	if r := reason(); r != "" {
+		t.Fatalf("before trying: %q", r)
+	}
+	d.mu.Lock()
+	err := d.loadCert()
+	d.mu.Unlock()
+	if err == nil {
+		t.Fatal("loaded a damaged certificate")
+	}
+	if r := reason(); !strings.Contains(r, "certificate") {
+		t.Fatalf("devices: %q", r)
+	}
+	if b, _ := os.ReadFile(certPath); string(b) != "not a certificate" {
+		t.Fatal("cert.pem rewritten")
+	}
+	os.WriteFile(certPath, good, 0o600)
+	d.mu.Lock()
+	err = d.loadCert()
+	d.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := reason(); r != "" {
+		t.Fatalf("fixed, still: %q", r)
+	}
 }
 
 // The certificate is made when neither file exists, and loaded unchanged after.

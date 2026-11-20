@@ -155,6 +155,9 @@ func newLink(d *Daemon, tok *pb.InviteToken) *peerLink {
 // loadLinks restores links to hosts (with their last known state, offline
 // until they reconnect) and starts connecting. Callers hold d.mu.
 func (d *Daemon) loadLinks() {
+	if d.idErr != nil {
+		return // joined Groups need this computer's identity: kept until it's back
+	}
 	recs, _ := d.store.Records("peerlink")
 	caches, _ := d.store.Records("peercache")
 	for key, b := range recs {

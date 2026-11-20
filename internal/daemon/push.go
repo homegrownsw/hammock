@@ -351,6 +351,9 @@ func attentionPush(item *pb.AttentionItem) (event, body string) {
 // away: now, or when you become so, if pending (called holding d.mu) still
 // says it's waiting on you then. Callers hold d.mu.
 func (d *Daemon) push(event, collapse string, n pushNote, pending func() bool) {
+	if d.idErr != nil {
+		return // phones can't connect to act on it (identityGate)
+	}
 	if pushed != nil {
 		pushed(event, collapse)
 	}
@@ -421,6 +424,9 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 // pushNow sends n to these phones now, whether or not you're at the Mac
 // (a Hammock Key request asks here and there at once). Callers hold d.mu.
 func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
+	if d.idErr != nil {
+		return // as push
+	}
 	recs, err := d.store.Records("push")
 	if err != nil || len(recs) == 0 {
 		return

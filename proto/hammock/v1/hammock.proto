@@ -1065,6 +1065,9 @@ message Devices {
   // router's forwarded port): config's remote-address.
   repeated string extra_addresses = 5;
   bool remote_enabled = 6;
+  // Why remote access can't be on, with what to do about it: this
+  // computer's identity or certificate can't be read. Empty if it can.
+  string remote_unavailable = 7;
 }
 
 // A network remote access may listen on, by its subnet, so it's the same

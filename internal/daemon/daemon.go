@@ -132,6 +132,7 @@ type Daemon struct {
 
 	// Multiplayer (share.go: hosting; peer.go: joining others' Groups).
 	id          identity
+	idErr       *identityError          // identity.key can't be read: id is a stand-in (loadIdentity)
 	people      map[string]*pb.Person   // user id → person, for members and requesters
 	strangers   map[string]*pb.Person   // signed-in peers that are neither (yet), kept off disk
 	letIn       map[string]bool         // user ids (keys) ever let into a Group here
@@ -552,11 +553,13 @@ func (d *Daemon) Serve() error {
 		d.mu.Unlock()
 	}()
 	go d.watchInput()
-	go d.runIntros()  // introduced links (links.go)
-	go d.watchLinks() // checked on a network change or wake (liveness.go)
-	d.mu.Lock()
-	d.deliverUnlinks() // requests kept from before
-	d.mu.Unlock()
+	go d.watchLinks()   // checked on a network change or wake (liveness.go)
+	if d.idErr == nil { // (without it, nothing is linked: loadComputers)
+		go d.runIntros() // introduced links (links.go)
+		d.mu.Lock()
+		d.deliverUnlinks() // requests kept from before
+		d.mu.Unlock()
+	}
 	go d.pollCwds()
 	go d.watchGroupIcons()
 	go d.watchUsage()

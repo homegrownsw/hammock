@@ -480,6 +480,9 @@ func (c *conn) handle(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		// Group's panes with your role in it.
 		return nil, err
 	}
+	if err := c.d.identityGate(msg); err != nil {
+		return nil, err
+	}
 	if err := c.personCheck(msg); err != nil {
 		return nil, err // (errDeferred: it waits for you to allow it, person.go)
 	}

@@ -154,6 +154,11 @@ func (d *Daemon) loadComputers() {
 		_ = proto.Unmarshal(recs["self"], self)
 	}
 	d.comp.self = self
+	if d.idErr != nil {
+		// Without this computer's identity, nothing is linked (or migrated):
+		// what's kept stays as it is until it's back.
+		return
+	}
 	d.migrateComputers()
 	d.comp.note = d.store.Setting("computers.note")
 	recs, _ := d.store.Records("complink")
@@ -210,6 +215,9 @@ func (d *Daemon) loadComputers() {
 // model, addresses, certificate), telling the others if it changed.
 // Callers hold d.mu.
 func (d *Daemon) refreshSelf(publish bool) {
+	if d.idErr != nil {
+		return // never kept with the stand-in identity (loadIdentity)
+	}
 	s := d.comp.self
 	hw := knownHardware(s)
 	addrs, lan := d.reachAt()

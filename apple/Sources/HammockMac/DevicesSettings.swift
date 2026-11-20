@@ -40,8 +40,9 @@ struct DevicesSettings: View {
             Section {
                 Toggle("Allow paired devices to connect remotely", isOn: $remote)
                     .settingAnchor("devices.remote")
-                    // Linked computers reach this one through it too.
-                    .disabled(remote && model.hasLinkedComputers)
+                    // Linked computers reach this one through it too; and it
+                    // can't come on without this Mac's identity and certificate.
+                    .disabled(remote ? model.hasLinkedComputers : !status.remoteUnavailable.isEmpty)
                     .onChange(of: remote) { _, on in
                         guard on != model.remoteEnabled else { return }
                         Task {
@@ -61,8 +62,17 @@ struct DevicesSettings: View {
                             await reload()
                         }
                     }
+                // Why it can't be on: this Mac's identity or certificate can't be read.
+                if !status.remoteUnavailable.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(status.remoteUnavailable, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Link("How to Fix This", destination: HammockLinks.damagedIdentity)
+                    }
+                    .font(.callout)
+                }
                 // Why it didn't turn on (or a pairing code couldn't be made), by the switch.
-                if let error {
+                if let error, error != status.remoteUnavailable {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
                         .foregroundStyle(.red)

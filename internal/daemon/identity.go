@@ -72,34 +72,66 @@ func (d *Daemon) rememberKey(uid string, key []byte) {
 	d.persist(d.store.SetSetting(personKeySetting(uid), hex.EncodeToString(key)))
 }
 
-// loadIdentity reads (or, the first time, creates) the user key and your
-// profile.
-//
-// The key is made only when identity.key doesn't exist. One that can't be
-// read, or isn't a key (the wrong length), is an error the daemon won't
-// start without, and is left as it is: a new key is a new user id, which
-// every paired phone, linked computer and shared Group would take for a
-// stranger. To recover, fix the file (its permissions, a backup), or delete
-// it to start again as someone new: phones then pair again, computers link
-// again, and others let you into their Groups again.
-func (d *Daemon) loadIdentity() error {
-	path := filepath.Join(d.cfg.Dir, "identity.key")
+// identityError: identity.key exists but can't be read, or isn't a key.
+type identityError struct {
+	path   string
+	reason string
+}
+
+func (e *identityError) Error() string {
+	return fmt.Sprintf("this computer's identity (%s) %s, so remote access, phones, linked computers and shared Groups are off. Hammock won't make a new one, which would unpair them: fix or restore the file, or delete it and restart the Hammock Server to start again with a new identity", e.path, e.reason)
+}
+
+// loadUserKey reads the user key, making it the first time: only when
+// identity.key doesn't exist. One that can't be read, or isn't a key (the
+// wrong length), is an *identityError, and is left as it is: a new key is
+// a new user id, which every paired phone, linked computer and shared
+// Group would take for a stranger. To recover, fix the file (its
+// permissions, a backup), or delete it to start again as someone new:
+// phones then pair again, computers link again, and others let you into
+// their Groups again.
+func loadUserKey(path string) (ed25519.PrivateKey, error) {
 	seed, err := readRetry(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		seed = make([]byte, ed25519.SeedSize)
 		if _, err := rand.Read(seed); err != nil {
-			return err
+			return nil, err
 		}
 		if err := writeFilesAtomic(privateFile{path, seed}); err != nil {
-			return err
+			return nil, err
 		}
 	case err != nil:
-		return fmt.Errorf("can't read this computer's identity, %s (%w): not making a new one, which would unpair your phones and linked computers. Fix the file, or delete it to start again with a new identity", path, err)
+		return nil, &identityError{path, fmt.Sprintf("can't be read (%v)", err)}
 	case len(seed) != ed25519.SeedSize:
-		return fmt.Errorf("this computer's identity, %s, is damaged (%d bytes, not %d): not making a new one, which would unpair your phones and linked computers. Restore the file, or delete it to start again with a new identity", path, len(seed), ed25519.SeedSize)
+		return nil, &identityError{path, fmt.Sprintf("is damaged (%d bytes, not %d)", len(seed), ed25519.SeedSize)}
 	}
-	key := ed25519.NewKeyFromSeed(seed)
+	return ed25519.NewKeyFromSeed(seed), nil
+}
+
+// loadIdentity reads (or, the first time, creates) the user key and your
+// profile.
+//
+// With a key that can't be read (loadUserKey) the daemon still runs, for
+// what's on this computer alone (its panes, Groups, agents, schedules),
+// and d.idErr says why the rest is off (identityGate): remote access, and
+// with it pairing and phones; linked computers; sharing and joining Groups;
+// Hammock Key and push. Its stand-in is a key made afresh each time it
+// starts, in memory only, for the local code that compares user ids (the
+// Mac app's "me", a schedule's computer): nothing is linked, shared or
+// signed with it, and this computer's own record (refreshSelf) isn't
+// saved, so nothing kept outlives it but a schedule's computer, which is
+// set again each time the daemon starts.
+func (d *Daemon) loadIdentity() error {
+	key, err := loadUserKey(filepath.Join(d.cfg.Dir, "identity.key"))
+	if ie := (*identityError)(nil); errors.As(err, &ie) {
+		d.idErr = ie
+		d.log.Error("identity unavailable", "err", ie)
+		_, key, err = ed25519.GenerateKey(rand.Reader)
+	}
+	if err != nil {
+		return err
+	}
 	name := d.store.Setting("profile.name")
 	if name == "" {
 		if u, err := user.Current(); err == nil {
@@ -189,6 +221,42 @@ func readNoFollow(path string) ([]byte, error) {
 	}
 	defer f.Close()
 	return io.ReadAll(io.LimitReader(f, 1<<20))
+}
+
+// identityGate refuses what needs this computer's identity while it can't
+// be read (loadIdentity): pairing, remote access, sharing and joining
+// Groups, linking computers, Hammock Key. Turning remote access off is
+// still allowed. d.idErr is set before the daemon serves anyone, never
+// after, so it's read without d.mu.
+func (d *Daemon) identityGate(msg *pb.ClientMessage) error {
+	if d.idErr == nil {
+		return nil
+	}
+	switch m := msg.Msg.(type) {
+	case *pb.ClientMessage_SetRemoteAccess:
+		if !m.SetRemoteAccess.Enabled {
+			return nil
+		}
+	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_ShowPairing, *pb.ClientMessage_RegisterPush,
+		*pb.ClientMessage_CreateInvite, *pb.ClientMessage_RevokeInvite, *pb.ClientMessage_RespondJoin,
+		*pb.ClientMessage_SetMember, *pb.ClientMessage_StopSharing, *pb.ClientMessage_JoinShared, *pb.ClientMessage_LeaveShared,
+		*pb.ClientMessage_DiscoverComputers, *pb.ClientMessage_LinkComputer, *pb.ClientMessage_RespondLink,
+		*pb.ClientMessage_UnlinkComputer, *pb.ClientMessage_SetComputerTint, *pb.ClientMessage_CreateLinkInvite,
+		*pb.ClientMessage_IntroduceComputers, *pb.ClientMessage_HammockKeyCommand:
+	default:
+		return nil
+	}
+	return d.idErr
+}
+
+// remoteUnavailable is why remote access can't be on, for Settings ▸
+// Devices: this computer's identity or certificate can't be used. "" if
+// it can (as far as is known). Callers hold d.mu.
+func (d *Daemon) remoteUnavailable() string {
+	if d.idErr != nil {
+		return d.idErr.Error()
+	}
+	return d.remote.certErr
 }
 
 // readRetryWait is how long readRetry waits before trying again (doubling

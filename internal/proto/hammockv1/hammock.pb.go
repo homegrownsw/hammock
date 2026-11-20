@@ -10727,8 +10727,11 @@ type Devices struct {
 	// router's forwarded port): config's remote-address.
 	ExtraAddresses []string `protobuf:"bytes,5,rep,name=extra_addresses,json=extraAddresses,proto3" json:"extra_addresses,omitempty"`
 	RemoteEnabled  bool     `protobuf:"varint,6,opt,name=remote_enabled,json=remoteEnabled,proto3" json:"remote_enabled,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Why remote access can't be on, with what to do about it: this
+	// computer's identity or certificate can't be read. Empty if it can.
+	RemoteUnavailable string `protobuf:"bytes,7,opt,name=remote_unavailable,json=remoteUnavailable,proto3" json:"remote_unavailable,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Devices) Reset() {
@@ -10801,6 +10804,13 @@ func (x *Devices) GetRemoteEnabled() bool {
 		return x.RemoteEnabled
 	}
 	return false
+}
+
+func (x *Devices) GetRemoteUnavailable() string {
+	if x != nil {
+		return x.RemoteUnavailable
+	}
+	return ""
 }
 
 // A network remote access may listen on, by its subnet, so it's the same
@@ -26138,14 +26148,15 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	" \x01(\x03R\vfirstUnixMs\":\n" +
 	"\bAuditLog\x12.\n" +
 	"\x06events\x18\x01 \x03(\v2\x16.hammock.v1.AuditEventR\x06events\"\r\n" +
-	"\vListDevices\"\x9f\x02\n" +
+	"\vListDevices\"\xce\x02\n" +
 	"\aDevices\x12,\n" +
 	"\adevices\x18\x01 \x03(\v2\x12.hammock.v1.DeviceR\adevices\x122\n" +
 	"\x15other_tailscale_range\x18\x02 \x03(\tR\x13otherTailscaleRange\x12+\n" +
 	"\x11tailscale_unknown\x18\x03 \x01(\bR\x10tailscaleUnknown\x125\n" +
 	"\bnetworks\x18\x04 \x03(\v2\x19.hammock.v1.RemoteNetworkR\bnetworks\x12'\n" +
 	"\x0fextra_addresses\x18\x05 \x03(\tR\x0eextraAddresses\x12%\n" +
-	"\x0eremote_enabled\x18\x06 \x01(\bR\rremoteEnabled\"\xb7\x01\n" +
+	"\x0eremote_enabled\x18\x06 \x01(\bR\rremoteEnabled\x12-\n" +
+	"\x12remote_unavailable\x18\a \x01(\tR\x11remoteUnavailable\"\xb7\x01\n" +
 	"\rRemoteNetwork\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x12\n" +

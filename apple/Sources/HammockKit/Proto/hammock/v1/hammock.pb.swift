@@ -4673,6 +4673,10 @@ public nonisolated struct Hammock_V1_Devices: Sendable {
 
   public var remoteEnabled: Bool = false
 
+  /// Why remote access can't be on, with what to do about it: this
+  /// computer's identity or certificate can't be read. Empty if it can.
+  public var remoteUnavailable: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -18434,7 +18438,7 @@ nonisolated extension Hammock_V1_ListDevices: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_Devices: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Devices"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}devices\0\u{3}other_tailscale_range\0\u{3}tailscale_unknown\0\u{1}networks\0\u{3}extra_addresses\0\u{3}remote_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}devices\0\u{3}other_tailscale_range\0\u{3}tailscale_unknown\0\u{1}networks\0\u{3}extra_addresses\0\u{3}remote_enabled\0\u{3}remote_unavailable\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -18448,6 +18452,7 @@ nonisolated extension Hammock_V1_Devices: SwiftProtobuf.Message, SwiftProtobuf._
       case 4: try { try decoder.decodeRepeatedMessageField(value: &self.networks) }()
       case 5: try { try decoder.decodeRepeatedStringField(value: &self.extraAddresses) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.remoteEnabled) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.remoteUnavailable) }()
       default: break
       }
     }
@@ -18472,6 +18477,9 @@ nonisolated extension Hammock_V1_Devices: SwiftProtobuf.Message, SwiftProtobuf._
     if self.remoteEnabled != false {
       try visitor.visitSingularBoolField(value: self.remoteEnabled, fieldNumber: 6)
     }
+    if !self.remoteUnavailable.isEmpty {
+      try visitor.visitSingularStringField(value: self.remoteUnavailable, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -18482,6 +18490,7 @@ nonisolated extension Hammock_V1_Devices: SwiftProtobuf.Message, SwiftProtobuf._
     if lhs.networks != rhs.networks {return false}
     if lhs.extraAddresses != rhs.extraAddresses {return false}
     if lhs.remoteEnabled != rhs.remoteEnabled {return false}
+    if lhs.remoteUnavailable != rhs.remoteUnavailable {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

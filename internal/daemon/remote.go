@@ -83,6 +83,7 @@ type remoteState struct {
 	on          bool // remote access is on (it may be listening nowhere: no chosen network here now)
 	cert        tls.Certificate
 	fingerprint string
+	certErr     string // why the certificate couldn't be loaded, last time it was tried (loadCert)
 	servers     []*http.Server
 	addrs       []string    // where each of servers listens
 	snap        netSnapshot // this computer's networks, as last looked at
@@ -437,6 +438,23 @@ func loadOrCreateCert(dir string) (tls.Certificate, string, error) {
 	return c, hex.EncodeToString(sum[:]), nil
 }
 
+// loadCert loads (or makes) the certificate for remote access, remembering
+// why it can't for Settings ▸ Devices (remoteUnavailable). Without this
+// computer's identity it's refused before the certificate is looked at.
+// Callers hold d.mu.
+func (d *Daemon) loadCert() error {
+	if d.idErr != nil {
+		return d.idErr
+	}
+	cert, fp, err := loadOrCreateCert(d.cfg.Dir)
+	if err != nil {
+		d.remote.certErr = err.Error()
+		return err
+	}
+	d.remote.cert, d.remote.fingerprint, d.remote.certErr = cert, fp, ""
+	return nil
+}
+
 // startRemote turns remote access on: listening on the chosen networks
 // this computer is on now (or the addresses given explicitly), and on
 // each chosen network it joins later. Callers hold d.mu (warmRemote first,
@@ -445,11 +463,9 @@ func (d *Daemon) startRemote() error {
 	if d.remote.on {
 		return nil
 	}
-	cert, fp, err := loadOrCreateCert(d.cfg.Dir)
-	if err != nil {
+	if err := d.loadCert(); err != nil {
 		return err
 	}
-	d.remote.cert, d.remote.fingerprint = cert, fp
 	if listen := d.cfg.RemoteListen; len(listen) > 0 {
 		d.remote.addrs = nil
 		for _, addr := range listen {
@@ -458,7 +474,7 @@ func (d *Daemon) startRemote() error {
 		if len(d.remote.servers) == 0 {
 			return errors.New("could not listen on any address given")
 		}
-		d.media.listen(d.remote.addrs, cert, nil)
+		d.media.listen(d.remote.addrs, d.remote.cert, nil)
 	} else {
 		snap := cachedNetSnapshot()
 		if len(snap.chosen) == 0 {
@@ -709,11 +725,9 @@ func (d *Daemon) toLocal(msg *pb.ServerMessage) {
 func (d *Daemon) createPairing() (*pb.Pairing, error) {
 	if !d.remote.on {
 		// Make sure a certificate exists so its fingerprint can be pinned.
-		cert, fp, err := loadOrCreateCert(d.cfg.Dir)
-		if err != nil {
+		if err := d.loadCert(); err != nil {
 			return nil, err
 		}
-		d.remote.cert, d.remote.fingerprint = cert, fp
 	}
 	secret := make([]byte, 24)
 	_, _ = rand.Read(secret)
@@ -803,7 +817,7 @@ func (d *Daemon) listDevices() (*pb.ServerMessage, error) {
 	ts := tailscaleNet()
 	snap := cachedNetSnapshot()
 	out := &pb.Devices{OtherTailscaleRange: ts.others, TailscaleUnknown: ts.unknown,
-		Networks: snap.networks(), RemoteEnabled: d.remote.on}
+		Networks: snap.networks(), RemoteEnabled: d.remote.on, RemoteUnavailable: d.remoteUnavailable()}
 	out.ExtraAddresses, _ = hammockconfig.Repeated("remote-address")
 	for _, dev := range devices {
 		out.Devices = append(out.Devices, &pb.Device{
