@@ -54,3 +54,14 @@ import Testing
         #expect(l.allSatisfy { $0.old == nil && $0.new == nil })
     }
 }
+
+@Suite struct ContextActionsTests {
+    private func commands(_ h: String, _ c: [String] = []) -> [String] { AgentStatusBar.contextActions(harness: h, commands: c).map(\.command) }
+
+    @Test func offersEachAgentsOwn() {
+        #expect(commands("claude") == ["/compact", "/clear"])
+        #expect(commands("codex", ["/clear"]) == ["/compact", "/new"])
+        #expect(commands("gemini", ["/compress", "/clear"]) == ["/clear"])
+        #expect(commands("droid") == [])
+    }
+}

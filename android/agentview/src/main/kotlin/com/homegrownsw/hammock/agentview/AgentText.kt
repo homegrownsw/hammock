@@ -78,6 +78,16 @@ object ModelNames {
 
     private fun cap(s: String) = s.lowercase().replaceFirstChar { it.uppercase() }
 
+    /** What the context gauge's menu offers to make room: Compact, and Clear (Codex's New Chat), when the agent has them. */
+    fun contextActions(harness: String, commands: List<String>): List<Pair<String, String>> {
+        val has = commands.toSet()
+        val out = ArrayList<Pair<String, String>>()
+        if (harness == "claude" || harness == "codex" || "/compact" in has) out.add("Compact" to "/compact")
+        if (harness == "claude" || (harness != "codex" && "/clear" in has)) out.add("Clear" to "/clear")
+        else if (harness == "codex" || "/new" in has) out.add("New Chat" to "/new")
+        return out
+    }
+
     /** "120k", "1M", "1.5M". */
     fun tokens(n: Long): String =
         if (n >= 1_000_000) ("%.1fM".format(n / 1_000_000.0)).replace(".0M", "M") else "${n / 1000}k"

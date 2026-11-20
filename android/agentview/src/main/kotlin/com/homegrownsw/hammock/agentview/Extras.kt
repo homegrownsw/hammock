@@ -357,12 +357,31 @@ internal fun AgentStatusBar(session: AgentSession, state: AgentViewState, canDri
             val f = (state.contextTokens.toFloat() / state.contextWindow).coerceIn(0f, 1f)
             val tint = when { f > 0.9f -> c.removed; f > 0.75f -> c.warning; else -> c.secondary }
             VerticalDivider(Modifier.height(12.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.semantics { contentDescription = "${ModelNames.tokens(state.contextTokens)} of ${ModelNames.tokens(state.contextWindow)} tokens" },
-            ) {
-                ProgressRing(f, tint, c.secondary.copy(alpha = 0.25f), Modifier.size(12.dp), width = 2.5f)
-                Text("${(f * 100).toInt()}% context", style = style, color = if (f > 0.75f) tint else c.secondary, maxLines = 1)
+            // A menu to make room: how much is left, and Compact and Clear
+            // (Codex's New Chat), sent as those commands.
+            var gauge by remember { mutableStateOf(false) }
+            Box {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClickLabel = "Make room") { gauge = true }
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                        .semantics { contentDescription = "Context ${(f * 100).toInt()}% full, ${ModelNames.tokens(state.contextTokens)} of ${ModelNames.tokens(state.contextWindow)} tokens" },
+                ) {
+                    ProgressRing(f, tint, c.secondary.copy(alpha = 0.25f), Modifier.size(12.dp), width = 2.5f)
+                    Text("${(f * 100).toInt()}% context", style = style, color = if (f > 0.75f) tint else c.secondary, maxLines = 1)
+                }
+                DropdownMenu(gauge, onDismissRequest = { gauge = false }) {
+                    Text(
+                        "~${ModelNames.tokens(maxOf(0, state.contextWindow - state.contextTokens))} tokens left",
+                        style = MaterialTheme.typography.labelMedium, color = c.secondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    for ((label, command) in ModelNames.contextActions(session.harness, state.commands)) {
+                        DropdownMenuItem(
+                            text = { Text("$label ($command)") }, enabled = canDrive,
+                            onClick = { gauge = false; scope.launch { session.send(command, pending = false) } },
+                        )
+                    }
+                }
             }
         }
         Spacer(Modifier.width(0.dp))

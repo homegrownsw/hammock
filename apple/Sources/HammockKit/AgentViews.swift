@@ -4095,25 +4095,66 @@ struct AgentStatusBar: View {
             }
             if session.contextWindow > 0 {
                 Divider().frame(height: 12)
-                let tint: Color = fraction > 0.9 ? .red : fraction > 0.75 ? .orange : .secondary
-                HStack(spacing: 6) {
-                    ZStack {
-                        Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 2.5)
-                        Circle().trim(from: 0, to: fraction).stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                    }
-                    .frame(width: 12, height: 12)
-                    Text("\(Int((fraction * 100).rounded()))% context")
-                        .monospacedDigit()
-                        .foregroundStyle(fraction > 0.75 ? tint : .secondary)
-                }
-                .help("\(Self.tokens(session.contextTokens)) of \(Self.tokens(session.contextWindow)) tokens")
-                .animation(.snappy, value: fraction)
+                contextGauge
             }
         }
         .font(fonts.body(inline ? 0.76 : 0.82))
         .foregroundStyle(inline ? .secondary : .primary)
         .modifier(StatusChrome(inline: inline))
+    }
+
+    /// How full the context is, a menu to make room: its words say how
+    /// much is left, and Compact and Clear (or Codex's New Chat) run those
+    /// commands.
+    private var contextGauge: some View {
+        let tint: Color = fraction > 0.9 ? .red : fraction > 0.75 ? .orange : .secondary
+        let actions = Self.contextActions(harness: harness, commands: session.commands)
+        return Menu {
+            Text("~\(Self.tokens(max(0, session.contextWindow - session.contextTokens))) tokens left")
+            if !actions.isEmpty {
+                Divider()
+                ForEach(actions, id: \.command) { a in
+                    Button("\(a.label) (\(a.command))", role: a.command == "/compact" ? nil : .destructive) {
+                        Task { await session.send(a.command, pending: false) }
+                    }
+                    .disabled(!canDrive)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 2.5)
+                    Circle().trim(from: 0, to: fraction).stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 12, height: 12)
+                Text("\(Int((fraction * 100).rounded()))% context")
+                    .monospacedDigit()
+                    .foregroundStyle(fraction > 0.75 ? tint : .secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("\(Self.tokens(session.contextTokens)) of \(Self.tokens(session.contextWindow)) tokens: click to make room")
+        .accessibilityLabel("Context \(Int((fraction * 100).rounded()))% full")
+        .animation(.snappy, value: fraction)
+    }
+
+    /// What the context menu offers to make room: Compact, and Clear (Codex's
+    /// New Chat), when the agent has them.
+    static func contextActions(harness: String, commands: [String]) -> [(label: String, command: String)] {
+        var out: [(label: String, command: String)] = []
+        let has = Set(commands)
+        if harness == "claude" || harness == "codex" || has.contains("/compact") { out.append(("Compact", "/compact")) }
+        if harness == "claude" || (harness != "codex" && has.contains("/clear")) {
+            out.append(("Clear", "/clear"))
+        } else if harness == "codex" || has.contains("/new") {
+            out.append(("New Chat", "/new"))
+        }
+        return out
     }
 
     /// On its own, a glass capsule; in the message box, nothing.

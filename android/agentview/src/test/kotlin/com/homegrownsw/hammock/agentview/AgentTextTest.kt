@@ -156,3 +156,12 @@ class DiffLinesTest {
         assertEquals(true, DiffLines.numbered("-a\n+b").all { it.old == null && it.new == null })
     }
 }
+
+class ContextActionsTest {
+    @Test
+    fun actions() {
+        assertEquals(listOf("/compact", "/clear"), ModelNames.contextActions("claude", emptyList()).map { it.second })
+        assertEquals(listOf("/compact", "/new"), ModelNames.contextActions("codex", listOf("/clear")).map { it.second })
+        assertEquals(emptyList(), ModelNames.contextActions("droid", emptyList()))
+    }
+}

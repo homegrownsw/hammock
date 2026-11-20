@@ -31,10 +31,10 @@ Tap a terminal for the keyboard, with **esc**, **tab**, **ctrl**, the arrows and
 back. Touch and hold to select a word, keep dragging or move its handles to select more, then **Copy**;
 **Select all** selects the screen, and **Paste** pastes. **Copy Screen** is in the pane's ⋮ menu. In the agent
 view, type in the box at the bottom and tap the arrow to send; while the agent works, the same button stops it. Type
-`/` for the agent's commands, or `@` for a file in the Group's folder, and tap one to put it in. **+** attaches
-pictures, and the microphone dictates on the phone itself, where Android has the language installed. With a hardware
-keyboard, ↑ in the empty box brings back what you sent before; on a prompt, press an option's number to answer, ← and
-→ to move between questions, and Esc for the terminal.
+`/` for the agent's commands, or `@` for a file in the Group's folder, and tap one to put it in. Tap the context gauge
+to compact or clear the conversation. **+** attaches pictures, and the microphone dictates on the phone itself, where
+Android has the language installed. With a hardware keyboard, ↑ in the empty box brings back what you sent before;
+on a prompt, press an option's number to answer, ← and → to move between questions, and Esc for the terminal.
 
 Browser and simulator panes show live, and you can tap, scroll and type in them. A Mac with screen sharing on appears
 in **Devices** under **Show Screen**: see [Screen sharing](/hammock/docs/screen-sharing/).
