@@ -430,11 +430,12 @@ func ownPaneClaims(cl *caller, msg *pb.ClientMessage) {
 }
 
 var (
-	errAgentScope   = errors.New("out of scope: agents can type into, interrupt or close only panes they opened, and reach Groups shared with you only with permission; this needs the user's permission")
-	errAgentEditor  = errors.New("agents edit files on disk, not editor panes' buffers: write the file (the pane reloads it, or offers to)")
-	errAgentOnly    = errors.New("not available to agents")
-	errAgentGrant   = errors.New("agents can't answer permission requests")
-	errNoPaneCaller = errors.New("hook events are only taken from inside Hammock's panes")
+	errAgentScope    = errors.New("out of scope: agents can type into, interrupt or close only panes they opened, and reach Groups shared with you only with permission; this needs the user's permission")
+	errAgentEditor   = errors.New("agents edit files on disk, not editor panes' buffers: write the file (the pane reloads it, or offers to)")
+	errAgentOnly     = errors.New("not available to agents")
+	errAgentGrant    = errors.New("agents can't answer permission requests")
+	errAgentPresence = errors.New("agents can't say what's on screen: only the apps do")
+	errNoPaneCaller  = errors.New("hook events are only taken from inside Hammock's panes")
 )
 
 // agentCheck applies agent scoping to a local message before it's handled:
@@ -579,8 +580,13 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) (err error) {
 
 	switch m := msg.Msg.(type) {
 	case *pb.ClientMessage_Hello, *pb.ClientMessage_Subscribe, *pb.ClientMessage_DetachPane,
-		*pb.ClientMessage_Presence, *pb.ClientMessage_ListAudit:
+		*pb.ClientMessage_ListAudit:
 		return nil
+	case *pb.ClientMessage_Presence:
+		// What's on your screen is the apps' to say: an agent claiming
+		// every pane is in view would mark its finish seen (watched), and
+		// you'd never be told.
+		return errAgentPresence
 	case *pb.ClientMessage_RequestGrant:
 		// Controlling a DevTools pane is controlling its page: that's what's
 		// asked for (and worded, and then let through: page above).

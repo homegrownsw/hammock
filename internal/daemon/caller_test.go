@@ -788,3 +788,54 @@ func TestGuestDevToolsIsItsPage(t *testing.T) {
 		t.Error("a viewer of the page typing in its DevTools: allowed")
 	}
 }
+
+// An agent claiming every pane is on screen doesn't mark its finish seen
+// (you'd never be told it finished); the app saying so does.
+func TestAgentPresenceDoesNotMuteFinish(t *testing.T) {
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	app := dial(t, dir)
+	g := client.CreatedID(call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Agents"}}}))
+	tab := client.CreatedID(call(t, app, &pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: g,
+		Pane: &pb.PaneSpec{Command: []string{"/bin/cat"}}}}}))
+	d.mu.Lock()
+	pane := d.tabs[tab].FocusedPaneId
+	d.mu.Unlock()
+	seen := func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.panes[pane].snapshotInfo().GetAgent().GetSeen()
+	}
+	turn := func() {
+		hook(d, pane, "UserPromptSubmit", map[string]any{"prompt": "go"})
+		hook(d, pane, "Stop", map[string]any{"last_assistant_message": "done"})
+	}
+	everything := &pb.ClientMessage{Msg: &pb.ClientMessage_Presence{Presence: &pb.Presence{Foreground: true,
+		VisiblePaneIds: []string{pane}, FocusedPaneId: pane}}}
+
+	for _, cl := range []*caller{{pane: pane, agent: true}, {pane: pane, agent: true, scoped: true}} {
+		agent := dialAs(t, dir, cl, "cli")
+		if _, err := try(agent, everything); err == nil || err.Error() != errAgentPresence.Error() {
+			t.Fatalf("an agent's presence (%+v): %v", cl, err)
+		}
+		d.mu.Lock()
+		watched := d.watched(pane)
+		d.mu.Unlock()
+		if watched {
+			t.Fatalf("an agent's presence (%+v) counted", cl)
+		}
+		turn()
+		d.mu.Lock()
+		item := d.attention["at_"+pane]
+		d.mu.Unlock()
+		if seen() || item == nil {
+			t.Fatalf("an agent's presence (%+v) muted the finish: seen %v, item %v", cl, seen(), item)
+		}
+	}
+
+	call(t, app, everything)
+	turn()
+	if !seen() {
+		t.Fatal("the app showing the pane didn't mark its finish seen")
+	}
+}
