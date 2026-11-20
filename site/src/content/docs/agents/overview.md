@@ -30,7 +30,7 @@ You see them on each tab's icon in the sidebar, in the sidebar's **Needs You** a
 
 For most agents Hammock can show the conversation as a native, readable view instead of the terminal: your messages, the agent's replies and its tool calls. You can send messages from it, attach pictures and dictate. As in a shell, ↑ in an empty message box brings back what you sent before, and ↓ returns to what you were typing.
 
-Type `/` for the agent's commands, matched by any part of their name, or `@` (in Claude Code and Codex) for a file in the Group's folder. ↑ and ↓ choose one, Tab or Return takes it, and Esc puts the list away.
+Type `/` for the agent's commands, matched by any part of their name, or `@` (in Claude Code and Codex) for a file in the Group's folder. Tab takes the highlighted one; ↑ and ↓ move the highlight, after which Return takes it too. Esc puts the list away.
 
 The gauge beside the model shows how full the agent's context is. Click it to see how many tokens are left, or to compact or clear the conversation (`/compact`, `/clear`; New Chat in Codex). A message sent while Claude Code works can wait until its turn ends: right-click it (touch and hold on a phone) and choose **Send Now** to give it to Claude straight away, as Ctrl+Enter does in its terminal.
 
