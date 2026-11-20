@@ -22,9 +22,8 @@ final class BrowserHost {
 
     private var fd: Int32 = -1
     private var readSource: DispatchSourceRead?
-    private var writeSource: DispatchSourceWrite?
+    private var writer: HostLineWriter?
     private var inbuf = Data()
-    private var outbuf = Data()
     private var views: [String: BrowserPaneNSView] = [:]
     /// Every view of a page, the one showing it and any on standby.
     private let all = NSHashTable<BrowserPaneNSView>.weakObjects()
@@ -85,10 +84,9 @@ final class BrowserHost {
         }
         var on: Int32 = 1
         setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-        _ = fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK)
         fd = s
         inbuf = Data()
-        outbuf = Data()
+        writer = HostLineWriter(fd: s) { [weak self] in self?.disconnect() }
         let src = DispatchSource.makeReadSource(fileDescriptor: s, queue: .main)
         src.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.readable() } }
         src.resume()
@@ -109,9 +107,9 @@ final class BrowserHost {
 
     private func disconnect() {
         readSource?.cancel()
-        writeSource?.cancel()
+        writer?.cancel()
         readSource = nil
-        writeSource = nil
+        writer = nil
         if fd >= 0 { close(fd) }
         fd = -1
         for v in views.values { v.hostLost() }
@@ -136,31 +134,9 @@ final class BrowserHost {
         v.handle(m)
     }
 
-    func send(_ m: [String: Any]) {
-        guard fd >= 0, var d = try? JSONSerialization.data(withJSONObject: m) else { return }
-        d.append(0x0A)
-        outbuf.append(d)
-        flush()
-    }
-
     /// Never blocks the main thread: what the host can't take yet waits.
-    private func flush() {
-        while !outbuf.isEmpty {
-            let n = outbuf.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
-            if n < 0, errno == EINTR { continue }
-            if n < 0, errno == EAGAIN { break }
-            guard n > 0 else { disconnect(); return }
-            outbuf.removeFirst(n)
-        }
-        if !outbuf.isEmpty, writeSource == nil {
-            let src = DispatchSource.makeWriteSource(fileDescriptor: fd, queue: .main)
-            src.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.flush() } }
-            src.resume()
-            writeSource = src
-        } else if outbuf.isEmpty, let src = writeSource {
-            src.cancel()
-            writeSource = nil
-        }
+    func send(_ m: [String: Any]) {
+        writer?.send(m)
     }
 }
 

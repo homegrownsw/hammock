@@ -18,6 +18,7 @@ final class SimulatorHost {
 
     private var fd: Int32 = -1
     private var readSource: DispatchSourceRead?
+    private var writer: HostLineWriter?
     private var inbuf = Data()
     private var views: [String: NSHashTable<SimulatorPaneNSView>] = [:]
     private var retrying = false
@@ -66,6 +67,7 @@ final class SimulatorHost {
         setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         fd = s
         inbuf = Data()
+        writer = HostLineWriter(fd: s) { [weak self] in self?.disconnect() }
         let src = DispatchSource.makeReadSource(fileDescriptor: s, queue: .main)
         src.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.readable() } }
         src.resume()
@@ -84,19 +86,23 @@ final class SimulatorHost {
         }
     }
 
+    private func disconnect() {
+        readSource?.cancel()
+        readSource = nil
+        writer?.cancel()
+        writer = nil
+        if fd >= 0 { close(fd) }
+        fd = -1
+        copies = [:] // their results won't come
+        for set in views.values { for v in set.allObjects { v.hostLost() } }
+        retry()
+    }
+
     private func readable() {
         var buf = [UInt8](repeating: 0, count: 65536)
         let n = read(fd, &buf, buf.count)
         if n < 0, errno == EAGAIN || errno == EINTR { return }
-        guard n > 0 else {
-            readSource?.cancel()
-            readSource = nil
-            close(fd)
-            fd = -1
-            for set in views.values { for v in set.allObjects { v.hostLost() } }
-            retry()
-            return
-        }
+        guard n > 0 else { disconnect(); return }
         inbuf.append(buf, count: n)
         while let nl = inbuf.firstIndex(of: 0x0A) {
             let line = inbuf[inbuf.startIndex..<nl]
@@ -120,11 +126,15 @@ final class SimulatorHost {
         send(["t": "copy", "id": paneID, "seq": seq])
     }
 
-    /// Small messages (touches, keys): written straight out.
-    func send(_ m: [String: Any]) {
-        guard fd >= 0, var d = try? JSONSerialization.data(withJSONObject: m) else { return }
-        d.append(0x0A)
-        _ = d.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+    /// Never blocks the main thread: what the host can't take yet (a long
+    /// paste, a host that's stalled) waits. While a lot waits, a drag's
+    /// moves are dropped rather than queued behind it: the next one, or the
+    /// touch's end, says where the finger is.
+    @discardableResult
+    func send(_ m: [String: Any]) -> Bool {
+        guard let writer else { return false }
+        if writer.pending > 1 << 16, m["t"] as? String == "touch", m["phase"] as? String == "move" { return true }
+        return writer.send(m)
     }
 }
 
@@ -691,7 +701,7 @@ final class SimulatorPaneNSView: NSView {
             remote("paste", ["text": s]) // its clipboard, then Paste
             return
         }
-        host.send(["t": "paste", "id": paneID, "text": s])
+        if !host.send(["t": "paste", "id": paneID, "text": s]) { NSSound.beep() } // too big, or no host
     }
 
     @objc func copy(_ sender: Any?) {
