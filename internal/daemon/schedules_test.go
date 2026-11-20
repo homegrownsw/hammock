@@ -170,10 +170,11 @@ func (c *schedClock) set(t time.Time) { c.mu.Lock(); c.t = t; c.mu.Unlock() }
 
 func useSchedClock(t *testing.T, start time.Time) *schedClock {
 	c := &schedClock{t: start}
-	old, oldAwake := schedNow, schedAwake
+	old, oldAwake, oldZone := schedNow, schedAwake, schedZone
 	schedNow = c.now
 	schedAwake = func() bool { return !c.dark.Load() }
-	t.Cleanup(func() { schedNow, schedAwake = old, oldAwake })
+	schedZone = func() *time.Location { return time.Local }
+	t.Cleanup(func() { schedNow, schedAwake, schedZone = old, oldAwake, oldZone })
 	return c
 }
 
@@ -816,5 +817,115 @@ func TestShowMarkdown(t *testing.T) {
 	}
 	if _, _, err := d.outputURL(filepath.Join(work, "nope.html"), ""); err == nil {
 		t.Fatal("a missing file showed")
+	}
+}
+
+// A schedule follows the computer's time zone when it changes (travel),
+// without a restart: west, its next run moves to the new zone's 08:30
+// and the old zone's passes quietly; east, a time the clock jumped over
+// catches up once, the same day; nothing runs twice.
+func TestSchedulesFollowTimeZone(t *testing.T) {
+	zones := map[string]*time.Location{}
+	for _, n := range []string{"Europe/London", "America/New_York", "Asia/Tokyo"} {
+		loc, err := time.LoadLocation(n)
+		if err != nil {
+			t.Skip("no zoneinfo:", err)
+		}
+		zones[n] = loc
+	}
+	lon, ny, tok := zones["Europe/London"], zones["America/New_York"], zones["Asia/Tokyo"]
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	utc := func(d, hm string) time.Time {
+		tm, _ := time.ParseInLocation("2006-01-02 15:04", "2026-11-"+d+" "+hm, time.UTC)
+		return tm
+	}
+	clock := useSchedClock(t, utc("04", "07:00")) // 07:00 in London
+	var zone atomic.Pointer[time.Location]
+	zone.Store(lon)
+	schedZone = func() *time.Location { return zone.Load() } // (useSchedClock restores it)
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	s := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{Schedule: &pb.Schedule{
+		Kind: "command", Prompt: "true", Cwd: t.TempDir(), MinuteOfDay: 8*60 + 30,
+		Overlap: pb.Schedule_OVERLAP_RUN_BOTH, // (a run's end isn't waited for here)
+	}}}}).GetScheduleReply().GetSchedule()
+	id := s.GetId()
+	if want := time.Date(2026, 11, 4, 8, 30, 0, 0, lon); s.NextRunUnixMs != want.UnixMilli() {
+		t.Fatalf("next run %v, want %v", time.UnixMilli(s.NextRunUnixMs).In(lon), want)
+	}
+	ran := func() (n int, catchUp bool) { // runs started, and whether the latest caught up
+		for _, r := range schedOf(d, id).Runs {
+			if r.StartedUnixMs != 0 {
+				if n == 0 {
+					catchUp = r.CatchUp
+				}
+				n++
+			}
+		}
+		return n, catchUp
+	}
+	next := func(want time.Time) {
+		t.Helper()
+		if got := schedOf(d, id).NextRunUnixMs; got != want.UnixMilli() {
+			t.Fatalf("next run %v, want %v", time.UnixMilli(got).In(want.Location()), want)
+		}
+	}
+	tick(d, clock, utc("04", "07:01"))
+
+	// West, to New York (02:01 there): 08:30 is New York's, and London's passes.
+	zone.Store(ny)
+	tick(d, clock, utc("04", "07:02"))
+	next(time.Date(2026, 11, 4, 8, 30, 0, 0, ny))
+	tick(d, clock, utc("04", "08:31")) // 08:31 in London
+	if n, _ := ran(); n != 0 {
+		t.Fatalf("ran at London's 08:30 after moving to New York: %d runs", n)
+	}
+	tick(d, clock, utc("04", "13:30")) // 08:30 in New York
+	if n, catchUp := ran(); n != 1 || catchUp {
+		t.Fatalf("at New York's 08:30: %d runs (catch-up %v), want 1 on time", n, catchUp)
+	}
+	next(time.Date(2026, 11, 5, 8, 30, 0, 0, ny))
+
+	// East, back to London in the evening (19:00 there): tomorrow's 08:30,
+	// and today's, already run in New York, doesn't run again.
+	zone.Store(lon)
+	tick(d, clock, utc("04", "19:00"))
+	next(time.Date(2026, 11, 5, 8, 30, 0, 0, lon))
+	if n, _ := ran(); n != 1 {
+		t.Fatalf("ran again on going east: %d runs", n)
+	}
+
+	// East to Tokyo early the next morning (06:00 in London, 15:00 in
+	// Tokyo): the clock jumped over Tokyo's 08:30, which catches up, once.
+	zone.Store(tok)
+	tick(d, clock, utc("05", "06:00"))
+	if n, catchUp := ran(); n != 2 || !catchUp {
+		t.Fatalf("Tokyo's 08:30, jumped over: %d runs (catch-up %v), want a second, caught up", n, catchUp)
+	}
+	next(time.Date(2026, 11, 6, 8, 30, 0, 0, tok))
+	tick(d, clock, utc("05", "08:31")) // London's 08:30, where it was
+	if n, _ := ran(); n != 2 {
+		t.Fatalf("ran again: %d runs", n)
+	}
+}
+
+// The zone is read from where /etc/localtime points.
+func TestZoneFromLink(t *testing.T) {
+	if _, err := time.LoadLocation("Europe/London"); err != nil {
+		t.Skip("no zoneinfo:", err)
+	}
+	for link, want := range map[string]string{
+		"/var/db/timezone/zoneinfo/Europe/London": "Europe/London", // macOS
+		"/usr/share/zoneinfo/Europe/London":       "Europe/London", // Linux
+		"../usr/share/zoneinfo/Europe/London":     "Europe/London",
+		"/etc/somewhere/else":                     "Local",
+		"/usr/share/zoneinfo/Nowhere/Atall":       "Local",
+	} {
+		if got := zoneFromLink(link).String(); got != want {
+			t.Errorf("%s: %s, want %s", link, got, want)
+		}
 	}
 }

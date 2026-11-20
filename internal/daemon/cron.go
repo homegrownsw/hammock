@@ -1,7 +1,8 @@
 package daemon
 
 // When a scheduled task runs next (schedules.go): weekdays at a time of
-// day, or a five-field cron expression, both in local time.
+// day, or a five-field cron expression, both in the time zone of the times
+// given (the computer's zone now: schedZone).
 
 import (
 	"errors"

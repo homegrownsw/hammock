@@ -395,7 +395,7 @@ func (d *Daemon) peerJoin(c *conn, msgID uint64, m *pb.PeerJoin) (*pb.ServerMess
 	body := who + " is asking to join. Let them view, or open Hammock to let them drive."
 	switch {
 	case req.UnlinkedUnixMs > 0:
-		body = who + " is asking to join. It's a computer you unlinked from your computers, on " + time.UnixMilli(req.UnlinkedUnixMs).Format("2 Jan 2006") + "."
+		body = who + " is asking to join. It's a computer you unlinked from your computers, on " + time.UnixMilli(req.UnlinkedUnixMs).In(localZone()).Format("2 Jan 2006") + "."
 	case req.NameHasOtherKey:
 		body = who + " is asking to join, but " + c.name + " usually joins with a different key."
 	case req.NewKey:

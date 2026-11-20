@@ -142,7 +142,7 @@ func (h *browserHub) event(m hostMsg) {
 		l = &pageLog{}
 		h.logs[m.ID] = l
 	}
-	now := time.Now().Format("15:04:05.000")
+	now := localNow().Format("15:04:05.000")
 	switch m.Method {
 	case "Runtime.consoleAPICalled":
 		var p struct {

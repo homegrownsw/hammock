@@ -91,7 +91,7 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 			id, verb = m.SetSchedulePaused.ScheduleId, map[bool]string{true: "pause", false: "resume"}[paused]+" the scheduled task %s"
 			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
 				s.Paused = paused
-				d.scheduleNext(s, schedNow())
+				d.scheduleNext(s, schedTime())
 				d.saveSchedule(s)
 				d.audit(c.auditActor(), map[bool]string{true: "schedule-pause", false: "schedule-resume"}[s.Paused], s.Id, s.Name)
 				return nil, nil

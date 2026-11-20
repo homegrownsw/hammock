@@ -50,6 +50,13 @@ var schedTick = 15 * time.Second
 // schedNow is the clock (tests replace it).
 var schedNow = time.Now
 
+// schedZone is the computer's time zone now, which schedules keep to
+// (localzone.go; tests replace it).
+var schedZone = localZone
+
+// schedTime is the time now in the computer's zone now.
+func schedTime() time.Time { return schedNow().In(schedZone()) }
+
 // schedAwake: the computer is fully awake (tests replace it). A Mac
 // asleep on battery wakes for seconds at a time to check mail and the
 // network (a dark wake), and sleeps again under a run started then.
@@ -65,6 +72,9 @@ type schedState struct {
 	// (schedulemsgs.go). Kept in the "schedule_makers" setting.
 	madeBy map[string]schedMaker
 	off    bool // Scheduled Tasks is turned off (Settings ▸ Tools): nothing runs
+	// zone is the time zone next runs were worked out in (followZone).
+	// Kept in the "schedule_zone" setting, for a change while it was off.
+	zone *time.Location
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent
@@ -80,6 +90,11 @@ func (d *Daemon) loadSchedules() {
 	d.sched = schedState{list: map[string]*pb.Schedule{}, sawWork: map[string]bool{}, sawProc: map[string]bool{}, madeBy: map[string]schedMaker{}}
 	if json.Unmarshal([]byte(d.store.Setting("schedule_makers")), &d.sched.madeBy) != nil {
 		d.sched.madeBy = map[string]schedMaker{} // (an earlier build's, by pane alone: they ask again)
+	}
+	if name := d.store.Setting("schedule_zone"); name != "" {
+		if loc, err := time.LoadLocation(name); err == nil {
+			d.sched.zone = loc // the first check follows a change since
+		}
 	}
 	recs, err := d.store.Records("schedule")
 	if err != nil {
@@ -104,7 +119,7 @@ func (d *Daemon) loadSchedules() {
 		// A next run already set stays, even if it's past: the first check
 		// then catches it up, or notes it missed (the computer was off).
 		if s.NextRunUnixMs == 0 {
-			d.scheduleNext(s, schedNow())
+			d.scheduleNext(s, schedTime())
 		}
 	}
 }
@@ -117,7 +132,7 @@ func (d *Daemon) runSchedules() {
 		on := toolOn("schedules") // the config file: read outside d.mu
 		d.mu.Lock()
 		d.sched.off = !on
-		d.checkSchedules(schedNow())
+		d.checkSchedules(schedTime())
 		d.mu.Unlock()
 		select {
 		case <-d.done:
@@ -133,6 +148,8 @@ func (d *Daemon) checkSchedules(now time.Time) {
 	if d.stopped {
 		return
 	}
+	now = now.In(schedZone())
+	d.followZone(now)
 	// In a dark wake what's due waits for the computer to wake properly
 	// (it catches up then, as after any sleep).
 	awake := schedAwake()
@@ -179,8 +196,77 @@ func (d *Daemon) scheduleNext(s *pb.Schedule, t time.Time) {
 		s.Error = err.Error()
 		return
 	}
-	if n := spec.next(t); !n.IsZero() {
+	if n := spec.next(t.In(schedZone())); !n.IsZero() {
 		s.NextRunUnixMs = n.UnixMilli()
+	}
+}
+
+// followZone notices the computer's time zone changing (you've travelled)
+// and moves each schedule's next run to its time in the new zone, telling
+// the apps. Where the clock jumped forward, a time it skipped is due now,
+// once, and catches up as after a sleep (the same day; within one interval
+// for cron); none runs twice. Callers hold d.mu.
+func (d *Daemon) followZone(now time.Time) {
+	old, loc := d.sched.zone, now.Location()
+	if old == loc {
+		return
+	}
+	d.sched.zone = loc
+	if old != nil && old.String() == loc.String() {
+		return // the same zone, loaded again
+	}
+	d.persist(d.store.SetSetting("schedule_zone", loc.String()))
+	if old == nil {
+		return // the first time: next runs were worked out in it
+	}
+	d.log.Info("time zone changed", "from", old.String(), "to", loc.String())
+	_, was := now.In(old).Zone()
+	_, is := now.Zone()
+	jump := time.Duration(is-was) * time.Second
+	for _, s := range d.sched.list {
+		// A run already due is left to dueSchedule, which works out the
+		// rest in the new zone.
+		if s.Paused || s.NextRunUnixMs == 0 || s.NextRunUnixMs <= now.UnixMilli() {
+			continue
+		}
+		spec, err := scheduleSpec(s)
+		if err != nil {
+			continue
+		}
+		// From the clock as it read before the change (the times jumped
+		// over, if it jumped forward), but never back to a time already
+		// run, skipped or missed.
+		from := now
+		if jump > 0 {
+			from = now.Add(-jump)
+		}
+		for _, r := range s.Runs {
+			if r.DueUnixMs != 0 && r.DueUnixMs >= from.UnixMilli() {
+				from = time.UnixMilli(r.DueUnixMs).In(loc)
+			}
+		}
+		n := spec.next(from)
+		// Of the times jumped over, only the latest catches up: the rest
+		// weren't missed while asleep.
+		for !n.IsZero() && !n.After(now) {
+			after := spec.next(n)
+			if after.IsZero() || after.After(now) {
+				break
+			}
+			n = after
+		}
+		next := int64(0)
+		if !n.IsZero() {
+			next = n.UnixMilli()
+		}
+		if next == s.NextRunUnixMs {
+			continue
+		}
+		if s.SkipUntilUnixMs == s.NextRunUnixMs+1 { // skipping the next run: still the next
+			s.SkipUntilUnixMs = next + 1
+		}
+		s.NextRunUnixMs = next
+		d.saveSchedule(s)
 	}
 }
 
@@ -213,7 +299,7 @@ func (d *Daemon) dueSchedule(s *pb.Schedule, now time.Time) bool {
 	}
 	// Every time it was due up to now: the latest may run, the rest were missed.
 	var dues []time.Time
-	for t := time.UnixMilli(s.NextRunUnixMs); !t.IsZero() && !t.After(now) && len(dues) < 10000; t = spec.next(t) {
+	for t := time.UnixMilli(s.NextRunUnixMs).In(now.Location()); !t.IsZero() && !t.After(now) && len(dues) < 10000; t = spec.next(t) {
 		dues = append(dues, t)
 	}
 	if len(dues) == 0 {
@@ -266,7 +352,7 @@ func (d *Daemon) noteRun(s *pb.Schedule, r *pb.ScheduleRun) {
 // startRun opens a run of s in a new tab of its Group (made again if it's
 // been closed). due is when it was due (zero: Run Now). Callers hold d.mu.
 func (d *Daemon) startRun(s *pb.Schedule, due time.Time, manual bool) (*pb.ScheduleRun, error) {
-	now := schedNow()
+	now := schedTime()
 	r := &pb.ScheduleRun{Id: newID("sr"), StartedUnixMs: now.UnixMilli(), Manual: manual, Kind: s.Kind}
 	if !due.IsZero() {
 		r.DueUnixMs = due.UnixMilli()
@@ -514,7 +600,7 @@ func (d *Daemon) scheduleAgentChanged(p *pane) {
 	}
 	for _, r := range s.Runs {
 		if r.Id == info.ScheduleRunId && runActive(r) {
-			if d.followRun(s, r, schedNow()) {
+			if d.followRun(s, r, schedTime()) {
 				d.saveSchedule(s)
 			}
 			return
@@ -802,7 +888,7 @@ func (d *Daemon) putSchedule(in *pb.Schedule, who string) (*pb.Schedule, error) 
 		s.Runs, s.CreatedUnixMs, s.CreatedBy, s.SkipUntilUnixMs = old.Runs, old.CreatedUnixMs, old.CreatedBy, old.SkipUntilUnixMs
 	}
 	s.ComputerId, s.Error = d.id.me.UserId, ""
-	d.scheduleNext(s, schedNow())
+	d.scheduleNext(s, schedTime())
 	d.sched.list[s.Id] = s
 	d.saveSchedule(s)
 	action := "schedule-create"
