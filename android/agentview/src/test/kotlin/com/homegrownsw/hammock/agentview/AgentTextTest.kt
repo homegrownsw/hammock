@@ -143,3 +143,16 @@ class ToolSummaryTest {
         assertNull(ToolSummary.failed(0))
     }
 }
+
+class DiffLinesTest {
+    @Test
+    fun numbers() {
+        val l = DiffLines.numbered("@@ -12 +14 @@\n keep\n-old\n+new\n tail\n")
+        assertEquals(listOf(null, 12, 13, null, 14), l.map { it.old })
+        assertEquals(listOf(null, 14, null, 15, 16), l.map { it.new })
+        assertEquals(3 to 5, DiffLines.hunk("@@ -3,2 +5,4 @@ func x()"))
+        assertNull(DiffLines.hunk("@@ a.go"))
+        assertEquals(listOf("a.go", "b.go"), DiffLines.files(DiffLines.numbered("@@ a.go\n+x\n@@ b.go\n-y\n@@ and 2 more files\n")))
+        assertEquals(true, DiffLines.numbered("-a\n+b").all { it.old == null && it.new == null })
+    }
+}

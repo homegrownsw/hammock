@@ -381,11 +381,11 @@ internal fun ToolRow(b: AgentBlock, session: AgentSession, compact: Boolean = fa
         }
         if (!open && b.diff.isNotEmpty()) {
             // An edit shows what changed, as the terminal does: its first lines, the rest a tap away.
-            Box(Modifier.padding(start = 26.dp)) { DiffView(b.diff, preview = if (compact) 4 else 8) { session.setOpen(b.id, true) } }
+            Box(Modifier.padding(start = 26.dp)) { DiffView(b.diff, preview = if (compact) 4 else 8, path = b.diffPath()) { session.setOpen(b.id, true) } }
         }
         AnimatedVisibility(open && opens, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
             Column(Modifier.padding(start = 26.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (b.diff.isNotEmpty()) DiffView(b.diff)
+                if (b.diff.isNotEmpty()) DiffView(b.diff, path = b.diffPath())
                 else if (showsInput) CodeBlock(b.input, if (b.tool == "Bash") "bash" else "", maxHeight = 200.dp, wrapsByDefault = true)
                 if (b.output.isNotEmpty()) CodeBlock(b.output, "output", maxHeight = 260.dp, wrapsByDefault = true)
             }

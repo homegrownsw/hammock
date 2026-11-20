@@ -1894,6 +1894,9 @@ struct ToolRow: View {
     }
     /// Opening shows something more than the row (and its pictures) does.
     private var opens: Bool { !block.diff.isEmpty || showsInput || !block.output.isEmpty }
+    /// The file an edit changed, for its diff's header (a command's edits
+    /// and a patch's name theirs in the diff).
+    private var diffPath: String { ["Edit", "MultiEdit", "NotebookEdit", "Write"].contains(block.tool) ? block.input : "" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1936,7 +1939,7 @@ struct ToolRow: View {
             if !open, !block.diff.isEmpty {
                 // An edit shows what changed, as the terminal does: its first
                 // lines, and the rest a tap away.
-                DiffView(diff: block.diff, preview: compact ? 4 : 8)
+                DiffView(diff: block.diff, preview: compact ? 4 : 8, path: diffPath)
                     .contentShape(Rectangle())
                     .onTapGesture { withAnimation(.snappy) { session.setOpen(block.id, true) } }
                     .padding(.leading, 26)
@@ -1944,7 +1947,7 @@ struct ToolRow: View {
             if open, opens {
                 VStack(alignment: .leading, spacing: 8) {
                     if !block.diff.isEmpty {
-                        DiffView(diff: block.diff)
+                        DiffView(diff: block.diff, path: diffPath)
                     } else if showsInput {
                         CodeBlock(code: block.input, language: block.tool == "Bash" ? "bash" : "", maxHeight: 200, wrapsByDefault: true)
                     }
@@ -2010,39 +2013,126 @@ struct ToolGroup: View {
     }
 }
 
+/// Opens a diff pane on the repository a file the agent changed is in,
+/// beside its pane (the Mac's; nil where there's no such thing).
+private struct AgentOpenDiffKey: EnvironmentKey { static let defaultValue: ((String) -> Void)? = nil }
+extension EnvironmentValues {
+    public var agentOpenDiff: ((String) -> Void)? {
+        get { self[AgentOpenDiffKey.self] }
+        set { self[AgentOpenDiffKey.self] = newValue }
+    }
+}
+
+/// An edit's diff: a header naming its file (with Copy, and Open in Diff
+/// Pane where there is one), and its lines tinted green and red, numbered
+/// in a gutter where its hunks say where they are.
 struct DiffView: View {
     let diff: String
     /// Show only this many lines (and how many more there are), unscrolled.
     var preview: Int? = nil
+    /// The file it changes ("" for a command's or a patch's, which name
+    /// theirs in "@@ path" lines).
+    var path = ""
     @Environment(\.agentFonts) private var fonts
+    @Environment(\.agentOpenDiff) private var openDiff
     /// The card's width: each line's tint runs all the way across it.
     @State private var width: CGFloat = 0
+    @State private var copied = false
 
-    private var allLines: [Substring] {
-        var l = diff.split(separator: "\n", omittingEmptySubsequences: false)
-        if l.last?.isEmpty == true { l.removeLast() }
-        return l
+    private var allLines: [DiffLines.Line] {
+        RenderCache.get("difflines\u{0}" + diff) { DiffLines.numbered(diff) }
     }
 
-    private func linesView(_ shown: [Substring], more: Int) -> some View {
+    /// The header's file: the edit's, else those the diff names.
+    private func title(_ lines: [DiffLines.Line]) -> (name: String, folder: String) {
+        if !path.isEmpty {
+            let folder = (path as NSString).deletingLastPathComponent
+            return ((path as NSString).lastPathComponent, folder)
+        }
+        let files = DiffLines.files(lines)
+        guard let first = files.first else { return ("Changes", "") }
+        let name = (first as NSString).lastPathComponent
+        return files.count == 1 ? (name, (first as NSString).deletingLastPathComponent) : ("\(name) and \(files.count - 1) more", "")
+    }
+
+    private func header(_ lines: [DiffLines.Line]) -> some View {
+        let t = title(lines)
+        return HStack(spacing: 6) {
+            Image(systemName: "doc.text").foregroundStyle(.tertiary).accessibilityHidden(true)
+            Text(t.name).font(fonts.code(0.85)).fontWeight(.medium).lineLimit(1).layoutPriority(1)
+            if !t.folder.isEmpty {
+                Text(t.folder).font(fonts.code(0.8)).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.head)
+            }
+            Spacer(minLength: 4)
+            Button {
+                copy(diff)
+                copied = true
+                Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc").contentTransition(.symbolEffect(.replace))
+                    .frame(width: 22, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .help("Copy the diff")
+            .accessibilityLabel(copied ? "Copied" : "Copy the diff")
+            if let openDiff {
+                let target = path.isEmpty ? (DiffLines.files(lines).first ?? "") : path
+                Button { openDiff(target) } label: {
+                    Image(systemName: "rectangle.split.2x1").frame(width: 22, height: 18).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("Open in Diff Pane")
+                .accessibilityLabel("Open in Diff Pane")
+            }
+        }
+        .font(fonts.body(0.8))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.top, 7)
+        .padding(.bottom, 2)
+    }
+
+    /// The gutter's width: room for the widest number.
+    private func digits(_ lines: [DiffLines.Line]) -> Int {
+        let top = lines.reduce(0) { max($0, $1.old ?? 0, $1.new ?? 0) }
+        return top == 0 ? 0 : String(top).count
+    }
+
+    private func number(_ n: Int?, _ digits: Int) -> some View {
+        Text(String(repeating: "8", count: digits)).hidden()
+            .overlay(alignment: .trailing) { Text(n.map(String.init) ?? "") }
+            .font(fonts.code(0.8).monospacedDigit())
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+
+    private func linesView(_ shown: [DiffLines.Line], more: Int, digits: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
-                let s = String(line)
-                Text(s.isEmpty ? " " : s)
-                    .font(fonts.code(0.95))
-                    .foregroundStyle(s.hasPrefix("@@") ? Color.secondary : Color.primary)
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // Square rows that meet, one band per run of lines (a
-                    // plain colour here can take the card's rounded corners).
-                    .background {
-                        Rectangle().fill(s.hasPrefix("+") ? Color.green.opacity(0.14) : s.hasPrefix("-") ? Color.red.opacity(0.14) : .clear)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if digits > 0 {
+                        number(line.old, digits)
+                        number(line.new, digits)
                     }
+                    Text(line.text.isEmpty ? " " : line.text)
+                        .font(fonts.code(0.95))
+                        .fontWeight(line.kind == .file ? .semibold : .regular)
+                        .foregroundStyle(line.kind == .hunk || line.kind == .file ? Color.secondary : Color.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, line.kind == .file ? 4 : 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // Square rows that meet, one band per run of lines (a
+                // plain colour here can take the card's rounded corners).
+                .background {
+                    Rectangle().fill(line.kind == .added ? Color.green.opacity(0.14) : line.kind == .removed ? Color.red.opacity(0.14) : .clear)
+                }
             }
         }
         .frame(minWidth: width, alignment: .leading)
         .fixedSize(horizontal: true, vertical: false)
-        .padding(.top, 8)
+        .padding(.top, 4)
         .padding(.bottom, more > 0 ? 4 : 8)
     }
 
@@ -2050,10 +2140,12 @@ struct DiffView: View {
         let all = allLines
         let shown = Array(all.prefix(preview ?? 600))
         let more = preview == nil ? 0 : all.count - shown.count
+        let d = digits(all)
         VStack(alignment: .leading, spacing: 0) {
+            header(all)
             if preview != nil {
                 // A glance: no scrolling of its own (a tap shows it all).
-                ScrollView(.horizontal, showsIndicators: false) { linesView(shown, more: more) }
+                ScrollView(.horizontal, showsIndicators: false) { linesView(shown, more: more, digits: d) }
                     .scrollDisabled(true)
                 if more > 0 {
                     Text(more == 1 ? "1 more line" : "\(more) more lines")
@@ -2063,7 +2155,7 @@ struct DiffView: View {
                         .padding(.bottom, 8)
                 }
             } else {
-                ScrollView([.horizontal, .vertical]) { linesView(shown, more: more).textSelection(.enabled) }
+                ScrollView([.horizontal, .vertical]) { linesView(shown, more: more, digits: d).textSelection(.enabled) }
                     .frame(maxHeight: 360)
             }
         }

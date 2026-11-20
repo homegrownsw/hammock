@@ -31,3 +31,26 @@ import Testing
         #expect(ToolSummary.failed([tool("Bash")]) == nil)
     }
 }
+
+@Suite struct DiffLinesTests {
+    @Test func numbersLinesFromHunks() {
+        let l = DiffLines.numbered("@@ -12 +14 @@\n keep\n-old\n+new\n+more\n tail\n")
+        #expect(l.map(\.kind) == [.hunk, .context, .removed, .added, .added, .context])
+        #expect(l.map(\.old) == [nil, 12, 13, nil, nil, 14])
+        #expect(l.map(\.new) == [nil, 14, nil, 15, 16, 17])
+    }
+
+    @Test func readsCountsAndHeaders() {
+        #expect(DiffLines.hunk("@@ -3,2 +3,4 @@ func x()")! == (3, 3))
+        #expect(DiffLines.hunk("@@ a.go") == nil)
+        let l = DiffLines.numbered("@@ a.go\n@@ -1 +1 @@\n-x\n+y\n@@ b.go\n+z\n@@ and 2 more files\n")
+        #expect(DiffLines.files(l) == ["a.go", "b.go"])
+        #expect(l[5].new == nil)  // a new file's header: its numbers aren't known
+        #expect(l[3].new == 1)
+    }
+
+    @Test func noHunksNoNumbers() {
+        let l = DiffLines.numbered("-a\n+b\n")
+        #expect(l.allSatisfy { $0.old == nil && $0.new == nil })
+    }
+}

@@ -91,9 +91,36 @@ struct AgentPaneView: View {
         })
         .environment(\.agentAutomaticColor, AgentAutomatic.color)
         .environment(\.agentAutomaticBubble, AgentAutomatic.bubble)
+        // An edit's Open in Diff Pane: this branch's changes (uncommitted
+        // too), as Review Changes shows them, in a diff pane beside this one.
+        .environment(\.agentOpenDiff, HammockTool.diff.on && model.group(ofPane: paneID)?.canDrive != false ? openDiff : nil)
         .background(Color(nsColor: .textBackgroundColor))
         .sheet(item: Binding(get: { preview.map(PreviewPath.init) }, set: { preview = $0?.id })) {
             RemoteFilePreview(model: model, paneID: paneID, path: $0.id)
+        }
+    }
+}
+
+extension AgentPaneView {
+    /// A diff pane beside this one, on the repository `path` (relative to
+    /// the agent's folder, or in full) is in; the agent's own folder's
+    /// without one.
+    func openDiff(_ path: String) {
+        let cwd = model.panes[paneID]?.cwd ?? ""
+        var folder = cwd
+        if !path.isEmpty {
+            let full = path.hasPrefix("/") || cwd.isEmpty ? path : (cwd as NSString).appendingPathComponent(path)
+            folder = (full as NSString).deletingLastPathComponent
+        }
+        Task {
+            do {
+                try await model.openDiff(repo: folder, groupID: nil, splitPane: paneID, direction: .horizontal, source: DiffUI.branch)
+            } catch {
+                let a = NSAlert()
+                a.messageText = "Couldn't show the changes"
+                a.informativeText = error.localizedDescription
+                a.runModal()
+            }
         }
     }
 }

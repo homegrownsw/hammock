@@ -450,6 +450,48 @@ object ToolSummary {
     fun failed(errors: Int) = if (errors == 0) null else "$errors failed"
 }
 
+/**
+ * A diff's lines with their numbers in the old and new file, from its "@@ -12 +14 @@"
+ * hunk headers (DiffView's gutter; the iPhone's DiffLines). Lines before any have none.
+ */
+object DiffLines {
+    enum class Kind { CONTEXT, ADDED, REMOVED, HUNK, FILE }
+
+    data class Line(val text: String, val kind: Kind, val old: Int? = null, val new: Int? = null)
+
+    fun numbered(diff: String): List<Line> {
+        val lines = diff.split('\n').let { if (it.lastOrNull()?.isEmpty() == true) it.dropLast(1) else it }
+        var o: Int? = null
+        var n: Int? = null
+        return lines.map { s ->
+            when {
+                s.startsWith("@@") -> {
+                    val h = hunk(s)
+                    o = h?.first
+                    n = h?.second
+                    // "@@ path": which file follows (a command's edits, Codex's patches).
+                    Line(s, if (h != null) Kind.HUNK else Kind.FILE)
+                }
+                s.startsWith("+") -> Line(s, Kind.ADDED, new = n).also { n = n?.plus(1) }
+                s.startsWith("-") -> Line(s, Kind.REMOVED, old = o).also { o = o?.plus(1) }
+                else -> Line(s, Kind.CONTEXT, o, n).also { o = o?.plus(1); n = n?.plus(1) }
+            }
+        }
+    }
+
+    /** "@@ -12,3 +14,4 @@ func x()" as 12 to 14. */
+    fun hunk(s: String): Pair<Int, Int>? {
+        val parts = s.split(' ')
+        if (parts.size < 3 || !parts[1].startsWith("-") || !parts[2].startsWith("+")) return null
+        val a = parts[1].drop(1).takeWhile { it.isDigit() }.toIntOrNull() ?: return null
+        val b = parts[2].drop(1).takeWhile { it.isDigit() }.toIntOrNull() ?: return null
+        return a to b
+    }
+
+    /** The files a diff's "@@ path" lines name, in order. */
+    fun files(lines: List<Line>) = lines.filter { it.kind == Kind.FILE && !it.text.startsWith("@@ and ") }.map { it.text.drop(3) }
+}
+
 /** What a hardware keyboard's key does on the prompt card (the iPhone's PromptKey). */
 object PromptKeys {
     enum class Key { ESCAPE, LEFT, RIGHT, OTHER }

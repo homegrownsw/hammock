@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Preview
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -187,33 +189,52 @@ internal fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, 
  * from the rest.
  */
 @Composable
-fun DiffView(diff: String, preview: Int? = null, onTap: (() -> Unit)? = null) {
+fun DiffView(diff: String, preview: Int? = null, path: String = "", onTap: (() -> Unit)? = null) {
     val c = LocalAgentColors.current
-    val all = remember(diff) { diff.split('\n').let { if (it.lastOrNull()?.isEmpty() == true) it.dropLast(1) else it } }
+    val all = remember(diff) { DiffLines.numbered(diff) }
     val shown = all.take(preview ?: 600)
     val more = if (preview == null) 0 else all.size - shown.size
     val style = codeTextStyle(0.95f)
+    val gutter = codeTextStyle(0.8f)
+    // The gutter's width: room for the widest number (none without hunks).
+    val digits = remember(all) { all.maxOf { maxOf(it.old ?: 0, it.new ?: 0) }.let { if (it == 0) 0 else it.toString().length } }
     BoxWithConstraints(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.fill)
             .then(if (onTap != null) Modifier.clickable(onClickLabel = "Show the whole change", onClick = onTap) else Modifier),
     ) {
         val min = maxWidth
         Column {
+            DiffHeader(diff, path, all)
             val scroll = Modifier.horizontalScroll(rememberScrollState(), enabled = preview == null)
             val vertical = if (preview == null) Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()) else Modifier
-            Column(vertical.then(scroll).padding(vertical = 8.dp).width(IntrinsicSize.Max).widthIn(min = min)) {
+            Column(vertical.then(scroll).padding(top = 4.dp, bottom = 8.dp).width(IntrinsicSize.Max).widthIn(min = min)) {
                 for (line in shown) {
-                    val bg = when {
-                        line.startsWith("+") -> c.added.copy(alpha = 0.16f)
-                        line.startsWith("-") -> c.removed.copy(alpha = 0.16f)
+                    val bg = when (line.kind) {
+                        DiffLines.Kind.ADDED -> c.added.copy(alpha = 0.16f)
+                        DiffLines.Kind.REMOVED -> c.removed.copy(alpha = 0.16f)
                         else -> Color.Transparent
                     }
-                    Text(
-                        line.ifEmpty { " " }, style = style, softWrap = false, maxLines = 1,
-                        color = if (line.startsWith("@@")) c.secondary else MaterialTheme.colorScheme.onSurface,
-                        overflow = TextOverflow.Clip,
-                        modifier = Modifier.fillMaxWidth().background(bg).padding(horizontal = 10.dp),
-                    )
+                    val header = line.kind == DiffLines.Kind.HUNK || line.kind == DiffLines.Kind.FILE
+                    Row(
+                        Modifier.fillMaxWidth().background(bg).padding(horizontal = 10.dp)
+                            .padding(top = if (line.kind == DiffLines.Kind.FILE) 4.dp else 0.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (digits > 0) {
+                            for (num in listOf(line.old, line.new)) {
+                                Text(
+                                    num?.toString().orEmpty().padStart(digits), style = gutter, color = c.tertiary, softWrap = false, maxLines = 1,
+                                    modifier = Modifier.clearAndSetSemantics {},
+                                )
+                            }
+                        }
+                        Text(
+                            line.text.ifEmpty { " " }, style = style, softWrap = false, maxLines = 1,
+                            color = if (header) c.secondary else MaterialTheme.colorScheme.onSurface,
+                            fontWeight = if (line.kind == DiffLines.Kind.FILE) FontWeight.SemiBold else null,
+                            overflow = TextOverflow.Clip,
+                        )
+                    }
                 }
             }
             if (more > 0) {
@@ -223,6 +244,36 @@ fun DiffView(diff: String, preview: Int? = null, onTap: (() -> Unit)? = null) {
                     modifier = Modifier.padding(start = 10.dp, bottom = 8.dp),
                 )
             }
+        }
+    }
+}
+
+/** A diff's header: the file it changes (the edit's, else those it names), and Copy. */
+@Composable
+private fun DiffHeader(diff: String, path: String, lines: List<DiffLines.Line>) {
+    val c = LocalAgentColors.current
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
+    val (name, folder) = remember(path, lines) {
+        if (path.isNotEmpty()) path.substringAfterLast('/') to path.substringBeforeLast('/', "")
+        else DiffLines.files(lines).let { f ->
+            when (f.size) {
+                0 -> "Changes" to ""
+                1 -> f[0].substringAfterLast('/') to f[0].substringBeforeLast('/', "")
+                else -> "${f[0].substringAfterLast('/')} and ${f.size - 1} more" to ""
+            }
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp, top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(name, style = codeTextStyle(0.85f), fontWeight = FontWeight.Medium, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (folder.isNotEmpty()) Text(folder, style = codeTextStyle(0.8f), color = c.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = { clipboard.setText(AnnotatedString(diff)); copied = true }, modifier = Modifier.size(32.dp)) {
+            Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, if (copied) "Copied" else "Copy the diff", tint = c.secondary, modifier = Modifier.size(16.dp))
         }
     }
 }

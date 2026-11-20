@@ -69,3 +69,60 @@ enum ToolSummary {
         return n == 0 ? nil : "\(n) failed"
     }
 }
+
+/// A diff's lines with their numbers in the old and new file, from its
+/// "@@ -12 +14 @@" hunk headers (DiffView's gutter). Lines before any (an
+/// edit not yet done, whose place isn't known) have none.
+enum DiffLines {
+    enum Kind: Equatable { case context, added, removed, hunk, file }
+
+    struct Line: Equatable {
+        var text: String
+        var kind: Kind
+        var old: Int?
+        var new: Int?
+    }
+
+    static func numbered(_ diff: String) -> [Line] {
+        var lines = diff.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        if lines.last?.isEmpty == true { lines.removeLast() }
+        var o: Int?, n: Int?
+        return lines.map { s in
+            if s.hasPrefix("@@") {
+                if let (a, b) = hunk(s) {
+                    o = a
+                    n = b
+                    return Line(text: s, kind: .hunk)
+                }
+                // "@@ path": which file follows (a command's edits, Codex's patches).
+                o = nil
+                n = nil
+                return Line(text: s, kind: .file)
+            }
+            if s.hasPrefix("+") {
+                defer { n = n.map { $0 + 1 } }
+                return Line(text: s, kind: .added, new: n)
+            }
+            if s.hasPrefix("-") {
+                defer { o = o.map { $0 + 1 } }
+                return Line(text: s, kind: .removed, old: o)
+            }
+            defer { o = o.map { $0 + 1 }; n = n.map { $0 + 1 } }
+            return Line(text: s, kind: .context, old: o, new: n)
+        }
+    }
+
+    /// "@@ -12,3 +14,4 @@ func x()" as (12, 14).
+    static func hunk(_ s: String) -> (Int, Int)? {
+        let parts = s.split(separator: " ")
+        guard parts.count >= 3, parts[1].hasPrefix("-"), parts[2].hasPrefix("+"),
+              let a = Int(parts[1].dropFirst().prefix { $0.isNumber }),
+              let b = Int(parts[2].dropFirst().prefix { $0.isNumber }) else { return nil }
+        return (a, b)
+    }
+
+    /// The files a diff's "@@ path" lines name, in order.
+    static func files(_ lines: [Line]) -> [String] {
+        lines.filter { $0.kind == .file && !$0.text.hasPrefix("@@ and ") }.map { String($0.text.dropFirst(3)) }
+    }
+}

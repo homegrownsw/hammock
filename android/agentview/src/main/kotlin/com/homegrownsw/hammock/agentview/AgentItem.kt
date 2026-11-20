@@ -142,3 +142,6 @@ internal fun AgentBlock.sentByYou(): Boolean =
 /** A "!" command you ran, from the transcript or still running: shown as you typed it. */
 internal fun AgentBlock.isBang(): Boolean =
     tool == "Bash" && (turnId == id || id.startsWith(PendingSend.RUN_PREFIX))
+
+/** The file an edit changed, for its diff's header ("" for a command's edits or a patch, which name theirs in the diff). */
+internal fun AgentBlock.diffPath(): String = if (tool in setOf("Edit", "MultiEdit", "NotebookEdit", "Write")) input else ""
