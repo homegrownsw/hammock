@@ -28,6 +28,13 @@ public enum DaemonError: Error, LocalizedError {
 /// calls carry the call's id in `replyTo`; anything else is an event.
 public protocol DaemonStandIn: AnyObject, Sendable {
     func receive(_ msg: ClientMessage, reply: @escaping @Sendable (ServerMessage) -> Void)
+    /// Whether it can be reached now: one that can't (the demo pretending its
+    /// Mac is away) fails each connect, as a Mac that doesn't answer.
+    var reachable: Bool { get }
+}
+
+extension DaemonStandIn {
+    public var reachable: Bool { true }
 }
 
 /// A connection to hmkd over its Unix socket (raw length-prefixed
@@ -141,8 +148,13 @@ public final class DaemonConnection: @unchecked Sendable {
     }
 
     public func connect() {
-        if standIn != nil {
+        if let standIn {
             queue.async {
+                guard standIn.reachable else {
+                    // As a dial that found nothing, a moment later.
+                    self.queue.asyncAfter(deadline: .now() + 0.5) { self.onStateChange?(false, NWError.posix(.EHOSTUNREACH)) }
+                    return
+                }
                 self.standInOpen = true
                 self.onStateChange?(true, nil)
             }

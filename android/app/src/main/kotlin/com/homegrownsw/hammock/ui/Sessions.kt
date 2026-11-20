@@ -138,6 +138,7 @@ fun rememberNow(periodMs: Long = 30_000): Long {
 fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
     val w by model.workspace.collectAsStateWithLifecycle()
     val link by model.link.collectAsStateWithLifecycle()
+    val history by model.history.collectAsStateWithLifecycle()
     val now = rememberNow()
     var showingAllRecent by rememberSaveable { mutableStateOf(false) }
     var finding by remember { mutableStateOf(false) }
@@ -156,7 +157,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
     fun requestClose(p: Pane) {
         if (closeWarning(listOf(p)) != null || (w.tabs[p.tabId]?.let { w.panes(it).size } ?: 1) > 1) closing = p else close(p)
     }
-    fun canClose(p: Pane) = w.groupOfPane(p.id)?.let { it.canDrive && !it.offline } ?: false
+    fun canClose(p: Pane) = link == Link.Connected && w.groupOfPane(p.id)?.let { it.canDrive && !it.offline } ?: false
 
     CockpitScaffold(session, model, actions = {
         IconButton(onClick = { finding = true }, enabled = link == Link.Connected) { Icon(Icons.Default.History, "Find a Session") }
@@ -172,7 +173,12 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
             ) { starting = true }
             return@CockpitScaffold
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 24.dp)) {
+        if (w.groups.isEmpty() && !history.everConnected) {
+            LoadingState(Modifier.padding(padding))
+            return@CockpitScaffold
+        }
+        RefreshBox(model, Modifier.padding(top = padding.calculateTopPadding())) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (w.grants.isNotEmpty() || waiting.isNotEmpty() || others.isNotEmpty() || w.joinRequests.isNotEmpty()) {
                 section("Needs You")
                 // Each its own card, as the iPhone's: their buttons need the room.
@@ -221,6 +227,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
             }
             if (w.schedules.isNotEmpty()) comingUp(model, w, nav, now)
             usageLimits(w, now)
+        }
         }
     }
     closing?.let { p ->
@@ -291,14 +298,14 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
     ) {
         StatusIcon(if (idleSeen) null else a.shownState, resting = idleSeen, shells = idleSeen && a.restingWithWork,
             subagents = idleSeen && a.restingWithSubagents, asleep = r.pane.asleep, progress = r.pane.agentProgress,
-            size = 22.dp, modifier = Modifier.align(Alignment.Top).padding(top = 1.dp))
+            size = 22.dp, modifier = Modifier.align(Alignment.Top).padding(top = 1.dp).staleWhenLinkDown())
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(w.title(r.tab), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 Text(elapsedString(a.stateSinceUnixMs, now), style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.staleWhenLinkDown())
             }
             Text(
                 plainInline(a.summary.ifEmpty { r.pane.agentStatusLabel }), style = MaterialTheme.typography.bodyMedium,
@@ -357,13 +364,13 @@ fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, op
                         Row { Spacer(Modifier.weight(1f)); Button(onClick = open) { Text("Answer") } }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            FilledTonalButton(colors = tintedButtonColors(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
+                            FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
                             if (item.allowsFromCard) FilledTonalButton(colors = tintedButtonColors(), onClick = open) { Text("Open") }
                             Spacer(Modifier.weight(1f))
                             // More than the card shows: see all of it in the pane first.
                             if (!item.allowsFromCard) Button(onClick = open) { Text("Review") }
                             else if (schedule != null && schedule.kind == "claude") AllowMenu(model, item)
-                            else Button(onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
+                            else Button(enabled = !linkDown(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
                         }
                     }
                 }
@@ -390,7 +397,7 @@ private fun PromptPreviewBlock(preview: PromptPreview) {
 private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
     var open by remember { mutableStateOf(false) }
     Box {
-        Button(onClick = { open = true }) {
+        Button(enabled = !linkDown(), onClick = { open = true }) {
             Text("Allow")
             Icon(Icons.Default.KeyboardArrowDown, "Allow options", Modifier.padding(start = 2.dp).size(18.dp))
         }
@@ -414,10 +421,10 @@ fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
             grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
             grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
+                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
                 Spacer(Modifier.weight(1f))
-                if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
-                Button(onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
+                if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
+                Button(enabled = !linkDown(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
             }
         }
     }
@@ -448,10 +455,10 @@ fun JoinCard(model: AppModel, w: Workspace, r: Hammock.JoinRequest) {
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
+                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
                 Spacer(Modifier.weight(1f))
-                FilledTonalButton(colors = tintedButtonColors(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
-                Button(onClick = { model.respondJoin(r, Hammock.Role.ROLE_DRIVER) }) { Text("Let Drive") }
+                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
+                Button(enabled = !linkDown(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_DRIVER) }) { Text("Let Drive") }
             }
         }
     }

@@ -38,6 +38,9 @@ interface DaemonStandIn {
 
     /** The connection opened: what a daemon says first, unasked (a sign-in challenge), goes through `send`. */
     fun opened(send: (ServerMessage) -> Unit) {}
+
+    /** Whether it can be reached now: one that can't (the demo pretending its computer is away) fails each connect. */
+    val reachable: Boolean get() = true
 }
 
 /**
@@ -157,6 +160,11 @@ class DaemonConnection private constructor(
         onQueue {
             if (closed) return@onQueue
             if (standIn != null) {
+                if (!standIn.reachable) {
+                    // As a dial that found nothing, a moment later.
+                    later(500) { if (!closed) onStateChange?.invoke(false, java.net.NoRouteToHostException()) }
+                    return@onQueue
+                }
                 standInOpen = true
                 standIn.opened { m -> onQueue { if (standInOpen) deliver(m) } }
                 onStateChange?.invoke(true, null)

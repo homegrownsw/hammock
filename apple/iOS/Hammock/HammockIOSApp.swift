@@ -210,11 +210,21 @@ final class Session {
     /// The demo is shown (DemoMac): a made-up Mac, nothing paired or stored.
     var isDemo: Bool { model?.standIn != nil }
 
+    /// The Mac shown, by name ("Studio", not "Studio.local").
+    var hostShortName: String {
+        let n = host?.hostName.replacingOccurrences(of: ".local", with: "") ?? ""
+        return n.isEmpty ? "your Mac" : n
+    }
+
     /// Shows the demo, in place of any Mac shown.
     func startDemo() {
         model?.stop()
         host = StoredHost(hostName: "MacBook", address: "", certSHA256: "demo", deviceID: "sample", privateKey: Data())
-        let m = AppModel(standIn: DemoMac(), clientKind: "ios")
+        let demo = DemoMac()
+        let m = AppModel(standIn: demo, clientKind: "ios")
+        #if DEBUG
+        DemoMac.debugLink(demo, m)
+        #endif
         m.start()
         model = m
     }

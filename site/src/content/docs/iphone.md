@@ -5,6 +5,10 @@ description: Follow your agents, answer them, and type in your terminals from yo
 
 The iPhone app shows the same Groups, tabs and panes as your Mac, live. Everything still runs on the Mac, so you can follow an agent, answer it, or type in a terminal when you're away. To set it up, see [Installing on iPhone](/hammock/docs/install/iphone/).
 
+## When the Mac can't be reached
+
+While the iPhone is connecting to your Mac, or has lost it, a bar under each screen's title says so, and after a few seconds that it can't reach it, with how long ago what's shown was last updated. It keeps trying; **Try Again** tries now, and so does pulling down on Sessions or Groups. **Allow** and **Deny** wait until it's back.
+
 ## Sessions
 
 Sessions lists your agents, most pressing first:

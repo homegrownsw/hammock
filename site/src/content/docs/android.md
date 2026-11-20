@@ -21,6 +21,9 @@ what you open shows beside the list.
 - A tab with several panes has a strip along the bottom with a pill for each, as on the iPhone: tap one, or swipe
   sideways across the pane, to switch; touch and hold a pill for more. The button at the strip's left opens Exposé,
   the tab laid out as on the Mac.
+- While the phone is connecting to your computer, or has lost it, a banner under each screen's title says so, and
+  after a few seconds that it can't reach it, with how long ago what's shown was last updated. It keeps trying;
+  **Try Again** tries now, and so does pulling down on Sessions or Groups.
 
 ## Terminals and the agent view
 

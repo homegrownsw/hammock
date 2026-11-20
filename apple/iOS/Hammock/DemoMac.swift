@@ -72,6 +72,34 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         q.async { self.reply = reply; self.handle(msg) }
     }
 
+    /// Pretending the Mac is away (asleep, off this network): each connect fails.
+    private let awayLock = NSLock()
+    private var away = false
+    var reachable: Bool { awayLock.withLock { !away } }
+    func setAway(_ on: Bool) { awayLock.withLock { away = on } }
+
+    #if DEBUG
+    /// Dev aid: HMK_DEBUG_LINK=down: the Mac never answers (the first load,
+    /// then can't reach it). drop[:<s>]: a moment after the app has its
+    /// state, the link drops and the Mac stays away (for <s> seconds, if
+    /// given): the connection bar's states, from the real model.
+    @MainActor static func debugLink(_ demo: DemoMac, _ model: AppModel) {
+        guard let v = ProcessInfo.processInfo.environment["HMK_DEBUG_LINK"] else { return }
+        if v == "down" { return demo.setAway(true) }
+        guard v.hasPrefix("drop") else { return }
+        let back = v.split(separator: ":").dropFirst().first.flatMap { Double($0) }
+        Task { @MainActor in
+            while !model.connected { try? await Task.sleep(for: .milliseconds(200)) }
+            try? await Task.sleep(for: .seconds(2))
+            demo.setAway(true)
+            model.dropLink()
+            guard let back else { return }
+            try? await Task.sleep(for: .seconds(back))
+            demo.setAway(false)
+        }
+    }
+    #endif
+
     // MARK: Answering
 
     private func send(_ m: ServerMessage) { reply?(m) }

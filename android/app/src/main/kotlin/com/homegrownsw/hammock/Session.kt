@@ -264,10 +264,11 @@ class Session(
     }
 
     /** The demo (a made-up Mac), in place of any computer shown. */
-    fun startDemo(standIn: DaemonStandIn) {
+    fun startDemo(standIn: DaemonStandIn, link: String? = null) {
         _model.value?.stop()
         _host.value = StoredHost("MacBook", "", emptyList(), emptyList(), "demo", "sample", "")
         val m = AppModel.standIn(standIn)
+        (standIn as? com.homegrownsw.hammock.demo.DemoDaemon)?.debugLink(link, m)
         m.start()
         _model.value = m
     }

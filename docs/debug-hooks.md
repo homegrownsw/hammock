@@ -82,6 +82,7 @@ With it:
 | `HMK_DEBUG_NEW_CHAT=1` | The polish agent's conversation starts empty, and a first message to it reaches the transcript a moment after it's sent, as from a Mac. |
 | `HMK_DEBUG_REPLAY=<file>` | The polish agent has a real Claude session's history instead, and a message to it plays the rest at the session's own pace, as a Mac would send it. Make the file with `go run ./scripts/agentblocks -src SESSION.jsonl -from LINE > replay.txt` (outside the repo: sessions hold private work). |
 | `HMK_DEBUG_SCREENSHOT=1` | Hide the demo's bar and write `HammockScreenshot: done` to stderr once the screen has settled (`just appstore-screenshots` takes the App Store's that way, from `marketing/appstore/scenes.json`). |
+| `HMK_DEBUG_LINK=down\|drop[:<s>]` | The demo's Mac can't be reached: `down`, never (the first load, then the connection bar's "Can't reach"); `drop`, from a moment after the app has its state (reconnecting, then can't reach), for `<s>` seconds if given. |
 | `HMK_DEBUG_THEME_PICKER=1` | With the settings tab, open Settings ▸ Theme. |
 | `HMK_DEBUG_FAKE_SCAN=<hammock://pair/… link>` | Pairing for real in the simulator (a scratch daemon with `--remote-listen 127.0.0.1:PORT`): a pretend camera on the pairing screen scans that code after a moment (the simulator has no camera), for recording pairing. |
 
@@ -107,6 +108,7 @@ adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainAc
 | `--ez newChat true` | As `HMK_DEBUG_NEW_CHAT=1`: the polish agent's conversation starts empty. |
 | `--es macTheme <name>\|custom` | As `HMK_DEBUG_MAC_THEME`: the sample Mac's theme. |
 | `--es hammockKey 1\|agent` | As `HMK_DEBUG_HMK_KEY`: the Mac's Hammock Key, this phone an approver, and a request waiting (`agent`: an agent's ssh login). |
+| `--es link down\|drop[:<s>]` | As `HMK_DEBUG_LINK`: the demo's computer can't be reached, never or from a moment after the app has its state. |
 | `--es pair '<hammock://pair/… link>'` | Pair with that link at once, without the confirmation, whether the app is starting or already open (`android/scripts/dev-daemon.sh` prints one). |
 | `--es updateFeed <url>` | Check that feed for updates now, as a release build checks homegrownsw.com/hammock/android.json once a day (`UpdateCheck.kt`): a higher build in it is offered. Debug builds allow plain HTTP to this Mac, so serve one at `http://10.0.2.2:<port>/` (the emulator) or over `adb reverse`. |
 

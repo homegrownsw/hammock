@@ -93,6 +93,14 @@ public final class PaneSession {
 @Observable
 public final class AppModel {
     public private(set) var connected = false
+    /// The link's history, for LinkStatus: whether it's connected since this
+    /// model started, when this try at connecting began (nil while
+    /// connected), when what's shown was last live (nil before the first
+    /// drop), and why the last try failed, in a person's words.
+    public private(set) var everConnected = false
+    public private(set) var downSince: Date? = Date()
+    public private(set) var lastLive: Date?
+    public private(set) var linkError: String?
     /// Remotely: the Mac refused this device's sign-in for good (it was
     /// removed there, or doesn't know its key), so it stopped trying. Pair
     /// again to connect.
@@ -245,6 +253,8 @@ public final class AppModel {
     @ObservationIgnored var decodedPictures: [String: PlatformImage] = [:]
     @ObservationIgnored var cellPixels = (w: 0, h: 0)
     @ObservationIgnored private var retryDelay: Double = 0.2
+    /// The next try at connecting, waiting out retryDelay.
+    @ObservationIgnored private var retry: DispatchWorkItem?
     @ObservationIgnored private var knownAttention = Set<String>()
     @ObservationIgnored private let clientKind: String
 
@@ -291,8 +301,12 @@ public final class AppModel {
             guard inbox.add(msg) else { return }
             DispatchQueue.main.async { self?.drain(inbox) }
         }
-        c.onStateChange = { [weak self] ready, err in
-            DispatchQueue.main.async { self?.connectionChanged(ready: ready, error: err) }
+        // Only this connection's: one replaced (reconnectNow) is gone.
+        c.onStateChange = { [weak self, weak c] ready, err in
+            DispatchQueue.main.async {
+                guard let self, let c, self.conn === c else { return }
+                self.connectionChanged(ready: ready, error: err)
+            }
         }
         c.connect()
     }
@@ -304,13 +318,97 @@ public final class AppModel {
             return
         }
         guard conn != nil else { return }
+        if connected {
+            // Dropped: what's shown was live until now.
+            lastLive = Date()
+            downSince = Date()
+        }
         connected = false
         conn = nil
+        if let why = LinkStatus.reason(for: error) { linkError = why }
         browserMenus.removeAll() // their pages were answered when the link dropped
         onUnreachable?()
         let delay = retryDelay
         retryDelay = min(retryDelay * 2, 5)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.start() }
+        let next = DispatchWorkItem { [weak self] in self?.start() }
+        retry = next
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: next)
+    }
+
+    /// Dials again at once, without waiting out the pause between tries
+    /// (Try Again, pulling to refresh). Nothing while connected.
+    public func reconnectNow() {
+        guard !stopped, !connected else { return }
+        retry?.cancel()
+        retry = nil
+        retryDelay = 0.2
+        // Shown at once as trying again (not hidden, as a blip is), and
+        // given its time again before it says it can't reach it.
+        downSince = Date().addingTimeInterval(-LinkStatus.showAfter)
+        if let old = conn {
+            conn = nil
+            old.disconnect()
+        }
+        start()
+    }
+
+    /// Pulling to refresh: a link that says it's up is asked something,
+    /// and dialled again if it doesn't answer; one that's down is dialled
+    /// now. Returns once connected, or after `timeout` (state is pushed
+    /// while connected: there's nothing more to fetch).
+    public func refresh(timeout: TimeInterval = 10) async {
+        if connected, let c = conn {
+            if await answers(c, within: 4) { return }
+            // Up only in name: dropped, and dialled again.
+            guard conn === c else { return await waitForConnection(timeout) }
+            c.disconnect()
+            await waitForConnection(timeout)
+            return
+        }
+        reconnectNow()
+        await waitForConnection(timeout)
+    }
+
+    private func waitForConnection(_ timeout: TimeInterval) async {
+        let end = Date().addingTimeInterval(timeout)
+        while !connected, !stopped, Date() < end { try? await Task.sleep(for: .milliseconds(100)) }
+    }
+
+    /// Whether c answers a Hello (any daemon does, and it changes nothing) in time.
+    private func answers(_ c: DaemonConnection, within seconds: TimeInterval) async -> Bool {
+        let kind = clientKind
+        return await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+            let once = Once()
+            Task {
+                let ok: Bool
+                do {
+                    _ = try await c.call { $0.hello = .with { $0.protocolVersion = 1; $0.clientKind = kind; $0.clientName = kind } }
+                    ok = true
+                } catch DaemonError.server {
+                    ok = true // an answer, even a refusal
+                } catch {
+                    ok = false
+                }
+                if once.claim() { done.resume(returning: ok) }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                if once.claim() { done.resume(returning: false) }
+            }
+        }
+    }
+
+    /// True the first time it's claimed.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func claim() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if claimed { return false }
+            claimed = true
+            return true
+        }
     }
 
     private func handshake() async {
@@ -344,6 +442,9 @@ public final class AppModel {
             knownAttention = []
             apply(state.state)
             connected = true
+            everConnected = true
+            downSince = nil
+            linkError = nil
             retryDelay = 0.2 // only once fully connected, so a daemon that drops us backs off
             if let c = lastColors { conn.send { $0.setColors = c } }
             // Re-attach panes that views are showing, re-sending their sizes: the
@@ -363,6 +464,7 @@ public final class AppModel {
             reattachDiffs()
         } catch {
             lastError = error.localizedDescription
+            if let why = LinkStatus.reason(for: error) { linkError = why }
             if remoteIdentity?.deviceID != nil, Self.signInRefused(error) {
                 // Removed on the Mac: don't keep knocking (it hangs up on
                 // each try); pair again.
@@ -1961,6 +2063,12 @@ extension AppModel {
     /// As decide(_:allow:), with any decision: .allowSchedule allows and
     /// remembers the tool for the pane's schedule (a scheduled Claude run).
     public func decide(_ item: AttentionItem, _ decision: Hammock_V1_AgentAnswer.Decision) {
+        // Not connected: the card stays, to answer once it's back.
+        guard connected else {
+            let name = hostName.replacingOccurrences(of: ".local", with: "")
+            showToast("Can't answer until \(name.isEmpty ? "the computer" : name) is back")
+            return
+        }
         clearAttention(item.id)
         guard group(ofPane: item.paneID)?.canDrive != false, let conn else { return }
         let name = panes[item.paneID].map { $0.displayName.capitalized } ?? "The agent"
@@ -2133,6 +2241,12 @@ extension AppModel {
     /// (DaemonConnection.checkAlive): the iPhone, back in the foreground.
     public func checkConnection() {
         if connected { conn?.checkAlive() }
+    }
+
+    /// Drops the link as a network going away does: it's dialled again.
+    /// For the demo's HMK_DEBUG_LINK.
+    public func dropLink() {
+        conn?.disconnect()
     }
 
     /// Disconnects for good (no reconnect).

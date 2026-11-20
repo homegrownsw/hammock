@@ -99,6 +99,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
     val ctx = LocalContext.current
     val w by model.workspace.collectAsStateWithLifecycle()
     val link by model.link.collectAsStateWithLifecycle()
+    val history by model.history.collectAsStateWithLifecycle()
     val closer = LocalCloser.current
     var collapsed by remember { mutableStateOf(Collapsed.get(ctx)) }
     var renaming by remember { mutableStateOf<Tab?>(null) }
@@ -134,7 +135,12 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
             EmptyState("No Groups", "Groups of tabs on your computer show up here.", Modifier.padding(padding), "New Group") { creating = true }
             return@CockpitScaffold
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 24.dp)) {
+        if (w.groups.isEmpty() && !history.everConnected) {
+            LoadingState(Modifier.padding(padding))
+            return@CockpitScaffold
+        }
+        RefreshBox(model, Modifier.padding(top = padding.calculateTopPadding())) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (w.computers.any { !it.thisComputer }) {
                 item(key = "computers") { ComputerChips(w, computer) { computer = it } }
             }
@@ -155,7 +161,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                         }
                     }
                     val tabs = w.tabs(g)
-                    val canClose = g.canDrive && !g.offline
+                    val canClose = g.canDrive && !g.offline && link == Link.Connected
                     cardItems(tabs, key = { "t:" + it.id }) { tab ->
                         val i = tabs.indexOf(tab)
                         Swipeable(enabled = canClose && !editingOrder, onClose = { closer.closeTab(model, w, tab) }) {
@@ -171,6 +177,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                     }
                 }
             }
+        }
         }
     }
 
@@ -311,7 +318,8 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
             Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
                 if (state != null || resting || agent?.asleep == true) {
                     StatusIcon(state, resting = resting, shells = agent?.agent?.restingWithWork == true,
-                        subagents = agent?.agent?.restingWithSubagents == true, asleep = agent?.asleep == true, progress = agent?.agentProgress, size = 22.dp)
+                        subagents = agent?.agent?.restingWithSubagents == true, asleep = agent?.asleep == true, progress = agent?.agentProgress, size = 22.dp,
+                        modifier = Modifier.staleWhenLinkDown())
                 } else {
                     CompositionLocalProvider(LocalContentColor provides quiet) {
                         PaneIcon(w.panes[tab.focusedPaneId] ?: w.panes(tab).firstOrNull(), 20.dp)

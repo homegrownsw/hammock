@@ -64,7 +64,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             session.startDemo(com.homegrownsw.hammock.demo.DemoDaemon(
                 longChat = intent.getBooleanExtra("longChat", false), newChat = intent.getBooleanExtra("newChat", false),
                 macTheme = intent.getStringExtra("macTheme"), hammockKey = intent.getStringExtra("hammockKey"),
-            ))
+            ), link = intent.getStringExtra("link"))
         }
     }
 

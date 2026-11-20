@@ -240,6 +240,8 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
 
     val closer = remember(model) { Closer() }
     androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model, LocalCloser provides closer) {
+    // The link to the computer, for the banner on every screen.
+    LinkWatcher(model, host?.shortName?.ifEmpty { null } ?: "your computer") {
     NavigationSuiteScaffold(
         layoutType = layout,
         navigationSuiteItems = {
@@ -273,6 +275,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
             }
         }
     }
+    }
     closer.Dialog()
     }
 }
@@ -289,10 +292,11 @@ private fun ListDetail(wide: Boolean, nav: Nav, model: AppModel, list: @Composab
         Row(Modifier.fillMaxSize()) {
             Box(Modifier.width(380.dp).fillMaxHeight()) { list() }
             VerticalDivider()
-            Box(Modifier.weight(1f).fillMaxHeight()) {
+            // The list beside has the connection banner.
+            Box(Modifier.weight(1f).fillMaxHeight()) { androidx.compose.runtime.CompositionLocalProvider(LocalShowsLinkBanner provides false) {
                 if (route == null) Placeholder(if (nav.dest == Dest.Sessions) "No Session Selected" else "No Tab Selected")
                 else Detail(route, model, nav, showBack = nav.stack.size > 1)
-            }
+            } }
         }
     } else {
         AnimatedContent(

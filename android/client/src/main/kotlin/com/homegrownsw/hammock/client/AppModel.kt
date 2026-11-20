@@ -28,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
@@ -175,6 +176,9 @@ class AppModel private constructor(
     val workspace: StateFlow<Workspace> = _workspace.asStateFlow()
     private val _link = MutableStateFlow<Link>(Link.Connecting)
     val link: StateFlow<Link> = _link.asStateFlow()
+    private val _history = MutableStateFlow(LinkHistory())
+    /** The link's history, for [LinkStatus] (the connection banner). */
+    val history: StateFlow<LinkHistory> = _history.asStateFlow()
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
@@ -234,6 +238,9 @@ class AppModel private constructor(
         connection = null
         challengeWaiter?.cancel()
         challengeWaiter = null
+        // Away, nothing's shown, and nothing's said: the clock starts again on resume.
+        val now = System.currentTimeMillis()
+        _history.value = _history.value.let { it.copy(downSinceMs = null, lastLiveMs = if (_link.value == Link.Connected) now else it.lastLiveMs) }
         if (_link.value == Link.Connected) _link.value = Link.Connecting
     }
 
@@ -243,7 +250,14 @@ class AppModel private constructor(
         if (stopped || !paused) return@launch
         paused = false
         retryDelay = 200
+        _history.value = _history.value.copy(downSinceMs = System.currentTimeMillis())
         open()
+    }
+
+    /** Drops the link as a network going away does: it's dialled again. For the demo's link hook. */
+    fun dropLink() = scope.launch {
+        val c = connection ?: return@launch
+        if (current(c)) connectionChanged(c, false, null)
     }
 
     /** Disconnects for good, and lets the model's thread go. */
@@ -284,6 +298,7 @@ class AppModel private constructor(
         }
         c.disconnect()
         connection = null
+        noteDown(err)
         _link.value = Link.Failed(friendly(err))
         if (pausedAfterFailing()) return
         val d = retryDelay
@@ -307,8 +322,44 @@ class AppModel private constructor(
             connection?.disconnect()
             connection = null
             retryDelay = 200
+            // Shown at once as trying again (not hidden, as a blip is), and given its time again
+            // before it says it can't reach it.
+            _history.value = _history.value.copy(downSinceMs = System.currentTimeMillis() - LinkStatus.SHOW_AFTER_MS)
             open()
         }
+    }
+
+    /**
+     * Pulling to refresh: a link that says it's up is asked something, and dialled again if it
+     * doesn't answer; one that's down is dialled now. Returns once connected, or after
+     * [timeoutMs] (state is pushed while connected: there's nothing more to fetch).
+     */
+    suspend fun refresh(timeoutMs: Long = 10_000) {
+        if (_link.value == Link.Connected) checkConnection(4_000).join() else reconnectNow().join()
+        kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { _link.first { it == Link.Connected } }
+    }
+
+    /** The link went down, or a try failed: when, and why. On the model's thread. */
+    private fun noteDown(err: Throwable?) {
+        val now = System.currentTimeMillis()
+        val h = _history.value
+        _history.value = h.copy(
+            downSinceMs = if (_link.value == Link.Connected) now else h.downSinceMs ?: now,
+            lastLiveMs = if (_link.value == Link.Connected) now else h.lastLiveMs,
+            reason = reason(err) ?: h.reason,
+        )
+    }
+
+    /** Why a try failed, in a person's words; null when there's nothing better to say than that it may be asleep or away. */
+    private fun reason(t: Throwable?): String? = when {
+        t == null -> null
+        t is DaemonException -> t.message?.takeIf { it.isNotEmpty() && it != "Connection closed" }?.let { if (it.last() in ".!?") it else "$it." }
+        t is javax.net.ssl.SSLHandshakeException || t.cause is java.security.cert.CertificateException ->
+            "It isn't the computer this phone paired with (its certificate changed)."
+        t is java.net.SocketTimeoutException -> "It didn't answer."
+        t is java.net.ConnectException && t.message?.contains("refused", ignoreCase = true) == true ->
+            "Hammock isn't running there, or remote access is off."
+        else -> null
     }
 
     /**
@@ -379,6 +430,7 @@ class AppModel private constructor(
             knownAttention.clear()
             _workspace.value = _workspace.value.copy(hostName = hello.hostName, myUserID = hello.userId)
             apply(state)
+            _history.value = _history.value.copy(everConnected = true, downSinceMs = null, reason = null)
             _link.value = Link.Connected
             retryDelay = 200
             lastColors?.let { col -> c.send { setColors = col } }
@@ -402,6 +454,7 @@ class AppModel private constructor(
                 stopped = true
                 return
             }
+            noteDown(e)
             _link.value = Link.Failed(e.message ?: "Couldn't sign in")
             if (pausedAfterFailing()) return
             if (!stopped) {
@@ -661,6 +714,12 @@ class AppModel private constructor(
      * while it asks what the card showed (its prompt id); if it changed, the card comes back as it is now.
      */
     fun decide(item: AttentionItem, decision: Hammock.AgentAnswer.Decision) = scope.launch {
+        // Not connected: the card stays, to answer once it's back.
+        if (_link.value != Link.Connected) {
+            val host = _workspace.value.hostName.removeSuffix(".local").ifEmpty { "the computer" }
+            showToast("Can't answer until $host is back")
+            return@launch
+        }
         clearAttention(item.id)
         _workspace.value = _workspace.value.let { it.copy(attention = it.attention.filter { a -> a.id != item.id }) }
         if (_workspace.value.groupOfPane(item.paneId)?.canDrive == false) return@launch

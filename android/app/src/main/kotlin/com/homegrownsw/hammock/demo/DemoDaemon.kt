@@ -16,6 +16,8 @@ import hammock.v1.Hammock.ServerMessage
 import hammock.v1.Hammock.StateUpdate
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * The demo: a made-up Mac, for trying the app with none paired (and for Play
@@ -43,6 +45,32 @@ class DemoDaemon(
         const val NEEDS_MAC = "That needs your Mac: this is a demo. Pair your Mac to do it for real."
         const val ME = DemoContent.ME
         const val STUDIO = DemoContent.STUDIO
+    }
+
+    /** Pretending the computer is away (asleep, off this network): each connect fails. */
+    @Volatile var away = false
+    override val reachable get() = !away
+
+    /**
+     * Debug hook (`--es link`): "down", the computer never answers (the first load, then can't reach
+     * it); "drop[:<s>]", a moment after the app has its state, the link drops and the computer stays
+     * away (for <s> seconds, if given): the connection banner's states, from the real model.
+     */
+    fun debugLink(spec: String?, model: com.homegrownsw.hammock.client.AppModel) {
+        if (spec == null) return
+        if (spec == "down") { away = true; return }
+        if (!spec.startsWith("drop")) return
+        val back = spec.substringAfter(':', "").toDoubleOrNull()
+        model.scope.launch {
+            model.link.first { it == com.homegrownsw.hammock.client.Link.Connected }
+            kotlinx.coroutines.delay(2_000)
+            away = true
+            model.dropLink()
+            if (back != null) {
+                kotlinx.coroutines.delay((back * 1000).toLong())
+                away = false
+            }
+        }
     }
 
     /** Everything happens on `q`, in order, as on a daemon's connection. */

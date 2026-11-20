@@ -1,6 +1,31 @@
 package com.homegrownsw.hammock.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.text.font.FontWeight
+import com.homegrownsw.hammock.client.LinkHistory
+import com.homegrownsw.hammock.client.LinkStatus
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +35,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -49,7 +75,7 @@ import com.homegrownsw.hammock.client.Workspace
 
 /**
  * What Sessions and Groups share: the computer's name as the title, its
- * connection as a banner while it isn't connected, and their list.
+ * connection as a banner while it isn't connected (ConnectionBanner), and their list.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,7 +86,6 @@ fun CockpitScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val host by session.host.collectAsStateWithLifecycle()
-    val link by model.link.collectAsStateWithLifecycle()
     // A large title that shrinks into the bar as the list scrolls, as the iPhone's.
     val behavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
@@ -72,27 +97,110 @@ fun CockpitScaffold(
                     actions = actions,
                     scrollBehavior = behavior,
                 )
-                ConnectionBanner(link, host?.shortName ?: "the computer", model.isDemo)
+                ConnectionBanner()
             }
         },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding -> content(padding) }
 }
 
+/** What the connection banner shows, worked out once ([LinkWatcher]) for every screen under it. */
+class LinkBar(val model: AppModel, val host: String, val status: LinkStatus?, val history: LinkHistory, val now: Long)
+
+val LocalLinkBar = compositionLocalOf<LinkBar?> { null }
+
+/** Whether this screen shows the banner: not what's open beside a list on a wide screen (the list has it). */
+val LocalShowsLinkBanner = compositionLocalOf { true }
+
+/** The link's been down a moment (the banner shows): what's on screen may be out of date, and answering from it can't work. */
 @Composable
-fun ConnectionBanner(link: Link, name: String, demo: Boolean) {
-    AnimatedVisibility(link != Link.Connected && !demo) {
-        Row(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (link is Link.Failed) {
-                Text("Can't reach $name: ${link.message}", style = MaterialTheme.typography.bodySmall, maxLines = 2)
-            } else {
-                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                Text("Connecting to $name…", style = MaterialTheme.typography.bodySmall)
-            }
+fun linkDown(): Boolean = LocalLinkBar.current?.status != null
+
+/** Live parts of a row (its state, how long ago) dimmed while the link's down: they may be out of date. */
+@Composable
+fun Modifier.staleWhenLinkDown(): Modifier {
+    val alpha by animateFloatAsState(if (linkDown()) 0.45f else 1f, label = "stale")
+    return this.alpha(alpha)
+}
+
+/**
+ * Works out the link's status ([LinkStatus]) for the screens under it, on a clock while the link's
+ * down, and says it to TalkBack as it changes. Once, round the workspace.
+ */
+@Composable
+fun LinkWatcher(model: AppModel, host: String, content: @Composable () -> Unit) {
+    val link by model.link.collectAsStateWithLifecycle()
+    val history by model.history.collectAsStateWithLifecycle()
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(history.downSinceMs) {
+        now = System.currentTimeMillis()
+        if (history.downSinceMs == null) return@LaunchedEffect
+        while (true) {
+            delay(1000)
+            now = System.currentTimeMillis()
         }
+    }
+    val status = LinkStatus.shown(link == Link.Connected, history, now)
+    val view = LocalView.current
+    var said by remember { mutableStateOf<LinkStatus?>(null) }
+    LaunchedEffect(status) {
+        LinkStatus.announcement(said, status, host)?.let { view.announceForAccessibility(it) }
+        said = status
+    }
+    CompositionLocalProvider(LocalLinkBar provides LinkBar(model, host, status, history, now)) { content() }
+}
+
+/**
+ * The link to the computer while it isn't connected, under a screen's top bar: connecting,
+ * reconnecting, or can't reach it (why, and how old what's shown is), with Try Again. Nothing
+ * while connected, or for a blip.
+ */
+@Composable
+fun ConnectionBanner() {
+    val bar = LocalLinkBar.current ?: return
+    if (!LocalShowsLinkBanner.current) return
+    // Kept while it slides away.
+    var last by remember { mutableStateOf(bar.status) }
+    if (bar.status != null) last = bar.status
+    AnimatedVisibility(bar.status != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        val s = last ?: return@AnimatedVisibility
+        Row(
+            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+                if (s == LinkStatus.Unreachable) Icon(Icons.Default.CloudOff, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                else CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            }
+            Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
+                Text(s.title(bar.host), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+                s.detail(bar.history.reason, bar.history.lastLiveMs, bar.now)?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                }
+            }
+            if (s == LinkStatus.Unreachable) TextButton(onClick = { bar.model.reconnectNow() }) { Text("Try Again") }
+        }
+    }
+}
+
+/** A list that pulls to refresh: dials the computer now if it's down, and checks the link if it's up. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RefreshBox(model: AppModel, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    var refreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    PullToRefreshBox(refreshing, onRefresh = {
+        refreshing = true
+        scope.launch { model.refresh(); refreshing = false }
+    }, modifier.fillMaxSize()) { content() }
+}
+
+/** The first load, before the computer's state is here: a spinner, not an empty list (the banner says from where, once it's slow). */
+@Composable
+fun LoadingState(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(Modifier.semantics { contentDescription = "Loading" })
     }
 }
 
@@ -112,7 +220,7 @@ fun DetailScaffold(
     val behavior = if (large) TopAppBarDefaults.exitUntilCollapsedScrollBehavior() else null
     Scaffold(
         modifier = behavior?.let { Modifier.nestedScroll(it.nestedScrollConnection) } ?: Modifier,
-        topBar = {
+        topBar = { Column {
             if (large) LargeTopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, actions = actions, scrollBehavior = behavior)
             else TopAppBar(
                 title = {
@@ -125,7 +233,9 @@ fun DetailScaffold(
                 navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
                 actions = actions,
             )
-        },
+            // The link to the computer, on every screen, panes included.
+            ConnectionBanner()
+        } },
         bottomBar = bottomBar,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { padding -> content(padding) }

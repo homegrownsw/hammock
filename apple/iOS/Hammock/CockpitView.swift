@@ -29,6 +29,8 @@ struct CockpitView: View {
                 SettingsScreen(model: model)
             }
         }
+        // The link to the Mac, for the connection bar on every screen.
+        .watchesLink(model, host: session.hostShortName)
         .demoBar(session)
         #if DEBUG
         // Dev aid: the demo director's tab (DemoDirector, for the App Store's videos).
@@ -129,6 +131,7 @@ struct SessionsView: View {
                 // Dev aid: HMK_DEBUG_BOTTOM=1 starts scrolled to Coming Up.
                 .debugScroll(to: "comingUp", if: "HMK_DEBUG_BOTTOM")
                 #endif
+                .refreshable { await model.refresh() }
                 .overlay {
                     if model.connected, !model.groups.isEmpty, model.grants.isEmpty, sessionRows.isEmpty, model.schedules.isEmpty {
                         ContentUnavailableView {
@@ -212,7 +215,7 @@ struct SessionsView: View {
     private func closeSwipe(paneID: String) -> CloseSessionSwipe {
         let pane = model.panes[paneID]
         let drive = pane.flatMap { model.group(ofPane: $0.id) }.map { $0.canDrive && !$0.offline } ?? false
-        return CloseSessionSwipe(enabled: drive) {
+        return CloseSessionSwipe(enabled: drive && model.connected) {
             guard let pane else { return }
             if closeWarning(pane) != nil { closing = pane } else { close(pane) }
         }
@@ -304,6 +307,7 @@ struct SessionRowView: View {
             StateGlyph(state: a.state == .idle && a.seen ? nil : a.state, resting: a.state == .idle && a.seen, asleep: row.pane.asleep,
                        progress: row.pane.agentProgress)
                 .symbolRenderingMode(.palette)
+                .staleWhenLinkDown()
                 .alignmentGuide(.sessionTitle) { $0[VerticalAlignment.center] }
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -313,6 +317,7 @@ struct SessionRowView: View {
                         Text(elapsedString(sinceUnixMs: a.stateSinceUnixMs, now: ctx.date))
                             .font(.subheadline).foregroundStyle(.secondary).lineLimit(1).monospacedDigit()
                     }
+                    .staleWhenLinkDown()
                 }
                 .alignmentGuide(.sessionTitle) { $0[VerticalAlignment.center] }
                 Text(Markdown.inlineText(a.summary.isEmpty ? row.pane.agentStatusLabel : a.summary))
@@ -414,6 +419,7 @@ struct GroupsView: View {
                     }
                 }
             }
+            .refreshable { await model.refresh() }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if !model.groups.isEmpty { EditButton() }
@@ -488,10 +494,18 @@ struct CockpitSplit<Sidebar: View>: View {
                 .listStyle(.insetGrouped)
                 .themedScreenBackground()
                 .navigationTitle(session.host?.hostName.replacingOccurrences(of: ".local", with: "") ?? "Hammock")
+                .connectionBar()
                 .overlay {
                     if model.groups.isEmpty {
-                        ContentUnavailableView(model.connected ? "No Groups" : "Connecting…", systemImage: "square.stack.3d.up",
-                                               description: Text(model.connected ? "Create one in Groups, or on your Mac." : (model.lastError ?? "")))
+                        if model.everConnected {
+                            ContentUnavailableView("No Groups", systemImage: "square.stack.3d.up",
+                                                   description: Text("Create one in Groups, or on your Mac."))
+                        } else {
+                            // Still loading: the connection bar says from where, once it's slow.
+                            ProgressView()
+                                .controlSize(.large)
+                                .accessibilityLabel("Loading")
+                        }
                     }
                 }
                 // About half an iPhone Duo's inner display: the list on one
@@ -550,6 +564,10 @@ struct CockpitDestination: View {
     @Binding var path: [String]
 
     var body: some View {
+        screen.connectionBar()
+    }
+
+    @ViewBuilder private var screen: some View {
         if id == ScheduleRoute.list {
             ScheduledTasksScreen(model: model, path: $path)
         } else if let s = ScheduleRoute.scheduleID(id) {
@@ -592,6 +610,7 @@ struct TabRowIOS: View {
         HStack {
             StateGlyph(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab),
                        program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
+                .staleWhenLinkDown()
             VStack(alignment: .leading) {
                 HStack(spacing: 5) {
                     Text(model.title(of: tab))
@@ -615,6 +634,8 @@ struct AttentionRow: View {
     let model: AppModel
     let item: AttentionItem
     let open: (String) -> Void
+    /// Allow and Deny wait for the Mac (the connection bar says why).
+    @Environment(\.linkDown) private var linkDown
 
     /// The schedule this is a run of.
     private var schedule: Schedule? { model.panes[item.paneID].flatMap { model.schedule(for: $0) } }
@@ -647,7 +668,7 @@ struct AttentionRow: View {
                 }
             } else if item.state == .needsInput {
                 HStack {
-                    Button("Deny") { answer(false) }.buttonStyle(.bordered)
+                    Button("Deny") { answer(false) }.buttonStyle(.bordered).disabled(linkDown)
                     if item.allowsFromCard {
                         Button("Open") { openPane() }.buttonStyle(.bordered)
                     }
@@ -674,8 +695,9 @@ struct AttentionRow: View {
                         }
                         .prominentButton()
                         .accessibilityHint("Hold for Always Allow for This Schedule")
+                        .disabled(linkDown)
                     } else {
-                        Button("Allow") { answer(true) }.prominentButton()
+                        Button("Allow") { answer(true) }.prominentButton().disabled(linkDown)
                     }
                 }
             }
@@ -695,6 +717,7 @@ struct AttentionRow: View {
 struct JoinRow: View {
     let model: AppModel
     let request: JoinRequest
+    @Environment(\.linkDown) private var linkDown
 
     var body: some View {
         let who = model.people[request.userID]
@@ -722,6 +745,7 @@ struct JoinRow: View {
                 Button("Let View") { withAnimation { model.respond(to: request, role: .viewer) } }.buttonStyle(.bordered)
                 Button("Let Drive") { withAnimation { model.respond(to: request, role: .driver) } }.prominentButton()
             }
+            .disabled(linkDown)
         }
         .padding(.vertical, 4)
     }
@@ -730,6 +754,7 @@ struct JoinRow: View {
 struct GrantRow: View {
     let model: AppModel
     let grant: GrantRequest
+    @Environment(\.linkDown) private var linkDown
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // The palette on the icon only: on the Label it made the text
@@ -760,6 +785,7 @@ struct GrantRow: View {
                 }
                 Button("Allow") { withAnimation { model.respond(to: grant, .allowOnce) } }.prominentButton()
             }
+            .disabled(linkDown)
         }
         .padding(.vertical, 4)
     }

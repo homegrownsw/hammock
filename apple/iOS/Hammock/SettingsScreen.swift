@@ -153,6 +153,7 @@ struct SettingsScreen: View {
             }
             .themedScreenBackground()
             .navigationTitle("Settings")
+            .connectionBar()
             #if DEBUG
             // Dev aid: HMK_DEBUG_THEME_PICKER=1 opens Theme.
             .navigationDestination(isPresented: $debugThemePicker) {

@@ -79,6 +79,7 @@ struct DevicesView: View {
             }
             .themedScreenBackground()
             .navigationTitle("Devices")
+            .connectionBar()
             .onChange(of: session.model?.thisComputer?.kind, initial: true) { _, k in if let k { session.noteKind(k) } }
             .task(id: session.model?.connected == true ? session.model?.screenComputers.map(\.userID) ?? [] : []) { await checkScreens() }
             .fullScreenCover(item: $screen, onDismiss: { viewed += 1 }) { r in
@@ -136,7 +137,10 @@ private struct HostRow: View {
 
     private func status(_ current: Bool) -> String {
         guard current, let m = session.model else { return host.address }
-        return m.connected ? "Connected" : (m.lastError ?? "Connecting…")
+        if m.connected { return "Connected" }
+        // As the connection bar says it (LinkStatus), not the last call's error.
+        let trying = m.everConnected ? "Reconnecting…" : "Connecting…"
+        return m.linkError.map { "\(trying) \($0)" } ?? trying
     }
 }
 
