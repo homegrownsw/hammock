@@ -393,6 +393,63 @@ class ComposerHistory<D> {
     }
 }
 
+/** What a run of tool calls did, in words: "Read 4 files · ran 2 commands · edited 1 file" (the iPhone's ToolSummary). */
+object ToolSummary {
+    private enum class Kind { READ, EDIT, WRITE, RUN, SEARCH, FETCH, TASKS, SKILL, MCP, OTHER }
+
+    private fun kind(tool: String) = when (tool) {
+        "Read" -> Kind.READ
+        "Edit", "MultiEdit", "NotebookEdit" -> Kind.EDIT
+        "Write" -> Kind.WRITE
+        "Bash" -> Kind.RUN
+        "Grep", "Glob", "WebSearch" -> Kind.SEARCH
+        "WebFetch" -> Kind.FETCH
+        "TodoWrite", "TaskCreate", "TaskUpdate" -> Kind.TASKS
+        "Skill" -> Kind.SKILL
+        else -> if (tool.startsWith("mcp__")) Kind.MCP else Kind.OTHER
+    }
+
+    private fun words(k: Kind, n: Int, alone: Boolean): String {
+        fun c(one: String, many: String) = "$n " + if (n == 1) one else many
+        return when (k) {
+            Kind.READ -> "read " + c("file", "files")
+            Kind.EDIT -> "edited " + c("file", "files")
+            Kind.WRITE -> "wrote " + c("file", "files")
+            Kind.RUN -> "ran " + c("command", "commands")
+            Kind.SEARCH -> if (n == 1) "searched once" else "searched $n times"
+            Kind.FETCH -> "fetched " + c("page", "pages")
+            Kind.TASKS -> "updated the tasks"
+            Kind.SKILL -> "used " + c("skill", "skills")
+            Kind.MCP -> "used " + c("MCP tool", "MCP tools")
+            Kind.OTHER -> "used " + if (alone) c("tool", "tools") else c("other tool", "other tools")
+        }
+    }
+
+    /** The line for tools named [tools] with inputs [inputs], at most [parts] kinds (the rest as "2 more"); files counted once each. */
+    fun words(tools: List<Pair<String, String>>, parts: Int = 3): String {
+        val order = ArrayList<Kind>()
+        val counts = HashMap<Kind, Int>()
+        val files = HashMap<Kind, HashSet<String>>()
+        for ((tool, input) in tools) {
+            val k = kind(tool)
+            if (k !in counts) order.add(k)
+            val byFile = k == Kind.READ || k == Kind.EDIT || k == Kind.WRITE
+            if (byFile && input.isNotEmpty()) {
+                if (files.getOrPut(k) { HashSet() }.add(input)) counts[k] = (counts[k] ?: 0) + 1 else counts.putIfAbsent(k, 0)
+            } else counts[k] = (counts[k] ?: 0) + 1
+        }
+        val said = order.take(parts).map { words(it, counts[it] ?: 0, order.size == 1) }.toMutableList()
+        val rest = order.drop(parts).sumOf { counts[it] ?: 0 }
+        if (rest > 0) said.add("$rest more")
+        if (said.isEmpty()) return "Used no tools"
+        said[0] = said[0].replaceFirstChar { it.uppercase() }
+        return said.joinToString(" · ")
+    }
+
+    /** "1 failed", or null when none did. */
+    fun failed(errors: Int) = if (errors == 0) null else "$errors failed"
+}
+
 /** What a hardware keyboard's key does on the prompt card (the iPhone's PromptKey). */
 object PromptKeys {
     enum class Key { ESCAPE, LEFT, RIGHT, OTHER }

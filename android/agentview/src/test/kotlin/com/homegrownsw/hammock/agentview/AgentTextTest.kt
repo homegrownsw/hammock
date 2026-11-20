@@ -128,3 +128,18 @@ class AgentTextTest {
         assertEquals(PromptKeys.Action.Escape, PromptKeys.action(0, PromptKeys.Key.ESCAPE, false, options = 3, multipleQuestions = false))
     }
 }
+
+class ToolSummaryTest {
+    @Test
+    fun words() {
+        val tools = listOf("Read" to "a.go", "Read" to "b.go", "Bash" to "go test", "Read" to "a.go", "Edit" to "a.go", "Bash" to "go vet")
+        assertEquals("Read 2 files · ran 2 commands · edited 1 file", ToolSummary.words(tools))
+        assertEquals(
+            "Read 1 file · ran 1 command · edited 1 file · 3 more",
+            ToolSummary.words(listOf("Read" to "a", "Bash" to "", "Edit" to "a", "Grep" to "", "Grep" to "", "WebFetch" to "")),
+        )
+        assertEquals("Used 2 tools", ToolSummary.words(listOf("Foo" to "", "Bar" to "")))
+        assertEquals("1 failed", ToolSummary.failed(1))
+        assertNull(ToolSummary.failed(0))
+    }
+}

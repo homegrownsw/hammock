@@ -45,7 +45,6 @@ import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Groups
@@ -405,7 +404,13 @@ private fun ToolGroup(id: String, tools: List<AgentBlock>, session: AgentSession
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(Icons.Outlined.Layers, null, tint = c.tertiary, modifier = Modifier.size(18.dp))
-            Text("Used ${tools.size} tools", style = MaterialTheme.typography.bodyMedium, color = c.secondary)
+            Text(
+                ToolSummary.words(tools.map { it.tool to it.input }), style = MaterialTheme.typography.bodyMedium, color = c.secondary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            )
+            ToolSummary.failed(tools.count { it.error && !it.pending })?.let {
+                Text("· $it", style = MaterialTheme.typography.bodyMedium, color = c.warning, maxLines = 1)
+            }
             val last = tools.last()
             if (last.pending) {
                 Text(
@@ -418,8 +423,6 @@ private fun ToolGroup(id: String, tools: List<AgentBlock>, session: AgentSession
             if (running != null) {
                 RunningTime(running.timeUnixMs)
                 CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp)
-            } else if (tools.any { it.error }) {
-                Icon(Icons.Outlined.ErrorOutline, "Some failed", tint = c.warning, modifier = Modifier.size(15.dp))
             }
             Icon(if (open) Icons.Outlined.ExpandMore else Icons.Outlined.ChevronRight, null, tint = c.tertiary, modifier = Modifier.size(16.dp))
         }

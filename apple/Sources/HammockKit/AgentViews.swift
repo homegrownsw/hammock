@@ -1967,16 +1967,18 @@ struct ToolGroup: View {
     private var open: Bool { session.isOpen(id) }
     @Environment(\.agentFonts) private var fonts
 
-    private var summary: String {
-        "Used \(tools.count) tools"
-    }
+    /// "Read 4 files · ran 2 commands · edited 1 file".
+    private var summary: String { ToolSummary.words(tools) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button { withAnimation(.snappy) { session.setOpen(id, !open) } } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "square.stack.3d.up").frame(width: 18).foregroundStyle(.tertiary)
-                    Text(summary).foregroundStyle(.secondary)
+                    Text(summary).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail).layoutPriority(1)
+                    if let failed = ToolSummary.failed(tools) {
+                        Text("· " + failed).foregroundStyle(.orange).lineLimit(1).fixedSize().layoutPriority(2)
+                    }
                     if let last = tools.last, last.pending {
                         Text("· " + last.title).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                     }
@@ -1984,8 +1986,6 @@ struct ToolGroup: View {
                     if let running = tools.last(where: \.pending) {
                         RunningTime(sinceUnixMs: running.timeUnixMs)
                         ProgressView().controlSize(.mini)
-                    } else if tools.contains(where: \.error) {
-                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange).font(.caption)
                     }
                     Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                 }
