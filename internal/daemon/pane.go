@@ -444,6 +444,9 @@ func (p *pane) markStartFailed(err error) bool {
 	p.ops = nil // nothing will drain it
 	p.info.Exited, p.info.ExitStatus = true, -1
 	p.info.StartError = err.Error()
+	if p.mirror != nil {
+		p.mirror.Close() // a libghostty terminal: not freed by the GC
+	}
 	p.mirror = vt.New(int(p.info.Cols), int(p.info.Rows))
 	if c := p.d.colors.Load(); c != nil {
 		p.mirror.SetColors(*c)
