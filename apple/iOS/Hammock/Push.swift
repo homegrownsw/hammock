@@ -1,5 +1,6 @@
 import HammockKit
 import Foundation
+import os
 import Security
 import UIKit
 import UserNotifications
@@ -15,7 +16,8 @@ final class Push: NSObject {
     /// The relay, set at build time (HMK_PUSH_RELAY); empty: no push.
     let relayURL = (Bundle.main.object(forInfoDictionaryKey: "HammockPushRelay") as? String ?? "").trimmingCharacters(in: .whitespaces)
     private(set) var status = "Off"
-    weak var session: Session?
+    /// The app's, set as it launches (HammockIOSApp), window or not.
+    var session: Session?
     /// A notification opened: the pane to show.
     var openPane: String?
     /// A notification about a permission or a join opened: Sessions' Needs
@@ -220,8 +222,9 @@ extension Push: UNUserNotificationCenterDelegate {
         }
         let tapped = Tapped(action: response.actionIdentifier, join: info["join"] as? String, grant: info["grant"] as? String,
                             key: info["key"] as? String, pane: info["pane"] as? String, host: info["host"] as? String)
+        nonisolated(unsafe) let request = response.notification.request
         Task { @MainActor in
-            await self.handle(tapped)
+            await self.handle(tapped, request: request)
             done()
         }
     }
@@ -242,11 +245,8 @@ private struct Tapped: Sendable {
 }
 
 extension Push {
-    fileprivate func handle(_ t: Tapped) async {
-        // Tapped to launch the app: its window (which hands over the
-        // session) may not be up yet.
-        for _ in 0..<25 where session == nil { try? await Task.sleep(for: .milliseconds(200)) }
-        guard let session else { return }
+    fileprivate func handle(_ t: Tapped, request: UNNotificationRequest) async {
+        guard let session else { return } // set as the app launches, even in the background
         // From a Mac that isn't shown: a tap that opens the app shows it; an
         // answer from the notification (the app stays in the background)
         // goes over a brief connection of its own, the Mac shown kept.
@@ -270,14 +270,24 @@ extension Push {
             if t.grant != nil || t.join != nil { openNeedsYou = true }
             return
         }
-        // Answer from the notification: wait (briefly) for the Mac, and what it asks.
+        // Answer from the notification: wait (briefly) for the Mac, and what
+        // it asks. The app may have been launched in the background for it,
+        // and is kept running until the answer has gone, as far as iOS allows.
+        let running = BackgroundTime("Answer a notification")
+        defer { running.end() }
         let brief = opens ? nil : other.flatMap { session.briefConnection(to: $0) }
         defer { brief?.stop() }
         for _ in 0..<50 {
             if let m = brief ?? self.session?.model, m.connected, t.asks(m) { break }
             try? await Task.sleep(for: .milliseconds(200))
         }
-        guard let model = brief ?? self.session?.model else { return }
+        guard let model = brief ?? self.session?.model, model.connected else {
+            // iOS took the notification away as it was answered: put it
+            // back, so the answer can be tried again.
+            Self.log.error("Couldn't reach the Mac to answer \(t.action, privacy: .public); notification put back")
+            await Self.repost(request)
+            return
+        }
         if let join = t.join, let req = model.joinRequests.first(where: { $0.id == join }) {
             model.respond(to: req, role: t.action == "join.view" ? .viewer : nil)
         }
@@ -288,6 +298,41 @@ extension Push {
             model.denyHammockKey(r)
         }
         try? await Task.sleep(for: .milliseconds(500)) // let the answer go out
+    }
+}
+
+extension Push {
+    static let log = Logger(subsystem: "com.homegrownsw.hammock", category: "push")
+
+    /// Shows a notification again, as it was but without its sound (under
+    /// its own identifier, so it replaces one still there).
+    static func repost(_ request: UNNotificationRequest) async {
+        guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else { return }
+        content.sound = nil
+        do {
+            try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: request.identifier, content: content, trigger: nil))
+        } catch {
+            log.error("Couldn't put the notification back: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+}
+
+/// Asks iOS to keep the app running in the background a while (until `end`,
+/// or iOS's time runs out).
+@MainActor
+private final class BackgroundTime {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    init(_ name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
     }
 }
 

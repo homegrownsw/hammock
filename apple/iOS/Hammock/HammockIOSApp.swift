@@ -6,13 +6,18 @@ import SwiftUI
 @main
 struct HammockIOSApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var session = Session()
+    @State private var session: Session
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage(PhoneTheme.prefKey) private var themePref = ""
 
     init() {
         BundledFonts.register()
         PhoneTheme.migrate()
+        let s = Session()
+        _session = State(initialValue: s)
+        // Here, not in a view: a notification's answer can launch the app in
+        // the background, where no window comes up, and needs it all the same.
+        Push.shared.session = s
     }
 
     var body: some Scene {
@@ -467,7 +472,6 @@ struct RootView: View {
                 } message: {
                     Text("This is a demo with a made-up Mac. Pair your own to start agents, open tabs and run tasks.")
                 }
-                .onAppear { Push.shared.session = session }
                 // Suspended a while, or moved networks meanwhile: the link
                 // may look up but be dead. Checked, and redialled if so.
                 .onChange(of: scenePhase) { _, phase in if phase == .active { model.checkConnection() } }
