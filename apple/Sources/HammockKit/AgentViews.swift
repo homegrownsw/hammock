@@ -2824,13 +2824,32 @@ public struct PromptCardSample: View {
 /// line break, up to the cursor, with nothing but one of those or the end
 /// after it.
 enum SlashToken {
-    static func at(_ cursor: String.Index, in text: String) -> Range<String.Index>? {
+    /// With marker "@", the "@file" being typed there instead.
+    static func at(_ cursor: String.Index, in text: String, marker: Character = "/") -> Range<String.Index>? {
         guard cursor >= text.startIndex, cursor <= text.endIndex else { return nil }
         if cursor < text.endIndex, !text[cursor].isWhitespace { return nil }
         var start = cursor
         while start > text.startIndex, !text[text.index(before: start)].isWhitespace { start = text.index(before: start) }
-        guard start < cursor, text[start] == "/" else { return nil }
+        guard start < cursor, text[start] == marker else { return nil }
         return start..<cursor
+    }
+
+    /// How well a command matches what's typed after its "/" (lower is
+    /// better; nil: not at all): it starts with it, then a part of its name
+    /// does (after ":", "-" or "_": "/pr" for "/review-pr"), then it has it
+    /// anywhere, then its letters in order ("/rvpr").
+    static func rank(_ query: String, _ command: String) -> Int? {
+        let q = query.lowercased().drop { $0 == "/" }
+        let name = command.lowercased().drop { $0 == "/" }
+        if q.isEmpty || name.hasPrefix(q) { return 0 }
+        if name.split(whereSeparator: { ":-_".contains($0) }).dropFirst().contains(where: { $0.hasPrefix(q) }) { return 1 }
+        if name.contains(q) { return 2 }
+        var rest = Substring(name)
+        for ch in q {
+            guard let i = rest.firstIndex(of: ch) else { return nil }
+            rest = rest[rest.index(after: i)...]
+        }
+        return 3
     }
 
     /// The token starts the message: nothing but spaces and line breaks
@@ -2839,13 +2858,18 @@ enum SlashToken {
         text[..<token.lowerBound].allSatisfy(\.isWhitespace)
     }
 
-    /// The commands to offer for the token: up to eight that it begins,
-    /// leaving out those that only run at the start of a message (built-ins,
-    /// sent as text later in one) when it isn't there.
+    /// The commands to offer for the token: up to eight that match it, best
+    /// first (rank; those it begins first, in their order), leaving out
+    /// those that only run at the start of a message (built-ins, sent as
+    /// text later in one) when it isn't there.
     static func suggestions(for token: Range<String.Index>, in text: String, from commands: [String], startOnly: Set<String>) -> [String] {
-        let q = text[token].lowercased()
+        let q = String(text[token])
         let skip = startsMessage(token, in: text) ? [] : startOnly
-        return Array(commands.filter { !skip.contains($0) && $0.lowercased().hasPrefix(q) }.prefix(8))
+        let ranked = commands.enumerated().compactMap { i, c -> (Int, Int, String)? in
+            guard !skip.contains(c), let r = rank(q, c) else { return nil }
+            return (r, i, c)
+        }
+        return Array(ranked.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.prefix(8).map(\.2))
     }
 
     /// The commands in the text it knows, to colour as Claude Code does
@@ -2880,6 +2904,38 @@ enum SlashToken {
         let offset = text.distance(from: text.startIndex, to: token.lowerBound) + command.count + 1
         return (t, t.index(t.startIndex, offsetBy: offset))
     }
+}
+
+/// A row offered over the composer as you type: a "/command", or a file
+/// for an "@" mention.
+struct ComposerSuggestion: Hashable {
+    /// What replaces the token.
+    var insert: String
+    var label: String
+    /// A file's folder.
+    var detail = ""
+    var file = false
+
+    /// A file as an "@" mention: quoted when it has a space in it.
+    static func mention(_ path: String) -> String {
+        path.contains(where: \.isWhitespace) ? "@\"" + path + "\"" : "@" + path
+    }
+
+    /// A file the daemon listed (relative to folder) as the agent would
+    /// name it: relative to its own folder (cwd) when it's in there, else
+    /// in full.
+    static func path(_ p: String, folder: String, cwd: String) -> String {
+        let full = folder.isEmpty || p.hasPrefix("/") ? p : (folder as NSString).appendingPathComponent(p)
+        let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
+        if !cwd.isEmpty, full.hasPrefix(base) { return String(full.dropFirst(base.count)) }
+        return full
+    }
+}
+
+/// The files offered for an "@" being typed, and what they were looked up for.
+struct MentionFiles: Equatable {
+    var query: String?
+    var paths: [String] = []
 }
 
 struct Composer: View {
@@ -2926,6 +2982,11 @@ struct Composer: View {
     @State private var dictation = ComposerDictation()
     /// Stepping back through what's been sent (↑ and ↓).
     @State private var history = ComposerHistory<ComposerDoc>()
+    /// The suggestion highlighted, which Esc put away (by its token), and
+    /// the files found for an "@".
+    @State private var picked = 0
+    @State private var dismissedToken: String?
+    @State private var mentionFiles = MentionFiles()
     @Environment(\.agentFonts) private var fonts
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openAgentImage) private var open
@@ -2939,18 +3000,47 @@ struct Composer: View {
 
     /// The "/command" being typed: at the cursor, or the end before the box
     /// has one.
-    private var slashToken: Range<String.Index>? {
+    private var slashToken: Range<String.Index>? { token("/") }
+
+    /// The "@file" being typed (agents that take file mentions).
+    private var mentionToken: Range<String.Index>? {
+        AgentCatalog.takesFileMentions(harness) ? token("@") : nil
+    }
+
+    private func token(_ marker: Character) -> Range<String.Index>? {
         var at = text.endIndex
         if let cursor {
             guard cursor <= text.utf16.count, let i = String.Index(String.Index(utf16Offset: cursor, in: text), within: text) else { return nil }
             at = i
         }
-        return SlashToken.at(at, in: text)
+        return SlashToken.at(at, in: text, marker: marker)
     }
 
-    private var suggestions: [String] {
-        guard let r = slashToken else { return [] }
-        return SlashToken.suggestions(for: r, in: text, from: session.commands, startOnly: session.startCommands)
+    /// What's offered for the token being typed: commands for a "/", files
+    /// for an "@" (unless Esc put them away).
+    private var suggestions: [ComposerSuggestion] {
+        if let r = slashToken, String(text[r]) != dismissedToken {
+            return SlashToken.suggestions(for: r, in: text, from: session.commands, startOnly: session.startCommands)
+                .map { ComposerSuggestion(insert: $0, label: $0) }
+        }
+        if let r = mentionToken, String(text[r]) != dismissedToken, mentionFiles.query == String(text[r].dropFirst()) {
+            return mentionFiles.paths.map { ComposerSuggestion(insert: ComposerSuggestion.mention($0), label: ($0 as NSString).lastPathComponent,
+                                                               detail: ($0 as NSString).deletingLastPathComponent, file: true) }
+        }
+        return []
+    }
+
+    /// The highlighted suggestion (↑ and ↓ move it; Return and Tab take it).
+    private var highlighted: ComposerSuggestion? {
+        let s = suggestions
+        return s.isEmpty ? nil : s[min(max(picked, 0), s.count - 1)]
+    }
+
+    /// Return takes the highlighted suggestion, unless it's already typed in
+    /// full: then it sends.
+    private var returnTakes: Bool {
+        guard let h = highlighted, let r = slashToken ?? mentionToken else { return false }
+        return text[r].lowercased() != h.insert.lowercased()
     }
 
     /// Sets the text from code, not typing.
@@ -2962,8 +3052,9 @@ struct Composer: View {
 
     private func replaceText(_ t: String) { setDoc(ComposerDoc(plain: t)) }
 
-    private func complete(_ command: String) {
-        guard let r = slashToken else { return }
+    private func complete(_ s: ComposerSuggestion) {
+        guard let r = s.file ? mentionToken : slashToken else { return }
+        let command = s.insert
         let spaced = text[r.upperBound...].first.map { $0 == " " || $0 == "\t" } ?? false
         let ns = NSRange(r, in: text)
         controller.replace(ns, with: spaced ? command : command + " ")
@@ -3042,7 +3133,7 @@ struct Composer: View {
         }
         c.onSubmit = send
         c.onTab = {
-            guard let s = suggestions.first else { return false }
+            guard let s = highlighted else { return false }
             complete(s)
             return true
         }
@@ -3061,11 +3152,23 @@ struct Composer: View {
 
     /// A key the composer takes before the text view (ComposerKey).
     private func composerWants(_ k: ComposerKey) -> Bool {
-        historyWants(k)
+        if !suggestions.isEmpty {
+            // The suggestions over the box: ↑ and ↓ move through them,
+            // Return takes one, Esc puts them away.
+            return k == .accept ? returnTakes : true
+        }
+        return k == .up || k == .down ? historyWants(k) : false
     }
 
     private func composerKey(_ k: ComposerKey) {
-        stepHistory(k)
+        let s = suggestions
+        guard !s.isEmpty else { return stepHistory(k) }
+        switch k {
+        case .up: picked = (min(picked, s.count - 1) - 1 + s.count) % s.count
+        case .down: picked = (min(picked, s.count - 1) + 1) % s.count
+        case .accept: if let h = highlighted { complete(h) }
+        case .dismiss: if let r = slashToken ?? mentionToken { dismissedToken = String(text[r]) }
+        }
     }
 
     private func platformFont(code: Bool) -> PlatformFont {
@@ -3083,37 +3186,72 @@ struct Composer: View {
             + "|\(scheme == .dark)|\(fonts.size)|\(shellCommand)|\(accent.description)"
     }
 
+    /// What's offered for the token being typed, over the box: the
+    /// highlighted one (↑ and ↓) is what Tab and Return take.
+    private var suggestionList: some View {
+        let shown = suggestions, top = highlighted
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(shown, id: \.self) { s in
+                Button { complete(s) } label: {
+                    HStack(spacing: 8) {
+                        if s.file {
+                            Image(systemName: "doc").foregroundStyle(.secondary).accessibilityHidden(true)
+                            Text(s.label).font(fonts.code()).lineLimit(1)
+                            Text(s.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
+                        } else {
+                            Text(s.label).font(fonts.code()).lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        // Tab (or Return) takes the highlighted one: shown as
+                        // the command palette shows a shortcut.
+                        if s == top {
+                            Text("⇥")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.06)))
+                                .accessibilityLabel("Shortcut Tab")
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 7)
+                    .background {
+                        if s == top, shown.count > 1 {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(accent.opacity(0.14)).padding(.horizontal, 6)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(s == top ? "Complete (Tab or Return)" : "")
+                .accessibilityAddTraits(s == top ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 6)
+        .agentGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    /// The text view, and what follows its text: the suggestions' highlight
+    /// starting at the top of each new list, and the files for an "@",
+    /// looked up once typing pauses.
+    private var textView: some View {
+        ComposerTextView(controller: configured(), chipsKey: chipsKey, text: text)
+            .onChange(of: suggestions) { picked = 0 }
+            .task(id: mentionToken.map { String(text[$0].dropFirst()) }) {
+                guard let r = mentionToken else { return }
+                let q = String(text[r].dropFirst())
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                let paths = await session.mentionFiles(q)
+                if !Task.isCancelled { mentionFiles = MentionFiles(query: q, paths: paths) }
+            }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !suggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(suggestions, id: \.self) { s in
-                        Button { complete(s) } label: {
-                            HStack {
-                                Text(s).font(fonts.code())
-                                Spacer(minLength: 8)
-                                // Tab takes the top one: shown as the command
-                                // palette shows a shortcut.
-                                if s == suggestions.first {
-                                    Text("⇥")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.06)))
-                                        .accessibilityLabel("Shortcut Tab")
-                                }
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(s == suggestions.first ? "Complete (Tab)" : "")
-                    }
-                }
-                .padding(.vertical, 6)
-                .agentGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                suggestionList
             }
             if dictation.problem != nil || dictation.installing != nil {
                 DictationNotice(dictation: dictation, openSettings: openMicrophoneSettings)
@@ -3156,7 +3294,7 @@ struct Composer: View {
                         .padding(.bottom, -6)
                         .transition(.opacity)
                 }
-                ComposerTextView(controller: configured(), chipsKey: chipsKey, text: text)
+                textView
                     .overlay(alignment: .topLeading) {
                         if text.isEmpty {
                             Text("Message \(session.agentName)…")
@@ -3600,6 +3738,7 @@ struct Composer: View {
     private func rememberSent() {
         ComposerHistoryStore.record(session.paneID, doc.plain)
         history.reset()
+        dismissedToken = nil
     }
 
     // MARK: Drafts

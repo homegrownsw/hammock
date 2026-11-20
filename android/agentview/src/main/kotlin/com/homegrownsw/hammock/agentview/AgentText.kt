@@ -89,23 +89,55 @@ object ModelNames {
  * the end after it.
  */
 object SlashToken {
-    fun at(cursor: Int, text: String): IntRange? {
+    /** With [marker] '@', the "@file" being typed there instead. */
+    fun at(cursor: Int, text: String, marker: Char = '/'): IntRange? {
         if (cursor < 0 || cursor > text.length) return null
         if (cursor < text.length && !text[cursor].isWhitespace()) return null
         var start = cursor
         while (start > 0 && !text[start - 1].isWhitespace()) start--
-        if (start >= cursor || text[start] != '/') return null
+        if (start >= cursor || text[start] != marker) return null
         return start until cursor
     }
 
     /** Nothing but whitespace before it: agents' built-in commands only run there. */
     fun startsMessage(token: IntRange, text: String) = text.substring(0, token.first).isBlank()
 
-    /** Up to eight commands the token begins, leaving out start-only ones when it isn't at the start. */
+    /**
+     * How well a command matches what's typed after its "/" (lower is better;
+     * null: not at all): it starts with it, then a part of its name does (after
+     * ':', '-' or '_'), then it has it anywhere, then its letters in order.
+     */
+    fun rank(query: String, command: String): Int? {
+        val q = query.lowercase().trimStart('/')
+        val name = command.lowercase().trimStart('/')
+        if (q.isEmpty() || name.startsWith(q)) return 0
+        if (name.split(':', '-', '_').drop(1).any { it.startsWith(q) }) return 1
+        if (name.contains(q)) return 2
+        var from = 0
+        for (ch in q) {
+            val i = name.indexOf(ch, from)
+            if (i < 0) return null
+            from = i + 1
+        }
+        return 3
+    }
+
+    /** Up to eight commands that match the token, best first, leaving out start-only ones when it isn't at the start. */
     fun suggestions(token: IntRange, text: String, commands: List<String>, startOnly: Set<String>): List<String> {
-        val q = text.substring(token.first, token.last + 1).lowercase()
+        val q = text.substring(token.first, token.last + 1)
         val skip = if (startsMessage(token, text)) emptySet() else startOnly
-        return commands.filter { it !in skip && it.lowercase().startsWith(q) }.take(8)
+        return commands.withIndex().mapNotNull { (i, c) -> if (c in skip) null else rank(q, c)?.let { Triple(it, i, c) } }
+            .sortedWith(compareBy({ it.first }, { it.second })).take(8).map { it.third }
+    }
+
+    /** A file as an "@" mention: quoted when it has a space in it. */
+    fun mention(path: String) = if (path.any { it.isWhitespace() }) "@\"$path\"" else "@$path"
+
+    /** A file the daemon listed (relative to [folder]) as the agent would name it: relative to its [cwd] when in there, else in full. */
+    fun mentionPath(path: String, folder: String, cwd: String): String {
+        val full = if (folder.isEmpty() || path.startsWith("/")) path else folder.trimEnd('/') + "/" + path
+        val base = if (cwd.endsWith("/")) cwd else "$cwd/"
+        return if (cwd.isNotEmpty() && full.startsWith(base)) full.removePrefix(base) else full
     }
 
     /** The text with the token replaced by the command and a space, and where the cursor goes (after the space). */

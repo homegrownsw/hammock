@@ -38,6 +38,9 @@ public final class AgentCatalog {
     public static func canSwitch(_ id: String) -> Bool { kind(id)?.canSwitch ?? false }
     /// Whether a message starting with "!" runs as a shell command in it.
     public static func hasShellMode(_ id: String) -> Bool { kind(id)?.shellMode ?? false }
+    /// Whether "@path" in a message hands it that file (the agent view
+    /// offers files as you type one): Claude Code's and Codex's do.
+    public static func takesFileMentions(_ id: String) -> Bool { ["claude", "codex"].contains(id) }
 
     /// Agents a conversation can continue in, as the "Continue in…" menus
     /// list them: Claude last, where those menus have always had it.

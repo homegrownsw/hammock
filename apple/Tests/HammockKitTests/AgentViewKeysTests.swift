@@ -89,3 +89,48 @@ import Testing
         d.removePersistentDomain(forName: "ComposerHistoryTests")
     }
 }
+
+@Suite struct SlashRankingTests {
+    private func offered(_ t: String, _ commands: [String], startOnly: Set<String> = []) -> [String] {
+        SlashToken.suggestions(for: SlashToken.at(t.endIndex, in: t)!, in: t, from: commands, startOnly: startOnly)
+    }
+
+    @Test func ranksPrefixThenPartThenAnywhereThenInOrder() {
+        let commands = ["/compact", "/review", "/review-pr", "/plugin:pr-tidy", "/approve", "/prompts:draft"]
+        // Begins with it, then a part does, then it's anywhere, then its letters in order.
+        #expect(offered("/pr", commands) == ["/prompts:draft", "/review-pr", "/plugin:pr-tidy", "/approve"])
+        #expect(offered("/rvpr", commands) == ["/review-pr"])
+        #expect(offered("/zz", commands) == [])
+        #expect(offered("/", commands) == commands)
+    }
+
+    @Test func offersAtMostEight() {
+        let many = (1...20).map { "/c\($0)" }
+        #expect(offered("/c", many).count == 8)
+    }
+
+    @Test func rankValues() {
+        #expect(SlashToken.rank("/rev", "/review") == 0)
+        #expect(SlashToken.rank("/pr", "/review-pr") == 1)
+        #expect(SlashToken.rank("/view", "/review") == 2)
+        #expect(SlashToken.rank("/rw", "/review") == 3)
+        #expect(SlashToken.rank("/x", "/review") == nil)
+    }
+
+    @Test func findsAnAtMention() {
+        let t = "look at @src/ma"
+        let r = SlashToken.at(t.endIndex, in: t, marker: "@")
+        #expect(r.map { String(t[$0]) } == "@src/ma")
+        let mail = "you@example"
+        #expect(SlashToken.at(mail.endIndex, in: mail, marker: "@") == nil)
+    }
+
+    @Test func namesMentionedFilesAsTheAgentWould() {
+        #expect(ComposerSuggestion.path("a/b.go", folder: "/Users/me/app", cwd: "/Users/me/app") == "a/b.go")
+        #expect(ComposerSuggestion.path("a/b.go", folder: "/Users/me/app", cwd: "/Users/me/app/a") == "b.go")
+        #expect(ComposerSuggestion.path("x.go", folder: "/Users/me/app", cwd: "/Users/me/other") == "/Users/me/app/x.go")
+        #expect(ComposerSuggestion.path("x.go", folder: "/Users/me/app", cwd: "") == "/Users/me/app/x.go")
+        #expect(ComposerSuggestion.mention("a b.txt") == "@\"a b.txt\"")
+        #expect(ComposerSuggestion.mention("ab.txt") == "@ab.txt")
+    }
+}

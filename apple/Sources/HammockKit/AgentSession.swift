@@ -381,6 +381,17 @@ public final class AgentSession {
         b.kind == .user || (b.kind == .tool && b.tool == "Bash" && b.turnID == b.id)
     }
 
+    /// Files for an "@" mention typed in the composer: the pane's Group's
+    /// (the daemon's quick open list, best match first), each named as the
+    /// agent would (relative to its folder when it's in there).
+    func mentionFiles(_ query: String, limit: Int = 8) async -> [String] {
+        guard let conn = model?.connection,
+              let r = try? await conn.call({ $0.listFiles = .with { $0.paneID = self.paneID; $0.query = query; $0.limit = UInt32(limit) } })
+        else { return [] }
+        let cwd = model?.panes[paneID]?.cwd ?? ""
+        return r.fileList.paths.map { ComposerSuggestion.path($0, folder: r.fileList.folder, cwd: cwd) }
+    }
+
     /// What you've sent in the conversation, oldest first: your messages,
     /// and "!" commands as you typed them (the composer's history).
     var sentMessages: [String] {

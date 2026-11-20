@@ -61,8 +61,9 @@ private final class ChipCell: NSTextAttachmentCell {
 }
 #endif
 
-/// A key the composer handles itself, ahead of the text view.
-enum ComposerKey { case up, down }
+/// A key the composer handles itself, ahead of the text view: the arrows,
+/// Return (taking a suggestion) and Esc (putting them away).
+enum ComposerKey { case up, down, accept, dismiss }
 
 /// The composer's text view's settings, and its callbacks: the view's
 /// coordinator, which the composer also keeps to edit the text (insert a
@@ -629,6 +630,8 @@ extension ComposerTextController: NSTextViewDelegate {
             let mods = NSApp.currentEvent?.modifierFlags ?? []
             if mods.contains(.shift) || mods.contains(.option) {
                 textView.insertNewlineIgnoringFieldEditor(nil)
+            } else if wantsKey(.accept) {
+                onKey(.accept)
             } else {
                 onSubmit()
             }
@@ -641,7 +644,10 @@ extension ComposerTextController: NSTextViewDelegate {
             return true
         case #selector(NSResponder.cancelOperation(_:)):
             // Esc stops dictating, before anything else it does.
-            return onCancel()
+            if onCancel() { return true }
+            guard wantsKey(.dismiss) else { return false }
+            onKey(.dismiss)
+            return true
         case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
             let k: ComposerKey = sel == #selector(NSResponder.moveUp(_:)) ? .up : .down
             guard wantsKey(k) else { return false }
@@ -682,8 +688,10 @@ final class ComposerUITextView: UITextView {
         // them (canPerformAction), else they move the cursor as usual.
         let up = UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: [], action: #selector(upPressed))
         let down = UIKeyCommand(input: UIKeyCommand.inputDownArrow, modifierFlags: [], action: #selector(downPressed))
-        for c in [up, down] { c.wantsPriorityOverSystemBehavior = true }
-        return [tab, send, up, down]
+        let accept = UIKeyCommand(input: "\r", modifierFlags: [], action: #selector(acceptPressed))
+        let dismiss = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(dismissPressed))
+        for c in [up, down, accept, dismiss] { c.wantsPriorityOverSystemBehavior = true }
+        return [tab, send, up, down, accept, dismiss]
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -692,12 +700,16 @@ final class ComposerUITextView: UITextView {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    private static let keys: [Selector: ComposerKey] = [#selector(upPressed): .up, #selector(downPressed): .down]
+    private static let keys: [Selector: ComposerKey] = [
+        #selector(upPressed): .up, #selector(downPressed): .down, #selector(acceptPressed): .accept, #selector(dismissPressed): .dismiss,
+    ]
 
     @objc private func tabPressed() { _ = controller?.onTab() }
     @objc private func sendPressed() { controller?.onSubmit() }
     @objc private func upPressed() { controller?.onKey(.up) }
     @objc private func downPressed() { controller?.onKey(.down) }
+    @objc private func acceptPressed() { controller?.onKey(.accept) }
+    @objc private func dismissPressed() { controller?.onKey(.dismiss) }
 }
 
 struct ComposerTextView: UIViewRepresentable {

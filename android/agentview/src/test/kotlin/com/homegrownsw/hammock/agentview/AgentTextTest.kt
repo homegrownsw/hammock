@@ -76,6 +76,23 @@ class AgentTextTest {
     }
 
     @Test
+    fun rankedCompletion() {
+        val commands = listOf("/compact", "/review", "/review-pr", "/plugin:pr-tidy", "/approve", "/prompts:draft")
+        val text = "/pr"
+        assertEquals(
+            listOf("/prompts:draft", "/review-pr", "/plugin:pr-tidy", "/approve"),
+            SlashToken.suggestions(SlashToken.at(3, text)!!, text, commands, emptySet()),
+        )
+        assertEquals(3, SlashToken.rank("/rvpr", "/review-pr"))
+        assertNull(SlashToken.rank("/zz", "/review"))
+        assertEquals(0..6, SlashToken.at(7, "@src/ma", '@'))
+        assertNull(SlashToken.at(11, "you@example", '@'))
+        assertEquals("b.go", SlashToken.mentionPath("a/b.go", "/Users/me/app", "/Users/me/app/a"))
+        assertEquals("/Users/me/app/x.go", SlashToken.mentionPath("x.go", "/Users/me/app", "/Users/me/other"))
+        assertEquals("@\"a b.txt\"", SlashToken.mention("a b.txt"))
+    }
+
+    @Test
     fun composerHistory() {
         val h = ComposerHistory<String>()
         val all = listOf("one", "two")

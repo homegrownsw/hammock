@@ -82,6 +82,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -145,6 +146,9 @@ private fun sentMessages(state: AgentViewState): List<String> = state.blocks.map
     }
 }
 
+/** A row offered over the box as you type: a "/command", or a file for an "@" mention ([detail]: its folder). */
+private data class Suggestion(val insert: String, val label: String, val detail: String = "", val file: Boolean = false)
+
 /** The most attached to one message. */
 private const val MAX_ATTACHMENTS = 8
 
@@ -179,7 +183,30 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     val text = value.text
     val shellCommand = attachments.isEmpty() && session.hasShellMode && text.trimStart().startsWith("!")
     val token = if (value.selection.collapsed) SlashToken.at(value.selection.start, text) else null
-    val suggestions = token?.let { SlashToken.suggestions(it, text, state.commands, state.startCommands) } ?: emptyList()
+    // An "@file" being typed (Claude Code and Codex take file mentions).
+    val mention = if (token == null && value.selection.collapsed && session.harness in setOf("claude", "codex")) SlashToken.at(value.selection.start, text, '@') else null
+    val mentionQuery = mention?.let { text.substring(it.first + 1, it.last + 1) }
+    var files by remember(session.paneID) { mutableStateOf<Pair<String, List<String>>?>(null) }
+    LaunchedEffect(mentionQuery) {
+        val q = mentionQuery ?: return@LaunchedEffect
+        delay(120)
+        files = q to session.mentionFiles(q)
+    }
+    // Esc puts the suggestions away for the token they were for.
+    var dismissed by remember(session.paneID) { mutableStateOf<String?>(null) }
+    val tokenText = (token ?: mention)?.let { text.substring(it.first, it.last + 1) }
+    val suggestions: List<Suggestion> = when {
+        tokenText != null && tokenText == dismissed -> emptyList()
+        token != null -> SlashToken.suggestions(token, text, state.commands, state.startCommands).map { Suggestion(it, it) }
+        mentionQuery != null && files?.first == mentionQuery -> files!!.second.map {
+            Suggestion(SlashToken.mention(it), it.substringAfterLast('/'), it.substringBeforeLast('/', ""), file = true)
+        }
+        else -> emptyList()
+    }
+    // The highlighted one (↑ and ↓ move it; Return and Tab take it), from the top of each new list.
+    var picked by remember { mutableIntStateOf(0) }
+    LaunchedEffect(suggestions) { picked = 0 }
+    val highlighted = suggestions.getOrNull(picked.coerceIn(0, maxOf(suggestions.size - 1, 0)))
     val canSend = (text.isNotBlank() || attachments.isNotEmpty()) && loading == 0
     val stops = state.working && text.isEmpty() && attachments.isEmpty() && !dictation.active
 
@@ -214,10 +241,26 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         return true
     }
 
-    fun complete(command: String) {
-        val tk = token ?: return
-        val (t, cursor) = SlashToken.complete(tk, command, text)
+    fun complete(s: Suggestion) {
+        val tk = (if (s.file) mention else token) ?: return
+        val (t, cursor) = SlashToken.complete(tk, s.insert, text)
         value = TextFieldValue(t, TextRange(cursor.coerceAtMost(t.length)))
+    }
+
+    // A hardware keyboard over the suggestions: ↑ and ↓ move, Return and Tab
+    // take the highlighted one (Return sends when it's typed in full), Esc
+    // puts them away.
+    fun suggestionKey(key: Key): Boolean {
+        val h = highlighted ?: return false
+        when (key) {
+            Key.DirectionUp -> picked = (picked - 1 + suggestions.size) % suggestions.size
+            Key.DirectionDown -> picked = (picked + 1) % suggestions.size
+            Key.Tab -> complete(h)
+            Key.Enter -> if (tokenText.equals(h.insert, ignoreCase = true)) return false else complete(h)
+            Key.Escape -> dismissed = tokenText
+            else -> return false
+        }
+        return true
     }
 
     fun attach(name: String, data: ByteArray) {
@@ -271,6 +314,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         val sentText = text
         History.record(context, session.paneID, sentText)
         history.reset()
+        dismissed = null
         val sent = attachments.toList()
         attachments.clear()
         setText("")
@@ -339,10 +383,19 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
             Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 3.dp, shadowElevation = 4.dp, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     for (s in suggestions) {
-                        Text(
-                            s, style = codeTextStyle(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().clickable { complete(s) }.padding(horizontal = 16.dp, vertical = 9.dp),
-                        )
+                        val on = s == highlighted && suggestions.size > 1
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 6.dp).clip(RoundedCornerShape(12.dp))
+                                .background(if (on) c.accent.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent)
+                                .clickable { complete(s) }.padding(horizontal = 10.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (s.file) Icon(Icons.Outlined.Description, null, tint = c.secondary, modifier = Modifier.size(16.dp))
+                            Text(s.label, style = codeTextStyle(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (s.detail.isNotEmpty()) {
+                                Text(s.detail, style = MaterialTheme.typography.labelMedium, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
                     }
                 }
             }
@@ -401,8 +454,8 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                             when {
                                 // A hardware keyboard: ⌘/Ctrl-Return sends, Tab takes the top suggestion.
                                 e.key == Key.Enter && (e.isCtrlPressed || e.isMetaPressed) -> { if (stops) session.interrupt() else send(); true }
-                                e.key == Key.Tab && suggestions.isNotEmpty() -> { complete(suggestions.first()); true }
                                 e.key == Key.Escape && dictation.active -> { dictation.stop(); true }
+                                !e.isShiftPressed && suggestionKey(e.key) -> true
                                 e.key == Key.DirectionUp || e.key == Key.DirectionDown -> historyKey(e.key == Key.DirectionUp)
                                 else -> false
                             }

@@ -398,6 +398,15 @@ class AgentSession(
 
     fun clearSendError() = _state.update { it.copy(sendError = null) }
 
+    /** Files for an "@" mention typed in the composer: the pane's Group's, best match first, each named as the agent would. */
+    suspend fun mentionFiles(query: String, limit: Int = 8): List<String> = try {
+        val l = model.call { setListFiles(Hammock.ListFiles.newBuilder().setPaneId(paneID).setQuery(query).setLimit(limit)) }.fileList
+        val cwd = model.workspace.value.panes[paneID]?.cwd ?: ""
+        l.pathsList.map { SlashToken.mentionPath(it, l.folder, cwd) }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
     /** Stops the agent (Esc). */
     fun interrupt() = model.interrupt(paneID)
 

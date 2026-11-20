@@ -45,7 +45,7 @@ For [agents that support it](/hammock/docs/reference/agents/), a pane can show t
 
 Tap a file the agent mentions to see it, or one of its running tasks or subagents to watch it. **Latest** takes you back to the end.
 
-**Replying.** Type in the box at the bottom and tap the arrow to send. While the agent works and the box is empty, the same button stops it. In Claude Code, a message starting with `!` runs as a shell command. With a hardware keyboard, ↑ in the empty box brings back what you sent before.
+**Replying.** Type in the box at the bottom and tap the arrow to send. While the agent works and the box is empty, the same button stops it. In Claude Code, a message starting with `!` runs as a shell command. Type `/` for the agent's commands, or `@` for a file in the Group's folder, and tap one to put it in. With a hardware keyboard, ↑ in the empty box brings back what you sent before.
 
 **Attachments.** Tap **+** to attach pictures or videos. Touch and hold one to take it out again.
 
