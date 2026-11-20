@@ -2315,6 +2315,8 @@ struct PromptCard: View {
     /// The option just answered with, for its row's spinner.
     @State private var tapped = 0
     @FocusState private var focus: Field?
+    /// The card itself has the keyboard (its number keys and arrows).
+    @FocusState private var keysFocused: Bool
     @Environment(\.agentFonts) private var fonts
 
     private enum Field: Hashable { case other, notes }
@@ -2348,7 +2350,51 @@ struct PromptCard: View {
         .onChange(of: session.answering) { _, on in if !on { tapped = 0 } }
         .sensoryFeedback(.selection, trigger: chosen)
         .disabled(session.answering)
+        .modifier(PromptKeys(focused: $keysFocused, handle: key, take: takeKeys, paneFocused: paneFocused))
     }
+
+    // MARK: Keys
+
+    /// Whether this pane is the one you're in (the Mac's focused pane; on a
+    /// phone, the one on screen).
+    private var paneFocused: Bool {
+        #if os(macOS)
+        session.model?.focusedPaneID == session.paneID
+        #else
+        true
+        #endif
+    }
+
+    /// The card takes the keys (1–9, ←, →, Esc) when it shows in the pane
+    /// you're in, unless you're typing in one of its fields.
+    private func takeKeys() {
+        guard focus == nil, paneFocused else { return }
+        DispatchQueue.main.async { if focus == nil { keysFocused = true } }
+    }
+
+    /// A key pressed with the card focused: 1–9 picks that option (as a
+    /// click does), ← and → move between questions (its chevrons), Esc
+    /// switches to the terminal (or stops typing an answer).
+    private func key(_ press: KeyPress) -> KeyPress.Result {
+        guard focus == nil else { return .ignored }
+        switch PromptKey.action(characters: press.characters, key: press.key == .escape ? .escape : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right : .other,
+                                hasModifiers: !press.modifiers.subtracting([.shift, .numericPad, .function]).isEmpty,
+                                options: p.options.count, multipleQuestions: questionPosition != nil) {
+        case .pick(let n):
+            guard !session.answering else { return .handled }
+            pick(n)
+        case .previous:
+            if let (i, _) = questionPosition, i > 1 { previousQuestion() }
+        case .next: nextQuestion()
+        case .escape:
+            if typing { typing = false; otherText = "" } else { onShowTerminal() }
+        case nil: return .ignored
+        }
+        return .handled
+    }
+
+    private func previousQuestion() { session.model?.send(session.paneID, Data("\u{1b}[D".utf8)) }
+    private func nextQuestion() { session.model?.send(session.paneID, Data("\u{1b}[C".utf8)) }
 
     private func reset() {
         ticked = Set(p.checked.enumerated().filter(\.element).map { $0.offset + 1 })
@@ -2382,11 +2428,13 @@ struct PromptCard: View {
                     // Through the questions, as ← and → do in Claude's form
                     // (past the last is its Submit step).
                     HStack(spacing: 2) {
-                        Button { session.model?.send(session.paneID, Data("\u{1b}[D".utf8)) } label: { Image(systemName: "chevron.left").frame(width: 28, height: 24) }
+                        Button(action: previousQuestion) { Image(systemName: "chevron.left").frame(width: 28, height: 24) }
                             .disabled(i <= 1)
-                            .help("Previous question")
-                        Button { session.model?.send(session.paneID, Data("\u{1b}[C".utf8)) } label: { Image(systemName: "chevron.right").frame(width: 28, height: 24) }
-                            .help("Next question")
+                            .help("Previous question (←)")
+                            .accessibilityLabel("Previous question")
+                        Button(action: nextQuestion) { Image(systemName: "chevron.right").frame(width: 28, height: 24) }
+                            .help("Next question (→)")
+                            .accessibilityLabel("Next question")
                     }
                     .buttonStyle(.borderless)
                     .font(.callout.weight(.semibold))
@@ -2475,19 +2523,7 @@ struct PromptCard: View {
         let isBox = isCheckbox(n) && !isOther
         let picked = p.notes && n == chosen
         let (text, isRecommended) = Self.recommended(label)
-        Button {
-            if isOther {
-                typing = true
-                focus = .other
-            } else if isBox {
-                if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
-            } else if p.notes {
-                chosen = n // answered with Answer, under its preview
-            } else {
-                tapped = n
-                Task { await session.answer(option: n) }
-            }
-        } label: {
+        Button { pick(n) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 if isBox {
                     Image(systemName: ticked.contains(n) ? "checkmark.square.fill" : "square").foregroundStyle(accent)
@@ -2520,6 +2556,22 @@ struct PromptCard: View {
             .background(rowBackground(highlighted: picked))
         }
         .buttonStyle(.plain)
+    }
+
+    /// Option n chosen, by a click or its number key.
+    private func pick(_ n: Int) {
+        let isOther = n == Int(p.other)
+        if isOther {
+            typing = true
+            focus = .other
+        } else if isCheckbox(n) {
+            if ticked.contains(n) { ticked.remove(n) } else { ticked.insert(n) }
+        } else if p.notes {
+            chosen = n // answered with Answer, under its preview
+        } else {
+            tapped = n
+            Task { await session.answer(option: n) }
+        }
     }
 
     private func numberBadge(_ n: Int, filled: Bool) -> some View {
@@ -2657,6 +2709,48 @@ struct PromptCard: View {
     /// doesn't say: all of them.)
     private func isCheckbox(_ n: Int) -> Bool {
         p.multiSelect && (p.checkboxes == 0 || n <= Int(p.checkboxes))
+    }
+}
+
+/// What a key does on the prompt card (PromptCard's keys), apart from the
+/// view so it can be tested.
+enum PromptKey: Equatable {
+    case pick(Int), previous, next, escape
+
+    enum Key { case escape, left, right, other }
+
+    /// 1–9 picks that option (when there is one); ← and → move between
+    /// questions, when there are several; Esc is Esc. Nothing with ⌘, ⌥ or
+    /// ⌃ held: those are the menus'.
+    static func action(characters: String, key: Key, hasModifiers: Bool, options: Int, multipleQuestions: Bool) -> PromptKey? {
+        guard !hasModifiers else { return nil }
+        switch key {
+        case .escape: return .escape
+        case .left: return multipleQuestions ? .previous : nil
+        case .right: return multipleQuestions ? .next : nil
+        case .other: break
+        }
+        guard characters.count == 1, let n = Int(characters), (1...9).contains(n), n <= options else { return nil }
+        return .pick(n)
+    }
+}
+
+/// The prompt card's keyboard: focusable (with no ring drawn), its keys
+/// handled, and focused when it shows in the pane you're in.
+private struct PromptKeys: ViewModifier {
+    var focused: FocusState<Bool>.Binding
+    let handle: (KeyPress) -> KeyPress.Result
+    let take: () -> Void
+    let paneFocused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .focusable()
+            .focusEffectDisabled()
+            .focused(focused)
+            .onKeyPress(phases: .down, action: handle)
+            .onAppear(perform: take)
+            .onChange(of: paneFocused) { _, on in if on { take() } }
     }
 }
 

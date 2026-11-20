@@ -271,6 +271,33 @@ object LinkPolicy {
     }
 }
 
+/** What a hardware keyboard's key does on the prompt card (the iPhone's PromptKey). */
+object PromptKeys {
+    enum class Key { ESCAPE, LEFT, RIGHT, OTHER }
+
+    sealed class Action {
+        data class Pick(val n: Int) : Action()
+        data object Previous : Action()
+        data object Next : Action()
+        data object Escape : Action()
+    }
+
+    /**
+     * [digit] 1–9 picks that option (when there is one); ← and → move between
+     * questions when there are several; Esc is Esc. Nothing with Ctrl, Meta
+     * or Alt held.
+     */
+    fun action(digit: Int, key: Key, modifiers: Boolean, options: Int, multipleQuestions: Boolean): Action? {
+        if (modifiers) return null
+        return when (key) {
+            Key.ESCAPE -> Action.Escape
+            Key.LEFT -> if (multipleQuestions) Action.Previous else null
+            Key.RIGHT -> if (multipleQuestions) Action.Next else null
+            Key.OTHER -> if (digit in 1..9 && digit <= options) Action.Pick(digit) else null
+        }
+    }
+}
+
 /** A pull request's state as words, and an option's "(Recommended)". */
 object CardText {
     fun prState(s: String): String = when (s.uppercase()) {

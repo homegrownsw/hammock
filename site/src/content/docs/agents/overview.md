@@ -30,6 +30,8 @@ You see them on each tab's icon in the sidebar, in the sidebar's **Needs You** a
 
 For most agents Hammock can show the conversation as a native, readable view instead of the terminal: your messages, the agent's replies and its tool calls. You can send messages from it, attach pictures and dictate. A message sent while Claude Code works can wait until its turn ends: right-click it (touch and hold on a phone) and choose **Send Now** to give it to Claude straight away, as Ctrl+Enter does in its terminal.
 
+When the agent asks for permission or asks a question, its options appear as a card: click one, or press its number (1–9). ← and → move between questions, and Esc switches to the terminal.
+
 Switch a pane between the two with Pane ▸ Toggle Agent View (⇧⌘A). Settings ▸ Agent View ▸ Agent panes open in (`agent-default-view`) picks which one agent panes start in.
 
 ## Starting an agent

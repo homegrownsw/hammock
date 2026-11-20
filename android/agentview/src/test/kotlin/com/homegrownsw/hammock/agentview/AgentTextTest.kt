@@ -74,4 +74,17 @@ class AgentTextTest {
         assertEquals("No" to false, CardText.recommended("No"))
         assertEquals("Merged", CardText.prState("merged"))
     }
+
+    @Test
+    fun promptKeys() {
+        val other = PromptKeys.Key.OTHER
+        assertEquals(PromptKeys.Action.Pick(2), PromptKeys.action(2, other, false, options = 3, multipleQuestions = false))
+        assertNull(PromptKeys.action(4, other, false, options = 3, multipleQuestions = false))
+        assertNull(PromptKeys.action(1, other, true, options = 3, multipleQuestions = false))
+        assertNull(PromptKeys.action(0, other, false, options = 3, multipleQuestions = false))
+        assertNull(PromptKeys.action(0, PromptKeys.Key.LEFT, false, options = 3, multipleQuestions = false))
+        assertEquals(PromptKeys.Action.Previous, PromptKeys.action(0, PromptKeys.Key.LEFT, false, options = 3, multipleQuestions = true))
+        assertEquals(PromptKeys.Action.Next, PromptKeys.action(0, PromptKeys.Key.RIGHT, false, options = 3, multipleQuestions = true))
+        assertEquals(PromptKeys.Action.Escape, PromptKeys.action(0, PromptKeys.Key.ESCAPE, false, options = 3, multipleQuestions = false))
+    }
 }

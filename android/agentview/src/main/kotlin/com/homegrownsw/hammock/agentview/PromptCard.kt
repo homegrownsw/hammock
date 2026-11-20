@@ -52,8 +52,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -144,10 +154,49 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
         if (chosen < 1 || state.answering) return
         answer(chosen, n = notes.trim())
     }
+    // Option n chosen, by a tap or its number key.
+    fun pick(n: Int) {
+        when {
+            n == p.other -> typing = true
+            isCheckbox(n) -> ticked = if (n in ticked) ticked - n else ticked + n
+            p.notes -> { chosen = n; haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+            else -> answer(n)
+        }
+    }
+
+    // A hardware keyboard: the card takes 1–9, ← and → and Esc while you're
+    // not typing in one of its fields.
+    val keys = remember { FocusRequester() }
+    var keysFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(key, typing) { if (!typing) runCatching { keys.requestFocus() } }
 
     Surface(
         shape = RoundedCornerShape(24.dp), tonalElevation = 3.dp, shadowElevation = 6.dp,
-        modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight),
+        modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight).focusRequester(keys)
+            .onFocusChanged { keysFocused = it.isFocused }.focusable().onPreviewKeyEvent { e ->
+            // Only the card's own focus: not while typing in one of its fields.
+            if (e.type != KeyEventType.KeyDown || !keysFocused) return@onPreviewKeyEvent false
+            val k = when (e.key) {
+                Key.Escape -> PromptKeys.Key.ESCAPE
+                Key.DirectionLeft -> PromptKeys.Key.LEFT
+                Key.DirectionRight -> PromptKeys.Key.RIGHT
+                else -> PromptKeys.Key.OTHER
+            }
+            val digit = when (e.key) {
+                Key.One, Key.NumPad1 -> 1; Key.Two, Key.NumPad2 -> 2; Key.Three, Key.NumPad3 -> 3
+                Key.Four, Key.NumPad4 -> 4; Key.Five, Key.NumPad5 -> 5; Key.Six, Key.NumPad6 -> 6
+                Key.Seven, Key.NumPad7 -> 7; Key.Eight, Key.NumPad8 -> 8; Key.Nine, Key.NumPad9 -> 9
+                else -> 0
+            }
+            when (val a = PromptKeys.action(digit, k, e.isCtrlPressed || e.isMetaPressed || e.isAltPressed, p.optionsCount, position != null)) {
+                is PromptKeys.Action.Pick -> if (!state.answering) pick(a.n)
+                PromptKeys.Action.Previous -> if ((position?.first ?: 0) > 1) session.keys("\u001b[D")
+                PromptKeys.Action.Next -> session.keys("\u001b[C")
+                PromptKeys.Action.Escape -> onOpenTerminal()
+                null -> return@onPreviewKeyEvent false
+            }
+            true
+        },
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -190,14 +239,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                         OptionRow(
                             n, label, desc, isOther = isOther, multi = isBox, ticked = n in ticked, picked = picked,
                             spinning = tapped == n && state.answering, enabled = !state.answering,
-                        ) {
-                            when {
-                                isOther -> typing = true
-                                isBox -> ticked = if (n in ticked) ticked - n else ticked + n
-                                p.notes -> { chosen = n; haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
-                                else -> answer(n)
-                            }
-                        }
+                        ) { pick(n) }
                     }
                 }
             }

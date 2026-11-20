@@ -51,7 +51,7 @@ Tap a file the agent mentions to see it, or one of its running tasks or subagent
 
 **Dictation.** Tap the microphone to dictate, and again to stop.
 
-**Questions.** An agent's question appears as a card with its options to tap. **Answer in Terminal** switches to the terminal for anything the card can't answer.
+**Questions.** An agent's question appears as a card with its options to tap. **Answer in Terminal** switches to the terminal for anything the card can't answer. With a hardware keyboard, press an option's number, ← and → to move between questions, and Esc for the terminal.
 
 ## Permission requests and notifications
 
