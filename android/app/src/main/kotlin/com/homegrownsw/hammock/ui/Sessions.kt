@@ -75,6 +75,7 @@ import com.homegrownsw.hammock.client.agentNote
 import com.homegrownsw.hammock.client.canAllowAlways
 import com.homegrownsw.hammock.client.canAddTabs
 import com.homegrownsw.hammock.client.canDrive
+import com.homegrownsw.hammock.client.closeWarning
 import com.homegrownsw.hammock.client.displayName
 import com.homegrownsw.hammock.client.elapsedString
 import com.homegrownsw.hammock.client.headlineText
@@ -153,7 +154,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
         if (tab != null && w.panes(tab).size == 1) model.closeTab(tab.id) else model.closePane(p.id)
     }
     fun requestClose(p: Pane) {
-        if (p.agent.shownState == AgentState.AGENT_STATE_WORKING || (w.tabs[p.tabId]?.let { w.panes(it).size } ?: 1) > 1) closing = p else close(p)
+        if (closeWarning(listOf(p)) != null || (w.tabs[p.tabId]?.let { w.panes(it).size } ?: 1) > 1) closing = p else close(p)
     }
     fun canClose(p: Pane) = w.groupOfPane(p.id)?.let { it.canDrive && !it.offline } ?: false
 
@@ -227,7 +228,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
         if (!LocalAppLocked.current) AlertDialog(
             onDismissRequest = { closing = null },
             title = { Text("Close “$title”?") },
-            text = { Text(closeWarning(w, p)) },
+            text = { Text(sessionCloseNote(w, p)) },
             confirmButton = { TextButton(onClick = { close(p); closing = null }) { Text("Close Session", color = ErrorColor) } },
             dismissButton = { TextButton(onClick = { closing = null }) { Text("Cancel") } },
         )
@@ -236,13 +237,9 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
     if (starting) StartAgentSheet(model, groupID = null, nav = nav) { starting = false }
 }
 
-private fun closeWarning(w: Workspace, p: Pane): String {
+private fun sessionCloseNote(w: Workspace, p: Pane): String {
     val others = w.tabs[p.tabId]?.let { w.panes(it).size - 1 } ?: 0
-    return when {
-        p.agent.shownState == AgentState.AGENT_STATE_WORKING -> "Its agent is working: it's stopped."
-        others > 0 -> "Only the agent's pane closes; the rest of its tab keeps running."
-        else -> ""
-    }
+    return closeWarning(listOf(p)) ?: if (others > 0) "Only the agent's pane closes; the rest of its tab keeps running." else ""
 }
 
 /** Swipe left to close, where you can (your own Groups, or ones you drive). */

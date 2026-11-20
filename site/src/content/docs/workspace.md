@@ -87,7 +87,7 @@ hmk window open tab TAB
 
 ## Closing and reopening
 
-⌘W closes the focused pane, and with it an emptied tab. Hammock asks first if an agent there is at work. **Reopen Closed Tab or Pane** (⇧⌘T, or `hmk reopen`) brings it back, and its agent resumes its session.
+⌘W closes the focused pane, and with it an emptied tab. However you close a pane, tab or Group, on the Mac, in the TUI or on your phone, Hammock asks first if that would stop an agent at work. **Reopen Closed Tab or Pane** (⇧⌘T, or `hmk reopen`) brings it back, and its agent resumes its session.
 
 ## Notifications
 

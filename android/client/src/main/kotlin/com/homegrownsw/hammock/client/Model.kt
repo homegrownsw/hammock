@@ -57,6 +57,25 @@ val Pane.canSleep: Boolean get() = isTerminal && hasAgent() && !exited && !aslee
 
 val Pane.agentStatusLabel: String get() = if (asleep) "Asleep" else agent.state.label
 
+/** Its agent is at work (working, starting, waiting for you, or with subagents still running): closing the pane stops it. */
+val Pane.agentAtWork: Boolean get() = hasAgent() && !exited && (agent.subagents > 0 || agent.shownState in setOf(
+    AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_STARTING, AgentState.AGENT_STATE_NEEDS_INPUT))
+
+/** What closing these panes (one, or a tab's) would stop, worded as the iPhone's; null when no agent among them is at work. */
+fun closeWarning(panes: List<Pane>): String? {
+    val busy = panes.filter { it.agentAtWork }
+    if (busy.size > 1) return "${busy.size} agents are still at work. Closing stops them."
+    val p = busy.firstOrNull() ?: return null
+    val a = p.agent
+    val doing = when {
+        a.shownState == AgentState.AGENT_STATE_NEEDS_INPUT -> "is waiting for you"
+        a.runningCommand -> "is running a command"
+        a.shownState == AgentState.AGENT_STATE_IDLE -> "has ${if (a.subagents == 1) "a subagent" else "${a.subagents} subagents"} still running"
+        else -> "is still working"
+    }
+    return "${p.displayName.replaceFirstChar { it.uppercase() }} $doing. Closing stops it."
+}
+
 /** Shared with you from another computer. */
 val Group.isRemote: Boolean get() = hostUserId.isNotEmpty()
 val Group.canDrive: Boolean get() = !isRemote || myRole == Role.ROLE_DRIVER || myRole == Role.ROLE_OWNER

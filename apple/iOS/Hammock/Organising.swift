@@ -46,6 +46,8 @@ struct TabActions: View {
     let tab: WorkspaceTab
     let rename: () -> Void
     var newTab: (() -> Void)?
+    /// Set to the tab when closing it needs a yes (closeTabConfirmation).
+    @Binding var closing: WorkspaceTab?
 
     var body: some View {
         Button("Rename…", systemImage: "pencil", action: rename)
@@ -78,7 +80,28 @@ struct TabActions: View {
             }
         }
         Divider()
-        Button("Close Tab", systemImage: "xmark", role: .destructive) { Task { await model.closeTab(tab.id) } }
+        Button("Close Tab", systemImage: "xmark", role: .destructive) { requestCloseTab(model, tab) { closing = $0 } }
+    }
+}
+
+/// Closes a tab, or hands it to `ask` when that would stop something in it
+/// (an agent at work, a program running), for closeTabConfirmation to ask.
+@MainActor
+func requestCloseTab(_ model: AppModel, _ tab: WorkspaceTab, ask: (WorkspaceTab) -> Void) {
+    if closeWarning(model.panes(in: tab)) != nil { ask(tab) } else { Task { await model.closeTab(tab.id) } }
+}
+
+extension View {
+    /// Asks whether to close the tab while one is set (requestCloseTab),
+    /// saying what it stops, as closing a pane does.
+    func closeTabConfirmation(model: AppModel, tab: Binding<WorkspaceTab?>) -> some View {
+        confirmationDialog(tab.wrappedValue.map { "Close “\(model.title(of: $0))”?" } ?? "",
+                           isPresented: Binding(get: { tab.wrappedValue != nil }, set: { if !$0 { tab.wrappedValue = nil } }),
+                           titleVisibility: .visible, presenting: tab.wrappedValue) { t in
+            Button("Close Tab", role: .destructive) { Task { await model.closeTab(t.id) } }
+        } message: { t in
+            Text(closeWarning(model.panes(in: t)) ?? "")
+        }
     }
 }
 

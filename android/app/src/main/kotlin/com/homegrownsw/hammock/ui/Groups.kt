@@ -99,6 +99,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
     val ctx = LocalContext.current
     val w by model.workspace.collectAsStateWithLifecycle()
     val link by model.link.collectAsStateWithLifecycle()
+    val closer = LocalCloser.current
     var collapsed by remember { mutableStateOf(Collapsed.get(ctx)) }
     var renaming by remember { mutableStateOf<Tab?>(null) }
     var editing by remember { mutableStateOf<Group?>(null) }
@@ -157,14 +158,14 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                     val canClose = g.canDrive && !g.offline
                     cardItems(tabs, key = { "t:" + it.id }) { tab ->
                         val i = tabs.indexOf(tab)
-                        Swipeable(enabled = canClose && !editingOrder, onClose = { model.closeTab(tab.id) }) {
+                        Swipeable(enabled = canClose && !editingOrder, onClose = { closer.closeTab(model, w, tab) }) {
                             TabRow(model, w, g, tab, selected = nav.stack.lastOrNull() == "tab:" + tab.id,
                                 open = { nav.open("tab:" + tab.id) }, rename = { renaming = tab }, newTab = { newTab(g) },
                                 startAgent = { startingIn = g.id },
                                 editing = if (editingOrder && canClose) TabEditing(
                                     up = if (i > 0) ({ model.moveTab(tab.id, g.id, i - 1) }) else null,
                                     down = if (i < tabs.size - 1) ({ model.moveTab(tab.id, g.id, i + 1) }) else null,
-                                    close = { model.closeTab(tab.id) },
+                                    close = { closer.closeTab(model, w, tab) },
                                 ) else null)
                         }
                     }
@@ -352,6 +353,7 @@ fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> U
                startAgent: () -> Unit, move: () -> Unit) {
     val drive = g.canDrive && !g.offline
     val agent = w.shownAgentPane(tab)
+    val closer = LocalCloser.current
     DropdownMenuItem(text = { Text("Rename…") }, enabled = drive, onClick = { close(); rename() })
     if (g.canAddTabs) {
         DropdownMenuItem(text = { Text("New Tab in Group") }, onClick = { close(); newTab() })
@@ -363,7 +365,7 @@ fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> U
         else if (agent.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, onClick = { close(); model.sleepPane(agent.id) })
     }
     HorizontalDivider()
-    DropdownMenuItem(text = { Text("Close Tab", color = ErrorColor) }, enabled = drive, onClick = { close(); model.closeTab(tab.id) })
+    DropdownMenuItem(text = { Text("Close Tab", color = ErrorColor) }, enabled = drive, onClick = { close(); closer.closeTab(model, w, tab) })
 }
 
 /** A one-line text prompt (rename). */

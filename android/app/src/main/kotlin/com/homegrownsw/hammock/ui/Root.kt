@@ -238,7 +238,8 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     val layout = if (fullScreen || (showingDetail && !wide)) NavigationSuiteType.None
     else NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(androidx.compose.material3.adaptive.currentWindowAdaptiveInfo())
 
-    androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model) {
+    val closer = remember(model) { Closer() }
+    androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model, LocalCloser provides closer) {
     NavigationSuiteScaffold(
         layoutType = layout,
         navigationSuiteItems = {
@@ -272,6 +273,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
             }
         }
     }
+    closer.Dialog()
     }
 }
 

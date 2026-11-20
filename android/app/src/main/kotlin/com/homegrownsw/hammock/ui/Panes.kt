@@ -289,10 +289,10 @@ fun PaneMenuItems(
         })
     }
     if (drive) {
+        val closer = LocalCloser.current
         DropdownMenuItem(text = { Text("Close Pane", color = ErrorColor) }, leadingIcon = { Icon(Icons.Default.Close, null, tint = ErrorColor) }, onClick = {
             close()
-            if (tab != null && tab.allPaneIDs().size == 1) model.closeTab(tab.id) else model.closePane(pane.id)
-            if (popAfterClose) nav.pop()
+            closer.closePane(model, w, pane) { if (popAfterClose) nav.pop() }
         })
     }
 }

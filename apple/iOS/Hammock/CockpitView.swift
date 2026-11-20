@@ -353,6 +353,7 @@ struct GroupsView: View {
     let session: Session
     @State private var path: [String] = []
     @State private var renaming: WorkspaceTab?
+    @State private var closingTab: WorkspaceTab?
     @State private var editing: WorkspaceGroup?
     @State private var creatingGroup = false
     @State private var deleting: WorkspaceGroup?
@@ -392,11 +393,14 @@ struct GroupsView: View {
                                 TabRowIOS(model: model, tab: tab)
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button("Close", systemImage: "xmark", role: .destructive) { Task { await model.closeTab(tab.id) } }
+                                // Red, but not .destructive: that role takes the row away at
+                                // once, before it's asked whether to.
+                                Button("Close", systemImage: "xmark") { requestCloseTab(model, tab) { closingTab = $0 } }.tint(.red)
                                 Button("Rename", systemImage: "pencil") { renaming = tab }.tint(.orange)
                             }
                             .contextMenu {
-                                TabActions(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil)
+                                TabActions(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil,
+                                           closing: $closingTab)
                             }
                         }
                         .onMove { from, to in
@@ -421,6 +425,7 @@ struct GroupsView: View {
                 }
             }
             .renameTabAlert(model: model, tab: $renaming)
+            .closeTabConfirmation(model: model, tab: $closingTab)
             .sheet(item: $editing) { GroupEditor(model: model, group: $0) }
             .sheet(isPresented: $creatingGroup) {
                 GroupEditor(model: model, group: nil) { tabID in path = [tabID] }
@@ -1054,6 +1059,7 @@ struct PaneScreen: View {
     @State private var shownTerminal = false
     @State private var preview: FilePreview?
     @State private var renaming: WorkspaceTab?
+    @State private var closingTab: WorkspaceTab?
     @State private var shown = false
     @Environment(\.dismiss) private var dismiss
     /// A log pane showing its terminal instead of the log.
@@ -1134,6 +1140,7 @@ struct PaneScreen: View {
         }
         .environment(\.paneTabMenu, tabMenu)
         .renameTabAlert(model: model, tab: $renaming)
+        .closeTabConfirmation(model: model, tab: $closingTab)
         .sheet(item: $preview) { FilePreviewSheet(model: model, preview: $0) }
         // Only the pane on screen titles the bar: not a neighbour a swipe
         // is bringing in (from a view of its own, so that changing doesn't
@@ -1192,7 +1199,8 @@ struct PaneScreen: View {
 
     @ViewBuilder private func tabActions(_ tab: WorkspaceTab) -> some View {
         TabActions(model: model, tab: tab, rename: { renaming = tab },
-                   newTab: model.group(of: tab)?.canAddTabs == false ? nil : { newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID) })
+                   newTab: model.group(of: tab)?.canAddTabs == false ? nil : { newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID) },
+                   closing: $closingTab)
     }
 
     /// With the strip: which view an agent's (or a log's) pane shows, as a

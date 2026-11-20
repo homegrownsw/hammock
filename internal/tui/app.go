@@ -626,11 +626,12 @@ func (a *App) splitAt(paneID string, dir pb.Split_Direction, url string, before 
 }
 
 func (a *App) closePane(id string) {
-	a.confirmUnsaved([]string{id}, func() { a.closePaneNow(id) })
+	a.confirmClose([]string{id}, "Close Pane", func() { a.closePaneNow(id) })
 }
 
 func (a *App) closePaneNow(id string) {
-	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: id}}}, nil)
+	name := a.paneName(a.panes[id])
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_ClosePane{ClosePane: &pb.ClosePane{PaneId: id}}}, func(*pb.ServerMessage) { a.closed(name) })
 }
 
 func (a *App) closeTab(id string) {
@@ -638,11 +639,15 @@ func (a *App) closeTab(id string) {
 	if t := a.tabs[id]; t != nil {
 		ids = tabIDs(t)
 	}
-	a.confirmUnsaved(ids, func() { a.closeTabNow(id) })
+	a.confirmClose(ids, "Close Tab", func() { a.closeTabNow(id) })
 }
 
 func (a *App) closeTabNow(id string) {
-	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_CloseTab{CloseTab: &pb.CloseTab{TabId: id}}}, nil)
+	name := "Tab"
+	if t := a.tabs[id]; t != nil {
+		name = a.tabTitle(t)
+	}
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_CloseTab{CloseTab: &pb.CloseTab{TabId: id}}}, func(*pb.ServerMessage) { a.closed(name) })
 }
 
 // reopenClosed opens the last closed tab or pane again, and shows it.
@@ -666,14 +671,16 @@ func (a *App) closeGroup(id string) {
 			}
 		}
 	}
-	close := func() { a.confirmUnsaved(ids, func() { a.closeGroupNow(id) }) }
 	if g == nil || len(g.TabIds) < 2 {
-		close()
+		a.confirmClose(ids, "Close Group", func() { a.closeGroupNow(id) })
 		return
 	}
+	lines := []string{fmt.Sprintf("Its %d tabs will be closed, and what's running in them stopped.", len(g.TabIds))}
+	if busy, _ := a.busyWarning(ids); busy != "" {
+		lines = append(lines, busy+".")
+	}
 	a.openDialog(&dialog{title: "Close “" + truncate(a.groupTitle(g), 40) + "”?", okLabel: "Close Group", confirm: true,
-		lines:  []string{fmt.Sprintf("Its %d tabs will be closed, and what's running in them stopped.", len(g.TabIds))},
-		submit: func([]string) { close() }})
+		lines: lines, submit: func([]string) { a.confirmUnsaved(ids, func() { a.closeGroupNow(id) }) }})
 }
 
 func (a *App) closeGroupNow(id string) {

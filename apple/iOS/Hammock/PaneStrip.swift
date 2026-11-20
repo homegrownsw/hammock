@@ -389,16 +389,26 @@ struct PaneMenu: View {
 /// Why closing a pane needs a yes, if it does: an agent at work (unless
 /// turned off), or programs other than an agent at rest still running.
 @MainActor
-func closeWarning(_ p: Pane) -> String? {
+func closeWarning(_ p: Pane) -> String? { closeWarning([p]) }
+
+/// For several panes (a tab's): the same, of them all.
+@MainActor
+func closeWarning(_ panes: [Pane]) -> String? {
     let warnBusy = UserDefaults.standard.object(forKey: "warnCloseBusyAgent") as? Bool ?? true
-    if warnBusy, p.hasAgent, !p.exited, [.working, .needsInput, .starting].contains(p.agent.shownState) || p.agent.subagents > 0 {
+    let busy = warnBusy ? panes.filter { p in
+        p.hasAgent && !p.exited && ([.working, .needsInput, .starting].contains(p.agent.shownState) || p.agent.subagents > 0)
+    } : []
+    if busy.count > 1 { return "\(busy.count) agents are still at work. Closing stops them." }
+    if let p = busy.first {
         let a = p.agent
         let doing = a.shownState == .needsInput ? "is waiting for you" : a.runningCommand ? "is running a command"
             : a.shownState == .idle ? "has \(a.subagents == 1 ? "a subagent" : "\(a.subagents) subagents") still running" : "is still working"
         return "\(p.displayName.capitalized) \(doing). Closing stops it."
     }
     var names: [String] = []
-    for n in p.processes where !(p.hasAgent && n.lowercased() == p.agent.harness.lowercased()) && !names.contains(n) { names.append(n) }
+    for p in panes {
+        for n in p.processes where !(p.hasAgent && n.lowercased() == p.agent.harness.lowercased()) && !names.contains(n) { names.append(n) }
+    }
     guard !names.isEmpty else { return nil }
     return ListFormatter.localizedString(byJoining: names) + (names.count == 1 ? " is" : " are") + " still running in it and will be stopped."
 }

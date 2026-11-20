@@ -67,6 +67,7 @@ func (c *config) load() {
 		iconOverrides = overrides
 		editorPrefs = hammockconfig.EditorSettings(values)
 		toolsOff = hammockconfig.ToolsOff(values)
+		warnBusy = values["confirm-close-busy-agent"] != "false"
 		if animationsPref != nil {
 			animations = *animationsPref
 		}

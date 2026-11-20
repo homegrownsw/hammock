@@ -137,7 +137,7 @@ var Keys = []Key{
 	{Name: "agent-presence", Group: "Tools", Value: "true", Default: "true",
 		Doc: "show agents acting in browser and simulator panes: a cursor, a glow and a badge"},
 	{Name: "confirm-close-busy-agent", Group: "Agents", Value: "true", Default: "true",
-		Doc: "ask before closing a pane or tab whose agent is at work", Only: "Mac"},
+		Doc: "ask before closing a pane or tab whose agent is at work", Only: "Mac and hmk tui"},
 
 	// Agent view
 	{Name: "agent-default-view", Group: "Agent view", Value: "terminal | agent",
