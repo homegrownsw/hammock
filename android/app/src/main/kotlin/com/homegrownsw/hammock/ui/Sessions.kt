@@ -44,6 +44,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -55,6 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -249,6 +254,20 @@ private fun sessionCloseNote(w: Workspace, p: Pane): String {
     return closeWarning(listOf(p)) ?: if (others > 0) "Only the agent's pane closes; the rest of its tab keeps running." else ""
 }
 
+/**
+ * What a Swipeable's swipe does, for its row to offer TalkBack, which can't
+ * swipe (closeAction): null outside one, or where it can't close.
+ */
+val LocalSwipeClose = compositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * TalkBack's Close action, doing what swiping the row does (asking first, as
+ * the swipe does, when it would stop an agent at work). On the row's own
+ * clickable node: TalkBack only offers the actions of the node it's on.
+ */
+fun Modifier.closeAction(close: (() -> Unit)?): Modifier =
+    if (close == null) this else semantics { customActions = listOf(CustomAccessibilityAction("Close") { close(); true }) }
+
 /** Swipe left to close, where you can (your own Groups, or ones you drive). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -267,7 +286,7 @@ fun Swipeable(enabled: Boolean, onClose: () -> Unit, content: @Composable () -> 
                 Icon(Icons.Default.Close, "Close", tint = Color.White)
             }
         },
-    ) { Box(Modifier.background(cardColor())) { content() } }
+    ) { Box(Modifier.background(cardColor())) { CompositionLocalProvider(LocalSwipeClose provides onClose) { content() } } }
 }
 
 @Composable
@@ -293,6 +312,7 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
         Modifier.fillMaxWidth()
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
             .clickable(onClick = onClick)
+            .closeAction(LocalSwipeClose.current)
             .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -341,7 +361,7 @@ fun Card(padded: Boolean = true, content: @Composable () -> Unit) {
 fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, open: () -> Unit) {
     val pane = w.panes[item.paneId]
     val schedule = pane?.scheduleId?.let { w.schedules[it] }
-    Box(Modifier.clickable(onClick = open).padding(16.dp)) {
+    Box(Modifier.clickable(onClick = open).closeAction(LocalSwipeClose.current).padding(16.dp)) {
         run {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

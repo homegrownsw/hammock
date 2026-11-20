@@ -321,6 +321,7 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
             Modifier.fillMaxWidth()
                 .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                 .combinedClickable(onClick = open, onLongClick = { menu = true })
+                .closeAction(LocalSwipeClose.current)
                 .padding(start = 16.dp, end = 12.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
