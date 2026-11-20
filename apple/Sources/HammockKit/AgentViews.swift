@@ -3103,9 +3103,11 @@ struct Composer: View {
                     .agentGlassButton(prominent: true)
                     .buttonBorderShape(.circle)
                     // Your messages' colour, deep enough for its white glyph;
-                    // stopping too (its icon says so).
+                    // stopping too (its icon says so). Disabled, the glass
+                    // drops the tint and goes pale, so a white glyph would
+                    // vanish: secondary instead.
                     .tint(shellCommand && !stops ? Self.shellTint : bubble)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(stops || canSend ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
                     .disabled(!stops && !canSend)
                     .keyboardShortcut(.return, modifiers: .command)
                     .help(stops ? "Interrupt (Esc)" : shellCommand ? "Run (⌘↩)" : "Send (⌘↩)")
