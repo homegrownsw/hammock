@@ -116,6 +116,7 @@ struct GroupHeader: View {
     let newTab: () -> Void
     let edit: () -> Void
     let delete: () -> Void
+    let leave: () -> Void
 
     /// What a collapsed Group's agents are doing, the most pressing first.
     private var agentState: AgentState? {
@@ -180,9 +181,7 @@ struct GroupHeader: View {
             // New tabs and agents are the + beside it.
             Menu {
                 if group.isRemote, !group.isOnLinkedComputer {
-                    Button("Leave Group", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-                        Task { await model.leave(group.id) }
-                    }
+                    Button("Leave Group", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive, action: leave)
                 } else {
                     Button("Edit Group…", systemImage: "pencil", action: edit)
                     Divider()

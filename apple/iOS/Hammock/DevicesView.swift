@@ -15,6 +15,7 @@ struct DevicesView: View {
     /// Macs whose screens can be shared: asked of each (one too old to say,
     /// or with Screen Sharing off, isn't listed).
     @State private var shareable: Set<String> = []
+    @State private var forgetting: StoredHost?
 
     var body: some View {
         let screens = session.model.map { m in m.connected ? m.screenComputers.filter { shareable.contains($0.userID) } : [] } ?? []
@@ -27,10 +28,12 @@ struct DevicesView: View {
                         Button { session.show(h) } label: { HostRow(session: session, host: h) }
                             .foregroundStyle(.primary)
                             .swipeActions {
-                                Button("Forget", role: .destructive) { session.forget(h) }
+                                // Red, but not .destructive: that role takes the row away at
+                                // once, before it's asked whether to.
+                                Button("Forget") { forgetting = h }.tint(.red)
                             }
                             .contextMenu {
-                                Button("Forget This Computer", systemImage: "trash", role: .destructive) { session.forget(h) }
+                                Button("Forget This Computer", systemImage: "trash", role: .destructive) { forgetting = h }
                             }
                     }
                     NavigationLink(value: "pair") {
@@ -88,6 +91,20 @@ struct DevicesView: View {
             .navigationDestination(for: String.self) { _ in
                 PairingScreen(session: session) { path.removeAll() }
             }
+            .forgetConfirmation(session: session, host: $forgetting)
+        }
+    }
+}
+
+extension View {
+    /// Asks whether to forget a computer while one is set.
+    func forgetConfirmation(session: Session, host: Binding<StoredHost?>) -> some View {
+        confirmationDialog(host.wrappedValue.map { $0.displayName.isEmpty ? "Forget This Computer?" : "Forget “\($0.displayName)”?" } ?? "",
+                           isPresented: Binding(get: { host.wrappedValue != nil }, set: { if !$0 { host.wrappedValue = nil } }),
+                           titleVisibility: .visible, presenting: host.wrappedValue) { h in
+            Button("Forget Computer", role: .destructive) { session.forget(h) }
+        } message: { _ in
+            Text("This iPhone stops connecting to it and getting its notifications. You can pair again with a new code.")
         }
     }
 }

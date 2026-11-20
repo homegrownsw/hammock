@@ -26,6 +26,7 @@ struct PairingView: View {
 /// to connect. Pair it again, or forget that Mac.
 struct RemovedView: View {
     let session: Session
+    @State private var forgetting: StoredHost?
 
     var body: some View {
         let name = session.host?.displayName ?? ""
@@ -36,7 +37,7 @@ struct RemovedView: View {
                     Text("\(shown) removed this iPhone").font(.title2.bold())
                     Text("Pair it again with a new pairing code to connect.").foregroundStyle(.secondary)
                     if let h = session.host {
-                        Button("Forget \(name.isEmpty ? "This Computer" : name)", role: .destructive) { session.forget(h) }
+                        Button("Forget \(name.isEmpty ? "This Computer" : name)", role: .destructive) { forgetting = h }
                             .padding(.top, 4)
                     }
                 }
@@ -47,6 +48,7 @@ struct RemovedView: View {
             }
             .navigationTitle("Hammock")
             .toolbar(.hidden, for: .navigationBar)
+            .forgetConfirmation(session: session, host: $forgetting)
         }
     }
 }

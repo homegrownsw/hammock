@@ -362,6 +362,7 @@ struct GroupsView: View {
     @State private var editing: WorkspaceGroup?
     @State private var creatingGroup = false
     @State private var deleting: WorkspaceGroup?
+    @State private var leaving: WorkspaceGroup?
     /// Collapsed Groups, by id: this phone's own, not the Mac's, kept
     /// between launches. Plain view state, saved as it changes, so toggling
     /// animates (@AppStorage's change arrives outside withAnimation).
@@ -415,7 +416,8 @@ struct GroupsView: View {
                         }
                     } header: {
                         GroupHeader(model: model, group: group, collapsed: isCollapsed, toggle: { toggle(group) },
-                                    newTab: { newTab(in: group) }, edit: { editing = group }, delete: { deleting = group })
+                                    newTab: { newTab(in: group) }, edit: { editing = group }, delete: { deleting = group },
+                                    leave: { leaving = group })
                     }
                 }
             }
@@ -444,6 +446,13 @@ struct GroupsView: View {
                 }
             } message: { _ in
                 Text("Everything running in its tabs on your Mac is stopped.")
+            }
+            .confirmationDialog(leaving.map { "Leave “\(model.title(of: $0))”?" } ?? "",
+                                isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
+                                titleVisibility: .visible, presenting: leaving) { g in
+                Button("Leave Group", role: .destructive) { Task { await model.leave(g.id) } }
+            } message: { _ in
+                Text("To come back, join it again from its invite link.")
             }
             .onChange(of: model.groups.count) {
                 // Dev aid: HMK_DEBUG_OPEN_FIRST=1 opens the first tab.

@@ -106,6 +106,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
     var editing by remember { mutableStateOf<Group?>(null) }
     var creating by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Group?>(null) }
+    var leaving by remember { mutableStateOf<Group?>(null) }
     var startingIn by remember { mutableStateOf<String?>(null) }
     var computer by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -148,7 +149,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                 val isCollapsed = g.id in collapsed
                 item(key = "g:" + g.id, contentType = "header") {
                     GroupHeader(w, g, isCollapsed, toggle = { toggle(g) }, newTab = { newTab(g) }, startAgent = { startingIn = g.id },
-                        edit = { editing = g }, delete = { deleting = g }, leave = { model.leaveShared(g.id) })
+                        edit = { editing = g }, delete = { deleting = g }, leave = { leaving = g })
                 }
                 if (!isCollapsed) {
                     if (g.tabIdsCount == 0) item(key = "empty:" + g.id) {
@@ -198,6 +199,17 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                 }
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
+    }
+    leaving?.let { g ->
+        if (!LocalAppLocked.current) AlertDialog(
+            onDismissRequest = { leaving = null },
+            title = { Text("Leave “${w.title(g)}”?") },
+            text = { Text("To come back, join it again from its invite link.") },
+            confirmButton = {
+                TextButton(onClick = { model.leaveShared(g.id); leaving = null }) { Text("Leave Group", color = ErrorColor) }
+            },
+            dismissButton = { TextButton(onClick = { leaving = null }) { Text("Cancel") } },
         )
     }
     startingIn?.let { gid -> StartAgentSheet(model, groupID = gid, nav = nav) { startingIn = null } }
