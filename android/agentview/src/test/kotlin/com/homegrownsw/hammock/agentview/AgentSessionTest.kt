@@ -5,6 +5,7 @@ import com.homegrownsw.hammock.client.DaemonStandIn
 import hammock.v1.Hammock
 import hammock.v1.Hammock.AgentBlock
 import hammock.v1.Hammock.AgentBlock.Kind
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -204,5 +205,30 @@ class AgentSessionTest {
         assertEquals("group", items[2].kind)
         assertEquals("tool", items[4].kind)
         assertEquals("text", items[5].kind)
+    }
+
+    @Test
+    fun aFailedSendIsTheComposersErrorNotThePromptCards(): Unit = runBlocking {
+        val s = session()
+        assertFalse(s.send("hello"))
+        assertEquals("Not connected. Your message wasn't sent.", s.state.value.sendError)
+        assertNull(s.state.value.answerError)
+        assertTrue(s.state.value.pendingSends.isEmpty())
+        s.clearSendError()
+        assertNull(s.state.value.sendError)
+    }
+
+    @Test
+    fun aNewPromptClearsTheLastOnesAnswerError(): Unit = runBlocking {
+        val s = session()
+        val p = { id: String -> Hammock.AgentPrompt.newBuilder().setPromptId(id).build() }
+        s.apply(view { prompt = p("a") })
+        s.answer(1) // not connected: it fails
+        assertNotNull(s.state.value.answerError)
+        s.apply(view { prompt = p("a") })
+        assertNotNull(s.state.value.answerError, "the same prompt keeps it")
+        s.apply(view { prompt = p("b") })
+        assertNull(s.state.value.answerError)
+        assertNull(s.state.value.sendError)
     }
 }

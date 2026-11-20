@@ -62,9 +62,11 @@ data class AgentViewState(
     val links: List<AgentLink> = emptyList(),
     /** Messages sent from here that the transcript hasn't shown yet. */
     val pendingSends: List<PendingSend> = emptyList(),
-    /** An answer being typed, and the error if it didn't match the screen. */
+    /** An answer being typed, and the error if it didn't match the screen (shown on the prompt card only). */
     val answering: Boolean = false,
     val answerError: String? = null,
+    /** Why the last message from the composer didn't go (shown by the composer, with Retry): cleared by sending again, or editing it. */
+    val sendError: String? = null,
 )
 
 /**
@@ -246,6 +248,8 @@ class AgentSession(
                 // What's typed in its input box in the terminal (the composer
                 // offers it; sending replaces it).
                 draft = if (subagentID.isEmpty()) v.draft else n.draft,
+                // A new prompt (or none): the last one's answer error isn't its.
+                answerError = if (v.prompt.promptId != s.prompt.promptId) null else n.answerError,
             )
         }
         // A sent message shows as pending until a new message of yours
@@ -319,8 +323,9 @@ class AgentSession(
      * the like).
      */
     suspend fun send(text: String, attachments: List<OutgoingAttachment> = emptyList(), pending: Boolean = true): Boolean {
+        _state.update { it.copy(sendError = null) }
         if (model.connection == null) {
-            _state.update { it.copy(answerError = "Not connected. Your message wasn't sent.") }
+            _state.update { it.copy(sendError = "Not connected. Your message wasn't sent.") }
             return false
         }
         val p = PendingSend(nextPendingID.getAndIncrement(), text.replace("￼", "").trim(), attachments)
@@ -335,7 +340,7 @@ class AgentSession(
             }
             true
         } catch (e: Exception) {
-            synchronized(lock) { _state.update { s -> s.copy(pendingSends = s.pendingSends.filter { it.id != p.id }, answerError = e.message ?: "Couldn't send it") } }
+            synchronized(lock) { _state.update { s -> s.copy(pendingSends = s.pendingSends.filter { it.id != p.id }, sendError = e.message ?: "Couldn't send it") } }
             false
         }
     }
@@ -357,7 +362,7 @@ class AgentSession(
             try {
                 model.call { setAgentSend(Hammock.AgentSend.newBuilder().setPaneId(paneID).setSendNow(true).build()) }
             } catch (e: Exception) {
-                _state.update { it.copy(answerError = e.message ?: "Couldn't send it now") }
+                _state.update { it.copy(sendError = e.message ?: "Couldn't send it now") }
             }
         }
     }
@@ -390,6 +395,8 @@ class AgentSession(
     }
 
     fun clearAnswerError() = _state.update { it.copy(answerError = null) }
+
+    fun clearSendError() = _state.update { it.copy(sendError = null) }
 
     /** Stops the agent (Esc). */
     fun interrupt() = model.interrupt(paneID)

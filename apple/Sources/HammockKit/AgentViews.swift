@@ -2815,7 +2815,7 @@ struct Composer: View {
     @State private var photos: [PhotosPickerItem] = []
     @State private var importing = false
     @State private var pickingPhotos = false
-    @State private var sendError: String?
+    @State private var attachError: String?
     /// What was last taken from the terminal's input box into this one (kept
     /// in step while it's unedited), and whether a send is waiting for the
     /// terminal's box to empty.
@@ -2939,6 +2939,8 @@ struct Composer: View {
                                       fontSize: size, accent: accent, dark: dark)
         }
         c.onChange = { d, at in
+            // Editing the message that didn't go: its error's done with.
+            if d.text != doc.text { session.sendError = nil }
             doc = d
             cursor = at
         }
@@ -3008,6 +3010,10 @@ struct Composer: View {
             }
             if dictation.problem != nil || dictation.installing != nil {
                 DictationNotice(dictation: dictation, openSettings: openMicrophoneSettings)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            if let err = session.sendError {
+                SendFailedNotice(error: err, canRetry: canSend, retry: send) { session.sendError = nil }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if showsTerminalDraft {
@@ -3129,6 +3135,7 @@ struct Composer: View {
         }
         .animation(.snappy(duration: 0.25), value: suggestions)
         .animation(.snappy(duration: 0.25), value: showsTerminalDraft)
+        .animation(.snappy(duration: 0.25), value: session.sendError)
         .animation(.snappy(duration: 0.25), value: dictation.problem)
         .animation(.snappy(duration: 0.25), value: dictation.installing == nil)
         // The menu bar's and the palette's Dictate, for this pane.
@@ -3196,10 +3203,10 @@ struct Composer: View {
                 }
             }
         }
-        .alert("Couldn't attach it", isPresented: Binding(get: { sendError != nil }, set: { if !$0 { sendError = nil } })) {
+        .alert("Couldn't attach it", isPresented: Binding(get: { attachError != nil }, set: { if !$0 { attachError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(sendError ?? "")
+            Text(attachError ?? "")
         }
         .dropDestination(for: Data.self) { items, _ in
             for d in items where PlatformImage(data: d) != nil { attach(name: "dropped-\(attachments.count + 1).png", data: d) }
@@ -3398,7 +3405,7 @@ struct Composer: View {
     private func failed(_ id: UUID, _ why: String) {
         guard attachments.contains(where: { $0.id == id }) else { return }
         remove(id)
-        sendError = why
+        attachError = why
     }
 
     /// Fills a placeholder with a video, made small enough to send (540p
@@ -3581,6 +3588,35 @@ struct Composer: View {
     }
 }
 
+/// Over the message box: the message didn't go (it's back in the box), why,
+/// and Retry.
+struct SendFailedNotice: View {
+    let error: String
+    /// Something's in the box to send again.
+    let canRetry: Bool
+    let retry: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text(error).lineLimit(2)
+            Spacer(minLength: 4)
+            if canRetry {
+                Button("Retry", action: retry).agentGlassButton()
+            }
+            Button(action: dismiss) {
+                Image(systemName: "xmark").font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Dismiss")
+        }
+        .font(.caption)
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .agentGlass(in: Capsule())
+    }
+}
 
 // MARK: - Status bar
 

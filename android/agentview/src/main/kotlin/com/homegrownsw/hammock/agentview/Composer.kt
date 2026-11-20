@@ -311,6 +311,8 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
             }) { dictation.problem = null }
         }
         attachError?.let { e -> Notice(Icons.Outlined.Warning, e, null, {}) { attachError = null } }
+        // The message didn't go (it's back in the box): why, and Retry.
+        state.sendError?.let { e -> Notice(Icons.Outlined.Warning, e, if (canSend) "Retry" else null, onAction = { send() }) { session.clearSendError() } }
         if (showsTerminalDraft) {
             Notice(Icons.Outlined.Terminal, "Typed in the terminal: ${state.draft}", "Add", onAction = {
                 setText(state.draft + if (text.isEmpty()) "" else " $text")
@@ -344,7 +346,11 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
                 Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 13.dp, bottom = 8.dp)) {
                     if (text.isEmpty()) Text("Message ${session.agentName}…", style = textStyle, color = c.tertiary)
                     BasicTextField(
-                        value, { value = it },
+                        value, {
+                            // Editing the message that didn't go: its error's done with.
+                            if (it.text != value.text && state.sendError != null) session.clearSendError()
+                            value = it
+                        },
                         textStyle = textStyle, cursorBrush = SolidColor(c.accent), maxLines = 8,
                         visualTransformation = transformation,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),

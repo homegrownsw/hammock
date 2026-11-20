@@ -65,9 +65,13 @@ public final class AgentSession {
     public private(set) var pendingSends: [PendingSend] = []
     /// Your messages already in the transcript when the pending ones were sent.
     private var seenUserIDs: Set<String> = []
-    /// Set while an answer is being typed, and the error if it didn't match.
+    /// Set while an answer is being typed, and the error if it didn't match
+    /// (shown on the prompt card only).
     public private(set) var answering = false
     public var answerError: String?
+    /// Why the last message from the composer didn't go (shown by the
+    /// composer, with Retry): cleared by sending again, or editing it.
+    public var sendError: String?
 
     weak var model: AppModel?
     /// Set: a past session read through the session finder (no pane).
@@ -212,6 +216,8 @@ public final class AgentSession {
             set(\.agentEffort, v.effort)
             set(\.contextTokens, v.contextTokens)
             set(\.contextWindow, v.contextWindow)
+            // A new prompt (or none): the last one's answer error isn't its.
+            if v.prompt.promptID != prompt.promptID { answerError = nil }
             set(\.prompt, v.prompt)
             if working, !v.working, !pendingSends.isEmpty { dropUntaken() }
             set(\.working, v.working)
@@ -314,8 +320,9 @@ public final class AgentSession {
     /// go (not connected): the caller gives the text back.
     @discardableResult
     func send(_ text: String, attachments: [(name: String, data: Data, path: String?)], inline: Bool = false, local: [BubbleAttachment] = [], pending: Bool = true) async -> Bool {
+        sendError = nil
         guard let conn = model?.connection else {
-            answerError = "Not connected. Your message wasn't sent."
+            sendError = "Not connected. Your message wasn't sent."
             return false
         }
         let p = PendingSend(text: ComposerDoc(text: text).plain.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -340,7 +347,7 @@ public final class AgentSession {
             }
         } catch {
             pendingSends.removeAll { $0.id == p.id }
-            answerError = error.localizedDescription
+            sendError = error.localizedDescription
             return false
         }
         return true
@@ -393,7 +400,7 @@ public final class AgentSession {
             do {
                 _ = try await conn.call { $0.agentSend = .with { $0.paneID = self.paneID; $0.sendNow = true } }
             } catch {
-                answerError = error.localizedDescription
+                sendError = error.localizedDescription
             }
         }
     }
