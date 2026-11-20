@@ -264,6 +264,9 @@ public enum Keybinds {
             .init("previous_tab", "Previous Tab", "View", c("[", cs), "switch cycle go back"),
             .init("next_group", "Next Group", "View", c("down", co), "switch cycle go"),
             .init("previous_group", "Previous Group", "View", c("up", co), "switch cycle go back"),
+            // ⌥⌘A, A for agent: free in macOS and here (⇧⌘A is Toggle Agent View).
+            .init("next_needs_you", "Next Agent That Needs You", "View", c("a", co), "needs you waiting attention question permission jump go agent queue inbox"),
+            .init("previous_needs_you", "Previous Agent That Needs You", "View", c("a", cos), "needs you waiting attention question permission jump go back agent queue"),
             .init("select_tab", "Tab 1…9", "View", c(KeyChord.digits), "go to switch nth number"),
             .init("bigger", "Bigger", "View", c("plus"), "zoom in font size larger increase"),
             .init("smaller", "Smaller", "View", c("minus"), "zoom out font size decrease"),

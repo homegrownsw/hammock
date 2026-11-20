@@ -263,6 +263,10 @@ struct CommandPalette: View {
         // Getting about.
         action("next-tab", "Next Tab", "arrow.right.square", .gray, "switch cycle go", keys: Keys.nextTab) { model.cycleTab(by: 1) }
         action("previous-tab", "Previous Tab", "arrow.left.square", .gray, "switch cycle go back", keys: Keys.previousTab) { model.cycleTab(by: -1) }
+        if !model.needsYou.isEmpty {
+            action("next-needs-you", "Next Agent That Needs You", "exclamationmark.bubble", .orange, "needs you waiting attention question permission jump go agent queue inbox", keys: Keys.nextNeedsYou) { model.revealNeedingYou(by: 1) }
+            action("previous-needs-you", "Previous Agent That Needs You", "exclamationmark.bubble", .orange, "needs you waiting attention question permission jump go back agent queue", keys: Keys.previousNeedsYou) { model.revealNeedingYou(by: -1) }
+        }
         if model.groups.count > 1 {
             action("next-group", "Next Group", "arrow.down.square", .gray, "switch cycle go", keys: Keys.nextGroup) { model.cycleGroup(by: 1) }
             action("previous-group", "Previous Group", "arrow.up.square", .gray, "switch cycle go back", keys: Keys.previousGroup) { model.cycleGroup(by: -1) }

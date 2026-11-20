@@ -13,7 +13,7 @@ Quit with ⌃B q; your panes keep running. If hmkd stops or restarts, the TUI st
 
 ## The layout
 
-The sidebar lists your Groups, tabs and agents' states, with **Needs You** at the bottom; the selected tab fills the rest. Click, drag and right-click as you would in the app. Drag in a pane to copy text, holding Shift in programs that use the mouse themselves.
+The sidebar lists your Groups, tabs and agents' states, with **Needs You** at the bottom (click **+N more** to see the rest in the palette); the selected tab fills the rest. Click, drag and right-click as you would in the app. Drag in a pane to copy text, holding Shift in programs that use the mouse themselves.
 
 Browser and simulator panes show live pictures in terminals that can draw them (Ghostty and Kitty). Pasting into a simulator pane puts the text on the device's clipboard, and its menu's Copy Device Clipboard copies the device's to yours. In an Apple TV's or Android TV's pane, the arrow keys, Return, Escape and Space are its remote's. Diff panes show a summary: review diffs in the Mac app.
 
@@ -58,6 +58,7 @@ Press ⌃B, let go, then the key. ⌃B ? shows this list in the TUI.
 | ⌃B o | Next pane |
 | ⌃B ← ↑ / ⌃B → ↓ | Previous / next pane |
 | ⌃B [ / ⌃B ] | Scroll back / forward a page |
+| ⌃B a / ⌃B A | Next / previous agent that needs you |
 | ⌃B y | Allow the newest request, once |
 | ⌃B Y | Allow the newest request, always in this Group |
 | ⌃B N | Deny the newest request |

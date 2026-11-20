@@ -248,6 +248,8 @@ func (a *App) leftPress(z zone, m mouseEv) {
 		}
 	case zGrant:
 		a.grantMenu(z.id, m.x, m.y)
+	case zNeedsMore:
+		a.openNeedsYou()
 	case zButton:
 		a.button(z.id)
 	case zPaneHeader:

@@ -325,6 +325,10 @@ struct HammockApp: App {
                 Button("Previous Tab") { cycleTab(by: -1) }.keyboardShortcut(Keys.previousTab)
                 Button("Next Group") { if keyScope == nil { model.cycleGroup(by: 1) } }.keyboardShortcut(Keys.nextGroup)
                 Button("Previous Group") { if keyScope == nil { model.cycleGroup(by: -1) } }.keyboardShortcut(Keys.previousGroup)
+                Button("Next Agent That Needs You") { model.revealNeedingYou(by: 1) }.keyboardShortcut(Keys.nextNeedsYou)
+                    .disabled(model.needsYou.isEmpty)
+                Button("Previous Agent That Needs You") { model.revealNeedingYou(by: -1) }.keyboardShortcut(Keys.previousNeedsYou)
+                    .disabled(model.needsYou.isEmpty)
                 Divider()
                 ForEach(0..<9) { i in
                     Button("Tab \(i + 1)") { selectTab(at: i) }.keyboardShortcut(Keys.tab(i))

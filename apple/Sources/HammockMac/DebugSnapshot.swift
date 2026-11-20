@@ -79,6 +79,47 @@ enum DebugSnapshot {
                 } }
             }
         }
+        // HMK_DEBUG_NEEDS_YOU=<n> (with HMK_DEBUG_SNAPSHOT): the sidebar's
+        // Needs You and Finished, on a model of their own with n made-up
+        // agents waiting and 8 finished, to <prefix>-needs-you-<light|dark>.png.
+        if let n = env["HMK_DEBUG_NEEDS_YOU"].flatMap(Int.init), let prefix = env["HMK_DEBUG_SNAPSHOT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated {
+                let model = AppModel(socketPath: "/nonexistent", clientKind: "debug")
+                let names = ["Fix the login flow", "Release notes", "Migrate settings", "Flaky tests", "Docs pass", "Bump deps",
+                             "Search index", "Onboarding copy", "Crash on launch", "Dark mode", "Sync conflicts", "Export CSV"]
+                let total = n + 8
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                model.debugApply(.with {
+                    $0.full = true
+                    $0.groups = [.with { $0.id = "gp_debug"; $0.name = "Work"; $0.tabIds = (0..<total).map { "tb_\($0)" } }]
+                    $0.tabs = (0..<total).map { i in .with { $0.id = "tb_\(i)"; $0.groupID = "gp_debug"; $0.name = names[i % names.count]; $0.focusedPaneID = "pn_\(i)" } }
+                    $0.panes = (0..<total).map { i in .with { $0.id = "pn_\(i)"; $0.tabID = "tb_\(i)" } }
+                    $0.attention = (0..<total).map { i in .with {
+                        $0.id = "at_\(i)"; $0.paneID = "pn_\(i)"; $0.createdUnixMs = now - Int64(i) * 60_000
+                        $0.state = i < n ? (i % 3 == 2 ? .errored : .needsInput) : .idle
+                        $0.question = i % 3 == 1
+                        $0.summary = i >= n ? "Claude finished" : i % 3 == 2 ? "Claude hit an error" : i % 3 == 1 ? "Claude asks: Which branch?" : "Bash: npm test"
+                    } }
+                })
+                let size = NSSize(width: 280, height: 900)
+                let host = NSHostingView(rootView: VStack { NeedsYouView(model: model); Spacer(minLength: 0) }
+                    .frame(width: size.width, height: size.height).background(Color(nsColor: .windowBackgroundColor)))
+                let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = host
+                window.orderFront(nil)
+                for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                    window.appearance = NSAppearance(named: appearance)
+                    host.layoutSubtreeIfNeeded()
+                    host.displayIfNeeded()
+                    RunLoop.main.run(until: Date().addingTimeInterval(1))
+                    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { continue }
+                    host.cacheDisplay(in: host.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-needs-you-\(name).png"))
+                }
+                window.close()
+            } }
+        }
         // HMK_DEBUG_ISLAND=1 (with HMK_DEBUG_SNAPSHOT): Hammock Island in a
         // window of its own, captured as it's drawn (RealityKit isn't in a
         // layer render) every half second, to <prefix>-island-NN.png; with

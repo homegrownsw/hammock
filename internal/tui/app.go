@@ -1034,6 +1034,8 @@ func (a *App) command(b []byte) int {
 		a.newFloating(a.focus)
 	case 'F':
 		a.toggleFloating(a.focus)
+	case 'a', 'A':
+		a.revealNeedingYou(map[byte]int{'a': 1, 'A': -1}[b[0]])
 	case 'm':
 		a.arrange(a.focus, pb.FloatPane_ACTION_MINIMISE)
 	case 'j':

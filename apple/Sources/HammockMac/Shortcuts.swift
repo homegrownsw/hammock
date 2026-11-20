@@ -77,6 +77,8 @@ enum Keys {
     static var previousTab: KeyboardShortcut? { shortcut("previous_tab") }
     static var nextGroup: KeyboardShortcut? { shortcut("next_group") }
     static var previousGroup: KeyboardShortcut? { shortcut("previous_group") }
+    static var nextNeedsYou: KeyboardShortcut? { shortcut("next_needs_you") }
+    static var previousNeedsYou: KeyboardShortcut? { shortcut("previous_needs_you") }
     static var bigger: KeyboardShortcut? { shortcut("bigger") }
     static var smaller: KeyboardShortcut? { shortcut("smaller") }
     static var actualSize: KeyboardShortcut? { shortcut("actual_size") }

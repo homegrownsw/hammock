@@ -20,6 +20,7 @@ titlebar geometry. With it:
 | `HMK_DEBUG_PEEK=1` | The hidden sidebar's peek panel open; pass `--args -sidebarHidden YES`. |
 | `HMK_DEBUG_TAB_PREVIEW=<n>` (or `=<text>`) | The nth tab's hover preview (in sidebar order, from 1; or the first whose title contains `<text>`) shown and kept. It floats in a window of its own, so capture the screen, not the window. |
 | `HMK_DEBUG_NOTICES=1` | Sample notification cards in the window. |
+| `HMK_DEBUG_NEEDS_YOU=<n>` | The sidebar's Needs You and Finished on their own, with `<n>` made-up agents waiting and 8 finished (more than 6 shows "+N more"), to `<prefix>-needs-you-<light\|dark>.png`. |
 | `HMK_DEBUG_DISK_ACCESS=0` (or `1`) | Pretend Hammock hasn't (or has) Full Disk Access, for onboarding's Full Disk Access step (`HMK_ONBOARDING=1 HMK_ONBOARDING_STEP=access`) and Settings ▸ General. |
 | `HERDR_HOME=<dir>` | Read herdr's session from `<dir>/session.json` (made-up workspaces, with splits) for onboarding's herdr step (`HMK_ONBOARDING=1 HMK_ONBOARDING_STEP=herdr`, shown even without herdr) and `hmk import herdr`. A made-up Claude session resumes when `CLAUDE_CONFIG_DIR` points at a folder with `projects/<x>/<id>.jsonl`. |
 | `HMK_DEBUG_AGENT_CURSOR=1` | A made-up agent click in every browser pane and tap in every simulator pane, with its glow and badge, kept showing. |

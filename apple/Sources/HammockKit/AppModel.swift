@@ -1681,6 +1681,26 @@ extension AppModel {
         selectGroup(g.id)
     }
 
+    /// The agents Needs You lists, in its order (the newest first): those
+    /// waiting on a person (a question, a permission, a failure), not the
+    /// finished ones.
+    public var needsYou: [AttentionItem] { attention.filter { $0.state != .idle } }
+
+    /// Next Agent That Needs You: reveals the agent after the one you're on
+    /// in Needs You (or before it, going back), wrapping; from anywhere
+    /// else, the first (or the last). Returns false when no agent needs you.
+    @discardableResult
+    public func revealNeedingYou(by delta: Int) -> Bool {
+        var seen = Set<String>()
+        let ids = needsYou.map(\.paneID).filter { panes[$0] != nil && seen.insert($0).inserted }
+        guard !ids.isEmpty else { return false }
+        let here = focusedPaneID.flatMap { f in panes[f]?.tabID == selectedTabID ? f : nil } ?? selectedTab?.focusedPaneID
+        let next = here.flatMap { ids.firstIndex(of: $0) }.map { ids[($0 + delta % ids.count + ids.count) % ids.count] }
+            ?? (delta > 0 ? ids.first : ids.last)
+        if let next { reveal(paneID: next) }
+        return true
+    }
+
     /// Moves focus through the current tab's panes, wrapping.
     public func cyclePane(by delta: Int) {
         guard let tab = selectedTab else { return }
@@ -2150,6 +2170,10 @@ extension AppModel {
     /// sleep (a made-up idle Claude where there's no agent), for snapshots
     /// of the moon and the pane's Wake button without a real idle agent.
     nonisolated static let debugAsleep = ProcessInfo.processInfo.environment["HMK_DEBUG_ASLEEP"] == "1"
+
+    /// A made-up state, for snapshots of views on a model of their own
+    /// (HMK_DEBUG_NEEDS_YOU).
+    public func debugApply(_ u: Hammock_V1_StateUpdate) { apply(u) }
 
     nonisolated static func debugPutToSleep(_ p: inout Pane) {
         guard p.kind == .terminal || p.kind == .unspecified, !p.isLog, !p.exited else { return }

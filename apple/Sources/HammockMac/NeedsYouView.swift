@@ -21,8 +21,15 @@ struct NeedsYouView: View {
     let model: AppModel
     private var showFinished: Bool { Prefs.shared.bool(FinishedPrefs.pref) }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// "+N more" pressed: the list shows every card, scrolling, until it's
+    /// short enough again.
+    @State private var allNeeds = false
+    @State private var allFinished = false
 
-    private var needs: [AttentionItem] { model.attention.filter { $0.state != .idle } }
+    /// How many cards a list shows before "+N more".
+    static let shownCards = 6
+
+    private var needs: [AttentionItem] { model.needsYou }
     private var finished: [AttentionItem] { showFinished ? model.attention.filter { $0.state == .idle } : [] }
 
     /// Whether there's anything to show.
@@ -68,9 +75,13 @@ struct NeedsYouView: View {
                 ForEach(model.grants) { grant in
                     GrantCard(model: model, grant: grant)
                 }
-                ForEach(needs.prefix(6)) { item in
+                ForEach(needs.prefix(allNeeds ? needs.count : Self.shownCards)) { item in
                     AttentionCard(model: model, item: item)
                 }
+            }
+            // Under the list, not in it: seen without scrolling.
+            if !allNeeds, needs.count > Self.shownCards {
+                moreRow(needs.count - Self.shownCards) { allNeeds = true }
             }
             if !finished.isEmpty {
                 HStack {
@@ -87,11 +98,16 @@ struct NeedsYouView: View {
                 .transition(.opacity)
             }
             cards(maxHeight: 160) {
-                ForEach(finished.prefix(6)) { item in
+                ForEach(finished.prefix(allFinished ? finished.count : Self.shownCards)) { item in
                     AttentionCard(model: model, item: item)
                 }
             }
+            if !allFinished, finished.count > Self.shownCards {
+                moreRow(finished.count - Self.shownCards) { allFinished = true }
+            }
         }
+        .onChange(of: needs.count <= Self.shownCards) { _, short in if short { allNeeds = false } }
+        .onChange(of: finished.count <= Self.shownCards) { _, short in if short { allFinished = false } }
         .padding(.horizontal, 8)
         .padding(.top, shows ? 4 : 0)
     }
@@ -104,6 +120,23 @@ struct NeedsYouView: View {
         }
         .frame(maxHeight: maxHeight)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// "+N more": the cards a list is hiding, shown in place on a click.
+    private func moreRow(_ hidden: Int, show: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { show() }
+        } label: {
+            Text("+\(hidden) more")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Show every card")
+        .transition(.opacity)
     }
 
     /// Clear: the finished cards leave one after another, top first, rather

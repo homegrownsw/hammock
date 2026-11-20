@@ -521,6 +521,7 @@ type palette struct {
 	sel   int
 	open  *spring
 	items []paletteItem
+	needs bool // only what needs you (Needs You's "+N more")
 }
 
 func (a *App) openPalette() {
@@ -586,6 +587,10 @@ func (a *App) paletteItems() []paletteItem {
 	act("new-group-in-directory", "New Group in Directory…", "", "create folder project open path", a.openNewGroupInFolder)
 	a.computerItems(act)
 	act("reopen-closed", "Reopen Closed Tab or Pane", "⌃B T", "undo close restore", a.reopenClosed)
+	if len(a.needsYouPanes()) > 0 {
+		act("next-needs-you", "Next Agent That Needs You", "⌃B a", "needs you waiting attention question permission jump go agent queue", func() { a.revealNeedingYou(1) })
+		act("previous-needs-you", "Previous Agent That Needs You", "⌃B A", "needs you waiting attention question permission jump go back agent queue", func() { a.revealNeedingYou(-1) })
+	}
 	act("find-session", "Find Session…", "⌃B O", "resume claude codex agent conversation history search", func() { a.openSessionFinder("") })
 	act("schedules", "Scheduled Tasks", "⌃B @", "schedule cron routine recurring timer automation runs", func() { a.openSchedules("") })
 	act("new-schedule", "New Scheduled Task…", "", "schedule cron routine recurring timer automation claude codex command every day weekdays", func() {
@@ -796,6 +801,9 @@ func score(q, title, extra string) (int, bool) {
 
 func (p *palette) filtered(a *App) []paletteItem {
 	all := a.paletteItems()
+	if p.needs {
+		all = a.needsItems()
+	}
 	q := strings.ToLower(strings.TrimSpace(p.query))
 	if q == "" {
 		return all
@@ -820,7 +828,7 @@ func (p *palette) filtered(a *App) []paletteItem {
 	looksLikeURL := !strings.Contains(typed, " ") && (strings.Contains(typed, ".") || strings.Contains(typed, "://") || strings.HasPrefix(typed, "localhost"))
 	open := paletteItem{id: "open", title: "Search the web for “" + typed + "”", sub: "New browser tab", glyph: glyph{"⌕", a.th.accent, false}, run: func() { a.newTab("", typed) }}
 	switch {
-	case toolOff("browser"):
+	case toolOff("browser") || p.needs:
 	case looksLikeURL:
 		open.title, open.glyph = "Open "+typed, glyph{"◎", a.th.accent, false}
 		res = append([]paletteItem{open}, res...)
@@ -860,7 +868,11 @@ func (p *palette) draw(a *App) {
 	prompt := Cell{FG: a.th.accent, HasFG: true, BG: bg, HasBG: true, Bold: true}
 	a.scr.Text(inner.x+1, inner.y, 2, "›", prompt)
 	if p.query == "" {
-		a.scr.Text(inner.x+3, inner.y, inner.w-4, "Jump to a tab, or run a command…", Cell{FG: a.th.dim, HasFG: true, BG: bg, HasBG: true})
+		placeholder := "Jump to a tab, or run a command…"
+		if p.needs {
+			placeholder = "Needs You: pick one…"
+		}
+		a.scr.Text(inner.x+3, inner.y, inner.w-4, placeholder, Cell{FG: a.th.dim, HasFG: true, BG: bg, HasBG: true})
 		a.scr.Cursor(inner.x+3, inner.y, true)
 	} else {
 		n := a.scr.Text(inner.x+3, inner.y, inner.w-4, p.query, Cell{FG: a.th.fg, HasFG: true, BG: bg, HasBG: true})
@@ -1065,7 +1077,8 @@ func (a *App) openHelp() {
 		"⌃B ,   Rename tab                 ⌃B x   Close pane",
 		"⌃B T   Reopen closed tab or pane  ⌃B M   Next computer (linked)",
 		"⌃B @   Scheduled tasks",
-		"⌃B e   Quick Open (a file)        ⌃B E   New editor tab",
+		"⌃B a/A Next / previous agent that needs you",
+		"⌃B e  Quick Open (a file)        ⌃B E   New editor tab",
 		"⌃B %   Split right                ⌃B \"   Split down",
 		"⌃B r   Rotate split",
 		"⌃B f   New floating pane          ⌃B F   Float / dock pane",

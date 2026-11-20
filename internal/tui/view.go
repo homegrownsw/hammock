@@ -44,6 +44,7 @@ const (
 	zFloatDock  // its dock button
 	zShelf      // a minimised floating pane on the tab's shelf
 	zEditorBar  // a button on an editor pane's changed-on-disk bar (idx: which)
+	zNeedsMore  // Needs You's "+N more"
 )
 
 type zone struct {
@@ -516,8 +517,12 @@ func (a *App) drawSidebar() {
 	// Bottom: Needs You, then the hint line.
 	needs := len(a.attention) + len(a.grants)
 	needRows := 0
+	gn, an, more := a.needsLayout()
 	if needs > 0 {
-		needRows = 2 + min(len(a.grants), 2) + min(len(a.attention), 4-min(len(a.grants), 2))
+		needRows = 2 + gn + an
+		if more > 0 {
+			needRows++
+		}
 	}
 	listBottom := a.h - 1 - needRows
 	if a.linked() {
@@ -708,7 +713,6 @@ func (a *App) drawSidebar() {
 		y := listBottom
 		s.Text(2, y, sw-3, fmt.Sprintf("Needs You  %d", needs), Cell{FG: th.orange, HasFG: true, BG: th.sidebar, HasBG: true, Bold: true})
 		y++
-		gn := min(len(a.grants), 2)
 		for _, g := range a.grants[:gn] {
 			bg := mix(th.sidebar, th.hover, a.hoverAmount("grant:"+g.Id, a.hovered(zGrant, g.Id)))
 			s.Paint(1, y, sw-2, 1, bg)
@@ -716,7 +720,7 @@ func (a *App) drawSidebar() {
 			a.addZone(zone{r: rect{1, y, sw - 2, 1}, kind: zGrant, id: g.Id})
 			y++
 		}
-		for _, at := range a.attention[:min(len(a.attention), 4-gn)] {
+		for _, at := range a.attention[:an] {
 			name := "pane"
 			if p := a.panes[at.PaneId]; p != nil {
 				if t := a.tabs[p.TabId]; t != nil {
@@ -733,6 +737,12 @@ func (a *App) drawSidebar() {
 			a.addZone(zone{r: rect{1, y, sw - 2, 1}, kind: zNeeds, id: at.Id})
 			y++
 		}
+		if more > 0 {
+			bg := mix(th.sidebar, th.hover, a.hoverAmount("needs-more", a.hovered(zNeedsMore, "")))
+			s.Paint(1, y, sw-2, 1, bg)
+			s.Text(4, y, sw-5, moreText(more), Cell{FG: th.dim, HasFG: true, BG: bg, HasBG: true})
+			a.addZone(zone{r: rect{1, y, sw - 2, 1}, kind: zNeedsMore})
+		}
 	}
 
 	if a.linked() {
@@ -741,6 +751,9 @@ func (a *App) drawSidebar() {
 
 	// Hint line.
 	hint, col := sidebarHint, th.faint
+	if len(a.needsYouPanes()) > 0 {
+		hint = "⌃B a  Go to it   ⌃B ?  Keys" // under Needs You
+	}
 	if a.prefix {
 		hint, col = "⌃B …  waiting for a key", th.accent
 	} else if a.offline {
