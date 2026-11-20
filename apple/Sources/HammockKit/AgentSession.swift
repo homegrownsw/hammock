@@ -270,13 +270,13 @@ public final class AgentSession {
     /// Switches the agent's model (Claude's /model, with an alias such as
     /// "opus" or "sonnet[1m]").
     public func switchModel(to alias: String) {
-        Task { await send("/model " + alias, pending: false) }
+        runCommand("/model " + alias)
     }
 
     /// Sets Claude's effort level (/effort, with "low" to "max"): it shows
     /// from the next reply.
     public func switchEffort(to level: String) {
-        Task { await send("/effort " + level, pending: false) }
+        runCommand("/effort " + level)
     }
 
     /// Pages in older turns.
@@ -366,6 +366,24 @@ public final class AgentSession {
             return false
         }
         return true
+    }
+
+    /// Runs one of the agent's commands for a control (the model menu,
+    /// the context gauge's Compact and Clear), not as a message: if it
+    /// can't go, a toast says so, and the message box's failed-send notice
+    /// (whose Retry would send what's typed there) is left alone.
+    public func runCommand(_ command: String) {
+        Task {
+            guard let conn = model?.connection else {
+                model?.showToast("Not connected: \(command) didn't run.")
+                return
+            }
+            do {
+                _ = try await conn.call { $0.agentSend = .with { $0.paneID = self.paneID; $0.text = command } }
+            } catch {
+                model?.showToast("\(command) didn't run: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Sends text as typed, with nothing attached.

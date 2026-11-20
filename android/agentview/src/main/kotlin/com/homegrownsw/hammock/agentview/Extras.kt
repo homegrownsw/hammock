@@ -63,7 +63,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,7 +87,6 @@ import hammock.v1.Hammock.AgentLink
 import hammock.v1.Hammock.AgentShell
 import hammock.v1.Hammock.AgentSubagent
 import hammock.v1.Hammock.AgentTask
-import kotlinx.coroutines.launch
 
 /** What floats above the composer: the session's pull requests and artifacts, and its task list while any is left to do. */
 @Composable
@@ -322,7 +320,6 @@ internal fun Empty(title: String, detail: String?, modifier: Modifier = Modifier
 @Composable
 internal fun AgentStatusBar(session: AgentSession, state: AgentViewState, canDrive: Boolean) {
     val c = LocalAgentColors.current
-    val scope = rememberCoroutineScope()
     var menu by remember { mutableStateOf(false) }
     val style = MaterialTheme.typography.labelMedium
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -332,7 +329,7 @@ internal fun AgentStatusBar(session: AgentSession, state: AgentViewState, canDri
                 style = style, color = c.secondary, maxLines = 1,
                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = canDrive, onClickLabel = "Switch model") {
                     // Codex picks a model in a picker of its own: it shows here as a prompt.
-                    if (session.harness == "claude") menu = true else scope.launch { session.send("/model", pending = false) }
+                    if (session.harness == "claude") menu = true else session.runCommand("/model")
                 }.padding(horizontal = 6.dp, vertical = 4.dp),
             )
             DropdownMenu(menu, onDismissRequest = { menu = false }) {
@@ -372,13 +369,15 @@ internal fun AgentStatusBar(session: AgentSession, state: AgentViewState, canDri
                 }
                 DropdownMenu(gauge, onDismissRequest = { gauge = false }) {
                     Text(
-                        "~${ModelNames.tokens(maxOf(0, state.contextWindow - state.contextTokens))} tokens left",
+                        ModelNames.tokensLeft(state.contextWindow - state.contextTokens),
                         style = MaterialTheme.typography.labelMedium, color = c.secondary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                     for ((label, command) in ModelNames.contextActions(session.harness, state.commands)) {
                         DropdownMenuItem(
-                            text = { Text("$label ($command)") }, enabled = canDrive,
-                            onClick = { gauge = false; scope.launch { session.send(command, pending = false) } },
+                            // Clear and New Chat end the conversation: in the destructive colour, as on the iPhone.
+                            text = { Text("$label ($command)", color = if (command == "/compact") androidx.compose.ui.graphics.Color.Unspecified else c.removed) },
+                            enabled = canDrive,
+                            onClick = { gauge = false; session.runCommand(command) },
                         )
                     }
                 }

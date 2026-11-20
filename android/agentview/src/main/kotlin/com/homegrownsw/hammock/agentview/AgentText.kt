@@ -88,6 +88,12 @@ object ModelNames {
         return out
     }
 
+    /** "~120k tokens left"; under a thousand, the number itself (not "~0k"). */
+    fun tokensLeft(n: Long): String {
+        val left = maxOf(0, n)
+        return if (left < 1000) "$left tokens left" else "~${tokens(left)} tokens left"
+    }
+
     /** "120k", "1M", "1.5M". */
     fun tokens(n: Long): String =
         if (n >= 1_000_000) ("%.1fM".format(n / 1_000_000.0)).replace(".0M", "M") else "${n / 1000}k"

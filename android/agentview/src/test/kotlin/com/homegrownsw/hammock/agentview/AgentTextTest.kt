@@ -209,3 +209,12 @@ class ReviewFixesTest {
         assertEquals(false, PromptKeys.takesKeysOnAppear(typingElsewhere = true))
     }
 }
+
+class TokensLeftTest {
+    @Test
+    fun words() {
+        assertEquals("~120k tokens left", ModelNames.tokensLeft(120_000))
+        assertEquals("640 tokens left", ModelNames.tokensLeft(640))
+        assertEquals("0 tokens left", ModelNames.tokensLeft(-3))
+    }
+}

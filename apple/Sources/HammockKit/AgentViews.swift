@@ -4204,7 +4204,7 @@ struct AgentStatusBar: View {
                 // Codex picks a model (and its reasoning) in a picker of its
                 // own: it shows here as a prompt to answer.
                 Button {
-                    Task { await session.send("/model", pending: false) }
+                    session.runCommand("/model")
                 } label: {
                     HStack(spacing: 3) {
                         Text(Self.displayName(session.agentModel))
@@ -4232,12 +4232,12 @@ struct AgentStatusBar: View {
         let tint: Color = fraction > 0.9 ? .red : fraction > 0.75 ? .orange : .secondary
         let actions = Self.contextActions(harness: harness, commands: session.commands)
         return Menu {
-            Text("~\(Self.tokens(max(0, session.contextWindow - session.contextTokens))) tokens left")
+            Text(Self.tokensLeft(session.contextWindow - session.contextTokens))
             if !actions.isEmpty {
                 Divider()
                 ForEach(actions, id: \.command) { a in
                     Button("\(a.label) (\(a.command))", role: a.command == "/compact" ? nil : .destructive) {
-                        Task { await session.send(a.command, pending: false) }
+                        session.runCommand(a.command)
                     }
                     .disabled(!canDrive)
                 }
@@ -4263,6 +4263,13 @@ struct AgentStatusBar: View {
         .help("\(Self.tokens(session.contextTokens)) of \(Self.tokens(session.contextWindow)) tokens: click to make room")
         .accessibilityLabel("Context \(Int((fraction * 100).rounded()))% full")
         .animation(.snappy, value: fraction)
+    }
+
+    /// "~120k tokens left", "~1.2M tokens left"; under a thousand, the
+    /// number itself (not "~0k").
+    static func tokensLeft(_ n: Int64) -> String {
+        let n = max(0, n)
+        return n < 1000 ? "\(n) tokens left" : "~\(tokens(n)) tokens left"
     }
 
     /// What the context menu offers to make room: Compact, and Clear (Codex's

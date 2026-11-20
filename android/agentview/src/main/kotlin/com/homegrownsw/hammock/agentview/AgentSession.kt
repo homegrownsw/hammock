@@ -386,10 +386,29 @@ class AgentSession(
     }
 
     /** Switches the agent's model (Claude's /model, with an alias such as "opus" or "sonnet[1m]"). */
-    fun switchModel(alias: String) { model.scope.launch { send("/model $alias", pending = false) } }
+    fun switchModel(alias: String) = runCommand("/model $alias")
+
+    /**
+     * Runs one of the agent's commands for a control (the model menu, the
+     * context gauge's Compact and Clear), not as a message: if it can't go, a
+     * toast says so, and the composer's failed-send notice (whose Retry would
+     * send what's typed there) is left alone.
+     */
+    fun runCommand(command: String) {
+        model.scope.launch {
+            if (model.connection == null) { model.showToast("Not connected: $command didn't run."); return@launch }
+            try {
+                model.call { setAgentSend(Hammock.AgentSend.newBuilder().setPaneId(paneID).setText(command).build()) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                model.showToast("$command didn't run: ${e.message ?: "couldn't reach the agent"}")
+            }
+        }
+    }
 
     /** Sets Claude's effort level (/effort, "low" to "max"): it shows from the next reply. */
-    fun switchEffort(level: String) { model.scope.launch { send("/effort $level", pending = false) } }
+    fun switchEffort(level: String) = runCommand("/effort $level")
 
     /** Picks option n (1-based); with text, types it into that ("other") option; with notes, sends them with the pick. */
     suspend fun answer(option: Int, text: String = "", notes: String = "") =

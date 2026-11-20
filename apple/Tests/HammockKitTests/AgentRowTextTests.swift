@@ -87,3 +87,23 @@ import Testing
                               added: 0, removed: 0, open: nil) == "Shell command: ls, succeeded")
     }
 }
+
+@Suite struct TokensLeftTests {
+    @Test func saysWhatsLeft() {
+        #expect(AgentStatusBar.tokensLeft(120_000) == "~120k tokens left")
+        #expect(AgentStatusBar.tokensLeft(640) == "640 tokens left")
+        #expect(AgentStatusBar.tokensLeft(-5) == "0 tokens left")
+    }
+}
+
+@Suite struct RunCommandTests {
+    @MainActor @Test func aControlsCommandLeavesTheSendErrorAlone() async throws {
+        let m = AppModel(socketPath: "/nonexistent", clientKind: "test")
+        let s = AgentSession(paneID: "p", model: m)
+        s.sendError = "Not connected. Your message wasn't sent."
+        s.runCommand("/compact")
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(s.sendError == "Not connected. Your message wasn't sent.")
+        #expect(m.toast?.contains("/compact") == true)
+    }
+}
