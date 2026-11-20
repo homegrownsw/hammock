@@ -155,17 +155,27 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
         val t = if (typing) otherText.trim() else ""
         scope.launch { session.answer(ticked.sorted(), t) }
     }
-    fun sendOther() {
+    // When this question appeared: number keys only count a moment after.
+    val shownAt = remember(key) { PromptKeys.now() }
+    // When the card took the keyboard, and when it last saw a key (any key).
+    var keysTakenAt by remember { mutableLongStateOf(0L) }
+    var lastKeyAt by remember { mutableLongStateOf(0L) }
+    // Return in one of the card's fields answers only a second after the field
+    // took the keyboard and after the card's last key (not a Tab in, then Return);
+    // a tap in, a note typed and Return does. A tap on a button isn't gated.
+    var fieldFocusedAt by remember { mutableLongStateOf(0L) }
+    fun fieldQuiet() = PromptKeys.acceptsPick(PromptKeys.now(), shownAt, keysTakenAt, lastKeyAt, fieldFocusedAt)
+    fun sendOther(fromKeys: Boolean = false) {
         val t = otherText.trim()
-        if (t.isEmpty() || state.answering) return
+        if (t.isEmpty() || state.answering || (fromKeys && !fieldQuiet())) return
         if (p.multiSelect) sendTicked() else answer(p.other, t)
     }
     // In a multi-select question, whether option n is a checkbox: the
     // options after them ("Chat about this") answer at once. (A daemon that
     // doesn't say: all of them.)
     fun isCheckbox(n: Int) = p.multiSelect && (p.checkboxes == 0 || n <= p.checkboxes)
-    fun sendChosen() {
-        if (chosen < 1 || state.answering) return
+    fun sendChosen(fromKeys: Boolean = false) {
+        if (chosen < 1 || state.answering || (fromKeys && !fieldQuiet())) return
         answer(chosen, n = notes.trim())
     }
     // Option n chosen, by a tap or its number key.
@@ -188,11 +198,6 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
     val imeUp by rememberUpdatedState(WindowInsets.isImeVisible)
     val keys = remember { FocusRequester() }
     var keysFocused by remember { mutableStateOf(false) }
-    // When this question appeared: number keys only count a moment after.
-    val shownAt = remember(key) { PromptKeys.now() }
-    // When the card took the keyboard, and when it last saw a key (any key).
-    var keysTakenAt by remember { mutableLongStateOf(0L) }
-    var lastKeyAt by remember { mutableLongStateOf(0L) }
     LaunchedEffect(key, typing, hardKeyboard, active) {
         if (!hardKeyboard || typing || !active) return@LaunchedEffect
         val wait = PromptKeys.keyDelayMs(session.composerEditedAtMs, PromptKeys.now())
@@ -224,7 +229,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                 Key.DirectionLeft -> PromptKeys.Key.LEFT
                 Key.DirectionRight -> PromptKeys.Key.RIGHT
                 Key.Enter, Key.NumPadEnter -> PromptKeys.Key.SUBMIT
-                Key.Tab, Key.DirectionUp, Key.DirectionDown -> PromptKeys.Key.NAVIGATE
+                Key.Tab, Key.DirectionUp, Key.DirectionDown, Key.PageUp, Key.PageDown -> PromptKeys.Key.NAVIGATE
                 else -> PromptKeys.Key.OTHER
             }
             val digit = when (e.key) {
@@ -239,7 +244,8 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                 is PromptKeys.Action.Pick -> if (!state.answering && quiet) pick(a.n)
                 PromptKeys.Action.Previous -> if ((position?.first ?: 0) > 1) session.keys("\u001b[D")
                 PromptKeys.Action.Next -> session.keys("\u001b[C")
-                PromptKeys.Action.Escape -> onOpenTerminal()
+                // Not before the quiet either: the terminal would take the next "2" or Return.
+                PromptKeys.Action.Escape -> if (quiet) onOpenTerminal()
                 // Return answers as Answer or Continue would, after the same quiet.
                 PromptKeys.Action.Submit -> if (!state.answering && quiet) { if (p.notes) sendChosen() else if (p.multiSelect) sendTicked() }
                 PromptKeys.Action.Swallow -> {}
@@ -256,10 +262,10 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                 Spacer(Modifier.weight(1f))
                 if (position != null) {
                     // Through the questions, as ← and → do in Claude's form.
-                    IconButton(onClick = { session.keys("\u001b[D") }, enabled = position.first > 1, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { session.keys("\u001b[D") }, enabled = position.first > 1, modifier = Modifier.size(32.dp).focusProperties { canFocus = !hardKeyboard }) {
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous question")
                     }
-                    IconButton(onClick = { session.keys("\u001b[C") }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { session.keys("\u001b[C") }, modifier = Modifier.size(32.dp).focusProperties { canFocus = !hardKeyboard }) {
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next question")
                     }
                 }
@@ -275,11 +281,12 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                         OtherField(
                             text = otherText, onText = { t ->
                                 // Return in a field that grows: send, not a new line.
-                                if (t.contains('\n')) { otherText = t.replace("\n", ""); sendOther() } else otherText = t
+                                if (t.contains('\n')) { otherText = t.replace("\n", ""); sendOther(fromKeys = true) } else otherText = t
                             },
+                            onFocused = { fieldFocusedAt = PromptKeys.now() },
                             placeholder = if (p.kind == AgentPrompt.Kind.KIND_PLAN) "What should $name change?" else "Your answer",
                             sending = state.answering && tapped == n,
-                            onSend = ::sendOther, onCancel = { typing = false; otherText = "" },
+                            onSend = { fromKeys -> sendOther(fromKeys) }, onCancel = { typing = false; otherText = "" },
                         )
                     } else {
                         val desc = p.descriptionsList.getOrElse(i) { "" }
@@ -308,17 +315,17 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                     Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(c.fill).padding(horizontal = 12.dp, vertical = 10.dp)) {
                         if (notes.isEmpty()) Text("Notes (optional)", style = MaterialTheme.typography.bodyLarge, color = c.tertiary)
                         BasicTextField(
-                            notes, { t -> if (t.contains('\n')) { notes = t.replace("\n", ""); sendChosen() } else notes = t },
+                            notes, { t -> if (t.contains('\n')) { notes = t.replace("\n", ""); sendChosen(fromKeys = true) } else notes = t },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = SolidColor(c.accent), maxLines = 5,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendChosen() }),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { sendChosen(fromKeys = true) }),
                             // Esc leaves the notes, the keys back to the card (not Back out of the pane).
-                            modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { e ->
+                            modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) fieldFocusedAt = PromptKeys.now() }.onPreviewKeyEvent { e ->
                                 if (e.type == KeyEventType.KeyDown && e.key == Key.Escape && hardKeyboard) { runCatching { keys.requestFocus() }; true } else false
                             },
                         )
                     }
-                    Button(onClick = ::sendChosen, enabled = chosen >= 1 && !state.answering, colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)) {
+                    Button(onClick = { sendChosen() }, enabled = chosen >= 1 && !state.answering, modifier = Modifier.focusProperties { canFocus = !hardKeyboard }, colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent)) {
                         if (state.answering) { CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = c.onAccent); Spacer(Modifier.size(6.dp)) }
                         Text("Answer $chosen")
                     }
@@ -327,7 +334,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
             if (p.multiSelect) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     Button(
-                        onClick = ::sendTicked, enabled = !state.answering,
+                        onClick = ::sendTicked, enabled = !state.answering, modifier = Modifier.focusProperties { canFocus = !hardKeyboard },
                         colors = ButtonDefaults.buttonColors(containerColor = c.accent, contentColor = c.onAccent),
                     ) { Text("Continue") }
                 }
@@ -388,7 +395,11 @@ private fun OptionRow(
 
 /** The "other" option, become the field you type your answer in, where it was: focused at once, sent with Return or its button. */
 @Composable
-private fun OtherField(text: String, onText: (String) -> Unit, placeholder: String, sending: Boolean, onSend: () -> Unit, onCancel: () -> Unit) {
+private fun OtherField(
+    text: String, onText: (String) -> Unit, placeholder: String, sending: Boolean,
+    /** Sends: true from the keyboard (Return, the IME's Send), false from its button. */
+    onSend: (Boolean) -> Unit, onCancel: () -> Unit, onFocused: () -> Unit = {},
+) {
     val c = LocalAgentColors.current
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -403,15 +414,15 @@ private fun OtherField(text: String, onText: (String) -> Unit, placeholder: Stri
             BasicTextField(
                 text, onText, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(c.accent), maxLines = 6,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { onSend() }),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { onSend(true) }),
                 // Esc stops typing the answer, as on the iPhone and the Mac.
-                modifier = Modifier.fillMaxWidth().focusRequester(focus).onPreviewKeyEvent { e ->
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { if (it.isFocused) onFocused() }.onPreviewKeyEvent { e ->
                     if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) { onCancel(); true } else false
                 },
             )
         }
         if (sending) CircularProgressIndicator(Modifier.padding(10.dp).size(18.dp), strokeWidth = 2.dp)
-        else IconButton(onClick = { if (empty) onCancel() else onSend() }) {
+        else IconButton(onClick = { if (empty) onCancel() else onSend(false) }) {
             Icon(if (empty) Icons.Outlined.Close else Icons.Outlined.ArrowUpward, if (empty) "Cancel" else "Send", tint = if (empty) c.secondary else c.accent)
         }
     }

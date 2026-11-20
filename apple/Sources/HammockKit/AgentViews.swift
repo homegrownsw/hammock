@@ -2478,6 +2478,8 @@ struct PromptCard: View {
     /// When the card took the keyboard, and when it last saw a key.
     @State private var keysTakenAt: TimeInterval = 0
     @State private var lastKeyAt: TimeInterval = 0
+    /// When one of the card's fields last took the keyboard.
+    @State private var fieldFocusedAt: TimeInterval = 0
     @FocusState private var focus: Field?
     /// The card itself has the keyboard (its number keys and arrows).
     @FocusState private var keysFocused: Bool
@@ -2516,7 +2518,10 @@ struct PromptCard: View {
         .disabled(session.answering)
         .modifier(PromptKeys(focused: $keysFocused, handle: key, take: { takeKeys() }, paneFocused: paneFocused))
         // Back from typing an answer or notes: the keys are the card's again.
-        .onChange(of: focus) { old, new in if old != nil, new == nil, !typing { takeKeys(force: true) } }
+        .onChange(of: focus) { old, new in
+            if new != nil { fieldFocusedAt = PromptKey.now }
+            if old != nil, new == nil, !typing { takeKeys(force: true) }
+        }
         // A new prompt with the same options is still a new prompt: its own
         // state, and its own moment before number keys count.
         .onChange(of: p.promptID) { reset(); takeKeys() }
@@ -2575,10 +2580,14 @@ struct PromptCard: View {
         // digit only picks after a second's quiet (PromptKey.acceptsPick).
         let quiet = PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt)
         lastKeyAt = PromptKey.now
+        // Return, or the keypad's Enter.
         let k: PromptKey.Key = press.key == .escape ? .escape : press.key == .leftArrow ? .left : press.key == .rightArrow ? .right
-            : press.key == .return ? .submit : .other
+            : press.key == .return || press.characters == "\u{3}" ? .submit : press.key == .tab ? .tab : .other
         // A held key's repeats count as typing, but only its first press acts.
-        if press.phase == .repeat { return k == .other || k == .submit ? .handled : .ignored }
+        if press.phase == .repeat { return k == .left || k == .right ? .ignored : .handled }
+        // Tab and ⇧Tab move on only after the quiet: else into the notes
+        // field, whose Return would answer at once.
+        if k == .tab { return PromptKey.tabPasses(quiet: quiet) ? .ignored : .handled }
         switch PromptKey.action(characters: press.characters, key: k,
                                 hasModifiers: !press.modifiers.subtracting([.shift, .numericPad, .function, .capsLock]).isEmpty,
                                 options: p.options.count, multipleQuestions: questionPosition != nil) {
@@ -2590,6 +2599,9 @@ struct PromptCard: View {
             if let (i, _) = questionPosition, i > 1 { previousQuestion() }
         case .next: nextQuestion()
         case .escape:
+            // Not before the quiet either: the terminal would take the next
+            // "2" or Return for the agent's own prompt there.
+            guard quiet else { return .handled }
             if typing { typing = false; otherText = "" } else { onShowTerminal() }
         case .submit:
             // Return answers as Answer or Continue would: after the same quiet
@@ -2672,7 +2684,7 @@ struct PromptCard: View {
                     // not the window's default button.
                     Button("Continue", action: sendTicked)
                         .prominentButton()
-                        .modifier(OutOfKeyFocus(on: keysFocused))
+                        .modifier(OutOfKeyFocus(on: true))
                 }
             }
             if let err = session.answerError {
@@ -2767,9 +2779,9 @@ struct PromptCard: View {
             .background(rowBackground(highlighted: picked))
         }
         .buttonStyle(.plain)
-        // Not reachable by Tab and Space (Full Keyboard Access) while the
-        // card has the keys: those would answer past the quiet rule.
-        .modifier(OutOfKeyFocus(on: keysFocused))
+        // Not reachable by Tab and Space (Full Keyboard Access): those
+        // would answer past the quiet rule.
+        .modifier(OutOfKeyFocus(on: true))
     }
 
     /// Option n chosen, by a click or its number key.
@@ -2813,12 +2825,12 @@ struct PromptCard: View {
                 .textFieldStyle(.plain)
                 .focused($focus, equals: .other)
                 .submitLabel(.send)
-                .onSubmit(sendOther)
+                .onSubmit { sendOther(fromKeys: true) }
                 .onChange(of: otherText) { _, t in
                     // Return in a field that grows: send, not a new line.
                     if t.contains("\n") {
                         otherText = t.replacingOccurrences(of: "\n", with: "")
-                        sendOther()
+                        sendOther(fromKeys: true)
                     }
                 }
                 .padding(.vertical, 2)
@@ -2868,11 +2880,11 @@ struct PromptCard: View {
                 .textFieldStyle(.plain)
                 .focused($focus, equals: .notes)
                 .submitLabel(.send)
-                .onSubmit(sendChosen)
+                .onSubmit { sendChosen(fromKeys: true) }
                 .onChange(of: notes) { _, t in
                     if t.contains("\n") {
                         notes = t.replacingOccurrences(of: "\n", with: "")
-                        sendChosen()
+                        sendChosen(fromKeys: true)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -2888,21 +2900,28 @@ struct PromptCard: View {
                 }
             }
             .prominentButton()
-            .modifier(OutOfKeyFocus(on: keysFocused)) // Return: the card's keys, after the quiet
+            .modifier(OutOfKeyFocus(on: true)) // Return: the card's keys, after the quiet
             .disabled(chosen < 1)
         }
     }
 
-    private func sendChosen() {
-        guard chosen >= 1, !session.answering else { return }
+    /// Return in one of the card's fields answers only a second after the
+    /// field took the keyboard and after the card's last key: a Tab into it
+    /// then Return doesn't; a click in, a note typed and Return does.
+    private var fieldQuiet: Bool {
+        PromptKey.acceptsPick(shownAt: shownAt, keysTakenAt: keysTakenAt, lastKeyAt: lastKeyAt, fieldFocusedAt: fieldFocusedAt)
+    }
+
+    private func sendChosen(fromKeys: Bool = false) {
+        guard chosen >= 1, !session.answering, !fromKeys || fieldQuiet else { return }
         let n = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         focus = nil
         Task { await session.answer(option: chosen, notes: n) }
     }
 
-    private func sendOther() {
+    private func sendOther(fromKeys: Bool = false) {
         let t = otherText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty, !session.answering else { return }
+        guard !t.isEmpty, !session.answering, !fromKeys || fieldQuiet else { return }
         if p.multiSelect { return sendTicked() } // with the ticked options
         tapped = Int(p.other)
         focus = nil
@@ -2931,7 +2950,11 @@ struct PromptCard: View {
 enum PromptKey: Equatable {
     case pick(Int), previous, next, escape, submit
 
-    enum Key { case escape, left, right, submit, other }
+    enum Key { case escape, left, right, submit, tab, other }
+
+    /// Tab (and ⇧Tab) moves focus on from the card only after the quiet:
+    /// before it, it's taken (and counts as a key).
+    static func tabPasses(quiet: Bool) -> Bool { quiet }
 
     /// The clock its times are on: monotonic (seconds since boot), so a wall
     /// clock jumping can't let a key through or block them; a test sets it.
@@ -2945,8 +2968,11 @@ enum PromptKey: Equatable {
     /// quiet: since the card appeared, since it took the keyboard, and since
     /// the last key it saw (any key, repeats too: someone still typing a
     /// sentence, "add 2 tests", keeps putting it off). Times on `clock`.
-    static func acceptsPick(now: TimeInterval = PromptKey.now, shownAt: TimeInterval, keysTakenAt: TimeInterval, lastKeyAt: TimeInterval) -> Bool {
-        now - max(shownAt, keysTakenAt, lastKeyAt) >= settle
+    /// `fieldFocusedAt`: when one of the card's fields (an answer, notes)
+    /// took the keyboard, for its Return: not straight after a Tab into it.
+    static func acceptsPick(now: TimeInterval = PromptKey.now, shownAt: TimeInterval, keysTakenAt: TimeInterval, lastKeyAt: TimeInterval,
+                            fieldFocusedAt: TimeInterval = 0) -> Bool {
+        now - max(shownAt, keysTakenAt, lastKeyAt, fieldFocusedAt) >= settle
     }
 
     /// How long typing in the message box keeps the card from taking keys.
@@ -2970,6 +2996,7 @@ enum PromptKey: Equatable {
         switch key {
         case .escape: return .escape
         case .submit: return .submit
+        case .tab: return nil
         case .left: return multipleQuestions ? .previous : nil
         case .right: return multipleQuestions ? .next : nil
         case .other: break
@@ -2980,7 +3007,9 @@ enum PromptKey: Equatable {
 }
 
 /// Kept out of keyboard focus (Tab, Full Keyboard Access) while `on`: a
-/// prompt card's buttons, while the card's own keys answer for them.
+/// prompt card's buttons, the whole time it shows (Tab out of the card and
+/// back would reach them otherwise), its own keys (1–9, Return, Esc, ←, →)
+/// answering for them after the quiet. A click still works.
 struct OutOfKeyFocus: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {

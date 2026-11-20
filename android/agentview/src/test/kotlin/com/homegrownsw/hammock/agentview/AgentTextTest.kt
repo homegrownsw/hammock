@@ -122,7 +122,7 @@ class AgentTextTest {
         assertNull(PromptKeys.action(4, other, false, options = 3, multipleQuestions = false))
         assertNull(PromptKeys.action(1, other, true, options = 3, multipleQuestions = false))
         assertNull(PromptKeys.action(0, other, false, options = 3, multipleQuestions = false))
-        assertNull(PromptKeys.action(0, PromptKeys.Key.LEFT, false, options = 3, multipleQuestions = false))
+        assertEquals(PromptKeys.Action.Swallow, PromptKeys.action(0, PromptKeys.Key.LEFT, false, options = 3, multipleQuestions = false))
         assertEquals(PromptKeys.Action.Previous, PromptKeys.action(0, PromptKeys.Key.LEFT, false, options = 3, multipleQuestions = true))
         assertEquals(PromptKeys.Action.Next, PromptKeys.action(0, PromptKeys.Key.RIGHT, false, options = 3, multipleQuestions = true))
         assertEquals(PromptKeys.Action.Escape, PromptKeys.action(0, PromptKeys.Key.ESCAPE, false, options = 3, multipleQuestions = false))
@@ -333,5 +333,29 @@ class RoundFourTest {
         } finally {
             PromptKeys.clock = real
         }
+    }
+}
+
+class RoundFiveTest {
+    @Test
+    fun navigationKeysAreTheCardsWhateverIsHeld() {
+        // Tab, arrows, Page Up/Down (NAVIGATE) with Ctrl/Alt/Meta held: still taken.
+        assertEquals(PromptKeys.Action.Swallow, PromptKeys.action(0, PromptKeys.Key.NAVIGATE, true, 3, false))
+        // ← and → with a single question: taken, not moving focus.
+        assertEquals(PromptKeys.Action.Swallow, PromptKeys.action(0, PromptKeys.Key.RIGHT, false, 3, false))
+    }
+
+    @Test
+    fun escNeedsTheQuietToo() {
+        assertEquals(PromptKeys.Action.Escape, PromptKeys.action(0, PromptKeys.Key.ESCAPE, false, 3, false))
+        assertEquals(false, PromptKeys.acceptsPick(1300, 1000, 1000, 0))
+    }
+
+    @Test
+    fun aFieldsReturnWaitsAfterTheFieldTookTheKeyboard() {
+        // Tab (or a tap) into notes, then Return at once: no.
+        assertEquals(false, PromptKeys.acceptsPick(6200, 1000, 1000, 6000, fieldFocusedAtMs = 6000))
+        // Tapped in, a note typed for 3 s, Return: yes.
+        assertEquals(true, PromptKeys.acceptsPick(9000, 1000, 1000, 3000, fieldFocusedAtMs = 6000))
     }
 }

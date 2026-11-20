@@ -634,8 +634,8 @@ object PromptKeys {
      * card appeared, since it took the keyboard, and since the last key it saw
      * (any key: someone still typing "add 2 tests" keeps putting it off).
      */
-    fun acceptsPick(nowMs: Long, shownAtMs: Long, keysTakenAtMs: Long, lastKeyAtMs: Long) =
-        nowMs - maxOf(shownAtMs, keysTakenAtMs, lastKeyAtMs) >= SETTLE_MS
+    fun acceptsPick(nowMs: Long, shownAtMs: Long, keysTakenAtMs: Long, lastKeyAtMs: Long, fieldFocusedAtMs: Long = 0) =
+        nowMs - maxOf(maxOf(shownAtMs, keysTakenAtMs), maxOf(lastKeyAtMs, fieldFocusedAtMs)) >= SETTLE_MS
 
     /** How long typing in the message box keeps the card from taking keys, in ms. */
     const val TYPING_MS = 1000L
@@ -648,11 +648,14 @@ object PromptKeys {
         cardHadKeys && active && hardKeyboard && nowMs - promptEndedAtMs in 0..TYPING_MS
 
     fun action(digit: Int, key: Key, modifiers: Boolean, options: Int, multipleQuestions: Boolean): Action? {
+        // Tab, the arrows and Page Up/Down are the card's whatever's held: never
+        // moving focus to a button or option, where Enter would answer.
+        if (key == Key.NAVIGATE) return Action.Swallow
         if (modifiers) return null
         return when (key) {
             Key.ESCAPE -> Action.Escape
-            Key.LEFT -> if (multipleQuestions) Action.Previous else null
-            Key.RIGHT -> if (multipleQuestions) Action.Next else null
+            Key.LEFT -> if (multipleQuestions) Action.Previous else Action.Swallow
+            Key.RIGHT -> if (multipleQuestions) Action.Next else Action.Swallow
             Key.SUBMIT -> Action.Submit
             Key.NAVIGATE -> Action.Swallow
             Key.OTHER -> if (digit in 1..9 && digit <= options) Action.Pick(digit) else null

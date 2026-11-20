@@ -298,3 +298,27 @@ func t(_ l: ComposerHistory<String>.Line??) -> String? {
     case nil: nil
     }
 }
+
+@Suite struct PromptRoundFiveTests {
+    @Test func tabWaitsForQuiet() {
+        #expect(!PromptKey.tabPasses(quiet: false))
+        #expect(PromptKey.tabPasses(quiet: true))
+        #expect(PromptKey.action(characters: "\t", key: .tab, hasModifiers: false, options: 3, multipleQuestions: false) == nil)
+    }
+
+    @Test func escIsAKeyBeforeTheQuiet() {
+        // Esc's action needs the same quiet as a number (the card checks acceptsPick for it).
+        #expect(PromptKey.action(characters: "\u{1b}", key: .escape, hasModifiers: false, options: 3, multipleQuestions: false) == .escape)
+        let t0: TimeInterval = 1000
+        #expect(!PromptKey.acceptsPick(now: t0 + 0.3, shownAt: t0, keysTakenAt: t0, lastKeyAt: 0))
+    }
+
+    @Test func aFieldsReturnWaitsAfterTheFieldTookTheKeyboard() {
+        let t0: TimeInterval = 1000
+        // Tab into notes, then Return at once: no.
+        #expect(!PromptKey.acceptsPick(now: t0 + 5.2, shownAt: t0, keysTakenAt: t0, lastKeyAt: t0 + 5, fieldFocusedAt: t0 + 5))
+        // Clicked into notes, typed a note for 3 s, Return: yes (typing in the
+        // field isn't the card's keys).
+        #expect(PromptKey.acceptsPick(now: t0 + 8, shownAt: t0, keysTakenAt: t0, lastKeyAt: t0 + 2, fieldFocusedAt: t0 + 5))
+    }
+}
