@@ -301,11 +301,8 @@ struct LinkComputerSheet: View {
             HStack {
                 Text("This computer's link:").foregroundStyle(.secondary)
                 Text(myLink.isEmpty ? "…" : myLink).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-                Button("Copy") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(myLink, forType: .string)
-                }
-                .disabled(myLink.isEmpty)
+                CopyButton(text: myLink)
+                    .disabled(myLink.isEmpty)
             }
             .font(.callout)
             if let error {

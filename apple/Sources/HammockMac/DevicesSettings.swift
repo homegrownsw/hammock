@@ -97,7 +97,7 @@ struct DevicesSettings: View {
             .id("remote-access")
             Section("Pair a Device") {
                 if let pairing, pairing.url != nil {
-                    PairingCodeView(pairing: pairing)
+                    PairingCodeView(pairing: pairing) { await newPairing() }
                 } else {
                     Button("Show Pairing Code") {
                         Task { if await gate.ensure(model) { await newPairing() } }
@@ -167,9 +167,13 @@ struct DevicesSettings: View {
 
 extension Hammock_V1_Device: Identifiable {}
 
-/// A pairing code: the QR, and its link to copy.
+/// A pairing code: the QR, and its link to copy. It counts down to when it
+/// expires, then `renew` makes a new one in its place.
 struct PairingCodeView: View {
     let pairing: Pairing
+    let renew: () async -> Void
+
+    private var expires: Date { Date(timeIntervalSince1970: Double(pairing.expiresUnixMs) / 1000) }
 
     var body: some View {
         if let url = pairing.url {
@@ -183,16 +187,52 @@ struct PairingCodeView: View {
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
                         .lineLimit(4)
-                    Text("Single use · expires in 10 minutes")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("Copy Link") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                    TimelineView(.periodic(from: .now, by: 1)) { t in
+                        Text("Single use · \(Self.expiry(expires.timeIntervalSince(t.date)))")
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
                     }
+                    CopyButton(title: "Copy Link", text: url.absoluteString)
                 }
             }
+            // A new code when this one runs out (while it's showing).
+            .task(id: pairing.secret) {
+                guard pairing.expiresUnixMs > 0 else { return }
+                try? await Task.sleep(for: .seconds(max(expires.timeIntervalSinceNow, 0) + 0.5))
+                guard !Task.isCancelled else { return }
+                await renew()
+            }
         }
+    }
+
+    /// "expires in 9:41", or "renewing…" once it has.
+    static func expiry(_ left: TimeInterval) -> String {
+        guard left > 0 else { return "renewing…" }
+        let s = Int(left.rounded(.up))
+        return String(format: "expires in %d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Copy (or Copy Link): copies text, then says "Copied" for a moment.
+struct CopyButton: View {
+    var title = "Copy"
+    let text: String
+    @State private var copied = false
+    @State private var reset: Task<Void, Never>?
+
+    var body: some View {
+        Button(copied ? "Copied" : title) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            copied = true
+            reset?.cancel()
+            reset = Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                if !Task.isCancelled { copied = false }
+            }
+        }
+        .accessibilityValue(copied ? "Copied" : "")
     }
 }
 
@@ -248,7 +288,7 @@ struct PairingSheet: View {
                 }
             }
         } else if let pairing {
-            PairingCodeView(pairing: pairing)
+            PairingCodeView(pairing: pairing) { await load() }
         } else if error == nil {
             ProgressView().frame(maxWidth: .infinity)
         }

@@ -36,7 +36,7 @@ A network chosen by its subnet also matches any other network with the same subn
 
 ## Pairing devices
 
-In Settings ▸ Devices, click **Show Pairing Code** (or File ▸ Pair a Device…) and scan it with Hammock on your iPhone or Android phone. A code works once, for 10 minutes. See [Installing on iPhone](/hammock/docs/install/iphone/) or [on Android](/hammock/docs/install/android/). On a Linux server, `hmk pair --print` prints the code in the terminal.
+In Settings ▸ Devices, click **Show Pairing Code** (or File ▸ Pair a Device…) and scan it with Hammock on your iPhone or Android phone. A code works once, for 10 minutes; while it's showing, a new one replaces it when it runs out. See [Installing on iPhone](/hammock/docs/install/iphone/) or [on Android](/hammock/docs/install/android/). On a Linux server, `hmk pair --print` prints the code in the terminal.
 
 **Revoke** a device under **Paired Devices** to cut it off, or with `hmk devices revoke ID`. What paired devices do is logged in **Recent Activity**, or `hmk audit`.
 
