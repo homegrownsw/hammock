@@ -39,3 +39,20 @@ func TestEmptyGroupKeys(t *testing.T) {
 		t.Error("a tab's keys went to the empty state")
 	}
 }
+
+// A second Return before the first's tab is here opens nothing more: the
+// first is still being made (asked for), or has been and hasn't arrived.
+func TestEmptyGroupReturnOpensOneTab(t *testing.T) {
+	a, _ := paletteApp()
+	a.groups = []*pb.Group{{Id: "g"}}
+	a.selGroup = "g"
+	// (No daemon here: asking for a tab would panic.)
+	a.openingEmpty = true
+	if !a.emptyKey('\r') {
+		t.Error("a second Return, its tab asked for, went elsewhere")
+	}
+	a.openingEmpty, a.pendingTab = false, "t"
+	if !a.emptyKey('\r') {
+		t.Error("a second Return, its tab on its way, went elsewhere")
+	}
+}

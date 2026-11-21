@@ -79,13 +79,23 @@ func (a *App) emptyKey(c byte) bool {
 	}
 	switch {
 	case c == '\r':
-		a.newTab("", "")
+		a.newTabFromEmpty()
 	case c == 'a' && g != nil:
 		a.openStartAgent(a.currentGroup())
 	default:
 		return false
 	}
 	return true
+}
+
+// newTabFromEmpty is an empty state's New Terminal (Return, or its button):
+// once, until that tab's here, however many times it's pressed meanwhile.
+func (a *App) newTabFromEmpty() {
+	if a.openingEmpty || a.pendingTab != "" {
+		return
+	}
+	a.openingEmpty = true
+	a.newTabDone("", "", func() { a.openingEmpty = false })
 }
 
 // setGroupFolder sets where a Group's new tabs open, saying so if the

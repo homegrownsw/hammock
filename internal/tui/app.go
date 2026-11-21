@@ -70,7 +70,10 @@ type App struct {
 	dirty      bool
 	actions    chan func()
 	pendingTab string
-	quit       bool
+	// openingEmpty: an empty state's New Terminal is on its way (asked, not
+	// yet answered), so another Return doesn't open a second.
+	openingEmpty bool
+	quit         bool
 
 	// UI state
 	prefs      prefs
@@ -503,12 +506,19 @@ func (a *App) flash(msg string) {
 
 func (a *App) toastVisible() bool { return a.toast != "" && time.Since(a.toastAt) < a.toastFor }
 
-func (a *App) call(m *pb.ClientMessage, then func(*pb.ServerMessage)) {
+func (a *App) call(m *pb.ClientMessage, then func(*pb.ServerMessage)) { a.callDone(m, then, nil) }
+
+// callDone is call, with done run once it's answered, either way (after
+// then, or the error's flash).
+func (a *App) callDone(m *pb.ClientMessage, then func(*pb.ServerMessage), done func()) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		r, err := a.c.Call(ctx, m)
 		a.actions <- func() {
+			if done != nil {
+				defer done()
+			}
 			if err != nil {
 				a.flash("⚠ " + err.Error())
 				return
@@ -565,21 +575,33 @@ func (a *App) currentGroup() string {
 }
 
 // newTab opens a tab in group (a browser tab when url is set).
-func (a *App) newTab(group, url string) {
+func (a *App) newTab(group, url string) { a.newTabDone(group, url, nil) }
+
+// newTabDone is newTab, with done run once the tab's made, or making it
+// failed.
+func (a *App) newTabDone(group, url string, done func()) {
 	create := func(group string) {
 		spec := &pb.PaneSpec{}
 		if url != "" {
 			spec.Url = url
 		}
-		a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: group, Pane: spec}}}, func(r *pb.ServerMessage) {
+		a.callDone(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: group, Pane: spec}}}, func(r *pb.ServerMessage) {
 			a.selectTab(client.CreatedID(r))
-		})
+		}, done)
 	}
 	if group == "" {
 		group = a.currentGroup()
 	}
 	if group == "" {
-		a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Home"}}}, func(r *pb.ServerMessage) { create(client.CreatedID(r)) })
+		ok := false
+		a.callDone(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateGroup{CreateGroup: &pb.CreateGroup{Name: "Home"}}}, func(r *pb.ServerMessage) {
+			ok = true
+			create(client.CreatedID(r))
+		}, func() {
+			if !ok && done != nil {
+				done() // (else the tab's call does)
+			}
+		})
 		return
 	}
 	create(group)

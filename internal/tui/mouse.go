@@ -324,7 +324,7 @@ func (a *App) leftPress(z zone, m mouseEv) {
 			a.openLink(p.Url)
 		}
 	case zEmpty:
-		a.newTab("", "")
+		a.newTabFromEmpty()
 	case zEmptyAgent:
 		a.openStartAgent(a.currentGroup())
 	}
