@@ -29,6 +29,7 @@ import com.homegrownsw.hammock.agentview.AgentFonts
 import com.homegrownsw.hammock.agentview.AgentSession
 import com.homegrownsw.hammock.agentview.AttachmentSize
 import com.homegrownsw.hammock.client.AppModel
+import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.rememberPref
 import hammock.v1.Hammock.Pane
 
@@ -119,6 +120,7 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (Ter
     val theme = rememberTerminalTheme(model)
     LaunchedEffect(theme) { model.setColors(theme.toSetColors(isSystemInDarkThemeOr(theme))) }
     val font = rememberTerminalFont()
+    val link by model.link.collectAsStateWithLifecycle()
     TerminalPane(
         session,
         onInput = { model.input(pane.id, it) },
@@ -129,6 +131,9 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (Ter
         fontFamily = font.family,
         lineSpacing = font.lineSpacing,
         onFocus = { model.focus(pane.id) },
+        linkUp = link == Link.Connected,
+        offline = linkDown(),
+        onReconnect = { model.reconnectNow() },
     )
 }
 

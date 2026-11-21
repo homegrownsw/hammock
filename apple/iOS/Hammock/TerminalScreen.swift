@@ -12,9 +12,10 @@ struct TerminalScreen: View {
     var active = true
     @Environment(\.phoneTheme) private var theme
     @Environment(\.inPaneStrip) private var inStrip
+    @Environment(\.linkDown) private var linkDown
 
     var body: some View {
-        TerminalRepresentable(model: model, paneID: paneID, active: active)
+        TerminalRepresentable(model: model, paneID: paneID, active: active, linkUp: model.connected, offline: linkDown)
             // Down to the screen's bottom edge, but not under the pane
             // strip: its rows there were hidden (and counted in the size
             // the pane was given).
@@ -27,6 +28,12 @@ struct TerminalRepresentable: UIViewRepresentable {
     let model: AppModel
     let paneID: String
     let active: Bool
+    /// Connected to the computer: typing goes nowhere without it, so it's
+    /// blocked (not kept to send later).
+    var linkUp = true
+    /// The link's been down a moment (the connection bar shows): the key
+    /// bar says Offline.
+    var offline = false
     /// A picture of the pane (Exposé's tile): drawn, never driven. It
     /// takes no touches and has nowhere to send input, focus or a size,
     /// so it can't resize the pane on the Mac.
@@ -45,11 +52,19 @@ struct TerminalRepresentable: UIViewRepresentable {
         v.onInput = { [model, paneID] data in model.send(paneID, data) }
         v.onFocus = { [model, paneID] in model.focus(paneID) }
         v.onResize = { [model, paneID] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
+        v.onReconnect = { [model] in model.reconnectNow() }
+        v.linkUp = linkUp
+        v.offline = offline
         v.active = active
         return v
     }
 
-    func updateUIView(_ v: TerminalUIView, context: Context) { if !preview { v.active = active } }
+    func updateUIView(_ v: TerminalUIView, context: Context) {
+        guard !preview else { return }
+        v.linkUp = linkUp
+        v.offline = offline
+        v.active = active
+    }
 
     static func dismantleUIView(_ v: TerminalUIView, coordinator: ()) {
         if let s = v.session {
@@ -117,7 +132,16 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     var onInput: ((Data) -> Void)?
     var onResize: ((Int, Int) -> Void)?
     var onFocus: (() -> Void)?
+    var onReconnect: (() -> Void)?
     var release: ((String) -> Void)?
+    /// Connected: while it isn't, keys are blocked rather than kept, since
+    /// what they'd do depends on a screen that may have moved on.
+    var linkUp = true
+    /// Down long enough to say so (LinkStatus's pause): the key bar shows
+    /// Offline, which tries again when tapped.
+    var offline = false {
+        didSet { if offline != oldValue { accessory.offline = offline } }
+    }
     /// Showing on screen: fit the PTY to the view, now and whenever the
     /// view changes size (the keyboard opening or closing).
     var active = false {
@@ -529,7 +553,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     }
 
     override func paste(_ sender: Any?) {
-        guard let text = UIPasteboard.general.string, !text.isEmpty, let engine = session?.engine else { return }
+        guard linkUp, let text = UIPasteboard.general.string, !text.isEmpty, let engine = session?.engine else { return }
         engine.scrollToBottom()
         onInput?(engine.encodePaste(text))
     }
@@ -819,6 +843,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
 
     func insertText(_ text: String) {
+        guard linkUp else { return }
         var t = text.replacingOccurrences(of: "\n", with: "\r")
         if ctrlLatched, let s = t.lowercased().unicodeScalars.first, t.count == 1, ("a"..."z").contains(Character(s)) || "[\\]^_ ".contains(Character(s)) {
             let code = s == " " ? 0 : (s.value & 0x1F)
@@ -837,6 +862,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     }
 
     func deleteBackward() {
+        guard linkUp else { return }
         if !typed.isEmpty { typed.removeLast() }
         onInput?(Data([0x7F]))
     }
@@ -854,6 +880,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     private lazy var accessory: KeyAccessoryView = {
         let v = KeyAccessoryView()
         v.onKey = { [weak self] key in self?.accessoryKey(key) }
+        v.onOffline = { [weak self] in self?.onReconnect?() }
+        v.offline = offline
         return v
     }()
 
@@ -861,6 +889,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
 
     private func accessoryKey(_ key: KeyAccessoryView.Key) {
         guard let engine = session?.engine else { return }
+        if !linkUp, key != .hide { return }
         if key != .backspace, key != .ctrl, key != .hide { forgetTyped() }
         let mac: UInt16
         switch key {
@@ -893,7 +922,29 @@ final class KeyAccessoryView: UIInputView {
     private var repeater: KeyRepeater?
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     var onKey: ((Key) -> Void)?
+    /// The Offline pill tapped: try again now.
+    var onOffline: (() -> Void)?
     let ctrlButton = UIButton(configuration: .gray())
+    /// The keys that type: dimmed, and not taking touches, while offline.
+    private var typingKeys: [UIButton] = []
+    private let offlinePill = UIButton(configuration: .filled())
+
+    /// The link's down: keys are blocked, and a pill over them says so.
+    var offline = false {
+        didSet {
+            guard offline != oldValue else { return }
+            for b in typingKeys {
+                b.isEnabled = !offline
+                b.alpha = offline ? 0.35 : 1
+            }
+            if offline { repeater = nil }
+            offlinePill.configuration?.baseBackgroundColor = UIColor(PhoneTheme.current.accent)
+            UIView.animate(withDuration: 0.2) { self.offlinePill.alpha = self.offline ? 1 : 0 }
+            offlinePill.isUserInteractionEnabled = offline
+            offlinePill.accessibilityElementsHidden = !offline
+            if offline { UIAccessibility.post(notification: .layoutChanged, argument: offlinePill) }
+        }
+    }
 
     init() {
         super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 48), inputViewStyle: .keyboard)
@@ -943,14 +994,40 @@ final class KeyAccessoryView: UIInputView {
                 b.addAction(UIAction { [weak self] _ in self?.onKey?(key) }, for: .touchUpInside)
             }
             stack.addArrangedSubview(b)
+            if key != .hide { typingKeys.append(b) }
         }
         addSubview(stack)
+        setUpOfflinePill()
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            offlinePill.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
+            offlinePill.centerYAnchor.constraint(equalTo: stack.centerYAnchor),
         ])
+    }
+
+    /// "Offline", in the connection bar's colour, over the keys: tapping it
+    /// tries again now, as the bar's Try Again does.
+    private func setUpOfflinePill() {
+        var c = UIButton.Configuration.filled()
+        c.cornerStyle = .capsule
+        c.baseForegroundColor = .white
+        c.baseBackgroundColor = UIColor(PhoneTheme.current.accent)
+        c.contentInsets = NSDirectionalEdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14)
+        c.attributedTitle = AttributedString("Offline", attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 14, weight: .semibold)]))
+        offlinePill.configuration = c
+        offlinePill.translatesAutoresizingMaskIntoConstraints = false
+        offlinePill.alpha = 0
+        offlinePill.isUserInteractionEnabled = false
+        offlinePill.accessibilityElementsHidden = true
+        offlinePill.accessibilityHint = "Connects again now"
+        offlinePill.addAction(UIAction { [weak self] _ in
+            self?.haptic.impactOccurred()
+            self?.onOffline?()
+        }, for: .touchUpInside)
+        addSubview(offlinePill)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -960,6 +1037,8 @@ final class KeyAccessoryView: UIInputView {
 
 extension TerminalUIView {
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        // Offline: what's typed goes on to insertText, which drops it.
+        guard linkUp else { return super.pressesBegan(presses, with: event) }
         var handled = false
         for press in presses {
             guard let key = press.key, let engine = session?.engine else { continue }
@@ -1083,7 +1162,7 @@ extension TerminalUIView {
     /// word deleted at once while delete repeats): back to where the range
     /// starts, then the new text and what came after the range, typed again.
     func replace(_ range: UITextRange, withText text: String) {
-        guard let r = range as? StandInRange else { return }
+        guard linkUp, let r = range as? StandInRange else { return }
         let base = Self.standIn.count
         let end = base + typed.count
         let a = min(max(r.a, 0), end), b = min(max(r.b, a), end)

@@ -94,6 +94,12 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
     /** The sticky ctrl key changed (the accessory bar shows it). */
     var onCtrlChanged: ((Boolean) -> Unit)? = null
 
+    /**
+     * Connected to the computer: while it isn't, keys are blocked rather than
+     * kept, since what they'd do depends on a screen that may have moved on.
+     */
+    var linkUp = true
+
     /** Watching only: nothing typed, clicked, pasted or resized. */
     var readOnly = false
         set(value) {
@@ -268,7 +274,7 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
     // MARK: Output
 
     private fun send(bytes: ByteArray) {
-        if (readOnly || bytes.isEmpty()) return
+        if (readOnly || !linkUp || bytes.isEmpty()) return
         onInput?.invoke(bytes)
     }
 
@@ -278,6 +284,8 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
      * whether the line is over (a Return or a control character).
      */
     internal fun typeText(text: String): Boolean {
+        // Offline: dropped, and the keyboard's line forgotten with it.
+        if (!linkUp) return true
         var t = text.replace('\n', '\r')
         if (ctrlLatched && t.codePointCount(0, t.length) == 1) {
             val c = t.lowercase()[0]
@@ -305,6 +313,7 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
     /** A key from the accessory bar. */
     fun pressKey(key: TerminalKey) {
         val engine = session?.engine ?: return
+        if (!linkUp) return
         if (key == TerminalKey.BACKSPACE) {
             connection?.dropLast()
             send(byteArrayOf(0x7F))

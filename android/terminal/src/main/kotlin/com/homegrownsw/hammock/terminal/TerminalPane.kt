@@ -2,6 +2,9 @@ package com.homegrownsw.hammock.terminal
 
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +42,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -49,8 +53,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +81,10 @@ import kotlinx.coroutines.launch
  * keyboard (imePadding), so the activity should let the window resize
  * for it (edge to edge, or adjustResize). Touch and hold selects text,
  * with handles to drag and a menu to copy it, unless not [selectable].
+ *
+ * While not [linkUp] (connected), keys are blocked, not kept to send later;
+ * once it's been down long enough to say so ([offline]), a pill over the
+ * key bar says Offline, and tapping it calls [onReconnect].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -92,6 +102,9 @@ fun TerminalPane(
     onFocus: () -> Unit = {},
     onCellSize: (widthPx: Int, heightPx: Int) -> Unit = { _, _ -> },
     selectable: Boolean = true,
+    linkUp: Boolean = true,
+    offline: Boolean = false,
+    onReconnect: () -> Unit = {},
 ) {
     val input by rememberUpdatedState(onInput)
     val resize by rememberUpdatedState(onResize)
@@ -139,6 +152,7 @@ fun TerminalPane(
                     v.selectable = selectable
                     v.session = session
                     v.readOnly = readOnly
+                    v.linkUp = linkUp
                     v.theme = theme
                     v.fontFamily = fontFamily
                     v.lineSpacing = lineSpacing
@@ -158,29 +172,52 @@ fun TerminalPane(
         }
         val v = view
         if (v != null && imeVisible && focused && !readOnly) {
-            KeyBar(v, ctrl)
+            KeyBar(v, ctrl, offline, onReconnect)
         }
     }
 }
 
-/** Esc, tab, ctrl, arrows, delete and hide, above the soft keyboard (KeyAccessoryView on the iPhone). */
+/**
+ * Esc, tab, ctrl, arrows, delete and hide, above the soft keyboard (KeyAccessoryView on the iPhone).
+ * While [offline], the keys that type are dimmed and blocked, under a pill saying so.
+ */
 @Composable
-private fun KeyBar(view: TerminalView, ctrl: Boolean) {
+private fun KeyBar(view: TerminalView, ctrl: Boolean, offline: Boolean, onReconnect: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(horizontal = 6.dp, vertical = 5.dp).height(38.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            BarKey("Escape", text = "esc") { view.pressKey(TerminalKey.ESCAPE) }
-            BarKey("Tab", text = "tab") { view.pressKey(TerminalKey.TAB) }
-            BarKey("Control", text = "ctrl", selected = ctrl) { view.setCtrlLatched(!ctrl) }
-            BarKey("Left arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, repeats = true) { view.pressKey(TerminalKey.LEFT) }
-            BarKey("Down arrow", icon = Icons.Filled.KeyboardArrowDown, repeats = true) { view.pressKey(TerminalKey.DOWN) }
-            BarKey("Up arrow", icon = Icons.Filled.KeyboardArrowUp, repeats = true) { view.pressKey(TerminalKey.UP) }
-            BarKey("Right arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, repeats = true) { view.pressKey(TerminalKey.RIGHT) }
-            BarKey("Delete", icon = Icons.AutoMirrored.Outlined.Backspace, repeats = true) { view.pressKey(TerminalKey.BACKSPACE) }
-            BarKey("Hide keyboard", icon = Icons.Filled.KeyboardHide) { view.hideKeyboard() }
+        Box(contentAlignment = Alignment.Center) {
+            Row(
+                Modifier.padding(horizontal = 6.dp, vertical = 5.dp).height(38.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                BarKey("Escape", text = "esc", enabled = !offline) { view.pressKey(TerminalKey.ESCAPE) }
+                BarKey("Tab", text = "tab", enabled = !offline) { view.pressKey(TerminalKey.TAB) }
+                BarKey("Control", text = "ctrl", selected = ctrl, enabled = !offline) { view.setCtrlLatched(!ctrl) }
+                BarKey("Left arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.LEFT) }
+                BarKey("Down arrow", icon = Icons.Filled.KeyboardArrowDown, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.DOWN) }
+                BarKey("Up arrow", icon = Icons.Filled.KeyboardArrowUp, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.UP) }
+                BarKey("Right arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.RIGHT) }
+                BarKey("Delete", icon = Icons.AutoMirrored.Outlined.Backspace, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.BACKSPACE) }
+                BarKey("Hide keyboard", icon = Icons.Filled.KeyboardHide) { view.hideKeyboard() }
+            }
+            AnimatedVisibility(offline, enter = fadeIn(), exit = fadeOut()) { OfflinePill(onReconnect) }
         }
+    }
+}
+
+/** "Offline", in the connection banner's colour: tapping it tries again now, as the banner's Try Again does. */
+@Composable
+private fun OfflinePill(onReconnect: () -> Unit) {
+    val hostView = LocalView.current
+    Surface(
+        onClick = {
+            hostView.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            onReconnect()
+        },
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+    ) {
+        Text("Offline", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
     }
 }
 
@@ -195,6 +232,7 @@ private fun RowScope.BarKey(
     icon: ImageVector? = null,
     selected: Boolean = false,
     repeats: Boolean = false,
+    enabled: Boolean = true,
     onKey: () -> Unit,
 ) {
     val key by rememberUpdatedState(onKey)
@@ -215,11 +253,14 @@ private fun RowScope.BarKey(
         shape = RoundedCornerShape(8.dp),
         modifier = Modifier
             .weight(1f)
+            .alpha(if (enabled) 1f else 0.35f)
             .semantics {
                 contentDescription = label
                 role = Role.Button
+                if (!enabled) disabled()
             }
-            .pointerInput(repeats) {
+            .pointerInput(repeats, enabled) {
+                if (!enabled) return@pointerInput
                 detectTapGestures(onPress = {
                     pressed = true
                     val job = if (repeats) {
