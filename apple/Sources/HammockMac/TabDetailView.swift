@@ -212,20 +212,33 @@ struct LayoutView: View {
 }
 
 /// An invisible, wider hit area over the hairline between two children of a
-/// split, to drag.
+/// split, to drag: it shows itself, in the theme's colour, under the pointer
+/// and while dragged. A double-click makes the two sides the same size.
 private struct DividerHandle: View {
     let d: PanePlan.Divider
     @Binding var drag: PanePlan.Drag?
     let layout: PaneLayout
     let update: (PaneLayout) -> Void
     @State private var cursorPushed = false
+    @State private var hovered = false
+    @State private var dragging = false
 
     var body: some View {
         Rectangle()
             .fill(Color.clear)
             .frame(width: d.rect.width, height: d.rect.height)
             .contentShape(Rectangle())
+            .overlay {
+                Capsule()
+                    .fill(Color.themeAccent.opacity(0.7))
+                    .frame(width: d.horizontal ? 3 : nil, height: d.horizontal ? nil : 3)
+                    .padding(d.horizontal ? .vertical : .horizontal, 4)
+                    .opacity(hovered || dragging ? 1 : 0)
+                    .animation(.easeOut(duration: 0.12), value: hovered || dragging)
+                    .allowsHitTesting(false)
+            }
             .onHover { inside in
+                hovered = inside
                 if inside, !cursorPushed {
                     (d.horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push()
                     cursorPushed = true
@@ -240,6 +253,7 @@ private struct DividerHandle: View {
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { g in
+                        dragging = true
                         if drag?.path != d.path || drag?.base.count != d.weights.count {
                             drag = PanePlan.Drag(path: d.path, base: d.weights, weights: d.weights)
                         }
@@ -253,6 +267,7 @@ private struct DividerHandle: View {
                         drag = current
                     }
                     .onEnded { _ in
+                        dragging = false
                         if let drag {
                             var l = layout
                             PanePlan.setWeights(&l, at: drag.path[...], drag.weights)
@@ -261,7 +276,19 @@ private struct DividerHandle: View {
                         drag = nil
                     }
             )
+            .onTapGesture(count: 2) { equalise() }
+            .accessibilityHidden(true)
             .offset(x: d.rect.minX, y: d.rect.minY)
+    }
+
+    /// The two sides the same size, sharing what they had between them.
+    private func equalise() {
+        guard let w = PanePlan.equalised(d.weights, at: d.index) else { return }
+        var l = layout
+        withAnimation(PaneMotion.when(.snappy(duration: 0.2))) {
+            PanePlan.setWeights(&l, at: d.path[...], w)
+            update(l)
+        }
     }
 }
 
@@ -381,6 +408,18 @@ struct PanePlan {
         case nil:
             break
         }
+    }
+
+    /// A split's weights with children index and index + 1 the same size,
+    /// sharing what they had (a divider's double-click); nil if they are already.
+    static func equalised(_ weights: [CGFloat], at index: Int) -> [CGFloat]? {
+        guard index >= 0, index + 1 < weights.count else { return nil }
+        var w = weights
+        let half = (w[index] + w[index + 1]) / 2
+        guard abs(w[index] - half) > 0.0005 else { return nil }
+        w[index] = half
+        w[index + 1] = half
+        return w
     }
 
     private func weights(_ s: Hammock_V1_Split, _ path: [Int]) -> [CGFloat] {
