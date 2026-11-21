@@ -4,8 +4,9 @@ import SwiftUI
 import WebKit
 
 // Diff panes on the iPhone: the same page as the Mac's (diff.html, in
-// HammockKit's DiffBridge), narrow: one column, the files' tree a sheet
-// over them (its button in the page's bar). Comments, replies and sending
+// HammockKit's DiffBridge): one column on an iPhone, the files' tree a sheet
+// over them (its button in the page's bar); on an iPad with room, the
+// pane's own choice, split included. Comments, replies and sending
 // them to the agent work as they do on the Mac.
 
 struct DiffScreen: View {
@@ -19,6 +20,9 @@ struct DiffScreen: View {
     @Environment(\.phoneTheme) private var theme
     /// A keyboard connected: the page's shortcuts work, so its button shows.
     @State private var keyboard = GCKeyboard.coalesced != nil
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// The screen's width: split needs room for two columns of code.
+    @State private var width: CGFloat = 0
 
     private var pane: Pane? { model.panes[paneID] }
     private var info: DiffInfo { pane?.diff ?? DiffInfo() }
@@ -42,19 +46,23 @@ struct DiffScreen: View {
             }
         }
         // (No menu of its own: the pane's is there, and Refresh is in the page.)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(Color(uiColor: UIColor(rgb: theme.terminal(dark: colorScheme == .dark).background)))
         .onAppear { if lease == nil { lease = model.leaseDiff(paneID) } }
         .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in keyboard = true }
         .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect)) { _ in keyboard = GCKeyboard.coalesced != nil }
     }
 
+    private var roomForSplit: Bool { sizeClass == .regular && width >= 700 }
+
     private var config: DiffConfig {
         let dark = colorScheme == .dark
         let agents = model.diffAgents(for: paneID)
         let canSend = model.group(ofPane: paneID).map { !$0.isRemote || $0.myRole == .owner } ?? true
-        // One column here, whatever the pane's choice: split needs width.
+        // One column unless there's room for two (an iPad, not in a narrow
+        // Split View or Slide Over); then the pane's own choice.
         var view = info.view
-        view.style = "unified"
+        if !roomForSplit { view.style = "unified" }
         var c = DiffConfig.from(theme: theme.terminal(dark: dark), dark: dark, fontFamily: TerminalPrefs.family, fontSize: 12, view: view,
                                 canDrive: canDrive, target: agents.target, agents: agents.agents, canSend: canSend, accent: theme.accent)
         c.keyboard = keyboard
