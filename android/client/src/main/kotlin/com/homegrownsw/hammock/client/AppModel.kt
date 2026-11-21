@@ -179,8 +179,9 @@ class AppModel private constructor(
     private val _history = MutableStateFlow(LinkHistory())
     /** The link's history, for [LinkStatus] (the connection banner). */
     val history: StateFlow<LinkHistory> = _history.asStateFlow()
-    private val _toast = MutableStateFlow<String?>(null)
-    val toast: StateFlow<String?> = _toast.asStateFlow()
+    private val _toast = MutableStateFlow<Toast?>(null)
+    /** The message waiting to show at the bottom of the screen, until it's shown. */
+    val toast: StateFlow<Toast?> = _toast.asStateFlow()
 
     val isDemo get() = standIn != null
     val certSHA256: String? get() = identity?.certSHA256
@@ -212,7 +213,6 @@ class AppModel private constructor(
     private val desiredSize = HashMap<String, Pair<Int, Int>>()
     private val detachJobs = HashMap<String, Job>()
     private var lastColors: Hammock.SetColors? = null
-    private var toastJob: Job? = null
     private val rewatch = ArrayList<(DaemonConnection) -> Unit>()
 
     /** Connects, or (paused) waits for [resume] first: the app not on screen yet. */
@@ -691,14 +691,11 @@ class AppModel private constructor(
 
     @Volatile var lastError: String? = null
 
-    fun showToast(text: String) {
-        _toast.value = text
-        toastJob?.cancel()
-        toastJob = scope.launch {
-            delay(3000)
-            if (_toast.value == text) _toast.value = null
-        }
-    }
+    /** Says [text] briefly at the bottom of the screen (a snackbar, which TalkBack reads). */
+    fun showToast(text: String) { _toast.value = Toast(text) }
+
+    /** [t] is on screen (or gone): it isn't shown again. */
+    fun toastShown(t: Toast) { _toast.compareAndSet(t, null) }
 
     // MARK: Actions
 
@@ -853,3 +850,6 @@ class AppModel private constructor(
     private val idAlphabet = "abcdefghijkmnpqrstuvwxyz23456789"
     private fun newTabID() = "tb_" + (1..8).map { idAlphabet.random() }.joinToString("")
 }
+
+/** A message for the bottom of the screen: each one new, even in the same words as the last. */
+class Toast(val text: String)

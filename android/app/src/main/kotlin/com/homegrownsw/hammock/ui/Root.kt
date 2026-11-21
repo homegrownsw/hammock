@@ -29,6 +29,11 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +44,7 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +62,8 @@ import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.PairingCodes
 import hammock.v1.Hammock.AgentState
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /** The four tabs, as on the iPhone. */
@@ -157,7 +165,15 @@ private fun UpdatePrompt() {
 private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, opened: () -> Unit) {
     val nav = remember(model) { Nav() }
     val ws by model.workspace.collectAsStateWithLifecycle()
-    val toast by model.toast.collectAsStateWithLifecycle()
+    // Messages as snackbars: TalkBack reads them, and they swipe away. A new
+    // one replaces the one showing.
+    val snackbars = remember { SnackbarHostState() }
+    LaunchedEffect(model) {
+        model.toast.filterNotNull().collectLatest { t ->
+            model.toastShown(t)
+            snackbars.showSnackbar(t.text)
+        }
+    }
     val wide = LocalConfiguration.current.screenWidthDp >= 840
     val showingDetail = nav.stack.isNotEmpty() && (nav.dest == Dest.Sessions || nav.dest == Dest.Groups)
     var lastDest by rememberSaveable { mutableStateOf(Dest.Sessions.name) }
@@ -270,8 +286,16 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
                 Dest.Devices -> DevicesScreen(session, model, onFullScreen = { fullScreen = it })
                 Dest.Settings -> SettingsScreen(session, model)
             }
-            toast?.let { t ->
-                Snackbar(Modifier.align(Alignment.BottomCenter).padding(16.dp)) { Text(t) }
+            SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter)) { data ->
+                key(data) {
+                    val swipe = rememberSwipeToDismissBoxState(confirmValueChange = {
+                        if (it != SwipeToDismissBoxValue.Settled) data.dismiss()
+                        true
+                    })
+                    SwipeToDismissBox(swipe, backgroundContent = {}) {
+                        Snackbar(data, Modifier.padding(16.dp))
+                    }
+                }
             }
         }
     }
