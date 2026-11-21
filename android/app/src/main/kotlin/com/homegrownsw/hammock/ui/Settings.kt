@@ -82,6 +82,7 @@ fun SettingsScreen(session: Session, model: AppModel) {
     var themePref by rememberPref(Prefs.THEME, HammockTheme.SAME_AS_COMPUTER)
     var appearance by rememberPref(Prefs.APPEARANCE, "system")
     var opensIn by rememberPref(Prefs.AGENT_TABS_OPEN_IN, "agent")
+    var warnBusy by rememberBoolPref(Prefs.WARN_CLOSE_BUSY, true)
     var codeWrap by rememberPref(Prefs.CODE_WRAP, "prose")
     var textFont by rememberPref(Prefs.TEXT_FONT, "")
     var textSize by rememberPref(Prefs.TEXT_SIZE, DefaultSizes.TEXT.toString())
@@ -145,6 +146,10 @@ fun SettingsScreen(session: Session, model: AppModel) {
                 SectionTitle("Agent View")
                 GroupedCard { Choice("Agent tabs open in", opensIn, listOf("agent" to "Agent View", "terminal" to "Terminal")) { opensIn = it } }
                 Footer("Each session remembers your choice once you switch it.")
+            }
+            item {
+                SectionTitle("Closing")
+                GroupedCard { SwitchRow("Warn Before Closing an Agent at Work", warnBusy) { warnBusy = it } }
             }
             item {
                 SectionTitle("Text")

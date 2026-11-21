@@ -18,7 +18,8 @@ import hammock.v1.Hammock.Tab
 
 /**
  * Closing a tab or pane from anywhere (a swipe, a menu): it goes at once,
- * unless that would stop an agent at work, when it asks first. Held above
+ * unless that would stop an agent at work, when it asks first (unless
+ * Settings says not to). Held above
  * the screens, so a menu that's gone by then can still ask.
  */
 class Closer {
@@ -26,9 +27,15 @@ class Closer {
 
     private var asking by mutableStateOf<Ask?>(null)
 
+    /** Settings ▸ Warn Before Closing an Agent at Work: off, nothing asks. */
+    var warnBusy by mutableStateOf(true)
+
+    /** Why closing [panes] needs asking about first, or null. */
+    fun warning(panes: List<Pane>): String? = if (warnBusy) closeWarning(panes) else null
+
     /** Closes [panes] with [go], first asking when that stops an agent at work. */
     fun close(panes: List<Pane>, title: String, button: String, go: () -> Unit) {
-        val why = closeWarning(panes)
+        val why = warning(panes)
         if (why == null) go() else asking = Ask(title, why, button, go)
     }
 

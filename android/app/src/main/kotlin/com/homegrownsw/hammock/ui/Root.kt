@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.OpenRequest
 import com.homegrownsw.hammock.Session
+import com.homegrownsw.hammock.rememberBoolPref
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.PairingCodes
 import hammock.v1.Hammock.AgentState
@@ -255,6 +256,8 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     else NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(androidx.compose.material3.adaptive.currentWindowAdaptiveInfo())
 
     val closer = remember(model) { Closer() }
+    val warnBusy by rememberBoolPref(com.homegrownsw.hammock.Prefs.WARN_CLOSE_BUSY, true)
+    androidx.compose.runtime.SideEffect { closer.warnBusy = warnBusy }
     androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model, LocalCloser provides closer) {
     // The link to the computer, for the banner on every screen.
     LinkWatcher(model, host?.shortName?.ifEmpty { null } ?: "your computer") {

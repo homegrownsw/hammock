@@ -33,6 +33,7 @@ object Prefs {
     const val EDITOR_FONT = "editorFont"        // "" (the terminal's) or a family
     const val ATTACHMENT_SIZE = "attachmentSize" // small, medium, large, original
     const val DICTATION = "dictation"
+    const val WARN_CLOSE_BUSY = "warnCloseBusyAgent" // ask before closing an agent at work (the Mac's confirm-close-busy-agent)
     const val APP_LOCK = "appLock"
     const val LOCK_AFTER = "lockAfter"          // seconds; 0 immediately
     const val USAGE_SHOWN = "usageShown"        // comma-separated agent ids; "-" none chosen yet

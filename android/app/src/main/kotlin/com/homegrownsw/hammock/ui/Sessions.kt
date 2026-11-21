@@ -82,7 +82,6 @@ import com.homegrownsw.hammock.client.agentNote
 import com.homegrownsw.hammock.client.canAllowAlways
 import com.homegrownsw.hammock.client.canAddTabs
 import com.homegrownsw.hammock.client.canDrive
-import com.homegrownsw.hammock.client.closeWarning
 import com.homegrownsw.hammock.client.displayName
 import com.homegrownsw.hammock.client.elapsedString
 import com.homegrownsw.hammock.client.headlineText
@@ -162,8 +161,9 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
         val tab = w.tabs[p.tabId]
         if (tab != null && w.panes(tab).size == 1) model.closeTab(tab.id) else model.closePane(p.id)
     }
+    val closer = LocalCloser.current
     fun requestClose(p: Pane) {
-        if (closeWarning(listOf(p)) != null || (w.tabs[p.tabId]?.let { w.panes(it).size } ?: 1) > 1) closing = p else close(p)
+        if (closer.warning(listOf(p)) != null || (w.tabs[p.tabId]?.let { w.panes(it).size } ?: 1) > 1) closing = p else close(p)
     }
     fun canClose(p: Pane) = link == Link.Connected && w.groupOfPane(p.id)?.let { it.canDrive && !it.offline } ?: false
 
@@ -243,7 +243,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
         if (!LocalAppLocked.current) AlertDialog(
             onDismissRequest = { closing = null },
             title = { Text("Close “$title”?") },
-            text = { Text(sessionCloseNote(w, p)) },
+            text = { Text(sessionCloseNote(w, p, closer.warning(listOf(p)))) },
             confirmButton = { TextButton(onClick = { close(p); closing = null }) { Text("Close Session", color = ErrorColor) } },
             dismissButton = { TextButton(onClick = { closing = null }) { Text("Cancel") } },
         )
@@ -252,9 +252,9 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
     if (starting) StartAgentSheet(model, groupID = null, nav = nav) { starting = false }
 }
 
-private fun sessionCloseNote(w: Workspace, p: Pane): String {
+private fun sessionCloseNote(w: Workspace, p: Pane, warning: String?): String {
     val others = w.tabs[p.tabId]?.let { w.panes(it).size - 1 } ?: 0
-    return closeWarning(listOf(p)) ?: if (others > 0) "Only the agent's pane closes; the rest of its tab keeps running." else ""
+    return warning ?: if (others > 0) "Only the agent's pane closes; the rest of its tab keeps running." else ""
 }
 
 /**
