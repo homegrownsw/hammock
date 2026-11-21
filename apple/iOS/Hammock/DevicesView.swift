@@ -261,6 +261,7 @@ struct QRScanner: UIViewControllerRepresentable {
             for case .barcode(let b) in items {
                 if !done, let v = b.payloadStringValue, v.hasPrefix("hammock://pair/") {
                     done = true
+                    Haptics.success()
                     found(v)
                 }
             }

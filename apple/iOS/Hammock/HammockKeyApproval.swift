@@ -145,6 +145,7 @@ struct HammockKeyApprovalSheet: View {
                         .buttonStyle(.glass)
                     }
                     Button("Don't Allow", role: .destructive) {
+                        Haptics.refuse()
                         model.denyHammockKey(request)
                         dismiss()
                     }
@@ -277,6 +278,7 @@ struct HammockKeyApprovalSheet: View {
                 let msg = HammockKeyApproval.message(request, window: window, expires: expires)
                 let sig = try await ApprovalKey.sign(msg, reason: "Approve: \(request.what)")
                 try await model.approveHammockKey(request, window: window, signature: sig, expires: expires)
+                Haptics.success()
                 dismiss()
             } catch {
                 self.error = error.localizedDescription

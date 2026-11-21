@@ -692,6 +692,7 @@ struct AttentionRow: View {
                         Menu {
                             Button("Allow Once", systemImage: "checkmark") { answer(true) }
                             Button("Always Allow for This Schedule", systemImage: "clock.badge.checkmark") {
+                                Haptics.success()
                                 withAnimation { model.decide(item, .allowSchedule) }
                             }
                         } label: {
@@ -719,7 +720,10 @@ struct AttentionRow: View {
     private func openPane() { open(item.paneID) }
 
     /// Answers a permission prompt, if the pane still shows it.
-    private func answer(_ allow: Bool) { withAnimation { model.decide(item, allow: allow) } }
+    private func answer(_ allow: Bool) {
+        allow ? Haptics.success() : Haptics.refuse()
+        withAnimation { model.decide(item, allow: allow) }
+    }
 }
 
 /// Someone asking to join a Group you share (approve from the phone).
@@ -749,10 +753,10 @@ struct JoinRow: View {
                     .font(.subheadline).foregroundStyle(.orange)
             }
             HStack {
-                Button("Decline") { withAnimation { model.respond(to: request, role: nil) } }.buttonStyle(.bordered)
+                Button("Decline") { Haptics.refuse(); withAnimation { model.respond(to: request, role: nil) } }.buttonStyle(.bordered)
                 Spacer()
-                Button("Let View") { withAnimation { model.respond(to: request, role: .viewer) } }.buttonStyle(.bordered)
-                Button("Let Drive") { withAnimation { model.respond(to: request, role: .driver) } }.prominentButton()
+                Button("Let View") { Haptics.success(); withAnimation { model.respond(to: request, role: .viewer) } }.buttonStyle(.bordered)
+                Button("Let Drive") { Haptics.success(); withAnimation { model.respond(to: request, role: .driver) } }.prominentButton()
             }
             .disabled(linkDown)
         }
@@ -787,12 +791,12 @@ struct GrantRow: View {
                     .lineLimit(3)
             }
             HStack {
-                Button("Deny") { withAnimation { model.respond(to: grant, .deny) } }.buttonStyle(.bordered)
+                Button("Deny") { Haptics.refuse(); withAnimation { model.respond(to: grant, .deny) } }.buttonStyle(.bordered)
                 Spacer()
                 if grant.canAllowAlways {
-                    Button("Always") { withAnimation { model.respond(to: grant, .allowGroup) } }.buttonStyle(.bordered)
+                    Button("Always") { Haptics.success(); withAnimation { model.respond(to: grant, .allowGroup) } }.buttonStyle(.bordered)
                 }
-                Button("Allow") { withAnimation { model.respond(to: grant, .allowOnce) } }.prominentButton()
+                Button("Allow") { Haptics.success(); withAnimation { model.respond(to: grant, .allowOnce) } }.prominentButton()
             }
             .disabled(linkDown)
         }
