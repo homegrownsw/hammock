@@ -452,6 +452,7 @@ private struct ResizeHandles: View {
 struct FloatShelf: View {
     let model: AppModel
     let tab: WorkspaceTab
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let minimised = tab.floating.filter(\.minimised)
@@ -469,7 +470,8 @@ struct FloatShelf: View {
             .frame(maxWidth: .infinity)
             .background(Color(nsColor: .windowBackgroundColor))
             .overlay(alignment: .top) { Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1) }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            // Reduce Motion: a fade, not a slide.
+            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
         }
     }
 }

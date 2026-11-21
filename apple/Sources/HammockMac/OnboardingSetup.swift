@@ -1063,9 +1063,11 @@ struct FinishStep: View {
 
 struct LaunchButtonStyle: ButtonStyle {
     @State private var hover = false
+    /// Reduce Motion: it doesn't grow under the pointer or shrink pressed.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : hover ? 1.015 : 1)
+            .scaleEffect(reduceMotion ? 1 : configuration.isPressed ? 0.98 : hover ? 1.015 : 1)
             .animation(.spring(duration: 0.25), value: configuration.isPressed)
             .animation(.spring(duration: 0.3), value: hover)
             .onHover { hover = $0 }

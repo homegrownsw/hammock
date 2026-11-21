@@ -54,6 +54,7 @@ struct EmptyGroupView: View {
     let model: AppModel
     let group: WorkspaceGroup
     @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var folder: String { model.groupFolder(group) }
 
@@ -67,7 +68,7 @@ struct EmptyGroupView: View {
             }
             .font(.system(size: 52))
             .frame(height: 72)
-            .scaleEffect(shown ? 1 : 0.9)
+            .scaleEffect(shown || reduceMotion ? 1 : 0.9)
             Text(model.title(of: group))
                 .font(.system(size: 30, weight: .bold))
                 .kerning(-0.4)
@@ -106,7 +107,8 @@ struct EmptyGroupView: View {
             Spacer(minLength: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { withAnimation(.spring(duration: 0.5, bounce: 0.35)) { shown = true } }
+        // Its icon springs in; with Reduce Motion, it's simply there.
+        .onAppear { withAnimation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.35)) { shown = true } }
     }
 
     private var subtitleWhenClosed: String {
@@ -229,6 +231,7 @@ struct LaunchCard<Icon: View>: View {
 struct NoGroupsView: View {
     let model: AppModel
     @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -237,7 +240,7 @@ struct NoGroupsView: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(Color.themeAccent)
                 .frame(height: 72)
-                .scaleEffect(shown ? 1 : 0.9)
+                .scaleEffect(shown || reduceMotion ? 1 : 0.9)
             Text("No Groups Yet")
                 .font(.system(size: 30, weight: .bold))
                 .kerning(-0.4)
@@ -267,6 +270,7 @@ struct NoGroupsView: View {
             Spacer(minLength: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { withAnimation(.spring(duration: 0.5, bounce: 0.35)) { shown = true } }
+        // Its icon springs in; with Reduce Motion, it's simply there.
+        .onAppear { withAnimation(reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.35)) { shown = true } }
     }
 }

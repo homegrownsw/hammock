@@ -26,6 +26,7 @@ struct SidebarPeek: View {
     @State private var menuOpen = false
     @State private var closing: Task<Void, Never>?
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let width: CGFloat = 272
 
@@ -64,10 +65,11 @@ struct SidebarPeek: View {
                     .padding(.vertical, 8)
                     .padding(.leading, 8)
                     .onHover { inside = $0; if !$0 { closeSoon() } }
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    // Reduce Motion: a fade, not a slide.
+                    .transition(reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity))
             }
         }
-        .animation(.snappy(duration: 0.22), value: shown)
+        .animation(reduceMotion ? .easeInOut(duration: 0.18) : .snappy(duration: 0.22), value: shown)
         // A menu (right-click) or sheet from it keeps it: the pointer leaving
         // for the menu isn't leaving it.
         .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in menuOpen = true }

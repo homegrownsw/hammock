@@ -150,15 +150,17 @@ final class InAppNotices {
 /// The window's notification cards, newest at the bottom.
 struct InAppNoticeStack: View {
     private var notices: InAppNotices { .shared }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
             ForEach(notices.notices) { n in
                 InAppNoticeCard(notice: n)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    // Reduce Motion: a fade, not a slide.
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .animation(.snappy(duration: 0.25), value: notices.notices)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .snappy(duration: 0.25), value: notices.notices)
         .padding([.bottom, .trailing], 16)
     }
 }
