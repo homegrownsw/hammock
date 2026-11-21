@@ -19,6 +19,7 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
@@ -48,7 +49,7 @@ enum class TerminalKey(internal val keyCode: Int) {
  * mouse, or arrow keys to full-screen programs that don't), tap to click in
  * programs that track the mouse or else to show or hide the keyboard,
  * touch and hold to select text (then drag its handles, and copy or paste
- * from its menu).
+ * from its menu), and pinch to change the font size ([onPinch]).
  *
  * The pane keeps its computer's size, and the font shrinks so it fits
  * (both ways, so the prompt stays in sight). While [active], the view
@@ -220,12 +221,15 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             fonts = fonts,
             focused = hasFocus() && keyboardVisible && !readOnly,
             preview = preview,
+            pinchedFontPx = pinchedFontPx,
         )
         requestRender()
     }
 
     private fun drew(grid: DrawnGrid) {
         drawn = grid
+        // The pane took its new grid after a pinch: fit it as usual from now on.
+        pinchHeldGrid?.let { if (it != grid.cols to grid.rows) endPinchPreview() }
         val px = Math.round(grid.cellWidth).coerceAtLeast(1) to grid.cellHeight.toInt()
         if (px != lastCellSize) {
             lastCellSize = px
@@ -472,6 +476,79 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
         }
     })
 
+    // MARK: Pinch
+
+    enum class PinchPhase { BEGAN, CHANGED, ENDED, CANCELLED }
+
+    /**
+     * A pinch: how far it's scaled since it began. The owner works out the
+     * font size it picks, shows it with [previewPinch], and when it ends
+     * makes it the setting (and calls [holdPinchPreview]) or puts it back
+     * ([endPinchPreview]).
+     */
+    var onPinch: ((phase: PinchPhase, scale: Float) -> Unit)? = null
+
+    /** Pinching changes the font size (not in a tile). */
+    var pinchable = false
+
+    private var pinching = false
+    private var pinchStopsGestures = false
+    private var pinchStartSpan = 0f
+    private var pinchStartPx = 0f
+    private var pinchedFontPx: Float? = null
+    /** The grid as the pinch ended: drawn at the size it picked until the pane takes another (or a moment passes). */
+    private var pinchHeldGrid: Pair<Int, Int>? = null
+    private val endPinchLater = Runnable { endPinchPreview() }
+
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            val pinch = onPinch ?: return false
+            if (!pinchable || handleDrag != null || wordDragging) return false
+            pinching = true
+            pinchStopsGestures = true
+            pinchStartSpan = detector.currentSpan.coerceAtLeast(1f)
+            pinchStartPx = drawn?.fontPx ?: fontSizePx
+            removeCallbacks(endPinchLater)
+            pinchHeldGrid = null
+            stopMomentum()
+            hideSelectionMenu()
+            parent?.requestDisallowInterceptTouchEvent(true)
+            pinch(PinchPhase.BEGAN, 1f)
+            return true
+        }
+
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            onPinch?.invoke(PinchPhase.CHANGED, detector.currentSpan / pinchStartSpan)
+            return true
+        }
+
+        override fun onScaleEnd(detector: ScaleGestureDetector) {
+            onPinch?.invoke(PinchPhase.ENDED, detector.currentSpan / pinchStartSpan)
+        }
+    }).apply { isQuickScaleEnabled = false }
+
+    /** Draws at [factor] times the size drawn when the pinch began (the pane isn't resized until it ends). */
+    fun previewPinch(factor: Float) {
+        pinchedFontPx = pinchStartPx * factor
+        pushInputs()
+    }
+
+    /** The pinch ended on a new size: keep drawing at it until the pane's resized to fit. */
+    fun holdPinchPreview() {
+        val d = drawn ?: return endPinchPreview()
+        pinchHeldGrid = d.cols to d.rows
+        removeCallbacks(endPinchLater)
+        postDelayed(endPinchLater, 1000)
+    }
+
+    fun endPinchPreview() {
+        removeCallbacks(endPinchLater)
+        pinchHeldGrid = null
+        if (pinchedFontPx == null) return
+        pinchedFontPx = null
+        pushInputs()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         // A selection handle caught, or a touch and hold dragging on: they
         // take the whole gesture (not the scrolling, nor the pager's swipe).
@@ -520,6 +597,26 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             }
             gestures.onTouchEvent(event)
             return true
+        }
+        // Two fingers pinch (and, once they have, the gesture's theirs to the end).
+        if (pinchable && onPinch != null) {
+            scaleDetector.onTouchEvent(event)
+            if (pinching) {
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL && scaleDetector.isInProgress) onPinch?.invoke(PinchPhase.CANCELLED, 1f)
+                    pinching = false
+                    dragging = false
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                } else if (pinchStopsGestures) {
+                    // Stop the one-finger gestures: no scroll, long press or tap from this.
+                    pinchStopsGestures = false
+                    dragging = false
+                    val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                    gestures.onTouchEvent(cancel)
+                    cancel.recycle()
+                }
+                return true
+            }
         }
         val handled = gestures.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {

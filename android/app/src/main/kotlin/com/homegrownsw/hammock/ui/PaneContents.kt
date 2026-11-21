@@ -22,6 +22,7 @@ import com.homegrownsw.hammock.terminal.TerminalPane
 import com.homegrownsw.hammock.terminal.TerminalSession
 import com.homegrownsw.hammock.terminal.TerminalTheme
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import com.homegrownsw.hammock.Prefs
 import com.homegrownsw.hammock.agentview.AgentConversation
@@ -120,6 +121,7 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (Ter
     val theme = rememberTerminalTheme(model)
     LaunchedEffect(theme) { model.setColors(theme.toSetColors(isSystemInDarkThemeOr(theme))) }
     val font = rememberTerminalFont()
+    var fontSize by rememberPref(Prefs.TERMINAL_FONT_SIZE, DefaultSizes.TERMINAL.toString())
     val link by model.link.collectAsStateWithLifecycle()
     TerminalPane(
         session,
@@ -134,6 +136,7 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (Ter
         linkUp = link == Link.Connected,
         offline = linkDown(),
         onReconnect = { model.reconnectNow() },
+        onFontSize = { fontSize = it.toInt().toString() },
     )
 }
 

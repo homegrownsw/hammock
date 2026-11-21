@@ -73,6 +73,7 @@ import com.homegrownsw.hammock.rememberBoolPref
 import com.homegrownsw.hammock.rememberPref
 import com.homegrownsw.hammock.agentview.AgentFonts
 import com.homegrownsw.hammock.terminal.TerminalFonts
+import com.homegrownsw.hammock.terminal.TerminalFontSize
 
 /** The phone's own settings (not the computer's), in the iPhone's sections and words. */
 @Composable
@@ -194,7 +195,7 @@ fun SettingsScreen(session: Session, model: AppModel) {
                 GroupedCard {
                     Choice("Font", termFont, listOf("" to TerminalFonts.BUNDLED) + TerminalFonts.systemFamilies, optionFont = monoFamily) { termFont = it }
                     CardDivider()
-                    StepperRow("Size", terminalFont.size.toInt(), 7..18) { termSize = it.toString() }
+                    StepperRow("Size", terminalFont.size.toInt(), TerminalFontSize.range) { termSize = it.toString() }
                     CardDivider()
                     val pct = termSpacing.toIntOrNull() ?: 0
                     StepperRow("Line spacing", pct, -20..100, step = 5,

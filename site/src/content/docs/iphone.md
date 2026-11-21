@@ -37,7 +37,7 @@ If you've [linked computers](/hammock/docs/remote/#linked-computers), Groups sho
 
 Tap a terminal to bring up the keyboard, with a row above it of the keys a phone lacks: **esc**, **tab**, **ctrl**, the arrows and delete. Drag to scroll back. Touch and hold to select a word, keep dragging or move its handles to select more, then **Copy**; **Select All** selects the screen, and **Paste** pastes. Touch and hold a terminal's pill for **Copy Screen**. In programs that use the mouse, a tap is a click. A hardware keyboard works too. While the iPhone can't reach your Mac, keys do nothing and **Offline** shows above the keyboard: tap it to try again.
 
-Panes keep the size your Mac gave them, shrunk to fit if they're wider than the screen. A smaller font in Settings fits more columns.
+Panes keep the size your Mac gave them, shrunk to fit if they're wider than the screen. A smaller font fits more columns: pinch a terminal to change the size, for every terminal, or set it in Settings.
 
 ## The agent view
 

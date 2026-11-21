@@ -104,7 +104,7 @@ struct SettingsScreen: View {
             } trailing: {
                 Section {
                     FontPickerLink(title: "Font", selection: $terminalFont, defaultName: "SF Mono", families: monoFamilies)
-                    Stepper("Size: \(Int(terminalSize))", value: $terminalSize, in: 7...18)
+                    Stepper("Size: \(Int(terminalSize))", value: $terminalSize, in: TerminalFontSize.range)
                     Stepper("Line spacing: \(terminalSpacing == 0 ? "Normal" : "\(terminalSpacing > 0 ? "+" : "")\(Int(terminalSpacing))%")",
                             value: $terminalSpacing, in: -20...100, step: 5)
                     Text("~/Developer/hammock $ just ios-device")

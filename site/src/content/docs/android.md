@@ -28,7 +28,7 @@ what you open shows beside the list.
 ## Terminals and the agent view
 
 Tap a terminal for the keyboard, with **esc**, **tab**, **ctrl**, the arrows and delete above it. Drag to scroll
-back. Touch and hold to select a word, keep dragging or move its handles to select more, then **Copy**;
+back, and pinch to change the font size for every terminal. Touch and hold to select a word, keep dragging or move its handles to select more, then **Copy**;
 **Select all** selects the screen, and **Paste** pastes. **Copy Screen** is in the pane's ⋮ menu. While the phone can't
 reach your computer, keys do nothing and **Offline** shows above the keyboard: tap it to try again. In the agent
 view, type in the box at the bottom and tap the arrow to send; while the agent works, the same button stops it. Type

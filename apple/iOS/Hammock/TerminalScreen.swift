@@ -117,7 +117,8 @@ enum TerminalPrefs {
 /// Draws a pane from its TerminalEngine and takes software-keyboard input.
 /// Drag to scroll (or to send the wheel to programs that track the mouse),
 /// tap to click in those programs, touch and hold to select text (handles
-/// extend it; the edit menu copies, selects the screen and pastes).
+/// extend it; the edit menu copies, selects the screen and pastes), pinch
+/// to change the font size (Settings ▸ Terminal ▸ Size, for every terminal).
 final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     var session: PaneSession? {
         didSet {
@@ -180,7 +181,10 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         contentMode = .redraw
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned))
+        // One finger scrolls; two pinch.
+        pan.maximumNumberOfTouches = 1
         addGestureRecognizer(pan)
+        addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinched)))
         addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed)))
         addInteraction(editMenu)
         NotificationCenter.default.addObserver(self, selector: #selector(prefsChanged), name: UserDefaults.didChangeNotification, object: nil)
@@ -293,6 +297,103 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     private func stopMomentum() {
         momentumLink?.invalidate()
         momentumLink = nil
+    }
+
+    // MARK: Pinch
+
+    /// A pinch under way, or just ended: the font size it picked (the
+    /// setting's), and what it started from, as set and as drawn (shrunk to
+    /// fit a pane sized by the Mac). Drawn at once, at the size it picks,
+    /// before the pane is resized to fit: that's sent only when the pinch
+    /// ends, so the Mac isn't resized on every frame.
+    private var pinch: (startSetting: CGFloat, startDrawn: CGFloat, size: CGFloat)?
+    /// The pane's grid as the pinch ended: drawn at the size it picked
+    /// until the pane takes its new grid (or a moment passes), so the text
+    /// doesn't shrink back meanwhile.
+    private var pinchHeldGrid: (cols: Int, rows: Int)?
+    /// The font size last drawn, after shrinking to fit.
+    private var drawnSize: CGFloat = 0
+    private lazy var sizeBubble = SizeBubbleView()
+    private let pinchHaptic = UISelectionFeedbackGenerator()
+
+    @objc private func pinched(_ g: UIPinchGestureRecognizer) {
+        switch g.state {
+        case .began:
+            stopMomentum()
+            editMenu.dismissMenu()
+            pinchHeldGrid = nil
+            let base = baseSize
+            pinch = (base, drawnSize > 0 ? drawnSize : base, base)
+            pinchHaptic.prepare()
+            showSizeBubble(base)
+        case .changed:
+            guard var p = pinch else { return }
+            let size = CGFloat(TerminalFontSize.pinched(from: Double(p.startSetting), scale: Double(g.scale)))
+            guard size != p.size else { return }
+            p.size = size
+            pinch = p
+            pinchHaptic.selectionChanged()
+            showSizeBubble(size)
+            setNeedsDisplay()
+        case .ended, .cancelled, .failed:
+            hideSizeBubble()
+            guard let p = pinch else { return }
+            guard g.state == .ended, p.size != p.startSetting, let engine = session?.engine else {
+                pinch = nil
+                setNeedsDisplay()
+                return
+            }
+            // The setting: every terminal takes it, and this one resizes its
+            // pane to fit (prefsChanged, reportGrid).
+            pinchHeldGrid = (engine.cols, engine.rows)
+            UserDefaults.standard.set(Double(p.size), forKey: TerminalPrefs.fontSize)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                guard let self, pinchHeldGrid != nil else { return }
+                endPinch()
+            }
+        default:
+            break
+        }
+    }
+
+    private func endPinch() {
+        pinch = nil
+        pinchHeldGrid = nil
+        setNeedsDisplay()
+    }
+
+    /// The size to draw at: while pinching, what the pinch picked (scaled
+    /// from what was drawn when it began); else nil, to fit as usual.
+    private func pinchedSize(cols: Int, rows: Int) -> CGFloat? {
+        guard let p = pinch else { return nil }
+        if let held = pinchHeldGrid, held != (cols, rows) {
+            // The pane took its new grid: fit it as usual from now on.
+            pinch = nil
+            pinchHeldGrid = nil
+            return nil
+        }
+        return max(5, p.startDrawn * p.size / p.startSetting)
+    }
+
+    private func showSizeBubble(_ size: CGFloat) {
+        if sizeBubble.superview == nil {
+            sizeBubble.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(sizeBubble)
+            NSLayoutConstraint.activate([
+                sizeBubble.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor),
+                sizeBubble.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 16),
+            ])
+        }
+        sizeBubble.text = "\(Int(size)) pt"
+        sizeBubble.accessibilityLabel = "\(Int(size)) points"
+        if sizeBubble.alpha < 1 {
+            UIView.animate(withDuration: 0.15) { self.sizeBubble.alpha = 1 }
+        }
+    }
+
+    private func hideSizeBubble() {
+        guard sizeBubble.superview != nil else { return }
+        UIView.animate(withDuration: 0.25, delay: 0.3) { self.sizeBubble.alpha = 0 }
     }
 
     /// Scrolls like the Mac's wheel: a finger moving down shows earlier lines.
@@ -713,6 +814,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         let needH = CGFloat(f.rows) * base.ch + padding * 2
         let shrink = preview ? min(1, usable.width / needW) : min(1, usable.width / needW, usable.height / needH)
         if shrink < 1 { size = max(preview ? 4 : 5, size * shrink) }
+        if let pinched = pinchedSize(cols: f.cols, rows: f.rows) { size = pinched }
+        drawnSize = size
         let m = metrics(size: size)
         let origin = gridOrigin(usable: usable, rows: f.rows, cursor: f.cursorVisible ? f.cursorY : nil, cellHeight: m.ch)
         drawn = (origin, m.cw, m.ch)
@@ -796,6 +899,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         let needH = CGFloat(f.rows) * base.ch + padding * 2
         let scale = preview ? min(1, usable.width / needW) : min(1, usable.width / needW, usable.height / needH)
         if scale < 1 { size = max(preview ? 4 : 5, size * scale) }
+        if let pinched = pinchedSize(cols: f.cols, rows: f.rows) { size = pinched }
+        drawnSize = size
         let m = metrics(size: size)
         let origin = gridOrigin(usable: usable, rows: f.rows, cursor: f.cursorVisible ? f.cursorY : nil, cellHeight: m.ch)
         drawn = (origin, m.cw, m.ch)
@@ -1094,6 +1199,49 @@ extension TerminalUIView {
         for p in presses { if let k = p.key { hardwareRepeats[k.keyCode] = nil } }
         super.pressesCancelled(presses, with: event)
     }
+}
+
+/// The font size while pinching a terminal ("14 pt"), in a capsule over it.
+final class SizeBubbleView: UIView {
+    private let label = UILabel()
+
+    var text: String? {
+        get { label.text }
+        set { label.text = newValue }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        alpha = 0
+        isUserInteractionEnabled = false
+        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        blur.translatesAutoresizingMaskIntoConstraints = false
+        blur.layer.cornerCurve = .continuous
+        blur.clipsToBounds = true
+        addSubview(blur)
+        label.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .label
+        label.translatesAutoresizingMaskIntoConstraints = false
+        blur.contentView.addSubview(label)
+        NSLayoutConstraint.activate([
+            blur.leadingAnchor.constraint(equalTo: leadingAnchor),
+            blur.trailingAnchor.constraint(equalTo: trailingAnchor),
+            blur.topAnchor.constraint(equalTo: topAnchor),
+            blur.bottomAnchor.constraint(equalTo: bottomAnchor),
+            label.leadingAnchor.constraint(equalTo: blur.contentView.leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(equalTo: blur.contentView.trailingAnchor, constant: -14),
+            label.topAnchor.constraint(equalTo: blur.contentView.topAnchor, constant: 7),
+            label.bottomAnchor.constraint(equalTo: blur.contentView.bottomAnchor, constant: -7),
+        ])
+        isAccessibilityElement = true
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        subviews.first?.layer.cornerRadius = bounds.height / 2
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 }
 
 /// A key held down: fire once now, then after a pause again and again, as a

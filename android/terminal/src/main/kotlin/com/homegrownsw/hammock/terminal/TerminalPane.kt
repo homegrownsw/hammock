@@ -82,6 +82,10 @@ import kotlinx.coroutines.launch
  * for it (edge to edge, or adjustResize). Touch and hold selects text,
  * with handles to drag and a menu to copy it, unless not [selectable].
  *
+ * Pinching changes the font size: the size it picks shows in a bubble
+ * and draws at once, and when it ends goes to [onFontSize] (the setting,
+ * for every terminal), which resizes the pane to fit. Null: no pinching.
+ *
  * While not [linkUp] (connected), keys are blocked, not kept to send later;
  * once it's been down long enough to say so ([offline]), a pill over the
  * key bar says Offline, and tapping it calls [onReconnect].
@@ -105,11 +109,16 @@ fun TerminalPane(
     linkUp: Boolean = true,
     offline: Boolean = false,
     onReconnect: () -> Unit = {},
+    onFontSize: ((Float) -> Unit)? = null,
 ) {
     val input by rememberUpdatedState(onInput)
     val resize by rememberUpdatedState(onResize)
     val focus by rememberUpdatedState(onFocus)
     val cellSize by rememberUpdatedState(onCellSize)
+    val setFontSize by rememberUpdatedState(onFontSize)
+    val startSize by rememberUpdatedState(fontSize.value)
+    var pinchSize by remember { mutableStateOf<Float?>(null) }
+    val hostView = LocalView.current
     var view by remember { mutableStateOf<TerminalView?>(null) }
     var focused by remember { mutableStateOf(false) }
     var ctrl by remember { mutableStateOf(false) }
@@ -143,6 +152,31 @@ fun TerminalPane(
                         this.onCellSize = { w, h -> cellSize(w, h) }
                         this.onCtrlChanged = { ctrl = it }
                         this.onSelectionHandles = { handles = it }
+                        this.onPinch = { phase, scale ->
+                            val size = TerminalFontSize.pinched(startSize, scale)
+                            when (phase) {
+                                TerminalView.PinchPhase.BEGAN -> pinchSize = startSize
+                                TerminalView.PinchPhase.CHANGED -> if (size != pinchSize) {
+                                    pinchSize = size
+                                    hostView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    previewPinch(size / startSize)
+                                }
+                                TerminalView.PinchPhase.ENDED -> {
+                                    val picked = pinchSize
+                                    pinchSize = null
+                                    if (picked != null && picked != startSize) {
+                                        holdPinchPreview()
+                                        setFontSize?.invoke(picked)
+                                    } else {
+                                        endPinchPreview()
+                                    }
+                                }
+                                TerminalView.PinchPhase.CANCELLED -> {
+                                    pinchSize = null
+                                    endPinchPreview()
+                                }
+                            }
+                        }
                         onFocusChangeListener = View.OnFocusChangeListener { _, has -> focused = has }
                         view = this
                     }
@@ -150,6 +184,7 @@ fun TerminalPane(
                 modifier = Modifier.fillMaxSize(),
                 update = { v ->
                     v.selectable = selectable
+                    v.pinchable = onFontSize != null
                     v.session = session
                     v.readOnly = readOnly
                     v.linkUp = linkUp
@@ -169,6 +204,7 @@ fun TerminalPane(
                 },
             )
             handles?.let { SelectionHandlesOverlay(it, MaterialTheme.colorScheme.primary) }
+            SizeBubble(pinchSize, Modifier.align(Alignment.TopCenter).padding(top = 16.dp))
         }
         val v = view
         if (v != null && imeVisible && focused && !readOnly) {
@@ -218,6 +254,20 @@ private fun OfflinePill(onReconnect: () -> Unit) {
         contentColor = MaterialTheme.colorScheme.onPrimary,
     ) {
         Text("Offline", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
+    }
+}
+
+/** The font size while pinching ("14 pt"), over the terminal. */
+@Composable
+private fun SizeBubble(size: Float?, modifier: Modifier) {
+    // Kept while it fades away.
+    var last by remember { mutableStateOf(size) }
+    if (size != null) last = size
+    AnimatedVisibility(size != null, modifier, enter = fadeIn(), exit = fadeOut()) {
+        Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHighest, shadowElevation = 2.dp) {
+            Text("${last?.toInt() ?: 0} pt", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp))
+        }
     }
 }
 

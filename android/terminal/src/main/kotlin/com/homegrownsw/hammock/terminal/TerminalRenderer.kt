@@ -31,6 +31,8 @@ internal data class RenderInputs(
     val focused: Boolean = false,
     /** A picture (a tile): the font fits the width only, showing the rows down to the cursor. */
     val preview: Boolean = false,
+    /** A pinch under way: drawn at this size, in pixels, whether or not it fits. */
+    val pinchedFontPx: Float? = null,
 )
 
 /** Where the last frame put the grid, in pixels: for turning touches into cells. */
@@ -190,6 +192,7 @@ internal class TerminalRenderer(fonts: TerminalFonts, private val onDrawn: (Draw
      * (usually the bottom row) stays in sight.
      */
     private fun fitted(cols: Int, rows: Int, inp: RenderInputs): CellMetrics {
+        inp.pinchedFontPx?.let { return metrics(max(inp.minFontPx, it), inp) }
         val key = listOf(cols, rows, width, height, inp.fontPx, inp.minFontPx, inp.paddingPx, inp.lineSpacing, inp.onePx, inp.preview)
         fit?.let { if (key == fitKey) return it }
         if (fitKey != null && (fitKey!![4] != inp.fontPx || fitKey!![7] != inp.lineSpacing)) metricsCache.clear()
