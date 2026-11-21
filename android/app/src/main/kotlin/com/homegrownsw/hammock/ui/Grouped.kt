@@ -39,7 +39,7 @@ fun cardColor(): Color = MaterialTheme.colorScheme.surfaceContainer
 
 /** A section's name above its card, with [trailing] (a See All, a +) at its end. */
 fun LazyListScope.section(title: String, key: String = "h:$title", trailing: (@Composable RowScope.() -> Unit)? = null) {
-    item(key = key, contentType = "header") { SectionHeader(title, trailing = trailing) }
+    item(key = key, contentType = "header") { SectionHeader(title, Modifier.animateItem(), trailing = trailing) }
 }
 
 @Composable
@@ -62,14 +62,14 @@ fun cardShape(i: Int, n: Int): RoundedCornerShape {
 
 /** A row's place in its card: the card's surface, its corners, and the divider above it. */
 @Composable
-fun CardRow(i: Int, n: Int, dividerStart: Dp = 56.dp, content: @Composable () -> Unit) {
-    Column(Modifier.padding(horizontal = CardInset).clip(cardShape(i, n)).background(cardColor())) {
+fun CardRow(i: Int, n: Int, dividerStart: Dp = 56.dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(modifier.padding(horizontal = CardInset).clip(cardShape(i, n)).background(cardColor())) {
         if (i > 0) HorizontalDivider(Modifier.padding(start = dividerStart, end = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
         content()
     }
 }
 
-/** A section's rows as one card, lazily. */
+/** A section's rows as one card, lazily: each glides to its new place as the list changes. */
 fun <T> LazyListScope.cardItems(
     items: List<T>,
     key: (T) -> Any,
@@ -78,7 +78,7 @@ fun <T> LazyListScope.cardItems(
 ) {
     val n = items.size
     items.forEachIndexed { i, t ->
-        item(key = key(t)) { CardRow(i, n, dividerStart) { content(t) } }
+        item(key = key(t)) { CardRow(i, n, dividerStart, Modifier.animateItem()) { content(t) } }
     }
 }
 

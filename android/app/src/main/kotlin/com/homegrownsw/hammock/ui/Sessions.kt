@@ -187,11 +187,11 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
             if (w.grants.isNotEmpty() || waiting.isNotEmpty() || others.isNotEmpty() || w.joinRequests.isNotEmpty()) {
                 section("Needs You")
                 // Each its own card, as the iPhone's: their buttons need the room.
-                items(w.joinRequests, key = { "join:" + it.id }) { JoinCard(model, w, it) }
-                items(w.grants, key = { "grant:" + it.id }) { GrantCard(model, it) }
+                items(w.joinRequests, key = { "join:" + it.id }) { Box(Modifier.animateItem()) { JoinCard(model, w, it) } }
+                items(w.grants, key = { "grant:" + it.id }) { Box(Modifier.animateItem()) { GrantCard(model, it) } }
                 items(waiting, key = { "att:" + it.id }) { item ->
                     val p = w.panes[item.paneId]
-                    Card(padded = false) {
+                    Card(padded = false, modifier = Modifier.animateItem()) {
                         Swipeable(enabled = p != null && canClose(p), onClose = { p?.let(::requestClose) }) {
                             AttentionCard(model, w, item) { nav.open("pane:" + item.paneId) }
                         }
@@ -218,11 +218,11 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
                 val more = fresh.isNotEmpty() && fresh.size < recentAll.size
                 val n = shown.size + if (more) 1 else 0
                 shown.forEachIndexed { i, r ->
-                    item(key = "recent:" + r.tab.id) { CardRow(i, n) { SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) } }
+                    item(key = "recent:" + r.tab.id) { CardRow(i, n, modifier = Modifier.animateItem()) { SessionLink(model, w, r, nav, ::canClose, ::requestClose, now) } }
                 }
                 if (more) {
                     item(key = "more") {
-                        CardRow(n - 1, n) {
+                        CardRow(n - 1, n, modifier = Modifier.animateItem()) {
                             TextButton(onClick = { showingAllRecent = !showingAllRecent }, Modifier.padding(horizontal = 4.dp)) {
                                 Text(if (showingAllRecent) "Show Less" else "Show More…")
                             }
@@ -348,9 +348,9 @@ fun plainInline(s: String): String = s.replace(Regex("\\*\\*|__|`"), "").replace
 
 /** A card: the Needs You items stand out from plain rows. */
 @Composable
-fun Card(padded: Boolean = true, content: @Composable () -> Unit) {
+fun Card(padded: Boolean = true, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = CardInset, vertical = 5.dp)
+        modifier.fillMaxWidth().padding(horizontal = CardInset, vertical = 5.dp)
             .clip(RoundedCornerShape(20.dp)).background(cardColor())
             .then(if (padded) Modifier.padding(16.dp) else Modifier),
     ) { content() }

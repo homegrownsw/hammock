@@ -149,11 +149,11 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                 val isCollapsed = g.id in collapsed
                 item(key = "g:" + g.id, contentType = "header") {
                     GroupHeader(w, g, isCollapsed, toggle = { toggle(g) }, newTab = { newTab(g) }, startAgent = { startingIn = g.id },
-                        edit = { editing = g }, delete = { deleting = g }, leave = { leaving = g })
+                        edit = { editing = g }, delete = { deleting = g }, leave = { leaving = g }, modifier = Modifier.animateItem())
                 }
                 if (!isCollapsed) {
                     if (g.tabIdsCount == 0) item(key = "empty:" + g.id) {
-                        CardRow(0, 1) {
+                        CardRow(0, 1, modifier = Modifier.animateItem()) {
                             Text(
                                 if (g.canAddTabs) "Nothing open here yet." else if (g.offline) "Its computer can't be reached right now."
                                 else "Only people who can drive can open tabs here.",
@@ -242,7 +242,7 @@ private fun ComputerChips(w: Workspace, selected: String, select: (String) -> Un
 @Composable
 private fun GroupHeader(
     w: Workspace, g: Group, collapsed: Boolean, toggle: () -> Unit, newTab: () -> Unit, startAgent: () -> Unit,
-    edit: () -> Unit, delete: () -> Unit, leave: () -> Unit,
+    edit: () -> Unit, delete: () -> Unit, leave: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val angle by animateFloatAsState(if (collapsed) 0f else 90f, label = "chevron")
     var menu by remember { mutableStateOf(false) }
@@ -250,7 +250,7 @@ private fun GroupHeader(
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     val linked = if (g.isOnLinkedComputer) w.computers.firstOrNull { it.userId == g.hostUserId } else null
     Row(
-        Modifier.fillMaxWidth().padding(start = CardInset + 4.dp, end = CardInset - 8.dp, top = 14.dp),
+        modifier.fillMaxWidth().padding(start = CardInset + 4.dp, end = CardInset - 8.dp, top = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.weight(1f)) { Row(
