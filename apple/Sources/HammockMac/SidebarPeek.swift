@@ -12,14 +12,17 @@ enum SidebarHiding {
     }
 }
 
-/// With the sidebar hidden, the pointer at the window's very left edge
-/// brings it in, floating over the panes (as in Arc and Dia): the same
-/// sidebar, in a rounded panel, to use until the pointer leaves it.
+/// With the sidebar hidden, the pointer resting a moment at the window's
+/// very left edge brings it in, floating over the panes (as in Arc and Dia):
+/// the same sidebar, in a rounded panel, to use until the pointer leaves it
+/// (or leaves the edge without going into it).
 struct SidebarPeek: View {
     let model: AppModel
     // HMK_DEBUG_PEEK=1: open from the start, to look at it.
     @State private var shown = ProcessInfo.processInfo.environment["HMK_DEBUG_PEEK"] == "1"
     @State private var inside = false
+    @State private var atEdge = false
+    @State private var opening: Task<Void, Never>?
     @State private var menuOpen = false
     @State private var closing: Task<Void, Never>?
     @Environment(\.colorScheme) private var scheme
@@ -40,7 +43,10 @@ struct SidebarPeek: View {
                 .frame(width: 3)
                 .frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .onHover { if $0 { open() } }
+                .onHover { here in
+                    atEdge = here
+                    if here { openSoon() } else { opening?.cancel(); if shown { closeSoon() } }
+                }
             if shown {
                 SidebarView(model: model)
                     // Out of a split view, a sidebar list draws its own
@@ -69,12 +75,20 @@ struct SidebarPeek: View {
             menuOpen = false
             closeSoon()
         }
-        .onDisappear { closing?.cancel() }
+        .onDisappear { closing?.cancel(); opening?.cancel() }
     }
 
-    private func open() {
+    /// Comes in once the pointer has rested at the edge a moment, not as it
+    /// passes on its way somewhere else (the window's buttons, another app).
+    private func openSoon() {
         closing?.cancel()
-        shown = true
+        guard !shown else { return }
+        opening?.cancel()
+        opening = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard !Task.isCancelled, atEdge else { return }
+            shown = true
+        }
     }
 
     /// Goes a moment after the pointer leaves, unless it comes back, or a
@@ -84,7 +98,7 @@ struct SidebarPeek: View {
         closing = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(350))
-                if Task.isCancelled || inside { return }
+                if Task.isCancelled || inside || atEdge { return }
                 if !menuOpen, NSApp.keyWindow?.attachedSheet == nil, WorkspaceWindow.window?.attachedSheet == nil {
                     shown = false
                     return
