@@ -612,6 +612,10 @@ message ClientMessage {
     // An image a Markdown file in an editor pane shows, for its preview
     // (editorimage.go). Replies EditorImage.
     ReadEditorImage read_editor_image = 137;
+    // Start an ended terminal pane's program again, in the same pane: its
+    // agent's session resumed, else its own command run again
+    // (restart.go). Replies Ok.
+    RestartPane restart_pane = 138;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -1526,6 +1530,8 @@ message HoldPane { string pane_id = 1; bool held = 2; }
 // Put the pane's agent to sleep (its process ended, its session resumed
 // when it's woken), or with wake, wake it now.
 message SleepPane { string pane_id = 1; bool wake = 2; }
+
+message RestartPane { string pane_id = 1; }
 
 // A pane, tab or Group shown in a window of its own (Open in New Window).
 message OpenWindow {

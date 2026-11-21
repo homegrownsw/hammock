@@ -45,6 +45,19 @@ extension Hammock_V1_Pane {
             && (agent.state == .idle || agent.state == .errored) && !agent.runningCommand
     }
 
+    /// Its program ended (a failed command, an agent that quit) and can
+    /// start again in the same pane (RestartPane): a terminal's, not a
+    /// log's, nor a scheduled run's (its task runs again instead).
+    public var canRunAgain: Bool {
+        (kind == .terminal || kind == .unspecified) && exited && !asleep && !isLog && scheduleRunID.isEmpty
+    }
+
+    /// Running it again resumes its agent's session (the daemon falls back
+    /// to its own command when there's nothing said in it to resume).
+    @MainActor public var resumesWhenRunAgain: Bool {
+        hasAgent && !agent.sessionID.isEmpty && AgentCatalog.kind(agent.harness)?.canResume == true
+    }
+
     /// Its agent's state in words: "Asleep" for one put to sleep.
     public var agentStatusLabel: String {
         asleep ? "Asleep" : agent.state.label

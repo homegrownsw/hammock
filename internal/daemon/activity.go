@@ -104,6 +104,8 @@ func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summa
 		summary = "changed the picture of " + d.groupLabel(target)
 	case "switch-agent":
 		summary = "switched the agent in " + pane() + " (" + detail + ")"
+	case "restart":
+		summary = "ran " + pane() + " again"
 	case "ssh-sign":
 		// Here: a program in a pane signed with a key on the computer you were at.
 		summary = "used your SSH key " + detail + " in " + pane()

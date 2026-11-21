@@ -154,6 +154,8 @@ Usage:
   hmk read PANE [--scrollback]             print a pane's screen as text (an editor pane's: its text)
   hmk close PANE|TAB|GROUP
   hmk reopen                               reopen the last tab or pane you closed (agents resume their sessions)
+  hmk rerun PANE                           run an ended pane's program again, in the same pane: an
+                                            agent resumes its session
   hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]
                                             start an agent in a new tab (in DIR, by default here), in GROUP
                                             or the folder's Group (or a new one); --on a linked computer
@@ -887,6 +889,17 @@ func runCommand(args []string) error {
 		_, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_SleepPane{SleepPane: &pb.SleepPane{PaneId: pid, Wake: args[0] == "wake"}}})
 		return err
 
+	case "rerun":
+		if len(args) != 2 {
+			return errors.New("usage: hmk rerun PANE")
+		}
+		pid, err := w.resolve(args[1], "pane")
+		if err != nil {
+			return err
+		}
+		_, err = call(&pb.ClientMessage{Msg: &pb.ClientMessage_RestartPane{RestartPane: &pb.RestartPane{PaneId: pid}}})
+		return err
+
 	case "session-link":
 		pid := paneEnv("PANE_ID")
 		if len(args) > 1 {
@@ -1497,6 +1510,8 @@ func grantFor(m *pb.ClientMessage) (action, target string) {
 		return "send", x.SwitchAgent.PaneId
 	case *pb.ClientMessage_SleepPane:
 		return "send", x.SleepPane.PaneId
+	case *pb.ClientMessage_RestartPane:
+		return "send", x.RestartPane.PaneId
 	case *pb.ClientMessage_AgentSend:
 		return "send", x.AgentSend.PaneId
 	case *pb.ClientMessage_AgentAnswer:

@@ -15,6 +15,8 @@ This page uses the Mac app's default shortcuts. You can change any of them: see 
 
 The Hammock Server, running in the background, owns your panes; the window is only a view of them. Quit Hammock, update it, or even crash it, and your shells, servers and agents carry on. After a restart or log-out, your Groups and tabs come back as they were: each pane starts again in its folder with its earlier output, and agents resume their sessions.
 
+When a pane's program fails, the pane stays, with its output, and a bar along its bottom: **Run Again** (or Return) starts it again in the same pane, and an agent's pane says **Resume** and carries on its session. A program that finishes cleanly closes its pane.
+
 ## Groups
 
 **New Group** (⌘N), or **New Group in Directory…** (⇧⌘N) for one named after a folder. **Configure Group…** (⌥⌘G) changes its name, icon and folder. ⌥⌘↓ and ⌥⌘↑ move between Groups; drag one in the sidebar to reorder it. Click a Group's header to collapse or expand it; its right-click menu also has **Collapse Others**.

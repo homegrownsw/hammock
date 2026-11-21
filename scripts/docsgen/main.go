@@ -235,7 +235,7 @@ var cliSections = []struct {
 	title, blurb string
 	cmds         []string
 }{
-	{"Workspace", "Groups, tabs and panes, and what's in them.", []string{"ls", "focus", "group", "tab", "split", "rotate", "float", "dock", "minimise", "floats", "close", "reopen", "attach", "send", "read", "theme"}},
+	{"Workspace", "Groups, tabs and panes, and what's in them.", []string{"ls", "focus", "group", "tab", "split", "rotate", "float", "dock", "minimise", "floats", "close", "reopen", "rerun", "attach", "send", "read", "theme"}},
 	{"Browser, simulator, log, editor and diff panes", "Panes that aren't terminals.", []string{"browser", "nav", "devtools", "show", "sim", "log", "edit", "diff", "review"}},
 	{"Agents", "Starting, finding and resuming agents, and what they may do.", []string{"agent", "switch", "sleep", "wake", "session-link", "sessions", "resume", "grant", "audit", "schedule", "hook", "hooks", "mcp"}},
 	{"Devices, linked computers and sharing", "Your phone, your other computers, and other people.", []string{"remote", "pair", "devices", "link", "computers", "share", "approve", "unshare", "join", "leave"}},

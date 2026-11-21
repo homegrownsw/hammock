@@ -521,6 +521,13 @@ struct PaneView: View {
                                 .focusesWhenTarget(isFocused, paneID: paneID, model: model)
                         } else {
                             TerminalView(paneID: paneID, model: model, isFocused: isFocused)
+                                // Its program ended: Run Again (or Resume) and
+                                // Close, the last output kept in view above.
+                                .safeAreaInset(edge: .bottom, spacing: 0) {
+                                    if let pane, pane.canRunAgain, model.group(ofPane: paneID)?.canDrive != false {
+                                        ExitedPaneBar(model: model, pane: pane)
+                                    }
+                                }
                         }
                     }
                     // Its agent asleep: faded, with a button to wake it

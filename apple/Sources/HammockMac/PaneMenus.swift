@@ -257,6 +257,9 @@ struct PaneMenuItems: View {
         if let p = model.panes[paneID], p.asleep || p.canSleep {
             SleepAgentButton(model: model, pane: p)
         }
+        if let p = model.panes[paneID], p.canRunAgain {
+            RunAgainButton(model: model, pane: p)
+        }
         Button("Close Pane", role: .destructive) { CloseGuard.confirm(model, panes: [paneID]) { Task { await model.closePane(paneID) } } }
     }
 }
@@ -270,6 +273,19 @@ struct SleepAgentButton: View {
     var body: some View {
         Button(pane.asleep ? "Wake Agent" : "Put Agent to Sleep") { model.sleepPane(pane.id, wake: pane.asleep) }
             .keyboardShortcut(Keys.sleepAgent)
+    }
+}
+
+/// Run Again, or Resume Agent on an agent's pane: an ended pane's program
+/// started again in it (ExitedPaneBar), in the Pane menu and a pane's menu.
+struct RunAgainButton: View {
+    let model: AppModel
+    let pane: Pane?
+
+    var body: some View {
+        Button(pane?.resumesWhenRunAgain == true ? "Resume Agent" : "Run Again") { if let pane { model.restartPane(pane.id) } }
+            .keyboardShortcut(Keys.runAgain)
+            .disabled(pane?.canRunAgain != true)
     }
 }
 

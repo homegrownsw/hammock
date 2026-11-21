@@ -2326,6 +2326,17 @@ extension AppModel {
         }
     }
 
+    /// Starts an ended pane's program again, in the same pane: its agent's
+    /// session resumed, else its own command (RestartPane).
+    public func restartPane(_ paneID: String) {
+        Task {
+            guard await run({ $0.restartPane = .with { $0.paneID = paneID } }) != nil else {
+                showToast("Couldn't run it again: \(lastError ?? "unknown error")")
+                return
+            }
+        }
+    }
+
     /// Agents' sessions on this Mac matching query (the
     /// daemon's index), best first; the most recent with no query. indexing:
     /// the first index is still being built, so ask again shortly.

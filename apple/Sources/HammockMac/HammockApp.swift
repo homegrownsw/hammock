@@ -416,6 +416,7 @@ struct HammockApp: App {
                 }
                     .keyboardShortcut(Keys.sleepAgent)
                     .disabled(!(focusedPane.map { $0.asleep || $0.canSleep } ?? false))
+                RunAgainButton(model: model, pane: focusedPane)
                 if HammockTool.browser.on {
                     Button("Split Right with Browser") {
                         if let id = focused { Task { await model.splitBrowser(id, direction: .horizontal) } }

@@ -829,6 +829,12 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}()
 		return nil, errDeferred
 
+	case *pb.ClientMessage_RestartPane:
+		if err := d.restartPane(c, m.RestartPane); err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}, nil
+
 	case *pb.ClientMessage_HoldPane:
 		// The person taking a pane over from agents (agentpresence.go);
 		// agents never get here (agentCheck has no case for it).

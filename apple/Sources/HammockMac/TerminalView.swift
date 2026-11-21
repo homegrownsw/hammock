@@ -74,6 +74,9 @@ final class TerminalNSView: NSView {
         }
     }
     var onInput: ((Data) -> Void)?
+    /// Return (or Enter) pressed with no modifiers: true if it was taken (an
+    /// ended pane runs again), else it goes to the terminal as usual.
+    var onReturn: (() -> Bool)?
     /// Files dropped on a pane whose Mac is elsewhere: sent there (returns
     /// true when it took them).
     var onDropFiles: (([URL]) -> Bool)?
@@ -985,6 +988,10 @@ final class TerminalNSView: NSView {
             super.keyDown(with: event)
             return
         }
+        if !hasMarkedText(), event.keyCode == 0x24 || event.keyCode == 0x4C,
+           flags.intersection([.shift, .control, .option]).isEmpty, onReturn?() == true {
+            return
+        }
         // While composing (IME, dead keys) every key belongs to the input system,
         // so Return commits, Backspace edits the composition, and so on.
         if !hasMarkedText(), flags.contains(.control) || Self.directKeys.contains(event.keyCode) {
@@ -1180,6 +1187,7 @@ struct TerminalView: NSViewRepresentable {
         let session = model.acquireSession(paneID)
         v.session = session
         v.onInput = { [paneID, model] data in model.send(paneID, data) }
+        v.onReturn = { [paneID, model] in TerminalView.runAgain(paneID, model: model) }
         v.onDropFiles = { [paneID, model] urls in TerminalView.upload(urls, to: paneID, model: model) }
         v.onPasteImage = { [paneID, model] png in TerminalView.pasteImage(png, to: paneID, model: model) }
         v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
@@ -1205,6 +1213,7 @@ struct TerminalView: NSViewRepresentable {
             if let old = v.session { model.releaseSession(old.paneID) }
             v.session = model.acquireSession(paneID)
             v.onInput = { [paneID, model] data in model.send(paneID, data) }
+            v.onReturn = { [paneID, model] in TerminalView.runAgain(paneID, model: model) }
             v.onDropFiles = { [paneID, model] urls in TerminalView.upload(urls, to: paneID, model: model) }
             v.onPasteImage = { [paneID, model] png in TerminalView.pasteImage(png, to: paneID, model: model) }
             v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
@@ -1214,6 +1223,15 @@ struct TerminalView: NSViewRepresentable {
         }
         v.isFocusTarget = isFocused
         v.folded = context.environment.paneFolded
+    }
+
+    /// Return in an ended pane runs it again, as its bar's button does
+    /// (ExitedPaneBar); not in a Group you can only watch.
+    @MainActor
+    static func runAgain(_ paneID: String, model: AppModel) -> Bool {
+        guard let p = model.panes[paneID], p.canRunAgain, model.group(ofPane: paneID)?.canDrive != false else { return false }
+        model.restartPane(paneID)
+        return true
     }
 
     @MainActor

@@ -777,6 +777,8 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) (err error) {
 		return control(m.SwitchAgent.PaneId, "send")
 	case *pb.ClientMessage_SleepPane:
 		return control(m.SleepPane.PaneId, "send")
+	case *pb.ClientMessage_RestartPane:
+		return control(m.RestartPane.PaneId, "send")
 	case *pb.ClientMessage_BreakOutPane:
 		// Moving a pane to a tab of its own leaves it running as it was.
 		if ownGroup(d.groupOfPane(m.BreakOutPane.PaneId)) {

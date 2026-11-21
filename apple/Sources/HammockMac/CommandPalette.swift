@@ -491,6 +491,12 @@ struct CommandPalette: View {
                     SessionLink.copy(model, p)
                 }
             }
+            if let p = model.panes[focused], p.canRunAgain {
+                action("run-again", p.resumesWhenRunAgain ? "Resume Agent" : "Run Again", p.resumesWhenRunAgain ? "play.fill" : "arrow.clockwise", .green,
+                       "restart rerun resume exited ended failed command program agent", keys: Keys.runAgain) {
+                    model.restartPane(focused)
+                }
+            }
             if let p = model.panes[focused], p.asleep || p.canSleep {
                 action("sleep-agent", p.asleep ? "Wake Agent" : "Put Agent to Sleep", p.asleep ? "sun.max" : "moon.zzz", .indigo,
                        "sleep wake resume suspend idle memory ram free claude codex agent", keys: Keys.sleepAgent) {
