@@ -929,22 +929,23 @@ struct SimulatorPaneView: View {
                 .frame(minWidth: Self.titleMinWidth, alignment: .leading)
                 Spacer()
                 // As many buttons as fit: in a narrow pane the less-used ones
-                // go into a More menu, then the hardware buttons too. Zoom and
-                // Close always show. The buttons have first claim on the
+                // go into the More menu (which always holds Shut Down), then
+                // the hardware buttons too. Zoom and Close always show. The buttons have first claim on the
                 // header's width, after the device's name keeps titleMinWidth.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 6) {
                         buttons(hardwareActions)
                         buttons(otherActions)
+                        moreMenu([menuOnlyActions])
                         trailingButtons
                     }
                     HStack(spacing: 6) {
                         buttons(hardwareActions)
-                        moreMenu([otherActions])
+                        moreMenu([otherActions, menuOnlyActions])
                         trailingButtons
                     }
                     HStack(spacing: 6) {
-                        moreMenu([hardwareActions, otherActions])
+                        moreMenu([hardwareActions, otherActions, menuOnlyActions])
                         trailingButtons
                     }
                 }
@@ -1096,10 +1097,15 @@ struct SimulatorPaneView: View {
             a.append(action("arrow.up.doc.on.clipboard", "Send Clipboard to Device", "sim_clipboard_send") { model.sendClipboardToSimulator(paneID) })
             a.append(action("arrow.down.doc", "Copy Device Clipboard", "sim_clipboard_get") { model.copySimulatorClipboard(paneID) })
         }
-        a.append(action("power", "Shut Down Simulator", nil, help: "Shut Down Simulator (closes the pane)") { model.shutDownSimulator(paneID) })
         let frameSymbol = isTV ? (showsFrame ? "tv" : "rectangle") : isAndroid ? (showsFrame ? "smartphone" : "rectangle.portrait") : (showsFrame ? "iphone.gen3" : "rectangle.portrait")
         a.append(action(frameSymbol, showsFrame ? "Hide Device Frame" : "Show Device Frame", nil) { Prefs.shared.toggle(.simulatorFrame) })
         return a
+    }
+
+    /// Only ever in the More menu, never a button: one stray click shouldn't
+    /// shut the device down.
+    private var menuOnlyActions: [HeaderAction] {
+        [action("power", "Shut Down Simulator", "sim_shut_down") { model.shutDownSimulator(paneID) }]
     }
 
     private func buttons(_ actions: [HeaderAction]) -> some View {
