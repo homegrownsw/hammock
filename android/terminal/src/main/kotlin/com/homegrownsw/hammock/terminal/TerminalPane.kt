@@ -6,6 +6,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,8 +62,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -70,8 +80,9 @@ import kotlinx.coroutines.launch
 
 /**
  * A pane's terminal ([TerminalView]) with the key bar above the soft
- * keyboard while it's up: esc, tab, a sticky ctrl, the arrows and delete
- * (which repeat while held), and a key to put the keyboard away.
+ * keyboard while it's up: esc, tab, a sticky ctrl and alt, the arrows and
+ * delete (which repeat while held), and, a swipe away, symbols a shell
+ * wants, Home and End; and a key to put the keyboard away.
  *
  * [onResize] is the grid that fits at [fontSize] (in [fontFamily], ""
  * the bundled font, with [lineSpacing] extra row height, a fraction of the
@@ -122,6 +133,7 @@ fun TerminalPane(
     var view by remember { mutableStateOf<TerminalView?>(null) }
     var focused by remember { mutableStateOf(false) }
     var ctrl by remember { mutableStateOf(false) }
+    var alt by remember { mutableStateOf(false) }
     var handles by remember { mutableStateOf<SelectionHandles?>(null) }
     val imeVisible = WindowInsets.isImeVisible
     val fontPx = with(LocalDensity.current) { fontSize.toPx() }
@@ -151,6 +163,7 @@ fun TerminalPane(
                         this.onFocus = { focus() }
                         this.onCellSize = { w, h -> cellSize(w, h) }
                         this.onCtrlChanged = { ctrl = it }
+                        this.onAltChanged = { alt = it }
                         this.onSelectionHandles = { handles = it }
                         this.onPinch = { phase, scale ->
                             val size = TerminalFontSize.pinched(startSize, scale)
@@ -208,34 +221,88 @@ fun TerminalPane(
         }
         val v = view
         if (v != null && imeVisible && focused && !readOnly) {
-            KeyBar(v, ctrl, offline, onReconnect)
+            KeyBar(v, ctrl, alt, offline, onReconnect)
         }
     }
 }
 
+/** A key on the bar: what it shows (text or an icon), says, and does. */
+private class Bar(val label: String, val text: String? = null, val icon: ImageVector? = null, val repeats: Boolean = false, val press: (TerminalView) -> Unit)
+
+/** The symbols page: what a shell wants that a phone's keyboard buries, then Home and End. */
+private val symbols = listOf("|" to "Vertical bar", "~" to "Tilde", "/" to "Slash", "-" to "Hyphen", "_" to "Underscore",
+    "\\" to "Backslash", "`" to "Backtick").map { (s, name) -> Bar(name, text = s) { it.typeSymbol(s) } } +
+    listOf(Bar("Home", text = "home") { it.pressKey(TerminalKey.HOME) }, Bar("End", text = "end") { it.pressKey(TerminalKey.END) })
+
 /**
- * Esc, tab, ctrl, arrows, delete and hide, above the soft keyboard (KeyAccessoryView on the iPhone).
- * While [offline], the keys that type are dimmed and blocked, under a pill saying so.
+ * The keys a phone's keyboard lacks, above it (KeyAccessoryView on the iPhone), on two pages to swipe
+ * between, with dots under them that say which and switch too: esc, tab, a sticky ctrl and alt, the
+ * arrows and delete; then symbols, Home and End. Hide stays at the end of both. While [offline], the
+ * keys are dimmed and blocked, under a pill saying so.
  */
 @Composable
-private fun KeyBar(view: TerminalView, ctrl: Boolean, offline: Boolean, onReconnect: () -> Unit) {
+private fun KeyBar(view: TerminalView, ctrl: Boolean, alt: Boolean, offline: Boolean, onReconnect: () -> Unit) {
+    val first = listOf(
+        Bar("Escape", text = "esc") { it.pressKey(TerminalKey.ESCAPE) },
+        Bar("Tab", text = "tab") { it.pressKey(TerminalKey.TAB) },
+        Bar("Control", text = "ctrl") { it.setCtrlLatched(!it.ctrlLatched) },
+        Bar("Alt", text = "alt") { it.setAltLatched(!it.altLatched) },
+        Bar("Left arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, repeats = true) { it.pressKey(TerminalKey.LEFT) },
+        Bar("Down arrow", icon = Icons.Filled.KeyboardArrowDown, repeats = true) { it.pressKey(TerminalKey.DOWN) },
+        Bar("Up arrow", icon = Icons.Filled.KeyboardArrowUp, repeats = true) { it.pressKey(TerminalKey.UP) },
+        Bar("Right arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, repeats = true) { it.pressKey(TerminalKey.RIGHT) },
+        Bar("Delete", icon = Icons.AutoMirrored.Outlined.Backspace, repeats = true) { it.pressKey(TerminalKey.BACKSPACE) },
+    )
+    val pages = listOf(first, symbols)
+    val pager = rememberPagerState { pages.size }
+    val scope = rememberCoroutineScope()
+    val gap = 5.dp
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
         Box(contentAlignment = Alignment.Center) {
-            Row(
-                Modifier.padding(horizontal = 6.dp, vertical = 5.dp).height(38.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                BarKey("Escape", text = "esc", enabled = !offline) { view.pressKey(TerminalKey.ESCAPE) }
-                BarKey("Tab", text = "tab", enabled = !offline) { view.pressKey(TerminalKey.TAB) }
-                BarKey("Control", text = "ctrl", selected = ctrl, enabled = !offline) { view.setCtrlLatched(!ctrl) }
-                BarKey("Left arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.LEFT) }
-                BarKey("Down arrow", icon = Icons.Filled.KeyboardArrowDown, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.DOWN) }
-                BarKey("Up arrow", icon = Icons.Filled.KeyboardArrowUp, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.UP) }
-                BarKey("Right arrow", icon = Icons.AutoMirrored.Filled.KeyboardArrowRight, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.RIGHT) }
-                BarKey("Delete", icon = Icons.AutoMirrored.Outlined.Backspace, repeats = true, enabled = !offline) { view.pressKey(TerminalKey.BACKSPACE) }
-                BarKey("Hide keyboard", icon = Icons.Filled.KeyboardHide) { view.hideKeyboard() }
+            Column(Modifier.padding(horizontal = 6.dp).padding(top = 5.dp)) {
+                BoxWithConstraints(Modifier.fillMaxWidth().height(38.dp)) {
+                    // Ten slots: a page's nine, and hide's.
+                    val slot = (maxWidth - gap * 9) / 10
+                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        HorizontalPager(pager, Modifier.weight(1f).alpha(if (offline) 0.35f else 1f), userScrollEnabled = !offline) { i ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                                for (k in pages[i]) {
+                                    val selected = (k.label == "Control" && ctrl) || (k.label == "Alt" && alt)
+                                    BarKey(k.label, k.text, k.icon, selected = selected, repeats = k.repeats, enabled = !offline,
+                                        monospace = i == 1 && k.text?.length == 1) { k.press(view) }
+                                }
+                            }
+                        }
+                        Row(Modifier.width(slot)) {
+                            BarKey("Hide keyboard", icon = Icons.Filled.KeyboardHide) { view.hideKeyboard() }
+                        }
+                    }
+                }
+                PageDots(pages.size, pager.currentPage, enabled = !offline, Modifier.fillMaxWidth().height(12.dp)) { page ->
+                    scope.launch { pager.animateScrollToPage(page) }
+                }
             }
-            AnimatedVisibility(offline, enter = fadeIn(), exit = fadeOut()) { OfflinePill(onReconnect) }
+            AnimatedVisibility(offline, Modifier.padding(bottom = 12.dp), enter = fadeIn(), exit = fadeOut()) { OfflinePill(onReconnect) }
+        }
+    }
+}
+
+/** The key bar's page dots: which page shows; tapping switches to the next. One adjustable control to TalkBack. */
+@Composable
+private fun PageDots(count: Int, current: Int, enabled: Boolean, modifier: Modifier, onSelect: (Int) -> Unit) {
+    val on = MaterialTheme.colorScheme.onSurface
+    val off = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    Box(
+        modifier
+            .clickable(enabled = enabled, onClickLabel = "Switch page", interactionSource = null, indication = null) { onSelect((current + 1) % count) }
+            .semantics {
+                contentDescription = "Key bar page"
+                stateDescription = if (current == 0) "Keys" else "Symbols"
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            repeat(count) { i -> Box(Modifier.size(5.dp).background(if (i == current) on else off, CircleShape)) }
         }
     }
 }
@@ -283,6 +350,7 @@ private fun RowScope.BarKey(
     selected: Boolean = false,
     repeats: Boolean = false,
     enabled: Boolean = true,
+    monospace: Boolean = false,
     onKey: () -> Unit,
 ) {
     val key by rememberUpdatedState(onKey)
@@ -341,7 +409,8 @@ private fun RowScope.BarKey(
             if (icon != null) {
                 Icon(icon, contentDescription = null)
             } else if (text != null) {
-                Text(text, fontSize = 15.sp, maxLines = 1, softWrap = false)
+                Text(text, fontSize = if (monospace) 17.sp else 15.sp, maxLines = 1, softWrap = false,
+                    fontFamily = if (monospace) FontFamily.Monospace else null)
             }
         }
     }

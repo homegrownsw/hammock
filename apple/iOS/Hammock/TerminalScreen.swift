@@ -160,6 +160,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
 
     private let padding: CGFloat = 4
     private var ctrlLatched = false
+    /// ⌥ from the key bar: the next key goes with Esc first (meta).
+    private var altLatched = false
     /// Hardware keys held down, repeating (arrows, backspace).
     fileprivate var hardwareRepeats: [UIKeyboardHIDUsage: KeyRepeater] = [:]
     /// Where the cursor was last drawn (the keyboard asks, as a text view's caret).
@@ -953,12 +955,14 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         if ctrlLatched, let s = t.lowercased().unicodeScalars.first, t.count == 1, ("a"..."z").contains(Character(s)) || "[\\]^_ ".contains(Character(s)) {
             let code = s == " " ? 0 : (s.value & 0x1F)
             t = String(UnicodeScalar(UInt8(code)))
-            ctrlLatched = false
-            accessory.ctrlButton.isSelected = false
+            setLatched(.ctrl, false)
         }
         session?.engine.scrollToBottom()
-        onInput?(Data(t.utf8))
-        if t.contains("\r") || t.unicodeScalars.contains(where: { $0.value < 0x20 }) {
+        let meta = takeAlt()
+        if meta { forgetTyped() } // Esc first: the line's moved on
+        let d = Data(t.utf8)
+        onInput?(meta ? PhoneTerminalKeys.meta(d) : d)
+        if meta || t.contains("\r") || t.unicodeScalars.contains(where: { $0.value < 0x20 }) {
             forgetTyped() // a new line, or a control key: the line's someone else's now
         } else {
             typed.append(contentsOf: t)
@@ -968,6 +972,12 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
 
     func deleteBackward() {
         guard linkUp else { return }
+        if takeAlt() {
+            // ⌥⌫: Esc and delete, a word back in a shell.
+            forgetTyped()
+            onInput?(PhoneTerminalKeys.meta(Data([0x7F])))
+            return
+        }
         if !typed.isEmpty { typed.removeLast() }
         onInput?(Data([0x7F]))
     }
@@ -992,10 +1002,21 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
 
     override var inputAccessoryView: UIView? { accessory }
 
+    private func setLatched(_ key: KeyAccessoryView.Key, _ on: Bool) {
+        if key == .ctrl { ctrlLatched = on } else { altLatched = on }
+        accessory.setLatched(key, on)
+    }
+
+    /// Whether ⌥ was latched for this key (it lets go once used).
+    private func takeAlt() -> Bool {
+        guard altLatched else { return false }
+        setLatched(.alt, false)
+        return true
+    }
+
     private func accessoryKey(_ key: KeyAccessoryView.Key) {
         guard let engine = session?.engine else { return }
         if !linkUp, key != .hide { return }
-        if key != .backspace, key != .ctrl, key != .hide { forgetTyped() }
         let mac: UInt16
         switch key {
         case .esc: mac = 0x35
@@ -1004,6 +1025,12 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         case .down: mac = 0x7D
         case .left: mac = 0x7B
         case .right: mac = 0x7C
+        case .home: mac = 0x73
+        case .end: mac = 0x77
+        case .text(let t):
+            // As if typed: ctrl and ⌥ apply.
+            insertText(t)
+            return
         case .backspace:
             deleteBackward()
             return
@@ -1011,37 +1038,55 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
             resignFirstResponder()
             return
         case .ctrl:
-            ctrlLatched.toggle()
-            accessory.ctrlButton.isSelected = ctrlLatched
+            setLatched(.ctrl, !ctrlLatched)
+            return
+        case .alt:
+            setLatched(.alt, !altLatched)
             return
         }
-        if let d = engine.encodeKey(macKeyCode: mac, mods: [], text: nil, unshifted: 0) { onInput?(d) }
+        forgetTyped()
+        // Home and End, as the arrows, follow the program's cursor key mode.
+        guard let d = engine.encodeKey(macKeyCode: mac, mods: [], text: nil, unshifted: 0) else { return }
+        onInput?(takeAlt() ? PhoneTerminalKeys.meta(d) : d)
     }
 }
 
-/// Esc / Tab / Ctrl / arrows above the software keyboard, and a button to put it away.
-final class KeyAccessoryView: UIInputView {
-    enum Key { case esc, tab, ctrl, up, down, left, right, backspace, hide }
+/// The keys a phone's keyboard lacks, above it, on two pages to swipe
+/// between (dots under them say which, and switch too): esc, tab, a sticky
+/// ctrl and ⌥, the arrows and delete; then symbols a shell wants, Home and
+/// End. A button to put the keyboard away stays at the end of both.
+final class KeyAccessoryView: UIInputView, UIScrollViewDelegate {
+    enum Key: Hashable { case esc, tab, ctrl, alt, up, down, left, right, backspace, hide, home, end, text(String) }
     /// Held, these go again and again, as on a keyboard.
     static let repeating: Set<Key> = [.up, .down, .left, .right, .backspace]
+    /// Each page's keys: a title (or a symbol's name) and what it says to VoiceOver.
+    static let pages: [[(title: String, key: Key, label: String)]] = [
+        [("esc", .esc, "Escape"), ("tab", .tab, "Tab"), ("ctrl", .ctrl, "Control"), ("⌥", .alt, "Option"),
+         ("arrow.left", .left, "Left arrow"), ("arrow.down", .down, "Down arrow"), ("arrow.up", .up, "Up arrow"),
+         ("arrow.right", .right, "Right arrow"), ("delete.left", .backspace, "Delete")],
+        [("|", .text("|"), "Vertical bar"), ("~", .text("~"), "Tilde"), ("/", .text("/"), "Slash"), ("-", .text("-"), "Hyphen"),
+         ("_", .text("_"), "Underscore"), ("\\", .text("\\"), "Backslash"), ("`", .text("`"), "Backtick"),
+         ("home", .home, "Home"), ("end", .end, "End")],
+    ]
+    private static let spacing: CGFloat = 5
+
     private var repeater: KeyRepeater?
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     var onKey: ((Key) -> Void)?
     /// The Offline pill tapped: try again now.
     var onOffline: (() -> Void)?
-    let ctrlButton = UIButton(configuration: .gray())
-    /// The keys that type: dimmed, and not taking touches, while offline.
-    private var typingKeys: [UIButton] = []
+    private var latchButtons: [Key: UIButton] = [:]
+    private let scroll = UIScrollView()
+    private let dots = PageDots(count: KeyAccessoryView.pages.count)
     private let offlinePill = UIButton(configuration: .filled())
 
     /// The link's down: keys are blocked, and a pill over them says so.
     var offline = false {
         didSet {
             guard offline != oldValue else { return }
-            for b in typingKeys {
-                b.isEnabled = !offline
-                b.alpha = offline ? 0.35 : 1
-            }
+            scroll.isUserInteractionEnabled = !offline
+            scroll.alpha = offline ? 0.35 : 1
+            dots.isEnabled = !offline
             if offline { repeater = nil }
             offlinePill.configuration?.baseBackgroundColor = UIColor(PhoneTheme.current.accent)
             UIView.animate(withDuration: 0.2) { self.offlinePill.alpha = self.offline ? 1 : 0 }
@@ -1051,66 +1096,136 @@ final class KeyAccessoryView: UIInputView {
         }
     }
 
+    /// Shows a sticky key (ctrl, ⌥) held for the next key, or not.
+    func setLatched(_ key: Key, _ on: Bool) {
+        latchButtons[key]?.isSelected = on
+    }
+
     init() {
-        super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 48), inputViewStyle: .keyboard)
+        super.init(frame: CGRect(x: 0, y: 0, width: 320, height: 52), inputViewStyle: .keyboard)
         allowsSelfSizing = true
-        let items: [(String, Key)] = [("esc", .esc), ("tab", .tab), ("ctrl", .ctrl), ("arrow.left", .left), ("arrow.down", .down), ("arrow.up", .up), ("arrow.right", .right), ("delete.left", .backspace), ("keyboard.chevron.compact.down", .hide)]
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.distribution = .fillEqually
-        stack.spacing = 5
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        for (title, key) in items {
-            let b = key == .ctrl ? ctrlButton : UIButton(configuration: .gray())
-            // Narrow insets and no wrapping, so "esc" stays on one line.
-            b.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0)
-            b.configuration?.titleLineBreakMode = .byClipping
-            if key == .hide {
-                b.setImage(UIImage(systemName: title), for: .normal)
-                b.accessibilityLabel = "Hide keyboard"
-            } else if title.hasPrefix("arrow") {
-                b.setImage(UIImage(systemName: title), for: .normal)
-                b.accessibilityLabel = title.replacingOccurrences(of: "arrow.", with: "") + " arrow"
-            } else if key == .backspace {
-                b.setImage(UIImage(systemName: title), for: .normal)
-                b.accessibilityLabel = "Delete"
-            } else {
-                b.configuration?.attributedTitle = AttributedString(title, attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 15)]))
-            }
-            b.configurationUpdateHandler = { btn in
-                var c = btn.configuration
-                c?.baseBackgroundColor = btn.isSelected ? .tintColor : nil
-                c?.baseForegroundColor = btn.isSelected ? .white : .label
-                btn.configuration = c
-            }
-            if Self.repeating.contains(key) {
-                // Down at once, and again while held.
-                b.addAction(UIAction { [weak self] _ in
-                    guard let self else { return }
-                    self.haptic.prepare()
-                    self.repeater = KeyRepeater { [weak self] in
-                        self?.onKey?(key)
-                        // A light tick each time, as the keyboard's own keys give.
-                        self?.haptic.impactOccurred(intensity: 0.55)
-                    }
-                }, for: .touchDown)
-                b.addAction(UIAction { [weak self] _ in self?.repeater = nil }, for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
-            } else {
-                b.addAction(UIAction { [weak self] _ in self?.onKey?(key) }, for: .touchUpInside)
-            }
-            stack.addArrangedSubview(b)
-            if key != .hide { typingKeys.append(b) }
+
+        scroll.isPagingEnabled = true
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.alwaysBounceVertical = false
+        scroll.clipsToBounds = true
+        scroll.delegate = self
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scroll)
+
+        var constraints: [NSLayoutConstraint] = []
+        var previous: UIView?
+        for (i, items) in Self.pages.enumerated() {
+            let page = UIStackView()
+            page.axis = .horizontal
+            page.distribution = .fillEqually
+            page.spacing = Self.spacing
+            page.translatesAutoresizingMaskIntoConstraints = false
+            page.accessibilityContainerType = .semanticGroup
+            page.accessibilityLabel = i == 0 ? "Keys" : "Symbols"
+            for item in items { page.addArrangedSubview(button(item.title, item.key, label: item.label)) }
+            scroll.addSubview(page)
+            constraints += [
+                page.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+                page.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+                page.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+                page.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+                page.leadingAnchor.constraint(equalTo: previous?.trailingAnchor ?? scroll.contentLayoutGuide.leadingAnchor),
+            ]
+            previous = page
         }
-        addSubview(stack)
+        if let previous { constraints.append(previous.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor)) }
+
+        // Hide stays put at the end, a key's width: one more slot after the page's.
+        let hide = button("keyboard.chevron.compact.down", .hide, label: "Hide keyboard")
+        hide.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(hide)
+
+        dots.translatesAutoresizingMaskIntoConstraints = false
+        dots.onSelect = { [weak self] page in self?.show(page: page) }
+        addSubview(dots)
         setUpOfflinePill()
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-            offlinePill.centerXAnchor.constraint(equalTo: stack.centerXAnchor),
-            offlinePill.centerYAnchor.constraint(equalTo: stack.centerYAnchor),
-        ])
+
+        let slots = CGFloat(Self.pages[0].count)
+        constraints += [
+            scroll.leadingAnchor.constraint(equalTo: layoutMarginsGuide.leadingAnchor),
+            scroll.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            scroll.heightAnchor.constraint(equalToConstant: 34),
+            hide.leadingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: Self.spacing),
+            hide.trailingAnchor.constraint(equalTo: layoutMarginsGuide.trailingAnchor),
+            hide.topAnchor.constraint(equalTo: scroll.topAnchor),
+            hide.heightAnchor.constraint(equalTo: scroll.heightAnchor),
+            hide.widthAnchor.constraint(equalTo: scroll.widthAnchor, multiplier: 1 / slots, constant: -Self.spacing * (slots - 1) / slots),
+            dots.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            dots.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 1),
+            dots.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
+            offlinePill.centerXAnchor.constraint(equalTo: centerXAnchor),
+            offlinePill.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+        ]
+        NSLayoutConstraint.activate(constraints)
+    }
+
+    private func button(_ title: String, _ key: Key, label: String) -> UIButton {
+        let b = UIButton(configuration: .gray())
+        // Narrow insets and no wrapping, so "esc" stays on one line.
+        b.configuration?.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0)
+        b.configuration?.titleLineBreakMode = .byClipping
+        if UIImage(systemName: title) != nil, title.contains(".") {
+            b.setImage(UIImage(systemName: title), for: .normal)
+        } else {
+            let font: UIFont = if case .text = key { .monospacedSystemFont(ofSize: 17, weight: .regular) } else { .systemFont(ofSize: 15) }
+            b.configuration?.attributedTitle = AttributedString(title, attributes: AttributeContainer([.font: font]))
+        }
+        b.accessibilityLabel = label
+        b.configurationUpdateHandler = { btn in
+            var c = btn.configuration
+            c?.baseBackgroundColor = btn.isSelected ? .tintColor : nil
+            c?.baseForegroundColor = btn.isSelected ? .white : .label
+            btn.configuration = c
+        }
+        if key == .ctrl || key == .alt {
+            latchButtons[key] = b
+            b.accessibilityTraits.insert(.button)
+        }
+        if Self.repeating.contains(key) {
+            // Down at once, and again while held.
+            b.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.haptic.prepare()
+                self.repeater = KeyRepeater { [weak self] in
+                    self?.onKey?(key)
+                    // A light tick each time, as the keyboard's own keys give.
+                    self?.haptic.impactOccurred(intensity: 0.55)
+                }
+            }, for: .touchDown)
+            b.addAction(UIAction { [weak self] _ in self?.repeater = nil }, for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+        } else {
+            b.addAction(UIAction { [weak self] _ in self?.onKey?(key) }, for: .touchUpInside)
+        }
+        return b
+    }
+
+    private func show(page: Int) {
+        let x = CGFloat(page) * scroll.bounds.width
+        scroll.setContentOffset(CGPoint(x: x, y: 0), animated: !UIAccessibility.isReduceMotionEnabled)
+        dots.current = page
+        haptic.impactOccurred(intensity: 0.4)
+        UIAccessibility.post(notification: .layoutChanged, argument: nil)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // A swipe away from a held key lets go of it.
+        if scrollView.isDragging { repeater = nil }
+        guard scrollView.bounds.width > 0 else { return }
+        dots.current = Int((scrollView.contentOffset.x / scrollView.bounds.width).rounded())
+    }
+
+    override func layoutSubviews() {
+        let page = dots.current
+        super.layoutSubviews()
+        // Rotating: stay on the page.
+        let x = CGFloat(page) * scroll.bounds.width
+        if !scroll.isDragging, !scroll.isDecelerating, scroll.contentOffset.x != x { scroll.contentOffset.x = x }
     }
 
     /// "Offline", in the connection bar's colour, over the keys: tapping it
@@ -1136,6 +1251,60 @@ final class KeyAccessoryView: UIInputView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+}
+
+/// The key bar's page dots: which page shows, and tapping switches to the
+/// other. To VoiceOver, one control that's adjusted to change page.
+final class PageDots: UIControl {
+    let count: Int
+    var onSelect: ((Int) -> Void)?
+    var current = 0 {
+        didSet {
+            guard current != oldValue else { return }
+            setNeedsDisplay()
+            accessibilityValue = value
+        }
+    }
+    private static let size: CGFloat = 5
+    private static let gap: CGFloat = 6
+
+    init(count: Int) {
+        self.count = count
+        super.init(frame: .zero)
+        isOpaque = false
+        contentMode = .redraw
+        isAccessibilityElement = true
+        accessibilityLabel = "Key bar page"
+        accessibilityTraits = .adjustable
+        accessibilityValue = value
+        addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.onSelect?((self.current + 1) % self.count)
+        }, for: .touchUpInside)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var value: String { current == 0 ? "Keys" : "Symbols" }
+
+    override var intrinsicContentSize: CGSize {
+        // Taller and wider than it draws, to be easy to tap.
+        CGSize(width: CGFloat(count) * (Self.size + Self.gap) + 40, height: Self.size + 6)
+    }
+
+    override func draw(_ rect: CGRect) {
+        let width = CGFloat(count) * Self.size + CGFloat(count - 1) * Self.gap
+        var x = (bounds.width - width) / 2
+        let y = (bounds.height - Self.size) / 2
+        for i in 0..<count {
+            (i == current ? UIColor.label : UIColor.tertiaryLabel).setFill()
+            UIBezierPath(ovalIn: CGRect(x: x, y: y, width: Self.size, height: Self.size)).fill()
+            x += Self.size + Self.gap
+        }
+    }
+
+    override func accessibilityIncrement() { if current < count - 1 { onSelect?(current + 1) } }
+    override func accessibilityDecrement() { if current > 0 { onSelect?(current - 1) } }
 }
 
 // MARK: Hardware keyboard
@@ -1184,6 +1353,14 @@ extension TerminalUIView {
             } else if key.modifierFlags.contains(.control), let s = key.charactersIgnoringModifiers.lowercased().unicodeScalars.first,
                       ("a"..."z").contains(Character(s)) {
                 onInput?(Data([UInt8(s.value & 0x1F)]))
+                handled = true
+            } else if key.modifierFlags.contains(.alternate), key.modifierFlags.isDisjoint(with: [.command, .control]),
+                      let d = PhoneTerminalKeys.optionLetter(characters: key.characters, ignoringModifiers: key.charactersIgnoringModifiers,
+                                                             shift: key.modifierFlags.contains(.shift)) {
+                // ⌥ and a letter: meta, as a Mac terminal with ⌥ as Esc+ sends it.
+                forgetTyped()
+                engine.scrollToBottom()
+                onInput?(d)
                 handled = true
             }
         }

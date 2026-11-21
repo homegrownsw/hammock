@@ -105,6 +105,11 @@ class TerminalEngineTest {
         assertArrayEquals("a".toByteArray(), e.encodeKey(KeyEvent.KEYCODE_A, 0, "a", 'a'.code))
         assertArrayEquals(byteArrayOf(0x7f), e.encodeKey(KeyEvent.KEYCODE_DEL))
         assertArrayEquals("\u001b[1;5C".toByteArray(), e.encodeKey(KeyEvent.KEYCODE_DPAD_RIGHT, KeyMods.CTRL))
+        // Home and End (the key bar's) follow it too.
+        assertArrayEquals("\u001bOH".toByteArray(), e.encodeKey(KeyEvent.KEYCODE_MOVE_HOME))
+        assertArrayEquals("\u001bOF".toByteArray(), e.encodeKey(KeyEvent.KEYCODE_MOVE_END))
+        // A hardware keyboard's Alt and a letter: meta (Esc, then the letter).
+        assertArrayEquals("\u001bb".toByteArray(), e.encodeKey(KeyEvent.KEYCODE_B, KeyMods.ALT, "b", 'b'.code))
     }
 
     @Test

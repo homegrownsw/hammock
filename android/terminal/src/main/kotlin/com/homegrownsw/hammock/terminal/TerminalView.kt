@@ -31,6 +31,9 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.pow
 
+/** Meta: Esc, then what the key sends (alt from the key bar), as terminals send alt set to Esc+. */
+fun meta(bytes: ByteArray): ByteArray = byteArrayOf(0x1B) + bytes
+
 /** The keys on the bar above the soft keyboard ([TerminalView.pressKey]). */
 enum class TerminalKey(internal val keyCode: Int) {
     ESCAPE(KeyEvent.KEYCODE_ESCAPE),
@@ -40,6 +43,8 @@ enum class TerminalKey(internal val keyCode: Int) {
     LEFT(KeyEvent.KEYCODE_DPAD_LEFT),
     RIGHT(KeyEvent.KEYCODE_DPAD_RIGHT),
     BACKSPACE(KeyEvent.KEYCODE_DEL),
+    HOME(KeyEvent.KEYCODE_MOVE_HOME),
+    END(KeyEvent.KEYCODE_MOVE_END),
 }
 
 /**
@@ -94,6 +99,9 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
     /** The sticky ctrl key changed (the accessory bar shows it). */
     var onCtrlChanged: ((Boolean) -> Unit)? = null
+
+    /** The sticky alt key changed (the accessory bar shows it). */
+    var onAltChanged: ((Boolean) -> Unit)? = null
 
     /**
      * Connected to the computer: while it isn't, keys are blocked rather than
@@ -184,6 +192,10 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
 
     /** Ctrl from the accessory bar: applies to the next key typed. */
     var ctrlLatched = false
+        private set
+
+    /** Alt from the accessory bar: the next key goes with Esc first (meta). */
+    var altLatched = false
         private set
 
     /** Where the last frame put the grid (main thread). */
@@ -299,9 +311,17 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
             }
         }
         session?.engine?.scrollToBottom()
-        send(t.toByteArray())
+        val meta = takeAlt()
+        send(if (meta) meta(t.toByteArray()) else t.toByteArray())
         requestRender()
-        return t.any { it == '\r' || it.code < 0x20 }
+        return meta || t.any { it == '\r' || it.code < 0x20 }
+    }
+
+    /** A symbol from the accessory bar, as if typed (ctrl and alt apply). */
+    fun typeSymbol(text: String) {
+        if (!linkUp) return
+        connection?.forget()
+        typeText(text)
     }
 
     internal fun backspaces(n: Int) {
@@ -314,17 +334,32 @@ class TerminalView @JvmOverloads constructor(context: Context, attrs: AttributeS
         onCtrlChanged?.invoke(on)
     }
 
+    fun setAltLatched(on: Boolean) {
+        if (on == altLatched) return
+        altLatched = on
+        onAltChanged?.invoke(on)
+    }
+
+    /** Whether alt was latched for this key (it lets go once used). */
+    private fun takeAlt(): Boolean {
+        if (!altLatched) return false
+        setAltLatched(false)
+        return true
+    }
+
     /** A key from the accessory bar. */
     fun pressKey(key: TerminalKey) {
         val engine = session?.engine ?: return
         if (!linkUp) return
-        if (key == TerminalKey.BACKSPACE) {
+        if (key == TerminalKey.BACKSPACE && !altLatched) {
             connection?.dropLast()
             send(byteArrayOf(0x7F))
             return
         }
         connection?.forget()
-        engine.encodeKey(key.keyCode)?.let(::send)
+        // Home and End, as the arrows, follow the program's cursor key mode.
+        val bytes = engine.encodeKey(key.keyCode) ?: return
+        send(if (takeAlt()) meta(bytes) else bytes)
     }
 
     /** Pastes the clipboard's text (bracketed if the program asked for it). */
