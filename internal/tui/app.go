@@ -551,6 +551,9 @@ func (a *App) send(b []byte) {
 	if p := a.panes[a.focus]; p != nil && !isTerm(p) {
 		return
 	}
+	if a.runAgainOnReturn(b) {
+		return
+	}
 	if t := a.terms[a.focus]; t != nil {
 		t.scrollToBottom() // typing returns to the live screen
 	}

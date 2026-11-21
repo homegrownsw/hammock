@@ -440,6 +440,13 @@ func (a *App) paneMenu(id string, x, y int) {
 			menuItem{label: "Interrupt (Esc)", run: func() { a.sendTo(id, []byte{0x1b}) }},
 			menuItem{sep: true})
 	}
+	if canRunAgain(p) {
+		label := "Run Again"
+		if resumesWhenRunAgain(p) {
+			label = "Resume Agent"
+		}
+		items = append(items, menuItem{label: label, hint: "↩", run: func() { a.restartPane(id) }}, menuItem{sep: true})
+	}
 	if p.Kind == pb.PaneKind_PANE_KIND_BROWSER {
 		items = append(items, menuItem{label: "Open in Browser", run: func() { a.openLink(p.Url) }}, menuItem{sep: true})
 	}
@@ -647,6 +654,13 @@ func (a *App) paletteItems() []paletteItem {
 					}
 				})
 			})
+		}
+		if p := a.panes[f]; canRunAgain(p) {
+			label := "Run Again"
+			if resumesWhenRunAgain(p) {
+				label = "Resume Agent"
+			}
+			act("run-again", label, "", "restart rerun resume exited ended failed command program agent", func() { a.restartPane(f) })
 		}
 		if p := a.panes[f]; p.GetAsleep() {
 			act("wake-agent", "Wake Agent", "", "sleep sleeping asleep resume agent claude", func() { a.sleepPane(f, true) })

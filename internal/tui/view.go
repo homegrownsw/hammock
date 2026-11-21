@@ -45,6 +45,7 @@ const (
 	zShelf      // a minimised floating pane on the tab's shelf
 	zEditorBar  // a button on an editor pane's changed-on-disk bar (idx: which)
 	zNeedsMore  // Needs You's "+N more"
+	zRunAgain   // an ended pane's bar's buttons (idx: 0 Run Again, 1 Close)
 )
 
 type zone struct {
@@ -970,6 +971,9 @@ func (a *App) drawPanes() {
 		if p.GetAsleep() {
 			a.drawAsleep(id, body)
 			continue
+		}
+		if canRunAgain(p) && canDrive(a.paneGroup(id)) && body.h > 1 {
+			a.drawExitedBar(p, body)
 		}
 		if focused && vis {
 			curX, curY, curShow = cx, cy, true

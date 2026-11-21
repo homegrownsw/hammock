@@ -319,6 +319,8 @@ func (a *App) leftPress(z zone, m mouseEv) {
 		a.drag = &drag{kind: dragSidebar, startX: m.x}
 	case zEditorBar:
 		a.editorBarClick(z)
+	case zRunAgain:
+		a.runAgainClick(z)
 	case zBrowserOpen:
 		if p := a.panes[z.id]; p != nil {
 			a.openLink(p.Url)
