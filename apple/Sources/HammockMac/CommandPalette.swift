@@ -290,6 +290,12 @@ struct CommandPalette: View {
                 action("rename-tab", "Rename Tab…", "pencil", .blue, "name title label", keys: Keys.renameTab) {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { TabSheets.shared.rename(tab) }
                 }
+                if model.tabMoveIndex(tab.id, by: -1) != nil {
+                    action("move-tab-up", "Move Tab Up", "arrow.up", .blue, "reorder order earlier left before sidebar tab bar", keys: Keys.moveTabUp) { model.moveTab(tab.id, by: -1) }
+                }
+                if model.tabMoveIndex(tab.id, by: 1) != nil {
+                    action("move-tab-down", "Move Tab Down", "arrow.down", .blue, "reorder order later right after sidebar tab bar", keys: Keys.moveTabDown) { model.moveTab(tab.id, by: 1) }
+                }
             }
             if TabSheets.canConfigure(g) {
                 action("configure-group", "Configure Group…", "slider.horizontal.3", .purple, "rename name icon emoji picture edit settings", keys: Keys.configureGroup) {

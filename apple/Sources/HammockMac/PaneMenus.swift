@@ -283,6 +283,12 @@ struct TabMenuItems: View {
 
     var body: some View {
         Button("Rename Tab…") { TabSheets.shared.rename(tab) }
+        Button("Move Tab Up") { model.moveTab(tab.id, by: -1) }
+            .keyboardShortcut(Keys.moveTabUp)
+            .disabled(model.tabMoveIndex(tab.id, by: -1) == nil)
+        Button("Move Tab Down") { model.moveTab(tab.id, by: 1) }
+            .keyboardShortcut(Keys.moveTabDown)
+            .disabled(model.tabMoveIndex(tab.id, by: 1) == nil)
         if group?.isRemote != true {
             Menu("Move to Group") {
                 ForEach(otherGroups) { g in

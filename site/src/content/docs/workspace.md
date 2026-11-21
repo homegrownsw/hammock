@@ -38,7 +38,7 @@ A Group's icon is an emoji or picture set in Configure Group… (or `hmk group i
 - Switch with ⌘1 to ⌘9, or ⇧⌘] and ⇧⌘[.
 - **Rename Tab…** (⇧⌘R). Unnamed tabs are named after what's running in them.
 
-Drag a tab to another Group in the sidebar to move it. Right-click a tab and choose **Merge into Tab** to put its panes beside another tab's; Pane ▸ Move Pane to New Tab does the reverse.
+Drag a tab to reorder it or move it to another Group, or use File ▸ **Move Tab Up** and **Move Tab Down** (give them shortcuts in Settings ▸ Keyboard). Right-click a tab and choose **Merge into Tab** to put its panes beside another tab's; Pane ▸ Move Pane to New Tab does the reverse.
 
 ## The sidebar
 

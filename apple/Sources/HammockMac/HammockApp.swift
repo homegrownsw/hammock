@@ -188,6 +188,12 @@ struct HammockApp: App {
                 Button("Rename Tab…") { if let tab = shownTab { TabSheets.shared.rename(tab) } }
                     .keyboardShortcut(Keys.renameTab)
                     .disabled(shownTab == nil)
+                Button("Move Tab Up") { if let tab = shownTab { model.moveTab(tab.id, by: -1) } }
+                    .keyboardShortcut(Keys.moveTabUp)
+                    .disabled(shownTab.flatMap { model.tabMoveIndex($0.id, by: -1) } == nil)
+                Button("Move Tab Down") { if let tab = shownTab { model.moveTab(tab.id, by: 1) } }
+                    .keyboardShortcut(Keys.moveTabDown)
+                    .disabled(shownTab.flatMap { model.tabMoveIndex($0.id, by: 1) } == nil)
                 Button("Configure Group…") { if let g = currentGroup { TabSheets.shared.configuring = g } }
                     .keyboardShortcut(Keys.configureGroup)
                     .disabled(!(currentGroup.map(TabSheets.canConfigure) ?? false))

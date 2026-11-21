@@ -236,6 +236,9 @@ public enum Keybinds {
             .init("pair_device", "Pair a Device…", "File", nil, "iphone android phone ipad link"),
             .init("join_shared_group", "Join Shared Group…", "File", nil, "invite share link"),
             .init("rename_tab", "Rename Tab…", "File", c("r", cs), "name title label"),
+            // No defaults: no Mac convention for these, and the arrows' are taken.
+            .init("move_tab_up", "Move Tab Up", "File", nil, "reorder order earlier left before sidebar tab bar"),
+            .init("move_tab_down", "Move Tab Down", "File", nil, "reorder order later right after sidebar tab bar"),
             .init("configure_group", "Configure Group…", "File", c("g", co), "rename name icon emoji picture edit settings"),
             .init("change_group_folder", "Change Group Folder…", "File", nil, "directory cwd path"),
             .init("reveal_group_in_finder", "Reveal Group in Finder", "File", nil, "show folder directory open finder"),

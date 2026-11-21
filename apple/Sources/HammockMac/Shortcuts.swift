@@ -56,6 +56,8 @@ enum Keys {
     static var findSession: KeyboardShortcut? { shortcut("find_session") }
     static var findSessionInGroup: KeyboardShortcut? { shortcut("find_session_in_group") }
     static var renameTab: KeyboardShortcut? { shortcut("rename_tab") }
+    static var moveTabUp: KeyboardShortcut? { shortcut("move_tab_up") }
+    static var moveTabDown: KeyboardShortcut? { shortcut("move_tab_down") }
     static var configureGroup: KeyboardShortcut? { shortcut("configure_group") }
     static var changeGroupFolder: KeyboardShortcut? { shortcut("change_group_folder") }
     static var revealGroupInFinder: KeyboardShortcut? { shortcut("reveal_group_in_finder") }

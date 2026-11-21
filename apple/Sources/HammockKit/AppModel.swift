@@ -2111,6 +2111,20 @@ extension AppModel {
     public func moveTab(_ tabID: String, to groupID: String, index: Int) {
         Task { _ = await run { $0.moveTab = .with { $0.tabID = tabID; $0.groupID = groupID; $0.index = Int32(index) } } }
     }
+
+    /// Where a tab goes moving `delta` places within its Group (Move Tab Up,
+    /// Move Tab Down): nil at either end.
+    public func tabMoveIndex(_ tabID: String, by delta: Int) -> Int? {
+        guard let t = tabs[tabID], let g = groups.first(where: { $0.id == t.groupID }),
+              let i = g.tabIds.firstIndex(of: tabID), g.tabIds.indices.contains(i + delta) else { return nil }
+        return i + delta
+    }
+
+    /// Moves a tab `delta` places within its Group, if it can go.
+    public func moveTab(_ tabID: String, by delta: Int) {
+        guard let i = tabMoveIndex(tabID, by: delta), let g = tabs[tabID]?.groupID else { return }
+        moveTab(tabID, to: g, index: i)
+    }
 }
 
 // MARK: Remote access & devices (local clients only)
