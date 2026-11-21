@@ -1162,3 +1162,29 @@ struct RemotePageCard: View {
         .opacity(group.offline ? 0.5 : 1)
     }
 }
+
+/// A browser pane's page, for Open in Default Browser and Copy Address (the
+/// pane's menus, the Pane menu and the palette).
+@MainActor
+enum BrowserPage {
+    /// The page's address, if it's a web page or file (not a blank page or DevTools).
+    static func url(_ model: AppModel, _ paneID: String?) -> URL? {
+        guard let p = paneID.flatMap({ model.panes[$0] }), p.kind == .browser,
+              let url = URL(string: p.url), let scheme = url.scheme?.lowercased(),
+              ["http", "https", "file"].contains(scheme) else { return nil }
+        return url
+    }
+
+    static func openInDefaultBrowser(_ model: AppModel, _ paneID: String?) {
+        guard let url = url(model, paneID) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    static func copyAddress(_ model: AppModel, _ paneID: String?) {
+        guard let url = url(model, paneID) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(url.absoluteString, forType: .string)
+        model.showToast("Address copied")
+    }
+}

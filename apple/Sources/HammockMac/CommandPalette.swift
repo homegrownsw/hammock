@@ -443,6 +443,14 @@ struct CommandPalette: View {
                 }
             }
         }
+        if BrowserPage.url(model, focused) != nil {
+            action("open-in-default-browser", "Open in Default Browser", "safari", .blue, "web page external safari chrome firefox system browser url link", keys: Keys.openInDefaultBrowser) {
+                BrowserPage.openInDefaultBrowser(model, focused)
+            }
+            action("copy-page-address", "Copy Address", "link", .blue, "web page url link copy clipboard browser", keys: Keys.copyPageAddress) {
+                BrowserPage.copyAddress(model, focused)
+            }
+        }
         action("find-session", "Find Session…", "clock.arrow.circlepath", .orange, "resume history claude codex thread conversation", keys: Keys.findSession) {
             // Once the palette has closed.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { PaletteState.shared.open(.sessions) }

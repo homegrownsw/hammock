@@ -289,6 +289,8 @@ public enum Keybinds {
             .init("split_browser_right", "Split Right with Browser", "Pane", c("b", co), "web divide"),
             .init("split_browser_down", "Split Down with Browser", "Pane", c("b", cos), "web divide"),
             .init("dev_tools", "Show DevTools", "Pane", c("i", co), "inspector developer browser console"),
+            .init("open_in_default_browser", "Open in Default Browser", "Pane", nil, "web page external safari chrome firefox system browser url link"),
+            .init("copy_page_address", "Copy Address", "Pane", nil, "web page url link copy clipboard browser"),
             .init("split_log_right", "Split Right with Log…", "Pane", nil, "logs console divide"),
             .init("split_diff_right", "Split Right with Diff…", "Pane", nil, "git review changes compare branch commit divide"),
             .init("split_editor_right", "Split Right with Editor", "Pane", c("e", cc), "pane text file code untitled"),

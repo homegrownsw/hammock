@@ -99,6 +99,8 @@ enum Keys {
     static var splitBrowserRight: KeyboardShortcut? { shortcut("split_browser_right") }
     static var splitBrowserDown: KeyboardShortcut? { shortcut("split_browser_down") }
     static var devTools: KeyboardShortcut? { shortcut("dev_tools") }
+    static var openInDefaultBrowser: KeyboardShortcut? { shortcut("open_in_default_browser") }
+    static var copyPageAddress: KeyboardShortcut? { shortcut("copy_page_address") }
     static var splitLogRight: KeyboardShortcut? { shortcut("split_log_right") }
     static var splitDiffRight: KeyboardShortcut? { shortcut("split_diff_right") }
     static var splitEditorRight: KeyboardShortcut? { shortcut("split_editor_right") }

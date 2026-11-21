@@ -237,6 +237,12 @@ struct PaneMenuItems: View {
                 Button("Show Simulator Log") { LogUI.shared.showSimulatorLog(model, paneID) }
             }
         }
+        if BrowserPage.url(model, paneID) != nil {
+            Button("Open in Default Browser") { BrowserPage.openInDefaultBrowser(model, paneID) }
+                .keyboardShortcut(Keys.openInDefaultBrowser)
+            Button("Copy Address") { BrowserPage.copyAddress(model, paneID) }
+                .keyboardShortcut(Keys.copyPageAddress)
+        }
         if let p = model.panes[paneID], p.kind == .browser, !p.url.hasPrefix("hmk-devtools:"), model.group(ofPane: paneID)?.isRemote != true {
             Button("Show DevTools") { Task { await model.showDevTools(paneID) } }
         }

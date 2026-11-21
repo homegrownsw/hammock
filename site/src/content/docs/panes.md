@@ -34,7 +34,7 @@ hmk browser http://localhost:3000 --split "$HMK_PANE_ID"
 hmk show coverage/index.html     # a file, image, PDF or URL beside this pane; again reloads it
 ```
 
-Pane ▸ Show DevTools (⌥⌘I) opens Chromium's DevTools beside the page. Links a page opens in a new tab go to your default browser unless you set Settings ▸ General ▸ Links that open a new tab (`browser-new-tab = hammock`); links to other apps (`mailto:` and so on) ask first.
+Pane ▸ Show DevTools (⌥⌘I) opens Chromium's DevTools beside the page, and Pane ▸ **Open in Default Browser** and **Copy Address** take the page elsewhere. Links a page opens in a new tab go to your default browser unless you set Settings ▸ General ▸ Links that open a new tab (`browser-new-tab = hammock`); links to other apps (`mailto:` and so on) ask first.
 
 **Agents** open pages with [`browser_open`](/hammock/docs/reference/mcp/#browser_open), read them with [`browser_snapshot`](/hammock/docs/reference/mcp/#browser_snapshot), act on them, and use [`show_output`](/hammock/docs/reference/mcp/#show_output) to show you a report.
 

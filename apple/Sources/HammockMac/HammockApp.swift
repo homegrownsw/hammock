@@ -421,6 +421,12 @@ struct HammockApp: App {
                 Button("Show DevTools") { if let id = focused { Task { await model.showDevTools(id) } } }
                     .keyboardShortcut(Keys.devTools)
                     .disabled(!focusedIsBrowser || focused.flatMap { model.panes[$0] }?.url.hasPrefix("hmk-devtools:") == true)
+                Button("Open in Default Browser") { BrowserPage.openInDefaultBrowser(model, focused) }
+                    .keyboardShortcut(Keys.openInDefaultBrowser)
+                    .disabled(BrowserPage.url(model, focused) == nil)
+                Button("Copy Address") { BrowserPage.copyAddress(model, focused) }
+                    .keyboardShortcut(Keys.copyPageAddress)
+                    .disabled(BrowserPage.url(model, focused) == nil)
                 if HammockTool.log.on {
                     Button("Split Right with Log…") { if let id = focused { LogUI.shared.split(model, id, .horizontal) } }
                         .keyboardShortcut(Keys.splitLogRight)
