@@ -93,11 +93,14 @@ final class EditorUI {
                                            replacePane: replacePane, large: large)
             } catch where isLargeFileError(error) {
                 let msg = String(error.localizedDescription.dropFirst("large file: ".count))
-                if Self.ask(msg, info: "Large files can make the editor slow.", button: "Open") {
+                if await PaneNotices.shared.ask(replacePane ?? splitPane, msg, info: "Large files can make the editor slow.", button: "Open") {
                     openNow(model, path, groupID: groupID, splitPane: splitPane, direction: direction, replacePane: replacePane, large: true)
                 }
             } catch {
-                Self.show("Couldn't open \((path as NSString).lastPathComponent)", error)
+                let retry = PaneNotices.Action(title: "Retry") {
+                    self.openNow(model, path, groupID: groupID, splitPane: splitPane, direction: direction, replacePane: replacePane, large: large)
+                }
+                Self.failed(model, in: replacePane ?? splitPane, "Couldn't open \((path as NSString).lastPathComponent)", error, actions: [retry])
             }
         }
     }
@@ -120,24 +123,28 @@ final class EditorUI {
             chooseSaveAs(model, paneID)
             return
         }
-        Task { await save(s, as: "", name: pane.editor.name) }
+        Task { await save(model, paneID, s, as: "", name: pane.editor.name) }
     }
 
-    func save(_ s: EditorSession, as path: String, name: String, force: Bool = false) async {
+    func save(_ model: AppModel, _ paneID: String, _ s: EditorSession, as path: String, name: String, force: Bool = false) async {
         do {
             try await s.save(as: path, force: force)
+            PaneNotices.shared.dismiss(paneID) // an earlier failure's, done with
         } catch {
             let m = error.localizedDescription
             if !force, m.contains("already exists") || m.contains("changed on disk") {
                 let changed = m.contains("changed on disk")
-                if Self.ask(changed ? "\(name) changed on disk since you opened it" : m,
-                            info: changed ? "Saving replaces what's there now with your version." : "Replacing it overwrites what's there.",
-                            button: changed ? "Save Anyway" : "Replace") {
-                    await save(s, as: path, name: name, force: true)
+                if await PaneNotices.shared.ask(paneID, changed ? "\(name) changed on disk since you opened it" : m,
+                                                info: changed ? "Saving replaces what's there now with your version." : "Replacing it overwrites what's there.",
+                                                button: changed ? "Save Anyway" : "Replace") {
+                    await save(model, paneID, s, as: path, name: name, force: true)
                 }
                 return
             }
-            Self.show("Couldn't save \(name)", error)
+            PaneNotices.shared.error(paneID, "Couldn't save \(name)", error, actions: [
+                .init(title: "Retry") { Task { await self.save(model, paneID, s, as: path, name: name, force: force) } },
+                .init(title: "Save As…") { self.chooseSaveAs(model, paneID) },
+            ])
         }
     }
 
@@ -157,16 +164,23 @@ final class EditorUI {
         let done: (NSApplication.ModalResponse) -> Void = { r in
             guard r == .OK, let url = panel.url else { return }
             // The panel asked about replacing already.
-            Task { await self.save(s, as: url.path, name: url.lastPathComponent, force: true) }
+            Task { await self.save(model, paneID, s, as: url.path, name: url.lastPathComponent, force: true) }
         }
-        if let w = WorkspaceWindow.current { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
+        if let w = PaneNotices.shared.window(for: paneID) { panel.beginSheetModal(for: w, completionHandler: done) } else { done(panel.runModal()) }
     }
 
-    func reload(_ model: AppModel, _ paneID: String) {
+    func reload(_ model: AppModel, _ paneID: String, asked: Bool = false) {
         guard let pane = model.panes[paneID], let s = model.editorSession(paneID) else { return }
-        if pane.editor.dirty, !Self.ask("Discard your changes to \(pane.editor.name)?", info: "The file's saved version replaces them.", button: "Reload") { return }
+        let name = pane.editor.name
         Task {
-            do { try await s.reload() } catch { Self.show("Couldn't reload \(pane.editor.name)", error) }
+            if pane.editor.dirty, !asked,
+               await !PaneNotices.shared.ask(paneID, "Discard your changes to \(name)?", info: "The file's saved version replaces them.", button: "Reload") { return }
+            do {
+                try await s.reload()
+                PaneNotices.shared.dismiss(paneID)
+            } catch {
+                PaneNotices.shared.error(paneID, "Couldn't reload \(name)", error, actions: [.init(title: "Retry") { self.reload(model, paneID, asked: true) }])
+            }
         }
     }
 
@@ -186,15 +200,18 @@ final class EditorUI {
         a.addButton(withTitle: "Cancel")
         a.window.initialFirstResponder = field
         // The name without its extension selected, as the Finder does.
-        DispatchQueue.main.async {
+        let selectStem = {
             let stem = (pane.editor.name as NSString).deletingPathExtension
+            a.window.makeFirstResponder(field)
             field.currentEditor()?.selectedRange = NSRange(location: 0, length: (stem.isEmpty ? pane.editor.name : stem).utf16.count)
         }
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != pane.editor.name else { return }
         Task {
-            do { try await s.rename(to: (name as NSString).expandingTildeInPath) } catch { Self.show("Couldn't rename \(pane.editor.name)", error) }
+            guard await PaneNotices.shared.present(a, in: PaneNotices.shared.window(for: paneID), shown: selectStem) == .alertFirstButtonReturn else { return }
+            let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, name != pane.editor.name else { return }
+            do { try await s.rename(to: (name as NSString).expandingTildeInPath) } catch {
+                PaneNotices.shared.error(paneID, "Couldn't rename \(pane.editor.name)", error, actions: [.init(title: "Rename…") { self.rename(model, paneID) }])
+            }
         }
     }
 
@@ -253,7 +270,9 @@ final class EditorUI {
             do {
                 try await model.openEditor(path, groupID: nil, splitPane: paneID, view: view)
             } catch {
-                Self.show("Couldn't open \((path as NSString).lastPathComponent)", error)
+                PaneNotices.shared.error(paneID, "Couldn't open \((path as NSString).lastPathComponent)", error, actions: [
+                    .init(title: "Retry") { self.openLink(model, from: paneID, path) },
+                ])
             }
         }
     }
@@ -262,26 +281,22 @@ final class EditorUI {
         guard let s = model.editorSession(paneID) else { return }
         if s.showingDiff { s.hideDiff(); return }
         Task {
-            do { try await s.showDiff() } catch { Self.show("Couldn't compare it with the file", error) }
+            do { try await s.showDiff() } catch {
+                PaneNotices.shared.error(paneID, "Couldn't compare it with the file", error, actions: [.init(title: "Retry") { self.showDiff(model, paneID) }])
+            }
         }
     }
 
-    // MARK: Alerts
+    // MARK: Errors
 
-    static func ask(_ message: String, info: String, button: String) -> Bool {
-        let a = NSAlert()
-        a.messageText = message
-        a.informativeText = info
-        a.addButton(withTitle: button)
-        a.addButton(withTitle: "Cancel")
-        return a.runModal() == .alertFirstButtonReturn
-    }
-
-    static func show(_ message: String, _ error: Error) {
-        let a = NSAlert()
-        a.messageText = message
-        a.informativeText = error.localizedDescription
-        a.runModal()
+    /// An error opening a file: a banner on the pane it was opened from (or
+    /// in) when that's an editor or a diff, else a note in the window.
+    static func failed(_ model: AppModel, in paneID: String?, _ message: String, _ error: Error, actions: [PaneNotices.Action]) {
+        if let id = paneID, let p = model.panes[id], p.isEditor || p.isDiff {
+            PaneNotices.shared.error(id, message, error, actions: actions)
+        } else {
+            model.showToast("\(message): \(PaneNotices.why(error))")
+        }
     }
 }
 
@@ -310,24 +325,20 @@ struct EditorPaneView: View {
             header
                 .contextMenu { PaneMenuItems(model: model, paneID: paneID) }
                 .paneSwapHandle(paneID, model: model)
+            PaneErrorBanner(paneID: paneID)
             if let session {
                 banner(session)
                 EditorWebViewRep(model: model, session: session, paneID: paneID, isFocused: isFocused,
                                  config: config, info: info, readOnly: !canEdit)
                     .overlay(alignment: .bottom) {
-                        if !session.error.isEmpty {
-                            Text(session.error)
-                                .font(.callout)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(.regularMaterial, in: Capsule())
-                                .padding(10)
-                                .onTapGesture { session.error = "" }
-                        }
+                        PanePopup(text: Bindable(session).error)
                     }
             } else {
                 Color.clear
             }
         }
+        .animation(.easeOut(duration: 0.2), value: PaneNotices.shared.banners[paneID]?.id)
+        .background(PaneWindowReader(paneID: paneID))
         .onAppear { if lease == nil { lease = model.leaseEditor(paneID) } }
     }
 
@@ -858,7 +869,7 @@ struct EditorSaveAsSheet: View {
         guard let s = model.editorSession(paneID) else { return }
         let p = path, name = (path as NSString).lastPathComponent
         dismiss()
-        Task { await EditorUI.shared.save(s, as: p, name: name) }
+        Task { await EditorUI.shared.save(model, paneID, s, as: p, name: name) }
     }
 }
 

@@ -18,10 +18,8 @@ enum DiffUI {
             do {
                 try await model.openDiff(repo: repoFolder(model) ?? "", groupID: group.id, afterTab: tab?.id, source: source)
             } catch {
-                let a = NSAlert()
-                a.messageText = "Couldn't show the changes"
-                a.informativeText = error.localizedDescription
-                a.runModal()
+                // No diff pane to show it in yet: a note in the window.
+                model.showToast("Couldn't show the changes: \(PaneNotices.why(error))")
             }
         }
     }
@@ -87,22 +85,18 @@ struct DiffPaneView: View {
             header
                 .contextMenu { PaneMenuItems(model: model, paneID: paneID) }
                 .paneSwapHandle(paneID, model: model)
+            PaneErrorBanner(paneID: paneID)
             if let session {
                 DiffWebViewRep(model: model, session: session, paneID: paneID, isFocused: isFocused, config: config, info: info)
                     .overlay(alignment: .bottom) {
-                        if !session.error.isEmpty {
-                            Text(session.error)
-                                .font(.callout)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(.regularMaterial, in: Capsule())
-                                .padding(10)
-                                .onTapGesture { session.error = "" }
-                        }
+                        PanePopup(text: Bindable(session).error)
                     }
             } else {
                 Color.clear
             }
         }
+        .animation(.easeOut(duration: 0.2), value: PaneNotices.shared.banners[paneID]?.id)
+        .background(PaneWindowReader(paneID: paneID))
         .onAppear { if lease == nil { lease = model.leaseDiff(paneID) } }
     }
 

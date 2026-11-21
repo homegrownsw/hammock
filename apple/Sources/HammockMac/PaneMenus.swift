@@ -921,7 +921,8 @@ enum CloseGuard {
                     confirm(model, panes: ids, title: title, button: button, always: always, askUnsent: false, then: then)
                 }
             }
-            if let w = WorkspaceWindow.current { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
+            // On the diff's own window (it may be one of its own).
+            if let w = PaneNotices.shared.window(for: unsent[0].id) { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
             return
         }
         // Files with unsaved edits, in their last pane (others share the buffer).
@@ -937,7 +938,8 @@ enum CloseGuard {
             a.addButton(withTitle: "Cancel")
             a.buttons[0].hasDestructiveAction = true
             let done: (NSApplication.ModalResponse) -> Void = { r in if r == .alertFirstButtonReturn { then() } }
-            if let w = WorkspaceWindow.current { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
+            // On the file's pane's window.
+            if let w = PaneNotices.shared.window(for: unsaved[0].id) { a.beginSheetModal(for: w, completionHandler: done) } else { done(a.runModal()) }
             return
         }
         let busy = panes.filter { $0.hasAgent && !$0.exited && ([.working, .needsInput, .starting].contains($0.agent.shownState) || $0.agent.subagents > 0) }
