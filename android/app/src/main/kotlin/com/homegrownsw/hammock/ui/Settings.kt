@@ -109,7 +109,7 @@ fun SettingsScreen(session: Session, model: AppModel) {
     }
     if (pickingTheme) {
         androidx.activity.compose.BackHandler { pickingTheme = false }
-        ThemePicker(themePref, computerTheme, onBack = { pickingTheme = false }) { themePref = it }
+        ThemePicker(themePref, computerTheme, HammockTheme.wallpaper(ctx), onBack = { pickingTheme = false }) { themePref = it }
         return
     }
 
@@ -118,7 +118,8 @@ fun SettingsScreen(session: Session, model: AppModel) {
         if (!model.isDemo) Push.register(ctx, model, h.id)
     }
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val shownTheme = HammockTheme.resolve(themePref, null).takeIf { themePref.isNotEmpty() } ?: computerTheme
+    val wallpaper = HammockTheme.wallpaper(ctx)
+    val shownTheme = HammockTheme.resolve(themePref, null, wallpaper).takeIf { themePref.isNotEmpty() } ?: computerTheme
 
     DetailScaffold("Settings", onBack = null, large = true) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 24.dp)) {
@@ -292,9 +293,9 @@ fun SettingsScreen(session: Session, model: AppModel) {
     }
 }
 
-/** Settings ▸ Theme: Same as Computer, then every theme, each with its swatch. */
+/** Settings ▸ Theme: Same as Computer, the wallpaper's colours (Android 12 and later), then every theme, each with its swatch. */
 @Composable
-private fun ThemePicker(pref: String, computer: HammockTheme, onBack: () -> Unit, set: (String) -> Unit) {
+private fun ThemePicker(pref: String, computer: HammockTheme, wallpaper: HammockTheme?, onBack: () -> Unit, set: (String) -> Unit) {
     DetailScaffold("Theme", onBack = onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp)) {
             item {
@@ -303,6 +304,12 @@ private fun ThemePicker(pref: String, computer: HammockTheme, onBack: () -> Unit
                 }
                 Footer("Your computer's theme, from Settings ▸ Appearance there.")
                 Spacer(Modifier.size(12.dp))
+                if (wallpaper != null) {
+                    GroupedCard {
+                        ThemeChoice(wallpaper.name, null, wallpaper, pref == HammockTheme.WALLPAPER) { set(HammockTheme.WALLPAPER); onBack() }
+                    }
+                    Spacer(Modifier.size(12.dp))
+                }
             }
             cardItems(HammockTheme.all, key = { it.name }, dividerStart = 72.dp) { t ->
                 ThemeChoice(t.name, null, t, pref == t.name) { set(t.name); onBack() }

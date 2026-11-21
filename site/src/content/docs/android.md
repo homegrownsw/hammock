@@ -49,6 +49,6 @@ or screen lock.
 
 ## Settings
 
-The app's settings are its own: the theme (by default your Mac's), the agent view's text and code, the terminal's and
+The app's settings are its own: the theme (by default your Mac's; **Wallpaper Colours** takes your phone's), the agent view's text and code, the terminal's and
 editors' fonts and spacing, attachments, dictation, usage limits, notifications, and **Require Unlock**, which locks
 Hammock when you come back to it and hides it in Recents.

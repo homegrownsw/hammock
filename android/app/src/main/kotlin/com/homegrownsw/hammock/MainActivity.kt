@@ -34,7 +34,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val themePref = rememberPref(Prefs.THEME, HammockTheme.SAME_AS_COMPUTER)
             val appearance = rememberPref(Prefs.APPEARANCE, "system")
             val ws = model?.workspace?.collectAsStateWithLifecycle()
-            val theme = HammockTheme.resolve(themePref.value, ws?.value?.hostTheme)
+            val theme = HammockTheme.resolve(themePref.value, ws?.value?.hostTheme, HammockTheme.wallpaper(androidx.compose.ui.platform.LocalContext.current))
             HammockMaterialTheme(theme, appearance.value) {
                 AppLock {
                     Root(session, opening) { opening = null }

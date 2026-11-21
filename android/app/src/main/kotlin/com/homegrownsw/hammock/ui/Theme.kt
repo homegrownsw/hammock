@@ -1,5 +1,7 @@
 package com.homegrownsw.hammock.ui
 
+import android.content.Context
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -69,8 +71,13 @@ data class HammockTheme(
         /** Ignoring case and accents ("rose pine" is Rosé Pine), as the Mac matches them. */
         private fun fold(s: String) = java.text.Normalizer.normalize(s.trim(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "").lowercase()
 
-        /** What to show: the one picked in Settings, else the computer's (by its theme's name), else Hammock. */
-        fun resolve(pref: String, host: HostTheme?): HammockTheme {
+        /**
+         * What to show: the one picked in Settings (the [wallpaper]'s, when
+         * that's the one picked), else the computer's (by its theme's name),
+         * else Hammock.
+         */
+        fun resolve(pref: String, host: HostTheme?, wallpaper: HammockTheme? = null): HammockTheme {
+            if (pref == WALLPAPER) wallpaper?.let { return it }
             if (pref.isNotEmpty() && pref != SAME_AS_COMPUTER) named(pref)?.let { return it }
             if (host != null) {
                 named(host.windowTheme)?.let { return it }
@@ -80,6 +87,26 @@ data class HammockTheme(
         }
 
         const val SAME_AS_COMPUTER = ""
+
+        /** The phone's own colours, from its wallpaper (Material You): a choice of this phone's, not the computer's. */
+        const val WALLPAPER = "Wallpaper Colours"
+
+        /**
+         * The wallpaper's colours in the shape of a theme (Android 12 and
+         * later; null before): its accent palette's tones where Hammock's
+         * own themes have theirs.
+         */
+        fun wallpaper(context: Context): HammockTheme? {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+            fun c(id: Int) = context.getColor(id).toLong() and 0xFFFFFF
+            return HammockTheme(
+                WALLPAPER,
+                accent = c(android.R.color.system_accent1_600) to c(android.R.color.system_accent1_200),
+                bubble = c(android.R.color.system_accent1_600) to c(android.R.color.system_accent1_700),
+                sidebar = c(android.R.color.system_accent1_100) to c(android.R.color.system_accent1_900),
+                toolbar = c(android.R.color.system_accent1_50) to c(android.R.color.system_accent1_800),
+            )
+        }
     }
 
     fun accent(dark: Boolean) = Color(0xFF000000 or (if (dark) accent.second else accent.first))
