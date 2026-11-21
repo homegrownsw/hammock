@@ -107,3 +107,63 @@ func TestATabThatArrivesLaterIsNotedOpened(t *testing.T) {
 		t.Errorf("selTab %q, opened %v", a.selTab, a.opened)
 	}
 }
+
+// The palette offers what the Mac's does for Groups, reviews and browser
+// splits, where they fit.
+func TestPaletteGroupAndSplitCommands(t *testing.T) {
+	a, add := paletteApp()
+	mine, shared := &pb.Group{Id: "mine", Name: "Mine", TabIds: []string{"t1", "t2"}}, &pb.Group{Id: "shared", Name: "Theirs", HostUserId: "u2", MyRole: pb.Role_ROLE_DRIVER}
+	a.groups = []*pb.Group{mine, shared}
+	add("t1")
+	add("t2")
+	a.tabs["t1"].GroupId, a.tabs["t2"].GroupId = "mine", "mine"
+	a.selTab, a.focus = "t1", "t1-p"
+	have := func() map[string]bool {
+		ids := map[string]bool{}
+		for _, it := range a.paletteItems() {
+			ids[strings.TrimPrefix(it.id, "action:")] = true
+		}
+		return ids
+	}
+	ids := have()
+	for _, id := range []string{"next-group", "previous-group", "review-uncommitted", "review-branch", "review-last-commit",
+		"split-browser-right", "split-browser-down", "split-browser-left", "split-browser-up", "group-down", "close-group"} {
+		if !ids[id] {
+			t.Errorf("no %s in your own Group, with tabs", id)
+		}
+	}
+	for _, id := range []string{"group-up", "leave-group"} {
+		if ids[id] {
+			t.Errorf("%s offered for the first Group, your own", id)
+		}
+	}
+
+	a.selTab, a.focus, a.selGroup = "", "", "shared"
+	ids = have()
+	for _, id := range []string{"group-up", "leave-group"} {
+		if !ids[id] {
+			t.Errorf("no %s in a Group shared with you", id)
+		}
+	}
+	for _, id := range []string{"group-down", "close-group", "split-browser-right"} {
+		if ids[id] {
+			t.Errorf("%s offered in the last Group, shared with you, no pane focused", id)
+		}
+	}
+}
+
+func TestCycleGroup(t *testing.T) {
+	a, _ := paletteApp()
+	// Empty Groups: showing one needs no daemon.
+	a.groups = []*pb.Group{{Id: "a"}, {Id: "b"}, {Id: "c"}}
+	a.selGroup = "a"
+	for _, step := range []struct {
+		d    int
+		want string
+	}{{1, "b"}, {1, "c"}, {1, "a"}, {-1, "c"}, {-1, "b"}} {
+		a.cycleGroup(step.d)
+		if a.selGroup != step.want {
+			t.Fatalf("cycleGroup(%d): %q, want %q", step.d, a.selGroup, step.want)
+		}
+	}
+}

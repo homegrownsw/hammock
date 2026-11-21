@@ -24,7 +24,7 @@ func menuTool(label string) string {
 		return "log"
 	case strings.Contains(label, "with Editor"), label == "New Editor Tab", label == "Quick Open…":
 		return "editor"
-	case label == "Review Changes":
+	case strings.HasPrefix(label, "Review "):
 		return "diff"
 	case label == "Schedule This…", label == "New Scheduled Task…":
 		return "schedules"
@@ -34,6 +34,9 @@ func menuTool(label string) string {
 
 // paletteTool is the tool a palette action opens, by its id.
 func paletteTool(id string) string {
+	if strings.HasPrefix(id, "split-browser-") {
+		return "browser"
+	}
 	switch id {
 	case "new-browser":
 		return "browser"
@@ -41,7 +44,7 @@ func paletteTool(id string) string {
 		return "log"
 	case "quick-open", "new-editor", "split-right-editor", "split-down-editor":
 		return "editor"
-	case "review-changes":
+	case "review-changes", "review-uncommitted", "review-branch", "review-last-commit":
 		return "diff"
 	case "schedules", "new-schedule", "schedule-tab":
 		return "schedules"

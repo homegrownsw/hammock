@@ -903,8 +903,19 @@ func (a *App) openEditor(group, path string, large bool) {
 }
 
 // reviewChanges opens a diff of the focused pane's repository (the apps
-// show it; here it's a placeholder) in a new tab just after this one.
-func (a *App) reviewChanges() {
+// show it; here it's a placeholder) in a new tab just after this one: the
+// branch against its base, else what's uncommitted.
+func (a *App) reviewChanges() { a.review(nil) }
+
+// The other things to review, as the Mac's palette offers them (DiffUI).
+var (
+	reviewUncommitted = &pb.DiffSource{Kind: pb.DiffSource_KIND_UNCOMMITTED}
+	reviewBranch      = &pb.DiffSource{Kind: pb.DiffSource_KIND_BRANCH, WithUncommitted: true}
+	reviewLastCommit  = &pb.DiffSource{Kind: pb.DiffSource_KIND_COMMIT, Rev: "HEAD"}
+)
+
+// review is reviewChanges, of src (nil: the daemon's choice).
+func (a *App) review(src *pb.DiffSource) {
 	group := a.currentGroup()
 	if group == "" {
 		a.flash("Open a Group first")
@@ -917,7 +928,7 @@ func (a *App) reviewChanges() {
 			repo = filepath.Dir(ed.GetPath())
 		}
 	}
-	spec := &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo}}
+	spec := &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo, Source: src}}
 	a.callErr(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: group, Pane: spec, AfterTabId: a.selTab}}}, func(r *pb.ServerMessage, err error) {
 		if err != nil {
 			a.flash("⚠ " + err.Error())

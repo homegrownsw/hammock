@@ -736,6 +736,33 @@ func (a *App) closeGroupNow(id string) {
 	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_CloseGroup{CloseGroup: &pb.CloseGroup{GroupId: id}}}, nil)
 }
 
+// moveGroup puts a Group at index among them (the sidebar's order).
+func (a *App) moveGroup(id string, index int) {
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_MoveGroup{MoveGroup: &pb.MoveGroup{GroupId: id, Index: int32(index)}}}, nil)
+}
+
+// leaveGroup leaves a Group someone else shares with you.
+func (a *App) leaveGroup(id string) {
+	name := "the Group"
+	if g := a.group(id); g != nil {
+		name = "“" + truncate(a.groupTitle(g), 40) + "”"
+	}
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_LeaveShared{LeaveShared: &pb.LeaveShared{GroupId: id}}}, func(*pb.ServerMessage) { a.flash("Left " + name) })
+}
+
+// ownGroup: a Group you can close (yours, or on a linked computer that's
+// there); otherwise it's shared with you, and you can only leave it.
+func (a *App) ownGroup(g *pb.Group) bool {
+	if c := a.computerOf(g); c != nil {
+		return !g.Offline
+	}
+	return g.HostUserId == ""
+}
+
+// sharedWithMe: someone else's Group, shared with you (not your own
+// linked computer's).
+func (a *App) sharedWithMe(g *pb.Group) bool { return g.HostUserId != "" && a.computerOf(g) == nil }
+
 func (a *App) renameTab(id, name string) {
 	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_RenameTab{RenameTab: &pb.RenameTab{TabId: id, Name: name}}}, nil)
 }
@@ -882,6 +909,25 @@ func (a *App) cycleTab(d int) {
 		return
 	}
 	a.selectTab(all[(i+d+len(all))%len(all)])
+}
+
+// cycleGroup shows the next Group the sidebar shows (d 1) or the one before
+// (-1), wrapping (Next and Previous Group).
+func (a *App) cycleGroup(d int) {
+	all := a.shownGroups()
+	if len(all) == 0 {
+		return
+	}
+	i := slices.IndexFunc(all, func(g *pb.Group) bool { return g.Id == a.currentGroup() })
+	switch {
+	case i >= 0:
+		i = (i + d + len(all)) % len(all)
+	case d > 0:
+		i = 0
+	default:
+		i = len(all) - 1
+	}
+	a.selectGroup(all[i].Id)
 }
 
 func (a *App) cyclePane(d int) {

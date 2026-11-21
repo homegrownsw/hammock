@@ -381,14 +381,22 @@ func (a *App) groupMenu(id string, x, y int) {
 	if a.canReveal(sp) {
 		items = append(items, menuItem{label: "Reveal in Finder", run: func() { a.revealInFinder(a.groupFolder(sp)) }})
 	}
-	a.openMenu(x, y, append(items, []menuItem{
+	i := slices.Index(a.groups, sp)
+	items = append(items, []menuItem{
 		{label: collapse, run: func() { a.toggleGroup(id) }},
+		{label: "Move Up", disabled: i <= 0, run: func() { a.moveGroup(id, i-1) }},
+		{label: "Move Down", disabled: i < 0 || i >= len(a.groups)-1, run: func() { a.moveGroup(id, i+1) }},
 		{sep: true},
 		{label: "New Group", hint: "⌃B S", run: a.newGroup},
 		{label: "New Group in Directory…", run: a.openNewGroupInFolder},
-		{sep: true},
-		{label: "Close Group", danger: true, run: func() { a.closeGroup(id) }},
-	}...))
+	}...)
+	switch {
+	case a.sharedWithMe(sp):
+		items = append(items, menuItem{sep: true}, menuItem{label: "Leave Group", danger: true, run: func() { a.leaveGroup(id) }})
+	case a.ownGroup(sp):
+		items = append(items, menuItem{sep: true}, menuItem{label: "Close Group", danger: true, run: func() { a.closeGroup(id) }})
+	}
+	a.openMenu(x, y, items)
 }
 
 func (a *App) paneMenu(id string, x, y int) {
@@ -583,8 +591,15 @@ func (a *App) paletteItems() []paletteItem {
 	act("quick-open", "Quick Open…", "⌃B e", "open file find edit editor text code", a.openQuickOpen)
 	act("new-editor", "New Editor Tab", "⌃B E", "edit editor text file untitled create code", func() { a.openEditor("", "", false) })
 	act("review-changes", "Review Changes", "", "diff git review pull request branch commit uncommitted", a.reviewChanges)
+	act("review-uncommitted", "Review Uncommitted Changes", "", "diff git review working tree staged", func() { a.review(reviewUncommitted) })
+	act("review-branch", "Review This Branch", "", "diff git review pull request base main", func() { a.review(reviewBranch) })
+	act("review-last-commit", "Review the Last Commit", "", "diff git review head commit", func() { a.review(reviewLastCommit) })
 	act("new-group", "New Group", "⌃B S", "create", a.newGroup)
 	act("new-group-in-directory", "New Group in Directory…", "", "create folder project open path", a.openNewGroupInFolder)
+	if len(a.shownGroups()) > 1 {
+		act("next-group", "Next Group", "", "switch cycle go", func() { a.cycleGroup(1) })
+		act("previous-group", "Previous Group", "", "switch cycle go back", func() { a.cycleGroup(-1) })
+	}
 	a.computerItems(act)
 	act("reopen-closed", "Reopen Closed Tab or Pane", "⌃B T", "undo close restore", a.reopenClosed)
 	if len(a.needsYouPanes()) > 0 {
@@ -619,6 +634,20 @@ func (a *App) paletteItems() []paletteItem {
 		act("split-up", "Split Up", "", "pane above", func() { a.splitAt(f, pb.Split_DIRECTION_VERTICAL, "", true) })
 		act("split-right-editor", "Split Right with Editor", "", "pane edit editor text file untitled", func() { a.splitEditor(f, pb.Split_DIRECTION_HORIZONTAL) })
 		act("split-down-editor", "Split Down with Editor", "", "pane edit editor text file untitled below", func() { a.splitEditor(f, pb.Split_DIRECTION_VERTICAL) })
+		for _, s := range []struct {
+			word   string
+			dir    pb.Split_Direction
+			before bool
+		}{{"Right", pb.Split_DIRECTION_HORIZONTAL, false}, {"Down", pb.Split_DIRECTION_VERTICAL, false},
+			{"Left", pb.Split_DIRECTION_HORIZONTAL, true}, {"Up", pb.Split_DIRECTION_VERTICAL, true}} {
+			act("split-browser-"+strings.ToLower(s.word), "Split "+s.word+" with Browser…", "", "pane web url page", func() {
+				a.openPrompt("Split "+s.word+" with Browser", "Address", "", func(v string) {
+					if v != "" {
+						a.splitAt(f, s.dir, v, s.before)
+					}
+				})
+			})
+		}
 		if p := a.panes[f]; p.GetAsleep() {
 			act("wake-agent", "Wake Agent", "", "sleep sleeping asleep resume agent claude", func() { a.sleepPane(f, true) })
 		} else if canSleep(p) {
@@ -683,7 +712,21 @@ func (a *App) paletteItems() []paletteItem {
 		}
 		if len(sp.TabIds) == 0 {
 			act("start-agent-here", "Start an Agent…", "", "claude codex new agent tab", func() { a.openStartAgent(sp.Id) })
-			act("close-group", "Close Group", "", "delete remove", func() { a.closeGroup(sp.Id) })
+		}
+		name := truncate(a.groupTitle(sp), 40)
+		if i := slices.Index(a.groups, sp); i >= 0 {
+			if i > 0 {
+				act("group-up", "Move “"+name+"” Up", "", "group order reorder sidebar", func() { a.moveGroup(sp.Id, i-1) })
+			}
+			if i < len(a.groups)-1 {
+				act("group-down", "Move “"+name+"” Down", "", "group order reorder sidebar", func() { a.moveGroup(sp.Id, i+1) })
+			}
+		}
+		// Its tabs too, asking first (closeGroup).
+		if a.ownGroup(sp) {
+			act("close-group", "Close Group", "", "delete remove "+name, func() { a.closeGroup(sp.Id) })
+		} else if a.sharedWithMe(sp) {
+			act("leave-group", "Leave “"+name+"”", "", "shared group exit", func() { a.leaveGroup(sp.Id) })
 		}
 	}
 	act("pair-device", "Pair a Device…", "", "iphone android phone ios remote qr pairing code", a.showPairing)
