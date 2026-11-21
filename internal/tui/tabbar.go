@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"math"
 	"slices"
 )
 
 // drawTabBar draws Horizontal Tabs' bar under the toolbar: the selected
-// Group's tabs, equal widths, the selected one in the panes' colour, a ×
-// on the hovered one and a + at the end.
+// Group's tabs, equal widths, the selected one in the panes' colour (a
+// highlight that slides there from the last), a × on the hovered one and a
+// + at the end.
 func (a *App) drawTabBar() {
 	if !a.horizontal() {
 		return
@@ -37,6 +39,7 @@ func (a *App) drawTabBar() {
 		ids = ids[first : first+fit]
 	}
 	x := m.x
+	selX := -1
 	for i, id := range ids {
 		tab := a.tabs[id]
 		if tab == nil {
@@ -47,7 +50,7 @@ func (a *App) drawTabBar() {
 		bg := barBG
 		switch {
 		case selected:
-			bg = th.bg
+			bg, selX = th.bg, x
 		case hover:
 			bg = mix(barBG, th.hover, a.hoverAmount("bar:"+id, true))
 		}
@@ -74,6 +77,7 @@ func (a *App) drawTabBar() {
 		}
 		x += w
 	}
+	a.slideBarHighlight(sp.Id, selX, w, y)
 	pbg := mix(barBG, th.hover, a.hoverAmount("btn:bar-new", a.hovered(zButton, "new-tab-bar")))
 	px := m.x + m.w - plus
 	s.Fill(px, y, plus, 1, Cell{BG: pbg, HasBG: true})
@@ -114,5 +118,36 @@ func (a *App) stepTabInGroup(d int) {
 	}
 	if j := max(0, min(i+d, len(sp.TabIds)-1)); j != i {
 		a.selectTab(sp.TabIds[j])
+	}
+}
+
+// slideBarHighlight makes the selected tab's colour (drawn at selX, w
+// wide) glide there from the tab selected before, a cell at a time, part
+// cells blended. Per Group: switching Group puts it straight on that
+// Group's tab.
+func (a *App) slideBarHighlight(group string, selX, w, y int) {
+	if selX < 0 {
+		return
+	}
+	sp := a.anim.get("barpill:"+group, snappy)
+	sp.to(float64(selX))
+	from := sp.pos
+	if math.Abs(from-float64(selX)) < 0.05 {
+		return // there: drawn in place
+	}
+	th, s := a.th, a.scr
+	barBG := mix(th.sidebar, th.fg, 0.04)
+	m := a.mainRect()
+	// Back to the bar's colour where it isn't now (the selected tab, in
+	// the highlight's way), then the highlight where it is.
+	for x := selX; x < selX+w; x++ {
+		s.Paint(x, y, 1, 1, barBG)
+	}
+	for x := int(math.Floor(from)); x < int(math.Ceil(from+float64(w))); x++ {
+		if x < m.x || x >= m.x+m.w-3 {
+			continue // not over the + or past the bar
+		}
+		cover := math.Min(float64(x+1), from+float64(w)) - math.Max(float64(x), from)
+		s.Paint(x, y, 1, 1, mix(s.Get(x, y).BG, th.bg, clamp01(cover)))
 	}
 }

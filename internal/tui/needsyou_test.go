@@ -120,3 +120,24 @@ func TestNeedsYouMoreRow(t *testing.T) {
 		t.Fatalf("sidebar:\n%s", out)
 	}
 }
+
+// A row new to Needs You pulses once; ones there at startup (a full
+// state) don't, nor one sent again.
+func TestNeedsYouNewRowsPulse(t *testing.T) {
+	a, _ := paletteApp()
+	a.apply(&pb.StateUpdate{Full: true, Attention: []*pb.AttentionItem{{Id: "old"}}})
+	if a.pulseAmount("needs:old") != 0 {
+		t.Error("a row there at startup pulsed")
+	}
+	a.apply(&pb.StateUpdate{Attention: []*pb.AttentionItem{{Id: "new"}}, Grants: []*pb.GrantRequest{{Id: "g"}}})
+	if a.pulseAmount("needs:new") != 1 || a.pulseAmount("grant:g") != 1 {
+		t.Error("a new row didn't pulse")
+	}
+	for range 120 {
+		a.anim.step()
+	}
+	a.apply(&pb.StateUpdate{Attention: []*pb.AttentionItem{{Id: "new", Summary: "changed"}}})
+	if v := a.pulseAmount("needs:new"); v > 0.01 {
+		t.Errorf("a row sent again pulsed again (%v)", v)
+	}
+}

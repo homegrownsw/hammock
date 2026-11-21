@@ -24,6 +24,7 @@ var (
 	snappy = harmonica.NewSpring(harmonica.FPS(fps), 30, 0.9) // selection, highlights
 	gentle = harmonica.NewSpring(harmonica.FPS(fps), 36, 1)   // things that open and close
 	quick  = harmonica.NewSpring(harmonica.FPS(fps), 70, 1)   // hover fades
+	fade   = harmonica.NewSpring(harmonica.FPS(fps), 5, 1)    // a pulse dying away: slow enough to catch the eye
 )
 
 func newSpring(s harmonica.Spring) *spring { return &spring{s: s} }
@@ -100,3 +101,19 @@ func (ss *springs) step() bool {
 
 // spinner frames for a working agent.
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// pulse flashes a row (a Needs You row, new) once: it lights up and fades
+// back, read with pulseAmount as it's drawn.
+func (a *App) pulse(key string) {
+	s := a.anim.get("pulse:"+key, fade)
+	s.from(1)
+	s.to(0)
+	a.dirty = true
+}
+
+// pulseAmount is how lit key's pulse is now, 0 to 1 (0 with none).
+func (a *App) pulseAmount(key string) float64 {
+	s := a.anim.get("pulse:"+key, fade)
+	s.to(0)
+	return clamp01(s.pos)
+}

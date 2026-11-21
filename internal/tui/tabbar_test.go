@@ -57,3 +57,34 @@ func TestTabBarWheelSwitchesTabs(t *testing.T) {
 		}
 	}
 }
+
+// The selected tab's colour slides along the bar from the tab before:
+// part way there, a frame after switching, it's between the two.
+func TestTabBarHighlightSlides(t *testing.T) {
+	a, tab := paletteApp()
+	a.w, a.h, a.scr = 50, 5, NewScreen(50, 5) // narrow: no sidebar
+	a.th = newTheme(RGB{0, 0, 0}, RGB{255, 255, 255})
+	a.prefs.Layout = "horizontal"
+	for _, id := range []string{"t1", "t2"} {
+		tab(id)
+		a.tabs[id].GroupId = "g"
+	}
+	a.groups = []*pb.Group{{Id: "g", TabIds: []string{"t1", "t2"}}}
+	a.selTab = "t1"
+	a.drawTabBar() // in place at t1, the bar's first 23 cells
+	a.selTab = "t2"
+	a.drawTabBar() // aiming for t2, still at t1
+	if bg := a.scr.Get(2, 1).BG; bg != a.th.bg {
+		t.Fatalf("the highlight left t1 at once: %v", bg)
+	}
+	a.anim.step()
+	a.anim.step()
+	a.drawTabBar()
+	pos := a.anim.get("barpill:g", snappy).pos
+	if pos <= 0 || pos >= 23 {
+		t.Fatalf("highlight at %v two frames on, want between 0 and 23", pos)
+	}
+	if bg := a.scr.Get(44, 1).BG; bg == a.th.bg {
+		t.Error("t2's far end lit before the highlight got there")
+	}
+}

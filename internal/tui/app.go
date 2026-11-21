@@ -281,12 +281,18 @@ func (a *App) apply(u *pb.StateUpdate) {
 		delete(a.panes, id)
 	}
 	for _, at := range u.Attention {
+		if !u.Full && !slices.ContainsFunc(a.attention, func(x *pb.AttentionItem) bool { return x.Id == at.Id }) {
+			a.pulse("needs:" + at.Id) // new to Needs You
+		}
 		a.attention = slices.DeleteFunc(a.attention, func(x *pb.AttentionItem) bool { return x.Id == at.Id })
 		a.attention = append([]*pb.AttentionItem{at}, a.attention...)
 	}
 	a.attention = slices.DeleteFunc(a.attention, func(x *pb.AttentionItem) bool { return slices.Contains(u.ClearedAttentionIds, x.Id) })
 	for _, g := range u.Grants {
 		if !slices.ContainsFunc(a.grants, func(x *pb.GrantRequest) bool { return x.Id == g.Id }) {
+			if !u.Full {
+				a.pulse("grant:" + g.Id)
+			}
 			a.grants = append([]*pb.GrantRequest{g}, a.grants...)
 		}
 	}

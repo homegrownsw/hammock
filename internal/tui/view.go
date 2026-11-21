@@ -715,6 +715,7 @@ func (a *App) drawSidebar() {
 		y++
 		for _, g := range a.grants[:gn] {
 			bg := mix(th.sidebar, th.hover, a.hoverAmount("grant:"+g.Id, a.hovered(zGrant, g.Id)))
+			bg = mix(bg, th.orange, 0.35*a.pulseAmount("grant:"+g.Id))
 			s.Paint(1, y, sw-2, 1, bg)
 			s.Text(2, y, sw-3, truncate("? "+grantText(g), sw-3), Cell{FG: th.orange, HasFG: true, BG: bg, HasBG: true})
 			a.addZone(zone{r: rect{1, y, sw - 2, 1}, kind: zGrant, id: g.Id})
@@ -728,6 +729,7 @@ func (a *App) drawSidebar() {
 				}
 			}
 			bg := mix(th.sidebar, th.hover, a.hoverAmount("needs:"+at.Id, a.hovered(zNeeds, at.Id)))
+			bg = mix(bg, th.orange, 0.35*a.pulseAmount("needs:"+at.Id))
 			s.Paint(1, y, sw-2, 1, bg)
 			sym := "!"
 			if at.State == pb.AgentState_AGENT_STATE_IDLE {
