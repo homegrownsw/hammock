@@ -53,6 +53,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,6 +94,7 @@ import hammock.v1.Hammock.AgentState
 import hammock.v1.Hammock.Pane
 import hammock.v1.Hammock.Tab
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 
 /** A tab with an agent, as its most pressing agent pane. */
 data class SessionRow(val tab: Tab, val pane: Pane)
@@ -277,6 +280,14 @@ fun Swipeable(enabled: Boolean, onClose: () -> Unit, content: @Composable () -> 
         if (it == SwipeToDismissBoxValue.EndToStart) onClose()
         false // the row goes when the computer says it's closed, or stays when it asks first
     })
+    // A tap as the swipe passes the point where letting go closes (not on
+    // the way back: it springs back after every close, asked first or not).
+    val view = LocalView.current
+    LaunchedEffect(state) {
+        snapshotFlow { state.targetValue == SwipeToDismissBoxValue.EndToStart }
+            .drop(1)
+            .collect { if (it) view.hapticThreshold() }
+    }
     SwipeToDismissBox(
         state = state,
         enableDismissFromStartToEnd = false,
@@ -359,6 +370,7 @@ fun Card(padded: Boolean = true, modifier: Modifier = Modifier, content: @Compos
 /** An agent waiting on you, with Allow / Deny right there for a permission prompt. */
 @Composable
 fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, open: () -> Unit) {
+    val view = LocalView.current
     val pane = w.panes[item.paneId]
     val schedule = pane?.scheduleId?.let { w.schedules[it] }
     Box(Modifier.clickable(onClick = open).closeAction(LocalSwipeClose.current).padding(16.dp)) {
@@ -384,13 +396,13 @@ fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, op
                         Row { Spacer(Modifier.weight(1f)); Button(onClick = open) { Text("Answer") } }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
+                            FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticReject(); model.decide(item, Hammock.AgentAnswer.Decision.DECISION_DENY) }) { Text("Deny") }
                             if (item.allowsFromCard) FilledTonalButton(colors = tintedButtonColors(), onClick = open) { Text("Open") }
                             Spacer(Modifier.weight(1f))
                             // More than the card shows: see all of it in the pane first.
                             if (!item.allowsFromCard) Button(onClick = open) { Text("Review") }
                             else if (schedule != null && schedule.kind == "claude") AllowMenu(model, item)
-                            else Button(enabled = !linkDown(), onClick = { model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
+                            else Button(enabled = !linkDown(), onClick = { view.hapticConfirm(); model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) }) { Text("Allow") }
                         }
                     }
                 }
@@ -415,6 +427,7 @@ private fun PromptPreviewBlock(preview: PromptPreview) {
 
 @Composable
 private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
+    val view = LocalView.current
     var open by remember { mutableStateOf(false) }
     Box {
         Button(enabled = !linkDown(), onClick = { open = true }) {
@@ -422,9 +435,9 @@ private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
             Icon(Icons.Default.KeyboardArrowDown, "Allow options", Modifier.padding(start = 2.dp).size(18.dp))
         }
         DropdownMenu(open, { open = false }) {
-            DropdownMenuItem(text = { Text("Allow Once") }, onClick = { open = false; model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) })
+            DropdownMenuItem(text = { Text("Allow Once") }, onClick = { open = false; view.hapticConfirm(); model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) })
             DropdownMenuItem(text = { Text("Always Allow for This Schedule") },
-                onClick = { open = false; model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE) })
+                onClick = { open = false; view.hapticConfirm(); model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE) })
         }
     }
 }
@@ -432,6 +445,7 @@ private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
 /** An agent asking for permission to do something beyond its Group. */
 @Composable
 fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
+    val view = LocalView.current
     Card {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -441,10 +455,10 @@ fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
             grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
             grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
+                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticReject(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
                 Spacer(Modifier.weight(1f))
-                if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
-                Button(enabled = !linkDown(), onClick = { model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
+                if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
+                Button(enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
             }
         }
     }
@@ -453,6 +467,7 @@ fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
 /** Someone asking to join a Group you share. */
 @Composable
 fun JoinCard(model: AppModel, w: Workspace, r: Hammock.JoinRequest) {
+    val view = LocalView.current
     val who = w.people[r.userId]
     val group = w.groups.firstOrNull { it.id == r.groupId }
     Card {
@@ -475,10 +490,10 @@ fun JoinCard(model: AppModel, w: Workspace, r: Hammock.JoinRequest) {
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
+                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticReject(); model.respondJoin(r, Hammock.Role.ROLE_UNSPECIFIED) }) { Text("Decline") }
                 Spacer(Modifier.weight(1f))
-                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
-                Button(enabled = !linkDown(), onClick = { model.respondJoin(r, Hammock.Role.ROLE_DRIVER) }) { Text("Let Drive") }
+                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respondJoin(r, Hammock.Role.ROLE_VIEWER) }) { Text("Let View") }
+                Button(enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respondJoin(r, Hammock.Role.ROLE_DRIVER) }) { Text("Let Drive") }
             }
         }
     }

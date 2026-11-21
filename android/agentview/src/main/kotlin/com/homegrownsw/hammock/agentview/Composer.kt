@@ -177,6 +177,7 @@ private const val MAX_ATTACHMENTS = 8
 internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: AttachmentSize, active: Boolean = true) {
     val c = LocalAgentColors.current
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val scope = rememberCoroutineScope()
     var value by remember(session.paneID) { mutableStateOf(Drafts.load(context, session.paneID).let { TextFieldValue(it, TextRange(it.length)) }) }
     val attachments = remember(session.paneID) { mutableStateListOf<ComposerAttachment>() }
@@ -356,6 +357,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         // A prompt's on screen (the card is taking this box's place): the agent's
         // terminal shows it, so a send mustn't type into it. The text stays.
         if (!canSend || state.prompt.kind != hammock.v1.Hammock.AgentPrompt.Kind.KIND_NONE) return
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         val sentText = text
         sentSince.add(sentText)
         sentHere = ComposerHistory.recorded(sentHere, sentText)
