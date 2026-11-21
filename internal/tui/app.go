@@ -91,6 +91,7 @@ type App struct {
 	overlay    overlay
 	toast      string
 	toastAt    time.Time
+	toastFor   time.Duration          // how long it shows: longer for an error (flash.go)
 	pics       pictures               // Groups' pictures, as Kitty images
 	live       map[string]*liveView   // browser and simulator panes drawn as pictures
 	editors    map[string]*editorView // editor panes on screen (editor.go)
@@ -491,11 +492,16 @@ func shortPath(p string) string {
 // ---------- actions ----------
 
 func (a *App) flash(msg string) {
+	msg, isErr := readableFlash(msg)
 	a.toast, a.toastAt, a.dirty = msg, time.Now(), true
+	a.toastFor = flashFor
+	if isErr {
+		a.toastFor = errorFlashFor
+	}
 	a.anim.get("toast", gentle).from(0)
 }
 
-func (a *App) toastVisible() bool { return a.toast != "" && time.Since(a.toastAt) < 3*time.Second }
+func (a *App) toastVisible() bool { return a.toast != "" && time.Since(a.toastAt) < a.toastFor }
 
 func (a *App) call(m *pb.ClientMessage, then func(*pb.ServerMessage)) {
 	go func() {

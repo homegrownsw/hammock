@@ -1168,7 +1168,7 @@ func (a *App) drawToast() {
 	}
 	sp := a.anim.get("toast", gentle)
 	age := time.Since(a.toastAt)
-	if age > 2400*time.Millisecond {
+	if age > a.toastFor-600*time.Millisecond {
 		sp.to(0)
 	} else {
 		sp.to(1)
