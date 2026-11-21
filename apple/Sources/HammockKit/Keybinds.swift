@@ -229,6 +229,8 @@ public enum Keybinds {
             .init("quick_open", "Quick Open…", "File", c("p"), "find file fuzzy go to open editor"),
             .init("open_file", "Open File…", "File", c("o"), "editor text code browse finder"),
             .init("new_scheduled_task", "New Scheduled Task…", "File", c("n", cos), "create schedule cron timer recurring automation"),
+            // Only while the Scheduled Tasks list shows (a browser's ⌘R reloads it otherwise).
+            .init("run_scheduled_task", "Run Scheduled Task Now", "File", c("r"), "schedule cron run start now selected list"),
             .init("new_group", "New Group", "File", c("n"), "create workspace project"),
             .init("new_group_in_directory", "New Group in Directory…", "File", c("n", cs), "create folder project open path cwd workspace"),
             .init("new_group_on_computer", "New Group on Computer 1…9", "File", c(KeyChord.digits, cco), "create linked computer mac remote"),

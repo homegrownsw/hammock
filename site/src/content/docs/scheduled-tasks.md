@@ -75,7 +75,7 @@ hmk schedule add "Triage" --codex --cron '0 9-17/2 * * 1-5' --sandbox read-only 
 
 ## Managing them
 
-View ▸ Scheduled Tasks (⇧⌘S) lists your tasks, and ⌃B @ in [the TUI](/hammock/docs/tui/). Select one to pause, edit, run, skip or delete it, and to see its recent runs: **Open Tab** goes to a run's tab, or **Resume Session** carries on its agent's session once the tab's closed. Deleting a task leaves its runs' tabs open.
+View ▸ Scheduled Tasks (⇧⌘S) lists your tasks, and ⌃B @ in [the TUI](/hammock/docs/tui/). Select one to pause, edit, run, skip or delete it, and to see its recent runs: **Open Tab** goes to a run's tab, or **Resume Session** carries on its agent's session once the tab's closed. In the list, type to search, ⌘R runs the selected task and ⌫ deletes it. Deleting a task leaves its runs' tabs open.
 
 To run a task now instead of at its next time, choose **Run Now Instead of 09:00** (in the TUI, R): its next run moves on to the one after. **Run Now** runs it as well, and the next run still happens. When the next run is within 12 hours, the Mac's run button brings it forward, and its menu has Run Now.
 

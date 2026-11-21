@@ -47,6 +47,7 @@ enum Keys {
     static var quickOpen: KeyboardShortcut? { shortcut("quick_open") }
     static var openFile: KeyboardShortcut? { shortcut("open_file") }
     static var newScheduledTask: KeyboardShortcut? { shortcut("new_scheduled_task") }
+    static var runScheduledTask: KeyboardShortcut? { shortcut("run_scheduled_task") }
     static var newGroup: KeyboardShortcut? { shortcut("new_group") }
     static var newGroupInDirectory: KeyboardShortcut? { shortcut("new_group_in_directory") }
     static var linkComputer: KeyboardShortcut? { shortcut("link_computer") }

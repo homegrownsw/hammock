@@ -178,6 +178,12 @@ struct HammockApp: App {
                 }
                 if HammockTool.schedules.on {
                     Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
+                    // The one selected in the Scheduled Tasks list, while it shows.
+                    if ScheduleUI.shared.showingList {
+                        Button("Run Scheduled Task Now") { ScheduleUI.shared.runSelected(model) }
+                            .keyboardShortcut(Keys.runScheduledTask)
+                            .disabled(ScheduleUI.shared.selectedSchedule(model) == nil)
+                    }
                 }
                 NewGroupMenuItems(model: model)
                 Button("Link a Computer…") { LinkUI.shared.open() }.keyboardShortcut(Keys.linkComputer)

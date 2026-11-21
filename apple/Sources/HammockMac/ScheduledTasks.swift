@@ -30,6 +30,17 @@ final class ScheduleUI {
 
     func edit(_ s: Schedule) { editing = EditRequest(schedule: s) }
 
+    /// The schedule selected in the list, while it shows.
+    func selectedSchedule(_ model: AppModel) -> Schedule? {
+        showingList ? selected.flatMap { model.schedules[$0] } : nil
+    }
+
+    /// Run Scheduled Task Now (⌘R in the list).
+    func runSelected(_ model: AppModel) {
+        guard let s = selectedSchedule(model) else { return }
+        ScheduleActions.runNow(model, s)
+    }
+
     /// A new schedule on this computer: in groupID (else the Group you're
     /// in, if it's this computer's), in its folder.
     func new(_ model: AppModel, groupID: String? = nil, cwd: String? = nil, kind: String = "claude") {
@@ -113,8 +124,17 @@ struct ScheduledTasksSheet: View {
     let model: AppModel
     @Bindable private var ui = ScheduleUI.shared
     @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
 
-    private var list: [Schedule] { model.sortedSchedules }
+    private var all: [Schedule] { model.sortedSchedules }
+    /// Those matching the search: by name, prompt or command, Group, kind or when.
+    private var list: [Schedule] {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return all }
+        return all.filter { s in
+            [s.name, s.prompt, ScheduleText.where(model, s)].contains { $0.localizedStandardContains(q) }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -127,7 +147,7 @@ struct ScheduledTasksSheet: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             Divider()
-            if list.isEmpty {
+            if all.isEmpty {
                 ContentUnavailableView {
                     Label("No Scheduled Tasks", systemImage: "clock")
                 } description: {
@@ -139,13 +159,31 @@ struct ScheduledTasksSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
-                    List(selection: $ui.selected) {
-                        ForEach(list, id: \.id) { s in
-                            ScheduleListRow(model: model, schedule: s).tag(s.id)
-                                .contextMenu { ScheduleMenuItems(model: model, schedule: s) }
+                    VStack(spacing: 0) {
+                        TextField("Search", text: $search, prompt: Text("Search"))
+                            .textFieldStyle(.roundedBorder)
+                            .padding(8)
+                        if list.isEmpty {
+                            Text("No scheduled tasks match “\(search)”.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            List(selection: $ui.selected) {
+                                ForEach(list, id: \.id) { s in
+                                    ScheduleListRow(model: model, schedule: s).tag(s.id)
+                                        .contextMenu { ScheduleMenuItems(model: model, schedule: s) }
+                                }
+                            }
+                            .listStyle(.inset)
+                            // ⌫ (Edit ▸ Delete): the selected one, asking first.
+                            .onDeleteCommand {
+                                if let s = ui.selected.flatMap({ model.schedules[$0] }) { ScheduleActions.confirmDelete(model, s) }
+                            }
                         }
                     }
-                    .listStyle(.inset)
                     .frame(width: 290)
                     Divider()
                     if let s = ui.selected.flatMap({ model.schedules[$0] }) {
@@ -171,9 +209,9 @@ struct ScheduledTasksSheet: View {
         .onChange(of: list.map(\.id)) { keepSelection() }
     }
 
-    /// Something is always selected while there's anything to select.
+    /// Something is always selected while there's anything to select (that the search shows).
     private func keepSelection() {
-        if ui.selected.flatMap({ model.schedules[$0] }) == nil { ui.selected = list.first?.id }
+        if !list.contains(where: { $0.id == ui.selected }) { ui.selected = list.first?.id }
     }
 }
 
@@ -189,8 +227,7 @@ struct ScheduleListRow: View {
                 if let c = model.computer(of: schedule) { ComputerBadge(c, size: 11) }
                 Spacer(minLength: 4)
                 if let r = schedule.runs.first {
-                    Image(systemName: r.status.symbol)
-                        .foregroundStyle(r.status.color)
+                    RunStatusIcon(status: r.status)
                         .font(.caption)
                         .help("Last run: \(r.status.label)")
                 }
@@ -447,6 +484,21 @@ struct ScheduleDetail: View {
 }
 
 /// One run: how it went, when, for how long, its last words, and a way back to it.
+/// A run's status: a spinner while it runs, else its symbol.
+struct RunStatusIcon: View {
+    let status: ScheduleRun.Status
+
+    var body: some View {
+        if status == .running {
+            ProgressView().controlSize(.mini)
+                .accessibilityLabel(status.label)
+        } else {
+            Image(systemName: status.symbol)
+                .foregroundStyle(status.color)
+        }
+    }
+}
+
 struct RunRow: View {
     let model: AppModel
     let schedule: Schedule
@@ -454,8 +506,7 @@ struct RunRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: run.status.symbol)
-                .foregroundStyle(run.status.color)
+            RunStatusIcon(status: run.status)
                 .frame(width: 16)
                 .help(run.status.label)
                 .accessibilityLabel(run.status.label)
