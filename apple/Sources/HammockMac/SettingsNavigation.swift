@@ -484,6 +484,7 @@ enum SettingsIndex {
             e(.notifications, "Sounds", "Finished", "notify.sound.finished", "sound alert chime kalimba system none mute done"),
             e(.notifications, "Sounds", "Error", "notify.sound.error", "sound alert chime kalimba system none mute fail"),
             e(.notifications, "Sounds", "Other notifications", "notify.sound.other", "sound alert chime kalimba system none mute review join link"),
+            e(.notifications, "macOS", "Permission", "notify.permission", "allow ask macos system settings notification center banner turned off denied"),
 
             e(.sharing, "You", "Your name and picture", nil, "avatar profile account"),
             e(.sharing, "Sharing", "Allow Group sharing", "sharing.groups", "share groups other people invite toolbar button"),

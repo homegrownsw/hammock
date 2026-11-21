@@ -338,18 +338,31 @@ struct NotificationSettings: View {
                 Toggle("Show a count on the Dock icon", isOn: prefs.boolBinding(NotifyPrefs.badge))
                     .onChange(of: prefs.bool(NotifyPrefs.badge)) { Notifier.shared.updateBadge(model) }
                     .settingAnchor("notify.badge")
-                Button("Send a Test Notification") { Notifier.shared.sendTest() }
-                    .disabled(style == .system && status == .denied)
-                    .settingAnchor("notify.test")
+                VStack(alignment: .leading, spacing: 3) {
+                    Button("Send a Test Notification") { Notifier.shared.sendTest() }
+                        .disabled(testBlocked)
+                    // Disabled: why.
+                    if testBlocked {
+                        Text("macOS notifications are turned off for Hammock in System Settings.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .settingAnchor("notify.test")
             }
+            // Each kind's sound, while that kind notifies at all.
             Section("Sounds") {
                 AlertSoundPicker(label: "Waiting for my input", pref: NotifyPrefs.soundNeedsInput, system: systemSounds)
+                    .disabled(!on(NotifyPrefs.needsInput, NotifyPrefs.programNeedsInput))
                     .settingAnchor("notify.sound.needsInput")
                 AlertSoundPicker(label: "Asking for permission", pref: NotifyPrefs.soundPermission, system: systemSounds)
+                    .disabled(!on(NotifyPrefs.grants))
                     .settingAnchor("notify.sound.permission")
                 AlertSoundPicker(label: "Finished", pref: NotifyPrefs.soundFinished, system: systemSounds)
+                    .disabled(!on(NotifyPrefs.finished, NotifyPrefs.programFinished))
                     .settingAnchor("notify.sound.finished")
                 AlertSoundPicker(label: "Error", pref: NotifyPrefs.soundError, system: systemSounds)
+                    .disabled(!on(NotifyPrefs.errored, NotifyPrefs.programErrored))
                     .settingAnchor("notify.sound.error")
                 AlertSoundPicker(label: "Other notifications", pref: NotifyPrefs.soundOther, system: systemSounds)
                     .settingAnchor("notify.sound.other")
@@ -359,11 +372,17 @@ struct NotificationSettings: View {
                     LabeledContent("Permission") {
                         HStack {
                             Text(statusText).foregroundStyle(status == .authorized ? Color.secondary : Color.orange)
-                            Button("Open System Settings") {
-                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+                            if status == .notDetermined {
+                                // Ask now, rather than when an agent first needs you.
+                                Button("Allow…") { Task { status = await Notifier.shared.requestAuthorization() } }
+                            } else {
+                                Button("Open System Settings") {
+                                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+                                }
                             }
                         }
                     }
+                    .settingAnchor("notify.permission")
                 }
             }
         }
@@ -374,6 +393,12 @@ struct NotificationSettings: View {
             Task { status = await Notifier.shared.authorization() }
         }
     }
+
+    /// A test can't show: macOS notifications only, and macOS says no.
+    private var testBlocked: Bool { style == .system && status == .denied }
+
+    /// Whether any of these kinds of notification is on.
+    private func on(_ prefs: Pref...) -> Bool { prefs.contains { NotifyPrefs.on($0) } }
 
     private var statusText: String {
         switch status {

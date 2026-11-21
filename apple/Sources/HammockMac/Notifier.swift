@@ -314,6 +314,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         return await center.notificationSettings().authorizationStatus
     }
 
+    /// Asks macOS now (Settings ▸ Notifications' Allow), rather than when an
+    /// agent first needs you; what it says.
+    func requestAuthorization() async -> UNAuthorizationStatus {
+        guard let center else { return .denied }
+        _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+        return await authorization()
+    }
+
     /// A test in the chosen style: from Settings, Hammock is in front, so the
     /// automatic style shows the card.
     func sendTest() {
