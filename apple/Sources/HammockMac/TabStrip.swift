@@ -280,6 +280,8 @@ struct TabStrip: View {
         if to != from {
             o.remove(at: from)
             o.insert(id, at: to)
+            // A bump as it passes another tab, as in the sidebar.
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             withAnimation(.snappy(duration: 0.2)) { order = o }
         }
     }
