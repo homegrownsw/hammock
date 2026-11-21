@@ -2,11 +2,63 @@ import ObjectiveC
 import HammockKit
 import SwiftUI
 
+/// Which Groups are collapsed in the sidebar (kept in defaults, to survive
+/// launches), and collapsing or expanding them from the Group's menu and the
+/// palette, not only by clicking its header. The sidebar keeps its own copy
+/// as view state, so toggling animates; `set` tells it.
+@MainActor
+enum GroupCollapse {
+    static let changed = Notification.Name("HammockGroupCollapse")
+    private static let key = "collapsedGroups"
+
+    static var collapsed: Set<String> {
+        get { Set(UserDefaults.standard.string(forKey: key)?.split(separator: ",").map(String.init) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted().joined(separator: ","), forKey: key) }
+    }
+
+    static func isCollapsed(_ id: String) -> Bool { collapsed.contains(id) }
+
+    static func set(_ ids: [String], collapsed on: Bool) {
+        var c = collapsed
+        if on { c.formUnion(ids) } else { c.subtract(ids) }
+        guard c != collapsed else { return }
+        collapsed = c
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+
+    /// Whether Groups collapse in this layout (with the tabs along the top, they don't).
+    static var applies: Bool { SidebarLayout.current != .horizontal }
+
+    /// The Groups to collapse for Collapse Others: every other one with tabs.
+    static func others(_ model: AppModel, than id: String) -> [String] {
+        model.groups.filter { $0.id != id && !$0.tabIds.isEmpty && !isCollapsed($0.id) }.map(\.id)
+    }
+}
+
+/// Collapse or Expand a Group, and Collapse Others: its right-click menu's.
+struct GroupCollapseButtons: View {
+    let model: AppModel
+    let group: WorkspaceGroup
+
+    var body: some View {
+        if GroupCollapse.applies, !group.tabIds.isEmpty {
+            if GroupCollapse.isCollapsed(group.id) {
+                Button("Expand") { GroupCollapse.set([group.id], collapsed: false) }
+            } else {
+                Button("Collapse") { GroupCollapse.set([group.id], collapsed: true) }
+            }
+            Button("Collapse Others") { GroupCollapse.set(GroupCollapse.others(model, than: group.id), collapsed: true) }
+                .disabled(GroupCollapse.others(model, than: group.id).isEmpty)
+            Divider()
+        }
+    }
+}
+
 struct SidebarView: View {
     @Bindable var model: AppModel
     /// Collapsed Groups. Plain view state, so toggling animates (an
     /// @AppStorage change doesn't), mirrored to defaults to survive launches.
-    @State private var collapsed = Set(UserDefaults.standard.string(forKey: "collapsedGroups")?.split(separator: ",").map(String.init) ?? [])
+    @State private var collapsed = GroupCollapse.collapsed
     // Dragging a Group by its header (List rows don't take SwiftUI drags):
     // the headers' places in the window, the Group being dragged, where the
     // pointer is, and the Group order while it moves through the list.
@@ -318,6 +370,7 @@ struct SidebarView: View {
     private func moveButtons(_ group: WorkspaceGroup) -> some View {
         let i = model.groups.firstIndex(where: { $0.id == group.id }) ?? 0
         Divider()
+        GroupCollapseButtons(model: model, group: group)
         Button("Move Up") { withAnimation(.snappy(duration: 0.25)) { model.moveGroup(group.id, to: i - 1) } }
             .disabled(i == 0)
         Button("Move Down") { withAnimation(.snappy(duration: 0.25)) { model.moveGroup(group.id, to: i + 1) } }
@@ -364,14 +417,10 @@ struct SidebarView: View {
                     .allowsHitTesting(false)
             }
         }
-        .onChange(of: collapsed) { _, c in
-            UserDefaults.standard.set(c.sorted().joined(separator: ","), forKey: "collapsedGroups")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: DebugDirector.collapse)) { n in
-            guard let id = n.object as? String else { return }
-            withAnimation(.snappy(duration: 0.2)) {
-                if n.userInfo?["collapsed"] as? Bool == true { collapsed.insert(id) } else { collapsed.remove(id) }
-            }
+        .onChange(of: collapsed) { _, c in GroupCollapse.collapsed = c }
+        // The Group menus' and palette's Collapse, Expand and Collapse Others.
+        .onReceive(NotificationCenter.default.publisher(for: GroupCollapse.changed)) { _ in
+            withAnimation(.snappy(duration: 0.2)) { collapsed = GroupCollapse.collapsed }
         }
         .onChange(of: PaletteState.shared.isOpen) { _, open in
             if open {

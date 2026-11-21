@@ -16,7 +16,6 @@ import HammockKit
 ///	drag [SECONDS]                resizes the window every frame and reports how it kept up (ResizeDrag)
 ///	finish-setup                  finishes onboarding, as its last button does
 @MainActor enum DebugDirector {
-    static let collapse = Notification.Name("HammockDebugCollapse")
     /// What the palette's search field should hold, set as it's typed.
     static var paletteQuery: ((String) -> Void)?
 
@@ -48,7 +47,7 @@ import HammockKit
         switch verb {
         case "collapse", "expand":
             guard let g = m.groups.first(where: { $0.name == arg }) else { return }
-            NotificationCenter.default.post(name: collapse, object: g.id, userInfo: ["collapsed": verb == "collapse"])
+            GroupCollapse.set([g.id], collapsed: verb == "collapse")
         case "focus":
             m.reveal(paneID: arg)
         case "profile":

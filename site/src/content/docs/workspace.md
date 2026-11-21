@@ -17,7 +17,7 @@ The Hammock Server, running in the background, owns your panes; the window is on
 
 ## Groups
 
-**New Group** (⌘N), or **New Group in Directory…** (⇧⌘N) for one named after a folder. **Configure Group…** (⌥⌘G) changes its name, icon and folder. ⌥⌘↓ and ⌥⌘↑ move between Groups; drag one in the sidebar to reorder it.
+**New Group** (⌘N), or **New Group in Directory…** (⇧⌘N) for one named after a folder. **Configure Group…** (⌥⌘G) changes its name, icon and folder. ⌥⌘↓ and ⌥⌘↑ move between Groups; drag one in the sidebar to reorder it. Click a Group's header to collapse or expand it; its right-click menu also has **Collapse Others**.
 
 ```sh
 hmk group new api --folder ~/Developer/api

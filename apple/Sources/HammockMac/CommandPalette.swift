@@ -325,6 +325,18 @@ struct CommandPalette: View {
                     }
                 }
             }
+            if GroupCollapse.applies, !g.tabIds.isEmpty {
+                if GroupCollapse.isCollapsed(g.id) {
+                    action("group-expand", "Expand “\(name)”", "chevron.down", .purple, "group open show tabs sidebar uncollapse") { GroupCollapse.set([g.id], collapsed: false) }
+                } else {
+                    action("group-collapse", "Collapse “\(name)”", "chevron.right", .purple, "group close hide tabs sidebar fold") { GroupCollapse.set([g.id], collapsed: true) }
+                }
+            }
+            if GroupCollapse.applies, !GroupCollapse.others(model, than: g.id).isEmpty {
+                action("group-collapse-others", "Collapse Other Groups", "rectangle.compress.vertical", .purple, "group close hide tabs sidebar fold others all") {
+                    GroupCollapse.set(GroupCollapse.others(model, than: g.id), collapsed: true)
+                }
+            }
             if let i = model.groups.firstIndex(where: { $0.id == g.id }) {
                 if i > 0 {
                     action("group-up", "Move “\(name)” Up", "arrow.up", .purple, "group order reorder sidebar") {
