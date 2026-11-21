@@ -137,6 +137,11 @@ struct AttentionCard: View {
     let model: AppModel
     let item: AttentionItem
     @State private var exit = CardExit.fade
+    @State private var hovered = false
+
+    /// A finished agent's card, which can be dismissed on its own (✕, or
+    /// right-click ▸ Dismiss) as well as with Clear.
+    private var finished: Bool { item.state == .idle }
 
     private var pane: Pane? { model.panes[item.paneID] }
     /// The schedule this is a run of.
@@ -167,9 +172,23 @@ struct AttentionCard: View {
                         .lineLimit(2)
                 }
                 Spacer(minLength: 4)
+                // A finished card under the pointer: ✕ to dismiss it, in its time's place.
                 ElapsedText(sinceUnixMs: item.createdUnixMs)
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                    .opacity(finished && hovered ? 0 : 1)
+                    .overlay(alignment: .trailing) {
+                        if finished, hovered {
+                            Button { dismiss() } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.secondary)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .tooltip("Dismiss", label: "Dismiss")
+                        }
+                    }
             }
             if let preview = item.promptPreview {
                 PromptPreviewView(preview)
@@ -215,14 +234,40 @@ struct AttentionCard: View {
         }
         .padding(10)
         .background(.background, in: RoundedRectangle(cornerRadius: 11))
-        .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
+        // Under the pointer: a shade darker, as a button would be.
+        .overlay {
+            RoundedRectangle(cornerRadius: 11)
+                .fill(Color.primary.opacity(hovered ? 0.05 : 0))
+                .allowsHitTesting(false)
+        }
+        .shadow(color: .black.opacity(hovered ? 0.1 : 0.06), radius: hovered ? 2.5 : 1.5, y: 1)
         .contentShape(Rectangle())
-        .onTapGesture {
-            model.reveal(paneID: item.paneID)
-            if item.state != .needsInput { model.clearAttention(item.id) }
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovered = h } }
+        .onTapGesture { open() }
+        .contextMenu {
+            Button(item.state == .needsInput ? "Show" : "Show Pane") { open() }
+            if finished {
+                Button("Dismiss") { dismiss() }
+            }
+        }
+        // VoiceOver: one button that opens the pane, its own buttons (Allow,
+        // Deny, Answer…) still inside it, and Dismiss for a finished one.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel([tabName, schedule.map { "Scheduled, \($0.name)" }, subtitle].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { open() }
+        .accessibilityActions {
+            if finished { Button("Dismiss") { dismiss() } }
         }
         .cardMotion(exit, cornerRadius: 11)
     }
+
+    private func open() {
+        model.reveal(paneID: item.paneID)
+        if item.state != .needsInput { model.clearAttention(item.id) }
+    }
+
+    private func dismiss() { model.clearAttention(item.id) }
 
     private var subtitle: String {
         let who = pane.map { $0.displayName.capitalized } ?? "Agent"

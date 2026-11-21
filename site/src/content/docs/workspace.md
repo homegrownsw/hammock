@@ -46,7 +46,7 @@ The sidebar (⌃⌘S) lists your Groups with their tabs, vertically, compactly, 
 
 Rest the pointer on a tab to preview it: its panes, live, with its full title, its agent's state, who's in it and when it last printed anything. Click a pane in the preview to go straight to it. Turn this off with Settings ▸ Appearance ▸ Preview on hover.
 
-At the bottom, **Needs You** lists agents waiting on you, and **Finished** those that are done; **+N more** under a list counts the cards scrolled out of sight below it, and clicking it scrolls to them. View ▸ **Next Agent That Needs You** (⌥⌘A) goes to each waiting agent in turn, and ⌥⇧⌘A goes back. A permission request shows what the agent is asking to do, as its terminal does; when that's more than the card can show, **Review…** opens the pane in place of **Allow**. Allow answers only the request its card shows: if the agent is asking something else by then, the card shows that instead.
+At the bottom, **Needs You** lists agents waiting on you, and **Finished** those that are done (rest the pointer on one and click its ✕, or right-click it, to dismiss it); **+N more** under a list counts the cards scrolled out of sight below it, and clicking it scrolls to them. View ▸ **Next Agent That Needs You** (⌥⌘A) goes to each waiting agent in turn, and ⌥⇧⌘A goes back. A permission request shows what the agent is asking to do, as its terminal does; when that's more than the card can show, **Review…** opens the pane in place of **Allow**. Allow answers only the request its card shows: if the agent is asking something else by then, the card shows that instead.
 
 ## Splits
 
