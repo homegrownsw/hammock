@@ -14,6 +14,10 @@ struct SessionFinder: View {
     @State private var results: [SessionInfo] = []
     @State private var indexing = false
     @State private var loaded = false
+    /// Why the list couldn't be had (the computer is offline, say), with
+    /// Retry; attempt counts the retries, to ask again.
+    @State private var failed: String?
+    @State private var attempt = 0
     @State private var selection = 0
     @State private var appeared = false
     @State private var confirming: String?
@@ -42,7 +46,7 @@ struct SessionFinder: View {
                         .textFieldStyle(.plain)
                         .font(.system(size: 20))
                         .focused($fieldFocused)
-                        .onSubmit { resume(in: nil) }
+                        .onSubmit { if failed != nil { retry() } else { resume(in: nil) } }
                         .onKeyPress(keys: [.return]) { press in
                             guard press.modifiers.contains(.option) else { return .ignored }
                             resume(in: other)
@@ -68,7 +72,18 @@ struct SessionFinder: View {
 
                 Divider()
 
-                if results.isEmpty {
+                if let failed {
+                    VStack(spacing: 10) {
+                        Label(failed, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") { retry() }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 22)
+                    .padding(.horizontal, 24)
+                } else if results.isEmpty {
                     Text(emptyText)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -113,13 +128,24 @@ struct SessionFinder: View {
             withAnimation(.snappy(duration: 0.18)) { appeared = true }
         }
         // Again when the query changes, or it's switched to another computer's sessions.
-        .task(id: query + "\u{0}" + computerID + "\u{0}" + (inGroup?.id ?? "")) {
+        .task(id: query + "\u{0}" + computerID + "\u{0}" + (inGroup?.id ?? "") + "\u{0}\(attempt)") {
             // A moment's pause while typing; none for the first list.
             if loaded { try? await Task.sleep(for: .milliseconds(120)) }
             while !Task.isCancelled {
-                guard let r = await model.listSessions(query, computerID: computerID, groupID: inGroup?.id ?? "") else { return }
+                guard let r = await model.listSessions(query, computerID: computerID, groupID: inGroup?.id ?? "") else {
+                    // Not "Indexing…" for ever: why, and Retry.
+                    if Task.isCancelled { return }
+                    withAnimation(.snappy(duration: 0.15)) {
+                        failed = failure
+                        results = []
+                        indexing = false
+                        loaded = true
+                    }
+                    return
+                }
                 if Task.isCancelled { return }
                 withAnimation(.snappy(duration: 0.15)) {
+                    failed = nil
                     results = r.sessions
                     indexing = r.indexing
                     loaded = true
@@ -142,6 +168,20 @@ struct SessionFinder: View {
     private var prompt: String {
         if let g = inGroup { return "Find a session in \(g.name)’s folders…" }
         return model.computer(computerID).map { "Find a Claude or Codex session on \($0.name)…" } ?? "Find a Claude or Codex session…"
+    }
+
+    /// Why there's no list: the daemon's reason ("Studio is offline"), as a sentence.
+    private var failure: String {
+        let name = model.computer(computerID).map(\.name)
+        let why = model.lastError.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? ""
+        let head = name.map { "Couldn’t search \($0)’s sessions." } ?? "Couldn’t search your sessions."
+        return why.isEmpty ? head : "\(head) \(why)\(why.hasSuffix(".") ? "" : ".")"
+    }
+
+    private func retry() {
+        failed = nil
+        loaded = false
+        attempt += 1
     }
 
     private var emptyText: String {
