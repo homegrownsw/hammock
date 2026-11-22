@@ -69,12 +69,13 @@ The **Needs You** widget, on the Home Screen or the Lock Screen, shows how many 
 
 If you've let your iPhone approve your Mac's [Hammock Key](/hammock/docs/remote/#the-hammock-key), a request to sign arrives as a notification. **Approve…** asks for Face ID; **Don't Allow** refuses.
 
-## Browser, simulator, editor and diff panes
+## Browser, simulator, editor, diff and files panes
 
 - **Browser panes** show the page live from the Mac, sized for your iPhone until someone uses it on the Mac; tap it to make it fit again. Tap to click, drag to scroll, pinch to zoom. The bar at the bottom has **Back**, **Forward**, **Reload**, **Type** and **Open in Safari**.
 - **Simulator panes** show the Mac's iOS simulator or Android emulator, to tap, swipe and type into. Touch and hold **Type** to send your iPhone's clipboard to the device, or copy the device's to your iPhone. An Android phone's Back, Home and Recents are in the bar at the bottom. On an Apple TV or Android TV, tap for Select, touch and hold for a long Select, and swipe to move around; **Back**, **TV**, **Play/Pause**, **Volume** and **Type** are in the bar at the bottom (touch and hold **Volume** for Volume Down, Mute and Siri).
 - **Editor panes** open the file for editing. **Save**, **Find** and **Go to Line** are in the menu, and for a Markdown file, **Show Preview**.
 - **Diff panes** show the diff in one column; on an iPad with room, side by side too. Comments and replies work as on the Mac.
+- **Files panes** show the folder's tree: tap a file to open it in a pane beside it, and touch and hold for Rename, Move to…, Duplicate, Move to Trash and more. **New Files Tab** is in a tab's menu.
 - **Log panes** show their entries, with a switch to the raw terminal.
 
 ## Devices

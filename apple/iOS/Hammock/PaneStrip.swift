@@ -100,6 +100,7 @@ func stripName(_ p: Pane?) -> String {
     case .simulator: return p.title.isEmpty ? "Simulator" : p.title
     case .editor: return p.editor.name.isEmpty ? p.displayName : p.editor.name
     case .diff: return p.diff.title.isEmpty ? "Diff" : p.diff.title
+    case .files: return p.title.isEmpty ? "Files" : p.title
     default:
         // An agent by its name ("Claude", not the process's "claude"):
         // one Hammock doesn't know keeps its own.
@@ -119,6 +120,7 @@ struct PaneIcon: View {
         case .simulator: symbol(pane?.devicePlatform == "tvOS" ? "appletv" : "iphone")
         case .editor: symbol("doc.text")
         case .diff: symbol("plusminus")
+        case .files: symbol("folder")
         default:
             if let p = pane, p.isLog {
                 symbol("list.bullet.rectangle")
@@ -621,6 +623,8 @@ struct LiveTile: View {
                 FileTile(model: model, pane: p)
             case .diff:
                 DiffTile(pane: p)
+            case .files:
+                FilesTile(pane: p)
             default:
                 if model.showsAgentTile(p) {
                     AgentTailTile(model: model, paneID: p.id, held: agent)
@@ -851,5 +855,30 @@ private struct DiffTile: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+    }
+}
+
+/// A files pane's tile: its folder, and the folders open in it, indented.
+private struct FilesTile: View {
+    let pane: Pane
+
+    var body: some View {
+        let f = pane.files
+        let open = f.expanded.filter { $0.hasPrefix(f.root + "/") }.sorted().prefix(14)
+        VStack(alignment: .leading, spacing: 3) {
+            Label((f.root as NSString).lastPathComponent, systemImage: "folder.fill")
+                .font(.system(size: 9, weight: .semibold))
+            ForEach(Array(open), id: \.self) { dir in
+                let rel = String(dir.dropFirst(f.root.count + 1))
+                Label((rel as NSString).lastPathComponent, systemImage: "folder")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, CGFloat(rel.split(separator: "/").count) * 7)
+            }
+        }
+        .lineLimit(1)
+        .padding(6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
     }
 }

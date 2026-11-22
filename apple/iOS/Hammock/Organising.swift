@@ -46,17 +46,19 @@ struct TabActions: View {
     let tab: WorkspaceTab
     let rename: () -> Void
     var newTab: (() -> Void)?
+    /// A tab of the Group's files (FilesScreen).
+    var newFilesTab: (() -> Void)?
     /// Set to the tab when closing it needs a yes (closeTabConfirmation).
     @Binding var closing: WorkspaceTab?
 
     var body: some View {
         let closing = $closing
-        MenuEntries(entries: Self.entries(model: model, tab: tab, rename: rename, newTab: newTab) { closing.wrappedValue = $0 })
+        MenuEntries(entries: Self.entries(model: model, tab: tab, rename: rename, newTab: newTab, newFilesTab: newFilesTab) { closing.wrappedValue = $0 })
     }
 
     /// Its items, for SwiftUI's menus (body) and UIKit's (a row's HoldMenu).
     /// `askClose`: closing it needs a yes (closeTabConfirmation).
-    static func entries(model: AppModel, tab: WorkspaceTab, rename: @escaping () -> Void, newTab: (() -> Void)?,
+    static func entries(model: AppModel, tab: WorkspaceTab, rename: @escaping () -> Void, newTab: (() -> Void)?, newFilesTab: (() -> Void)? = nil,
                         askClose: @escaping (WorkspaceTab) -> Void) -> [MenuEntry] {
         var out: [MenuEntry] = [.button("Rename…", systemImage: "pencil", rename)]
         if let newTab {
@@ -65,6 +67,9 @@ struct TabActions: View {
                 out.append(.button(AppModel.defaultAgentTitle(h), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: tab.groupID) })
             }
             out.append(.button("Start an Agent…", systemImage: "sparkles") { AgentStarter.shared.start(groupID: tab.groupID) })
+        }
+        if let newFilesTab {
+            out.append(.button("New Files Tab", systemImage: "folder", newFilesTab))
         }
         // Tabs move between Groups on the same Mac.
         let host = model.group(of: tab)?.hostUserID

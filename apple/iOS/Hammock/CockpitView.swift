@@ -431,6 +431,7 @@ struct GroupsView: View {
                             // Touch and hold: the tab's pane, large and live (tap it to open the tab).
                             .modifier(HoldMenu(model: model, paneID: previewPane(of: tab), open: { path = [tab.id] }) {
                                 TabActions.entries(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil,
+                                                   newFilesTab: group.canAddTabs ? { newTab(in: group, files: true) } : nil,
                                                    askClose: { closingTab = $0 })
                             })
                         }
@@ -490,8 +491,8 @@ struct GroupsView: View {
         }
     }
 
-    private func newTab(in group: WorkspaceGroup) {
-        Task { if let id = await model.createTab(in: group.id) { path = [id] } }
+    private func newTab(in group: WorkspaceGroup, files: Bool = false) {
+        Task { if let id = files ? await model.openFiles(groupID: group.id) : await model.createTab(in: group.id) { path = [id] } }
     }
 }
 
@@ -1094,9 +1095,9 @@ extension View {
 
 /// Opens a new tab in a tab's place (back goes to the list, not that tab).
 @MainActor
-private func newTab(in groupID: String, model: AppModel, path: Binding<[String]>, replacing: String) {
+private func newTab(in groupID: String, model: AppModel, path: Binding<[String]>, replacing: String, files: Bool = false) {
     Task {
-        guard let id = await model.createTab(in: groupID) else { return }
+        guard let id = files ? await model.openFiles(groupID: groupID) : await model.createTab(in: groupID) else { return }
         if path.wrappedValue.last == replacing { path.wrappedValue.removeLast() }
         path.wrappedValue.append(id)
     }
@@ -1155,7 +1156,7 @@ struct PaneScreen: View {
         guard let pane, let tab = model.tab(of: pane) else { return "" }
         if inStrip || switchesView { return stripName(pane) }
         if asTab != nil || model.panes(in: tab).count < 2 { return model.title(of: tab) }
-        if pane.kind == .browser || pane.kind == .simulator || pane.kind == .editor || pane.kind == .diff { return pane.title.isEmpty ? model.title(of: tab) : pane.title }
+        if pane.kind == .browser || pane.kind == .simulator || pane.kind == .editor || pane.kind == .diff || pane.kind == .files { return pane.title.isEmpty ? model.title(of: tab) : pane.title }
         return pane.displayName
     }
 
@@ -1264,6 +1265,9 @@ struct PaneScreen: View {
     @ViewBuilder private func tabActions(_ tab: WorkspaceTab) -> some View {
         TabActions(model: model, tab: tab, rename: { renaming = tab },
                    newTab: model.group(of: tab)?.canAddTabs == false ? nil : { newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID) },
+                   newFilesTab: model.group(of: tab)?.canAddTabs == false ? nil : {
+                       newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID, files: true)
+                   },
                    closing: $closingTab)
     }
 
@@ -1333,6 +1337,8 @@ private struct PaneContent: View, Equatable {
             EditorScreen(model: model, paneID: pane.id, canDrive: canDrive)
         } else if pane.kind == .diff {
             DiffScreen(model: model, paneID: pane.id, canDrive: canDrive)
+        } else if pane.kind == .files {
+            FilesScreen(model: model, paneID: pane.id, canDrive: canDrive)
         } else if pane.isLog {
             if logRaw {
                 TerminalScreen(model: model, paneID: pane.id, active: true)

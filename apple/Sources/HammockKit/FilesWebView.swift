@@ -118,6 +118,12 @@ public final class FilesSession {
         }
     }
 
+    /// One folder's entries, for a picker of the app's own (Move to…).
+    public func listDir(_ path: String) async -> Hammock_V1_DirListing? {
+        guard let conn = model?.connection else { return nil }
+        return try? await conn.call { $0.listDir = .with { $0.paneID = self.paneID; $0.path = path } }.dirListing
+    }
+
     /// Changes what the pane shows (FilesCommand).
     public func send(_ build: @escaping (inout Hammock_V1_FilesCommand) -> Void) {
         guard let conn = model?.connection else {
