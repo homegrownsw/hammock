@@ -865,7 +865,9 @@ public struct AgentConversationView: View {
                 // the pane narrowing is seen.
                 .frame(width: layoutWidth)
                 .frame(minWidth: 0, maxWidth: .infinity)
-                .clipped()
+                // On the iPhone at the sides only: above and below, rows
+                // scroll on under the bars' glass.
+                .clipShape(SidesOnly())
             }
         }
         // The whole height (a prompt card may take most of it).
@@ -1206,6 +1208,18 @@ struct RevealsReply: ViewModifier {
 
     /// Longer for a longer reply, but never so long it's in the way.
     static func duration(_ length: Int) -> Double { min(0.8, max(0.4, Double(length) / 1500)) }
+}
+
+/// A clip at the sides alone on the iPhone (none above or below, where the
+/// scroll view runs under the navigation bar), all round on the Mac.
+private struct SidesOnly: Shape {
+    func path(in rect: CGRect) -> Path {
+        #if os(iOS)
+        Path(rect.insetBy(dx: 0, dy: -10_000))
+        #else
+        Path(rect)
+        #endif
+    }
 }
 
 /// Shows the top `progress` of what it's on, fading out under a soft edge
