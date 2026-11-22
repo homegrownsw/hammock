@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardTab
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -51,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -227,12 +229,18 @@ fun TerminalPane(
 }
 
 /** A key on the bar: what it shows (text or an icon), says, and does. */
-private class Bar(val label: String, val text: String? = null, val icon: ImageVector? = null, val repeats: Boolean = false, val press: (TerminalView) -> Unit)
+private class Bar(
+    val label: String, val text: String? = null, val icon: ImageVector? = null, val repeats: Boolean = false,
+    /** The icon drawn facing the other way (Home's arrow to the line's start, from End's). */
+    val flipped: Boolean = false,
+    val press: (TerminalView) -> Unit,
+)
 
-/** The symbols page: what a shell wants that a phone's keyboard buries, then Home and End. */
+/** The symbols page: what a shell wants that a phone's keyboard buries, then Home and End (arrows to the line's ends, as the iPhone's). */
 private val symbols = listOf("|" to "Vertical bar", "~" to "Tilde", "/" to "Slash", "-" to "Hyphen", "_" to "Underscore",
     "\\" to "Backslash", "`" to "Backtick").map { (s, name) -> Bar(name, text = s) { it.typeSymbol(s) } } +
-    listOf(Bar("Home", text = "home") { it.pressKey(TerminalKey.HOME) }, Bar("End", text = "end") { it.pressKey(TerminalKey.END) })
+    listOf(Bar("Home", icon = Icons.AutoMirrored.Filled.KeyboardTab, flipped = true) { it.pressKey(TerminalKey.HOME) },
+        Bar("End", icon = Icons.AutoMirrored.Filled.KeyboardTab) { it.pressKey(TerminalKey.END) })
 
 /**
  * The keys a phone's keyboard lacks, above it (KeyAccessoryView on the iPhone), on two pages to swipe
@@ -268,7 +276,7 @@ private fun KeyBar(view: TerminalView, ctrl: Boolean, alt: Boolean, offline: Boo
                             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                                 for (k in pages[i]) {
                                     val selected = (k.label == "Control" && ctrl) || (k.label == "Alt" && alt)
-                                    BarKey(k.label, k.text, k.icon, selected = selected, repeats = k.repeats, enabled = !offline,
+                                    BarKey(k.label, k.text, k.icon, selected = selected, repeats = k.repeats, enabled = !offline, flipped = k.flipped,
                                         monospace = i == 1 && k.text?.length == 1) { k.press(view) }
                                 }
                             }
@@ -351,6 +359,7 @@ private fun RowScope.BarKey(
     repeats: Boolean = false,
     enabled: Boolean = true,
     monospace: Boolean = false,
+    flipped: Boolean = false,
     onKey: () -> Unit,
 ) {
     val key by rememberUpdatedState(onKey)
@@ -407,7 +416,7 @@ private fun RowScope.BarKey(
     ) {
         Box(contentAlignment = Alignment.Center) {
             if (icon != null) {
-                Icon(icon, contentDescription = null)
+                Icon(icon, contentDescription = null, modifier = if (flipped) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier)
             } else if (text != null) {
                 Text(text, fontSize = if (monospace) 17.sp else 15.sp, maxLines = 1, softWrap = false,
                     fontFamily = if (monospace) FontFamily.Monospace else null)

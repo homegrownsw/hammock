@@ -28,7 +28,7 @@ what you open shows beside the list.
 ## Terminals and the agent view
 
 Tap a terminal for the keyboard, with **esc**, **tab**, **ctrl** and **alt** (which apply to the next key), the
-arrows and delete above it; swipe them for symbols such as `|` and `~`, **home** and **end**. Drag to scroll
+arrows and delete above it; swipe them for symbols such as `|` and `~`, Home and End. Drag to scroll
 back, and pinch to change the font size for every terminal. Touch and hold to select a word, keep dragging or move its handles to select more, then **Copy**;
 **Select all** selects the screen, and **Paste** pastes. **Copy Screen** is in the pane's ⋮ menu. While the phone can't
 reach your computer, keys do nothing and **Offline** shows above the keyboard: tap it to try again. When a
