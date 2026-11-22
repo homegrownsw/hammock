@@ -190,6 +190,16 @@ public final class EditorSession {
         return r.editorImage
     }
 
+    /// Where Obsidian's [[links]] in the preview lead, from the note at from
+    /// (an absolute path), and the text of the notes it embeds, from the daemon.
+    public func resolveLinks(from: String, targets: [String], notes: [String]) async throws -> Hammock_V1_EditorLinks {
+        guard let conn = model?.connection else { throw EditorError.offline }
+        let r = try await conn.call {
+            $0.resolveEditorLinks = .with { $0.paneID = self.paneID; $0.from = from; $0.targets = targets; $0.notes = notes }
+        }
+        return r.editorLinks
+    }
+
     /// How this device shows it, for someone who can't change the pane (a
     /// View member of a shared Group): the pane's own view is the host's.
     public private(set) var localView: EditorInfo.View?

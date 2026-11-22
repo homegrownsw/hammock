@@ -635,6 +635,10 @@ message ClientMessage {
     // they have open change on disk.
     ListDir list_dir = 139;
     FilesCommand files_command = 140;
+    // Obsidian's [[links]] and ![[embeds]] in an editor pane's Markdown
+    // preview, found as Obsidian finds them: by name, anywhere in the
+    // note's vault (editorlinks.go). Replies EditorLinks.
+    ResolveEditorLinks resolve_editor_links = 141;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -919,6 +923,7 @@ message ServerMessage {
     EditorImage editor_image = 72;                  // reply to ReadEditorImage
     DirListing dir_listing = 73;                    // reply to ListDir
     FilesChanged files_changed = 74;                // to a files pane's attached clients: folders whose entries changed
+    EditorLinks editor_links = 75;                  // reply to ResolveEditorLinks
   }
 }
 
@@ -1998,6 +2003,26 @@ message EditorCommand {
 // a guest's only inside the Group's folder.
 message ReadEditorImage { string pane_id = 1; string path = 2; }
 message EditorImage { string path = 1; string media_type = 2; bytes data = 3; }
+
+// Obsidian-style links in an editor pane's Markdown preview ([[Note]],
+// ![[diagram.svg]]), each target (as written, without its #heading or
+// |text) resolved to a file in the vault: the nearest folder above the
+// note with .obsidian in it, else the note's own folder. from: the note
+// the links are in (an absolute path; "" for the pane's file). Targets
+// also in notes come back with their text, for an embedded note (Markdown
+// only, up to 1 MB). A guest's only inside the Group's folder and beside
+// the pane's file, as ReadEditorImage.
+message ResolveEditorLinks {
+  string pane_id = 1;
+  string from = 2;
+  repeated string targets = 3;
+  repeated string notes = 4;
+}
+// links: one per target, in order.
+message EditorLinks { string from = 1; repeated EditorLink links = 2; }
+// path: absolute, "" when nothing matches. text: the note's, when asked for
+// (has_text: it could be read).
+message EditorLink { string target = 1; string path = 2; string text = 3; bool has_text = 4; }
 
 message ReadEditor {
   string pane_id = 1;

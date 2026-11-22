@@ -156,6 +156,8 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
             session.pageShows(m["view"] as? String ?? "source")
         case "openFile":
             if let path = m["path"] as? String, path.hasPrefix("/") { onOpenFile?(path) }
+        case "resolveLinks":
+            resolveLinks(m)
         case "openURL":
             if let s = m["url"] as? String, let url = URL(string: s), ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") {
                 #if os(macOS)
@@ -245,6 +247,24 @@ public final class EditorBridge: NSObject, WKScriptMessageHandler, WKNavigationD
         if u.gitKnown || !u.git.isEmpty || (u.updates.isEmpty && !u.hasSelection) { m["git"] = Self.marks(u.git) }
         if u.hasSelection { m["selection"] = ["anchor": Int(u.selection.anchor), "head": Int(u.selection.head)] }
         call("hammock.receive(m)", ["m": m])
+    }
+
+    /// The preview's Obsidian [[links]]: asked of the daemon, answered to the page (hammock.links).
+    private func resolveLinks(_ m: [String: Any]) {
+        guard let id = (m["id"] as? NSNumber)?.intValue else { return }
+        let from = m["from"] as? String ?? ""
+        let targets = (m["targets"] as? [Any] ?? []).compactMap { $0 as? String }
+        let notes = (m["notes"] as? [Any] ?? []).compactMap { $0 as? String }
+        Task { [weak self, session] in
+            var r: [String: Any] = ["id": id]
+            do {
+                let links = try await session.resolveLinks(from: from, targets: targets, notes: notes)
+                r["links"] = links.links.map { ["target": $0.target, "path": $0.path, "text": $0.text, "hasText": $0.hasText_p] as [String: Any] }
+            } catch {
+                r["error"] = error.localizedDescription
+            }
+            self?.call("hammock.links(r)", ["r": r])
+        }
     }
 
     func pushResult(_ accepted: Bool) { call("hammock.pushResult(a)", ["a": accepted]) }

@@ -626,6 +626,8 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) (err error) {
 		return read(m.ReadEditor.PaneId)
 	case *pb.ClientMessage_ReadEditorImage:
 		return read(m.ReadEditorImage.PaneId)
+	case *pb.ClientMessage_ResolveEditorLinks:
+		return read(m.ResolveEditorLinks.PaneId)
 	case *pb.ClientMessage_EditorCommand:
 		// Agents point you at things (select and scroll to them, show a
 		// file rendered); they change files on disk, never your buffer,

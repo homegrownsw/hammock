@@ -2571,6 +2571,17 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .filesCommand(newValue)}
   }
 
+  /// Obsidian's [[links]] and ![[embeds]] in an editor pane's Markdown
+  /// preview, found as Obsidian finds them: by name, anywhere in the
+  /// note's vault (editorlinks.go). Replies EditorLinks.
+  public var resolveEditorLinks: Hammock_V1_ResolveEditorLinks {
+    get {
+      if case .resolveEditorLinks(let v)? = msg {return v}
+      return Hammock_V1_ResolveEditorLinks()
+    }
+    set {msg = .resolveEditorLinks(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2792,6 +2803,10 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// they have open change on disk.
     case listDir(Hammock_V1_ListDir)
     case filesCommand(Hammock_V1_FilesCommand)
+    /// Obsidian's [[links]] and ![[embeds]] in an editor pane's Markdown
+    /// preview, found as Obsidian finds them: by name, anywhere in the
+    /// note's vault (editorlinks.go). Replies EditorLinks.
+    case resolveEditorLinks(Hammock_V1_ResolveEditorLinks)
 
   }
 
@@ -4247,6 +4262,15 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .filesChanged(newValue)}
   }
 
+  /// reply to ResolveEditorLinks
+  public var editorLinks: Hammock_V1_EditorLinks {
+    get {
+      if case .editorLinks(let v)? = msg {return v}
+      return Hammock_V1_EditorLinks()
+    }
+    set {msg = .editorLinks(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -4354,6 +4378,8 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case dirListing(Hammock_V1_DirListing)
     /// to a files pane's attached clients: folders whose entries changed
     case filesChanged(Hammock_V1_FilesChanged)
+    /// reply to ResolveEditorLinks
+    case editorLinks(Hammock_V1_EditorLinks)
 
   }
 
@@ -7549,6 +7575,67 @@ public nonisolated struct Hammock_V1_EditorImage: Sendable {
   public var mediaType: String = String()
 
   public var data: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Obsidian-style links in an editor pane's Markdown preview ([[Note]],
+/// ![[diagram.svg]]), each target (as written, without its #heading or
+/// |text) resolved to a file in the vault: the nearest folder above the
+/// note with .obsidian in it, else the note's own folder. from: the note
+/// the links are in (an absolute path; "" for the pane's file). Targets
+/// also in notes come back with their text, for an embedded note (Markdown
+/// only, up to 1 MB). A guest's only inside the Group's folder and beside
+/// the pane's file, as ReadEditorImage.
+public nonisolated struct Hammock_V1_ResolveEditorLinks: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  public var from: String = String()
+
+  public var targets: [String] = []
+
+  public var notes: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// links: one per target, in order.
+public nonisolated struct Hammock_V1_EditorLinks: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var from: String = String()
+
+  public var links: [Hammock_V1_EditorLink] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// path: absolute, "" when nothing matches. text: the note's, when asked for
+/// (has_text: it could be read).
+public nonisolated struct Hammock_V1_EditorLink: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var target: String = String()
+
+  public var path: String = String()
+
+  public var text: String = String()
+
+  public var hasText_p: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -13213,7 +13300,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14899,6 +14986,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .filesCommand(v)
         }
       }()
+      case 141: try {
+        var v: Hammock_V1_ResolveEditorLinks?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .resolveEditorLinks(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .resolveEditorLinks(v)
+        }
+      }()
       default: break
       }
     }
@@ -15428,6 +15528,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .filesCommand?: try {
       guard case .filesCommand(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 140)
+    }()
+    case .resolveEditorLinks?: try {
+      guard case .resolveEditorLinks(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 141)
     }()
     case nil: break
     }
@@ -16968,7 +17072,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0\u{3}editor_image\0\u{3}dir_listing\0\u{3}files_changed\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0\u{3}editor_image\0\u{3}dir_listing\0\u{3}files_changed\0\u{3}editor_links\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17822,6 +17926,19 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .filesChanged(v)
         }
       }()
+      case 75: try {
+        var v: Hammock_V1_EditorLinks?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .editorLinks(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .editorLinks(v)
+        }
+      }()
       default: break
       }
     }
@@ -18095,6 +18212,10 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
     case .filesChanged?: try {
       guard case .filesChanged(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 74)
+    }()
+    case .editorLinks?: try {
+      guard case .editorLinks(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 75)
     }()
     case nil: break
     }
@@ -23662,6 +23783,131 @@ nonisolated extension Hammock_V1_EditorImage: SwiftProtobuf.Message, SwiftProtob
     if lhs.path != rhs.path {return false}
     if lhs.mediaType != rhs.mediaType {return false}
     if lhs.data != rhs.data {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ResolveEditorLinks: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ResolveEditorLinks"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}from\0\u{1}targets\0\u{1}notes\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.from) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.targets) }()
+      case 4: try { try decoder.decodeRepeatedStringField(value: &self.notes) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if !self.from.isEmpty {
+      try visitor.visitSingularStringField(value: self.from, fieldNumber: 2)
+    }
+    if !self.targets.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.targets, fieldNumber: 3)
+    }
+    if !self.notes.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.notes, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ResolveEditorLinks, rhs: Hammock_V1_ResolveEditorLinks) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.from != rhs.from {return false}
+    if lhs.targets != rhs.targets {return false}
+    if lhs.notes != rhs.notes {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_EditorLinks: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EditorLinks"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}from\0\u{1}links\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.from) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.links) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.from.isEmpty {
+      try visitor.visitSingularStringField(value: self.from, fieldNumber: 1)
+    }
+    if !self.links.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.links, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_EditorLinks, rhs: Hammock_V1_EditorLinks) -> Bool {
+    if lhs.from != rhs.from {return false}
+    if lhs.links != rhs.links {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_EditorLink: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".EditorLink"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}target\0\u{1}path\0\u{1}text\0\u{3}has_text\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.target) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.hasText_p) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.target.isEmpty {
+      try visitor.visitSingularStringField(value: self.target, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 3)
+    }
+    if self.hasText_p != false {
+      try visitor.visitSingularBoolField(value: self.hasText_p, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_EditorLink, rhs: Hammock_V1_EditorLink) -> Bool {
+    if lhs.target != rhs.target {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.hasText_p != rhs.hasText_p {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

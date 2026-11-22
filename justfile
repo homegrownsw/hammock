@@ -89,6 +89,10 @@ proto-swift:
 editor-js:
     ./apple/Editor/build.sh
 
+# Test the editor page's Markdown (apple/Editor/test: the preview's Obsidian flavour), in Node.
+editor-test:
+    cd apple/Editor && npm ci --silent --no-audit --no-fund && npm test
+
 # Regenerate the apps' Acknowledgements (internal/acknowledgements/Acknowledgements.json, and
 # Acknowledgements-android.json for what only Android ships): the third-party software each app ships and
 # its licences, from go list, Package.resolved, the editor's bundle, Gradle (it needs the Android

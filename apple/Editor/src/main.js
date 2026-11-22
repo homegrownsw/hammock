@@ -315,6 +315,9 @@ window.hammock = {
   /** The preview (tests, and debugging in Web Inspector). */
   preview() { return preview },
 
+  /** The app's answer to the preview's {type: "resolveLinks"}: where Obsidian's [[links]] lead. */
+  links(r) { preview.links.receive(r) },
+
   /** The buffer against the file on disk, chunk by chunk (accept or reject each). */
   showDiff(diskText) {
     if (!view) return

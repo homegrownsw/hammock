@@ -88,6 +88,8 @@ A Markdown file can be read rendered: the buttons in the pane's header switch be
 hmk edit docs/plan.md --view preview
 ```
 
+**Obsidian notes** render as Obsidian shows them: `[[links]]` to notes anywhere in the vault (the nearest folder above the note with `.obsidian` in it, else the note's own folder), headings and `^blocks`; `![[embeds]]` of images, sized with `|300` or `|300x200`, and of other notes, whole or one section, in a box linking to them; callouts (`> [!tip]`, folded with `-` or `+`), `==highlights==`, `#tags`, and `%%comments%%` hidden. A link to a note that doesn't exist shows dimmer. Tasks in an embedded note are ticked in that note, not here.
+
 **Agents** use [`editor_open`](/hammock/docs/reference/mcp/#editor_open) to show you code with the lines selected, or a Markdown file rendered, and [`editor_read`](/hammock/docs/reference/mcp/#editor_read) to see what you've selected, so you can ask about "the lines I've selected".
 
 ## Diff

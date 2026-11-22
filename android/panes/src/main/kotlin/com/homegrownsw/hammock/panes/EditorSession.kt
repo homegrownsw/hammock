@@ -203,6 +203,28 @@ class EditorSession internal constructor(
             "shown" -> { val v = EditorJson.view(m.optString("view")); _state.update { it.copy(pageShown = v) } }
             "openFile" -> m.optString("path").takeIf { it.startsWith("/") }?.let { onOpenFile?.invoke(it) }
             "openURL" -> PageBridge.openOutside(p.webView.context, Uri.parse(m.optString("url")))
+            "resolveLinks" -> resolveLinks(p, m)
+        }
+    }
+
+    /** The preview's Obsidian [[links]]: asked of the daemon, answered to the page (hammock.links). */
+    private fun resolveLinks(p: PageBridge, m: JSONObject) {
+        if (!m.has("id")) return
+        val id = m.optInt("id")
+        val strings = { key: String -> m.optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList() }
+        val req = Hammock.ResolveEditorLinks.newBuilder().setPaneId(paneID).setFrom(m.optString("from"))
+            .addAllTargets(strings("targets")).addAllNotes(strings("notes")).build()
+        model.scope.launch {
+            val r = JSONObject().put("id", id)
+            try {
+                val links = model.call { setResolveEditorLinks(req) }.editorLinks.linksList
+                r.put("links", JSONArray(links.map {
+                    JSONObject().put("target", it.target).put("path", it.path).put("text", it.text).put("hasText", it.hasText)
+                }))
+            } catch (e: Exception) {
+                r.put("error", e.message ?: "Couldn't find the links")
+            }
+            onMain { p.call("links", r) }
         }
     }
 

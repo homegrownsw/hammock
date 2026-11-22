@@ -3,6 +3,9 @@
   "private": true,
   "description": "Editor and diff panes' CodeMirror, bundled into apple/Resources/editor.html and diff.html by `just editor-js`.",
   "type": "module",
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'"
+  },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.0",
     "@codemirror/collab": "^6.1.1",

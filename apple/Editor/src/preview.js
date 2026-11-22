@@ -7,64 +7,20 @@
 //
 // The page can write the file (its messages are trusted), so the Markdown's
 // own HTML is sanitised (DOMPurify): no scripts, handlers, frames or forms.
+//
+// Obsidian's notes render as Obsidian shows them (obsidian.js): their
+// [[links]] name files anywhere in the vault, which the app finds (the
+// daemon's ResolveEditorLinks) and the preview keeps a while (LinkCache).
 
-import MarkdownIt from "markdown-it"
 import DOMPurify from "dompurify"
 import { highlightTree } from "@lezer/highlight"
 import { LanguageDescription } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
 import { mix, tint } from "./theme.js"
+import { createMarkdown, taskKey } from "./markdown.js"
+import { stripComments, frontMatterRe, slug, CALLOUT_KINDS, calloutIcons } from "./obsidian.js"
 
-const md = new MarkdownIt({ html: true, linkify: true, highlight: highlightFence })
-
-// Every block's source lines.
-md.core.ruler.push("hammock_lines", (state) => {
-  for (const t of state.tokens) {
-    if (t.map && t.nesting >= 0 && t.type !== "inline") {
-      t.attrSet("data-line", String(t.map[0]))
-      t.attrSet("data-line-end", String(t.map[1]))
-    }
-  }
-})
-
-// Headings get GitHub's ids, so #links to them work.
-md.core.ruler.push("hammock_ids", (state) => {
-  const seen = new Map()
-  const toks = state.tokens
-  for (let i = 0; i < toks.length; i++) {
-    if (toks[i].type !== "heading_open") continue
-    const text = (toks[i + 1]?.children || []).filter((c) => c.type === "text" || c.type === "code_inline").map((c) => c.content).join("")
-    let slug = text.trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/\s/g, "-")
-    const n = seen.get(slug) || 0
-    seen.set(slug, n + 1)
-    if (n) slug += "-" + n
-    // Set as the id after sanitising: DOMPurify drops ids named like
-    // document's properties ("scripts", "images", "title"), and these are ours.
-    toks[i].attrSet("data-anchor", slug)
-  }
-})
-
-// The checkboxes we make carry this, so ones in the Markdown's own HTML,
-// which can't know it, don't tick a line.
-const taskKey = Math.random().toString(36).slice(2, 12)
-
-// GitHub's task lists: "- [ ] x" and "- [x] x".
-md.core.ruler.push("hammock_tasks", (state) => {
-  const toks = state.tokens
-  for (let i = 2; i < toks.length; i++) {
-    const inline = toks[i]
-    if (inline.type !== "inline" || toks[i - 1].type !== "paragraph_open" || toks[i - 2].type !== "list_item_open") continue
-    const first = inline.children?.[0]
-    const m = first && first.type === "text" && /^\[([ xX])\][ \t]/.exec(first.content)
-    if (!m) continue
-    first.content = first.content.slice(m[0].length)
-    const box = new state.Token("html_inline", "", 0)
-    const line = toks[i - 2].map ? toks[i - 2].map[0] : -1
-    box.content = `<input type="checkbox" class="task" data-task-line="${line}" data-task-key="${taskKey}"${m[1] === " " ? "" : " checked"}>`
-    inline.children.unshift(box)
-    toks[i - 2].attrJoin("class", "task-item")
-  }
-})
+const md = createMarkdown(highlightFence)
 
 // ---- code blocks, highlighted as the editor highlights ----
 
@@ -112,8 +68,7 @@ let docDir = "" // the file's folder ("" while untitled)
 const external = /^[a-z][a-z0-9+.-]*:/i
 // What may differ in a block that hasn't changed: its lines, and a <details> opened.
 const lineAttrs = / data-(?:task-)?line(?:-end)?="\d+"| open=""/g
-// YAML front matter: --- at the very top, to --- (or ...) on a line of its own.
-const frontMatter = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/
+const frontMatter = frontMatterRe
 
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (node.tagName === "IMG") {
@@ -152,6 +107,79 @@ export function resolvePath(href) {
   return "/" + out.join("/")
 }
 
+// ---- Obsidian's links, as the app finds them ----
+
+const LINK_FRESH = 15_000 // ms an answer is used before it's asked again (a file moved, a note edited)
+const LINK_WAIT = 10_000  // ms to wait for an answer before asking again
+const LINK_KEEP = 5_000   // answers kept, at most
+
+/** Where [[links]] lead (and embedded notes' text), asked of the app in a
+ * batch after each render ({type: "resolveLinks"}), answered by
+ * hammock.links. onChange: an answer changed what shows. */
+export class LinkCache {
+  constructor(post, onChange) {
+    this.post = post
+    this.onChange = onChange
+    this.known = new Map()    // from + "\n" + target → { path, text, hasText, withText, at }
+    this.asked = new Map()    // the same key (+ "\ntext") → when
+    this.queue = new Map()    // from → { targets, notes }: to ask
+    this.requests = new Map() // id → { from, notes }
+    this.nextID = 1
+  }
+
+  /** What's known of target from the note at from: undefined (asking), null (nothing), or { path, text, hasText }. */
+  lookup(from, target, wantText) {
+    const key = from + "\n" + target
+    const e = this.known.get(key)
+    const usable = e && (!wantText || e.withText)
+    if (!usable || performance.now() - e.at > LINK_FRESH) this.ask(from, target, wantText || !!e?.withText, key)
+    if (!usable) return undefined
+    return e.path ? { path: e.path, text: e.text, hasText: e.hasText } : null
+  }
+
+  ask(from, target, wantText, key) {
+    const k = wantText ? key + "\ntext" : key
+    const t = this.asked.get(k)
+    if (t && performance.now() - t < LINK_WAIT) return
+    this.asked.set(k, performance.now())
+    let q = this.queue.get(from)
+    if (!q) this.queue.set(from, q = { targets: new Set(), notes: new Set() })
+    q.targets.add(target)
+    if (wantText) q.notes.add(target)
+  }
+
+  /** Asks for what the render wanted. */
+  flush() {
+    for (const [from, q] of this.queue) {
+      const id = this.nextID++
+      this.requests.set(id, { from, notes: q.notes })
+      this.post({ type: "resolveLinks", id, from, targets: [...q.targets], notes: [...q.notes] })
+    }
+    this.queue.clear()
+  }
+
+  /** The app's answer: { id, links: [{ target, path, text, hasText }] }, or { id, error }. */
+  receive(r) {
+    const req = this.requests.get(r?.id)
+    if (!req) return
+    this.requests.delete(r.id)
+    if (r.error || !Array.isArray(r.links)) return // asked again after LINK_WAIT
+    if (this.known.size > LINK_KEEP) this.known.clear()
+    let changed = false
+    for (const l of r.links) {
+      const key = req.from + "\n" + l.target
+      const withText = req.notes.has(l.target)
+      const old = this.known.get(key)
+      const next = { path: l.path || "", text: withText ? l.text || "" : "", hasText: withText && !!l.hasText, withText, at: performance.now() }
+      if (!old || old.path !== next.path || old.text !== next.text || old.hasText !== next.hasText || old.withText !== next.withText) changed = true
+      this.known.set(key, next)
+      this.asked.delete(key)
+      this.asked.delete(key + "\ntext")
+    }
+    if (changed) this.onChange()
+  }
+}
+
 // ---- the preview ----
 
 export class Preview {
@@ -165,8 +193,10 @@ export class Preview {
     this.body.className = "md"
     host.appendChild(this.body)
     this.text = null
+    this.path = ""
     this.reveal = null // [fromLine, toLine], 0-based: blocks an agent pointed at
     this.readOnly = false
+    this.links = new LinkCache(post, () => { if (this.text !== null) this.render(this.text, true) })
     onLanguageLoaded = () => { if (this.text !== null) this.render(this.text, true) }
     host.addEventListener("click", (e) => this.click(e))
     host.addEventListener("mousedown", () => { this.reveal = null; this.markReveal(); post({ type: "focus" }) })
@@ -174,8 +204,9 @@ export class Preview {
 
   setFile(path) {
     const dir = path ? path.slice(0, path.lastIndexOf("/")) : ""
-    if (dir === docDir) return
+    if (dir === docDir && (path || "") === this.path) return
     docDir = dir
+    this.path = path || ""
     if (this.text !== null) this.render(this.text, true)
   }
 
@@ -204,13 +235,17 @@ export class Preview {
       frontLines = fm[0].split("\n").length - (fm[0].endsWith("\n") ? 1 : 0)
       text = "\n".repeat(frontLines) + text.slice(fm[0].length)
     }
-    let html = md.render(text)
+    // %%comments%% (Obsidian's) don't show; their lines stay, as blanks.
+    text = stripComments(text)
+    const lookup = (from, target, wantText) => this.links.lookup(from, target, wantText)
+    let html = md.render(text, { wiki: { from: this.path, lookup, depth: 0, chain: [], budget: { n: 0 } } })
+    this.links.flush()
     if (front !== null) html = `<pre class="front-matter" data-line="0" data-line-end="${frontLines}"><code>${escapeHTML(front)}</code></pre>` + html
     if (!text.trim() && front === null) html = `<p class="empty">Nothing to preview yet.</p>`
     const next = DOMPurify.sanitize(html, { ...purifyConfig, RETURN_DOM_FRAGMENT: true })
     for (const el of next.querySelectorAll("[data-anchor]")) el.id = el.dataset.anchor
     this.patch(next)
-    for (const box of this.body.querySelectorAll("input.task")) box.disabled = this.readOnly
+    for (const box of this.body.querySelectorAll("input.task[data-task-key]")) box.disabled = this.readOnly
     this.markReveal()
     this.find.refresh()
   }
@@ -236,8 +271,8 @@ export class Preview {
           if (v !== null) e.setAttribute(a, v)
         }
       })
-      for (const [i, b] of Array.from(o.querySelectorAll("input.task")).entries()) {
-        const nb = n.querySelectorAll("input.task")[i]
+      for (const [i, b] of Array.from(o.querySelectorAll("input.task[data-task-key]")).entries()) {
+        const nb = n.querySelectorAll("input.task[data-task-key]")[i]
         if (nb) b.dataset.taskLine = nb.dataset.taskLine
       }
     }
@@ -250,7 +285,22 @@ export class Preview {
 
   setReadOnly(ro) {
     this.readOnly = ro
-    for (const box of this.body.querySelectorAll("input.task")) box.disabled = ro
+    for (const box of this.body.querySelectorAll("input.task[data-task-key]")) box.disabled = ro
+  }
+
+  /** Scrolls to a heading (by its text, as Obsidian links them) or a ^block in this note. */
+  scrollToSub(sub) {
+    const last = sub.split("#").filter(Boolean).pop() || ""
+    let el = null
+    if (last.startsWith("^")) el = document.getElementById(last)
+    else {
+      el = document.getElementById(slug(last))
+      if (!el || !this.body.contains(el)) {
+        const want = slug(last)
+        el = Array.from(this.body.querySelectorAll("h1, h2, h3, h4, h5, h6")).find((h) => !h.closest(".embed") && slug(h.textContent) === want)
+      }
+    }
+    if (el && this.body.contains(el)) this.host.scrollTo({ top: offsetIn(el, this.host) - 12, behavior: "smooth" })
   }
 
   click(e) {
@@ -264,6 +314,16 @@ export class Preview {
       return
     }
     if (e.target.closest && e.target.closest("input")) { e.preventDefault(); return }
+    // [[Links]]: to a note's file (and its heading, when it's this one); not found, nowhere.
+    const w = e.target.closest && e.target.closest("a.wikilink")
+    if (w) {
+      e.preventDefault()
+      if (w.classList.contains("unresolved") || w.classList.contains("pending")) return
+      const path = w.dataset.path || "", sub = w.dataset.sub || ""
+      if (!path || path === this.path) { if (sub) this.scrollToSub(sub) }
+      else if (path.startsWith("/")) this.post({ type: "openFile", path })
+      return
+    }
     const a = e.target.closest && e.target.closest("a[href]")
     if (!a) return
     e.preventDefault()
@@ -501,5 +561,45 @@ body.ios #preview .md { padding: 16px 16px 40vh; }
 #preview .find-bar button { font: 14px/1 -apple-system, system-ui, sans-serif; color: ${fg}; background: none; border: 0; padding: 2px 6px; border-radius: 4px; }
 #preview .find-bar button:hover { background: ${mix(bg, fg, 0.1)}; }
 body.ios #preview .find-bar { font-size: 16px; } body.ios #preview .find-bar input { font-size: 16px; }
+${obsidianCSS(th, pal, { fg, bg, dim, rule, link })}`
+}
+
+// Obsidian's: highlights, tags, links found and not, embeds, callouts.
+function obsidianCSS(th, pal, { fg, bg, dim, rule, link }) {
+  const kinds = {
+    note: pal(4, "#61afef"), abstract: pal(6, "#56b6c2"), info: pal(4, "#61afef"), todo: pal(4, "#61afef"),
+    tip: pal(6, "#56b6c2"), success: pal(2, "#98c379"), question: pal(3, "#e5c07b"), warning: pal(3, "#e5c07b"),
+    failure: pal(1, "#e06c75"), danger: pal(1, "#e06c75"), bug: pal(1, "#e06c75"), example: pal(5, "#c678dd"), quote: dim,
+  }
+  const icon = (paths) => `url("data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`)}")`
+  const perKind = CALLOUT_KINDS.map((k) =>
+    `.md .callout[data-callout="${k}"] { --c: ${kinds[k]}; --cb: ${tint(kinds[k], 0.1)}; --icon: ${icon(calloutIcons[k])}; }`).join("\n")
+  return `
+.md mark { color: inherit; background: ${tint(pal(3, "#e5c07b"), 0.38)}; border-radius: 3px; padding: 0 1px; }
+.md .tag { color: ${link}; background: ${tint(link, 0.14)}; border-radius: 999px; padding: 0.05em 0.55em; font-size: 0.9em; white-space: nowrap; }
+.md a.wikilink.pending { cursor: default; }
+.md a.wikilink.unresolved { color: ${mix(link, bg, 0.45)}; cursor: default; text-decoration: underline dotted; text-underline-offset: 2px; }
+.md a.embed-file { padding: 0.1em 0.5em; border: 1px solid ${rule}; border-radius: 5px; }
+.md .embed-pending { color: ${dim}; }
+.md .embed { margin: 0 0 1em; padding: 2px 0 2px 14px; border-left: 3px solid ${tint(link, 0.55)}; }
+.md .embed-title { font-size: 0.85em; font-weight: 600; margin: 0.15em 0 0.45em; }
+.md .embed.pending .embed-title, .md .embed.unresolved .embed-title { margin-bottom: 0.15em; }
+.md .embed-body > :first-child { margin-top: 0; }
+.md .embed-body > :last-child,.md .embed-body > :last-child > :last-child { margin-bottom: 0; }
+.md .embed-note { color: ${dim}; font-size: 0.9em; margin: 0; }
+.md .callout { --c: ${kinds.note}; --cb: ${tint(kinds.note, 0.1)}; --icon: ${icon(calloutIcons.note)};
+  margin: 0 0 1em; padding: 9px 14px; border-radius: 8px; background: var(--cb); border-left: 3px solid var(--c); }
+${perKind}
+.md .callout-title { display: flex; align-items: center; gap: 0.45em; color: var(--c); font-weight: 600; }
+.md .callout-icon { flex: none; width: 1.05em; height: 1.05em; background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.md .callout-content { margin-top: 0.45em; }
+.md .callout-content:empty { display: none; }
+.md .callout-content > :last-child { margin-bottom: 0; }
+.md details.callout > summary { cursor: pointer; list-style: none; }
+.md details.callout > summary::-webkit-details-marker { display: none; }
+.md details.callout > summary::after { content: "›"; margin-left: 0.2em; font-size: 1.2em; line-height: 1; transition: transform 0.15s; }
+.md details.callout[open] > summary::after { transform: rotate(90deg); }
 `
 }

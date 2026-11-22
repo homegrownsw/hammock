@@ -1126,6 +1126,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.ReadEditor.PaneId
 	case *pb.ClientMessage_ReadEditorImage:
 		return m.ReadEditorImage.PaneId
+	case *pb.ClientMessage_ResolveEditorLinks:
+		return m.ResolveEditorLinks.PaneId
 	case *pb.ClientMessage_ReadDiff:
 		return m.ReadDiff.PaneId
 	case *pb.ClientMessage_ReadDiffFile:

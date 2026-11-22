@@ -55,7 +55,7 @@ func msgTool(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_WatchLog, *pb.ClientMessage_ReadLog, *pb.ClientMessage_ClearLog:
 		return "log"
 	case *pb.ClientMessage_ReadEditor, *pb.ClientMessage_EditorCommand, *pb.ClientMessage_EditorSelect,
-		*pb.ClientMessage_EditorPush, *pb.ClientMessage_ReadEditorImage:
+		*pb.ClientMessage_EditorPush, *pb.ClientMessage_ReadEditorImage, *pb.ClientMessage_ResolveEditorLinks:
 		return "editor"
 	case *pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReadRepo,
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ListReviews, *pb.ClientMessage_ReviewCommand:
