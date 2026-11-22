@@ -723,6 +723,10 @@ final class EditorWK: WKWebView {
                 menu.addItem(ClosureItem("Reveal in Finder", key: "editor_reveal_in_finder") { ui.revealInFinder(model, self.paneID) })
                 menu.addItem(ClosureItem("Open in Default App", key: nil) { NSWorkspace.shared.open(URL(fileURLWithPath: ed.path)) })
             }
+            if HammockTool.files.on {
+                let id = paneID
+                menu.addItem(ClosureItem("Reveal in Files", key: "reveal_in_files") { FilesUI.reveal(model, path: ed.path, besides: id) })
+            }
             menu.addItem(.separator())
         }
         menu.addItem(ClosureItem("Split Right with Editor", key: "split_editor_right") { ui.split(model, self.paneID, .horizontal) })
