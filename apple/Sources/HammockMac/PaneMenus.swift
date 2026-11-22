@@ -127,6 +127,10 @@ struct SplitMenuItems: View {
                         .keyboardShortcut(direction == .horizontal ? Keys.splitDiffRight : nil)
                 }
             }
+            if HammockTool.files.on {
+                Button("Files") { FilesUI.split(model, paneID, direction: direction, before: before) }
+                    .keyboardShortcut(before && direction == .horizontal ? Keys.splitFilesLeft : nil)
+            }
         }
     }
 }
@@ -404,6 +408,9 @@ struct NewTabMenuItems: View {
         if HammockTool.diff.on {
             Button("Diff Tab…") { DiffLauncher.shared.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newDiffTab)
         }
+        if HammockTool.files.on {
+            Button("Files Tab") { FilesUI.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newFilesTab)
+        }
     }
 }
 
@@ -528,6 +535,9 @@ struct PaneKindMenu<Label: View>: View {
         }
         if HammockTool.diff.on || kind == .diff {
             item("Diff…", current: kind == .diff, again: true) { ask("a diff") { DiffLauncher.shared.replace(model, paneID) } }
+        }
+        if HammockTool.files.on || kind == .files {
+            item("Files", current: kind == .files) { change("files", .with { $0.files = .init() }) }
         }
         if HammockTool.log.on || isLog {
             item("Log…", current: isLog, again: true) { ask("a log") { LogUI.shared.replace(model, paneID) } }
@@ -735,6 +745,7 @@ private struct FoldedPane: View {
         case .simulator: Image(systemName: "iphone")
         case .editor: Image(systemName: "doc.text")
         case .diff: Image(systemName: "plusminus")
+        case .files: Image(systemName: "folder")
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
                 StatusIcon(state: p.agent.shownState, size: 13, asleep: p.asleep, progress: p.agentProgress)

@@ -96,8 +96,9 @@ func mcpInstructions(values map[string]string) string {
 			"and read what they have open and selected with editor_read; you edit files on disk as usual, and the pane reloads them. ",
 		"diff": "Diff panes show a git diff for the user to review, like a pull request's Files Changed: when they ask to see the diff or review your work, open one with diff_open and end your turn. " +
 			"Their comments on it come to you as a message: answer in the threads with review_reply, mark each addressed with review_mark_addressed once dealt with, and see them all with review_threads (when they say to check their comments). ",
+		"files": "Files panes show a folder's tree: point the user at a file or folder with files_open. ",
 	}
-	for _, k := range []string{"browser", "simulator", "log", "editor", "diff"} {
+	for _, k := range []string{"browser", "simulator", "log", "editor", "diff", "files"} {
 		if hammockconfig.ToolOn(values, k) {
 			parts = append(parts, kinds[k])
 		}
@@ -131,6 +132,8 @@ func (s *mcpServer) registerKind(server *mcp.Server, kind string) {
 	case "diff":
 		s.registerDiff(server)
 		s.registerReview(server)
+	case "files":
+		s.registerFiles(server)
 	case "schedules":
 		s.registerSchedules(server)
 	case "sessions":
@@ -286,7 +289,7 @@ type paneView struct {
 	Tab        string `json:"tab"`
 	Group      string `json:"group"`
 	Computer   string `json:"computer,omitempty"` // another of your computers (linked) it runs on
-	Kind       string `json:"kind"`               // "terminal", "log", "browser", "simulator", "editor" or "diff"
+	Kind       string `json:"kind"`               // "terminal", "log", "browser", "simulator", "editor", "diff" or "files"
 	Title      string `json:"title"`
 	URL        string `json:"url,omitempty"`
 	Path       string `json:"path,omitempty"`     // an editor pane's file
@@ -332,6 +335,9 @@ func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
 	}
 	if p.Kind == pb.PaneKind_PANE_KIND_DIFF {
 		v.Kind, v.Size = "diff", "" // its title says what it compares; cwd is the repository
+	}
+	if p.Kind == pb.PaneKind_PANE_KIND_FILES {
+		v.Kind, v.Size = "files", "" // cwd is the folder it shows
 	}
 	if t := w.tabs[p.TabId]; t != nil {
 		v.Tab = t.Name

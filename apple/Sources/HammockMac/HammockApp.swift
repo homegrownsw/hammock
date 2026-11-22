@@ -179,6 +179,10 @@ struct HammockApp: App {
                     Button("New Diff Tab…") { DiffLauncher.shared.newTab(model) }.keyboardShortcut(Keys.newDiffTab)
                         .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
                 }
+                if HammockTool.files.on {
+                    Button("New Files Tab") { FilesUI.newTab(model) }.keyboardShortcut(Keys.newFilesTab)
+                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
+                }
                 if HammockTool.schedules.on {
                     Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
                     // The one selected in the Scheduled Tasks list, while it shows.
@@ -461,6 +465,16 @@ struct HammockApp: App {
                     Button("Split Right with Diff…") { if let id = focused { DiffLauncher.shared.split(model, id, .horizontal) } }
                         .keyboardShortcut(Keys.splitDiffRight)
                         .disabled(focused == nil)
+                }
+                if HammockTool.files.on {
+                    Button("Split Left with Files") { if let id = focused { FilesUI.split(model, id) } }
+                        .keyboardShortcut(Keys.splitFilesLeft)
+                        .disabled(focused == nil)
+                    Button("Reveal in Files") {
+                        if let id = focused, let path = FilesUI.revealPath(model, id) { FilesUI.reveal(model, path: path, besides: id) }
+                    }
+                    .keyboardShortcut(Keys.revealInFiles)
+                    .disabled(FilesUI.revealPath(model, focused) == nil)
                 }
                 if HammockTool.editor.on {
                     Button("Split Right with Editor") { if let id = focused { EditorUI.shared.split(model, id, .horizontal) } }

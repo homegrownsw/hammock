@@ -156,6 +156,7 @@ internal val builtInPrograms: Map<String, String> = mapOf(
     "gvim" to "vim",
     "hammock-diff" to "git",
     "hammock-editor" to "document",
+    "hammock-files" to "files",
     "harlequin" to "database",
     "hatch" to "python",
     "helix" to "helix",

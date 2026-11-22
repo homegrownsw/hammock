@@ -11,7 +11,7 @@ import SwiftUI
 /// open already stays open; schedules don't run. Session Search is the
 /// agents' alone: the session finder stays.
 enum HammockTool: String, CaseIterable, Identifiable {
-    case browser, simulator, editor, diff, log, schedules, sessions
+    case browser, simulator, editor, diff, files, log, schedules, sessions
 
     var id: String { rawValue }
 
@@ -29,6 +29,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .simulator: "Simulator"
         case .editor: "Editor"
         case .diff: "Diff Viewer"
+        case .files: "Files"
         case .log: "Log Viewer"
         case .schedules: "Scheduled Tasks"
         case .sessions: "Session Search"
@@ -41,6 +42,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .simulator: "iphone"
         case .editor: "doc.text"
         case .diff: "plus.forwardslash.minus"
+        case .files: "folder"
         case .log: "list.bullet.rectangle"
         case .schedules: "clock"
         case .sessions: "magnifyingglass"
@@ -53,6 +55,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .simulator: .gray
         case .editor: .indigo
         case .diff: .green
+        case .files: .cyan
         case .log: .orange
         case .schedules: .purple
         case .sessions: .teal
@@ -66,6 +69,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .simulator: "iOS simulators in a tab or beside your code. Agents can open them, look, tap and type, and install and launch apps."
         case .editor: "Text files you can edit in Hammock. Agents can open one and point you at lines in it."
         case .diff: "Review changes like a pull request's Files Changed, and comment on them. Agents can open one to show you their work, and answer your comments."
+        case .files: "A folder's files as a tree, like an editor's file explorer, to open in other panes. Agents can open one and point you at files in it."
         case .log: "Logs from a file, the Mac, a simulator or a command, as entries you can filter. Agents can open and read them."
         case .schedules: "Agents or commands run on a schedule, each run a new tab. Agents can create and run them, with your say-so. Off, none run."
         case .sessions: "Agents can search and read past Claude Code and Codex sessions on this Mac, to pick up earlier decisions. You can still find and resume them."
@@ -79,6 +83,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .simulator: "ios iphone xcode sim_open mcp turn off disable"
         case .editor: "text file code editor_open mcp turn off disable"
         case .diff: "git review changes pull request diff_open comments mcp turn off disable"
+        case .files: "file browser explorer tree folder finder files_open mcp turn off disable"
         case .log: "logs console logcat log_open mcp turn off disable"
         case .schedules: "scheduled tasks cron launchd recurring automation schedule_save mcp turn off disable"
         case .sessions: "past sessions history transcripts memory session_search mcp turn off disable"

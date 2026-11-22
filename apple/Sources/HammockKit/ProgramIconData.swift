@@ -155,6 +155,7 @@ extension ProgramIcon {
         "gvim": "vim",
         "hammock-diff": "git",
         "hammock-editor": "document",
+        "hammock-files": "files",
         "harlequin": "database",
         "hatch": "python",
         "helix": "helix",

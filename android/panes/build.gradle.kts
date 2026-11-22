@@ -43,7 +43,7 @@ abstract class CopyPages : DefaultTask() {
 }
 
 val copyPages = tasks.register<CopyPages>("copyEditorPages") {
-    pages.from(rootProject.file("../apple/Resources/editor.html"), rootProject.file("../apple/Resources/diff.html"))
+    pages.from(rootProject.file("../apple/Resources/editor.html"), rootProject.file("../apple/Resources/diff.html"), rootProject.file("../apple/Resources/files.html"))
     outputDir.set(layout.buildDirectory.dir("generated/hammockPages"))
 }
 

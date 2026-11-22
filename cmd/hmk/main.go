@@ -133,6 +133,11 @@ Usage:
                                             select lines in an editor pane (LINE alone: all of it) and scroll to them
   hmk edit --set-view PANE source|preview|split
                                             show an editor pane's file as its source, rendered (Markdown), or both
+  hmk files [FOLDER] [--reveal PATH] [--right | --tab | --split PANE | --group G]
+                                            open a files pane (a folder's tree; no FOLDER: the Group's,
+                                            followed as it changes) on this pane's left (--right: its
+                                            right; --tab: a new tab); with one in the tab already,
+                                            --reveal shows PATH in it
   hmk diff [REV | FROM..TO | FROM...TO] [--uncommitted | --branch [--base B] [--with-uncommitted]]
            [--repo DIR] [--split | --unified] [--ignore-whitespace] [--beside PANE [--down] | --group G]
            [--name NAME] [--wait]
@@ -776,6 +781,9 @@ func runCommand(args []string) error {
 
 	case "diff":
 		return runDiff(w, c, call, args)
+
+	case "files":
+		return runFiles(w, call, args)
 
 	case "review":
 		return runReview(w, c, call, args)

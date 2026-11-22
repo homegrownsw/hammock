@@ -1,9 +1,9 @@
 ---
-title: Browsers, simulators, logs, editors and diffs
+title: Browsers, simulators, logs, editors, diffs and files
 description: The panes that aren't terminals, how to open them from the app, from hmk and by agents, and how to turn each off.
 ---
 
-Besides terminals, a pane can hold a web page, an iOS simulator, a log, a file to edit or a git diff. They sit in your splits and tabs, and keep running, like any [other pane](/hammock/docs/workspace/).
+Besides terminals, a pane can hold a web page, an iOS simulator, a log, a file to edit, a git diff or a folder's files. They sit in your splits and tabs, and keep running, like any [other pane](/hammock/docs/workspace/).
 
 Open them from the File and Pane menus, the toolbar's **+** and split buttons, the [command palette](/hammock/docs/workspace/#the-command-palette) (⌘K), with [`hmk`](/hammock/docs/cli/) (most commands open beside the pane you run them in), or let agents open them with Hammock's [MCP tools](/hammock/docs/agents/mcp/) (tool names below link to the [MCP reference](/hammock/docs/reference/mcp/)).
 
@@ -18,6 +18,7 @@ browser-enabled = false
 simulator-enabled = false
 editor-enabled = false
 diff-enabled = false
+files-enabled = false
 log-enabled = false
 ```
 
@@ -115,3 +116,19 @@ Tick **Viewed** on a file's header (Space) to fold it away and move on to the ne
 A diff pane works from the keyboard, with keys like revdiff's and GitHub's: j and k (or the arrows) move line by line, n and p from file to file, ] and [ from change to change, and Return comments on the line. Tab moves between the file list and the diff. Press ? (or the keyboard button in the pane's bar) to see them all. e opens the file at the cursor in your editor and, once you close it, refreshes the diff where you were: a Hammock editor pane unless you pick another in Settings ▸ Editor (VS Code, Zed, your shell's $EDITOR in a pane beside the diff, or a command of your own). The Diff submenu of the View menu has the same commands, to give shortcuts of your own in Settings ▸ Keyboard.
 
 **Agents** open a diff with [`diff_open`](/hammock/docs/reference/mcp/#diff_open) and read your comments with [`review_threads`](/hammock/docs/reference/mcp/#review_threads). An agent without the MCP tools uses `hmk review` from its shell.
+
+## Files
+
+A files pane shows a folder's files as a tree, like an editor's file explorer. It starts at the Group's folder, and follows it to another project; folders you open stay open, on every device and after a restart. It refreshes as files change, and colours them by their git status, with files git ignores dimmed.
+
+Open one with Pane ▸ Split Left with Files (⇧⌘E) or File ▸ New Files Tab. Pane ▸ Reveal in Files shows the focused editor's file in it.
+
+```sh
+hmk files                          # on this pane's left, the Group's folder
+hmk files --reveal src/main.go     # show a file in this tab's files pane
+```
+
+Double-click a file to open it: text in an editor beside the tree (the next file you open replaces it), web pages, images and PDFs in a browser pane, anything else in its own app. Right-click for Open In, Open Terminal Here, Reveal in Finder and Copy Path. Type to filter the folders that are open. The bar goes up a folder, back to the Group's folder, and shows hidden files.
+
+**Agents** show you a file in one with [`files_open`](/hammock/docs/reference/mcp/#files_open).
+

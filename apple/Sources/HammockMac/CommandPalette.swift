@@ -233,6 +233,7 @@ struct CommandPalette: View {
         action("new-diff-tab", "New Diff Tab…", "plusminus", .orange, "diff git review compare branch commit range uncommitted choose", keys: Keys.newDiffTab) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { DiffLauncher.shared.newTab(model) }
         }
+        action("new-files-tab", "New Files Tab", "folder", .cyan, "file browser explorer tree folder finder", keys: Keys.newFilesTab) { FilesUI.newTab(model) }
         action("review-last-commit", "Review the Last Commit", "plusminus", .orange, "diff git review head commit") { DiffUI.review(model, source: DiffUI.lastCommit) }
         action("quick-open", "Quick Open…", "doc.text.magnifyingglass", .indigo, "find file fuzzy go to open editor", keys: Keys.quickOpen) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { EditorUI.shared.showQuickOpen(model) }
@@ -536,6 +537,12 @@ struct CommandPalette: View {
             }
             action("split-diff", "Split Right with Diff…", "plusminus", .orange, "pane git review changes compare branch commit", keys: Keys.splitDiffRight) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { DiffLauncher.shared.split(model, focused, .horizontal) }
+            }
+            action("split-files-left", "Split Left with Files", "folder", .cyan, "pane file browser explorer tree folder sidebar", keys: Keys.splitFilesLeft) { FilesUI.split(model, focused) }
+            if let path = FilesUI.revealPath(model, focused) {
+                action("reveal-in-files", "Reveal in Files", "folder", .cyan, "show file browser explorer tree locate current", keys: Keys.revealInFiles) {
+                    FilesUI.reveal(model, path: path, besides: focused)
+                }
             }
             action("split-editor", "Split Right with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorRight) { EditorUI.shared.split(model, focused, .horizontal) }
             action("split-editor-down", "Split Down with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorDown) { EditorUI.shared.split(model, focused, .vertical) }
@@ -885,6 +892,7 @@ extension CommandPalette {
         case "new-log-tab", "split-log", "sim-log": .log
         case "new-editor-tab", "editor-wrap", "quick-open", "open-file", "split-editor", "split-editor-down": .editor
         case _ where id.hasPrefix("review-"): .diff
+        case "new-files-tab", "split-files-left", "reveal-in-files": .files
         case _ where id.hasPrefix("split-sim:"): .simulator
         case "scheduled-tasks", "new-scheduled-task", "schedule-this": .schedules
         case _ where id.hasPrefix("schedule-"): .schedules

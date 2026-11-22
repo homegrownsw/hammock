@@ -103,6 +103,8 @@ public struct ProgramIcon: View {
     public static let editorPane = "hammock-editor"
     /// What a diff pane shows (icons.json maps it to "git").
     public static let diffPane = "hammock-diff"
+    /// What a files pane shows (icons.json maps it to "files").
+    public static let filesPane = "hammock-files"
 
     /// An icon's colours in the colourful style, 0xRRGGBB.
     struct Colors: Equatable {
@@ -310,6 +312,7 @@ extension AppModel {
     public func focusedProgram(of tab: WorkspaceTab) -> [String] {
         if let p = panes[tab.focusedPaneID], p.isEditor { return [ProgramIcon.editorPane] }
         if let p = panes[tab.focusedPaneID], p.isDiff { return [ProgramIcon.diffPane] }
+        if let p = panes[tab.focusedPaneID], p.isFiles { return [ProgramIcon.filesPane] }
         guard let p = panes[tab.focusedPaneID], p.kind == .terminal || p.kind == .unspecified, !p.exited else { return [] }
         return p.program
     }

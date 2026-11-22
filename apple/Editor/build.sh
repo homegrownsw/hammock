@@ -17,3 +17,4 @@ page() { # page ENTRY TEMPLATE OUT
 }
 page src/main.js template.html editor.html
 page src/diff.js diff-template.html diff.html
+page src/files.js files-template.html files.html

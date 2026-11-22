@@ -676,6 +676,8 @@ private struct PaneTile: View {
                 FileTile(model: model, pane: p)
             case .diff:
                 DiffTile(pane: p)
+            case .files:
+                FilesTile(pane: p)
             default:
                 if model.supportsAgentView(p), AgentModes.shared.showsAgent(p.id) {
                     AgentTile(model: model, paneID: p.id)
@@ -937,6 +939,32 @@ private struct DiffTile: View {
         }
         .padding(5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+/// A files pane: its folder, and the folders open in it, indented.
+private struct FilesTile: View {
+    let pane: Pane
+
+    var body: some View {
+        let f = pane.files
+        let open = f.expanded.filter { $0.hasPrefix(f.root + "/") }.sorted().prefix(14)
+        VStack(alignment: .leading, spacing: 2) {
+            Label((f.root as NSString).lastPathComponent, systemImage: "folder.fill")
+                .font(.system(size: 7, weight: .semibold))
+            ForEach(Array(open), id: \.self) { dir in
+                let rel = String(dir.dropFirst(f.root.count + 1))
+                Label((rel as NSString).lastPathComponent, systemImage: "folder")
+                    .font(.system(size: 6.5))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, CGFloat(rel.split(separator: "/").count) * 6)
+            }
+        }
+        .lineLimit(1)
+        .padding(5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
         .background(Color(nsColor: .textBackgroundColor))
     }
 }

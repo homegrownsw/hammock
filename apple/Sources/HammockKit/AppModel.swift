@@ -253,6 +253,7 @@ public final class AppModel {
     @ObservationIgnored var logSessions: [String: LogSession] = [:]
     @ObservationIgnored var editorSessions: [String: EditorSession] = [:]
     @ObservationIgnored var diffSessions: [String: DiffSession] = [:]
+    @ObservationIgnored var filesSessions: [String: FilesSession] = [:]
     /// Groups' pictures (PNG) by hash, and the ones being fetched.
     public internal(set) var groupPictures: [String: Data] = [:]
     @ObservationIgnored var pictureLoads: [String: Task<Void, Never>] = [:]
@@ -468,6 +469,7 @@ public final class AppModel {
             rewatchLogs()
             reattachEditors()
             reattachDiffs()
+            reattachFiles()
         } catch {
             lastError = error.localizedDescription
             if let why = LinkStatus.reason(for: error) { linkError = why }
@@ -594,6 +596,8 @@ public final class AppModel {
             editorSessions[u.paneID]?.apply(u)
         case .review(let r):
             diffSessions[r.paneID]?.apply(r)
+        case .filesChanged(let c):
+            filesSessions[c.paneID]?.apply(c)
         case .browserMenu(let m):
             browserMenus[m.paneID] = m
         case .agentAction(let a):
