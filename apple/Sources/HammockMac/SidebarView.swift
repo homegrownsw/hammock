@@ -813,14 +813,14 @@ struct GroupSheet: View {
                             if shownPicture != nil { Button("Remove Picture") { picture = Data() } }
                         }
                         .buttonStyle(.link)
-                        Text(icon.isEmpty ? "Kept in Hammock on this Mac. A project's own .hammock/icon.png shows when none is set here." : "Kept in Hammock on this Mac. The emoji shows instead while it's set.")
+                        Text(icon.isEmpty ? "Kept in Hammock on this Mac. A project's own .hammock/icon.png shows when none is set here." : "Kept in Hammock on this Mac. Choosing one replaces the emoji.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .dropDestination(for: URL.self) { urls, _ in
                     guard let u = urls.first, let d = try? Data(contentsOf: u), NSImage(data: d) != nil else { return false }
-                    picture = d
+                    usePicture(d)
                     return true
                 }
             } header: {
@@ -864,11 +864,19 @@ struct GroupSheet: View {
         return model.groupPicture(group)
     }
 
+    /// Starts in the Group's folder, where a project's logo usually is.
     private func choosePicture() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg]
         panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let u = panel.url, let d = try? Data(contentsOf: u) { picture = d }
+        panel.directoryURL = URL(fileURLWithPath: shownFolder.isEmpty ? NSHomeDirectory() : shownFolder, isDirectory: true)
+        if panel.runModal() == .OK, let u = panel.url, let d = try? Data(contentsOf: u) { usePicture(d) }
+    }
+
+    /// A picture chosen: it replaces the emoji, which would show instead.
+    private func usePicture(_ d: Data) {
+        picture = d
+        icon = ""
     }
 
     private func chooseEmoji() {

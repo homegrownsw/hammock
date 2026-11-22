@@ -305,13 +305,14 @@ struct GroupEditor: View {
                     } header: {
                         Text("Picture")
                     } footer: {
-                        Text("Kept in Hammock on your Mac. An emoji shows instead, if set; a project's own .hammock/icon.png shows when no picture is set here.")
+                        Text("Kept in Hammock on your Mac. Choosing one replaces the emoji. A project's own .hammock/icon.png shows when no picture is set here.")
                     }
                     .onChange(of: photo) {
                         Task {
                             if let d = try? await photo?.loadTransferable(type: Data.self) {
                                 // A phone's photo may be HEIC: the Mac reads PNG and JPEG.
                                 picture = UIImage(data: d)?.jpegData(compressionQuality: 0.9) ?? d
+                                icon = "" // the picture replaces the emoji, which would show instead
                             }
                         }
                     }
