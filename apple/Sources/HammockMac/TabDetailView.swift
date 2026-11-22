@@ -219,7 +219,7 @@ private struct DividerHandle: View {
     @Binding var drag: PanePlan.Drag?
     let layout: PaneLayout
     let update: (PaneLayout) -> Void
-    @State private var cursorPushed = false
+    @State private var cursor = ResizeCursor()
     @State private var hovered = false
     @State private var dragging = false
 
@@ -239,21 +239,14 @@ private struct DividerHandle: View {
             }
             .onHover { inside in
                 hovered = inside
-                if inside, !cursorPushed {
-                    (d.horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).push()
-                    cursorPushed = true
-                } else if !inside, cursorPushed {
-                    NSCursor.pop()
-                    cursorPushed = false
-                }
+                cursor.hover(0, inside, resizeCursor)
             }
-            .onDisappear {
-                if cursorPushed { NSCursor.pop(); cursorPushed = false }
-            }
+            .onDisappear { cursor.gone() }
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { g in
                         dragging = true
+                        cursor.drag(resizeCursor)
                         if drag?.path != d.path || drag?.base.count != d.weights.count {
                             drag = PanePlan.Drag(path: d.path, base: d.weights, weights: d.weights)
                         }
@@ -268,6 +261,7 @@ private struct DividerHandle: View {
                     }
                     .onEnded { _ in
                         dragging = false
+                        cursor.ended()
                         if let drag {
                             var l = layout
                             PanePlan.setWeights(&l, at: drag.path[...], drag.weights)
@@ -280,6 +274,8 @@ private struct DividerHandle: View {
             .accessibilityHidden(true)
             .offset(x: d.rect.minX, y: d.rect.minY)
     }
+
+    private var resizeCursor: NSCursor { d.horizontal ? .resizeLeftRight : .resizeUpDown }
 
     /// The two sides the same size, sharing what they had between them.
     private func equalise() {

@@ -388,6 +388,7 @@ private struct ResizeHandles: View {
     @Binding var resizing: CGRect?
     let commit: (CGRect) -> Void
     @State private var start: CGRect?
+    @State private var resizeCursor = ResizeCursor()
 
     /// Which edges a handle moves: x -1 left, 1 right; y -1 top, 1 bottom.
     private struct Grip: Hashable { let x: Int; let y: Int }
@@ -401,6 +402,7 @@ private struct ResizeHandles: View {
             ForEach(grips, id: \.self) { g in handle(g) }
         }
         .frame(width: rect.width, height: rect.height)
+        .onDisappear { resizeCursor.gone() }
     }
 
     private func handle(_ g: Grip) -> some View {
@@ -413,12 +415,11 @@ private struct ResizeHandles: View {
             .frame(width: max(w, 1), height: max(h, 1))
             .contentShape(Rectangle())
             .offset(x: x, y: y)
-            .onHover { inside in
-                if inside { cursor(g).push() } else { NSCursor.pop() }
-            }
+            .onHover { inside in resizeCursor.hover(g, inside, cursor(g)) }
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: paneSpace)
                     .onChanged { v in
+                        resizeCursor.drag(cursor(g))
                         let s = start ?? rect
                         start = s
                         var r = s
@@ -429,6 +430,7 @@ private struct ResizeHandles: View {
                         resizing = r.intersection(FloatGeometry.bounds(area))
                     }
                     .onEnded { _ in
+                        resizeCursor.ended()
                         if let r = resizing { commit(r) }
                         start = nil
                         // Kept until the model has the new frame (no snap back).

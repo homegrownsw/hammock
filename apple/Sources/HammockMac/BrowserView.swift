@@ -261,7 +261,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
             if let ctx = (m["ctx"] as? NSNumber)?.uint32Value { show(context: ctx) }
         case "cursor":
             cursor = Self.cursor((m["type"] as? Int) ?? 0)
-            if let w = window, w.isKeyWindow, let p = w.mouseLocationOutsideOfEventStream as NSPoint?, bounds.contains(convert(p, from: nil)) {
+            if !ResizeCursor.holding, let w = window, w.isKeyWindow, let p = w.mouseLocationOutsideOfEventStream as NSPoint?, bounds.contains(convert(p, from: nil)) {
                 cursor.set()
             }
         case "ti":
@@ -460,7 +460,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     }
     override func mouseUp(with e: NSEvent) { dragEvent = nil; fwd(e) }
     override func mouseDragged(with e: NSEvent) { dragEvent = e; fwd(e) }
-    override func mouseMoved(with e: NSEvent) { fwd(e); cursor.set() }
+    override func mouseMoved(with e: NSEvent) { fwd(e); if !ResizeCursor.holding { cursor.set() } }
     override func mouseEntered(with e: NSEvent) { fwd(e) }
     override func mouseExited(with e: NSEvent) { fwd(e) }
     override func rightMouseDown(with e: NSEvent) { window?.makeFirstResponder(self); fwd(e) }
@@ -473,7 +473,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     override func magnify(with e: NSEvent) { fwd(e) }
     override func smartMagnify(with e: NSEvent) { fwd(e) }
     override func rotate(with e: NSEvent) { fwd(e) }
-    override func cursorUpdate(with e: NSEvent) { cursor.set() }
+    override func cursorUpdate(with e: NSEvent) { if !ResizeCursor.holding { cursor.set() } }
     override func keyUp(with e: NSEvent) { fwd(e) }
     override func flagsChanged(with e: NSEvent) { fwd(e) }
 
