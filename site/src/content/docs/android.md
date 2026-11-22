@@ -50,9 +50,10 @@ in **Devices** under **Show Screen**: see [Screen sharing](/hammock/docs/screen-
 
 Notifications come while you're away from your Mac, each in its channel (Needs You, Finished, Errors, Hammock Key,
 Join Requests), and carry the count the Sessions tab shows: agents that need your input, and permission, join and
-Hammock Key requests. **Allow** and **Deny** on a permission request, and **Let View**
+Hammock Key requests. **Allow** and **Deny** on a permission request or an agent's permission prompt, and **Let View**
 on a join request, answer it once you've unlocked the phone; with **Require Unlock** on, they open Hammock and answer
-once you've unlocked it. A request to sign with your Mac's
+once you've unlocked it. If an agent's prompt has changed, or can only be answered in the agent view, nothing is
+pressed and the notification says so: tap it to open the pane. A request to sign with your Mac's
 [Hammock Key](/hammock/docs/remote/#the-hammock-key) opens Hammock, where **Approve** asks for your fingerprint, face
 or screen lock.
 

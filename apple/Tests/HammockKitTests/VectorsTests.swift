@@ -40,6 +40,36 @@ final class VectorsTests: XCTestCase {
             XCTAssertEqual(String(decoding: got, as: UTF8.self), v["message"] as? String)
         }
     }
+    /// A pushed note about an agent's permission prompt names the pane and
+    /// prompt its Allow and Deny answer; no other note offers them.
+    func testAgentPromptNotes() throws {
+        let list = try XCTUnwrap(vectors["push"] as? [[String: Any]])
+        let notes = list.compactMap { $0["note"] as? [String: Any] }
+        let prompt = try XCTUnwrap(notes.first { $0["c"] as? String == AgentPromptNotice.category })
+        let a = try XCTUnwrap(AgentPromptNotice.answers(prompt))
+        XCTAssertEqual(a.pane, prompt["pane"] as? String)
+        XCTAssertEqual(a.item, prompt["id"] as? String)
+        XCTAssertEqual(a.prompt, prompt["prompt"] as? String)
+        for n in notes where n["c"] as? String != AgentPromptNotice.category { XCTAssertNil(AgentPromptNotice.answers(n)) }
+        var unread = prompt
+        unread["prompt"] = nil
+        XCTAssertNil(AgentPromptNotice.answers(unread))
+        XCTAssertEqual(AgentPromptNotice.allows(AgentPromptNotice.allowAction), true)
+        XCTAssertEqual(AgentPromptNotice.allows(AgentPromptNotice.denyAction), false)
+        XCTAssertNil(AgentPromptNotice.allows("grant.allow"))
+    }
+
+    /// The Mac offers Allow and Deny for the same items the daemon's pushes do.
+    func testAgentPromptOffers() {
+        let item = AttentionItem.with { $0.state = .needsInput; $0.promptID = "k1" }
+        XCTAssertTrue(AgentPromptNotice.offers(item))
+        for change in [{ (i: inout AttentionItem) in i.question = true }, { $0.program = true }, { $0.promptID = "" }, { $0.state = .idle }, { $0.state = .errored }] {
+            var i = item
+            change(&i)
+            XCTAssertFalse(AgentPromptNotice.offers(i))
+        }
+    }
+
     private static let states: [String: AgentState] = ["needs_input": .needsInput, "idle": .idle, "errored": .errored, "working": .working]
 
     /// What the Mac's notifications say about an agent, as the daemon's pushes say it.

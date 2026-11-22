@@ -31,7 +31,7 @@
     {
       "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
       "key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-      "sealed_b64": "s6X9L6+v4XiYLCGpNEkFGkSldAtLSu36S/W/yRuhx/V8ThDHHjppltBUJVwpVkMIjU3kWiY2u5VQvlNAuGaJnEprvhHF/fRo+BfKiIlmUblTBb9adQDM59fBC0byWdCRzC0AGrPUi2Sh5B6l911Wrt5a6enae5rcskn07GKGyNnzCqZSkKqKvM/WCTBmSd2l/+p1tLnapBNSoSfGaZm8OIbH3IZz+KZx7tGNpOl8gRcYjv/7DrxFP6a2pFfpMuCSnbGkfrJuQSgOcQEZ+/XX9EbJWy/SEfr9icOoOYTjGAuIkGTCzUwvcnJbD/df6Ga9WBjcigdeO/d8YwxYgjbDfw==",
+      "sealed_b64": "7Ctb/Q64Ecm1ybqQFehIFmJ7fZz3DlnFIG2UJlJVuTsV+ClyF2zm23cJqkCcXIwVkbfXlsiT7i4pD0xby/vQy4fYXVgjk411cQ0YiiM7QFPPtcCCx7mpyh41XW7HLBMW7rFNQfXsOr6wCmyX/mzNpOr7fwkgu1FolWGSTavc04qs3BZQfpaAsnOOqEesZLab3SjaIHchoJYLXZQovE6GTaigo5nBmvudjFPsSUn18mYH+03h95gcn1yDkVCvr+NbHNKAwxtSl5hweCiVDPRl0SAfhedNgrAnLfXFEx2J+x6tw2PMM5ME9OAl9Ja1UZ33J3mv4v6TUVM1taf3AIvkFg==",
       "note": {
         "t": "Claude needs you",
         "s": "Web ▸ api",
@@ -43,6 +43,25 @@
         "at": 1800000000,
         "live": true,
         "k": "grant",
+        "n": 2
+      }
+    },
+    {
+      "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+      "key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "sealed_b64": "ScTdA0FqUIcUQ3BPVUK2wYUlLBCWc+eF5Qd9xbaJ/g4cEC+NnkkZl2ON374MT/X8etT6MQCixh04fKnvnfnZ+GhjHIZ8zbe66IG3k4u2CLEQoTWd0amlg+z3YEKAqWg+dXmanbboddtINwTFvhpqsONo1BfuxQF2dqzzvNTQ0O2a2ZwTGQtX5BmxK8m0//Q1//oqfDF8hiZR3zTELCI4B4YYLGNueYfRu6HFawtQlIhHPb5pqHkYXW5x6kHCqFzm+ZcrC5gpx1Mqnnq1YMMwQ07HqgnYc31ydDIWW9KLOiQJM1DzPdbFxM/VTBa5pq6+dMgWG6USp4wUeKNLRec8tE8lt9tAtC4m02WULHfW0jFms+4WxsYqx0OcViBMg77nEd+PYr4zOPcxexjnJvGPDQ==",
+      "note": {
+        "t": "Map Judder",
+        "s": "🗺️ Atlas",
+        "b": "Claude needs your permission to use Bash",
+        "c": "agentprompt",
+        "pane": "pn_1",
+        "prompt": "3f9a1c",
+        "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
+        "id": "at_pn_1",
+        "at": 1800000000,
+        "live": true,
+        "k": "needs_input",
         "n": 2
       }
     }

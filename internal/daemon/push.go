@@ -105,12 +105,16 @@ type pushNote struct {
 	Title    string `json:"t"`
 	Subtitle string `json:"s,omitempty"`
 	Body     string `json:"b"`
-	Category string `json:"c,omitempty"` // "join", "grant": notification actions
+	Category string `json:"c,omitempty"` // "join", "grant", agentPromptCategory…: notification actions
 	Pane     string `json:"pane,omitempty"`
-	Join     string `json:"join,omitempty"`
-	Grant    string `json:"grant,omitempty"`
-	Key      string `json:"key,omitempty"` // a Hammock Key request (hammockkey.go)
-	Host     string `json:"host"`          // the Mac's certificate fingerprint, as the phone knows it
+	// Prompt is the agent's permission prompt that Allow and Deny on an
+	// agentPromptCategory note answer (AttentionItem.prompt_id, sent back as
+	// AgentAnswer.prompt_id): never another one.
+	Prompt string `json:"prompt,omitempty"`
+	Join   string `json:"join,omitempty"`
+	Grant  string `json:"grant,omitempty"`
+	Key    string `json:"key,omitempty"` // a Hammock Key request (hammockkey.go)
+	Host   string `json:"host"`          // the Mac's certificate fingerprint, as the phone knows it
 	// ID is what it replaces on the phone (the collapse id): notifications
 	// about the same thing from two Macs (a linked computer's agent) are one.
 	ID string `json:"id,omitempty"`
@@ -132,6 +136,38 @@ type pushNote struct {
 	// Badge is the number for Hammock's icon as it's sent (badgeCount),
 	// on a clear too.
 	Badge *int `json:"n,omitempty"`
+	// fill, if set, finishes the note as it's sent (holding d.mu): what it's
+	// about may have changed while it waited for you to go.
+	fill func(*pushNote)
+}
+
+// agentPromptCategory is the category of a note about an agent's
+// permission prompt (Claude Code's or Codex's menu, read off its screen):
+// its notification offers Allow and Deny, which answer it as Needs You's
+// do (AgentAnswer's decision). In the sealed note only: the relay is never
+// told it (relayCategory).
+const agentPromptCategory = "agentprompt"
+
+// agentPromptNote makes n about item's permission prompt, if it's waiting
+// on one the screen shows: Allow and Deny, for that prompt. Not for a
+// question (there's nothing to allow), another program, or a prompt not
+// read yet.
+func agentPromptNote(n *pushNote, item *pb.AttentionItem) {
+	if item == nil || item.State != pb.AgentState_AGENT_STATE_NEEDS_INPUT || item.Question || item.Program || item.PromptId == "" {
+		return
+	}
+	n.Category, n.Prompt = agentPromptCategory, item.PromptId
+}
+
+// relayCategory is what the relay is told of a note's category: only
+// those it knows (it sets APNs' and FCM's from them); the rest stay in the
+// sealed note, where the phone takes its category from anyway.
+func relayCategory(c string) string {
+	switch c {
+	case "join", "grant", "hammockkey":
+		return c
+	}
+	return ""
 }
 
 // badgeEvent is what a phone puts in its events (RegisterPush) when it
@@ -312,8 +348,10 @@ func (d *Daemon) pushAttention(item *pb.AttentionItem) {
 		return
 	}
 	title, sub := d.pushTitle(item.PaneId)
-	// Until it's answered, seen or replaced.
-	d.push(event, item.Id, pushNote{Title: title, Subtitle: sub, Body: body, Pane: item.PaneId},
+	// Until it's answered, seen or replaced. Its prompt as it is when it's
+	// sent (read off the screen, maybe after the item was raised).
+	d.push(event, item.Id, pushNote{Title: title, Subtitle: sub, Body: body, Pane: item.PaneId,
+		fill: func(n *pushNote) { agentPromptNote(n, item) }},
 		func() bool { return d.attention[item.Id] == item })
 }
 
@@ -335,7 +373,9 @@ func (d *Daemon) pushLinkedAttention(l *peerLink, item *pb.AttentionItem) {
 			}
 		}
 	}
-	d.push(event, item.Id, pushNote{Title: title, Subtitle: sub, Body: body, Pane: item.PaneId},
+	// Answered through this computer, which passes it on (d.routes).
+	d.push(event, item.Id, pushNote{Title: title, Subtitle: sub, Body: body, Pane: item.PaneId,
+		fill: func(n *pushNote) { agentPromptNote(n, l.attn[item.Id]) }},
 		func() bool {
 			cur := l.attn[item.Id]
 			return cur != nil && d.routes[item.Id] == l && sameAttention(cur, item)
@@ -420,6 +460,9 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 	if pending != nil && !pending() {
 		d.mu.Unlock()
 		return
+	}
+	if n.fill != nil {
+		n.fill(&n)
 	}
 	recs, _ := d.store.Records("push")
 	for deviceID, b := range recs {
@@ -654,7 +697,7 @@ func (d *Daemon) postPush(deviceID string, r *pb.RegisterPush, sealed []byte, n 
 	body, _ := json.Marshal(map[string]string{
 		"id": r.RelayId, "payload": base64.StdEncoding.EncodeToString(sealed),
 		"thread":   pushTag(r.Key, "thread", cmpOr(n.Pane, n.Join, n.Grant, n.Key)),
-		"collapse": pushTag(r.Key, "collapse", collapse), "category": n.Category,
+		"collapse": pushTag(r.Key, "collapse", collapse), "category": relayCategory(n.Category),
 	})
 	relay := relayEndpoint(r.RelayUrl)
 	if relay == "" {

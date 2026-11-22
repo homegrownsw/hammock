@@ -61,6 +61,18 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         // In place before the first notification.
         NotifyPrefs.sounds.forEach { AlertSound.prepare(Prefs.shared.string($0)) }
+        // Someone asking to join: let them view or decline from the banner;
+        // driving is decided in Hammock, where the card shows their key.
+        let drive = UNNotificationAction(identifier: "join.drive", title: "Let Drive…", options: .foreground)
+        let view = UNNotificationAction(identifier: "join.view", title: "Let View")
+        let decline = UNNotificationAction(identifier: "join.decline", title: "Decline", options: .destructive)
+        // An agent's permission prompt: answered as Needs You's Allow and Deny.
+        let allow = UNNotificationAction(identifier: AgentPromptNotice.allowAction, title: "Allow")
+        let deny = UNNotificationAction(identifier: AgentPromptNotice.denyAction, title: "Deny", options: .destructive)
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "join", actions: [drive, view, decline], intentIdentifiers: []),
+            UNNotificationCategory(identifier: AgentPromptNotice.category, actions: [allow, deny], intentIdentifiers: []),
+        ])
     }
 
     /// Posts a notification, asking macOS for permission the first time:
@@ -125,6 +137,28 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // Presence-aware: if the app is active and the pane is on screen, don't interrupt.
         if !NotifyPrefs.on(NotifyPrefs.whenVisible), NSApp.isActive, let tab = model.selectedTab,
            AppModel.shownPaneIDs(of: tab).contains(item.paneID) { return }
+        // A permission prompt the daemon hasn't read off the screen yet (the
+        // agent says it's asking just before it draws the menu): wait a
+        // moment for it, so the notification can offer Allow and Deny.
+        if item.state == .needsInput, !item.question, !item.program, item.promptID.isEmpty, !NotifyStyle.current.showsInAppNow {
+            Task {
+                var item = item
+                for _ in 0..<12 {
+                    try? await Task.sleep(for: .milliseconds(200))
+                    // Dealt with meanwhile: nothing to tell.
+                    guard let now = model.attention.first(where: { $0.id == item.id }), now.createdUnixMs == item.createdUnixMs else { return }
+                    item = now
+                    if !now.promptID.isEmpty { break }
+                }
+                post(item, pane: model.panes[item.paneID] ?? pane, model: model)
+            }
+            return
+        }
+        post(item, pane: pane, model: model)
+    }
+
+    /// An agent's notification, as notify decided to show it.
+    private func post(_ item: AttentionItem, pane: Pane?, model: AppModel) {
         let content = UNMutableNotificationContent()
         // The tab as the sidebar names it ("Tab 2" when unnamed), in its Group.
         let tab = pane.flatMap { model.tab(of: $0) }
@@ -137,6 +171,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // As phones are told (the daemon's pushes).
         content.body = item.noticeBody(who: pane?.displayName.capitalized ?? "Agent")
         content.userInfo = ["paneID": item.paneID, Self.live: true]
+        if AgentPromptNotice.offers(item) {
+            // Allow and Deny, for the prompt it shows now (never another one).
+            content.categoryIdentifier = AgentPromptNotice.category
+            content.userInfo["promptID"] = item.promptID
+        }
         content.threadIdentifier = item.paneID
         deliver(UNNotificationRequest(identifier: item.id, content: content, trigger: nil), sound: Self.sound(for: item.state), icon: .agent(item.state), open: Self.reveal(item.paneID))
     }
@@ -217,10 +256,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// Someone asks to join a Group you share: let them view or decline from
     /// the banner; driving is decided in Hammock, where the card shows their key.
     func notifyJoin(_ req: JoinRequest, model: AppModel) {
-        let drive = UNNotificationAction(identifier: "join.drive", title: "Let Drive…", options: .foreground)
-        let view = UNNotificationAction(identifier: "join.view", title: "Let View")
-        let decline = UNNotificationAction(identifier: "join.decline", title: "Decline", options: .destructive)
-        center?.setNotificationCategories([UNNotificationCategory(identifier: "join", actions: [drive, view, decline], intentIdentifiers: [])])
         let content = UNMutableNotificationContent()
         let who = model.people[req.userID]
         let group = model.groups.first { $0.id == req.groupID }
@@ -350,10 +385,32 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             return
         }
         guard let paneID = response.notification.request.content.userInfo["paneID"] as? String else { return }
+        if let allow = AgentPromptNotice.allows(response.actionIdentifier),
+           let prompt = response.notification.request.content.userInfo["promptID"] as? String {
+            nonisolated(unsafe) let request = response.notification.request
+            await answer(request, pane: paneID, prompt: prompt, allow: allow)
+            return
+        }
         await MainActor.run {
             NSApp.activate()
             AppModelRegistry.shared?.reveal(paneID: paneID)
         }
+    }
+
+    /// Allow or Deny on an agent's permission-prompt notification (which
+    /// macOS took away as it was chosen). If nothing was pressed, it comes
+    /// back saying so, for you to open the pane and choose there; if the
+    /// answer never got to the daemon, as it was, to try again.
+    private func answer(_ request: UNNotificationRequest, pane: String, prompt: String, allow: Bool) async {
+        guard let model = AppModelRegistry.shared else { return }
+        let outcome = await model.answerPrompt(pane: pane, item: request.identifier, prompt: prompt, allow: allow)
+        guard outcome != .answered, let content = request.content.mutableCopy() as? UNMutableNotificationContent else { return }
+        content.sound = nil
+        if outcome == .refused {
+            content.body = AgentPromptNotice.couldntAnswer
+            content.categoryIdentifier = ""
+        }
+        post(UNNotificationRequest(identifier: request.identifier, content: content, trigger: nil))
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {

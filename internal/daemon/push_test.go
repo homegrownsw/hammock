@@ -135,7 +135,8 @@ func TestPushWhileAway(t *testing.T) {
 	note := open(got["payload"])
 	if note.Title != "Map Judder" || note.Subtitle != "Atlas" || note.Pane != paneID || note.Host == "" ||
 		note.ID != "at_"+paneID || !note.Live || time.Since(time.Unix(note.At, 0)) > time.Minute ||
-		note.Kind != "needs_input" || note.Badge == nil || *note.Badge != 1 {
+		note.Kind != "needs_input" || note.Badge == nil || *note.Badge != 1 ||
+		note.Category != "" || note.Prompt != "" { // no menu on its screen: nothing to Allow
 		t.Fatalf("note %+v", note)
 	}
 	// The count only in the ciphertext: the relay never sees it.
@@ -466,6 +467,129 @@ func TestPushGoesToMovedRelay(t *testing.T) {
 			}
 		case <-time.After(time.Second):
 			t.Fatalf("no %s at the new relay", want)
+		}
+	}
+}
+
+// Only an agent's permission prompt, with the prompt its screen shows, is
+// sent as one Allow and Deny answer (agentPromptCategory, and the prompt
+// it's for): not a question, another program, a finished or failed agent,
+// or a prompt not read yet.
+func TestAgentPromptNote(t *testing.T) {
+	needs := pb.AgentState_AGENT_STATE_NEEDS_INPUT
+	for _, c := range []struct {
+		name string
+		item *pb.AttentionItem
+		want bool
+	}{
+		{"permission", &pb.AttentionItem{State: needs, PromptId: "k1"}, true},
+		{"not read yet", &pb.AttentionItem{State: needs}, false},
+		{"question", &pb.AttentionItem{State: needs, Question: true, PromptId: "k1"}, false},
+		{"program", &pb.AttentionItem{State: needs, Program: true, PromptId: "k1"}, false},
+		{"finished", &pb.AttentionItem{State: pb.AgentState_AGENT_STATE_IDLE, PromptId: "k1"}, false},
+		{"errored", &pb.AttentionItem{State: pb.AgentState_AGENT_STATE_ERRORED, PromptId: "k1"}, false},
+		{"gone", nil, false},
+	} {
+		var n pushNote
+		agentPromptNote(&n, c.item)
+		if got := n.Category == agentPromptCategory && n.Prompt == "k1"; got != c.want || (!c.want && (n.Category != "" || n.Prompt != "")) {
+			t.Errorf("%s: %+v", c.name, n)
+		}
+	}
+	// The relay is told only the categories it knows.
+	for c, want := range map[string]string{"join": "join", "grant": "grant", "hammockkey": "hammockkey", agentPromptCategory: "", "": ""} {
+		if got := relayCategory(c); got != want {
+			t.Errorf("relayCategory(%q) = %q", c, got)
+		}
+	}
+}
+
+// An agent's permission prompt reaches an away phone with its Allow and
+// Deny in the sealed note (the prompt as it is when it's sent, read after
+// the item was raised), and nothing of it in what the relay sees; other
+// agents' notes have none.
+func TestPushAgentPrompt(t *testing.T) {
+	sent := make(chan map[string]string, 8)
+	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/send" {
+			sent <- relayBody(r)
+		}
+	}))
+	defer relay.Close()
+	var idle atomic.Int64 // at the Mac until the test goes
+	oldClient, oldRelays, oldIdle, oldLocked, oldPoll := pushClient, pushRelays, idleTime, screenLocked, pushPoll
+	pushClient, pushRelays, pushPoll = relay.Client(), []string{relayOrigin(relay.URL)}, 20*time.Millisecond
+	idleTime = func() time.Duration { return time.Duration(idle.Load()) }
+	screenLocked = func() bool { return false }
+	defer func() {
+		pushClient, pushRelays, idleTime, screenLocked, pushPoll = oldClient, oldRelays, oldIdle, oldLocked, oldPoll
+	}()
+
+	dir := shortDir(t)
+	d, err := New(Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Shutdown()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	events := []string{"needs_input", "finished", "errored", "program_needs_input"}
+	d.mu.Lock()
+	if err := d.store.PutRecord("push", "phone", &pb.RegisterPush{RelayUrl: relay.URL, RelayId: "phone", Key: key, Events: events}); err != nil {
+		t.Fatal(err)
+	}
+	d.mu.Unlock()
+	open := func(body map[string]string) pushNote {
+		t.Helper()
+		sealed, _ := base64.StdEncoding.DecodeString(body["payload"])
+		block, _ := aes.NewCipher(key)
+		gcm, _ := cipher.NewGCM(block)
+		plain, err := gcm.Open(nil, sealed[:12], sealed[12:], nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n pushNote
+		_ = json.Unmarshal(plain, &n)
+		return n
+	}
+	push := func(item *pb.AttentionItem, then func()) pushNote {
+		t.Helper()
+		idle.Store(0)
+		d.mu.Lock()
+		d.attention[item.Id] = item
+		d.pushAttention(item)
+		if then != nil {
+			then() // while it waits for you to go
+		}
+		d.mu.Unlock()
+		idle.Store(int64(time.Hour))
+		select {
+		case body := <-sent:
+			if body["category"] != "" || strings.Contains(fmt.Sprint(body), "agentprompt") || strings.Contains(fmt.Sprint(body), "prompt-key") {
+				t.Fatalf("relay told %v", body)
+			}
+			return open(body)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s not pushed", item.Id)
+		}
+		return pushNote{}
+	}
+
+	needs := pb.AgentState_AGENT_STATE_NEEDS_INPUT
+	perm := &pb.AttentionItem{Id: "at_pn_1", PaneId: "pn_1", State: needs, Summary: "Claude needs your permission to use Bash"}
+	n := push(perm, func() { perm.PromptId = "prompt-key" })
+	if n.Category != agentPromptCategory || n.Prompt != "prompt-key" || n.Pane != "pn_1" || n.ID != "at_pn_1" || !n.Live || n.Kind != "needs_input" {
+		t.Fatalf("permission prompt: %+v", n)
+	}
+	for _, item := range []*pb.AttentionItem{
+		{Id: "at_pn_2", PaneId: "pn_2", State: needs}, // no prompt on screen
+		{Id: "at_pn_3", PaneId: "pn_3", State: needs, Question: true, PromptId: "prompt-key"},
+		{Id: "at_pn_4", PaneId: "pn_4", State: needs, Program: true, PromptId: "prompt-key"},
+		{Id: "at_pn_5", PaneId: "pn_5", State: pb.AgentState_AGENT_STATE_IDLE, PromptId: "prompt-key"},
+		{Id: "at_pn_6", PaneId: "pn_6", State: pb.AgentState_AGENT_STATE_ERRORED, PromptId: "prompt-key"},
+	} {
+		if n := push(item, nil); n.Category != "" || n.Prompt != "" {
+			t.Fatalf("%s: %+v", item.Id, n)
 		}
 	}
 }

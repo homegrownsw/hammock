@@ -113,7 +113,7 @@ object Notifications {
         val open = Intent(ctx, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(EXTRA_HOST, host)
-            if (pane.isNotEmpty() && category.isEmpty()) putExtra(EXTRA_PANE, pane) else putExtra(EXTRA_NEEDS_YOU, true)
+            if (pane.isNotEmpty() && (category.isEmpty() || category == CATEGORY_AGENT_PROMPT)) putExtra(EXTRA_PANE, pane) else putExtra(EXTRA_NEEDS_YOU, true)
         }
         val n = NotificationCompat.Builder(ctx, channel)
             .setSmallIcon(R.drawable.ic_notification)
@@ -140,6 +140,12 @@ object Notifications {
                 // Letting someone drive means typing on your computer: in the app, where you see who.
                 n.addAction(NotificationCompat.Action(0, "Let Drive…", PendingIntent.getActivity(ctx, (host + id + "drive").hashCode(), open,
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)))
+            }
+            CATEGORY_AGENT_PROMPT -> if (offersAnswers(category, pane, note.optString("prompt"))) {
+                // An agent's permission prompt: as Needs You's Allow and Deny, for that prompt only.
+                val prompt = note.optString("prompt")
+                n.addAction(action(ctx, "Deny", ACTION_PROMPT_DENY, host, pane, subject, open, prompt))
+                n.addAction(action(ctx, "Allow", ACTION_PROMPT_ALLOW, host, pane, subject, open, prompt))
             }
             "hammockkey" -> {
                 n.addAction(action(ctx, "Don't Allow", ACTION_KEY_DENY, host, id, subject, open))
@@ -180,9 +186,20 @@ object Notifications {
     const val ACTION_JOIN_VIEW = "com.homegrownsw.hammock.JOIN_VIEW"
     const val ACTION_JOIN_DECLINE = "com.homegrownsw.hammock.JOIN_DECLINE"
     const val ACTION_KEY_DENY = "com.homegrownsw.hammock.KEY_DENY"
+    const val ACTION_PROMPT_ALLOW = "com.homegrownsw.hammock.PROMPT_ALLOW"
+    const val ACTION_PROMPT_DENY = "com.homegrownsw.hammock.PROMPT_DENY"
 
-    private fun action(ctx: Context, title: String, action: String, host: String, id: String, subject: String, open: Intent): NotificationCompat.Action {
-        val answer = NotificationAnswer(action, host, id, subject)
+    /** An agent's permission prompt's category (in the sealed note only): Allow and Deny answer that prompt. */
+    const val CATEGORY_AGENT_PROMPT = "agentprompt"
+    /** Said in place of the request when the computer pressed nothing (the prompt changed, has no plain Yes, or the pane's gone). */
+    const val COULDNT_ANSWER = "Couldn't answer: open it to choose"
+
+    /** Whether a note offers Allow and Deny on an agent's prompt: its category, with the pane and prompt they answer. */
+    fun offersAnswers(category: String, pane: String, prompt: String) =
+        category == CATEGORY_AGENT_PROMPT && pane.isNotEmpty() && prompt.isNotEmpty()
+
+    private fun action(ctx: Context, title: String, action: String, host: String, id: String, subject: String, open: Intent, prompt: String = ""): NotificationCompat.Action {
+        val answer = NotificationAnswer(action, host, id, subject, prompt)
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         // With the app's own lock on (Require Unlock), every answer opens the
         // app, whose lock asks first, and is sent once it's open, as on the
@@ -207,6 +224,26 @@ object Notifications {
             if (sbn.tag != tag) continue
             val sent = sbn.notification.extras.getLong(EXTRA_SENT, 0)
             if (clears(sent, at)) nm.cancel(tag, sbn.id)
+        }
+    }
+
+    /**
+     * Its notification again, silently, saying the computer couldn't answer
+     * it, with no actions: tapping it opens the pane, to choose there.
+     */
+    fun couldntAnswer(ctx: Context, tag: String) {
+        val nm = NotificationManagerCompat.from(ctx)
+        for (sbn in ctx.getSystemService(NotificationManager::class.java).activeNotifications) {
+            if (sbn.tag != tag) continue
+            val again = android.app.Notification.Builder.recoverBuilder(ctx, sbn.notification)
+                .setContentText(COULDNT_ANSWER)
+                .setStyle(android.app.Notification.BigTextStyle().bigText(COULDNT_ANSWER))
+                .setActions()
+                .setOnlyAlertOnce(true)
+                .build()
+            if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) nm.notify(tag, sbn.id, again)
         }
     }
 
@@ -248,13 +285,28 @@ object Notifications {
     }
 }
 
-/** An answer chosen on a notification (Allow, Deny, Let View…), from the shade or once the app opens. */
-data class NotificationAnswer(val action: String, val host: String, val id: String, val subject: String) {
+/**
+ * An answer chosen on a notification (Allow, Deny, Let View…), from the shade or once the app opens: [id] is what
+ * it answers (an agent's prompt's: its pane, and [prompt] which one), [subject] what the notification's about.
+ */
+data class NotificationAnswer(val action: String, val host: String, val id: String, val subject: String, val prompt: String = "") {
     /** Puts it in an intent: the receiver's, or the app's with the lock on. */
     fun into(i: Intent): Intent = i.putExtra(EXTRA_ACTION, action).putExtra(EXTRA_HOST, host).putExtra(EXTRA_ID, id).putExtra(EXTRA_SUBJECT, subject)
+        .putExtra(EXTRA_PROMPT, prompt)
 
-    /** Tells the computer, over a model signed in to it. */
-    suspend fun send(m: AppModel) {
+    /** An agent's prompt's Allow (true) or Deny (false); null for any other answer. */
+    val allowsPrompt: Boolean? get() = when (action) {
+        Notifications.ACTION_PROMPT_ALLOW -> true
+        Notifications.ACTION_PROMPT_DENY -> false
+        else -> null
+    }
+
+    /**
+     * Tells the computer, over a model signed in to it. Only an agent's prompt can come back
+     * refused or unsent (the rest are as sent).
+     */
+    suspend fun send(m: AppModel): AppModel.PromptAnswer {
+        allowsPrompt?.let { allow -> return m.answerPrompt(id, subject, prompt, allow) }
         val about = id // (in the builders below, `id` is the message's own)
         when (action) {
             Notifications.ACTION_GRANT_ALLOW, Notifications.ACTION_GRANT_DENY -> m.request {
@@ -272,6 +324,7 @@ data class NotificationAnswer(val action: String, val host: String, val id: Stri
                 setRespondHammockKey(Hammock.RespondHammockKey.newBuilder().setId(about).setAllow(false).build())
             }
         }
+        return AppModel.PromptAnswer.ANSWERED
     }
 
     /** Takes its notification down. */
@@ -282,12 +335,13 @@ data class NotificationAnswer(val action: String, val host: String, val id: Stri
         private const val EXTRA_HOST = "answerHost"
         private const val EXTRA_ID = "answerID"
         private const val EXTRA_SUBJECT = "answerSubject"
+        private const val EXTRA_PROMPT = "answerPrompt"
 
         fun from(i: Intent): NotificationAnswer? {
             val action = i.getStringExtra(EXTRA_ACTION) ?: return null
             val host = i.getStringExtra(EXTRA_HOST) ?: return null
             val id = i.getStringExtra(EXTRA_ID) ?: return null
-            return NotificationAnswer(action, host, id, i.getStringExtra(EXTRA_SUBJECT) ?: "")
+            return NotificationAnswer(action, host, id, i.getStringExtra(EXTRA_SUBJECT) ?: "", i.getStringExtra(EXTRA_PROMPT) ?: "")
         }
     }
 }
@@ -314,8 +368,13 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     val m = shown ?: session.briefConnection(answer.host)?.also { brief = it } ?: return@withTimeoutOrNull
                     withTimeoutOrNull(6_000) { m.link.first { it == Link.Connected } }
                     if (m.link.value == Link.Connected) {
-                        answer.send(m)
-                        answer.answered(ctx)
+                        when (answer.send(m)) {
+                            AppModel.PromptAnswer.ANSWERED -> answer.answered(ctx)
+                            // Nothing pressed: it says so, and opens the pane to choose there.
+                            AppModel.PromptAnswer.REFUSED -> Notifications.couldntAnswer(ctx, "${answer.host}/${answer.subject}")
+                            // It never got there: the notification stays, to try again.
+                            AppModel.PromptAnswer.UNSENT -> {}
+                        }
                     }
                 }
             } finally {

@@ -51,6 +51,8 @@ class VectorsTest {
             val want = o.getJSONObject("note")
             assertEquals(want.toMap(), note.toMap())
             assertEquals(o.getString("host"), note.getString("host"))
+            // An agent's permission prompt names the pane and the prompt its Allow and Deny answer.
+            if (note.optString("c") == "agentprompt") assertTrue(note.optString("pane").isNotEmpty() && note.optString("prompt").isNotEmpty())
             // Another key opens nothing.
             assertTrue(PushCrypto.open(ByteArray(32), Base64.getDecoder().decode(o.getString("sealed_b64"))) == null)
         }

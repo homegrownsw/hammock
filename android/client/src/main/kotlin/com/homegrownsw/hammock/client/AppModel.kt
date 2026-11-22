@@ -744,6 +744,38 @@ class AppModel private constructor(
         }
     }
 
+    /** What answering an agent's prompt from its notification came to. */
+    enum class PromptAnswer {
+        /** Pressed. */
+        ANSWERED,
+        /** The computer pressed nothing: the prompt changed, has no plain Yes, or the pane's gone. */
+        REFUSED,
+        /** It never got there (not connected, or the connection dropped): try again. */
+        UNSENT,
+    }
+
+    /**
+     * Allow or Deny from an agent's permission-prompt notification: as Needs You's (typed only while the pane
+     * shows that prompt; Deny is Esc), then its Needs You item ([item]) cleared, as Needs You's does.
+     */
+    suspend fun answerPrompt(pane: String, item: String, prompt: String, allow: Boolean): PromptAnswer {
+        try {
+            call {
+                setAgentAnswer(Hammock.AgentAnswer.newBuilder().setPaneId(pane).setPromptId(prompt).setBound(true).setDecision(
+                    if (allow) Hammock.AgentAnswer.Decision.DECISION_ALLOW else Hammock.AgentAnswer.Decision.DECISION_DENY,
+                ).build())
+            }
+        } catch (_: DaemonRefused) {
+            return PromptAnswer.REFUSED
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return PromptAnswer.UNSENT
+        }
+        if (item.isNotEmpty()) clearAttention(item)
+        return PromptAnswer.ANSWERED
+    }
+
     fun respondJoin(req: JoinRequest, role: Hammock.Role) = scope.launch {
         _workspace.value = _workspace.value.let { it.copy(joinRequests = it.joinRequests.filter { j -> j.id != req.id }) }
         request { setRespondJoin(Hammock.RespondJoin.newBuilder().setId(req.id).setRole(role).build()) }

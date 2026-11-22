@@ -135,10 +135,14 @@ final class Push: NSObject {
         // key, behind Face ID, so it opens the app.
         let keyApprove = UNNotificationAction(identifier: "key.approve", title: "Approve…", options: [.foreground, .authenticationRequired])
         let keyDeny = UNNotificationAction(identifier: "key.deny", title: "Don't Allow", options: lock.union(.destructive))
+        // An agent's permission prompt: answered as Needs You's Allow and Deny.
+        let promptAllow = UNNotificationAction(identifier: AgentPromptNotice.allowAction, title: "Allow", options: lock)
+        let promptDeny = UNNotificationAction(identifier: AgentPromptNotice.denyAction, title: "Deny", options: lock.union(.destructive))
         UNUserNotificationCenter.current().setNotificationCategories([
             UNNotificationCategory(identifier: "join", actions: [drive, view, decline], intentIdentifiers: []),
             UNNotificationCategory(identifier: "grant", actions: [allow, deny], intentIdentifiers: []),
             UNNotificationCategory(identifier: "hammockkey", actions: [keyApprove, keyDeny], intentIdentifiers: []),
+            UNNotificationCategory(identifier: AgentPromptNotice.category, actions: [promptAllow, promptDeny], intentIdentifiers: []),
         ])
     }
 
@@ -222,8 +226,10 @@ extension Push: UNUserNotificationCenterDelegate {
             DispatchQueue.main.async { done() }
             return
         }
+        let prompt = AgentPromptNotice.answers(info)
         let tapped = Tapped(action: response.actionIdentifier, join: info["join"] as? String, grant: info["grant"] as? String,
-                            key: info["key"] as? String, pane: info["pane"] as? String, host: info["host"] as? String)
+                            key: info["key"] as? String, pane: info["pane"] as? String, host: info["host"] as? String,
+                            item: prompt?.item, prompt: prompt?.prompt)
         nonisolated(unsafe) let request = response.notification.request
         Task { @MainActor in
             await self.handle(tapped, request: request)
@@ -236,6 +242,8 @@ extension Push: UNUserNotificationCenterDelegate {
 private struct Tapped: Sendable {
     let action: String
     let join: String?, grant: String?, key: String?, pane: String?, host: String?
+    /// An agent's permission prompt (AgentPromptNotice): its Needs You item and which prompt.
+    let item: String?, prompt: String?
 
     /// The Mac has what it answers (a connection's state comes just after it connects).
     @MainActor func asks(_ m: AppModel) -> Bool {
@@ -269,7 +277,7 @@ extension Push {
         // Behind the app's own lock: answered in Needs You once it's unlocked
         // (the action opened the app, which asks).
         if appLocked {
-            if t.grant != nil || t.join != nil { openNeedsYou = true }
+            if t.grant != nil || t.join != nil || t.prompt != nil { openNeedsYou = true }
             return
         }
         // Answer from the notification: wait (briefly) for the Mac, and what
@@ -299,6 +307,20 @@ extension Push {
         if let key = t.key, t.action == "key.deny", let r = model.hammockKeyRequests.first(where: { $0.id == key }) {
             model.denyHammockKey(r)
         }
+        if let prompt = t.prompt, let pane = t.pane, let allow = AgentPromptNotice.allows(t.action) {
+            switch await model.answerPrompt(pane: pane, item: t.item ?? "", prompt: prompt, allow: allow) {
+            case .answered: break
+            case .refused:
+                // Nothing pressed: it says so, and opens the pane to choose there.
+                Self.log.info("The Mac couldn't answer the prompt from its notification")
+                await Self.repost(request, saying: AgentPromptNotice.couldntAnswer)
+                return
+            case .unsent:
+                Self.log.error("Couldn't reach the Mac to answer \(t.action, privacy: .public); notification put back")
+                await Self.repost(request)
+                return
+            }
+        }
         try? await Task.sleep(for: .milliseconds(500)) // let the answer go out
     }
 }
@@ -318,10 +340,15 @@ extension Push {
     }
 
     /// Shows a notification again, as it was but without its sound (under
-    /// its own identifier, so it replaces one still there).
-    static func repost(_ request: UNNotificationRequest) async {
+    /// its own identifier, so it replaces one still there); saying something
+    /// else, it has no actions (tapping it still opens what it's about).
+    static func repost(_ request: UNNotificationRequest, saying body: String? = nil) async {
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else { return }
         content.sound = nil
+        if let body {
+            content.body = body
+            content.categoryIdentifier = ""
+        }
         do {
             try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: request.identifier, content: content, trigger: nil))
         } catch {

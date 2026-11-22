@@ -240,19 +240,25 @@ func writeClientVectors(t *testing.T) {
 		key[i] = byte(i + 1)
 	}
 	badge := 2
-	note := pushNote{Title: "Claude needs you", Subtitle: "Web ▸ api", Body: "Allow Bash: npm test?", Category: "grant", Grant: "gr_1",
-		Host: cert, ID: "c_1", At: 1_800_000_000, Live: true, Kind: "grant", Badge: &badge}
-	plain, _ := json.Marshal(note)
-	sealed, err := seal(key, plain)
-	if err != nil {
-		t.Fatal(err)
+	for _, note := range []pushNote{
+		{Title: "Claude needs you", Subtitle: "Web ▸ api", Body: "Allow Bash: npm test?", Category: "grant", Grant: "gr_1",
+			Host: cert, ID: "c_1", At: 1_800_000_000, Live: true, Kind: "grant", Badge: &badge},
+		// An agent's permission prompt: Allow and Deny answer that prompt.
+		{Title: "Map Judder", Subtitle: "🗺️ Atlas", Body: "Claude needs your permission to use Bash", Category: agentPromptCategory,
+			Pane: "pn_1", Prompt: "3f9a1c", Host: cert, ID: "at_pn_1", At: 1_800_000_000, Live: true, Kind: "needs_input", Badge: &badge},
+	} {
+		plain, _ := json.Marshal(note)
+		sealed, err := seal(key, plain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v.Push = append(v.Push, struct {
+			Host   string          `json:"host"`
+			Key    string          `json:"key_hex"`
+			Sealed string          `json:"sealed_b64"`
+			Note   json.RawMessage `json:"note"`
+		}{cert, hex.EncodeToString(key), base64.StdEncoding.EncodeToString(sealed), plain})
 	}
-	v.Push = append(v.Push, struct {
-		Host   string          `json:"host"`
-		Key    string          `json:"key_hex"`
-		Sealed string          `json:"sealed_b64"`
-		Note   json.RawMessage `json:"note"`
-	}{cert, hex.EncodeToString(key), base64.StdEncoding.EncodeToString(sealed), plain})
 
 	for _, w := range []bool{true, false} {
 		scope := "once"

@@ -26,7 +26,10 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
 import javax.net.ssl.X509ExtendedTrustManager
 
-class DaemonException(message: String) : Exception(message)
+open class DaemonException(message: String) : Exception(message)
+
+/** The daemon's own error in reply to a call: it got the request, and turned it down (not a connection failing). */
+class DaemonRefused(message: String) : DaemonException(message)
 
 /**
  * Stands in for a daemon that isn't there (the demo): gets everything a
@@ -301,7 +304,7 @@ class DaemonConnection private constructor(
         }
         val cb = if (msg.replyTo != 0L) pending.remove(msg.replyTo) else null
         if (cb != null) {
-            if (msg.msgCase == ServerMessage.MsgCase.ERROR) cb.completeExceptionally(DaemonException(msg.error.message))
+            if (msg.msgCase == ServerMessage.MsgCase.ERROR) cb.completeExceptionally(DaemonRefused(msg.error.message))
             else cb.complete(msg)
         } else {
             onEvent?.invoke(msg)

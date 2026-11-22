@@ -244,7 +244,9 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
         if (locked || link != com.homegrownsw.hammock.client.Link.Connected || session.host.value?.id != a.host) return@LaunchedEffect
         answer = null
         a.answered(ctx)
-        model.scope.launch { a.send(model) } // (not this effect's: clearing answer ends it)
+        model.scope.launch { // (not this effect's: clearing answer ends it)
+            if (a.send(model) != com.homegrownsw.hammock.client.AppModel.PromptAnswer.ANSWERED) model.showToast("Couldn't answer: choose here instead")
+        }
     }
 
     val needsYou = ws.badgeCount
