@@ -716,15 +716,7 @@ final class ClosureItem: NSMenuItem {
         self.run = run
         super.init(title: title, action: #selector(fire), keyEquivalent: "")
         target = self
-        if let key, let chord = AppConfig.shared.keybinds[key], let c = chord.keyCharacter {
-            keyEquivalent = String(c).lowercased()
-            var m: NSEvent.ModifierFlags = []
-            if chord.modifiers.contains(.command) { m.insert(.command) }
-            if chord.modifiers.contains(.shift) { m.insert(.shift) }
-            if chord.modifiers.contains(.option) { m.insert(.option) }
-            if chord.modifiers.contains(.control) { m.insert(.control) }
-            keyEquivalentModifierMask = m
-        }
+        if let key { showShortcut(key) }
     }
 
     required init(coder: NSCoder) { fatalError() }

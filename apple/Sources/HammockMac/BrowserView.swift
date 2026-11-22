@@ -267,13 +267,13 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
         case "ti":
             hostTextState(m)
         case "unhandled":
-            // A ⌘-key the page didn't want: ⌘← and ⌘→ go back and forward, as
-            // in Chrome (a text field on the page keeps them), and our menus
-            // get the rest.
+            // A ⌘-key the page didn't want: Back and Forward (⌘← and ⌘→, as
+            // in Chrome) go back and forward now that no text field on the
+            // page kept them (performKeyEquivalent), and our menus get the rest.
             if let s = m["cg"] as? String, let d = Data(base64Encoded: s), let cg = CGEvent(withDataAllocator: nil, data: d as CFData),
                let e = NSEvent(cgEvent: cg) {
-                if let history = Self.historyCommand(e) {
-                    onCommand?(history)
+                if let c = Keys.browserAction(for: e).flatMap(BrowserCommand.init(action:)) {
+                    onCommand?(c)
                 } else {
                     NSApp.mainMenu?.performKeyEquivalent(with: e)
                 }
@@ -477,17 +477,6 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     override func keyUp(with e: NSEvent) { fwd(e) }
     override func flagsChanged(with e: NSEvent) { fwd(e) }
 
-    /// Back or forward for ⌘← or ⌘→ (and nothing else held).
-    private static func historyCommand(_ e: NSEvent) -> BrowserCommand? {
-        let flags = e.modifierFlags.intersection([.command, .shift, .option, .control])
-        guard e.type == .keyDown, flags == .command else { return nil }
-        switch e.keyCode {
-        case 123: return .back
-        case 124: return .forward
-        default: return nil
-        }
-    }
-
     /// Text input runs here, in the active app, where dead keys and IMEs work.
     override func keyDown(with e: NSEvent) {
         ops = []
@@ -499,21 +488,31 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
 
     /// ⌘-keys go to the page first, as in Chrome; the host bounces back any
     /// it didn't use, and those reach our menus. The browser's own keys
-    /// (address bar, reload, back/forward) and Hammock's shortcuts (`Keys`, as
-    /// the person has them: tabs, Groups, panes, the palette, find) never
-    /// reach the page; the simulator's do (they only apply to a simulator), and
-    /// so do Bigger, Smaller and Actual Size, which zoom the page there.
-    /// ⌘[ and ⌘] are back and forward only while no shortcut has them: by
-    /// default they're Previous and Next Pane, which must not stop here.
+    /// (address bar; Back, Forward and Reload, as the person has them) and
+    /// Hammock's shortcuts (`Keys`: tabs, Groups, panes, the palette, find)
+    /// never reach the page, except Back and Forward's on keys text fields
+    /// use (⌘← and ⌘→): the page has those first, and they navigate when it
+    /// bounces them back. The simulator's reach it (they only apply to a
+    /// simulator), and so do Bigger, Smaller and Actual Size, which zoom the
+    /// page there. ⌘[ and ⌘] are back and forward only while no shortcut has
+    /// them: by default they're Previous and Next Pane, which must not stop here.
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
         guard !standby, window?.firstResponder === self, e.type == .keyDown else { return false }
         let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = e.charactersIgnoringModifiers?.lowercased() ?? ""
+        if let c = Keys.browserAction(for: e).flatMap(BrowserCommand.init(action:)) {
+            // The host bounces back only ⌘-keys the page didn't use.
+            if flags.contains(.command), KeyChord(event: e)?.isTextEditingKey == true {
+                fwd(e)
+            } else {
+                onCommand?(c)
+            }
+            return true
+        }
         let action = Keys.action(for: e)
         if flags == .command {
             switch key {
             case "l": onCommand?(.focusAddress); return true
-            case "r": onCommand?(.reload); return true
             case "[" where action == nil: onCommand?(.back); return true
             case "]" where action == nil: onCommand?(.forward); return true
             default: break
@@ -642,6 +641,13 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
             item.tag = (it["cmd"] as? Int) ?? -1
             item.isEnabled = (it["enabled"] as? Bool) ?? true
             item.state = (it["checked"] as? Bool) == true ? .on : .off
+            // Chromium's Back, Forward and Reload (cef_menu_id_t), with their shortcuts.
+            switch item.tag {
+            case 100: item.showShortcut("browser_back")
+            case 101: item.showShortcut("browser_forward")
+            case 102: item.showShortcut("browser_reload")
+            default: break
+            }
             menu.addItem(item)
         }
         let p = NSPoint(x: (m["x"] as? Double) ?? 0, y: bounds.height - ((m["y"] as? Double) ?? 0))
@@ -841,6 +847,30 @@ private final class MenuPick: NSObject {
 enum BrowserCommand: String { case focusAddress, reload, back, forward, find, findNext, findPrevious, devTools }
 
 extension BrowserCommand {
+    /// Back, Forward or Reload for its action (`Keybinds`, group Browser).
+    init?(action: String) {
+        switch action {
+        case "browser_back": self = .back
+        case "browser_forward": self = .forward
+        case "browser_reload": self = .reload
+        default: return nil
+        }
+    }
+
+    /// From the menu bar, whose items have the shortcut. A menu's shortcut
+    /// fires before the focused view's keyDown, so one on a key text fields
+    /// use (Back's ⌘←) is handed to the text field that has focus (the
+    /// address bar, the find bar, a page shared with you), as if no menu had
+    /// it. (A local page has its keys first: BrowserPaneNSView.)
+    @MainActor func runFromMenu() {
+        if let e = NSApp.currentEvent, e.type == .keyDown, KeyChord(event: e)?.isTextEditingKey == true,
+           let r = NSApp.keyWindow?.firstResponder as? NSView, r is NSTextView || r is RemoteBrowserNSView {
+            r.keyDown(with: e)
+            return
+        }
+        post()
+    }
+
     /// The menu bar and palette's way to the focused browser pane (its
     /// command in userInfo["command"]).
     static let notification = Notification.Name("HammockBrowserCommand")
@@ -1000,12 +1030,12 @@ struct BrowserPaneView: View {
             }
             .fixedSize() // only an icon: never squeezed away
             .padding(.trailing, 4)
-            button("chevron.left", "Back (⌘←)", label: "Back", enabled: pane?.canGoBack == true) { run(.back) }
-            button("chevron.right", "Forward (⌘→)", label: "Forward", enabled: pane?.canGoForward == true) { run(.forward) }
+            button("chevron.left", Keys.hint("Back", "browser_back"), label: "Back", enabled: pane?.canGoBack == true) { run(.back) }
+            button("chevron.right", Keys.hint("Forward", "browser_forward"), label: "Forward", enabled: pane?.canGoForward == true) { run(.forward) }
             if pane?.loading == true {
                 button("xmark", "Stop", label: "Stop") { model.navigate(paneID, "stop") }
             } else {
-                button("arrow.clockwise", "Reload (⌘R)", label: "Reload") { run(.reload) }
+                button("arrow.clockwise", Keys.hint("Reload", "browser_reload"), label: "Reload") { run(.reload) }
             }
             TextField("Search or enter address", text: $address)
                 .textFieldStyle(.plain)

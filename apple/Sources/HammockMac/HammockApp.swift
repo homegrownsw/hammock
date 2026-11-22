@@ -425,6 +425,21 @@ struct HammockApp: App {
                         if let id = focused { Task { await model.splitBrowser(id, direction: .vertical) } }
                     }.keyboardShortcut(Keys.splitBrowserDown)
                 }
+                if HammockTool.browser.on {
+                    // Their shortcuts only with a browser focused: ⌘← and ⌘→
+                    // are the terminal's and simulator's otherwise, and ⌘R
+                    // the Scheduled Tasks list's while it shows.
+                    let keys = browserKeys
+                    Button("Back") { BrowserCommand.back.runFromMenu() }
+                        .keyboardShortcut(keys ? Keys.browserBack : nil)
+                        .disabled(!keys)
+                    Button("Forward") { BrowserCommand.forward.runFromMenu() }
+                        .keyboardShortcut(keys ? Keys.browserForward : nil)
+                        .disabled(!keys)
+                    Button("Reload Page") { BrowserCommand.reload.runFromMenu() }
+                        .keyboardShortcut(keys ? Keys.browserReload : nil)
+                        .disabled(!keys)
+                }
                 Button("Show DevTools") { if let id = focused { Task { await model.showDevTools(id) } } }
                     .keyboardShortcut(Keys.devTools)
                     .disabled(!focusedIsBrowser || focused.flatMap { model.panes[$0] }?.url.hasPrefix("hmk-devtools:") == true)
@@ -556,6 +571,13 @@ struct HammockApp: App {
     private var focusedIsBrowser: Bool {
         guard let id = focused, let p = model.panes[id] else { return false }
         return p.kind == .browser && model.group(ofPane: id)?.isRemote != true
+    }
+
+    /// A browser pane you can drive is focused (one shared with you too),
+    /// with no Scheduled Tasks list over it: Back, Forward and Reload Page.
+    private var browserKeys: Bool {
+        guard let id = focused, model.panes[id]?.kind == .browser, !ScheduleUI.shared.showingList else { return false }
+        return model.group(ofPane: id).map { $0.canDrive && !$0.offline } ?? true
     }
 
     private var closeLabel: String {

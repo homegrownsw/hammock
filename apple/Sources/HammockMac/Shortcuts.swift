@@ -123,6 +123,11 @@ enum Keys {
     static var openGroupInNewWindow: KeyboardShortcut? { shortcut("open_group_in_new_window") }
     static var openPaneInNewWindow: KeyboardShortcut? { shortcut("open_pane_in_new_window") }
 
+    // Browser (only with one focused: BrowserCommand.run, BrowserPaneNSView)
+    static var browserBack: KeyboardShortcut? { shortcut("browser_back") }
+    static var browserForward: KeyboardShortcut? { shortcut("browser_forward") }
+    static var browserReload: KeyboardShortcut? { shortcut("browser_reload") }
+
     // Simulator (only with one focused: ⌘← and ⌘→ are the terminal's otherwise)
     static var simHome: KeyboardShortcut? { shortcut("sim_home") }
     static var simLock: KeyboardShortcut? { shortcut("sim_lock") }
@@ -178,6 +183,14 @@ enum Keys {
         guard let chord = KeyChord(event: event) else { return nil }
         return AppConfig.shared.keybinds.conflicts(chord).first
     }
+
+    /// The browser's own action for a key press, as the person has them
+    /// (it may share its key with another kind of pane's, or the
+    /// Scheduled Tasks list's: `Keybinds.apart`).
+    static func browserAction(for event: NSEvent) -> String? {
+        guard let chord = KeyChord(event: event) else { return nil }
+        return AppConfig.shared.keybinds.action(for: chord, in: "Browser")
+    }
 }
 
 extension KeyChord {
@@ -216,6 +229,20 @@ extension KeyChord {
         guard let base = event.characters(byApplyingModifiers: [])?.lowercased(), base.count == 1,
               let chord = KeyChord(parsing: base) else { return nil }
         self.init(chord.key, mods)
+    }
+}
+
+extension NSMenuItem {
+    /// Shows an action's shortcut, as the person has it (none: none).
+    @MainActor func showShortcut(_ id: String) {
+        guard let chord = AppConfig.shared.keybinds[id], let c = chord.keyCharacter else { return }
+        keyEquivalent = String(c).lowercased()
+        var m: NSEvent.ModifierFlags = []
+        if chord.modifiers.contains(.command) { m.insert(.command) }
+        if chord.modifiers.contains(.shift) { m.insert(.shift) }
+        if chord.modifiers.contains(.option) { m.insert(.option) }
+        if chord.modifiers.contains(.control) { m.insert(.control) }
+        keyEquivalentModifierMask = m
     }
 }
 

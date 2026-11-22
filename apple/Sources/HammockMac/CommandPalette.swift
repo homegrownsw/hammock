@@ -427,6 +427,15 @@ struct CommandPalette: View {
                 }
             }
         }
+        if let f = focused, let p = model.panes[f], p.kind == .browser, model.group(ofPane: f).map({ $0.canDrive && !$0.offline }) ?? true {
+            if p.canGoBack {
+                action("browser-back", "Back", "chevron.left", .blue, "web page history previous browser go", keys: Keys.browserBack) { model.navigate(f, "back") }
+            }
+            if p.canGoForward {
+                action("browser-forward", "Forward", "chevron.right", .blue, "web page history next browser go", keys: Keys.browserForward) { model.navigate(f, "forward") }
+            }
+            action("browser-reload", "Reload Page", "arrow.clockwise", .blue, "web page refresh load again browser", keys: Keys.browserReload) { model.navigate(f, "reload") }
+        }
         if let f = focused, model.panes[f]?.kind == .browser, model.group(ofPane: f)?.isRemote != true {
             action("find-in-page", "Find in Page…", "magnifyingglass", .blue, "search text page browser", keys: Keys.findInPage) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { BrowserCommand.find.post() }

@@ -215,4 +215,41 @@ final class PaneScopedKeybindTests: XCTestCase {
         XCTAssertEqual(set.assign(KeyChord("l"), to: "editor_go_to_line"), [])
         XCTAssertEqual(set.chords["sim_lock"], KeyChord("l"))
     }
+
+    // ⌘← goes back with a browser focused and rotates a simulator with one
+    // focused; ⌘R reloads the page, or runs the Scheduled Tasks list's task
+    // in its sheet.
+    func testBrowserSharesKeysWithOtherPanesAndTheScheduledTasksList() {
+        let set = KeybindSet.defaults
+        XCTAssertEqual(set["browser_back"], KeyChord("left"))
+        XCTAssertTrue(Keybinds.apart("browser_back", "sim_rotate_left"))
+        XCTAssertTrue(Keybinds.apart("browser_reload", "run_scheduled_task"))
+        XCTAssertFalse(Keybinds.apart("run_scheduled_task", "new_tab"))
+        XCTAssertEqual(set.conflicts(KeyChord("r"), excluding: "browser_reload"), [])
+        XCTAssertEqual(set.conflicts(KeyChord("r"), excluding: "new_tab"), ["run_scheduled_task", "browser_reload"])
+        XCTAssertEqual(set.action(for: KeyChord("left"), in: "Browser"), "browser_back")
+        XCTAssertEqual(set.action(for: KeyChord("left"), in: "Simulator"), "sim_rotate_left")
+        XCTAssertNil(set.action(for: KeyChord("l"), in: "Browser"))
+    }
+
+    // Rebinding moves the key: the old one no longer goes back, the new one
+    // does, and giving the browser's key to a global action takes it away.
+    func testRebindingBrowserKeys() {
+        var (set, problems) = KeybindSet.parse(["cmd+bracket_left=browser_back"])
+        XCTAssertEqual(problems, [])
+        XCTAssertEqual(set["browser_back"], KeyChord("["))
+        XCTAssertNil(set.action(for: KeyChord("left"), in: "Browser"))
+        XCTAssertEqual(set.action(for: KeyChord("["), in: "Browser"), "browser_back")
+        XCTAssertNil(set["previous_pane"]) // ⌘[ was Previous Pane's
+        XCTAssertEqual(set.configValues, ["cmd+[=browser_back"])
+        set.assign(KeyChord("r"), to: "new_tab")
+        XCTAssertNil(set["browser_reload"])
+    }
+
+    func testTextEditingKeys() {
+        XCTAssertTrue(KeyChord("left").isTextEditingKey)
+        XCTAssertTrue(KeyChord("delete", .option).isTextEditingKey)
+        XCTAssertFalse(KeyChord("r").isTextEditingKey)
+        XCTAssertFalse(KeyChord("[").isTextEditingKey)
+    }
 }

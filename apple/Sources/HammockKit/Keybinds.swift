@@ -166,6 +166,13 @@ public struct KeyChord: Hashable, Sendable {
         let digit: (String) -> Bool = { $0.count == 1 && ("1"..."9").contains($0) }
         return (isFamily && digit(other.key)) || (other.isFamily && digit(key))
     }
+
+    /// A key text fields move or edit with, modifiers and all (⌘← to the
+    /// line's start, ⌥⌫ a word): a shortcut on one reaches a focused text
+    /// field first, and only does its action when nothing there uses it.
+    public var isTextEditingKey: Bool {
+        ["left", "right", "up", "down", "home", "end", "page_up", "page_down", "delete", "forward_delete"].contains(key)
+    }
 }
 
 /// Something a shortcut can do: a menu command, by the name the config file uses.
@@ -191,15 +198,24 @@ public struct KeybindAction: Identifiable, Hashable, Sendable {
 /// Every action a shortcut can be given, in menu order. Settings lists them;
 /// `Keys` (the Mac app) binds them.
 public enum Keybinds {
-    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Window", "Simulator", "Editor", "Diff", "Help"]
+    public static let groups = ["Hammock", "File", "Edit", "View", "Pane", "Floating Panes", "Window", "Browser", "Simulator", "Editor", "Diff", "Help"]
 
     /// Groups whose actions only apply with that kind of pane focused: two
-    /// of them can share a shortcut (⌘S saves a file, or screenshots a simulator).
-    public static let paneScoped: Set<String> = ["Simulator", "Editor", "Diff"]
+    /// of them can share a shortcut (⌘S saves a file, or screenshots a
+    /// simulator; ⌘← goes back in a browser, or rotates a simulator).
+    public static let paneScoped: Set<String> = ["Browser", "Simulator", "Editor", "Diff"]
+
+    /// Actions only reached in a sheet over the window, where no pane has
+    /// the keys: they can share a shortcut with the panes' (⌘R runs the
+    /// Scheduled Tasks list's selected task, or reloads a browser).
+    public static let sheetScoped: Set<String> = ["run_scheduled_task"]
 
     /// Whether two actions can't both be reached at once, so may share a shortcut.
     public static func apart(_ a: String, _ b: String) -> Bool {
         guard let x = byID[a]?.group, let y = byID[b]?.group else { return false }
+        if sheetScoped.contains(a) || sheetScoped.contains(b) {
+            return a != b && (paneScoped.contains(x) || paneScoped.contains(y))
+        }
         return x != y && paneScoped.contains(x) && paneScoped.contains(y)
     }
 
@@ -230,6 +246,7 @@ public enum Keybinds {
             .init("open_file", "Open File…", "File", c("o"), "editor text code browse finder"),
             .init("new_scheduled_task", "New Scheduled Task…", "File", c("n", cos), "create schedule cron timer recurring automation"),
             // Only while the Scheduled Tasks list shows (a browser's ⌘R reloads it otherwise).
+            // (Keybinds.sheetScoped: it shares ⌘R with a browser's Reload.)
             .init("run_scheduled_task", "Run Scheduled Task Now", "File", c("r"), "schedule cron run start now selected list"),
             .init("new_group", "New Group", "File", c("n"), "create workspace project"),
             .init("new_group_in_directory", "New Group in Directory…", "File", c("n", cs), "create folder project open path cwd workspace"),
@@ -313,6 +330,12 @@ public enum Keybinds {
             .init("open_tab_in_new_window", "Open Tab in New Window", "Window", nil, "detach pop out separate screen share present mirror"),
             .init("open_group_in_new_window", "Open Group in New Window", "Window", nil, "detach pop out separate screen share present mirror"),
             .init("open_pane_in_new_window", "Open Pane in New Window", "Window", nil, "detach pop out separate screen share present mirror"),
+            // Browser (only with one focused: ⌘← and ⌘→ are the terminal's
+            // and simulator's otherwise). Its page has them first: a text
+            // field on it keeps ⌘← and ⌘→ (KeyChord.isTextEditingKey).
+            .init("browser_back", "Back", "Browser", c("left"), "web page history previous return go"),
+            .init("browser_forward", "Forward", "Browser", c("right"), "web page history next go"),
+            .init("browser_reload", "Reload Page", "Browser", c("r"), "web page refresh load again"),
             // Simulator (only with one focused: ⌘← and ⌘→ are the terminal's otherwise)
             .init("sim_home", "Home", "Simulator", c("h", cs), "ios iphone button"),
             .init("sim_lock", "Lock", "Simulator", c("l"), "ios iphone sleep power button"),
@@ -480,6 +503,12 @@ public struct KeybindSet: Equatable, Sendable {
         }
         chords[action] = chord
         return displaced.sorted()
+    }
+
+    /// The action of this group (a kind of pane's, `Keybinds.paneScoped`)
+    /// that has this chord, if any.
+    public func action(for chord: KeyChord, in group: String) -> String? {
+        Keybinds.actions.first { $0.group == group && chords[$0.id]?.overlaps(chord) == true }?.id
     }
 
     /// The other actions using this chord (or one of its family's).

@@ -479,7 +479,7 @@ func shortcutsPage(data []byte) (string, error) {
 	b.WriteString("These are the Mac app's defaults, grouped as in Settings ▸ Keyboard. Every action can be given a shortcut, or have its own taken away, ")
 	b.WriteString("in Settings ▸ Keyboard or with `keybind` lines in the [config file](/hammock/docs/reference/config/#keybind), using the action's name:\n\n")
 	b.WriteString("```ini\n# Give an action a shortcut\nkeybind = ctrl+cmd+b=new_browser_tab\n# Take an action's shortcut away\nkeybind = none=new_tab\n# Free a shortcut\nkeybind = cmd+j=unbind\n```\n\n")
-	b.WriteString("The Simulator and Editor actions work only while that kind of pane is focused, so they can share keys with each other. ")
+	b.WriteString("The Browser, Simulator, Editor and Diff actions work only while that kind of pane is focused, so they can share keys with each other. ")
 	b.WriteString("`hmk tui` has its own keys: see [The TUI](/hammock/docs/tui/#keys).\n\n")
 	for _, g := range d.Groups {
 		fmt.Fprintf(&b, "## %s\n\n| Action | Default | Name |\n|---|---|---|\n", g)
