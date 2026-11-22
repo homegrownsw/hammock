@@ -48,6 +48,7 @@ final class NotificationService: UNNotificationServiceExtension {
         var info = content.userInfo
         for k in Self.noteKeys { if let v = note[k] { info[k] = v } }
         content.userInfo = info
+        Self.keepForWidget(note)
 
         // The same thing from another Mac (a linked computer's agent, told by
         // each Mac this phone is paired with) replaces the one shown: the
@@ -63,6 +64,25 @@ final class NotificationService: UNNotificationServiceExtension {
             let same = delivered.filter { $0.request.identifier != request.identifier && $0.request.content.userInfo["id"] as? String == id }
             if !same.isEmpty { center.removeDeliveredNotifications(withIdentifiers: same.map(\.request.identifier)) }
             done(shown)
+        }
+    }
+
+    /// The Needs You widget lists what waits on you (NeedsYouStore, in the
+    /// App Group): what this note says, decrypted here, and the count.
+    private static func keepForWidget(_ note: [String: Any]) {
+        let waits: Set<String> = ["needs_input", "program_needs_input", "grant", "join", "hammockkey"]
+        let host = (note["host"] as? String ?? "").lowercased()
+        let id = note["id"] as? String ?? ""
+        let kind = note["k"] as? String ?? ""
+        let n = (note["n"] as? NSNumber)?.intValue
+        NeedsYouStore.update { s in
+            var s = s
+            if let n { s.badge = n }
+            guard !host.isEmpty, !id.isEmpty, note["live"] as? Bool == true, waits.contains(kind) else { return s }
+            let item = NeedsYouItem(id: id, host: host, pane: note["pane"] as? String, title: note["t"] as? String ?? "Hammock",
+                                    place: note["s"] as? String ?? "", ask: note["b"] as? String ?? "",
+                                    at: (note["at"] as? NSNumber)?.doubleValue ?? Date().timeIntervalSince1970)
+            return s.adding(item)
         }
     }
 }

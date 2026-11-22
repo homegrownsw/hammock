@@ -323,6 +323,15 @@ func (h *agentHub) handle(ev HookEvent) {
 		p.progressTurn = false
 	}
 	progress := p.progressTurn
+	// What it's doing now, for a phone's Live Activity (live.go): its
+	// tool, while one runs; nothing between turns.
+	switch {
+	case sub:
+	case event == "PreToolUse" && payload.ToolName != "AskUserQuestion":
+		p.doing = liveDoing(payload.ToolName, payload.ToolInput)
+	case event == "UserPromptSubmit" || event == "Stop" || event == "StopFailure" || event == "SessionStart" || event == "SessionEnd":
+		p.doing = ""
+	}
 	switch {
 	case (event == "PreToolUse" || event == "PermissionRequest") && payload.ToolName != "" && payload.ToolName != "AskUserQuestion":
 		var in map[string]any

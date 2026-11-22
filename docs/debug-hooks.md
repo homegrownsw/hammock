@@ -86,6 +86,7 @@ With it:
 | `HMK_DEBUG_LINK=down\|drop[:<s>]` | The demo's Mac can't be reached: `down`, never (the first load, then the connection bar's "Can't reach"); `drop`, from a moment after the app has its state (reconnecting, then can't reach), for `<s>` seconds if given. |
 | `HMK_DEBUG_THEME_PICKER=1` | With the settings tab, open Settings ▸ Theme. |
 | `HMK_DEBUG_FAKE_SCAN=<hammock://pair/… link>` | Pairing for real in the simulator (a scratch daemon with `--remote-listen 127.0.0.1:PORT`): a pretend camera on the pairing screen scans that code after a moment (the simulator has no camera), for recording pairing. |
+| `HMK_DEBUG_LIVE_ACTIVITY=working\|needs_you\|finished` | Start a Live Activity with made-up content (an agent at work, one waiting on a permission with Allow and Deny, or one finished) and fill the Needs You widget, to look at on the Lock Screen and in the Dynamic Island (`LiveActivities.showSample`). Without the demo too. |
 
 Screenshot with `xcrun simctl io <udid> screenshot`, after `xcrun simctl ui <udid> appearance light|dark`. Boot
 a simulator of your own (`xcrun simctl create`) and delete it afterwards. Don't open simulator panes on a

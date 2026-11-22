@@ -59,6 +59,12 @@ An agent waiting for permission appears at the top of Sessions with what it's as
 
 Notifications are sent while you're away from your Mac. Choose which in Settings ▸ Notify Me When: someone asks to join, or an agent needs you, finishes or hits an error. You can answer Hammock's requests, join requests and an agent's permission prompt (**Allow** or **Deny**) from the notification itself, once your iPhone is unlocked. If the agent's prompt has changed, or can only be answered in the agent view, nothing is pressed and the notification says so: tap it to open the pane. Hammock's icon and the Sessions tab count what's waiting on you: agents that need your input, and permission, join and Hammock Key requests. Notifications are encrypted on your Mac, and only your iPhone can read them. See [Permissions](/hammock/docs/permissions/#on-your-iphone) for allowing them.
 
+## Live Activities and the Needs You widget
+
+Turn on **Live Activities** in Settings to see your agents on the Lock Screen and in the Dynamic Island while you're away from your Mac: the agent that needs you most (else the one most recently at work), its Group and tab, what it's doing, for how long, and how many others are working. It starts once you're away and an agent is working, and ends when you're back at your Mac, or soon after the last agent stops. When the agent is waiting on a permission prompt, **Allow** and **Deny** answer it once your iPhone is unlocked. Apple shows a Live Activity's content as it's sent, so it can't be encrypted: with them on, agent names, Groups and what they're doing pass through Hammock's push relay unencrypted.
+
+The **Needs You** widget, on the Home Screen or the Lock Screen, shows how many things are waiting on you and the first of them; tap one to open its pane. It doesn't need Live Activities on.
+
 ## Approving the Hammock Key
 
 If you've let your iPhone approve your Mac's [Hammock Key](/hammock/docs/remote/#the-hammock-key), a request to sign arrives as a notification. **Approve…** asks for Face ID; **Don't Allow** refuses.

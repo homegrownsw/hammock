@@ -97,6 +97,7 @@ type Daemon struct {
 	closedProfs  map[string]bool // closed Groups whose browser profiles Reopen Closed keeps (dropGoneProfiles)
 	usage        *pb.UsageLimits // agents' usage limits (usage.go)
 	theme        *pb.HostTheme   // this Mac's theme, for the iPhone (theme.go)
+	live         liveHub         // phones' Live Activities (live.go)
 	cfgw         configWatch     // security settings in the config file (configwatch.go; its own lock)
 	agentKinds   []*pb.AgentKind // the agents known, and installed here (agentkinds.go)
 	version      uint64
@@ -257,6 +258,7 @@ func New(cfg Config) (*Daemon, error) {
 		done:   make(chan struct{}),
 		people: map[string]*pb.Person{}, strangers: map[string]*pb.Person{}, letIn: map[string]bool{}, joins: map[string]*pendingJoin{}, typing: map[string]*time.Timer{},
 		links: map[string]*peerLink{}, routes: map[string]*peerLink{},
+		live: liveHub{wake: make(chan struct{}, 1)},
 	}
 	if err := d.loadIdentity(); err != nil {
 		st.Close()
@@ -565,6 +567,7 @@ func (d *Daemon) Serve() error {
 	go d.watchGroupIcons()
 	go d.watchUsage()
 	go d.watchTheme()
+	go d.watchLive()
 	go d.watchConfig()
 	go d.watchAgentKinds()
 	go d.watchDefaultAgent()
@@ -719,6 +722,9 @@ func (d *Daemon) fullState() *pb.StateUpdate {
 		u.AgentKinds = cloneKinds(d.agentKinds)
 	} else {
 		u.AgentKinds = agentKinds([]string{"claude", "codex"}) // not asked yet: as clients took it before
+	}
+	if d.live.shown != "" {
+		u.LiveActivity = &pb.LiveActivity{Content: d.live.shown} // (as usage)
 	}
 	u.HammockKey = proto.CloneOf(d.hammockKey.status) // (guests' and linked computers' filtered state leaves it out)
 	for _, r := range d.hammockKey.reqs {

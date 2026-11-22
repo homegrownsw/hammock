@@ -16,6 +16,13 @@
 // meaningless otherwise) and the category ("join", "grant" or "hammockkey":
 // what kind of notification it is). Nothing of what it says.
 //
+// Except a Live Activity's (an iPhone's, when it has Live Activities on:
+// they're off unless you turn them on). Apple draws one from its content
+// itself, so that comes in plain text, and the relay sees it as it passes:
+// an agent's name, its Group and tab, and what it's doing or asking. It
+// goes to the activity's own token (push-to-start's, or an update's),
+// which the Mac sends with it; the relay keeps neither.
+//
 // Routes (JSON in and out):
 //   POST /register   {token, sandbox, provider?, id?, secret?} → {id, secret}
 //                    (provider "apns", the default, or "fcm"; the same id,
@@ -24,6 +31,11 @@
 //                    one the relay never made, gets a new one)
 //   POST /unregister {id, secret}           → {}
 //   POST /send       {id, payload, thread?, collapse?, category?} → {}
+//                    {id, live: {token, event, state, attributes?, alert?,
+//                    stale?, dismiss?, priority?}} → {} (an iPhone's Live
+//                    Activity: event "start" (with attributes and alert),
+//                    "update" or "end"; 410 if Apple no longer knows the
+//                    token, which leaves the phone registered)
 //   POST /clear      {id, payload}           → {} (a silent push: what a
 //                    notification was about is dealt with, so the phone
 //                    takes it down; it says which only in the ciphertext)
@@ -54,6 +66,9 @@ const FORGET_AFTER = 60 * DAY // unused for this long: forgotten (scheduled)
 const APNS_TOKEN = /^[0-9a-f]{64,200}$/i
 const FCM_TOKEN = /^[A-Za-z0-9:_-]{20,1024}$/ // FCM registration tokens are ~160 characters
 const FCM_TTL = '3600s' // the phone shows nothing sent over an hour ago anyway
+const LIVE_EVENTS = new Set(['start', 'update', 'end'])
+const LIVE_TOKEN = /^[0-9a-f]{32,400}$/i
+const LIVE_ATTRIBUTES_TYPE = 'HammockActivityAttributes' // the app's ActivityAttributes (HammockKit's LiveActivity.swift)
 
 export default {
   async fetch(request, env) {
@@ -167,9 +182,10 @@ async function unregister({ id, secret }, env) {
   return json({})
 }
 
-async function send({ id, payload, thread, collapse, category }, env, clear = false) {
+async function send({ id, payload, thread, collapse, category, live }, env, clear = false) {
   // Everything that needs no database first.
   if (!validID(id)) return json({ error: 'unknown device' }, 404)
+  if (live !== undefined && !clear) return sendLive(id, live, env)
   if (typeof payload !== 'string' || payload.length > MAX_PAYLOAD || !/^[A-Za-z0-9+/=]+$/.test(payload)) {
     return json({ error: 'bad payload' }, 400)
   }
@@ -189,6 +205,49 @@ async function send({ id, payload, thread, collapse, category }, env, clear = fa
     await env.DB.prepare('UPDATE devices SET last_used = ? WHERE id = ?').bind(sqlTime(Date.now()), id).run()
   }
   return json({})
+}
+
+// A Live Activity push (see the top): checked, then to Apple with the
+// activity's own token. Apple's turning the token down (the activity's
+// gone, or a new push-to-start token since) is 410, and the phone stays.
+async function sendLive(id, live, env) {
+  if (!live || typeof live !== 'object' || Array.isArray(live)) return json({ error: 'bad live' }, 400)
+  const { token, event, state, attributes, alert, stale, dismiss, priority } = live
+  if (typeof token !== 'string' || !LIVE_TOKEN.test(token) || !LIVE_EVENTS.has(event) || !isObject(state)) return json({ error: 'bad live' }, 400)
+  if (event === 'start' && (!isObject(attributes) || !isObject(alert))) return json({ error: 'bad live' }, 400)
+  if (env.SENDS && !(await env.SENDS.limit({ key: id })).success) return json({ error: 'slow down' }, 429)
+  const dev = await device(env, id)
+  if (!dev) return json({ error: 'unknown device' }, 404)
+  if (dev.provider !== 'apns') return json({ error: 'bad live' }, 400) // Android's is in its encrypted pushes
+  const aps = { timestamp: Math.floor(Date.now() / 1000), event, 'content-state': state }
+  if (event === 'start') {
+    aps['attributes-type'] = LIVE_ATTRIBUTES_TYPE
+    aps.attributes = attributes
+    aps.alert = { title: String(alert.title ?? '').slice(0, 100), body: String(alert.body ?? '').slice(0, 200) }
+  }
+  if (Number.isInteger(stale) && stale > 0) aps['stale-date'] = stale
+  if (event === 'end' && Number.isInteger(dismiss) && dismiss > 0) aps['dismissal-date'] = dismiss
+  const headers = {
+    authorization: 'bearer ' + (await apnsJWT(env)),
+    'apns-topic': env.APNS_TOPIC + '.push-type.liveactivity',
+    'apns-push-type': 'liveactivity',
+    'apns-priority': priority === 10 ? '10' : '5',
+  }
+  const host = dev.sandbox ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com'
+  const r = await fetch(`${host}/3/device/${token}`, { method: 'POST', headers, body: JSON.stringify({ aps }) })
+  if (r.ok) return json({})
+  const text = await r.text().catch(() => '')
+  let reason
+  try {
+    reason = JSON.parse(text).reason
+  } catch {}
+  console.error('apns live', r.status, text.slice(0, 200))
+  if (r.status === 410 || reason === 'BadDeviceToken' || reason === 'ExpiredToken') return json({ error: 'gone' }, 410)
+  return json({ error: 'refused' }, 502)
+}
+
+function isObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
 }
 
 // One push through APNs: 'ok', 'gone' (forget the phone) or 'refused'.

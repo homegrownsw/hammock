@@ -49,7 +49,9 @@ Hammock runs as you, and so do your panes and agents. Its boundaries:
   socket's peer. Holders started by builds before that, until their panes are restarted, and every holder on
   Linux, check the socket's peer, which a process of yours can fake: a speed bump, not a boundary.
 - **Notifications.** Push payloads are end-to-end encrypted per phone; the relay (`relay/push`) sees
-  device tokens, ciphertext, keyed-hash tags and the category.
+  device tokens, ciphertext, keyed-hash tags and the category. Live Activities, off unless you turn
+  them on, are the exception: Apple draws an iPhone's from its content, so with them on the relay
+  sees agent names, Groups and what they're doing as they pass. Android's stay encrypted.
 - **Untrusted output.** Terminal output, web pages and transcripts are untrusted: links that would open
   something other than a web page ask first, and names from other computers are stripped of control
   characters.

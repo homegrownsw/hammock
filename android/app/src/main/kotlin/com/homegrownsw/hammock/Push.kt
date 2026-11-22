@@ -54,7 +54,8 @@ object Push {
     fun register(ctx: Context, model: AppModel, hostID: String) {
         val reg = PushRegistration.current(ctx) ?: return
         // "badge": notifications carry the count (the computer sends it).
-        val events = NotifyPrefs.events(ctx) + "badge"
+        // "live": Live Activities, sent in the encrypted pushes (LiveNotification).
+        val events = NotifyPrefs.events(ctx) + "badge" + (if (LiveNotification.enabled(ctx)) listOf("live") else emptyList())
         model.registerPush(reg.relayURL, reg.relayID, key(ctx, hostID), events)
     }
 }

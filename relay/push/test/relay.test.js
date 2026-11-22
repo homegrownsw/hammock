@@ -515,3 +515,61 @@ test('an Android phone FCM no longer knows is forgotten', async () => {
     console.error = oldError
   }
 })
+
+test('a Live Activity goes in plain text to its own token, and leaves the phone when Apple turns it down', async () => {
+  resetJWT()
+  const { env } = await testEnv()
+  const reg = await (await worker.fetch(post('/register', { token: 'ab'.repeat(32), sandbox: false }), env)).json()
+  const sent = []
+  let status = 200
+  globalThis.fetch = async (url, init) => {
+    sent.push({ url, init })
+    return new Response(status === 200 ? null : JSON.stringify({ reason: 'BadDeviceToken' }), { status })
+  }
+  const state = { agent: 'Claude', state: 'working', status: 'Working', doing: 'Editing AppModel.swift', since: 1800000000, others: 0, waiting: 0 }
+  const start = { token: 'cd'.repeat(40), event: 'start', state, attributes: { host: 'h', mac: 'Studio' }, alert: { title: 'Claude', body: 'Working' }, stale: 1800007200, priority: 10 }
+  let r = await worker.fetch(post('/send', { id: reg.id, live: start }), env)
+  assert.equal(r.status, 200)
+  assert.equal(sent[0].url, 'https://api.push.apple.com/3/device/' + 'cd'.repeat(40))
+  const h = sent[0].init.headers
+  assert.equal(h['apns-push-type'], 'liveactivity')
+  assert.equal(h['apns-topic'], 'com.homegrownsw.hammock.push-type.liveactivity')
+  assert.equal(h['apns-priority'], '10')
+  const { aps } = JSON.parse(sent[0].init.body)
+  assert.equal(aps.event, 'start')
+  assert.equal(aps['attributes-type'], 'HammockActivityAttributes')
+  assert.deepEqual(aps['content-state'], state)
+  assert.deepEqual(aps.attributes, { host: 'h', mac: 'Studio' })
+  assert.equal(aps['stale-date'], 1800007200)
+  assert.ok(aps.timestamp > 0)
+
+  // An end, with when it goes; an update at the normal priority.
+  r = await worker.fetch(post('/send', { id: reg.id, live: { token: 'ef'.repeat(32), event: 'end', state, dismiss: 1800000100 } }), env)
+  assert.equal(r.status, 200)
+  let b = JSON.parse(sent[1].init.body).aps
+  assert.equal(b['dismissal-date'], 1800000100)
+  assert.equal(b.attributes, undefined)
+  assert.equal(sent[1].init.headers['apns-priority'], '5')
+
+  // Malformed: turned away before Apple.
+  for (const live of [null, [], { token: 'zz', event: 'update', state }, { token: 'ef'.repeat(32), event: 'boom', state },
+    { token: 'ef'.repeat(32), event: 'update', state: 'x' }, { token: 'ef'.repeat(32), event: 'start', state }]) {
+    assert.equal((await worker.fetch(post('/send', { id: reg.id, live }), env)).status, 400)
+  }
+  assert.equal(sent.length, 2)
+
+  // Apple no longer knows the token: 410, and the phone still gets its notifications.
+  status = 400
+  r = await worker.fetch(post('/send', { id: reg.id, live: { token: 'ef'.repeat(32), event: 'update', state } }), env)
+  assert.equal(r.status, 410)
+  assert.ok(env.DB.rows.has(reg.id))
+})
+
+test('an Android phone gets no plain Live Activity', async () => {
+  const { env } = await testEnv()
+  env.FCM_SERVICE_ACCOUNT = '{}'
+  const reg = await (await worker.fetch(post('/register', { token: 'x'.repeat(40), provider: 'fcm' }), env)).json()
+  globalThis.fetch = async () => assert.fail('sent')
+  const r = await worker.fetch(post('/send', { id: reg.id, live: { token: 'ef'.repeat(32), event: 'update', state: {} } }), env)
+  assert.equal(r.status, 400)
+})

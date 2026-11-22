@@ -165,8 +165,13 @@ final class Push: NSObject {
         guard let relayID else { return }
         // "badge": this phone shows the count on its icon (the Mac sends it,
         // and says when it's none).
-        let events = Self.events.map(\.0).filter { UserDefaults.standard.object(forKey: Self.prefKey($0)) as? Bool ?? true } + ["badge"]
-        try? await model.registerPush(relayURL: relayURL, relayID: relayID, key: PushKeys.key(for: host), events: events)
+        var events = Self.events.map(\.0).filter { UserDefaults.standard.object(forKey: Self.prefKey($0)) as? Bool ?? true } + ["badge"]
+        // Live Activities: "live", with this phone's tokens (LiveActivities).
+        let live = LiveActivities.shared
+        if live.enabled { events.append("live") }
+        try? await model.registerPush(relayURL: relayURL, relayID: relayID, key: PushKeys.key(for: host), events: events,
+                                      liveStartToken: live.enabled ? live.startToken ?? "" : "",
+                                      liveToken: live.enabled ? live.token(for: host) ?? "" : "")
     }
 
     /// Tells a Mac to stop pushing to this phone (it's being forgotten).
@@ -360,7 +365,7 @@ extension Push {
 /// Asks iOS to keep the app running in the background a while (until `end`,
 /// or iOS's time runs out).
 @MainActor
-private final class BackgroundTime {
+final class BackgroundTime {
     private var id = UIBackgroundTaskIdentifier.invalid
 
     init(_ name: String) {
@@ -431,8 +436,12 @@ enum DeliveredNotes {
     /// It says what the icon's count is now, too (with no id, only that).
     static func clear(_ userInfo: [AnyHashable: Any]) async -> Bool {
         guard let note = PushKeys.note(userInfo), note["clear"] as? Bool == true, PushKeys.fresh(note) else { return false }
-        if let n = note["n"] as? NSNumber { await MainActor.run { Push.setBadge(n.intValue) } }
+        if let n = note["n"] as? NSNumber {
+            await MainActor.run { Push.setBadge(n.intValue) }
+            NeedsYouStore.update { var s = $0; s.badge = n.intValue; return s }
+        }
         guard let id = note["id"] as? String, !id.isEmpty, let host = note["host"] as? String else { return false }
+        NeedsYouStore.update { $0.removing([id], host: host.lowercased()) }
         let at = (note["at"] as? NSNumber)?.doubleValue
         let gone = await from(host).filter { d in
             guard d.note.id == id else { return false }
@@ -479,7 +488,10 @@ private enum RelayCredentials {
 /// iOS's push callbacks.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        MainActor.assumeIsolated { Push.shared.start() }
+        MainActor.assumeIsolated {
+            Push.shared.start()
+            LiveActivities.shared.start()
+        }
         return true
     }
 

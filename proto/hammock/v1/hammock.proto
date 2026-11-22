@@ -356,7 +356,17 @@ message StateUpdate {
   // or removed. Set: replaces what was sent before. Empty from a daemon
   // older than it: take it to know Claude Code and Codex.
   repeated AgentKind agent_kinds = 26;
+  // What a phone's Live Activity shows now (live.go): set while you're
+  // away from this Mac and an agent works or needs you, and a phone has
+  // Live Activities on; empty content once it should end. Paired phones
+  // only (an iPhone with Hammock open starts or updates its own).
+  // Set: replaces what was sent before.
+  LiveActivity live_activity = 27;
 }
+
+// The Live Activity's content: the same JSON its pushes carry (the
+// iPhone's content-state, Android's ongoing notification). Empty: none.
+message LiveActivity { string content = 1; }
 
 // The Mac's theme (theme.go). A curated theme's colours are in the apps
 // (AppTheme.swift), so its name is enough; a custom one comes with what the
@@ -1484,6 +1494,14 @@ message RegisterPush {
   string relay_id = 2;
   bytes key = 3;
   repeated string events = 4;   // "join", "needs_input", "finished", "errored"
+  // Live Activities (live.go), with "live" in events: the phone shows
+  // what your agents are doing while you're away. An iPhone's
+  // push-to-start token (hex), to start one with; and the update token of
+  // the one this Mac started, while it runs (an iPhone sends it as it
+  // gets it, over a connection of its own if need be). An Android phone
+  // sends neither: it's told in its encrypted pushes.
+  string live_start_token = 5;
+  string live_token = 6;
 }
 
 // A Chrome DevTools protocol call on a browser pane's page (the MCP

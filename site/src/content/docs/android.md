@@ -57,6 +57,14 @@ pressed and the notification says so: tap it to open the pane. A request to sign
 [Hammock Key](/hammock/docs/remote/#the-hammock-key) opens Hammock, where **Approve** asks for your fingerprint, face
 or screen lock.
 
+### Live Activities
+
+Turn on **Live Activities** in Settings to keep an ongoing notification of what your agents are doing while you're away
+from your Mac: the agent that needs you most (else the one most recently at work), its Group and tab, what it's doing,
+for how long, and how many others are working. On Android 16 it's a Live Update, in the status bar. It ends when
+you're back at your Mac, or soon after the last agent stops. When the agent is waiting on a permission prompt,
+**Allow** and **Deny** answer it once you've unlocked the phone. It's encrypted like any other notification.
+
 ## Settings
 
 The app's settings are its own: the theme (by default your Mac's; **Wallpaper Colours** takes your phone's), the

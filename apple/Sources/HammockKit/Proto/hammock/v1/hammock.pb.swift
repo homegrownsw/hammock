@@ -1246,11 +1246,39 @@ public nonisolated struct Hammock_V1_StateUpdate: @unchecked Sendable {
     set {_uniqueStorage()._agentKinds = newValue}
   }
 
+  /// What a phone's Live Activity shows now (live.go): set while you're
+  /// away from this Mac and an agent works or needs you, and a phone has
+  /// Live Activities on; empty content once it should end. Paired phones
+  /// only (an iPhone with Hammock open starts or updates its own).
+  /// Set: replaces what was sent before.
+  public var liveActivity: Hammock_V1_LiveActivity {
+    get {_storage._liveActivity ?? Hammock_V1_LiveActivity()}
+    set {_uniqueStorage()._liveActivity = newValue}
+  }
+  /// Returns true if `liveActivity` has been explicitly set.
+  public var hasLiveActivity: Bool {_storage._liveActivity != nil}
+  /// Clears the value of `liveActivity`. Subsequent reads from it will return its default value.
+  public mutating func clearLiveActivity() {_uniqueStorage()._liveActivity = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// The Live Activity's content: the same JSON its pushes carry (the
+/// iPhone's content-state, Android's ongoing notification). Empty: none.
+public nonisolated struct Hammock_V1_LiveActivity: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var content: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 /// The Mac's theme (theme.go). A curated theme's colours are in the apps
@@ -6215,6 +6243,16 @@ public nonisolated struct Hammock_V1_RegisterPush: Sendable {
 
   /// "join", "needs_input", "finished", "errored"
   public var events: [String] = []
+
+  /// Live Activities (live.go), with "live" in events: the phone shows
+  /// what your agents are doing while you're away. An iPhone's
+  /// push-to-start token (hex), to start one with; and the update token of
+  /// the one this Mac started, while it runs (an iPhone sends it as it
+  /// gets it, over a connection of its own if need be). An Android phone
+  /// sends neither: it's told in its encrypted pushes.
+  public var liveStartToken: String = String()
+
+  public var liveToken: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -12273,7 +12311,7 @@ nonisolated extension Hammock_V1_AttentionItem: SwiftProtobuf.Message, SwiftProt
 
 nonisolated extension Hammock_V1_StateUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StateUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{1}full\0\u{1}groups\0\u{1}tabs\0\u{1}panes\0\u{3}deleted_group_ids\0\u{3}deleted_tab_ids\0\u{3}deleted_pane_ids\0\u{1}attention\0\u{3}cleared_attention_ids\0\u{1}grants\0\u{3}resolved_grant_ids\0\u{1}people\0\u{3}join_requests\0\u{3}resolved_join_ids\0\u{1}usage\0\u{1}computers\0\u{3}link_requests\0\u{3}resolved_link_ids\0\u{1}schedules\0\u{3}deleted_schedule_ids\0\u{3}hammock_key\0\u{3}hammock_key_requests\0\u{3}resolved_hammock_key_ids\0\u{1}theme\0\u{3}agent_kinds\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{1}full\0\u{1}groups\0\u{1}tabs\0\u{1}panes\0\u{3}deleted_group_ids\0\u{3}deleted_tab_ids\0\u{3}deleted_pane_ids\0\u{1}attention\0\u{3}cleared_attention_ids\0\u{1}grants\0\u{3}resolved_grant_ids\0\u{1}people\0\u{3}join_requests\0\u{3}resolved_join_ids\0\u{1}usage\0\u{1}computers\0\u{3}link_requests\0\u{3}resolved_link_ids\0\u{1}schedules\0\u{3}deleted_schedule_ids\0\u{3}hammock_key\0\u{3}hammock_key_requests\0\u{3}resolved_hammock_key_ids\0\u{1}theme\0\u{3}agent_kinds\0\u{3}live_activity\0")
 
   fileprivate class _StorageClass {
     var _version: UInt64 = 0
@@ -12302,6 +12340,7 @@ nonisolated extension Hammock_V1_StateUpdate: SwiftProtobuf.Message, SwiftProtob
     var _resolvedHammockKeyIds: [String] = []
     var _theme: Hammock_V1_HostTheme? = nil
     var _agentKinds: [Hammock_V1_AgentKind] = []
+    var _liveActivity: Hammock_V1_LiveActivity? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -12338,6 +12377,7 @@ nonisolated extension Hammock_V1_StateUpdate: SwiftProtobuf.Message, SwiftProtob
       _resolvedHammockKeyIds = source._resolvedHammockKeyIds
       _theme = source._theme
       _agentKinds = source._agentKinds
+      _liveActivity = source._liveActivity
     }
   }
 
@@ -12382,6 +12422,7 @@ nonisolated extension Hammock_V1_StateUpdate: SwiftProtobuf.Message, SwiftProtob
         case 24: try { try decoder.decodeRepeatedStringField(value: &_storage._resolvedHammockKeyIds) }()
         case 25: try { try decoder.decodeSingularMessageField(value: &_storage._theme) }()
         case 26: try { try decoder.decodeRepeatedMessageField(value: &_storage._agentKinds) }()
+        case 27: try { try decoder.decodeSingularMessageField(value: &_storage._liveActivity) }()
         default: break
         }
       }
@@ -12472,6 +12513,9 @@ nonisolated extension Hammock_V1_StateUpdate: SwiftProtobuf.Message, SwiftProtob
       if !_storage._agentKinds.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._agentKinds, fieldNumber: 26)
       }
+      try { if let v = _storage._liveActivity {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 27)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -12507,10 +12551,41 @@ nonisolated extension Hammock_V1_StateUpdate: SwiftProtobuf.Message, SwiftProtob
         if _storage._resolvedHammockKeyIds != rhs_storage._resolvedHammockKeyIds {return false}
         if _storage._theme != rhs_storage._theme {return false}
         if _storage._agentKinds != rhs_storage._agentKinds {return false}
+        if _storage._liveActivity != rhs_storage._liveActivity {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_LiveActivity: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LiveActivity"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}content\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.content) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.content.isEmpty {
+      try visitor.visitSingularStringField(value: self.content, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_LiveActivity, rhs: Hammock_V1_LiveActivity) -> Bool {
+    if lhs.content != rhs.content {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -20993,7 +21068,7 @@ nonisolated extension Hammock_V1_UploadFile: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_RegisterPush: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".RegisterPush"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}relay_url\0\u{3}relay_id\0\u{1}key\0\u{1}events\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}relay_url\0\u{3}relay_id\0\u{1}key\0\u{1}events\0\u{3}live_start_token\0\u{3}live_token\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -21005,6 +21080,8 @@ nonisolated extension Hammock_V1_RegisterPush: SwiftProtobuf.Message, SwiftProto
       case 2: try { try decoder.decodeSingularStringField(value: &self.relayID) }()
       case 3: try { try decoder.decodeSingularBytesField(value: &self.key) }()
       case 4: try { try decoder.decodeRepeatedStringField(value: &self.events) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.liveStartToken) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.liveToken) }()
       default: break
       }
     }
@@ -21023,6 +21100,12 @@ nonisolated extension Hammock_V1_RegisterPush: SwiftProtobuf.Message, SwiftProto
     if !self.events.isEmpty {
       try visitor.visitRepeatedStringField(value: self.events, fieldNumber: 4)
     }
+    if !self.liveStartToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.liveStartToken, fieldNumber: 5)
+    }
+    if !self.liveToken.isEmpty {
+      try visitor.visitSingularStringField(value: self.liveToken, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -21031,6 +21114,8 @@ nonisolated extension Hammock_V1_RegisterPush: SwiftProtobuf.Message, SwiftProto
     if lhs.relayID != rhs.relayID {return false}
     if lhs.key != rhs.key {return false}
     if lhs.events != rhs.events {return false}
+    if lhs.liveStartToken != rhs.liveStartToken {return false}
+    if lhs.liveToken != rhs.liveToken {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

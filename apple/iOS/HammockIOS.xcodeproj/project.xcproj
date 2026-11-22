@@ -25,6 +25,7 @@
         { "path": "Hammock.xcconfig" },
         { "path": "HammockMac.xcconfig" },
         { "path": "HammockNotify.xcconfig" },
+        { "path": "HammockWidgets.xcconfig" },
         { "path": "Version.xcconfig" },
       ],
     }, {
@@ -54,6 +55,26 @@
             "Info.plist",
           ],
         },
+      ],
+    }, {
+      "kind": "folder",
+      "path": "HammockWidgets",
+      "target-membership": [
+        "HammockWidgets",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "HammockWidgets",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "path": "../Sources/HammockKit",
+      "children": [
+        { "path": "LiveActivity.swift", "target-membership": [ "HammockNotify/compile-sources", "HammockWidgets/compile-sources" ] },
       ],
     }, {
       "kind": "group",
@@ -118,7 +139,23 @@
         },
       ],
     },
-    { "kind": "folder", "path": "Shared", "target-membership": [ "Hammock", "HammockNotify" ] },
+    {
+      "kind": "folder",
+      "path": "Shared",
+      "target-membership": [
+        "Hammock",
+        "HammockNotify",
+        "HammockWidgets",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "HammockNotify",
+          "exclusions": [
+            "LiveAnswerIntent.swift",
+          ],
+        },
+      ],
+    },
     {
       "kind": "group",
       "name": "Products",
@@ -126,6 +163,7 @@
         { "path": "<PRODUCTS>/Hammock.app", "id": "71D1EED6E1BC69D449CC69C3", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/Hammock.app", "id": "AD8A7317A362A462BB2547F8", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/HammockNotify.appex", "id": "1069666240C416CF23C5C006", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "Hammock/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
+        { "path": "<PRODUCTS>/HammockWidgets.appex", "id": "6196B665DC85DC8048DD66BD", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "Hammock/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
       ],
     },
   ],
@@ -142,6 +180,7 @@
       ],
       "dependencies": [
         "HammockNotify",
+        "HammockWidgets",
       ],
       "build-phases": [
         "compile-sources",
@@ -186,6 +225,31 @@
       "build-settings": {
         "CODE_SIGN_ENTITLEMENTS": "HammockNotify/HammockNotify.entitlements",
         "INFOPLIST_FILE": "HammockNotify/Info.plist",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks",
+          "@executable_path/../../Frameworks",
+        ],
+        "SDKROOT": "iphoneos",
+        "TARGETED_DEVICE_FAMILY": "1,2",
+      },
+    }, {
+      "name": "HammockWidgets",
+      "id": "1CE0F1A60E4043230A915B71",
+      "product": "Products/HammockWidgets.appex",
+      "product-type": "app-extension",
+      "legacy-team-id": "2G974K78BH",
+      "specialized-configurations": [
+        { "name": "Debug", "file": "Config/HammockWidgets.xcconfig" },
+        { "name": "Release", "file": "Config/HammockWidgets.xcconfig" },
+      ],
+      "build-phases": [
+        "compile-sources",
+        "resources",
+      ],
+      "build-settings": {
+        "CODE_SIGN_ENTITLEMENTS": "HammockWidgets/HammockWidgets.entitlements",
+        "INFOPLIST_FILE": "HammockWidgets/Info.plist",
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
           "@executable_path/Frameworks",

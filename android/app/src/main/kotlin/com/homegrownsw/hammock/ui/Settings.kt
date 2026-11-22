@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.BuildConfig
+import com.homegrownsw.hammock.LiveNotification
 import com.homegrownsw.hammock.NotifyPrefs
 import com.homegrownsw.hammock.Prefs
 import com.homegrownsw.hammock.Push
@@ -263,6 +264,10 @@ fun SettingsScreen(session: Session, model: AppModel) {
                     else -> "on"
                 }
                 Footer("Sent while you're away from your computer. Push: $status. Encrypted on your computer; only this phone can read them.")
+                GroupedCard {
+                    var live by remember { mutableStateOf(LiveNotification.enabled(ctx)) }
+                    SwitchRow("Live Activities", live) { live = it; LiveNotification.setEnabled(ctx, it); reRegister() }
+                }
             }
             item {
                 SectionTitle("About")

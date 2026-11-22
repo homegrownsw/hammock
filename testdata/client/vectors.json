@@ -31,7 +31,7 @@
     {
       "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
       "key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-      "sealed_b64": "7Ctb/Q64Ecm1ybqQFehIFmJ7fZz3DlnFIG2UJlJVuTsV+ClyF2zm23cJqkCcXIwVkbfXlsiT7i4pD0xby/vQy4fYXVgjk411cQ0YiiM7QFPPtcCCx7mpyh41XW7HLBMW7rFNQfXsOr6wCmyX/mzNpOr7fwkgu1FolWGSTavc04qs3BZQfpaAsnOOqEesZLab3SjaIHchoJYLXZQovE6GTaigo5nBmvudjFPsSUn18mYH+03h95gcn1yDkVCvr+NbHNKAwxtSl5hweCiVDPRl0SAfhedNgrAnLfXFEx2J+x6tw2PMM5ME9OAl9Ja1UZ33J3mv4v6TUVM1taf3AIvkFg==",
+      "sealed_b64": "0S7vS+F2BlWhHz3wEnLJ7HtAliKjsaqTGv+2EbybpfJiWL2+/BrWKzKbYn0TvANlP4igzoVoyz6RdIawqsR33PC3a7P94yyP1yv8MGYeb+Y7oYI6IGC740LnFQ2FKqKoWX/Y9MyvTz9/dugNovyZJyXKOgz5NtKu6KCpN3zBBPaghF8InY5+T1tMZD1q7UZrGSoVshGhhkBa83Wm+tFWd8JeLmqZfe1y/HbHPmFH0bj9ugwCJ8i3Mjk0at3KzgcshsYOy0XBE5XE81mddbGg5vWXK9TeRngRqo1pRsUBMRXNOVCVh2lXCGNXzKgjwJnC8FR5BBm+ZpVn6ateqb+aOQ==",
       "note": {
         "t": "Claude needs you",
         "s": "Web ▸ api",
@@ -49,7 +49,7 @@
     {
       "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
       "key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-      "sealed_b64": "ScTdA0FqUIcUQ3BPVUK2wYUlLBCWc+eF5Qd9xbaJ/g4cEC+NnkkZl2ON374MT/X8etT6MQCixh04fKnvnfnZ+GhjHIZ8zbe66IG3k4u2CLEQoTWd0amlg+z3YEKAqWg+dXmanbboddtINwTFvhpqsONo1BfuxQF2dqzzvNTQ0O2a2ZwTGQtX5BmxK8m0//Q1//oqfDF8hiZR3zTELCI4B4YYLGNueYfRu6HFawtQlIhHPb5pqHkYXW5x6kHCqFzm+ZcrC5gpx1Mqnnq1YMMwQ07HqgnYc31ydDIWW9KLOiQJM1DzPdbFxM/VTBa5pq6+dMgWG6USp4wUeKNLRec8tE8lt9tAtC4m02WULHfW0jFms+4WxsYqx0OcViBMg77nEd+PYr4zOPcxexjnJvGPDQ==",
+      "sealed_b64": "uwJV1BN5QO556+NG0u64CMQpCVraTxlxjP8klhJlZ5L5viGmFFio9O2f2w32hi+lugh2BWdiQttVZpxRSndqN24hecJqZT7qASAmv+gGK2s7m0y9pMpKJd+F3ePPUQuGZFKk1GTVnxx3is75jTHCiJQQAyl6Xj4zD8QIVhx4jpPj+qpiLSvJhE7rLsKehYoex3GukQ3TXJ8jb6/9qiQPDHcCSY7Q3oaVoMbFyJWRFGZX3lY7Ei+9gs+yxT4/sG429norV2Cap/nfFB/eJxjY95CCUk1tFpSD7cuVLJACHQpLtsccBrlG9ZPKHIfyQoR15BAKVG3EzS5n7pYDjRnxIn5dmoEY9kAZKrLSU/g5MN7z+yS1cR6zp7dIJrjeK/57sN7WY1Sg6cox7Pnkyiqosw==",
       "note": {
         "t": "Map Judder",
         "s": "🗺️ Atlas",
@@ -245,6 +245,53 @@
       "joins": 0,
       "keys": 0,
       "count": 1
+    }
+  ],
+  "live": [
+    {
+      "agent": "Claude",
+      "harness": "claude",
+      "tab": "Map Judder",
+      "group": "Atlas",
+      "groupIcon": "🗺",
+      "place": "🗺 Atlas · Map Judder",
+      "state": "working",
+      "status": "Working",
+      "doing": "Editing AppModel.swift",
+      "since": 1800000000,
+      "ctx": 42,
+      "pane": "pn_1",
+      "more": "+2 more working",
+      "others": 2,
+      "waiting": 0,
+      "accent": "#1F7A57",
+      "accentDark": "#3FB88A"
+    },
+    {
+      "agent": "Codex",
+      "harness": "codex",
+      "tab": "api",
+      "group": "Web",
+      "place": "Web · api",
+      "state": "needs_you",
+      "status": "Needs you",
+      "doing": "Allow Bash: npm test?",
+      "since": 1800000100,
+      "pane": "pn_2",
+      "prompt": "pr_1",
+      "item": "at_pn_2",
+      "more": "+1 more working",
+      "others": 1,
+      "waiting": 1
+    },
+    {
+      "agent": "Claude",
+      "state": "finished",
+      "status": "Finished",
+      "doing": "All done.",
+      "since": 1800000200,
+      "others": 0,
+      "waiting": 0
     }
   ]
 }

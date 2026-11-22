@@ -136,6 +136,12 @@ type pushNote struct {
 	// Badge is the number for Hammock's icon as it's sent (badgeCount),
 	// on a clear too.
 	Badge *int `json:"n,omitempty"`
+	// Activity is an Android phone's Live Activity (live.go), Kind
+	// "live": shown, or updated, as an ongoing notification. With
+	// ActivityEnd it ends: it goes then (Unix seconds; at or before At, at
+	// once), showing Activity until it does.
+	Activity    *liveContent `json:"L,omitempty"`
+	ActivityEnd int64        `json:"le,omitempty"`
 	// fill, if set, finishes the note as it's sent (holding d.mu): what it's
 	// about may have changed while it waited for you to go.
 	fill func(*pushNote)
@@ -198,12 +204,18 @@ func (d *Daemon) registerPush(c *conn, m *pb.RegisterPush) error {
 		return errors.New("only paired devices can register for push")
 	}
 	if m.RelayId == "" {
-		return d.store.DeleteRecord("push", c.deviceID)
+		err := d.store.DeleteRecord("push", c.deviceID)
+		d.liveRegistered(c.deviceID, m)
+		return err
 	}
-	if len(m.Key) != 32 || !knownRelay(m.RelayUrl) {
+	if len(m.Key) != 32 || !knownRelay(m.RelayUrl) || len(m.LiveStartToken) > 400 || len(m.LiveToken) > 400 {
 		return errors.New("bad push registration")
 	}
-	return d.store.PutRecord("push", c.deviceID, m)
+	if err := d.store.PutRecord("push", c.deviceID, m); err != nil {
+		return err
+	}
+	d.liveRegistered(c.deviceID, m)
+	return nil
 }
 
 // idleTime reads how long since this computer's keyboard or mouse was
@@ -235,7 +247,7 @@ func (d *Daemon) waitUntilAway(ctx context.Context, hold time.Duration, elsewher
 		elsewhere := d.inUseElsewhere() // at another of your computers, which tells you
 		phone := d.usingPhone(idle)
 		d.mu.Unlock()
-		if phone || elsewhere && elsewhereIsAway || (screenLocked() || idle >= awayAfter) && !elsewhere {
+		if awayRule(phone, elsewhere, elsewhereIsAway, screenLocked(), idle) {
 			return true
 		}
 		if elsewhere {

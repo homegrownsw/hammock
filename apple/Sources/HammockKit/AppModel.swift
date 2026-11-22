@@ -137,6 +137,10 @@ public final class AppModel {
     /// This Mac's theme (Settings ▸ Appearance): the iPhone follows it
     /// unless it picks its own. nil until the Mac says.
     public internal(set) var hostTheme: Hammock_V1_HostTheme?
+    /// What a phone's Live Activity should show now, as the Mac says
+    /// (you're away from it and an agent works or needs you); nil once it
+    /// should end (internal/daemon/live.go).
+    public internal(set) var liveActivity: LiveContent?
     /// The agents the daemon knows (AgentCatalog, which also has them for
     /// static helpers); empty from a daemon too old to send them.
     public internal(set) var agentKinds: [Hammock_V1_AgentKind] = [] {
@@ -660,6 +664,12 @@ public final class AppModel {
         for p in u.people where people[p.userID] != p { people[p.userID] = p }
         if u.hasUsage, u.usage.agents != usage { usage = u.usage.agents }
         if u.hasTheme, u.theme != hostTheme { hostTheme = u.theme }
+        if u.hasLiveActivity {
+            let c = LiveContent.decode(u.liveActivity.content)
+            if c != liveActivity { liveActivity = c }
+        } else if u.full, liveActivity != nil {
+            liveActivity = nil
+        }
         // Sent whole when it changes; a full update without it is an older daemon's.
         if (u.full || !u.agentKinds.isEmpty), u.agentKinds != agentKinds { agentKinds = u.agentKinds }
         for j in u.joinRequests where !joinRequests.contains(where: { $0.id == j.id }) {

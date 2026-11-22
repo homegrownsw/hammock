@@ -57,6 +57,9 @@ type clientVectors struct {
 	Notice []noticeVector `json:"notice"`
 	Names  []nameVector   `json:"names"`
 	Badge  []badgeVector  `json:"badge"`
+	// A Live Activity's content as the daemon sends it (live.go), for the
+	// phones to read the same way.
+	Live []json.RawMessage `json:"live"`
 }
 
 // noticeVector is what a notification about an agent says (noticeBody):
@@ -126,7 +129,7 @@ func TestClientVectors(t *testing.T) {
 	if err := json.Unmarshal(b, &v); err != nil {
 		t.Fatal(err)
 	}
-	if len(v.Auth) == 0 || len(v.Pairing) == 0 || len(v.Push) == 0 || len(v.Approval) == 0 || len(v.Notice) == 0 || len(v.Names) == 0 || len(v.Badge) == 0 {
+	if len(v.Auth) == 0 || len(v.Pairing) == 0 || len(v.Push) == 0 || len(v.Approval) == 0 || len(v.Notice) == 0 || len(v.Names) == 0 || len(v.Badge) == 0 || len(v.Live) == 0 {
 		t.Fatal("a kind of vector is missing")
 	}
 	for _, n := range v.Notice {
@@ -138,6 +141,12 @@ func TestClientVectors(t *testing.T) {
 	for _, n := range v.Names {
 		if got := capitalizeWords(n.Name); got != n.Who {
 			t.Errorf("%q named %q, want %q", n.Name, got, n.Who)
+		}
+	}
+	for _, raw := range v.Live {
+		var c liveContent
+		if err := json.Unmarshal(raw, &c); err != nil || string(mustJSON(c)) != string(mustJSON(json.RawMessage(raw))) || c.Status != liveStatus(c.State) {
+			t.Errorf("live content %s reads as %+v (%v)", raw, c, err)
 		}
 	}
 	for _, b := range v.Badge {
@@ -303,11 +312,28 @@ func writeClientVectors(t *testing.T) {
 		b.Count = badgeDaemon(b).badgeCount()
 		v.Badge = append(v.Badge, b)
 	}
+	for _, c := range liveVectors() {
+		v.Live = append(v.Live, mustJSON(c))
+	}
 	b, _ := json.MarshalIndent(v, "", "  ")
 	if err := os.MkdirAll(filepath.Dir(vectorsPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(vectorsPath, append(b, '\n'), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// liveVectors are made-up Live Activity contents: one at work, one waiting
+// on a permission it can be answered from, one finished.
+func liveVectors() []liveContent {
+	pct := 42
+	return []liveContent{
+		{Agent: "Claude", Harness: "claude", Tab: "Map Judder", Group: "Atlas", GroupIcon: "🗺", Place: "🗺 Atlas · Map Judder", State: liveWorking,
+			Status: liveStatus(liveWorking), Doing: "Editing AppModel.swift", Since: 1_800_000_000, Context: &pct, Pane: "pn_1",
+			More: "+2 more working", Others: 2, Waiting: 0, Accent: "#1F7A57", AccentDark: "#3FB88A"},
+		{Agent: "Codex", Harness: "codex", Tab: "api", Group: "Web", Place: "Web · api", State: liveNeedsYou, Status: liveStatus(liveNeedsYou),
+			Doing: "Allow Bash: npm test?", Since: 1_800_000_100, Pane: "pn_2", Prompt: "pr_1", Item: "at_pn_2", More: "+1 more working", Others: 1, Waiting: 1},
+		{Agent: "Claude", State: liveFinished, Status: liveStatus(liveFinished), Doing: "All done.", Since: 1_800_000_200},
 	}
 }

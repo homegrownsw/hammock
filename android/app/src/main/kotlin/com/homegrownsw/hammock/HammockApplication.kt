@@ -25,6 +25,7 @@ class HammockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         Notifications.createChannels(this)
+        LiveNotification.createChannel(this)
         // Hooked before the first model is made. It connects only once the
         // app's on screen (onStart), not when a push wakes it to show a
         // notification: signed in, the computer takes you to be on your phone.

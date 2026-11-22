@@ -145,6 +145,11 @@ struct SettingsScreen: View {
                 } footer: {
                     Text("Sent while you're away from your Mac. Push: \(Push.shared.status). Encrypted on your Mac; only this iPhone can read them.")
                 }
+                Section {
+                    Toggle("Live Activities", isOn: Binding(get: { LiveActivities.shared.enabled }, set: { LiveActivities.shared.setEnabled($0) }))
+                } footer: {
+                    Text("Sends agent names, Groups and what they're doing through Hammock's push relay unencrypted.")
+                }
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
                     Link("Hammock Documentation", destination: HammockLinks.docs)

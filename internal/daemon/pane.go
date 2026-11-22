@@ -67,6 +67,9 @@ type pane struct {
 	// (a Monitor's event), not by you or by the task ending: its finish
 	// isn't news (agents.go).
 	progressTurn bool
+	// What its agent is doing now, in words ("Editing AppModel.swift"),
+	// from its last tool's hook (live.go's liveDoing); "" between tools.
+	doing string
 	// When the pane's agent process began: background shells from before
 	// it (a resumed session's) are gone.
 	agentStart time.Time

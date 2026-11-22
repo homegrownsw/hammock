@@ -19,6 +19,16 @@ asking permission, or a Hammock Key request). The phone takes everything
 it shows, the category included, from the decrypted note, and shows
 nothing of one it can't decrypt or that was sent over an hour ago.
 
+**Live Activities are the exception.** An iPhone with Live Activities
+turned on (Settings ▸ Notifications; off unless you turn it on) is sent
+its Lock Screen and Dynamic Island activity through here in plain text:
+Apple draws a Live Activity from its content itself, so it can't be
+encrypted for the phone. With them on, the relay (and Apple) see your
+agents' names, their Groups and tabs, and what each is doing or asking,
+as it passes; it's sent to the activity's own token, which the Mac sends
+with it, and the relay keeps neither. Android's Live Activity is in its
+encrypted notifications, like anything else.
+
 ## Set up
 
 1. **APNs key.** developer.apple.com ▸ Certificates, IDs & Profiles ▸ Keys ▸
@@ -107,6 +117,15 @@ and the rest age out unused.
 - `POST /send {id, payload, thread?, collapse?, category?}`: a Mac sending
   (ciphertext in `payload`), about 60 a minute per phone at most. Any
   category but `join`, `grant` and `hammockkey` is dropped.
+- `POST /send {id, live: {token, event, state, attributes?, alert?, stale?, dismiss?, priority?}}`:
+  an iPhone's Live Activity (above), counted as a send. `event` is
+  `start` (to the push-to-start token, with `attributes` and an `alert`),
+  `update` or `end` (to the activity's update token, `dismiss` saying when
+  an ended one goes). It goes to APNs with `apns-push-type: liveactivity`
+  and the topic `<APNS_TOPIC>.push-type.liveactivity`, `attributes-type`
+  `HammockActivityAttributes`, at priority 5 unless the Mac asks for 10.
+  If APNs turns the token down, it answers 410 but keeps the phone: the Mac
+  forgets the token, not the phone. An Android phone's is refused (400).
 - `POST /clear {id, payload}`: a Mac saying what a notification was about
   is dealt with (answered, seen, withdrawn), so the phone takes it down. A
   silent background push (`content-available`, priority 5) carrying only
@@ -125,7 +144,8 @@ set to the collapse tag. A clear is priority `normal`, with `data`
 `INVALID_ARGUMENT` about the token forgets the phone and answers 410, as
 APNs' 410 and `BadDeviceToken` do.
 
-Android needs no new routes, so no change to the WAF rule (below).
+Android needs no new routes, so no change to the WAF rule (below); nor do
+Live Activities, which go through `/send`.
 
 Any other path or method is turned away, as is a body over 4 KB. Every
 route counts towards 200 requests a minute per client address; an IPv6

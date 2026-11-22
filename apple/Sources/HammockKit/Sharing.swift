@@ -182,8 +182,17 @@ public struct InvitePreview: Sendable {
 extension AppModel {
     /// A paired phone asks this Mac to push to it while you're away (an
     /// empty relay id stops it).
-    public func registerPush(relayURL: String, relayID: String, key: Data, events: [String]) async throws {
+    public func registerPush(relayURL: String, relayID: String, key: Data, events: [String], liveStartToken: String = "", liveToken: String = "") async throws {
         guard let conn = connection else { throw DaemonError.closed }
-        try await conn.call { $0.registerPush = .with { $0.relayURL = relayURL; $0.relayID = relayID; $0.key = key; $0.events = events } }
+        try await conn.call {
+            $0.registerPush = .with {
+                $0.relayURL = relayURL
+                $0.relayID = relayID
+                $0.key = key
+                $0.events = events
+                $0.liveStartToken = liveStartToken
+                $0.liveToken = liveToken
+            }
+        }
     }
 }

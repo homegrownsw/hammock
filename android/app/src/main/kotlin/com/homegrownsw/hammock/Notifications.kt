@@ -104,6 +104,11 @@ object Notifications {
             if (subject.isNotEmpty()) clear(ctx, tag(host, subject), note.optLong("at", 0))
             return
         }
+        // Its Live Activity: an ongoing notification of its own, shown with the app open too.
+        if (LiveNotification.isLive(note)) {
+            LiveNotification.show(ctx, note)
+            return
+        }
         // The app is showing this computer: the computer doesn't push then, but a late one is dropped too.
         val app = ctx.applicationContext as HammockApplication
         if (app.foreground && app.session.host.value?.id == host) return
@@ -197,6 +202,10 @@ object Notifications {
     /** Whether a note offers Allow and Deny on an agent's prompt: its category, with the pane and prompt they answer. */
     fun offersAnswers(category: String, pane: String, prompt: String) =
         category == CATEGORY_AGENT_PROMPT && pane.isNotEmpty() && prompt.isNotEmpty()
+
+    /** An answer's action, as a notification's (the Live Activity's Allow and Deny too). */
+    fun answerAction(ctx: Context, title: String, action: String, host: String, id: String, subject: String, open: Intent, prompt: String = "") =
+        action(ctx, title, action, host, id, subject, open, prompt)
 
     private fun action(ctx: Context, title: String, action: String, host: String, id: String, subject: String, open: Intent, prompt: String = ""): NotificationCompat.Action {
         val answer = NotificationAnswer(action, host, id, subject, prompt)
@@ -368,7 +377,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     val m = shown ?: session.briefConnection(answer.host)?.also { brief = it } ?: return@withTimeoutOrNull
                     withTimeoutOrNull(6_000) { m.link.first { it == Link.Connected } }
                     if (m.link.value == Link.Connected) {
-                        when (answer.send(m)) {
+                        val result = answer.send(m)
+                        answer.allowsPrompt?.let { LiveNotification.answered(ctx, answer.host, answer.prompt, result, it) }
+                        when (result) {
                             AppModel.PromptAnswer.ANSWERED -> answer.answered(ctx)
                             // Nothing pressed: it says so, and opens the pane to choose there.
                             AppModel.PromptAnswer.REFUSED -> Notifications.couldntAnswer(ctx, "${answer.host}/${answer.subject}")

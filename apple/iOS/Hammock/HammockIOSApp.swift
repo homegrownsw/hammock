@@ -26,7 +26,10 @@ struct HammockIOSApp: App {
                 .appLock()  // Settings ▸ Privacy
                 .hammockAppearance(appearance)
                 // A link could come from anywhere: ask before pairing.
-                .onOpenURL { url in session.offer(url.absoluteString) }
+                .onOpenURL { url in
+                    // A Live Activity's or the Needs You widget's: what it shows.
+                    if let target = HammockURL.target(url) { session.open(target) } else { session.offer(url.absoluteString) }
+                }
                 .sheet(item: $session.offered) { PairConfirmSheet(session: session, offer: $0) }
                 // Settings ▸ Theme (by default, the Mac's) colours the whole app.
                 .phoneTheme(PhoneTheme.resolve(pref: themePref, host: session.model?.hostTheme))
@@ -243,6 +246,20 @@ final class Session {
         guard let h = host, h.deviceID != nil, pending == nil, !isDemo else { return }
         model?.stop()
         model = connect(h, secret: nil)
+    }
+
+    /// A hammock:// link into the app (a Live Activity, the Needs You
+    /// widget): its Mac shown, and its pane or Needs You opened.
+    func open(_ target: HammockURL.Target) {
+        let host: String
+        switch target {
+        case .pane(let h, _), .needsYou(let h): host = h
+        }
+        if let h = hosts.first(where: { $0.id.lowercased() == host.lowercased() }) { show(h) }
+        switch target {
+        case .pane(_, let pane): Push.shared.openPane = pane
+        case .needsYou: Push.shared.openNeedsYou = true
+        }
     }
 
     func show(_ h: StoredHost) {
@@ -487,6 +504,21 @@ struct RootView: View {
                 .onChange(of: scenePhase) { _, phase in if phase == .active { model.checkConnection() } }
                 // Each Mac learns where to push when it's shown, and this
                 // phone's approval key for its Hammock Key.
+                // Live Activities (with Hammock open: the Mac starts them by
+                // push otherwise), and the Needs You widget.
+                .onChange(of: model.liveActivity, initial: true) { _, c in
+                    guard let h = session.host, model.connected, !session.isDemo else { return }
+                    LiveActivities.shared.apply(c, host: h.id, mac: h.hostName)
+                }
+                .onChange(of: model.needsYouItems(host: session.host?.id.lowercased() ?? ""), initial: true) { _, items in
+                    guard let h = session.host, model.connected, !session.isDemo else { return }
+                    let badge = model.badgeCount
+                    NeedsYouStore.update { s in
+                        var s = s.replacing(host: h.id.lowercased(), with: items)
+                        s.badge = badge
+                        return s
+                    }
+                }
                 .onChange(of: model.connected, initial: true) { _, on in
                     guard on else { return }
                     Task { await Push.shared.registerWithMac() }

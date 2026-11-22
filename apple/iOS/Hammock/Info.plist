@@ -51,5 +51,12 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<!-- Live Activities (LiveActivities.swift; drawn by the HammockWidgets
+	     extension), started and updated by push from the Mac, an agent's
+	     tool at a time: the frequent-updates budget. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 </dict>
 </plist>
