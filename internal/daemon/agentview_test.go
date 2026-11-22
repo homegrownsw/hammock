@@ -147,8 +147,9 @@ func testEscInterrupt(t *testing.T, script string, asks, stops bool) {
 }
 
 func TestClaudeStopSummaryIsItsReply(t *testing.T) {
-	_, summary, _ := classify(agents.Hook{Event: "Stop", LastMessage: "Fixed the map judder.\nMore detail."})
-	if summary != "Fixed the map judder." {
+	// The start of it, on one line, without its markdown (replyPreview).
+	_, summary, _ := classify(agents.Hook{Event: "Stop", LastMessage: "**Fixed** the map judder.\n\n- More detail."})
+	if summary != "Fixed the map judder. More detail." {
 		t.Fatalf("summary %q", summary)
 	}
 }

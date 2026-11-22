@@ -224,6 +224,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
     /// its pane in Hammock (which, for a finished one, counts as seeing it).
     private func agentItem(_ a: Hammock_V1_AttentionItem, detail: String, icon: String, tint: NSColor) -> NSMenuItem {
         let place = model.status.places[a.paneID] ?? ""
+        // The start of a reply runs to a few lines: a menu would grow as wide.
+        let detail = detail.count > 80 ? String(detail.prefix(79)).trimmingCharacters(in: .whitespaces) + "…" : detail
         return action(place.isEmpty ? "Agent" : place, icon: icon, tint: tint, detail: detail) { [model] in
             model.openPane(a.paneID)
         }

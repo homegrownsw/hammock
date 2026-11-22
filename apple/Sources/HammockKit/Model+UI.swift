@@ -9,14 +9,16 @@ extension Hammock_V1_GrantRequest: Identifiable {}
 extension Hammock_V1_AttentionItem {
     /// What a notification about it says, naming what's in its pane as
     /// `who` (its displayName, capitalized): "Claude asks: …", "Claude
-    /// needs your input", "Claude finished", "Claude hit an error". The
+    /// needs your input", "Claude: I've fixed the test…" (the start of its
+    /// reply, as the daemon cut it) or "Claude finished", "Claude hit an
+    /// error". The
     /// daemon's pushes to phones say the same (noticeBody in
     /// internal/daemon/notice.go; testdata/client/vectors.json pins both).
     public func noticeBody(who: String) -> String {
         switch state {
         case .needsInput where question: "\(who) asks: " + summary
         case .needsInput: summary.isEmpty ? "\(who) needs your input" : summary
-        case .idle where program && !summary.isEmpty: "\(who): " + summary // what it says it did
+        case .idle where !summary.isEmpty: "\(who): " + summary // what it says it did
         case .idle: "\(who) finished"
         case .errored: summary.isEmpty ? "\(who) hit an error" : "\(who) \(summary)"
         default: summary

@@ -180,7 +180,7 @@ func classify(p agents.Hook) (state pb.AgentState, summary string, ok bool) {
 		}
 		return 0, "", false
 	case "Stop", "agent-turn-complete":
-		return pb.AgentState_AGENT_STATE_IDLE, firstLine(p.LastMessage), true
+		return pb.AgentState_AGENT_STATE_IDLE, replyPreview(p.LastMessage), true
 	case "StopFailure":
 		// An API error ended the turn (Claude's "API Error: …" line, which
 		// is its last message). The agent is back at its prompt, but the

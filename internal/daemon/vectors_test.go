@@ -63,11 +63,13 @@ type clientVectors struct {
 }
 
 // noticeVector is what a notification about an agent says (noticeBody):
-// the Mac's own, and the phones' pushes.
+// the Mac's own, and the phones' pushes. A finished agent's summary is
+// made here from its reply (replyPreview), which only Go checks.
 type noticeVector struct {
 	State    string `json:"state"` // vectorStates' names
 	Question bool   `json:"question"`
 	Program  bool   `json:"program"`
+	Reply    string `json:"reply,omitempty"`
 	Summary  string `json:"summary"`
 	Who      string `json:"who"`
 	Body     string `json:"body"`
@@ -133,6 +135,9 @@ func TestClientVectors(t *testing.T) {
 		t.Fatal("a kind of vector is missing")
 	}
 	for _, n := range v.Notice {
+		if n.Reply != "" && replyPreview(n.Reply) != n.Summary {
+			t.Errorf("reply %q previewed %q, want %q", n.Reply, replyPreview(n.Reply), n.Summary)
+		}
 		item := &pb.AttentionItem{State: vectorStates[n.State], Question: n.Question, Program: n.Program, Summary: n.Summary}
 		if got := noticeBody(item, n.Who); got != n.Body {
 			t.Errorf("notice %+v says %q", n, got)
@@ -289,7 +294,10 @@ func writeClientVectors(t *testing.T) {
 		{State: "needs_input", Summary: "Allow Bash: npm test?", Who: "Claude"},
 		{State: "needs_input", Who: "Codex"},
 		{State: "needs_input", Program: true, Summary: "Enter your password", Who: "Brew"},
-		{State: "idle", Summary: "Done with the refactor", Who: "Claude"},
+		{State: "idle", Reply: "I've fixed the flaky test and pushed it to main.", Who: "Claude"},
+		{State: "idle", Reply: "## Done\n\nI **renamed** `parse_args` in [cli.go](cmd/cli.go):\n\n- kept the _old_ name\n- added a test\n\n```go\nfunc parse() {}\n```\n\n> Run `just test` to check.", Who: "Claude"},
+		{State: "idle", Reply: "I went through every package that reads the config file and moved each of them over to the new loader, which reads the defaults first and then the file, so a key missing from the file keeps its default instead of being zero. Along the way I found two places that still read the old environment variables.", Who: "Claude"},
+		{State: "idle", Reply: "```\nok\n```", Who: "Codex"},
 		{State: "idle", Who: "Claude"},
 		{State: "idle", Program: true, Summary: "Deployed to staging", Who: "Deploy"},
 		{State: "idle", Program: true, Who: "Deploy"},
@@ -297,6 +305,9 @@ func writeClientVectors(t *testing.T) {
 		{State: "errored", Who: "Agent"},
 		{State: "working", Summary: "Reading files", Who: "Claude"},
 	} {
+		if n.Reply != "" {
+			n.Summary = replyPreview(n.Reply)
+		}
 		n.Body = noticeBody(&pb.AttentionItem{State: vectorStates[n.State], Question: n.Question, Program: n.Program, Summary: n.Summary}, n.Who)
 		v.Notice = append(v.Notice, n)
 	}

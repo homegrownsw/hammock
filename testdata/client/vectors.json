@@ -123,9 +123,37 @@
       "state": "idle",
       "question": false,
       "program": false,
-      "summary": "Done with the refactor",
+      "reply": "I've fixed the flaky test and pushed it to main.",
+      "summary": "I've fixed the flaky test and pushed it to main.",
       "who": "Claude",
-      "body": "Claude finished"
+      "body": "Claude: I've fixed the flaky test and pushed it to main."
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": false,
+      "reply": "## Done\n\nI **renamed** `parse_args` in [cli.go](cmd/cli.go):\n\n- kept the _old_ name\n- added a test\n\n```go\nfunc parse() {}\n```\n\n> Run `just test` to check.",
+      "summary": "Done: I renamed parse_args in cli.go: kept the old name added a test Run just test to check.",
+      "who": "Claude",
+      "body": "Claude: Done: I renamed parse_args in cli.go: kept the old name added a test Run just test to check."
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": false,
+      "reply": "I went through every package that reads the config file and moved each of them over to the new loader, which reads the defaults first and then the file, so a key missing from the file keeps its default instead of being zero. Along the way I found two places that still read the old environment variables.",
+      "summary": "I went through every package that reads the config file and moved each of them over to the new loader, which reads the defaults first and then the file, so a key missing from the file keeps its…",
+      "who": "Claude",
+      "body": "Claude: I went through every package that reads the config file and moved each of them over to the new loader, which reads the defaults first and then the file, so a key missing from the file keeps its…"
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": false,
+      "reply": "```\nok\n```",
+      "summary": "",
+      "who": "Codex",
+      "body": "Codex finished"
     },
     {
       "state": "idle",

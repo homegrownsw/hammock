@@ -16,7 +16,8 @@ import (
 
 // noticeBody is what a notification about an agent (or a program
 // reporting its status) says, naming it as who ("Claude"): "Claude asks:
-// …", "Claude needs your input", "Claude finished", "Claude hit an error".
+// …", "Claude needs your input", "Claude: I've fixed the test…" (the start
+// of its reply, replyPreview) or "Claude finished", "Claude hit an error".
 func noticeBody(item *pb.AttentionItem, who string) string {
 	switch item.State {
 	case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
@@ -28,7 +29,7 @@ func noticeBody(item *pb.AttentionItem, who string) string {
 		}
 		return who + " needs your input"
 	case pb.AgentState_AGENT_STATE_IDLE:
-		if item.Program && item.Summary != "" {
+		if item.Summary != "" {
 			return who + ": " + item.Summary // what it says it did
 		}
 		return who + " finished"
