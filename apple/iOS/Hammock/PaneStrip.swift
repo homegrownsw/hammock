@@ -379,7 +379,7 @@ struct PaneMenu: View {
                     Button("Minimise on the Mac", systemImage: "minus.rectangle") { model.arrange(paneID, .minimise) }
                 }
                 Button("Dock in the Splits", systemImage: "rectangle.split.2x1") { model.arrange(paneID, .dock) }
-            } else {
+            } else if let tab = pane.flatMap({ model.tab(of: $0) }), model.panes(in: tab).count > 1 {
                 Button("Move to New Tab", systemImage: "rectangle.badge.plus") { Task { await model.breakOut(paneID) } }
             }
             Button("Close Pane", systemImage: "xmark", role: .destructive) {
@@ -387,6 +387,62 @@ struct PaneMenu: View {
             }
         }
         .disabled(!drive)
+    }
+}
+
+/// A session's touch-and-hold menu (its row in Sessions): Allow and Deny
+/// first while its agent waits on a permission prompt, as its card has them,
+/// then the pane's own actions.
+struct SessionHoldMenu: View {
+    let model: AppModel
+    let paneID: String
+    let confirmClose: (Pane) -> Void
+    @Environment(\.linkDown) private var linkDown
+
+    var body: some View {
+        if let prompt = model.promptAnswers(forPane: paneID) {
+            let item = prompt.item
+            Section {
+                ForEach(prompt.answers, id: \.self) { a in
+                    switch a {
+                    case .allow: Button("Allow", systemImage: "checkmark") { answer(item, a) }
+                    case .allowForSchedule: Button("Always Allow for This Schedule", systemImage: "clock.badge.checkmark") { answer(item, a) }
+                    case .deny: Button("Deny", systemImage: "hand.raised") { answer(item, a) }
+                    }
+                }
+            }
+            .disabled(linkDown || model.group(ofPane: paneID)?.canDrive == false)
+        }
+        PaneMenu(model: model, paneID: paneID, floating: floating, confirmClose: confirmClose)
+    }
+
+    /// Its place on the Mac, when it floats over its tab.
+    private var floating: FloatingPane? {
+        model.panes[paneID].flatMap { model.tab(of: $0) }?.floating.first { $0.paneID == paneID }
+    }
+
+    private func answer(_ item: AttentionItem, _ a: PromptAnswer) {
+        a == .deny ? Haptics.refuse() : Haptics.success()
+        withAnimation { model.decide(item, a.decision) }
+    }
+}
+
+/// A row's touch-and-hold preview (Sessions, Groups): its pane, large and
+/// live, the shape of the pane where it has one. Drawn, never driven: its
+/// terminal sends no size or keys (TerminalRepresentable's preview), and an
+/// agent shows its terminal rather than starting a watch of its agent.
+struct PaneHoldPreview: View {
+    let model: AppModel
+    let paneID: String
+
+    var body: some View {
+        let p = model.panes[paneID]
+        let grid = p.map { ![.browser, .simulator, .editor, .diff].contains($0.kind) } ?? false
+        let screen = UIApplication.shared.activeScreen?.bounds.size ?? CGSize(width: 390, height: 844)
+        let size = HoldPreview.size(room: CGSize(width: screen.width - 32, height: screen.height),
+                                    cols: grid ? Int(p?.cols ?? 0) : 0, rows: grid ? Int(p?.rows ?? 0) : 0)
+        LiveTile(model: model, paneID: paneID, current: false, tailsAgent: false)
+            .frame(width: size.width, height: size.height)
     }
 }
 
@@ -544,6 +600,10 @@ struct LiveTile: View {
     let paneID: String
     let current: Bool
     var minimised = false
+    /// An agent pane shows its conversation's latest (watching its agent),
+    /// as Exposé's tiles do; false, its terminal, as a touch and hold's
+    /// preview does, so a moment's look starts no watch of its own.
+    var tailsAgent = true
     @Environment(\.phoneTheme) private var theme
 
     private var pane: Pane? { model.panes[paneID] }
@@ -584,7 +644,7 @@ struct LiveTile: View {
             case .diff:
                 DiffTile(pane: p)
             default:
-                if !p.isLog, model.supportsAgentView(p), AgentViewPrefs.showsAgent(p.id) {
+                if tailsAgent, !p.isLog, model.supportsAgentView(p), AgentViewPrefs.showsAgent(p.id) {
                     AgentTailTile(model: model, paneID: p.id)
                 } else {
                     TerminalRepresentable(model: model, paneID: p.id, active: false, preview: true)

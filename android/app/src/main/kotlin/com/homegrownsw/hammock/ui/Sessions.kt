@@ -4,7 +4,7 @@ import com.homegrownsw.hammock.LocalAppLocked
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -197,7 +198,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
                     val p = w.panes[item.paneId]
                     Card(padded = false, modifier = Modifier.animateItem()) {
                         Swipeable(enabled = p != null && canClose(p), onSwipe = { p?.let(::requestClose) }) {
-                            AttentionCard(model, w, item) { nav.open("pane:" + item.paneId) }
+                            AttentionCard(model, w, item, nav) { nav.open("pane:" + item.paneId) }
                         }
                     }
                 }
@@ -319,8 +320,58 @@ private fun SessionLink(
     model: AppModel, w: Workspace, r: SessionRow, nav: Nav,
     canClose: (Pane) -> Boolean, close: (Pane) -> Unit, now: Long,
 ) {
-    Swipeable(enabled = canClose(r.pane), onSwipe = { close(r.pane) }) {
-        SessionRowView(w, r, now, selected = nav.stack.lastOrNull() == "pane:" + r.pane.id) { nav.open("pane:" + r.pane.id) }
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Swipeable(enabled = canClose(r.pane), onSwipe = { close(r.pane) }) {
+            SessionRowView(w, r, now, selected = nav.stack.lastOrNull() == "pane:" + r.pane.id, onLongClick = { menu = true }) { nav.open("pane:" + r.pane.id) }
+        }
+        SessionHoldMenu(model, w, r.pane.id, nav, menu) { menu = false }
+    }
+}
+
+/** An answer to an agent's permission prompt, from a session's touch-and-hold menu. */
+enum class PromptAnswer(val label: String, val decision: Hammock.AgentAnswer.Decision) {
+    ALLOW("Allow", Hammock.AgentAnswer.Decision.DECISION_ALLOW),
+    ALLOW_SCHEDULE("Always Allow for This Schedule", Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE),
+    DENY("Deny", Hammock.AgentAnswer.Decision.DECISION_DENY),
+}
+
+/**
+ * The answers a session's touch-and-hold menu offers its agent's prompt, top first, as its card
+ * does: none for a question or nothing asked, Deny alone when the card can't show all of it (open
+ * the pane to see it first), and Always Allow for This Schedule too for a scheduled Claude run.
+ */
+fun promptAnswers(item: Hammock.AttentionItem?, scheduledClaude: Boolean): List<PromptAnswer> = when {
+    item == null || item.state != AgentState.AGENT_STATE_NEEDS_INPUT || item.question -> emptyList()
+    !item.allowsFromCard -> listOf(PromptAnswer.DENY)
+    scheduledClaude -> listOf(PromptAnswer.ALLOW, PromptAnswer.ALLOW_SCHEDULE, PromptAnswer.DENY)
+    else -> listOf(PromptAnswer.ALLOW, PromptAnswer.DENY)
+}
+
+/**
+ * A session's touch-and-hold menu: Allow and Deny first while its agent waits on a permission
+ * prompt, then the pane's own actions.
+ */
+@Composable
+private fun SessionHoldMenu(model: AppModel, w: Workspace, paneID: String, nav: Nav, open: Boolean, dismiss: () -> Unit) {
+    val view = LocalView.current
+    val pane = w.panes[paneID] ?: return
+    val drive = w.groupOfPane(paneID)?.canDrive ?: false
+    val item = w.attention.firstOrNull { it.paneId == paneID && it.state == AgentState.AGENT_STATE_NEEDS_INPUT && !it.question }
+    val answers = promptAnswers(item, scheduledClaude = w.schedules[pane.scheduleId]?.kind == "claude")
+    val enabled = drive && !linkDown()
+    DropdownMenu(open, dismiss) {
+        if (item != null && answers.isNotEmpty()) {
+            for (a in answers) {
+                DropdownMenuItem(text = { Text(a.label) }, enabled = enabled, onClick = {
+                    dismiss()
+                    if (a == PromptAnswer.DENY) view.hapticReject() else view.hapticConfirm()
+                    model.decide(item, a.decision)
+                })
+            }
+            HorizontalDivider()
+        }
+        PaneMenuItems(model, w, pane, drive, nav, close = dismiss, popAfterClose = false)
     }
 }
 
@@ -330,13 +381,14 @@ private fun SessionLink(
  * quietly its Group.
  */
 @Composable
-fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = false, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val a = r.pane.agent
     val idleSeen = a.state == AgentState.AGENT_STATE_IDLE && a.seen
     Row(
         Modifier.fillMaxWidth()
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClick?.let { "Actions" })
             .closeAction(LocalSwipeClose.current)
             .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically,
@@ -383,11 +435,15 @@ fun Card(padded: Boolean = true, modifier: Modifier = Modifier, content: @Compos
 
 /** An agent waiting on you, with Allow / Deny right there for a permission prompt. */
 @Composable
-fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, open: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, nav: Nav, open: () -> Unit) {
     val view = LocalView.current
     val pane = w.panes[item.paneId]
     val schedule = pane?.scheduleId?.let { w.schedules[it] }
-    Box(Modifier.clickable(onClick = open).closeAction(LocalSwipeClose.current).padding(16.dp)) {
+    var menu by remember { mutableStateOf(false) }
+    Box(Modifier.combinedClickable(onClick = open, onLongClick = { menu = true }, onLongClickLabel = "Actions").closeAction(LocalSwipeClose.current).padding(16.dp)) {
+        // Touch and hold: Allow and Deny, then the pane's actions, as a session row's.
+        SessionHoldMenu(model, w, item.paneId, nav, menu) { menu = false }
         run {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -87,6 +87,7 @@ struct SessionsView: View {
                             ForEach(waiting) { item in
                                 AttentionRow(model: model, item: item) { paneID in path = [paneID] }
                                     .modifier(closeSwipe(paneID: item.paneID))
+                                    .modifier(holdMenu(paneID: item.paneID))
                             }
                             ForEach(others, id: \.tab.id) { r in sessionLink(r) }
                         }
@@ -208,6 +209,15 @@ struct SessionsView: View {
         // Straight to the agent's pane, even in a tab of several.
         NavigationLink(value: r.pane.id) { SessionRowView(model: model, row: r) }
             .modifier(closeSwipe(paneID: r.pane.id))
+            .modifier(holdMenu(paneID: r.pane.id))
+    }
+
+    /// Touch and hold: the session's pane, large and live (tap it to open
+    /// it), over Allow and Deny for a permission prompt and the pane's menu.
+    private func holdMenu(paneID: String) -> HoldMenu<SessionHoldMenu> {
+        HoldMenu(model: model, paneID: paneID, open: { path = [paneID] }) {
+            SessionHoldMenu(model: model, paneID: paneID) { closing = $0 }
+        }
     }
 
     /// Swipe left to close a session, asking first when that stops
@@ -271,6 +281,27 @@ struct SessionsView: View {
             out[keyPath: k].sort { $0.pane.agent.stateSinceUnixMs > $1.pane.agent.stateSinceUnixMs }
         }
         return out
+    }
+}
+
+/// A row's touch-and-hold menu, with its pane's preview above it (tap the
+/// preview to open it); the menu alone without a pane to show.
+struct HoldMenu<Items: View>: ViewModifier {
+    let model: AppModel
+    let paneID: String?
+    let open: () -> Void
+    @ViewBuilder let menu: () -> Items
+
+    func body(content: Content) -> some View {
+        if let paneID, model.panes[paneID] != nil {
+            content.contextMenu(menuItems: menu) {
+                PaneHoldPreview(model: model, paneID: paneID)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: open)
+            }
+        } else {
+            content.contextMenu(menuItems: menu)
+        }
     }
 }
 
@@ -369,6 +400,12 @@ struct GroupsView: View {
     @State private var collapsed = Set(UserDefaults.standard.string(forKey: "collapsedGroups")?
         .split(separator: ",").map(String.init) ?? [])
 
+    /// The pane a tab's touch and hold shows: the agent its row stands for,
+    /// else the one focused on the Mac, else its first.
+    private func previewPane(of tab: WorkspaceTab) -> String? {
+        model.shownAgentPane(of: tab)?.id ?? (model.panes[tab.focusedPaneID] != nil ? tab.focusedPaneID : model.panes(in: tab).first?.id)
+    }
+
     private func toggle(_ group: WorkspaceGroup) {
         var ids = collapsed
         if ids.remove(group.id) == nil { ids.insert(group.id) }
@@ -404,10 +441,11 @@ struct GroupsView: View {
                                 Button("Close", systemImage: "xmark") { requestCloseTab(model, tab) { closingTab = $0 } }.tint(.red)
                                 Button("Rename", systemImage: "pencil") { renaming = tab }.tint(.orange)
                             }
-                            .contextMenu {
+                            // Touch and hold: the tab's pane, large and live (tap it to open the tab).
+                            .modifier(HoldMenu(model: model, paneID: previewPane(of: tab), open: { path = [tab.id] }) {
                                 TabActions(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil,
                                            closing: $closingTab)
-                            }
+                            })
                         }
                         .onMove { from, to in
                             guard let i = from.first, i < tabs.count else { return }

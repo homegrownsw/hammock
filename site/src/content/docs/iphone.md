@@ -19,13 +19,13 @@ Sessions lists your agents, most pressing first:
 - **Coming Up**: your next scheduled tasks, with **Run** (**Run Early** when one is due within 12 hours, in place of that run).
 - **Usage Limits**, if you've chosen any in Settings.
 
-Tap a session to open it, or swipe left to close it. The **+** button starts an agent, and the clock button finds a past session to resume.
+Tap a session to open it, or swipe left to close it. Touch and hold one to see its pane, live, with **Allow** and **Deny** when it's asking permission and the pane's actions, such as **Interrupt**; tap the preview to open it. The **+** button starts an agent, and the clock button finds a past session to resume.
 
 ## Groups
 
 Groups shows each Group with its tabs, as on your Mac. Each Group's header has buttons for a new tab (**Terminal** or **Agent…**) and a menu to edit, delete or leave it. The button at the top right makes a new Group.
 
-Tap a tab to open it, swipe left to close or rename it, or touch and hold it for the rest of its actions. **Edit** at the top reorders tabs.
+Tap a tab to open it, swipe left to close or rename it, or touch and hold it to see its pane, live, with the rest of its actions. **Edit** at the top reorders tabs.
 
 A tab with several panes opens on the one you last had open there. A strip along the bottom has a pill for each pane, its floating ones after a divider: tap one to switch, or swipe sideways across the pane (beside a simulator's screen or a browser's page, not on it). A pill turns orange when its agent is waiting on you, and shows a dot when one has finished. Touch and hold a pill for more, such as **Interrupt**, **Put Agent to Sleep** or **Move to New Tab**.
 

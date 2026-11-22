@@ -14,7 +14,8 @@ what you open shows beside the list.
 
 - **Sessions** lists your agents, most pressing first, as on the iPhone. **Allow**, **Deny** and **Open** answer a
   permission request where it is; when what it asks is more than fits, **Review** opens the pane in place of **Allow**.
-  Swipe a session left to close it.
+  Swipe a session left to close it, or touch and hold it for **Allow** and **Deny** when it's asking permission, and its
+  pane's actions, such as **Interrupt**.
 - **Scheduled Tasks** (**See All** under Coming Up): touch and hold a task, there or in Coming Up, for **Run Now**,
   **Skip Next Run**, **Pause** and the rest; swipe one left in the list to pause or resume it.
 - **Groups** shows each Group and its tabs. Touch and hold a tab for its actions; swipe it left to close it. In
