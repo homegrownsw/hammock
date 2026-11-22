@@ -74,11 +74,13 @@ fun <T> LazyListScope.cardItems(
     items: List<T>,
     key: (T) -> Any,
     dividerStart: Dp = 56.dp,
+    /** More for a row's own modifier (a tab being dragged: lifted and moved with the finger). */
+    rowModifier: (T) -> Modifier = { Modifier },
     content: @Composable (T) -> Unit,
 ) {
     val n = items.size
     items.forEachIndexed { i, t ->
-        item(key = key(t)) { CardRow(i, n, dividerStart, Modifier.animateItem()) { content(t) } }
+        item(key = key(t)) { CardRow(i, n, dividerStart, Modifier.animateItem().then(rowModifier(t))) { content(t) } }
     }
 }
 

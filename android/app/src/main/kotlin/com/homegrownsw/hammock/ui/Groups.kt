@@ -26,8 +26,18 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -127,6 +137,19 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
     }
 
     var editingOrder by rememberSaveable { mutableStateOf(false) }
+    // Edit mode: the tab being dragged by its handle, and how far it's gone.
+    val listState = rememberLazyListState()
+    var dragging by remember { mutableStateOf<String?>(null) }
+    var dragBy by remember { mutableFloatStateOf(0f) }
+    fun drop(tabs: List<Tab>, g: Group) {
+        val id = dragging ?: return
+        val rows = listState.layoutInfo.visibleItemsInfo.map { RowSpan(it.key, it.offset, it.size) }
+        val to = dropIndex(rows, tabs.map { "t:" + it.id }, "t:$id", dragBy)
+        val from = tabs.indexOfFirst { it.id == id }
+        dragging = null
+        dragBy = 0f
+        if (to != null && from >= 0 && to != from) model.moveTab(id, g.id, to)
+    }
     CockpitScaffold(session, model, actions = {
         // The iPhone's Edit: reorder and close tabs in place.
         if (w.groups.isNotEmpty()) TextButton(onClick = { editingOrder = !editingOrder }) { Text(if (editingOrder) "Done" else "Edit") }
@@ -141,7 +164,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
             return@CockpitScaffold
         }
         RefreshBox(model, Modifier.padding(top = padding.calculateTopPadding())) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
             if (w.computers.any { !it.thisComputer }) {
                 item(key = "computers") { ComputerChips(w, computer) { computer = it } }
             }
@@ -163,16 +186,21 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                     }
                     val tabs = w.tabs(g)
                     val canClose = g.canDrive && !g.offline && link == Link.Connected
-                    cardItems(tabs, key = { "t:" + it.id }) { tab ->
+                    cardItems(tabs, key = { "t:" + it.id }, rowModifier = { tab ->
+                        if (tab.id == dragging) Modifier.zIndex(1f).graphicsLayer { translationY = dragBy } else Modifier
+                    }) { tab ->
                         val i = tabs.indexOf(tab)
                         Swipeable(enabled = canClose && !editingOrder, onSwipe = { closer.closeTab(model, w, tab) }) {
-                            TabRow(model, w, g, tab, selected = nav.stack.lastOrNull() == "tab:" + tab.id,
+                            TabRow(model, w, g, tab, selected = nav.stack.lastOrNull() == "tab:" + tab.id || tab.id == dragging,
                                 open = { nav.open("tab:" + tab.id) }, rename = { renaming = tab }, newTab = { newTab(g) },
                                 startAgent = { startingIn = g.id },
                                 editing = if (editingOrder && canClose) TabEditing(
                                     up = if (i > 0) ({ model.moveTab(tab.id, g.id, i - 1) }) else null,
                                     down = if (i < tabs.size - 1) ({ model.moveTab(tab.id, g.id, i + 1) }) else null,
                                     close = { closer.closeTab(model, w, tab) },
+                                    dragStart = { dragging = tab.id; dragBy = 0f },
+                                    dragBy = { dragBy += it },
+                                    dragEnd = { drop(tabs, g) },
                                 ) else null)
                         }
                     }
@@ -301,8 +329,30 @@ private fun GroupHeader(
     }
 }
 
-/** Edit mode's controls on a tab's row: move it up or down its Group, or close it. */
-class TabEditing(val up: (() -> Unit)?, val down: (() -> Unit)?, val close: () -> Unit)
+/**
+ * Edit mode's controls on a tab's row: close it, or drag its handle to move it within its Group
+ * ([dragStart], [dragBy] pixels, [dragEnd] to drop it); [up] and [down] are TalkBack's Move Up and
+ * Move Down, null at either end.
+ */
+class TabEditing(
+    val up: (() -> Unit)?, val down: (() -> Unit)?, val close: () -> Unit,
+    val dragStart: () -> Unit, val dragBy: (Float) -> Unit, val dragEnd: () -> Unit,
+)
+
+/** A row on screen: its key, where it starts and how tall it is, in the list's pixels. */
+data class RowSpan(val key: Any, val offset: Int, val size: Int)
+
+/**
+ * Where a row dragged [by] pixels lands among [keys] (its Group's tabs, in order): the index of the
+ * row its middle is now over, of those on screen, or the first or last when it's beyond them.
+ */
+fun dropIndex(rows: List<RowSpan>, keys: List<Any>, dragged: Any, by: Float): Int? {
+    val me = rows.firstOrNull { it.key == dragged } ?: return null
+    val middle = me.offset + me.size / 2f + by
+    val mine = rows.filter { it.key in keys }.sortedBy { it.offset }
+    val over = mine.firstOrNull { middle < it.offset + it.size } ?: mine.lastOrNull() ?: return null
+    return keys.indexOf(over.key)
+}
 
 /** A tab: its state (or program), its name, and its agent's latest. Long-press for its actions. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -322,6 +372,7 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
                 .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
                 .combinedClickable(onClick = open, onLongClick = { menu = true })
                 .closeAction(LocalSwipeClose.current)
+                .moveActions(editing)
                 .padding(start = 16.dp, end = 12.dp, top = 11.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -351,8 +402,7 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
                     color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (editing != null) {
-                IconButton(onClick = { editing.up?.invoke() }, Modifier.size(32.dp), enabled = editing.up != null) { Icon(Icons.Default.KeyboardArrowUp, "Move Up") }
-                IconButton(onClick = { editing.down?.invoke() }, Modifier.size(32.dp), enabled = editing.down != null) { Icon(Icons.Default.KeyboardArrowDown, "Move Down") }
+                DragHandle(editing)
             } else {
                 Chevron()
             }
@@ -366,6 +416,35 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
             }
         }
     }
+}
+
+/** Edit mode's handle: drag it up or down to move the tab. TalkBack moves it with the row's actions instead. */
+@Composable
+private fun DragHandle(editing: TabEditing) {
+    val e by rememberUpdatedState(editing)
+    Box(
+        Modifier.size(40.dp).clearAndSetSemantics {}.pointerInput(Unit) {
+            detectVerticalDragGestures(
+                onDragStart = { e.dragStart() },
+                onDragEnd = { e.dragEnd() },
+                onDragCancel = { e.dragEnd() },
+            ) { change, dy ->
+                change.consume()
+                e.dragBy(dy)
+            }
+        },
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.Default.DragHandle, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+/** TalkBack's Move Up and Move Down for a tab's row in Edit mode, where it can go that way. */
+private fun Modifier.moveActions(editing: TabEditing?): Modifier {
+    if (editing == null) return this
+    val actions = listOfNotNull(
+        editing.up?.let { up -> CustomAccessibilityAction("Move Up") { up(); true } },
+        editing.down?.let { down -> CustomAccessibilityAction("Move Down") { down(); true } },
+    )
+    return if (actions.isEmpty()) this else semantics { customActions = actions }
 }
 
 /** A tab's actions (long-press on its row, or its screen's menu). */

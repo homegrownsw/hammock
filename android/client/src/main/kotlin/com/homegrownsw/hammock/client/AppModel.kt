@@ -795,7 +795,18 @@ class AppModel private constructor(
     fun renameGroup(id: String, name: String) = scope.launch { request { setRenameGroup(Hammock.RenameGroup.newBuilder().setGroupId(id).setName(name).build()) } }
     fun setGroupIcon(id: String, icon: String) = scope.launch { request { setSetGroupIcon(Hammock.SetGroupIcon.newBuilder().setGroupId(id).setIcon(icon).build()) } }
     fun moveTab(tabID: String, groupID: String, index: Int) = scope.launch {
-        request { setMoveTab(Hammock.MoveTab.newBuilder().setTabId(tabID).setGroupId(groupID).setIndex(index).build()) }
+        // In its own Group (dragged into place), it moves at once, so the row a finger let go of
+        // doesn't jump back until the computer's answer comes.
+        val w = _workspace.value
+        val g = w.groups.firstOrNull { it.id == groupID }
+        if (g != null && tabID in g.tabIdsList) {
+            val ids = (g.tabIdsList - tabID).toMutableList().apply { add(index.coerceIn(0, size), tabID) }
+            _workspace.value = w.copy(groups = w.groups.map { if (it.id == groupID) it.toBuilder().clearTabIds().addAllTabIds(ids).build() else it })
+        }
+        if (request { setMoveTab(Hammock.MoveTab.newBuilder().setTabId(tabID).setGroupId(groupID).setIndex(index).build()) } == null) {
+            showToast("Couldn't move the tab: ${lastError ?: "unknown error"}")
+            connection?.let { c -> runCatching { apply(c.call { setSubscribe(Hammock.Subscribe.getDefaultInstance()) }.state) } }
+        }
     }
     fun leaveShared(groupID: String) = scope.launch { request { setLeaveShared(Hammock.LeaveShared.newBuilder().setGroupId(groupID).build()) } }
 
