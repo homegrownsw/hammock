@@ -64,8 +64,32 @@ private struct TabBarHider: ViewModifier {
         // hidden, though TabBarShower had shown it: a screen opened before
         // this one went, hiding it too, changed nothing, and the bar stayed.
         content
+            // The minimised screen's bar, at the top where the tab bar
+            // (and the bar above it) is hidden.
+            .safeAreaInset(edge: .top, spacing: 0) { if hide && !leaving { ScreenShareBar(placement: .top) } }
+            .modifier(CountsAsTabBarHidden(on: hide && !leaving))
             .toolbar(hide && !leaving ? .hidden : .automatic, for: .tabBar)
             .background { if hide { TabBarShower().frame(width: 0, height: 0) } }
+    }
+}
+
+/// Counts the screens up that hide the tab bar (ScreenShare.tabBarHidders),
+/// while they do.
+private struct CountsAsTabBarHidden: ViewModifier {
+    let on: Bool
+    @State private var counted = false
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { count(on) }
+            .onDisappear { count(false) }
+            .onChange(of: on) { _, now in count(now) }
+    }
+
+    private func count(_ now: Bool) {
+        guard now != counted else { return }
+        counted = now
+        ScreenShare.shared.tabBarHidders += now ? 1 : -1
     }
 }
 

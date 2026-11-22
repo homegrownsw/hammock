@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DesktopMac
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenWith
@@ -57,6 +58,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,6 +87,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -117,6 +120,7 @@ import hammock.v1.Hammock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -130,11 +134,21 @@ import kotlin.math.roundToInt
  * trackpad (drag moves the pointer, tap clicks, two fingers scroll or
  * right-click, hold and drag drags) or by touch (tap clicks where you tap),
  * pinch to zoom, and the keyboard with a bar of the Mac's modifier keys. As
- * the iPhone's ScreenViewer.swift. Shown full screen by the caller; Back or
- * End closes it. (The app lock, if it's on, guards it as it guards the app.)
+ * the iPhone's ScreenViewer.swift. Shown full screen by the caller, over
+ * everything, while `share` is open; minimised (Back, the controls' Minimize,
+ * or a swipe down on them) it stays composed, drawing nothing, so its streams
+ * go on, slowed to a frame or two a second, for the bar's thumbnail
+ * (ScreenShareBar). End closes it. (The app lock, if it's on, guards it as it
+ * guards the app.)
  */
 @Composable
-fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () -> Unit) {
+fun ScreenViewer(model: AppModel, share: ScreenShare) {
+    val computerID = share.state.computerID
+    val name = share.state.name
+    val minimised = share.state.isMinimised
+    val onClose = share::end
+    val hostView = LocalView.current
+    val onMinimise = { share.minimise(hostView) }
     var displays by remember { mutableStateOf<List<Hammock.Display>>(emptyList()) }
     var unavailable by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
@@ -148,8 +162,9 @@ fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () 
     var base by remember { mutableStateOf<VideoStream?>(null) }
     val context = LocalContext.current
 
-    BackHandler { if (keyboard) keyboard = false else onClose() }
-    HideSystemBars()
+    // Back minimises (End ends).
+    BackHandler(!minimised) { if (keyboard) keyboard = false else onMinimise() }
+    if (!minimised) HideSystemBars()
 
     LaunchedEffect(computerID) {
         val r = model.listDisplays(computerID)
@@ -221,6 +236,7 @@ fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () 
         val b = VideoStream.screen(link, display, cid, maxPixels = 1280 * 720, maxFPS = 15, background = true)
         detail = d
         base = b
+        share.base = b
         try {
             b.start()
             d.start()
@@ -230,8 +246,20 @@ fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () 
             b.stop()
             detail = null
             base = null
+            if (share.base === b) share.base = null
         }
     }
+
+    // Minimised: a frame or two a second (the bar's thumbnail is the base),
+    // and the keyboard put away; open, each layer's full rate again.
+    LaunchedEffect(minimised, detail, base) {
+        detail?.setMaxFPS(ScreenShareState.detailFPS(minimised))
+        base?.setMaxFPS(ScreenShareState.baseFPS(minimised))
+        if (minimised) keyboard = false
+    }
+    LaunchedEffect(state) { share.live = state == VideoStream.State.Playing }
+    // Where it was zoomed to, kept while minimised (a new display or session starts afresh).
+    val viewState = remember(display, session) { ScreenViewState() }
 
     val shown = displays.firstOrNull { if (display == 0) it.main else it.id == display } ?: displays.firstOrNull()
     val macWidth = shown?.width?.toFloat() ?: 0f
@@ -241,8 +269,16 @@ fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () 
     val sendNow by rememberUpdatedState(send)
     val keys = remember { ScreenKeys({ op, args -> sendNow(op, args) }) }
     keys.locked = locked
+    // Minimised: nothing drawn, and no input (the streams go on above).
+    if (minimised) return
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            // Over the app: its touches stop here.
+            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false) } },
+    ) {
         val why = unavailable
         if (why != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Unavailable("Can't Share $name's Screen", why, onDark = true) }
@@ -252,6 +288,7 @@ fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () 
                 ScreenSurface(
                     detail = detail,
                     base = base,
+                    view = viewState,
                     displayShape = shown?.let { Size(it.width.toFloat(), it.height.toFloat()) },
                     macWidth = macWidth,
                     trackpad = trackpad,
@@ -324,6 +361,7 @@ fun ScreenViewer(model: AppModel, computerID: String, name: String, onClose: () 
                     onDisplay = { display = it },
                     playing = playing,
                     onKeyboard = { keyboard = true },
+                    onMinimise = onMinimise,
                     onPaste = {
                         val text = context.getSystemService(ClipboardManager::class.java)?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
                         if (text.isNullOrEmpty()) model.showToast("Your clipboard has no text") else keys.paste(text)
@@ -372,6 +410,7 @@ private fun Controls(
     onDisplay: (Int) -> Unit,
     playing: Boolean,
     onKeyboard: () -> Unit,
+    onMinimise: () -> Unit,
     onPaste: () -> Unit,
     onEnd: () -> Unit,
 ) {
@@ -379,6 +418,25 @@ private fun Controls(
     val button: Dp = if (tight) 44.dp else 48.dp
     Row(
         Modifier
+            // A swipe down on the controls minimises (on the screen itself, a drag is the computer's).
+            .pointerInput(Unit) {
+                val far = 40.dp.toPx()
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var done = false
+                    while (!done) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        val d = c.position - down.position
+                        if (d.y > far && d.y > abs(d.x)) {
+                            ev.changes.forEach { it.consume() }
+                            onMinimise()
+                            done = true
+                        }
+                        if (!c.pressed) done = true
+                    }
+                }
+            }
             .background(Color.Black.copy(alpha = 0.72f), CircleShape)
             .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
             .padding(6.dp),
@@ -414,6 +472,8 @@ private fun Controls(
             Box(Modifier.size(8.dp).background(if (playing) Color(0xFF34C759) else Color(0xFFFF9F0A), CircleShape))
             if (!tight) Text(if (playing) "Live" else "Connecting", color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
         }
+        // Down to a bar that stays connected.
+        IconButton(onClick = onMinimise, modifier = Modifier.size(button)) { Icon(Icons.Filled.KeyboardArrowDown, "Minimize", tint = Color.White) }
         // A plain circle: an IconButton keeps a 48dp touch target, wider than the bar has room for.
         Box(
             Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFFF3B30)).clickable(onClickLabel = "End screen sharing", onClick = onEnd),
@@ -482,6 +542,7 @@ private val noPointer = MutableStateFlow<ScreenPointer?>(null)
 private fun ScreenSurface(
     detail: VideoStream?,
     base: VideoStream?,
+    view: ScreenViewState,
     displayShape: Size?,
     macWidth: Float,
     trackpad: Boolean,
@@ -492,12 +553,13 @@ private fun ScreenSurface(
     onEnd: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val view = LocalView.current
+    val hostView = LocalView.current
     val scope = rememberCoroutineScope()
     var box by remember { mutableStateOf(Size.Zero) }
-    var zoom by remember { mutableFloatStateOf(1f) }
-    var pan by remember { mutableStateOf(Offset.Zero) }
-    var cursor by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
+    // Kept by the viewer: the same zoom when it's opened again from the bar.
+    var zoom by view::zoom
+    var pan by view::pan
+    var cursor by view::cursor
     var lastLocal by remember { mutableLongStateOf(Long.MIN_VALUE / 2) }
     var touching by remember { mutableStateOf(false) }
     // The key bar's top (px in this view) while the keyboard's up: what's below it is covered.
@@ -679,7 +741,7 @@ private fun ScreenSurface(
                                 } else awaitPointerEvent()
                                 if (ev == null) {
                                     holding = true
-                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    hostView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                                     if (trackpad) {
                                         // Press and hold, then drag: the button stays down. It starts where you can see it.
                                         keepPointerInView()
@@ -868,6 +930,14 @@ private fun ScreenSurface(
             )
         }
     }
+}
+
+/** Where the screen's zoomed to and where its pointer is: kept by the viewer while it's minimised. */
+@Stable
+internal class ScreenViewState {
+    var zoom by mutableFloatStateOf(1f)
+    var pan by mutableStateOf(Offset.Zero)
+    var cursor by mutableStateOf(Offset(0.5f, 0.5f))
 }
 
 /** The computer's pointer at `tip` (px): its own shape once it's come, else an arrow. k: its size, from ScreenGeometry.pointerScale. */

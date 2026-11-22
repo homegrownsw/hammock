@@ -27,6 +27,8 @@ Your iPhone or Android phone must be [paired](/hammock/docs/remote/) with the Ma
 
 The controls also have a keyboard, a display picker, and a button that types your phone's clipboard on the Mac. Tap the red **×** to end the session.
 
+To use the rest of Hammock without ending it, tap **Minimize** (the down arrow), or swipe down on the controls; on Android, Back does it too. The screen shrinks to a bar with a live thumbnail, above the tab bar, or at the top of a pane. Tap the bar to have the screen back as you left it, or its **×** to end it. Opening another Mac's screen ends the one in the bar.
+
 ## Viewing from another Mac
 
 The Mac you view from must be [linked](/hammock/docs/remote/) with the one you want to see. Choose View ▸ Show Screen ▸ the Mac's name, or **Show Screen of** it in the command palette or by right-clicking it in the sidebar's footer.

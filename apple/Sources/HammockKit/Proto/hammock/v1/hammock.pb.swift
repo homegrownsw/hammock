@@ -7183,6 +7183,11 @@ public nonisolated struct Hammock_V1_SetMediaView: Sendable {
 
   public var pageHeight: Float = 0
 
+  /// The most frames a second the viewer wants from now on (a phone's
+  /// minimised screen sharing asks for 1 or 2, then its full rate again):
+  /// only that changes, x to page_height are unused. 0: no change.
+  public var maxFps: UInt32 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -23071,7 +23076,7 @@ nonisolated extension Hammock_V1_ScreenState: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SetMediaView"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}x\0\u{1}y\0\u{1}w\0\u{1}h\0\u{1}aspect\0\u{3}page_width\0\u{3}page_height\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}session_id\0\u{1}x\0\u{1}y\0\u{1}w\0\u{1}h\0\u{1}aspect\0\u{3}page_width\0\u{3}page_height\0\u{3}max_fps\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -23087,6 +23092,7 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
       case 6: try { try decoder.decodeSingularFloatField(value: &self.aspect) }()
       case 7: try { try decoder.decodeSingularFloatField(value: &self.pageWidth) }()
       case 8: try { try decoder.decodeSingularFloatField(value: &self.pageHeight) }()
+      case 9: try { try decoder.decodeSingularUInt32Field(value: &self.maxFps) }()
       default: break
       }
     }
@@ -23117,6 +23123,9 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
     if self.pageHeight.bitPattern != 0 {
       try visitor.visitSingularFloatField(value: self.pageHeight, fieldNumber: 8)
     }
+    if self.maxFps != 0 {
+      try visitor.visitSingularUInt32Field(value: self.maxFps, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -23129,6 +23138,7 @@ nonisolated extension Hammock_V1_SetMediaView: SwiftProtobuf.Message, SwiftProto
     if lhs.aspect != rhs.aspect {return false}
     if lhs.pageWidth != rhs.pageWidth {return false}
     if lhs.pageHeight != rhs.pageHeight {return false}
+    if lhs.maxFps != rhs.maxFps {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

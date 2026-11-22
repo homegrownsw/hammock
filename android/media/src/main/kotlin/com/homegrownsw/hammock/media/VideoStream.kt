@@ -164,6 +164,7 @@ class VideoStream(
     private var lastKeyRequest = Long.MIN_VALUE / 2
     private var view: FloatArray? = null // x, y, w, h, aspect
     private var page: Pair<Float, Float>? = null
+    private var maxFPS = 0 // setMaxFPS's (0: none asked)
     private val shapes = HashMap<Int, ByteArray>()
     /** Frames decoding, by seq: where each is from, till it's shown (a decoder that says so). */
     private val placing = java.util.TreeMap<Long, Crop>()
@@ -197,6 +198,9 @@ class VideoStream(
                 sessionID = t.sessionId
                 val sid = t.sessionId
                 link.setHandler(sid) { msg -> message(sid, msg) }
+                // The rate first: an older computer takes it for a view of
+                // the whole display, which the view after puts right.
+                sendFPS()
                 sendView()
                 sendPage()
                 if (target != null) startQuic(target, t, req.datagrams)
@@ -306,6 +310,24 @@ class VideoStream(
     fun setView(x: Float, y: Float, w: Float, h: Float, aspect: Float = 0f) = post {
         view = floatArrayOf(x, y, w, h, aspect)
         sendView()
+    }
+
+    /**
+     * The most frames a second wanted from now on (a minimised screen sharing
+     * asks for few, then its full rate again): the host changes its encoder's
+     * rate, keeping the stream. Kept, for a session still opening.
+     */
+    fun setMaxFPS(fps: Int) = post {
+        if (fps <= 0 || fps == maxFPS) return@post
+        maxFPS = fps
+        sendFPS()
+    }
+
+    private fun sendFPS() {
+        val sid = sessionID
+        if (maxFPS <= 0 || sid.isEmpty() || stopped) return
+        val fps = maxFPS
+        link.send { setSetMediaView(Hammock.SetMediaView.newBuilder().setSessionId(sid).setMaxFps(fps)) }
     }
 
     /** A browser pane's viewer: the size (dp) it shows the page at, which the page takes while it's driven from here. */

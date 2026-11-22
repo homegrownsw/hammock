@@ -205,14 +205,14 @@ func (h *mediaHub) relayState(l *peerLink, st *pb.ScreenState) {
 	}
 }
 
-// setView passes a zoomed-in view on to the host's session.
+// setView passes a zoomed-in view (or a frame rate) on to the host's session.
 func (r *mediaRelay) setView(m *pb.SetMediaView) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if cl, err := r.link.connected(ctx, time.Second); err == nil {
 			_ = cl.Send(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMediaView{SetMediaView: &pb.SetMediaView{
-				SessionId: r.hostID, X: m.X, Y: m.Y, W: m.W, H: m.H, Aspect: m.Aspect, PageWidth: m.PageWidth, PageHeight: m.PageHeight}}})
+				SessionId: r.hostID, X: m.X, Y: m.Y, W: m.W, H: m.H, Aspect: m.Aspect, PageWidth: m.PageWidth, PageHeight: m.PageHeight, MaxFps: m.MaxFps}}})
 		}
 	}()
 }

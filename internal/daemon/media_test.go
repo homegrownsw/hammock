@@ -33,6 +33,7 @@ type fakeEncoder struct {
 	holds, keyframes, refreshes, stops int
 	acked                              []uint64 // LTR tokens acknowledged
 	ignoreKeys                         int      // keyframe requests to ignore (a dropped keyframe)
+	fps                                int      // the frame rate setRate last gave
 }
 
 type fakeSession struct {
@@ -80,7 +81,11 @@ func (f *fakeEncoder) startEncode(paneID, sid string, bitrate, fps, maxPixels in
 	}()
 }
 
-func (f *fakeEncoder) setRate(sid string, bitrate, fps int) {}
+func (f *fakeEncoder) setRate(sid string, bitrate, fps int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fps = fps
+}
 
 func (f *fakeEncoder) keyframe(sid string) {
 	f.mu.Lock()
@@ -857,6 +862,23 @@ func TestMediaPageSize(t *testing.T) {
 	}
 	if !slices.Equal(views, []string{sid}) {
 		t.Fatalf("views %q", views)
+	}
+}
+
+// A viewer's frame rate (a phone's minimised screen sharing) goes to the
+// host at once, capped at the most there is, and isn't taken for a view.
+func TestMediaFrameRate(t *testing.T) {
+	d, c, enc, paneID := mediaDaemon(t)
+	pe := &pageEncoder{fakeEncoder: enc}
+	d.media.sourceFor = func(*pane) frameSource { return pe }
+	sid := call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{PaneId: paneID, InBand: true}}}).GetMediaTicket().SessionId
+	fps := func() int { return enc.count(&enc.fps) }
+	for _, want := range []struct{ ask, got int }{{2, 2}, {500, mediaFPS}, {1, 1}} {
+		call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_SetMediaView{SetMediaView: &pb.SetMediaView{SessionId: sid, MaxFps: uint32(want.ask)}}})
+		waitFor(t, fmt.Sprintf("%d frames a second", want.got), func() bool { return fps() == want.got })
+	}
+	if _, views := pe.got(); len(views) != 0 {
+		t.Fatalf("a frame rate was taken for a view: %q", views)
 	}
 }
 

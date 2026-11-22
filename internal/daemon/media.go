@@ -312,6 +312,16 @@ func (s *mediaSession) page(w, h float32, by string) {
 	}
 }
 
+// setFPS changes the most frames a second the viewer wants (a phone's
+// minimised screen sharing asks for few, then its full rate again), at most
+// mediaFPS. pace passes it on (within its tick: one goroutine tells the
+// encoder its rate, so an older one can't arrive after it).
+func (s *mediaSession) setFPS(fps int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fps = min(max(fps, 1), mediaFPS)
+}
+
 // view passes a viewer's view to the source: at once on a good link, at
 // most once a second on a slow one (the latest wins).
 func (s *mediaSession) view(x, y, w, h, aspect float32) {
@@ -383,11 +393,12 @@ func (s *mediaSession) startEncode(rate int) {
 	hevc := s.hevc
 	s.encoding = true
 	w, h, by := s.pageW, s.pageH, s.pageBy
+	fps := s.fps
 	s.mu.Unlock()
 	if cs, ok := s.src.(codecSource); ok {
-		cs.encodeWith(s.paneID, s.id, rate, s.fps, s.max, codecName(hevc))
+		cs.encodeWith(s.paneID, s.id, rate, fps, s.max, codecName(hevc))
 	} else {
-		s.src.startEncode(s.paneID, s.id, rate, s.fps, s.max)
+		s.src.startEncode(s.paneID, s.id, rate, fps, s.max)
 	}
 	if ps, ok := s.src.(pageSource); ok && w > 0 && h > 0 {
 		ps.setPage(s.id, w, h, by)
@@ -991,7 +1002,7 @@ func (s *mediaSession) wantKeyframe() {
 func (s *mediaSession) pace() {
 	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
-	lastRate := 0.0
+	lastRate, lastFPS := 0.0, 0
 	tick := 0
 	for {
 		select {
@@ -1081,7 +1092,7 @@ func (s *mediaSession) pace() {
 		if release {
 			s.held = false
 		}
-		rate := s.rate
+		rate, fps := s.rate, s.fps
 		// The tier follows the link: down at once when it can't carry the
 		// sharp one, up again once it has for a while.
 		switchTo := ""
@@ -1173,9 +1184,9 @@ func (s *mediaSession) pace() {
 		if release {
 			s.syncHold()
 		}
-		if rate != lastRate && (lastRate == 0 || rate/lastRate > 1.02 || rate/lastRate < 0.98) {
-			s.src.setRate(s.id, int(rate), s.fps)
-			lastRate = rate
+		if fps != lastFPS || rate != lastRate && (lastRate == 0 || rate/lastRate > 1.02 || rate/lastRate < 0.98) {
+			s.src.setRate(s.id, int(rate), fps)
+			lastRate, lastFPS = rate, fps
 		}
 	}
 }

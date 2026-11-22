@@ -1874,6 +1874,10 @@ message SetMediaView {
   // aspect are unused.
   float page_width = 7;
   float page_height = 8;
+  // The most frames a second the viewer wants from now on (a phone's
+  // minimised screen sharing asks for 1 or 2, then its full rate again):
+  // only that changes, x to page_height are unused. 0: no change.
+  uint32 max_fps = 9;
 }
 message MediaEnded { string session_id = 1; string reason = 2; }
 

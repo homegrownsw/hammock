@@ -196,6 +196,21 @@ class VideoStreamTest {
         assertEquals(0.5f, view.aspect)
     }
 
+    @Test fun theFrameRateGoesBeforeTheViewAndOnlyWhenItChanges() {
+        val v = VideoStream(link, Hammock.OpenMedia.newBuilder().setScreen(true).setInBand(true).build(), direct, clock = { now }, log = {})
+        v.setMaxFPS(2)
+        v.setView(0f, 0f, 0f, 0f, 0f)
+        v.start()
+        val deadline = System.currentTimeMillis() + 3000
+        while (link.sent.count { it.hasSetMediaView() } < 2 && System.currentTimeMillis() < deadline) Thread.sleep(5)
+        val views = link.sent.filter { it.hasSetMediaView() }.map { it.setMediaView }
+        assertEquals(listOf(2, 0), views.map { it.maxFps })
+        v.setMaxFPS(2)
+        v.setMaxFPS(60)
+        val rates = link.sent.filter { it.hasSetMediaView() && it.setMediaView.maxFps > 0 }.map { it.setMediaView.maxFps }
+        assertEquals(listOf(2, 60), rates)
+    }
+
     @Test fun mediaEndedFailsAndStopCloses() {
         val v = started()
         link.deliver(ServerMessage.newBuilder().setMediaEnded(Hammock.MediaEnded.newBuilder().setSessionId("ms_1").setReason("The pane closed.")).build())

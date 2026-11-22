@@ -62,6 +62,10 @@ import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.rememberBoolPref
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.PairingCodes
+import com.homegrownsw.hammock.media.ScreenShare
+import com.homegrownsw.hammock.media.ScreenShareBar
+import com.homegrownsw.hammock.media.ScreenViewer
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -250,17 +254,27 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
     }
 
     val needsYou = ws.badgeCount
-    var fullScreen by remember { mutableStateOf(false) }
+    // A computer's screen: over everything while it's open, a bar on every
+    // screen while it's minimised (above the navigation bar, or under a
+    // screen's top bar where that's hidden). Another computer shown ends it.
+    val share = remember(model) { ScreenShare() }
+    val fullScreen = share.state.isOpen
+    val barAtTop = showingDetail && !wide
+    LaunchedEffect(opening) { if (opening?.paneID != null) share.minimise() }
     val layout = if (fullScreen || (showingDetail && !wide)) NavigationSuiteType.None
     else NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(androidx.compose.material3.adaptive.currentWindowAdaptiveInfo())
 
     val closer = remember(model) { Closer() }
     val warnBusy by rememberBoolPref(com.homegrownsw.hammock.Prefs.WARN_CLOSE_BUSY, true)
     androidx.compose.runtime.SideEffect { closer.warnBusy = warnBusy }
-    androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model, LocalCloser provides closer) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalModel provides model, LocalCloser provides closer,
+        LocalScreenBar provides ScreenBar(share, barAtTop)) {
     // The link to the computer, for the banner on every screen.
     LinkWatcher(model, host?.shortName?.ifEmpty { null } ?: "your computer") {
+    Box(Modifier.fillMaxSize()) {
     NavigationSuiteScaffold(
+        // Under the open screen: not read out, nor touched.
+        modifier = if (fullScreen) Modifier.clearAndSetSemantics {} else Modifier,
         layoutType = layout,
         navigationSuiteItems = {
             Dest.entries.forEach { d ->
@@ -280,12 +294,13 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
             }
         },
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
             when (nav.dest) {
                 Dest.Sessions, Dest.Groups -> ListDetail(wide, nav, model) {
                     if (nav.dest == Dest.Sessions) SessionsScreen(session, model, nav) else GroupsScreen(session, model, nav)
                 }
-                Dest.Devices -> DevicesScreen(session, model, onFullScreen = { fullScreen = it })
+                Dest.Devices -> DevicesScreen(session, model, share)
                 Dest.Settings -> SettingsScreen(session, model)
             }
             SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter)) { data ->
@@ -300,6 +315,11 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
                 }
             }
         }
+        // Above the navigation bar.
+        if (!barAtTop) ScreenShareBar(share, top = false)
+        }
+    }
+    if (share.state.isShowing) key(share.state.session) { ScreenViewer(model, share) }
     }
     }
     closer.Dialog()

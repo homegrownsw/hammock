@@ -29,6 +29,19 @@ struct CockpitView: View {
                 SettingsScreen(model: model)
             }
         }
+        // A Mac's screen minimised: a bar above the tab bar (and at the top
+        // of a screen that hides it), and the viewer over everything while
+        // it's open, kept while minimised so its stream goes on.
+        .screenShareAccessory()
+        .overlay { ScreenShareViewerHost(model: model) }
+        #if DEBUG
+        // Dev aid: HMK_DEBUG_SCREEN_BAR=<name> shows a made-up minimised screen.
+        .task {
+            if let name = ProcessInfo.processInfo.environment["HMK_DEBUG_SCREEN_BAR"], !name.isEmpty {
+                ScreenShare.shared.showSample(name: name == "1" ? "Studio" : name)
+            }
+        }
+        #endif
         // The link to the Mac, for the connection bar on every screen.
         .watchesLink(model, host: session.hostShortName)
         .demoBar(session)
@@ -46,7 +59,8 @@ struct CockpitView: View {
         .onChange(of: model.connected && !session.isDemo ? model.badgeCount : nil, initial: true) { _, n in
             if let n { Push.setBadge(n) }
         }
-        .onChange(of: Push.shared.openPane) { _, pane in if pane != nil { tab = "sessions" } }
+        // A notification opened over the Mac's screen: the screen minimises.
+        .onChange(of: Push.shared.openPane) { _, pane in if pane != nil { tab = "sessions"; ScreenShare.shared.minimise() } }
         .onChange(of: Push.shared.openNeedsYou) { _, on in if on { tab = "sessions" } }
         .sheet(item: Binding(get: { AgentStarter.shared.request }, set: { AgentStarter.shared.request = $0 })) { r in
             let origin = tab

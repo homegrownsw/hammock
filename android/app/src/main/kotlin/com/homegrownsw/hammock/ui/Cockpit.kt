@@ -184,6 +184,18 @@ fun ConnectionBanner() {
     }
 }
 
+/** The screen being shared, and whether its bar goes under screens' top bars (the navigation bar's hidden) rather than above the navigation bar. */
+class ScreenBar(val share: com.homegrownsw.hammock.media.ScreenShare, val atTop: Boolean)
+
+val LocalScreenBar = compositionLocalOf<ScreenBar?> { null }
+
+/** The minimised screen under this screen's top bar, while the navigation bar's hidden. */
+@Composable
+fun ScreenShareTopBar() {
+    val b = LocalScreenBar.current ?: return
+    if (b.atTop) com.homegrownsw.hammock.media.ScreenShareBar(b.share, top = true)
+}
+
 /** A list that pulls to refresh: dials the computer now if it's down, and checks the link if it's up. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -235,6 +247,8 @@ fun DetailScaffold(
             )
             // The link to the computer, on every screen, panes included.
             ConnectionBanner()
+            // A computer's screen minimised, where the navigation bar's hidden (a pane on a phone).
+            ScreenShareTopBar()
         } },
         bottomBar = bottomBar,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),

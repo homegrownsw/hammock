@@ -17148,8 +17148,12 @@ type SetMediaView struct {
 	// opened or used it (as a terminal takes its driver's), and goes back to
 	// the Mac pane's when the Mac is used or the session ends. x, y, w, h and
 	// aspect are unused.
-	PageWidth     float32 `protobuf:"fixed32,7,opt,name=page_width,json=pageWidth,proto3" json:"page_width,omitempty"`
-	PageHeight    float32 `protobuf:"fixed32,8,opt,name=page_height,json=pageHeight,proto3" json:"page_height,omitempty"`
+	PageWidth  float32 `protobuf:"fixed32,7,opt,name=page_width,json=pageWidth,proto3" json:"page_width,omitempty"`
+	PageHeight float32 `protobuf:"fixed32,8,opt,name=page_height,json=pageHeight,proto3" json:"page_height,omitempty"`
+	// The most frames a second the viewer wants from now on (a phone's
+	// minimised screen sharing asks for 1 or 2, then its full rate again):
+	// only that changes, x to page_height are unused. 0: no change.
+	MaxFps        uint32 `protobuf:"varint,9,opt,name=max_fps,json=maxFps,proto3" json:"max_fps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -17236,6 +17240,13 @@ func (x *SetMediaView) GetPageWidth() float32 {
 func (x *SetMediaView) GetPageHeight() float32 {
 	if x != nil {
 		return x.PageHeight
+	}
+	return 0
+}
+
+func (x *SetMediaView) GetMaxFps() uint32 {
+	if x != nil {
+		return x.MaxFps
 	}
 	return 0
 }
@@ -27557,7 +27568,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vScreenState\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
-	"\x06locked\x18\x02 \x01(\bR\x06locked\"\xbd\x01\n" +
+	"\x06locked\x18\x02 \x01(\bR\x06locked\"\xd6\x01\n" +
 	"\fSetMediaView\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\f\n" +
@@ -27569,7 +27580,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\n" +
 	"page_width\x18\a \x01(\x02R\tpageWidth\x12\x1f\n" +
 	"\vpage_height\x18\b \x01(\x02R\n" +
-	"pageHeight\"C\n" +
+	"pageHeight\x12\x17\n" +
+	"\amax_fps\x18\t \x01(\rR\x06maxFps\"C\n" +
 	"\n" +
 	"MediaEnded\x12\x1d\n" +
 	"\n" +

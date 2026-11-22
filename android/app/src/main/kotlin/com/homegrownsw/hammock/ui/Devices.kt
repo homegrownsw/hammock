@@ -39,7 +39,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,12 +53,12 @@ import com.homegrownsw.hammock.StoredHost
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.media.ScreenCards
-import com.homegrownsw.hammock.media.ScreenViewer
+import com.homegrownsw.hammock.media.ScreenShare
 
 /** Your paired computers: which is shown, switching, forgetting, adding; and this phone's name. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DevicesScreen(session: Session, model: AppModel, onFullScreen: (Boolean) -> Unit = {}) {
+fun DevicesScreen(session: Session, model: AppModel, share: ScreenShare) {
     val hosts by session.hosts.collectAsStateWithLifecycle()
     val host by session.host.collectAsStateWithLifecycle()
     val link by model.link.collectAsStateWithLifecycle()
@@ -67,21 +66,9 @@ fun DevicesScreen(session: Session, model: AppModel, onFullScreen: (Boolean) -> 
     var adding by remember { mutableStateOf(false) }
     var forgetting by remember { mutableStateOf<StoredHost?>(null) }
     var name by remember { mutableStateOf(session.deviceName) }
-    var screen by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     // The computer shown says what kind it is: kept for its icon.
     w.computers.firstOrNull { it.thisComputer }?.kind?.let { if (it.isNotEmpty()) session.noteKind(it) }
-
-    // A Mac's screen takes the whole window: no tabs beside or under it.
-    val showingScreen = screen != null
-    DisposableEffect(showingScreen) {
-        onFullScreen(showingScreen)
-        onDispose { onFullScreen(false) }
-    }
-    screen?.let { (id, title) ->
-        ScreenViewer(model, id, title) { screen = null }
-        return
-    }
 
     if (adding) {
         BackHandler { adding = false }
@@ -148,7 +135,8 @@ fun DevicesScreen(session: Session, model: AppModel, onFullScreen: (Boolean) -> 
                 Footer("The phone shows one computer at a time. Tap one to switch; touch and hold to forget it.")
             }
             if (!session.isDemo && link == Link.Connected) item {
-                ScreenCards(model) { id, title -> screen = id to title }
+                // Shown over the whole app (Workspace), and minimised to a bar on every screen.
+                ScreenCards(model) { id, title -> share.open(id, title) }
             }
             item {
                 SectionTitle("This Phone")

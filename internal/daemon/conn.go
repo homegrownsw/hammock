@@ -985,7 +985,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_SetMediaView:
 		v := m.SetMediaView
 		if s := d.media.session(c, v.SessionId); s != nil {
-			if v.PageWidth > 0 && v.PageHeight > 0 {
+			if v.MaxFps > 0 {
+				s.setFPS(int(v.MaxFps))
+			} else if v.PageWidth > 0 && v.PageHeight > 0 {
 				d.mu.Lock()
 				by, peer := c.name, c.peer
 				d.mu.Unlock()

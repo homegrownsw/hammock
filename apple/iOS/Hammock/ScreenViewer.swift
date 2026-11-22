@@ -19,7 +19,8 @@ struct ScreenRequest: Identifiable {
 struct PhoneScreenViewer: View {
     let model: AppModel
     let request: ScreenRequest
-    @Environment(\.dismiss) private var dismiss
+    private var share: ScreenShare { ScreenShare.shared }
+    private var minimised: Bool { share.isMinimised }
     @State private var displays: [Hammock_V1_Display] = []
     @State private var display: UInt32 = 0
     @State private var trackpad = true
@@ -53,7 +54,8 @@ struct PhoneScreenViewer: View {
                 // unlocked (a new stream then).
                 ScreenTouch(model: model, computerID: request.computerID, display: display, trackpad: trackpad,
                             macWidth: CGFloat((displays.first { display == 0 ? $0.main : $0.id == display } ?? displays.first)?.width ?? 0),
-                            keyboard: $keyboard, state: $state, locked: $locked, onEnd: { dismiss() })
+                            minimised: minimised,
+                            keyboard: $keyboard, state: $state, locked: $locked, onEnd: { share.end() })
                     .id("\(display)-\(session)")
                     .ignoresSafeArea()
             }
@@ -127,8 +129,8 @@ struct PhoneScreenViewer: View {
                 .frame(maxWidth: besideFold ?? .infinity)
             }
         }
-        .statusBarHidden()
-        .persistentSystemOverlays(.hidden)
+        .statusBarHidden(!minimised)
+        .persistentSystemOverlays(minimised ? .automatic : .hidden)
         .task { await load() }
         // Leaving the app for a moment (a code from Messages, another app's
         // password) keeps the screen: iOS gives the app half a minute or so
@@ -143,6 +145,9 @@ struct PhoneScreenViewer: View {
             default: break
             }
         }
+        .onChange(of: state, initial: true) { _, st in share.live = st == .playing }
+        // Minimised: the keyboard goes (nothing's typed to the Mac then).
+        .onChange(of: minimised) { _, on in if on { keyboard = false } }
         .onChange(of: state) { _, st in
             if case .failed = st, phase != .active || Date.now.timeIntervalSince(returnedAt) < 15 { resume = true }
         }
@@ -187,7 +192,11 @@ struct PhoneScreenViewer: View {
                 .accessibilityLabel("Paste to the Mac")
             // The state, in words when there's room (else just its colour).
             stateChip(words: !tight)
-            Button(role: .destructive) { dismiss() } label: {
+            // Down to a bar that stays connected (a swipe down on these
+            // controls does it too).
+            Button { share.minimise() } label: { Image(systemName: "chevron.down").frame(width: 44, height: 44) }
+                .accessibilityLabel("Minimize")
+            Button(role: .destructive) { share.end() } label: {
                 Image(systemName: "xmark").fontWeight(.semibold).frame(width: 20, height: 20)
             }
             .buttonStyle(.borderedProminent)
@@ -199,6 +208,12 @@ struct PhoneScreenViewer: View {
         .padding(6)
         .background(.black.opacity(0.72), in: Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.18)))
+        // A swipe down on the controls minimises (on the screen itself, a
+        // drag is the Mac's).
+        .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { g in
+            if g.translation.height > 40, g.translation.height > abs(g.translation.width) { share.minimise() }
+        })
+        .accessibilityAction(named: "Minimize") { share.minimise() }
     }
 
     private func stateChip(words: Bool) -> some View {
@@ -271,6 +286,9 @@ struct ScreenTouch: UIViewRepresentable {
     let display: UInt32
     let trackpad: Bool
     let macWidth: CGFloat // the display's width in points (scrolling's scale)
+    /// Minimised to the bar: few frames, the whole display (the bar's
+    /// thumbnail), and no input.
+    let minimised: Bool
     @Binding var keyboard: Bool
     @Binding var state: MediaStream.State
     @Binding var locked: Bool
@@ -278,7 +296,13 @@ struct ScreenTouch: UIViewRepresentable {
 
     func makeUIView(context: Context) -> ScreenTouchView {
         let v = ScreenTouchView()
-        v.send = { [model, computerID, display] op, args in model.screenInput(computerID: computerID, display: display, op, args) }
+        v.send = { [weak v, model, computerID, display] op, args in
+            // Nothing goes to the Mac while minimised.
+            guard v?.minimised == false else { return }
+            model.screenInput(computerID: computerID, display: display, op, args)
+        }
+        v.onThumbnail = { picture in ScreenShare.shared.thumbnail = picture }
+        v.minimised = minimised  // before start: a stream opened minimised starts slow
         v.onState = { st in DispatchQueue.main.async { state = st } }
         v.onKeyboard = { on in DispatchQueue.main.async { keyboard = on } }
         v.onLocked = { on in locked = on }
@@ -298,6 +322,7 @@ struct ScreenTouch: UIViewRepresentable {
     }
 
     func updateUIView(_ v: ScreenTouchView, context: Context) {
+        v.minimised = minimised
         v.trackpad = trackpad
         v.barInset = ScreenTouch.barHeight
         v.macWidth = macWidth
@@ -321,6 +346,19 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
     var onKeyboard: ((Bool) -> Void)?
     var onEnd: (() -> Void)?
     var onLocked: ((Bool) -> Void)?
+    /// The display's whole picture now and then while minimised (the bar's
+    /// thumbnail), on main.
+    var onThumbnail: ((CVPixelBuffer) -> Void)?
+    private var thumbnailAt: CFTimeInterval = 0
+    /// Minimised to the bar: the streams slow to a frame or two a second,
+    /// the detail shows the whole display (for the thumbnail), and no input
+    /// goes. Opened again: full rate, and the view zoomed into as before.
+    var minimised = false {
+        didSet {
+            guard minimised != oldValue else { return }
+            applyMinimised()
+        }
+    }
     /// The Mac's at its lock screen: typing goes as keys (its password field
     /// may take only those), not as text.
     private var macLocked = false
@@ -440,6 +478,28 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
 
     // MARK: Video
 
+    private func applyMinimised() {
+        stopMomentum()
+        stream?.setMaxFPS(ScreenShareState.detailFPS(minimised: minimised))
+        baseStream?.setMaxFPS(ScreenShareState.baseFPS(minimised: minimised))
+        sentView = .null
+        if minimised {
+            // The whole display in its own shape, for the thumbnail: the
+            // picture up now, if it's that already.
+            stream?.setView(.zero, aspect: 0)
+            if isWhole(crop), let last = shown.last { thumbnail(last) }
+        } else {
+            viewChanged()
+        }
+    }
+
+    private func isWhole(_ c: CGRect) -> Bool { c.width >= 0.99 && c.height >= 0.99 }
+
+    private func thumbnail(_ picture: CVPixelBuffer) {
+        thumbnailAt = CACurrentMediaTime()
+        onThumbnail?(picture)
+    }
+
     func start(_ s: MediaStream, base: MediaStream) {
         baseStream = base
         baseVideo.hosted = base.layer
@@ -472,9 +532,16 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
             CATransaction.commit()
             self.shown.append(picture)
             if self.shown.count > 2 { self.shown.removeFirst() }
+            if self.minimised, self.isWhole(c), CACurrentMediaTime() - self.thumbnailAt > 0.4 { self.thumbnail(picture) }
         }
         s.onSize = { [weak self] px in self?.detailPixels = px }
         s.onState = { [weak self] st in self?.onState?(st) }
+        if minimised {
+            // Opened again while minimised (unlocked, or back from away).
+            s.setMaxFPS(ScreenShareState.detailFPS(minimised: true))
+            base.setMaxFPS(ScreenShareState.baseFPS(minimised: true))
+            s.setView(.zero, aspect: 0)
+        }
         s.start()
     }
 
@@ -605,6 +672,8 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             self.viewPending = false
+            // Minimised: the whole display, asked for as it went.
+            guard !self.minimised else { return }
             let r = self.page.frame
             guard r.width > 0, r.height > 0 else { return }
             var v = self.seenArea.intersection(r)

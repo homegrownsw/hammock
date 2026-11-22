@@ -85,6 +85,7 @@ public final class MediaStream: @unchecked Sendable {
     private var sessionID = ""
     private var view: (CGRect, CGFloat)? // the screen viewer's (setView), on queue
     private var page: CGSize?             // a browser viewer's (setPageSize), on queue
+    private var wantedFPS: UInt32?        // setMaxFPS's, on queue
     private var group: NWConnectionGroup?
     private var control: NWConnection?
     private var stopped = false
@@ -142,6 +143,24 @@ public final class MediaStream: @unchecked Sendable {
                 $0.aspect = Float(aspect)
             }
         }
+    }
+
+    /// The most frames a second wanted from now on (a minimised screen
+    /// sharing asks for few, then its full rate again): the host changes
+    /// its encoder's rate, keeping the stream. Kept, for a session that's
+    /// still opening.
+    public func setMaxFPS(_ fps: UInt32) {
+        queue.async {
+            guard fps > 0, fps != self.wantedFPS else { return }
+            self.wantedFPS = fps
+            self.sendFPS()
+        }
+    }
+
+    private func sendFPS() {
+        guard let fps = wantedFPS, !sessionID.isEmpty, !stopped else { return }
+        let sid = sessionID
+        conn.send { $0.setMediaView = .with { $0.sessionID = sid; $0.maxFps = fps } }
     }
 
     /// A browser pane's viewer: the size (points) it shows the page at. The
@@ -239,6 +258,9 @@ public final class MediaStream: @unchecked Sendable {
                         return
                     }
                     self.sessionID = t.sessionID
+                    // The rate first: an older Mac takes it for a view of
+                    // the whole display, which the view after puts right.
+                    self.sendFPS()
                     self.sendView()
                     self.sendPage()
                     self.listenForPointer(t.sessionID)

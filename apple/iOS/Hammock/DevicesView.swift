@@ -8,7 +8,6 @@ import VisionKit
 struct DevicesView: View {
     let session: Session
     @State private var path: [String] = []
-    @State private var screen: ScreenRequest?
     @State private var viewed = 0  // bumped as the viewer closes: the cards look again at once
     @State private var deviceName = UserDefaults.standard.string(forKey: "deviceName") ?? ""
     @FocusState private var naming: Bool
@@ -49,7 +48,7 @@ struct DevicesView: View {
                     Section {
                         ForEach(screens, id: \.userID) { c in
                             Button {
-                                screen = ScreenRequest(computerID: c.userID, name: c.name)
+                                ScreenShare.shared.open(ScreenRequest(computerID: c.userID, name: c.name), model: m)
                             } label: {
                                 ScreenCard(model: m, computer: c, viewed: viewed)
                             }
@@ -85,9 +84,8 @@ struct DevicesView: View {
             .connectionBar()
             .onChange(of: session.model?.thisComputer?.kind, initial: true) { _, k in if let k { session.noteKind(k) } }
             .task(id: session.model?.connected == true ? session.model?.screenComputers.map(\.userID) ?? [] : []) { await checkScreens() }
-            .fullScreenCover(item: $screen, onDismiss: { viewed += 1 }) { r in
-                if let m = session.model { PhoneScreenViewer(model: m, request: r) }
-            }
+            // Shown at the app's root (ScreenShareViewerHost): ended, the cards look again.
+            .onChange(of: ScreenShare.shared.state.isShowing) { _, on in if !on { viewed += 1 } }
             .navigationDestination(for: String.self) { _ in
                 PairingScreen(session: session) { path.removeAll() }
             }
