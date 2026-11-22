@@ -165,7 +165,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                     val canClose = g.canDrive && !g.offline && link == Link.Connected
                     cardItems(tabs, key = { "t:" + it.id }) { tab ->
                         val i = tabs.indexOf(tab)
-                        Swipeable(enabled = canClose && !editingOrder, onClose = { closer.closeTab(model, w, tab) }) {
+                        Swipeable(enabled = canClose && !editingOrder, onSwipe = { closer.closeTab(model, w, tab) }) {
                             TabRow(model, w, g, tab, selected = nav.stack.lastOrNull() == "tab:" + tab.id,
                                 open = { nav.open("tab:" + tab.id) }, rename = { renaming = tab }, newTab = { newTab(g) },
                                 startAgent = { startingIn = g.id },

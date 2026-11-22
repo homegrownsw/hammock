@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
@@ -195,7 +196,7 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
                 items(waiting, key = { "att:" + it.id }) { item ->
                     val p = w.panes[item.paneId]
                     Card(padded = false, modifier = Modifier.animateItem()) {
-                        Swipeable(enabled = p != null && canClose(p), onClose = { p?.let(::requestClose) }) {
+                        Swipeable(enabled = p != null && canClose(p), onSwipe = { p?.let(::requestClose) }) {
                             AttentionCard(model, w, item) { nav.open("pane:" + item.paneId) }
                         }
                     }
@@ -271,13 +272,19 @@ val LocalSwipeClose = compositionLocalOf<(() -> Unit)?> { null }
 fun Modifier.closeAction(close: (() -> Unit)?): Modifier =
     if (close == null) this else semantics { customActions = listOf(CustomAccessibilityAction("Close") { close(); true }) }
 
-/** Swipe left to close, where you can (your own Groups, or ones you drive). */
+/** What a row's swipe left does when it isn't closing it (a schedule's Pause): its name, icon and colour. */
+class SwipeAction(val label: String, val icon: ImageVector, val color: Color)
+
+/**
+ * Swipe left to close, where you can (your own Groups, or ones you drive), or to do [action]
+ * instead. The row springs back either way.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Swipeable(enabled: Boolean, onClose: () -> Unit, content: @Composable () -> Unit) {
+fun Swipeable(enabled: Boolean, onSwipe: () -> Unit, action: SwipeAction? = null, content: @Composable () -> Unit) {
     if (!enabled) return content()
     val state = rememberSwipeToDismissBoxState(confirmValueChange = {
-        if (it == SwipeToDismissBoxValue.EndToStart) onClose()
+        if (it == SwipeToDismissBoxValue.EndToStart) onSwipe()
         false // the row goes when the computer says it's closed, or stays when it asks first
     })
     // A tap as the swipe passes the point where letting go closes (not on
@@ -293,11 +300,18 @@ fun Swipeable(enabled: Boolean, onClose: () -> Unit, content: @Composable () -> 
         enableDismissFromStartToEnd = false,
         backgroundContent = {
             // Only while it's swiped: drawn at rest, it shows round a card's corners.
-            if (state.dismissDirection == SwipeToDismissBoxValue.EndToStart) Box(Modifier.fillMaxSize().background(ErrorColor).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterEnd) {
-                Icon(Icons.Default.Close, "Close", tint = Color.White)
+            if (state.dismissDirection == SwipeToDismissBoxValue.EndToStart) {
+                Box(Modifier.fillMaxSize().background(action?.color ?: ErrorColor).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterEnd) {
+                    Icon(action?.icon ?: Icons.Default.Close, action?.label ?: "Close", tint = Color.White)
+                }
             }
         },
-    ) { Box(Modifier.background(cardColor())) { CompositionLocalProvider(LocalSwipeClose provides onClose) { content() } } }
+    ) {
+        Box(Modifier.background(cardColor())) {
+            // The row's TalkBack Close (closeAction); another action's row offers its own.
+            if (action == null) CompositionLocalProvider(LocalSwipeClose provides onSwipe) { content() } else content()
+        }
+    }
 }
 
 @Composable
@@ -305,7 +319,7 @@ private fun SessionLink(
     model: AppModel, w: Workspace, r: SessionRow, nav: Nav,
     canClose: (Pane) -> Boolean, close: (Pane) -> Unit, now: Long,
 ) {
-    Swipeable(enabled = canClose(r.pane), onClose = { close(r.pane) }) {
+    Swipeable(enabled = canClose(r.pane), onSwipe = { close(r.pane) }) {
         SessionRowView(w, r, now, selected = nav.stack.lastOrNull() == "pane:" + r.pane.id) { nav.open("pane:" + r.pane.id) }
     }
 }

@@ -24,7 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PauseCircle
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.foundation.layout.heightIn
@@ -58,6 +61,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -71,6 +77,7 @@ import hammock.v1.Hammock
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ScheduleRun
 import hammock.v1.Hammock.ScheduleRun.Status
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -298,29 +305,88 @@ fun sorted(all: Collection<Schedule>): List<Schedule> = all.sortedWith { a, b ->
 fun SmallTonalButton(text: String, enabled: Boolean = true, onClick: () -> Unit) =
     FilledTonalButton(onClick = onClick, enabled = enabled, colors = tintedButtonColors(), contentPadding = PaddingValues(horizontal = 14.dp), modifier = Modifier.heightIn(min = 36.dp)) { Text(text) }
 
+/**
+ * A schedule's actions, for its touch-and-hold menu (the iPhone's ScheduleMenuIOS): Run Now, Run
+ * Early, Skip, Pause or Resume, and [details] unless the row opens them itself. [scope] is the row's:
+ * the menu's own goes with it as it closes.
+ */
+@Composable
+private fun ScheduleMenuItems(model: AppModel, s: Schedule, nav: Nav, now: Long, scope: CoroutineScope, close: () -> Unit, details: (() -> Unit)? = null) {
+    val ctx = LocalContext.current
+    for (a in scheduleActions(s, details = details != null)) {
+        val (icon, act) = when (a) {
+            ScheduleAction.RUN_NOW -> Icons.Default.PlayArrow to { scope.launch { runScheduleNow(model, s, false, nav) }; Unit }
+            ScheduleAction.RUN_EARLY -> Icons.Outlined.PlayArrow to { scope.launch { runScheduleNow(model, s, true, nav) }; Unit }
+            ScheduleAction.SKIP -> Icons.Default.SkipNext to { model.skipScheduleRun(s.id, true); Unit }
+            ScheduleAction.DONT_SKIP -> Icons.AutoMirrored.Filled.Undo to { model.skipScheduleRun(s.id, false); Unit }
+            ScheduleAction.PAUSE -> Icons.Outlined.PauseCircle to { model.setSchedulePaused(s.id, true); Unit }
+            ScheduleAction.RESUME -> Icons.Outlined.PlayCircle to { model.setSchedulePaused(s.id, false); Unit }
+            ScheduleAction.DETAILS -> Icons.Outlined.Info to { details?.invoke(); Unit }
+        }
+        if (a == ScheduleAction.DETAILS) HorizontalDivider()
+        val title = if (a == ScheduleAction.RUN_EARLY) "Run Now Instead of ${ScheduleWords.nextShort(s, now, ctx)}" else a.title
+        DropdownMenuItem(text = { Text(title) }, leadingIcon = { Icon(icon, null) }, onClick = { close(); act() })
+    }
+}
+
+/** What a schedule's touch-and-hold menu offers. */
+enum class ScheduleAction(val title: String) {
+    RUN_NOW("Run Now"), RUN_EARLY("Run Early"), SKIP("Skip Next Run"), DONT_SKIP("Don’t Skip Next Run"),
+    PAUSE("Pause"), RESUME("Resume"), DETAILS("Details"),
+}
+
+/**
+ * A schedule's menu, in order, as the iPhone's: Run Now; Run Early in place of its next run, when
+ * one's due and not skipped; Skip (or Don't Skip) that run; Pause or Resume; then [details].
+ */
+fun scheduleActions(s: Schedule, details: Boolean): List<ScheduleAction> = buildList {
+    add(ScheduleAction.RUN_NOW)
+    if (s.canRunEarly) add(ScheduleAction.RUN_EARLY)
+    if (s.upcoming) add(if (s.skipping) ScheduleAction.DONT_SKIP else ScheduleAction.SKIP)
+    add(if (s.paused) ScheduleAction.RESUME else ScheduleAction.PAUSE)
+    if (details) add(ScheduleAction.DETAILS)
+}
+
+/** Pause or Resume, as a schedule row's swipe left does it, and TalkBack's action for the row. */
+@Composable
+private fun pauseSwipe(s: Schedule) =
+    SwipeAction(if (s.paused) "Resume" else "Pause", if (s.paused) Icons.Default.PlayArrow else Icons.Default.Pause, StatusPalette.amber())
+
+private fun Modifier.pauseAction(model: AppModel, s: Schedule): Modifier = semantics {
+    customActions = listOf(CustomAccessibilityAction(if (s.paused) "Resume" else "Pause") { model.setSchedulePaused(s.id, !s.paused); true })
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ComingUpRow(model: AppModel, w: Workspace, s: Schedule, now: Long, nav: Nav) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val early = s.runsEarlyFirst(now)
-    Row(Modifier.fillMaxWidth().clickable { nav.open("schedule:" + s.id) }.padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(s.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false))
-                w.computerOf(s)?.let { ComputerIcon(it, 12.dp) }
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(Modifier.fillMaxWidth().combinedClickable(onLongClickLabel = "Actions", onLongClick = { menu = true }) { nav.open("schedule:" + s.id) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(s.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false))
+                    w.computerOf(s)?.let { ComputerIcon(it, 12.dp) }
+                }
+                val running = s.runsList.firstOrNull()?.let { if (it.status == Status.STATUS_RUNNING || it.status == Status.STATUS_WAITING) it.status.label + " · " else "" } ?: ""
+                val group = ScheduleWords.group(w, s)
+                Text(
+                    running + ScheduleWords.date(s.nextRunUnixMs, now, ctx) + (if (group.isEmpty()) "" else " · $group"),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    textDecoration = if (s.skipping) TextDecoration.LineThrough else null, overflow = TextOverflow.Ellipsis,
+                )
             }
-            val running = s.runsList.firstOrNull()?.let { if (it.status == Status.STATUS_RUNNING || it.status == Status.STATUS_WAITING) it.status.label + " · " else "" } ?: ""
-            val group = ScheduleWords.group(w, s)
-            Text(
-                running + ScheduleWords.date(s.nextRunUnixMs, now, ctx) + (if (group.isEmpty()) "" else " · $group"),
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                textDecoration = if (s.skipping) TextDecoration.LineThrough else null, overflow = TextOverflow.Ellipsis,
-            )
+            SmallTonalButton(if (s.skipping) "Don’t Skip" else "Skip") { model.skipScheduleRun(s.id, !s.skipping) }
+            SmallTonalButton(if (early) "Run Early" else "Run") { scope.launch { runScheduleNow(model, s, early, nav) } }
         }
-        SmallTonalButton(if (s.skipping) "Don’t Skip" else "Skip") { model.skipScheduleRun(s.id, !s.skipping) }
-        SmallTonalButton(if (early) "Run Early" else "Run") { scope.launch { runScheduleNow(model, s, early, nav) } }
+        DropdownMenu(menu, { menu = false }) {
+            ScheduleMenuItems(model, s, nav, now, scope, close = { menu = false }, details = { nav.open("schedule:" + s.id) })
+        }
     }
 }
 
@@ -342,25 +408,49 @@ fun SchedulesScreen(model: AppModel, nav: Nav, showBack: Boolean) {
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp)) {
             cardItems(sorted(w.schedules.values), key = { it.id }, dividerStart = 16.dp) { s ->
-                Row(Modifier.fillMaxWidth().clickable { nav.push("schedule:" + s.id) }.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(s.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                w.computerOf(s)?.let { ComputerIcon(it, 13.dp) }
-                            }
-                            s.runsList.firstOrNull()?.let { Icon(it.status.icon, "Last run: " + it.status.label, Modifier.size(20.dp), tint = it.status.color()) }
-                        }
-                        Text(ScheduleWords.where(w, s, ctx), style = MaterialTheme.typography.bodyMedium, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(ScheduleWords.next(s, now, ctx), style = MaterialTheme.typography.bodySmall,
-                            color = if (s.error.isEmpty()) quiet.copy(alpha = 0.75f) else NeedsYouColor)
-                    }
-                    Chevron()
+                Swipeable(enabled = true, onSwipe = { model.setSchedulePaused(s.id, !s.paused) }, action = pauseSwipe(s)) {
+                    ScheduleListRow(model, w, s, now, nav)
                 }
             }
             item { MacOnlyFooter() }
         }
+    }
+}
+
+/**
+ * A scheduled task in the list: its name, last run, where and when. Tap for its details, touch and
+ * hold for its actions (the details aside), swipe left to pause or resume it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ScheduleListRow(model: AppModel, w: Workspace, s: Schedule, now: Long, nav: Nav) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val quiet = MaterialTheme.colorScheme.onSurfaceVariant
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth()
+                .combinedClickable(onLongClickLabel = "Actions", onLongClick = { menu = true }) { nav.push("schedule:" + s.id) }
+                .pauseAction(model, s)
+                .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(s.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        w.computerOf(s)?.let { ComputerIcon(it, 13.dp) }
+                    }
+                    s.runsList.firstOrNull()?.let { Icon(it.status.icon, "Last run: " + it.status.label, Modifier.size(20.dp), tint = it.status.color()) }
+                }
+                Text(ScheduleWords.where(w, s, ctx), style = MaterialTheme.typography.bodyMedium, color = quiet, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(ScheduleWords.next(s, now, ctx), style = MaterialTheme.typography.bodySmall,
+                    color = if (s.error.isEmpty()) quiet.copy(alpha = 0.75f) else NeedsYouColor)
+            }
+            Chevron()
+        }
+        DropdownMenu(menu, { menu = false }) { ScheduleMenuItems(model, s, nav, now, scope, close = { menu = false }) }
     }
 }
 
