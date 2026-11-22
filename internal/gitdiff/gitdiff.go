@@ -130,6 +130,11 @@ func refExists(ctx context.Context, repo, ref string) bool {
 	return err == nil
 }
 
+// isRoot reports whether rev is a commit with no parent.
+func isRoot(ctx context.Context, repo, rev string) bool {
+	return refExists(ctx, repo, rev) && !refExists(ctx, repo, rev+"^1")
+}
+
 // DefaultBranch is the branch pull requests go to: origin's HEAD, else
 // main, else master ("" if none of them is there).
 func DefaultBranch(ctx context.Context, repo string) string {
@@ -244,7 +249,12 @@ func Resolve(ctx context.Context, dir string, src *pb.DiffSource) (*Resolved, er
 		}
 		from, err := line(ctx, repo, "rev-parse", "--verify", "-q", s.Base+"^{commit}")
 		if err != nil || from == "" {
-			return nil, gone("no commit %s", s.Base)
+			// first^..last from the first commit of all: from nothing, as
+			// that commit alone is.
+			if c, ok := strings.CutSuffix(s.Base, "^"); !ok || s.MergeBase || !isRoot(ctx, repo, c) {
+				return nil, gone("no commit %s", s.Base)
+			}
+			from = EmptyTree
 		}
 		to, err := line(ctx, repo, "rev-parse", "--verify", "-q", s.Rev+"^{commit}")
 		if err != nil || to == "" {

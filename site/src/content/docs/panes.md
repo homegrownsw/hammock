@@ -93,7 +93,7 @@ hmk edit docs/plan.md --view preview
 
 A diff pane shows a git diff like a pull request's Files Changed, and lets you add comments to send to an agent.
 
-View ▸ Review Changes (⌥⌘R) shows what a pull request from this branch would, uncommitted changes included. File ▸ New Diff Tab… compares a branch, uncommitted changes, a commit or a range:
+View ▸ Review Changes (⌥⌘R) shows what a pull request from this branch would, uncommitted changes included. File ▸ New Diff Tab… compares a branch, uncommitted changes, a commit or a range (in the TUI, the palette's New Diff Tab… and Split Right with Diff…, with commits picked from a list):
 
 ```sh
 hmk diff                           # this branch against its base

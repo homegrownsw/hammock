@@ -915,20 +915,47 @@ var (
 )
 
 // review is reviewChanges, of src (nil: the daemon's choice).
-func (a *App) review(src *pb.DiffSource) {
+func (a *App) review(src *pb.DiffSource) { a.openDiff("", src) }
+
+// diffFolder is where a diff beside pane id (or of the focused pane, for
+// "") looks for its repository: an editor's file's folder, a diff's
+// repository, a terminal's directory ("": the Group's folder).
+func (a *App) diffFolder(id string) string {
+	if id == "" {
+		id = a.focus
+	}
+	p := a.panes[id]
+	if p == nil {
+		return ""
+	}
+	if ed := p.GetEditor(); isEditor(p) && ed.GetPath() != "" {
+		return filepath.Dir(ed.GetPath())
+	}
+	if d := p.GetDiff(); p.Kind == pb.PaneKind_PANE_KIND_DIFF && d.GetRepo() != "" {
+		return d.GetRepo()
+	}
+	return p.Cwd
+}
+
+// openDiff opens a diff of src (nil: the daemon's choice) split right of
+// pane split, or in a new tab after this one for "".
+func (a *App) openDiff(split string, src *pb.DiffSource) {
+	spec := &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: a.diffFolder(split), Source: src}}
+	if split != "" {
+		a.callErr(&pb.ClientMessage{Msg: &pb.ClientMessage_CreatePane{CreatePane: &pb.CreatePane{SplitPaneId: split, Direction: pb.Split_DIRECTION_HORIZONTAL, Spec: spec}}}, func(r *pb.ServerMessage, err error) {
+			if err != nil {
+				a.flash("⚠ " + err.Error())
+				return
+			}
+			a.setFocus(client.CreatedID(r))
+		})
+		return
+	}
 	group := a.currentGroup()
 	if group == "" {
 		a.flash("Open a Group first")
 		return
 	}
-	repo := ""
-	if p := a.panes[a.focus]; p != nil {
-		repo = p.Cwd
-		if ed := p.GetEditor(); isEditor(p) && ed.GetPath() != "" {
-			repo = filepath.Dir(ed.GetPath())
-		}
-	}
-	spec := &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: repo, Source: src}}
 	a.callErr(&pb.ClientMessage{Msg: &pb.ClientMessage_CreateTab{CreateTab: &pb.CreateTab{GroupId: group, Pane: spec, AfterTabId: a.selTab}}}, func(r *pb.ServerMessage, err error) {
 		if err != nil {
 			a.flash("⚠ " + err.Error())
@@ -936,6 +963,103 @@ func (a *App) review(src *pb.DiffSource) {
 		}
 		a.selectTab(client.CreatedID(r))
 	})
+}
+
+// diffChoices is what New Diff Tab… (split "") and Split Right with Diff…
+// offer to compare, as the Mac's Open a Diff sheet does: what's
+// uncommitted, this branch against the one it would merge into, the last
+// commit, or commits chosen from the history.
+func (a *App) diffChoices(split string) *paletteList {
+	l := &paletteList{placeholder: "New Diff Tab: compare…"}
+	if split != "" {
+		l.placeholder = "Split Right with Diff: compare…"
+	}
+	g := glyph{"±", a.th.accent, false}
+	open := func(src *pb.DiffSource) func() { return func() { a.openDiff(split, src) } }
+	l.items = []paletteItem{
+		{id: "diff:uncommitted", title: "Uncommitted", sub: "Everything not yet committed, against the last commit", glyph: g, keywords: "working tree staged", run: open(reviewUncommitted)},
+		{id: "diff:branch", title: "This Branch", sub: "What a pull request would show", glyph: g, keywords: "pull request base main", run: open(reviewBranch)},
+		{id: "diff:last-commit", title: "Last Commit", sub: "HEAD against its parent", glyph: g, keywords: "head", run: open(reviewLastCommit)},
+		{id: "diff:commits", title: "Choose Commits…", sub: "One commit, or a run of them", glyph: g, keywords: "range history log pick", run: func() { a.chooseCommits(split, l) }},
+	}
+	return l
+}
+
+// chooseCommits lists the repository's recent commits to pick the oldest
+// to show, then the newest (the same one again: that commit alone).
+func (a *App) chooseCommits(split string, back *paletteList) {
+	group := a.currentGroup()
+	if split != "" {
+		group = a.groupOfPane(split)
+	}
+	l := &paletteList{placeholder: "Reading the history…", back: back}
+	a.openPaletteList(l)
+	a.callErr(&pb.ClientMessage{Msg: &pb.ClientMessage_ReadRepo{ReadRepo: &pb.ReadRepo{Path: a.diffFolder(split), GroupId: group}}}, func(r *pb.ServerMessage, err error) {
+		info := r.GetRepoInfo()
+		switch {
+		case err != nil:
+			l.placeholder = "⚠ " + err.Error()
+		case info.GetError() != "":
+			l.placeholder = "⚠ " + info.GetError()
+		case len(info.GetCommits()) == 0:
+			l.placeholder = "No commits yet"
+		default:
+			l.placeholder = "Choose Commits: the oldest to show…"
+			l.items = a.commitItems(info.GetCommits(), func(i int) { a.chooseLastCommit(split, info.GetCommits(), i, l) })
+		}
+		a.dirty = true
+	})
+}
+
+// chooseLastCommit lists commits[from] and those after it, to choose the
+// newest to show with it (commits are newest first, as git log lists them).
+func (a *App) chooseLastCommit(split string, commits []*pb.DiffCommit, from int, back *paletteList) {
+	first := commits[from]
+	l := &paletteList{placeholder: "…through which commit?", back: back}
+	// From the one chosen up to the newest, as they'd be read.
+	var later []*pb.DiffCommit
+	for i := from; i >= 0; i-- {
+		later = append(later, commits[i])
+	}
+	l.items = a.commitItems(later, func(i int) {
+		if i == 0 {
+			a.openDiff(split, &pb.DiffSource{Kind: pb.DiffSource_KIND_COMMIT, Rev: first.Sha})
+			return
+		}
+		a.openDiff(split, commitRange(first, later[i]))
+	})
+	l.items[0].hint = "only this one"
+	for i := 1; i < len(l.items); i++ {
+		l.items[i].hint = strconv.Itoa(i+1) + " commits"
+	}
+	a.openPaletteList(l)
+}
+
+// commitRange is first through last, both shown: from first's parent.
+func commitRange(first, last *pb.DiffCommit) *pb.DiffSource {
+	return &pb.DiffSource{Kind: pb.DiffSource_KIND_RANGE, Base: first.Sha + "^", Rev: last.Sha}
+}
+
+// commitItems are rows for commits, each choosing its index.
+func (a *App) commitItems(commits []*pb.DiffCommit, choose func(i int)) []paletteItem {
+	now := time.Now()
+	out := make([]paletteItem, len(commits))
+	for i, c := range commits {
+		sub := c.Author
+		if t := relTime(c.Unix*1000, now); t != "" {
+			sub += ", " + t
+		}
+		out[i] = paletteItem{id: "commit:" + c.Sha, title: c.Subject, sub: sub, hint: shortSha(c.Sha), keywords: c.Sha,
+			glyph: glyph{"•", a.th.dim, false}, run: func() { choose(i) }}
+	}
+	return out
+}
+
+func shortSha(s string) string {
+	if len(s) > 7 {
+		return s[:7]
+	}
+	return s
 }
 
 // splitEditor opens an untitled editor beside paneID.

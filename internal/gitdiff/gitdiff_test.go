@@ -175,6 +175,17 @@ func TestCommitAndRange(t *testing.T) {
 	if _, err := Resolve(ctx, dir, ParseRev("nope")); err == nil {
 		t.Error("no such commit")
 	}
+	// From the first commit of all, through the next: from nothing.
+	all, err := Resolve(ctx, dir, &pb.DiffSource{Kind: pb.DiffSource_KIND_RANGE, Base: "main~1^", Rev: "main"})
+	if err != nil || all.Base != EmptyTree {
+		t.Fatalf("from the root's parent: %v %v", all, err)
+	}
+	if _, err := Resolve(ctx, dir, &pb.DiffSource{Kind: pb.DiffSource_KIND_RANGE, Base: "main^", Rev: "main", MergeBase: true}); err != nil {
+		t.Errorf("an ordinary parent: %v", err)
+	}
+	if _, err := Resolve(ctx, dir, &pb.DiffSource{Kind: pb.DiffSource_KIND_RANGE, Base: "nope^", Rev: "main"}); err == nil {
+		t.Error("no such commit's parent")
+	}
 }
 
 func TestBinaryAndGenerated(t *testing.T) {

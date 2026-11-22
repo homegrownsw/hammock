@@ -44,7 +44,7 @@ func paletteTool(id string) string {
 		return "log"
 	case "quick-open", "new-editor", "split-right-editor", "split-down-editor":
 		return "editor"
-	case "review-changes", "review-uncommitted", "review-branch", "review-last-commit":
+	case "review-changes", "review-uncommitted", "review-branch", "review-last-commit", "new-diff-tab", "split-diff":
 		return "diff"
 	case "schedules", "new-schedule", "schedule-tab":
 		return "schedules"

@@ -536,7 +536,17 @@ type palette struct {
 	sel   int
 	open  *spring
 	items []paletteItem
-	needs bool // only what needs you (Needs You's "+N more")
+	needs bool         // only what needs you (Needs You's "+N more")
+	list  *paletteList // a list that follows a command, in place of the palette's
+}
+
+// paletteList is a choice that follows a command, shown in the palette
+// (New Diff Tab…: what it compares). Esc goes back to back, or to the
+// palette when there's none.
+type paletteList struct {
+	placeholder string
+	items       []paletteItem
+	back        *paletteList
 }
 
 func (a *App) openPalette() {
@@ -544,6 +554,16 @@ func (a *App) openPalette() {
 	p.open.from(0)
 	p.open.to(1)
 	a.overlay = p
+}
+
+// openPaletteList shows l in the palette, already open: it follows a row
+// chosen there.
+func (a *App) openPaletteList(l *paletteList) {
+	p := &palette{open: newSpring(gentle), list: l}
+	p.open.from(1)
+	p.open.to(1)
+	a.overlay = p
+	a.dirty = true
 }
 
 func (a *App) paletteItems() []paletteItem {
@@ -601,6 +621,7 @@ func (a *App) paletteItems() []paletteItem {
 	act("review-uncommitted", "Review Uncommitted Changes", "", "diff git review working tree staged", func() { a.review(reviewUncommitted) })
 	act("review-branch", "Review This Branch", "", "diff git review pull request base main", func() { a.review(reviewBranch) })
 	act("review-last-commit", "Review the Last Commit", "", "diff git review head commit", func() { a.review(reviewLastCommit) })
+	act("new-diff-tab", "New Diff Tab…", "", "diff git review compare branch commit range uncommitted choose", func() { a.openPaletteList(a.diffChoices("")) })
 	act("new-group", "New Group", "⌃B S", "create", a.newGroup)
 	act("new-group-in-directory", "New Group in Directory…", "", "create folder project open path", a.openNewGroupInFolder)
 	if len(a.shownGroups()) > 1 {
@@ -641,6 +662,7 @@ func (a *App) paletteItems() []paletteItem {
 		act("split-up", "Split Up", "", "pane above", func() { a.splitAt(f, pb.Split_DIRECTION_VERTICAL, "", true) })
 		act("split-right-editor", "Split Right with Editor", "", "pane edit editor text file untitled", func() { a.splitEditor(f, pb.Split_DIRECTION_HORIZONTAL) })
 		act("split-down-editor", "Split Down with Editor", "", "pane edit editor text file untitled below", func() { a.splitEditor(f, pb.Split_DIRECTION_VERTICAL) })
+		act("split-diff", "Split Right with Diff…", "", "pane diff git review changes compare branch commit", func() { a.openPaletteList(a.diffChoices(f)) })
 		for _, s := range []struct {
 			word   string
 			dir    pb.Split_Direction
@@ -857,9 +879,14 @@ func score(q, title, extra string) (int, bool) {
 }
 
 func (p *palette) filtered(a *App) []paletteItem {
-	all := a.paletteItems()
-	if p.needs {
+	var all []paletteItem
+	switch {
+	case p.list != nil:
+		all = p.list.items
+	case p.needs:
 		all = a.needsItems()
+	default:
+		all = a.paletteItems()
 	}
 	q := strings.ToLower(strings.TrimSpace(p.query))
 	if q == "" {
@@ -885,7 +912,7 @@ func (p *palette) filtered(a *App) []paletteItem {
 	looksLikeURL := !strings.Contains(typed, " ") && (strings.Contains(typed, ".") || strings.Contains(typed, "://") || strings.HasPrefix(typed, "localhost"))
 	open := paletteItem{id: "open", title: "Search the web for “" + typed + "”", sub: "New browser tab", glyph: glyph{"⌕", a.th.accent, false}, run: func() { a.newTab("", typed) }}
 	switch {
-	case toolOff("browser") || p.needs:
+	case toolOff("browser") || p.needs || p.list != nil:
 	case looksLikeURL:
 		open.title, open.glyph = "Open "+typed, glyph{"◎", a.th.accent, false}
 		res = append([]paletteItem{open}, res...)
@@ -928,6 +955,9 @@ func (p *palette) draw(a *App) {
 		placeholder := "Jump to a tab, or run a command…"
 		if p.needs {
 			placeholder = "Needs You: pick one…"
+		}
+		if p.list != nil {
+			placeholder = p.list.placeholder
 		}
 		a.scr.Text(inner.x+3, inner.y, inner.w-4, placeholder, Cell{FG: a.th.dim, HasFG: true, BG: bg, HasBG: true})
 		a.scr.Cursor(inner.x+3, inner.y, true)
@@ -978,6 +1008,11 @@ func (p *palette) key(a *App, ks []key) {
 	for _, k := range ks {
 		switch k.name {
 		case "esc":
+			if p.list != nil { // back a step
+				p.list, p.query, p.sel = p.list.back, "", 0
+				a.dirty = true
+				return
+			}
 			a.closeOverlay()
 			return
 		case "up", "shift-tab", "ctrl-p":
