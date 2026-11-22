@@ -714,6 +714,8 @@ window.hammock = {
   // The app's drag has come back over this tree (Mac): show where it'd go.
   dragOver(x, y) { showDrop(x == null ? null : dropTarget(x, y)); return dropRow },
   dropAt(x, y) { const d = dropTarget(x, y); showDrop(null); return d },
+  // The app's drag is over (mouseup never reaches the page).
+  dragEnded() { dragging = null; dragStart = null; downOnSelected = ""; showDrop(null) },
 }
 
 let revealing = ""

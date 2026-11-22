@@ -314,6 +314,8 @@ struct FilesWebViewRep: NSViewRepresentable {
             guard let v else { return }
             FilesUI.menu(model, session, paths: paths, dirs: dirs).popUp(positioning: nil, at: point, in: v)
         }
+        bridge.onDrag = { [weak v] paths, point in v?.beginDrag(paths, at: point) }
+        v.local = FilesUI.isLocal(model, paneID)
         bridge.configure(config)
         bridge.setInfo(info)
         v.isFocusTarget = isFocused
@@ -323,14 +325,22 @@ struct FilesWebViewRep: NSViewRepresentable {
     func updateNSView(_ v: FilesWK, context: Context) {
         context.coordinator.bridge?.configure(config)
         context.coordinator.bridge?.setInfo(info)
+        v.canDrive = config.canDrive
         v.isFocusTarget = isFocused
     }
 }
 
-/// The page's view: focus as the pane's.
-final class FilesWK: WKWebView {
+/// The page's view: focus as the pane's, and drags of its files, out to
+/// other panes and apps, and in from them.
+final class FilesWK: WKWebView, NSDraggingSource {
     weak var bridge: FilesBridge?
     var paneID = ""
+    /// Its files are on this Mac: dragged as files (else as their paths).
+    var local = true
+    /// Drops change files: a Drive member's, online.
+    var canDrive = true
+    /// The paths this view is dragging, while it is.
+    private var dragging: [String] = []
     private var observers: [NSObjectProtocol] = []
 
     var isFocusTarget = false {
@@ -351,6 +361,105 @@ final class FilesWK: WKWebView {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // MARK: Dragging
+
+    /// Starts a drag of paths (the page saw the mouse move far enough).
+    func beginDrag(_ paths: [String], at point: CGPoint) {
+        guard !paths.isEmpty, let event = NSApp.currentEvent, let window, event.window == window else {
+            bridge?.dragEnded()
+            return
+        }
+        dragging = paths
+        let items = paths.enumerated().map { i, path -> NSDraggingItem in
+            let pb = NSPasteboardItem()
+            if local { pb.setString(URL(fileURLWithPath: path).absoluteString, forType: .fileURL) }
+            pb.setString(path, forType: .string)
+            let item = NSDraggingItem(pasteboardWriter: pb)
+            let image = i == 0 ? Self.dragImage(paths) : NSImage(size: NSSize(width: 1, height: 1))
+            let at = viewPoint(point)
+            item.setDraggingFrame(NSRect(x: at.x - 8, y: at.y - image.size.height / 2, width: image.size.width, height: image.size.height), contents: image)
+            return item
+        }
+        beginDraggingSession(with: items, event: event, source: self)
+    }
+
+    /// A label: the file's name, or how many.
+    private static func dragImage(_ paths: [String]) -> NSImage {
+        let text = paths.count == 1 ? (paths[0] as NSString).lastPathComponent : "\(paths.count) items"
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.white]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let box = NSSize(width: min(size.width + 16, 320), height: size.height + 6)
+        return NSImage(size: box, flipped: false) { r in
+            NSColor(Color.themeAccent).setFill()
+            NSBezierPath(roundedRect: r, xRadius: 5, yRadius: 5).fill()
+            (text as NSString).draw(in: r.insetBy(dx: 8, dy: 3), withAttributes: attrs)
+            return true
+        }
+    }
+
+    /// A point in the page (CSS pixels from its top left) in this view's coordinates.
+    private func viewPoint(_ p: CGPoint) -> CGPoint { isFlipped ? p : CGPoint(x: p.x, y: bounds.height - p.y) }
+    /// A point in this view in the page's.
+    private func pagePoint(_ p: CGPoint) -> CGPoint { isFlipped ? p : CGPoint(x: p.x, y: bounds.height - p.y) }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        // Other apps copy (the Finder mustn't move files from under the pane);
+        // within Hammock, a pane's tree moves them, a terminal types their paths.
+        context == .outsideApplication ? .copy : [.copy, .move, .generic]
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        dragging = []
+        bridge?.dragEnded()
+    }
+
+    private func droppedPaths(_ info: NSDraggingInfo) -> [String] {
+        let pb = info.draggingPasteboard
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            return urls.map(\.path)
+        }
+        // From another computer's tree: its paths, as text (one a line).
+        if (info.draggingSource as? FilesWK) != nil, let s = pb.string(forType: .string) {
+            return s.split(separator: "\n").map(String.init)
+        }
+        return []
+    }
+
+    /// Within its own tree a drag moves (⌥ copies); from elsewhere it copies
+    /// (⌘ moves).
+    private func dropOperation(_ info: NSDraggingInfo) -> NSDragOperation {
+        guard canDrive, !droppedPaths(info).isEmpty else { return [] }
+        let flags = NSEvent.modifierFlags
+        let own = (info.draggingSource as? FilesWK) === self
+        if own { return flags.contains(.option) ? .copy : .move }
+        return flags.contains(.command) ? .move : .copy
+    }
+
+    override func draggingEntered(_ info: NSDraggingInfo) -> NSDragOperation { draggingUpdated(info) }
+
+    override func draggingUpdated(_ info: NSDraggingInfo) -> NSDragOperation {
+        let op = dropOperation(info)
+        let p = pagePoint(convert(info.draggingLocation, from: nil))
+        Task { _ = await bridge?.dragOver(op.isEmpty ? nil : p) }
+        return op
+    }
+
+    override func draggingExited(_ info: NSDraggingInfo?) {
+        Task { _ = await bridge?.dragOver(nil) }
+    }
+
+    override func performDragOperation(_ info: NSDraggingInfo) -> Bool {
+        let op = dropOperation(info)
+        let paths = droppedPaths(info)
+        guard !op.isEmpty, let bridge else { return false }
+        let p = pagePoint(convert(info.draggingLocation, from: nil))
+        Task { @MainActor in
+            guard let dest = await bridge.dropAt(p) else { return }
+            bridge.session.move(paths, into: dest, copy: op == .copy)
+        }
+        return true
+    }
 
     /// ⌘Z undoes the pane's last change to files (Edit ▸ Undo would ask the
     /// page's own undo, which has none), unless a name's being typed.

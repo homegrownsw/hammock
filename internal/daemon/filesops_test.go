@@ -146,8 +146,11 @@ func TestFilesOps(t *testing.T) {
 	there("src/a.go", true)
 	there("notes copy.txt", true)
 
-	// Outside the pane's folder: refused.
+	// Copied in from outside (a drop from the Finder): fine; trashing outside it isn't.
 	out := t.TempDir()
+	os.WriteFile(filepath.Join(out, "dropped.txt"), []byte("x"), 0o644)
+	must(&pb.FilesCommand{Action: pb.FilesCommand_ACTION_COPY, Path: at("src"), Paths: []string{filepath.Join(out, "dropped.txt")}})
+	there("src/dropped.txt", true)
 	if err := cmd(&pb.FilesCommand{Action: pb.FilesCommand_ACTION_TRASH, Paths: []string{out}}); err == nil || !strings.Contains(err.Error(), "isn't in this pane's folder") {
 		t.Fatalf("trashed outside: %v", err)
 	}

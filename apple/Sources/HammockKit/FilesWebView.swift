@@ -407,6 +407,16 @@ public final class FilesBridge: NSObject, WKScriptMessageHandler, WKNavigationDe
         return r as? String
     }
 
+    /// Where a drop at p lands: the folder under it (the pane's own over
+    /// empty space), its highlight cleared.
+    public func dropAt(_ p: CGPoint) async -> String? {
+        let r = try? await webView.callAsyncJavaScript("return hammock.dropAt(x, y)", arguments: ["x": p.x, "y": p.y],
+                                                       in: nil, contentWorld: .page)
+        return r as? String
+    }
+
+    public func dragEnded() { call("hammock.dragEnded()", [:]) }
+
     private func call(_ js: String, _ args: [String: Any]) {
         webView.callAsyncJavaScript(js, arguments: args, in: nil, in: .page) { r in
             if case .failure(let e) = r { DevLog.editor("files page: \(e.localizedDescription)") }

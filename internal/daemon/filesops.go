@@ -149,7 +149,12 @@ func (h *filesHub) fileOp(m *pb.FilesCommand, limit func(string) error) error {
 		if st, err := os.Stat(dest); err != nil || !st.IsDir() {
 			return fmt.Errorf("%s isn't a folder", dest)
 		}
-		paths, err := h.opPaths(m.Paths, f.Root, check)
+		// From anywhere (the Finder, another pane), as far as limit goes.
+		from := func(p string) (string, error) {
+			p = resolveIn(p, f.Root)
+			return p, limit(p)
+		}
+		paths, err := h.opPaths(m.Paths, f.Root, from)
 		if err != nil {
 			return err
 		}

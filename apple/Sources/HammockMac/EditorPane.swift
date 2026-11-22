@@ -624,6 +624,30 @@ final class EditorWK: WKWebView {
     var paneID = ""
     private var observers: [NSObjectProtocol] = []
 
+    // A file dragged from a files pane opens here, in this pane's place
+    // (text dragged in still drops into the text, as the page has it).
+    private func filesDrag(_ info: NSDraggingInfo) -> String? {
+        guard info.draggingSource is FilesWK, let model, model.group(ofPane: paneID)?.canDrive != false,
+              let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+              urls.count == 1, !urls[0].hasDirectoryPath else { return nil }
+        return urls[0].path
+    }
+
+    override func draggingEntered(_ info: NSDraggingInfo) -> NSDragOperation {
+        filesDrag(info) != nil ? .generic : super.draggingEntered(info)
+    }
+
+    override func draggingUpdated(_ info: NSDraggingInfo) -> NSDragOperation {
+        filesDrag(info) != nil ? .generic : super.draggingUpdated(info)
+    }
+
+    override func performDragOperation(_ info: NSDraggingInfo) -> Bool {
+        guard let path = filesDrag(info), let model else { return super.performDragOperation(info) }
+        let id = paneID
+        Task { _ = try? await model.openEditor(path, groupID: nil, replacePane: id) }
+        return true
+    }
+
     var isFocusTarget = false {
         didSet { if isFocusTarget, !oldValue { focusSoon() } }
     }
