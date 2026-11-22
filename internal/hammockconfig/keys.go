@@ -252,6 +252,8 @@ var Keys = []Key{
 		Doc: "false: Hammock doesn't offer editor panes, in its menus or to agents"},
 	{Name: "diff-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: Hammock doesn't offer diff panes, in its menus or to agents"},
+	{Name: "files-enabled", Group: "Tools", Value: "true", Default: "true",
+		Doc: "false: Hammock doesn't offer files panes, in its menus or to agents"},
 	{Name: "log-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: Hammock doesn't offer log panes, in its menus or to agents"},
 	{Name: "schedules-enabled", Group: "Tools", Value: "true", Default: "true",

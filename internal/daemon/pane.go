@@ -830,6 +830,11 @@ func (p *pane) attach(c *conn) {
 		p.d.diffs.attach(c, p.id) // watched while it's showing
 		return
 	}
+	if p.info.Kind == pb.PaneKind_PANE_KIND_FILES {
+		p.mu.Unlock()
+		p.d.files.attach(c, p.id) // watched while it's showing
+		return
+	}
 	defer p.mu.Unlock()
 	if p.mirror == nil {
 		if p.connecting {
@@ -851,6 +856,11 @@ func (p *pane) detach(c *conn) {
 	if p.info.Kind == pb.PaneKind_PANE_KIND_DIFF {
 		p.mu.Unlock()
 		p.d.diffs.detach(c, p.id)
+		return
+	}
+	if p.info.Kind == pb.PaneKind_PANE_KIND_FILES {
+		p.mu.Unlock()
+		p.d.files.detach(c, p.id)
 		return
 	}
 	defer p.mu.Unlock()
@@ -1011,6 +1021,10 @@ func (p *pane) kill() {
 		p.d.diffs.paneClosed(p.id)
 		return
 	}
+	if p.info.Kind == pb.PaneKind_PANE_KIND_FILES {
+		p.d.files.paneClosed(p.id)
+		return
+	}
 	p.postLocked(func(hc *holder.Client) { _ = hc.CloseHolder() })
 	p.unlinkLocked()
 	if p.mirror != nil {
@@ -1041,7 +1055,7 @@ func (p *pane) endHolder() <-chan struct{} {
 	p.closed = true
 	done := make(chan struct{})
 	if p.info.Kind == pb.PaneKind_PANE_KIND_BROWSER || p.info.Kind == pb.PaneKind_PANE_KIND_SIMULATOR || p.info.Kind == pb.PaneKind_PANE_KIND_EDITOR ||
-		p.info.Kind == pb.PaneKind_PANE_KIND_DIFF {
+		p.info.Kind == pb.PaneKind_PANE_KIND_DIFF || p.info.Kind == pb.PaneKind_PANE_KIND_FILES {
 		close(done) // no holder: their hosts go with the daemon (an editor's buffer is kept)
 		return done
 	}

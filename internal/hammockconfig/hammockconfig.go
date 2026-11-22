@@ -179,7 +179,7 @@ func EditorSettings(values map[string]string) Editor {
 // (hmk mcp) and are refused it by the daemon, so it never gets in the way
 // of how someone already works (their own diff reviewer, or scheduler).
 // Schedules don't run while theirs is off.
-var Tools = []string{"browser", "simulator", "editor", "diff", "log", "schedules", "sessions"}
+var Tools = []string{"browser", "simulator", "editor", "diff", "files", "log", "schedules", "sessions"}
 
 // ToolKey is tool's key: "diff-enabled".
 func ToolKey(tool string) string { return tool + "-enabled" }

@@ -497,6 +497,15 @@ func reopenSpec(info *pb.Pane) (*pb.PaneSpec, func(*Daemon, *pane)) {
 			return nil, nil
 		}
 		return &pb.PaneSpec{Diff: &pb.DiffOpen{Repo: info.Diff.GetRepo(), Source: proto.CloneOf(info.Diff.GetSource()), View: proto.CloneOf(info.Diff.GetView())}}, nil
+	case pb.PaneKind_PANE_KIND_FILES:
+		f := info.Files
+		if f.GetRoot() == "" {
+			return nil, nil
+		}
+		if f.GetFollowGroup() {
+			return &pb.PaneSpec{Files: &pb.FilesOpen{}}, nil
+		}
+		return &pb.PaneSpec{Files: &pb.FilesOpen{Root: f.GetRoot()}}, nil
 	}
 	cwd := info.Cwd
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {

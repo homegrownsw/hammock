@@ -926,6 +926,12 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 	case *pb.ClientMessage_DiffCommand:
 		// What it compares and how it's shown: the same for everyone on the pane.
 		return drive(pane(m.DiffCommand.PaneId))
+	case *pb.ClientMessage_ListDir:
+		// Inside the Group's folder only (filesLimit).
+		return view(pane(m.ListDir.PaneId))
+	case *pb.ClientMessage_FilesCommand:
+		// What it shows is the same for everyone on the pane.
+		return drive(pane(m.FilesCommand.PaneId))
 	case *pb.ClientMessage_ReadReview:
 		return view(pane(m.ReadReview.PaneId))
 	case *pb.ClientMessage_ReviewCommand:

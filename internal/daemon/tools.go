@@ -29,6 +29,8 @@ func specKind(spec *pb.PaneSpec) string {
 		return "editor"
 	case spec.Diff != nil:
 		return "diff"
+	case spec.Files != nil:
+		return "files"
 	}
 	return ""
 }
@@ -58,6 +60,8 @@ func msgTool(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReadRepo,
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ListReviews, *pb.ClientMessage_ReviewCommand:
 		return "diff"
+	case *pb.ClientMessage_ListDir, *pb.ClientMessage_FilesCommand:
+		return "files"
 	case *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_RunSchedule,
 		*pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun:
 		return "schedules"
@@ -75,7 +79,7 @@ var toolOn = func(tool string) bool {
 }
 
 // toolName is what Settings ▸ Tools calls each kind.
-var toolName = map[string]string{"browser": "browser", "simulator": "simulator", "editor": "editor", "diff": "diff viewer", "log": "log viewer",
+var toolName = map[string]string{"browser": "browser", "simulator": "simulator", "editor": "editor", "diff": "diff viewer", "files": "file browser", "log": "log viewer",
 	"schedules": "Scheduled Tasks", "sessions": "Session Search"}
 
 // toolCheck refuses an agent msg if it's for a tool turned off.

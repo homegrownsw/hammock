@@ -103,6 +103,9 @@ public nonisolated enum Hammock_V1_PaneKind: SwiftProtobuf.Enum, Swift.CaseItera
 
   /// a git diff to review (diff.go): the daemon runs git, clients show it
   case diff // = 5
+
+  /// a folder's tree (files.go): the daemon lists and watches it, clients show it
+  case files // = 6
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -117,6 +120,7 @@ public nonisolated enum Hammock_V1_PaneKind: SwiftProtobuf.Enum, Swift.CaseItera
     case 3: self = .simulator
     case 4: self = .editor
     case 5: self = .diff
+    case 6: self = .files
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -129,6 +133,7 @@ public nonisolated enum Hammock_V1_PaneKind: SwiftProtobuf.Enum, Swift.CaseItera
     case .simulator: return 3
     case .editor: return 4
     case .diff: return 5
+    case .files: return 6
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -141,6 +146,7 @@ public nonisolated enum Hammock_V1_PaneKind: SwiftProtobuf.Enum, Swift.CaseItera
     .simulator,
     .editor,
     .diff,
+    .files,
   ]
 
 }
@@ -864,6 +870,16 @@ public nonisolated struct Hammock_V1_Pane: @unchecked Sendable {
     get {_storage._lastOutputUnixMs}
     set {_uniqueStorage()._lastOutputUnixMs = newValue}
   }
+
+  /// Files panes: the folder it shows and what's open in it.
+  public var files: Hammock_V1_FilesInfo {
+    get {_storage._files ?? Hammock_V1_FilesInfo()}
+    set {_uniqueStorage()._files = newValue}
+  }
+  /// Returns true if `files` has been explicitly set.
+  public var hasFiles: Bool {_storage._files != nil}
+  /// Clears the value of `files`. Subsequent reads from it will return its default value.
+  public mutating func clearFiles() {_uniqueStorage()._files = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2535,6 +2551,26 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .restartPane(newValue)}
   }
 
+  /// Files panes (files.go): one folder's entries (replies DirListing),
+  /// and what the pane shows: its folder, the folders open, the selection
+  /// (replies Ok). Its attached clients get FilesChanged as the folders
+  /// they have open change on disk.
+  public var listDir: Hammock_V1_ListDir {
+    get {
+      if case .listDir(let v)? = msg {return v}
+      return Hammock_V1_ListDir()
+    }
+    set {msg = .listDir(newValue)}
+  }
+
+  public var filesCommand: Hammock_V1_FilesCommand {
+    get {
+      if case .filesCommand(let v)? = msg {return v}
+      return Hammock_V1_FilesCommand()
+    }
+    set {msg = .filesCommand(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2750,6 +2786,12 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// agent's session resumed, else its own command run again
     /// (restart.go). Replies Ok.
     case restartPane(Hammock_V1_RestartPane)
+    /// Files panes (files.go): one folder's entries (replies DirListing),
+    /// and what the pane shows: its folder, the folders open, the selection
+    /// (replies Ok). Its attached clients get FilesChanged as the folders
+    /// they have open change on disk.
+    case listDir(Hammock_V1_ListDir)
+    case filesCommand(Hammock_V1_FilesCommand)
 
   }
 
@@ -3020,6 +3062,16 @@ public nonisolated struct Hammock_V1_PaneSpec: @unchecked Sendable {
   public var hasDiff: Bool {_storage._diff != nil}
   /// Clears the value of `diff`. Subsequent reads from it will return its default value.
   public mutating func clearDiff() {_uniqueStorage()._diff = nil}
+
+  /// set: a files pane
+  public var files: Hammock_V1_FilesOpen {
+    get {_storage._files ?? Hammock_V1_FilesOpen()}
+    set {_uniqueStorage()._files = newValue}
+  }
+  /// Returns true if `files` has been explicitly set.
+  public var hasFiles: Bool {_storage._files != nil}
+  /// Clears the value of `files`. Subsequent reads from it will return its default value.
+  public mutating func clearFiles() {_uniqueStorage()._files = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4177,6 +4229,24 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     set {msg = .editorImage(newValue)}
   }
 
+  /// reply to ListDir
+  public var dirListing: Hammock_V1_DirListing {
+    get {
+      if case .dirListing(let v)? = msg {return v}
+      return Hammock_V1_DirListing()
+    }
+    set {msg = .dirListing(newValue)}
+  }
+
+  /// to a files pane's attached clients: folders whose entries changed
+  public var filesChanged: Hammock_V1_FilesChanged {
+    get {
+      if case .filesChanged(let v)? = msg {return v}
+      return Hammock_V1_FilesChanged()
+    }
+    set {msg = .filesChanged(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -4280,6 +4350,10 @@ public nonisolated struct Hammock_V1_ServerMessage: Sendable {
     case openWindow(Hammock_V1_OpenWindow)
     /// reply to ReadEditorImage
     case editorImage(Hammock_V1_EditorImage)
+    /// reply to ListDir
+    case dirListing(Hammock_V1_DirListing)
+    /// to a files pane's attached clients: folders whose entries changed
+    case filesChanged(Hammock_V1_FilesChanged)
 
   }
 
@@ -11076,6 +11150,226 @@ public nonisolated struct Hammock_V1_ReviewReply: Sendable {
   fileprivate var _review: Hammock_V1_Review? = nil
 }
 
+public nonisolated struct Hammock_V1_FilesOpen: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// the folder (empty: the Group's folder, followed as it changes)
+  public var root: String = String()
+
+  /// a file or folder under it to select, its folders opened
+  public var reveal: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_FilesInfo: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// the folder shown, absolute
+  public var root: String = String()
+
+  /// root is the Group's folder, and moves with it
+  public var followGroup: Bool = false
+
+  /// folders open, absolute (inside a closed one: open again when it is)
+  public var expanded: [String] = []
+
+  /// dotfiles shown
+  public var showHidden: Bool = false
+
+  /// absolute
+  public var selected: [String] = []
+
+  /// why root can't be shown (gone, not a folder)
+  public var error: String = String()
+
+  /// the git repository root is in ("" none)
+  public var repo: String = String()
+
+  /// A path to scroll to and show (an agent's, or Reveal in Files), each
+  /// time reveal_seq goes up.
+  public var reveal: String = String()
+
+  public var revealSeq: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_ListDir: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  /// a folder under the pane's root (empty: the root)
+  public var path: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_DirEntry: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var name: String = String()
+
+  /// a folder, or a link to one
+  public var dir: Bool = false
+
+  public var symlink: Bool = false
+
+  public var size: Int64 = 0
+
+  public var mtimeUnixMs: Int64 = 0
+
+  /// Git status: "M" modified, "A" added, "D" deleted, "R" renamed, "U"
+  /// untracked, "C" conflicted; for a folder, the strongest inside it. ""
+  /// unchanged or not in a repository.
+  public var git: String = String()
+
+  /// git ignores it
+  public var ignored: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_DirListing: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// the folder, absolute
+  public var path: String = String()
+
+  /// folders first, then by name
+  public var entries: [Hammock_V1_DirEntry] = []
+
+  /// why it can't be listed
+  public var error: String = String()
+
+  /// more entries than are sent
+  public var truncated: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_FilesChanged: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  /// folders whose entries (or their git status) changed: list them again
+  public var paths: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_FilesCommand: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  public var action: Hammock_V1_FilesCommand.Action = .unspecified
+
+  public var path: String = String()
+
+  public var paths: [String] = []
+
+  public var on: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
+    public typealias RawValue = Int
+    case unspecified // = 0
+
+    /// path the folder shown ("": the Group's, followed)
+    case setRoot // = 1
+
+    /// paths opened
+    case expand // = 2
+
+    /// paths closed
+    case collapse // = 3
+
+    /// paths the selection
+    case select // = 4
+
+    /// on: dotfiles shown
+    case showHidden // = 5
+
+    /// path selected, its folders opened, and scrolled to
+    case reveal // = 6
+    case UNRECOGNIZED(Int)
+
+    public init() {
+      self = .unspecified
+    }
+
+    public init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .unspecified
+      case 1: self = .setRoot
+      case 2: self = .expand
+      case 3: self = .collapse
+      case 4: self = .select
+      case 5: self = .showHidden
+      case 6: self = .reveal
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    public var rawValue: Int {
+      switch self {
+      case .unspecified: return 0
+      case .setRoot: return 1
+      case .expand: return 2
+      case .collapse: return 3
+      case .select: return 4
+      case .showHidden: return 5
+      case .reveal: return 6
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    public static let allCases: [Hammock_V1_FilesCommand.Action] = [
+      .unspecified,
+      .setRoot,
+      .expand,
+      .collapse,
+      .select,
+      .showHidden,
+      .reveal,
+    ]
+
+  }
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hammock.v1"
@@ -11085,7 +11379,7 @@ nonisolated extension Hammock_V1_Role: SwiftProtobuf._ProtoNameProviding {
 }
 
 nonisolated extension Hammock_V1_PaneKind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PANE_KIND_UNSPECIFIED\0\u{1}PANE_KIND_TERMINAL\0\u{1}PANE_KIND_BROWSER\0\u{1}PANE_KIND_SIMULATOR\0\u{1}PANE_KIND_EDITOR\0\u{1}PANE_KIND_DIFF\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0PANE_KIND_UNSPECIFIED\0\u{1}PANE_KIND_TERMINAL\0\u{1}PANE_KIND_BROWSER\0\u{1}PANE_KIND_SIMULATOR\0\u{1}PANE_KIND_EDITOR\0\u{1}PANE_KIND_DIFF\0\u{1}PANE_KIND_FILES\0")
 }
 
 nonisolated extension Hammock_V1_AgentState: SwiftProtobuf._ProtoNameProviding {
@@ -11647,7 +11941,7 @@ nonisolated extension Hammock_V1_Split.Direction: SwiftProtobuf._ProtoNameProvid
 
 nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pane"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0\u{3}device_note\0\u{3}device_elsewhere\0\u{3}device_scale\0\u{3}last_output_unix_ms\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}tab_id\0\u{1}kind\0\u{1}title\0\u{1}cwd\0\u{1}command\0\u{1}cols\0\u{1}rows\0\u{1}exited\0\u{3}exit_status\0\u{1}agent\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}loading\0\u{3}can_go_back\0\u{3}can_go_forward\0\u{3}favicon_url\0\u{3}device_udid\0\u{3}device_booted\0\u{1}processes\0\u{3}device_chrome\0\u{3}device_mask\0\u{1}log\0\u{3}device_foldable\0\u{3}device_hinge\0\u{3}schedule_id\0\u{3}schedule_run_id\0\u{3}shown_for_pane_id\0\u{1}program\0\u{1}editor\0\u{3}start_error\0\u{1}diff\0\u{1}interrupted\0\u{3}agent_held\0\u{1}asleep\0\u{3}device_platform\0\u{3}device_note\0\u{3}device_elsewhere\0\u{3}device_scale\0\u{3}last_output_unix_ms\0\u{1}files\0")
 
   fileprivate class _StorageClass {
     var _id: String = String()
@@ -11690,6 +11984,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
     var _agentHeld: Bool = false
     var _asleep: Bool = false
     var _lastOutputUnixMs: Int64 = 0
+    var _files: Hammock_V1_FilesInfo? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -11740,6 +12035,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       _agentHeld = source._agentHeld
       _asleep = source._asleep
       _lastOutputUnixMs = source._lastOutputUnixMs
+      _files = source._files
     }
   }
 
@@ -11798,6 +12094,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         case 38: try { try decoder.decodeSingularBoolField(value: &_storage._deviceElsewhere) }()
         case 39: try { try decoder.decodeSingularDoubleField(value: &_storage._deviceScale) }()
         case 40: try { try decoder.decodeSingularInt64Field(value: &_storage._lastOutputUnixMs) }()
+        case 41: try { try decoder.decodeSingularMessageField(value: &_storage._files) }()
         default: break
         }
       }
@@ -11930,6 +12227,9 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
       if _storage._lastOutputUnixMs != 0 {
         try visitor.visitSingularInt64Field(value: _storage._lastOutputUnixMs, fieldNumber: 40)
       }
+      try { if let v = _storage._files {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 41)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -11979,6 +12279,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
         if _storage._agentHeld != rhs_storage._agentHeld {return false}
         if _storage._asleep != rhs_storage._asleep {return false}
         if _storage._lastOutputUnixMs != rhs_storage._lastOutputUnixMs {return false}
+        if _storage._files != rhs_storage._files {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -12863,7 +13164,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -14523,6 +14824,32 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .restartPane(v)
         }
       }()
+      case 139: try {
+        var v: Hammock_V1_ListDir?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .listDir(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .listDir(v)
+        }
+      }()
+      case 140: try {
+        var v: Hammock_V1_FilesCommand?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .filesCommand(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .filesCommand(v)
+        }
+      }()
       default: break
       }
     }
@@ -15045,6 +15372,14 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
       guard case .restartPane(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 138)
     }()
+    case .listDir?: try {
+      guard case .listDir(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 139)
+    }()
+    case .filesCommand?: try {
+      guard case .filesCommand(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 140)
+    }()
     case nil: break
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -15458,7 +15793,7 @@ nonisolated extension Hammock_V1_ReopenClosed: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_PaneSpec: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".PaneSpec"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}command\0\u{1}cwd\0\u{1}env\0\u{1}cols\0\u{1}rows\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}simulator\0\u{1}log\0\u{1}editor\0\u{1}diff\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}command\0\u{1}cwd\0\u{1}env\0\u{1}cols\0\u{1}rows\0\u{3}created_by_pane_id\0\u{1}url\0\u{1}simulator\0\u{1}log\0\u{1}editor\0\u{1}diff\0\u{1}files\0")
 
   fileprivate class _StorageClass {
     var _command: [String] = []
@@ -15472,6 +15807,7 @@ nonisolated extension Hammock_V1_PaneSpec: SwiftProtobuf.Message, SwiftProtobuf.
     var _log: Hammock_V1_LogSource? = nil
     var _editor: Hammock_V1_EditorOpen? = nil
     var _diff: Hammock_V1_DiffOpen? = nil
+    var _files: Hammock_V1_FilesOpen? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -15493,6 +15829,7 @@ nonisolated extension Hammock_V1_PaneSpec: SwiftProtobuf.Message, SwiftProtobuf.
       _log = source._log
       _editor = source._editor
       _diff = source._diff
+      _files = source._files
     }
   }
 
@@ -15522,6 +15859,7 @@ nonisolated extension Hammock_V1_PaneSpec: SwiftProtobuf.Message, SwiftProtobuf.
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._log) }()
         case 10: try { try decoder.decodeSingularMessageField(value: &_storage._editor) }()
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._diff) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._files) }()
         default: break
         }
       }
@@ -15567,6 +15905,9 @@ nonisolated extension Hammock_V1_PaneSpec: SwiftProtobuf.Message, SwiftProtobuf.
       try { if let v = _storage._diff {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
       } }()
+      try { if let v = _storage._files {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -15587,6 +15928,7 @@ nonisolated extension Hammock_V1_PaneSpec: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._log != rhs_storage._log {return false}
         if _storage._editor != rhs_storage._editor {return false}
         if _storage._diff != rhs_storage._diff {return false}
+        if _storage._files != rhs_storage._files {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -16577,7 +16919,7 @@ nonisolated extension Hammock_V1_MoveTab: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ServerMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0\u{3}editor_image\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}reply_to\0\u{4}\u{9}hello_reply\0\u{1}error\0\u{1}ok\0\u{1}state\0\u{3}pane_snapshot\0\u{3}pane_output\0\u{3}pane_text\0\u{1}created\0\u{3}grant_decision\0\u{3}auth_challenge\0\u{1}pairing\0\u{1}devices\0\u{1}paired\0\u{3}audit_log\0\u{3}agent_view\0\u{3}agent_file\0\u{1}invite\0\u{3}peer_joined\0\u{3}browser_result\0\u{3}simulator_result\0\u{3}peer_welcome\0\u{3}show_pairing\0\u{3}device_paired\0\u{3}media_ticket\0\u{3}media_frame\0\u{3}media_ended\0\u{3}browser_menu\0\u{3}browser_clipboard\0\u{3}agent_switched\0\u{3}session_list\0\u{3}session_resumed\0\u{3}log_view\0\u{3}folder_list\0\u{3}group_icon\0\u{3}session_excerpt\0\u{3}discovered_computers\0\u{3}peer_link_nonce\0\u{3}peer_linked\0\u{3}peer_intro_linked\0\u{3}unlink_taken\0\u{3}ssh_agent_reply\0\u{1}displays\0\u{3}screen_cursor\0\u{3}screen_state\0\u{3}server_status_reply\0\u{3}screen_snapshot_reply\0\u{3}schedule_reply\0\u{3}hammock_key_status\0\u{3}ssh_setup_reply\0\u{3}editor_update\0\u{3}editor_push_reply\0\u{3}file_list\0\u{3}approval_pending\0\u{3}app_challenge\0\u{3}diff_content\0\u{3}diff_file_text\0\u{1}review\0\u{3}review_list\0\u{3}review_reply\0\u{3}repo_info\0\u{3}agent_action\0\u{3}open_window\0\u{3}editor_image\0\u{3}dir_listing\0\u{3}files_changed\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -17405,6 +17747,32 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .editorImage(v)
         }
       }()
+      case 73: try {
+        var v: Hammock_V1_DirListing?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .dirListing(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .dirListing(v)
+        }
+      }()
+      case 74: try {
+        var v: Hammock_V1_FilesChanged?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .filesChanged(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .filesChanged(v)
+        }
+      }()
       default: break
       }
     }
@@ -17670,6 +18038,14 @@ nonisolated extension Hammock_V1_ServerMessage: SwiftProtobuf.Message, SwiftProt
     case .editorImage?: try {
       guard case .editorImage(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 72)
+    }()
+    case .dirListing?: try {
+      guard case .dirListing(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 73)
+    }()
+    case .filesChanged?: try {
+      guard case .filesChanged(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 74)
     }()
     case nil: break
     }
@@ -28680,4 +29056,338 @@ nonisolated extension Hammock_V1_ReviewReply: SwiftProtobuf.Message, SwiftProtob
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
+}
+
+nonisolated extension Hammock_V1_FilesOpen: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".FilesOpen"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}root\0\u{1}reveal\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.root) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.reveal) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.root.isEmpty {
+      try visitor.visitSingularStringField(value: self.root, fieldNumber: 1)
+    }
+    if !self.reveal.isEmpty {
+      try visitor.visitSingularStringField(value: self.reveal, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_FilesOpen, rhs: Hammock_V1_FilesOpen) -> Bool {
+    if lhs.root != rhs.root {return false}
+    if lhs.reveal != rhs.reveal {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_FilesInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".FilesInfo"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}root\0\u{3}follow_group\0\u{1}expanded\0\u{3}show_hidden\0\u{1}selected\0\u{1}error\0\u{1}repo\0\u{1}reveal\0\u{3}reveal_seq\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.root) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.followGroup) }()
+      case 3: try { try decoder.decodeRepeatedStringField(value: &self.expanded) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.showHidden) }()
+      case 5: try { try decoder.decodeRepeatedStringField(value: &self.selected) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.error) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.repo) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.reveal) }()
+      case 9: try { try decoder.decodeSingularUInt64Field(value: &self.revealSeq) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.root.isEmpty {
+      try visitor.visitSingularStringField(value: self.root, fieldNumber: 1)
+    }
+    if self.followGroup != false {
+      try visitor.visitSingularBoolField(value: self.followGroup, fieldNumber: 2)
+    }
+    if !self.expanded.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.expanded, fieldNumber: 3)
+    }
+    if self.showHidden != false {
+      try visitor.visitSingularBoolField(value: self.showHidden, fieldNumber: 4)
+    }
+    if !self.selected.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.selected, fieldNumber: 5)
+    }
+    if !self.error.isEmpty {
+      try visitor.visitSingularStringField(value: self.error, fieldNumber: 6)
+    }
+    if !self.repo.isEmpty {
+      try visitor.visitSingularStringField(value: self.repo, fieldNumber: 7)
+    }
+    if !self.reveal.isEmpty {
+      try visitor.visitSingularStringField(value: self.reveal, fieldNumber: 8)
+    }
+    if self.revealSeq != 0 {
+      try visitor.visitSingularUInt64Field(value: self.revealSeq, fieldNumber: 9)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_FilesInfo, rhs: Hammock_V1_FilesInfo) -> Bool {
+    if lhs.root != rhs.root {return false}
+    if lhs.followGroup != rhs.followGroup {return false}
+    if lhs.expanded != rhs.expanded {return false}
+    if lhs.showHidden != rhs.showHidden {return false}
+    if lhs.selected != rhs.selected {return false}
+    if lhs.error != rhs.error {return false}
+    if lhs.repo != rhs.repo {return false}
+    if lhs.reveal != rhs.reveal {return false}
+    if lhs.revealSeq != rhs.revealSeq {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_ListDir: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ListDir"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}path\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_ListDir, rhs: Hammock_V1_ListDir) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_DirEntry: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DirEntry"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}dir\0\u{1}symlink\0\u{1}size\0\u{3}mtime_unix_ms\0\u{1}git\0\u{1}ignored\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.dir) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.symlink) }()
+      case 4: try { try decoder.decodeSingularInt64Field(value: &self.size) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.mtimeUnixMs) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.git) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.ignored) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    if self.dir != false {
+      try visitor.visitSingularBoolField(value: self.dir, fieldNumber: 2)
+    }
+    if self.symlink != false {
+      try visitor.visitSingularBoolField(value: self.symlink, fieldNumber: 3)
+    }
+    if self.size != 0 {
+      try visitor.visitSingularInt64Field(value: self.size, fieldNumber: 4)
+    }
+    if self.mtimeUnixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.mtimeUnixMs, fieldNumber: 5)
+    }
+    if !self.git.isEmpty {
+      try visitor.visitSingularStringField(value: self.git, fieldNumber: 6)
+    }
+    if self.ignored != false {
+      try visitor.visitSingularBoolField(value: self.ignored, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_DirEntry, rhs: Hammock_V1_DirEntry) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.dir != rhs.dir {return false}
+    if lhs.symlink != rhs.symlink {return false}
+    if lhs.size != rhs.size {return false}
+    if lhs.mtimeUnixMs != rhs.mtimeUnixMs {return false}
+    if lhs.git != rhs.git {return false}
+    if lhs.ignored != rhs.ignored {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_DirListing: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DirListing"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}entries\0\u{1}error\0\u{1}truncated\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.entries) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.error) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.truncated) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 1)
+    }
+    if !self.entries.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.entries, fieldNumber: 2)
+    }
+    if !self.error.isEmpty {
+      try visitor.visitSingularStringField(value: self.error, fieldNumber: 3)
+    }
+    if self.truncated != false {
+      try visitor.visitSingularBoolField(value: self.truncated, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_DirListing, rhs: Hammock_V1_DirListing) -> Bool {
+    if lhs.path != rhs.path {return false}
+    if lhs.entries != rhs.entries {return false}
+    if lhs.error != rhs.error {return false}
+    if lhs.truncated != rhs.truncated {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_FilesChanged: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".FilesChanged"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}paths\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeRepeatedStringField(value: &self.paths) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if !self.paths.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.paths, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_FilesChanged, rhs: Hammock_V1_FilesChanged) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.paths != rhs.paths {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_FilesCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".FilesCommand"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}action\0\u{1}path\0\u{1}paths\0\u{1}on\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.action) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 4: try { try decoder.decodeRepeatedStringField(value: &self.paths) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.on) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if self.action != .unspecified {
+      try visitor.visitSingularEnumField(value: self.action, fieldNumber: 2)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 3)
+    }
+    if !self.paths.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.paths, fieldNumber: 4)
+    }
+    if self.on != false {
+      try visitor.visitSingularBoolField(value: self.on, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_FilesCommand, rhs: Hammock_V1_FilesCommand) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.action != rhs.action {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.paths != rhs.paths {return false}
+    if lhs.on != rhs.on {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_FilesCommand.Action: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SET_ROOT\0\u{1}ACTION_EXPAND\0\u{1}ACTION_COLLAPSE\0\u{1}ACTION_SELECT\0\u{1}ACTION_SHOW_HIDDEN\0\u{1}ACTION_REVEAL\0")
 }

@@ -110,6 +110,7 @@ type Daemon struct {
 	emulators    *emuHub // Android Emulators in simulator panes (emulator.go)
 	editors      *editorHub
 	diffs        *diffHub
+	files        *filesHub
 	screens      *screenHub
 	presence     agentPresence // agents acting on browser and simulator panes, as the apps show it (agentpresence.go)
 	started      time.Time     // when this daemon started (the menu bar's uptime)
@@ -272,6 +273,7 @@ func New(cfg Config) (*Daemon, error) {
 	d.emulators = newEmuHub(d)
 	d.editors = newEditorHub(d)
 	d.diffs = newDiffHub(d)
+	d.files = newFilesHub(d)
 	d.screens = newScreenHub(d)
 	d.media = newMediaHub(d)
 	d.sessions = &sessionFinder{d: d}
@@ -335,6 +337,9 @@ func (d *Daemon) restore() error {
 		if info.Kind == pb.PaneKind_PANE_KIND_DIFF {
 			d.diffs.restore(p)
 			continue
+		}
+		if info.Kind == pb.PaneKind_PANE_KIND_FILES {
+			continue // watched again once a client shows it
 		}
 		if info.Kind == pb.PaneKind_PANE_KIND_BROWSER {
 			d.browsers.ensure() // reattaches to (or restarts) the browser host
@@ -613,6 +618,7 @@ func (d *Daemon) shutdown() {
 	}
 	d.editors.close()
 	d.diffs.close()
+	d.files.close()
 	d.agentHub.close()
 	d.sshHub.close()
 	d.hammockKey.close()
@@ -909,6 +915,9 @@ func (d *Daemon) startPane(t *pb.Tab, spec *pb.PaneSpec) (*pane, error) {
 	if spec.Diff != nil {
 		return d.startDiff(t, spec)
 	}
+	if spec.Files != nil {
+		return d.startFiles(t, spec)
+	}
 	cwd := spec.Cwd
 	if cwd == "" {
 		// Where the Group works: its last focused terminal's folder (kept
@@ -1202,6 +1211,7 @@ func (d *Daemon) noteGroupFolder(g *pb.Group, folder string, u *pb.StateUpdate) 
 	}
 	g.Folder = folder
 	d.persist(d.store.PutGroup(g))
+	d.files.groupMoved(g)
 	u.Groups = slices.DeleteFunc(u.Groups, func(o *pb.Group) bool { return o.Id == g.Id })
 	u.Groups = append(u.Groups, proto.CloneOf(g))
 }

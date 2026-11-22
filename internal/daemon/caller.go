@@ -432,6 +432,7 @@ func ownPaneClaims(cl *caller, msg *pb.ClientMessage) {
 var (
 	errAgentScope    = errors.New("out of scope: agents can type into, interrupt or close only panes they opened, and reach Groups shared with you only with permission; this needs the user's permission")
 	errAgentEditor   = errors.New("agents edit files on disk, not editor panes' buffers: write the file (the pane reloads it, or offers to)")
+	errAgentFiles    = errors.New("agents rename, move and delete files themselves, not through a files pane")
 	errAgentOnly     = errors.New("not available to agents")
 	errAgentGrant    = errors.New("agents can't answer permission requests")
 	errAgentPresence = errors.New("agents can't say what's on screen: only the apps do")
@@ -642,6 +643,17 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) (err error) {
 	case *pb.ClientMessage_DiffCommand:
 		// Changing what a diff you're looking at shows: its own diffs, or asked.
 		return control(m.DiffCommand.PaneId, "send")
+	case *pb.ClientMessage_ListDir:
+		return read(m.ListDir.PaneId)
+	case *pb.ClientMessage_FilesCommand:
+		// Agents point you at things in a files pane (reveal, select, open
+		// folders); they change files on disk themselves, not through it.
+		switch m.FilesCommand.Action {
+		case pb.FilesCommand_ACTION_SET_ROOT, pb.FilesCommand_ACTION_EXPAND, pb.FilesCommand_ACTION_COLLAPSE,
+			pb.FilesCommand_ACTION_SELECT, pb.FilesCommand_ACTION_SHOW_HIDDEN, pb.FilesCommand_ACTION_REVEAL:
+			return read(m.FilesCommand.PaneId)
+		}
+		return errAgentFiles
 	case *pb.ClientMessage_ListReviews:
 		return nil // only your Groups' are listed
 	// Reading and answering review threads (sending them and resolving

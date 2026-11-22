@@ -1670,6 +1670,7 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 		*pb.ClientMessage_EditorPush, *pb.ClientMessage_EditorSelect, *pb.ClientMessage_EditorCommand, *pb.ClientMessage_ReadEditor, *pb.ClientMessage_ReadEditorImage, *pb.ClientMessage_ListFiles,
 		*pb.ClientMessage_ReadDiff, *pb.ClientMessage_ReadDiffFile, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReadRepo,
 		*pb.ClientMessage_ReadReview, *pb.ClientMessage_ReviewCommand, *pb.ClientMessage_ListReviews,
+		*pb.ClientMessage_ListDir, *pb.ClientMessage_FilesCommand,
 		*pb.ClientMessage_ReadGroupIcon, *pb.ClientMessage_SetGroupIcon, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder, *pb.ClientMessage_RenameGroup, *pb.ClientMessage_CloseGroup,
 		*pb.ClientMessage_ReadPane, *pb.ClientMessage_Resize, *pb.ClientMessage_Focus, *pb.ClientMessage_Input, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_SwitchAgent, *pb.ClientMessage_SleepPane, *pb.ClientMessage_RestartPane,

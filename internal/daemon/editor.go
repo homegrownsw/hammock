@@ -1431,8 +1431,23 @@ func (d *Daemon) folderOf(groupID string) string {
 }
 
 // guestEditorPath refuses a guest an editor pane on a file outside the
-// Group's folder, or a diff pane on a repository outside it. Callers hold d.mu.
+// Group's folder, a diff pane on a repository outside it, or a files pane on
+// a folder outside it. Callers hold d.mu.
 func (d *Daemon) guestEditorPath(spec *pb.PaneSpec, groupID string) error {
+	if fo := spec.GetFiles(); fo != nil {
+		folder := d.folderOf(groupID)
+		root := fo.Root
+		if root == "" {
+			root = folder
+		}
+		path, err := resolveEditorPath(root, folder)
+		if err != nil || !insideFolder(path, folder) {
+			return errors.New("guests browse only inside the Group's folder")
+		}
+		if fo.Root != "" {
+			fo.Root, spec.Cwd = path, ""
+		}
+	}
 	if df := spec.GetDiff(); df != nil {
 		folder := d.folderOf(groupID)
 		repo := df.Repo

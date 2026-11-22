@@ -561,6 +561,10 @@ func (l *peerLink) serve(cl *client.Client) {
 			for c := range l.attached[m.EditorUpdate.PaneId] {
 				c.send(ev)
 			}
+		case *pb.ServerMessage_FilesChanged:
+			for c := range l.attached[m.FilesChanged.PaneId] {
+				c.send(ev)
+			}
 		case *pb.ServerMessage_BrowserMenu:
 			if c := l.inputs[m.BrowserMenu.PaneId]; c != nil {
 				l.menus[m.BrowserMenu.Seq], l.menuTo[m.BrowserMenu.Seq] = m.BrowserMenu, c
@@ -1128,6 +1132,10 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.ReadDiffFile.PaneId
 	case *pb.ClientMessage_DiffCommand:
 		return m.DiffCommand.PaneId
+	case *pb.ClientMessage_ListDir:
+		return m.ListDir.PaneId
+	case *pb.ClientMessage_FilesCommand:
+		return m.FilesCommand.PaneId
 	case *pb.ClientMessage_ReadReview:
 		return m.ReadReview.PaneId
 	case *pb.ClientMessage_ReviewCommand:

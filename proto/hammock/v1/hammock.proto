@@ -143,6 +143,7 @@ enum PaneKind {
   PANE_KIND_SIMULATOR = 3;
   PANE_KIND_EDITOR = 4;  // a text file (editor.go): its buffer is the daemon's
   PANE_KIND_DIFF = 5;    // a git diff to review (diff.go): the daemon runs git, clients show it
+  PANE_KIND_FILES = 6;   // a folder's tree (files.go): the daemon lists and watches it, clients show it
 }
 
 message Pane {
@@ -238,6 +239,8 @@ message Pane {
   // (the daemon republishes it only when it's that far behind), for "output
   // 2m ago" in a tab's preview. 0 when it hasn't since the daemon started.
   int64 last_output_unix_ms = 40;
+  // Files panes: the folder it shows and what's open in it.
+  FilesInfo files = 41;
 }
 
 enum AgentState {
@@ -626,6 +629,12 @@ message ClientMessage {
     // agent's session resumed, else its own command run again
     // (restart.go). Replies Ok.
     RestartPane restart_pane = 138;
+    // Files panes (files.go): one folder's entries (replies DirListing),
+    // and what the pane shows: its folder, the folders open, the selection
+    // (replies Ok). Its attached clients get FilesChanged as the folders
+    // they have open change on disk.
+    ListDir list_dir = 139;
+    FilesCommand files_command = 140;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -681,6 +690,7 @@ message PaneSpec {
   LogSource log = 9;              // set: a log pane: a terminal running this source, shown as a log
   EditorOpen editor = 10;         // set: an editor pane on this file (path empty: untitled)
   DiffOpen diff = 11;             // set: a diff pane on this repository
+  FilesOpen files = 12;           // set: a files pane
 }
 
 message CreatePane {
@@ -907,6 +917,8 @@ message ServerMessage {
     AgentAction agent_action = 70;                  // to this Mac's apps: an agent acting on a browser or simulator pane
     OpenWindow open_window = 71;                    // to this Mac's app: show a pane, tab or Group in a window of its own
     EditorImage editor_image = 72;                  // reply to ReadEditorImage
+    DirListing dir_listing = 73;                    // reply to ListDir
+    FilesChanged files_changed = 74;                // to a files pane's attached clients: folders whose entries changed
   }
 }
 
@@ -2949,4 +2961,73 @@ message ReviewReply {
   // SEND: how many went, and how many wait for the agent (it's waiting on you).
   uint32 sent = 4;
   uint32 queued = 5;
+}
+
+// Files panes (PANE_KIND_FILES, files.go): a folder's tree, listed a folder
+// at a time on the computer it's on, and watched while a client shows it.
+
+message FilesOpen {
+  string root = 1;    // the folder (empty: the Group's folder, followed as it changes)
+  string reveal = 2;  // a file or folder under it to select, its folders opened
+}
+
+message FilesInfo {
+  string root = 1;               // the folder shown, absolute
+  bool follow_group = 2;         // root is the Group's folder, and moves with it
+  repeated string expanded = 3;  // folders open, absolute (inside a closed one: open again when it is)
+  bool show_hidden = 4;          // dotfiles shown
+  repeated string selected = 5;  // absolute
+  string error = 6;              // why root can't be shown (gone, not a folder)
+  string repo = 7;               // the git repository root is in ("" none)
+  // A path to scroll to and show (an agent's, or Reveal in Files), each
+  // time reveal_seq goes up.
+  string reveal = 8;
+  uint64 reveal_seq = 9;
+}
+
+message ListDir {
+  string pane_id = 1;
+  string path = 2;  // a folder under the pane's root (empty: the root)
+}
+
+message DirEntry {
+  string name = 1;
+  bool dir = 2;           // a folder, or a link to one
+  bool symlink = 3;
+  int64 size = 4;
+  int64 mtime_unix_ms = 5;
+  // Git status: "M" modified, "A" added, "D" deleted, "R" renamed, "U"
+  // untracked, "C" conflicted; for a folder, the strongest inside it. ""
+  // unchanged or not in a repository.
+  string git = 6;
+  bool ignored = 7;       // git ignores it
+}
+
+message DirListing {
+  string path = 1;                 // the folder, absolute
+  repeated DirEntry entries = 2;   // folders first, then by name
+  string error = 3;                // why it can't be listed
+  bool truncated = 4;              // more entries than are sent
+}
+
+message FilesChanged {
+  string pane_id = 1;
+  repeated string paths = 2;  // folders whose entries (or their git status) changed: list them again
+}
+
+message FilesCommand {
+  string pane_id = 1;
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_SET_ROOT = 1;     // path the folder shown ("": the Group's, followed)
+    ACTION_EXPAND = 2;       // paths opened
+    ACTION_COLLAPSE = 3;     // paths closed
+    ACTION_SELECT = 4;       // paths the selection
+    ACTION_SHOW_HIDDEN = 5;  // on: dotfiles shown
+    ACTION_REVEAL = 6;       // path selected, its folders opened, and scrolled to
+  }
+  Action action = 2;
+  string path = 3;
+  repeated string paths = 4;
+  bool on = 5;
 }

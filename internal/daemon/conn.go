@@ -859,6 +859,16 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 	case *pb.ClientMessage_DiffCommand:
 		return nil, d.diffs.command(m.DiffCommand)
 
+	case *pb.ClientMessage_ListDir:
+		l, err := d.files.list(m.ListDir, d.filesLimit(c, m.ListDir.PaneId))
+		if err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_DirListing{DirListing: l}}, nil
+
+	case *pb.ClientMessage_FilesCommand:
+		return nil, d.files.command(m.FilesCommand, d.filesLimit(c, m.FilesCommand.PaneId))
+
 	case *pb.ClientMessage_ReadReview:
 		rv, err := d.diffs.readReview(m.ReadReview)
 		if err != nil {
