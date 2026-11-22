@@ -82,55 +82,119 @@ struct SplitMenuItems: View {
     /// one), and Agent…: the Start an Agent sheet, for a pane here.
     @ViewBuilder private func agentItems(_ split: AgentSplit) -> some View {
         if let h = model.defaultAgent(ofPane: paneID) {
-            Button(AgentCatalog.name(of: h)) { Task { await model.startAgent(nil, beside: split) } }
+            Button { Task { await model.startAgent(nil, beside: split) } } label: {
+                Label { Text(AgentCatalog.name(of: h)) } icon: { AgentMenuIcon.image(h) }
+            }
         }
-        Button("Agent…") { AgentLauncher.shared.open(model, beside: split) }
+        Button("Agent…", systemImage: PaneKindSymbol.agent) { AgentLauncher.shared.open(model, beside: split) }
     }
 
-    var body: some View {
+    // In PaneKindSymbol's sections: terminal and agents; browser and
+    // simulator; editor, files and diff; log.
+    // Symbols in a menu only show when the label asks for them.
+    var body: some View { Group { items }.labelStyle(.titleAndIcon) }
+
+    @ViewBuilder private var items: some View {
         if floating {
-            Button("Terminal") { Task { await model.newFloating(over: paneID) } }.keyboardShortcut(Keys.newFloatingPane)
+            Button("Terminal", systemImage: PaneKindSymbol.terminal) { Task { await model.newFloating(over: paneID) } }.keyboardShortcut(Keys.newFloatingPane)
             agentItems(AgentSplit(paneID: paneID, floating: true))
+            if HammockTool.browser.on || HammockTool.simulator.on { Divider() }
             if HammockTool.browser.on {
-                Button("Browser") { Task { await model.newFloating(over: paneID, spec: .with { $0.url = "about:blank" }) } }
+                Button("Browser", systemImage: PaneKindSymbol.browser) { Task { await model.newFloating(over: paneID, spec: .with { $0.url = "about:blank" }) } }
             }
             if HammockTool.simulator.on {
-                Menu("Simulator") {
+                Menu("Simulator", systemImage: PaneKindSymbol.simulator) {
                     SimulatorItems { udid in Task { await model.newFloating(over: paneID, spec: .with { $0.simulator = udid }) } }
                 }
             }
         } else {
-            Button("Terminal") { Task { await model.split(paneID, direction: direction, before: before) } }
+            let editor = !before && HammockTool.editor.on, diff = !before && HammockTool.diff.on, log = !before && HammockTool.log.on
+            Button("Terminal", systemImage: PaneKindSymbol.terminal) { Task { await model.split(paneID, direction: direction, before: before) } }
                 .keyboardShortcut(before ? (direction == .horizontal ? Keys.splitLeft : Keys.splitUp) : (direction == .horizontal ? Keys.splitRight : Keys.splitDown))
             agentItems(AgentSplit(paneID: paneID, direction: direction, before: before))
+            if HammockTool.browser.on || HammockTool.simulator.on { Divider() }
             if HammockTool.browser.on {
-                Button("Browser") { Task { await model.splitBrowser(paneID, direction: direction, before: before) } }
+                Button("Browser", systemImage: PaneKindSymbol.browser) { Task { await model.splitBrowser(paneID, direction: direction, before: before) } }
                     .keyboardShortcut(before ? nil : direction == .horizontal ? Keys.splitBrowserRight : Keys.splitBrowserDown)
             }
             if HammockTool.simulator.on {
-                Menu("Simulator") {
+                Menu("Simulator", systemImage: PaneKindSymbol.simulator) {
                     SimulatorItems { udid in Task { await model.splitSimulator(paneID, direction: direction, udid: udid, before: before) } }
                 }
             }
-            if !before {
-                if HammockTool.log.on {
-                    Button("Log…") { LogUI.shared.split(model, paneID, direction) }
-                        .keyboardShortcut(direction == .horizontal ? Keys.splitLogRight : nil)
-                }
-                if HammockTool.editor.on {
-                    Button("Editor") { EditorUI.shared.split(model, paneID, direction) }
-                        .keyboardShortcut(direction == .horizontal ? Keys.splitEditorRight : Keys.splitEditorDown)
-                    Button("File…") { EditorUI.shared.showQuickOpen(model, splitPane: paneID, direction: direction) }
-                }
-                if HammockTool.diff.on {
-                    Button("Diff…") { DiffLauncher.shared.split(model, paneID, direction) }
-                        .keyboardShortcut(direction == .horizontal ? Keys.splitDiffRight : nil)
-                }
+            if editor || HammockTool.files.on || diff { Divider() }
+            if editor {
+                // Asks which file (or a new one); ⌥: a new, empty one straight away.
+                let keys = direction == .horizontal ? Keys.splitEditorRight : Keys.splitEditorDown
+                Button("Editor…", systemImage: PaneKindSymbol.editor) { EditorUI.shared.showQuickOpen(model, splitPane: paneID, direction: direction) }
+                    .keyboardShortcut(keys)
+                    .emptyEditorAlternate("Empty Editor", keys) { EditorUI.shared.split(model, paneID, direction) }
             }
             if HammockTool.files.on {
-                Button("Files") { FilesUI.split(model, paneID, direction: direction, before: before) }
+                Button("Files", systemImage: PaneKindSymbol.files) { FilesUI.split(model, paneID, direction: direction, before: before) }
                     .keyboardShortcut(before && direction == .horizontal ? Keys.splitFilesLeft : nil)
             }
+            if diff {
+                Button("Diff…", systemImage: PaneKindSymbol.diff) { DiffLauncher.shared.split(model, paneID, direction) }
+                    .keyboardShortcut(direction == .horizontal ? Keys.splitDiffRight : nil)
+            }
+            if log {
+                Divider()
+                Button("Log…", systemImage: PaneKindSymbol.log) { LogUI.shared.split(model, paneID, direction) }
+                    .keyboardShortcut(direction == .horizontal ? Keys.splitLogRight : nil)
+            }
+        }
+    }
+}
+
+/// The symbol each kind of pane shows (its header, a folded or minimised
+/// pane), for the menus that list them. Those menus share one order, in
+/// sections: Terminal and the agents; Browser and Simulator; Editor, Files
+/// and Diff; Log.
+enum PaneKindSymbol {
+    static let terminal = "apple.terminal"
+    static let agent = "sparkles"
+    static let browser = "globe"
+    static let simulator = "iphone"
+    static let editor = "doc.text"
+    static let files = "folder"
+    static let diff = "plusminus"
+    static let log = "list.bullet.rectangle"
+}
+
+/// An agent's mark as a menu item's icon, drawn like the menu's symbols
+/// beside it: in the theme's colour (a menu tints symbols, not images), and
+/// no bigger than they are.
+@MainActor
+enum AgentMenuIcon {
+    private static var cache: [String: Image] = [:]
+
+    static func image(_ harness: String) -> Image {
+        let accent = Color.themeAccent
+        let key = "\(harness) \(accent.description)"
+        if let i = cache[key] { return i }
+        let r = ImageRenderer(content: AgentMark(harness: harness, size: 12, tint: accent).padding(2))
+        r.scale = 2
+        guard let ns = r.nsImage else { return Image(systemName: PaneKindSymbol.agent) }
+        let i = Image(nsImage: ns)
+        cache[key] = i
+        return i
+    }
+}
+
+extension View {
+    /// With ⌥ held, a new, empty editor (`title`) in place of an item that
+    /// asks which file. Not when the item's shortcut has ⌥ already: the
+    /// menu tells them apart by it, so the two would be one. With the
+    /// editor's icon unless `icon` is false (the item has none).
+    @ViewBuilder
+    func emptyEditorAlternate(_ title: String, _ keys: KeyboardShortcut?, icon: Bool = true, action: @escaping () -> Void) -> some View {
+        if keys?.modifiers.contains(.option) == true {
+            self
+        } else if icon {
+            modifierKeyAlternate(.option) { Button(title, systemImage: PaneKindSymbol.editor, action: action) }
+        } else {
+            modifierKeyAlternate(.option) { Button(title, action: action) }
         }
     }
 }
@@ -158,27 +222,38 @@ struct NewGroupMenuItems: View {
 
 /// One item per simulator.
 struct SimulatorItems: View {
+    /// The one a pane shows already, ticked (Show ▸ Simulator).
+    var current: String?
     let open: (String) -> Void
     private var list: SimulatorList { .shared }
+
+    init(current: String? = nil, open: @escaping (String) -> Void) {
+        self.current = current
+        self.open = open
+    }
 
     var body: some View {
         if list.devices.isEmpty {
             Text("No simulators (Xcode ▸ Settings ▸ Components)")
         }
-        ForEach(list.phones) { d in
-            Button(SimulatorList.label(d)) { open(d.udid) }
-        }
+        ForEach(list.phones) { d in item(d) }
         section("Apple TV", list.tvs)
         section("Android", list.androids)
         section("Android TV", list.androidTVs)
     }
 
+    @ViewBuilder private func item(_ d: AppModel.SimulatorDevice) -> some View {
+        if d.udid == current {
+            Toggle(SimulatorList.label(d), isOn: Binding(get: { true }, set: { _ in open(d.udid) }))
+        } else {
+            Button(SimulatorList.label(d)) { open(d.udid) }
+        }
+    }
+
     @ViewBuilder private func section(_ title: String, _ devices: [AppModel.SimulatorDevice]) -> some View {
         if !devices.isEmpty {
             Section(title) {
-                ForEach(devices) { d in
-                    Button(SimulatorList.label(d)) { open(d.udid) }
-                }
+                ForEach(devices) { d in item(d) }
             }
         }
     }
@@ -387,29 +462,38 @@ struct NewTabMenuItems: View {
     let model: AppModel
     let groupID: String
 
-    var body: some View {
-        Button("Terminal Tab") { Task { await model.createTab(in: groupID) } }.keyboardShortcut(Keys.newTab)
-        NewAgentTabItems(model: model, groupID: groupID, short: true)
+    // In PaneKindSymbol's sections.
+    // Symbols in a menu only show when the label asks for them.
+    var body: some View { Group { items }.labelStyle(.titleAndIcon) }
+
+    @ViewBuilder private var items: some View {
+        Button("Terminal Tab", systemImage: PaneKindSymbol.terminal) { Task { await model.createTab(in: groupID) } }.keyboardShortcut(Keys.newTab)
+        NewAgentTabItems(model: model, groupID: groupID, short: true, icons: true)
+        if HammockTool.browser.on || HammockTool.simulator.on { Divider() }
         if HammockTool.browser.on {
-            Button("Browser Tab") { Task { await model.createBrowserTab(in: groupID) } }.keyboardShortcut(Keys.newBrowserTab)
+            Button("Browser Tab", systemImage: PaneKindSymbol.browser) { Task { await model.createBrowserTab(in: groupID) } }.keyboardShortcut(Keys.newBrowserTab)
         }
         if HammockTool.simulator.on {
-            Menu("Simulator Tab") {
+            Menu("Simulator Tab", systemImage: PaneKindSymbol.simulator) {
                 SimulatorItems { udid in Task { await model.createSimulatorTab(in: groupID, udid: udid) } }
             }
         }
-        if HammockTool.log.on {
-            Button("Log Tab…") { LogUI.shared.request = LogRequest(groupID: groupID) }.keyboardShortcut(Keys.newLogTab)
-        }
+        if HammockTool.editor.on || HammockTool.files.on || HammockTool.diff.on { Divider() }
         if HammockTool.editor.on {
-            Button("Editor Tab") { EditorUI.shared.open(model, "", groupID: groupID) }.keyboardShortcut(Keys.newEditorTab)
-            Button("File…") { EditorUI.shared.quickOpen = QuickOpenRequest(groupID: groupID) }.keyboardShortcut(Keys.quickOpen)
-        }
-        if HammockTool.diff.on {
-            Button("Diff Tab…") { DiffLauncher.shared.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newDiffTab)
+            // Asks which file (or a new one); ⌥: a new, empty one straight away.
+            Button("Editor Tab…", systemImage: PaneKindSymbol.editor) { EditorUI.shared.quickOpen = QuickOpenRequest(groupID: groupID) }
+                .keyboardShortcut(Keys.newEditorTab)
+                .emptyEditorAlternate("Empty Editor Tab", Keys.newEditorTab) { EditorUI.shared.open(model, "", groupID: groupID) }
         }
         if HammockTool.files.on {
-            Button("Files Tab") { FilesUI.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newFilesTab)
+            Button("Files Tab", systemImage: PaneKindSymbol.files) { FilesUI.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newFilesTab)
+        }
+        if HammockTool.diff.on {
+            Button("Diff Tab…", systemImage: PaneKindSymbol.diff) { DiffLauncher.shared.newTab(model, groupID: groupID) }.keyboardShortcut(Keys.newDiffTab)
+        }
+        if HammockTool.log.on {
+            Divider()
+            Button("Log Tab…", systemImage: PaneKindSymbol.log) { LogUI.shared.request = LogRequest(groupID: groupID) }.keyboardShortcut(Keys.newLogTab)
         }
     }
 }
@@ -456,7 +540,7 @@ struct PaneKindMenu<Label: View>: View {
 
     private var menu: some View {
         Menu {
-            Menu("Show") { kinds }
+            Menu("Show") { kinds.labelStyle(.titleAndIcon) }
             if let pane, pane.isEditor, model.group(ofPane: paneID)?.canDrive != false {
                 Section("Open in This Pane") {
                     Button("Quick Open…") { EditorUI.shared.showQuickOpen(model, replacePane: paneID) }
@@ -518,50 +602,57 @@ struct PaneKindMenu<Label: View>: View {
         .task { SimulatorList.shared.refresh(model) }
     }
 
-    /// Show ▸: what else the pane could show in its place, the current one
-    /// ticked. A sheet's (Diff…, Log…) asks before it opens, a file's once
-    /// it's chosen.
+    /// Show ▸: what else the pane could show in its place, in
+    /// PaneKindSymbol's sections, the current one ticked. A sheet's
+    /// (Editor…, Diff…, Log…) asks before it opens, a file's once it's chosen.
     @ViewBuilder private var kinds: some View {
         let kind = pane?.kind
         let isLog = pane?.isLog == true
         let canDrive = model.group(ofPane: paneID)?.canDrive != false
-        item("Terminal", current: kind == .terminal && !isLog) { change("a terminal", Hammock_V1_PaneSpec()) }
-        if HammockTool.browser.on || kind == .browser {
-            item("Browser", current: kind == .browser) { change("a browser", .with { $0.url = "about:blank" }) }
+        let browser = HammockTool.browser.on || kind == .browser, simulator = HammockTool.simulator.on || kind == .simulator
+        let editor = (HammockTool.editor.on || kind == .editor) && canDrive
+        let files = HammockTool.files.on || kind == .files, diff = HammockTool.diff.on || kind == .diff
+        item("Terminal", PaneKindSymbol.terminal, current: kind == .terminal && !isLog) { change("a terminal", Hammock_V1_PaneSpec()) }
+        if browser || simulator { Divider() }
+        if browser {
+            item("Browser", PaneKindSymbol.browser, current: kind == .browser) { change("a browser", .with { $0.url = "about:blank" }) }
         }
-        if (HammockTool.editor.on || kind == .editor) && canDrive {
-            item("Editor", current: kind == .editor) { EditorUI.shared.open(model, "", groupID: nil, replacePane: paneID) }
-            Button("File…") { EditorUI.shared.showQuickOpen(model, replacePane: paneID) }
-        }
-        if HammockTool.diff.on || kind == .diff {
-            item("Diff…", current: kind == .diff, again: true) { ask("a diff") { DiffLauncher.shared.replace(model, paneID) } }
-        }
-        if HammockTool.files.on || kind == .files {
-            item("Files", current: kind == .files) { change("files", .with { $0.files = .init() }) }
-        }
-        if HammockTool.log.on || isLog {
-            item("Log…", current: isLog, again: true) { ask("a log") { LogUI.shared.replace(model, paneID) } }
-        }
-        if HammockTool.simulator.on || kind == .simulator {
-            Menu {
-                SimulatorItems { udid in
+        if simulator {
+            // A submenu can't be ticked: the current one's tick takes its
+            // icon's place, and its device is ticked inside.
+            Menu("Simulator", systemImage: kind == .simulator ? "checkmark" : PaneKindSymbol.simulator) {
+                SimulatorItems(current: kind == .simulator ? pane?.deviceUdid : nil) { udid in
                     guard kind != .simulator || pane?.deviceUdid != udid else { return }
                     change("a simulator", .with { $0.simulator = udid })
                 }
-            } label: {
-                if kind == .simulator { SwiftUI.Label("Simulator", systemImage: "checkmark") } else { Text("Simulator") }
             }
+        }
+        if editor || files || diff { Divider() }
+        if editor {
+            // Asks which file (or a new one); ⌥: a new, empty one.
+            item("Editor…", PaneKindSymbol.editor, current: kind == .editor, again: true) { EditorUI.shared.showQuickOpen(model, replacePane: paneID) }
+                .emptyEditorAlternate("Empty Editor", nil) { EditorUI.shared.open(model, "", groupID: nil, replacePane: paneID) }
+        }
+        if files {
+            item("Files", PaneKindSymbol.files, current: kind == .files) { change("files", .with { $0.files = .init() }) }
+        }
+        if diff {
+            item("Diff…", PaneKindSymbol.diff, current: kind == .diff, again: true) { ask("a diff") { DiffLauncher.shared.replace(model, paneID) } }
+        }
+        if HammockTool.log.on || isLog {
+            Divider()
+            item("Log…", PaneKindSymbol.log, current: isLog, again: true) { ask("a log") { LogUI.shared.replace(model, paneID) } }
         }
     }
 
-    /// A kind to show, ticked when it's the current one (which does nothing
-    /// again, unless again: another diff or log).
-    private func item(_ title: String, current: Bool, again: Bool = false, action: @escaping () -> Void) -> some View {
-        Button {
+    /// A kind to show, with its icon, ticked when it's the current one
+    /// (which does nothing again, unless again: another file, diff or log).
+    private func item(_ title: String, _ symbol: String, current: Bool, again: Bool = false, action: @escaping () -> Void) -> some View {
+        Toggle(isOn: Binding(get: { current }, set: { _ in
             guard !current || again else { return }
             action()
-        } label: {
-            if current { SwiftUI.Label(title, systemImage: "checkmark") } else { Text(title) }
+        })) {
+            SwiftUI.Label(title, systemImage: symbol)
         }
     }
 

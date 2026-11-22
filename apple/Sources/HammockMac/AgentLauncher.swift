@@ -78,18 +78,27 @@ struct NewAgentTabItems: View {
     var short = false
     /// The shortcuts (the File menu's, and New Tab's submenus).
     var shortcuts = true
+    /// The agent's mark and Agent…'s sparkles, in a menu of pane kinds
+    /// with theirs (PaneKindSymbol).
+    var icons = false
 
     var body: some View {
         let launcher = AgentLauncher.shared
         let harness = launcher.defaultAgent(model, groupID: groupID, computerID: computerID)
         if let harness {
-            Button(title(AppModel.defaultAgentTitle(harness, on: computerName))) {
+            Button {
                 launcher.newDefault(model, groupID: groupID, computerID: computerID)
+            } label: {
+                let t = title(AppModel.defaultAgentTitle(harness, on: computerName))
+                if icons { Label { Text(t) } icon: { AgentMenuIcon.image(harness) } } else { Text(t) }
             }
             .keyboardShortcut(shortcuts ? Keys.newDefaultAgentTab : nil)
         }
-        Button(title("New Agent Tab" + (computerName.map { " on \($0)" } ?? "") + "…")) {
+        Button {
             launcher.open(model, groupID: groupID, computerID: computerID)
+        } label: {
+            let t = title("New Agent Tab" + (computerName.map { " on \($0)" } ?? "") + "…")
+            if icons { Label(t, systemImage: PaneKindSymbol.agent) } else { Text(t) }
         }
         .keyboardShortcut(shortcuts ? Keys.newAgentTab(harness != nil) : nil)
     }

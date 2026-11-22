@@ -729,9 +729,9 @@ final class EditorWK: WKWebView {
             }
             menu.addItem(.separator())
         }
-        menu.addItem(ClosureItem("Split Right with Editor", key: "split_editor_right") { ui.split(model, self.paneID, .horizontal) })
-        menu.addItem(ClosureItem("Split Down with Editor", key: "split_editor_down") { ui.split(model, self.paneID, .vertical) })
-        menu.addItem(ClosureItem("Quick Open…", key: "quick_open") { ui.showQuickOpen(model, splitPane: self.paneID) })
+        // Each asks which file, or a new one (the Quick Open sheet).
+        menu.addItem(ClosureItem("Split Right with Editor…", key: "split_editor_right") { ui.showQuickOpen(model, splitPane: self.paneID, direction: .horizontal) })
+        menu.addItem(ClosureItem("Split Down with Editor…", key: "split_editor_down") { ui.showQuickOpen(model, splitPane: self.paneID, direction: .vertical) })
     }
 }
 
@@ -799,6 +799,20 @@ struct QuickOpenSheet: View {
                     .foregroundStyle(.secondary)
                     .padding(8)
             }
+            Divider()
+            // An untitled file instead, named when it's saved.
+            HStack {
+                Button(action: openEmpty) {
+                    Label("New Empty File", systemImage: "doc.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut("n", modifiers: .command)
+                Text("⌘N").foregroundStyle(.tertiary)
+                Spacer()
+            }
+            .font(.callout)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
         .frame(width: 560)
         .onAppear { fieldFocused = true; search() }
@@ -852,6 +866,13 @@ struct QuickOpenSheet: View {
         guard !path.isEmpty else { return }
         // Relative to the Group's folder (the daemon resolves it there).
         EditorUI.shared.open(model, path, groupID: request.splitPane == nil ? request.groupID : nil,
+                             splitPane: request.splitPane, direction: request.direction, replacePane: request.replacePane)
+        dismiss()
+    }
+
+    /// A new, empty file where the request opens one.
+    private func openEmpty() {
+        EditorUI.shared.open(model, "", groupID: request.splitPane == nil ? request.groupID : nil,
                              splitPane: request.splitPane, direction: request.direction, replacePane: request.replacePane)
         dismiss()
     }

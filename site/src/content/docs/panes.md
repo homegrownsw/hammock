@@ -72,7 +72,7 @@ hmk log -- pnpm dev
 
 An editor pane shows a text file, with syntax highlighting, find and go to line. Hammock keeps its buffer, so unsaved edits survive closing the app, and you can edit the same file from your Mac, your phone or [the TUI](/hammock/docs/tui/#editor-panes).
 
-Open one with File ▸ Quick Open… (⌘P), File ▸ Open File… (⌘O), or Pane ▸ Split Right with Editor (⌃⌘E):
+Open one with File ▸ New Editor Tab… (⌥⌘E), Pane ▸ Split Right with Editor… (⌃⌘E) or Quick Open… (⌘P), which ask which file, or New Empty File (⌘N) for an untitled one; or with File ▸ Open File… (⌘O):
 
 ```sh
 hmk edit src/main.go:42-60       # beside this pane, lines 42 to 60 selected

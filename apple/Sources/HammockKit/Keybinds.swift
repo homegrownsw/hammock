@@ -240,7 +240,8 @@ public enum Keybinds {
             .init("new_default_agent_tab", "New Default Agent Tab", "File", c("n", co), "start claude codex ai session launch default quick without asking"),
             .init("new_agent_tab", "New Agent Tab…", "File", c("n", cco), "start claude codex ai session launch choose pick"),
             .init("new_log_tab", "New Log Tab…", "File", c("l", co), "create console logs logcat tail stream"),
-            .init("new_editor_tab", "New Editor Tab", "File", c("e", co), "create text file untitled note write code"),
+            // Asks which file, or a new, empty one (Quick Open's sheet).
+            .init("new_editor_tab", "New Editor Tab…", "File", c("e", co), "create text file untitled note write code empty choose"),
             .init("new_diff_tab", "New Diff Tab…", "File", nil, "create git review changes compare branch commit range uncommitted"),
             .init("new_files_tab", "New Files Tab", "File", nil, "create file browser explorer tree folder finder"),
             .init("quick_open", "Quick Open…", "File", c("p"), "find file fuzzy go to open editor"),
@@ -316,8 +317,8 @@ public enum Keybinds {
             .init("split_diff_right", "Split Right with Diff…", "Pane", nil, "git review changes compare branch commit divide"),
             .init("split_files_left", "Split Left with Files", "Pane", c("e", cs), "file browser explorer tree folder sidebar divide"),
             .init("reveal_in_files", "Reveal in Files", "Pane", nil, "show file browser explorer tree folder locate current"),
-            .init("split_editor_right", "Split Right with Editor", "Pane", c("e", cc), "pane text file code untitled"),
-            .init("split_editor_down", "Split Down with Editor", "Pane", c("e", [.command, .control, .shift]), "pane text file code untitled"),
+            .init("split_editor_right", "Split Right with Editor…", "Pane", c("e", cc), "pane text file code untitled empty choose"),
+            .init("split_editor_down", "Split Down with Editor…", "Pane", c("e", [.command, .control, .shift]), "pane text file code untitled empty choose"),
             .init("show_simulator_log", "Show Simulator Log", "Pane", nil, "logs console ios iphone"),
             .init("zoom_pane", "Zoom Pane", "Pane", c("return", cs), "maximise maximize fullscreen focus unzoom"),
             // ⌥⇧⌘D: beside the splits' ⌘D and ⇧⌘D, and free in macOS (⌥⌘D is the Dock's).

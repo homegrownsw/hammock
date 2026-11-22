@@ -158,31 +158,42 @@ struct HammockApp: App {
                 }
             }
             CommandGroup(replacing: .newItem) {
-                Button("New Tab") { newTab() }.keyboardShortcut(Keys.newTab)
-                // Tools turned off in Settings ▸ Tools aren't offered (HammockTool).
-                if HammockTool.browser.on {
-                    Button("New Browser Tab") { newTab(browser: true) }.keyboardShortcut(Keys.newBrowserTab)
-                }
+                // The kinds of tab in PaneKindSymbol's sections, as the
+                // toolbar's New Tab menu. Tools turned off in Settings ▸
+                // Tools aren't offered (HammockTool).
+                Button("New Tab", systemImage: PaneKindSymbol.terminal) { newTab() }.keyboardShortcut(Keys.newTab)
                 NewAgentTabItems(model: model)
+                if HammockTool.browser.on {
+                    Divider()
+                    Button("New Browser Tab", systemImage: PaneKindSymbol.browser) { newTab(browser: true) }.keyboardShortcut(Keys.newBrowserTab)
+                }
+                if HammockTool.editor.on || HammockTool.files.on || HammockTool.diff.on { Divider() }
+                if HammockTool.editor.on {
+                    // Asks which file (or a new one); ⌥: a new, empty one straight away.
+                    Button("New Editor Tab…", systemImage: PaneKindSymbol.editor) { EditorUI.shared.showQuickOpen(model) }.keyboardShortcut(Keys.newEditorTab)
+                        .emptyEditorAlternate("New Empty Editor Tab", Keys.newEditorTab) { EditorUI.shared.newTab(model) }
+                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
+                }
+                if HammockTool.files.on {
+                    Button("New Files Tab", systemImage: PaneKindSymbol.files) { FilesUI.newTab(model) }.keyboardShortcut(Keys.newFilesTab)
+                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
+                }
+                if HammockTool.diff.on {
+                    Button("New Diff Tab…", systemImage: PaneKindSymbol.diff) { DiffLauncher.shared.newTab(model) }.keyboardShortcut(Keys.newDiffTab)
+                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
+                }
                 if HammockTool.log.on {
-                    Button("New Log Tab…") { LogUI.shared.newTab(model) }.keyboardShortcut(Keys.newLogTab)
+                    Divider()
+                    Button("New Log Tab…", systemImage: PaneKindSymbol.log) { LogUI.shared.newTab(model) }.keyboardShortcut(Keys.newLogTab)
                 }
                 if HammockTool.editor.on {
-                    Button("New Editor Tab") { EditorUI.shared.newTab(model) }.keyboardShortcut(Keys.newEditorTab)
-                        .disabled(model.currentGroup?.canAddTabs == false)
+                    Divider()
                     Button("Quick Open…") { EditorUI.shared.showQuickOpen(model) }.keyboardShortcut(Keys.quickOpen)
                         .disabled(model.currentGroup == nil && model.groups.isEmpty)
                     Button("Open File…") { EditorUI.shared.openFile(model) }.keyboardShortcut(Keys.openFile)
                         .disabled(model.currentGroup == nil && model.groups.isEmpty)
                 }
-                if HammockTool.diff.on {
-                    Button("New Diff Tab…") { DiffLauncher.shared.newTab(model) }.keyboardShortcut(Keys.newDiffTab)
-                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
-                }
-                if HammockTool.files.on {
-                    Button("New Files Tab") { FilesUI.newTab(model) }.keyboardShortcut(Keys.newFilesTab)
-                        .disabled(model.currentGroup?.canAddTabs == false || (model.currentGroup == nil && model.groups.isEmpty))
-                }
+                Divider()
                 if HammockTool.schedules.on {
                     Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
                     // The one selected in the Scheduled Tasks list, while it shows.
@@ -477,11 +488,14 @@ struct HammockApp: App {
                     .disabled(FilesUI.revealPath(model, focused) == nil)
                 }
                 if HammockTool.editor.on {
-                    Button("Split Right with Editor") { if let id = focused { EditorUI.shared.split(model, id, .horizontal) } }
+                    // Ask which file (or a new one); ⌥: a new, empty one straight away.
+                    Button("Split Right with Editor…") { if let id = focused { EditorUI.shared.showQuickOpen(model, splitPane: id, direction: .horizontal) } }
                         .keyboardShortcut(Keys.splitEditorRight)
+                        .emptyEditorAlternate("Split Right with Empty Editor", Keys.splitEditorRight, icon: false) { if let id = focused { EditorUI.shared.split(model, id, .horizontal) } }
                         .disabled(focused == nil)
-                    Button("Split Down with Editor") { if let id = focused { EditorUI.shared.split(model, id, .vertical) } }
+                    Button("Split Down with Editor…") { if let id = focused { EditorUI.shared.showQuickOpen(model, splitPane: id, direction: .vertical) } }
                         .keyboardShortcut(Keys.splitEditorDown)
+                        .emptyEditorAlternate("Split Down with Empty Editor", Keys.splitEditorDown, icon: false) { if let id = focused { EditorUI.shared.split(model, id, .vertical) } }
                         .disabled(focused == nil)
                 }
                 if HammockTool.log.on {

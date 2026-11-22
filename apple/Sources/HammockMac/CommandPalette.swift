@@ -226,7 +226,10 @@ struct CommandPalette: View {
         action("new-log-tab", "New Log Tab…", "list.bullet.rectangle", .blue, "create console logs logcat tail file stream", keys: Keys.newLogTab) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { LogUI.shared.request = LogRequest(groupID: group) }
         }
-        action("new-editor-tab", "New Editor Tab", "doc.badge.plus", .indigo, "create text file untitled note write code", keys: Keys.newEditorTab) { EditorUI.shared.newTab(model) }
+        action("new-editor-tab", "New Editor Tab…", "doc.text", .indigo, "create text file note write code choose", keys: Keys.newEditorTab) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { EditorUI.shared.showQuickOpen(model) }
+        }
+        action("new-empty-editor-tab", "New Empty Editor Tab", "doc.badge.plus", .indigo, "create text file untitled blank note write code") { EditorUI.shared.newTab(model) }
         action("review-changes", "Review Changes", "plusminus", .orange, "diff git review pull request branch", keys: Keys.reviewChanges) { DiffUI.review(model) }
         action("review-uncommitted", "Review Uncommitted Changes", "plusminus", .orange, "diff git review working tree staged") { DiffUI.review(model, source: DiffUI.uncommitted) }
         action("review-branch", "Review This Branch", "plusminus", .orange, "diff git review pull request base main") { DiffUI.review(model, source: DiffUI.branch) }
@@ -544,8 +547,13 @@ struct CommandPalette: View {
                     FilesUI.reveal(model, path: path, besides: focused)
                 }
             }
-            action("split-editor", "Split Right with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorRight) { EditorUI.shared.split(model, focused, .horizontal) }
-            action("split-editor-down", "Split Down with Editor", "doc.text", .indigo, "pane text file code untitled", keys: Keys.splitEditorDown) { EditorUI.shared.split(model, focused, .vertical) }
+            action("split-editor", "Split Right with Editor…", "doc.text", .indigo, "pane text file code choose", keys: Keys.splitEditorRight) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { EditorUI.shared.showQuickOpen(model, splitPane: focused, direction: .horizontal) }
+            }
+            action("split-editor-down", "Split Down with Editor…", "doc.text", .indigo, "pane text file code choose", keys: Keys.splitEditorDown) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { EditorUI.shared.showQuickOpen(model, splitPane: focused, direction: .vertical) }
+            }
+            action("split-empty-editor", "Split Right with Empty Editor", "doc.badge.plus", .indigo, "pane text file code untitled blank new") { EditorUI.shared.split(model, focused, .horizontal) }
             if let p = model.panes[focused], p.isDiff {
                 for c in DiffUI.commands {
                     action("diff-" + c.id, c.title, c.symbol, .orange, (Keybinds.byID["diff_" + c.id]?.keywords ?? "") + " diff", keys: Keys.diff(c.id)) {
@@ -890,7 +898,7 @@ extension CommandPalette {
         switch id {
         case "new-browser-tab", "split-browser", "split-browser-down", "split-browser-left", "split-browser-up": .browser
         case "new-log-tab", "split-log", "sim-log": .log
-        case "new-editor-tab", "editor-wrap", "quick-open", "open-file", "split-editor", "split-editor-down": .editor
+        case "new-editor-tab", "new-empty-editor-tab", "editor-wrap", "quick-open", "open-file", "split-editor", "split-editor-down", "split-empty-editor": .editor
         case _ where id.hasPrefix("review-"): .diff
         case "new-files-tab", "split-files-left", "reveal-in-files": .files
         case _ where id.hasPrefix("split-sim:"): .simulator
