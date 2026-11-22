@@ -126,8 +126,14 @@ struct FilesScreen: View {
 
     private func openInBrowser(_ path: String) {
         Task {
-            if let id = await model.splitBrowser(paneID, direction: .horizontal, url: URL(fileURLWithPath: path).absoluteString) { model.focus(id) }
+            if let id = await model.splitBrowser(paneID, direction: .horizontal, url: URL(fileURLWithPath: path).absoluteString) { show(id) }
         }
+    }
+
+    /// Focuses a pane opened from here and slides the tab to it.
+    private func show(_ id: String) {
+        model.focus(id)
+        PaneShowRequest.shared.paneID = id
     }
 
     /// In the editor this pane opened last (its file replaced), or a new one
@@ -135,17 +141,20 @@ struct FilesScreen: View {
     private func openInEditor(_ path: String) async {
         if let p = model.panes[paneID], let tab = model.tab(of: p),
            let open = model.panes(in: tab).first(where: { $0.isEditor && $0.editor.path == path }) {
-            model.focus(open.id)
+            show(open.id)
             return
         }
         do {
             if let ed = FilesOpening.linkedEditor[paneID], let p = model.panes[ed], p.isEditor, !p.editor.dirty {
-                if let id = try await model.openEditor(path, groupID: nil, replacePane: ed) { FilesOpening.linkedEditor[paneID] = id }
+                if let id = try await model.openEditor(path, groupID: nil, replacePane: ed) {
+                    FilesOpening.linkedEditor[paneID] = id
+                    show(id)
+                }
                 return
             }
             if let id = try await model.openEditor(path, groupID: nil, splitPane: paneID) {
                 FilesOpening.linkedEditor[paneID] = id
-                model.focus(id)
+                show(id)
             }
         } catch {
             session?.error = error.localizedDescription

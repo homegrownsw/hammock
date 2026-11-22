@@ -91,6 +91,16 @@ enum TabPanes {
     }
 }
 
+/// A pane something on screen opened for you (a files pane's file, beside
+/// it): its tab slides to it once it's in the tab. Focus alone doesn't move
+/// the strip, as the Mac moves focus too.
+@MainActor
+@Observable
+final class PaneShowRequest {
+    static let shared = PaneShowRequest()
+    var paneID: String?
+}
+
 /// What a pane is called in the strip and Exposé.
 @MainActor
 func stripName(_ p: Pane?) -> String {

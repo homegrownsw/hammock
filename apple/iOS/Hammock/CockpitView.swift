@@ -953,6 +953,8 @@ struct TabScreen: View {
             #endif
         }
         .onChange(of: current) { _, id in if !id.isEmpty { TabPanes.remember(id, in: tabID) } }
+        .onChange(of: PaneShowRequest.shared.paneID) { showRequested(ids) }
+        .onChange(of: ids) { showRequested(ids) }
         .demoStripSteps { verb, id in
             switch verb {
             case "pane": go(to: id, in: ids)
@@ -1040,6 +1042,13 @@ struct TabScreen: View {
                 barPane = nil
             }
         }
+    }
+
+    /// Slides to the pane asked for (PaneShowRequest), once it's here.
+    private func showRequested(_ ids: [String]) {
+        guard let want = PaneShowRequest.shared.paneID, ids.contains(want) else { return }
+        PaneShowRequest.shared.paneID = nil
+        go(to: want, in: ids)
     }
 
     /// To a pane from its pill (or a take): slid in from its side.
