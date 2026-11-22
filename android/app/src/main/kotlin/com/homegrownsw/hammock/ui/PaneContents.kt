@@ -1,8 +1,33 @@
 package com.homegrownsw.hammock.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
+import com.homegrownsw.hammock.client.Workspace
+import com.homegrownsw.hammock.client.canRunAgain
+import com.homegrownsw.hammock.client.exitedStatusLabel
+import com.homegrownsw.hammock.client.runAgainTitle
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.luminance
@@ -123,21 +148,61 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (Ter
     val font = rememberTerminalFont()
     var fontSize by rememberPref(Prefs.TERMINAL_FONT_SIZE, DefaultSizes.TERMINAL.toString())
     val link by model.link.collectAsStateWithLifecycle()
-    TerminalPane(
-        session,
-        onInput = { model.input(pane.id, it) },
-        onResize = { cols, rows, w, h -> if (drive) model.resize(pane.id, cols, rows, w, h) },
-        readOnly = !drive,
-        theme = theme,
-        fontSize = font.size.sp,
-        fontFamily = font.family,
-        lineSpacing = font.lineSpacing,
-        onFocus = { model.focus(pane.id) },
-        linkUp = link == Link.Connected,
-        offline = linkDown(),
-        onReconnect = { model.reconnectNow() },
-        onFontSize = { fontSize = it.toInt().toString() },
-    )
+    val w by model.workspace.collectAsStateWithLifecycle()
+    // Its program ended: the bar saying so takes the key bar's place (no keyboard: nothing to type to).
+    val ended = drive && pane.canRunAgain
+    Column {
+        TerminalPane(
+            session,
+            modifier = Modifier.weight(1f),
+            onInput = { model.input(pane.id, it) },
+            onResize = { cols, rows, w, h -> if (drive) model.resize(pane.id, cols, rows, w, h) },
+            readOnly = !drive || ended,
+            theme = theme,
+            fontSize = font.size.sp,
+            fontFamily = font.family,
+            lineSpacing = font.lineSpacing,
+            onFocus = { model.focus(pane.id) },
+            linkUp = link == Link.Connected,
+            offline = linkDown(),
+            onReconnect = { model.reconnectNow() },
+            onFontSize = { fontSize = it.toInt().toString() },
+        )
+        AnimatedVisibility(ended, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            ExitedPaneBar(model, w, pane, connected = link == Link.Connected)
+        }
+    }
+}
+
+/**
+ * Along the bottom of a terminal whose program ended (canRunAgain), where the key bar is while it
+ * runs, its last output still above it: "Exited 1 · Run Again · Close", as on the Mac and the iPhone.
+ * An agent's pane says Resume, and carries on its session.
+ */
+@Composable
+private fun ExitedPaneBar(model: AppModel, w: Workspace, pane: Pane, connected: Boolean) {
+    val view = LocalView.current
+    val closer = LocalCloser.current
+    Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                pane.exitedStatusLabel, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f).semantics { if (pane.startError.isNotEmpty()) stateDescription = pane.startError },
+            )
+            Button(onClick = { view.hapticConfirm(); model.restartPane(pane.id) }, enabled = connected) {
+                Text(pane.runAgainTitle(w.kinds))
+            }
+            OutlinedButton(
+                onClick = { closer.closePane(model, w, pane) }, enabled = connected,
+                modifier = Modifier.semantics { contentDescription = "Close Pane" },
+            ) { Text("Close") }
+        }
+    }
 }
 
 /** The terminal's colours: the computer's theme files when it sends them, else Hammock's own, light or dark as the app is. */

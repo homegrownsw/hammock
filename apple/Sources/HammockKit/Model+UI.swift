@@ -58,6 +58,15 @@ extension Hammock_V1_Pane {
         hasAgent && !agent.sessionID.isEmpty && AgentCatalog.kind(agent.harness)?.canResume == true
     }
 
+    /// How its program ended, for the bar over an ended pane: "Exited 1",
+    /// or "Couldn't start" when it never ran (startError says why).
+    public var exitedStatusLabel: String {
+        startError.isEmpty ? "Exited \(exitStatus)" : "Couldn't start"
+    }
+
+    /// The button that starts it again: Resume for an agent's session.
+    @MainActor public var runAgainTitle: String { resumesWhenRunAgain ? "Resume" : "Run Again" }
+
     /// Its agent's state in words: "Asleep" for one put to sleep.
     public var agentStatusLabel: String {
         asleep ? "Asleep" : agent.state.label

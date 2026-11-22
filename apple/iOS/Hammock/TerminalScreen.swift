@@ -14,13 +14,29 @@ struct TerminalScreen: View {
     @Environment(\.inPaneStrip) private var inStrip
     @Environment(\.linkDown) private var linkDown
 
+    /// Its program ended and you can start it again (not in a Group you
+    /// can only watch): the bar saying so takes the key bar's place.
+    private var ended: Pane? {
+        guard let p = model.panes[paneID], p.canRunAgain else { return nil }
+        if let g = model.group(ofPane: paneID), g.isRemote, !g.canDrive || g.offline { return nil }
+        return p
+    }
+
     var body: some View {
-        TerminalRepresentable(model: model, paneID: paneID, active: active, linkUp: model.connected, offline: linkDown)
-            // Down to the screen's bottom edge, but not under the pane
-            // strip: its rows there were hidden (and counted in the size
-            // the pane was given).
-            .ignoresSafeArea(.container, edges: inStrip ? [] : .bottom)
-            .background(theme.terminalBackground)
+        let ended = ended
+        VStack(spacing: 0) {
+            TerminalRepresentable(model: model, paneID: paneID, active: active, linkUp: model.connected, offline: linkDown, exited: ended != nil)
+                // Down to the screen's bottom edge, but not under the pane
+                // strip: its rows there were hidden (and counted in the size
+                // the pane was given). Nor under the bar of an ended pane.
+                .ignoresSafeArea(.container, edges: inStrip || ended != nil ? [] : .bottom)
+            if let ended {
+                ExitedPaneBar(model: model, pane: ended)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: ended != nil)
+        .background(theme.terminalBackground)
     }
 }
 
@@ -34,6 +50,8 @@ struct TerminalRepresentable: UIViewRepresentable {
     /// The link's been down a moment (the connection bar shows): the key
     /// bar says Offline.
     var offline = false
+    /// Its program ended (ExitedPaneBar shows): no keyboard, nothing to type to.
+    var exited = false
     /// A picture of the pane (Exposé's tile): drawn, never driven. It
     /// takes no touches and has nowhere to send input, focus or a size,
     /// so it can't resize the pane on the Mac.
@@ -53,6 +71,7 @@ struct TerminalRepresentable: UIViewRepresentable {
         v.onFocus = { [model, paneID] in model.focus(paneID) }
         v.onResize = { [model, paneID] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
         v.onReconnect = { [model] in model.reconnectNow() }
+        v.exited = exited
         v.linkUp = linkUp
         v.offline = offline
         v.active = active
@@ -62,6 +81,7 @@ struct TerminalRepresentable: UIViewRepresentable {
     func updateUIView(_ v: TerminalUIView, context: Context) {
         guard !preview else { return }
         v.linkUp = linkUp
+        v.exited = exited
         v.offline = offline
         v.active = active
     }
@@ -142,6 +162,11 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     /// Offline, which tries again when tapped.
     var offline = false {
         didSet { if offline != oldValue { accessory.offline = offline } }
+    }
+    /// Its program ended: the keyboard goes (and a tap doesn't bring it
+    /// back), the bar over it (ExitedPaneBar) where the key bar was.
+    var exited = false {
+        didSet { if exited, isFirstResponder { _ = resignFirstResponder() } }
     }
     /// Showing on screen: fit the PTY to the view, now and whenever the
     /// view changes size (the keyboard opening or closing).
@@ -230,6 +255,8 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
             clearSelection()
             return
         }
+        // Nothing to type to, nor to click in.
+        if exited { return }
         // Programs that track the mouse get the tap as a click.
         if let engine = session?.engine, engine.mouseTracking {
             sendMouse(.press, button: .left, at: g.location(in: self))

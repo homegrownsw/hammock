@@ -10,11 +10,9 @@ struct ExitedPaneBar: View {
     let model: AppModel
     let pane: Pane
 
-    private var status: String {
-        pane.startError.isEmpty ? "Exited \(pane.exitStatus)" : "Couldn't start"
-    }
+    private var status: String { pane.exitedStatusLabel }
 
-    private var runTitle: String { pane.resumesWhenRunAgain ? "Resume" : "Run Again" }
+    private var runTitle: String { pane.runAgainTitle }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {

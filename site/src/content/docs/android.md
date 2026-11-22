@@ -31,7 +31,8 @@ Tap a terminal for the keyboard, with **esc**, **tab**, **ctrl** and **alt** (wh
 arrows and delete above it; swipe them for symbols such as `|` and `~`, **home** and **end**. Drag to scroll
 back, and pinch to change the font size for every terminal. Touch and hold to select a word, keep dragging or move its handles to select more, then **Copy**;
 **Select all** selects the screen, and **Paste** pastes. **Copy Screen** is in the pane's ⋮ menu. While the phone can't
-reach your computer, keys do nothing and **Offline** shows above the keyboard: tap it to try again. In the agent
+reach your computer, keys do nothing and **Offline** shows above the keyboard: tap it to try again. When a
+terminal's program fails, a bar along its bottom has **Run Again** (or **Resume**, for an agent) and **Close**. In the agent
 view, type in the box at the bottom and tap the arrow to send; while the agent works, the same button stops it. Type
 `/` for the agent's commands, or `@` for a file in the Group's folder, and tap one to put it in. Tap the context gauge
 to compact or clear the conversation. **+** attaches pictures, and the microphone dictates on the phone itself, where

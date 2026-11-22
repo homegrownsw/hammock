@@ -55,6 +55,22 @@ val Pane.sessionURL: String? get() = if (hasAgent() && agent.sessionUrl.startsWi
 val Pane.canSleep: Boolean get() = isTerminal && hasAgent() && !exited && !asleep &&
     (agent.state == AgentState.AGENT_STATE_IDLE || agent.state == AgentState.AGENT_STATE_ERRORED) && !agent.runningCommand
 
+/**
+ * Its program ended (a failed command, an agent that quit) and can start again in the same pane
+ * (RestartPane): a terminal's, not a log's, nor a scheduled run's (its task runs again instead).
+ */
+val Pane.canRunAgain: Boolean get() = isTerminal && exited && !asleep && !isLog && scheduleRunId.isEmpty()
+
+/** Running it again resumes its agent's session (the daemon falls back to its own command when there's nothing to resume). */
+fun Pane.resumesWhenRunAgain(kinds: List<AgentKind>): Boolean =
+    hasAgent() && agent.sessionId.isNotEmpty() && kinds.firstOrNull { it.id == agent.harness }?.canResume == true
+
+/** How its program ended, for the bar over an ended pane: "Exited 1", or "Couldn't start" when it never ran. */
+val Pane.exitedStatusLabel: String get() = if (startError.isEmpty()) "Exited $exitStatus" else "Couldn't start"
+
+/** The button that starts it again: Resume for an agent's session. */
+fun Pane.runAgainTitle(kinds: List<AgentKind>): String = if (resumesWhenRunAgain(kinds)) "Resume" else "Run Again"
+
 val Pane.agentStatusLabel: String get() = if (asleep) "Asleep" else agent.state.label
 
 /** Its agent is at work (working, starting, waiting for you, or with subagents still running): closing the pane stops it. */

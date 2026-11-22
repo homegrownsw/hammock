@@ -204,7 +204,7 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
             update { $0.panes = [p] }
         case .createGroup, .createTab, .createPane, .startAgent, .closeTab, .closeGroup, .closePane, .resumeSession,
              .runSchedule, .saveSchedule, .deleteSchedule, .uploadFile, .createPairing, .createInvite, .linkComputer,
-             .reopenClosed, .renameGroup, .renameTab, .switchAgent, .setGroupIconImage, .setGroupFolder, .leaveShared:
+             .reopenClosed, .renameGroup, .renameTab, .switchAgent, .setGroupIconImage, .setGroupFolder, .leaveShared, .restartPane:
             answer(msg) { $0.error = .with { $0.message = Self.needsMac } }
         default:
             // Everything else (sizes, focus, presence, lists) is fine as it is.

@@ -806,6 +806,13 @@ class AppModel private constructor(
         }
     }
 
+    /** Starts an ended pane's program again, in the same pane: its agent's session resumed, else its own command (RestartPane). */
+    fun restartPane(paneID: String) = scope.launch {
+        if (request { setRestartPane(Hammock.RestartPane.newBuilder().setPaneId(paneID).build()) } == null) {
+            showToast("Couldn't run it again: ${lastError ?: "unknown error"}")
+        }
+    }
+
     fun switchAgent(paneID: String, harness: String) = scope.launch {
         val name = AgentCatalog.shortName(harness, _workspace.value.kinds)
         showToast("Switching to $name…")

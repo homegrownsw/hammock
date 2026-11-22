@@ -207,7 +207,7 @@ class DemoDaemon(
             MsgCase.CLOSE_PANE, MsgCase.RESUME_SESSION, MsgCase.RUN_SCHEDULE, MsgCase.SAVE_SCHEDULE, MsgCase.DELETE_SCHEDULE,
             MsgCase.UPLOAD_FILE, MsgCase.CREATE_PAIRING, MsgCase.CREATE_INVITE, MsgCase.LINK_COMPUTER, MsgCase.REOPEN_CLOSED,
             MsgCase.RENAME_GROUP, MsgCase.RENAME_TAB, MsgCase.SWITCH_AGENT, MsgCase.SET_GROUP_ICON_IMAGE, MsgCase.SET_GROUP_FOLDER,
-            MsgCase.LEAVE_SHARED,
+            MsgCase.LEAVE_SHARED, MsgCase.RESTART_PANE,
             -> fail(msg, NEEDS_MAC)
             // Everything else (sizes, presence, lists) is fine as it is.
             else -> answer(msg)
