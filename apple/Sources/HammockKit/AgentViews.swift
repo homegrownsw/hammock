@@ -449,12 +449,16 @@ public struct AgentConversationView: View {
     /// shorter): SwiftUI never counts an animated scroll to a point it can't
     /// reach complete, and kept the view pinned to the end, rows that came
     /// next jumping into view. Put there without an animation, ending it.
+    /// Kept once the view's reached it, too: SwiftUI can still count the
+    /// scroll going then (a spring's tail), and the keyboard going down just
+    /// after left the point past the end, the next row jumping into view.
+    /// Not for a point just past it (a row a few points shorter): the next
+    /// row jumps no further than that, and put there with the keyboard about
+    /// to go down, the view stayed at that point, blank under the rows.
     private func settleGlide(_ v: RowRevealer.Visible) {
         guard let target = glide.target else { return }
         let end = v.top + v.gap + v.under
-        if abs(v.top - target) < 0.5 {
-            glide.target = nil
-        } else if target > end + 0.5, v.gap + v.under < 0.5 {
+        if target > end + 12, v.gap + v.under < 0.5 {
             glide.target = nil
             if JankProbe.enabled { DevLog.agent("glide past the end by \(Int(target - end)): ended") }
             position.scrollTo(y: end)
@@ -741,6 +745,7 @@ public struct AgentConversationView: View {
                                         under: g.contentInsets.bottom, over: g.contentInsets.top)
                 } action: { old, new in
                     revealer.visible = new
+                    if JankProbe.enabled { JankProbe.shared.top = new.top }
                     settleGlide(new)
                     if JankProbe.enabled, abs(new.top - old.top) > 20 { DevLog.agent("scrolled \(Int(new.top - old.top)) to \(Int(new.top)) gap \(Int(old.gap))→\(Int(new.gap)) under \(Int(new.under)) phase=\(JankProbe.shared.phase)") }
                 }

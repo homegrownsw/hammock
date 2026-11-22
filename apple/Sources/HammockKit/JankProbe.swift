@@ -12,8 +12,8 @@ import AppKit
 /// - frames and hitches: a frame later than one and a half of the display's
 ///   intervals, and the time they lost;
 /// - snaps: rows in view that moved more than 30 pt in one frame while
-///   nothing was scrolling (no finger on it, no animated scroll), the
-///   content jumping rather than moving;
+///   nothing was scrolling (no finger on it, no animated scroll, then or
+///   since the frame before), the content jumping rather than moving;
 /// - bounces: rows moving one way then the other within a third of a
 ///   second, while nobody scrolls;
 /// - blanks: an empty stretch over 40% of the view, between or past the
@@ -59,10 +59,19 @@ final class JankProbe {
     /// Frames in a row the view has been blank (blankGap).
     private var blankFrames = 0
     private var events = ProcessInfo.processInfo.environment["HMK_DEBUG_JANK_EVENTS"] != nil
-    var userScrolling = false
-    var animatingScroll = false
+    var userScrolling = false { didSet { if userScrolling { scrolledSinceFrame = true } } }
+    var animatingScroll = false { didSet { if animatingScroll { scrolledSinceFrame = true } } }
+    /// Scrolled at all since the last frame: the last step of an animated
+    /// scroll can land in the same frame its phase goes idle, and moving
+    /// rows then aren't a snap.
+    private var scrolledSinceFrame = false
     /// The scroll view's phase, for DevLog lines.
     var phase = "idle"
+    /// Where the scroll view is scrolled to (the visible rect's top), and
+    /// where it was at the last frame: a snap says how far it scrolled too.
+    var top: CGFloat = 0
+    private var lastTop: CGFloat = 0
+    private var lastPhase = "idle"
 
     // This window's counts.
     private var windowStart: CFTimeInterval = 0
@@ -163,7 +172,9 @@ final class JankProbe {
             worstMs = max(worstMs, dt * 1000)
         }
         lastFrame = now
-        if !userScrolling, !animatingScroll, !hidden, now >= quietUntil {
+        let scrolled = userScrolling || animatingScroll || scrolledSinceFrame
+        scrolledSinceFrame = false
+        if !scrolled, !hidden, now >= quietUntil {
             // The rows in view that kept their height: how far they moved.
             var moves: [(id: String, dy: CGFloat)] = []
             // What shows, not under the bars (the message box, the toolbar).
@@ -177,7 +188,8 @@ final class JankProbe {
                 if abs(m) > 30 {
                     snaps += 1
                     snapPx += abs(m)
-                    event("snap", m, moves.count)
+                    let ids = moves.filter { abs($0.dy - m) < 1 }.prefix(3).map(\.id).joined(separator: " ")
+                    event("snap", m, moves.count, detail: String(format: "scrolled %.1f, phase %@ then %@, %@", top - lastTop, lastPhase, phase, ids))
                 }
                 if abs(m) > 0.5 {
                     let sign = m > 0 ? 1 : -1
@@ -209,6 +221,8 @@ final class JankProbe {
             blankFrames = 0
         }
         last = rows
+        lastTop = top
+        lastPhase = phase
         if now - windowStart >= 2 { flush(now) }
     }
 
@@ -244,9 +258,9 @@ final class JankProbe {
         }
     }
 
-    private func event(_ kind: String, _ value: CGFloat, _ rows: Int) {
+    private func event(_ kind: String, _ value: CGFloat, _ rows: Int, detail: String = "") {
         guard events else { return }
-        let line = String(format: #"{"ev":"%@","t":%.3f,"v":%.1f,"rows":%d,"content":%.0f}"#, kind, Date().timeIntervalSince1970, value, rows, contentHeight)
+        let line = String(format: #"{"ev":"%@","t":%.3f,"v":%.1f,"rows":%d,"content":%.0f,"detail":"%@"}"#, kind, Date().timeIntervalSince1970, value, rows, contentHeight, detail)
         out?.write(Data((line + "\n").utf8))
     }
 
