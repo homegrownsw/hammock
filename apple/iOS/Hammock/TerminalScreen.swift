@@ -1066,7 +1066,7 @@ final class KeyAccessoryView: UIInputView, UIScrollViewDelegate {
          ("arrow.right", .right, "Right arrow"), ("delete.left", .backspace, "Delete")],
         [("|", .text("|"), "Vertical bar"), ("~", .text("~"), "Tilde"), ("/", .text("/"), "Slash"), ("-", .text("-"), "Hyphen"),
          ("_", .text("_"), "Underscore"), ("\\", .text("\\"), "Backslash"), ("`", .text("`"), "Backtick"),
-         ("home", .home, "Home"), ("end", .end, "End")],
+         ("arrow.left.to.line", .home, "Home"), ("arrow.right.to.line", .end, "End")],
     ]
     private static let spacing: CGFloat = 5
 
