@@ -414,14 +414,6 @@ func (d *Daemon) liveContexts() map[string]int {
 	return out
 }
 
-// awayRule: you're away from this computer, as pushes wait for
-// (waitUntilAway): you've used Hammock on a phone since you last touched
-// it, or it's locked or untouched for awayAfter while you're not at
-// another of your computers (or, elsewhereIsAway, you are).
-func awayRule(phone, elsewhere, elsewhereIsAway, locked bool, idle time.Duration) bool {
-	return phone || elsewhere && elsewhereIsAway || (locked || idle >= awayAfter) && !elsewhere
-}
-
 // livePhones are the phones with Live Activities on, read again from the
 // store after a registration changes. Callers hold d.mu.
 func (d *Daemon) livePhones() map[string]*livePhone {
@@ -510,7 +502,7 @@ func (d *Daemon) liveTick() {
 		return
 	}
 	ctx := d.liveContexts()
-	idle, locked := idleTime(), screenLocked() // off the lock: they ask IOKit
+	idle := idleTime() // off the lock: it asks IOKit
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.idErr != nil {
@@ -518,7 +510,11 @@ func (d *Daemon) liveTick() {
 	}
 	h := &d.live
 	phones := d.livePhones()
-	away := awayRule(d.usingPhone(idle), d.inUseElsewhere(), false, locked, idle)
+	// Stricter than pushes (waitUntilAway): only once you've used Hammock
+	// on a phone since you last touched any of your computers. The Mac
+	// locked or left a while (a call, reading) isn't enough: an activity
+	// then would show up too often, on the Mac's menu bar too.
+	away := d.usingPhone(idle)
 	var want *liveContent
 	if shown, others, ok := pickLive(d.liveAgents(ctx), h.pane); ok && away && len(phones) > 0 {
 		c := shown.content

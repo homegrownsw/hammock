@@ -265,6 +265,14 @@ func (d *Daemon) waitUntilAway(ctx context.Context, hold time.Duration, elsewher
 // counts as untouched: always longer than any wait for you to leave it.
 const headlessIdle = 1000 * time.Hour
 
+// awayRule: you're away from this computer, as pushes wait for
+// (waitUntilAway): you've used Hammock on a phone since you last touched
+// it, or it's locked or untouched for awayAfter while you're not at
+// another of your computers (or, elsewhereIsAway, you are).
+func awayRule(phone, elsewhere, elsewhereIsAway, locked bool, idle time.Duration) bool {
+	return phone || elsewhere && elsewhereIsAway || (locked || idle >= awayAfter) && !elsewhere
+}
+
 // phoneUsed records you doing something in Hammock on a paired phone now
 // (phoneAction). Callers hold d.mu.
 func (d *Daemon) phoneUsed() { d.phoneAt = time.Now() }

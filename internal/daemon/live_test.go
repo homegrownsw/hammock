@@ -109,23 +109,14 @@ func TestLiveAccent(t *testing.T) {
 	}
 }
 
-func TestAwayRule(t *testing.T) {
-	for _, c := range []struct {
-		phone, elsewhere, elsewhereIsAway, locked bool
-		idle                                      time.Duration
-		want                                      bool
-	}{
-		{false, false, false, false, 0, false},
-		{false, false, false, false, awayAfter, true},
-		{false, false, false, true, 0, true},
-		{true, false, false, false, 0, true},
-		{false, true, false, true, time.Hour, false}, // at another of your computers
-		{false, true, true, false, 0, true},
-	} {
-		if got := awayRule(c.phone, c.elsewhere, c.elsewhereIsAway, c.locked, c.idle); got != c.want {
-			t.Errorf("%+v: %v", c, got)
-		}
-	}
+// usePhone has you do something in Hammock on a phone, as the Mac's been
+// left: what starts a Live Activity.
+func usePhone(d *Daemon, idle *atomic.Int64) {
+	idle.Store(int64(time.Hour))
+	d.mu.Lock()
+	d.phoneUsed()
+	d.mu.Unlock()
+	d.liveWake()
 }
 
 // liveRelay is a test relay's Live Activity sends (and sealed ones, for
@@ -262,9 +253,12 @@ func TestLiveActivityWhileAway(t *testing.T) {
 		}
 	}
 	quiet("while at the Mac")
-
 	idle.Store(int64(time.Hour))
-	s := next("once away")
+	d.liveWake()
+	quiet("with the Mac left alone") // not since you've used the phone
+
+	usePhone(d, idle)
+	s := next("once on the phone")
 	state, _ := s.Live["state"].(map[string]any)
 	attrs, _ := s.Live["attributes"].(map[string]any)
 	if s.ID != "relay-id-1" || s.Live["event"] != "start" || s.Live["token"] != "aa11" || attrs["host"] == "" ||
@@ -313,8 +307,8 @@ func TestLiveActivityWhileAway(t *testing.T) {
 
 	// Away again, it starts again; the agent stops, and it ends a while
 	// later, saying it finished.
-	idle.Store(int64(time.Hour))
-	if s = next("away again"); s.Live["event"] != "start" {
+	usePhone(d, idle)
+	if s = next("on the phone again"); s.Live["event"] != "start" {
 		t.Fatalf("restart %+v", s)
 	}
 	call(t, phone, &pb.ClientMessage{Msg: &pb.ClientMessage_RegisterPush{RegisterPush: &pb.RegisterPush{RelayUrl: relayURL, RelayId: "relay-id-1", Key: key,
@@ -347,7 +341,7 @@ func TestLiveActivityAndroidNeedsYou(t *testing.T) {
 		}
 	}
 	d.mu.Unlock()
-	idle.Store(int64(time.Hour))
+	usePhone(d, idle)
 	open := func(payload string) pushNote {
 		t.Helper()
 		sealed, _ := base64.StdEncoding.DecodeString(payload)

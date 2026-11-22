@@ -593,3 +593,22 @@ func TestPushAgentPrompt(t *testing.T) {
 		}
 	}
 }
+
+func TestAwayRule(t *testing.T) {
+	for _, c := range []struct {
+		phone, elsewhere, elsewhereIsAway, locked bool
+		idle                                      time.Duration
+		want                                      bool
+	}{
+		{false, false, false, false, 0, false},
+		{false, false, false, false, awayAfter, true},
+		{false, false, false, true, 0, true},
+		{true, false, false, false, 0, true},
+		{false, true, false, true, time.Hour, false}, // at another of your computers
+		{false, true, true, false, 0, true},
+	} {
+		if got := awayRule(c.phone, c.elsewhere, c.elsewhereIsAway, c.locked, c.idle); got != c.want {
+			t.Errorf("%+v: %v", c, got)
+		}
+	}
+}
