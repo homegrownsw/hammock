@@ -254,13 +254,15 @@ final class HoldMenuCoordinator: NSObject, UIContextMenuInteractionDelegate {
         }
     }
 
-    /// Tapping the preview opens its pane, once the menu's gone.
+    /// Tapping the preview opens its pane, as Mail and Messages do: the
+    /// pane opens underneath while the preview grows into it (.pop), with
+    /// no pause between the menu going and the pane coming.
     func contextMenuInteraction(_ interaction: UIContextMenuInteraction, willPerformPreviewActionForMenuWith configuration: UIContextMenuConfiguration,
                                 animator: UIContextMenuInteractionCommitAnimating) {
         guard preview != nil else { return }
-        animator.preferredCommitStyle = .dismiss
+        animator.preferredCommitStyle = .pop
         let open = open
-        animator.addCompletion { open() }
+        animator.addAnimations { open() }
     }
 
     func contextMenuInteraction(_ interaction: UIContextMenuInteraction, willEndFor configuration: UIContextMenuConfiguration,
