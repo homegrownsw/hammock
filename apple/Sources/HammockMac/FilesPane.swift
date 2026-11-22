@@ -131,6 +131,7 @@ enum FilesUI {
         let local = isLocal(model, pane)
         let info = model.panes[pane]?.files ?? FilesInfo()
         let one = paths.count == 1 ? paths[0] : nil
+        let canDrive = model.group(ofPane: pane)?.canDrive != false
         let oneDir = one != nil && dirs.first == true
         let add = { (title: String, run: @escaping () -> Void) in menu.addItem(ClosureItem(title, key: nil, run: run)) }
         if !paths.isEmpty {
@@ -164,12 +165,28 @@ enum FilesUI {
             if local {
                 add("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting(paths.map { URL(fileURLWithPath: $0) }) }
             }
+            if canDrive {
+                menu.addItem(.separator())
+                if one != nil { add("Rename…") { session.command("rename") } }
+                add("New File") { session.command("newFile") }
+                add("New Folder") { session.command("newFolder") }
+                add("Duplicate") { session.command("duplicate") }
+                let trash = ClosureItem("Move to Trash", key: nil) { session.trash(paths) }
+                trash.keyEquivalent = "\u{8}"
+                trash.keyEquivalentModifierMask = .command
+                menu.addItem(trash)
+            }
             menu.addItem(.separator())
             add(paths.count == 1 ? "Copy Path" : "Copy Paths") { copy(paths.joined(separator: "\n")) }
             add(paths.count == 1 ? "Copy Relative Path" : "Copy Relative Paths") {
                 copy(paths.map { relative($0, to: info.repo.isEmpty ? info.root : info.repo) }.joined(separator: "\n"))
             }
         } else {
+            if canDrive {
+                add("New File") { session.command("newFile") }
+                add("New Folder") { session.command("newFolder") }
+                menu.addItem(.separator())
+            }
             add("Open Terminal Here") { open(model, filesPane: pane, path: info.root, dir: true, target: .terminal) }
             if local {
                 add("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: info.root)]) }
@@ -231,10 +248,8 @@ struct FilesPaneView: View {
     private var config: FilesConfig {
         let dark = colorScheme == .dark
         let c = AppConfig.shared
-        var conf = FilesConfig(theme: c.theme(isDark: dark), dark: dark, fontSize: 13, canDrive: canDrive, accent: .themeAccent,
-                               home: FilesUI.isLocal(model, paneID) ? NSHomeDirectory() : "")
-        conf.ops = false // renaming, creating and moving come with the daemon's file operations
-        return conf
+        return FilesConfig(theme: c.theme(isDark: dark), dark: dark, fontSize: 13, canDrive: canDrive, accent: .themeAccent,
+                           home: FilesUI.isLocal(model, paneID) ? NSHomeDirectory() : "")
     }
 
     private var header: some View {
@@ -336,6 +351,17 @@ final class FilesWK: WKWebView {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// ⌘Z undoes the pane's last change to files (Edit ▸ Undo would ask the
+    /// page's own undo, which has none), unless a name's being typed.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let b = bridge, !b.editing, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "z", let w = window, let r = w.firstResponder as? NSView, r.isDescendant(of: self) {
+            b.session.undo()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 
     func focusSoon() {
         DispatchQueue.main.async { [weak self] in

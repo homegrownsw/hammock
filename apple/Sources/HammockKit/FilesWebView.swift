@@ -132,6 +132,35 @@ public final class FilesSession {
     }
 
     public func reveal(_ path: String) { send { $0.action = .reveal; $0.path = path } }
+    public func undo() { send { $0.action = .undo } }
+    public func rename(_ path: String, to name: String) { send { $0.action = .rename; $0.path = path; $0.name = name } }
+    public func trash(_ paths: [String]) { send { $0.action = .trash; $0.paths = paths } }
+    /// paths moved (or copied) into folder.
+    public func move(_ paths: [String], into folder: String, copy: Bool = false) {
+        send { $0.action = copy ? .copy : .move; $0.paths = paths; $0.path = folder }
+    }
+    public func create(_ name: String, in folder: String, isFolder: Bool) {
+        send { $0.action = isFolder ? .createFolder : .createFile; $0.path = folder; $0.name = name }
+    }
+
+    /// A change from the page: rename, create, trash, move.
+    public func op(_ m: [String: Any]) {
+        let paths = m["paths"] as? [String] ?? []
+        switch m["type"] as? String {
+        case "rename":
+            if let p = m["path"] as? String, let n = m["name"] as? String { rename(p, to: n) }
+        case "create":
+            if let d = m["dir"] as? String, let n = m["name"] as? String { create(n, in: d, isFolder: m["folder"] as? Bool ?? false) }
+        case "trash":
+            trash(paths)
+        case "move":
+            if let d = m["dest"] as? String { move(paths, into: d, copy: m["copy"] as? Bool ?? false) }
+        case "undo":
+            undo()
+        default:
+            break
+        }
+    }
     public func setRoot(_ path: String) { send { $0.action = .setRoot; $0.path = path } }
     public func setHidden(_ on: Bool) { send { $0.action = .showHidden; $0.on = on } }
 
@@ -265,8 +294,11 @@ public final class FilesBridge: NSObject, WKScriptMessageHandler, WKNavigationDe
     public var onMenu: ((_ paths: [String], _ dirs: [Bool], _ point: CGPoint) -> Void)?
     /// A drag of the selection started (the Mac takes it over).
     public var onDrag: ((_ paths: [String], _ point: CGPoint) -> Void)?
-    /// Renaming, creating, trashing, moving: the page's in-place edits.
+    /// Renaming, creating, trashing, moving: the page's in-place edits
+    /// (unset: straight to the session).
     public var onOp: ((_ message: [String: Any]) -> Void)?
+    /// A name being typed in the page (renaming, creating): its keys are the page's.
+    public private(set) var editing = false
 
     public init(session: FilesSession, makeWebView: (WKWebViewConfiguration) -> WKWebView) {
         self.session = session
@@ -325,8 +357,10 @@ public final class FilesBridge: NSObject, WKScriptMessageHandler, WKNavigationDe
             onMenu?(paths, m["dirs"] as? [Bool] ?? [], point())
         case "drag":
             onDrag?(paths, point())
-        case "rename", "create", "trash", "move":
-            onOp?(m)
+        case "rename", "create", "trash", "move", "undo":
+            if let onOp { onOp(m) } else { session.op(m) }
+        case "editing":
+            editing = m["on"] as? Bool ?? false
         case "focus":
             session.pageFocused(self)
             onFocus?()

@@ -128,7 +128,7 @@ hmk files                          # on this pane's left, the Group's folder
 hmk files --reveal src/main.go     # show a file in this tab's files pane
 ```
 
-Double-click a file to open it: text in an editor beside the tree (the next file you open replaces it), web pages, images and PDFs in a browser pane, anything else in its own app. Right-click for Open In, Open Terminal Here, Reveal in Finder and Copy Path. Type to filter the folders that are open. The bar goes up a folder, back to the Group's folder, and shows hidden files.
+Double-click a file to open it: text in an editor beside the tree (the next file you open replaces it), web pages, images and PDFs in a browser pane, anything else in its own app. Right-click for Open In, Open Terminal Here, Reveal in Finder and Copy Path, and to rename (F2), create, duplicate or move files to the Trash (⌘⌫); ⌘Z undoes the last of those. Type to filter the folders that are open. The bar goes up a folder, back to the Group's folder, and shows hidden files.
 
 **Agents** show you a file in one with [`files_open`](/hammock/docs/reference/mcp/#files_open).
 

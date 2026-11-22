@@ -1733,6 +1733,8 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 		*pb.ClientMessage_BrowserNavigate, *pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_ClearLog, *pb.ClientMessage_StartAgent, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder,
 		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReviewCommand:
 		return true
+	case *pb.ClientMessage_FilesCommand:
+		return isFileOp(m.FilesCommand.Action) // renaming, moving, trashing; not what it shows
 	case *pb.ClientMessage_EditorCommand:
 		// Saving, reloading; not an agent showing you a line, or how it looks.
 		switch m.EditorCommand.Action {
@@ -1826,6 +1828,8 @@ func auditAction(msg *pb.ClientMessage) string {
 		return "diff-" + strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(msg.GetDiffCommand().Action.String(), "ACTION_"), "_", "-"))
 	case *pb.ClientMessage_EditorCommand:
 		return "editor-" + strings.ToLower(strings.TrimPrefix(msg.GetEditorCommand().Action.String(), "ACTION_"))
+	case *pb.ClientMessage_FilesCommand:
+		return "files-" + strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(msg.GetFilesCommand().Action.String(), "ACTION_"), "_", "-"))
 	}
 	return "other"
 }
@@ -1858,6 +1862,12 @@ func auditTarget(msg *pb.ClientMessage) string {
 		return m.EditorPush.PaneId
 	case *pb.ClientMessage_DiffCommand:
 		return m.DiffCommand.PaneId
+	case *pb.ClientMessage_FilesCommand:
+		fc := m.FilesCommand
+		if p := cmpOr(fc.Path, strings.Join(fc.Paths, ", ")); p != "" {
+			return fc.PaneId + " → " + p
+		}
+		return fc.PaneId
 	case *pb.ClientMessage_ReviewCommand:
 		return cmpOr(m.ReviewCommand.PaneId, m.ReviewCommand.ReviewId)
 	case *pb.ClientMessage_EditorCommand:

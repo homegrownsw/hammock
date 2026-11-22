@@ -11299,6 +11299,8 @@ public nonisolated struct Hammock_V1_FilesCommand: Sendable {
 
   public var on: Bool = false
 
+  public var name: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Action: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -11322,6 +11324,27 @@ public nonisolated struct Hammock_V1_FilesCommand: Sendable {
 
     /// path selected, its folders opened, and scrolled to
     case reveal // = 6
+
+    /// Changing files (filesops.go): each is selected once done, and can be undone.
+    case rename // = 7
+
+    /// an empty file name, in folder path
+    case createFile // = 8
+
+    /// a folder name, in folder path
+    case createFolder // = 9
+
+    /// paths moved to the Trash
+    case trash // = 10
+
+    /// paths moved into folder path
+    case move // = 11
+
+    /// paths copied into folder path ("name copy" where the name's taken)
+    case copy // = 12
+
+    /// the pane's last change undone
+    case undo // = 13
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -11337,6 +11360,13 @@ public nonisolated struct Hammock_V1_FilesCommand: Sendable {
       case 4: self = .select
       case 5: self = .showHidden
       case 6: self = .reveal
+      case 7: self = .rename
+      case 8: self = .createFile
+      case 9: self = .createFolder
+      case 10: self = .trash
+      case 11: self = .move
+      case 12: self = .copy
+      case 13: self = .undo
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -11350,6 +11380,13 @@ public nonisolated struct Hammock_V1_FilesCommand: Sendable {
       case .select: return 4
       case .showHidden: return 5
       case .reveal: return 6
+      case .rename: return 7
+      case .createFile: return 8
+      case .createFolder: return 9
+      case .trash: return 10
+      case .move: return 11
+      case .copy: return 12
+      case .undo: return 13
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -11363,6 +11400,13 @@ public nonisolated struct Hammock_V1_FilesCommand: Sendable {
       .select,
       .showHidden,
       .reveal,
+      .rename,
+      .createFile,
+      .createFolder,
+      .trash,
+      .move,
+      .copy,
+      .undo,
     ]
 
   }
@@ -29340,7 +29384,7 @@ nonisolated extension Hammock_V1_FilesChanged: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_FilesCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".FilesCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}action\0\u{1}path\0\u{1}paths\0\u{1}on\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}action\0\u{1}path\0\u{1}paths\0\u{1}on\0\u{1}name\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -29353,6 +29397,7 @@ nonisolated extension Hammock_V1_FilesCommand: SwiftProtobuf.Message, SwiftProto
       case 3: try { try decoder.decodeSingularStringField(value: &self.path) }()
       case 4: try { try decoder.decodeRepeatedStringField(value: &self.paths) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.on) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.name) }()
       default: break
       }
     }
@@ -29374,6 +29419,9 @@ nonisolated extension Hammock_V1_FilesCommand: SwiftProtobuf.Message, SwiftProto
     if self.on != false {
       try visitor.visitSingularBoolField(value: self.on, fieldNumber: 5)
     }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -29383,11 +29431,12 @@ nonisolated extension Hammock_V1_FilesCommand: SwiftProtobuf.Message, SwiftProto
     if lhs.path != rhs.path {return false}
     if lhs.paths != rhs.paths {return false}
     if lhs.on != rhs.on {return false}
+    if lhs.name != rhs.name {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 nonisolated extension Hammock_V1_FilesCommand.Action: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SET_ROOT\0\u{1}ACTION_EXPAND\0\u{1}ACTION_COLLAPSE\0\u{1}ACTION_SELECT\0\u{1}ACTION_SHOW_HIDDEN\0\u{1}ACTION_REVEAL\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SET_ROOT\0\u{1}ACTION_EXPAND\0\u{1}ACTION_COLLAPSE\0\u{1}ACTION_SELECT\0\u{1}ACTION_SHOW_HIDDEN\0\u{1}ACTION_REVEAL\0\u{1}ACTION_RENAME\0\u{1}ACTION_CREATE_FILE\0\u{1}ACTION_CREATE_FOLDER\0\u{1}ACTION_TRASH\0\u{1}ACTION_MOVE\0\u{1}ACTION_COPY\0\u{1}ACTION_UNDO\0")
 }

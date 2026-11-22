@@ -272,6 +272,7 @@ function editInput(r) {
     done = true
     const ed = editing
     editing = null
+    post({ type: "editing", on: false })
     const name = input.value.trim()
     if (ok && name && !name.includes(sep) && name !== "." && name !== "..") {
       if (ed.kind === "rename" && name !== base(ed.path)) post({ type: "rename", path: ed.path, name })
@@ -300,6 +301,7 @@ function editInput(r) {
 function startRename(path) {
   if (!canEdit() || !path || path.includes("\0")) return
   editing = { kind: "rename", path }
+  post({ type: "editing", on: true })
   refresh()
   scrollTo(path)
 }
@@ -312,8 +314,14 @@ function startCreate(folder) {
   else if (at && at.e) dir = parent(at.path)
   if (dir !== info.root && !expanded.has(dir)) setOpen(dir, true)
   editing = { kind: folder ? "folder" : "file", dir }
+  post({ type: "editing", on: true })
   refresh()
   scrollTo(dir + "\0new")
+}
+
+function duplicate() {
+  const p = selectedPaths()
+  if (p.length) post({ type: "move", paths: p, dest: parent(p[0]), copy: true })
 }
 
 // ---- selection, opening ----
@@ -525,6 +533,7 @@ list.addEventListener("keydown", (ev) => {
   else if (key === "F2" && r) startRename(r.path)
   else if (key === "a" && ev.metaKey) setSelection(rows.filter((x) => x.e).map((x) => x.path))
   else if (key === "f" && ev.metaKey) showFilter("")
+  else if (key === "z" && ev.metaKey && !ev.shiftKey && canEdit()) post({ type: "undo" })
   else if ((key === "Backspace" || key === "Delete") && ev.metaKey && canEdit()) {
     const p = selectedPaths()
     if (p.length) post({ type: "trash", paths: p })
@@ -640,6 +649,8 @@ function command(name) {
     case "collapseAll": return $("collapse").onclick()
     case "up": return goUp()
     case "selectAll": return setSelection(rows.filter((x) => x.e).map((x) => x.path))
+    case "duplicate": return duplicate()
+    case "trash": { const p = selectedPaths(); if (p.length && canEdit()) post({ type: "trash", paths: p }); return }
   }
 }
 

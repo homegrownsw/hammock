@@ -39,6 +39,8 @@ type filesHub struct {
 	d  *Daemon
 	mu sync.Mutex
 	st map[string]*filesState // by pane, while a client is attached
+	// Each pane's changes to undo (filesops.go), latest last.
+	undos map[string][]filesChange
 }
 
 type filesState struct {
@@ -233,6 +235,9 @@ func (h *filesHub) groupMoved(g *pb.Group) {
 // command answers FilesCommand. limit refuses paths the sender may not
 // browse (filesLimit).
 func (h *filesHub) command(m *pb.FilesCommand, limit func(string) error) error {
+	if isFileOp(m.Action) {
+		return h.fileOp(m, limit)
+	}
 	d := h.d
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -534,6 +539,7 @@ func (h *filesHub) detach(c *conn, id string) {
 func (h *filesHub) paneClosed(id string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	delete(h.undos, id)
 	if s := h.st[id]; s != nil {
 		s.stop()
 		delete(h.st, id)

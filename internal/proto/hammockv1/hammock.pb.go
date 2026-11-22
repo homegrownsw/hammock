@@ -1606,27 +1606,49 @@ const (
 	FilesCommand_ACTION_SELECT      FilesCommand_Action = 4 // paths the selection
 	FilesCommand_ACTION_SHOW_HIDDEN FilesCommand_Action = 5 // on: dotfiles shown
 	FilesCommand_ACTION_REVEAL      FilesCommand_Action = 6 // path selected, its folders opened, and scrolled to
+	// Changing files (filesops.go): each is selected once done, and can be undone.
+	FilesCommand_ACTION_RENAME        FilesCommand_Action = 7  // path renamed to name, in its folder
+	FilesCommand_ACTION_CREATE_FILE   FilesCommand_Action = 8  // an empty file name, in folder path
+	FilesCommand_ACTION_CREATE_FOLDER FilesCommand_Action = 9  // a folder name, in folder path
+	FilesCommand_ACTION_TRASH         FilesCommand_Action = 10 // paths moved to the Trash
+	FilesCommand_ACTION_MOVE          FilesCommand_Action = 11 // paths moved into folder path
+	FilesCommand_ACTION_COPY          FilesCommand_Action = 12 // paths copied into folder path ("name copy" where the name's taken)
+	FilesCommand_ACTION_UNDO          FilesCommand_Action = 13 // the pane's last change undone
 )
 
 // Enum value maps for FilesCommand_Action.
 var (
 	FilesCommand_Action_name = map[int32]string{
-		0: "ACTION_UNSPECIFIED",
-		1: "ACTION_SET_ROOT",
-		2: "ACTION_EXPAND",
-		3: "ACTION_COLLAPSE",
-		4: "ACTION_SELECT",
-		5: "ACTION_SHOW_HIDDEN",
-		6: "ACTION_REVEAL",
+		0:  "ACTION_UNSPECIFIED",
+		1:  "ACTION_SET_ROOT",
+		2:  "ACTION_EXPAND",
+		3:  "ACTION_COLLAPSE",
+		4:  "ACTION_SELECT",
+		5:  "ACTION_SHOW_HIDDEN",
+		6:  "ACTION_REVEAL",
+		7:  "ACTION_RENAME",
+		8:  "ACTION_CREATE_FILE",
+		9:  "ACTION_CREATE_FOLDER",
+		10: "ACTION_TRASH",
+		11: "ACTION_MOVE",
+		12: "ACTION_COPY",
+		13: "ACTION_UNDO",
 	}
 	FilesCommand_Action_value = map[string]int32{
-		"ACTION_UNSPECIFIED": 0,
-		"ACTION_SET_ROOT":    1,
-		"ACTION_EXPAND":      2,
-		"ACTION_COLLAPSE":    3,
-		"ACTION_SELECT":      4,
-		"ACTION_SHOW_HIDDEN": 5,
-		"ACTION_REVEAL":      6,
+		"ACTION_UNSPECIFIED":   0,
+		"ACTION_SET_ROOT":      1,
+		"ACTION_EXPAND":        2,
+		"ACTION_COLLAPSE":      3,
+		"ACTION_SELECT":        4,
+		"ACTION_SHOW_HIDDEN":   5,
+		"ACTION_REVEAL":        6,
+		"ACTION_RENAME":        7,
+		"ACTION_CREATE_FILE":   8,
+		"ACTION_CREATE_FOLDER": 9,
+		"ACTION_TRASH":         10,
+		"ACTION_MOVE":          11,
+		"ACTION_COPY":          12,
+		"ACTION_UNDO":          13,
 	}
 )
 
@@ -26107,6 +26129,7 @@ type FilesCommand struct {
 	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
 	Paths         []string               `protobuf:"bytes,4,rep,name=paths,proto3" json:"paths,omitempty"`
 	On            bool                   `protobuf:"varint,5,opt,name=on,proto3" json:"on,omitempty"`
+	Name          string                 `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -26174,6 +26197,13 @@ func (x *FilesCommand) GetOn() bool {
 		return x.On
 	}
 	return false
+}
+
+func (x *FilesCommand) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
 }
 
 var File_hammock_v1_hammock_proto protoreflect.FileDescriptor
@@ -28416,13 +28446,14 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"=\n" +
 	"\fFilesChanged\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x12\x14\n" +
-	"\x05paths\x18\x02 \x03(\tR\x05paths\"\xb8\x02\n" +
+	"\x05paths\x18\x02 \x03(\tR\x05paths\"\xd6\x03\n" +
 	"\fFilesCommand\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x127\n" +
 	"\x06action\x18\x02 \x01(\x0e2\x1f.hammock.v1.FilesCommand.ActionR\x06action\x12\x12\n" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12\x14\n" +
 	"\x05paths\x18\x04 \x03(\tR\x05paths\x12\x0e\n" +
-	"\x02on\x18\x05 \x01(\bR\x02on\"\x9b\x01\n" +
+	"\x02on\x18\x05 \x01(\bR\x02on\x12\x12\n" +
+	"\x04name\x18\x06 \x01(\tR\x04name\"\xa5\x02\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fACTION_SET_ROOT\x10\x01\x12\x11\n" +
@@ -28430,7 +28461,15 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0fACTION_COLLAPSE\x10\x03\x12\x11\n" +
 	"\rACTION_SELECT\x10\x04\x12\x16\n" +
 	"\x12ACTION_SHOW_HIDDEN\x10\x05\x12\x11\n" +
-	"\rACTION_REVEAL\x10\x06*]\n" +
+	"\rACTION_REVEAL\x10\x06\x12\x11\n" +
+	"\rACTION_RENAME\x10\a\x12\x16\n" +
+	"\x12ACTION_CREATE_FILE\x10\b\x12\x18\n" +
+	"\x14ACTION_CREATE_FOLDER\x10\t\x12\x10\n" +
+	"\fACTION_TRASH\x10\n" +
+	"\x12\x0f\n" +
+	"\vACTION_MOVE\x10\v\x12\x0f\n" +
+	"\vACTION_COPY\x10\f\x12\x0f\n" +
+	"\vACTION_UNDO\x10\r*]\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vROLE_VIEWER\x10\x01\x12\x0f\n" +

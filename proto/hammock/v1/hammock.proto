@@ -3025,9 +3025,18 @@ message FilesCommand {
     ACTION_SELECT = 4;       // paths the selection
     ACTION_SHOW_HIDDEN = 5;  // on: dotfiles shown
     ACTION_REVEAL = 6;       // path selected, its folders opened, and scrolled to
+    // Changing files (filesops.go): each is selected once done, and can be undone.
+    ACTION_RENAME = 7;         // path renamed to name, in its folder
+    ACTION_CREATE_FILE = 8;    // an empty file name, in folder path
+    ACTION_CREATE_FOLDER = 9;  // a folder name, in folder path
+    ACTION_TRASH = 10;         // paths moved to the Trash
+    ACTION_MOVE = 11;          // paths moved into folder path
+    ACTION_COPY = 12;          // paths copied into folder path ("name copy" where the name's taken)
+    ACTION_UNDO = 13;          // the pane's last change undone
   }
   Action action = 2;
   string path = 3;
   repeated string paths = 4;
   bool on = 5;
+  string name = 6;
 }
