@@ -440,6 +440,10 @@ type closeArgs struct {
 	PaneID string `json:"pane_id"`
 }
 
+type rerunArgs struct {
+	PaneID string `json:"pane_id" jsonschema:"a terminal pane whose command has exited"`
+}
+
 func (s *mcpServer) register(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_panes",
@@ -753,6 +757,47 @@ func (s *mcpServer) register(server *mcp.Server) {
 		}
 		return textResult("closed"), nil, nil
 	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "rerun_pane",
+		Description: "Run a pane's command again in the same pane, after it ended: a dev server or test watcher you started that crashed or failed. Its last screen stays above the new run's, and an agent's pane resumes the agent's session. Only for a terminal pane whose program has exited: a create_pane pane without close_on_exit keeps a shell running after its command, so type the command there again with send_to_pane instead. Not for a pane that's asleep, or a scheduled run (schedule_run runs its task again). Running a pane you didn't create asks the user.",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, a rerunArgs) (*mcp.CallToolResult, any, error) {
+		w, err := s.world(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		p := w.panes[a.PaneID]
+		if p == nil {
+			return nil, nil, fmt.Errorf("no pane %q", a.PaneID)
+		}
+		// Said before asking the user, who'd otherwise allow it for nothing.
+		if why := whyNotRerun(p); why != "" {
+			return nil, nil, errors.New("it can't run again: " + why)
+		}
+		if err := s.ensure(ctx, s.owns(w, a.PaneID), "send", a.PaneID, "run it again"); err != nil {
+			return nil, nil, err
+		}
+		if _, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RestartPane{RestartPane: &pb.RestartPane{PaneId: a.PaneID}}}); err != nil {
+			return nil, nil, err
+		}
+		return textResult("running again"), nil, nil
+	})
+}
+
+// whyNotRerun is why pane p can't run again, as the daemon would refuse
+// it (whyNotRestartLocked), or "" if it can.
+func whyNotRerun(p *pb.Pane) string {
+	switch {
+	case p.Kind != pb.PaneKind_PANE_KIND_TERMINAL && p.Kind != pb.PaneKind_PANE_KIND_UNSPECIFIED:
+		return "only a terminal can run again"
+	case p.Asleep:
+		return "it's asleep: wake it instead (hmk wake)"
+	case !p.Exited:
+		return "it's still running"
+	case p.ScheduleRunId != "":
+		return "it's a scheduled run: run its task again with schedule_run"
+	}
+	return ""
 }
 
 func lastLines(s string, n int) string {
