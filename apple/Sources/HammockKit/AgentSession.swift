@@ -568,12 +568,12 @@ public struct PendingSend: Identifiable {
 /// it's let go, so a view keeps its session for as long as its state lives,
 /// whatever order SwiftUI says it appeared and disappeared in.
 @MainActor
-final class AgentLease {
-    let session: AgentSession
+public final class AgentLease {
+    public let session: AgentSession
     private let model: AppModel
     private let paneID, subagent, shell: String
 
-    init(_ model: AppModel, _ paneID: String, subagent: String = "", shell: String = "") {
+    public init(_ model: AppModel, _ paneID: String, subagent: String = "", shell: String = "") {
         self.model = model
         self.paneID = paneID
         self.subagent = subagent

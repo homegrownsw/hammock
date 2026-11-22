@@ -24,10 +24,22 @@ extension AppModel {
     /// as one-colour templates unless told not to), else the default symbol.
     /// Every Group has one, so their names line up.
     public func groupMenuIcon(_ g: WorkspaceGroup) -> Image {
-        if !g.icon.isEmpty, let e = emojiMenuImage(g.icon) { return Self.image(e) }
-        if let p = groupMenuImage(g) { return Self.image(p) }
-        return Image(systemName: "square.stack.3d.up")
+        groupMenuPicture(g).map(Self.image) ?? Image(systemName: Self.groupMenuSymbol)
     }
+
+    func groupMenuPicture(_ g: WorkspaceGroup) -> PlatformImage? {
+        if !g.icon.isEmpty, let e = emojiMenuImage(g.icon) { return e }
+        return groupMenuImage(g)
+    }
+
+    #if canImport(UIKit)
+    /// The same as an image, for a menu built in UIKit: nil for the default
+    /// symbol (`groupMenuSymbol`).
+    public func groupMenuUIImage(_ g: WorkspaceGroup) -> UIImage? { groupMenuPicture(g) }
+    #endif
+
+    /// A Group's menu icon when it has no emoji or picture.
+    public static let groupMenuSymbol = "square.stack.3d.up"
 
     private static func image(_ i: PlatformImage) -> Image {
         #if os(macOS)

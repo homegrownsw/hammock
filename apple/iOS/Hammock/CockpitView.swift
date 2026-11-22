@@ -62,6 +62,8 @@ struct SessionsView: View {
     let model: AppModel
     let session: Session
     @Environment(\.phoneTheme) private var theme
+    /// Allow and Deny wait for the Mac (the connection bar says why).
+    @Environment(\.linkDown) private var linkDown
     @State private var path: [String] = []
     /// The session finder is up.
     @State private var finding = false
@@ -186,6 +188,12 @@ struct SessionsView: View {
             .onReceive(NotificationCenter.default.publisher(for: DemoDirector.navigate)) { n in
                 if let p = n.userInfo?["path"] as? [String] { path = p }
             }
+            // Dev aid: HMK_DEBUG_HOLD_PREVIEW=<pane id> shows its touch-and-hold preview.
+            .overlay {
+                if let id = ProcessInfo.processInfo.environment["HMK_DEBUG_HOLD_PREVIEW"], model.panes[id] != nil {
+                    HoldPreviewDebug(model: model, paneID: id)
+                }
+            }
             #endif
             .showsStartedAgents(origin: "sessions", path: $path)
             // A notification opened: its pane, once the Mac's state is here
@@ -214,9 +222,9 @@ struct SessionsView: View {
 
     /// Touch and hold: the session's pane, large and live (tap it to open
     /// it), over Allow and Deny for a permission prompt and the pane's menu.
-    private func holdMenu(paneID: String) -> HoldMenu<SessionHoldMenu> {
-        HoldMenu(model: model, paneID: paneID, open: { path = [paneID] }) {
-            SessionHoldMenu(model: model, paneID: paneID) { closing = $0 }
+    private func holdMenu(paneID: String) -> HoldMenu {
+        HoldMenu(model: model, paneID: paneID, open: { path = [paneID] }) { [model, linkDown] in
+            sessionHoldMenu(model: model, paneID: paneID, linkDown: linkDown) { closing = $0 }
         }
     }
 
@@ -281,27 +289,6 @@ struct SessionsView: View {
             out[keyPath: k].sort { $0.pane.agent.stateSinceUnixMs > $1.pane.agent.stateSinceUnixMs }
         }
         return out
-    }
-}
-
-/// A row's touch-and-hold menu, with its pane's preview above it (tap the
-/// preview to open it); the menu alone without a pane to show.
-struct HoldMenu<Items: View>: ViewModifier {
-    let model: AppModel
-    let paneID: String?
-    let open: () -> Void
-    @ViewBuilder let menu: () -> Items
-
-    func body(content: Content) -> some View {
-        if let paneID, model.panes[paneID] != nil {
-            content.contextMenu(menuItems: menu) {
-                PaneHoldPreview(model: model, paneID: paneID)
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: open)
-            }
-        } else {
-            content.contextMenu(menuItems: menu)
-        }
     }
 }
 
@@ -443,8 +430,8 @@ struct GroupsView: View {
                             }
                             // Touch and hold: the tab's pane, large and live (tap it to open the tab).
                             .modifier(HoldMenu(model: model, paneID: previewPane(of: tab), open: { path = [tab.id] }) {
-                                TabActions(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil,
-                                           closing: $closingTab)
+                                TabActions.entries(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil,
+                                                   askClose: { closingTab = $0 })
                             })
                         }
                         .onMove { from, to in

@@ -50,37 +50,43 @@ struct TabActions: View {
     @Binding var closing: WorkspaceTab?
 
     var body: some View {
-        Button("Rename…", systemImage: "pencil", action: rename)
+        let closing = $closing
+        MenuEntries(entries: Self.entries(model: model, tab: tab, rename: rename, newTab: newTab) { closing.wrappedValue = $0 })
+    }
+
+    /// Its items, for SwiftUI's menus (body) and UIKit's (a row's HoldMenu).
+    /// `askClose`: closing it needs a yes (closeTabConfirmation).
+    static func entries(model: AppModel, tab: WorkspaceTab, rename: @escaping () -> Void, newTab: (() -> Void)?,
+                        askClose: @escaping (WorkspaceTab) -> Void) -> [MenuEntry] {
+        var out: [MenuEntry] = [.button("Rename…", systemImage: "pencil", rename)]
         if let newTab {
-            Button("New Tab in Group", systemImage: "plus", action: newTab)
+            out.append(.button("New Tab in Group", systemImage: "plus", newTab))
             if let h = model.defaultAgent(in: model.group(of: tab)) {
-                Button(AppModel.defaultAgentTitle(h), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: tab.groupID) }
+                out.append(.button(AppModel.defaultAgentTitle(h), systemImage: "sparkles") { AgentStarter.shared.startDefault(model, groupID: tab.groupID) })
             }
-            Button("Start an Agent…", systemImage: "sparkles") { AgentStarter.shared.start(groupID: tab.groupID) }
+            out.append(.button("Start an Agent…", systemImage: "sparkles") { AgentStarter.shared.start(groupID: tab.groupID) })
         }
         // Tabs move between Groups on the same Mac.
         let host = model.group(of: tab)?.hostUserID
         let others = model.groups.filter { $0.id != tab.groupID && $0.hostUserID == host && $0.canAddTabs }
         if !others.isEmpty {
-            Menu("Move to Group", systemImage: "folder") {
-                ForEach(others) { g in
-                    Button { model.moveTab(tab.id, to: g.id, index: g.tabIds.count) } label: {
-                        // Its emoji, picture or the default, as in the sidebar.
-                        Label { Text(model.title(of: g)) } icon: { model.groupMenuIcon(g) }
-                    }
-                }
-            }
+            out.append(.submenu("Move to Group", systemImage: "folder", others.map { g in
+                // Its emoji, picture or the default, as in the sidebar.
+                MenuEntry(title: model.title(of: g), icon: model.groupMenuUIImage(g).map { .picture($0) } ?? .symbol(AppModel.groupMenuSymbol),
+                          kind: .action { model.moveTab(tab.id, to: g.id, index: g.tabIds.count) })
+            }))
         }
         // The agent the row stands for, at rest or asleep.
         if let p = model.shownAgentPane(of: tab), p.asleep || p.canSleep, model.group(of: tab)?.canDrive != false {
             if p.asleep {
-                Button("Wake Agent", systemImage: "sun.max") { model.sleepPane(p.id, wake: true) }
+                out.append(.button("Wake Agent", systemImage: "sun.max") { model.sleepPane(p.id, wake: true) })
             } else {
-                Button("Put Agent to Sleep", systemImage: "moon.zzz") { model.sleepPane(p.id) }
+                out.append(.button("Put Agent to Sleep", systemImage: "moon.zzz") { model.sleepPane(p.id) })
             }
         }
-        Divider()
-        Button("Close Tab", systemImage: "xmark", role: .destructive) { requestCloseTab(model, tab) { closing = $0 } }
+        out.append(.divider)
+        out.append(.button("Close Tab", systemImage: "xmark", destructive: true) { requestCloseTab(model, tab, ask: askClose) })
+        return out
     }
 }
 

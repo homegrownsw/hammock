@@ -56,12 +56,16 @@ struct TerminalRepresentable: UIViewRepresentable {
     /// takes no touches and has nowhere to send input, focus or a size,
     /// so it can't resize the pane on the Mac.
     var preview = false
+    /// Between the view's edges and its text (a preview's; the font fits
+    /// inside it): a touch and hold's large one keeps it off the corners.
+    var inset: CGFloat = 4
 
     func makeUIView(context: Context) -> TerminalUIView {
         let v = TerminalUIView()
         let s = model.acquireSession(paneID)
         v.session = s
         v.preview = preview
+        v.padding = inset
         v.release = { [model] id in model.releaseSession(id) }
         if preview {
             v.isUserInteractionEnabled = false
@@ -183,7 +187,11 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
     /// view shows its bottom rows, where the prompt and the latest output are.
     var preview = false
 
-    private let padding: CGFloat = 4
+    /// Around the grid: the font fits inside it. A preview may ask for more
+    /// (TerminalRepresentable's inset), to keep its text off rounded corners.
+    var padding: CGFloat = 4 {
+        didSet { if padding != oldValue { setNeedsDisplay() } }
+    }
     private var ctrlLatched = false
     /// ⌥ from the key bar: the next key goes with Esc first (meta).
     private var altLatched = false
@@ -880,7 +888,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         for (y, row) in f.cells.enumerated() {
             let top = origin.y + CGFloat(y) * m.ch
             if top > bounds.maxY { break }
-            if top + m.ch < bounds.minY { continue }
+            if !showsRow(at: top, height: m.ch, in: usable) { continue }
             scene.rows.append((top, layout.line(row)))
         }
         for img in session.engine.images() {
@@ -906,6 +914,14 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         let height = CGFloat(min(cursor.map { $0 + 1 } ?? rows, rows)) * cellHeight
         if preview, height + padding * 2 > usable.height { origin.y = usable.maxY - padding - height }
         return origin
+    }
+
+    /// Whether the row at `top` is drawn: any of it on screen, or for a
+    /// preview, all of it inside the padding (a row cut by the edge ran into
+    /// the rounded corners).
+    private func showsRow(at top: CGFloat, height: CGFloat, in usable: CGRect) -> Bool {
+        guard preview else { return top + height >= bounds.minY }
+        return top >= usable.minY + padding - 0.5 && top + height <= usable.maxY - padding + 0.5
     }
 
     private func color(_ c: RGB, alpha: CGFloat = 1) -> UIColor {
@@ -937,7 +953,7 @@ final class TerminalUIView: UIView, UITextInput, UIEditMenuInteractionDelegate {
         for (y, row) in f.cells.enumerated() {
             let top = origin.y + CGFloat(y) * m.ch
             if top > bounds.maxY { break }
-            if top + m.ch < bounds.minY { continue }
+            if !showsRow(at: top, height: m.ch, in: usable) { continue }
             for (x, c) in row.enumerated() {
                 let bg = c.selected ? theme.selection : (c.inverse ? (c.fg ?? f.foreground) : c.bg)
                 if let bg {

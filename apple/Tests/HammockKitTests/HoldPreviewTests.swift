@@ -16,10 +16,10 @@ final class HoldPreviewTests: XCTestCase {
         XCTAssertEqual(HoldPreview.size(room: room, cols: 200, rows: 20).height, 267)
         // Tall: no taller than 60% of it.
         XCTAssertEqual(HoldPreview.size(room: room, cols: 40, rows: 100).height, 480)
-        // In between: its own shape, and the name above it.
+        // In between: its own shape, inside the padding, and the name above it.
         let s = HoldPreview.size(room: room, cols: 100, rows: 50)
         XCTAssertEqual(s.width, 370)
-        XCTAssertEqual(s.height, (370 * 50 / 60 + 40).rounded())
+        XCTAssertEqual(s.height, ((370 - 44) * 50 / 60 + 44 + 24).rounded())
     }
 
     private func prompt(_ edit: (inout AttentionItem) -> Void = { _ in }) -> AttentionItem {

@@ -343,107 +343,82 @@ struct PaneMenu: View {
     let confirmClose: (Pane) -> Void
 
     var body: some View {
+        MenuEntries(entries: Self.entries(model: model, paneID: paneID, floating: floating, confirmClose: confirmClose))
+    }
+
+    /// Its items, for SwiftUI's menus (body) and UIKit's (a row's HoldMenu).
+    static func entries(model: AppModel, paneID: String, floating: FloatingPane?, confirmClose: @escaping (Pane) -> Void) -> [MenuEntry] {
+        var out: [MenuEntry] = []
         let pane = model.panes[paneID]
         let drive = model.group(ofPane: paneID)?.canDrive != false
         if let pane, pane.hasAgent, !pane.exited {
-            Section {
-                if pane.agent.state == .working || pane.agent.state == .needsInput {
-                    Button("Interrupt", systemImage: "stop.circle") { model.send(paneID, Data([0x1B])) }
-                }
-                if AgentCatalog.canSwitch(pane.agent.harness) {
-                    ForEach(AgentCatalog.switchable, id: \.id) { k in
-                        Button("Continue in \(AgentCatalog.shortName(of: k.id))", systemImage: "arrow.triangle.swap") { model.switchAgent(paneID, to: k.id) }
-                            .disabled(pane.agent.harness == k.id)
-                    }
-                }
-                if pane.asleep {
-                    Button("Wake Agent", systemImage: "sun.max") { model.sleepPane(paneID, wake: true) }
-                } else if pane.canSleep {
-                    Button("Put Agent to Sleep", systemImage: "moon.zzz") { model.sleepPane(paneID) }
+            var agent: [MenuEntry] = []
+            if pane.agent.state == .working || pane.agent.state == .needsInput {
+                agent.append(.button("Interrupt", systemImage: "stop.circle") { model.send(paneID, Data([0x1B])) })
+            }
+            if AgentCatalog.canSwitch(pane.agent.harness) {
+                for k in AgentCatalog.switchable {
+                    agent.append(.button("Continue in \(AgentCatalog.shortName(of: k.id))", systemImage: "arrow.triangle.swap") { model.switchAgent(paneID, to: k.id) }
+                        .disabled(pane.agent.harness == k.id))
                 }
             }
-            .disabled(!drive)
+            if pane.asleep {
+                agent.append(.button("Wake Agent", systemImage: "sun.max") { model.sleepPane(paneID, wake: true) })
+            } else if pane.canSleep {
+                agent.append(.button("Put Agent to Sleep", systemImage: "moon.zzz") { model.sleepPane(paneID) })
+            }
+            out.append(.section(agent).disabled(!drive))
             if let url = pane.sessionURL {
-                Button("Copy Session Link", systemImage: "link") { UIPasteboard.general.url = url }
+                out.append(.button("Copy Session Link", systemImage: "link") { UIPasteboard.general.url = url })
             }
         }
         // A terminal this phone has on screen (or kept): its text as it shows.
         if model.hasScreen(paneID) {
-            Button("Copy Screen", systemImage: "doc.on.doc") { if let text = model.screenText(paneID) { UIPasteboard.general.string = text } }
+            out.append(.button("Copy Screen", systemImage: "doc.on.doc") { if let text = model.screenText(paneID) { UIPasteboard.general.string = text } })
         }
-        Section {
-            if let f = floating {
-                if f.minimised {
-                    Button("Restore on the Mac", systemImage: "macwindow") { model.arrange(paneID, .restore) }
-                } else {
-                    Button("Minimise on the Mac", systemImage: "minus.rectangle") { model.arrange(paneID, .minimise) }
-                }
-                Button("Dock in the Splits", systemImage: "rectangle.split.2x1") { model.arrange(paneID, .dock) }
-            } else if let tab = pane.flatMap({ model.tab(of: $0) }), model.panes(in: tab).count > 1 {
-                Button("Move to New Tab", systemImage: "rectangle.badge.plus") { Task { await model.breakOut(paneID) } }
+        var place: [MenuEntry] = []
+        if let f = floating {
+            if f.minimised {
+                place.append(.button("Restore on the Mac", systemImage: "macwindow") { model.arrange(paneID, .restore) })
+            } else {
+                place.append(.button("Minimise on the Mac", systemImage: "minus.rectangle") { model.arrange(paneID, .minimise) })
             }
-            Button("Close Pane", systemImage: "xmark", role: .destructive) {
-                if let pane, closeWarning(pane) != nil { confirmClose(pane) } else { Task { await model.closePane(paneID) } }
-            }
+            place.append(.button("Dock in the Splits", systemImage: "rectangle.split.2x1") { model.arrange(paneID, .dock) })
+        } else if let tab = pane.flatMap({ model.tab(of: $0) }), model.panes(in: tab).count > 1 {
+            place.append(.button("Move to New Tab", systemImage: "rectangle.badge.plus") { Task { await model.breakOut(paneID) } })
         }
-        .disabled(!drive)
+        place.append(.button("Close Pane", systemImage: "xmark", destructive: true) {
+            if let pane, closeWarning(pane) != nil { confirmClose(pane) } else { Task { await model.closePane(paneID) } }
+        })
+        out.append(.section(place).disabled(!drive))
+        return out
     }
 }
 
 /// A session's touch-and-hold menu (its row in Sessions): Allow and Deny
 /// first while its agent waits on a permission prompt, as its card has them,
-/// then the pane's own actions.
-struct SessionHoldMenu: View {
-    let model: AppModel
-    let paneID: String
-    let confirmClose: (Pane) -> Void
-    @Environment(\.linkDown) private var linkDown
-
-    var body: some View {
-        if let prompt = model.promptAnswers(forPane: paneID) {
-            let item = prompt.item
-            Section {
-                ForEach(prompt.answers, id: \.self) { a in
-                    switch a {
-                    case .allow: Button("Allow", systemImage: "checkmark") { answer(item, a) }
-                    case .allowForSchedule: Button("Always Allow for This Schedule", systemImage: "clock.badge.checkmark") { answer(item, a) }
-                    case .deny: Button("Deny", systemImage: "hand.raised") { answer(item, a) }
-                    }
-                }
-            }
-            .disabled(linkDown || model.group(ofPane: paneID)?.canDrive == false)
+/// then the pane's own actions. `linkDown`: Allow and Deny wait for the Mac.
+@MainActor
+func sessionHoldMenu(model: AppModel, paneID: String, linkDown: Bool, confirmClose: @escaping (Pane) -> Void) -> [MenuEntry] {
+    var out: [MenuEntry] = []
+    if let prompt = model.promptAnswers(forPane: paneID) {
+        let item = prompt.item
+        func answer(_ a: PromptAnswer) {
+            a == .deny ? Haptics.refuse() : Haptics.success()
+            withAnimation { model.decide(item, a.decision) }
         }
-        PaneMenu(model: model, paneID: paneID, floating: floating, confirmClose: confirmClose)
+        let answers: [MenuEntry] = prompt.answers.map { a in
+            switch a {
+            case .allow: .button("Allow", systemImage: "checkmark") { answer(a) }
+            case .allowForSchedule: .button("Always Allow for This Schedule", systemImage: "clock.badge.checkmark") { answer(a) }
+            case .deny: .button("Deny", systemImage: "hand.raised") { answer(a) }
+            }
+        }
+        out.append(.section(answers).disabled(linkDown || model.group(ofPane: paneID)?.canDrive == false))
     }
-
-    /// Its place on the Mac, when it floats over its tab.
-    private var floating: FloatingPane? {
-        model.panes[paneID].flatMap { model.tab(of: $0) }?.floating.first { $0.paneID == paneID }
-    }
-
-    private func answer(_ item: AttentionItem, _ a: PromptAnswer) {
-        a == .deny ? Haptics.refuse() : Haptics.success()
-        withAnimation { model.decide(item, a.decision) }
-    }
-}
-
-/// A row's touch-and-hold preview (Sessions, Groups): its pane, large and
-/// live, the shape of the pane where it has one. Drawn, never driven: its
-/// terminal sends no size or keys (TerminalRepresentable's preview), and an
-/// agent shows its terminal rather than starting a watch of its agent.
-struct PaneHoldPreview: View {
-    let model: AppModel
-    let paneID: String
-
-    var body: some View {
-        let p = model.panes[paneID]
-        let grid = p.map { ![.browser, .simulator, .editor, .diff].contains($0.kind) } ?? false
-        let screen = UIApplication.shared.activeScreen?.bounds.size ?? CGSize(width: 390, height: 844)
-        let size = HoldPreview.size(room: CGSize(width: screen.width - 32, height: screen.height),
-                                    cols: grid ? Int(p?.cols ?? 0) : 0, rows: grid ? Int(p?.rows ?? 0) : 0)
-        LiveTile(model: model, paneID: paneID, current: false, tailsAgent: false)
-            .frame(width: size.width, height: size.height)
-    }
+    // Its place on the Mac, when it floats over its tab.
+    let floating = model.panes[paneID].flatMap { model.tab(of: $0) }?.floating.first { $0.paneID == paneID }
+    return out + PaneMenu.entries(model: model, paneID: paneID, floating: floating, confirmClose: confirmClose)
 }
 
 /// Why closing a pane needs a yes, if it does: an agent at work (unless
@@ -600,10 +575,13 @@ struct LiveTile: View {
     let paneID: String
     let current: Bool
     var minimised = false
-    /// An agent pane shows its conversation's latest (watching its agent),
-    /// as Exposé's tiles do; false, its terminal, as a touch and hold's
-    /// preview does, so a moment's look starts no watch of its own.
-    var tailsAgent = true
+    /// A touch and hold's preview: roomier, its text clear of the rounded
+    /// corners (HoldPreview's edge and inset).
+    var roomy = false
+    /// The agent's session the tile shows, held by whoever shows the tile (a
+    /// touch and hold's preview, for as long as it's up). Nil: an agent pane's
+    /// tile watches its agent itself while it shows, as Exposé's do.
+    var agent: AgentSession?
     @Environment(\.phoneTheme) private var theme
 
     private var pane: Pane? { model.panes[paneID] }
@@ -625,7 +603,7 @@ struct LiveTile: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
-        .padding(8)
+        .padding(roomy ? HoldPreview.edge : 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(current ? theme.accent : .clear, lineWidth: 2.5))
@@ -644,13 +622,22 @@ struct LiveTile: View {
             case .diff:
                 DiffTile(pane: p)
             default:
-                if tailsAgent, !p.isLog, model.supportsAgentView(p), AgentViewPrefs.showsAgent(p.id) {
-                    AgentTailTile(model: model, paneID: p.id)
+                if model.showsAgentTile(p) {
+                    AgentTailTile(model: model, paneID: p.id, held: agent)
+                        .padding(roomy ? HoldPreview.inset : 0)
                 } else {
-                    TerminalRepresentable(model: model, paneID: p.id, active: false, preview: true)
+                    TerminalRepresentable(model: model, paneID: p.id, active: false, preview: true, inset: roomy ? HoldPreview.inset : 4)
                 }
             }
         }
+    }
+}
+
+extension AppModel {
+    /// Whether a pane's tile (Exposé's, a touch and hold's preview) shows its
+    /// agent's latest rather than its terminal: as the phone shows the pane.
+    func showsAgentTile(_ p: Pane) -> Bool {
+        !p.isLog && supportsAgentView(p) && AgentViewPrefs.showsAgent(p.id)
     }
 }
 
@@ -659,8 +646,13 @@ struct LiveTile: View {
 private struct AgentTailTile: View {
     let model: AppModel
     let paneID: String
-    @State private var session: AgentSession?
+    /// Its session, when what shows the tile holds it; else the tile watches
+    /// the agent while it shows (`own`).
+    var held: AgentSession?
+    @State private var own: AgentSession?
     @Environment(\.phoneTheme) private var theme
+
+    private var session: AgentSession? { held ?? own }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -694,10 +686,10 @@ private struct AgentTailTile: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .onAppear { session = model.acquireAgent(paneID) }
+        .onAppear { if held == nil, own == nil { own = model.acquireAgent(paneID) } }
         .onDisappear {
-            model.releaseAgent(paneID)
-            session = nil
+            if own != nil { model.releaseAgent(paneID) }
+            own = nil
         }
     }
 }
