@@ -74,6 +74,7 @@
       "kind": "group",
       "path": "../Sources/HammockKit",
       "children": [
+        { "path": "AgentMark.swift", "target-membership": [ "HammockWidgets/compile-sources" ] },
         { "path": "LiveActivity.swift", "target-membership": [ "HammockNotify/compile-sources", "HammockWidgets/compile-sources" ] },
       ],
     }, {

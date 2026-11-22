@@ -10,3 +10,6 @@ PRODUCT_BUNDLE_IDENTIFIER = com.homegrownsw.hammock.widgets
 SWIFT_VERSION = 5.0
 GENERATE_INFOPLIST_FILE = YES
 INFOPLIST_KEY_CFBundleDisplayName = Hammock
+
+// HammockKit files it compiles (AgentMark) leave out what needs the rest of it.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) HAMMOCK_WIDGETS

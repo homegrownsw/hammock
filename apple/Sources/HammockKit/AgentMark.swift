@@ -117,7 +117,14 @@ public struct AgentMark: View {
     }
 
     /// The agent's name as people say it: "Claude", "Codex".
+    #if HAMMOCK_WIDGETS
+    /// The widgets have no catalogue (they compile this file alone).
+    static func name(of harness: String) -> String {
+        ["claude": "Claude", "codex": "Codex"][harness] ?? harness.capitalized
+    }
+    #else
     @MainActor public static func name(of harness: String) -> String { AgentCatalog.shortName(of: harness) }
+    #endif
 
     /// A monogram's colour: picked by a hash of the id that's the same on
     /// every run and device (Swift's own hash isn't).
