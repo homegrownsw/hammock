@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -28,8 +29,7 @@ func TestPushWhileAway(t *testing.T) {
 	sent := make(chan map[string]string, 4)
 	cleared := make(chan map[string]string, 16)
 	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]string
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		body := relayBody(r)
 		switch r.URL.Path {
 		case "/send":
 			sent <- body
@@ -91,7 +91,7 @@ func TestPushWhileAway(t *testing.T) {
 		}
 	}
 	if _, err := phone.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RegisterPush{RegisterPush: &pb.RegisterPush{
-		RelayUrl: relay.URL, RelayId: "relay-id-1", Key: key, Events: []string{"needs_input"},
+		RelayUrl: relay.URL, RelayId: "relay-id-1", Key: key, Events: []string{"needs_input", badgeEvent},
 	}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,8 +134,13 @@ func TestPushWhileAway(t *testing.T) {
 	}
 	note := open(got["payload"])
 	if note.Title != "Map Judder" || note.Subtitle != "Atlas" || note.Pane != paneID || note.Host == "" ||
-		note.ID != "at_"+paneID || !note.Live || time.Since(time.Unix(note.At, 0)) > time.Minute {
+		note.ID != "at_"+paneID || !note.Live || time.Since(time.Unix(note.At, 0)) > time.Minute ||
+		note.Kind != "needs_input" || note.Badge == nil || *note.Badge != 1 {
 		t.Fatalf("note %+v", note)
+	}
+	// The count only in the ciphertext: the relay never sees it.
+	if _, ok := got["badge"]; ok {
+		t.Fatalf("relay given a badge: %v", got)
 	}
 
 	// Answered (here, at the Mac): the phone is told to take it down,
@@ -145,7 +150,7 @@ func TestPushWhileAway(t *testing.T) {
 	case c := <-cleared:
 		n := open(c["payload"])
 		if c["id"] != "relay-id-1" || c["collapse"] != "" || c["thread"] != "" ||
-			n.ID != "at_"+paneID || !n.Clear || n.Host != note.Host || n.Title != "" || n.Pane != "" {
+			n.ID != "at_"+paneID || !n.Clear || n.Host != note.Host || n.Title != "" || n.Pane != "" || n.Badge == nil || *n.Badge != 0 {
 			t.Fatalf("clear %v: %+v", c, n)
 		}
 	case <-time.After(5 * time.Second):
@@ -211,6 +216,100 @@ func TestPushWhileAway(t *testing.T) {
 	locked.Store(true)
 	needsYou()
 	arrives("with the screen locked")
+}
+
+// relayBody is what the daemon sent a test relay, its values as text.
+func relayBody(r *http.Request) map[string]string {
+	var raw map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&raw)
+	body := map[string]string{}
+	for k, v := range raw {
+		body[k] = fmt.Sprint(v)
+	}
+	return body
+}
+
+// A phone left showing a number is told when nothing's left to count,
+// though what it was told of wasn't resolved (it finished, rather than
+// being cleared); not while something still counts, and once only.
+func TestPushClearsBadge(t *testing.T) {
+	cleared := make(chan map[string]string, 4)
+	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/clear" {
+			cleared <- relayBody(r)
+		}
+	}))
+	defer relay.Close()
+	oldClient, oldRelays, oldDelay := pushClient, pushRelays, clearDelay
+	pushClient, pushRelays, clearDelay = relay.Client(), []string{relayOrigin(relay.URL)}, 0
+	defer func() { pushClient, pushRelays, clearDelay = oldClient, oldRelays, oldDelay }()
+
+	dir := shortDir(t)
+	d, err := New(Config{Dir: dir, HolderPath: holderBin, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Shutdown()
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	d.mu.Lock()
+	for id, events := range map[string][]string{"phone": {"needs_input", badgeEvent}, "old-phone": {"needs_input"}} {
+		r := &pb.RegisterPush{RelayUrl: relay.URL, RelayId: id, Key: key, Events: events}
+		if err := d.store.PutRecord("push", id, r); err != nil {
+			t.Fatal(err)
+		}
+		d.noteBadge(id, r, 1) // as if each was pushed about a pane needing input
+	}
+	item := &pb.AttentionItem{Id: "at_pn_1", PaneId: "pn_1", State: pb.AgentState_AGENT_STATE_NEEDS_INPUT}
+	d.attention[item.Id] = item
+	other := &pb.AttentionItem{Id: "at_pn_2", PaneId: "pn_2", State: pb.AgentState_AGENT_STATE_NEEDS_INPUT}
+	d.attention[other.Id] = other
+	d.publish(&pb.StateUpdate{Attention: []*pb.AttentionItem{other}})
+	d.mu.Unlock()
+	none := func(why string) {
+		t.Helper()
+		select {
+		case c := <-cleared:
+			t.Fatalf("cleared %s: %v", why, c)
+		case <-time.After(300 * time.Millisecond):
+		}
+	}
+	none("with two waiting")
+
+	// One finishes: one still counts.
+	d.mu.Lock()
+	item.State = pb.AgentState_AGENT_STATE_IDLE
+	d.publish(&pb.StateUpdate{Attention: []*pb.AttentionItem{item}})
+	d.mu.Unlock()
+	none("with one still waiting")
+
+	// The other goes: the phone that shows a number hears it's none.
+	d.mu.Lock()
+	delete(d.attention, other.Id)
+	d.publish(&pb.StateUpdate{ClearedAttentionIds: []string{other.Id}})
+	d.mu.Unlock()
+	select {
+	case c := <-cleared:
+		sealed, _ := base64.StdEncoding.DecodeString(c["payload"])
+		block, _ := aes.NewCipher(key)
+		gcm, _ := cipher.NewGCM(block)
+		plain, err := gcm.Open(nil, sealed[:12], sealed[12:], nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var n pushNote
+		_ = json.Unmarshal(plain, &n)
+		if c["id"] != "phone" || c["badge"] != "" || !n.Clear || n.ID != "" || n.Badge == nil || *n.Badge != 0 {
+			t.Fatalf("clear %v: %+v", c, n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no clear once nothing counted")
+	}
+	none("to a phone that shows no number, or twice")
+	d.mu.Lock()
+	d.publish(&pb.StateUpdate{Attention: []*pb.AttentionItem{item}})
+	d.mu.Unlock()
+	none("again")
 }
 
 // A send the relay turns away with 429 (its rate limit) is tried once more,

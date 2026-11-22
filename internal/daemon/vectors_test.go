@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -53,6 +54,62 @@ type clientVectors struct {
 		Expires  int64  `json:"expires_unix_ms"`
 		Message  string `json:"message"`
 	} `json:"approval"`
+	Notice []noticeVector `json:"notice"`
+	Names  []nameVector   `json:"names"`
+	Badge  []badgeVector  `json:"badge"`
+}
+
+// noticeVector is what a notification about an agent says (noticeBody):
+// the Mac's own, and the phones' pushes.
+type noticeVector struct {
+	State    string `json:"state"` // vectorStates' names
+	Question bool   `json:"question"`
+	Program  bool   `json:"program"`
+	Summary  string `json:"summary"`
+	Who      string `json:"who"`
+	Body     string `json:"body"`
+}
+
+// nameVector is a pane's name as a notification names it
+// (capitalizeWords, Foundation's capitalized).
+type nameVector struct {
+	Name string `json:"name"`
+	Who  string `json:"who"`
+}
+
+// badgeVector is the number on Hammock's icon (badgeCount) for what needs
+// you: attention items by state, and how many permission, join and Hammock
+// Key requests.
+type badgeVector struct {
+	Attention []string `json:"attention"`
+	Grants    int      `json:"grants"`
+	Joins     int      `json:"joins"`
+	Keys      int      `json:"keys"`
+	Count     int      `json:"count"`
+}
+
+var vectorStates = map[string]pb.AgentState{
+	"needs_input": pb.AgentState_AGENT_STATE_NEEDS_INPUT, "idle": pb.AgentState_AGENT_STATE_IDLE,
+	"errored": pb.AgentState_AGENT_STATE_ERRORED, "working": pb.AgentState_AGENT_STATE_WORKING,
+}
+
+// badgeDaemon holds what a badgeVector counts.
+func badgeDaemon(v badgeVector) *Daemon {
+	d := &Daemon{attention: map[string]*pb.AttentionItem{}, grants: map[string]*pendingGrant{}, joins: map[string]*pendingJoin{},
+		hammockKey: &hammockKeyHub{reqs: map[string]*keyReq{}}}
+	for i, s := range v.Attention {
+		d.attention[fmt.Sprint("at_", i)] = &pb.AttentionItem{State: vectorStates[s]}
+	}
+	for i := range v.Grants {
+		d.grants[fmt.Sprint("gr_", i)] = &pendingGrant{}
+	}
+	for i := range v.Joins {
+		d.joins[fmt.Sprint("jn_", i)] = &pendingJoin{}
+	}
+	for i := range v.Keys {
+		d.hammockKey.reqs[fmt.Sprint("hk_", i)] = &keyReq{}
+	}
+	return d
 }
 
 var vectorsPath = filepath.Join("..", "..", "testdata", "client", "vectors.json")
@@ -69,8 +126,24 @@ func TestClientVectors(t *testing.T) {
 	if err := json.Unmarshal(b, &v); err != nil {
 		t.Fatal(err)
 	}
-	if len(v.Auth) == 0 || len(v.Pairing) == 0 || len(v.Push) == 0 || len(v.Approval) == 0 {
+	if len(v.Auth) == 0 || len(v.Pairing) == 0 || len(v.Push) == 0 || len(v.Approval) == 0 || len(v.Notice) == 0 || len(v.Names) == 0 || len(v.Badge) == 0 {
 		t.Fatal("a kind of vector is missing")
+	}
+	for _, n := range v.Notice {
+		item := &pb.AttentionItem{State: vectorStates[n.State], Question: n.Question, Program: n.Program, Summary: n.Summary}
+		if got := noticeBody(item, n.Who); got != n.Body {
+			t.Errorf("notice %+v says %q", n, got)
+		}
+	}
+	for _, n := range v.Names {
+		if got := capitalizeWords(n.Name); got != n.Who {
+			t.Errorf("%q named %q, want %q", n.Name, got, n.Who)
+		}
+	}
+	for _, b := range v.Badge {
+		if got := badgeDaemon(b).badgeCount(); got != b.Count {
+			t.Errorf("badge %+v counts %d", b, got)
+		}
 	}
 	for _, a := range v.Auth {
 		nonce, _ := hex.DecodeString(a.Nonce)
@@ -166,8 +239,9 @@ func writeClientVectors(t *testing.T) {
 	for i := range key {
 		key[i] = byte(i + 1)
 	}
+	badge := 2
 	note := pushNote{Title: "Claude needs you", Subtitle: "Web ▸ api", Body: "Allow Bash: npm test?", Category: "grant", Grant: "gr_1",
-		Host: cert, ID: "c_1", At: 1_800_000_000, Live: true}
+		Host: cert, ID: "c_1", At: 1_800_000_000, Live: true, Kind: "grant", Badge: &badge}
 	plain, _ := json.Marshal(note)
 	sealed, err := seal(key, plain)
 	if err != nil {
@@ -194,6 +268,34 @@ func writeClientVectors(t *testing.T) {
 			Expires  int64  `json:"expires_unix_ms"`
 			Message  string `json:"message"`
 		}{"k1", "fk_1", "ab", "pn_1", w, 123, string(approvalMessage("k1", "fk_1", "ab", scope, "pn_1", 123))})
+	}
+	for _, n := range []noticeVector{
+		{State: "needs_input", Question: true, Summary: "Which database should I use?", Who: "Claude"},
+		{State: "needs_input", Summary: "Allow Bash: npm test?", Who: "Claude"},
+		{State: "needs_input", Who: "Codex"},
+		{State: "needs_input", Program: true, Summary: "Enter your password", Who: "Brew"},
+		{State: "idle", Summary: "Done with the refactor", Who: "Claude"},
+		{State: "idle", Who: "Claude"},
+		{State: "idle", Program: true, Summary: "Deployed to staging", Who: "Deploy"},
+		{State: "idle", Program: true, Who: "Deploy"},
+		{State: "errored", Summary: "exited with status 1", Who: "Claude"},
+		{State: "errored", Who: "Agent"},
+		{State: "working", Summary: "Reading files", Who: "Claude"},
+	} {
+		n.Body = noticeBody(&pb.AttentionItem{State: vectorStates[n.State], Question: n.Question, Program: n.Program, Summary: n.Summary}, n.Who)
+		v.Notice = append(v.Notice, n)
+	}
+	for _, name := range []string{"claude", "codex", "claude-code", "OpenCode", "gpt-5 x2y", "it's my_app.sh", "ÉCOLE"} {
+		v.Names = append(v.Names, nameVector{name, capitalizeWords(name)})
+	}
+	for _, b := range []badgeVector{
+		{Attention: []string{}},
+		{Attention: []string{"needs_input", "needs_input", "idle", "errored", "working"}},
+		{Attention: []string{"needs_input"}, Grants: 2, Joins: 1, Keys: 1},
+		{Attention: []string{"idle", "errored"}, Grants: 1},
+	} {
+		b.Count = badgeDaemon(b).badgeCount()
+		v.Badge = append(v.Badge, b)
 	}
 	b, _ := json.MarshalIndent(v, "", "  ")
 	if err := os.MkdirAll(filepath.Dir(vectorsPath), 0o755); err != nil {

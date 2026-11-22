@@ -53,7 +53,8 @@ object Push {
      */
     fun register(ctx: Context, model: AppModel, hostID: String) {
         val reg = PushRegistration.current(ctx) ?: return
-        val events = NotifyPrefs.events(ctx)
+        // "badge": notifications carry the count (the computer sends it).
+        val events = NotifyPrefs.events(ctx) + "badge"
         model.registerPush(reg.relayURL, reg.relayID, key(ctx, hostID), events)
     }
 }

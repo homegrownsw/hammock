@@ -1,5 +1,6 @@
 package com.homegrownsw.hammock.client
 
+import hammock.v1.Hammock
 import org.json.JSONObject
 import org.junit.Test
 import java.io.File
@@ -62,6 +63,21 @@ class VectorsTest {
             val got = HammockKeyApproval.message(o.getString("key_id"), o.getString("id"), o.getString("data_hash"), o.getString("pane_id"),
                 o.getBoolean("window"), o.getLong("expires_unix_ms"))
             assertEquals(o.getString("message"), String(got))
+        }
+    }
+    /** The number on the Sessions tab and with notifications, as the daemon counts it for pushes. */
+    @Test fun badgeCount() {
+        val states = mapOf(
+            "needs_input" to Hammock.AgentState.AGENT_STATE_NEEDS_INPUT, "idle" to Hammock.AgentState.AGENT_STATE_IDLE,
+            "errored" to Hammock.AgentState.AGENT_STATE_ERRORED, "working" to Hammock.AgentState.AGENT_STATE_WORKING,
+        )
+        val a = v.getJSONArray("badge")
+        assertTrue(a.length() > 0)
+        for (i in 0 until a.length()) {
+            val o = a.getJSONObject(i)
+            val list = o.getJSONArray("attention")
+            val attention = (0 until list.length()).map { Hammock.AttentionItem.newBuilder().setState(states.getValue(list.getString(it))).build() }
+            assertEquals(o.getInt("count"), Workspace.badgeCount(attention, o.getInt("grants"), o.getInt("joins"), o.getInt("keys")))
         }
     }
 }

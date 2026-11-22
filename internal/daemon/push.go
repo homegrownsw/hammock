@@ -36,9 +36,10 @@ import (
 // (pushTag: the same pane or item gives the same tag for that phone, but
 // the ids themselves don't leave the Mac); and the category ("join",
 // "grant", "hammockkey" or none), which says what kind of notification it
-// is. The phone takes everything it shows, its category included, from
-// the decrypted note. A clear (clearPushes) is ciphertext only: the relay
-// learns when something a phone was told of is dealt with, not what.
+// is. The phone takes everything it shows, its category and the count on
+// its icon included, from the decrypted note. A clear (clearPushes) is
+// ciphertext only: the relay learns when something a phone was told of is
+// dealt with, not what.
 
 const awayAfter = 2 * time.Minute
 
@@ -122,9 +123,22 @@ type pushNote struct {
 	Live bool `json:"live,omitempty"`
 	// Clear: not a notification but word that what ID was about is
 	// resolved: the phone takes down what it showed for it (sent silently,
-	// clearPushes).
+	// clearPushes). With no ID, only the badge changed (to none).
 	Clear bool `json:"clear,omitempty"`
+	// Kind is what happened, for a phone to file it by (Android's
+	// channels): the event ("needs_input", "finished", "errored", their
+	// "program_" forms, "join"), or "grant" or "hammockkey".
+	Kind string `json:"k,omitempty"`
+	// Badge is the number for Hammock's icon as it's sent (badgeCount),
+	// on a clear too.
+	Badge *int `json:"n,omitempty"`
 }
+
+// badgeEvent is what a phone puts in its events (RegisterPush) when it
+// shows the count on its icon (from the note's Badge): it's told, with a
+// silent push of its own, when that drops to nothing. Older phones show
+// none, so they aren't sent those.
+const badgeEvent = "badge"
 
 // pushTag stands in for an id in what the relay sees (a notification's
 // thread and collapse id): a hash keyed by this phone's push key, so it
@@ -289,7 +303,11 @@ func cmpOr(s ...string) string {
 // pushAttention tells away phones about an agent that needs you, finished
 // or failed. Callers hold d.mu.
 func (d *Daemon) pushAttention(item *pb.AttentionItem) {
-	event, body := attentionPush(item)
+	var who *pb.Pane
+	if p := d.panes[item.PaneId]; p != nil {
+		who = p.snapshotInfo()
+	}
+	event, body := attentionPush(item, paneWho(who))
 	if event == "" {
 		return
 	}
@@ -304,7 +322,7 @@ func (d *Daemon) pushAttention(item *pb.AttentionItem) {
 // with several gets one notification, collapsed by the item's id).
 // Callers hold d.mu.
 func (d *Daemon) pushLinkedAttention(l *peerLink, item *pb.AttentionItem) {
-	event, body := attentionPush(item)
+	event, body := attentionPush(item, paneWho(l.panes[item.PaneId]))
 	if event == "" {
 		return
 	}
@@ -325,26 +343,26 @@ func (d *Daemon) pushLinkedAttention(l *peerLink, item *pb.AttentionItem) {
 }
 
 // attentionPush is the push event and text for an item that needs you (""
-// for none): the same for this computer's agents and linked computers'.
-func attentionPush(item *pb.AttentionItem) (event, body string) {
-	body = item.Summary
+// for none), naming what's in its pane as who (paneWho): the same for this
+// computer's agents and linked computers', and as the Mac says it
+// (noticeBody).
+func attentionPush(item *pb.AttentionItem, who string) (event, body string) {
 	switch item.State {
 	case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
-		event, body = "needs_input", cmpOr(body, "Needs your input")
-		if item.Question {
-			body = "Asks: " + body
-		}
+		event = "needs_input"
 	case pb.AgentState_AGENT_STATE_IDLE:
-		event, body = "finished", cmpOr(body, "Finished")
+		event = "finished"
 	case pb.AgentState_AGENT_STATE_ERRORED:
-		event, body = "errored", cmpOr(body, "Hit an error")
+		event = "errored"
+	default:
+		return "", ""
 	}
 	// Another program reporting its status (programstatus.go): phones ask
 	// for these on their own (an older phone doesn't know them).
-	if item.Program && event != "" {
+	if item.Program {
 		event = "program_" + event
 	}
-	return event, body
+	return event, noticeBody(item, who)
 }
 
 // push sends a note to every phone that wants this event once you're
@@ -362,6 +380,9 @@ func (d *Daemon) push(event, collapse string, n pushNote, pending func() bool) {
 	}
 	n.Host = d.pushHost()
 	n.ID = collapse
+	if n.Kind == "" {
+		n.Kind = event
+	}
 	// Whatever is pending until something resolves it (all but a
 	// scheduled run's result) is cleared from the phone when it is.
 	n.Live = pending != nil
@@ -390,7 +411,6 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 		return
 	}
 	n.At = time.Now().Unix()
-	plain, _ := json.Marshal(n)
 	type target struct {
 		id string
 		r  *pb.RegisterPush
@@ -408,12 +428,16 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 			to = append(to, target{deviceID, r})
 		}
 	}
-	if n.Live {
-		for _, t := range to {
+	count := d.badgeCount()
+	n.Badge = &count
+	for _, t := range to {
+		if n.Live {
 			d.notePushed(collapse, t.id)
 		}
+		d.noteBadge(t.id, t.r, count)
 	}
 	d.mu.Unlock()
+	plain, _ := json.Marshal(n)
 	for _, t := range to {
 		if sealed, err := seal(t.r.Key, plain); err == nil {
 			d.sendPush(t.id, t.r, sealed, n, collapse, pending)
@@ -433,6 +457,8 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 	}
 	n.Host = d.pushHost()
 	n.ID, n.At, n.Live = collapse, time.Now().Unix(), true
+	count := d.badgeCount()
+	n.Badge = &count
 	plain, _ := json.Marshal(n)
 	for _, id := range deviceIDs {
 		r := &pb.RegisterPush{}
@@ -441,6 +467,7 @@ func (d *Daemon) pushNow(deviceIDs []string, n pushNote, collapse string) {
 		}
 		if sealed, err := seal(r.Key, plain); err == nil {
 			d.notePushed(collapse, id)
+			d.noteBadge(id, r, count)
 			go d.sendPush(id, r, sealed, n, collapse, d.stillPushed(collapse, id))
 		}
 	}
@@ -469,13 +496,28 @@ func (d *Daemon) notePushed(id, deviceID string) {
 	}
 }
 
+// noteBadge records the count a phone that shows one (badgeEvent) was
+// last sent, so it's told when that drops to nothing (clearPushes). In
+// memory only, as pushSent. Callers hold d.mu.
+func (d *Daemon) noteBadge(deviceID string, r *pb.RegisterPush, count int) {
+	if !slices.Contains(r.Events, badgeEvent) {
+		return
+	}
+	if d.pushBadge == nil {
+		d.pushBadge = map[string]int{}
+	}
+	d.pushBadge[deviceID] = count
+}
+
 // clearPushes: what u resolves (attention items cleared, grants, join and
 // Hammock Key requests answered or withdrawn) is no longer anything to be
 // told about. The phones that were told get a silent push saying so, and
 // take its notification out of Notification Center, wherever it was dealt
-// with. Callers hold d.mu.
+// with; each says what the badge is now. And once nothing's left to
+// count, a phone left showing a number is told so, with a silent push of
+// its own if it isn't getting one already. Callers hold d.mu.
 func (d *Daemon) clearPushes(u *pb.StateUpdate) {
-	if len(d.pushSent) == 0 {
+	if len(d.pushSent) == 0 && len(d.pushBadge) == 0 {
 		return
 	}
 	told := map[string][]string{}
@@ -487,22 +529,44 @@ func (d *Daemon) clearPushes(u *pb.StateUpdate) {
 			}
 		}
 	}
-	if len(told) == 0 {
+	shown := false // a phone shows a number
+	for _, n := range d.pushBadge {
+		shown = shown || n > 0
+	}
+	if len(told) == 0 && !(shown && touchesBadge(u)) {
+		return
+	}
+	count := d.badgeCount()
+	if len(told) == 0 && count > 0 {
 		return
 	}
 	recs, _ := d.store.Records("push")
 	host, at := d.pushHost(), time.Now().Unix()
+	tell := func(id, deviceID string) {
+		r := &pb.RegisterPush{}
+		if b := recs[deviceID]; b == nil || proto.Unmarshal(b, r) != nil {
+			return
+		}
+		plain, _ := json.Marshal(pushNote{ID: id, Host: host, At: at, Clear: true, Badge: &count})
+		if sealed, err := seal(r.Key, plain); err == nil {
+			d.noteBadge(deviceID, r, count)
+			go d.sendClear(deviceID, r, sealed)
+		}
+	}
+	cleared := map[string]bool{}
 	for id, phones := range told {
-		plain, _ := json.Marshal(pushNote{ID: id, Host: host, At: at, Clear: true})
 		for _, deviceID := range phones {
-			r := &pb.RegisterPush{}
-			if b := recs[deviceID]; b == nil || proto.Unmarshal(b, r) != nil {
-				continue
-			}
-			if sealed, err := seal(r.Key, plain); err == nil {
-				go d.sendClear(deviceID, r, sealed)
+			tell(id, deviceID)
+			cleared[deviceID] = true
+		}
+	}
+	if count == 0 {
+		for deviceID, n := range d.pushBadge {
+			if n > 0 && !cleared[deviceID] {
+				tell("", deviceID)
 			}
 		}
+		clear(d.pushBadge) // none shown anywhere now
 	}
 }
 

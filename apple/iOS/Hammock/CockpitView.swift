@@ -18,7 +18,7 @@ struct CockpitView: View {
             Tab("Sessions", systemImage: "bubble.left.and.text.bubble.right", value: "sessions") {
                 SessionsView(model: model, session: session)
             }
-            .badge(needsYou)
+            .badge(model.badgeCount)
             Tab("Groups", systemImage: "square.stack.3d.up", value: "groups") {
                 GroupsView(model: model, session: session)
             }
@@ -42,6 +42,10 @@ struct CockpitView: View {
         .overlay(alignment: .bottom) { ToastOverlay(model: model).padding(.bottom, 64) }
         // A notification opened: its session.
         .onChange(of: tab, initial: true) { AgentStarter.shared.shownTab = tab }
+        // The Home Screen icon's count, as this Mac's pushes set it.
+        .onChange(of: model.connected && !session.isDemo ? model.badgeCount : nil, initial: true) { _, n in
+            if let n { Push.setBadge(n) }
+        }
         .onChange(of: Push.shared.openPane) { _, pane in if pane != nil { tab = "sessions" } }
         .onChange(of: Push.shared.openNeedsYou) { _, on in if on { tab = "sessions" } }
         .sheet(item: Binding(get: { AgentStarter.shared.request }, set: { AgentStarter.shared.request = $0 })) { r in
@@ -49,10 +53,6 @@ struct CockpitView: View {
             StartAgentView(model: model, groupID: r.groupID, onDone: { _ in AgentStarter.shared.request = nil },
                            onStarted: { AgentStarter.shared.didOpen($0, origin: origin) })
         }
-    }
-
-    private var needsYou: Int {
-        model.joinRequests.count + model.grants.count + model.attention.filter { $0.state == .needsInput || $0.state == .errored }.count
     }
 }
 

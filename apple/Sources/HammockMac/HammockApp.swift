@@ -802,7 +802,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in reportPresence() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in reportPresence() }
         // The Dock badge follows the live count (it also has to go down).
-        .onChange(of: model.attention.filter { $0.state == .needsInput }.count + model.grants.count) { Notifier.shared.updateBadge(model) }
+        .onChange(of: model.badgeCount) { Notifier.shared.updateBadge(model) }
     }
 
     private func sendColors() {

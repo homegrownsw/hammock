@@ -31,7 +31,7 @@
     {
       "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
       "key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
-      "sealed_b64": "fegwy+7eywYNJKnxXPMRw5v1YVHfdvaz1i+buXF2VVsPjqrr1upp3EicK9CqVB6n7+eCgfPuEzTOuYAfiGX3+ONn67/Jrxl7mzq78TxxkXQJqvExybaTBKn1j+nhPzN20sy0twgg7lEjuZ+HdPjeNT6GqyirNKMUl2g/xMljtSV1JvSsLw+5dqIGnWcfJzavyIU1zfOfQCm+1KqeJ+Zan6qC3iO3RbTerdJRG/kYdha4XxlFpB/GzTFExnIw9EoEDxXZpS/5+n6gEQ1Gr2jrtx1MNGg3SPU9iL80WmnMJNZgNmPwQ4JKAAwB4Ytf5w==",
+      "sealed_b64": "s6X9L6+v4XiYLCGpNEkFGkSldAtLSu36S/W/yRuhx/V8ThDHHjppltBUJVwpVkMIjU3kWiY2u5VQvlNAuGaJnEprvhHF/fRo+BfKiIlmUblTBb9adQDM59fBC0byWdCRzC0AGrPUi2Sh5B6l911Wrt5a6enae5rcskn07GKGyNnzCqZSkKqKvM/WCTBmSd2l/+p1tLnapBNSoSfGaZm8OIbH3IZz+KZx7tGNpOl8gRcYjv/7DrxFP6a2pFfpMuCSnbGkfrJuQSgOcQEZ+/XX9EbJWy/SEfr9icOoOYTjGAuIkGTCzUwvcnJbD/df6Ga9WBjcigdeO/d8YwxYgjbDfw==",
       "note": {
         "t": "Claude needs you",
         "s": "Web ▸ api",
@@ -41,7 +41,9 @@
         "host": "9f2c4e1a7b3d5c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f70",
         "id": "c_1",
         "at": 1800000000,
-        "live": true
+        "live": true,
+        "k": "grant",
+        "n": 2
       }
     }
   ],
@@ -63,6 +65,167 @@
       "window": false,
       "expires_unix_ms": 123,
       "message": "hmk-key-approval-v2\nk1\nfk_1\nab\nonce\npn_1\n123"
+    }
+  ],
+  "notice": [
+    {
+      "state": "needs_input",
+      "question": true,
+      "program": false,
+      "summary": "Which database should I use?",
+      "who": "Claude",
+      "body": "Claude asks: Which database should I use?"
+    },
+    {
+      "state": "needs_input",
+      "question": false,
+      "program": false,
+      "summary": "Allow Bash: npm test?",
+      "who": "Claude",
+      "body": "Allow Bash: npm test?"
+    },
+    {
+      "state": "needs_input",
+      "question": false,
+      "program": false,
+      "summary": "",
+      "who": "Codex",
+      "body": "Codex needs your input"
+    },
+    {
+      "state": "needs_input",
+      "question": false,
+      "program": true,
+      "summary": "Enter your password",
+      "who": "Brew",
+      "body": "Enter your password"
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": false,
+      "summary": "Done with the refactor",
+      "who": "Claude",
+      "body": "Claude finished"
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": false,
+      "summary": "",
+      "who": "Claude",
+      "body": "Claude finished"
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": true,
+      "summary": "Deployed to staging",
+      "who": "Deploy",
+      "body": "Deploy: Deployed to staging"
+    },
+    {
+      "state": "idle",
+      "question": false,
+      "program": true,
+      "summary": "",
+      "who": "Deploy",
+      "body": "Deploy finished"
+    },
+    {
+      "state": "errored",
+      "question": false,
+      "program": false,
+      "summary": "exited with status 1",
+      "who": "Claude",
+      "body": "Claude exited with status 1"
+    },
+    {
+      "state": "errored",
+      "question": false,
+      "program": false,
+      "summary": "",
+      "who": "Agent",
+      "body": "Agent hit an error"
+    },
+    {
+      "state": "working",
+      "question": false,
+      "program": false,
+      "summary": "Reading files",
+      "who": "Claude",
+      "body": "Reading files"
+    }
+  ],
+  "names": [
+    {
+      "name": "claude",
+      "who": "Claude"
+    },
+    {
+      "name": "codex",
+      "who": "Codex"
+    },
+    {
+      "name": "claude-code",
+      "who": "Claude-Code"
+    },
+    {
+      "name": "OpenCode",
+      "who": "Opencode"
+    },
+    {
+      "name": "gpt-5 x2y",
+      "who": "Gpt-5 X2Y"
+    },
+    {
+      "name": "it's my_app.sh",
+      "who": "It's My_App.Sh"
+    },
+    {
+      "name": "ÉCOLE",
+      "who": "École"
+    }
+  ],
+  "badge": [
+    {
+      "attention": [],
+      "grants": 0,
+      "joins": 0,
+      "keys": 0,
+      "count": 0
+    },
+    {
+      "attention": [
+        "needs_input",
+        "needs_input",
+        "idle",
+        "errored",
+        "working"
+      ],
+      "grants": 0,
+      "joins": 0,
+      "keys": 0,
+      "count": 2
+    },
+    {
+      "attention": [
+        "needs_input"
+      ],
+      "grants": 2,
+      "joins": 1,
+      "keys": 1,
+      "count": 5
+    },
+    {
+      "attention": [
+        "idle",
+        "errored"
+      ],
+      "grants": 1,
+      "joins": 0,
+      "keys": 0,
+      "count": 1
     }
   ]
 }

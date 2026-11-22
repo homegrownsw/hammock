@@ -183,7 +183,7 @@ var Keys = []Key{
 	{Name: "notify-current-tab", Group: "Notifications", Value: "false", Default: "false",
 		Doc: "also notify me about the tab I'm looking at", Only: "Mac"},
 	{Name: "dock-badge", Group: "Notifications", Value: "true", Default: "true",
-		Doc: "count the agents waiting for me on the Dock icon", Only: "Mac"},
+		Doc: "count what waits on me on the Dock icon: agents needing input, and permission, join and Hammock Key requests", Only: "Mac"},
 	{Name: "notify-sound-needs-input", Group: "Notifications", Value: "Hammock Chime", Default: "Hammock Chime",
 		Doc: "each kind's sound: Hammock Chime, Kalimba, Low, Marimba or Bell, a macOS sound like Glass, or none", Only: "Mac"},
 	{Name: "notify-sound-permission", Group: "Notifications", Value: "Hammock Chime", Default: "Hammock Chime", Only: "Mac"},

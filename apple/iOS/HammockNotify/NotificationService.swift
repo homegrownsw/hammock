@@ -36,6 +36,9 @@ final class NotificationService: UNNotificationServiceExtension {
         content.body = note["b"] as? String ?? ""
         let category = note["c"] as? String ?? ""
         content.categoryIdentifier = category
+        // The count on Hammock's icon, as the Mac counts it (none from an
+        // older Mac: the icon keeps its number).
+        content.badge = note["n"] as? NSNumber
         // A Hammock Key request waits on you for a couple of minutes:
         // through Focus, as Time Sensitive.
         if category == "hammockkey" { content.interruptionLevel = .timeSensitive }

@@ -62,7 +62,6 @@ import com.homegrownsw.hammock.Session
 import com.homegrownsw.hammock.rememberBoolPref
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.PairingCodes
-import hammock.v1.Hammock.AgentState
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -248,9 +247,7 @@ private fun Workspace(session: Session, model: AppModel, opening: OpenRequest?, 
         model.scope.launch { a.send(model) } // (not this effect's: clearing answer ends it)
     }
 
-    val needsYou = ws.joinRequests.size + ws.grants.size + ws.attention.count {
-        it.state == AgentState.AGENT_STATE_NEEDS_INPUT || it.state == AgentState.AGENT_STATE_ERRORED
-    }
+    val needsYou = ws.badgeCount
     var fullScreen by remember { mutableStateOf(false) }
     val layout = if (fullScreen || (showingDetail && !wide)) NavigationSuiteType.None
     else NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(androidx.compose.material3.adaptive.currentWindowAdaptiveInfo())

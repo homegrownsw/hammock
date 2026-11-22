@@ -830,6 +830,19 @@ public final class AppModel {
         Set(attention.map(\.id) + grants.map(\.id) + joinRequests.map(\.id) + linkRequests.map(\.id) + hammockKeyRequests.map(\.id))
     }
 
+    /// The number on Hammock's icon (the Mac's Dock, the iPhone's Home
+    /// Screen) and the Sessions tab: agents waiting for your input,
+    /// permission requests, join requests and Hammock Key requests. Not
+    /// what finished or failed. The daemon counts the same for pushes
+    /// (badgeCount in internal/daemon/notice.go), as Android does.
+    public var badgeCount: Int {
+        Self.badgeCount(attention: attention, grants: grants.count, joinRequests: joinRequests.count, keyRequests: hammockKeyRequests.count)
+    }
+
+    public nonisolated static func badgeCount(attention: [AttentionItem], grants: Int, joinRequests: Int, keyRequests: Int) -> Int {
+        attention.filter { $0.state == .needsInput }.count + grants + joinRequests + keyRequests
+    }
+
     /// Shows a Group with no tabs (its zero state). A Group with tabs
     /// selects the tab you were last on there instead.
     public func selectGroup(_ id: String) {

@@ -80,6 +80,7 @@ type Daemon struct {
 	mu        sync.Mutex          // guards everything below; never acquired while holding a pane's mu
 	phoneAt   time.Time           // you last did something in Hammock on a paired phone (push.go)
 	pushSent  map[string][]string // what phones were notified of, by id: told when it's resolved (push.go)
+	pushBadge map[string]int      // the badge each phone that shows one was last sent (push.go)
 	groups    map[string]*pb.Group
 	tabs      map[string]*pb.Tab
 	panes     map[string]*pane

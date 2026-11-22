@@ -80,7 +80,7 @@ extension AppConfig {
         #   notify-program-error = true            (the same, when such a program fails; Mac only)
         #   notify-style = auto | system | in-app   (auto: in the window while it's in front, else as macOS notifications; Mac only)
         #   notify-current-tab = false             (also notify me about the tab I'm looking at; Mac only)
-        #   dock-badge = true                      (count the agents waiting for me on the Dock icon; Mac only)
+        #   dock-badge = true                      (count what waits on me on the Dock icon: agents needing input, and permission, join and Hammock Key requests; Mac only)
         #   notify-sound-needs-input = Hammock Chime   (each kind's sound: Hammock Chime, Kalimba, Low, Marimba or Bell, a macOS sound like Glass, or none; Mac only)
         #   notify-sound-permission = Hammock Chime   (Mac only)
         #   notify-sound-finished = Hammock Kalimba   (Mac only)

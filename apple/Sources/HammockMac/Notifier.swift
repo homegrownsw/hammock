@@ -134,15 +134,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         } else if let group = tab.flatMap({ model.group(of: $0) }) {
             content.subtitle = (group.icon.isEmpty ? "" : group.icon + " ") + model.title(of: group)
         }
-        let who = pane?.displayName.capitalized ?? "Agent"
-        switch item.state {
-        case .needsInput where item.question: content.body = "\(who) asks: " + item.summary
-        case .needsInput: content.body = item.summary.isEmpty ? "\(who) needs your input" : item.summary
-        case .idle where item.program && !item.summary.isEmpty: content.body = "\(who): " + item.summary // what it says it did
-        case .idle: content.body = "\(who) finished"
-        case .errored: content.body = "\(who) \(item.summary)"
-        default: content.body = item.summary
-        }
+        // As phones are told (the daemon's pushes).
+        content.body = item.noticeBody(who: pane?.displayName.capitalized ?? "Agent")
         content.userInfo = ["paneID": item.paneID, Self.live: true]
         content.threadIdentifier = item.paneID
         deliver(UNNotificationRequest(identifier: item.id, content: content, trigger: nil), sound: Self.sound(for: item.state), icon: .agent(item.state), open: Self.reveal(item.paneID))
@@ -216,6 +209,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
         content.body = grant.headlineText
         content.userInfo = ["paneID": grant.requesterPaneID, Self.live: true]
+        // With its agent's other notifications (Hammock's own requests together).
+        content.threadIdentifier = grant.requesterPaneID.isEmpty ? "permissions" : grant.requesterPaneID
         deliver(UNNotificationRequest(identifier: grant.id, content: content, trigger: nil), sound: NotifyPrefs.soundPermission, icon: .agent(.needsInput), open: Self.reveal(grant.requesterPaneID))
     }
 
@@ -235,6 +230,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             .compactMap { $0 }.joined(separator: " ")
         content.categoryIdentifier = "join"
         content.userInfo = ["joinID": req.id, Self.live: true]
+        content.threadIdentifier = "join-" + req.groupID // a Group's requests together
         // As a card, a click opens Hammock, where the join card in Needs You decides.
         deliver(UNNotificationRequest(identifier: req.id, content: content, trigger: nil), sound: NotifyPrefs.soundOther, icon: .symbol("person.badge.plus"), open: { NSApp.activate() })
     }
@@ -304,7 +300,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func updateBadge(_ model: AppModel) {
-        let n = model.attention.filter { $0.state == .needsInput }.count + model.grants.count
+        let n = model.badgeCount
         NSApp.dockTile.badgeLabel = n > 0 && NotifyPrefs.on(NotifyPrefs.badge) ? "\(n)" : nil
     }
 

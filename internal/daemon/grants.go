@@ -95,7 +95,7 @@ func (d *Daemon) openGrant(g *pendingGrant) {
 		title, sub = "Hammock", g.req.Origin
 	}
 	// Hammock's words only: the agent's own can say anything.
-	d.push("needs_input", id, pushNote{Title: title, Subtitle: sub, Body: g.req.Headline, Category: "grant", Grant: id, Pane: g.req.RequesterPaneId},
+	d.push("needs_input", id, pushNote{Title: title, Subtitle: sub, Body: g.req.Headline, Category: "grant", Kind: "grant", Grant: id, Pane: g.req.RequesterPaneId},
 		func() bool { return d.grants[id] != nil })
 }
 

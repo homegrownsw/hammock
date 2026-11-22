@@ -854,7 +854,7 @@ func (k *hammockKeyHub) pushRequest(r *keyReq) {
 	if len(to) == 0 {
 		return
 	}
-	n := pushNote{Title: "Hammock Key", Subtitle: r.req.PaneLabel, Body: r.req.Headline, Category: "hammockkey", Key: r.req.Id, Pane: r.req.PaneId}
+	n := pushNote{Title: "Hammock Key", Subtitle: r.req.PaneLabel, Body: r.req.Headline, Category: "hammockkey", Kind: "hammockkey", Key: r.req.Id, Pane: r.req.PaneId}
 	if pushed != nil {
 		pushed("hammock_key", r.req.Id)
 	}

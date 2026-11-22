@@ -40,4 +40,41 @@ final class VectorsTests: XCTestCase {
             XCTAssertEqual(String(decoding: got, as: UTF8.self), v["message"] as? String)
         }
     }
+    private static let states: [String: AgentState] = ["needs_input": .needsInput, "idle": .idle, "errored": .errored, "working": .working]
+
+    /// What the Mac's notifications say about an agent, as the daemon's pushes say it.
+    func testNoticeBodies() throws {
+        let list = try XCTUnwrap(vectors["notice"] as? [[String: Any]])
+        XCTAssertFalse(list.isEmpty)
+        for v in list {
+            let item = AttentionItem.with {
+                $0.state = Self.states[v["state"] as? String ?? ""] ?? .unspecified
+                $0.question = v["question"] as? Bool ?? false
+                $0.program = v["program"] as? Bool ?? false
+                $0.summary = v["summary"] as? String ?? ""
+            }
+            XCTAssertEqual(item.noticeBody(who: v["who"] as? String ?? ""), v["body"] as? String)
+        }
+    }
+
+    /// A pane's name as a notification names it: the daemon's capitalizeWords is Foundation's capitalized.
+    func testNoticeNames() throws {
+        let list = try XCTUnwrap(vectors["names"] as? [[String: Any]])
+        XCTAssertFalse(list.isEmpty)
+        for v in list {
+            XCTAssertEqual((v["name"] as? String ?? "").capitalized, v["who"] as? String)
+        }
+    }
+
+    /// The number on Hammock's icon, as the daemon counts it for pushes.
+    func testBadgeCount() throws {
+        let list = try XCTUnwrap(vectors["badge"] as? [[String: Any]])
+        XCTAssertFalse(list.isEmpty)
+        for v in list {
+            let attention = (v["attention"] as? [String] ?? []).map { s in AttentionItem.with { $0.state = Self.states[s] ?? .unspecified } }
+            let n = AppModel.badgeCount(attention: attention, grants: v["grants"] as? Int ?? 0, joinRequests: v["joins"] as? Int ?? 0,
+                                        keyRequests: v["keys"] as? Int ?? 0)
+            XCTAssertEqual(n, v["count"] as? Int)
+        }
+    }
 }

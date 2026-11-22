@@ -57,7 +57,7 @@ Tap a file the agent mentions to see it, or one of its running tasks or subagent
 
 An agent waiting for permission appears at the top of Sessions with what it's asking to do, and **Allow**, **Deny** and **Open**. When that's more than fits, **Review** opens the pane in place of **Allow**. For a scheduled Claude Code run, touch and hold **Allow** for **Always Allow for This Schedule**. Hammock's own requests, such as an agent asking to type in a pane it didn't open, appear there too.
 
-Notifications are sent while you're away from your Mac. Choose which in Settings ▸ Notify Me When: someone asks to join, or an agent needs you, finishes or hits an error. You can answer Hammock's requests and join requests from the notification itself. Notifications are encrypted on your Mac, and only your iPhone can read them. See [Permissions](/hammock/docs/permissions/#on-your-iphone) for allowing them.
+Notifications are sent while you're away from your Mac. Choose which in Settings ▸ Notify Me When: someone asks to join, or an agent needs you, finishes or hits an error. You can answer Hammock's requests and join requests from the notification itself. Hammock's icon and the Sessions tab count what's waiting on you: agents that need your input, and permission, join and Hammock Key requests. Notifications are encrypted on your Mac, and only your iPhone can read them. See [Permissions](/hammock/docs/permissions/#on-your-iphone) for allowing them.
 
 ## Approving the Hammock Key
 

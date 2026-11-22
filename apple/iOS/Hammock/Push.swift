@@ -159,7 +159,9 @@ final class Push: NSObject {
     /// just paired, but not shown, too).
     func register(_ model: AppModel, host: String) async {
         guard let relayID else { return }
-        let events = Self.events.map(\.0).filter { UserDefaults.standard.object(forKey: Self.prefKey($0)) as? Bool ?? true }
+        // "badge": this phone shows the count on its icon (the Mac sends it,
+        // and says when it's none).
+        let events = Self.events.map(\.0).filter { UserDefaults.standard.object(forKey: Self.prefKey($0)) as? Bool ?? true } + ["badge"]
         try? await model.registerPush(relayURL: relayURL, relayID: relayID, key: PushKeys.key(for: host), events: events)
     }
 
@@ -304,6 +306,17 @@ extension Push {
 extension Push {
     static let log = Logger(subsystem: "com.homegrownsw.hammock", category: "push")
 
+    /// The count on Hammock's Home Screen icon (AppModel.badgeCount).
+    static func setBadge(_ n: Int) {
+        Task {
+            do {
+                try await UNUserNotificationCenter.current().setBadgeCount(max(0, n))
+            } catch {
+                log.error("Couldn't set the badge: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     /// Shows a notification again, as it was but without its sound (under
     /// its own identifier, so it replaces one still there).
     static func repost(_ request: UNNotificationRequest) async {
@@ -388,9 +401,11 @@ enum DeliveredNotes {
     /// A silent push from a Mac saying what a notification was about is
     /// dealt with (answered, seen or withdrawn, wherever): it goes. Only
     /// one sent before the clear: the same thing can need you again since.
+    /// It says what the icon's count is now, too (with no id, only that).
     static func clear(_ userInfo: [AnyHashable: Any]) async -> Bool {
-        guard let note = PushKeys.note(userInfo), note["clear"] as? Bool == true, PushKeys.fresh(note),
-              let id = note["id"] as? String, !id.isEmpty, let host = note["host"] as? String else { return false }
+        guard let note = PushKeys.note(userInfo), note["clear"] as? Bool == true, PushKeys.fresh(note) else { return false }
+        if let n = note["n"] as? NSNumber { await MainActor.run { Push.setBadge(n.intValue) } }
+        guard let id = note["id"] as? String, !id.isEmpty, let host = note["host"] as? String else { return false }
         let at = (note["at"] as? NSNumber)?.doubleValue
         let gone = await from(host).filter { d in
             guard d.note.id == id else { return false }

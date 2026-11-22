@@ -48,18 +48,23 @@ object Notifications {
         nm.createNotificationChannels(listOf(
             NotificationChannel(CH_NEEDS_YOU, "Needs You", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "An agent is waiting for you: a permission, a question or a plan."
+                setShowBadge(true)
             },
             NotificationChannel(CH_FINISHED, "Finished", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "An agent finished its turn."
+                setShowBadge(true)
             },
             NotificationChannel(CH_ERRORS, "Errors", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "An agent stopped on an error."
+                setShowBadge(true)
             },
             NotificationChannel(CH_KEY, "Hammock Key", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Something asks to sign with your computer's Hammock Key."
+                setShowBadge(true)
             },
             NotificationChannel(CH_JOIN, "Join Requests", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Someone asks to join a Group you share."
+                setShowBadge(true)
             },
         ))
     }
@@ -104,14 +109,7 @@ object Notifications {
         if (app.foreground && app.session.host.value?.id == host) return
         val category = note.optString("c")
         val pane = note.optString("pane")
-        val channel = when {
-            category == "hammockkey" -> CH_KEY
-            category == "join" -> CH_JOIN
-            category == "grant" -> CH_NEEDS_YOU
-            note.optString("t").contains("error", true) || note.optString("b").contains("error", true) -> CH_ERRORS
-            note.optBoolean("live") -> CH_NEEDS_YOU
-            else -> CH_FINISHED
-        }
+        val channel = channel(note.optString("k"), category, note.optString("t"), note.optString("b"), note.optBoolean("live"))
         val open = Intent(ctx, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(EXTRA_HOST, host)
@@ -128,6 +126,8 @@ object Notifications {
             .setCategory(if (category == "hammockkey") NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_MESSAGE)
             .setContentIntent(PendingIntent.getActivity(ctx, (host + subject).hashCode(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .addExtras(android.os.Bundle().apply { putLong(EXTRA_SENT, note.optLong("at", 0)) })
+        // The count for the launcher's badge, as the computer counts what needs you.
+        if (note.has("n")) n.setNumber(note.optInt("n"))
         val id = note.optString("grant").ifEmpty { note.optString("join").ifEmpty { note.optString("key") } }
         when (category) {
             "grant" -> {
@@ -152,6 +152,27 @@ object Notifications {
         if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
         ) nm.notify(tag(host, subject), 0, n.build())
+    }
+
+    /**
+     * The channel for a notification: by what happened, as the computer says
+     * (its note's "k"); from a computer from before that, guessed from its
+     * category and words.
+     */
+    fun channel(kind: String, category: String, title: String, body: String, live: Boolean): String = when (kind) {
+        "needs_input", "program_needs_input", "grant" -> CH_NEEDS_YOU
+        "finished", "program_finished" -> CH_FINISHED
+        "errored", "program_errored" -> CH_ERRORS
+        "hammockkey" -> CH_KEY
+        "join" -> CH_JOIN
+        else -> when {
+            category == "hammockkey" -> CH_KEY
+            category == "join" -> CH_JOIN
+            category == "grant" -> CH_NEEDS_YOU
+            title.contains("error", true) || body.contains("error", true) -> CH_ERRORS
+            live -> CH_NEEDS_YOU
+            else -> CH_FINISHED
+        }
     }
 
     const val ACTION_GRANT_ALLOW = "com.homegrownsw.hammock.GRANT_ALLOW"

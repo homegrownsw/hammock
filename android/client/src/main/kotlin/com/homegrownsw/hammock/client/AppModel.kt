@@ -118,7 +118,18 @@ data class Workspace(
     val liveNoticeIDs: Set<String> get() =
         (attention.map { it.id } + grants.map { it.id } + joinRequests.map { it.id } + hammockKeyRequests.map { it.id }).toSet()
 
+    /**
+     * The number on the Sessions tab and with notifications: agents waiting
+     * for your input, permission requests, join requests and Hammock Key
+     * requests. Not what finished or failed. As the daemon counts it for
+     * pushes, and the Mac and iPhone count it (testdata/client/vectors.json).
+     */
+    val badgeCount: Int get() = badgeCount(attention, grants.size, joinRequests.size, hammockKeyRequests.size)
+
     companion object {
+        fun badgeCount(attention: List<AttentionItem>, grants: Int, joinRequests: Int, keyRequests: Int): Int =
+            attention.count { it.state == AgentState.AGENT_STATE_NEEDS_INPUT } + grants + joinRequests + keyRequests
+
         val URGENCY = listOf(
             AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_ERRORED, AgentState.AGENT_STATE_WORKING,
             AgentState.AGENT_STATE_IDLE, AgentState.AGENT_STATE_STARTING,
