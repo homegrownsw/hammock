@@ -45,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +74,7 @@ import com.homegrownsw.hammock.client.isDiff
 import com.homegrownsw.hammock.client.isLog
 import com.homegrownsw.hammock.client.isTerminal
 import com.homegrownsw.hammock.client.sessionURL
+import com.homegrownsw.hammock.panes.LocalShowPane
 import com.homegrownsw.hammock.terminal.TerminalSession
 import hammock.v1.Hammock.Pane
 import hammock.v1.Hammock.PaneKind
@@ -100,24 +102,37 @@ fun TabScreen(model: AppModel, tabID: String, nav: Nav, showBack: Boolean) {
         return
     }
     val ids = stripPaneIDs(tab).filter { w.panes[it] != null }
+    // A pane one opened beside it (a files pane's editor): gone to once it's in the tab.
+    var showing by rememberSaveable(tabID) { mutableStateOf<String?>(null) }
+    val showPane: (String) -> Unit = remember(tabID) { { id: String -> showing = id } }
     if (ids.size <= 1) {
-        ids.firstOrNull()?.let { PaneScreen(model, it, nav, showBack) }
-            ?: DetailScaffold(w.title(tab), if (showBack) nav::pop else null) { EmptyState("Starting…", "", Modifier.padding(it)) }
+        CompositionLocalProvider(LocalShowPane provides showPane) {
+            ids.firstOrNull()?.let { PaneScreen(model, it, nav, showBack) }
+                ?: DetailScaffold(w.title(tab), if (showBack) nav::pop else null) { EmptyState("Starting…", "", Modifier.padding(it)) }
+        }
         return
     }
-    val start = ids.indexOf(tab.focusedPaneId).coerceAtLeast(0)
+    val start = ids.indexOf(showing ?: tab.focusedPaneId).coerceAtLeast(0)
     val pager = rememberPagerState(start) { ids.size }
     val scope = rememberCoroutineScope()
     var exposing by rememberSaveable { mutableStateOf(false) }
     val current = ids.getOrNull(pager.currentPage) ?: ids.first()
     fun go(id: String) { ids.indexOf(id).takeIf { it >= 0 }?.let { scope.launch { pager.animateScrollToPage(it) } } }
+    LaunchedEffect(showing, ids) {
+        val i = showing?.let(ids::indexOf) ?: -1
+        if (i < 0) return@LaunchedEffect
+        pager.animateScrollToPage(i)
+        showing = null // after: clearing it first would cancel the scroll
+    }
     Box(Modifier.fillMaxSize()) {
         // Swiping sideways across a pane goes to the next, as on the iPhone (not on a page or a
         // simulator's screen, whose own drags come first).
         HorizontalPager(pager, Modifier.fillMaxSize(), key = { ids[it] }, beyondViewportPageCount = 0) { i ->
-            PaneScreen(model, ids[i], nav, showBack, active = i == pager.settledPage, tabStrip = {
-                PaneStrip(model, w, tab, current, nav, select = ::go, expose = { exposing = true })
-            })
+            CompositionLocalProvider(LocalShowPane provides showPane) {
+                PaneScreen(model, ids[i], nav, showBack, active = i == pager.settledPage, tabStrip = {
+                    PaneStrip(model, w, tab, current, nav, select = ::go, expose = { exposing = true })
+                })
+            }
         }
         if (exposing) ExposeScreen(model, w, tab, current, nav, pick = { go(it); exposing = false }, dismiss = { exposing = false })
     }
@@ -204,6 +219,7 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, act
                     logMode && showLog -> LogContent(model, pane)
                     pane.kind == PaneKind.PANE_KIND_EDITOR -> EditorContent(model, pane, drive) { close -> PaneMenuItems(model, w, pane, drive, nav, close) }
                     pane.kind == PaneKind.PANE_KIND_DIFF -> DiffContent(model, pane, drive)
+                    pane.kind == PaneKind.PANE_KIND_FILES -> FilesContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_BROWSER -> BrowserContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_SIMULATOR -> SimulatorContent(model, pane, drive)
                     else -> TerminalContent(model, pane, drive) { terminal = it }
@@ -236,6 +252,7 @@ private fun PaneMenu(model: AppModel, w: Workspace, pane: Pane, drive: Boolean, 
             if (tab != null && group != null) {
                 TabActions(model, w, group, tab, close = { open = false }, rename = { renaming = true },
                     newTab = { scope.launch { model.createTab(group.id)?.let { nav.open("tab:$it") } } },
+                    newFilesTab = { scope.launch { model.createFilesTab(group.id)?.let { nav.open("tab:$it") } } },
                     startAgent = { starting = true }, move = { moving = true })
             }
             if (tab != null && tab.allPaneIDs().size > 1) {
@@ -259,6 +276,7 @@ fun stripName(p: Pane, w: Workspace): String = when (p.kind) {
     PaneKind.PANE_KIND_SIMULATOR -> p.title.ifEmpty { "Simulator" }
     PaneKind.PANE_KIND_EDITOR -> p.editor.name.ifEmpty { p.displayName }
     PaneKind.PANE_KIND_DIFF -> p.diff.title.ifEmpty { "Diff" }
+    PaneKind.PANE_KIND_FILES -> p.title.ifEmpty { "Files" }
     else -> if (p.hasAgent() && p.agent.harness.isNotEmpty()) AgentCatalog.shortName(p.agent.harness, w.kinds) else p.displayName
 }
 

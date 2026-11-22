@@ -43,6 +43,9 @@ to compact or clear the conversation. **+** attaches pictures, and the microphon
 Android has the language installed. With a hardware keyboard, ↑ in the empty box brings back what you sent before;
 on a prompt, press an option's number to answer, ← and → to move between questions, and Esc for the terminal.
 
+Files panes show the folder's tree: tap a file to open it beside the tree, and touch and hold to rename, move or
+trash files. **New Files Tab** is in a tab's ⋮ menu.
+
 Browser and simulator panes show live, and you can tap, scroll and type in them. A Mac with screen sharing on appears
 in **Devices** under **Show Screen**: see [Screen sharing](/hammock/docs/screen-sharing/).
 

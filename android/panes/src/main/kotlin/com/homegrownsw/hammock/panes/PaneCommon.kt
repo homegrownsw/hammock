@@ -12,12 +12,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.homegrownsw.hammock.client.AppModel
 import hammock.v1.Hammock
+
+/**
+ * Shows a pane of the tab on screen (the tab's pager goes to it once it's
+ * there): for a pane that just opened one beside it. The app provides it;
+ * focusing alone doesn't move the phone's pager.
+ */
+val LocalShowPane = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 /** Opens a file in an editor pane beside paneID (a link in the preview, a diff's file) and shows it. */
 internal suspend fun openEditorBeside(model: AppModel, paneID: String, path: String, line: Int = 0, view: Hammock.EditorInfo.View = Hammock.EditorInfo.View.VIEW_SOURCE) {

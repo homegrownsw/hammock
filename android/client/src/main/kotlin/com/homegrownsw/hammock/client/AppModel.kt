@@ -797,6 +797,16 @@ class AppModel private constructor(
         return created
     }
 
+    /** A new tab with a files pane on the Group's folder, following it. */
+    suspend fun createFilesTab(groupID: String): String? {
+        val created = request {
+            setCreateTab(Hammock.CreateTab.newBuilder().setGroupId(groupID).setTabId(newTabID())
+                .setPane(Hammock.PaneSpec.newBuilder().setFiles(Hammock.FilesOpen.getDefaultInstance())).build())
+        }?.created?.id
+        if (created == null) showToast("Couldn't open a tab: ${lastError ?: "unknown error"}")
+        return created
+    }
+
     suspend fun startAgent(harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = ""): String? {
         val created = request {
             setStartAgent(Hammock.StartAgent.newBuilder().setHarness(harness).setCwd(cwd).setPrompt(prompt).apply {

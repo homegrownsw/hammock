@@ -206,6 +206,7 @@ fun PaneIcon(pane: Pane?, size: Dp = 16.dp, modifier: Modifier = Modifier) {
         PaneKind.PANE_KIND_SIMULATOR -> Icon(if (pane.devicePlatform == "tvOS") Icons.Default.Tv else Icons.Default.PhoneIphone, null, modifier.size(size), tint = tint)
         PaneKind.PANE_KIND_EDITOR -> Icon(Icons.AutoMirrored.Filled.Article, null, modifier.size(size), tint = tint)
         PaneKind.PANE_KIND_DIFF -> Icon(PlusMinus, null, modifier.size(size), tint = tint)
+        PaneKind.PANE_KIND_FILES -> Icon(Icons.Default.Folder, null, modifier.size(size), tint = tint)
         else -> when {
             pane != null && pane.isLog -> Icon(Icons.AutoMirrored.Filled.ListAlt, null, modifier.size(size), tint = tint)
             pane != null && pane.hasAgent() && pane.agent.harness.isNotEmpty() -> AgentMark(pane.agent.harness, size, modifier)

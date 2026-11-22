@@ -31,6 +31,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Minimize
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -346,6 +348,7 @@ private fun LiveTile(model: AppModel, w: Workspace, id: String, current: Boolean
                 ) { CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurfaceVariant) { PaneIcon(p, 28.dp) } }
                 p.kind == PaneKind.PANE_KIND_EDITOR -> FileTile(p)
                 p.kind == PaneKind.PANE_KIND_DIFF -> DiffTile(p)
+                p.kind == PaneKind.PANE_KIND_FILES -> FilesTile(p)
                 !p.isLog && p.hasAgent() && AgentCatalog.hasAgentView(p.agent.harness, w.kinds) && showsAgent(p.id) -> AgentTailTile(model, p)
                 else -> TerminalTile(model, p)
             }
@@ -473,6 +476,40 @@ private fun DiffTile(p: Pane) {
         else if (d.branch.isNotEmpty()) Text(d.branch, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
+}
+
+/** A files pane's tile: its folder, and the folders open in it (the phone lists them only on the page). */
+@Composable
+private fun FilesTile(p: Pane) {
+    val f = p.files
+    val quiet = MaterialTheme.colorScheme.onSurfaceVariant
+    val open = remember(f.root, f.expandedList) { filesSketch(f.root, f.expandedList) }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Default.FolderOpen, null, Modifier.size(12.dp), tint = quiet)
+            Text(f.root.trimEnd('/').substringAfterLast('/').ifEmpty { f.root.ifEmpty { p.title } }, style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        for ((depth, name) in open) {
+            Row(Modifier.padding(start = (8 * (depth + 1)).dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(Icons.Default.Folder, null, Modifier.size(10.dp), tint = quiet.copy(alpha = 0.6f))
+                Text(name, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = quiet, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** The open folders under root, as a tree would list them: each one's depth below root and its name (a few, in order). */
+internal fun filesSketch(root: String, expanded: List<String>, max: Int = 6): List<Pair<Int, String>> {
+    val base = root.trimEnd('/') + "/"
+    val open = expanded.filter { it.startsWith(base) }.map { it.removePrefix(base).trimEnd('/') }.filter { it.isNotEmpty() }.toSet()
+    // Shown only with every folder above it open too (the daemon keeps those inside a closed one).
+    return open.filter { rel -> generateSequence(rel.substringBeforeLast('/', "")) { it.substringBeforeLast('/', "").ifEmpty { null } }
+        .takeWhile { it.isNotEmpty() }.all { it in open } }
+        // A folder's children straight after it.
+        .sortedBy { it.replace('/', '\u0000') }.take(max).map { rel -> rel.count { it == '/' } to rel.substringAfterLast('/') }
 }
 
 /** Made-up lines in a diff's proportions (removed -1, added 1, context 0, each with a length), the same every time for the same counts. */

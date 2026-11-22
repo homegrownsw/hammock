@@ -36,11 +36,13 @@ val AgentState.label: String get() = when (this) {
 val Pane.isReportingProgram: Boolean get() = hasAgent() && agent.reported && agent.harness.isEmpty()
 val Pane.isLog: Boolean get() = hasLog()
 val Pane.isDiff: Boolean get() = kind == PaneKind.PANE_KIND_DIFF
+val Pane.isFiles: Boolean get() = kind == PaneKind.PANE_KIND_FILES
 val Pane.isTerminal: Boolean get() = kind == PaneKind.PANE_KIND_TERMINAL || kind == PaneKind.PANE_KIND_UNSPECIFIED
 
 /** The pane's process for people: the agent's harness if known, else its title. */
 val Pane.displayName: String get() {
     if (kind == PaneKind.PANE_KIND_EDITOR) return editor.name.ifEmpty { "Untitled" }
+    if (kind == PaneKind.PANE_KIND_FILES) return title.ifEmpty { "Files" }
     if (hasAgent() && agent.harness.isNotEmpty()) return agent.harness
     if (isReportingProgram) listOf(agent.title, agent.app, programList.firstOrNull() ?: "").firstOrNull { it.isNotEmpty() }?.let { return it }
     return title.ifEmpty { commandList.firstOrNull()?.substringAfterLast('/') ?: "shell" }

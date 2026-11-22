@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.homegrownsw.hammock.media.BrowserPane
 import com.homegrownsw.hammock.media.SimulatorPane
 import com.homegrownsw.hammock.panes.DiffPane
+import com.homegrownsw.hammock.panes.FilesPane
 import com.homegrownsw.hammock.panes.DiffSettings
 import com.homegrownsw.hammock.panes.EditorPane
 import com.homegrownsw.hammock.panes.EditorSettings
@@ -243,7 +244,10 @@ fun DiffContent(model: AppModel, pane: Pane, drive: Boolean) {
     DiffPane(model, pane, drive, rememberPaneTheme(model), settings = DiffSettings(fontFamily = rememberEditorFontFamily(), fontSize = font.size.toDouble()))
 }
 
-/** Editor, diff and log panes in the terminal's colours, with the app's accent. */
+@Composable
+fun FilesContent(model: AppModel, pane: Pane, drive: Boolean) = FilesPane(model, pane, drive, rememberPaneTheme(model))
+
+/** Editor, diff, files and log panes in the terminal's colours, with the app's accent. */
 @Composable
 fun rememberPaneTheme(model: AppModel): PaneTheme {
     val t = rememberTerminalTheme(model)

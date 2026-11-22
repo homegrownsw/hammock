@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.filled.RemoveCircle
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -127,6 +128,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
         Collapsed.set(ctx, ids)
     }
     fun newTab(g: Group) = scope.launch { model.createTab(g.id)?.let { nav.open("tab:$it") } }
+    fun newFilesTab(g: Group) = scope.launch { model.createFilesTab(g.id)?.let { nav.open("tab:$it") } }
 
     val shown = w.groups.filter { g ->
         when {
@@ -171,7 +173,8 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
             for (g in shown) {
                 val isCollapsed = g.id in collapsed
                 item(key = "g:" + g.id, contentType = "header") {
-                    GroupHeader(w, g, isCollapsed, toggle = { toggle(g) }, newTab = { newTab(g) }, startAgent = { startingIn = g.id },
+                    GroupHeader(w, g, isCollapsed, toggle = { toggle(g) }, newTab = { newTab(g) }, newFilesTab = { newFilesTab(g) },
+                        startAgent = { startingIn = g.id },
                         edit = { editing = g }, delete = { deleting = g }, leave = { leaving = g }, modifier = Modifier.animateItem())
                 }
                 if (!isCollapsed) {
@@ -192,7 +195,7 @@ fun GroupsScreen(session: Session, model: AppModel, nav: Nav) {
                         val i = tabs.indexOf(tab)
                         Swipeable(enabled = canClose && !editingOrder, onSwipe = { closer.closeTab(model, w, tab) }) {
                             TabRow(model, w, g, tab, selected = nav.stack.lastOrNull() == "tab:" + tab.id || tab.id == dragging,
-                                open = { nav.open("tab:" + tab.id) }, rename = { renaming = tab }, newTab = { newTab(g) },
+                                open = { nav.open("tab:" + tab.id) }, rename = { renaming = tab }, newTab = { newTab(g) }, newFilesTab = { newFilesTab(g) },
                                 startAgent = { startingIn = g.id },
                                 editing = if (editingOrder && canClose) TabEditing(
                                     up = if (i > 0) ({ model.moveTab(tab.id, g.id, i - 1) }) else null,
@@ -269,7 +272,7 @@ private fun ComputerChips(w: Workspace, selected: String, select: (String) -> Un
  */
 @Composable
 private fun GroupHeader(
-    w: Workspace, g: Group, collapsed: Boolean, toggle: () -> Unit, newTab: () -> Unit, startAgent: () -> Unit,
+    w: Workspace, g: Group, collapsed: Boolean, toggle: () -> Unit, newTab: () -> Unit, newFilesTab: () -> Unit, startAgent: () -> Unit,
     edit: () -> Unit, delete: () -> Unit, leave: () -> Unit, modifier: Modifier = Modifier,
 ) {
     val angle by animateFloatAsState(if (collapsed) 0f else 90f, label = "chevron")
@@ -310,6 +313,7 @@ private fun GroupHeader(
             DropdownMenu(plus, { plus = false }) {
                 DropdownMenuItem(text = { Text("Terminal") }, leadingIcon = { Icon(Icons.Outlined.Terminal, null) }, onClick = { plus = false; newTab() })
                 DropdownMenuItem(text = { Text("Agent…") }, leadingIcon = { Icon(Icons.Default.AutoAwesome, null) }, onClick = { plus = false; startAgent() })
+                DropdownMenuItem(text = { Text("Files") }, leadingIcon = { Icon(Icons.Outlined.Folder, null) }, onClick = { plus = false; newFilesTab() })
             }
         }
         Box {
@@ -358,7 +362,7 @@ fun dropIndex(rows: List<RowSpan>, keys: List<Any>, dragged: Any, by: Float): In
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: Boolean, open: () -> Unit, rename: () -> Unit,
-                   newTab: () -> Unit, startAgent: () -> Unit, editing: TabEditing? = null) {
+                   newTab: () -> Unit, newFilesTab: () -> Unit, startAgent: () -> Unit, editing: TabEditing? = null) {
     var menu by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     val agent = w.shownAgentPane(tab)
@@ -408,7 +412,8 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
             }
         }
         DropdownMenu(menu, { menu = false }) {
-            TabActions(model, w, g, tab, close = { menu = false }, rename = rename, newTab = newTab, startAgent = startAgent, move = { moving = true })
+            TabActions(model, w, g, tab, close = { menu = false }, rename = rename, newTab = newTab, newFilesTab = newFilesTab, startAgent = startAgent,
+                move = { moving = true })
         }
         DropdownMenu(moving, { moving = false }) {
             for (other in w.groups.filter { it.id != g.id && it.canAddTabs }) {
@@ -450,7 +455,7 @@ private fun Modifier.moveActions(editing: TabEditing?): Modifier {
 /** A tab's actions (long-press on its row, or its screen's menu). */
 @Composable
 fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> Unit, rename: () -> Unit, newTab: () -> Unit,
-               startAgent: () -> Unit, move: () -> Unit) {
+               newFilesTab: () -> Unit, startAgent: () -> Unit, move: () -> Unit) {
     val drive = g.canDrive && !g.offline
     val agent = w.shownAgentPane(tab)
     val closer = LocalCloser.current
@@ -458,6 +463,7 @@ fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> U
     if (g.canAddTabs) {
         DropdownMenuItem(text = { Text("New Tab in Group") }, onClick = { close(); newTab() })
         DropdownMenuItem(text = { Text("Start an Agent…") }, onClick = { close(); startAgent() })
+        DropdownMenuItem(text = { Text("New Files Tab") }, onClick = { close(); newFilesTab() })
     }
     if (drive && w.groups.count { it.canAddTabs } > 1) DropdownMenuItem(text = { Text("Move to Group…") }, onClick = { close(); move() })
     if (agent != null && drive) {
