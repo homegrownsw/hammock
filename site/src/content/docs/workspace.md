@@ -21,6 +21,8 @@ When a pane's program fails, the pane stays, with its output, and a bar along it
 
 **New Group** (⌘N), or **New Group in Directory…** (⇧⌘N) for one named after a folder. **Configure Group…** (⌥⌘G) changes its name, icon and folder. ⌥⌘↓ and ⌥⌘↑ move between Groups; drag one in the sidebar to reorder it. Click a Group's header to collapse or expand it; its right-click menu also has **Collapse Others**.
 
+Drag folders from the Finder onto the sidebar: between Groups, each makes a Group there; onto one of this Mac's Groups, each opens a tab in it. A folder that already has a Group selects that Group instead. Dropping folders on the Dock icon makes Groups too.
+
 ```sh
 hmk group new api --folder ~/Developer/api
 ```

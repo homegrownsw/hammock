@@ -77,6 +77,9 @@ struct SidebarView: View {
     @State private var hoverClear: DispatchWorkItem?
     @State private var hoveredRows = Set<String>()
     @State private var hoveredTab: String?
+    /// Where folders dragged from the Finder would land: on a Group (its
+    /// rows light up) or between Groups (a line there).
+    @State private var folderDrop: FolderDrop.Target?
     @State private var tracker = SidebarDragTracker()
     @State private var scroller = SidebarScroller()
     /// The bottom bar's height: the List scrolls under it.
@@ -231,6 +234,34 @@ struct SidebarView: View {
         let full = model.groups.map { shown.contains($0.id) ? (slots.next() ?? $0.id) : $0.id }
         guard let to = full.firstIndex(of: id), to != model.groups.firstIndex(where: { $0.id == id }) else { return }
         model.moveGroup(id, to: to) // reorders here at once, as previewed
+    }
+
+    /// The shown Groups' rows, top to bottom in the window, for placing a
+    /// folder dragged over the sidebar.
+    private var dropBlocks: [FolderDrop.Block] {
+        var out: [FolderDrop.Block] = []
+        for row in rows {
+            switch row {
+            case .header(let g, _, _):
+                guard let f = headerFrames[g.id] else { continue }
+                out.append(.init(id: g.id, top: f.minY, bottom: f.maxY, takesTabs: FolderDrop.takesTabs(g)))
+            case .tab(let t, let g, _, _):
+                guard let f = tabFrames[t.id], let i = out.indices.last, out[i].id == g.id else { continue }
+                out[i].bottom = max(out[i].bottom, f.maxY)
+            }
+        }
+        return out
+    }
+
+    /// The folder drag shown: the one under way, else HMK_DEBUG_FOLDER_DROP's
+    /// (`group:<n>`, the nth shown Group lit; `line:<n>`, the line before it).
+    private var shownFolderDrop: FolderDrop.Target? {
+        if let folderDrop { return folderDrop }
+        guard let v = ProcessInfo.processInfo.environment["HMK_DEBUG_FOLDER_DROP"] else { return nil }
+        let parts = v.split(separator: ":")
+        guard parts.count == 2, let n = Int(parts[1]), n >= 1 else { return nil }
+        if parts[0] == "group" { return shownGroups.indices.contains(n - 1) ? .group(shownGroups[n - 1].id) : nil }
+        return .insert(n - 1)
     }
 
     /// Group headings drawn subtly (group-headings = subtle): only over
@@ -417,6 +448,20 @@ struct SidebarView: View {
                     .allowsHitTesting(false)
             }
         }
+        // Folders dragged from the Finder: a new Group where the line is,
+        // or new tabs in the Group they're over (FolderDrop).
+        .overlay(alignment: .top) {
+            if case .insert(let i)? = shownFolderDrop, let y = FolderDrop.lineY(i, blocks: dropBlocks) {
+                FolderDropLine()
+                    .offset(y: y - listFrame.minY - 4)
+            }
+        }
+        .onDrop(of: [.fileURL], delegate: SidebarFolderDrop(
+            locate: { p in FolderDrop.target(y: p.y + listFrame.minY, blocks: dropBlocks) },
+            show: { t in if t != folderDrop { withAnimation(.snappy(duration: 0.15)) { folderDrop = t } } },
+            perform: { folders, target in FolderDropUI.shared.drop(folders, on: target, shown: shownGroups, model: model) }
+        ))
+        .accessibilityDropPoint(.bottom, description: "New Group for the folder", isEnabled: true)
         .onChange(of: collapsed) { _, c in GroupCollapse.collapsed = c }
         // The Group menus' and palette's Collapse, Expand and Collapse Others.
         .onReceive(NotificationCenter.default.publisher(for: GroupCollapse.changed)) { _ in
@@ -541,15 +586,18 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func groupBackground(_ groupID: String, _ position: GroupPosition) -> some View {
-        if draggingGroup == nil, draggingTab == nil, hoveredGroup == groupID || ProcessInfo.processInfo.environment["HMK_DEBUG_HOVER"] != nil {
+        // In the theme's colour: folders dragged over it would open tabs
+        // here, or a folder dropped just now is this Group's.
+        let lit = shownFolderDrop == .group(groupID) || FolderDropUI.shared.flashing == groupID
+        if lit || draggingGroup == nil && draggingTab == nil && (hoveredGroup == groupID || ProcessInfo.processInfo.environment["HMK_DEBUG_HOVER"] != nil) {
             let r: CGFloat = 10
             let top = position == .single || position == .top ? r : 0
             let bottom = position == .single || position == .bottom ? r : 0
             UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bottom, bottomTrailingRadius: bottom, topTrailingRadius: top)
-                .fill(Color.primary.opacity(0.035))
+                .fill(lit ? Color.themeAccent.opacity(0.16) : Color.primary.opacity(0.035))
                 // A hairline round the whole group, as in Dia: each slice
                 // strokes only its outer edges, so they join into one.
-                .overlay(GroupSliceOutline(top: top, bottom: bottom).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+                .overlay(GroupSliceOutline(top: top, bottom: bottom).stroke(lit ? Color.themeAccent.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1))
                 .padding(.horizontal, 4)
                 .padding(.top, top > 0 ? 2 : 0)
                 // The last tab's slice ends at its row's edge: the List clips

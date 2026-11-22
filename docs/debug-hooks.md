@@ -16,6 +16,7 @@ titlebar geometry. With it:
 | `HMK_DEBUG_DELAY=<s>` | Wait before rendering. Give a scratch daemon's first launch after a rebuild 10: β restarts it. |
 | `HMK_DEBUG_PALETTE=1` (or `=<text>`) | The command palette open (searched for `<text>`). |
 | `HMK_DEBUG_HOVER=1` | Hover states shown. |
+| `HMK_DEBUG_FOLDER_DROP=group:<n>` (or `line:<n>`) | A folder dragged from the Finder over the sidebar: the nth Group lit to take it as tabs, or the line before the nth Group (one past the last: after it) where new Groups would go. |
 | `HMK_DEBUG_SIDEBAR_SCROLL=<pt>` | Start with the sidebar scrolled. |
 | `HMK_DEBUG_PEEK=1` | The hidden sidebar's peek panel open; pass `--args -sidebarHidden YES`. |
 | `HMK_DEBUG_TAB_PREVIEW=<n>` (or `=<text>`) | The nth tab's hover preview (in sidebar order, from 1; or the first whose title contains `<text>`) shown and kept. It floats in a window of its own, so capture the screen, not the window. |

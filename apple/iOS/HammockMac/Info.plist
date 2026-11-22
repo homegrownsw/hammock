@@ -36,6 +36,23 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Folders dropped on the Dock icon, or opened with the app, become Groups. Rank None:
+	     Hammock takes them when asked, never as the Mac's default for opening folders. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>None</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<!-- HammockAgentLabel and HammockStateDir: read by the app, hmkd and hmk to find

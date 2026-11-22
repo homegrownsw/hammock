@@ -93,6 +93,8 @@ public final class PaneSession {
 @Observable
 public final class AppModel {
     public private(set) var connected = false
+    /// Whether the daemon's whole state has arrived at least once (its Groups are known).
+    public private(set) var hasFullState = false
     /// The link's history, for LinkStatus: whether it's connected since this
     /// model started, when this try at connecting began (nil while
     /// connected), when what's shown was last live (nil before the first
@@ -827,6 +829,7 @@ public final class AppModel {
         let resolved = u.clearedAttentionIds + u.resolvedGrantIds + u.resolvedJoinIds + u.resolvedLinkIds + u.resolvedHammockKeyIds
         if !resolved.isEmpty { onResolved?(resolved) }
         if u.full {
+            hasFullState = true
             // The panes are known: drafts' attachments for those gone are swept.
             ComposerDrafts.pruneStale(livePanes: Set(panes.keys))
             PreviewFiles.sweep()
@@ -1844,14 +1847,20 @@ extension AppModel {
     }
 
     /// A Group on this Mac named after `folder`, its tabs opening there,
-    /// with no tabs yet: selected, on its zero state.
-    public func newGroup(inFolder folder: String) async {
-        guard let id = await createGroup(name: (folder as NSString).lastPathComponent) else { return }
+    /// with no tabs yet: selected, on its zero state. `index`: moved to that
+    /// place among your Groups (a folder dropped between two), else last.
+    @discardableResult
+    public func newGroup(inFolder folder: String, at index: Int? = nil) async -> String? {
+        guard let id = await createGroup(name: (folder as NSString).lastPathComponent) else { return nil }
         await setGroupFolder(id, folder)
         for _ in 0..<50 where !groups.contains(where: { $0.id == id }) {
             try? await Task.sleep(for: .milliseconds(40))
         }
+        if let index, let from = groups.firstIndex(where: { $0.id == id }), from != index {
+            moveGroup(id, to: index)
+        }
         selectGroup(id)
+        return id
     }
 
     /// ⌘W, as in a browser: closes the focused pane; if it's the tab's only

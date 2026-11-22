@@ -122,6 +122,14 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSSpeechRecognitionUsageDescription</key><string>Turn what you say into text, on this Mac, when you dictate a message.</string>
   <!-- hammock:// links (invites: hammock://join/…) open the app. -->
 $url_types
+  <!-- Folders dropped on the Dock icon, or opened with the app, become Groups. Rank None:
+       Hammock takes them when asked, never as the Mac's default for opening folders. -->
+  <key>CFBundleDocumentTypes</key><array><dict>
+    <key>CFBundleTypeName</key><string>Folder</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSHandlerRank</key><string>None</string>
+    <key>LSItemContentTypes</key><array><string>public.folder</string></array>
+  </dict></array>
 $updates
   <!-- Read by the app, hmkd and hmk to find this variant's daemon. -->
   <key>HammockStateDir</key><string>$dir</string>

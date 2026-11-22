@@ -121,6 +121,9 @@ struct HammockApp: App {
                     EditorSaveAsSheet(model: model, paneID: $0.id)
                 }
                 .onOpenURL { url in
+                    // A folder dropped on the Dock icon, or opened with the
+                    // app (CFBundleDocumentTypes): its Group.
+                    if url.isFileURL { FolderDropUI.shared.open([url], model: model); return }
                     let link = url.absoluteString
                     if link.hasPrefix("hammock://join/") { SharingUI.shared.joinLink = link }
                     if link.hasPrefix("hammock://link/") { LinkUI.shared.open(link: link, fromOutside: true) }
