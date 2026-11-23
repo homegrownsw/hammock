@@ -18,11 +18,11 @@
 }
 :root { --fg: var(--l-fg); --fg2: var(--l-fg2); --fg3: var(--l-fg3); --fg4: var(--l-fg4); --sep: var(--l-sep);
   --green: var(--l-green); --red: var(--l-red); --orange: var(--l-orange); --purple: var(--l-purple); --teal: var(--l-teal);
-  --accent: var(--l-accent); --bubble: var(--l-bubble); --glass: rgba(255, 255, 255, 0.72); }
+  --accent: var(--l-accent); --bubble: var(--l-bubble); --bubble-fill: var(--l-bubbleFill, var(--bubble)); --glass: rgba(255, 255, 255, 0.72); }
 @media (prefers-color-scheme: dark) {
   :root { --fg: var(--d-fg); --fg2: var(--d-fg2); --fg3: var(--d-fg3); --fg4: var(--d-fg4); --sep: var(--d-sep);
     --green: var(--d-green); --red: var(--d-red); --orange: var(--d-orange); --purple: var(--d-purple); --teal: var(--d-teal);
-    --accent: var(--d-accent); --bubble: var(--d-bubble); --glass: rgba(50, 50, 54, 0.66); }
+    --accent: var(--d-accent); --bubble: var(--d-bubble); --bubble-fill: var(--d-bubbleFill, var(--bubble)); --glass: rgba(50, 50, 54, 0.66); }
 }
 /* SwiftUI's .quaternary.opacity(0.45), the code and diff cards' fill. */
 :root { --fill: color-mix(in srgb, var(--fg4) 45%, transparent); }
@@ -58,7 +58,7 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 /* Your messages. */
 .user { display: flex; flex-direction: column; align-items: flex-end; padding-left: 60px; gap: 6px; }
 .bubble { color: #fff; padding: calc(10px - var(--sp) / 2) 15px; border-radius: 20px; white-space: pre-wrap; max-width: 100%;
-  background: linear-gradient(to bottom, color-mix(in srgb, var(--bubble) 92%, white), color-mix(in srgb, var(--bubble) 94%, black)); }
+  /* SwiftUI's bubble.gradient, sampled (AgentWebView.swift). */ background: var(--bubble-fill); }
 .bubble a { color: #fff; text-decoration: none; }
 .bubble code { font-family: var(--code); font-size: 0.92em; }
 .user.pending { opacity: 0.7; }

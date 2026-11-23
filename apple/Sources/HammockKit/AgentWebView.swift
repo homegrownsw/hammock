@@ -469,6 +469,7 @@ extension AgentWebBridge {
         NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
             for (k, c) in named { out[k] = css(c) }
         }
+        out["bubbleFill"] = gradient(st.bubble, dark: dark)
         return out
         #else
         let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
@@ -477,8 +478,30 @@ extension AgentWebBridge {
             ("sep", .separator), ("green", .systemGreen), ("red", .systemRed), ("orange", .systemOrange),
             ("purple", .systemPurple), ("teal", .systemTeal), ("accent", UIColor(st.accent)), ("bubble", UIColor(st.bubble)),
         ]
-        return Dictionary(uniqueKeysWithValues: named.map { ($0.0, css($0.1.resolvedColor(with: traits))) })
+        var out = Dictionary(uniqueKeysWithValues: named.map { ($0.0, css($0.1.resolvedColor(with: traits))) })
+        out["bubbleFill"] = gradient(st.bubble, dark: dark)
+        return out
         #endif
+    }
+
+    /// SwiftUI's `color.gradient`, as the bubbles are filled, sampled top to
+    /// bottom into a CSS gradient: it's far from a plain light-to-dark blend.
+    private static func gradient(_ c: Color, dark: Bool) -> String {
+        let h = 64
+        let r = ImageRenderer(content: Rectangle().fill(c.gradient).frame(width: 1, height: CGFloat(h))
+            .environment(\.colorScheme, dark ? .dark : .light))
+        r.scale = 1
+        guard let img = r.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: 1, height: h, bitsPerComponent: 8, bytesPerRow: 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = ctx.data else { return "" }
+        ctx.draw(img, in: CGRect(x: 0, y: 0, width: 1, height: h))
+        let px = data.bindMemory(to: UInt8.self, capacity: h * 4)
+        let stops = stride(from: 0, through: h - 1, by: 7).map { y -> String in
+            let i = y * 4 // the bitmap's first row is the top
+            return String(format: "rgb(%d, %d, %d) %.1f%%", px[i], px[i + 1], px[i + 2], (Double(y) + 0.5) / Double(h) * 100)
+        }
+        return "linear-gradient(to bottom, " + stops.joined(separator: ", ") + ")"
     }
 
     #if os(macOS)
