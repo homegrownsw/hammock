@@ -2203,7 +2203,7 @@ struct ToolGroup: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel([summary, ToolSummary.failed(tools), tools.last?.title, tools.contains(where: \.pending) ? "running" : nil, open ? "expanded" : "collapsed"]
+            .accessibilityLabel([summary, ToolSummary.failed(tools), tools.last.flatMap { $0.title.isEmpty ? nil : $0.title }, tools.contains(where: \.pending) ? "running" : nil, open ? "expanded" : "collapsed"]
                 .compactMap { $0 }.joined(separator: ", "))
             if open {
                 VStack(alignment: .leading, spacing: 2) {
