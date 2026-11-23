@@ -255,6 +255,8 @@ strong, b, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { letter-spacing: var(
 .mac #latest { padding: 4px 12px; }
 #latest[hidden] { display: flex; opacity: 0; transform: translateX(-50%) scale(0.6); pointer-events: none; }
 #latest .dot { position: absolute; top: -1px; right: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+/* Parked out of sight (agent.js setFront): nothing animates. */
+html.parked *, html.parked *::before, html.parked *::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   .reveal, .user.arriving, .working.arriving, .working .sparkle, .working .status, .spin { animation: none !important; }
   .working .status { color: color-mix(in srgb, var(--fg) 75%, transparent); }

@@ -1106,7 +1106,10 @@ function debugScroll(to) {
   glide(() => Math.max(0, Math.min(maxTop(), y)), 600)
 }
 
-window.hammock = { debug, configure, update, setInsets, image, toLatest, debugScroll }
+/** Shown, or parked out of sight (animations wait). */
+function setFront(front) { document.documentElement.classList.toggle("parked", !front) }
+
+window.hammock = { debug, setFront, configure, update, setInsets, image, toLatest, debugScroll }
 // Ready once the empty page is on screen: on the iPhone, WebKit puts a new
 // page back at its top as its first frame reaches the screen, and a
 // conversation already scrolled to its end by then was moved with it.

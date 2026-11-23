@@ -193,6 +193,11 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     }
     #endif
 
+    /// In front (shown) or parked: parked, its animations wait (Working…'s
+    /// sparkle and shimmer, spinners), so a page out of sight draws only
+    /// what changes.
+    func setFront(_ front: Bool) { if ready { call("hammock.setFront(f)", ["f": front]) } }
+
     /// The director's commands (AgentDebug).
     func debug(_ cmd: String, _ arg: String) { if ready { call("hammock.debug(c, a)", ["c": cmd, "a": arg]) } }
 
@@ -800,6 +805,10 @@ final class AgentWebHost {
     /// message box (and the keyboard) over its bottom.
     func pushInsets() {
         guard measures else { return }
+        #if os(macOS)
+        // Parked, it's not under the bars it measures against.
+        guard bridge.webView.superview is AgentPageSlot else { return }
+        #endif
         // The web view's own frame: SwiftUI's leaves out what it runs into
         // under the bars (ignoresSafeArea).
         guard let f = webFrame(), f.height > 0 else { return }
@@ -826,8 +835,65 @@ final class AgentWebHost {
 #if os(macOS)
 struct AgentWebTranscript: NSViewRepresentable {
     let bridge: AgentWebBridge
-    func makeNSView(context: Context) -> WKWebView { bridge.webView }
-    func updateNSView(_ v: WKWebView, context: Context) {}
+    func makeNSView(context: Context) -> AgentPageSlot { AgentPageSlot(bridge: bridge) }
+    func updateNSView(_ v: AgentPageSlot, context: Context) {}
+}
+
+/// Where a conversation's page shows. The page isn't the slot's to lose:
+/// a page the pool keeps, when its slot goes (its tab switched away), is
+/// parked in the window, out of sight (AgentPageParking), where WebKit goes
+/// on drawing it as it changes. Taken back, it shows at once, as it is now:
+/// taken out of the window, WebKit drops its drawing, and it came back blank
+/// for a moment.
+final class AgentPageSlot: NSView {
+    let bridge: AgentWebBridge
+    init(bridge: AgentWebBridge) {
+        self.bridge = bridge
+        super.init(frame: .zero)
+    }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        let v = bridge.webView
+        // From where it's parked, or new: never out of the window between.
+        v.frame = bounds
+        v.autoresizingMask = [.width, .height]
+        addSubview(v)
+        bridge.setFront(true)
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        guard newWindow == nil, let w = window, bridge.webView.superview === self else { return }
+        if AgentWebPool.shared.keeps(bridge) {
+            bridge.setFront(false)
+            AgentPageParking.park(bridge.webView, in: w, at: convert(bounds, to: nil))
+        }
+    }
+}
+
+/// A window's parking for conversation pages: in the window (so WebKit keeps
+/// drawing them), invisible, taking no clicks. Each keeps its size, so it's
+/// laid out as it'll be shown.
+final class AgentPageParking: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var isFlipped: Bool { false }
+
+    static func park(_ v: NSView, in window: NSWindow, at rect: NSRect) {
+        guard let frame = window.contentView?.superview else { return }
+        let lot = frame.subviews.first { $0 is AgentPageParking } ?? {
+            let p = AgentPageParking(frame: frame.bounds)
+            p.autoresizingMask = [.width, .height]
+            p.alphaValue = 0
+            frame.addSubview(p, positioned: .below, relativeTo: nil)
+            return p
+        }()
+        v.autoresizingMask = []
+        v.frame = lot.convert(rect, from: nil)
+        lot.addSubview(v)
+    }
 }
 
 /// The page's web view, without the menu's Reload (the page is the app's, not a site).
@@ -946,8 +1012,20 @@ final class AgentWebPool {
 
     /// Its page: the one it had, if it isn't showing somewhere else (in a
     /// window of its own too), else the spare, ready. "": not kept.
+    /// A page the pool keeps (parked when its slot goes, not let go).
+    func keeps(_ b: AgentWebBridge) -> Bool { byKey.values.contains { $0 === b } }
+
+    /// Its page in a slot, showing (not parked).
+    private func showing(_ b: AgentWebBridge) -> Bool {
+        #if os(macOS)
+        return b.webView.superview is AgentPageSlot && b.webView.window != nil
+        #else
+        return b.webView.window != nil
+        #endif
+    }
+
     func bridge(for key: String) -> AgentWebBridge {
-        if let b = byKey[key], b.webView.window == nil {
+        if let b = byKey[key], !showing(b) {
             order.removeAll { $0 == key }
             order.append(key)
             return b
@@ -959,8 +1037,9 @@ final class AgentWebPool {
         byKey[key] = b
         order.append(key)
         // Too many kept: the longest unshown goes (not one on screen).
-        while order.count > Self.keep, let i = order.firstIndex(where: { byKey[$0]?.webView.window == nil }) {
-            byKey[order.remove(at: i)] = nil
+        while order.count > Self.keep, let i = order.firstIndex(where: { byKey[$0].map { !showing($0) } ?? true }) {
+            // Out of its parking too: nothing keeps it now.
+            byKey.removeValue(forKey: order.remove(at: i))?.webView.removeFromSuperview()
         }
         return b
     }
