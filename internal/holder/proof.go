@@ -168,7 +168,13 @@ var (
 // proofSender says why t, a proof's sender as it sent it, isn't the daemon
 // at the other end of w's connection (nil: it is).
 func (s *Server) proofSender(w *proofWait, t codesign.Token) error {
-	if !t.Valid() || !t.Live() {
+	// A daemon that proved itself before a handoff, this very process (pid
+	// and pid version: not one since exec'd, nor its pid's next owner), is
+	// still the daemon, though an update has replaced its executable since,
+	// so its path can't be told (Live) or checked (Peer): it's that update
+	// that had the holder hand over, and the daemon must reconnect.
+	handedOver := s.wasHandedOver(t)
+	if !t.Valid() || !t.Live() && !handedOver {
 		return errProofGone
 	}
 	// The process that connected, as accept took it before the nonce went
@@ -181,7 +187,7 @@ func (s *Server) proofSender(w *proofWait, t codesign.Token) error {
 		return errProofPeer
 	}
 	p := PeerProc{PID: t.PID(), Token: t}
-	if s.cfg.Peer != nil && !s.cfg.Peer(p) {
+	if s.cfg.Peer != nil && !handedOver && !s.cfg.Peer(p) {
 		return errProofNotDaemon
 	}
 	if s.cfg.State != nil {
@@ -189,8 +195,33 @@ func (s *Server) proofSender(w *proofWait, t codesign.Token) error {
 			return fmt.Errorf("its sender is not the daemon of this pane's state: %w", err)
 		}
 	}
-	if !t.Live() { // (its pid wasn't taken by another process while it was checked)
+	// Its pid wasn't taken by another process while it was checked: still
+	// running its program, or (handed over, its path not to be had) still
+	// the process at the other end of the connection.
+	if handedOver {
+		if now := sockPeer(w.uc); now.PID != t.PID() || !t.SameProcess(now.Token) {
+			return errProofGone
+		}
+	} else if !t.Live() {
 		return errProofGone
+	}
+	return nil
+}
+
+// wasHandedOver says whether t is the process of a daemon proven to the
+// holder before a handoff (Server.handedOver).
+func (s *Server) wasHandedOver(t codesign.Token) bool {
+	for _, d := range s.daemonsHandedOver() {
+		if t.SameProcess(d) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) daemonsHandedOver() []codesign.Token {
+	if p := s.handedOver.Load(); p != nil {
+		return *p
 	}
 	return nil
 }

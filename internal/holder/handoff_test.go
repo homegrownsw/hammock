@@ -2,6 +2,7 @@ package holder
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -42,6 +43,28 @@ func TestHandoffRoundTrip(t *testing.T) {
 	b, bt := r.ReadFrom(30)
 	if !bytes.Equal(a, b) || at != bt {
 		t.Fatalf("from 30: %q at %d, was %q at %d", a, at, b, bt)
+	}
+}
+
+// Queued input of any size up to the bound goes with the output (not in the
+// JSON, which has a limit of its own); more than that is never written, so a
+// holder never execs into a handoff the new image would refuse.
+func TestHandoffInput(t *testing.T) {
+	big := bytes.Repeat([]byte("x"), 3<<20) // a paste
+	var buf bytes.Buffer
+	if err := writeHandoff(&buf, handoffState{RingCap: 16, Input: [][]byte{[]byte("a"), big}}, []byte("out")); err != nil {
+		t.Fatal(err)
+	}
+	h, err := readHandoff(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(h.ring) != "out" || len(h.st.Input) != 2 || string(h.st.Input[0]) != "a" || !bytes.Equal(h.st.Input[1], big) {
+		t.Fatalf("input %d pieces, output %q", len(h.st.Input), h.ring)
+	}
+	tooMuch := handoffState{RingCap: 16, Input: [][]byte{make([]byte, maxHandoffInput+1)}}
+	if err := writeHandoff(io.Discard, tooMuch, nil); err == nil {
+		t.Fatal("wrote a handoff with more input than one is taken with")
 	}
 }
 

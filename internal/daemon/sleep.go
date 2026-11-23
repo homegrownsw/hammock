@@ -217,7 +217,7 @@ func (d *Daemon) sleepPane(p *pane, actor string) error {
 	}
 	// Its holder ends with what it runs; the reader, a generation behind,
 	// takes neither the connection closing nor the exit for the pane's.
-	p.postLocked(func(hc *holder.Client) { _ = hc.CloseHolder() })
+	p.closeHolderLocked()
 	p.unlinkLocked()
 	p.gen++
 	p.pid = 0

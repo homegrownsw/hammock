@@ -13,9 +13,10 @@ import (
 
 // Client is a connection to a holder.
 type Client struct {
-	conn net.Conn
-	Info Info
-	wmu  sync.Mutex
+	conn      net.Conn
+	Info      Info
+	wmu       sync.Mutex
+	holderPID int
 }
 
 // Event is something received from a holder after attaching.
@@ -105,7 +106,24 @@ func attach(conn net.Conn, from uint64, token []byte, prove bool) (*Client, erro
 		return fail(err)
 	}
 	_ = conn.SetDeadline(time.Time{})
-	return &Client{conn: conn, Info: info}, nil
+	c := &Client{conn: conn, Info: info}
+	if uc, ok := conn.(*net.UnixConn); ok {
+		c.holderPID = sockPeer(uc).PID
+	}
+	return c, nil
+}
+
+// HolderPID is the holder's own process (0 if it can't be told), as it
+// answered the attach. It stays the holder's through a handoff, which
+// execs in the same process.
+func (c *Client) HolderPID() int { return c.holderPID }
+
+// Dropped says whether err is a connection a holder took and then
+// dropped: one handing over to an update closes its connections, and
+// answers again a moment later (handoff.go). Not one nothing listens on.
+func Dropped(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) || errors.Is(err, errOldHolder)
 }
 
 // Next blocks for the next event.

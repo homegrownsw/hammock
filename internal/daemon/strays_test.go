@@ -153,3 +153,43 @@ func TestUnreachableHolderIsEndedBeforeItsReplacement(t *testing.T) {
 	call(t, c2, &pb.ClientMessage{Msg: &pb.ClientMessage_AttachPane{AttachPane: &pb.AttachPane{PaneId: p.id}}})
 	waitOutput(t, c2, p.id, "ready")
 }
+
+// A holder asked to close that's still running a while after (it handed
+// over to an update as the request came, so never read it) is ended by its
+// pid; one that went as asked, and any other process, are left alone.
+func TestEndHolderIfStill(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "p.sock")
+	// Something with a holder's arguments for sock, that ends on SIGTERM.
+	still := exec.Command("/usr/bin/perl", "-e", "sleep 30", "x", "--socket", sock)
+	if err := still.Start(); err != nil {
+		t.Fatal(err)
+	}
+	ended := make(chan struct{})
+	go func() { still.Wait(); close(ended) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for !holderOf(still.Process.Pid, sock) {
+		if time.Now().After(deadline) {
+			still.Process.Kill()
+			t.Fatal("not taken for the socket's holder")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Another socket's: not this holder.
+	endHolderIfStill(still.Process.Pid, sock+"x")
+	select {
+	case <-ended:
+		t.Fatal("ended a process that isn't that socket's holder")
+	default:
+	}
+	start := time.Now()
+	endHolderIfStill(still.Process.Pid, sock)
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		still.Process.Kill()
+		t.Fatal("a holder still running after it was asked to end wasn't ended")
+	}
+	if time.Since(start) < 2*time.Second {
+		t.Fatal("ended at once, not after giving it time to go")
+	}
+}

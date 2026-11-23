@@ -244,6 +244,15 @@ func TokenFromWords(w [8]uint32) Token {
 // Valid reports whether the token was taken.
 func (t Token) Valid() bool { return t.ok }
 
+// Words are the token's eight words (TokenFromWords' argument).
+func (t Token) Words() [8]uint32 {
+	var w [8]uint32
+	for i := range w {
+		w[i] = uint32(t.t.val[i])
+	}
+	return w
+}
+
 // PID is the token's process id (0 if none).
 func (t Token) PID() int {
 	if !t.ok {

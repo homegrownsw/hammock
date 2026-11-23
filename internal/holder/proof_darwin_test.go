@@ -15,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
+	"github.com/homegrownsw/hammock/internal/codesign"
 	"github.com/homegrownsw/hammock/internal/rendezvous"
 )
 
@@ -384,4 +387,49 @@ func BenchmarkAttach(b *testing.B) {
 			}
 		})
 	}
+}
+
+// A daemon proven to a holder before a handoff still proves itself to it
+// after, though the update that had the holder hand over has replaced the
+// daemon's executable too (so its path no longer checks out); no other
+// process gets in that way.
+func TestHandedOverDaemonProves(t *testing.T) {
+	holderOf := func(handedOver []codesign.Token) string {
+		sock := filepath.Join(t.TempDir(), "p.sock")
+		// A Peer that takes nothing: the daemon's executable, replaced.
+		s, err := Start(Config{Socket: sock, Command: []string{"/bin/cat"}, Token: []byte("s3cret"), Peer: func(PeerProc) bool { return false }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(s.Shutdown)
+		if handedOver != nil {
+			s.handedOver.Store(&handedOver)
+		}
+		return sock
+	}
+	// This process's token: the other end of a socket pair is itself.
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	self := codesign.PeerToken(fds[0])
+	unix.Close(fds[0])
+	unix.Close(fds[1])
+	if !self.Valid() {
+		t.Skip("no audit token")
+	}
+
+	if _, err := Dial(holderOf(nil), 0, []byte("s3cret")); err == nil {
+		t.Fatal("a daemon that isn't one (Peer) attached")
+	}
+	// Another process handed over (this one's parent, say): not this one.
+	other := codesign.TokenFromWords(func() [8]uint32 { w := self.Words(); w[5], w[7] = uint32(os.Getppid()), 1; return w }())
+	if _, err := Dial(holderOf([]codesign.Token{other}), 0, []byte("s3cret")); err == nil {
+		t.Fatal("attached as a daemon handed over that isn't this process")
+	}
+	c, err := Dial(holderOf([]codesign.Token{self}), 0, []byte("s3cret"))
+	if err != nil {
+		t.Fatalf("the daemon handed over couldn't attach: %v", err)
+	}
+	c.Close()
 }

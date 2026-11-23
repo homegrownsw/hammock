@@ -13,7 +13,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/homegrownsw/hammock/internal/agents"
-	"github.com/homegrownsw/hammock/internal/holder"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -78,7 +77,7 @@ func (d *Daemon) restartPane(c *conn, m *pb.RestartPane) error {
 	}
 	// The holder that ran it (still there, showing its screen) ends; the
 	// reader, a generation behind, takes nothing of it for the pane's.
-	p.postLocked(func(hc *holder.Client) { _ = hc.CloseHolder() })
+	p.closeHolderLocked()
 	p.unlinkLocked()
 	p.gen++
 	p.pid = 0

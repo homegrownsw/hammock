@@ -24,6 +24,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -48,6 +49,9 @@ type options struct {
 	command                    []string
 }
 
+// parseArgs parses the holder's arguments. A holder hands its pane over to
+// an update's executable only if that parses its arguments too
+// (holder.CheckArg), so a flag can go only once no holder can have it.
 func parseArgs(args []string) (*options, error) {
 	fs := flag.NewFlagSet("pane-holder", flag.ContinueOnError)
 	o := &options{}
@@ -100,7 +104,11 @@ func main() {
 		switch os.Args[1] {
 		case holder.GateArg: // a new pane's program, waiting for its size (holder.Config.AwaitSize)
 			holder.RunGate(os.Args[2:])
-		case holder.CheckArg:
+		case holder.CheckArg: // an update's holder, asked if it takes a holder's pane with these arguments
+			if _, err := parseArgs(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(2)
+			}
 			holder.RunCheck()
 		case holder.ResumeArg:
 			resume(os.Args[2:])
@@ -155,7 +163,8 @@ func main() {
 
 // resume takes over the pane the holder this process was handed over
 // before it exec'd this executable (holder.ResumeArg). args are the
-// handoff's descriptor.
+// handoff's descriptor, then the holder's own arguments (also in the
+// handoff, which is what counts).
 func resume(args []string) {
 	ignoreSignals()
 	fail := func(err error) {
@@ -164,8 +173,8 @@ func resume(args []string) {
 		fmt.Fprintf(os.Stderr, "%s pane-holder: couldn't take the pane over after an update: %v\n", time.Now().Format(time.RFC3339), err)
 		os.Exit(1)
 	}
-	if len(args) != 1 {
-		fail(fmt.Errorf("arguments %q", args))
+	if len(args) == 0 {
+		fail(errors.New("no handoff"))
 	}
 	fd, err := strconv.Atoi(args[0])
 	if err != nil {

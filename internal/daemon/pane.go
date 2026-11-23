@@ -520,6 +520,13 @@ func (p *pane) reconnect(socket, token string) error {
 	// kitty keyboard), which clients then get wrong.
 	snap, from, saved := p.savedSnapshot()
 	hc, err := p.dialHolder(socket, from, p.token)
+	// One handing over to an update takes the connection and drops it,
+	// and answers again a moment later (holder/handoff.go): an update
+	// restarts the daemon too, at about the same time.
+	for i := 0; i < 20 && err != nil && holder.Dropped(err); i++ {
+		time.Sleep(100 * time.Millisecond)
+		hc, err = p.dialHolder(socket, from, p.token)
+	}
 	if err != nil {
 		return err // gone: the caller starts a new process (and seeds it)
 	}
@@ -791,6 +798,10 @@ func (p *pane) holderLost(gen int) {
 				return
 			}
 			g := p.linkLocked(hc)
+			// A resize sent as it dropped (a handoff) never arrived.
+			if c, r := p.info.Cols, p.info.Rows; c > 0 && r > 0 && (uint32(hc.Info.Cols) != c || uint32(hc.Info.Rows) != r) {
+				p.postLocked(func(hc *holder.Client) { _ = hc.Resize(uint16(c), uint16(r)) })
+			}
 			p.mu.Unlock()
 			go p.read(hc, g)
 			return
@@ -1025,7 +1036,7 @@ func (p *pane) kill() {
 		p.d.files.paneClosed(p.id)
 		return
 	}
-	p.postLocked(func(hc *holder.Client) { _ = hc.CloseHolder() })
+	p.closeHolderLocked()
 	p.unlinkLocked()
 	if p.mirror != nil {
 		p.mirror.Close()

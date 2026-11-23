@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/homegrownsw/hammock/internal/holder"
 	"github.com/homegrownsw/hammock/internal/procinfo"
 )
 
@@ -28,6 +29,41 @@ func paneSockets(dir string) map[string]string {
 		}
 	}
 	return out
+}
+
+// closeHolderLocked asks the pane's holder to end, with its program, and
+// makes sure it does: one handing over to an update just then
+// (holder/handoff.go) never reads the request, and would run on unseen.
+// Callers hold p.mu.
+func (p *pane) closeHolderLocked() {
+	socket := p.socket
+	p.postLocked(func(hc *holder.Client) {
+		_ = hc.CloseHolder()
+		if pid := hc.HolderPID(); pid > 0 {
+			go endHolderIfStill(pid, socket)
+		}
+	})
+}
+
+// endHolderIfStill ends holder pid, of socket, if it's still running a while
+// after it was asked to end: by its pid, which a handoff keeps, so not a
+// new holder started on the socket since.
+func endHolderIfStill(pid int, socket string) {
+	for deadline := time.Now().Add(3 * time.Second); holderOf(pid, socket); time.Sleep(50 * time.Millisecond) {
+		if time.Now().Before(deadline) {
+			continue
+		}
+		if syscall.Kill(pid, syscall.SIGTERM) != nil {
+			return
+		}
+		for deadline := time.Now().Add(3 * time.Second); holderOf(pid, socket); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+				return
+			}
+		}
+		return
+	}
 }
 
 // endHolderAt ends the pane holder listening on socket, returning its pid.

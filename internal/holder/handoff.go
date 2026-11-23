@@ -10,7 +10,10 @@ import (
 	"net"
 	"os"
 	"sync"
+	"syscall"
 	"time"
+
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 // A handoff passes a pane from a holder to the executable an update put in
@@ -31,12 +34,15 @@ import (
 
 const (
 	// ResumeArg, first in its arguments, has a holder's executable take a
-	// handoff: its argument is the descriptor of the handoff's file.
+	// handoff: then come the descriptor of the handoff's file and the
+	// holder's own arguments (Config.Args), so the daemon still knows it
+	// by them as its pane's holder (its --socket).
 	ResumeArg = "--pane-holder-resume"
-	// CheckArg, alone in its arguments, has a holder's executable say which
-	// handoff it takes (RunCheck): asked of an update's executable before
-	// a holder execs it, so a holder never hands over to one that can't
-	// start, or that a downgrade put there and doesn't know the handoff.
+	// CheckArg, first in its arguments, has a holder's executable say which
+	// handoff it takes (RunCheck), if it takes the holder's arguments that
+	// follow: asked of an update's executable before a holder execs it, so
+	// a holder never hands over to one that can't start, or can't serve
+	// the pane (a downgrade, a build whose arguments differ).
 	CheckArg = "--pane-holder-check"
 	// handoffVersion is the handoff's format: change it with handoffState.
 	handoffVersion = 1
@@ -67,9 +73,16 @@ type handoffState struct {
 	ExitSignal int32
 	Token      []byte
 	Lock       *lockState
-	Input      [][]byte // queued for the child, not yet written
-	Listener   int
-	PTY        int // -1 once the child has exited
+	// Input is queued for the child, not yet written: after the output in
+	// the file (a paste can be megabytes), InputLens long.
+	Input     [][]byte `json:"-"`
+	InputLens []int
+	// Daemons are the audit tokens of the daemons proven to the holder
+	// (Server.handedOver): the update replaced theirs too, and they must
+	// reconnect.
+	Daemons  [][8]uint32
+	Listener int
+	PTY      int // -1 once the child has exited
 }
 
 // lockState is a StateLock, handed over.
@@ -90,17 +103,39 @@ type Handoff struct {
 	ring []byte
 }
 
-// writeHandoff writes st and the output kept to w.
+// Bounds on what readHandoff takes, which writeHandoff keeps to, so a
+// holder never execs into a handoff it would refuse.
+const (
+	maxHandoffHeader = 1 << 20
+	maxHandoffInput  = 64 << 20
+)
+
+// writeHandoff writes st, then the output kept, then the input queued.
 func writeHandoff(w io.Writer, st handoffState, ring []byte) error {
 	st.Version, st.RingLen = handoffVersion, len(ring)
+	st.InputLens = st.InputLens[:0]
+	total := 0
+	for _, p := range st.Input {
+		st.InputLens = append(st.InputLens, len(p))
+		total += len(p)
+	}
+	if total > maxHandoffInput {
+		return fmt.Errorf("%d bytes of input queued", total)
+	}
 	b, err := json.Marshal(st)
 	if err != nil {
 		return err
+	}
+	if len(b) > maxHandoffHeader {
+		return fmt.Errorf("a handoff of %d bytes", len(b))
 	}
 	bw := bufio.NewWriter(w)
 	_, _ = bw.Write(binary.BigEndian.AppendUint32(nil, uint32(len(b))))
 	_, _ = bw.Write(b)
 	_, _ = bw.Write(ring)
+	for _, p := range st.Input {
+		_, _ = bw.Write(p)
+	}
 	return bw.Flush()
 }
 
@@ -111,7 +146,7 @@ func readHandoff(r io.Reader) (*Handoff, error) {
 		return nil, err
 	}
 	size := binary.BigEndian.Uint32(n[:])
-	if size > 1<<20 {
+	if size > maxHandoffHeader {
 		return nil, fmt.Errorf("a handoff of %d bytes", size)
 	}
 	b := make([]byte, size)
@@ -131,6 +166,20 @@ func readHandoff(r io.Reader) (*Handoff, error) {
 	h.ring = make([]byte, h.st.RingLen)
 	if _, err := io.ReadFull(r, h.ring); err != nil {
 		return nil, err
+	}
+	total := 0
+	for _, l := range h.st.InputLens {
+		if l < 0 || total+l > maxHandoffInput {
+			return nil, errors.New("a handoff's input doesn't add up")
+		}
+		total += l
+	}
+	for _, l := range h.st.InputLens {
+		p := make([]byte, l)
+		if _, err := io.ReadFull(r, p); err != nil {
+			return nil, err
+		}
+		h.st.Input = append(h.st.Input, p)
 	}
 	return h, nil
 }
@@ -174,6 +223,9 @@ func Resume(cfg Config, h *Handoff) (*Server, error) {
 	}
 	var pt *os.File
 	if st.PTY >= 0 {
+		// Close-on-exec again (cleared for the exec): the holder's other
+		// children (a gate, the next update's check) mustn't hold it open.
+		syscall.CloseOnExec(st.PTY)
 		if pt = os.NewFile(uintptr(st.PTY), "pty"); pt == nil {
 			ln.Close()
 			return nil, errors.New("holder: no PTY handed over")
@@ -194,6 +246,11 @@ func Resume(cfg Config, h *Handoff) (*Server, error) {
 		exited: st.Exited, exitStatus: st.ExitStatus, exitSignal: st.ExitSignal,
 		inBuf: st.Input,
 	}
+	daemons := make([]codesign.Token, 0, len(st.Daemons))
+	for _, w := range st.Daemons {
+		daemons = append(daemons, codesign.TokenFromWords(w))
+	}
+	s.handedOver.Store(&daemons)
 	s.inCond = sync.NewCond(&s.inMu)
 	s.run()
 	return s, nil
