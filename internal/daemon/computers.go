@@ -316,7 +316,9 @@ func (d *Daemon) selfRecord(forPeer bool) *pb.Computer {
 	}
 	self.Notifies = d.canNotify()
 	self.DefaultAgent = d.defaultAgent()
+	self.PushPhones = nil
 	if forPeer {
+		self.PushPhones = d.pushPhones() // its agents' phones are told from here
 		self.LastInputUnixMs, self.IdleMs = 0, 0
 		if idle := time.Now().UnixMilli() - d.comp.self.LastInputUnixMs; self.Notifies && d.comp.self.LastInputUnixMs > 0 && idle >= 0 {
 			self.IdleMs = idle + 1 // (0 is "not known")
@@ -339,6 +341,7 @@ func (d *Daemon) computersState(forPeer bool) *pb.Computers {
 	for uid, l := range d.comp.links {
 		x := proto.CloneOf(l.Record)
 		x.ThisComputer, x.Refused, x.Suspect, x.CertChanged, x.Online = false, l.Refused, l.Suspect, l.CertChanged, false
+		x.PushPhones = nil // between your computers only
 		if pl := d.linkOf(uid); pl != nil && pl.online && d.isLinked(uid) {
 			x.Online = true
 		}

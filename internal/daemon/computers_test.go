@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -10,6 +12,8 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1718,5 +1722,74 @@ func TestDismissedGoesWhenClearedThere(t *testing.T) {
 	l.applyLocked(none, true)
 	if len(l.dismissed) != 0 {
 		t.Fatalf("dismissed %v, want none", l.dismissed)
+	}
+}
+
+// A phone paired with both computers is told about a linked computer's
+// agent once, by that computer: this one leaves the phones it names
+// (Computer.push_phones) to it, and tells the rest. This one names its own
+// to linked computers, and to nobody else.
+func TestLinkedAttentionLeavesItsPhones(t *testing.T) {
+	sent := make(chan string, 4)
+	relay := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/send" {
+			sent <- relayBody(r)["id"]
+		}
+	}))
+	defer relay.Close()
+	oldClient, oldIdle, oldLocked, oldRelays, oldPoll := pushClient, idleTime, screenLocked, pushRelays, pushPoll
+	pushClient, pushRelays, pushPoll = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond
+	idleTime, screenLocked = func() time.Duration { return time.Hour }, func() bool { return false }
+	t.Cleanup(func() { pushClient, idleTime, screenLocked, pushRelays, pushPoll = oldClient, oldIdle, oldLocked, oldRelays, oldPoll })
+
+	a := startComputer(t)
+	a.d.mu.Lock()
+	reg := func(device, relayID string) *pb.RegisterPush {
+		key := make([]byte, 32)
+		_, _ = rand.Read(key) // each computer gets a key of its own
+		r := &pb.RegisterPush{RelayUrl: relay.URL, RelayId: relayID, Key: key, Events: []string{"needs_input"}}
+		if err := a.d.registerPush(&conn{deviceID: device}, r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	both := reg("dv_both", "relay-both")
+	reg("dv_here", "relay-here")
+	// The same phone, as Studio knows it: another key, the same relay id.
+	there := proto.CloneOf(both)
+	there.Key = bytes.Repeat([]byte{7}, 32)
+	if phoneTag(there) != phoneTag(both) || phoneTag(both) == "" {
+		t.Fatal("the same phone tags differently at two computers")
+	}
+	if got := a.d.selfRecord(true).PushPhones; len(got) != 2 {
+		t.Fatalf("linked computers are told of phones %v, want two", got)
+	}
+	if got := a.d.selfRecord(false).PushPhones; len(got) != 0 {
+		t.Fatalf("local clients are told of phones %v", got)
+	}
+	a.d.comp.links["us_studio"] = &pb.StoredLink{Record: &pb.Computer{UserId: "us_studio", PushPhones: []string{phoneTag(there)}}}
+	l := fakeLinked(t, a.d)
+	l.applyLocked(linkedState(true, pb.AgentState_AGENT_STATE_NEEDS_INPUT), true)
+	a.d.mu.Unlock()
+
+	select {
+	case id := <-sent:
+		if id != "relay-here" {
+			t.Fatalf("pushed to %s, want only the phone Studio doesn't tell", id)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no push sent")
+	}
+	select {
+	case id := <-sent:
+		t.Fatalf("also pushed to %s", id)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	// What a linked computer says of its phones is taken only as tags.
+	r := &pb.Computer{PushPhones: []string{phoneTag(both), "not a tag", strings.Repeat("z", 32)}}
+	cleanComputer(r)
+	if len(r.PushPhones) != 1 {
+		t.Fatalf("kept phones %v", r.PushPhones)
 	}
 }

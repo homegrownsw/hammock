@@ -20076,7 +20076,12 @@ type Computer struct {
 	// The agent its New Agent Tab starts without asking (default-agent in its
 	// config file), when that agent is installed there: an AgentKind id.
 	// "": none, so the Start an Agent sheet asks.
-	DefaultAgent  string `protobuf:"bytes,33,opt,name=default_agent,json=defaultAgent,proto3" json:"default_agent,omitempty"`
+	DefaultAgent string `protobuf:"bytes,33,opt,name=default_agent,json=defaultAgent,proto3" json:"default_agent,omitempty"`
+	// (to a linked computer) the phones it pushes notifications to, each as
+	// a hash of the phone's push registration (phoneTag, push.go): the one
+	// it's sent to leaves them to it for its agents, so a phone paired with
+	// both is told once. At most 32.
+	PushPhones    []string `protobuf:"bytes,34,rep,name=push_phones,json=pushPhones,proto3" json:"push_phones,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -20277,6 +20282,13 @@ func (x *Computer) GetDefaultAgent() string {
 		return x.DefaultAgent
 	}
 	return ""
+}
+
+func (x *Computer) GetPushPhones() []string {
+	if x != nil {
+		return x.PushPhones
+	}
+	return nil
 }
 
 // A computer this one is linked with, as kept here (not sent).
@@ -28118,7 +28130,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\tactive_id\x18\x02 \x01(\tR\bactiveId\x12\x1d\n" +
 	"\n" +
 	"not_linked\x18\x04 \x01(\bR\tnotLinked\x12\x12\n" +
-	"\x04note\x18\x05 \x01(\tR\x04noteJ\x04\b\x03\x10\x04\"\xfb\x05\n" +
+	"\x04note\x18\x05 \x01(\tR\x04noteJ\x04\b\x03\x10\x04\"\x9c\x06\n" +
 	"\bComputer\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -28146,7 +28158,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vlan_subnets\x18\x1f \x03(\tR\n" +
 	"lanSubnets\x12\x12\n" +
 	"\x04icon\x18  \x01(\tR\x04icon\x12#\n" +
-	"\rdefault_agent\x18! \x01(\tR\fdefaultAgentJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x17\x10\x18J\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1e\"\xa8\x02\n" +
+	"\rdefault_agent\x18! \x01(\tR\fdefaultAgent\x12\x1f\n" +
+	"\vpush_phones\x18\" \x03(\tR\n" +
+	"pushPhonesJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x13\x10\x14J\x04\b\x14\x10\x15J\x04\b\x15\x10\x16J\x04\b\x17\x10\x18J\x04\b\x1c\x10\x1dJ\x04\b\x1d\x10\x1e\"\xa8\x02\n" +
 	"\n" +
 	"StoredLink\x12,\n" +
 	"\x06record\x18\x01 \x01(\v2\x14.hammock.v1.ComputerR\x06record\x12\x1f\n" +

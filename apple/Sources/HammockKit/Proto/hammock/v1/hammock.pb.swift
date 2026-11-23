@@ -8429,6 +8429,15 @@ public nonisolated struct Hammock_V1_Computer: @unchecked Sendable {
     set {_uniqueStorage()._defaultAgent = newValue}
   }
 
+  /// (to a linked computer) the phones it pushes notifications to, each as
+  /// a hash of the phone's push registration (phoneTag, push.go): the one
+  /// it's sent to leaves them to it for its agents, so a phone paired with
+  /// both is told once. At most 32.
+  public var pushPhones: [String] {
+    get {_storage._pushPhones}
+    set {_uniqueStorage()._pushPhones = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -25087,7 +25096,7 @@ nonisolated extension Hammock_V1_Computers: SwiftProtobuf.Message, SwiftProtobuf
 
 nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Computer"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}user_id\0\u{1}name\0\u{1}model\0\u{1}kind\0\u{1}os\0\u{1}tint\0\u{3}this_computer\0\u{1}online\0\u{3}last_seen_unix_ms\0\u{1}fingerprint\0\u{3}linked_unix_ms\0\u{3}last_input_unix_ms\0\u{1}addresses\0\u{3}cert_sha256\0\u{2}\u{4}notifies\0\u{2}\u{4}key\0\u{2}\u{2}refused\0\u{3}idle_ms\0\u{3}cert_changed\0\u{1}suspect\0\u{2}\u{3}chain\0\u{3}lan_subnets\0\u{1}icon\0\u{3}default_agent\0\u{3}push_phones\0\u{c}\u{f}\u{1}\u{c}\u{10}\u{1}\u{c}\u{11}\u{1}\u{c}\u{13}\u{1}\u{c}\u{14}\u{1}\u{c}\u{15}\u{1}\u{c}\u{17}\u{1}\u{c}\u{1c}\u{1}\u{c}\u{1d}\u{1}")
 
   fileprivate class _StorageClass {
     var _userID: String = String()
@@ -25114,6 +25123,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
     var _lanSubnets: [String] = []
     var _icon: String = String()
     var _defaultAgent: String = String()
+    var _pushPhones: [String] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -25148,6 +25158,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       _lanSubnets = source._lanSubnets
       _icon = source._icon
       _defaultAgent = source._defaultAgent
+      _pushPhones = source._pushPhones
     }
   }
 
@@ -25190,6 +25201,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         case 31: try { try decoder.decodeRepeatedStringField(value: &_storage._lanSubnets) }()
         case 32: try { try decoder.decodeSingularStringField(value: &_storage._icon) }()
         case 33: try { try decoder.decodeSingularStringField(value: &_storage._defaultAgent) }()
+        case 34: try { try decoder.decodeRepeatedStringField(value: &_storage._pushPhones) }()
         default: break
         }
       }
@@ -25270,6 +25282,9 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._defaultAgent.isEmpty {
         try visitor.visitSingularStringField(value: _storage._defaultAgent, fieldNumber: 33)
       }
+      if !_storage._pushPhones.isEmpty {
+        try visitor.visitRepeatedStringField(value: _storage._pushPhones, fieldNumber: 34)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -25303,6 +25318,7 @@ nonisolated extension Hammock_V1_Computer: SwiftProtobuf.Message, SwiftProtobuf.
         if _storage._lanSubnets != rhs_storage._lanSubnets {return false}
         if _storage._icon != rhs_storage._icon {return false}
         if _storage._defaultAgent != rhs_storage._defaultAgent {return false}
+        if _storage._pushPhones != rhs_storage._pushPhones {return false}
         return true
       }
       if !storagesAreEqual {return false}

@@ -208,6 +208,7 @@ func (d *Daemon) introductionsFor(to string) []*pb.Computer {
 		}
 		r := proto.CloneOf(l.Record)
 		r.CertSha256, r.Online, r.Notifies, r.LastInputUnixMs, r.LastSeenUnixMs = l.CertSha256, false, false, 0, 0
+		r.PushPhones = nil // its own to say
 		for _, h := range hopsOf(l) {
 			r.Chain = append(r.Chain, &pb.IntroHop{By: h.By, AgoMs: max(time.Now().UnixMilli()-h.AtUnixMs, 0)})
 		}

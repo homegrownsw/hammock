@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -110,6 +111,7 @@ func cleanComputer(r *pb.Computer) {
 	r.Name, r.Model = cleanLine(strings.TrimSpace(r.Name), nameMax), cleanLine(r.Model, nameMax)
 	r.Kind, r.Os = cleanLine(r.Kind, nameMax), cleanLine(r.Os, nameMax)
 	r.DefaultAgent = cleanLine(r.DefaultAgent, nameMax)
+	r.PushPhones = slices.DeleteFunc(r.PushPhones[:min(len(r.PushPhones), maxPushPhones)], func(t string) bool { return !validPhoneTag(t) })
 }
 
 // withValidUTF8 is a copy of m whose strings are all UTF-8 (what isn't is

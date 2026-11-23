@@ -861,6 +861,7 @@ func (d *Daemon) revokeDevice(id string) error {
 		return err
 	}
 	d.persist(d.store.DeleteRecord("push", id))
+	d.publishComputers() // (its phones: Computer.push_phones)
 	for c := range d.conns {
 		if c.deviceID == id {
 			c.cancel()

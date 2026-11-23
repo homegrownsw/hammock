@@ -145,6 +145,10 @@ type pushNote struct {
 	// fill, if set, finishes the note as it's sent (holding d.mu): what it's
 	// about may have changed while it waited for you to go.
 	fill func(*pushNote)
+	// leave, if set, are the phones (phoneTag) another computer tells about
+	// this itself, as it says when the note is sent (holding d.mu): they're
+	// not sent it from here too.
+	leave func() []string
 }
 
 // agentPromptCategory is the category of a note about an agent's
@@ -197,6 +201,54 @@ func pushTag(key []byte, kind, id string) string {
 	return hex.EncodeToString(m.Sum(nil)[:16])
 }
 
+// phoneTag stands in for a phone in what linked computers are told of the
+// phones this one pushes to (Computer.push_phones): a hash of where its
+// notifications go (the relay and its id there, the same at every computer
+// it's paired with), so another of your computers paired with it too can
+// tell it's the same phone, and leave telling it about this one's agents to
+// this one. Not the relay id itself: that's half of what sends to it.
+func phoneTag(r *pb.RegisterPush) string {
+	if r.GetRelayId() == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte("hammock push phone\x00" + relayOrigin(r.RelayUrl) + "\x00" + r.RelayId))
+	return hex.EncodeToString(h[:16])
+}
+
+// maxPushPhones is how many phones a computer's record names
+// (Computer.push_phones); more are left out, and only get told twice.
+const maxPushPhones = 32
+
+// pushPhones are the phones this computer pushes its agents to (phoneTag),
+// sorted, for its record as linked computers get it: none while phones
+// can't connect to act on them (as push). Callers hold d.mu.
+func (d *Daemon) pushPhones() []string {
+	if d.idErr != nil {
+		return nil
+	}
+	recs, _ := d.store.Records("push")
+	var out []string
+	for _, b := range recs {
+		r := &pb.RegisterPush{}
+		if proto.Unmarshal(b, r) == nil {
+			if t := phoneTag(r); t != "" && !slices.Contains(out, t) {
+				out = append(out, t)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out[:min(len(out), maxPushPhones)]
+}
+
+// validPhoneTag: a phoneTag as a linked computer sent it.
+func validPhoneTag(t string) bool {
+	if len(t) != 32 {
+		return false
+	}
+	_, err := hex.DecodeString(t)
+	return err == nil
+}
+
 // registerPush records (or with no relay id, forgets) a phone's push
 // details. Callers hold d.mu.
 func (d *Daemon) registerPush(c *conn, m *pb.RegisterPush) error {
@@ -206,6 +258,7 @@ func (d *Daemon) registerPush(c *conn, m *pb.RegisterPush) error {
 	if m.RelayId == "" {
 		err := d.store.DeleteRecord("push", c.deviceID)
 		d.liveRegistered(c.deviceID, m)
+		d.publishComputers() // (its phones: Computer.push_phones)
 		return err
 	}
 	if len(m.Key) != 32 || !knownRelay(m.RelayUrl) || len(m.LiveStartToken) > 400 || len(m.LiveToken) > 400 {
@@ -215,6 +268,7 @@ func (d *Daemon) registerPush(c *conn, m *pb.RegisterPush) error {
 		return err
 	}
 	d.liveRegistered(c.deviceID, m)
+	d.publishComputers()
 	return nil
 }
 
@@ -376,8 +430,11 @@ func (d *Daemon) pushAttention(item *pb.AttentionItem) {
 }
 
 // pushLinkedAttention tells away phones about an agent on a linked
-// computer (a phone paired with any of them hears about all; one paired
-// with several gets one notification, collapsed by the item's id).
+// computer (a phone paired with any of them hears about all), but not the
+// phones that computer pushes to itself (Computer.push_phones): a phone
+// paired with both is told once, by the computer the agent is on. (One
+// paired with several that don't say, from an earlier build, is told by
+// each, and the phone puts the later in place of the earlier.)
 // Callers hold d.mu.
 func (d *Daemon) pushLinkedAttention(l *peerLink, item *pb.AttentionItem) {
 	event, body := attentionPush(item, paneWho(l.panes[item.PaneId]))
@@ -394,8 +451,10 @@ func (d *Daemon) pushLinkedAttention(l *peerLink, item *pb.AttentionItem) {
 		}
 	}
 	// Answered through this computer, which passes it on (d.routes).
+	uid := l.tok.HostUserId
 	d.push(event, item.Id, pushNote{Title: title, Subtitle: sub, Body: body, Pane: item.PaneId,
-		fill: func(n *pushNote) { agentPromptNote(n, l.attn[item.Id]) }},
+		fill:  func(n *pushNote) { agentPromptNote(n, l.attn[item.Id]) },
+		leave: func() []string { return d.comp.links[uid].GetRecord().GetPushPhones() }},
 		func() bool {
 			cur := l.attn[item.Id]
 			return cur != nil && d.routes[item.Id] == l && sameAttention(cur, item)
@@ -484,10 +543,14 @@ func (d *Daemon) pushWhenAway(event, collapse string, n pushNote, pending func()
 	if n.fill != nil {
 		n.fill(&n)
 	}
+	var leave []string
+	if n.leave != nil {
+		leave = n.leave()
+	}
 	recs, _ := d.store.Records("push")
 	for deviceID, b := range recs {
 		r := &pb.RegisterPush{}
-		if proto.Unmarshal(b, r) == nil && slices.Contains(r.Events, event) && !d.phoneShowing(deviceID) {
+		if proto.Unmarshal(b, r) == nil && slices.Contains(r.Events, event) && !d.phoneShowing(deviceID) && !slices.Contains(leave, phoneTag(r)) {
 			to = append(to, target{deviceID, r})
 		}
 	}
@@ -741,6 +804,7 @@ func (d *Daemon) postPush(deviceID string, r *pb.RegisterPush, sealed []byte, n 
 		// The phone unregistered (or the app's gone): stop.
 		d.mu.Lock()
 		d.persist(d.store.DeleteRecord("push", deviceID))
+		d.publishComputers()
 		d.mu.Unlock()
 	case resp.StatusCode == http.StatusTooManyRequests && !retry:
 		d.log.Debug("push: relay says slow down, retrying", "device", deviceID, "after", pushRetryAfter)

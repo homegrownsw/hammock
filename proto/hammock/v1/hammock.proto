@@ -2282,6 +2282,11 @@ message Computer {
   // config file), when that agent is installed there: an AgentKind id.
   // "": none, so the Start an Agent sheet asks.
   string default_agent = 33;
+  // (to a linked computer) the phones it pushes notifications to, each as
+  // a hash of the phone's push registration (phoneTag, push.go): the one
+  // it's sent to leaves them to it for its agents, so a phone paired with
+  // both is told once. At most 32.
+  repeated string push_phones = 34;
 }
 
 // A computer this one is linked with, as kept here (not sent).
