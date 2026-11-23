@@ -9,6 +9,7 @@ struct SettingsScreen: View {
     @AppStorage(AgentViewPrefs.fontSize) private var fontSize = AgentViewPrefs.defaultSize
     @AppStorage(AgentViewPrefs.codeFontSize) private var codeFontSize = AgentViewPrefs.defaultSize - 1
     @AppStorage(AgentViewPrefs.codeWrap) private var codeWrap = "prose"
+    @AppStorage(AgentViewPrefs.renderer) private var renderer = "native"
     /// Everything the iPhone sends goes over the network: the remote size.
     @AppStorage(AgentViewPrefs.imageSizeRemote) private var imageSize = AttachmentSize.medium.rawValue
     @AppStorage(AgentViewPrefs.lineSpacing) private var lineSpacing = AgentViewPrefs.defaultSpacing
@@ -79,6 +80,12 @@ struct SettingsScreen: View {
                         Text("Markdown, Text and Tools").tag("prose")
                         Text("Every Block").tag("always")
                         Text("Never").tag("never")
+                    }
+                }
+                Section("Drawing") {
+                    Picker("Conversation drawn by", selection: $renderer) {
+                        Text("SwiftUI").tag("native")
+                        Text("WebKit (experimental)").tag("web")
                     }
                 }
                 Section("Preview") {

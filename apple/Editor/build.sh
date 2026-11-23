@@ -1,8 +1,9 @@
 #!/bin/sh
-# Bundles editor panes' page (src/main.js and CodeMirror) and diff panes'
-# (src/diff.js) into one file each, apple/Resources/editor.html and
-# diff.html, which the Mac and iPhone apps load into a WKWebView. The
-# output is committed, so building the apps needs no Node.
+# Bundles the pages the Mac and iPhone apps load into a WKWebView, one file
+# each in apple/Resources: editor panes' (src/main.js and CodeMirror), diff
+# panes' (src/diff.js), files panes' (src/files.js) and the agent view's web
+# conversation (src/agent.js). The output is committed, so building the apps
+# needs no Node.
 set -eu
 cd "$(dirname "$0")"
 npm ci --silent --no-audit --no-fund
@@ -18,3 +19,4 @@ page() { # page ENTRY TEMPLATE OUT
 page src/main.js template.html editor.html
 page src/diff.js diff-template.html diff.html
 page src/files.js files-template.html files.html
+page src/agent.js agent-template.html agent.html

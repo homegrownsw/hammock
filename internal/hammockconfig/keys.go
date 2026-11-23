@@ -158,6 +158,8 @@ var Keys = []Key{
 		Doc: "the size pictures you attach in the agent view are sent at"},
 	{Name: "agent-image-size-remote", Group: "Agent view", Value: "original | large | medium | small", Default: "medium",
 		Doc: "the same, for an agent on a linked computer"},
+	{Name: "agent-view-renderer", Group: "Agent view", Value: "native | web", Default: "native",
+		Doc: "what draws the conversation: native (SwiftUI), or web (an experimental WebKit page); the message box stays native", Only: "Mac and iPhone"},
 	{Name: "agent-dictation", Group: "Agent view", Value: "true", Default: "true",
 		Doc: "false: no dictation button in the agent view, nor Dictate in the menus"},
 

@@ -130,6 +130,12 @@
             "Hammock/resources",
             "HammockMacApp/resources",
           ],
+        }, {
+          "path": "agent.html",
+          "target-membership": [
+            "Hammock/resources",
+            "HammockMacApp/resources",
+          ],
         },
         { "kind": "folder", "path": "Fonts", "target-membership": [ "Hammock", "HammockMacApp" ] },
       ],

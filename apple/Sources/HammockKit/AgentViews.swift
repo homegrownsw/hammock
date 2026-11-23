@@ -26,6 +26,8 @@ public enum AgentViewPrefs {
     public static let codeFontName = "agent.codeFontName"
     public static let codeFontSize = "agent.codeFontSize"
     public static let codeWrap = "agent.codeWrap"
+    /// What draws the conversation: "native" or "web" (Pref.agentRenderer).
+    public static let renderer = "agent.renderer"
     public static let lineSpacing = "agent.lineSpacing"
     /// Which view agent panes open in on this device: "agent" or "terminal".
     public static let defaultView = "agent.defaultView"
@@ -275,6 +277,9 @@ public struct AgentConversationView: View {
     @Namespace private var imageZoom
     @Environment(\.agentAutomaticColor) private var automaticColor
     @Environment(\.agentAutomaticBubble) private var automaticBubble
+    @Environment(\.agentOpenDiff) private var openDiff
+    /// The web page drawing the conversation, when Pref.agentRenderer says so.
+    @State private var web = AgentWebHost()
 
     public init(model: AppModel, paneID: String, onShowTerminal: @escaping () -> Void = {}, onOpenFile: ((String) -> Void)? = nil,
                 onOpenWebLink: ((URL) -> Void)? = nil) {
@@ -468,7 +473,7 @@ public struct AgentConversationView: View {
     /// What floats at the bottom: jump to latest (scrolled up), then the
     /// prompt to answer, the message box, or why there's neither.
     @ViewBuilder
-    private func bottomBar(_ s: AgentSession, _ proxy: ScrollViewProxy) -> some View {
+    private func bottomBar(_ s: AgentSession) -> some View {
         VStack(alignment: .trailing, spacing: 10) {
             if s.subagentID.isEmpty, s.shellID.isEmpty {
                 SessionExtras(session: s)
@@ -508,21 +513,31 @@ public struct AgentConversationView: View {
     /// scheme (which could open any app) asks first.
     private var linkAction: OpenURLAction {
         OpenURLAction { url in
-            if AgentLink.opening(url) == .web, let open = onOpenWebLink {
-                open(url)
-                return .handled
+            switch route(url) {
+            case .handled: .handled
+            case .system: .systemAction
+            case .discarded: .discarded
             }
-            if AgentLink.opensDirectly(url) { return .systemAction }
-            if url.isFileURL {
-                // Never to the system as it is: that would run a script or
-                // app with no further check.
-                guard let open = onOpenFile, !url.path.isEmpty else { return .discarded }
-                open(url.path)
-                return .handled
-            }
-            askingToOpen = url
+        }
+    }
+
+    private enum LinkRoute { case handled, system, discarded }
+
+    private func route(_ url: URL) -> LinkRoute {
+        if AgentLink.opening(url) == .web, let open = onOpenWebLink {
+            open(url)
             return .handled
         }
+        if AgentLink.opensDirectly(url) { return .system }
+        if url.isFileURL {
+            // Never to the system as it is: that would run a script or
+            // app with no further check.
+            guard let open = onOpenFile, !url.path.isEmpty else { return .discarded }
+            open(url.path)
+            return .handled
+        }
+        askingToOpen = url
+        return .handled
     }
 
     @ViewBuilder
@@ -532,8 +547,67 @@ public struct AgentConversationView: View {
                 ShellHeader(shell: session?.shells.first { $0.id == s.shellID }) { viewing = nil }
                 ShellOutputView(session: s)
             }
+        } else if Prefs.shared.string(.agentRenderer) == "web" {
+            webConversation(s)
         } else {
             conversation(s)
+        }
+    }
+
+    /// What's above the conversation: the subagent you're looking at, or
+    /// the subagents and shells still running.
+    @ViewBuilder
+    private func strips(_ s: AgentSession) -> some View {
+        if !s.subagentID.isEmpty {
+            SubagentHeader(subagent: session?.subagents.first { $0.id == s.subagentID }, working: s.working) { viewing = nil }
+        } else if s.subagents.contains(where: { !$0.finished }) || s.shells.contains(where: { !$0.finished }) {
+            BackgroundStrip(subagents: s.subagents.filter { !$0.finished }, shells: s.shells.filter { !$0.finished }) { viewing = $0 }
+        }
+    }
+
+    private var webStyle: AgentWebStyle {
+        AgentWebStyle(fonts: AgentFonts.current, accent: automaticColor, bubble: automaticBubble,
+                      canOpenDiff: openDiff != nil, agentName: session?.agentName ?? "Claude")
+    }
+
+    /// The conversation drawn by a web page (AgentWebView.swift), under the
+    /// same bars: it runs under the navigation bar and the message box, and
+    /// scrolls itself.
+    private func webConversation(_ s: AgentSession) -> some View {
+        let web = self.web
+        return VStack(spacing: 0) {
+            strips(s)
+            ZStack(alignment: .bottom) {
+                AgentWebTranscript(bridge: web.bridge)
+                    .ignoresSafeArea()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { web.page = $0; web.pushInsets() }
+                bottomBar(s)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { web.bar = $0; web.pushInsets() }
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                web.stack = $0
+                height = $0.height
+                web.pushInsets()
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { web.stackTop = $0; web.pushInsets() }
+        }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HammockDebugScroll"))) { n in
+            if let to = n.userInfo?["to"] as? String { web.bridge.debugScroll(to) }
+        }
+        #endif
+        .onChange(of: webStyle, initial: true) { _, st in web.bridge.configure(st) }
+        .onChange(of: ObjectIdentifier(s), initial: true) {
+            web.bridge.onLink = { url in if route(url) == .system { openURL(url) } }
+            web.bridge.onOpenDiff = openDiff
+            web.bridge.onOpenImage = { session, ref in
+                Task { @MainActor in
+                    let image = await session.image(ref)
+                    openAttachment(PreviewItem(key: ref, name: (ref as NSString).lastPathComponent) { await session.file(ref) },
+                                   group: nil, image: image, video: false, open: { viewedImage = $0 })
+                }
+            }
+            web.bridge.attach(s)
         }
     }
 
@@ -598,11 +672,7 @@ public struct AgentConversationView: View {
     private func conversation(_ s: AgentSession) -> some View {
         let split = liveStart(s)
         VStack(spacing: 0) {
-            if !s.subagentID.isEmpty {
-                SubagentHeader(subagent: session?.subagents.first { $0.id == s.subagentID }, working: s.working) { viewing = nil }
-            } else if s.subagents.contains(where: { !$0.finished }) || s.shells.contains(where: { !$0.finished }) {
-                BackgroundStrip(subagents: s.subagents.filter { !$0.finished }, shells: s.shells.filter { !$0.finished }) { viewing = $0 }
-            }
+            strips(s)
             ScrollViewReader { proxy in
                 ScrollView {
                     // History in a lazy stack, and the live end under it (what
@@ -861,7 +931,7 @@ public struct AgentConversationView: View {
                     }
                 }
                 .animation(.snappy(duration: 0.2), value: atBottom)
-                .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar(s, proxy) }
+                .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar(s) }
                 .agentSoftEdges()
                 // Held at its width while the pane resizes (layoutWidth), the
                 // scroll view and all: narrower meanwhile, it's clipped at the
