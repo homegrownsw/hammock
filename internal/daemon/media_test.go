@@ -437,11 +437,20 @@ func TestSharedMedia(t *testing.T) {
 		t.Fatal("a shared pane's video over QUIC straight to the app")
 	}
 	sid := call(t, g, &pb.ClientMessage{Msg: &pb.ClientMessage_OpenMedia{OpenMedia: &pb.OpenMedia{PaneId: paneID, InBand: true}}}).GetMediaTicket().SessionId
+	// Each frame crosses QUIC on a stream of its own, so they can reach the app out of
+	// order (it puts them back by seq): the first one sent, not received, is the keyframe.
+	var first *pb.MediaFrame
 	for n := 0; n < 30; n++ {
 		f := waitEvent(t, g, func(ev *pb.ServerMessage) bool { return ev.GetMediaFrame() != nil }).GetMediaFrame()
-		if f.SessionId != sid || (n == 0 && !f.Keyframe) || f.Width != 1206 {
-			t.Fatalf("frame %d: session %s key %v width %d", n, f.SessionId, f.Keyframe, f.Width)
+		if f.SessionId != sid || f.Width != 1206 {
+			t.Fatalf("frame %d: session %s width %d", n, f.SessionId, f.Width)
 		}
+		if first == nil || f.Seq < first.Seq {
+			first = f
+		}
+	}
+	if !first.Keyframe {
+		t.Fatalf("frame seq %d, the first sent, isn't a keyframe", first.Seq)
 	}
 	// The app's keyframe request reaches the host's encoder.
 	keys := enc.count(&enc.keyframes)

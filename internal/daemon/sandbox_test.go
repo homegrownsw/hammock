@@ -126,7 +126,12 @@ func TestSandboxedCallerAsks(t *testing.T) {
 	if _, err := try(sb, &pb.ClientMessage{Msg: &pb.ClientMessage_SetGroupIcon{SetGroupIcon: &pb.SetGroupIcon{GroupId: g, Icon: "x"}}}); err != nil {
 		t.Fatalf("a sandboxed agent organising: %v", err)
 	}
-	if _, err := try(sb, &pb.ClientMessage{Msg: &pb.ClientMessage_SignalPane{SignalPane: &pb.SignalPane{PaneId: mine, Signal: 2}}}); err != nil {
+	// A pane of its own to interrupt: cat ends on SIGINT, and mine is typed into below.
+	doomed, err := split(plain, agentPane)
+	if err != nil {
+		t.Fatalf("an agent splitting its pane again: %v", err)
+	}
+	if _, err := try(sb, &pb.ClientMessage{Msg: &pb.ClientMessage_SignalPane{SignalPane: &pb.SignalPane{PaneId: doomed, Signal: 2}}}); err != nil {
 		t.Fatalf("a sandboxed agent interrupting its own pane: %v", err)
 	}
 
