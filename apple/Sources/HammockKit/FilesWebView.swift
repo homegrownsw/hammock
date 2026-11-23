@@ -309,6 +309,9 @@ public final class FilesBridge: NSObject, WKScriptMessageHandler, WKNavigationDe
     public init(session: FilesSession, makeWebView: (WKWebViewConfiguration) -> WKWebView) {
         self.session = session
         let conf = WKWebViewConfiguration()
+        // No Writing Tools button by a selection (Siri's rewrite and proofread):
+        // what's shown here isn't prose to rewrite in place.
+        if #available(macOS 15.0, iOS 18.0, *) { conf.writingToolsBehavior = .none }
         let ucc = WKUserContentController()
         conf.userContentController = ucc
         webView = makeWebView(conf)
