@@ -164,10 +164,10 @@ test("embeds stop: themselves, too deep", () => {
 
 test("callouts", () => {
   const h = render("> [!tip] Water daily\n> In the *morning*.\n")
-  assert.match(h, /^<div class="callout" data-callout="tip" data-line="0" data-line-end="2">\s*<div class="callout-title">\s*<span class="callout-icon"><\/span>Water daily<\/div>\s*<div class="callout-content">\s*<p data-line="1" data-line-end="2">In the <em>morning<\/em>\.<\/p>\s*<\/div>\s*<\/div>/)
-  assert.match(render("> [!TLDR]\n> Short.\n"), /data-callout="abstract".*Tldr<\/div>/s)
-  assert.match(render("> [!NOTE]\n> GitHub's.\n"), /data-callout="note".*>Note<\/div>/s)
-  assert.match(render("> [!whatever] Mine\n"), /data-callout="note".*>Mine<\/div>/s)
+  assert.match(h, /^<div class="callout" data-callout="tip" data-line="0" data-line-end="2">\s*<div class="callout-title">\s*<span class="callout-icon"><\/span><span class="callout-title-inner">Water daily<\/span><\/div>\s*<div class="callout-content">\s*<p data-line="1" data-line-end="2">In the <em>morning<\/em>\.<\/p>\s*<\/div>\s*<\/div>/)
+  assert.match(render("> [!TLDR]\n> Short.\n"), /data-callout="abstract".*Tldr<\/span><\/div>/s)
+  assert.match(render("> [!NOTE]\n> GitHub's.\n"), /data-callout="note".*>Note<\/span><\/div>/s)
+  assert.match(render("> [!whatever] Mine\n"), /data-callout="note".*>Mine<\/span><\/div>/s)
   const folded = render("> [!faq]- Why?\n> Because.\n")
   assert.match(folded, /^<details class="callout" data-callout="question"[^>]*>\s*<summary class="callout-title">/)
   assert.doesNotMatch(folded, /open=""/)
@@ -177,6 +177,9 @@ test("callouts", () => {
   for (const [alias, kind] of [["hint", "tip"], ["check", "success"], ["caution", "warning"], ["fail", "failure"], ["error", "danger"], ["cite", "quote"], ["important", "tip"]]) {
     assert.match(render(`> [!${alias}]\n`), new RegExp(`data-callout="${kind}"`), alias)
   }
+  // A long title with links, bold and code is one flex item beside the icon, so it wraps as text.
+  assert.match(render("> [!info] Read [the doc](https://example.com), **soon** `?` ok.\n"),
+    /<span class="callout-icon"><\/span><span class="callout-title-inner">Read <a [^>]*>the doc<\/a>, <strong>soon<\/strong> <code>\?<\/code> ok\.<\/span><\/div>/)
   for (const k of CALLOUT_KINDS) assert.ok(calloutIcons[k], `${k} has an icon`)
   // Tasks in a callout still tick their line.
   assert.match(render("> [!todo]\n> - [ ] Weed\n"), new RegExp(`data-task-line="1" data-task-key="${taskKey}"`))

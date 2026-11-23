@@ -592,6 +592,7 @@ function obsidianCSS(th, pal, { fg, bg, dim, rule, link }) {
   margin: 0 0 1em; padding: 9px 14px; border-radius: 8px; background: var(--cb); border-left: 3px solid var(--c); }
 ${perKind}
 .md .callout-title { display: flex; align-items: center; gap: 0.45em; color: var(--c); font-weight: 600; }
+.md .callout-title-inner { min-width: 0; }
 .md .callout-icon { flex: none; width: 1.05em; height: 1.05em; background: currentColor;
   -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .md .callout-content { margin-top: 0.45em; }

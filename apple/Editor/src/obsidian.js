@@ -210,6 +210,11 @@ function callouts(state) {
     const tOpen = new T("callout_title_open", fold ? "summary" : "div", 1)
     tOpen.attrSet("class", "callout-title")
     const icon = new T("callout_icon", "", 0)
+    // The title is a flex row (icon, text): its text goes in one span, as Obsidian's does, or each
+    // run of it (a link, bold, code) becomes a column of its own.
+    const iOpen = new T("callout_title_inner_open", "span", 1)
+    iOpen.attrSet("class", "callout-title-inner")
+    const iClose = new T("callout_title_inner_close", "span", -1)
     const tInline = new T("inline", "", 0)
     tInline.content = title
     tInline.children = []
@@ -217,15 +222,15 @@ function callouts(state) {
     const cOpen = new T("callout_content_open", "div", 1)
     cOpen.attrSet("class", "callout-content")
     const cClose = new T("callout_content_close", "div", -1)
-    for (const t of [tOpen, icon, tInline, tClose, cOpen, cClose]) { t.level = open.level + 1; t.block = true }
-    tInline.block = false
+    for (const t of [tOpen, icon, iOpen, tInline, iClose, tClose, cOpen, cClose]) { t.level = open.level + 1; t.block = true }
+    for (const t of [iOpen, tInline, iClose]) t.block = false
     const rest = nl < 0 ? "" : inl.content.slice(nl + 1)
     if (rest.trim()) {
       inl.content = rest
       if (p.map) p.map = [p.map[0] + 1, p.map[1]]
-      toks.splice(i + 1, 0, tOpen, icon, tInline, tClose, cOpen)
+      toks.splice(i + 1, 0, tOpen, icon, iOpen, tInline, iClose, tClose, cOpen)
     } else {
-      toks.splice(i + 1, 3, tOpen, icon, tInline, tClose, cOpen)
+      toks.splice(i + 1, 3, tOpen, icon, iOpen, tInline, iClose, tClose, cOpen)
     }
     for (let j = i + 1; j < toks.length; j++) {
       if (toks[j].type === "blockquote_close" && toks[j].level === open.level) {
