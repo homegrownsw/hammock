@@ -64,6 +64,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 #import "../media/encoder.h"
+#include <libproc.h>
 #include <objc/runtime.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -2281,6 +2282,43 @@ static uint32_t cefModifiers(NSEventModifierFlags f) {
 }
 @end
 
+#pragma mark - Leftover code-sign clones
+
+// Whether a running process has the clone's executable mapped. Chromium
+// hard-links it to its host's own, so a host that's still running (an older
+// build alongside this one, or one being replaced) keeps its clone.
+static BOOL cloneInUse(NSString *clone) {
+  NSFileManager *fm = NSFileManager.defaultManager;
+  for (NSString *bundle in [fm contentsOfDirectoryAtPath:clone error:nil]) {
+    NSString *macos = [clone stringByAppendingPathComponent:[bundle stringByAppendingPathComponent:@"Contents/MacOS"]];
+    for (NSString *exe in [fm contentsOfDirectoryAtPath:macos error:nil]) {
+      int pids[64];
+      NSString *path = [macos stringByAppendingPathComponent:exe];
+      if (proc_listpidspath(PROC_ALL_PIDS, 0, path.fileSystemRepresentation, 0, pids, sizeof pids) != 0) {
+        return YES;  // in use, or we couldn't tell
+      }
+    }
+  }
+  return NO;
+}
+
+// Deletes the code-sign clones earlier hosts left behind (see
+// OnBeforeCommandLineProcessing), ~300 MB each: Chromium keeps them in
+// $TMPDIR/../X, which neither it nor macOS cleans up.
+static void removeLeftoverCodeSignClones() {
+  NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
+  char tmp[PATH_MAX];
+  if (!bundleID.length || !confstr(_CS_DARWIN_USER_TEMP_DIR, tmp, sizeof tmp)) return;
+  NSString *root = [[@(tmp) stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"X"];
+  root = [root stringByAppendingPathComponent:[bundleID stringByAppendingString:@".code_sign_clone"]];
+  NSFileManager *fm = NSFileManager.defaultManager;
+  for (NSString *name in [fm contentsOfDirectoryAtPath:root error:nil]) {
+    NSString *clone = [root stringByAppendingPathComponent:name];
+    if (![name hasPrefix:@"code_sign_clone."] || cloneInUse(clone)) continue;
+    if ([fm removeItemAtPath:clone error:nil]) NSLog(@"removed leftover code-sign clone %@", name);
+  }
+}
+
 int main(int argc, char *argv[]) {
   CefScopedLibraryLoader loader;
   if (!loader.LoadInMain()) return 1;
@@ -2322,6 +2360,9 @@ int main(int argc, char *argv[]) {
     CefString(&settings.root_cache_path) = profile.UTF8String;
     if (!CefInitialize(args, settings, new App, nullptr)) return CefGetExitCode();
     [gHost listen];
+    // Once a host this one replaced has had time to exit.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0),
+                   ^{ removeLeftoverCodeSignClones(); });
     CefRunMessageLoop();
     CefShutdown();
   }
