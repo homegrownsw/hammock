@@ -160,8 +160,13 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         webView.obscuredContentInsets = NSEdgeInsets(top: obscured.top, left: 0, bottom: obscured.bottom, right: 0)
     }
 
-    /// Set again once the view has settled in its window.
+    /// Set again once the view has settled in its first window (WebKit keeps
+    /// insets set before that but doesn't use them). Not when it comes back
+    /// to one: it has them, and clearing them moved the page.
+    private var placed = false
     private func reapplyObscured() {
+        guard !placed else { return applyObscured() }
+        placed = true
         DispatchQueue.main.async { [weak self] in self?.applyObscured(force: true) }
     }
     #endif
@@ -987,13 +992,12 @@ public struct AgentPreview: View {
             let scale = size.width > 0 ? g.size.width / size.width : 1
             if let s = lease?.session {
                 // Not kept by the pool: a preview's page is its own, gone with it.
-                // As tall as the tile at that scale (the page at its end, its
-                // latest at the tile's bottom), scaled from its top left
-                // corner, as AppKit scales a view's layer.
+                // The tile's size, zoomed out (WebKit's page zoom, not a view
+                // transform): the page lays out at the pane's width, its
+                // latest at the tile's bottom, all of it drawn smaller.
                 AgentWebTranscript(bridge: web.bridge(""))
-                    .frame(width: size.width, height: g.size.height / max(scale, 0.01))
-                    .scaleEffect(scale, anchor: .topLeading)
-                    .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+                    .frame(width: g.size.width, height: g.size.height)
+                    .onChange(of: scale, initial: true) { _, z in web.bridge.webView.pageZoom = max(z, 0.1) }
                     .opacity(shown ? 1 : 0)
                     .onChange(of: ObjectIdentifier(s), initial: true) {
                         web.bridge.configure(AgentWebStyle(fonts: AgentFonts.current, accent: accent, bubble: bubble, canOpenDiff: false, agentName: s.agentName))

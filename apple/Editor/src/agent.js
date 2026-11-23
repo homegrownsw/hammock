@@ -684,9 +684,19 @@ function restoreAnchor() {
 }
 
 /** The content changed size (rows, pictures, fonts, the pane's width). */
+/** The view's own height, last seen: a change of it isn't new content. */
+let viewHeight = 0
+
 function contentResized() {
+  // The view resized (back in its window, a pane resized), not the content:
+  // at the end, it stays there at once; a glide is for what arrives.
   const w = mainEl.clientWidth
   if (w !== fitWidth) { fitWidth = w; fitMiddle([rowsEl, tailEl]); fitHeights([rowsEl, tailEl]) }
+  const vh = se.clientHeight
+  if (vh !== viewHeight) {
+    viewHeight = vh
+    if (follow && vh > 0) { cancelGlide(); setTop(maxTop()); drawLatest(); return }
+  }
   if (performance.now() < settleUntil) log("resized")
   if (follow) {
     if (performance.now() < settleUntil) { cancelGlide(); setTop(maxTop()) }
