@@ -64,7 +64,7 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         ucc.add(AgentWeakHandler(self), name: "hammock")
         webView.navigationDelegate = self
         #if os(macOS)
-        pageView.onWindow = { [weak self] in self?.applyObscured() }
+        pageView.onWindow = { [weak self] in self?.reapplyObscured() }
         #endif
         #if os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
@@ -138,12 +138,20 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     /// (a renderer switched, a pane moved): set again when it's back.
     private var obscured: (top: CGFloat, bottom: CGFloat) = (0, 0)
 
-    func applyObscured() {
+    /// `force`: set again even if WebKit says it has them. It reports what
+    /// it was given, not what it uses: set before the view had a window (a
+    /// renderer just switched on), they're kept but not applied.
+    func applyObscured(force: Bool = false) {
         guard #available(macOS 26.0, *) else { return }
         let now = webView.obscuredContentInsets
-        if now.top != obscured.top || now.bottom != obscured.bottom {
-            webView.obscuredContentInsets = NSEdgeInsets(top: obscured.top, left: 0, bottom: obscured.bottom, right: 0)
-        }
+        guard force || now.top != obscured.top || now.bottom != obscured.bottom else { return }
+        if force { webView.obscuredContentInsets = NSEdgeInsetsZero }
+        webView.obscuredContentInsets = NSEdgeInsets(top: obscured.top, left: 0, bottom: obscured.bottom, right: 0)
+    }
+
+    /// Set again once the view has settled in its window.
+    private func reapplyObscured() {
+        DispatchQueue.main.async { [weak self] in self?.applyObscured(force: true) }
     }
     #endif
 
@@ -369,7 +377,7 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.applyIndicators() }
             #endif
             #if os(macOS)
-            applyObscured()
+            reapplyObscured()
             #endif
             if let style { call("hammock.configure(c)", ["c": Self.config(style)]) }
             if insets.top >= 0 { call("hammock.setInsets(i)", ["i": ["top": insets.top, "bottom": insets.bottom]]) }
