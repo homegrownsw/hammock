@@ -55,7 +55,7 @@ struct AgentTile: View {
     var body: some View {
         RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
             .fill(LinearGradient(colors: [tint, tint.opacity(0.72)], startPoint: .topLeading, endPoint: .bottomTrailing))
-            .overlay { AgentMark(harness: content.harness ?? content.agent.lowercased(), size: size * 0.56, tint: ink) }
+            .overlay { MarkPicture(harness: content.harness ?? content.agent.lowercased(), size: size * 0.56, tint: ink) }
             .frame(width: size, height: size)
     }
 }
@@ -94,5 +94,32 @@ struct StatusPill: View {
         .padding(.vertical, 4)
         .background(Capsule().fill(loud ? tint : tint.opacity(0.18)))
         .fixedSize()
+    }
+}
+
+/// The agent's mark, drawn as a picture. Since iOS 27.2 the Dynamic Island
+/// shows nothing at all, in any of its sizes, when it holds a detailed path
+/// like the marks' (a simple shape still draws); a picture of one draws fine.
+struct MarkPicture: View {
+    let harness: String
+    let size: CGFloat
+    let tint: Color
+
+    var body: some View {
+        if let image = Self.render(harness: harness, size: size, tint: tint) {
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: size, height: size)
+                .accessibilityLabel(AgentMark.name(of: harness))
+        } else {
+            Color.clear.frame(width: size, height: size)
+        }
+    }
+
+    @MainActor
+    static func render(harness: String, size: CGFloat, tint: Color) -> UIImage? {
+        let renderer = ImageRenderer(content: AgentMark(harness: harness, size: size, tint: tint))
+        renderer.scale = 3
+        return renderer.uiImage
     }
 }

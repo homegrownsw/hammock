@@ -51,7 +51,7 @@ struct HammockLiveActivity: Widget {
                     .padding(.horizontal, 6)
                 }
             } compactLeading: {
-                AgentMark(harness: c.harness ?? c.agent.lowercased(), size: 18, tint: tint)
+                MarkPicture(harness: c.harness ?? c.agent.lowercased(), size: 18, tint: tint)
                     .padding(.leading, 2)
             } compactTrailing: {
                 HStack(spacing: 3) {
@@ -64,7 +64,7 @@ struct HammockLiveActivity: Widget {
                 if c.kind == .needsYou {
                     StateMark(content: c, tint: tint)
                 } else {
-                    AgentMark(harness: c.harness ?? c.agent.lowercased(), size: 16, tint: tint)
+                    MarkPicture(harness: c.harness ?? c.agent.lowercased(), size: 16, tint: tint)
                 }
             }
             .widgetURL(link(c, host: host))
