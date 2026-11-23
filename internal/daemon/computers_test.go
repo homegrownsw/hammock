@@ -1740,7 +1740,9 @@ func TestLinkedAttentionLeavesItsPhones(t *testing.T) {
 	oldClient, oldIdle, oldLocked, oldRelays, oldPoll := pushClient, idleTime, screenLocked, pushRelays, pushPoll
 	pushClient, pushRelays, pushPoll = relay.Client(), []string{relayOrigin(relay.URL)}, 50*time.Millisecond
 	idleTime, screenLocked = func() time.Duration { return time.Hour }, func() bool { return false }
-	t.Cleanup(func() { pushClient, idleTime, screenLocked, pushRelays, pushPoll = oldClient, oldIdle, oldLocked, oldRelays, oldPoll })
+	t.Cleanup(func() {
+		pushClient, idleTime, screenLocked, pushRelays, pushPoll = oldClient, oldIdle, oldLocked, oldRelays, oldPoll
+	})
 
 	a := startComputer(t)
 	a.d.mu.Lock()

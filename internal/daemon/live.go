@@ -83,8 +83,10 @@ var (
 	// agent is doing now (a state, agent or prompt changing goes at once):
 	// Apple budgets a Live Activity's updates. Replaceable in tests.
 	liveGap = 10 * time.Second
-	// liveLinger is how long one that ended because the agents stopped
-	// stays, saying so; back at the Mac, it goes at once.
+	// liveLinger is how long one stays saying the agents stopped before
+	// it ends; back at the Mac, it goes at once. An iPhone's still runs
+	// meanwhile, so an agent at work again takes it up rather than
+	// starting a second beside it.
 	liveLinger = 2 * time.Minute
 	// liveStaleAfter: an iPhone's shows as out of date this long after its last
 	// update (the Mac asleep or gone), until the next.
@@ -105,6 +107,8 @@ type livePhone struct {
 	sent     string    // the content last sent it, as JSON
 	sentAt   time.Time
 	declined bool // you dismissed it: not again until you've been back at the Mac
+	// finishing: an iPhone's says the agents stopped, and ends then.
+	finishing time.Time
 }
 
 // liveHub is the Live Activities' state (under d.mu).
@@ -464,7 +468,7 @@ func (d *Daemon) liveRegistered(deviceID string, m *pb.RegisterPush) {
 	case lp.started && time.Since(lp.startAt) > liveTokenWait:
 		// None runs (dismissed, or ended on the phone): not again until
 		// you've been back at the Mac.
-		lp.started, lp.token, lp.sent, lp.declined = false, "", "", true
+		lp.started, lp.token, lp.sent, lp.declined, lp.finishing = false, "", "", true, time.Time{}
 	}
 	d.liveWake()
 }
@@ -541,7 +545,7 @@ func (d *Daemon) liveTick() {
 		case lp.started && !away:
 			d.liveEnd(id, lp, 0) // back at the Mac: at once
 		case lp.started:
-			d.liveEnd(id, lp, liveLinger) // nothing at work: says so a while
+			d.liveFinish(id, lp) // nothing at work: says so a while
 		}
 	}
 	if want != nil {
@@ -553,6 +557,7 @@ func (d *Daemon) liveTick() {
 
 // liveSend starts or updates a phone's Live Activity. Callers hold d.mu.
 func (d *Daemon) liveSend(deviceID string, lp *livePhone, c liveContent) {
+	lp.finishing = time.Time{} // at work again: no longer ending
 	b, _ := json.Marshal(c)
 	now := time.Now()
 	if lp.started && string(b) == lp.sent {
@@ -595,9 +600,33 @@ func (d *Daemon) liveSend(deviceID string, lp *livePhone, c liveContent) {
 	go d.postLive(deviceID, lp.reg, body)
 }
 
-// liveEnd ends a phone's Live Activity: at once, or after linger showing
-// that its agent finished (or failed). Callers hold d.mu.
-func (d *Daemon) liveEnd(deviceID string, lp *livePhone, linger time.Duration) {
+// liveFinish has a phone's Live Activity say its agent finished (or
+// failed), for liveLinger, then end. An iPhone's is updated to say so and
+// ended later, not ended at once and left showing: ended, it can't be
+// taken up again, and an agent at work again meanwhile would start a
+// second. Callers hold d.mu.
+func (d *Daemon) liveFinish(deviceID string, lp *livePhone) {
+	if lp.android || lp.token == "" {
+		d.liveEnd(deviceID, lp, liveLinger)
+		return
+	}
+	now := time.Now()
+	if !lp.finishing.IsZero() {
+		if now.After(lp.finishing) {
+			d.liveEnd(deviceID, lp, 0)
+		}
+		return
+	}
+	lp.finishing = now.Add(liveLinger)
+	final := d.liveFinal()
+	b, _ := json.Marshal(final)
+	lp.sent, lp.sentAt = string(b), now
+	go d.postLive(deviceID, lp.reg, map[string]any{"token": lp.token, "event": "update", "state": final, "stale": lp.finishing.Unix(), "priority": 10})
+}
+
+// liveFinal is what a Live Activity says once its agents stopped: the one
+// shown last, finished (or failed). Callers hold d.mu.
+func (d *Daemon) liveFinal() liveContent {
 	final := liveContent{State: liveFinished}
 	if l := d.live.last; l != nil {
 		final = *l
@@ -614,8 +643,15 @@ func (d *Daemon) liveEnd(deviceID string, lp *livePhone, linger time.Duration) {
 		}
 	}
 	final.Status = liveStatus(final.State)
+	return final
+}
+
+// liveEnd ends a phone's Live Activity: at once, or after linger showing
+// that its agent finished (or failed). Callers hold d.mu.
+func (d *Daemon) liveEnd(deviceID string, lp *livePhone, linger time.Duration) {
+	final := d.liveFinal()
 	token := lp.token
-	lp.started, lp.token, lp.sent = false, "", ""
+	lp.started, lp.token, lp.sent, lp.finishing = false, "", "", time.Time{}
 	dismiss := time.Now().Add(linger).Unix()
 	if lp.android {
 		d.liveSealed(deviceID, lp.reg, &final, dismiss)
@@ -676,6 +712,6 @@ func (d *Daemon) postLive(deviceID string, r *pb.RegisterPush, live map[string]a
 			lp.reg = proto.CloneOf(lp.reg)
 			lp.reg.LiveStartToken = ""
 		}
-		lp.started, lp.token, lp.sent = false, "", ""
+		lp.started, lp.token, lp.sent, lp.finishing = false, "", "", time.Time{}
 	}
 }

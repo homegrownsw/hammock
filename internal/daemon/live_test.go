@@ -305,8 +305,8 @@ func TestLiveActivityWhileAway(t *testing.T) {
 		t.Fatalf("still published: %s", shown)
 	}
 
-	// Away again, it starts again; the agent stops, and it ends a while
-	// later, saying it finished.
+	// Away again, it starts again; the agent stops, and it says so a
+	// while, still running, then ends.
 	usePhone(d, idle)
 	if s = next("on the phone again"); s.Live["event"] != "start" {
 		t.Fatalf("restart %+v", s)
@@ -316,9 +316,36 @@ func TestLiveActivityWhileAway(t *testing.T) {
 	sendHook(t, dir, HookEvent{PaneID: paneID, Harness: "claude", Payload: json.RawMessage(`{"hook_event_name":"Stop","session_id":"s","last_assistant_message":"All done."}`)})
 	s = next("once it stopped")
 	state, _ = s.Live["state"].(map[string]any)
-	if s.Live["event"] != "end" || s.Live["token"] != "dd44" || state["state"] != liveFinished || state["status"] != "Finished" ||
-		int64(s.Live["dismiss"].(float64)) < time.Now().Add(liveLinger).Unix()-5 {
+	if s.Live["event"] != "update" || s.Live["token"] != "dd44" || state["state"] != liveFinished || state["status"] != "Finished" {
 		t.Fatalf("finished %+v", s)
+	}
+	quiet("while it says it finished")
+
+	// At work again meanwhile: the same one takes it up, not a second.
+	sendHook(t, dir, HookEvent{PaneID: paneID, Harness: "claude", Payload: json.RawMessage(`{"hook_event_name":"UserPromptSubmit","session_id":"s","prompt":"again"}`)})
+	s = next("at work again")
+	state, _ = s.Live["state"].(map[string]any)
+	if s.Live["event"] != "update" || s.Live["token"] != "dd44" || state["state"] != liveWorking {
+		t.Fatalf("again %+v", s)
+	}
+
+	// Stopped again, and its while is up: ended.
+	sendHook(t, dir, HookEvent{PaneID: paneID, Harness: "claude", Payload: json.RawMessage(`{"hook_event_name":"Stop","session_id":"s","last_assistant_message":"Done again."}`)})
+	if s = next("stopped again"); s.Live["event"] != "update" {
+		t.Fatalf("finished again %+v", s)
+	}
+	d.mu.Lock()
+	for _, lp := range d.live.phones {
+		if !lp.finishing.IsZero() {
+			lp.finishing = time.Now().Add(-time.Second)
+		}
+	}
+	d.mu.Unlock()
+	s = next("once its while is up")
+	state, _ = s.Live["state"].(map[string]any)
+	if s.Live["event"] != "end" || s.Live["token"] != "dd44" || state["state"] != liveFinished ||
+		int64(s.Live["dismiss"].(float64)) > time.Now().Unix()+1 {
+		t.Fatalf("end %+v", s)
 	}
 }
 
