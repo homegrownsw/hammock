@@ -77,6 +77,15 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             self?.onPlaced?()
             #if os(macOS)
             if joined { self?.reapplyObscured() }
+            #else
+            // WebKit makes the conversation's scroll view once the page is
+            // shown, which for one loaded ahead (the spare) is long after it
+            // was ready: its indicator's insets go to it then.
+            if joined {
+                for after in [0.1, 0.5, 1.5] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + after) { [weak self] in self?.applyIndicators() }
+                }
+            }
             #endif
         }
         #if os(macOS)
@@ -418,6 +427,12 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             }
         case "log":
             DevLog.agent("agent page: \(m["text"] as? String ?? "")")
+        case "touch":
+            // About to scroll: its indicator keeps between the bars, whatever
+            // WebKit has made since.
+            #if os(iOS)
+            applyIndicators()
+            #endif
         case "dismissKeyboard":
             #if os(iOS)
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)

@@ -719,7 +719,7 @@ const input = () => { lastInput = performance.now(); cancelGlide(); replyStop = 
 for (const ev of ["wheel", "mousedown"]) window.addEventListener(ev, input, { passive: true })
 // A drag down the conversation pulls the keyboard away, as the native one's does.
 let touchY = null, dismissed = false
-window.addEventListener("touchstart", (e) => { touching = true; touchY = e.touches[0]?.clientY ?? null; dismissed = false; input() }, { passive: true })
+window.addEventListener("touchstart", (e) => { touching = true; touchY = e.touches[0]?.clientY ?? null; dismissed = false; input(); post({ type: "touch" }) }, { passive: true })
 window.addEventListener("touchmove", (e) => {
   input()
   const y = e.touches[0]?.clientY
