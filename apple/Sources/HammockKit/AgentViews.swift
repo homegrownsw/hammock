@@ -596,6 +596,10 @@ public struct AgentConversationView: View {
             if let to = n.userInfo?["to"] as? String { web.bridge.debugScroll(to) }
         }
         #endif
+        .onReceive(NotificationCenter.default.publisher(for: AgentDebug.command)) { n in
+            let (cmd, arg) = AgentDebug.parse(n)
+            if cmd == "list" { AgentDebug.list(s, to: arg) } else { web.bridge.debug(cmd, arg) }
+        }
         .onChange(of: webStyle, initial: true) { _, st in web.bridge.configure(st) }
         .onChange(of: ObjectIdentifier(s), initial: true) {
             web.bridge.onLink = { url in if route(url) == .system { openURL(url) } }
@@ -896,6 +900,16 @@ public struct AgentConversationView: View {
                     // New rows while you're at the end are followed as the
                     // content grows (onScrollGeometryChange): a second animated
                     // scroll here fought that one, the picture stepping back.
+                }
+                .onReceive(NotificationCenter.default.publisher(for: AgentDebug.command)) { n in
+                    let (cmd, arg) = AgentDebug.parse(n)
+                    switch cmd {
+                    case "show": atBottom = false; proxy.scrollTo(arg, anchor: .top)
+                    case "toggle": withAnimation(.snappy) { s.setOpen(arg, !s.isOpen(arg)) }
+                    case "end": jumpToEnd(proxy)
+                    case "list": AgentDebug.list(s, to: arg)
+                    default: break
+                    }
                 }
                 #if DEBUG
                 // Dev aid: the iPhone demo's takes (DemoDirector: scroll) scroll the conversation, as a finger would.

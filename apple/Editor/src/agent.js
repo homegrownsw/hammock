@@ -32,6 +32,7 @@ function configure(c) {
   if (f.code) r.setProperty("--code", f.code)
   if (f.codeSize) r.setProperty("--code-size", f.codeSize + "px")
   if (f.codeLineHeight) r.setProperty("--code-lh", f.codeLineHeight + "px")
+  for (const [k, v] of Object.entries(f.lines || {})) r.setProperty(`--lh-${k}`, v + "px")
   if (f.spacing != null) r.setProperty("--sp", f.spacing + "px")
   // SwiftUI sets SF's tracking for the size; WebKit's can differ (its SF
   // Mono was 4% narrower). The app measured a sample in its own fonts: the
@@ -65,6 +66,7 @@ function configure(c) {
     style.textContent = css
   }
   document.body.classList.toggle("touch", cfg.platform === "ios")
+  document.body.classList.toggle("mac", cfg.platform === "mac")
   if (c.fonts || c.codeWrap || c.canOpenDiff != null) rebuildAll()
 }
 
@@ -253,7 +255,9 @@ function status(b) {
 const chev = (open, shown = true) => `<span class="chev${shown ? "" : " none"}">${sym(open ? "chevron.down" : "chevron.right")}</span>`
 
 function pics(refs, max) {
-  return refs.map((r) => `<img class="pic" data-ref="${esc(r)}" style="--max:${max}px" alt="">`).join("")
+  // A box, as AgentImageView: loading, then the picture (a video's first
+  // frame, with a play badge), or what it is when it can't be shown.
+  return refs.map((r) => `<span class="pic${isVideo(r) ? " video" : ""}" data-ref="${esc(r)}" style="--max:${max}px"><span class="spin"></span></span>`).join("")
 }
 
 function diffView(d, preview) {
@@ -282,8 +286,8 @@ function toolRow(b, compact = false) {
   const showsInput = !!b.input && (b.tool === "Bash" || !b.tool.startsWith("Read")) && !(b.bang && !b.input.includes("\n"))
   const opens = !!b.diff || showsInput || !!b.output
   let h = `<button class="head" data-toggle="${esc(b.id)}"${opens ? "" : " disabled"}>`
-  if (b.bang) h += `<span class="bang">!</span><span class="cmd">${esc(firstLine(b.input))}</span>`
-  else h += `<span class="icon">${sym(toolIcon(b))}</span><span class="title">${inlineText(b.title || b.tool)}</span>`
+  if (b.bang) h += `<span class="bang">!</span><span class="cmd mid">${esc(firstLine(b.input))}</span>`
+  else h += `<span class="icon">${sym(toolIcon(b))}</span><span class="title mid">${inlineText(b.title || b.tool)}</span>`
   if (b.added > 0 || b.removed > 0) h += `<span class="add">+${b.added}</span><span class="del">−${b.removed}</span>`
   h += `<span class="spacer"></span>${status(b)}${chev(open, opens)}</button>`
   let body = ""
@@ -304,7 +308,7 @@ function groupRow(r) {
   let h = `<button class="head" data-toggle="${esc(r.id)}"><span class="icon">${sym("square.stack.3d.up")}</span>` +
     `<span class="title">${esc(r.summary)}</span>` +
     (r.failed ? `<span class="fail">· ${esc(r.failed)}</span>` : "") +
-    (last?.pending ? `<span class="last">· ${inlineText(last.title)}</span>` : "") +
+    (last?.pending ? `<span class="last mid">· ${inlineText(last.title)}</span>` : "") +
     `<span class="spacer"></span>` +
     (running ? `<span class="st">${runningTime(running.time)}<span class="spin"></span></span>` : "") + chev(open) + `</button>`
   let body = ""
@@ -400,7 +404,38 @@ function build(r) {
   el.className = "row"
   el.dataset.id = r.id
   el.innerHTML = rowHTML(r)
+  if (el.querySelector(".mid")) fitSoon(el)
   return el
+}
+
+// ---- lines cut in the middle ----
+
+// SwiftUI cuts a tool's title and a command in the middle (truncationMode
+// .middle), keeping a path's file name; CSS only cuts the end. Done for
+// the rows made, and all of them when the width changes: every line put
+// back whole, then measured at once, then cut.
+const fitting = new Set()
+let fitQueued = false, fitWidth = 0
+const measureCtx = document.createElement("canvas").getContext("2d")
+
+function fitSoon(el) {
+  fitting.add(el)
+  if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; const els = [...fitting]; fitting.clear(); fitMiddle(els) }) }
+}
+
+function fitMiddle(roots) {
+  const els = roots.flatMap((r) => (r.isConnected ? [...r.querySelectorAll(".mid")] : []))
+  for (const el of els) if (el.dataset.whole != null && el.innerHTML !== el.dataset.whole) el.innerHTML = el.dataset.whole
+  const over = els.filter((el) => el.scrollWidth > el.clientWidth + 0.5).map((el) => [el, el.clientWidth, getComputedStyle(el)])
+  for (const [el, avail, cs] of over) {
+    if (el.dataset.whole == null) el.dataset.whole = el.innerHTML
+    const full = el.textContent
+    measureCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+    const cut = (k) => full.slice(0, Math.ceil(k / 2)) + "…" + full.slice(full.length - Math.floor(k / 2))
+    let lo = 0, hi = full.length - 1
+    while (lo < hi) { const k = (lo + hi + 1) >> 1; if (measureCtx.measureText(cut(k)).width <= avail) lo = k; else hi = k - 1 }
+    el.textContent = cut(lo)
+  }
 }
 
 // ---- the rows, as the app sends them ----
@@ -469,6 +504,7 @@ function renderTail(t, force = false) {
   }
   if (t.working) h += `<div class="row working${wasWorking ? "" : " arriving"}"><span class="sparkle">${sym("sparkle")}</span><span class="status">${esc(t.status || "Working…")}</span></div>`
   tailEl.innerHTML = h
+  if (tailEl.querySelector(".mid")) fitSoon(tailEl)
   for (const el of tailEl.querySelectorAll("[data-pending]")) {
     const id = el.dataset.pending
     if (!pendingShown.has(id)) { pendingShown.add(id); el.firstElementChild?.classList.add("arriving") }
@@ -572,6 +608,8 @@ function restoreAnchor() {
 
 /** The content changed size (rows, pictures, fonts, the pane's width). */
 function contentResized() {
+  const w = mainEl.clientWidth
+  if (w !== fitWidth) { fitWidth = w; fitMiddle([rowsEl, tailEl]) }
   if (performance.now() < settleUntil) log("resized")
   if (follow) {
     if (performance.now() < settleUntil) { cancelGlide(); setTop(maxTop()) }
@@ -719,22 +757,38 @@ function update(u) {
 const images = new Map() // ref → data URL
 const asked = new Set()
 
+const isVideo = (ref) => /\.(mp4|mov|m4v|webm)$/i.test(ref)
+
 function loadImages() {
-  for (const img of document.querySelectorAll("img.pic:not([src])")) {
-    const ref = img.dataset.ref
-    if (images.has(ref)) setImage(img, images.get(ref))
+  for (const box of document.querySelectorAll(".pic:not(.set)")) {
+    const ref = box.dataset.ref
+    if (images.has(ref)) setImage(box, images.get(ref))
     else if (!asked.has(ref)) { asked.add(ref); post({ type: "image", ref }) }
   }
 }
 
-function setImage(img, url) {
-  img.addEventListener("load", () => img.classList.add("loaded"), { once: true })
+function setImage(box, url) {
+  box.classList.add("set")
+  if (!url) {
+    box.classList.add("failed")
+    box.innerHTML = sym(box.classList.contains("video") ? "film" : "photo")
+    return
+  }
+  const img = new Image()
+  img.alt = ""
+  img.addEventListener("load", () => {
+    box.classList.add("loaded")
+    box.replaceChildren(img)
+    if (box.classList.contains("video")) box.insertAdjacentHTML("beforeend", `<span class="play">${sym("play.fill")}</span>`)
+  }, { once: true })
+  img.addEventListener("error", () => setImage(box, ""), { once: true })
   img.src = url
 }
 
+/** A picture the app sent ("" when it couldn't: what it is shows instead). */
 function image(ref, url) {
   images.set(ref, url)
-  for (const img of document.querySelectorAll("img.pic:not([src])")) if (img.dataset.ref === ref) setImage(img, url)
+  for (const box of document.querySelectorAll(".pic:not(.set)")) if (box.dataset.ref === ref) setImage(box, url)
 }
 
 // ---- what you do ----
@@ -754,9 +808,63 @@ function redraw(rowEl) {
   return null
 }
 
+/** SwiftUI's spring (response, bounce), as a CSS easing and how long it takes to settle. */
+function spring(response, bounce) {
+  const w = (2 * Math.PI) / response, z = 1 - bounce, wd = w * Math.sqrt(1 - z * z)
+  const x = (t) => 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t))
+  const dur = Math.log(1000) / (z * w)
+  const pts = []
+  for (let i = 0; i <= 40; i++) pts.push(x((dur * i) / 40).toFixed(4))
+  pts[40] = "1"
+  return { ease: `linear(${pts.join(", ")})`, ms: Math.round(dur * 1000) }
+}
+/** .snappy, as the native rows open and close with. */
+const SNAPPY = spring(0.5, 0.15)
+
+/**
+ * A row opening or closing as SwiftUI's do: its height springing between
+ * the two, what it shows or hides fading. `swap` makes the row as it'll be;
+ * closing, it's made at the end, so what goes fades out in place.
+ */
+function animateRow(row, swap, opening) {
+  const before = row.getBoundingClientRect().height
+  if (reduceMotion()) return { el: swap(), height: null }
+  // What's under the row's head: what opening shows, or closing hides.
+  const parts = (el) => [...(el.firstElementChild?.children || [])].filter((c) => !c.matches(".head, .sub-head"))
+  const kinds = (el) => new Set(parts(el).map((p) => p.className))
+  let el = row, after
+  if (opening) {
+    const old = kinds(row)
+    el = swap()
+    after = el.getBoundingClientRect().height
+    for (const p of parts(el)) if (!old.has(p.className)) p.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SNAPPY.ms * 0.6, easing: "ease-out" })
+  } else {
+    // Measured as it'll be, then the old one shrinks to it.
+    const probe = swap()
+    after = probe.getBoundingClientRect().height
+    const stays = kinds(probe)
+    probe.replaceWith(row)
+    els.set(row.dataset.id, row)
+    for (const p of parts(row)) if (!stays.has(p.className)) p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SNAPPY.ms * 0.4, easing: "ease-in", fill: "forwards" })
+  }
+  if (Math.abs(after - before) < 1) { if (!opening) swap(); return { el, height: after } }
+  el.style.height = before + "px"
+  el.style.overflow = "clip"
+  el.getBoundingClientRect()
+  const a = el.animate([{ height: before + "px" }, { height: after + "px" }], { duration: SNAPPY.ms, easing: SNAPPY.ease })
+  el.style.height = after + "px"
+  a.finished.then(() => {
+    if (!el.isConnected) return
+    el.style.height = ""; el.style.overflow = ""
+    if (!opening) swap()
+  }, () => {})
+  return { el, height: after }
+}
+
 /** A row you opened: brought into view (all of it if it fits, else its top), or kept at the end if it shows from there. */
-function reveal(el, wasFollowing) {
-  const r = el.getBoundingClientRect()
+function reveal(el, wasFollowing, height) {
+  const box = el.getBoundingClientRect()
+  const r = height == null ? box : { top: box.top, height, bottom: box.top + height }
   const viewTop = insetTop, viewBottom = se.clientHeight - insetBottom
   if (wasFollowing && docTop(el) - insetTop >= maxTop() - 1) { follow = true; glideToEnd(); return }
   let y = null
@@ -768,7 +876,7 @@ function reveal(el, wasFollowing) {
 document.addEventListener("click", (e) => {
   const a = e.target.closest("a[href]")
   if (a) { e.preventDefault(); post({ type: "link", href: a.getAttribute("href") }); return }
-  const img = e.target.closest("img.pic")
+  const img = e.target.closest(".pic.loaded")
   if (img) { post({ type: "openImage", ref: img.dataset.ref }); return }
   const act = e.target.closest("[data-act]")
   if (act) {
@@ -813,8 +921,14 @@ document.addEventListener("click", (e) => {
   const opening = peek || opened.has(id) !== !!data.get(id)?.b?.bang
   follow = false
   recordAnchor()
-  const n = redraw(row) || row
-  if (opening && n?.isConnected) reveal(n, wasFollowing)
+  if (!row.dataset.id) {
+    const n = redraw(row) || row
+    if (opening && n?.isConnected) reveal(n, wasFollowing)
+    else follow = wasFollowing
+    return
+  }
+  const { el: n, height } = animateRow(row, () => redraw(row), opening)
+  if (opening && n?.isConnected) reveal(n, wasFollowing, height)
   else follow = wasFollowing
 })
 
@@ -844,6 +958,30 @@ setInterval(() => {
 }, 1000)
 
 /** The demo's takes (DemoDirector: scroll), as a finger would: top, bottom, latest, or by n points. */
+/** Dev aid (AgentDebug.swift): a row at the top, opened or closed as a click does, or the end. */
+function debug(cmd, arg) {
+  const row = arg && $("rows").querySelector(`[data-id="${CSS.escape(arg)}"]`)
+  switch (cmd) {
+    case "show":
+      if (!row) return
+      cancelGlide(); follow = false
+      setTop(docTop(row) - insetTop)
+      recordAnchor(); drawLatest()
+      return
+    case "toggle":
+      row?.querySelector("[data-toggle]")?.click()
+      return
+    case "end": return toLatest()
+    case "eval": {
+      // "PATH\tCODE": what CODE returns, written to PATH by the app.
+      const [path, code] = arg.split("\t")
+      let text
+      try { text = String((0, eval)(code)) } catch (e) { text = "error: " + e.message }
+      return post({ type: "debugResult", path, text })
+    }
+  }
+}
+
 function debugScroll(to) {
   if (to === "latest") return toLatest()
   cancelGlide()
@@ -853,7 +991,7 @@ function debugScroll(to) {
   glide(() => Math.max(0, Math.min(maxTop(), y)), 600)
 }
 
-window.hammock = { configure, update, setInsets, image, toLatest, debugScroll }
+window.hammock = { debug, configure, update, setInsets, image, toLatest, debugScroll }
 // Ready once the empty page is on screen: on the iPhone, WebKit puts a new
 // page back at its top as its first frame reaches the screen, and a
 // conversation already scrolled to its end by then was moved with it.

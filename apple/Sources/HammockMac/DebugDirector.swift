@@ -15,6 +15,15 @@ import HammockKit
 ///	profile NAME|DEVICE           your name and this Mac's, as Settings ▸ Sharing sets them
 ///	drag [SECONDS]                resizes the window every frame and reports how it kept up (ResizeDrag)
 ///	finish-setup                  finishes onboarding, as its last button does
+///	agentview PANE                that pane in its agent view, as the header's toggle does
+///	agent renderer native|web     the agent view drawn by SwiftUI or WebKit (agent-view-renderer)
+///	agent show|toggle ID          that row at the top of the agent view; open or close it, as a click does
+///	agent end | agent list FILE   to its end; its rows, one a line, to FILE (AgentDebug)
+///	size W H                      the window's content this size
+///	appearance light|dark|auto    the app's appearance
+///	capture PATH                  the window as drawn, to PATH.png (needs Screen Recording)
+///	burst PATH SECONDS [COMMAND]  frames for SECONDS, to PATH-NN.png, running COMMAND after the first
+///	wait SECONDS
 @MainActor enum DebugDirector {
     /// What the palette's search field should hold, set as it's typed.
     static var paletteQuery: ((String) -> Void)?
@@ -40,6 +49,16 @@ import HammockKit
         }
     }
 
+    private static var mainWindow: NSWindow? { NSApp.windows.first { $0.isVisible && $0.contentView != nil && $0.styleMask.contains(.titled) } }
+
+    private static func write(_ image: CGImage, to path: String) {
+        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    private static func failed(_ line: String) {
+        FileHandle.standardError.write(Data("HammockDirector: couldn't capture the window (\(line)): is the screen awake, and has β Screen Recording?\n".utf8))
+    }
+
     private static func run(_ line: String) async {
         let parts = line.split(separator: " ", maxSplits: 1).map(String.init)
         guard let verb = parts.first, let m = AppModelRegistry.shared else { return }
@@ -58,6 +77,36 @@ import HammockKit
             guard let n = Int(arg), let tab = m.selectedTabID.flatMap({ m.tabs[$0] }) else { return }
             let ids = AppModel.paneIDs(tab.layout)
             if n >= 1, n <= ids.count { PaneZoom.shared.toggle(ids[n - 1], model: m) }
+        case "agentview":
+            AgentModes.shared.set(arg, true)
+        case "agent":
+            let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard let cmd = a.first else { return }
+            if cmd == "renderer" { Prefs.shared.set(.agentRenderer, a.count > 1 ? a[1] : "native") } else { AgentDebug.send(cmd, a.count > 1 ? a[1] : "") }
+        case "size":
+            let a = arg.split(separator: " ").compactMap { Double($0) }
+            guard a.count == 2, let w = mainWindow else { return }
+            w.setContentSize(NSSize(width: a[0], height: a[1]))
+        case "appearance":
+            NSApp.appearance = arg == "dark" ? NSAppearance(named: .darkAqua) : arg == "light" ? NSAppearance(named: .aqua) : nil
+        case "wait":
+            try? await Task.sleep(for: .seconds(Double(arg) ?? 1))
+        case "capture":
+            guard let w = mainWindow, let image = await DebugSnapshot.grabWindow(w) else { return failed(line) }
+            write(image, to: arg + ".png")
+        case "burst":
+            let a = arg.split(separator: " ", maxSplits: 2).map(String.init)
+            guard a.count >= 2, let seconds = Double(a[1]), let w = mainWindow else { return }
+            let start = Date()
+            var n = 0, times: [String] = []
+            while Date().timeIntervalSince(start) < seconds {
+                guard let image = await DebugSnapshot.grabWindow(w) else { return failed(line) }
+                times.append(String(format: "%02d %.3f", n, Date().timeIntervalSince(start)))
+                write(image, to: String(format: "%@-%02d.png", a[0], n))
+                if n == 0, a.count > 2 { await run(a[2]) }
+                n += 1
+            }
+            try? times.joined(separator: "\n").write(toFile: a[0] + "-times.txt", atomically: true, encoding: .utf8)
         case "finish-setup":
             Onboarding.shared.finish()
         case "drag":

@@ -422,7 +422,7 @@ extension DebugSnapshot {
     }
 
     /// One window as it's drawn on screen, with the app's own Screen Recording permission.
-    @MainActor private static func grabWindow(_ window: NSWindow) async -> CGImage? {
+    @MainActor static func grabWindow(_ window: NSWindow) async -> CGImage? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
               let w = content.windows.first(where: { $0.windowID == CGWindowID(window.windowNumber) }) else { return nil }
         let config = SCStreamConfiguration()

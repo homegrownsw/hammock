@@ -106,11 +106,25 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     /// How much of the page the bars cover, at the top (the navigation bar)
     /// and the bottom (the message box, the keyboard).
     func setInsets(top: CGFloat, bottom: CGFloat) {
-        let t = max(0, top.rounded()), b = max(0, bottom.rounded())
+        var t = max(0, top.rounded()), b = max(0, bottom.rounded())
+        #if os(macOS)
+        // The web view keeps clear of the bars itself, as a SwiftUI scroll
+        // view's safe area does: the page lays out between them and scrolls
+        // under them, and its scroller stops at them.
+        if #available(macOS 26.0, *) {
+            let wanted = NSEdgeInsets(top: t, left: 0, bottom: b, right: 0)
+            let now = webView.obscuredContentInsets
+            if now.top != wanted.top || now.bottom != wanted.bottom { webView.obscuredContentInsets = wanted }
+            t = 0; b = 0
+        }
+        #endif
         guard t != insets.top || b != insets.bottom else { return }
         insets = (t, b)
         if ready { call("hammock.setInsets(i)", ["i": ["top": t, "bottom": b]]) }
     }
+
+    /// The director's commands (AgentDebug).
+    func debug(_ cmd: String, _ arg: String) { if ready { call("hammock.debug(c, a)", ["c": cmd, "a": arg]) } }
 
     #if DEBUG
     /// The demo's takes scrolling the conversation (HammockDebugScroll).
@@ -303,6 +317,11 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             if let style { call("hammock.configure(c)", ["c": Self.config(style)]) }
             if insets.top >= 0 { call("hammock.setInsets(i)", ["i": ["top": insets.top, "bottom": insets.bottom]]) }
             push(replace: true)
+        case "debugResult":
+            // The director's `agent eval` (AgentDebug), only ever run by it.
+            if let path = m["path"] as? String, path.hasPrefix(NSTemporaryDirectory()) || path.hasPrefix("/private/tmp/") || path.hasPrefix("/tmp/") {
+                try? (m["text"] as? String ?? "").write(toFile: path, atomically: true, encoding: .utf8)
+            }
         case "log":
             DevLog.agent("agent page: \(m["text"] as? String ?? "")")
         case "dismissKeyboard":
@@ -318,8 +337,18 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case "image":
             guard let ref = m["ref"] as? String, let s = session else { return }
             Task { @MainActor in
-                guard let data = await s.file(ref) else { return }
-                call("hammock.image(r, u)", ["r": ref, "u": Self.dataURL(data)])
+                // A video shows its first frame, as AgentImageView does; one
+                // that can't be read, what it is ("").
+                var url = ""
+                if let data = await s.file(ref) {
+                    if Self.isVideo(ref, data) {
+                        let name = (ref as NSString).lastPathComponent
+                        if let poster = await VideoPoster.image(data: data, name: name, maxPixels: 800), let png = Self.png(poster) { url = Self.dataURL(png) }
+                    } else {
+                        url = Self.dataURL(data)
+                    }
+                }
+                call("hammock.image(r, u)", ["r": ref, "u": url])
             }
         case "openImage":
             if let ref = m["ref"] as? String, let s = session { onOpenImage?(s, ref) }
@@ -365,6 +394,21 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     @objc private func sendNow() { session?.sendNow() }
     #endif
 
+    /// A video, by its name or (an "ftyp" box) its first bytes.
+    private static func isVideo(_ ref: String, _ data: Data) -> Bool {
+        if ["mp4", "mov", "m4v", "webm"].contains((ref as NSString).pathExtension.lowercased()) { return true }
+        return data.count > 12 && data[data.startIndex + 4 ..< data.startIndex + 8] == Data("ftyp".utf8)
+    }
+
+    private static func png(_ image: PlatformImage) -> Data? {
+        #if os(macOS)
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+        #else
+        return image.pngData()
+        #endif
+    }
+
     private static func dataURL(_ d: Data) -> String {
         let m = [UInt8](d.prefix(12))
         let type = m.starts(with: [0x89, 0x50, 0x4E, 0x47]) ? "image/png"
@@ -406,6 +450,8 @@ extension AgentWebBridge {
                 "codeSize": f.codeSize,
                 "codeLineHeight": Self.lineHeight(code, f.code()),
                 "spacing": f.spacing,
+                // Each smaller size the rows use, with the line SwiftUI gives it.
+                "lines": Self.lines(f),
             ],
             // A sample's width in the native fonts: the page matches its tracking to it.
             "calibrate": [
@@ -416,6 +462,23 @@ extension AgentWebBridge {
             "colors": ["light": Self.colors(st, dark: false), "dark": Self.colors(st, dark: true)],
             "symbols": Self.symbols,
         ]
+    }
+
+    /// Line heights by the size the rows use: b88 is the body at 0.88, c95 code at 0.95.
+    private static func lines(_ f: AgentFonts) -> [String: Double] {
+        var out: [String: Double] = [:]
+        for k in [100, 93, 90, 88, 80] { out["b\(k)"] = lineHeight(font(f.name, f.size * Double(k) / 100, mono: false), f.body(Double(k) / 100)) }
+        for k in [100, 95, 88] { out["c\(k)"] = lineHeight(font(f.codeName, f.codeSize * Double(k) / 100, mono: true), f.code(Double(k) / 100)) }
+        #if os(macOS)
+        for (k, style, font) in [("caption", NSFont.TextStyle.caption1, Font.caption), ("caption2", .caption2, .caption2), ("callout", .callout, .callout)] {
+            out[k] = lineHeight(NSFont.preferredFont(forTextStyle: style), font)
+        }
+        #else
+        for (k, style, font) in [("caption", UIFont.TextStyle.caption1, Font.caption), ("caption2", .caption2, .caption2), ("callout", .callout, .callout)] {
+            out[k] = lineHeight(UIFont.preferredFont(forTextStyle: style), font)
+        }
+        #endif
+        return out
     }
 
     private static let sample = "let value0 = compute(0) // The quick brown fox jumps over the lazy dog"
@@ -530,7 +593,7 @@ extension AgentWebBridge {
             "globe", "checklist", "wand.and.stars", "puzzlepiece.extension", "wrench.and.screwdriver", "xmark.circle.fill",
             "checkmark.circle.fill", "chevron.down", "chevron.right", "rectangle.split.2x1", "square.stack.3d.up", "brain",
             "questionmark.bubble", "arrowshape.turn.up.left.fill", "text.bubble", "arrow.uturn.backward", "list.bullet.clipboard",
-            "person.2.wave.2", "paperclip", "sparkle", "arrow.down", "bubble.left.and.text.bubble.right",
+            "person.2.wave.2", "paperclip", "sparkle", "arrow.down", "bubble.left.and.text.bubble.right", "photo", "film", "play.fill",
         ]
         let pt: CGFloat = 64
         var out: [String: [String: Any]] = [:]

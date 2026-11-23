@@ -44,11 +44,13 @@ button:focus { outline: none; }
 html.page-scroll, html.page-scroll body { height: auto; overflow-x: hidden; overflow-y: visible; }
 html.page-scroll { overflow-y: auto; }
 html.page-scroll #scroller { position: static; overflow: visible; }
-/* The native stack's: 16 above, and under the last row its spacing twice
-   (an empty tail between), the end marker and 15. */
-#main { max-width: 860px; margin: 0 auto; padding: calc(var(--top) + 16px) 18px calc(var(--bottom) + 44px); }
+/* The native stack's: 16 above, and under the tail its spacing, the end
+   marker and 15 (with the tail empty, its spacing too). */
+#main { max-width: 860px; margin: 0 auto; padding: calc(var(--top) + 16px) 18px calc(var(--bottom) + 30px); }
+/* With nothing in it, the tail still takes its spacing, as the native stack's empty one does. */
+#rows:not(:empty) ~ #tail:empty { margin-top: 14px; }
 #rows, #tail { display: flex; flex-direction: column; gap: 14px; }
-#rows:not(:empty) + #tail:not(:empty) { margin-top: 14px; }
+#rows:not(:empty) ~ #tail:not(:empty) { margin-top: 14px; }
 .row { min-width: 0; }
 
 /* SF Symbols, as masks in the text's colour (the app renders them). */
@@ -64,7 +66,7 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 .user.pending { opacity: 0.7; }
 .user.arriving { animation: sent 0.42s cubic-bezier(0.32, 1.32, 0.52, 1) both; transform-origin: 100% 100%; }
 @keyframes sent { from { transform: translateY(80px) scale(0.6); opacity: 0; } }
-.user .pic { max-height: 200px; border-radius: 12px; }
+.user .pic { border-radius: 12px; } .user .pic img { max-height: 200px; }
 
 /* Markdown, laid out as the native view lays it out. */
 .md { display: flex; flex-direction: column; gap: 10px; }
@@ -96,7 +98,9 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 .tbl { overflow-x: auto; }
 .tbl table { border-collapse: collapse; background: color-mix(in srgb, var(--fg4) 50%, transparent); border-radius: 10px; font-size: 0.93em; }
 .tbl th { font-weight: 600; text-align: left; border-bottom: 1px solid var(--sep); }
-.tbl th, .tbl td { padding: 3px 8px; vertical-align: top; }
+/* SwiftUI's Grid in a sideways scroll view: cells on one line, 6 between rows and either side of the rule. */
+.tbl th, .tbl td { padding: 3px 8px; vertical-align: top; white-space: nowrap; line-height: var(--lh-b93, normal); }
+.tbl th { padding-bottom: 6px; } .tbl tbody tr:first-child td { padding-top: 6px; }
 .tbl tr:first-child th { padding-top: 12px; } .tbl tr:last-child td { padding-bottom: 12px; }
 .tbl th:first-child, .tbl td:first-child { padding-left: 12px; } .tbl th:last-child, .tbl td:last-child { padding-right: 12px; }
 /* A reply arriving while you watch shows from the top down. */
@@ -106,7 +110,7 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 
 /* Code. */
 .code { background: var(--fill); border-radius: 10px; overflow: hidden; }
-.code-head { display: flex; align-items: center; gap: 12px; padding: 8px 12px 0; font-size: var(--caption); line-height: normal; color: var(--fg2); }
+.code-head { display: flex; align-items: center; gap: 12px; padding: 8px 12px 0; font-size: var(--caption); line-height: var(--lh-caption, normal); color: var(--fg2); }
 .code-head .lang { flex: 1; }
 .code-head button { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
 .code-head button.off { color: var(--fg2); }
@@ -116,7 +120,12 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 
 /* Tool calls. */
 .tool { padding: 3px 0; } .tool.compact { padding: 1px 0; }
-.head { display: flex; align-items: center; gap: 8px; width: 100%; font-size: calc(var(--size) * 0.88); line-height: normal; min-width: 0; }
+/* A run of tools has no padding of its own (ToolGroup), only a tool alone (ToolRow). */
+.tool.group { padding: 0; }
+/* One-line rows are their text's height, as SwiftUI's are: a taller symbol stands out of it, centred. */
+.head { height: var(--lh-b88, auto); } .thought > .head { height: var(--lh-b90, auto); }
+.done { height: var(--lh-b88, auto); } .working { height: var(--lh-b100, auto); }
+.head { display: flex; align-items: center; gap: 8px; width: 100%; font-size: calc(var(--size) * 0.88); line-height: var(--lh-b88, normal); min-width: 0; }
 .head .icon { width: 18px; display: flex; justify-content: center; color: var(--fg3); flex: none; }
 .head .title { color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 .head .bang { font: 700 calc(var(--code-size) * 0.88) var(--code); color: var(--orange); width: 18px; text-align: center; flex: none; }
@@ -140,19 +149,24 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 .body { padding-left: 26px; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .group > .body { gap: 2px; margin-top: 6px; }
 .group > .pics { gap: 8px; }
-.pic { display: block; max-width: 100%; max-height: var(--max, 300px); border-radius: 10px; cursor: pointer; }
-.pic:not(.loaded) { width: 120px; height: 80px; background: var(--fill); }
+.pic { display: block; position: relative; width: fit-content; max-width: 100%; border-radius: 10px; overflow: hidden; }
+.pic img { display: block; max-width: 100%; max-height: var(--max, 300px); }
+.pic.loaded { cursor: pointer; }
+.pic:not(.loaded) { width: 120px; height: 80px; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--fg4) 100%, transparent); color: var(--fg2); }
+.pic .play { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 20px; pointer-events: none; }
 
 /* Diffs. */
 .diff { background: var(--fill); border-radius: 10px; overflow: hidden; }
 .diff.peek { cursor: pointer; }
-.dhead { display: flex; align-items: center; gap: 6px; padding: 7px 10px 2px; font-size: calc(var(--size) * 0.8); line-height: normal; color: var(--fg2); }
-.dhead .doc { color: var(--fg3); }
-.dname { font: 500 calc(var(--code-size) * 0.85) var(--code); color: var(--fg); white-space: nowrap; flex: none; }
+.dhead { display: flex; align-items: center; gap: 6px; padding: 7px 10px 2px; font-size: calc(var(--size) * 0.8); line-height: var(--lh-b80, normal); color: var(--fg2); }
+.dhead .doc { color: var(--fg3); display: flex; }
+.dname { font: 600 calc(var(--code-size) * 0.85) var(--code); color: var(--fg2); white-space: nowrap; flex: none; }
 .dfolder { font: calc(var(--code-size) * 0.8) var(--code); color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; min-width: 0; flex: 0 1 auto; }
 .dhead .spacer { flex: 1 1 4px; }
 .dhead button { width: 22px; height: 18px; display: flex; align-items: center; justify-content: center; color: var(--accent); flex: none; }
-.lines { letter-spacing: var(--code-track); font: calc(var(--code-size) * 0.95)/var(--code-lh) var(--code); overflow: auto; padding: 4px 0 8px; max-height: 360px; }
+.lines { letter-spacing: var(--code-track); font: calc(var(--code-size) * 0.95)/var(--lh-c95, var(--code-lh)) var(--code); overflow: auto; padding: 4px 0 8px; max-height: 360px; }
 .peek .lines { overflow: hidden; max-height: none; }
 .peek.more .lines { padding-bottom: 4px; }
 .ln { white-space: pre; padding: 0 10px; min-width: max-content; }
@@ -160,14 +174,14 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 .ln.r { background: color-mix(in srgb, var(--red) 14%, transparent); }
 .ln.h, .ln.n { color: var(--fg2); } .ln.f { color: var(--fg2); font-weight: 600; }
 .gut { color: var(--fg3); }
-.dmore { font-size: calc(var(--size) * 0.8); color: var(--fg2); padding: 0 10px 8px; }
+.dmore { font-size: calc(var(--size) * 0.8); line-height: var(--lh-b80, normal); color: var(--fg2); padding: 0 10px 8px; }
 
 /* Cards. */
 .card { border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
   background: color-mix(in srgb, var(--tint, var(--accent)) 7%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint, var(--accent)) 18%, transparent); }
 .card.subagent { --tint: var(--teal); } .card.plan { --tint: var(--purple); }
-.label { display: flex; align-items: center; gap: 5px; font-size: var(--caption); line-height: normal; color: var(--fg2); }
+.label { display: flex; align-items: center; gap: 5px; font-size: var(--caption); line-height: var(--lh-caption, normal); color: var(--fg2); }
 .card .q { display: flex; flex-direction: column; gap: 4px; }
 .card .q > .ask { font-weight: 500; }
 .card .answer { color: var(--accent); display: flex; gap: 6px; align-items: baseline; font-size: calc(var(--size) * 0.93); }
@@ -182,15 +196,15 @@ html.page-scroll #scroller { position: static; overflow: visible; }
 .card hr { border: 0; border-top: 1px solid var(--sep); margin: 0; }
 
 /* Small rows. */
-.note > .head { justify-content: center; font-size: var(--caption); color: var(--fg2); gap: 4px; }
+.note > .head { justify-content: center; font-size: var(--caption); line-height: var(--lh-caption, normal); height: var(--lh-caption, auto); color: var(--fg2); gap: 4px; }
 .note > .body { padding-left: 0; color: var(--fg2); font-size: calc(var(--size) * 0.9); }
-.thought > .head { font-size: calc(var(--size) * 0.9); line-height: normal; color: var(--fg2); gap: 6px; }
+.thought > .head { font-size: calc(var(--size) * 0.9); line-height: var(--lh-b90, normal); color: var(--fg2); gap: 6px; }
 /* A button with nothing to open is disabled, and dimmed as SwiftUI dims it. */
 .thought > .head:disabled, .note > .head:disabled { opacity: 0.5; }
 .thought > .head .ic { font-size: var(--caption); display: flex; }
 .thought > .body { padding-left: 18px; color: var(--fg2); font-size: calc(var(--size) * 0.9); white-space: pre-wrap; margin-top: calc(6px - var(--sp) / 2); margin-bottom: calc(var(--sp) / -2); }
-.done { display: flex; align-items: center; gap: 6px; font-size: calc(var(--size) * 0.88); line-height: normal; color: var(--fg2); }
-.working { display: flex; align-items: center; gap: 8px; line-height: normal; }
+.done { display: flex; align-items: center; gap: 6px; font-size: calc(var(--size) * 0.88); line-height: var(--lh-b88, normal); color: var(--fg2); }
+.working { display: flex; align-items: center; gap: 8px; line-height: var(--lh-b100, normal); }
 .working.arriving { animation: fadein 0.25s ease-out both; }
 .working .sparkle { color: var(--orange); display: flex; animation: turn 2.4s linear infinite, breathe 1.6s ease-in-out infinite; }
 @keyframes turn { to { transform: rotate(360deg); } }
@@ -216,6 +230,9 @@ html.page-scroll #scroller { position: static; overflow: visible; }
   background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.8); backdrop-filter: blur(16px) saturate(1.8);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), inset 0 0 0 0.5px var(--sep), inset 0 1px 0 rgba(255, 255, 255, 0.25); color: var(--fg);
   transition: opacity 0.2s, transform 0.25s cubic-bezier(0.3, 1.3, 0.5, 1); }
+/* The Mac's: a glass button tinted with the colour, as SwiftUI's under the agent view's tint. */
+.mac #latest { padding: 4px 14px; color: #fff; background: var(--accent); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(0, 0, 0, 0.04); }
 #latest[hidden] { display: flex; opacity: 0; transform: translateX(-50%) scale(0.6); pointer-events: none; }
 #latest .dot { position: absolute; top: -1px; right: 1px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
