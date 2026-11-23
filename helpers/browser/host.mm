@@ -204,6 +204,7 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 @property(strong) NSMutableData *buf, *out;
 @property BOOL cdpEvents;  // wants pages' console and network events
 @property BOOL media;      // a media connection (remote video)
+@property pid_t pid;        // the process at the other end (the app or hmkd)
 @end
 @implementation Conn
 @end
@@ -235,12 +236,17 @@ static NSString *str(const CefString &s) { return [NSString stringWithUTF8String
 @property NSTimeInterval emptySince;   // when the last browser closed (0 while any are open)
 @property BOOL quitting;
 @property time_t built;                // the executable's mtime at launch
+// While a window Chromium opened itself (a passkey dialog) is up: the app
+// it was raised over, which gets the focus back when it closes.
+@property pid_t dialogApp;
+@property(strong) NSHashTable<NSWindow *> *placedDialogs;  // moved over their page
 - (void)broadcast:(NSDictionary *)msg;
 - (void)send:(NSDictionary *)msg to:(Conn *)c;
 - (void)toViewer:(Browser *)b msg:(NSDictionary *)msg;
 - (Browser *)browserForWindow:(NSWindow *)w;
 - (void)sendState:(Browser *)b;
 - (void)pollLayer:(Browser *)b;
+- (void)raiseDialogs;
 - (NSView *)webView:(Browser *)b;
 - (void)browserClosed:(Browser *)b;
 - (void)screencastFrame:(NSData *)raw of:(Browser *)b;
@@ -1132,6 +1138,7 @@ static time_t mtimeOf(const char *path) {
     fcntl(c, F_SETFL, fcntl(c, F_GETFL) | O_NONBLOCK);
     Conn *conn = [Conn new];
     conn.fd = c;
+    conn.pid = peer;
     conn.buf = [NSMutableData data];
     conn.out = [NSMutableData data];
     conn.src = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, c, 0, dispatch_get_main_queue());
@@ -1152,6 +1159,7 @@ static time_t mtimeOf(const char *path) {
   // surface (resize to a new size class, GPU restart).
   [NSTimer scheduledTimerWithTimeInterval:1.0 / 30 repeats:YES block:^(NSTimer *) {
     for (Browser *b in self.browsers.allValues) [self pollLayer:b];
+    [self raiseDialogs];
   }];
   // With no clients for a while (the daemon is gone for good), or no
   // browsers (the daemon starts another when it needs one), quit.
@@ -1232,6 +1240,55 @@ static time_t mtimeOf(const char *path) {
     if (b.window == w) return b;
   }
   return nil;
+}
+
+// Windows Chromium opens itself (its passkey and security key dialogs) belong
+// to this background app, so they'd open behind the pane, the page blocked
+// until they close. While one is up it floats over the app's window (only
+// while that app, or this one, is in front, so it doesn't follow you to other
+// apps); a click on it activates this app, and when the last one closes the
+// focus goes back to the app.
+- (void)raiseDialogs {
+  static Class widget = NSClassFromString(@"NativeWidgetMacNSWindow");
+  NSMutableArray<NSWindow *> *up = [NSMutableArray array];
+  for (NSWindow *w in NSApp.windows) {
+    if (!widget || ![w isKindOfClass:widget]) continue;
+    if (w.visible) [up addObject:w];
+    else [self.placedDialogs removeObject:w];  // placed afresh if it opens again
+  }
+  if (!up.count) {
+    if (!self.dialogApp) return;
+    pid_t app = self.dialogApp;
+    self.dialogApp = 0;
+    if (NSApp.active)
+      [[NSRunningApplication runningApplicationWithProcessIdentifier:app] activateFromApplication:NSRunningApplication.currentApplication
+                                                                                           options:0];
+    return;
+  }
+  // The page it's for: Chromium doesn't say (the dialog has no parent window,
+  // and opens in the middle of the screen), so the one you're in, or used last.
+  Browser *b = nil;
+  for (Browser *o in self.browsers.allValues) {
+    if (!o.viewer || NSIsEmptyRect(o.paneRect)) continue;
+    if (!b || (o.window.spoofKey && !b.window.spoofKey) || (o.window.spoofKey == b.window.spoofKey && o.localAt > b.localAt)) b = o;
+  }
+  if (!self.dialogApp && b.viewer.pid) self.dialogApp = b.viewer.pid;
+  pid_t front = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+  NSWindowLevel level = front == getpid() || front == self.dialogApp ? NSFloatingWindowLevel : NSNormalWindowLevel;
+  for (NSWindow *w in up) {
+    if (b && ![self.placedDialogs containsObject:w]) {
+      // Over the top of the page, as Chrome shows it over the tab's.
+      if (!self.placedDialogs) self.placedDialogs = [NSHashTable weakObjectsHashTable];
+      [self.placedDialogs addObject:w];
+      NSRect page = b.window.frame, f = w.frame;
+      f.origin.x = NSMidX(page) - f.size.width / 2;
+      f.origin.y = NSMaxY(page) - f.size.height - MIN(80, MAX(0, (page.size.height - f.size.height) / 2));
+      [w setFrameOrigin:f.origin];
+    }
+    if (w.level == level) continue;
+    w.level = level;
+    if (level == NSFloatingWindowLevel) [w orderFrontRegardless];
+  }
 }
 
 - (NSDictionary *)stateOf:(Browser *)b {
