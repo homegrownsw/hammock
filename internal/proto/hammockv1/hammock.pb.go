@@ -11355,6 +11355,7 @@ func (x *SetRemoteAccess) GetEnabled() bool {
 	return false
 }
 
+// Listens again while remote access is on, with the same settings (hmk remote restart).
 type RestartRemoteAccess struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

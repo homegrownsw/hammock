@@ -414,6 +414,9 @@ func TestRestartRemoteAccess(t *testing.T) {
 	_, since := online()
 	b.d.mu.Lock()
 	first := b.d.remote.servers[0]
+	b.d.media.mu.Lock()
+	firstMedia := b.d.media.trs[0]
+	b.d.media.mu.Unlock()
 	b.d.mu.Unlock()
 
 	asPerson(t, nobody)
@@ -426,20 +429,37 @@ func TestRestartRemoteAccess(t *testing.T) {
 	b.d.mu.Lock()
 	addrs, again := slices.Clone(b.d.remote.addrs), b.d.remote.servers[0]
 	var media []string
+	newMedia := false
 	b.d.media.mu.Lock()
 	for _, tr := range b.d.media.trs {
 		media = append(media, tr.Conn.LocalAddr().String())
+		newMedia = tr != firstMedia
 	}
 	b.d.media.mu.Unlock()
 	b.d.mu.Unlock()
-	if again == first || !slices.Equal(addrs, []string{b.addr}) || !slices.Equal(media, []string{b.addr}) {
-		t.Fatalf("after restarting: listening on %v, media on %v (a new server: %v)", addrs, media, again != first)
+	if again == first || !newMedia || !slices.Equal(addrs, []string{b.addr}) || !slices.Equal(media, []string{b.addr}) {
+		t.Fatalf("after restarting: listening on %v, media on %v (a new server: %v, new media: %v)", addrs, media, again != first, newMedia)
 	}
 	waitFor(t, "the link up again", func() bool { up, at := online(); return up && at.After(since) })
 
 	agent := dialAs(t, b.dir, &caller{pane: "pn_x", agent: true}, "cli")
 	if _, err := try(agent, restart); err == nil {
 		t.Fatal("an agent restarted remote access")
+	}
+	// Nowhere it could listen (an address that isn't this computer's): said,
+	// not a quiet success; and the next restart, with it fixed, listens again.
+	b.d.mu.Lock()
+	given := b.d.cfg.RemoteListen
+	b.d.cfg.RemoteListen = []string{"192.0.2.1:0"}
+	b.d.mu.Unlock()
+	if _, err := try(term, restart); err == nil || !strings.Contains(err.Error(), "couldn't listen on 192.0.2.1:0") {
+		t.Fatalf("restarting where it can't listen: %v", err)
+	}
+	b.d.mu.Lock()
+	b.d.cfg.RemoteListen = given
+	b.d.mu.Unlock()
+	if _, err := try(term, restart); err != nil {
+		t.Fatalf("restarting again: %v", err)
 	}
 	b.d.mu.Lock()
 	b.d.stopRemote()

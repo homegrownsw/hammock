@@ -248,7 +248,7 @@ func TestPersonOnlyMatchesAgentRules(t *testing.T) {
 		if !agentReachable(msg) && !personOnly(msg) {
 			switch msg.Msg.(type) {
 			case *pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_EndScreenSession, *pb.ClientMessage_ServerStatus,
-				*pb.ClientMessage_ClearAttention, *pb.ClientMessage_SetColors:
+				*pb.ClientMessage_ClearAttention, *pb.ClientMessage_SetColors, *pb.ClientMessage_RestartRemoteAccess:
 			default:
 				t.Errorf("%s: refused to agents but not person-only", fd.Name())
 			}

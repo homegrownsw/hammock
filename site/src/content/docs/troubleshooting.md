@@ -28,8 +28,9 @@ Check each of these:
 `hmk remote networks` lists the Mac's networks, with the chosen ones marked `*`. See
 [Remote access](/hammock/docs/remote/#remote-access).
 
-If all of that's right and it still can't connect, or a linked computer shows as asleep while it's on, run
-`hmk remote restart` on the computer that can't be reached: it listens again, with the same settings.
+## A linked computer shows as asleep, but it's on
+
+Run `hmk remote restart` on that computer (over SSH, for a server). It can help a Mac your phone can't reach, too.
 
 ## I don't get notifications on my phone
 

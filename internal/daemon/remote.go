@@ -873,8 +873,11 @@ func (d *Daemon) revokeDevice(id string) error {
 // restartRemote listens afresh while remote access is on, with the same
 // settings: what turning it off and on again would do, without turning it
 // off (refused while a computer is linked) or changing what's remembered.
-// Remote clients are disconnected, and come back. Callers hold d.mu.
-func (d *Daemon) restartRemote() error {
+// Remote clients are disconnected, and come back. It says why if it
+// listens nowhere (on the chosen networks,
+// watchNetworks tries again every few seconds). actor: who asked
+// (auditActor). Callers hold d.mu.
+func (d *Daemon) restartRemote(actor string) error {
 	if !d.remote.on {
 		return errors.New("remote access is off: turn it on (hmk remote on)")
 	}
@@ -885,31 +888,37 @@ func (d *Daemon) restartRemote() error {
 		d.closeServer(i)
 	}
 	d.remote.servers, d.remote.addrs, d.remote.lns = nil, nil, nil
+	d.remote.failed = nil // (a failure said before is said again)
 	d.media.stopAddrs(old)
 	for c := range d.conns {
 		if c.remote {
 			c.cancel()
 		}
 	}
+	var want []string
 	if len(d.cfg.RemoteListen) > 0 {
-		addrs := old // (where it listened: a port given as 0 kept)
-		if len(addrs) == 0 {
-			addrs = d.cfg.RemoteListen
-		}
-		for _, a := range addrs {
+		want = d.cfg.RemoteListen
+		for _, a := range want {
 			d.listenOn(a, "", "")
 		}
 		d.media.listen(d.remote.addrs, d.remote.cert, nil)
 	} else {
 		d.remote.snap = cachedNetSnapshot()
-		d.syncListeners(d.remote.snap.listenAddrs(remotePort()))
+		want = d.remote.snap.listenAddrs(remotePort())
+		d.syncListeners(want)
 	}
 	d.remote.advertised = d.advertisedLocked()
 	if d.comp.self != nil {
 		d.refreshLinked()
 	}
 	d.bonjour.update(d.log, d.bonjourTargets())
-	d.audit("local", "remote-restarted", "", "listening on "+cmpOr(strings.Join(d.remote.addrs, ", "), "no address yet"))
+	d.audit(actor, "remote-restarted", "", strings.Join(d.remote.addrs, ", "))
+	switch {
+	case len(want) == 0:
+		return errNoNetwork
+	case len(d.remote.addrs) == 0:
+		return fmt.Errorf("couldn't listen on %s (the Hammock Server's log says why)", strings.Join(want, ", "))
+	}
 	return nil
 }
 

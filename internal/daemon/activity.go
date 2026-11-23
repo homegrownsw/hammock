@@ -139,6 +139,11 @@ func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summa
 		if detail != "" {
 			summary += " (" + detail + ")"
 		}
+	case "remote-restarted":
+		summary = "made remote access listen again"
+		if detail != "" {
+			summary += " (on " + detail + ")"
+		}
 	case "device-revoked":
 		name := detail
 		if name == "" {

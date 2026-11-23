@@ -1357,10 +1357,10 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		return nil, d.setRemoteAccess(m.SetRemoteAccess.Enabled)
 
 	case *pb.ClientMessage_RestartRemoteAccess:
-		d.warmRemote()
+		refreshTailscale() // (off the lock: its interface may have been created again)
 		d.mu.Lock()
 		defer d.mu.Unlock()
-		return nil, d.restartRemote()
+		return nil, d.restartRemote(c.auditActor())
 
 	case *pb.ClientMessage_SetRemoteNetworks:
 		return nil, d.setRemoteNetworks(m.SetRemoteNetworks)

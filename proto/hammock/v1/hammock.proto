@@ -1129,6 +1129,7 @@ message RevokeDevice { string device_id = 1; }
 
 // Turns the Tailscale listener on or off (persisted).
 message SetRemoteAccess { bool enabled = 1; }
+// Listens again while remote access is on, with the same settings (hmk remote restart).
 message RestartRemoteAccess {}
 
 // Continues a pane's agent session in another harness (e.g. Claude → Codex):

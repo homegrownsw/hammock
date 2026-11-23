@@ -4916,6 +4916,7 @@ public nonisolated struct Hammock_V1_SetRemoteAccess: Sendable {
   public init() {}
 }
 
+/// Listens again while remote access is on, with the same settings (hmk remote restart).
 public nonisolated struct Hammock_V1_RestartRemoteAccess: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
