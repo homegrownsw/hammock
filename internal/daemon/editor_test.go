@@ -54,9 +54,12 @@ func paneEditor(d *Daemon, id string) *pb.EditorInfo {
 	return nil
 }
 
+// waitFor polls ok until it holds, for as long as a new holder has to start (holderConnectTimeout's
+// default): a loaded CI runner can take more than 5s to start a pane's process, and only a failing
+// wait takes this long.
 func waitFor(t *testing.T, what string, ok func() bool) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if ok() {
 			return
 		}
