@@ -290,13 +290,15 @@ class AgentSession(
     /**
      * Done working, with messages it never took (a "!" command stopped in
      * the terminal, messages Esc took back into its input box): they aren't
-     * coming. A moment later, in case one's on its way still.
+     * coming. A moment later, in case one's on its way still. Not while a
+     * "!" command is still printing: it isn't a turn, so the agent isn't
+     * working, and what was sent after it is waiting for it.
      */
     private fun dropUntaken(ids: Set<Long>) {
         model.scope.launch {
             delay(3_000)
             synchronized(lock) {
-                _state.update { s -> if (s.working) s else s.copy(pendingSends = s.pendingSends.filter { it.id !in ids }) }
+                _state.update { s -> if (s.working || s.bangOutput.isNotEmpty()) s else s.copy(pendingSends = s.pendingSends.filter { it.id !in ids }) }
             }
         }
     }

@@ -388,12 +388,14 @@ public final class AgentSession {
 
     /// Done working, with messages it never took (a "!" command stopped
     /// in the terminal, messages Esc took back into its input box): they
-    /// aren't coming. A moment later, in case one's on its way still.
+    /// aren't coming. A moment later, in case one's on its way still. Not
+    /// while a "!" command is still printing: it isn't a turn, so Claude
+    /// isn't working, and what was sent after it is waiting for it.
     private func dropUntaken() {
         let ids = Set(pendingSends.map(\.id))
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
-            guard let self, !self.working else { return }
+            guard let self, !self.working, self.bangOutput.isEmpty else { return }
             self.pendingSends.removeAll { ids.contains($0.id) }
         }
     }

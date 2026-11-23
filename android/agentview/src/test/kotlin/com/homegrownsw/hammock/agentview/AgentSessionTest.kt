@@ -138,6 +138,24 @@ class AgentSessionTest {
     }
 
     @Test
+    fun sendsWaitingOnARunningBangCommandAreKept() {
+        val s = session()
+        s.apply(view { replace = true; working = true })
+        s.addPending(PendingSend(1, "!sleep 100"))
+        s.addPending(PendingSend(2, "Hello"))
+        // A "!" command isn't a turn: the agent stops working while it runs,
+        // with its output coming, and the message queued after it waits.
+        s.apply(view { working = false; bangOutput = "Running… (4s)" })
+        runBlocking { kotlinx.coroutines.delay(3_300) }
+        assertEquals(listOf(1L, 2L), s.state.value.pendingSends.map { it.id })
+        // Stopped in the terminal: no output, not working, and they go.
+        s.apply(view { working = true; bangOutput = "" })
+        s.apply(view { working = false })
+        runBlocking { kotlinx.coroutines.delay(3_300) }
+        assertTrue(s.state.value.pendingSends.isEmpty())
+    }
+
+    @Test
     fun extrasChangeOnlyWhenSent() {
         val s = session()
         val task = Hammock.AgentTask.newBuilder().setId("1").setSubject("Run the tests").build()
