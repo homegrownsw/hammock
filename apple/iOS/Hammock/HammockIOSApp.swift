@@ -18,6 +18,8 @@ struct HammockIOSApp: App {
         // Here, not in a view: a notification's answer can launch the app in
         // the background, where no window comes up, and needs it all the same.
         Push.shared.session = s
+        // A conversation page loaded ahead, for the first agent view opened.
+        Task { @MainActor in AgentViewWarmup.start() }
     }
 
     var body: some Scene {

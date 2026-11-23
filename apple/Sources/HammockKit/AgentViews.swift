@@ -393,7 +393,9 @@ public struct AgentConversationView: View {
         return VStack(spacing: 0) {
             strips(s)
             ZStack(alignment: .bottom) {
-                AgentWebTranscript(bridge: web.bridge)
+                // The pane's own page, kept between showings (AgentWebPool).
+                AgentWebTranscript(bridge: web.bridge(s.paneID + "|" + s.subagentID))
+                    .id(s.paneID + "|" + s.subagentID)
                     .ignoresSafeArea(edges: .vertical)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { web.page = $0; web.pushInsets() }
                 bottomBar(s)
@@ -846,6 +848,16 @@ struct PromptCard: View {
     private var p: AgentPrompt { session.prompt }
     private var pending: AgentBlock? { session.blocks.last { $0.id == p.blockID } }
 
+    /// The terminal's prompt above its question, when the transcript has no
+    /// call to show (not yet written): a permission's tool, its command and
+    /// any warning. Nil for a question of the agent's own (its options say).
+    private var screenContext: String? {
+        guard pending == nil, p.tabs.isEmpty, !p.multiSelect, p.descriptions.allSatisfy(\.isEmpty) else { return nil }
+        var body = p.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !p.title.isEmpty, body.hasSuffix(p.title) { body = String(body.dropLast(p.title.count)).trimmingCharacters(in: .whitespacesAndNewlines) }
+        return body.isEmpty ? nil : body
+    }
+
     var body: some View {
         // As tall as the card is, up to most of the view; past that (full
         // descriptions can run to several lines each) it scrolls. An exact
@@ -1018,6 +1030,16 @@ struct PromptCard: View {
             }
             if let b = pending, p.kind == .permission, !b.input.isEmpty {
                 CodeBlock(code: b.input, language: b.tool == "Bash" ? "bash" : "", maxHeight: 140, wrapsByDefault: true)
+            } else if let context = screenContext {
+                // The call isn't in the transcript yet: what the terminal's prompt says about it.
+                Text(context)
+                    .font(fonts.code(0.88))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             if !p.title.isEmpty {
                 Text(p.title).font(fonts.body(weight: .semibold)).fixedSize(horizontal: false, vertical: true)

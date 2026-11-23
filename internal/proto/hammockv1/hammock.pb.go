@@ -12533,7 +12533,11 @@ type AgentPrompt struct {
 	Checkboxes int32 `protobuf:"varint,13,opt,name=checkboxes,proto3" json:"checkboxes,omitempty"`
 	// Which prompt this is: a digest of its text and options as the screen
 	// shows them (not the selection or ticks). Sent back with an answer.
-	PromptId      string `protobuf:"bytes,14,opt,name=prompt_id,json=promptId,proto3" json:"prompt_id,omitempty"`
+	PromptId string `protobuf:"bytes,14,opt,name=prompt_id,json=promptId,proto3" json:"prompt_id,omitempty"`
+	// The prompt's whole text above its options, as shown (a permission
+	// prompt's tool and command, and what it warns), for when the transcript
+	// doesn't have its call yet to show instead.
+	Body          string `protobuf:"bytes,15,opt,name=body,proto3" json:"body,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12662,6 +12666,13 @@ func (x *AgentPrompt) GetCheckboxes() int32 {
 func (x *AgentPrompt) GetPromptId() string {
 	if x != nil {
 		return x.PromptId
+	}
+	return ""
+}
+
+func (x *AgentPrompt) GetBody() string {
+	if x != nil {
+		return x.Body
 	}
 	return ""
 }
@@ -27441,7 +27452,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"AgentImage\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x1d\n" +
 	"\n" +
-	"media_type\x18\x02 \x01(\tR\tmediaType\"\xee\x03\n" +
+	"media_type\x18\x02 \x01(\tR\tmediaType\"\x82\x04\n" +
 	"\vAgentPrompt\x120\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1c.hammock.v1.AgentPrompt.KindR\x04kind\x12\x19\n" +
 	"\bblock_id\x18\x02 \x01(\tR\ablockId\x12\x14\n" +
@@ -27459,7 +27470,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\n" +
 	"checkboxes\x18\r \x01(\x05R\n" +
 	"checkboxes\x12\x1b\n" +
-	"\tprompt_id\x18\x0e \x01(\tR\bpromptId\"L\n" +
+	"\tprompt_id\x18\x0e \x01(\tR\bpromptId\x12\x12\n" +
+	"\x04body\x18\x0f \x01(\tR\x04body\"L\n" +
 	"\x04Kind\x12\r\n" +
 	"\tKIND_NONE\x10\x00\x12\x11\n" +
 	"\rKIND_QUESTION\x10\x01\x12\x13\n" +

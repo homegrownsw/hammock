@@ -792,48 +792,33 @@ private final class TerminalThumb {
     }
 }
 
-/// An agent pane shown as its conversation: the latest of it.
+/// An agent pane shown as its conversation: the page it's drawn with, at
+/// the pane's own size (as a terminal's tile is), shrunk to fit, at its end.
 private struct AgentTile: View {
     let model: AppModel
     let paneID: String
-    @State private var session: AgentSession?
+
+    /// The pane's size, from its terminal's columns and rows (the agent view
+    /// fills the same rectangle).
+    private var size: CGSize {
+        let m = Self.cell
+        let p = model.panes[paneID]
+        let cols = CGFloat(max(p?.cols ?? 0, 40)), rows = CGFloat(max(p?.rows ?? 0, 12))
+        return CGSize(width: cols * m.width + m.padding * 2, height: rows * m.height + m.padding * 2)
+    }
+
+    /// A terminal cell's size and its padding, in the terminal's font.
+    @MainActor private static let cell: (width: CGFloat, height: CGFloat, padding: CGFloat) = {
+        let v = TerminalNSView(frame: .zero)
+        return (v.cellWidth, v.cellHeight, v.padding)
+    }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Spacer(minLength: 0)
-            if let s = session {
-                ForEach(AgentTail.tail(s.blocks), id: \.id) { b in
-                    switch b.kind {
-                    case .user:
-                        Text(b.text)
-                            .lineLimit(3)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 3)
-                            .background(Color.themeAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    case .tool:
-                        Label(b.title, systemImage: b.pending ? "gearshape" : b.error ? "exclamationmark.circle" : "checkmark")
-                            .font(.system(size: 6.5, design: .monospaced))
-                            .foregroundStyle(b.error ? Color.red : .secondary)
-                            .lineLimit(1)
-                    default:
-                        Text(AgentTail.plain(b.text)).foregroundStyle(.primary)
-                    }
-                }
-            }
-            if session?.blocks.isEmpty != false, let summary = model.panes[paneID]?.agent.summary, !summary.isEmpty {
-                Text(summary).foregroundStyle(.secondary)
-            }
-        }
-        .font(.system(size: 7))
-        .padding(6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .background(Color(nsColor: .textBackgroundColor))
-        .onAppear { session = model.acquireAgent(paneID) }
-        .onDisappear {
-            model.releaseAgent(paneID)
-            session = nil
-        }
+        AgentPreview(model: model, paneID: paneID, size: size)
+            // The pane's colours, as AgentPaneView gives them.
+            .environment(\.agentAutomaticColor, AgentAutomatic.color)
+            .environment(\.agentAutomaticBubble, AgentAutomatic.bubble)
+            .background(Color(nsColor: .textBackgroundColor))
     }
 }
 

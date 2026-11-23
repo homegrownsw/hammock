@@ -292,6 +292,18 @@ func TestClaudeMidTurnMessage(t *testing.T) {
 	}
 }
 
+func TestClaudeMidTurnMessageWithAPicture(t *testing.T) {
+	c := NewClaude("/tmp")
+	c.Feed([]byte(`{"type":"user","uuid":"u1","timestamp":"2026-10-30T17:00:00Z","message":{"role":"user","content":"Build the devices screen"}}`))
+	// With pictures, the prompt is content blocks, as a message's are.
+	c.Feed([]byte(`{"type":"attachment","uuid":"a1","timestamp":"2026-10-30T17:01:00Z","attachment":{"type":"queued_command","prompt":[` +
+		`{"type":"text","text":"Like this one"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}}`))
+	bs := c.Blocks()
+	if len(bs) != 2 || bs[1].Kind != pb.AgentBlock_KIND_USER || bs[1].Text != "Like this one" || len(bs[1].Images) != 1 {
+		t.Fatalf("blocks %v", bs)
+	}
+}
+
 func TestClaudeInterruptedMessageIsReplaced(t *testing.T) {
 	c := NewClaude("/tmp")
 	c.Feed([]byte(`{"type":"user","uuid":"u0","parentUuid":"p","timestamp":"2026-10-30T17:00:00Z","message":{"role":"user","content":"First"}}`))

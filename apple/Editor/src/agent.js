@@ -460,8 +460,29 @@ function build(r) {
   el.className = "row"
   el.dataset.id = r.id
   el.innerHTML = rowHTML(r)
-  if (el.querySelector(".mid")) fitSoon(el)
+  if (el.querySelector(".mid, .code pre, .diff .lines")) fitSoon(el)
   return el
+}
+
+// ---- blocks cut to their height ----
+
+/** Blocks shown in full, by what they hold (kept as rows are made again). */
+const shownAll = new Set()
+const blockKey = (el) => el.closest(".code")?.dataset.key ?? (rowOf(el)?.dataset.id + "\0" + el.textContent.length)
+
+/** A code block or diff taller than it's shown: cut there, "Show all" under it. */
+function fitHeights(roots) {
+  for (const root of roots) {
+    if (!root.isConnected) continue
+    for (const el of root.querySelectorAll(".code pre, .diff:not(.peek) .lines")) {
+      if (shownAll.has(blockKey(el))) { el.classList.add("all"); continue }
+      const more = el.nextElementSibling?.classList.contains("showall") ? el.nextElementSibling : null
+      const lines = (el.textContent.match(/\n/g)?.length ?? 0) + 1
+      if (el.scrollHeight > el.clientHeight + 1) {
+        if (!more) el.insertAdjacentHTML("afterend", `<button class="showall" data-act="showall">Show all ${lines} lines</button>`)
+      } else more?.remove()
+    }
+  }
 }
 
 // ---- lines cut in the middle ----
@@ -476,7 +497,7 @@ const measureCtx = document.createElement("canvas").getContext("2d")
 
 function fitSoon(el) {
   fitting.add(el)
-  if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; const els = [...fitting]; fitting.clear(); fitMiddle(els) }) }
+  if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; const els = [...fitting]; fitting.clear(); fitMiddle(els); fitHeights(els) }) }
 }
 
 function fitMiddle(roots) {
@@ -560,7 +581,7 @@ function renderTail(t, force = false) {
   }
   if (t.working) h += `<div class="row working${wasWorking ? "" : " arriving"}"><span class="sparkle">${sym("sparkle")}</span><span class="status">${esc(t.status || "Working…")}</span></div>`
   tailEl.innerHTML = h
-  if (tailEl.querySelector(".mid")) fitSoon(tailEl)
+  if (tailEl.querySelector(".mid, .code pre, .diff .lines")) fitSoon(tailEl)
   for (const el of tailEl.querySelectorAll("[data-pending]")) {
     const id = el.dataset.pending
     if (!pendingShown.has(id)) { pendingShown.add(id); el.firstElementChild?.classList.add("arriving") }
@@ -665,7 +686,7 @@ function restoreAnchor() {
 /** The content changed size (rows, pictures, fonts, the pane's width). */
 function contentResized() {
   const w = mainEl.clientWidth
-  if (w !== fitWidth) { fitWidth = w; fitMiddle([rowsEl, tailEl]) }
+  if (w !== fitWidth) { fitWidth = w; fitMiddle([rowsEl, tailEl]); fitHeights([rowsEl, tailEl]) }
   if (performance.now() < settleUntil) log("resized")
   if (follow) {
     if (performance.now() < settleUntil) { cancelGlide(); setTop(maxTop()) }
@@ -906,12 +927,14 @@ function animateRow(row, swap, opening) {
   if (opening) {
     const old = kinds(row)
     el = swap()
+    fitHeights([el])
     after = el.getBoundingClientRect().height
     for (const p of parts(el)) if (!old.has(p.className)) p.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SNAPPY.ms * 0.6, easing: "ease-out" })
     turn(el, 0, 90)
   } else {
     // Measured as it'll be, then the old one shrinks to it.
     const probe = swap()
+    fitHeights([probe])
     after = probe.getBoundingClientRect().height
     const stays = kinds(probe)
     probe.replaceWith(row)
@@ -967,6 +990,7 @@ document.addEventListener("click", (e) => {
         wrapChoice.set(code.dataset.key, on)
         code.classList.toggle("wrap", on)
         act.classList.toggle("off", !on)
+        fitSoon(code)
         return
       }
       case "copydiff": {
@@ -979,6 +1003,14 @@ document.addEventListener("click", (e) => {
         return
       }
       case "opendiff": post({ type: "openDiff", path: act.dataset.path }); return
+      case "showall": {
+        const block = act.previousElementSibling
+        shownAll.add(blockKey(block))
+        recordAnchor()
+        block.classList.add("all")
+        act.remove()
+        return
+      }
     }
   }
   const peek = e.target.closest("[data-open]")

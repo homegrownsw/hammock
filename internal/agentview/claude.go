@@ -198,8 +198,9 @@ type ccLine struct {
 	PRURL      string `json:"prUrl"`
 	PRRepo     string `json:"prRepository"`
 	Attachment *struct {
-		Type   string `json:"type"`
-		Prompt string `json:"prompt"`
+		Type string `json:"type"`
+		// A string, or (with pictures) content blocks, as a message's.
+		Prompt json.RawMessage `json:"prompt"`
 	} `json:"attachment"`
 }
 
@@ -267,7 +268,7 @@ func (c *Claude) Feed(line []byte) []*pb.AgentBlock {
 		// A message you sent while Claude was working: it reaches Claude as
 		// a queued command, not a user message.
 		if a := l.Attachment; a != nil && a.Type == "queued_command" {
-			return c.userText(l.UUID, a.Prompt, nil, ms)
+			return c.queued(l.UUID, a.Prompt, ms)
 		}
 		return nil
 	case "assistant":
@@ -337,6 +338,37 @@ func (c *Claude) user(l ccLine, ms int64) []*pb.AgentBlock {
 		out = append(out, c.typed(l, strings.Join(text, "\n\n"), imgs, ms)...)
 	}
 	return out
+}
+
+// queued is a message you sent while Claude was working: its prompt is a
+// string, or, with pictures, content blocks (text and images) as a typed
+// message's are. Read as a string only, one with pictures was dropped, and
+// the agent view kept it as waiting to be taken until the turn ended.
+func (c *Claude) queued(id string, prompt json.RawMessage, ms int64) []*pb.AgentBlock {
+	var s string
+	if json.Unmarshal(prompt, &s) == nil {
+		return c.userText(id, s, nil, ms)
+	}
+	var blocks []ccBlock
+	if json.Unmarshal(prompt, &blocks) != nil {
+		return nil
+	}
+	var text []string
+	var imgs []*pb.AgentImage
+	for i, b := range blocks {
+		switch b.Type {
+		case "text":
+			text = append(text, b.Text)
+		case "image":
+			if ref := c.keepImage(fmt.Sprintf("%s:%d", id, i), b); ref != nil {
+				imgs = append(imgs, ref)
+			}
+		}
+	}
+	if len(text) == 0 && len(imgs) == 0 {
+		return nil
+	}
+	return c.userText(id, strings.Join(text, "\n\n"), imgs, ms)
 }
 
 // compactSummary tucks the summary Claude wrote when it compacted the

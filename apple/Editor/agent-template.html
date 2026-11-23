@@ -41,8 +41,10 @@ button:focus { outline: none; }
 /* What scrolls: the whole page, under the bars. */
 #scroller { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 /* The Mac's: the page scrolls, so it bounces at its ends (agent.js). */
-html.page-scroll, html.page-scroll body { height: auto; overflow-x: hidden; overflow-y: visible; }
-html.page-scroll { overflow-y: auto; }
+/* Only the page scrolls: overflow-x hidden would make the body a scroll area
+   of its own (visible turns to auto beside it), a second bar. clip doesn't. */
+html.page-scroll, html.page-scroll body { height: auto; overflow-x: clip; overflow-y: visible; }
+html.page-scroll { overflow-x: hidden; overflow-y: auto; }
 html.page-scroll #scroller { position: static; overflow: visible; }
 /* The native stack's: 16 above, and under the tail its spacing, the end
    marker and 15 (with the tail empty, its spacing too). */
@@ -116,7 +118,7 @@ strong, b, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { letter-spacing: var(
 .code-head .lang { flex: 1; }
 .code-head button { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
 .code-head button.off { color: var(--fg2); }
-.code pre { margin: 0; padding: 12px; overflow: auto; max-height: var(--max, 420px); font: var(--code-size)/var(--code-lh) var(--code); white-space: pre; tab-size: 4; letter-spacing: var(--code-track); }
+.code pre { margin: 0; padding: 12px; overflow-x: auto; overflow-y: hidden; max-height: var(--max, 420px); font: var(--code-size)/var(--code-lh) var(--code); white-space: pre; tab-size: 4; letter-spacing: var(--code-track); }
 .code.wrap pre { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
 .hl-c { color: var(--fg2); } .hl-s { color: #c4543d; } .hl-n { color: #1c85ad; } .hl-k { color: #9e40b3; }
 
@@ -177,7 +179,7 @@ strong, b, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { letter-spacing: var(
 .dfolder { font: calc(var(--code-size) * 0.8) var(--code); color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; min-width: 0; flex: 0 1 auto; }
 .dhead .spacer { flex: 1 1 4px; }
 .dhead button { width: 22px; height: 18px; display: flex; align-items: center; justify-content: center; color: var(--fg2); flex: none; }
-.lines { letter-spacing: var(--code-track); font: calc(var(--code-size) * 0.95)/var(--lh-c95, var(--code-lh)) var(--code); overflow: auto; padding: 4px 0 8px; max-height: 360px; }
+.lines { letter-spacing: var(--code-track); font: calc(var(--code-size) * 0.95)/var(--lh-c95, var(--code-lh)) var(--code); overflow-x: auto; overflow-y: hidden; padding: 4px 0 8px; max-height: 360px; }
 .peek .lines { overflow: hidden; max-height: none; }
 .peek.more .lines { padding-bottom: 4px; }
 .ln { white-space: pre; padding: 0 10px; min-width: max-content; }
@@ -185,6 +187,11 @@ strong, b, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { letter-spacing: var(
 .ln.r { background: color-mix(in srgb, var(--red) 14%, transparent); }
 .ln.h, .ln.n { color: var(--fg2); } .ln.f { color: var(--fg2); font-weight: 600; }
 .gut { color: var(--fg3); }
+/* Only the conversation scrolls up and down: a block taller than it's shown
+   is cut, with the rest a button away (fitHeights). */
+.all { max-height: none !important; }
+.showall { display: block; width: 100%; text-align: left; padding: 0 12px 9px; font-size: var(--caption); line-height: var(--lh-caption, normal); color: var(--accent); }
+.diff .showall { padding: 0 10px 8px; }
 .dmore { font-size: calc(var(--size) * 0.8); line-height: var(--lh-b80, normal); color: var(--fg2); padding: 0 10px 8px; }
 
 /* Cards. */

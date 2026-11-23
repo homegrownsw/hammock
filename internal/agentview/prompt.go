@@ -433,7 +433,7 @@ func Prompt(sc Screen, pending *pb.AgentBlock) *pb.AgentPrompt {
 	}
 	p := &pb.AgentPrompt{Kind: pb.AgentPrompt_KIND_QUESTION, Title: sc.Title, Options: sc.Options, Selected: int32(sc.Selected),
 		Descriptions: sc.Descriptions, MultiSelect: sc.Multi, Tabs: sc.Tabs, Other: int32(otherOption(sc.Options)), Notes: sc.Previews,
-		PromptId: sc.Key}
+		PromptId: sc.Key, Body: sc.Body}
 	if sc.Multi {
 		p.Checked, p.Checkboxes = sc.Checked, int32(sc.Checkboxes)
 	}

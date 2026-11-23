@@ -363,7 +363,13 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             if let run = p.bangRun(output: s.runningBang == p.id ? s.bangOutput : "") {
                 return ["id": p.id.uuidString, "kind": "tool", "b": block(run)]
             }
-            return ["id": p.id.uuidString, "kind": "user", "text": p.text]
+            // Its pictures as the composer had them (ChipRenderer's numbering): from
+            // here, by a ref the page asks for like any other (localAttachment).
+            let refs = p.attachments.map { a -> String in
+                if case .local(let id, let name, _, _) = a { return Self.localPrefix + id.uuidString + "/" + name }
+                return a.id
+            }
+            return ["id": p.id.uuidString, "kind": "user", "text": p.text, "rich": p.rich, "images": refs]
         }
         return ["pending": pending, "working": s.working, "status": s.status]
     }
@@ -416,7 +422,9 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
                 // A video shows its first frame; one
                 // that can't be read, what it is ("").
                 var url = ""
-                if let data = await s.file(ref) {
+                let local = await localData(ref)
+                let fetched = local == nil ? await s.file(ref) : nil
+                if let data = local ?? fetched {
                     if Self.isVideo(ref, data) {
                         let name = (ref as NSString).lastPathComponent
                         if let poster = await VideoPoster.image(data: data, name: name, maxPixels: 800), let png = Self.png(poster) { url = Self.dataURL(png) }
@@ -431,7 +439,9 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             // Quick Look knows how to show it.
             guard let ref = m["ref"] as? String, let s = session else { return }
             Task { @MainActor in
-                guard let data = await s.file(ref) else { return }
+                let local = await localData(ref)
+                let fetched = local == nil ? await s.file(ref) : nil
+                guard let data = local ?? fetched else { return }
                 let type = Self.mediaType(data)
                 let last = (ref as NSString).lastPathComponent
                 let name = (last as NSString).pathExtension.isEmpty ? "attachment." + PreviewFiles.ext(type.isEmpty ? "image/png" : type) : last
@@ -478,6 +488,24 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     @objc private func sendNow() { session?.sendNow() }
     #endif
+
+    /// A message waiting to go's attachments are named so ("local:" id "/" name).
+    static let localPrefix = "local:"
+
+    /// One of the waiting messages' attachments, by its ref, or nil (one of the transcript's).
+    private func localData(_ ref: String) async -> Data? {
+        guard ref.hasPrefix(Self.localPrefix), let s = session else { return nil }
+        let id = ref.dropFirst(Self.localPrefix.count).split(separator: "/").first.map(String.init) ?? ""
+        for p in s.pendingSends {
+            for a in p.attachments {
+                if case .local(let aid, _, let data, let file) = a, aid.uuidString == id {
+                    if !data.isEmpty { return data }
+                    return file.flatMap { try? Data(contentsOf: $0) }
+                }
+            }
+        }
+        return nil
+    }
 
     /// A video, by its name or its first bytes.
     private static func isVideo(_ ref: String, _ data: Data) -> Bool {
@@ -735,11 +763,22 @@ extension AgentWebBridge {
 /// kept for the view's life, with where the bars are over it.
 @MainActor
 final class AgentWebHost {
-    lazy var bridge: AgentWebBridge = {
-        let b = AgentWebBridge()
+    private(set) var key = ""
+    private var current: AgentWebBridge?
+
+    /// The page for the conversation the view's showing (key: which, as
+    /// AgentWebPool keeps them), the same one while it's the same.
+    func bridge(_ key: String) -> AgentWebBridge {
+        if let current, key == self.key { return current }
+        self.key = key
+        let b = AgentWebPool.shared.bridge(for: key)
         b.onPlaced = { [weak self] in self?.pushInsets() }
+        current = b
         return b
-    }()
+    }
+
+    /// The page it has (one from the pool, unkeyed, until it's asked for one).
+    var bridge: AgentWebBridge { current ?? bridge("") }
     var page = CGRect.zero, stack = CGRect.zero, bar = CGRect.zero
     /// The stack's own safe area at the top: the navigation bar, when the
     /// stack runs under it already (the iPhone's).
@@ -865,7 +904,7 @@ struct AgentPage: View {
     }
 
     var body: some View {
-        AgentWebTranscript(bridge: web.bridge)
+        AgentWebTranscript(bridge: web.bridge("past:" + (session.pastSession.map { $0.id } ?? "")))
             .onChange(of: style, initial: true) { _, st in web.bridge.configure(st) }
             .onChange(of: ObjectIdentifier(session), initial: true) {
                 web.bridge.onLink = { url in
@@ -874,6 +913,109 @@ struct AgentPage: View {
                 web.bridge.attach(session)
             }
     }
+}
+
+/// The conversation pages, kept so opening a conversation is as quick as
+/// it can be: the last few shown, each as it was left (its rows drawn, where
+/// it was scrolled to), and one more loaded ahead, waiting for the next one
+/// opened for the first time (a web view, its process and the page are most
+/// of the wait).
+@MainActor
+final class AgentWebPool {
+    static let shared = AgentWebPool()
+    /// How many conversations keep their page when not shown.
+    static let keep = 4
+    private var byKey: [String: AgentWebBridge] = [:]
+    /// Least recently shown first.
+    private var order: [String] = []
+    private var spare: AgentWebBridge?
+    private var warming = false
+
+    /// Its page: the one it had, if it isn't showing somewhere else (in a
+    /// window of its own too), else the spare, ready. "": not kept.
+    func bridge(for key: String) -> AgentWebBridge {
+        if let b = byKey[key], b.webView.window == nil {
+            order.removeAll { $0 == key }
+            order.append(key)
+            return b
+        }
+        let b = spare ?? AgentWebBridge()
+        spare = nil
+        warmSoon()
+        guard !key.isEmpty, byKey[key] == nil else { return b }
+        byKey[key] = b
+        order.append(key)
+        // Too many kept: the longest unshown goes (not one on screen).
+        while order.count > Self.keep, let i = order.firstIndex(where: { byKey[$0]?.webView.window == nil }) {
+            byKey[order.remove(at: i)] = nil
+        }
+        return b
+    }
+
+    /// A page loaded ahead, a moment from now (not in the way of what's opening).
+    func warmSoon(after seconds: Double = 1) {
+        guard spare == nil, !warming else { return }
+        warming = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [self] in
+            warming = false
+            if spare == nil { spare = AgentWebBridge() }
+        }
+    }
+}
+
+/// An agent pane's conversation as the pane shows it, shrunk: its own page,
+/// laid out at the pane's size (`size`, in points) and scaled to fit, at its
+/// end. For a tab's preview; it takes no clicks (the tile does).
+public struct AgentPreview: View {
+    let model: AppModel
+    let paneID: String
+    let size: CGSize
+    @State private var lease: AgentLease?
+    @State private var web = AgentWebHost()
+    @State private var shown = false
+    @Environment(\.agentAutomaticColor) private var accent
+    @Environment(\.agentAutomaticBubble) private var bubble
+
+    public init(model: AppModel, paneID: String, size: CGSize) {
+        self.model = model
+        self.paneID = paneID
+        self.size = size
+    }
+
+    public var body: some View {
+        GeometryReader { g in
+            let scale = size.width > 0 ? g.size.width / size.width : 1
+            if let s = lease?.session {
+                // Not kept by the pool: a preview's page is its own, gone with it.
+                // As tall as the tile at that scale (the page at its end, its
+                // latest at the tile's bottom), scaled from its top left
+                // corner, as AppKit scales a view's layer.
+                AgentWebTranscript(bridge: web.bridge(""))
+                    .frame(width: size.width, height: g.size.height / max(scale, 0.01))
+                    .scaleEffect(scale, anchor: .topLeading)
+                    .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+                    .opacity(shown ? 1 : 0)
+                    .onChange(of: ObjectIdentifier(s), initial: true) {
+                        web.bridge.configure(AgentWebStyle(fonts: AgentFonts.current, accent: accent, bubble: bubble, canOpenDiff: false, agentName: s.agentName))
+                        web.bridge.attach(s)
+                        // Shown once it's drawn at its end, not while the page loads.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            withAnimation(.easeOut(duration: 0.15)) { shown = true }
+                        }
+                    }
+            }
+        }
+        .allowsHitTesting(false)
+        .clipped()
+        .onAppear { if lease == nil { lease = AgentLease(model, paneID) } }
+    }
+}
+
+/// For the apps at launch: a conversation page loaded ahead, so the first
+/// agent view opened doesn't wait for one.
+public enum AgentViewWarmup {
+    @MainActor public static func start() { AgentWebPool.shared.warmSoon(after: 2) }
 }
 
 /// WKUserContentController keeps its handlers: this one lets the bridge go.

@@ -269,7 +269,9 @@ internal class AgentWebBridge(context: Context, private val session: AgentSessio
             val run = p.bangRun(if (p.id == running) s.bangOutput else "")
             pending.put(
                 if (run != null) JSONObject().put("id", p.id.toString()).put("kind", "tool").put("b", block(run))
-                else JSONObject().put("id", p.id.toString()).put("kind", "user").put("text", p.text),
+                else JSONObject().put("id", p.id.toString()).put("kind", "user").put("text", p.text)
+                    // Its pictures, from here, by a ref the page asks for like any other (localData).
+                    .put("images", JSONArray(p.attachments.mapIndexed { i, a -> "$LOCAL${p.id}.$i/${a.name}" })),
             )
         }
         return JSONObject().put("pending", pending).put("working", s.working).put("status", s.status)
@@ -300,7 +302,7 @@ internal class AgentWebBridge(context: Context, private val session: AgentSessio
                 val ref = m.optString("ref")
                 scope.launch {
                     val bitmap = withContext(Dispatchers.IO) {
-                        val data = session.file(ref) ?: return@withContext null
+                        val data = localData(ref) ?: session.file(ref) ?: return@withContext null
                         if (isVideo(ref, data)) poster(data) else BitmapFactory.decodeByteArray(data, 0, data.size)
                     }
                     bitmap?.let(onOpenImage)
@@ -309,9 +311,16 @@ internal class AgentWebBridge(context: Context, private val session: AgentSessio
         }
     }
 
+    /** One of the waiting messages' attachments, by its ref ("local:" id "." index "/" name), or null. */
+    private fun localData(ref: String): ByteArray? {
+        if (!ref.startsWith(LOCAL)) return null
+        val (id, i) = ref.removePrefix(LOCAL).substringBefore('/').split('.').let { (it.getOrNull(0)?.toLongOrNull() ?: return null) to (it.getOrNull(1)?.toIntOrNull() ?: return null) }
+        return state?.pendingSends?.firstOrNull { it.id == id }?.attachments?.getOrNull(i)?.data
+    }
+
     /** A picture as a data URL for the page: a video's first frame; "" when it can't be shown. */
     private suspend fun picture(ref: String): String {
-        val data = session.file(ref) ?: return ""
+        val data = localData(ref) ?: session.file(ref) ?: return ""
         if (!isVideo(ref, data)) {
             val type = mediaType(data).ifEmpty { "application/octet-stream" }
             return "data:$type;base64," + Base64.encodeToString(data, Base64.NO_WRAP)
@@ -348,6 +357,8 @@ internal class AgentWebBridge(context: Context, private val session: AgentSessio
 
     companion object {
         const val TAG = "HammockAgentPage"
+        /** How a waiting message's attachments are named for the page. */
+        const val LOCAL = "local:"
 
         private fun isVideo(ref: String, data: ByteArray): Boolean =
             ref.substringAfterLast('.', "").lowercase() in setOf("mp4", "mov", "m4v", "webm") || mediaType(data).startsWith("video/")

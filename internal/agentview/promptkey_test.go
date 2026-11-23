@@ -136,3 +136,12 @@ func TestAnswerStepsBound(t *testing.T) {
 		t.Errorf("no prompt id: %v", err)
 	}
 }
+
+// A permission prompt whose call the transcript doesn't have yet still says
+// what it's asking about: its text goes with it.
+func TestPromptCarriesItsText(t *testing.T) {
+	sc := Screen{Title: "Do you want to proceed?", Options: []string{"Yes", "No"}, Body: "Bash command\n  rm -rf build\n\nDo you want to proceed?"}
+	if p := Prompt(sc, nil); p.Body != sc.Body {
+		t.Fatalf("body %q", p.Body)
+	}
+}

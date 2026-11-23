@@ -276,6 +276,18 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
             }
             if (pending != null && p.kind == AgentPrompt.Kind.KIND_PERMISSION && pending.input.isNotEmpty()) {
                 CodeBlock(pending.input, if (pending.tool == "Bash") "bash" else "", maxHeight = 140.dp, wrapsByDefault = true)
+            } else if (pending == null && p.tabs.isEmpty() && !p.multiSelect && p.descriptionsList.all { it.isEmpty() }) {
+                // The call isn't in the transcript yet: what the terminal's prompt says about it.
+                val context = p.body.trim().let { b -> if (p.title.isNotEmpty() && b.endsWith(p.title)) b.dropLast(p.title.length).trim() else b }
+                if (context.isNotEmpty()) {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(
+                            context, style = codeTextStyle(0.88f), color = LocalAgentColors.current.secondary,
+                            modifier = Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                                .background(LocalAgentColors.current.fill).padding(10.dp),
+                        )
+                    }
+                }
             }
             if (p.title.isNotEmpty()) Text(p.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

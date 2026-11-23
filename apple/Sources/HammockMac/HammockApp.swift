@@ -712,6 +712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RenderStats.startIfRequested()
         NSApp.setActivationPolicy(.regular)
         AppConfig.shared.applyAppearance()
+        AgentViewWarmup.start()
         NSApp.activate()
         guard AppMover.offerIfNeeded() else { return } // moving: this copy quits
         AppMover.finishMove()

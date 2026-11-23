@@ -5472,6 +5472,11 @@ public nonisolated struct Hammock_V1_AgentPrompt: Sendable {
   /// shows them (not the selection or ticks). Sent back with an answer.
   public var promptID: String = String()
 
+  /// The prompt's whole text above its options, as shown (a permission
+  /// prompt's tool and command, and what it warns), for when the transcript
+  /// doesn't have its call yet to show instead.
+  public var body: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum Kind: SwiftProtobuf.Enum, Swift.CaseIterable {
@@ -20182,7 +20187,7 @@ nonisolated extension Hammock_V1_AgentImage: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentPrompt"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}block_id\0\u{1}title\0\u{1}options\0\u{1}selected\0\u{1}descriptions\0\u{3}multi_select\0\u{1}checked\0\u{1}tabs\0\u{1}other\0\u{1}previews\0\u{1}notes\0\u{1}checkboxes\0\u{3}prompt_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}kind\0\u{3}block_id\0\u{1}title\0\u{1}options\0\u{1}selected\0\u{1}descriptions\0\u{3}multi_select\0\u{1}checked\0\u{1}tabs\0\u{1}other\0\u{1}previews\0\u{1}notes\0\u{1}checkboxes\0\u{3}prompt_id\0\u{1}body\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -20204,6 +20209,7 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
       case 12: try { try decoder.decodeSingularBoolField(value: &self.notes) }()
       case 13: try { try decoder.decodeSingularInt32Field(value: &self.checkboxes) }()
       case 14: try { try decoder.decodeSingularStringField(value: &self.promptID) }()
+      case 15: try { try decoder.decodeSingularStringField(value: &self.body) }()
       default: break
       }
     }
@@ -20252,6 +20258,9 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
     if !self.promptID.isEmpty {
       try visitor.visitSingularStringField(value: self.promptID, fieldNumber: 14)
     }
+    if !self.body.isEmpty {
+      try visitor.visitSingularStringField(value: self.body, fieldNumber: 15)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -20270,6 +20279,7 @@ nonisolated extension Hammock_V1_AgentPrompt: SwiftProtobuf.Message, SwiftProtob
     if lhs.notes != rhs.notes {return false}
     if lhs.checkboxes != rhs.checkboxes {return false}
     if lhs.promptID != rhs.promptID {return false}
+    if lhs.body != rhs.body {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
