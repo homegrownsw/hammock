@@ -890,9 +890,11 @@ final class AgentPageParking: NSView {
             frame.addSubview(p, positioned: .below, relativeTo: nil)
             return p
         }()
+        // Moved first: sized while still in its slot, it would measure the
+        // bars against the slot and keep insets that are wrong when shown.
+        lot.addSubview(v)
         v.autoresizingMask = []
         v.frame = lot.convert(rect, from: nil)
-        lot.addSubview(v)
     }
 }
 
