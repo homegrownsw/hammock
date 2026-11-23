@@ -72,6 +72,16 @@ type Config struct {
 	AwaitSize time.Duration
 	Gate      string
 
+	// Exe and Args (macOS): the holder's own executable and the arguments
+	// it was started with (after os.Args[0]). When an update puts another
+	// executable at Exe, the holder execs that in its own place, handing
+	// the pane over (handoff_darwin.go): macOS judges a pane's programs by
+	// their holder, and one still running the executable an update replaced
+	// is no longer taken for the app, so loses its privacy grants (Full
+	// Disk Access). Unset, the holder runs on as it is.
+	Exe  string
+	Args []string
+
 	// legacy (tests) makes the holder one from before the proof: it closes
 	// a connection whose first frame isn't FrameAttach, and checks Peer and
 	// State of the socket's peer.
@@ -106,8 +116,8 @@ func (c *client) notify() {
 type Server struct {
 	cfg  Config
 	ln   net.Listener
-	pty  *os.File
-	cmd  *exec.Cmd
+	pty  *os.File    // nil once the child has exited, in a holder resumed after it did
+	proc *os.Process // the child: the one started, or the one handed over (handoff.go)
 	done chan struct{}
 
 	mu         sync.Mutex
@@ -126,6 +136,11 @@ type Server struct {
 	inCond *sync.Cond
 	inBuf  [][]byte
 	inHeld bool // a gate waits (AwaitSize): input is kept for its command, not echoed to it or read by it
+	// inPaused keeps input queued while the holder hands itself over, and
+	// inWriting says writePTY is writing a batch it took (both under inMu).
+	inPaused, inWriting bool
+
+	handoff handoff // re-exec after an update (handoff_darwin.go)
 
 	proofs   proofs   // connections waiting for their proof (proof.go)
 	proofSvc proofSvc // the Mach service proofs come to
@@ -183,7 +198,7 @@ func Start(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg: cfg, ln: ln, pty: f, cmd: cmd, done: make(chan struct{}),
+		cfg: cfg, ln: ln, pty: f, proc: cmd.Process, done: make(chan struct{}),
 		ring: NewRing(cfg.RingSize), clients: map[*client]struct{}{},
 		cols: cfg.Cols, rows: cfg.Rows, lastDetach: time.Now(), gate: gate,
 	}
@@ -195,13 +210,24 @@ func Start(cfg Config) (*Server, error) {
 	if cfg.AdoptOrphans {
 		go reapOrphans(cmd.Process.Pid, s.done)
 	}
-	go s.writePTY()
-	go s.readPTY()
+	s.run()
+	return s, nil
+}
+
+// run starts the server's goroutines, for a holder started or resumed.
+func (s *Server) run() {
+	s.handoff.init(s)
+	if s.pty != nil {
+		go s.writePTY()
+	}
+	if !s.exited {
+		go s.readPTY()
+	}
 	go s.accept()
-	if cfg.IdleExit > 0 || (cfg.Install != "" && cfg.OrphanExit > 0) {
+	if s.cfg.IdleExit > 0 || (s.cfg.Install != "" && s.cfg.OrphanExit > 0) {
 		go s.idleWatch()
 	}
-	return s, nil
+	go s.handoff.watch(s)
 }
 
 // listen listens on path, taking the place of what's there unless it's
@@ -229,7 +255,7 @@ func listen(path string) (net.Listener, error) {
 }
 
 // PID returns the child's process id.
-func (s *Server) PID() int { return s.cmd.Process.Pid }
+func (s *Server) PID() int { return s.proc.Pid }
 
 // Done is closed when the holder has shut down.
 func (s *Server) Done() <-chan struct{} { return s.done }
@@ -257,7 +283,7 @@ func (s *Server) shutdown(why string) {
 	s.mu.Unlock()
 
 	if !exited {
-		_ = syscall.Kill(-s.cmd.Process.Pid, syscall.SIGHUP)
+		_ = syscall.Kill(-s.proc.Pid, syscall.SIGHUP)
 	}
 	s.ln.Close()
 	os.Remove(s.cfg.Socket)
@@ -274,6 +300,11 @@ func (s *Server) shutdown(why string) {
 func (s *Server) readPTY() {
 	buf := make([]byte, 64<<10)
 	for {
+		// Between reads, never holding output it hasn't kept: where a
+		// handoff stops it (handoff_darwin.go).
+		if !s.handoff.awaitOutput(s) {
+			continue
+		}
 		n, err := s.pty.Read(buf)
 		if n > 0 {
 			s.mu.Lock()
@@ -287,19 +318,15 @@ func (s *Server) readPTY() {
 			break
 		}
 	}
-	status, sig := int32(0), int32(0)
-	if err := s.cmd.Wait(); err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			status = int32(ee.ExitCode())
-			if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-				sig = int32(ws.Signal())
-			}
-		} else {
-			status = -1
+	status, sig := int32(-1), int32(0)
+	ps, err := s.proc.Wait()
+	if err == nil {
+		status = int32(ps.ExitCode())
+		if ws, ok := ps.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			sig = int32(ws.Signal())
 		}
 	}
-	logf("child exited, status %d (%v)", status, s.cmd.ProcessState)
+	logf("child exited, status %d (%v)", status, ps)
 	s.pty.Close()
 	s.mu.Lock()
 	s.exited, s.exitStatus, s.exitSignal = true, status, sig
@@ -400,7 +427,7 @@ func (s *Server) serve(conn net.Conn, at PeerProc) {
 		return
 	}
 	info := Info{
-		PID: int32(s.cmd.Process.Pid), Cols: s.cols, Rows: s.rows,
+		PID: int32(s.proc.Pid), Cols: s.cols, Rows: s.rows,
 		RingStart: s.ring.Start(), RingEnd: s.ring.End(),
 		Exited: s.exited, ExitStatus: s.exitStatus,
 	}
@@ -538,7 +565,7 @@ func (s *Server) queueInput(p []byte) {
 func (s *Server) writePTY() {
 	for {
 		s.inMu.Lock()
-		for len(s.inBuf) == 0 || s.inHeld {
+		for len(s.inBuf) == 0 || s.inHeld || s.inPaused {
 			select {
 			case <-s.done:
 				s.inMu.Unlock()
@@ -549,11 +576,21 @@ func (s *Server) writePTY() {
 		}
 		batch := s.inBuf
 		s.inBuf = nil
+		s.inWriting = true
 		s.inMu.Unlock()
+		closed := false
 		for _, p := range batch {
 			if _, err := s.pty.Write(p); err != nil && (errors.Is(err, os.ErrClosed) || errors.Is(err, io.EOF)) {
-				return
+				closed = true
+				break
 			}
+		}
+		s.inMu.Lock()
+		s.inWriting = false
+		s.inCond.Broadcast() // a handoff waiting for the batch to be written
+		s.inMu.Unlock()
+		if closed {
+			return
 		}
 	}
 }
@@ -579,7 +616,7 @@ func (s *Server) signal(sig syscall.Signal) {
 		})
 	}
 	if pgrp <= 0 {
-		pgrp = s.cmd.Process.Pid
+		pgrp = s.proc.Pid
 	}
 	_ = syscall.Kill(-pgrp, sig)
 }
