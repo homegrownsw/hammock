@@ -44,6 +44,8 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     var onLink: ((URL) -> Void)?
     var onOpenDiff: ((String) -> Void)?
+    /// The web view joined a window or changed size (AgentWebHost measures the bars again).
+    var onPlaced: (() -> Void)?
     /// A picture or video to open: its session, ref, file name and whether it's a video.
     var onOpenImage: ((AgentSession, String, String, Bool) -> Void)?
 
@@ -54,18 +56,20 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         BundledFonts.addFontFaces(to: ucc, page: "agent")
         // No Writing Tools button by a selection: the conversation is read, not edited.
         if #available(macOS 15.0, iOS 18.0, *) { conf.writingToolsBehavior = .none }
-        #if os(macOS)
         let pageView = AgentPageView(frame: .zero, configuration: conf)
         webView = pageView
-        #else
-        webView = WKWebView(frame: .zero, configuration: conf)
-        #endif
         super.init()
         ucc.add(AgentWeakHandler(self), name: "hammock")
         webView.navigationDelegate = self
-        #if os(macOS)
-        pageView.onWindow = { [weak self] in self?.reapplyObscured() }
-        #endif
+        // In a window, or resized: where the bars are over it can be measured
+        // now (it can't before it has a window, which is when SwiftUI first
+        // lays it out).
+        pageView.onPlaced = { [weak self] joined in
+            self?.onPlaced?()
+            #if os(macOS)
+            if joined { self?.reapplyObscured() }
+            #endif
+        }
         #if os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
         #else
@@ -724,7 +728,11 @@ extension AgentWebBridge {
 /// kept for the view's life, with where the bars are over it.
 @MainActor
 final class AgentWebHost {
-    lazy var bridge = AgentWebBridge()
+    lazy var bridge: AgentWebBridge = {
+        let b = AgentWebBridge()
+        b.onPlaced = { [weak self] in self?.pushInsets() }
+        return b
+    }()
     var page = CGRect.zero, stack = CGRect.zero, bar = CGRect.zero
     /// The stack's own safe area at the top: the navigation bar, when the
     /// stack runs under it already (the iPhone's).
@@ -765,12 +773,17 @@ struct AgentWebTranscript: NSViewRepresentable {
 
 /// The page's web view, without the menu's Reload (the page is the app's, not a site).
 final class AgentPageView: WKWebView {
-    /// Back in a window: the bridge sets its insets again.
-    var onWindow: (() -> Void)?
+    /// In a window (true: it just joined one), or resized there.
+    var onPlaced: ((Bool) -> Void)?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window != nil { onWindow?() }
+        if window != nil { onPlaced?(true) }
+    }
+
+    override func setFrameSize(_ size: NSSize) {
+        super.setFrameSize(size)
+        if window != nil { onPlaced?(false) }
     }
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
@@ -779,6 +792,24 @@ final class AgentPageView: WKWebView {
     }
 }
 #else
+/// The page's web view, saying when it's placed in a window or resized.
+final class AgentPageView: WKWebView {
+    var onPlaced: ((Bool) -> Void)?
+    private var size = CGSize.zero
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { onPlaced?(true) }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard window != nil, bounds.size != size else { return }
+        size = bounds.size
+        onPlaced?(false)
+    }
+}
+
 struct AgentWebTranscript: UIViewRepresentable {
     let bridge: AgentWebBridge
     func makeUIView(context: Context) -> WKWebView { bridge.webView }
