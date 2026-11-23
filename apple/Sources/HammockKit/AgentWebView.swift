@@ -6,14 +6,13 @@ import AppKit
 import UIKit
 #endif
 
-// The agent view's conversation drawn by a web page (agent.html, built from
-// apple/Editor/src/agent.js): an experiment beside the native one, chosen by
-// Pref.agentRenderer. The session (AgentSession) is still the model: this
-// sends the page the rows that changed since it last did, with what the
-// native rows would show worked out here (tool summaries, diffs' lines), and
-// the platform's own colours, text sizes and SF Symbols, so the page draws
-// what the native view draws. The page owns the scrolling; the composer and
-// prompt cards stay native, floating over it (its bottom inset).
+// The agent view's conversation, drawn by a web page (agent.html, built from
+// apple/Editor/src/agent.js), as Android's is too. The session (AgentSession)
+// is the model: this sends the page the rows that changed since it last did,
+// with what they show worked out here (tool summaries, diffs' lines), and the
+// platform's own colours, text sizes and SF Symbols. The page owns the
+// scrolling; the composer and prompt cards are native, floating over it (its
+// bottom inset).
 
 /// What the page is drawn with, from the conversation view.
 struct AgentWebStyle: Equatable {
@@ -251,7 +250,7 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         if meta != sentMeta { u["meta"] = meta; sentMeta = meta }
         let tail = tailJSON(s)
         if tail != sentTail { u["tail"] = tail; sentTail = tail }
-        // Sent from here: down to see it go, as the native view does.
+        // Sent from here: down to see it go.
         if s.pendingSends.count > sentPending { u["sent"] = true }
         sentPending = s.pendingSends.count
         if !u.isEmpty { call("hammock.update(u)", ["u": u]) }
@@ -275,13 +274,13 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case .user:
             r["kind"] = "user"
             r["text"] = b.text
-            // With a mark where each attachment sat, for its chip (RichBubbleText).
+            // With a mark where each attachment sat, for its chip.
             r["rich"] = b.richText
             r["images"] = b.images.map(\.ref)
         case .text:
             r["kind"] = "text"
             r["text"] = b.text
-            // Arrived while watched: shown from the top down (RevealsReply).
+            // Arrived while watched: shown from the top down .
             if let at = s.arrived[b.id], Date.now.timeIntervalSince(at) < 2, !revealed.contains(b.id) {
                 revealed.insert(b.id)
                 r["live"] = true
@@ -310,7 +309,7 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             r["b"] = block(b)
         case .done:
             r["kind"] = "done"
-            r["words"] = DoneRow.words(durationMs: b.durationMs, doneUnixMs: b.timeUnixMs)
+            r["words"] = TurnWords.words(durationMs: b.durationMs, doneUnixMs: b.timeUnixMs)
         default:
             r["kind"] = ""
         }
@@ -406,7 +405,7 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case "image":
             guard let ref = m["ref"] as? String, let s = session else { return }
             Task { @MainActor in
-                // A video shows its first frame, as AgentImageView does; one
+                // A video shows its first frame; one
                 // that can't be read, what it is ("").
                 var url = ""
                 if let data = await s.file(ref) {
@@ -420,8 +419,8 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
                 call("hammock.image(r, u)", ["r": ref, "u": url])
             }
         case "openImage":
-            // Named as what it is (a ref has no extension of its own), as
-            // AgentImageView names it, so Quick Look knows how to show it.
+            // Named as what it is (a ref has no extension of its own), so
+            // Quick Look knows how to show it.
             guard let ref = m["ref"] as? String, let s = session else { return }
             Task { @MainActor in
                 guard let data = await s.file(ref) else { return }
@@ -615,7 +614,7 @@ extension AgentWebBridge {
     }
     #endif
 
-    /// The colours the native rows use, resolved for light or dark.
+    /// The platform's colours, resolved for light or dark.
     private static func colors(_ st: AgentWebStyle, dark: Bool) -> [String: String] {
         #if os(macOS)
         let named: [(String, NSColor)] = [
@@ -822,6 +821,31 @@ struct AgentWebTranscript: UIViewRepresentable {
     func updateUIView(_ v: WKWebView, context: Context) {}
 }
 #endif
+
+/// A conversation drawn by the page with nothing over it: a past session,
+/// read only. Links to the web and mail open; nothing else does.
+struct AgentPage: View {
+    let session: AgentSession
+    @State private var web = AgentWebHost()
+    @Environment(\.agentAutomaticColor) private var accent
+    @Environment(\.agentAutomaticBubble) private var bubble
+    @Environment(\.openURL) private var openURL
+
+    private var style: AgentWebStyle {
+        AgentWebStyle(fonts: AgentFonts.current, accent: accent, bubble: bubble, canOpenDiff: false, agentName: session.agentName)
+    }
+
+    var body: some View {
+        AgentWebTranscript(bridge: web.bridge)
+            .onChange(of: style, initial: true) { _, st in web.bridge.configure(st) }
+            .onChange(of: ObjectIdentifier(session), initial: true) {
+                web.bridge.onLink = { url in
+                    if AgentLink.opening(url) == .web || AgentLink.opensDirectly(url) { openURL(url) }
+                }
+                web.bridge.attach(session)
+            }
+    }
+}
 
 /// WKUserContentController keeps its handlers: this one lets the bridge go.
 private final class AgentWeakHandler: NSObject, WKScriptMessageHandler {

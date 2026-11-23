@@ -28,8 +28,7 @@ titlebar geometry. With it:
 | `HMK_DEBUG_ASLEEP=1` | Every terminal pane shown as an agent put to sleep, a made-up idle Claude where there's none: the moon in the sidebar and the pane's header, and the faded pane with its Wake Agent button; on the iPhone too, with the demo. |
 | `HMK_DEBUG_SETTINGS=<pane>` | That Settings pane to `<prefix>-settings-<light\|dark>.png`: `notifications`, `keyboard`, `appearance`, `agentview`, `workspace` (onboarding's drawing of the window, both layouts), `devices`, `editor`, `tools`, `window` (the whole Settings window, sidebar included, on the pane given by `--args -settingsTab <name>`). Search it with `HMK_DEBUG_SETTINGS_QUERY=<text>`. Pick the notification style with `--args -notify-style in-app`: any config key given as a launch argument beats the file's. |
 | `HMK_DEBUG_PROMPT=plain\|other\|preview\|tasks` | The agent view's question card with a made-up question, its own answer being typed, one with previews, or under a task list and PR and artifact chips, to `<prefix>-prompt-<light\|dark>.png`. |
-| `HMK_DEBUG_CODEBLOCKS=1` | Code blocks with long lines, wrapped and not, and a Markdown one as source and rendered, to `<prefix>-code-<light\|dark>.png`. |
-| `HMK_DEBUG_COMPOSER=<text>` | The agent view's composer with `<text>` typed (start it with `!` for a shell command, or `/` to see commands offered), under two `!` commands, an edit's diff and a run of tool calls as the agent view shows them, to `<prefix>-composer-<light\|dark>.png`. With `HMK_DEBUG_DICTATION=1`, the text is being dictated: the mic listening, and what's after a `\|` in `<text>` not settled yet (dimmed). |
+| `HMK_DEBUG_COMPOSER=<text>` | The agent view's composer with `<text>` typed (start it with `!` for a shell command, or `/` to see commands offered), to `<prefix>-composer-<light\|dark>.png`. With `HMK_DEBUG_DICTATION=1`, the text is being dictated: the mic listening, and what's after a `\|` in `<text>` not settled yet (dimmed). |
 | `HMK_DEBUG_COMPUTER_LOOK=symbols\|emoji[:search]` | The icon and colour picker for the first linked computer, else this one, to `<prefix>-look-<light\|dark>.png`. |
 | `HMK_DEBUG_SCHEDULES=list\|edit` | The Scheduled Tasks sheet, or the editor on the first schedule, opened at launch and also rendered on their own to `<prefix>-schedules-<light\|dark>.png` (sheets aren't in the window's snapshot). |
 | `HMK_DEBUG_START_AGENT=1` | The Start an Agent sheet on the current Group, also rendered on its own to `<prefix>-start-agent-<light\|dark>.png`. |
@@ -110,7 +109,7 @@ adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainAc
 | `--ez sample true` | Open straight into the demo, as the pairing screen's "See a demo". The others need it. |
 | `--ez longChat true` | As `HMK_DEBUG_LONG_CHAT=1`: the polish agent's long conversation, with a page before it, and Claude-like replies. |
 | `--ez newChat true` | As `HMK_DEBUG_NEW_CHAT=1`: the polish agent's conversation starts empty. |
-| `--es agentRenderer web\|native` | What draws agent conversations, as Settings ▸ Text ▸ Conversation drawn by sets it (kept). With `--es pane <id>`, opens that pane: `--es pane p_polish` for the demo's polish agent. |
+| `--es pane <id>` | Open that pane, as tapping its notification does: `--es pane p_polish` for the demo's polish agent. |
 | `--es macTheme <name>\|custom` | As `HMK_DEBUG_MAC_THEME`: the sample Mac's theme. |
 | `--es hammockKey 1\|agent` | As `HMK_DEBUG_HMK_KEY`: the Mac's Hammock Key, this phone an approver, and a request waiting (`agent`: an agent's ssh login). |
 | `--es link down\|drop[:<s>]` | As `HMK_DEBUG_LINK`: the demo's computer can't be reached, never or from a moment after the app has its state. |

@@ -13,13 +13,3 @@ final class UsageLimitsTests: XCTestCase {
         XCTAssertEqual(at(2 * 1440 + 5 * 60), "2d")
     }
 }
-
-final class RunningTimeTests: XCTestCase {
-    func testFormat() {
-        XCTAssertEqual(RunningTime.format(0), "0s")
-        XCTAssertEqual(RunningTime.format(12.7), "12s")
-        XCTAssertEqual(RunningTime.format(65), "1m 05s")
-        XCTAssertEqual(RunningTime.format(3720), "1h 02m")
-        XCTAssertEqual(RunningTime.format(-3), "0s")
-    }
-}

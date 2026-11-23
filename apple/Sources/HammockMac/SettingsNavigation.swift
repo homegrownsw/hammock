@@ -463,7 +463,6 @@ enum SettingsIndex {
             e(.agentView, "Text", "Agent view font", "agentview.font", "text size line spacing"),
             e(.agentView, "Code", "Agent view code font", "agentview.codefont", "monospace"),
             e(.agentView, "Code", "Wrap long lines in code blocks", "agentview.codewrap", "wrap line wrapping markdown"),
-            e(.agentView, "Drawing", "Conversation drawn by", "agentview.renderer", "web webkit html swiftui renderer experimental"),
             e(.agentView, "Attachments", "Picture size", "agentview.imagesize", "image screenshot attachment resize scale tokens"),
             e(.agentView, "Attachments", "Picture size on other computers", "agentview.imagesizeremote", "image screenshot attachment resize remote linked network tokens"),
             e(.agentView, "Dictation", "Dictation button", "agentview.dictation", "dictate microphone mic voice speech talk speak transcribe"),

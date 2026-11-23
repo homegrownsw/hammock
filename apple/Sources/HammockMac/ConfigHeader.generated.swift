@@ -67,7 +67,6 @@ extension AppConfig {
         #   agent-code-wrap = prose | always | never   (which code blocks wrap long lines; prose: Markdown, text and tool calls)
         #   agent-image-size = original | large | medium | small   (the size pictures you attach in the agent view are sent at)
         #   agent-image-size-remote = original | large | medium | small   (the same, for an agent on a linked computer)
-        #   agent-view-renderer = native | web     (what draws the conversation: native (SwiftUI), or web (an experimental WebKit page); the message box stays native; Mac and iPhone only)
         #   agent-dictation = true                 (false: no dictation button in the agent view, nor Dictate in the menus)
         #
         # Notifications

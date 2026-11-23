@@ -87,11 +87,6 @@ import Testing
         let text = Markdown.inline("See [the docs](https://example.com/docs), /tmp/notes.md and [this](vscode://open)")
         #expect(AgentLink.destinations(text) == "https://example.com/docs\nvscode://open")
     }
-
-    @Test func linkedTextTagsOnlyTextWithLinks() {
-        #expect(LinkedText.tagged(Markdown.inline("See [the docs](https://example.com) and /tmp/notes.md")) != nil)
-        #expect(LinkedText.tagged(Markdown.inline("No links, just `code`")) == nil)
-    }
 }
 
 @Test func modelDisplayNames() {

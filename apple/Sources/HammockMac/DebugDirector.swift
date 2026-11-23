@@ -16,13 +16,13 @@ import HammockKit
 ///	drag [SECONDS]                resizes the window every frame and reports how it kept up (ResizeDrag)
 ///	finish-setup                  finishes onboarding, as its last button does
 ///	agentview PANE                that pane in its agent view, as the header's toggle does
-///	agent renderer native|web     the agent view drawn by SwiftUI or WebKit (agent-view-renderer)
 ///	agent show|toggle ID          that row at the top of the agent view; open or close it, as a click does
 ///	agent end | agent list FILE   to its end; its rows, one a line, to FILE (AgentDebug)
 ///	size W H                      the window's content this size
 ///	appearance light|dark|auto    the app's appearance (the config's, as Settings sets it)
 ///	capture PATH                  the window as drawn, to PATH.png (needs Screen Recording)
 ///	burst PATH SECONDS [COMMAND]  frames for SECONDS, to PATH-NN.png, running COMMAND after the first
+///	responder PATH                the key window's first responder (its class), to PATH
 ///	wait SECONDS
 @MainActor enum DebugDirector {
     /// What the palette's search field should hold, set as it's typed.
@@ -82,7 +82,7 @@ import HammockKit
         case "agent":
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             guard let cmd = a.first else { return }
-            if cmd == "renderer" { Prefs.shared.set(.agentRenderer, a.count > 1 ? a[1] : "native") } else { AgentDebug.send(cmd, a.count > 1 ? a[1] : "") }
+            AgentDebug.send(cmd, a.count > 1 ? a[1] : "")
         case "size":
             let a = arg.split(separator: " ").compactMap { Double($0) }
             guard a.count == 2, let w = mainWindow else { return }
@@ -90,6 +90,9 @@ import HammockKit
         case "appearance":
             // As Settings sets it (the config's appearance), which the window follows.
             AppConfig.shared.setAppearance(AppConfig.Appearance(rawValue: arg) ?? .auto)
+        case "responder":
+            let r = (NSApp.keyWindow ?? mainWindow)?.firstResponder
+            try? (r.map { "\(type(of: $0))" } ?? "none").write(toFile: arg, atomically: true, encoding: .utf8)
         case "wait":
             try? await Task.sleep(for: .seconds(Double(arg) ?? 1))
         case "capture":

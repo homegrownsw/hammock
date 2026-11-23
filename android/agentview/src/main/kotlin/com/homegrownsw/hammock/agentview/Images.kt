@@ -111,37 +111,6 @@ object ImageCodec {
     }
 }
 
-/** A picture the session referenced: fetched, decoded once, and opened in the viewer with a tap. */
-@Composable
-fun AgentImage(ref: String, session: AgentSession, maxHeight: Dp = 260.dp) {
-    val c = LocalAgentColors.current
-    val open = LocalOpenImage.current
-    // Decoded already (scrolled back to): shown at once, at its size, not a
-    // placeholder that then grows.
-    var image by remember(ref) { mutableStateOf(session.decodedImage(ref)) }
-    var failed by remember(ref) { mutableStateOf(false) }
-    LaunchedEffect(ref) {
-        if (image != null) return@LaunchedEffect
-        val data = session.file(ref)
-        val bmp = data?.let { withContext(Dispatchers.Default) { ImageCodec.decode(it, 2048)?.asImageBitmap() } }
-        if (bmp != null) session.keepDecoded(ref, bmp)
-        image = bmp
-        failed = bmp == null
-    }
-    val img = image
-    if (img != null) {
-        Image(
-            img, contentDescription = "Picture", contentScale = ContentScale.Fit,
-            modifier = Modifier.heightIn(max = maxHeight).clip(RoundedCornerShape(10.dp)).clickable(onClickLabel = "Open") { open(img) },
-        )
-    } else {
-        Box(Modifier.size(120.dp, 80.dp).clip(RoundedCornerShape(10.dp)).background(c.fill), contentAlignment = Alignment.Center) {
-            if (failed) Icon(Icons.Outlined.BrokenImage, contentDescription = "Couldn't load the picture", tint = c.secondary)
-            else CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-        }
-    }
-}
-
 /** A picture full screen: pinch to zoom, drag to pan, double-tap to zoom in or out, drag down (unzoomed) to close. */
 @Composable
 fun ImageViewer(image: ImageBitmap, onDismiss: () -> Unit) {

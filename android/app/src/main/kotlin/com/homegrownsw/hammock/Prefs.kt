@@ -30,7 +30,6 @@ object Prefs {
     const val LINE_SPACING = "agentLineSpacing"
     const val CODE_SIZE = "agentCodeSize"
     const val CODE_WRAP = "codeWrap"            // prose, always, never
-    const val AGENT_RENDERER = "agentRenderer"  // native, web: what draws an agent's conversation
     const val EDITOR_FONT = "editorFont"        // "" (the terminal's) or a family
     const val ATTACHMENT_SIZE = "attachmentSize" // small, medium, large, original
     const val DICTATION = "dictation"

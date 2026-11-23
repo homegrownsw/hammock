@@ -200,8 +200,6 @@ public final class AgentSession {
             }
         }
         if bs != blocks {
-            // Messages are rendered ahead, off the main thread.
-            MarkdownView.prepare(v.blocks.compactMap { [.text, .plan, .thinking].contains($0.kind) ? $0.text : nil }, .current)
             blocks = bs
             let grouped = AgentItem.group(bs)
             if grouped != items { items = grouped }

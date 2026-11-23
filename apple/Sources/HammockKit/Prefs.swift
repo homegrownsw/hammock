@@ -159,7 +159,6 @@ extension Pref {
     /// "always" or "never". Each block has its own toggle too.
     public static let agentCodeWrap = Pref("agent-code-wrap", defaults: AgentViewPrefs.codeWrap, .string, "prose")
     /// What draws the conversation: "native" (SwiftUI) or "web" (agent.html, an experiment).
-    public static let agentRenderer = Pref("agent-view-renderer", defaults: AgentViewPrefs.renderer, .string, "native")
     /// Which view agent panes open in: "agent" or "terminal".
     #if os(macOS)
     public static let agentDefaultView = Pref("agent-default-view", defaults: AgentViewPrefs.defaultView, .string, "terminal")
@@ -174,7 +173,7 @@ extension Pref {
 
     /// The settings HammockKit knows (the Mac app adds its own).
     public static var shared: [Pref] {
-        [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentCodeWrap, agentRenderer, agentDefaultView,
+        [agentFont, agentFontSize, agentLineSpacing, agentCodeFont, agentCodeFontSize, agentCodeWrap, agentDefaultView,
          agentImageSize, agentImageSizeRemote, agentDictation]
             + AgentCatalog.known.keys.sorted().map { usageLimits($0) }
             + editor

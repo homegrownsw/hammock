@@ -48,15 +48,15 @@ final class AgentItemTests: XCTestCase {
     }
 
     func testDoneRowWords() {
-        XCTAssertEqual(DoneRow.duration(ms: 45_900), "45s")
-        XCTAssertEqual(DoneRow.duration(ms: 1_831_000), "30m 31s")
-        XCTAssertEqual(DoneRow.duration(ms: 7_500_000), "2h 5m")
+        XCTAssertEqual(TurnWords.duration(ms: 45_900), "45s")
+        XCTAssertEqual(TurnWords.duration(ms: 1_831_000), "30m 31s")
+        XCTAssertEqual(TurnWords.duration(ms: 7_500_000), "2h 5m")
         let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 13, hour: 12, minute: 30))!
         let ms = Int64(now.timeIntervalSince1970 * 1000)
-        XCTAssertEqual(DoneRow.words(durationMs: 1_831_000, doneUnixMs: ms, now: now),
+        XCTAssertEqual(TurnWords.words(durationMs: 1_831_000, doneUnixMs: ms, now: now),
                        "Worked for 30m 31s · done " + now.formatted(date: .omitted, time: .shortened))
         let earlier = now.addingTimeInterval(-3 * 86_400)
-        XCTAssertEqual(DoneRow.words(durationMs: 60_000, doneUnixMs: Int64(earlier.timeIntervalSince1970 * 1000), now: now),
+        XCTAssertEqual(TurnWords.words(durationMs: 60_000, doneUnixMs: Int64(earlier.timeIntervalSince1970 * 1000), now: now),
                        "Worked for 1m 0s · done " + earlier.formatted(date: .abbreviated, time: .shortened))
     }
 }

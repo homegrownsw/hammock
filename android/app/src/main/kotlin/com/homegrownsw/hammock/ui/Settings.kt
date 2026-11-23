@@ -86,7 +86,6 @@ fun SettingsScreen(session: Session, model: AppModel) {
     var opensIn by rememberPref(Prefs.AGENT_TABS_OPEN_IN, "agent")
     var warnBusy by rememberBoolPref(Prefs.WARN_CLOSE_BUSY, true)
     var codeWrap by rememberPref(Prefs.CODE_WRAP, "prose")
-    var renderer by rememberPref(Prefs.AGENT_RENDERER, "native")
     var textFont by rememberPref(Prefs.TEXT_FONT, "")
     var textSize by rememberPref(Prefs.TEXT_SIZE, DefaultSizes.TEXT.toString())
     var lineSpacing by rememberPref(Prefs.LINE_SPACING, DefaultSizes.LINE_SPACING.toString())
@@ -166,8 +165,6 @@ fun SettingsScreen(session: Session, model: AppModel) {
                     StepperRow("Code size", fonts.codeSize.toInt(), 10..26) { codeSize = it.toString() }
                     CardDivider()
                     Choice("Wrap code", codeWrap, listOf("prose" to "Markdown, Text and Tools", "always" to "Every Block", "never" to "Never")) { codeWrap = it }
-                    CardDivider()
-                    Choice("Conversation drawn by", renderer, listOf("native" to "Native", "web" to "WebView (experimental)")) { renderer = it }
                 }
             }
             item {

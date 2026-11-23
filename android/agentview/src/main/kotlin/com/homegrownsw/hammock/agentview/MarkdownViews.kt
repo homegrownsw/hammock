@@ -53,54 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
-/** An agent's Markdown: prose as selectable text, code, tables and rules as blocks of their own. */
-@Composable
-fun MarkdownText(text: String, modifier: Modifier = Modifier, color: Color = Color.Unspecified) {
-    val c = LocalAgentColors.current
-    val runs = remember(text, c.md) { Markdown.runs(text, c.md) }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        for (r in runs) {
-            when (r) {
-                is Markdown.Run.Prose -> SelectionContainer {
-                    Text(r.text, style = MaterialTheme.typography.bodyLarge, color = color)
-                }
-                is Markdown.Run.Block -> when (val b = r.block) {
-                    is MdBlock.Code -> CodeBlock(b.text, b.language)
-                    is MdBlock.Table -> MdTable(b)
-                    MdBlock.Rule -> HorizontalDivider()
-                    else -> {}
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MdTable(t: MdBlock.Table) {
-    val c = LocalAgentColors.current
-    val cols = maxOf(t.header.size, t.rows.maxOfOrNull { it.size } ?: 0)
-    val style = MaterialTheme.typography.bodyMedium
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-            .background(c.fill, RoundedCornerShape(10.dp)).padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        // A column at a time, so each is as wide as its widest cell.
-        for (col in 0 until cols) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(Markdown.inline(t.header.getOrElse(col) { "" }, c.md), style = style, fontWeight = FontWeight.SemiBold)
-                for (row in t.rows) {
-                    SelectionContainer { Text(Markdown.inline(row.getOrElse(col) { "" }, c.md), style = style, maxLines = 4) }
-                }
-            }
-        }
-    }
-}
-
 /** What you've switched on a code block (wrapped, Markdown rendered), by what it holds, so it lasts as the row scrolls away and back. */
 private object CodeBlockChoices {
     val wrap = mutableStateMapOf<String, Boolean>()
-    val rendered = mutableStateMapOf<String, Boolean>()
 }
 
 private val proseLanguages = setOf("markdown", "md", "text", "txt", "plain", "plaintext")
@@ -115,8 +70,6 @@ fun CodeBlock(code: String, language: String = "", maxHeight: Dp = 420.dp, wraps
     val c = LocalAgentColors.current
     val lang = language.lowercase()
     val key = "$lang|${code.hashCode()}|${code.length}"
-    val isMarkdown = lang == "markdown" || lang == "md"
-    val rendered = isMarkdown && CodeBlockChoices.rendered[key] == true
     val wrapSetting = LocalAgentFonts.current.codeWrap
     val wraps = CodeBlockChoices.wrap[key] ?: when (wrapSetting) {
         "always" -> true
@@ -129,15 +82,8 @@ fun CodeBlock(code: String, language: String = "", maxHeight: Dp = 420.dp, wraps
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.fill)) {
         Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(language.ifEmpty { "code" }, style = MaterialTheme.typography.labelSmall, color = c.secondary, modifier = Modifier.weight(1f))
-            if (isMarkdown) {
-                SmallAction(if (rendered) Icons.Outlined.Code else Icons.Outlined.Preview, if (rendered) "Source" else "Preview") {
-                    if (rendered) CodeBlockChoices.rendered.remove(key) else CodeBlockChoices.rendered[key] = true
-                }
-            }
-            if (!rendered) {
-                SmallAction(Icons.AutoMirrored.Outlined.WrapText, if (wraps) "Don't wrap" else "Wrap", tint = if (wraps) c.accent else c.secondary) {
-                    CodeBlockChoices.wrap[key] = !wraps
-                }
+            SmallAction(Icons.AutoMirrored.Outlined.WrapText, if (wraps) "Don't wrap" else "Wrap", tint = if (wraps) c.accent else c.secondary) {
+                CodeBlockChoices.wrap[key] = !wraps
             }
             SmallAction(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, if (copied) "Copied" else "Copy") {
                 clipboard.setText(AnnotatedString(code))
@@ -146,7 +92,6 @@ fun CodeBlock(code: String, language: String = "", maxHeight: Dp = 420.dp, wraps
         }
         val codeStyle = codeTextStyle()
         when {
-            rendered -> Column(Modifier.heightIn(max = maxHeight).verticalScroll(rememberScrollState()).padding(12.dp)) { MarkdownText(code) }
             wraps -> SelectionContainer {
                 Text(
                     CodeHighlight.highlighted(code, language, c.md), style = codeStyle,
@@ -180,101 +125,6 @@ internal fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, 
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
         Text(label, style = MaterialTheme.typography.labelSmall, color = tint)
-    }
-}
-
-/**
- * A unified diff, a line at a time, tinted green and red. [preview]: only
- * that many lines (and how many more there are), unscrolled, a tap away
- * from the rest.
- */
-@Composable
-fun DiffView(diff: String, preview: Int? = null, path: String = "", onTap: (() -> Unit)? = null) {
-    val c = LocalAgentColors.current
-    val all = remember(diff) { DiffLines.numbered(diff) }
-    val shown = all.take(preview ?: 600)
-    val more = if (preview == null) 0 else all.size - shown.size
-    val style = codeTextStyle(0.95f)
-    val gutter = codeTextStyle(0.8f)
-    // The gutter's width: room for the widest number (none without hunks).
-    val digits = remember(all) { (all.maxOfOrNull { maxOf(it.old ?: 0, it.new ?: 0) } ?: 0).let { if (it == 0) 0 else it.toString().length } }
-    BoxWithConstraints(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.fill)
-            .then(if (onTap != null) Modifier.clickable(onClickLabel = "Show the whole change", onClick = onTap) else Modifier),
-    ) {
-        val min = maxWidth
-        Column {
-            DiffHeader(diff, path, all)
-            val scroll = Modifier.horizontalScroll(rememberScrollState(), enabled = preview == null)
-            val vertical = if (preview == null) Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()) else Modifier
-            Column(vertical.then(scroll).padding(top = 4.dp, bottom = 8.dp).width(IntrinsicSize.Max).widthIn(min = min)) {
-                for (line in shown) {
-                    val bg = when (line.kind) {
-                        DiffLines.Kind.ADDED -> c.added.copy(alpha = 0.16f)
-                        DiffLines.Kind.REMOVED -> c.removed.copy(alpha = 0.16f)
-                        else -> Color.Transparent
-                    }
-                    val header = line.kind == DiffLines.Kind.HUNK || line.kind == DiffLines.Kind.FILE || line.kind == DiffLines.Kind.NOTE
-                    Row(
-                        Modifier.fillMaxWidth().background(bg).padding(horizontal = 10.dp)
-                            .padding(top = if (line.kind == DiffLines.Kind.FILE) 4.dp else 0.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (digits > 0) {
-                            for (num in listOf(line.old, line.new)) {
-                                Text(
-                                    num?.toString().orEmpty().padStart(digits), style = gutter, color = c.tertiary, softWrap = false, maxLines = 1,
-                                    modifier = Modifier.clearAndSetSemantics {},
-                                )
-                            }
-                        }
-                        Text(
-                            line.text.ifEmpty { " " }, style = style, softWrap = false, maxLines = 1,
-                            color = if (header) c.secondary else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (line.kind == DiffLines.Kind.FILE) FontWeight.SemiBold else null,
-                            overflow = TextOverflow.Clip,
-                        )
-                    }
-                }
-            }
-            if (more > 0) {
-                Text(
-                    if (more == 1) "1 more line" else "$more more lines",
-                    style = MaterialTheme.typography.labelSmall, color = c.secondary,
-                    modifier = Modifier.padding(start = 10.dp, bottom = 8.dp),
-                )
-            }
-        }
-    }
-}
-
-/** A diff's header: the file it changes (the edit's, else those it names), and Copy. */
-@Composable
-private fun DiffHeader(diff: String, path: String, lines: List<DiffLines.Line>) {
-    val c = LocalAgentColors.current
-    val clipboard = LocalClipboardManager.current
-    var copied by remember { mutableStateOf(false) }
-    LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
-    val (name, folder) = remember(path, lines) {
-        if (path.isNotEmpty()) path.substringAfterLast('/') to path.substringBeforeLast('/', "")
-        else DiffLines.files(lines).let { f ->
-            when (f.size) {
-                0 -> "Changes" to ""
-                1 -> f[0].substringAfterLast('/') to f[0].substringBeforeLast('/', "")
-                else -> "${f[0].substringAfterLast('/')} and ${f.size - 1} more" to ""
-            }
-        }
-    }
-    Row(
-        Modifier.fillMaxWidth().padding(start = 10.dp, end = 2.dp, top = 2.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(name, style = codeTextStyle(0.85f), fontWeight = FontWeight.Medium, color = c.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        if (folder.isNotEmpty()) Text(folder, style = codeTextStyle(0.8f), color = c.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        Spacer(Modifier.weight(1f))
-        IconButton(onClick = { clipboard.setText(AnnotatedString(diff)); copied = true }, modifier = Modifier.size(32.dp)) {
-            Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, if (copied) "Copied" else "Copy the diff", tint = c.secondary, modifier = Modifier.size(16.dp))
-        }
     }
 }
 

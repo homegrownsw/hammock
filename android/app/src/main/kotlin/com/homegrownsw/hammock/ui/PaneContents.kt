@@ -66,7 +66,6 @@ import hammock.v1.Hammock.Pane
 fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, active: Boolean = true, openTerminal: () -> Unit) {
     val session = remember(model, pane.id) { AgentSession.of(model, pane.id) }
     val size by rememberPref(Prefs.ATTACHMENT_SIZE, "medium")
-    val renderer by rememberPref(Prefs.AGENT_RENDERER, "native")
     val theme = LocalHammockTheme.current
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     AgentConversation(
@@ -76,7 +75,6 @@ fun AgentContent(model: AppModel, pane: Pane, drive: Boolean, active: Boolean = 
         },
         fonts = rememberAgentFonts(),
         active = active,
-        renderer = renderer,
     )
 }
 

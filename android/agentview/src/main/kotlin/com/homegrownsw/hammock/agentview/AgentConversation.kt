@@ -102,14 +102,12 @@ fun AgentConversation(
     onOpenFile: ((String) -> Unit)? = null,
     /** The pane on screen (not a neighbouring page): its prompt card may take a hardware keyboard's keys by itself. */
     active: Boolean = true,
-    /** What draws the rows: "native" (Compose) or "web" (the Mac's and iPhone's page, WebConversation). */
-    renderer: String = "native",
 ) {
     val base = MaterialTheme.typography
     val typography = remember(base, fonts) { base.forAgent(fonts) }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = typography) {
         CompositionLocalProvider(LocalAgentFonts provides fonts) {
-            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile, active, renderer)
+            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile, active)
         }
     }
 }
@@ -125,7 +123,6 @@ private fun Conversation(
     imageSize: AttachmentSize,
     onOpenFile: ((String) -> Unit)?,
     active: Boolean,
-    renderer: String,
 ) {
     val colors = rememberAgentColors(agentAccent, bubble)
     DisposableEffect(session) {
@@ -201,11 +198,9 @@ private fun Conversation(
                 val shown = side ?: session
                 key(shown) {
                     val shownState = if (side == null) state else side.state.collectAsStateWithLifecycle().value
-                    when {
-                        shown.shellID.isNotEmpty() -> ShellOutputView(shownState, Modifier.weight(1f).fillMaxWidth())
-                        renderer == "web" -> WebConversation(shown, shownState, Modifier.weight(1f).fillMaxWidth())
-                        else -> Conversation(shown, shownState, Modifier.weight(1f).fillMaxWidth())
-                    }
+                    // The rows are drawn by the page the Mac and the iPhone draw them with (WebConversation).
+                    if (shown.shellID.isNotEmpty()) ShellOutputView(shownState, Modifier.weight(1f).fillMaxWidth())
+                    else WebConversation(shown, shownState, Modifier.weight(1f).fillMaxWidth())
                 }
                 if (side == null) {
                     Column(
@@ -240,188 +235,5 @@ private fun Conversation(
                 dismissButton = { TextButton(onClick = { asking = null }) { Text("Cancel") } },
             )
         }
-    }
-}
-
-/**
- * The rows, newest at the bottom. The list is laid out from the bottom
- * (reverseLayout), with what follows the transcript (messages on their way,
- * Working…) as its first item, so:
- * - it opens at its end, with nothing to settle or jump to;
- * - at the end, rows arriving go in above that first item and the view stays
- *   anchored to it: the conversation follows without a scroll;
- * - a row changing height (a reply growing, a tool's result) moves what's above
- *   it, never what's at the bottom;
- * - earlier messages page in at the far end, so what you're reading stays put;
- * - scrolled up, the view stays anchored to the row you're on, by key.
- */
-@Composable
-private fun Conversation(session: AgentSession, state: AgentViewState, modifier: Modifier) {
-    val c = LocalAgentColors.current
-    val list = rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val items = state.items
-    val n = items.size
-    val density = LocalDensity.current
-    val showAt = with(density) { 350.dp.toPx() }
-    val hideAt = with(density) { 150.dp.toPx() }
-    var latest by remember { mutableStateOf(false) }
-
-    // Latest once well up from the end; gone again near it (a gap between the
-    // two, so it doesn't flicker at the line).
-    LaunchedEffect(list) {
-        snapshotFlow { gapToEnd(list) }.distinctUntilChanged().collect { gap ->
-            if (gap > showAt) latest = true else if (gap < hideAt) latest = false
-        }
-    }
-    // While scrolled up: how many rows have come since you left the end (from
-    // the last one there was then), and whether the agent finished or asked
-    // you something meanwhile (a dot on Latest).
-    var seenLast by remember { mutableStateOf<String?>(null) }
-    var attention by remember { mutableStateOf(false) }
-    LaunchedEffect(latest) {
-        seenLast = if (latest) items.lastOrNull()?.id else null
-        attention = false
-    }
-    var wasWorking by remember { mutableStateOf(state.working) }
-    LaunchedEffect(state.working) {
-        if (wasWorking && !state.working && latest) attention = true
-        wasWorking = state.working
-    }
-    LaunchedEffect(state.prompt.kind) {
-        if (latest && state.prompt.kind != AgentPrompt.Kind.KIND_NONE) attention = true
-    }
-    // Sent while scrolled up: down to see it go.
-    var sent by remember { mutableStateOf(state.pendingSends.size) }
-    LaunchedEffect(state.pendingSends.size) {
-        if (state.pendingSends.size > sent && latest) list.scrollToItem(0)
-        sent = state.pendingSends.size
-    }
-    // A reply arriving at the end taller than what shows: to its first line,
-    // and no further (following it to its end left you at its last lines).
-    // It stops following there; Latest is for the rest.
-    val lastID = items.lastOrNull()?.id
-    LaunchedEffect(lastID) {
-        val last = items.lastOrNull() ?: return@LaunchedEffect
-        val b = last.block ?: return@LaunchedEffect
-        if (b.kind != AgentBlock.Kind.KIND_TEXT) return@LaunchedEffect
-        val arrived = session.arrived[b.id] ?: return@LaunchedEffect
-        if (System.currentTimeMillis() - arrived > 2000 || list.firstVisibleItemIndex > 1) return@LaunchedEffect
-        val info = withTimeoutOrNull(500) {
-            snapshotFlow { list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == last.id } }.first { it != null }
-        } ?: return@LaunchedEffect
-        val layout = list.layoutInfo
-        val viewport = layout.viewportSize.height - layout.beforeContentPadding - layout.afterContentPadding
-        val over = info.size - viewport + with(density) { 24.dp.toPx() }.toInt()
-        if (over > 0) list.animateScrollToItem(info.index, over)
-    }
-
-    // Dragging the conversation down puts the keyboard away, as on the iPhone
-    // (there it follows the finger; here it goes once the drag does).
-    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val focus = androidx.compose.ui.platform.LocalFocusManager.current
-    val hideOnDrag = remember(keyboard, focus) {
-        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
-            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
-                if (source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput && available.y > 4f) {
-                    keyboard?.hide()
-                    focus.clearFocus()
-                }
-                return androidx.compose.ui.geometry.Offset.Zero
-            }
-        }
-    }
-
-    Box(modifier) {
-        LazyColumn(
-            state = list,
-            reverseLayout = true,
-            modifier = Modifier.fillMaxSize().nestedScroll(hideOnDrag),
-            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-            // A short conversation starts at the top, under the bar, as on the iPhone.
-            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
-        ) {
-            item(key = "tail", contentType = "tail") { Centered { Tail(session, state) } }
-            items(n, key = { items[n - 1 - it].id }, contentType = { items[n - 1 - it].kind }) { i ->
-                Centered(Modifier.animateItem(fadeInSpec = tween(220), placementSpec = null, fadeOutSpec = null)) {
-                    AgentRow(items[n - 1 - i], session)
-                }
-            }
-            if (state.hasMore) {
-                // On tap only: loading as it appears could chain through the
-                // whole history whenever the list is laid out from the top.
-                item(key = "earlier", contentType = "earlier") {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        TextButton(onClick = session::loadEarlier, enabled = !state.loadingOlder) {
-                            Text(if (state.loadingOlder) "Loading…" else "Show earlier messages")
-                        }
-                    }
-                }
-            }
-            if (state.blocks.isEmpty() && state.error.isNotEmpty()) {
-                item(key = "empty", contentType = "empty") { Empty("No conversation yet", state.error) }
-            } else if (state.blocks.isEmpty() && !state.heard) {
-                item(key = "loading", contentType = "empty") {
-                    Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp)) }
-                }
-            }
-        }
-        AnimatedVisibility(
-            latest, enter = fadeIn() + scaleIn(initialScale = 0.6f), exit = fadeOut() + scaleOut(targetScale = 0.6f),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
-        ) {
-            val n = seenLast?.let { id -> items.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { items.size - 1 - it } } ?: 0
-            BadgedBox(badge = { if (attention) Badge(containerColor = c.accent) }) {
-                ExtendedFloatingActionButton(
-                    onClick = { scope.launch { list.animateScrollToItem(0) } },
-                    icon = { Icon(Icons.Outlined.ArrowDownward, null) },
-                    text = {
-                        AnimatedContent(n, transitionSpec = { (fadeIn() togetherWith fadeOut()).using(SizeTransform(clip = false)) }, label = "new") { k ->
-                            Text(if (k > 0) "$k new" else "Latest")
-                        }
-                    },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = c.accent,
-                    modifier = Modifier.semantics {
-                        contentDescription = (if (n > 0) "Jump to the latest, $n new" else "Jump to the latest") +
-                            if (attention) ", ${session.agentName} needs you" else ""
-                    },
-                )
-            }
-        }
-    }
-}
-
-/** Roughly how far the view is from the end of the conversation, in pixels. */
-private fun gapToEnd(list: LazyListState): Float = when (list.firstVisibleItemIndex) {
-    0 -> list.firstVisibleItemScrollOffset.toFloat()
-    // The tail (often empty) is below: about what's scrolled into the row past it.
-    1 -> list.firstVisibleItemScrollOffset.toFloat() + 60f
-    else -> Float.MAX_VALUE
-}
-
-/** A row at the conversation's reading width, centred on a wide screen. */
-@Composable
-private fun Centered(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-        Box(Modifier.widthIn(max = 860.dp).fillMaxWidth()) { content() }
-    }
-}
-
-/** What follows the transcript: messages on their way, and what the agent's doing. */
-@Composable
-private fun Tail(session: AgentSession, state: AgentViewState) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // A "!" command runs at once, and the transcript only has it when it's
-        // done: shown running, as it then will be, with what it's printed so far
-        // (the first one waiting is the one running).
-        val running = state.pendingSends.firstOrNull { it.isBang }?.id
-        for (p in state.pendingSends) {
-            key(p.id) {
-                val run = p.bangRun(if (p.id == running) state.bangOutput else "")
-                if (run != null) ToolRow(run, session) else UserBubble(p.text, "", emptyList(), p.attachments, session, pending = true)
-            }
-        }
-        AnimatedVisibility(state.working, enter = fadeIn(tween(250)), exit = fadeOut(tween(0))) { WorkingRow(state.status) }
     }
 }

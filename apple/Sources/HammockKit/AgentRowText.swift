@@ -211,3 +211,25 @@ extension ToolSummary {
         return input
     }
 }
+
+/// A turn's end, as Claude Code says it: "Worked for 30m 31s · done 9:47 AM".
+enum TurnWords {
+    /// "Worked for 30m 31s · done 9:47 AM", with the day too when it wasn't today.
+    static func words(durationMs: Int64, doneUnixMs: Int64, now: Date = .now) -> String {
+        var s = "Worked for " + duration(ms: durationMs)
+        if doneUnixMs > 0 {
+            let done = Date(timeIntervalSince1970: TimeInterval(doneUnixMs) / 1000)
+            let same = Calendar.current.isDate(done, inSameDayAs: now)
+            s += " · done " + done.formatted(date: same ? .omitted : .abbreviated, time: .shortened)
+        }
+        return s
+    }
+
+    /// "45s", "30m 31s", "2h 5m".
+    static func duration(ms: Int64) -> String {
+        let s = max(Int(ms / 1000), 0)
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s / 60)m \(s % 60)s" }
+        return "\(s / 3600)h \((s % 3600) / 60)m"
+    }
+}

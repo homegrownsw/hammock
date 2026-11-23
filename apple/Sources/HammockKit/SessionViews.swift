@@ -137,21 +137,7 @@ public struct PastSessionView: View {
     public var body: some View {
         VStack(spacing: 0) {
             if let agent {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        if agent.hasMore {
-                            Button(agent.loadingOlder ? "Loading…" : "Show earlier messages") { agent.loadOlder() }
-                                .buttonStyle(.borderless)
-                                .frame(maxWidth: .infinity)
-                        }
-                        ForEach(agent.items) { item in
-                            AgentItemView(item: item, session: agent).equatable().id(item.id)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                }
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                AgentPage(session: agent)
             } else if !failed.isEmpty {
                 ContentUnavailableView("Can’t read this session", systemImage: "exclamationmark.bubble", description: Text(failed))
             } else {

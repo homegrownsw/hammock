@@ -309,13 +309,6 @@ struct AgentViewSettings: View {
                 }
                 .settingAnchor("agentview.codewrap")
             }
-            Section("Drawing") {
-                Picker("Conversation drawn by", selection: prefs.stringBinding(.agentRenderer)) {
-                    Text("SwiftUI").tag("native")
-                    Text("WebKit (experimental)").tag("web")
-                }
-                .settingAnchor("agentview.renderer")
-            }
             Section("Preview") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Here's the plan: **two** small changes, then a test run.")

@@ -225,18 +225,9 @@ enum DebugSnapshot {
                 render(PromptCardSample(model: model, kind: kind), size: NSSize(width: 520, height: kind == "preview" ? 640 : kind == "tasks" ? 640 : 460), to: "\(prefix)-prompt")
             }
         }
-        // HMK_DEBUG_CODEBLOCKS=1: code blocks with long lines, wrapped and
-        // not, and a Markdown one as source and rendered (CodeBlockSample),
-        // rendered to <prefix>-code-<light|dark>.png.
-        if env["HMK_DEBUG_CODEBLOCKS"] != nil, let prefix = env["HMK_DEBUG_SNAPSHOT"] {
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(1))
-                render(CodeBlockSample(), size: NSSize(width: 560, height: 1300), to: "\(prefix)-code")
-            }
-        }
-        // HMK_DEBUG_COMPOSER=<text>: "!" commands as the agent view shows
-        // them, over the composer with <text> typed (ComposerSample: start it
-        // with "!" for a shell command), to <prefix>-composer-<light|dark>.png.
+        // HMK_DEBUG_COMPOSER=<text>: the composer with <text> typed
+        // (ComposerSample: start it with "!" for a shell command), to
+        // <prefix>-composer-<light|dark>.png.
         // With HMK_DEBUG_DICTATION=1, being dictated: after a "|", not settled.
         if let typed = env["HMK_DEBUG_COMPOSER"], let prefix = env["HMK_DEBUG_SNAPSHOT"] {
             Task { @MainActor in

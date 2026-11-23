@@ -288,26 +288,6 @@ enum BubbleAttachment: Identifiable {
     }
 }
 
-/// A sent message's attachment above its bubble, with its number.
-struct AttachmentTile: View {
-    let attachment: BubbleAttachment
-    let number: Int
-    let session: AgentSession
-    var maxHeight: CGFloat = 220
-
-    var body: some View {
-        Group {
-            switch attachment {
-            case .remote(let i):
-                AgentImageView(ref: i.ref, session: session, maxHeight: maxHeight, mediaType: i.mediaType)
-            case .local(let id, let name, let data, let file):
-                LocalAttachmentView(id: id, name: name, data: data, file: file, maxHeight: maxHeight)
-            }
-        }
-        .overlay(alignment: .bottomLeading) { NumberBadge(number: number).padding(5).allowsHitTesting(false) }
-    }
-}
-
 /// An attachment's number, small, over its picture.
 struct NumberBadge: View {
     let number: Int
@@ -321,41 +301,6 @@ struct NumberBadge: View {
     }
 }
 
-/// An attachment sent from here, shown from its own data until the
-/// transcript has it.
-struct LocalAttachmentView: View {
-    let id: UUID
-    let name: String
-    let data: Data
-    var file: URL? = nil
-    var maxHeight: CGFloat = 220
-    @State private var image: PlatformImage?
-    @Environment(\.openAgentImage) private var open
-    @Environment(\.previewGroup) private var group
-
-    var body: some View {
-        Group {
-            if let image {
-                #if os(macOS)
-                Image(nsImage: image).resizable().scaledToFit()
-                #else
-                Image(uiImage: image).resizable().scaledToFit()
-                #endif
-            } else {
-                RoundedRectangle(cornerRadius: 10).fill(.quaternary).frame(width: 120, height: 80)
-            }
-        }
-        .frame(maxHeight: maxHeight)
-        .overlay { if isVideoName(name) { PlayBadge() } }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .task(id: id) { image = await ImageResize.thumbnail(data, name: name, file: file, maxPixels: 800) }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            openAttachment(PreviewItem(key: id.uuidString, name: name, file: file) { data }, group: group, image: image, video: isVideoName(name), open: open)
-        }
-    }
-}
-
 /// A video's play button, over its first frame.
 struct PlayBadge: View {
     var body: some View {
@@ -365,45 +310,5 @@ struct PlayBadge: View {
             .frame(width: 40, height: 40)
             .background(.black.opacity(0.45), in: Circle())
             .allowsHitTesting(false)
-    }
-}
-
-/// A sent message's text with its attachments' chips where they were.
-struct RichBubbleText: View {
-    let rich: String
-    let attachments: [BubbleAttachment]
-    let session: AgentSession
-    @Environment(\.agentFonts) private var fonts
-    @Environment(\.colorScheme) private var scheme
-    @State private var thumbs: [String: PlatformImage] = [:]
-
-    var body: some View {
-        text
-            .task(id: attachments.map(\.id)) {
-                for a in attachments where thumbs[a.id] == nil {
-                    if let t = await a.thumbnail(session) { thumbs[a.id] = t }
-                }
-            }
-    }
-
-    private var text: Text {
-        let parts = rich.split(separator: attachMark, omittingEmptySubsequences: false)
-        var s = LocalizedStringKey.StringInterpolation(literalCapacity: 0, interpolationCount: parts.count * 2)
-        for (k, part) in parts.enumerated() {
-            if !part.isEmpty { s.appendInterpolation(Text(Markdown.inline(String(part)))) }
-            guard k < parts.count - 1 else { continue }
-            if k < attachments.count {
-                let a = attachments[k]
-                if let img = ChipRenderer.image(number: k + 1, thumbnail: thumbs[a.id], thumbKey: a.id, isVideo: a.isVideo, onBubble: true,
-                                                fontSize: CGFloat(fonts.size), accent: .white, dark: scheme == .dark) {
-                    #if os(macOS)
-                    s.appendInterpolation(Text(Image(nsImage: img)).baselineOffset(-CGFloat(fonts.size) * 0.22))
-                    #else
-                    s.appendInterpolation(Text(Image(uiImage: img)).baselineOffset(-CGFloat(fonts.size) * 0.22))
-                    #endif
-                }
-            }
-        }
-        return Text(LocalizedStringKey(stringInterpolation: s))
     }
 }
