@@ -389,7 +389,7 @@ extension AgentWebBridge {
         let f = st.fonts
         let body = Self.font(f.name, f.size, mono: false)
         let code = Self.font(f.codeName, f.codeSize, mono: true)
-        let bodyLine = Self.lineHeight(body)
+        let bodyLine = Self.lineHeight(body, f.body())
         return [
             "platform": platform,
             "codeWrap": f.codeWrap,
@@ -404,7 +404,7 @@ extension AgentWebBridge {
                 "gap": bodyLine * 0.45 + f.spacing,
                 "code": f.codeName.isEmpty ? "ui-monospace, \"SF Mono\", Menlo, monospace" : "\"\(f.codeName)\", ui-monospace, Menlo, monospace",
                 "codeSize": f.codeSize,
-                "codeLineHeight": Self.lineHeight(code),
+                "codeLineHeight": Self.lineHeight(code, f.code()),
                 "spacing": f.spacing,
             ],
             // A sample's width in the native fonts: the page matches its tracking to it.
@@ -431,7 +431,10 @@ extension AgentWebBridge {
         if !name.isEmpty, let f = NSFont(name: name, size: size) { return f }
         return mono ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size)
     }
-    private static func lineHeight(_ f: NSFont) -> Double { Double(f.ascender - f.descender + f.leading) }
+    /// A line as SwiftUI lays it out, which on the Mac is rounded to a whole point (19 for 15pt SF, not 17.7).
+    private static func lineHeight(_ f: NSFont, _ font: Font) -> Double {
+        Double(NSHostingView(rootView: Text("Hg").font(font).fixedSize()).fittingSize.height)
+    }
     private static let metrics: [String: Double] = [
         "caption": Double(NSFont.preferredFont(forTextStyle: .caption1).pointSize),
         "caption2": Double(NSFont.preferredFont(forTextStyle: .caption2).pointSize),
@@ -443,7 +446,7 @@ extension AgentWebBridge {
         if !name.isEmpty, let f = UIFont(name: name, size: size) { return f }
         return mono ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size)
     }
-    private static func lineHeight(_ f: UIFont) -> Double { Double(f.lineHeight) }
+    private static func lineHeight(_ f: UIFont, _ font: Font) -> Double { Double(f.lineHeight) }
     private static var metrics: [String: Double] {
         [
             "caption": Double(UIFont.preferredFont(forTextStyle: .caption1).pointSize),

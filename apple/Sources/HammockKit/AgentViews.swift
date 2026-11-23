@@ -579,7 +579,7 @@ public struct AgentConversationView: View {
             strips(s)
             ZStack(alignment: .bottom) {
                 AgentWebTranscript(bridge: web.bridge)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea(edges: .vertical)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { web.page = $0; web.pushInsets() }
                 bottomBar(s)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { web.bar = $0; web.pushInsets() }
