@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Refuses a commit whose staged Go files gofmt would change, as `just vet` (and so CI) does.
+# Installed by `just deps` and `just worktree` (core.hooksPath = .githooks).
+set -euo pipefail
+
+bad=()
+while IFS= read -r -d '' f; do
+  # The staged copy, not the working tree's.
+  if [ -n "$(git show ":$f" | gofmt -l)" ]; then bad+=("$f"); fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.go')
+
+if [ ${#bad[@]} -gt 0 ]; then
+  echo "pre-commit: gofmt would change:" >&2
+  printf '  %s\n' "${bad[@]}" >&2
+  echo "Run gofmt -w on them and stage them again." >&2
+  exit 1
+fi
