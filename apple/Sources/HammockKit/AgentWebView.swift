@@ -53,13 +53,17 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         conf.userContentController = ucc
         BundledFonts.addFontFaces(to: ucc, page: "agent")
         #if os(macOS)
-        webView = AgentPageView(frame: .zero, configuration: conf)
+        let pageView = AgentPageView(frame: .zero, configuration: conf)
+        webView = pageView
         #else
         webView = WKWebView(frame: .zero, configuration: conf)
         #endif
         super.init()
         ucc.add(AgentWeakHandler(self), name: "hammock")
         webView.navigationDelegate = self
+        #if os(macOS)
+        pageView.onWindow = { [weak self] in self?.applyObscured() }
+        #endif
         #if os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
         #else
@@ -113,9 +117,8 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         // view's safe area does: the page lays out between them and scrolls
         // under them, and its scroller stops at them.
         if #available(macOS 26.0, *) {
-            let wanted = NSEdgeInsets(top: t, left: 0, bottom: b, right: 0)
-            let now = webView.obscuredContentInsets
-            if now.top != wanted.top || now.bottom != wanted.bottom { webView.obscuredContentInsets = wanted }
+            obscured = (t, b)
+            applyObscured()
             t = 0; b = 0
         }
         #endif
@@ -123,6 +126,20 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         insets = (t, b)
         if ready { call("hammock.setInsets(i)", ["i": ["top": t, "bottom": b]]) }
     }
+
+    #if os(macOS)
+    /// The bars' insets, which WebKit forgets when the view leaves its window
+    /// (a renderer switched, a pane moved): set again when it's back.
+    private var obscured: (top: CGFloat, bottom: CGFloat) = (0, 0)
+
+    func applyObscured() {
+        guard #available(macOS 26.0, *) else { return }
+        let now = webView.obscuredContentInsets
+        if now.top != obscured.top || now.bottom != obscured.bottom {
+            webView.obscuredContentInsets = NSEdgeInsets(top: obscured.top, left: 0, bottom: obscured.bottom, right: 0)
+        }
+    }
+    #endif
 
     /// The director's commands (AgentDebug).
     func debug(_ cmd: String, _ arg: String) { if ready { call("hammock.debug(c, a)", ["c": cmd, "a": arg]) } }
@@ -315,6 +332,9 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case "ready":
             // Loaded (or loaded again): it has nothing, so everything goes.
             ready = true
+            #if os(macOS)
+            applyObscured()
+            #endif
             if let style { call("hammock.configure(c)", ["c": Self.config(style)]) }
             if insets.top >= 0 { call("hammock.setInsets(i)", ["i": ["top": insets.top, "bottom": insets.bottom]]) }
             push(replace: true)
@@ -696,6 +716,14 @@ struct AgentWebTranscript: NSViewRepresentable {
 
 /// The page's web view, without the menu's Reload (the page is the app's, not a site).
 final class AgentPageView: WKWebView {
+    /// Back in a window: the bridge sets its insets again.
+    var onWindow: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { onWindow?() }
+    }
+
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         menu.items.removeAll { $0.identifier?.rawValue == "WKMenuItemIdentifierReload" }
         super.willOpenMenu(menu, with: event)

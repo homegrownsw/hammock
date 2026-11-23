@@ -21,6 +21,8 @@ import UIKit
 ///   scroll:top|bottom|latest|N  the conversation on screen scrolled to its top, its end (latest: as its Latest
 ///                       button does), or by N points (up if negative)
 ///   older:PANE          PANE's earlier messages loaded, as Show Earlier Messages does
+///   agent:CMD:ARG       the agent view on screen: show:ID (that row at the top), toggle:ID (opened or closed),
+///                       end, list:FILE (its rows, to FILE in the app's temporary folder); AgentDebug
 ///   pane:PANE           the tab on screen switches to PANE, as tapping its pill does
 ///   expose              the tab on screen opens Exposé, as its button does
 ///   pick:PANE           Exposé goes to PANE, as tapping its tile does
@@ -81,6 +83,8 @@ enum DemoDirector {
             NotificationCenter.default.post(name: Notification.Name("HammockDebugCompose"), object: nil, userInfo: ["pane": arg])
         case "scroll":
             NotificationCenter.default.post(name: Notification.Name("HammockDebugScroll"), object: nil, userInfo: ["to": arg])
+        case "agent":
+            AgentDebug.send(arg, rest)
         case "older":
             let s = model.acquireAgent(arg)
             s.loadOlder()

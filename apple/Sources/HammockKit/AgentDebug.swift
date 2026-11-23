@@ -24,6 +24,8 @@ public enum AgentDebug {
             let text = (item.block?.text ?? item.tools.first?.title ?? "").prefix(60).replacingOccurrences(of: "\n", with: " ")
             return "\(i)\t\(kind)\t\(item.id)\t\(text)"
         }
-        try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        // A bare name: in the app's temporary folder (the iPhone's demo can't write elsewhere).
+        let file = path.hasPrefix("/") ? path : NSTemporaryDirectory() + path
+        try? lines.joined(separator: "\n").write(toFile: file, atomically: true, encoding: .utf8)
     }
 }
