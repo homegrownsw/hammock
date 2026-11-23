@@ -435,7 +435,7 @@ private fun ToolGroup(id: String, tools: List<AgentBlock>, session: AgentSession
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).clickable { session.setOpen(id, !open) }.padding(vertical = 3.dp)
                 .clearAndSetSemantics {
-                    contentDescription = listOfNotNull(summary, failed, if (tools.any { it.pending }) "running" else null).joinToString(", ")
+                    contentDescription = listOfNotNull(summary, failed, tools.last().title.ifEmpty { null }, if (tools.any { it.pending }) "running" else null).joinToString(", ")
                     stateDescription = if (open) "Expanded" else "Collapsed"
                     role = Role.Button
                     onClick(if (open) "Close" else "Open") { session.setOpen(id, !open); true }
@@ -449,7 +449,8 @@ private fun ToolGroup(id: String, tools: List<AgentBlock>, session: AgentSession
             )
             failed?.let { Text("· $it", style = MaterialTheme.typography.bodyMedium, color = c.warning, maxLines = 1) }
             val last = tools.last()
-            if (last.pending) {
+            // What it's doing, or last did (a command's description), as the terminal shows.
+            if (last.title.isNotEmpty()) {
                 Text(
                     "· " + last.title, style = MaterialTheme.typography.bodyMedium, color = c.tertiary, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),

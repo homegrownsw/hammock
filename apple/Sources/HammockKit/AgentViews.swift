@@ -2188,7 +2188,8 @@ struct ToolGroup: View {
                     if let failed = ToolSummary.failed(tools) {
                         Text("· " + failed).foregroundStyle(.orange).lineLimit(1).fixedSize().layoutPriority(2)
                     }
-                    if let last = tools.last, last.pending {
+                    // What it's doing, or last did (a command's description), as the terminal shows.
+                    if let last = tools.last, !last.title.isEmpty {
                         Text("· " + last.title).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
                     }
                     Spacer(minLength: 4)
@@ -2202,7 +2203,7 @@ struct ToolGroup: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel([summary, ToolSummary.failed(tools), tools.contains(where: \.pending) ? "running" : nil, open ? "expanded" : "collapsed"]
+            .accessibilityLabel([summary, ToolSummary.failed(tools), tools.last?.title, tools.contains(where: \.pending) ? "running" : nil, open ? "expanded" : "collapsed"]
                 .compactMap { $0 }.joined(separator: ", "))
             if open {
                 VStack(alignment: .leading, spacing: 2) {

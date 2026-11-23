@@ -319,7 +319,8 @@ function groupRow(r) {
   let h = `<button class="head" data-toggle="${esc(r.id)}"><span class="icon">${sym("square.stack.3d.up")}</span>` +
     `<span class="title">${esc(r.summary)}</span>` +
     (r.failed ? `<span class="fail">· ${esc(r.failed)}</span>` : "") +
-    (last?.pending ? `<span class="last mid">· ${inlineText(last.title)}</span>` : "") +
+    // What it's doing, or last did (a command's description), as the terminal shows.
+    (last?.title ? `<span class="last mid">· ${inlineText(last.title)}</span>` : "") +
     `<span class="spacer"></span>` +
     (running ? `<span class="st">${runningTime(running.time)}<span class="spin"></span></span>` : "") + chev(open) + `</button>`
   let body = ""
