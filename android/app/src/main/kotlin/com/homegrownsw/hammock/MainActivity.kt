@@ -53,6 +53,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
      * A debug build pairs straight from `adb shell am start … --es pair <link>`
      * (android/scripts/dev-daemon.sh), and opens into the demo with --ez sample
      * true (docs/debug-hooks.md), whether it's starting or already open.
+     * --es agentRenderer web|native picks what draws agent conversations.
      */
     private fun debugExtras(intent: Intent) {
         if (!BuildConfig.DEBUG) return
@@ -60,6 +61,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         intent.getStringExtra("pair")?.let { session.pair(it) }
         // A feed for the update check to try (UpdateCheck), as a release build would read its own.
         intent.getStringExtra("updateFeed")?.let { UpdateCheck.feedOverride = it; UpdateCheck.check(this) }
+        // What draws agent conversations (Settings ▸ Text ▸ Conversation drawn by): native or web.
+        intent.getStringExtra("agentRenderer")?.let { Prefs.of(this).edit().putString(Prefs.AGENT_RENDERER, it).apply() }
         if (intent.getBooleanExtra("sample", false)) {
             session.startDemo(com.homegrownsw.hammock.demo.DemoDaemon(
                 longChat = intent.getBooleanExtra("longChat", false), newChat = intent.getBooleanExtra("newChat", false),

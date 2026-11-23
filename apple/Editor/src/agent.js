@@ -66,12 +66,34 @@ function configure(c) {
     if (!style) { style = document.createElement("style"); style.id = "symbols"; document.head.appendChild(style) }
     style.textContent = css
   }
-  document.body.classList.toggle("touch", cfg.platform === "ios")
+  document.body.classList.toggle("touch", cfg.platform !== "mac")
+  if (c.scheme) setScheme(c.scheme)
   document.body.classList.toggle("mac", cfg.platform === "mac")
   if (c.fonts || c.codeWrap || c.canOpenDiff != null) rebuildAll()
   // Lines cut in the middle are cut again in these fonts.
   fitWidth = -1
   requestAnimationFrame(contentResized)
+}
+
+/**
+ * Light or dark as the app says, not the WebView: Android's follows the
+ * system, and the app has its own setting. The page's dark rules (media
+ * queries) then apply always, or never.
+ */
+const mediaWas = new WeakMap()
+function setScheme(scheme) {
+  for (const sheet of document.styleSheets) {
+    let rules
+    try { rules = sheet.cssRules } catch { continue }
+    for (const rule of rules) {
+      if (!(rule instanceof CSSMediaRule)) continue
+      if (!mediaWas.has(rule)) mediaWas.set(rule, rule.media.mediaText)
+      const was = mediaWas.get(rule)
+      if (!was.includes("prefers-color-scheme: dark")) continue
+      rule.media.mediaText = scheme === "dark" ? was.replace(/\(prefers-color-scheme: dark\)/, "all") : "not all"
+    }
+  }
+  document.documentElement.style.colorScheme = scheme
 }
 
 const cls = (name) => name.replace(/\./g, "-")
@@ -169,7 +191,9 @@ function markdown(text) {
 
 /** One line of Markdown, without links (a row you tap as a whole). */
 function inlineText(s) {
-  return md.renderInline(s || "").replace(/<a [^>]*>|<\/a>/g, "")
+  // One line (a title): no links, and no breaks after "/" (Chromium breaks at
+  // <wbr> even where white-space is nowrap).
+  return md.renderInline(s || "").replace(/<a [^>]*>|<\/a>|<wbr>/g, "")
 }
 
 /** One line or more, with links (your messages). */

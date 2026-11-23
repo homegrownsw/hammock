@@ -24,6 +24,8 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     api(project(":client"))
+    // The web-drawn conversation: the page and its WebView host (PageBridge).
+    implementation(project(":panes"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)

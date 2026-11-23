@@ -1,6 +1,7 @@
 // Editor, diff and log panes. Editor and diff panes show the same CodeMirror
 // pages as the Mac and the iPhone (apple/Resources/editor.html and
-// diff.html) in a WebView; log panes are drawn natively.
+// diff.html) in a WebView; log panes are drawn natively. The agent view's
+// page (agent.html) is served from here too, for the agentview module.
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -43,7 +44,7 @@ abstract class CopyPages : DefaultTask() {
 }
 
 val copyPages = tasks.register<CopyPages>("copyEditorPages") {
-    pages.from(rootProject.file("../apple/Resources/editor.html"), rootProject.file("../apple/Resources/diff.html"), rootProject.file("../apple/Resources/files.html"))
+    pages.from(rootProject.file("../apple/Resources/editor.html"), rootProject.file("../apple/Resources/diff.html"), rootProject.file("../apple/Resources/files.html"), rootProject.file("../apple/Resources/agent.html"))
     outputDir.set(layout.buildDirectory.dir("generated/hammockPages"))
 }
 

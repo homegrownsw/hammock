@@ -110,6 +110,7 @@ adb shell am start -n com.homegrownsw.hammock.dev/com.homegrownsw.hammock.MainAc
 | `--ez sample true` | Open straight into the demo, as the pairing screen's "See a demo". The others need it. |
 | `--ez longChat true` | As `HMK_DEBUG_LONG_CHAT=1`: the polish agent's long conversation, with a page before it, and Claude-like replies. |
 | `--ez newChat true` | As `HMK_DEBUG_NEW_CHAT=1`: the polish agent's conversation starts empty. |
+| `--es agentRenderer web\|native` | What draws agent conversations, as Settings ▸ Text ▸ Conversation drawn by sets it (kept). With `--es pane <id>`, opens that pane: `--es pane p_polish` for the demo's polish agent. |
 | `--es macTheme <name>\|custom` | As `HMK_DEBUG_MAC_THEME`: the sample Mac's theme. |
 | `--es hammockKey 1\|agent` | As `HMK_DEBUG_HMK_KEY`: the Mac's Hammock Key, this phone an approver, and a request waiting (`agent`: an agent's ssh login). |
 | `--es link down\|drop[:<s>]` | As `HMK_DEBUG_LINK`: the demo's computer can't be reached, never or from a moment after the app has its state. |

@@ -102,12 +102,14 @@ fun AgentConversation(
     onOpenFile: ((String) -> Unit)? = null,
     /** The pane on screen (not a neighbouring page): its prompt card may take a hardware keyboard's keys by itself. */
     active: Boolean = true,
+    /** What draws the rows: "native" (Compose) or "web" (the Mac's and iPhone's page, WebConversation). */
+    renderer: String = "native",
 ) {
     val base = MaterialTheme.typography
     val typography = remember(base, fonts) { base.forAgent(fonts) }
     MaterialTheme(colorScheme = MaterialTheme.colorScheme, shapes = MaterialTheme.shapes, typography = typography) {
         CompositionLocalProvider(LocalAgentFonts provides fonts) {
-            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile, active)
+            Conversation(session, canDrive, onOpenTerminal, modifier, agentAccent, bubble, imageSize, onOpenFile, active, renderer)
         }
     }
 }
@@ -123,6 +125,7 @@ private fun Conversation(
     imageSize: AttachmentSize,
     onOpenFile: ((String) -> Unit)?,
     active: Boolean,
+    renderer: String,
 ) {
     val colors = rememberAgentColors(agentAccent, bubble)
     DisposableEffect(session) {
@@ -198,8 +201,11 @@ private fun Conversation(
                 val shown = side ?: session
                 key(shown) {
                     val shownState = if (side == null) state else side.state.collectAsStateWithLifecycle().value
-                    if (shown.shellID.isNotEmpty()) ShellOutputView(shownState, Modifier.weight(1f).fillMaxWidth())
-                    else Conversation(shown, shownState, Modifier.weight(1f).fillMaxWidth())
+                    when {
+                        shown.shellID.isNotEmpty() -> ShellOutputView(shownState, Modifier.weight(1f).fillMaxWidth())
+                        renderer == "web" -> WebConversation(shown, shownState, Modifier.weight(1f).fillMaxWidth())
+                        else -> Conversation(shown, shownState, Modifier.weight(1f).fillMaxWidth())
+                    }
                 }
                 if (side == null) {
                     Column(

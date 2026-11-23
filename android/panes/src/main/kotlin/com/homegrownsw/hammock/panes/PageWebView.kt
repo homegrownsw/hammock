@@ -29,7 +29,7 @@ import java.io.ByteArrayInputStream
  * reaches the network for (WebViewAssetLoader's convention), so the pages
  * have an origin of their own and the message listener can be held to it.
  */
-internal object PageAssets {
+object PageAssets {
     const val HOST = "appassets.androidplatform.net"
     const val ORIGIN = "https://$HOST"
     fun url(page: String) = "$ORIGIN/hammock/$page"
@@ -92,7 +92,7 @@ internal object PageAssets {
  * files). Everything here runs on the main thread.
  */
 @SuppressLint("SetJavaScriptEnabled")
-internal class PageBridge(
+class PageBridge(
     context: Context,
     private val page: String,
     background: Int,
