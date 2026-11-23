@@ -820,3 +820,74 @@ func TestDevPairing(t *testing.T) {
 		t.Fatalf("an agent in its pane: %v", err)
 	}
 }
+
+// Someone logged into this computer directly (a terminal outside Hammock's
+// panes, nothing of an agent's above it) turns remote access off and on
+// without asking: on a server, what would answer may be reached only
+// through remote access. A pane's shell, a program with no terminal and
+// one scoped as an agent still ask; anything else only you may do asks too.
+func TestDirectLoginTurnsRemoteAccessOffAndOn(t *testing.T) {
+	tc := startComputer(t)
+	d, dir := tc.d, tc.dir
+	d.mu.Lock()
+	// Something paired: what only you may do asks you (not the bootstrap).
+	if err := d.store.PutDevice(state.Device{ID: "dv_x", Name: "Phone", PublicKey: make([]byte, 32), Paired: time.Now(), LastSeen: time.Now()}); err != nil {
+		d.mu.Unlock()
+		t.Fatal(err)
+	}
+	d.closeBootstrap("test")
+	d.mu.Unlock()
+	asPerson(t, nobody)
+	tty := true
+	hasTTY = func(int) bool { return tty }
+	defer func() { hasTTY = func(pid int) bool { return procinfo.TTY(pid) >= 0 } }()
+	remote := func(on bool) *pb.ClientMessage {
+		return &pb.ClientMessage{Msg: &pb.ClientMessage_SetRemoteAccess{SetRemoteAccess: &pb.SetRemoteAccess{Enabled: on}}}
+	}
+	isOn := func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.remote.on
+	}
+	asks := func(c *client.Client, m *pb.ClientMessage, who string) {
+		t.Helper()
+		seen := map[string]bool{}
+		d.mu.Lock()
+		for id := range d.grants {
+			seen[id] = true
+		}
+		d.mu.Unlock()
+		go try(c, m)
+		req := personGrant(t, d, seen)
+		d.mu.Lock()
+		d.resolveGrant(req.Id, pb.RespondGrant_DECISION_DENY, "")
+		d.mu.Unlock()
+		if !isOn() {
+			t.Fatalf("%s: turned off without asking", who)
+		}
+	}
+
+	// Logged in: off, then on again, at once.
+	asPlain(t, func(cl *caller, _ int) bool { return cl == nil })
+	login := dialAs(t, dir, nil, "cli")
+	if _, err := try(login, remote(false)); err != nil || isOn() {
+		t.Fatalf("logged in, off: %v (on: %v)", err, isOn())
+	}
+	if _, err := try(login, remote(true)); err != nil || !isOn() {
+		t.Fatalf("logged in, on: %v (on: %v)", err, isOn())
+	}
+	// Anything else only you may do still asks.
+	asks(login, &pb.ClientMessage{Msg: &pb.ClientMessage_CreatePairing{CreatePairing: &pb.CreatePairing{}}}, "a pairing code")
+
+	// A pane's shell asks.
+	asPlain(t, inPaneShell)
+	shell := dialAs(t, dir, &caller{pane: "pn_x", direct: true}, "cli")
+	asks(shell, remote(false), "a pane's shell")
+	// So does one with no terminal, and one scoped as an agent.
+	asPlain(t, func(cl *caller, _ int) bool { return cl == nil })
+	tty = false
+	asks(dialAs(t, dir, nil, "cli"), remote(false), "no terminal")
+	tty = true
+	asPlain(t, nobody)
+	asks(dialAs(t, dir, nil, "cli"), remote(false), "scoped as an agent")
+}

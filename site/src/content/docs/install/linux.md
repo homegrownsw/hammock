@@ -46,6 +46,10 @@ On a VPS without Tailscale, choose its public subnet. Every computer and device 
 anyone who can reach the port can knock. `hmk remote address add HOST[:PORT]` gives out a DNS name or a forwarded
 port as well.
 
+Once something is linked or paired, changes only you may make ask you on your Mac or phone. `hmk remote off` and
+`hmk remote on` don't, in a terminal you're logged in to over SSH or at the console (not in a Hammock pane), so a
+server your Mac can't reach can still be turned off and on again.
+
 ## Link your Mac
 
 On the server:

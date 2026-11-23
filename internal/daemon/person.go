@@ -177,7 +177,7 @@ func (c *conn) personCheck(msg *pb.ClientMessage) error {
 	if !strict && !personOnly(msg) {
 		return nil
 	}
-	if c.bootstrap(msg) {
+	if c.bootstrap(msg) || c.directLogin(msg) {
 		return nil
 	}
 	if strict {

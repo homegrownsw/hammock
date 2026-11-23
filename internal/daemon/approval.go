@@ -80,6 +80,33 @@ func (c *conn) askPerson(msg *pb.ClientMessage) error {
 	return errDeferred
 }
 
+// directLogin reports whether c may turn remote access on or off (msg)
+// without asking: someone logged into this computer directly, at its
+// console or over ssh. A program in a terminal outside Hammock's panes,
+// with no agent, pane or Hammock process above it (plainCaller: scope left
+// its caller unset), not sandboxed. On a server with no app, what only you
+// may do is answered on a linked computer, through its link to this one,
+// or on a phone: when remote access is what's broken, nothing could
+// answer turning it off and on again. Someone logged in could edit the
+// config and restart Hammock anyway. A pane's shell still asks: what's
+// typed there may not be yours. Read loop.
+func (c *conn) directLogin(msg *pb.ClientMessage) bool {
+	m := msg.GetSetRemoteAccess()
+	if m == nil || c.remote || c.peer != "" || c.sandboxed || c.caller != nil || c.pid <= 0 || !hasTTY(c.pid) {
+		return false
+	}
+	proc := c.originProcess() // (reads processes: not under d.mu)
+	d := c.d
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	what := "turned off remote access"
+	if m.Enabled {
+		what = "turned on remote access"
+	}
+	d.audit("local", "direct-login", "", what+" ("+d.origin(c, proc)+"): logged in to this computer")
+	return true
+}
+
 // runApproved handles msg once you've allowed it, and replies, as the read
 // loop would have.
 func (c *conn) runApproved(msg *pb.ClientMessage) {
