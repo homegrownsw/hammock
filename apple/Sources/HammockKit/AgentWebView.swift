@@ -52,6 +52,8 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         let ucc = WKUserContentController()
         conf.userContentController = ucc
         BundledFonts.addFontFaces(to: ucc, page: "agent")
+        // No Writing Tools button by a selection: the conversation is read, not edited.
+        if #available(macOS 15.0, iOS 18.0, *) { conf.writingToolsBehavior = .none }
         #if os(macOS)
         let pageView = AgentPageView(frame: .zero, configuration: conf)
         webView = pageView
@@ -233,6 +235,8 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case .user:
             r["kind"] = "user"
             r["text"] = b.text
+            // With a mark where each attachment sat, for its chip (RichBubbleText).
+            r["rich"] = b.richText
             r["images"] = b.images.map(\.ref)
         case .text:
             r["kind"] = "text"
@@ -498,6 +502,7 @@ extension AgentWebBridge {
             // A sample's width in the native fonts: the page matches its tracking to it.
             "calibrate": [
                 "body": ["text": Self.sample, "width": Self.width(Self.sample, body)],
+                "bold": ["text": Self.sample, "width": Self.width(Self.sample, Self.bold(body))],
                 "code": ["text": Self.sample, "width": Self.width(Self.sample, code)],
             ],
             "metrics": Self.metrics,
@@ -537,6 +542,7 @@ extension AgentWebBridge {
         return mono ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size)
     }
     /// A line as SwiftUI lays it out, which on the Mac is rounded to a whole point (19 for 15pt SF, not 17.7).
+    private static func bold(_ f: NSFont) -> NSFont { NSFontManager.shared.convert(f, toHaveTrait: .boldFontMask) }
     private static func lineHeight(_ f: NSFont, _ font: Font) -> Double {
         Double(NSHostingView(rootView: Text("Hg").font(font).fixedSize()).fittingSize.height)
     }
@@ -552,6 +558,9 @@ extension AgentWebBridge {
         return mono ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size)
     }
     private static func lineHeight(_ f: UIFont, _ font: Font) -> Double { Double(f.lineHeight) }
+    private static func bold(_ f: UIFont) -> UIFont {
+        f.fontDescriptor.withSymbolicTraits(.traitBold).map { UIFont(descriptor: $0, size: f.pointSize) } ?? f
+    }
     private static var metrics: [String: Double] {
         [
             "caption": Double(UIFont.preferredFont(forTextStyle: .caption1).pointSize),

@@ -38,11 +38,12 @@ function configure(c) {
   // Mono was 4% narrower). The app measured a sample in its own fonts: the
   // difference, spread over its letters, is the page's letter spacing.
   if (c.calibrate) {
-    for (const [key, family, size, prop] of [["body", f.family, f.size, "--track"], ["code", f.code, f.codeSize, "--code-track"]]) {
+    for (const [key, family, size, prop, weight] of [["body", f.family, f.size, "--track", 400], ["bold", f.family, f.size, "--bold-track", 700],
+                                                     ["code", f.code, f.codeSize, "--code-track", 400]]) {
       const cal = c.calibrate[key]
       if (!cal) continue
       const m = $("measure")
-      m.style.font = `${size}px ${family}`
+      m.style.font = `${weight} ${size}px ${family}`
       m.style.letterSpacing = "0px"
       m.textContent = cal.text
       const web = m.getBoundingClientRect().width
@@ -68,6 +69,9 @@ function configure(c) {
   document.body.classList.toggle("touch", cfg.platform === "ios")
   document.body.classList.toggle("mac", cfg.platform === "mac")
   if (c.fonts || c.codeWrap || c.canOpenDiff != null) rebuildAll()
+  // Lines cut in the middle are cut again in these fonts.
+  fitWidth = -1
+  requestAnimationFrame(contentResized)
 }
 
 const cls = (name) => name.replace(/\./g, "-")
@@ -89,6 +93,9 @@ function createMd() {
     return codeBlock(t.content.replace(/\n$/, ""), (t.info || "").trim().split(/\s/)[0])
   }
   md.renderer.rules.code_block = (toks, i) => codeBlock(toks[i].content.replace(/\n$/, ""), "")
+  // A path in code can break after a "/", as the native text's does.
+  md.renderer.rules.code_inline = (toks, i) => `<code>${esc(toks[i].content).replace(/\//g, "/<wbr>")}</code>`
+  md.renderer.rules.text = (toks, i) => esc(toks[i].content).replace(/\//g, "/<wbr>")
   md.renderer.rules.table_open = () => `<div class="tbl"><table>`
   md.renderer.rules.table_close = () => `</table></div>`
   md.renderer.rules.ordered_list_open = (toks, i) => {
@@ -255,10 +262,13 @@ function status(b) {
 // One chevron, turned down when open: it turns as the row opens (animateRow).
 const chev = (open, shown = true) => `<span class="chev${open ? " open" : ""}${shown ? "" : " none"}">${sym("chevron.right")}</span>`
 
-function pics(refs, max) {
+function pics(refs, max, numbered = false) {
   // A box, as AgentImageView: loading, then the picture (a video's first
-  // frame, with a play badge), or what it is when it can't be shown.
-  return refs.map((r) => `<span class="pic${isVideo(r) ? " video" : ""}" data-ref="${esc(r)}" style="--max:${max}px"><span class="spin"></span></span>`).join("")
+  // frame, with a play badge), or what it is when it can't be shown. A sent
+  // message's are numbered, as its chips say (AttachmentTile).
+  return refs.map((r, i) => `<span class="tile">` +
+    `<span class="pic${isVideo(r) ? " video" : ""}" data-ref="${esc(r)}" style="--max:${max}px"><span class="spin"></span></span>` +
+    (numbered ? `<span class="num">#${i + 1}</span>` : "") + `</span>`).join("")
 }
 
 function diffView(d, preview) {
@@ -322,9 +332,26 @@ function groupRow(r) {
 }
 
 function userRow(r, pending = false) {
-  const text = (r.text || "").replace(/￼/g, "")
-  return `<div class="user${pending ? " pending" : ""}">${pics(r.images || [], 200)}` +
-    (text.trim() ? `<div class="bubble${pending ? "" : " sel"}">${inlineLinked(text)}</div>` : "") + `</div>`
+  const refs = r.images || []
+  // Each attachment's chip where it sat in the text (RichBubbleText), when it says.
+  const rich = r.rich || ""
+  let body
+  if (rich.includes("￼")) {
+    const parts = rich.split("￼")
+    body = parts.map((p, k) => (p ? inlineLinked(p) : "") + (k < parts.length - 1 && k < refs.length ? chip(refs[k], k + 1) : "")).join("")
+  } else {
+    const text = (r.text || "").replace(/￼/g, "")
+    body = text.trim() ? inlineLinked(text) : ""
+  }
+  return `<div class="user${pending ? " pending" : ""}">${pics(refs, 200, true)}` +
+    (body ? `<div class="bubble${pending ? "" : " sel"}">${body}</div>` : "") + `</div>`
+}
+
+/** An attachment's chip in a sent message: its thumbnail and number (ChipLabel). */
+function chip(ref, n) {
+  const url = shown.has(ref) ? images.get(ref) : ""
+  const thumb = url ? `<img src="${url}" alt="">` : sym(isVideo(ref) ? "film" : "photo")
+  return `<span class="chip"><span class="ct" data-thumb="${esc(ref)}">${thumb}</span>#${n}</span>`
 }
 
 function thinkingRow(r) {
@@ -620,7 +647,7 @@ function contentResized() {
 }
 new ResizeObserver(contentResized).observe(mainEl)
 window.addEventListener("resize", contentResized)
-document.fonts?.ready.then(contentResized)
+document.fonts?.ready.then(() => { fitWidth = -1; contentResized() })
 
 // Your hand on it ends any glide; where you leave it decides following.
 // Only your hand: WebKit and UIKit move the page themselves too (putting a
@@ -762,6 +789,8 @@ function update(u) {
 const images = new Map() // ref → data URL
 const asked = new Set()
 
+/** Pictures that loaded, by ref. */
+const shown = new Set()
 const isVideo = (ref) => /\.(mp4|mov|m4v|webm)$/i.test(ref)
 
 function loadImages() {
@@ -782,6 +811,11 @@ function setImage(box, url) {
   const img = new Image()
   img.alt = ""
   img.addEventListener("load", () => {
+    // Shown: its chips in the message's text can show it too.
+    if (!shown.has(box.dataset.ref)) {
+      shown.add(box.dataset.ref)
+      for (const t of document.querySelectorAll(".ct[data-thumb]")) if (t.dataset.thumb === box.dataset.ref) t.innerHTML = `<img src="${url}" alt="">`
+    }
     box.classList.add("loaded")
     box.replaceChildren(img)
     if (box.classList.contains("video")) box.insertAdjacentHTML("beforeend", `<span class="play">${sym("play.fill")}</span>`)
