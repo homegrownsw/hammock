@@ -1356,6 +1356,12 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		defer d.mu.Unlock()
 		return nil, d.setRemoteAccess(m.SetRemoteAccess.Enabled)
 
+	case *pb.ClientMessage_RestartRemoteAccess:
+		d.warmRemote()
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return nil, d.restartRemote()
+
 	case *pb.ClientMessage_SetRemoteNetworks:
 		return nil, d.setRemoteNetworks(m.SetRemoteNetworks)
 
@@ -1956,7 +1962,7 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 			c.hangUp.Store(true)
 		}
 		return r, err, true
-	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_ShowPairing, *pb.ClientMessage_ListDevices, *pb.ClientMessage_RevokeDevice, *pb.ClientMessage_SetRemoteAccess, *pb.ClientMessage_SetRemoteNetworks,
+	case *pb.ClientMessage_CreatePairing, *pb.ClientMessage_ShowPairing, *pb.ClientMessage_ListDevices, *pb.ClientMessage_RevokeDevice, *pb.ClientMessage_SetRemoteAccess, *pb.ClientMessage_RestartRemoteAccess, *pb.ClientMessage_SetRemoteNetworks,
 		*pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_ListAudit, *pb.ClientMessage_BrowserCall, *pb.ClientMessage_BrowserLogs,
 		*pb.ClientMessage_ServerStatus, *pb.ClientMessage_EndScreenSession,
 		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup, *pb.ClientMessage_ConfigWritten, *pb.ClientMessage_HoldPane,

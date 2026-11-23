@@ -28,7 +28,7 @@ var gateExempt = map[string][]string{
 		"RespondJoin", "RespondLink", "ResumeSession", "RevokeDevice", "RevokeInvite", "RunSchedule",
 		"SaveSchedule", "ScreenInput", "ScreenSnapshot", "ServerStatus", "SessionExcerpts", "SetApprovalKey",
 		"SetColors", "SetComputerTint", "SetGroupFolder", "SetGroupIcon", "SetGroupIconImage", "SetProfile",
-		"SetRemoteAccess", "SetRemoteNetworks", "SetSchedulePaused", "ShowOutput", "ShowPairing", "ShutdownDaemon",
+		"SetRemoteAccess", "RestartRemoteAccess", "SetRemoteNetworks", "SetSchedulePaused", "ShowOutput", "ShowPairing", "ShutdownDaemon",
 		"SkipScheduleRun", "SshAgentCall", "SshSetup", "StopSharing", "UnlinkComputer",
 	},
 	// peer.go: the group, tab or pane a message is about, so a guest's daemon sends it to the host. Not named:
@@ -42,7 +42,7 @@ var gateExempt = map[string][]string{
 		"ReadSession", "RegisterPush", "ReopenClosed", "RequestGrant", "RespondHammockKey", "RespondJoin",
 		"RespondLink", "ResumeSession", "RevokeDevice", "RevokeInvite", "ScreenInput", "ScreenSnapshot",
 		"ServerStatus", "SessionExcerpts", "SetApprovalKey", "SetColors", "SetComputerTint", "SetMediaView",
-		"SetMember", "SetProfile", "SetRemoteAccess", "SetRemoteNetworks", "ShowPairing", "ShutdownDaemon",
+		"SetMember", "SetProfile", "SetRemoteAccess", "RestartRemoteAccess", "SetRemoteNetworks", "ShowPairing", "ShutdownDaemon",
 		"SshAgentCall", "SshSetup", "Subscribe", "UnlinkComputer", "UnlinkRequest",
 	},
 	// caller.go: what an agent in a pane may do. Not named: refused to agents.
@@ -54,7 +54,7 @@ var gateExempt = map[string][]string{
 		"PeerLinkHello", "PeerLinkReveal", "ProveApp", "ReadRepo", "ReadSession", "RegisterPush", "ReopenClosed",
 		"RespondHammockKey", "RespondJoin", "RespondLink", "ResumeSession", "RevokeDevice", "RevokeInvite",
 		"ScreenInput", "ScreenSnapshot", "SetApprovalKey", "SetComputerTint", "SetMediaView", "SetMember",
-		"SetProfile", "SetRemoteAccess", "SetRemoteNetworks", "ShowPairing", "SshAgentCall", "SshSetup",
+		"SetProfile", "SetRemoteAccess", "RestartRemoteAccess", "SetRemoteNetworks", "ShowPairing", "SshAgentCall", "SshSetup",
 		"StopSharing", "UnlinkComputer", "UnlinkRequest", "UploadFile",
 	},
 	// computers.go: what your other computers may ask of this one. Not named: refused to them.
@@ -65,7 +65,7 @@ var gateExempt = map[string][]string{
 		"OpenWindow", "Pair", "PeerHello", "PeerIntroLink", "PeerJoin", "PeerLinkConfirm", "PeerLinkHello", "PeerLinkReveal",
 		"ProveApp", "RegisterPush", "RequestGrant", "RespondHammockKey", "RespondJoin", "RespondLink",
 		"RevokeDevice", "RevokeInvite", "ServerStatus", "SetApprovalKey", "SetColors", "SetMember", "SetProfile",
-		"SetRemoteAccess", "SetRemoteNetworks", "ShowOutput", "ShowPairing", "ShutdownDaemon", "SshSetup",
+		"SetRemoteAccess", "RestartRemoteAccess", "SetRemoteNetworks", "ShowOutput", "ShowPairing", "ShutdownDaemon", "SshSetup",
 		"StopSharing", "UnlinkComputer", "UnlinkRequest",
 	},
 }

@@ -639,6 +639,10 @@ message ClientMessage {
     // preview, found as Obsidian finds them: by name, anywhere in the
     // note's vault (editorlinks.go). Replies EditorLinks.
     ResolveEditorLinks resolve_editor_links = 141;
+    // Listens on remote access's networks afresh, with the same settings, while
+    // it's on: what turning it off and on again would do, without turning
+    // it off (refused while a computer is linked). Local clients only.
+    RestartRemoteAccess restart_remote_access = 142;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -1125,6 +1129,7 @@ message RevokeDevice { string device_id = 1; }
 
 // Turns the Tailscale listener on or off (persisted).
 message SetRemoteAccess { bool enabled = 1; }
+message RestartRemoteAccess {}
 
 // Continues a pane's agent session in another harness (e.g. Claude → Codex):
 // the session is converted when possible, otherwise the new agent starts

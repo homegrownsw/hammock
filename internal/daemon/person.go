@@ -56,9 +56,10 @@ func personOnly(msg *pb.ClientMessage) bool {
 		// A person's answer, and a schedule saved without asking (an agent's asks).
 		return true
 	case *pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_EndScreenSession, *pb.ClientMessage_ServerStatus,
-		*pb.ClientMessage_ClearAttention, *pb.ClientMessage_SetColors:
+		*pb.ClientMessage_ClearAttention, *pb.ClientMessage_SetColors, *pb.ClientMessage_RestartRemoteAccess:
 		// Nothing anyone of yours couldn't do anyway (stopping hmkd is a
-		// kill away; ending a screen session only takes access away), and
+		// kill away; ending a screen session only takes access away;
+		// restarting remote access opens nothing it hadn't), and
 		// what scripts ask for (Unraid's rc.hammock stops the daemon).
 		return false
 	}

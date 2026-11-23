@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 func ifa(name, cidr string) ifAddr {
@@ -390,5 +391,60 @@ func TestBindingFor(t *testing.T) {
 	}
 	if got := s.bindingFor("192.168.1.20:7433"); got != "" {
 		t.Errorf("unknown address: %q", got)
+	}
+}
+
+// hmk remote restart listens again with the same settings, from a terminal
+// without asking (it opens nothing that wasn't open), while a computer is
+// linked too (which turning it off refuses): the link comes back. Agents
+// are refused it; with remote access off there's nothing to restart.
+func TestRestartRemoteAccess(t *testing.T) {
+	a, b := startComputer(t), startComputer(t)
+	link(t, a, b)
+	buid := b.uid
+	online := func() (bool, time.Time) {
+		a.d.mu.Lock()
+		defer a.d.mu.Unlock()
+		if l := a.d.linkOf(buid); l != nil {
+			return l.online, l.onlineAt
+		}
+		return false, time.Time{}
+	}
+	waitFor(t, "the link up", func() bool { up, _ := online(); return up })
+	_, since := online()
+	b.d.mu.Lock()
+	first := b.d.remote.servers[0]
+	b.d.mu.Unlock()
+
+	asPerson(t, nobody)
+	asPlain(t, func(cl *caller, _ int) bool { return cl == nil })
+	restart := &pb.ClientMessage{Msg: &pb.ClientMessage_RestartRemoteAccess{RestartRemoteAccess: &pb.RestartRemoteAccess{}}}
+	term := dialAs(t, b.dir, nil, "cli")
+	if _, err := try(term, restart); err != nil {
+		t.Fatalf("from a terminal: %v", err)
+	}
+	b.d.mu.Lock()
+	addrs, again := slices.Clone(b.d.remote.addrs), b.d.remote.servers[0]
+	var media []string
+	b.d.media.mu.Lock()
+	for _, tr := range b.d.media.trs {
+		media = append(media, tr.Conn.LocalAddr().String())
+	}
+	b.d.media.mu.Unlock()
+	b.d.mu.Unlock()
+	if again == first || !slices.Equal(addrs, []string{b.addr}) || !slices.Equal(media, []string{b.addr}) {
+		t.Fatalf("after restarting: listening on %v, media on %v (a new server: %v)", addrs, media, again != first)
+	}
+	waitFor(t, "the link up again", func() bool { up, at := online(); return up && at.After(since) })
+
+	agent := dialAs(t, b.dir, &caller{pane: "pn_x", agent: true}, "cli")
+	if _, err := try(agent, restart); err == nil {
+		t.Fatal("an agent restarted remote access")
+	}
+	b.d.mu.Lock()
+	b.d.stopRemote()
+	b.d.mu.Unlock()
+	if _, err := try(term, restart); err == nil || !strings.Contains(err.Error(), "remote access is off") {
+		t.Fatalf("restarting while off: %v", err)
 	}
 }

@@ -42,6 +42,10 @@ func runRemote(call func(*pb.ClientMessage) (*pb.ServerMessage, error), args []s
 		_, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_SetRemoteAccess{SetRemoteAccess: &pb.SetRemoteAccess{Enabled: args[0] == "on"}}})
 		return err
 
+	case "restart":
+		_, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_RestartRemoteAccess{RestartRemoteAccess: &pb.RestartRemoteAccess{}}})
+		return err
+
 	case "networks", "status":
 		d, err := devices()
 		if err != nil {

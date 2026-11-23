@@ -55,6 +55,8 @@ Usage:
                                             (--apply: add Hammock's block to ~/.ssh/config; --apply-jj: add
                                             Hammock's file to jj's config, so jj can sign with the Hammock Key)
   hmk remote on|off                        allow paired devices (and linked computers) on the networks chosen
+  hmk remote restart                       listen again, with the same settings, while it's on (when
+                                            phones or computers can't reach this one)
   hmk remote networks [--json]             the networks remote access may listen on (* chosen), and extra addresses
   hmk remote enable|disable NETWORK        listen on a network, or stop: tailscale, or a subnet (192.168.1.0/24)
   hmk remote address add|remove HOST[:PORT]  an extra address to give out (a DNS name, a VPN endpoint,
