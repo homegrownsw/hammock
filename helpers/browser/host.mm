@@ -1065,6 +1065,14 @@ class App : public CefApp, public CefBrowserProcessHandler {
     cl->AppendSwitch("use-mock-keychain");
     // No web notifications (and no macOS notification permission prompt).
     cl->AppendSwitch("disable-notifications");
+    // No code-sign clone: Chromium copies the app bundle to
+    // $TMPDIR/../X/<bundle id>.code_sign_clone at each launch (for Chrome's
+    // in-place updates) and deletes it with a cleanup process started from
+    // our executable, which only knows --socket and --profile, so each one
+    // (~300 MB) was left behind. The daemon replaces an outdated host itself.
+    std::string disabled = cl->GetSwitchValue("disable-features").ToString();
+    cl->AppendSwitchWithValue("disable-features",
+                              disabled.empty() ? "MacAppCodeSignClone" : disabled + ",MacAppCodeSignClone");
   }
 
   void OnContextInitialized() override {
