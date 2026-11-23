@@ -114,6 +114,10 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     /// and the bottom (the message box, the keyboard).
     func setInsets(top: CGFloat, bottom: CGFloat) {
         var t = max(0, top.rounded()), b = max(0, bottom.rounded())
+        #if os(iOS)
+        indicators = UIEdgeInsets(top: t, left: 0, bottom: b, right: 0)
+        applyIndicators()
+        #endif
         #if os(macOS)
         // The web view keeps clear of the bars itself, as a SwiftUI scroll
         // view's safe area does: the page lays out between them and scrolls
@@ -140,6 +144,26 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         if now.top != obscured.top || now.bottom != obscured.bottom {
             webView.obscuredContentInsets = NSEdgeInsets(top: obscured.top, left: 0, bottom: obscured.bottom, right: 0)
         }
+    }
+    #endif
+
+    #if os(iOS)
+    /// The bars over the page, for the conversation's scroll indicator.
+    private var indicators = UIEdgeInsets.zero
+
+    /// The conversation scrolls in an element of its own, which WebKit backs
+    /// with a scroll view of its own: its indicator keeps between the bars, as
+    /// the native one does (the page's padding is what keeps the rows clear).
+    func applyIndicators() {
+        func walk(_ v: UIView) {
+            for sub in v.subviews {
+                if let sv = sub as? UIScrollView, sv.verticalScrollIndicatorInsets != indicators {
+                    sv.verticalScrollIndicatorInsets = indicators
+                }
+                walk(sub)
+            }
+        }
+        walk(webView.scrollView)
     }
     #endif
 
@@ -192,6 +216,10 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     private func push(replace: Bool = false) {
         guard ready, let s = session else { return }
+        #if os(iOS)
+        // WebKit can make the conversation's scroll view again as it changes.
+        defer { applyIndicators() }
+        #endif
         var u: [String: Any] = [:]
         if replace { u["replace"] = true; resetSent() }
         let order = s.items.map(\.id)
@@ -336,6 +364,10 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         case "ready":
             // Loaded (or loaded again): it has nothing, so everything goes.
             ready = true
+            #if os(iOS)
+            // Made once the page has laid out its scrolling element.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.applyIndicators() }
+            #endif
             #if os(macOS)
             applyObscured()
             #endif
