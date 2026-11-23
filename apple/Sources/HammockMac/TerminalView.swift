@@ -91,6 +91,8 @@ final class TerminalNSView: NSView {
     /// The cell size in device pixels, for programs that ask (Kitty graphics).
     var onCellSize: ((Int, Int) -> Void)?
     var onFocus: (() -> Void)?
+    /// A click, scroll or key here (AppModel.interacted).
+    var onInteract: (() -> Void)?
 
     private var font: NSFont
     private var boldFont: NSFont
@@ -902,6 +904,7 @@ final class TerminalNSView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        onInteract?()
         window?.makeFirstResponder(self)
         guard session?.engine != nil else { return }
         // ⌘-click a link: open it where Settings says (⌘⇧: the other way,
@@ -948,6 +951,7 @@ final class TerminalNSView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        onInteract?()
         guard let engine = session?.engine else { return }
         var dy = event.scrollingDeltaY
         if !event.hasPreciseScrollingDeltas { dy *= cellHeight }
@@ -981,6 +985,7 @@ final class TerminalNSView: NSView {
     var markedText = NSMutableAttributedString()
 
     override func keyDown(with event: NSEvent) {
+        onInteract?()
         blinkOn = true
         guard session != nil else { return }
         let flags = event.modifierFlags
@@ -1193,6 +1198,7 @@ struct TerminalView: NSViewRepresentable {
         v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
         v.onCellSize = { [paneID, model] w, h in model.setCellPixels(paneID, width: w, height: h) }
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
+        v.onInteract = { [paneID, model] in model.interacted(paneID) }
         v.onOpenLink = { [paneID, model] url, target in TerminalView.open(url, in: target, beside: paneID, model: model) }
         v.isFocusTarget = isFocused
         v.folded = context.environment.paneFolded
@@ -1218,6 +1224,7 @@ struct TerminalView: NSViewRepresentable {
             v.onPasteImage = { [paneID, model] png in TerminalView.pasteImage(png, to: paneID, model: model) }
             v.onResize = { [paneID, model] cols, rows in model.resize(paneID, cols: cols, rows: rows) }
             v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
+            v.onInteract = { [paneID, model] in model.interacted(paneID) }
             v.onOpenLink = { [paneID, model] url, target in TerminalView.open(url, in: target, beside: paneID, model: model) }
             v.forceGridReport()
         }

@@ -830,7 +830,7 @@ struct ContentView: View {
         .onChange(of: model.connected) { reportPresence() }
         .onChange(of: model.selectedTab.map { AppModel.shownPaneIDs(of: $0) } ?? []) { reportPresence() }
         .modifier(SharingHooks(model: model, presence: reportPresence, seed: seedProfile))
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in reportPresence() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in reportPresence(); acknowledgeOnReturn() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in reportPresence() }
         // The Dock badge follows the live count (it also has to go down).
         .onChange(of: model.badgeCount) { Notifier.shared.updateBadge(model) }
@@ -852,6 +852,18 @@ struct ContentView: View {
     private func reportPresence() {
         // With what windows of their own show (DetachedWindows).
         WorkspacePresence.report(model)
+    }
+
+    /// Coming back to the app with a finished agent's pane focused is seeing it,
+    /// if it's still the one focused a moment later: the click that brought
+    /// the app forward may be on another tab, which you skipped past.
+    private func acknowledgeOnReturn() {
+        guard let pane = model.focusedPaneID ?? model.selectedTab?.focusedPaneID else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard NSApp.isActive, (model.focusedPaneID ?? model.selectedTab?.focusedPaneID) == pane else { return }
+            model.interacted(pane)
+        }
     }
 }
 

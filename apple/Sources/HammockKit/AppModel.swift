@@ -2016,6 +2016,15 @@ extension AppModel {
         focus(paneID)
     }
 
+    /// A click, scroll or key in a pane, or coming back to the app with it
+    /// focused, acknowledges a finished agent there, as focusing it does: one
+    /// that finished with Hammock behind another app still has the keyboard
+    /// when you come back, so nothing focuses it.
+    public func interacted(_ paneID: String) {
+        guard let p = panes[paneID], p.hasAgent, p.agent.state == .idle, !p.agent.seen else { return }
+        focus(paneID)
+    }
+
     /// Moves focus off a pane (about to be minimised) to the pane its tab
     /// shows last, so its view gives up the keyboard before it goes.
     public func focusAway(from paneIDs: Set<String>) {
