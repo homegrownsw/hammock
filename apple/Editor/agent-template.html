@@ -40,6 +40,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 button:focus { outline: none; }
 /* What scrolls: the whole page, under the bars. */
 #scroller { position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+/* The Mac's: the page scrolls, so it bounces at its ends (agent.js). */
+html.page-scroll, html.page-scroll body { height: auto; overflow-x: hidden; overflow-y: visible; }
+html.page-scroll { overflow-y: auto; }
+html.page-scroll #scroller { position: static; overflow: visible; }
 /* The native stack's: 16 above, and under the last row its spacing twice
    (an empty tail between), the end marker and 15. */
 #main { max-width: 860px; margin: 0 auto; padding: calc(var(--top) + 16px) 18px calc(var(--bottom) + 44px); }

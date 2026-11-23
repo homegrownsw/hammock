@@ -12,6 +12,7 @@ const post = (m) => { try { window.webkit.messageHandlers.hammock.postMessage(m)
 const $ = (id) => document.getElementById(id)
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]))
 /** What the scrolling did, to the app's DevLog (the agent view's). */
+window.addEventListener("error", (e) => post({ type: "log", text: `error: ${e.message} at ${e.lineno}:${e.colno}` }))
 const log = (what) => post({ type: "log", text: `${what}: top ${Math.round(se?.scrollTop ?? 0)} max ${Math.round(maxTop?.() ?? 0)} view ${se?.clientHeight} insets ${insetTop}/${insetBottom} follow ${follow}` })
 const firstLine = (s) => String(s || "").split("\n")[0]
 
@@ -494,7 +495,11 @@ function applyMeta(m) {
 // the conversation opens) could disagree with its UIScrollView about where
 // it was, and show blank. An element's scroll view (WebKit makes one, with
 // the same momentum and bounce) takes the script's position reliably.
-const se = $("scroller")
+// The Mac scrolls the page itself: it has no such trouble, and WebKit there
+// only bounces at the ends of the page, not of an element.
+const pageScroll = navigator.maxTouchPoints === 0
+document.documentElement.classList.toggle("page-scroll", pageScroll)
+const se = pageScroll ? document.scrollingElement : $("scroller")
 let insetTop = 0, insetBottom = 0
 /** Following the end: rows arriving glide into view. */
 let follow = true
@@ -509,7 +514,7 @@ const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matche
 
 const maxTop = () => Math.max(0, se.scrollHeight - se.clientHeight)
 const gap = () => maxTop() - se.scrollTop
-const docTop = (el) => el.getBoundingClientRect().top - se.getBoundingClientRect().top + se.scrollTop
+const docTop = (el) => el.getBoundingClientRect().top - (pageScroll ? 0 : se.getBoundingClientRect().top) + se.scrollTop
 
 function setTop(y) { se.scrollTop = Math.max(0, Math.min(maxTop(), y)) }
 
@@ -597,7 +602,8 @@ window.addEventListener("touchmove", (e) => {
 for (const ev of ["touchend", "touchcancel"]) window.addEventListener(ev, () => { touching = false; touchY = null; lastInput = performance.now() }, { passive: true })
 window.addEventListener("keydown", (e) => { if (["PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End", " "].includes(e.key)) input() })
 let scrollQueued = false
-se.addEventListener("scroll", () => {
+const scrolls = pageScroll ? window : se
+scrolls.addEventListener("scroll", () => {
   if (glider || scrollQueued) return
   scrollQueued = true
   requestAnimationFrame(() => {
