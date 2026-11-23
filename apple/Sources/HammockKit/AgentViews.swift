@@ -604,11 +604,11 @@ public struct AgentConversationView: View {
         .onChange(of: ObjectIdentifier(s), initial: true) {
             web.bridge.onLink = { url in if route(url) == .system { openURL(url) } }
             web.bridge.onOpenDiff = openDiff
-            web.bridge.onOpenImage = { session, ref in
+            web.bridge.onOpenImage = { session, ref, name, video in
                 Task { @MainActor in
-                    let image = await session.image(ref)
-                    openAttachment(PreviewItem(key: ref, name: (ref as NSString).lastPathComponent) { await session.file(ref) },
-                                   group: nil, image: image, video: false, open: { viewedImage = $0 })
+                    let image = video ? nil : await session.image(ref)
+                    openAttachment(PreviewItem(key: ref, name: name) { await session.file(ref) },
+                                   group: nil, image: image, video: video, open: { viewedImage = $0 })
                 }
             }
             web.bridge.attach(s)

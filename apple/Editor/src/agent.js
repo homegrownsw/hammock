@@ -252,7 +252,8 @@ function status(b) {
   return `<span class="st ok">${sym("checkmark.circle.fill")}</span>`
 }
 
-const chev = (open, shown = true) => `<span class="chev${shown ? "" : " none"}">${sym(open ? "chevron.down" : "chevron.right")}</span>`
+// One chevron, turned down when open: it turns as the row opens (animateRow).
+const chev = (open, shown = true) => `<span class="chev${open ? " open" : ""}${shown ? "" : " none"}">${sym("chevron.right")}</span>`
 
 function pics(refs, max) {
   // A box, as AgentImageView: loading, then the picture (a video's first
@@ -651,6 +652,10 @@ scrolls.addEventListener("scroll", () => {
     if (touching || now - lastInput < 250) {
       lastInput = now
       follow = gap() < 60
+      // Near the top, the messages before it come by themselves (kept in
+      // place as they're added). Only as you scroll: a page laid out from
+      // its top mustn't pull in the whole history.
+      if (se.scrollTop < se.clientHeight && meta.hasMore && !meta.loadingOlder) post({ type: "loadOlder" })
     } else if (follow && gap() > 0.5) {
       // Moved, not by you, while following: back to the end, once whatever
       // moved it is done.
@@ -832,12 +837,16 @@ function animateRow(row, swap, opening) {
   // What's under the row's head: what opening shows, or closing hides.
   const parts = (el) => [...(el.firstElementChild?.children || [])].filter((c) => !c.matches(".head, .sub-head"))
   const kinds = (el) => new Set(parts(el).map((p) => p.className))
+  // The head's chevron, turning with the row.
+  const caret = (el) => el.firstElementChild?.querySelector(":scope > .head > .chev .sf, :scope > .sub-head > .chev .sf")
+  const turn = (el, from, to, fill) => caret(el)?.animate([{ transform: `rotate(${from}deg)` }, { transform: `rotate(${to}deg)` }], { duration: SNAPPY.ms, easing: SNAPPY.ease, fill })
   let el = row, after
   if (opening) {
     const old = kinds(row)
     el = swap()
     after = el.getBoundingClientRect().height
     for (const p of parts(el)) if (!old.has(p.className)) p.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SNAPPY.ms * 0.6, easing: "ease-out" })
+    turn(el, 0, 90)
   } else {
     // Measured as it'll be, then the old one shrinks to it.
     const probe = swap()
@@ -846,6 +855,7 @@ function animateRow(row, swap, opening) {
     probe.replaceWith(row)
     els.set(row.dataset.id, row)
     for (const p of parts(row)) if (!stays.has(p.className)) p.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SNAPPY.ms * 0.4, easing: "ease-in", fill: "forwards" })
+    turn(row, 90, 0, "forwards")
   }
   if (Math.abs(after - before) < 1) { if (!opening) swap(); return { el, height: after } }
   el.style.height = before + "px"

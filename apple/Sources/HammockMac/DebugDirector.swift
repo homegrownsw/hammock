@@ -20,7 +20,7 @@ import HammockKit
 ///	agent show|toggle ID          that row at the top of the agent view; open or close it, as a click does
 ///	agent end | agent list FILE   to its end; its rows, one a line, to FILE (AgentDebug)
 ///	size W H                      the window's content this size
-///	appearance light|dark|auto    the app's appearance
+///	appearance light|dark|auto    the app's appearance (the config's, as Settings sets it)
 ///	capture PATH                  the window as drawn, to PATH.png (needs Screen Recording)
 ///	burst PATH SECONDS [COMMAND]  frames for SECONDS, to PATH-NN.png, running COMMAND after the first
 ///	wait SECONDS
@@ -88,7 +88,8 @@ import HammockKit
             guard a.count == 2, let w = mainWindow else { return }
             w.setContentSize(NSSize(width: a[0], height: a[1]))
         case "appearance":
-            NSApp.appearance = arg == "dark" ? NSAppearance(named: .darkAqua) : arg == "light" ? NSAppearance(named: .aqua) : nil
+            // As Settings sets it (the config's appearance), which the window follows.
+            AppConfig.shared.setAppearance(AppConfig.Appearance(rawValue: arg) ?? .auto)
         case "wait":
             try? await Task.sleep(for: .seconds(Double(arg) ?? 1))
         case "capture":

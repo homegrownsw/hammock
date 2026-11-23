@@ -137,6 +137,9 @@ enum PreviewFiles {
         case "image/webp": "webp"
         case "video/mp4": "mp4"
         case "video/quicktime": "mov"
+        case "image/heic": "heic"
+        case "image/avif": "avif"
+        case "video/webm": "webm"
         default: "bin"
         }
     }

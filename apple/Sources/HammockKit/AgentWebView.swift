@@ -44,7 +44,8 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
 
     var onLink: ((URL) -> Void)?
     var onOpenDiff: ((String) -> Void)?
-    var onOpenImage: ((AgentSession, String) -> Void)?
+    /// A picture or video to open: its session, ref, file name and whether it's a video.
+    var onOpenImage: ((AgentSession, String, String, Bool) -> Void)?
 
     override init() {
         let conf = WKWebViewConfiguration()
@@ -351,7 +352,16 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
                 call("hammock.image(r, u)", ["r": ref, "u": url])
             }
         case "openImage":
-            if let ref = m["ref"] as? String, let s = session { onOpenImage?(s, ref) }
+            // Named as what it is (a ref has no extension of its own), as
+            // AgentImageView names it, so Quick Look knows how to show it.
+            guard let ref = m["ref"] as? String, let s = session else { return }
+            Task { @MainActor in
+                guard let data = await s.file(ref) else { return }
+                let type = Self.mediaType(data)
+                let last = (ref as NSString).lastPathComponent
+                let name = (last as NSString).pathExtension.isEmpty ? "attachment." + PreviewFiles.ext(type.isEmpty ? "image/png" : type) : last
+                onOpenImage?(s, ref, name, Self.isVideo(ref, data))
+            }
         case "openDiff":
             if let path = m["path"] as? String { onOpenDiff?(path) }
         case "pendingMenu":
@@ -394,10 +404,10 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     @objc private func sendNow() { session?.sendNow() }
     #endif
 
-    /// A video, by its name or (an "ftyp" box) its first bytes.
+    /// A video, by its name or its first bytes.
     private static func isVideo(_ ref: String, _ data: Data) -> Bool {
         if ["mp4", "mov", "m4v", "webm"].contains((ref as NSString).pathExtension.lowercased()) { return true }
-        return data.count > 12 && data[data.startIndex + 4 ..< data.startIndex + 8] == Data("ftyp".utf8)
+        return mediaType(data).hasPrefix("video/")
     }
 
     private static func png(_ image: PlatformImage) -> Data? {
@@ -409,15 +419,27 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
         #endif
     }
 
-    private static func dataURL(_ d: Data) -> String {
+    /// What a file is, by its first bytes ("" when it can't tell).
+    static func mediaType(_ d: Data) -> String {
         let m = [UInt8](d.prefix(12))
-        let type = m.starts(with: [0x89, 0x50, 0x4E, 0x47]) ? "image/png"
-            : m.starts(with: [0xFF, 0xD8, 0xFF]) ? "image/jpeg"
-            : m.starts(with: [0x47, 0x49, 0x46]) ? "image/gif"
-            : m.count == 12 && m[8...11] == [0x57, 0x45, 0x42, 0x50] ? "image/webp"
-            : m.count >= 12 && m[4...7] == [0x66, 0x74, 0x79, 0x70] ? "image/heic"
-            : "application/octet-stream"
-        return "data:\(type);base64," + d.base64EncodedString()
+        if m.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "image/png" }
+        if m.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
+        if m.starts(with: [0x47, 0x49, 0x46]) { return "image/gif" }
+        if m.count == 12, m[8...11] == [0x57, 0x45, 0x42, 0x50] { return "image/webp" }
+        if m.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) { return "video/webm" }
+        if m.count == 12, m[4...7] == [0x66, 0x74, 0x79, 0x70] {
+            // An ISO box file: a HEIF picture or a video, by its brand.
+            let brand = String(decoding: m[8...11], as: UTF8.self)
+            if ["heic", "heix", "heim", "heis", "mif1", "msf1"].contains(brand) { return "image/heic" }
+            if brand == "avif" { return "image/avif" }
+            return brand == "qt  " ? "video/quicktime" : "video/mp4"
+        }
+        return ""
+    }
+
+    private static func dataURL(_ d: Data) -> String {
+        let type = mediaType(d)
+        return "data:\(type.isEmpty ? "application/octet-stream" : type);base64," + d.base64EncodedString()
     }
 }
 
