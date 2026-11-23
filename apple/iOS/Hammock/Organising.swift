@@ -221,43 +221,82 @@ struct EmptyGroupRowIOS: View {
     let model: AppModel
     let group: WorkspaceGroup
     let newTab: () -> Void
+    @Environment(\.phoneTheme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(group.canAddTabs ? "Nothing open here yet." : group.offline ? "Its computer can't be reached right now." : "Only people who can drive can open tabs here.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            let folder = model.groupFolder(group)
-            if !folder.isEmpty {
-                Label(folder.replacingOccurrences(of: #"^/Users/[^/]+"#, with: "~", options: .regularExpression), systemImage: "folder")
-                    .font(.footnote)
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.canAddTabs ? "Nothing open yet" : group.offline ? "Its computer can't be reached right now." : "Only people who can drive can open tabs here.")
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.middle)
+                let folder = model.groupFolder(group)
+                if !folder.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "folder.fill").imageScale(.small)
+                        Text(folder.replacingOccurrences(of: #"^/Users/[^/]+"#, with: "~", options: .regularExpression))
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                }
             }
             if group.canAddTabs {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button(action: newTab) {
-                        // The List tints a row's icons its accent, which
-                        // vanishes on the filled button: the label's own colour.
-                        Label { Text("Terminal") } icon: { Image(systemName: "terminal").foregroundStyle(.white) }
-                            .frame(maxWidth: .infinity)
+                        StartTile(title: "Terminal") { Image(systemName: "terminal.fill") }
                     }
-                    .prominentButton()
+                    .buttonStyle(StartTileStyle(fill: theme.bubble, prominent: true))
                     if let h = model.defaultAgent(in: group) {
                         Button { AgentStarter.shared.startDefault(model, groupID: group.id) } label: {
-                            Label { Text(AgentCatalog.shortName(of: h)) } icon: { AgentMark(harness: h, size: 16) }.frame(maxWidth: .infinity)
+                            StartTile(title: AgentCatalog.shortName(of: h)) { AgentMark(harness: h, size: 20) }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(StartTileStyle(fill: theme.accent, prominent: false))
                     }
                     Button { AgentStarter.shared.start(groupID: group.id) } label: {
-                        Label("Agent…", systemImage: "sparkles").frame(maxWidth: .infinity)
+                        StartTile(title: "Agent…") { Image(systemName: "sparkles") }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(StartTileStyle(fill: theme.accent, prominent: false))
                 }
-                .controlSize(.large)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
+    }
+}
+
+/// One of an empty Group's starters: its icon over a one-line name.
+private struct StartTile<Icon: View>: View {
+    let title: String
+    @ViewBuilder let icon: Icon
+
+    var body: some View {
+        VStack(spacing: 6) {
+            icon.font(.title3).frame(height: 24)
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 6)
+    }
+}
+
+/// The first tile filled with the theme's deeper shade (white on it), the
+/// rest a wash of its accent; each dims a little while pressed. Its own
+/// colours, not the List's tint, which would turn the icons the fill's.
+private struct StartTileStyle: ButtonStyle {
+    let fill: Color
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(prominent ? Color.white : fill)
+            .background(prominent ? fill : fill.opacity(0.16),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
