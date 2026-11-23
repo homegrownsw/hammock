@@ -121,7 +121,18 @@ final class ComposerTextController: NSObject {
     /// clicked), set off by a space either side, as typing would: "Done."
     /// becomes "Done. [chip] ".
     func insertChip(_ id: UUID) {
-        guard let v = view, let a = chipString(id) else { return }
+        guard let a = chipString(id) else { return }
+        insertSpaced(a)
+    }
+
+    /// Puts text where the cursor is, set off by a space either side, as a
+    /// chip is: a dropped folder's path.
+    func insertSpaced(_ string: String) {
+        insertSpaced(NSAttributedString(string: string, attributes: typing()))
+    }
+
+    private func insertSpaced(_ a: NSAttributedString) {
+        guard let v = view else { return }
         let s = NSMutableAttributedString(attributedString: a)
         let r = selected(v)
         let text = storage(v).string as NSString
@@ -496,23 +507,29 @@ final class ComposerTextController: NSObject {
     // MARK: Pasting and dropping files
 
     /// Pictures and movies (files, or a picture on its own) become
-    /// attachments; text and chips paste as usual.
+    /// attachments; other files and folders go in as their paths; text and
+    /// chips paste as usual.
     #if os(macOS)
     fileprivate func takeFiles(_ pb: NSPasteboard) -> Bool {
         switch Self.media(pb) {
-        case .files(let urls): onFiles(urls)
+        case .files(let media, let others):
+            if !others.isEmpty { insertSpaced(Self.paths(others)) }
+            if !media.isEmpty { onFiles(media) }
         case .image(let png): onImages([png])
         case nil: return false
         }
         return true
     }
 
-    /// Whether takeFiles would attach what's on it.
-    func takesFiles(_ pb: NSPasteboard) -> Bool {
-        let types = pb.types ?? []
-        if types.contains(.rtfd) || types.contains(.string) && !types.contains(.fileURL) { return false }
-        if Self.fileURLs(pb).isEmpty { return types.contains(.png) || types.contains(.tiff) }
-        return !Self.mediaFiles(pb).isEmpty
+    /// Whether takeFiles would take what's on it.
+    func takesFiles(_ pb: NSPasteboard) -> Bool { Self.media(pb) != nil }
+
+    /// Paths as they go into the message, one after another.
+    static func paths(_ urls: [URL]) -> String {
+        urls.map { u in
+            let p = u.path(percentEncoded: false)
+            return p.count > 1 && p.hasSuffix("/") ? String(p.dropLast()) : p
+        }.joined(separator: " ")
     }
 
     /// Dropped on the conversation, not the text: attached at the end of
@@ -523,14 +540,15 @@ final class ComposerTextController: NSObject {
         return takeFiles(pb)
     }
 
-    private enum Media { case files([URL]), image(Data) }
+    private enum Media { case files(media: [URL], others: [URL]), image(Data) }
 
     private static func media(_ pb: NSPasteboard) -> Media? {
         let types = pb.types ?? []
         if types.contains(.rtfd) || types.contains(.string) && !types.contains(.fileURL) { return nil }
-        if !fileURLs(pb).isEmpty {
-            let media = mediaFiles(pb)
-            return media.isEmpty ? nil : .files(media)
+        let urls = fileURLs(pb)
+        if !urls.isEmpty {
+            let media = urls.filter(isMedia)
+            return .files(media: media, others: urls.filter { !isMedia($0) })
         }
         if let png = pb.data(forType: .png) { return .image(png) }
         if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
@@ -543,12 +561,10 @@ final class ComposerTextController: NSObject {
         pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
     }
 
-    /// The pictures and movies among its files.
-    private static func mediaFiles(_ pb: NSPasteboard) -> [URL] {
-        fileURLs(pb).filter { url in
-            guard let t = UTType(filenameExtension: url.pathExtension) else { return false }
-            return t.conforms(to: .image) || t.conforms(to: .movie)
-        }
+    /// A picture or movie, attached rather than named by its path.
+    private static func isMedia(_ url: URL) -> Bool {
+        guard !url.hasDirectoryPath, let t = UTType(filenameExtension: url.pathExtension) else { return false }
+        return t.conforms(to: .image) || t.conforms(to: .movie)
     }
     #endif
 }
