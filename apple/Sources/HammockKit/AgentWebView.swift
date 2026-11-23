@@ -786,6 +786,12 @@ final class AgentPageView: WKWebView {
         if window != nil { onPlaced?(false) }
     }
 
+    /// None: the page has nothing to type into (the message box is native),
+    /// and on macOS 27 WebKit sends its selection to the input context, which
+    /// shows Siri's button by it even with writingToolsBehavior .none (fixed
+    /// in WebKit: bugs.webkit.org/show_bug.cgi?id=327446).
+    override var inputContext: NSTextInputContext? { nil }
+
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         menu.items.removeAll { $0.identifier?.rawValue == "WKMenuItemIdentifierReload" }
         super.willOpenMenu(menu, with: event)

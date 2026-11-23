@@ -343,6 +343,9 @@ function userRow(r, pending = false) {
     const text = (r.text || "").replace(/￼/g, "")
     body = text.trim() ? inlineLinked(text) : ""
   }
+  // The bubble keeps its text's line breaks (pre-wrap): without the <br>
+  // Markdown makes of each too, a break isn't two.
+  body = body.replace(/<br>\n/g, "\n")
   return `<div class="user${pending ? " pending" : ""}">${pics(refs, 200, true)}` +
     (body ? `<div class="bubble${pending ? "" : " sel"}">${body}</div>` : "") + `</div>`
 }
