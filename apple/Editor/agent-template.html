@@ -46,6 +46,8 @@ button:focus { outline: none; }
 html.page-scroll, html.page-scroll body { height: auto; overflow-x: clip; overflow-y: visible; }
 html.page-scroll { overflow-x: hidden; overflow-y: auto; }
 html.page-scroll #scroller { position: static; overflow: visible; }
+/* A tab's preview: no scroller over it. */
+html.preview { scrollbar-width: none; } html.preview::-webkit-scrollbar { display: none; }
 /* The native stack's: 16 above, and under the tail its spacing, the end
    marker and 15 (with the tail empty, its spacing too). */
 #main { max-width: 860px; margin: 0 auto; padding: calc(var(--top) + 16px) 18px calc(var(--bottom) + 30px); }

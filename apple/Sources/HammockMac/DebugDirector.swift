@@ -22,6 +22,7 @@ import HammockKit
 ///	size W H                      the window's content this size
 ///	appearance light|dark|auto    the app's appearance (the config's, as Settings sets it)
 ///	capture PATH                  the window as drawn, to PATH.png (needs Screen Recording)
+///	panel PATH                    β's floating panel (a tab's preview) as drawn, to PATH.png
 ///	screen PATH                   the whole display (floating panels too), to PATH.png
 ///	burst PATH SECONDS [COMMAND]  frames for SECONDS, to PATH-NN.png, running COMMAND after the first
 ///	responder PATH                the key window's first responder (its class), to PATH
@@ -99,6 +100,11 @@ import HammockKit
             try? await Task.sleep(for: .seconds(Double(arg) ?? 1))
         case "capture":
             guard let w = mainWindow, let image = await DebugSnapshot.grabWindow(w) else { return failed(line) }
+            write(image, to: arg + ".png")
+        case "panel":
+            // β's floating panel (a tab's preview), and only it.
+            guard let w = NSApp.windows.first(where: { $0.isVisible && $0 !== mainWindow && !$0.styleMask.contains(.titled) && $0.frame.width > 100 }),
+                  let image = await DebugSnapshot.grabWindow(w) else { return failed(line) }
             write(image, to: arg + ".png")
         case "screen":
             guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),

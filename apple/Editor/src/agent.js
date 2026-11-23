@@ -37,6 +37,7 @@ function configure(c) {
   // SwiftUI sets SF's tracking for the size; WebKit's can differ (its SF
   // Mono was 4% narrower). The app measured a sample in its own fonts: the
   // difference, spread over its letters, is the page's letter spacing.
+  document.documentElement.classList.toggle("preview", !!c.preview)
   if (c.calibrate) {
     for (const [key, family, size, prop, weight] of [["body", f.family, f.size, "--track", 400], ["bold", f.family, f.size, "--bold-track", 700],
                                                      ["code", f.code, f.codeSize, "--code-track", 400]]) {

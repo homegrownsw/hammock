@@ -21,13 +21,15 @@ struct AgentWebStyle: Equatable {
     var bubble: Color
     var canOpenDiff: Bool
     var agentName: String
+    /// Pictured for a tab's preview: no scroller.
+    var preview = false
 }
 
 @MainActor
 final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     let webView: WKWebView
     private(set) var session: AgentSession?
-    private var ready = false
+    private(set) var ready = false
     private var page: URL?
     private var style: AgentWebStyle?
     /// What the page has: each row as it was sent, in order, and the rest.
@@ -583,6 +585,7 @@ extension AgentWebBridge {
                 // Each smaller size the rows use, with the line SwiftUI gives it.
                 "lines": Self.lines(f),
             ],
+            "preview": st.preview,
             // A sample's width in the native fonts: the page matches its tracking to it.
             "calibrate": [
                 "body": ["text": Self.sample, "width": Self.width(Self.sample, body)],
@@ -982,7 +985,7 @@ public struct AgentPreview: View {
     let size: CGSize
     @State private var lease: AgentLease?
     @State private var web = AgentWebHost(measures: false)
-    @State private var shown = false
+    @State private var image: PlatformImage?
     @Environment(\.agentAutomaticColor) private var accent
     @Environment(\.agentAutomaticBubble) private var bubble
 
@@ -994,35 +997,63 @@ public struct AgentPreview: View {
 
     public var body: some View {
         GeometryReader { g in
-            let scale = size.width > 0 ? g.size.width / size.width : 1
-            if let s = lease?.session {
-                // Not kept by the pool: a preview's page is its own, gone with it.
-                // The tile's size, zoomed out (WebKit's page zoom, not a view
-                // transform): the page lays out at the pane's width, its
-                // latest at the tile's bottom, all of it drawn smaller.
-                AgentWebTranscript(bridge: web.bridge(""))
-                    .frame(width: g.size.width, height: g.size.height)
-                    .onChange(of: scale, initial: true) { _, z in web.bridge.webView.pageZoom = max(z, 0.1) }
-                    // Covered, not hidden, until it's drawn: a web view hidden gets no frames to draw with.
-                    .overlay { Rectangle().fill(.background).opacity(shown ? 0 : 1).allowsHitTesting(false) }
-                    .onChange(of: ObjectIdentifier(s), initial: true) {
-                        web.bridge.configure(AgentWebStyle(fonts: AgentFonts.current, accent: accent, bubble: bubble, canOpenDiff: false, agentName: s.agentName))
-                        web.bridge.attach(s)
-                        // Shown once it's drawn at its end, not while the page loads.
-                        Task { @MainActor in
-                            try? await Task.sleep(for: .milliseconds(250))
-                            withAnimation(.easeOut(duration: 0.15)) { shown = true }
+            ZStack(alignment: .bottomLeading) {
+                if let s = lease?.session {
+                    // The page at the pane's own size, drawn but not seen (out of
+                    // sight it would draw nothing), pictured a few times a second.
+                    // Not zoomed out: WebKit keeps text at least 9 points on
+                    // screen, which at a tile's scale is several times too big.
+                    AgentWebTranscript(bridge: web.bridge(""))
+                        .frame(width: size.width, height: size.height)
+                        .opacity(0.011)
+                        .onChange(of: ObjectIdentifier(s), initial: true) {
+                            web.bridge.configure(AgentWebStyle(fonts: AgentFonts.current, accent: accent, bubble: bubble, canOpenDiff: false, agentName: s.agentName, preview: true))
+                            web.bridge.attach(s)
                         }
-                    }
+                }
+                // Over the page drawn underneath (its background is clear).
+                #if os(macOS)
+                Color(nsColor: .textBackgroundColor)
+                #else
+                Color(uiColor: .systemBackground)
+                #endif
+                if let image {
+                    // The picture shrunk to the tile's width, its latest at the bottom.
+                    #if os(macOS)
+                    Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        .frame(width: g.size.width).transition(.opacity)
+                    #else
+                    Image(uiImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        .frame(width: g.size.width).transition(.opacity)
+                    #endif
+                }
             }
+            .frame(width: g.size.width, height: g.size.height, alignment: .bottomLeading)
         }
         .allowsHitTesting(false)
         .clipped()
         .onAppear { if lease == nil { lease = AgentLease(model, paneID) } }
+        .task(id: paneID) {
+            // A moment to load and land at its end, then as it changes.
+            try? await Task.sleep(for: .milliseconds(300))
+            while !Task.isCancelled {
+                if let i = await snapshot() {
+                    if image == nil { withAnimation(.easeOut(duration: 0.15)) { image = i } } else { image = i }
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         // The director's `agent preview-eval PATH<tab>CODE`, run in this page.
         .onReceive(NotificationCenter.default.publisher(for: AgentDebug.command)) { n in
             let (cmd, arg) = AgentDebug.parse(n)
             if cmd == "preview-eval" { web.bridge.debug("eval", arg) }
+        }
+    }
+
+    private func snapshot() async -> PlatformImage? {
+        guard lease?.session != nil, web.bridge.ready else { return nil }
+        return await withCheckedContinuation { c in
+            web.bridge.webView.takeSnapshot(with: nil) { i, _ in c.resume(returning: i) }
         }
     }
 }
