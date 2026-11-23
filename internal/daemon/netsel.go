@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"runtime"
 	"slices"
 	"strconv"
@@ -415,16 +416,20 @@ func (d *Daemon) remoteSourceOK(src, local net.IP) bool {
 var errNoNetwork = errors.New("choose a network for remote access first (Settings ▸ Devices ▸ Remote Access, or hmk remote networks)")
 
 // syncListeners listens on want and stops listening elsewhere, keeping the
-// connections on addresses still wanted. Callers hold d.mu.
+// connections on addresses still wanted. A wanted address whose interface
+// was created again since (bindingFor) is listened on afresh, its
+// connections ended: they came in on an interface that's gone. Callers
+// hold d.mu.
 func (d *Daemon) syncListeners(want []string) {
-	keep := d.remote.servers[:0]
-	var keepAddrs, keepBound, gone []string
+	var keep []*http.Server
+	var keepLns []remoteListener
+	var keepAddrs, gone []string
 	for i, s := range d.remote.servers {
-		a, bound := d.remote.addrs[i], d.remote.bound[i]
+		a, bound := d.remote.addrs[i], d.remote.lns[i].bound
 		now := d.remote.snap.bindingFor(a)
 		switch {
 		case slices.Contains(want, a) && now == bound:
-			keep, keepAddrs, keepBound = append(keep, s), append(keepAddrs, a), append(keepBound, bound)
+			keep, keepAddrs, keepLns = append(keep, s), append(keepAddrs, a), append(keepLns, d.remote.lns[i])
 			continue
 		case slices.Contains(want, a):
 			// Its interface was created again: listened on afresh, below.
@@ -432,10 +437,10 @@ func (d *Daemon) syncListeners(want []string) {
 		default:
 			d.log.Info("remote access stopped listening", "addr", a)
 		}
-		_ = s.Close()
+		d.closeServer(i)
 		gone = append(gone, a)
 	}
-	d.remote.servers, d.remote.addrs, d.remote.bound = keep, keepAddrs, keepBound
+	d.remote.servers, d.remote.addrs, d.remote.lns = keep, keepAddrs, keepLns
 	// A server's Close leaves its WebSockets (hijacked) open: whoever came
 	// in on a network no longer chosen goes now too.
 	for c := range d.conns {

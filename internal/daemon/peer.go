@@ -347,11 +347,15 @@ var errNotLinkedYet = errors.New("not linked there yet")
 // tests, whose computers go off and on in seconds; a daemon takes them as it starts: linkTimings).
 var peerRedial, peerRedialMax = time.Second, 30 * time.Second
 
+// peerUnreachedEvery is how often a link out of reach logs a new reason at Info.
+const peerUnreachedEvery = 10 * time.Minute
+
 // run keeps the link up, reconnecting with backoff.
 func (l *peerLink) run() {
 	lt := l.d.linkT
 	backoff := lt.redial
-	said := "" // the failure last logged at Info: each said once until it's reached again
+	var said string // the failure last logged at Info since it was last reached ("" none)
+	var saidAt time.Time
 	for {
 		select {
 		case <-l.stop:
@@ -370,8 +374,11 @@ func (l *peerLink) run() {
 			l.d.mu.Lock()
 			host := l.tok.HostName // (ensureLink renames it, under d.mu)
 			l.d.mu.Unlock()
-			if msg := err.Error(); msg != said && !errors.Is(err, errNotLinkedYet) {
-				said = msg
+			// At Info when it's first out of reach, then for an error that
+			// isn't the last one said, at most every peerUnreachedEvery
+			// (an error's text may vary from try to try: a local port).
+			if msg := err.Error(); !errors.Is(err, errNotLinkedYet) && (said == "" || msg != said && time.Since(saidAt) >= peerUnreachedEvery) {
+				said, saidAt = msg, time.Now()
 				l.d.log.Info("peer link: can't reach it", "host", host, "err", err)
 			} else {
 				l.d.log.Debug("peer link", "host", host, "err", err)

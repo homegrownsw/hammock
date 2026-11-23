@@ -85,10 +85,10 @@ type remoteState struct {
 	fingerprint string
 	certErr     string // why the certificate couldn't be loaded, last time it was tried (loadCert)
 	servers     []*http.Server
-	addrs       []string    // where each of servers listens
-	bound       []string    // the interface each of servers is bound to (netSnapshot.bindingFor; "" for none)
-	snap        netSnapshot // this computer's networks, as last looked at
-	advertised  []string    // reachAt, as last told to the others
+	addrs       []string         // where each of servers listens
+	lns         []remoteListener // each of servers' listener, and its interface
+	snap        netSnapshot      // this computer's networks, as last looked at
+	advertised  []string         // reachAt, as last told to the others
 	watchStop   chan struct{}
 	failed      map[string]bool      // addresses that couldn't be listened on (logged once)
 	pairings    map[string]time.Time // hex(secret) → expiry
@@ -469,7 +469,7 @@ func (d *Daemon) startRemote() error {
 		return err
 	}
 	if listen := d.cfg.RemoteListen; len(listen) > 0 {
-		d.remote.addrs, d.remote.bound = nil, nil
+		d.remote.addrs, d.remote.lns = nil, nil
 		for _, addr := range listen {
 			d.listenOn(addr, "", "")
 		}
@@ -522,7 +522,7 @@ func (d *Daemon) listenOn(addr, iface, bound string) bool {
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, TLSConfig: tcfg}
 	d.remote.servers = append(d.remote.servers, srv)
 	d.remote.addrs = append(d.remote.addrs, ln.Addr().String())
-	d.remote.bound = append(d.remote.bound, bound)
+	d.remote.lns = append(d.remote.lns, remoteListener{ln, bound})
 	go srv.ServeTLS(ln, "", "")
 	d.log.Info("remote access listening", "addr", ln.Addr().String())
 	return true
@@ -568,12 +568,27 @@ func refreshTailscale() {
 	tsCache.Unlock()
 }
 
+// remoteListener is a remote server's listener, and the interface it's
+// bound to (netSnapshot.bindingFor; "" for none).
+type remoteListener struct {
+	ln    net.Listener
+	bound string
+}
+
+// closeServer closes remote server i and its listener: a server closes
+// only a listener its Serve has started on, and the same address may be
+// listened on again at once. Callers hold d.mu.
+func (d *Daemon) closeServer(i int) {
+	_ = d.remote.servers[i].Close()
+	_ = d.remote.lns[i].ln.Close()
+}
+
 // stopRemote closes the listeners and disconnects remote clients. Callers hold d.mu.
 func (d *Daemon) stopRemote() {
-	for _, s := range d.remote.servers {
-		_ = s.Close()
+	for i := range d.remote.servers {
+		d.closeServer(i)
 	}
-	d.remote.servers, d.remote.addrs, d.remote.bound = nil, nil, nil
+	d.remote.servers, d.remote.addrs, d.remote.lns = nil, nil, nil
 	d.remote.on, d.remote.advertised = false, nil
 	if d.remote.watchStop != nil {
 		close(d.remote.watchStop)

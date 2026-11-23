@@ -345,11 +345,19 @@ func TestListenAgainWhenInterfaceIsCreatedAgain(t *testing.T) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		d.remote.snap = netSnapshot{ifaces: map[string]string{"127.0.0.1": lo}, index: map[string]int{lo: index}}
-		d.syncListeners([]string{addr})
-		if !slices.Equal(d.remote.addrs, []string{addr}) || len(d.remote.servers) != 1 {
-			t.Fatalf("listening on %v", d.remote.addrs)
+		// Tried again as watchNetworks' tick would: the port, free for a
+		// moment, may be taken meanwhile by another test's connection.
+		for range 20 {
+			d.syncListeners([]string{addr})
+			if slices.Equal(d.remote.addrs, []string{addr}) && len(d.remote.servers) == 1 {
+				return d.remote.servers[0]
+			}
+			d.mu.Unlock()
+			time.Sleep(50 * time.Millisecond)
+			d.mu.Lock()
 		}
-		return d.remote.servers[0]
+		t.Fatalf("index %d: listening on %v", index, d.remote.addrs)
+		return nil
 	}
 	first := listen(1)
 	if again := listen(1); again != first {
@@ -363,6 +371,16 @@ func TestListenAgainWhenInterfaceIsCreatedAgain(t *testing.T) {
 		t.Fatalf("after listening again: %v", err)
 	}
 	c.Close()
+	// Its media listener (UDP, the same address) is opened again too.
+	d.media.mu.Lock()
+	var media []string
+	for _, tr := range d.media.trs {
+		media = append(media, tr.Conn.LocalAddr().String())
+	}
+	d.media.mu.Unlock()
+	if !slices.Equal(media, []string{addr}) {
+		t.Fatalf("media listening on %v, want %v", media, addr)
+	}
 }
 
 func TestBindingFor(t *testing.T) {

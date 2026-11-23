@@ -539,6 +539,10 @@ func (h *mediaHub) stopAddrs(addrs []string) {
 	for i := range lns {
 		lns[i].Close()
 		trs[i].Close()
+		// Its socket too, now: the Transport lets go of it in its own time,
+		// and the same address may be listened on again at once (its
+		// interface created again: syncListeners).
+		_ = trs[i].Conn.Close()
 	}
 }
 
