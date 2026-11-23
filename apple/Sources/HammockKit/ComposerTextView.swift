@@ -118,15 +118,27 @@ final class ComposerTextController: NSObject {
     }
 
     /// Puts a chip where the cursor is (the end, before the text's been
-    /// clicked), with a space after it, as typing would.
+    /// clicked), set off by a space either side, as typing would: "Done."
+    /// becomes "Done. [chip] ".
     func insertChip(_ id: UUID) {
         guard let v = view, let a = chipString(id) else { return }
         let s = NSMutableAttributedString(attributedString: a)
         let r = selected(v)
         let text = storage(v).string as NSString
-        let next = r.location + r.length < text.length ? text.character(at: r.location + r.length) : 0
-        if next != 0x20, next != 0x0A { s.append(NSAttributedString(string: " ", attributes: typing())) }
+        let spaced = { (c: unichar) in UnicodeScalar(c).map { CharacterSet.whitespacesAndNewlines.contains($0) } ?? false }
+        if r.location > 0, !spaced(text.character(at: r.location - 1)) {
+            s.insert(NSAttributedString(string: " ", attributes: typing()), at: 0)
+        }
+        let end = r.location + r.length
+        if end >= text.length || !spaced(text.character(at: end)) { s.append(NSAttributedString(string: " ", attributes: typing())) }
         replace(r, with: s)
+    }
+
+    /// Puts the cursor at the end, for something added to the message as a
+    /// whole (a file dropped on the conversation rather than in the text).
+    func moveToEnd() {
+        guard let v = view else { return }
+        select(NSRange(location: storage(v).length, length: 0))
     }
 
     /// Replaces a range as typing would, and puts the cursor after it.
@@ -487,26 +499,56 @@ final class ComposerTextController: NSObject {
     /// attachments; text and chips paste as usual.
     #if os(macOS)
     fileprivate func takeFiles(_ pb: NSPasteboard) -> Bool {
+        switch Self.media(pb) {
+        case .files(let urls): onFiles(urls)
+        case .image(let png): onImages([png])
+        case nil: return false
+        }
+        return true
+    }
+
+    /// Whether takeFiles would attach what's on it.
+    func takesFiles(_ pb: NSPasteboard) -> Bool {
         let types = pb.types ?? []
         if types.contains(.rtfd) || types.contains(.string) && !types.contains(.fileURL) { return false }
-        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            let media = urls.filter { url in
-                guard let t = UTType(filenameExtension: url.pathExtension) else { return false }
-                return t.conforms(to: .image) || t.conforms(to: .movie)
-            }
-            guard !media.isEmpty else { return false }
-            onFiles(media)
-            return true
+        if Self.fileURLs(pb).isEmpty { return types.contains(.png) || types.contains(.tiff) }
+        return !Self.mediaFiles(pb).isEmpty
+    }
+
+    /// Dropped on the conversation, not the text: attached at the end of
+    /// the message.
+    func dropAtEnd(_ pb: NSPasteboard) -> Bool {
+        guard takesFiles(pb) else { return false }
+        moveToEnd()
+        return takeFiles(pb)
+    }
+
+    private enum Media { case files([URL]), image(Data) }
+
+    private static func media(_ pb: NSPasteboard) -> Media? {
+        let types = pb.types ?? []
+        if types.contains(.rtfd) || types.contains(.string) && !types.contains(.fileURL) { return nil }
+        if !fileURLs(pb).isEmpty {
+            let media = mediaFiles(pb)
+            return media.isEmpty ? nil : .files(media)
         }
-        if let png = pb.data(forType: .png) {
-            onImages([png])
-            return true
-        }
+        if let png = pb.data(forType: .png) { return .image(png) }
         if let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
-            onImages([png])
-            return true
+            return .image(png)
         }
-        return false
+        return nil
+    }
+
+    private static func fileURLs(_ pb: NSPasteboard) -> [URL] {
+        pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    /// The pictures and movies among its files.
+    private static func mediaFiles(_ pb: NSPasteboard) -> [URL] {
+        fileURLs(pb).filter { url in
+            guard let t = UTType(filenameExtension: url.pathExtension) else { return false }
+            return t.conforms(to: .image) || t.conforms(to: .movie)
+        }
     }
     #endif
 }
@@ -528,7 +570,12 @@ final class ComposerNSTextView: NSTextView {
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        if sender.draggingSource as? NSTextView !== self, controller?.takeFiles(sender.draggingPasteboard) == true { return true }
+        if sender.draggingSource as? NSTextView !== self, let c = controller, c.takesFiles(sender.draggingPasteboard) {
+            // Where it was dropped, not where the cursor was.
+            let i = characterIndexForInsertion(at: convert(sender.draggingLocation, from: nil))
+            if i != NSNotFound { setSelectedRange(NSRange(location: min(i, textStorage?.length ?? 0), length: 0)) }
+            return c.takeFiles(sender.draggingPasteboard)
+        }
         return super.performDragOperation(sender)
     }
 

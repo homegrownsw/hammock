@@ -76,6 +76,9 @@ public final class AgentSession {
     /// that takes its place waits until typing's a second past before it
     /// takes the keyboard (a "2" typed as it appears would answer it).
     @ObservationIgnored var composerEditedAt: TimeInterval?  // on PromptKey.clock
+    /// The message box on screen, if there is one (not while a prompt card
+    /// takes its place): what's dropped on the conversation goes to it.
+    @ObservationIgnored weak var composer: ComposerTextController?
 
     weak var model: AppModel?
     /// Set: a past session read through the session finder (no pane).

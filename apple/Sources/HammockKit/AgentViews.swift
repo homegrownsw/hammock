@@ -418,6 +418,11 @@ public struct AgentConversationView: View {
         .onChange(of: webStyle, initial: true) { _, st in web.bridge.configure(st) }
         .onChange(of: ObjectIdentifier(s), initial: true) {
             web.bridge.onLink = { url in if route(url) == .system { openURL(url) } }
+            #if os(macOS)
+            // A picture or movie dropped on the conversation: attached at the
+            // end of the message (none to a subagent's, or under a prompt card).
+            web.bridge.dropTarget = { [weak s] in s?.composer }
+            #endif
             web.bridge.onOpenDiff = openDiff
             web.bridge.onOpenImage = { session, ref, name, video in
                 Task { @MainActor in
@@ -1794,6 +1799,7 @@ struct Composer: View {
     /// The text view's settings, from the composer's state.
     private func configured() -> ComposerTextController {
         let c = controller
+        session.composer = c
         c.font = platformFont(code: shellCommand)
         c.lineSpacing = CGFloat(fonts.spacing)
         c.highlight = PlatformColor(shellCommand ? Self.shellTint : accent)
@@ -2154,6 +2160,9 @@ struct Composer: View {
             Text(attachError ?? "")
         }
         .dropDestination(for: Data.self) { items, _ in
+            // On the box but not its text (which takes its own drops, where
+            // they land): at the end of the message.
+            controller.moveToEnd()
             for d in items where PlatformImage(data: d) != nil { attach(name: "dropped-\(attachments.count + 1).png", data: d) }
             return true
         }
@@ -2213,6 +2222,7 @@ struct Composer: View {
             if !Task.isCancelled { saveDraft(key: draftKey, pane: session.paneID) }
         }
         .onDisappear {
+            if session.composer === controller { session.composer = nil }
             dictation.stopNow()
             DictationRequests.shared.set(session.paneID, listening: false)
             DictationRequests.shared.set(session.paneID, composer: false)

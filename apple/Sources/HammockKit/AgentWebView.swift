@@ -47,6 +47,14 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
     var onPlaced: (() -> Void)?
     /// A picture or video to open: its session, ref, file name and whether it's a video.
     var onOpenImage: ((AgentSession, String, String, Bool) -> Void)?
+    #if os(macOS)
+    /// The message box that pictures and movies dropped on the page go to
+    /// (nil: none, so WebKit has the drop).
+    var dropTarget: (() -> ComposerTextController?)? {
+        get { (webView as? AgentPageView)?.dropTarget }
+        set { (webView as? AgentPageView)?.dropTarget = newValue }
+    }
+    #endif
 
     override init() {
         let conf = WKWebViewConfiguration()
@@ -774,6 +782,27 @@ struct AgentWebTranscript: NSViewRepresentable {
 final class AgentPageView: WKWebView {
     /// In a window (true: it just joined one), or resized there.
     var onPlaced: ((Bool) -> Void)?
+    /// The message box that pictures and movies dropped on it go to, not
+    /// WebKit (which would open them in the page).
+    var dropTarget: (() -> ComposerTextController?)?
+
+    private func target(_ info: any NSDraggingInfo) -> ComposerTextController? {
+        guard info.draggingSource as? NSView !== self, let c = dropTarget?(), c.takesFiles(info.draggingPasteboard) else { return nil }
+        return c
+    }
+
+    override func draggingEntered(_ info: any NSDraggingInfo) -> NSDragOperation {
+        target(info) != nil ? .copy : super.draggingEntered(info)
+    }
+
+    override func draggingUpdated(_ info: any NSDraggingInfo) -> NSDragOperation {
+        target(info) != nil ? .copy : super.draggingUpdated(info)
+    }
+
+    override func performDragOperation(_ info: any NSDraggingInfo) -> Bool {
+        guard let c = target(info) else { return super.performDragOperation(info) }
+        return c.dropAtEnd(info.draggingPasteboard)
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
