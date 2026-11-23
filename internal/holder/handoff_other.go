@@ -9,3 +9,4 @@ type handoff struct{}
 func (*handoff) init(*Server)             {}
 func (*handoff) watch(*Server)            {}
 func (*handoff) awaitOutput(*Server) bool { return true }
+func (*handoff) readerEnded()             {}

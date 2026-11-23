@@ -21,18 +21,26 @@ type handoff struct {
 	wakeR, wakeW *os.File // nil: no handoff (Config.Exe unset)
 	ptyFD        int
 
-	mu      sync.Mutex
-	at      fileID // the executable this image is
-	refused fileID // one that failed or wouldn't take a handoff: not tried again
-	exe     string // the executable to hand over to, once the reader is woken
-	woken   bool
+	mu     sync.Mutex
+	at     fileID // the executable this image is
+	target fileID // the one being handed over to, once the reader's woken
+	tries  map[fileID]int
+	woken  bool
 }
 
-// handoffEvery is how often a holder looks for an update to its
-// executable. Programs in the pane lose access in the meantime, so short.
-var handoffEvery = 500 * time.Millisecond
+var (
+	// handoffEvery is how often a holder looks for an update to its
+	// executable. Programs in the pane lose access in the meantime, so
+	// short.
+	handoffEvery = 500 * time.Millisecond
+	// handoffTries is how many times a holder tries an executable that
+	// fails its check, or the handoff (a first launch slowed by the Mac
+	// assessing it), before it gives up on it.
+	handoffTries = 3
+)
 
-// errBusy: not now (a waiting gate, input being written), next time.
+// errBusy: not now (a waiting gate, input being written, a close asked
+// for), next time.
 var errBusy = errors.New("busy")
 
 func (h *handoff) init(s *Server) {
@@ -44,18 +52,26 @@ func (h *handoff) init(s *Server) {
 		logf("no handoff on update: %v", err)
 		return
 	}
-	r, w, err := os.Pipe()
-	if err != nil {
-		logf("no handoff on update: %v", err)
-		return
-	}
-	h.wakeR, h.wakeW, h.at = r, w, id
 	h.ptyFD = -1
 	if s.pty != nil {
 		if rc, err := s.pty.SyscallConn(); err == nil {
 			_ = rc.Control(func(fd uintptr) { h.ptyFD = int(fd) })
 		}
 	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		logf("no handoff on update: %v", err)
+		return
+	}
+	if int(r.Fd()) >= unix.FD_SETSIZE || h.ptyFD >= unix.FD_SETSIZE {
+		// (select's limit: never, for a holder's few descriptors)
+		r.Close()
+		w.Close()
+		logf("no handoff on update: descriptors past select's")
+		return
+	}
+	h.wakeR, h.wakeW, h.at = r, w, id
+	h.tries = map[fileID]int{}
 }
 
 func statID(path string) (fileID, error) {
@@ -85,14 +101,13 @@ func (h *handoff) watch(s *Server) {
 		}
 		id, err := statID(s.cfg.Exe)
 		h.mu.Lock()
-		skip := err != nil || id == h.at || id == h.refused || h.woken
+		skip := err != nil || id == h.at || h.tries[id] >= handoffTries || h.woken
 		h.mu.Unlock()
 		if skip {
 			continue // gone (an uninstall: idleWatch), or seen
 		}
-		if !takesHandoff(s.cfg.Exe) {
-			logf("not handing over to %s: it doesn't take this holder's handoff", s.cfg.Exe)
-			h.refuse(id)
+		if !takesHandoff(s.cfg.Exe, s.cfg.Args) {
+			h.failed(id, "it doesn't take this holder's handoff")
 			continue
 		}
 		s.mu.Lock()
@@ -102,29 +117,34 @@ func (h *handoff) watch(s *Server) {
 			// No reader to wake (or it's ending, and won't see the wake):
 			// nothing more comes from the PTY.
 			if err := s.reexec(s.cfg.Exe); !errors.Is(err, errBusy) {
-				logf("couldn't hand over to %s: %v", s.cfg.Exe, err)
-				h.refuse(id)
+				h.failed(id, err.Error())
 			}
 			continue
 		}
 		h.mu.Lock()
-		h.exe, h.woken = s.cfg.Exe, true
+		h.target, h.woken = id, true
 		h.mu.Unlock()
 		_, _ = h.wakeW.Write([]byte{0})
 	}
 }
 
-func (h *handoff) refuse(id fileID) {
+// failed counts a try at handing over to executable id that didn't work.
+func (h *handoff) failed(id fileID, why string) {
 	h.mu.Lock()
-	h.refused = id
+	h.tries[id]++
+	n := h.tries[id]
 	h.mu.Unlock()
+	if n >= handoffTries {
+		logf("not handing over to the updated holder: %s (tried %d times)", why, n)
+	}
 }
 
-// takesHandoff runs exe with CheckArg: it must start, and take this handoff.
-func takesHandoff(exe string) bool {
+// takesHandoff runs exe with CheckArg and the holder's arguments: it must
+// start, take them, and take this handoff.
+func takesHandoff(exe string, args []string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, exe, CheckArg).Output()
+	out, err := exec.CommandContext(ctx, exe, append([]string{CheckArg}, args...)...).Output()
 	return err == nil && string(out) == handoffHello()+"\n"
 }
 
@@ -149,34 +169,75 @@ func (h *handoff) awaitOutput(s *Server) bool {
 		}
 		_, _ = h.wakeR.Read(make([]byte, 1))
 		h.mu.Lock()
-		exe := h.exe
+		id := h.target
 		h.mu.Unlock()
-		err = s.reexec(exe)
+		err = s.reexec(s.cfg.Exe)
+		if !errors.Is(err, errBusy) {
+			h.failed(id, err.Error())
+		}
 		h.mu.Lock()
 		h.woken = false
-		if !errors.Is(err, errBusy) {
-			logf("couldn't hand over to %s: %v", exe, err)
-			if id, e := statID(exe); e == nil {
-				h.refused = id
-			}
-		}
 		h.mu.Unlock()
 		return false
 	}
 }
 
+// readerEnded: the reader has stopped (the child's end). A wake it never
+// saw is let go, so the watch takes the exited child's way.
+func (h *handoff) readerEnded() {
+	if h.wakeR == nil {
+		return
+	}
+	h.mu.Lock()
+	h.woken = false
+	h.mu.Unlock()
+}
+
 // reexec execs exe in the holder's place with ResumeArg, handing the pane
 // over. It returns only if it couldn't (errBusy: try again later), with
-// the holder as it was. The reader is stopped, or the child has exited.
+// the holder as it was but for its clients, which reconnect. The reader is
+// stopped, or the child has exited.
 func (s *Server) reexec(exe string) error {
 	if !s.pauseInput(time.Second) {
 		return errBusy
 	}
 	defer s.resumeInput()
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closing || s.gate != nil {
+	if s.closing || s.closeAsked || s.gate != nil {
+		s.mu.Unlock()
 		return errBusy
+	}
+	s.handingOver = true
+	clients := make([]*client, 0, len(s.clients))
+	for c := range s.clients {
+		clients = append(clients, c)
+	}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.handingOver = false
+		s.mu.Unlock()
+	}()
+
+	// What the daemon has sent is taken first: a close, a resize, input
+	// (queued, and handed over). Each client's reader stops once it has
+	// read what's there; the daemon reconnects to the new image.
+	for _, c := range clients {
+		_ = c.conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+	}
+	for _, c := range clients {
+		select {
+		case <-c.served:
+		case <-time.After(time.Second):
+			c.close() // (a frame cut off: the daemon sends it again on its next connection, or not)
+			<-c.served
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closing || s.closeAsked {
+		return errBusy // closed meanwhile: it ends instead
 	}
 	st := handoffState{
 		Args: s.cfg.Args, PID: s.proc.Pid, Cols: s.cols, Rows: s.rows,
@@ -191,6 +252,16 @@ func (s *Server) reexec(exe string) error {
 	s.inMu.Lock()
 	st.Input = s.inBuf
 	s.inMu.Unlock()
+	// The daemons proven to it, attached or handed over to it before (one
+	// may be reconnecting from an earlier handoff).
+	for _, t := range s.daemonsHandedOver() {
+		st.Daemons = append(st.Daemons, t.Words())
+	}
+	for _, c := range clients {
+		if c.daemon.Valid() && !s.wasHandedOver(c.daemon) {
+			st.Daemons = append(st.Daemons, c.daemon.Words())
+		}
+	}
 	if ul, ok := s.ln.(*net.UnixListener); ok {
 		if rc, err := ul.SyscallConn(); err == nil {
 			_ = rc.Control(func(fd uintptr) { st.Listener = int(fd) })
@@ -218,9 +289,12 @@ func (s *Server) reexec(exe string) error {
 	if _, err := f.Seek(0, 0); err != nil {
 		return err
 	}
-	var file int
+	file := -1
 	if rc, err := f.SyscallConn(); err == nil {
 		_ = rc.Control(func(fd uintptr) { file = int(fd) })
+	}
+	if file < 0 {
+		return errors.New("no handoff file")
 	}
 	fds := []int{st.Listener, file}
 	if st.PTY >= 0 {
@@ -233,7 +307,8 @@ func (s *Server) reexec(exe string) error {
 		}
 	}
 	logf("handing the pane over to the updated holder (%s)", exe)
-	err = syscall.Exec(exe, []string{exe, ResumeArg, strconv.Itoa(file)}, os.Environ())
+	argv := append([]string{exe, ResumeArg, strconv.Itoa(file)}, s.cfg.Args...)
+	err = syscall.Exec(exe, argv, os.Environ())
 	keepFromExec(fds)
 	return err
 }

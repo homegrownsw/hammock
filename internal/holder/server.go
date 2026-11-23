@@ -10,11 +10,14 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
+
+	"github.com/homegrownsw/hammock/internal/codesign"
 )
 
 // Config configures a holder.
@@ -101,6 +104,8 @@ type client struct {
 	wake   chan struct{} // cap 1: new output or exit available
 	done   chan struct{}
 	once   sync.Once
+	daemon codesign.Token // the process that proved itself on this connection, if one did
+	served chan struct{}  // closed once nothing more is read from it (serve has returned)
 }
 
 func (c *client) close() { c.once.Do(func() { close(c.done); c.conn.Close() }) }
@@ -129,6 +134,10 @@ type Server struct {
 	exitSignal int32 // the signal that ended the child, 0 if it exited itself
 	lastDetach time.Time
 	closing    bool
+	closeAsked bool // a client sent FrameClose (shutdown may not have begun)
+	// handingOver turns new clients away while the holder hands the pane
+	// over (handoff_darwin.go): they reconnect to the new image.
+	handingOver bool
 
 	gate *os.File // the write end of a waiting gate's pipe (AwaitSize); guarded by mu
 
@@ -141,6 +150,9 @@ type Server struct {
 	inPaused, inWriting bool
 
 	handoff handoff // re-exec after an update (handoff_darwin.go)
+	// handedOver are the daemons proven to the holder before a handoff
+	// (handoff.go), set as it resumes.
+	handedOver atomic.Pointer[[]codesign.Token]
 
 	proofs   proofs   // connections waiting for their proof (proof.go)
 	proofSvc proofSvc // the Mach service proofs come to
@@ -318,6 +330,7 @@ func (s *Server) readPTY() {
 			break
 		}
 	}
+	s.handoff.readerEnded()
 	status, sig := int32(-1), int32(0)
 	ps, err := s.proc.Wait()
 	if err == nil {
@@ -418,10 +431,14 @@ func (s *Server) serve(conn net.Conn, at PeerProc) {
 			}
 		}
 	}
-	c := &client{conn: conn, offset: binary.BigEndian.Uint64(first.Payload), wake: make(chan struct{}, 1), done: make(chan struct{})}
+	c := &client{conn: conn, offset: binary.BigEndian.Uint64(first.Payload), wake: make(chan struct{}, 1), done: make(chan struct{}), served: make(chan struct{})}
+	defer close(c.served)
+	if proven {
+		c.daemon = at.Token
+	}
 
 	s.mu.Lock()
-	if s.closing {
+	if s.closing || s.handingOver {
 		s.mu.Unlock()
 		conn.Close()
 		return
@@ -470,6 +487,11 @@ func (s *Server) serve(conn net.Conn, at PeerProc) {
 				s.signal(syscall.Signal(int32(binary.BigEndian.Uint32(f.Payload))))
 			}
 		case FrameClose:
+			// Marked first: a handoff waiting for this reader to finish
+			// mustn't take the pane on (handoff_darwin.go).
+			s.mu.Lock()
+			s.closeAsked = true
+			s.mu.Unlock()
 			go s.shutdown("the daemon closed the pane")
 			return
 		}

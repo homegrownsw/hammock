@@ -28,6 +28,7 @@ func PeerToken(int) Token { return Token{} }
 
 func TokenFromWords([8]uint32) Token             { return Token{} }
 func (Token) Valid() bool                        { return false }
+func (Token) Words() [8]uint32                   { return [8]uint32{} }
 func (Token) PID() int                           { return 0 }
 func (Token) Path() (string, error)              { return "", errNoToken }
 func (Token) Live() bool                         { return false }
