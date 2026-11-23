@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,7 +24,7 @@ func ifa(name, cidr string) ifAddr {
 	if err != nil {
 		panic(err)
 	}
-	return ifAddr{name, ip, n.Mask}
+	return ifAddr{name, ip, n.Mask, 0}
 }
 
 func TestHostNetworks(t *testing.T) {
@@ -320,5 +321,56 @@ func TestRemoteSourceOKLocalNetwork(t *testing.T) {
 	d.remote.snap.extra = []string{"mac.example.net:7433"}
 	if !d.remoteSourceOK(net.ParseIP("203.0.113.9"), local) {
 		t.Error("a forwarded port, with extra addresses given out: refused")
+	}
+}
+
+// A listener's interface created again (tailscaled restarted: the same
+// addresses, a new interface number) is listened on afresh: the old
+// listener is bound to an interface that's gone, and takes nothing.
+func TestListenAgainWhenInterfaceIsCreatedAgain(t *testing.T) {
+	lo := ""
+	ifs, _ := net.Interfaces()
+	for _, i := range ifs {
+		if i.Flags&net.FlagLoopback != 0 {
+			lo = i.Name
+			break
+		}
+	}
+	if lo == "" {
+		t.Skip("no loopback interface")
+	}
+	tc := startComputer(t)
+	d, addr := tc.d, tc.addr
+	listen := func(index int) *http.Server {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		d.remote.snap = netSnapshot{ifaces: map[string]string{"127.0.0.1": lo}, index: map[string]int{lo: index}}
+		d.syncListeners([]string{addr})
+		if !slices.Equal(d.remote.addrs, []string{addr}) || len(d.remote.servers) != 1 {
+			t.Fatalf("listening on %v", d.remote.addrs)
+		}
+		return d.remote.servers[0]
+	}
+	first := listen(1)
+	if again := listen(1); again != first {
+		t.Fatal("the same interface: listened on again")
+	}
+	if again := listen(2); again == first {
+		t.Fatal("the interface created again: the old listener kept")
+	}
+	c, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("after listening again: %v", err)
+	}
+	c.Close()
+}
+
+func TestBindingFor(t *testing.T) {
+	s := netSnapshot{ifaces: map[string]string{"100.64.0.2": "tailscale0"}, index: map[string]int{"tailscale0": 8}}
+	if got := s.bindingFor("100.64.0.2:7433"); got != "tailscale0#8" {
+		t.Errorf("binding: %q", got)
+	}
+	if got := s.bindingFor("192.168.1.20:7433"); got != "" {
+		t.Errorf("unknown address: %q", got)
 	}
 }

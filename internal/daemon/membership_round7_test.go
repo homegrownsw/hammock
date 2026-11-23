@@ -406,7 +406,7 @@ func TestMembershipDroppedHearsNothing(t *testing.T) {
 func TestLinkFromWildcardListen(t *testing.T) {
 	oldCmds, oldIfs := tailscaleCommands, interfaceAddrs
 	tailscaleCommands = nil
-	interfaceAddrs = func() []ifAddr { return []ifAddr{{"utun9", net.ParseIP("100.100.1.2"), nil}} }
+	interfaceAddrs = func() []ifAddr { return []ifAddr{{"utun9", net.ParseIP("100.100.1.2"), nil, 0}} }
 	t.Cleanup(func() { tailscaleCommands, interfaceAddrs = oldCmds, oldIfs })
 	emptyCache := func() {
 		tsCache.Lock()

@@ -351,6 +351,7 @@ var peerRedial, peerRedialMax = time.Second, 30 * time.Second
 func (l *peerLink) run() {
 	lt := l.d.linkT
 	backoff := lt.redial
+	said := "" // the failure last logged at Info: each said once until it's reached again
 	for {
 		select {
 		case <-l.stop:
@@ -359,7 +360,7 @@ func (l *peerLink) run() {
 		}
 		cl, err := l.dial()
 		if err == nil {
-			backoff = lt.redial
+			backoff, said = lt.redial, ""
 			// In no Group there and no join waiting (removed, its Groups
 			// closed or unshared, or left while it was away): the link ends
 			// here, rather than signing in again and again as a stranger.
@@ -369,7 +370,12 @@ func (l *peerLink) run() {
 			l.d.mu.Lock()
 			host := l.tok.HostName // (ensureLink renames it, under d.mu)
 			l.d.mu.Unlock()
-			l.d.log.Debug("peer link", "host", host, "err", err)
+			if msg := err.Error(); msg != said && !errors.Is(err, errNotLinkedYet) {
+				said = msg
+				l.d.log.Info("peer link: can't reach it", "host", host, "err", err)
+			} else {
+				l.d.log.Debug("peer link", "host", host, "err", err)
+			}
 		}
 		l.setOffline()
 		select {

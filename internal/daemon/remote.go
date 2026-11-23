@@ -86,6 +86,7 @@ type remoteState struct {
 	certErr     string // why the certificate couldn't be loaded, last time it was tried (loadCert)
 	servers     []*http.Server
 	addrs       []string    // where each of servers listens
+	bound       []string    // the interface each of servers is bound to (netSnapshot.bindingFor; "" for none)
 	snap        netSnapshot // this computer's networks, as last looked at
 	advertised  []string    // reachAt, as last told to the others
 	watchStop   chan struct{}
@@ -238,9 +239,10 @@ type tsNet struct {
 
 // ifAddr is an interface's address.
 type ifAddr struct {
-	name string
-	ip   net.IP
-	mask net.IPMask
+	name  string
+	ip    net.IP
+	mask  net.IPMask
+	index int // the kernel's number for the interface: one created again under the same name gets a new one
 }
 
 // These are variables for tests.
@@ -256,7 +258,7 @@ var (
 			addrs, _ := i.Addrs()
 			for _, a := range addrs {
 				if n, ok := a.(*net.IPNet); ok {
-					out = append(out, ifAddr{i.Name, n.IP, n.Mask})
+					out = append(out, ifAddr{i.Name, n.IP, n.Mask, i.Index})
 				}
 			}
 		}
@@ -467,9 +469,9 @@ func (d *Daemon) startRemote() error {
 		return err
 	}
 	if listen := d.cfg.RemoteListen; len(listen) > 0 {
-		d.remote.addrs = nil
+		d.remote.addrs, d.remote.bound = nil, nil
 		for _, addr := range listen {
-			d.listenOn(addr, "")
+			d.listenOn(addr, "", "")
 		}
 		if len(d.remote.servers) == 0 {
 			return errors.New("could not listen on any address given")
@@ -494,9 +496,10 @@ func (d *Daemon) startRemote() error {
 	return nil
 }
 
-// listenOn opens a remote listener on addr, reporting whether it could.
+// listenOn opens a remote listener on addr (bound to iface, if given: bound
+// is that binding as bindingFor says it), reporting whether it could.
 // Callers hold d.mu.
-func (d *Daemon) listenOn(addr, iface string) bool {
+func (d *Daemon) listenOn(addr, iface, bound string) bool {
 	lc := net.ListenConfig{}
 	if iface != "" {
 		lc.Control = bindToInterface(iface)
@@ -519,6 +522,7 @@ func (d *Daemon) listenOn(addr, iface string) bool {
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, TLSConfig: tcfg}
 	d.remote.servers = append(d.remote.servers, srv)
 	d.remote.addrs = append(d.remote.addrs, ln.Addr().String())
+	d.remote.bound = append(d.remote.bound, bound)
 	go srv.ServeTLS(ln, "", "")
 	d.log.Info("remote access listening", "addr", ln.Addr().String())
 	return true
@@ -569,7 +573,7 @@ func (d *Daemon) stopRemote() {
 	for _, s := range d.remote.servers {
 		_ = s.Close()
 	}
-	d.remote.servers, d.remote.addrs = nil, nil
+	d.remote.servers, d.remote.addrs, d.remote.bound = nil, nil, nil
 	d.remote.on, d.remote.advertised = false, nil
 	if d.remote.watchStop != nil {
 		close(d.remote.watchStop)

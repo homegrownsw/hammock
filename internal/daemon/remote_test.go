@@ -189,10 +189,10 @@ func TestTailscaleAddressSelection(t *testing.T) {
 		t.Fatalf("asked: %v %v", said, err)
 	}
 	ifs := []ifAddr{
-		{"en0", net.ParseIP("192.168.1.20"), nil},
-		{"utun3", net.ParseIP("100.86.15.86"), nil},
-		{"utun3", net.ParseIP("fd7a:115c:a1e0::733:2260"), nil},
-		{"utun5", net.ParseIP("100.96.0.2"), nil}, // Cloudflare WARP
+		{"en0", net.ParseIP("192.168.1.20"), nil, 0},
+		{"utun3", net.ParseIP("100.86.15.86"), nil, 0},
+		{"utun3", net.ParseIP("fd7a:115c:a1e0::733:2260"), nil, 0},
+		{"utun5", net.ParseIP("100.96.0.2"), nil, 0}, // Cloudflare WARP
 	}
 	n := pickTailscale(said, true, ifs)
 	if len(n.own) != 2 || !n.own[0].Equal(net.ParseIP("100.86.15.86")) || len(n.others) != 1 || n.others[0] != "utun5 100.96.0.2" || n.unknown {

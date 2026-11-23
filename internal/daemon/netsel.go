@@ -215,22 +215,38 @@ type netSnapshot struct {
 	chosen []string
 	extra  []string
 	ifaces map[string]string // this computer's addresses → their interface
+	index  map[string]int    // each interface → the kernel's number for it
 }
 
 func takeNetSnapshot() netSnapshot { return snapshotWith(tailscaleNet()) }
 
 func snapshotWith(ts tsNet) netSnapshot {
 	addrs := interfaceAddrs()
-	ifaces := map[string]string{}
+	ifaces, index := map[string]string{}, map[string]int{}
 	for _, a := range addrs {
 		ifaces[a.ip.String()] = a.name
+		index[a.name] = a.index
 	}
 	return netSnapshot{
 		nets:   hostNetworks(addrs, ts, portLabels()),
 		chosen: chosenNetworks(),
 		extra:  extraAddresses(),
 		ifaces: ifaces,
+		index:  index,
 	}
+}
+
+// bindingFor is the interface a listener on addr is bound to, with its
+// number ("tailscale0#8"; "" if none). A listener is bound to the
+// interface's number, not its name: one created again (tailscaled
+// restarted) has the same addresses and a new number, and a listener on
+// the old one takes nothing.
+func (s netSnapshot) bindingFor(addr string) string {
+	iface := s.ifaceFor(addr)
+	if iface == "" {
+		return ""
+	}
+	return iface + "#" + strconv.Itoa(s.index[iface])
 }
 
 // ifaceFor is the interface of a listen address's host ("" if unknown).
@@ -402,18 +418,24 @@ var errNoNetwork = errors.New("choose a network for remote access first (Setting
 // connections on addresses still wanted. Callers hold d.mu.
 func (d *Daemon) syncListeners(want []string) {
 	keep := d.remote.servers[:0]
-	var keepAddrs, gone []string
+	var keepAddrs, keepBound, gone []string
 	for i, s := range d.remote.servers {
-		a := d.remote.addrs[i]
-		if slices.Contains(want, a) {
-			keep, keepAddrs = append(keep, s), append(keepAddrs, a)
+		a, bound := d.remote.addrs[i], d.remote.bound[i]
+		now := d.remote.snap.bindingFor(a)
+		switch {
+		case slices.Contains(want, a) && now == bound:
+			keep, keepAddrs, keepBound = append(keep, s), append(keepAddrs, a), append(keepBound, bound)
 			continue
+		case slices.Contains(want, a):
+			// Its interface was created again: listened on afresh, below.
+			d.log.Info("remote access listening again: its interface changed", "addr", a, "was", bound, "now", now)
+		default:
+			d.log.Info("remote access stopped listening", "addr", a)
 		}
 		_ = s.Close()
 		gone = append(gone, a)
-		d.log.Info("remote access stopped listening", "addr", a)
 	}
-	d.remote.servers, d.remote.addrs = keep, keepAddrs
+	d.remote.servers, d.remote.addrs, d.remote.bound = keep, keepAddrs, keepBound
 	// A server's Close leaves its WebSockets (hijacked) open: whoever came
 	// in on a network no longer chosen goes now too.
 	for c := range d.conns {
@@ -426,7 +448,7 @@ func (d *Daemon) syncListeners(want []string) {
 		if slices.Contains(d.remote.addrs, a) {
 			continue
 		}
-		if d.listenOn(a, d.remote.snap.ifaceFor(a)) {
+		if d.listenOn(a, d.remote.snap.ifaceFor(a), d.remote.snap.bindingFor(a)) {
 			added = append(added, d.remote.addrs[len(d.remote.addrs)-1])
 		}
 	}
@@ -458,7 +480,7 @@ func (d *Daemon) watchNetworks(stop <-chan struct{}) {
 		// again when they change, else every minute.
 		var b strings.Builder
 		for _, a := range interfaceAddrs() {
-			b.WriteString(a.name + a.ip.String() + ";")
+			b.WriteString(a.name + "#" + strconv.Itoa(a.index) + a.ip.String() + ";")
 		}
 		if ticks++; b.String() != lastIfs || ticks%12 == 0 {
 			refreshTailscale()
