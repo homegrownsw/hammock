@@ -1109,4 +1109,9 @@ window.hammock = { debug, configure, update, setInsets, image, toLatest, debugSc
 // Ready once the empty page is on screen: on the iPhone, WebKit puts a new
 // page back at its top as its first frame reaches the screen, and a
 // conversation already scrolled to its end by then was moved with it.
-requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => post({ type: "ready" }), 50)))
+// Or a moment later all the same: a page loaded ahead, out of sight
+// (AgentWebPool's spare), gets no frames until it's shown.
+let readySent = false
+const sayReady = () => { if (!readySent) { readySent = true; post({ type: "ready" }) } }
+requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(sayReady, 50)))
+setTimeout(sayReady, 400)

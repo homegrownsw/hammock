@@ -768,6 +768,9 @@ extension AgentWebBridge {
 /// kept for the view's life, with where the bars are over it.
 @MainActor
 final class AgentWebHost {
+    /// It has bars over it to keep clear of (a conversation's); a preview has none.
+    let measures: Bool
+    init(measures: Bool = true) { self.measures = measures }
     private(set) var key = ""
     private var current: AgentWebBridge?
 
@@ -777,7 +780,8 @@ final class AgentWebHost {
         if let current, key == self.key { return current }
         self.key = key
         let b = AgentWebPool.shared.bridge(for: key)
-        b.onPlaced = { [weak self] in self?.pushInsets() }
+        b.onPlaced = measures ? { [weak self] in self?.pushInsets() } : nil
+        if !measures { b.setInsets(top: 0, bottom: 0) }
         current = b
         return b
     }
@@ -792,6 +796,7 @@ final class AgentWebHost {
     /// The navigation bar over the page's top (it runs under it), and the
     /// message box (and the keyboard) over its bottom.
     func pushInsets() {
+        guard measures else { return }
         // The web view's own frame: SwiftUI's leaves out what it runs into
         // under the bars (ignoresSafeArea).
         guard let f = webFrame(), f.height > 0 else { return }
@@ -976,7 +981,7 @@ public struct AgentPreview: View {
     let paneID: String
     let size: CGSize
     @State private var lease: AgentLease?
-    @State private var web = AgentWebHost()
+    @State private var web = AgentWebHost(measures: false)
     @State private var shown = false
     @Environment(\.agentAutomaticColor) private var accent
     @Environment(\.agentAutomaticBubble) private var bubble
@@ -998,7 +1003,8 @@ public struct AgentPreview: View {
                 AgentWebTranscript(bridge: web.bridge(""))
                     .frame(width: g.size.width, height: g.size.height)
                     .onChange(of: scale, initial: true) { _, z in web.bridge.webView.pageZoom = max(z, 0.1) }
-                    .opacity(shown ? 1 : 0)
+                    // Covered, not hidden, until it's drawn: a web view hidden gets no frames to draw with.
+                    .overlay { Rectangle().fill(.background).opacity(shown ? 0 : 1).allowsHitTesting(false) }
                     .onChange(of: ObjectIdentifier(s), initial: true) {
                         web.bridge.configure(AgentWebStyle(fonts: AgentFonts.current, accent: accent, bubble: bubble, canOpenDiff: false, agentName: s.agentName))
                         web.bridge.attach(s)
@@ -1013,6 +1019,11 @@ public struct AgentPreview: View {
         .allowsHitTesting(false)
         .clipped()
         .onAppear { if lease == nil { lease = AgentLease(model, paneID) } }
+        // The director's `agent preview-eval PATH<tab>CODE`, run in this page.
+        .onReceive(NotificationCenter.default.publisher(for: AgentDebug.command)) { n in
+            let (cmd, arg) = AgentDebug.parse(n)
+            if cmd == "preview-eval" { web.bridge.debug("eval", arg) }
+        }
     }
 }
 
