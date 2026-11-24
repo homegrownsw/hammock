@@ -55,7 +55,7 @@ for arch in "${archs[@]}"; do
     touch "$lib/.ok"
   fi
   # Its pkg-config files name where it was built: here, now.
-  for pc in "$lib"/share/pkgconfig/*.pc; do
+  for pc in "$lib"/lib/pkgconfig/*.pc; do
     perl -pi -e "s|^prefix=.*|prefix=$lib|" "$pc"
   done
 
@@ -64,7 +64,7 @@ for arch in "${archs[@]}"; do
   mkdir -p "$bin"
   # (libghostty's Go package links the static library unless built with
   # the dynamic tag.)
-  PKG_CONFIG_PATH="$lib/share/pkgconfig" CGO_ENABLED=1 GOOS=linux GOARCH="$arch" \
+  PKG_CONFIG_PATH="$lib/lib/pkgconfig" CGO_ENABLED=1 GOOS=linux GOARCH="$arch" \
     CC="zig cc -target $zt.$glibc" CXX="zig c++ -target $zt.$glibc" \
     go build -tags ghostty -trimpath \
       -ldflags "-s -w -X github.com/homegrownsw/hammock/internal/daemon.Version=$version -X github.com/homegrownsw/hammock/internal/daemon.ProductVersion=$("$root/scripts/mac-version")${HMK_VERSION:+ -X main.release=1}" \

@@ -20,7 +20,14 @@ if [ "$(git -C "$src" rev-parse HEAD 2>/dev/null || true)" != "$rev" ]; then
   git -C "$src" checkout -q --detach FETCH_HEAD
 fi
 
+# The Apple clients link the xcframework, which Ghostty builds only when asked
+# (it needs Xcode); a build for another target (Linux, Android) skips it.
+xcfw=()
+if [ "$(uname)" = Darwin ] && [[ " $* " != *" -Dtarget="* ]]; then
+  xcfw=(-Demit-xcframework=true)
+fi
+
 cd "$src"
-zig build -Demit-lib-vt -Doptimize=ReleaseFast --prefix "$out" "$@"
+zig build -Demit-lib-vt -Doptimize=ReleaseFast ${xcfw[@]+"${xcfw[@]}"} --prefix "$out" "$@"
 echo "libghostty-vt built at $rev -> $out"
-echo "export PKG_CONFIG_PATH=$out/share/pkgconfig"
+echo "export PKG_CONFIG_PATH=$out/lib/pkgconfig"

@@ -218,7 +218,7 @@ func transmit(b *bytes.Buffer, id uint32, data string) {
 // imagePNG is an image's pixels as base64 PNG, cached by content generation.
 func (m *ghosttyMirror) imagePNG(img *libghostty.KittyGraphicsImage) string {
 	info, err := img.Info()
-	if err != nil || info.DataPending || info.Width == 0 || info.Height == 0 {
+	if err != nil || info.PixelsPending || info.Width == 0 || info.Height == 0 {
 		return ""
 	}
 	if c, ok := m.pngs[info.ID]; ok && c.gen == info.Generation {
@@ -226,7 +226,7 @@ func (m *ghosttyMirror) imagePNG(img *libghostty.KittyGraphicsImage) string {
 	}
 	var raw []byte
 	if info.Format == libghostty.KittyImageFormatPNG {
-		raw = append([]byte(nil), info.Data...)
+		raw = append([]byte(nil), info.Pixels...)
 	} else {
 		pic := toImage(info)
 		if pic == nil {
@@ -251,7 +251,7 @@ func (m *ghosttyMirror) imagePNG(img *libghostty.KittyGraphicsImage) string {
 
 // toImage wraps (or converts) an image's decoded pixels.
 func toImage(info *libghostty.KittyGraphicsImageInfo) image.Image {
-	w, h, d := int(info.Width), int(info.Height), info.Data
+	w, h, d := int(info.Width), int(info.Height), info.Pixels
 	rect := image.Rect(0, 0, w, h)
 	switch info.Format {
 	case libghostty.KittyImageFormatRGBA:

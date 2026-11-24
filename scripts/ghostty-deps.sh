@@ -38,7 +38,7 @@ if [ ! -f "$cache/.ok" ]; then
     GHOSTTY_SRC="$cache/src" GHOSTTY_OUT="$cache/out" "$root/scripts/build-libghostty.sh"
   fi
   # Its pkg-config files name where it was built: here, now.
-  for pc in "$cache"/out/share/pkgconfig/*.pc; do
+  for pc in "$cache"/out/lib/pkgconfig/*.pc; do
     sed -i '' "s|^prefix=.*|prefix=$cache/out|" "$pc"
   done
   touch "$cache/.ok"

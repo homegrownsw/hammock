@@ -98,6 +98,6 @@ lib=~/Library/Caches/hammock/ghostty/$(grep -v '^#' third_party/ghostty/VERSION 
 docker run --rm -v "$PWD:/src" -v "$lib:/ghostty:ro" -v "$(go env GOMODCACHE):/go/pkg/mod:ro" -w /src \
   -e GOFLAGS=-mod=mod -e GOTOOLCHAIN=local golang:1.27-bookworm sh -c '
     apt-get -qq update && apt-get -qq install -y pkg-config >/dev/null
-    cp -r /ghostty /tmp/ghostty && sed -i "s|^prefix=.*|prefix=/tmp/ghostty|" /tmp/ghostty/share/pkgconfig/*.pc
-    PKG_CONFIG_PATH=/tmp/ghostty/share/pkgconfig go test -tags ghostty ./...'
+    cp -r /ghostty /tmp/ghostty && sed -i "s|^prefix=.*|prefix=/tmp/ghostty|" /tmp/ghostty/lib/pkgconfig/*.pc
+    PKG_CONFIG_PATH=/tmp/ghostty/lib/pkgconfig go test -tags ghostty ./...'
 ```

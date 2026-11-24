@@ -10,7 +10,7 @@
 set dotenv-filename := ".release.env"
 set dotenv-load
 
-export PKG_CONFIG_PATH := justfile_directory() / "third_party/ghostty/out/share/pkgconfig"
+export PKG_CONFIG_PATH := justfile_directory() / "third_party/ghostty/out/lib/pkgconfig"
 tags := "ghostty"
 
 default: build

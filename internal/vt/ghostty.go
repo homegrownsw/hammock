@@ -17,7 +17,7 @@ const Emulated = true
 
 // GhosttyCommit is the libghostty-vt commit this build links against
 // (third_party/ghostty/VERSION).
-const GhosttyCommit = "f54340ad77814fe319d136e5e915d6a48de8dd23"
+const GhosttyCommit = "74d1983f27eb004ef442c8353bd703eba19c93b6"
 
 type ghosttyMirror struct {
 	t     *libghostty.Terminal
@@ -46,7 +46,8 @@ func newMirror(cols, rows int) Mirror {
 	// No limit in bytes, so the 10,000 lines govern, as in the clients
 	// (TerminalEngine.swift): libghostty's default byte limit kept only
 	// about a page of scrollback, and so did every attach's snapshot.
-	_ = t.SetScrollbackMaxBytes(nil)
+	noLimit := ^uint(0)
+	_ = t.SetScrollbackMaxBytes(&noLimit)
 	m := &ghosttyMirror{t: t, rows: rows, cols: cols}
 	t.SetEffectWritePty(func(_ *libghostty.Terminal, data []byte) {
 		if m.resp != nil {
@@ -152,17 +153,16 @@ func (m *ghosttyMirror) Snapshot() []byte {
 		// No palette: the snapshot would carry the daemon's default colours and
 		// override every client's theme. (Colours a program set with OSC 4 are
 		// lost on reattach; that's rare.)
-		libghostty.WithFormatterExtraPalette(false),
-		libghostty.WithFormatterExtraModes(true),
-		libghostty.WithFormatterExtraScrollingRegion(true),
-		libghostty.WithFormatterExtraTabstops(true),
-		libghostty.WithFormatterExtraPwd(true),
-		libghostty.WithFormatterExtraKeyboard(true),
-		libghostty.WithFormatterExtraCursor(true),
-		libghostty.WithFormatterExtraStyle(true),
-		libghostty.WithFormatterExtraHyperlink(true),
-		libghostty.WithFormatterExtraKittyKeyboard(true),
-		libghostty.WithFormatterExtraCharsets(true),
+		libghostty.WithFormatterExtras(libghostty.FormatterExtraModes|
+			libghostty.FormatterExtraScrollingRegion|
+			libghostty.FormatterExtraTabstops|
+			libghostty.FormatterExtraPwd|
+			libghostty.FormatterExtraKeyboard|
+			libghostty.FormatterExtraCursor|
+			libghostty.FormatterExtraStyle|
+			libghostty.FormatterExtraHyperlink|
+			libghostty.FormatterExtraKittyKeyboard|
+			libghostty.FormatterExtraCharsets),
 	)
 	if err != nil {
 		return []byte("\x1bc")
@@ -231,7 +231,7 @@ func (m *ghosttyMirror) SetColors(c Colors) {
 	}
 	changed := m.hasScheme && m.scheme != scheme
 	m.scheme, m.hasScheme = scheme, true
-	if on, _ := m.t.Mode(libghostty.ModeColorSchemeReport); changed && on && m.resp != nil {
+	if on, _ := m.t.Mode(libghostty.ModeReportColorScheme); changed && on && m.resp != nil {
 		if b, err := libghostty.ColorSchemeReportEncode(scheme); err == nil {
 			m.resp(b)
 		}

@@ -13,7 +13,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/quic-go/quic-go v0.64.1
 	github.com/yuin/goldmark v1.7.8
-	go.mitchellh.com/libghostty v0.0.0-20261021212106-df1957cbff56
+	go.mitchellh.com/libghostty v0.0.0-20261123035439-5bbe1d0d0990
 	golang.org/x/crypto v0.54.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sys v0.49.0

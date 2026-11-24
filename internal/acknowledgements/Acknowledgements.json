@@ -289,7 +289,7 @@
   },
   {
    "name": "Ghostty (libghostty-vt)",
-   "version": "f54340ad77814fe319d136e5e915d6a48de8dd23",
+   "version": "74d1983f27eb004ef442c8353bd703eba19c93b6",
    "url": "https://ghostty.org",
    "license": "MIT",
    "apps": [
@@ -523,7 +523,7 @@
   },
   {
    "name": "go.mitchellh.com/libghostty",
-   "version": "v0.0.0-20261021212106-df1957cbff56",
+   "version": "v0.0.0-20261123035439-5bbe1d0d0990",
    "url": "https://pkg.go.dev/go.mitchellh.com/libghostty",
    "license": "MIT",
    "apps": [

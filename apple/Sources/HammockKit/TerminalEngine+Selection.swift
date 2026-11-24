@@ -6,7 +6,6 @@ extension TerminalEngine {
     private func gridRef(x: Int, y: Int) -> GhosttyGridRef? {
         guard let terminal = handle else { return nil }
         var ref = GhosttyGridRef()
-        ref.size = MemoryLayout<GhosttyGridRef>.size
         var pt = GhosttyPoint()
         pt.tag = GHOSTTY_POINT_TAG_VIEWPORT
         pt.value.coordinate = GhosttyPointCoordinate(x: UInt16(clamping: max(0, min(x, cols - 1))), y: UInt32(max(0, min(y, rows - 1))))
@@ -18,7 +17,6 @@ extension TerminalEngine {
     public func select(fromX: Int, fromY: Int, toX: Int, toY: Int) {
         guard let terminal = handle, let a = gridRef(x: fromX, y: fromY), let b = gridRef(x: toX, y: toY) else { return }
         var sel = GhosttySelection()
-        sel.size = MemoryLayout<GhosttySelection>.size
         sel.start = a
         sel.end = b
         sel.rectangle = false
@@ -88,7 +86,6 @@ extension TerminalEngine {
         }
 
         var sel = GhosttySelection()
-        sel.size = MemoryLayout<GhosttySelection>.size
         let r = ghostty_selection_gesture_event(gesture, terminal, event, &sel)
         guard phase != .release else { return }
         if r == GHOSTTY_SUCCESS {
@@ -124,23 +121,32 @@ extension TerminalEngine {
     public func screenText() -> String? {
         guard handle != nil, let a = gridRef(x: 0, y: 0), let b = gridRef(x: cols - 1, y: rows - 1) else { return nil }
         var sel = GhosttySelection()
-        sel.size = MemoryLayout<GhosttySelection>.size
         sel.start = a
         sel.end = b
         return withUnsafePointer(to: &sel) { format($0) }
     }
 
+    /// Formats `selection`, or the terminal's own selection when nil.
     private func format(_ selection: UnsafePointer<GhosttySelection>?) -> String? {
         guard let terminal = handle else { return nil }
-        var opts = GhosttyTerminalSelectionFormatOptions()
-        opts.size = MemoryLayout<GhosttyTerminalSelectionFormatOptions>.size
-        opts.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN
-        opts.unwrap = true
-        opts.trim = true
-        opts.selection = selection
+        var sel = GhosttySelection()
+        if let selection {
+            sel = selection.pointee
+        } else if ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_SELECTION, &sel) != GHOSTTY_SUCCESS {
+            return nil
+        }
+        var formatter: GhosttyFormatter?
+        guard ghostty_formatter_terminal_new(nil, &formatter, terminal) == GHOSTTY_SUCCESS, let formatter else { return nil }
+        defer { ghostty_formatter_free(formatter) }
+        var emit = GHOSTTY_FORMATTER_FORMAT_PLAIN
+        var on = true
+        ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_EMIT, &emit)
+        ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &on)
+        ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &on)
+        guard ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &sel) == GHOSTTY_SUCCESS else { return nil }
         var ptr: UnsafeMutablePointer<UInt8>?
         var len = 0
-        guard ghostty_terminal_selection_format_alloc(terminal, nil, opts, &ptr, &len) == GHOSTTY_SUCCESS, let ptr else { return nil }
+        guard ghostty_formatter_format_alloc(formatter, nil, &ptr, &len) == GHOSTTY_SUCCESS, let ptr else { return nil }
         defer { ghostty_free(nil, ptr, len) }
         let s = String(decoding: UnsafeBufferPointer(start: ptr, count: len), as: UTF8.self)
         return s.isEmpty ? nil : s
@@ -155,7 +161,6 @@ extension TerminalEngine {
 
     private func selection(start: GhosttyGridRef, end: GhosttyGridRef) -> GhosttySelection {
         var sel = GhosttySelection()
-        sel.size = MemoryLayout<GhosttySelection>.size
         sel.start = start
         sel.end = end
         sel.rectangle = false
@@ -166,10 +171,8 @@ extension TerminalEngine {
     private func orderedSelection() -> GhosttySelection? {
         guard let terminal = handle else { return nil }
         var sel = GhosttySelection()
-        sel.size = MemoryLayout<GhosttySelection>.size
         guard ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_SELECTION, &sel) == GHOSTTY_SUCCESS else { return nil }
         var out = GhosttySelection()
-        out.size = MemoryLayout<GhosttySelection>.size
         guard ghostty_terminal_selection_ordered(terminal, &sel, GHOSTTY_SELECTION_ORDER_FORWARD, &out) == GHOSTTY_SUCCESS else { return nil }
         return out
     }
@@ -185,7 +188,6 @@ extension TerminalEngine {
     private func screenRef(_ p: GhosttyPointCoordinate) -> GhosttyGridRef? {
         guard let terminal = handle else { return nil }
         var ref = GhosttyGridRef()
-        ref.size = MemoryLayout<GhosttyGridRef>.size
         var pt = GhosttyPoint()
         pt.tag = GHOSTTY_POINT_TAG_SCREEN
         pt.value.coordinate = p
@@ -204,7 +206,6 @@ extension TerminalEngine {
         opts.size = MemoryLayout<GhosttyTerminalSelectWordOptions>.size
         opts.ref = ref
         var sel = GhosttySelection()
-        sel.size = MemoryLayout<GhosttySelection>.size
         guard ghostty_terminal_select_word(terminal, &opts, &sel) == GHOSTTY_SUCCESS else { return nil }
         return sel
     }

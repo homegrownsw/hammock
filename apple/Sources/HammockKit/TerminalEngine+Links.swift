@@ -37,7 +37,6 @@ extension TerminalEngine {
     private func hyperlinkURI(x: Int, y: Int) -> String? {
         guard let terminal = handle else { return nil }
         var ref = GhosttyGridRef()
-        ref.size = MemoryLayout<GhosttyGridRef>.size
         var pt = GhosttyPoint()
         pt.tag = GHOSTTY_POINT_TAG_VIEWPORT
         pt.value.coordinate = GhosttyPointCoordinate(x: UInt16(clamping: x), y: UInt32(y))

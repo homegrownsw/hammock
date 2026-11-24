@@ -65,7 +65,9 @@ void configure(Term* t) {
     // of coloured output.
     size_t lines = 10000;
     ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines);
-    ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, nullptr);
+    // (SIZE_MAX: NULL restores libghostty's default of about one page.)
+    size_t unlimited = SIZE_MAX;
+    ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &unlimited);
 }
 
 jbyteArray bytes(JNIEnv* env, const void* data, size_t len) {
@@ -317,12 +319,12 @@ JNI(void, setTheme)(JNIEnv* env, jobject, jlong h, jint bg, jint fg, jint cursor
 
 JNI(void, setDefaultCursor)(JNIEnv*, jobject, jlong h, jint style, jboolean blink) {
     Term* t = T(h);
-    GhosttyTerminalCursorStyle s;
+    GhosttyCursorStyle s;
     switch (style) {
-    case 1: s = GHOSTTY_TERMINAL_CURSOR_STYLE_BAR; break;
-    case 2: s = GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE; break;
-    case 3: s = GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK_HOLLOW; break;
-    default: s = GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK; break;
+    case 1: s = GHOSTTY_CURSOR_STYLE_BAR; break;
+    case 2: s = GHOSTTY_CURSOR_STYLE_UNDERLINE; break;
+    case 3: s = GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW; break;
+    default: s = GHOSTTY_CURSOR_STYLE_BLOCK; break;
     }
     bool b = blink;
     ghostty_terminal_set(t->terminal, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE, &s);
@@ -334,10 +336,10 @@ JNI(void, scroll)(JNIEnv*, jobject, jlong h, jint mode, jint delta) {
     Term* t = T(h);
     GhosttyTerminalScrollViewport b{};
     switch (mode) {
-    case 1: b.tag = GHOSTTY_SCROLL_VIEWPORT_BOTTOM; break;
-    case 2: b.tag = GHOSTTY_SCROLL_VIEWPORT_TOP; break;
+    case 1: b.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM; break;
+    case 2: b.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_TOP; break;
     default:
-        b.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA;
+        b.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA;
         b.value.delta = intptr_t(delta);
         break;
     }
@@ -420,9 +422,9 @@ JNI(jint, frame)(JNIEnv* env, jobject, jlong h, jintArray headerA, jintArray cel
         header[H_CURSOR_Y] = cursor.viewport_y;
         header[H_CURSOR_BLINK] = cursor.blinking;
         switch (cursor.visual_style) {
-        case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR: header[H_CURSOR_STYLE] = 1; break;
-        case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE: header[H_CURSOR_STYLE] = 2; break;
-        case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW: header[H_CURSOR_STYLE] = 3; break;
+        case GHOSTTY_CURSOR_STYLE_BAR: header[H_CURSOR_STYLE] = 1; break;
+        case GHOSTTY_CURSOR_STYLE_UNDERLINE: header[H_CURSOR_STYLE] = 2; break;
+        case GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW: header[H_CURSOR_STYLE] = 3; break;
         default: header[H_CURSOR_STYLE] = 0; break;
         }
     }
@@ -470,8 +472,10 @@ JNI(jint, frame)(JNIEnv* env, jobject, jlong h, jintArray headerA, jintArray cel
                     big.resize(glen);
                     buf = big.data();
                 }
-                ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, buf);
-                if (buf[0] != kKittyPlaceholder) {
+                GhosttyCodepointBuffer gb{buf, glen, 0};
+                ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &gb);
+                if (gb.len < glen) glen = uint32_t(gb.len);
+                if (glen > 0 && buf[0] != kKittyPlaceholder) {
                     if (glen == 1) {
                         c[0] = jint(buf[0]);
                     } else {
@@ -484,17 +488,19 @@ JNI(jint, frame)(JNIEnv* env, jobject, jlong h, jintArray headerA, jintArray cel
             bool hasStyle = false;
             ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING, &hasStyle);
             if (hasStyle) {
-                GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+                GhosttyStyle style{};
                 if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style) == GHOSTTY_SUCCESS) {
-                    if (style.bold) flags |= F_BOLD;
-                    if (style.italic) flags |= F_ITALIC;
-                    if (style.faint) flags |= F_FAINT;
-                    if (style.blink) flags |= F_BLINK;
-                    if (style.inverse) flags |= F_INVERSE;
-                    if (style.invisible) flags |= F_INVISIBLE;
-                    if (style.strikethrough) flags |= F_STRIKE;
-                    if (style.overline) flags |= F_OVERLINE;
-                    if (style.underline != GHOSTTY_SGR_UNDERLINE_NONE) flags |= F_UNDERLINE | ((jint(style.underline) & 7) << 12);
+                    GhosttyStyleFlags sf = style.flags;
+                    if (sf & GHOSTTY_STYLE_FLAG_BOLD) flags |= F_BOLD;
+                    if (sf & GHOSTTY_STYLE_FLAG_ITALIC) flags |= F_ITALIC;
+                    if (sf & GHOSTTY_STYLE_FLAG_FAINT) flags |= F_FAINT;
+                    if (sf & GHOSTTY_STYLE_FLAG_BLINK) flags |= F_BLINK;
+                    if (sf & GHOSTTY_STYLE_FLAG_INVERSE) flags |= F_INVERSE;
+                    if (sf & GHOSTTY_STYLE_FLAG_INVISIBLE) flags |= F_INVISIBLE;
+                    if (sf & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) flags |= F_STRIKE;
+                    if (sf & GHOSTTY_STYLE_FLAG_OVERLINE) flags |= F_OVERLINE;
+                    int underline = GHOSTTY_STYLE_UNDERLINE(style);
+                    if (underline != GHOSTTY_SGR_UNDERLINE_NONE) flags |= F_UNDERLINE | ((jint(underline) & 7) << 12);
                 }
                 GhosttyColorRgb c3{};
                 if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &c3) == GHOSTTY_SUCCESS) c[1] = pack(c3) | HAS;
@@ -534,7 +540,7 @@ JNI(jint, frame)(JNIEnv* env, jobject, jlong h, jintArray headerA, jintArray cel
 // Android key code; `text` what it types (UTF-8, may be null).
 JNI(jbyteArray, encodeKey)(JNIEnv* env, jobject, jlong h, jint code, jint mods, jbyteArray text, jint unshifted, jint action) {
     Term* t = T(h);
-    ghostty_key_encoder_setopt_from_terminal(t->keyEncoder, t->terminal);
+    ghostty_key_encoder_set_from_terminal(t->keyEncoder, t->terminal);
     GhosttyKeyAction a = action == 2 ? GHOSTTY_KEY_ACTION_REPEAT : action == 0 ? GHOSTTY_KEY_ACTION_RELEASE : GHOSTTY_KEY_ACTION_PRESS;
     ghostty_key_event_set_action(t->keyEvent, a);
     ghostty_key_event_set_key(t->keyEvent, keyFor(code));
@@ -547,8 +553,8 @@ JNI(jbyteArray, encodeKey)(JNIEnv* env, jobject, jlong h, jint code, jint mods, 
     ghostty_key_event_set_consumed_mods(t->keyEvent, consumed);
     ghostty_key_event_set_unshifted_codepoint(t->keyEvent, uint32_t(unshifted));
     ghostty_key_event_set_composing(t->keyEvent, false);
-    ghostty_key_event_set_utf8(t->keyEvent, s.empty() ? nullptr : s.data(), s.size());
-    char out[128];
+    ghostty_key_event_set_utf8(t->keyEvent, GhosttyString{reinterpret_cast<const uint8_t*>(s.data()), s.size()});
+    uint8_t out[128];
     size_t len = 0;
     if (ghostty_key_encoder_encode(t->keyEncoder, t->keyEvent, out, sizeof(out), &len) != GHOSTTY_SUCCESS || len == 0) return nullptr;
     return bytes(env, out, len);
@@ -565,7 +571,7 @@ JNI(jbyteArray, encodePaste)(JNIEnv* env, jobject, jlong h, jbyteArray text) {
     Term* t = T(h);
     std::vector<char> s = utf8(env, text);
     bool bracketed = decMode(t, 2004, false);
-    std::vector<char> out(s.size() + 32);
+    std::vector<uint8_t> out(s.size() + 32);
     size_t written = 0;
     GhosttyResult r = ghostty_paste_encode(s.data(), s.size(), bracketed, out.data(), out.size(), &written);
     if (r == GHOSTTY_OUT_OF_SPACE) {
@@ -586,7 +592,7 @@ JNI(jbyteArray, encodeMouse)(JNIEnv* env, jobject, jlong h, jint action, jint bu
     Term* t = T(h);
     float g[5] = {0};
     env->GetFloatArrayRegion(geometry, 0, 5, g);
-    ghostty_mouse_encoder_setopt_from_terminal(t->mouseEncoder, t->terminal);
+    ghostty_mouse_encoder_set_from_terminal(t->mouseEncoder, t->terminal);
     // The encoder works in whole pixels, but cells are often fractional
     // (19.8 px wide): truncated, every column came out a little narrow and a
     // click far along a line landed cells right of it. Find the cell with
@@ -606,7 +612,7 @@ JNI(jbyteArray, encodeMouse)(JNIEnv* env, jobject, jlong h, jint action, jint bu
     size.cell_height = uint32_t(chPx);
     size.padding_top = uint32_t(padPx);
     size.padding_left = uint32_t(padPx);
-    ghostty_mouse_encoder_setopt(t->mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+    ghostty_mouse_encoder_set(t->mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
     // Button-event tracking (mode 1002) only reports motion while a button
     // is held; setopt_from_terminal leaves that state to us.
     if (button >= 1 && button <= 3) {
@@ -614,7 +620,7 @@ JNI(jbyteArray, encodeMouse)(JNIEnv* env, jobject, jlong h, jint action, jint bu
         if (action == 1) t->mouseButtonDown = false;
     }
     bool down = t->mouseButtonDown;
-    ghostty_mouse_encoder_setopt(t->mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &down);
+    ghostty_mouse_encoder_set(t->mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &down);
     ghostty_mouse_event_set_action(t->mouseEvent, action == 1 ? GHOSTTY_MOUSE_ACTION_RELEASE
                                                   : action == 2 ? GHOSTTY_MOUSE_ACTION_MOTION
                                                                 : GHOSTTY_MOUSE_ACTION_PRESS);
@@ -625,7 +631,7 @@ JNI(jbyteArray, encodeMouse)(JNIEnv* env, jobject, jlong h, jint action, jint bu
     }
     ghostty_mouse_event_set_mods(t->mouseEvent, GhosttyMods(mods));
     ghostty_mouse_event_set_position(t->mouseEvent, GhosttyMousePosition{px, py});
-    char out[64];
+    uint8_t out[64];
     size_t len = 0;
     if (ghostty_mouse_encoder_encode(t->mouseEncoder, t->mouseEvent, out, sizeof(out), &len) != GHOSTTY_SUCCESS || len == 0) return nullptr;
     return bytes(env, out, len);
@@ -637,7 +643,7 @@ JNI(jbyteArray, encodeMouse)(JNIEnv* env, jobject, jlong h, jint action, jint bu
 namespace {
 
 bool gridRef(Term* t, GhosttyPointTag tag, uint16_t x, uint32_t y, GhosttyGridRef* out) {
-    *out = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    *out = GhosttyGridRef{};
     GhosttyPoint pt{};
     pt.tag = tag;
     pt.value.coordinate = GhosttyPointCoordinate{x, y};
@@ -662,7 +668,7 @@ bool screenRef(Term* t, GhosttyPointCoordinate p, GhosttyGridRef* out) {
 bool before(GhosttyPointCoordinate a, GhosttyPointCoordinate b) { return a.y != b.y ? a.y < b.y : a.x < b.x; }
 
 GhosttySelection selection(GhosttyGridRef start, GhosttyGridRef end) {
-    GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+    GhosttySelection s{};
     s.start = start;
     s.end = end;
     s.rectangle = false;
@@ -673,9 +679,9 @@ void install(Term* t, GhosttySelection s) { ghostty_terminal_set(t->terminal, GH
 
 // The current selection, its ends in reading order.
 bool ordered(Term* t, GhosttySelection* out) {
-    GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+    GhosttySelection s{};
     if (ghostty_terminal_get(t->terminal, GHOSTTY_TERMINAL_DATA_SELECTION, &s) != GHOSTTY_SUCCESS) return false;
-    *out = GHOSTTY_INIT_SIZED(GhosttySelection);
+    *out = GhosttySelection{};
     return ghostty_terminal_selection_ordered(t->terminal, &s, GHOSTTY_SELECTION_ORDER_FORWARD, out) == GHOSTTY_SUCCESS;
 }
 
@@ -683,7 +689,7 @@ bool ordered(Term* t, GhosttySelection* out) {
 bool wordAt(Term* t, GhosttyGridRef ref, GhosttyPointCoordinate* lo, GhosttyPointCoordinate* hi) {
     GhosttyTerminalSelectWordOptions o = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
     o.ref = ref;
-    GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+    GhosttySelection s{};
     if (ghostty_terminal_select_word(t->terminal, &o, &s) != GHOSTTY_SUCCESS) return false;
     GhosttyPointCoordinate a{}, b{};
     if (!screenPoint(t, s.start, &a) || !screenPoint(t, s.end, &b)) return false;
@@ -692,15 +698,28 @@ bool wordAt(Term* t, GhosttyGridRef ref, GhosttyPointCoordinate* lo, GhosttyPoin
     return true;
 }
 
+// The text of a selection (the terminal's own when `sel` is null), as a copy
+// takes it: plain, soft-wrapped lines joined, trailing spaces trimmed.
 jbyteArray format(JNIEnv* env, Term* t, const GhosttySelection* sel) {
-    GhosttyTerminalSelectionFormatOptions o = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
-    o.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
-    o.unwrap = true;  // soft-wrapped lines joined
-    o.trim = true;    // trailing spaces trimmed
-    o.selection = sel;
+    GhosttySelection current{};
+    if (!sel) {
+        if (ghostty_terminal_get(t->terminal, GHOSTTY_TERMINAL_DATA_SELECTION, &current) != GHOSTTY_SUCCESS) return nullptr;
+        sel = &current;
+    }
+    GhosttyFormatter f = nullptr;
+    if (ghostty_formatter_terminal_new(nullptr, &f, t->terminal) != GHOSTTY_SUCCESS) return nullptr;
+    GhosttyFormatterFormat emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+    bool unwrap = true;  // soft-wrapped lines joined
+    bool trim = true;    // trailing spaces trimmed
     uint8_t* ptr = nullptr;
     size_t len = 0;
-    if (ghostty_terminal_selection_format_alloc(t->terminal, nullptr, o, &ptr, &len) != GHOSTTY_SUCCESS || !ptr || len == 0) {
+    GhosttyResult r = ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+    if (r == GHOSTTY_SUCCESS) r = ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_UNWRAP, &unwrap);
+    if (r == GHOSTTY_SUCCESS) r = ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_TRIM, &trim);
+    if (r == GHOSTTY_SUCCESS) r = ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_SELECTION, sel);
+    if (r == GHOSTTY_SUCCESS) r = ghostty_formatter_format_alloc(f, nullptr, &ptr, &len);
+    ghostty_formatter_free(f);
+    if (r != GHOSTTY_SUCCESS || !ptr || len == 0) {
         if (ptr) ghostty_free(nullptr, ptr, len);
         return nullptr;
     }

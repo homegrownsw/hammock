@@ -143,8 +143,8 @@ func (p *paneTerm) encodeMouse(m mouseEv, col, row int) []byte {
 			return nil
 		}
 	}
-	p.enc.SetOptFromTerminal(p.t)
-	p.enc.SetOptSize(libghostty.MouseEncoderSize{ScreenWidth: uint32(p.cols * cellPx), ScreenHeight: uint32(p.rows * cellPx), CellWidth: cellPx, CellHeight: cellPx})
+	_ = p.enc.SetFromTerminal(p.t)
+	_ = p.enc.SetSize(libghostty.MouseEncoderSize{ScreenWidth: uint32(p.cols * cellPx), ScreenHeight: uint32(p.rows * cellPx), CellWidth: cellPx, CellHeight: cellPx})
 	buttons := []libghostty.MouseButton{libghostty.MouseButtonLeft, libghostty.MouseButtonMiddle, libghostty.MouseButtonRight}
 	switch {
 	case m.wheel != 0:
@@ -174,7 +174,7 @@ func (p *paneTerm) encodeMouse(m mouseEv, col, row int) []byte {
 			p.mev.ClearButton()
 		}
 	}
-	p.enc.SetOptAnyButtonPressed(p.down)
+	_ = p.enc.SetAnyButtonPressed(p.down)
 	var mods libghostty.Mods
 	if m.shift {
 		mods |= libghostty.ModShift

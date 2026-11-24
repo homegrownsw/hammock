@@ -120,10 +120,10 @@ extension TerminalEngine {
                 img = c
                 sourceRect = CGRect(x: Int(sx), y: Int(sy), width: Int(sw), height: Int(sh))
             }
-            var layer = GHOSTTY_RENDER_STATE_IMAGE_LAYER_ABOVE_TEXT
+            var layer = GHOSTTY_IMAGE_LAYER_ABOVE_TEXT
             ghostty_render_state_image_get(it, GHOSTTY_RENDER_STATE_IMAGE_DATA_LAYER, &layer)
-            let l: TerminalImage.Layer = layer == GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_BACKGROUND ? .belowBackground
-                : layer == GHOSTTY_RENDER_STATE_IMAGE_LAYER_BELOW_TEXT ? .belowText : .aboveText
+            let l: TerminalImage.Layer = layer == GHOSTTY_IMAGE_LAYER_BELOW_BACKGROUND ? .belowBackground
+                : layer == GHOSTTY_IMAGE_LAYER_BELOW_TEXT ? .belowText : .aboveText
             out.append(TerminalImage(
                 layer: l, z: get(GHOSTTY_RENDER_STATE_IMAGE_DATA_Z, Int32(0)),
                 col: get(GHOSTTY_RENDER_STATE_IMAGE_DATA_VIEWPORT_COL, Int32(0)),
@@ -143,13 +143,12 @@ extension TerminalEngine {
         guard let image = ghostty_kitty_graphics_image(graphics, id) else { return nil }
         var w: UInt32 = 0, h: UInt32 = 0
         var format = GHOSTTY_KITTY_IMAGE_FORMAT_RGBA
-        var ptr: UnsafePointer<UInt8>?
-        var len = 0
-        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_WIDTH, &w)
-        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_HEIGHT, &h)
-        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_FORMAT, &format)
-        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_DATA_PTR, &ptr)
-        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_IMAGE_DATA_DATA_LEN, &len)
+        var pixels = GhosttyString(ptr: nil, len: 0)
+        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_WIDTH, &w)
+        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_HEIGHT, &h)
+        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_FORMAT, &format)
+        ghostty_kitty_graphics_image_get(image, GHOSTTY_KITTY_GRAPHICS_IMAGE_DATA_PIXELS, &pixels)
+        let ptr = pixels.ptr, len = pixels.len
         guard let ptr, w > 0, h > 0, len > 0 else { return nil }
         let width = Int(w), height = Int(h)
         let px = width * height

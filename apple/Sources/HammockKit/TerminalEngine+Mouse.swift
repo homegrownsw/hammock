@@ -41,7 +41,7 @@ extension TerminalEngine {
             mouseEvent = ev
         }
         guard let enc = mouseEncoder, let ev = mouseEvent else { return nil }
-        ghostty_mouse_encoder_setopt_from_terminal(enc, terminal)
+        ghostty_mouse_encoder_set_from_terminal(enc, terminal)
         // The encoder works in whole pixels, but cells are often fractional
         // (7.5pt wide): truncated, every column came out a little narrow and
         // a click far along a line landed several cells right of it. Find the
@@ -60,15 +60,15 @@ extension TerminalEngine {
         size.cell_height = UInt32(chPx)
         size.padding_top = UInt32(padPx)
         size.padding_left = UInt32(padPx)
-        ghostty_mouse_encoder_setopt(enc, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size)
+        ghostty_mouse_encoder_set(enc, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size)
         // Button-event tracking (mode 1002) only reports motion while a button is
-        // held; setopt_from_terminal leaves that state to us.
+        // held; set_from_terminal leaves that state to us.
         if let button, button != .wheelUp, button != .wheelDown {
             if action == .press { mouseButtonDown = true }
             if action == .release { mouseButtonDown = false }
         }
         var down = mouseButtonDown
-        ghostty_mouse_encoder_setopt(enc, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &down)
+        ghostty_mouse_encoder_set(enc, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &down)
 
         switch action {
         case .press: ghostty_mouse_event_set_action(ev, GHOSTTY_MOUSE_ACTION_PRESS)
@@ -76,13 +76,13 @@ extension TerminalEngine {
         case .motion: ghostty_mouse_event_set_action(ev, GHOSTTY_MOUSE_ACTION_MOTION)
         }
         if let button {
-            ghostty_mouse_event_set_button(ev, GhosttyMouseButton(rawValue: Int32(button.rawValue)))
+            ghostty_mouse_event_set_button(ev, GhosttyMouseButton(rawValue: UInt32(button.rawValue)))
         } else {
             ghostty_mouse_event_clear_button(ev)
         }
         ghostty_mouse_event_set_mods(ev, GhosttyMods(mods.rawValue))
         ghostty_mouse_event_set_position(ev, GhosttyMousePosition(x: px, y: py))
-        var out = [CChar](repeating: 0, count: 64)
+        var out = [UInt8](repeating: 0, count: 64)
         var len = 0
         guard ghostty_mouse_encoder_encode(enc, ev, &out, out.count, &len) == GHOSTTY_SUCCESS, len > 0 else { return nil }
         return Data(bytes: out, count: len)

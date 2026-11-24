@@ -93,7 +93,7 @@ public final class TerminalEngine {
     var mouseEvent: GhosttyMouseEvent?
     var mouseButtonDown = false
     var selectionGesture: GhosttySelectionGesture?
-    var selectionEvents: [Int32: GhosttySelectionGestureEvent] = [:]
+    var selectionEvents: [UInt32: GhosttySelectionGestureEvent] = [:]
     /// The word a touch and hold selected, in screen coordinates: dragging
     /// on from it selects whole words, keeping this one.
     var wordAnchor: (start: GhosttyPointCoordinate, end: GhosttyPointCoordinate)?
@@ -117,7 +117,8 @@ public final class TerminalEngine {
             // kept only a few hundred lines of coloured output.
             var lines = 10_000
             ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines)
-            ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, nil)
+            var noByteLimit = UInt.max // SIZE_MAX: NULL would mean the default limit
+            ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &noByteLimit)
             KittyGraphicsSetup.enable(terminal)
         }
         if let terminal { applyTheme(theme, to: terminal) }
@@ -156,12 +157,12 @@ public final class TerminalEngine {
     /// The cursor shape and blinking used until a program asks for another.
     public func setDefaultCursor(_ style: CursorStyle, blink: Bool) {
         guard let terminal else { return }
-        var s: GhosttyTerminalCursorStyle
+        var s: GhosttyCursorStyle
         switch style {
-        case .bar: s = GHOSTTY_TERMINAL_CURSOR_STYLE_BAR
-        case .underline: s = GHOSTTY_TERMINAL_CURSOR_STYLE_UNDERLINE
-        case .hollow: s = GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK_HOLLOW
-        case .block: s = GHOSTTY_TERMINAL_CURSOR_STYLE_BLOCK
+        case .bar: s = GHOSTTY_CURSOR_STYLE_BAR
+        case .underline: s = GHOSTTY_CURSOR_STYLE_UNDERLINE
+        case .hollow: s = GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW
+        case .block: s = GHOSTTY_CURSOR_STYLE_BLOCK
         }
         var b = blink
         ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE, &s)
@@ -197,7 +198,7 @@ public final class TerminalEngine {
     public func scroll(by delta: Int) {
         guard let terminal else { return }
         var b = GhosttyTerminalScrollViewport()
-        b.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA
+        b.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA
         b.value.delta = delta
         ghostty_terminal_scroll_viewport(terminal, b)
     }
@@ -205,7 +206,7 @@ public final class TerminalEngine {
     public func scrollToBottom() {
         guard let terminal else { return }
         var b = GhosttyTerminalScrollViewport()
-        b.tag = GHOSTTY_SCROLL_VIEWPORT_BOTTOM
+        b.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM
         ghostty_terminal_scroll_viewport(terminal, b)
     }
 
@@ -229,7 +230,7 @@ public final class TerminalEngine {
     /// (application cursor keys, kitty keyboard protocol, …).
     public func encodeKey(key: GhosttyKey, mods: KeyMods, text: String?, unshifted: UInt32, action: GhosttyKeyAction = GHOSTTY_KEY_ACTION_PRESS) -> Data? {
         guard let terminal, let keyEncoder, let keyEvent else { return nil }
-        ghostty_key_encoder_setopt_from_terminal(keyEncoder, terminal)
+        ghostty_key_encoder_set_from_terminal(keyEncoder, terminal)
         ghostty_key_event_set_action(keyEvent, action)
         ghostty_key_event_set_key(keyEvent, key)
         ghostty_key_event_set_mods(keyEvent, GhosttyMods(mods.rawValue))
@@ -240,16 +241,17 @@ public final class TerminalEngine {
         ghostty_key_event_set_consumed_mods(keyEvent, GhosttyMods(consumed.rawValue))
         ghostty_key_event_set_unshifted_codepoint(keyEvent, unshifted)
         ghostty_key_event_set_composing(keyEvent, false)
-        var out = [CChar](repeating: 0, count: 128)
+        var out = [UInt8](repeating: 0, count: 128)
         var len = 0
         let result: GhosttyResult
         if let text, !text.isEmpty {
-            result = text.withCString { ptr in
-                ghostty_key_event_set_utf8(keyEvent, ptr, strlen(ptr))
+            let utf8 = Array(text.utf8)
+            result = utf8.withUnsafeBufferPointer { buf in
+                ghostty_key_event_set_utf8(keyEvent, GhosttyString(ptr: buf.baseAddress, len: buf.count))
                 return ghostty_key_encoder_encode(keyEncoder, keyEvent, &out, out.count, &len)
             }
         } else {
-            ghostty_key_event_set_utf8(keyEvent, nil, 0)
+            ghostty_key_event_set_utf8(keyEvent, GhosttyString(ptr: nil, len: 0))
             result = ghostty_key_encoder_encode(keyEncoder, keyEvent, &out, out.count, &len)
         }
         guard result == GHOSTTY_SUCCESS, len > 0 else { return nil }
@@ -341,9 +343,9 @@ public final class TerminalEngine {
             f.cursorBlinking = cursor.blinking
             f.cursorY = Int(cursor.viewport_y)
             switch cursor.visual_style {
-            case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR: f.cursorStyle = .bar
-            case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE: f.cursorStyle = .underline
-            case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW: f.cursorStyle = .hollow
+            case GHOSTTY_CURSOR_STYLE_BAR: f.cursorStyle = .bar
+            case GHOSTTY_CURSOR_STYLE_UNDERLINE: f.cursorStyle = .underline
+            case GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW: f.cursorStyle = .hollow
             default: f.cursorStyle = .block
             }
         }
@@ -371,7 +373,10 @@ public final class TerminalEngine {
                 ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &glen)
                 if glen > 0 {
                     if Int(glen) > cps.count { cps = [UInt32](repeating: 0, count: Int(glen)) }
-                    ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &cps)
+                    cps.withUnsafeMutableBufferPointer { buf in
+                        var graphemes = GhosttyCodepointBuffer(ptr: buf.baseAddress, cap: buf.count, len: 0)
+                        _ = ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, &graphemes)
+                    }
                     // Kitty graphics Unicode placeholders (U+10EEEE plus
                     // diacritics for row and column) mark where an image goes;
                     // the image is drawn there, the placeholder never is.
@@ -385,15 +390,17 @@ public final class TerminalEngine {
                 ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING, &hasStyle)
                 if hasStyle {
                     var style = GhosttyStyle()
-                    style.size = MemoryLayout<GhosttyStyle>.size
                     if ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style) == GHOSTTY_SUCCESS {
-                        cell.bold = style.bold
-                        cell.italic = style.italic
-                        cell.faint = style.faint
-                        cell.inverse = style.inverse
-                        cell.invisible = style.invisible
-                        cell.strikethrough = style.strikethrough
-                        cell.underline = style.underline != Int32(GHOSTTY_SGR_UNDERLINE_NONE.rawValue)
+                        // GHOSTTY_STYLE_FLAG_* and GHOSTTY_STYLE_UNDERLINE_MASK (style.h),
+                        // which Swift can't import: they're cast macros.
+                        let flags = UInt32(style.flags)
+                        cell.bold = flags & (1 << 0) != 0
+                        cell.italic = flags & (1 << 1) != 0
+                        cell.faint = flags & (1 << 2) != 0
+                        cell.inverse = flags & (1 << 4) != 0
+                        cell.invisible = flags & (1 << 5) != 0
+                        cell.strikethrough = flags & (1 << 6) != 0
+                        cell.underline = (flags >> 8) & 0x7 != GHOSTTY_SGR_UNDERLINE_NONE.rawValue
                     }
                     var rgb = GhosttyColorRgb()
                     if ghostty_render_state_row_cells_get(rowCells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &rgb) == GHOSTTY_SUCCESS {
