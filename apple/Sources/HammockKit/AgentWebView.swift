@@ -435,7 +435,12 @@ final class AgentWebBridge: NSObject, WKScriptMessageHandler, WKNavigationDelega
             #endif
         case "dismissKeyboard":
             #if os(iOS)
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            // The message box's keyboard, not the page: resigning the page
+            // (first responder while you select text) drops the selection,
+            // and it takes no new one until it's tapped again.
+            if !webView.containsFirstResponder {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
             #endif
         case "loadOlder":
             session?.loadOlder()
@@ -1168,3 +1173,10 @@ private final class AgentWeakHandler: NSObject, WKScriptMessageHandler {
         target?.userContentController(ucc, didReceive: message)
     }
 }
+
+#if os(iOS)
+private extension UIView {
+    /// This view, or one inside it, is first responder.
+    var containsFirstResponder: Bool { isFirstResponder || subviews.contains { $0.containsFirstResponder } }
+}
+#endif

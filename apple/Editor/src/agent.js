@@ -718,12 +718,17 @@ let touching = false, lastInput = -1e9
 const input = () => { lastInput = performance.now(); cancelGlide(); replyStop = null }
 for (const ev of ["wheel", "mousedown"]) window.addEventListener(ev, input, { passive: true })
 // A drag down the conversation pulls the keyboard away, as the native one's does.
+// Not a drag selecting text: on the iPhone that would resign the page and
+// take the selection with it.
 let touchY = null, dismissed = false
 window.addEventListener("touchstart", (e) => { touching = true; touchY = e.touches[0]?.clientY ?? null; dismissed = false; input(); post({ type: "touch" }) }, { passive: true })
 window.addEventListener("touchmove", (e) => {
   input()
   const y = e.touches[0]?.clientY
-  if (!dismissed && touchY != null && y - touchY > 24) { dismissed = true; post({ type: "dismissKeyboard" }) }
+  if (!dismissed && touchY != null && y - touchY > 24) {
+    dismissed = true
+    if (document.getSelection()?.isCollapsed !== false) post({ type: "dismissKeyboard" })
+  }
 }, { passive: true })
 for (const ev of ["touchend", "touchcancel"]) window.addEventListener(ev, () => { touching = false; touchY = null; lastInput = performance.now() }, { passive: true })
 window.addEventListener("keydown", (e) => { if (["PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End", " "].includes(e.key)) input() })
