@@ -8213,9 +8213,10 @@ public nonisolated struct Hammock_V1_StartAgent: Sendable {
 
   public var floating: Bool = false
 
-  /// A new git worktree to start it in, by this name (its branch): made from
-  /// cwd's repository by the repository's own way (worktrees.go: .hammock/config,
-  /// a worktree recipe, the agent's own option, else git worktree add).
+  /// A new git worktree to start it in, by this name: made from cwd's
+  /// repository the repository's own way (worktrees.go: .hammock/config, a
+  /// worktree recipe, the agent's own option, else git worktree add on a
+  /// branch of this name). One already there by that name is reused.
   public var worktree: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -8238,6 +8239,9 @@ public nonisolated struct Hammock_V1_ListFolders: Sendable {
   public var groupID: String = String()
 
   public var computerID: String = String()
+
+  /// the agent it's for: FolderList.worktree_command may be its own option
+  public var harness: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -8268,9 +8272,10 @@ public nonisolated struct Hammock_V1_FolderList: Sendable {
   /// e.g. the folder doesn't exist
   public var error: String = String()
 
-  /// With path: how a new worktree would be made from it ("just worktree"),
-  /// "" when it isn't in a git repository (StartAgent.worktree).
-  public var worktreeHow: String = String()
+  /// With path: the command that would make a new worktree from it
+  /// (StartAgent.worktree), {name} where its name goes ("just worktree {name}",
+  /// "claude --worktree {name}"); "" when it isn't in a git repository.
+  public var worktreeCommand: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -11692,6 +11697,14 @@ public nonisolated struct Hammock_V1_TabGit: Sendable {
   /// with removable: it has uncommitted changes
   public var dirty: Bool = false
 
+  /// With removable: the command that removes it ("git worktree remove …",
+  /// or the repository's own), shown before it runs.
+  public var removeWith: String = String()
+
+  /// With dirty: the repository's own command removes it, which can't be
+  /// told to drop uncommitted changes: commit or discard them first.
+  public var needsClean: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -11719,7 +11732,8 @@ public nonisolated struct Hammock_V1_PullRequest: Sendable {
 }
 
 /// Removes a linked worktree: the tab's (tab_id), else the one at path.
-/// Refused while it has uncommitted changes, unless force.
+/// Refused while it has uncommitted changes, unless force (and then still,
+/// when the repository's own command removes it: TabGit.needs_clean).
 public nonisolated struct Hammock_V1_RemoveWorktree: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -25123,7 +25137,7 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
 
 nonisolated extension Hammock_V1_ListFolders: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListFolders"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{3}group_id\0\u{3}computer_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{3}group_id\0\u{3}computer_id\0\u{2}\u{11}harness\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -25134,6 +25148,7 @@ nonisolated extension Hammock_V1_ListFolders: SwiftProtobuf.Message, SwiftProtob
       case 1: try { try decoder.decodeSingularStringField(value: &self.path) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.groupID) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.computerID) }()
+      case 20: try { try decoder.decodeSingularStringField(value: &self.harness) }()
       default: break
       }
     }
@@ -25149,6 +25164,9 @@ nonisolated extension Hammock_V1_ListFolders: SwiftProtobuf.Message, SwiftProtob
     if !self.computerID.isEmpty {
       try visitor.visitSingularStringField(value: self.computerID, fieldNumber: 3)
     }
+    if !self.harness.isEmpty {
+      try visitor.visitSingularStringField(value: self.harness, fieldNumber: 20)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -25156,6 +25174,7 @@ nonisolated extension Hammock_V1_ListFolders: SwiftProtobuf.Message, SwiftProtob
     if lhs.path != rhs.path {return false}
     if lhs.groupID != rhs.groupID {return false}
     if lhs.computerID != rhs.computerID {return false}
+    if lhs.harness != rhs.harness {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -25163,7 +25182,7 @@ nonisolated extension Hammock_V1_ListFolders: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".FolderList"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}parent\0\u{1}folders\0\u{1}suggestions\0\u{1}home\0\u{1}agents\0\u{1}error\0\u{4}\u{d}worktree_how\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}parent\0\u{1}folders\0\u{1}suggestions\0\u{1}home\0\u{1}agents\0\u{1}error\0\u{4}\u{d}worktree_command\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -25178,7 +25197,7 @@ nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobu
       case 5: try { try decoder.decodeSingularStringField(value: &self.home) }()
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.agents) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.error) }()
-      case 20: try { try decoder.decodeSingularStringField(value: &self.worktreeHow) }()
+      case 20: try { try decoder.decodeSingularStringField(value: &self.worktreeCommand) }()
       default: break
       }
     }
@@ -25206,8 +25225,8 @@ nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobu
     if !self.error.isEmpty {
       try visitor.visitSingularStringField(value: self.error, fieldNumber: 7)
     }
-    if !self.worktreeHow.isEmpty {
-      try visitor.visitSingularStringField(value: self.worktreeHow, fieldNumber: 20)
+    if !self.worktreeCommand.isEmpty {
+      try visitor.visitSingularStringField(value: self.worktreeCommand, fieldNumber: 20)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -25220,7 +25239,7 @@ nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobu
     if lhs.home != rhs.home {return false}
     if lhs.agents != rhs.agents {return false}
     if lhs.error != rhs.error {return false}
-    if lhs.worktreeHow != rhs.worktreeHow {return false}
+    if lhs.worktreeCommand != rhs.worktreeCommand {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -30139,7 +30158,7 @@ nonisolated extension Hammock_V1_FilesCommand.Action: SwiftProtobuf._ProtoNamePr
 
 nonisolated extension Hammock_V1_TabGit: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TabGit"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}branch\0\u{1}worktree\0\u{1}pr\0\u{1}done\0\u{1}removable\0\u{1}dirty\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}branch\0\u{1}worktree\0\u{1}pr\0\u{1}done\0\u{1}removable\0\u{1}dirty\0\u{3}remove_with\0\u{3}needs_clean\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -30154,6 +30173,8 @@ nonisolated extension Hammock_V1_TabGit: SwiftProtobuf.Message, SwiftProtobuf._M
       case 5: try { try decoder.decodeSingularBoolField(value: &self.done) }()
       case 6: try { try decoder.decodeSingularBoolField(value: &self.removable) }()
       case 7: try { try decoder.decodeSingularBoolField(value: &self.dirty) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.removeWith) }()
+      case 9: try { try decoder.decodeSingularBoolField(value: &self.needsClean) }()
       default: break
       }
     }
@@ -30185,6 +30206,12 @@ nonisolated extension Hammock_V1_TabGit: SwiftProtobuf.Message, SwiftProtobuf._M
     if self.dirty != false {
       try visitor.visitSingularBoolField(value: self.dirty, fieldNumber: 7)
     }
+    if !self.removeWith.isEmpty {
+      try visitor.visitSingularStringField(value: self.removeWith, fieldNumber: 8)
+    }
+    if self.needsClean != false {
+      try visitor.visitSingularBoolField(value: self.needsClean, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -30196,6 +30223,8 @@ nonisolated extension Hammock_V1_TabGit: SwiftProtobuf.Message, SwiftProtobuf._M
     if lhs.done != rhs.done {return false}
     if lhs.removable != rhs.removable {return false}
     if lhs.dirty != rhs.dirty {return false}
+    if lhs.removeWith != rhs.removeWith {return false}
+    if lhs.needsClean != rhs.needsClean {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

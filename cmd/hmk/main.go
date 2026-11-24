@@ -168,8 +168,9 @@ Usage:
                                             or the folder's Group (or a new one); --on a linked computer
                                             (there, DIR is absolute or ~/…, its home; by default ~); no AGENT:
                                             the computer's default-agent; --worktree: in a new git worktree
-                                            of DIR's repository, on branch NAME, made the repository's own way
-                                            (.hammock/config, a worktree recipe, the agent's --worktree, git)
+                                            of DIR's repository called NAME (one there is reused), made the
+                                            repository's own way (.hammock/config, a worktree recipe, the
+                                            agent's own --worktree, else git worktree add on branch NAME)
   hmk worktree remove [DIR] [--force]      remove a git worktree (by default this folder's) the repository's
                                             own way, and close the tabs in it (--force: with uncommitted changes)
   hmk switch PANE AGENT                    continue a pane's agent session in another agent
@@ -1581,8 +1582,12 @@ func askAndRetry(c *client.Client, m *pb.ClientMessage, action, target string, r
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	fmt.Fprintln(os.Stderr, "hammock: asking the user for permission…")
+	desc := "hammock " + strings.Join(os.Args[1:], " ")
+	if w := m.GetStartAgent().GetWorktree(); w != "" {
+		desc += " (first makes a git worktree, " + w + ", running the repository's own worktree command)"
+	}
 	r, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RequestGrant{RequestGrant: &pb.RequestGrant{
-		TargetPaneId: target, Action: action, Description: "hammock " + strings.Join(os.Args[1:], " "),
+		TargetPaneId: target, Action: action, Description: desc,
 	}}})
 	if err != nil {
 		return nil, refused

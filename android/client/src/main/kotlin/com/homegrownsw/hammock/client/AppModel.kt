@@ -809,6 +809,7 @@ class AppModel private constructor(
 
     /** [worktree]: in a new git worktree of [cwd]'s repository, on that branch (made first, the repository's own way). */
     suspend fun startAgent(harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = "", worktree: String = ""): String? {
+        if (worktree.isNotEmpty()) showToast("Making the worktree “$worktree”…") // (its tab comes once it's made)
         val created = request {
             setStartAgent(Hammock.StartAgent.newBuilder().setHarness(harness).setCwd(cwd).setPrompt(prompt).setWorktree(worktree).apply {
                 if (groupID.isNotEmpty()) { setGroupId(groupID); setTabId(newTabID()) }
@@ -819,8 +820,8 @@ class AppModel private constructor(
         return created
     }
 
-    suspend fun listFolders(path: String = "", groupID: String = "", computerID: String = ""): Hammock.FolderList? = request {
-        setListFolders(Hammock.ListFolders.newBuilder().setPath(path).setGroupId(groupID).apply {
+    suspend fun listFolders(path: String = "", groupID: String = "", computerID: String = "", harness: String = ""): Hammock.FolderList? = request {
+        setListFolders(Hammock.ListFolders.newBuilder().setPath(path).setGroupId(groupID).setHarness(harness).apply {
             if (groupID.isEmpty() && computerID.isNotEmpty() && computerID != _workspace.value.myUserID) setComputerId(computerID)
         }.build())
     }?.folderList

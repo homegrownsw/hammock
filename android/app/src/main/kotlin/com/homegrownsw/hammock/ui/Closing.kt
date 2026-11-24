@@ -40,10 +40,12 @@ class Closer {
         if (why == null) go() else asking = Ask(title, why, button, go)
     }
 
-    /** Remove Worktree: always asks (its tabs close, and it's gone from disk). */
-    fun removeWorktree(model: AppModel, tab: Tab) {
-        val (title, message) = removeWorktreeQuestion(tab.git)
-        asking = Ask(title, message, "Remove Worktree") { model.removeWorktree(tab.id, tab.git.dirty) }
+    /** Remove Worktree: always asks, saying what runs and what its tabs stop (they close, and it's gone from disk). */
+    fun removeWorktree(model: AppModel, w: Workspace, tab: Tab) {
+        val panes = w.tabs.values.filter { it.hasGit() && it.git.worktree == tab.git.worktree }.flatMap { w.panes(it) }
+        val q = removeWorktreeQuestion(tab.git, warning(panes))
+        asking = if (q.canRemove) Ask(q.title, q.message, "Remove Worktree") { model.removeWorktree(tab.id, tab.git.dirty) }
+        else Ask(q.title, q.message, "OK") {}
     }
 
     fun closeTab(model: AppModel, w: Workspace, tab: Tab) =

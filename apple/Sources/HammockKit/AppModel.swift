@@ -1207,7 +1207,9 @@ public final class AppModel {
     @discardableResult
     public func startAgent(_ harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = "", worktree: String = "") async -> String? {
         if groupID.isEmpty {
-            // No Group chosen: the computer's own (by folder), or a new one there.
+            // No Group chosen: the computer's own (by folder), or a new one
+            // there. Its tab comes once the worktree's made: say so meanwhile.
+            if !worktree.isEmpty { showToast("Making the worktree “\(worktree)”…") }
             let id = await run {
                 $0.startAgent = .with {
                     $0.harness = harness
@@ -1235,11 +1237,12 @@ public final class AppModel {
     }
 
     /// The folders to start an agent in: suggestions, and path's subfolders.
-    public func listFolders(_ path: String = "", groupID: String = "", computerID: String = "") async -> Hammock_V1_FolderList? {
+    public func listFolders(_ path: String = "", groupID: String = "", computerID: String = "", harness: String = "") async -> Hammock_V1_FolderList? {
         await run {
             $0.listFolders = .with {
                 $0.path = path
                 $0.groupID = groupID
+                $0.harness = harness
                 if groupID.isEmpty, computerID != self.myUserID { $0.computerID = computerID }
             }
         }?.folderList

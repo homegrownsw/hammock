@@ -19564,9 +19564,10 @@ type StartAgent struct {
 	Direction   Split_Direction `protobuf:"varint,8,opt,name=direction,proto3,enum=hammock.v1.Split_Direction" json:"direction,omitempty"`
 	Before      bool            `protobuf:"varint,9,opt,name=before,proto3" json:"before,omitempty"`
 	Floating    bool            `protobuf:"varint,10,opt,name=floating,proto3" json:"floating,omitempty"`
-	// A new git worktree to start it in, by this name (its branch): made from
-	// cwd's repository by the repository's own way (worktrees.go: .hammock/config,
-	// a worktree recipe, the agent's own option, else git worktree add).
+	// A new git worktree to start it in, by this name: made from cwd's
+	// repository the repository's own way (worktrees.go: .hammock/config, a
+	// worktree recipe, the agent's own option, else git worktree add on a
+	// branch of this name). One already there by that name is reused.
 	Worktree      string `protobuf:"bytes,20,opt,name=worktree,proto3" json:"worktree,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -19689,6 +19690,7 @@ type ListFolders struct {
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	GroupId       string                 `protobuf:"bytes,2,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
 	ComputerId    string                 `protobuf:"bytes,3,opt,name=computer_id,json=computerId,proto3" json:"computer_id,omitempty"`
+	Harness       string                 `protobuf:"bytes,20,opt,name=harness,proto3" json:"harness,omitempty"` // the agent it's for: FolderList.worktree_command may be its own option
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -19744,6 +19746,13 @@ func (x *ListFolders) GetComputerId() string {
 	return ""
 }
 
+func (x *ListFolders) GetHarness() string {
+	if x != nil {
+		return x.Harness
+	}
+	return ""
+}
+
 type FolderList struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Path        string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`       // the folder listed (cleaned), if one was asked for
@@ -19753,11 +19762,12 @@ type FolderList struct {
 	Home        string                 `protobuf:"bytes,5,opt,name=home,proto3" json:"home,omitempty"`
 	Agents      []string               `protobuf:"bytes,6,rep,name=agents,proto3" json:"agents,omitempty"` // the agents installed: "claude", "codex"
 	Error       string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`   // e.g. the folder doesn't exist
-	// With path: how a new worktree would be made from it ("just worktree"),
-	// "" when it isn't in a git repository (StartAgent.worktree).
-	WorktreeHow   string `protobuf:"bytes,20,opt,name=worktree_how,json=worktreeHow,proto3" json:"worktree_how,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// With path: the command that would make a new worktree from it
+	// (StartAgent.worktree), {name} where its name goes ("just worktree {name}",
+	// "claude --worktree {name}"); "" when it isn't in a git repository.
+	WorktreeCommand string `protobuf:"bytes,20,opt,name=worktree_command,json=worktreeCommand,proto3" json:"worktree_command,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *FolderList) Reset() {
@@ -19839,9 +19849,9 @@ func (x *FolderList) GetError() string {
 	return ""
 }
 
-func (x *FolderList) GetWorktreeHow() string {
+func (x *FolderList) GetWorktreeCommand() string {
 	if x != nil {
-		return x.WorktreeHow
+		return x.WorktreeCommand
 	}
 	return ""
 }
@@ -26703,8 +26713,14 @@ type TabGit struct {
 	Done bool `protobuf:"varint,5,opt,name=done,proto3" json:"done,omitempty"`
 	// Offer Remove Worktree: a linked worktree whose branch is done, a while
 	// after (an agent that cleans up after itself gets there first).
-	Removable     bool `protobuf:"varint,6,opt,name=removable,proto3" json:"removable,omitempty"`
-	Dirty         bool `protobuf:"varint,7,opt,name=dirty,proto3" json:"dirty,omitempty"` // with removable: it has uncommitted changes
+	Removable bool `protobuf:"varint,6,opt,name=removable,proto3" json:"removable,omitempty"`
+	Dirty     bool `protobuf:"varint,7,opt,name=dirty,proto3" json:"dirty,omitempty"` // with removable: it has uncommitted changes
+	// With removable: the command that removes it ("git worktree remove …",
+	// or the repository's own), shown before it runs.
+	RemoveWith string `protobuf:"bytes,8,opt,name=remove_with,json=removeWith,proto3" json:"remove_with,omitempty"`
+	// With dirty: the repository's own command removes it, which can't be
+	// told to drop uncommitted changes: commit or discard them first.
+	NeedsClean    bool `protobuf:"varint,9,opt,name=needs_clean,json=needsClean,proto3" json:"needs_clean,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -26788,6 +26804,20 @@ func (x *TabGit) GetDirty() bool {
 	return false
 }
 
+func (x *TabGit) GetRemoveWith() string {
+	if x != nil {
+		return x.RemoveWith
+	}
+	return ""
+}
+
+func (x *TabGit) GetNeedsClean() bool {
+	if x != nil {
+		return x.NeedsClean
+	}
+	return false
+}
+
 type PullRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Number        int32                  `protobuf:"varint,1,opt,name=number,proto3" json:"number,omitempty"`
@@ -26857,7 +26887,8 @@ func (x *PullRequest) GetTitle() string {
 }
 
 // Removes a linked worktree: the tab's (tab_id), else the one at path.
-// Refused while it has uncommitted changes, unless force.
+// Refused while it has uncommitted changes, unless force (and then still,
+// when the repository's own command removes it: TabGit.needs_clean).
 type RemoveWorktree struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TabId         string                 `protobuf:"bytes,1,opt,name=tab_id,json=tabId,proto3" json:"tab_id,omitempty"`
@@ -28503,12 +28534,13 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06before\x18\t \x01(\bR\x06before\x12\x1a\n" +
 	"\bfloating\x18\n" +
 	" \x01(\bR\bfloating\x12\x1a\n" +
-	"\bworktree\x18\x14 \x01(\tR\bworktree\"]\n" +
+	"\bworktree\x18\x14 \x01(\tR\bworktree\"w\n" +
 	"\vListFolders\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x19\n" +
 	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x1f\n" +
 	"\vcomputer_id\x18\x03 \x01(\tR\n" +
-	"computerId\"\xf7\x01\n" +
+	"computerId\x12\x18\n" +
+	"\aharness\x18\x14 \x01(\tR\aharness\"\xff\x01\n" +
 	"\n" +
 	"FolderList\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
@@ -28517,8 +28549,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\vsuggestions\x18\x04 \x03(\v2\x1c.hammock.v1.FolderSuggestionR\vsuggestions\x12\x12\n" +
 	"\x04home\x18\x05 \x01(\tR\x04home\x12\x16\n" +
 	"\x06agents\x18\x06 \x03(\tR\x06agents\x12\x14\n" +
-	"\x05error\x18\a \x01(\tR\x05error\x12!\n" +
-	"\fworktree_how\x18\x14 \x01(\tR\vworktreeHow\"8\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12)\n" +
+	"\x10worktree_command\x18\x14 \x01(\tR\x0fworktreeCommand\"8\n" +
 	"\x10FolderSuggestion\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x10\n" +
 	"\x03why\x18\x02 \x01(\tR\x03why\"\x80\x01\n" +
@@ -29215,7 +29247,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x12\x0f\n" +
 	"\vACTION_MOVE\x10\v\x12\x0f\n" +
 	"\vACTION_COPY\x10\f\x12\x0f\n" +
-	"\vACTION_UNDO\x10\r\"\xc1\x01\n" +
+	"\vACTION_UNDO\x10\r\"\x83\x02\n" +
 	"\x06TabGit\x12\x12\n" +
 	"\x04repo\x18\x01 \x01(\tR\x04repo\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12\x1a\n" +
@@ -29223,7 +29255,11 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x02pr\x18\x04 \x01(\v2\x17.hammock.v1.PullRequestR\x02pr\x12\x12\n" +
 	"\x04done\x18\x05 \x01(\bR\x04done\x12\x1c\n" +
 	"\tremovable\x18\x06 \x01(\bR\tremovable\x12\x14\n" +
-	"\x05dirty\x18\a \x01(\bR\x05dirty\"c\n" +
+	"\x05dirty\x18\a \x01(\bR\x05dirty\x12\x1f\n" +
+	"\vremove_with\x18\b \x01(\tR\n" +
+	"removeWith\x12\x1f\n" +
+	"\vneeds_clean\x18\t \x01(\bR\n" +
+	"needsClean\"c\n" +
 	"\vPullRequest\x12\x16\n" +
 	"\x06number\x18\x01 \x01(\x05R\x06number\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x10\n" +

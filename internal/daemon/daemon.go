@@ -1262,7 +1262,7 @@ func (d *Daemon) pollCwds() {
 		d.detectAgents()
 		d.keepAwake()
 		d.refreshTabNames()
-		d.refreshTabGit()
+		d.refreshTabGitSoon() // (off the lock: it reads git's files)
 		if ticks%sleepEvery == 0 {
 			d.sleepIdleAgents()
 		}

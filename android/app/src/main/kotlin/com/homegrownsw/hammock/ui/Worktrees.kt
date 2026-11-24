@@ -14,7 +14,8 @@ import hammock.v1.Hammock.TabGit
 
 /**
  * A tab's git mark: its branch's pull request (open green, merged purple,
- * closed red, as GitHub shows them), or a branch for a worktree.
+ * closed red, as GitHub shows them), or a branch for a worktree. Status
+ * colours, not the theme's: they mean the same as on GitHub whatever the theme.
  */
 @Composable
 fun GitMark(git: TabGit, quiet: Color) {

@@ -95,7 +95,8 @@ func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage
 	// Asks the login shell, at most every few minutes: before d.mu.
 	cmd, later := startCommand(ag, m.Prompt, nil)
 	if wt.agentFlag != "" {
-		cmd = withAgentOption(ag, cmd, wt.agentFlag) // the agent makes it
+		// The agent makes it (and works there); its shell goes there after.
+		cmd = withAgentOption(ag, cmd, wt.agentFlag) + "; cd " + shellQuote(wt.path) + " 2>/dev/null"
 	}
 	cmd = agentCommand(ag, cmd)
 	d.mu.Lock()
@@ -257,9 +258,7 @@ func (d *Daemon) listFolders(m *pb.ListFolders) *pb.FolderList {
 			out.Error = fmt.Sprintf("can't read %s", dir)
 			return out
 		}
-		if co, ok := gitCheckoutOf(dir); ok {
-			out.WorktreeHow = worktreeHow(co.repo)
-		}
+		out.WorktreeCommand = worktreeCommand(dir, m.Harness)
 		for _, e := range ents {
 			name := e.Name()
 			if strings.HasPrefix(name, ".") {

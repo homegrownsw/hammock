@@ -36,8 +36,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -55,14 +57,14 @@ const defaultWorktreeDir = ".claude/worktrees"
 var (
 	// worktreeGrace is how long after a branch is done Remove Worktree is
 	// offered: an agent that cleans up after itself gets there first.
-	worktreeGrace = 10 * time.Minute
+	worktreeGrace = time.Minute
 	// branchEvery is how often tabs' branches are checked (git: cheap);
 	// their pull requests less often (prDue).
 	branchEvery = time.Minute
 	// worktreeTimeout bounds a command that makes or removes a worktree.
 	worktreeTimeout = 10 * time.Minute
-	// askBranchPR asks gh for a branch's pull request (tests replace it).
-	askBranchPR = ghBranchPR
+	// askBranchPRs asks gh for the pull requests from a branch's name (tests replace it).
+	askBranchPRs = ghBranchPRs
 )
 
 // checkout is a git checkout: a repository's main folder, or a linked
@@ -134,19 +136,26 @@ func gitCheckoutOf(dir string) (checkout, bool) {
 // branchWatch is what's known of tabs' branches beyond their files: merged,
 // their pull requests. Its own lock, taken after d.mu (never before).
 type branchWatch struct {
-	mu     sync.Mutex
-	kick   chan struct{}
-	status map[string]*branchStatus // branchKey
-	repos  map[string]*repoFacts    // by the repository's main folder
+	mu         sync.Mutex
+	kick       chan struct{}
+	status     map[string]*branchStatus // branchKey
+	repos      map[string]*repoFacts    // by the repository's main folder
+	refreshing atomic.Bool              // refreshTabGitSoon's pass is running
 }
 
 type branchStatus struct {
 	pr       *pb.PullRequest
 	prAsked  time.Time
 	prDoneAt time.Time // merged or closed, as gh says
+	created  time.Time // when the branch was made (its reflog's first entry)
 	merged   bool      // into the default branch, as git says
 	doneSeen time.Time // when this daemon first saw it done
-	dirty    bool      // its worktree has uncommitted changes (looked at once it's done)
+	// Looked at once, as Remove Worktree comes to be offered (and again
+	// when it's removed): uncommitted changes, and what removes it.
+	offerChecked bool
+	dirty        bool
+	removeWith   string
+	needsClean   bool
 }
 
 // done: merged, or its pull request merged or closed.
@@ -154,12 +163,19 @@ func (s *branchStatus) done() bool {
 	return s.merged || s.pr != nil && (s.pr.State == "merged" || s.pr.State == "closed")
 }
 
-// doneAt is when it was done: gh's word, else when this daemon saw it.
+// doneAt is when it was done: gh's word, else when this daemon saw it. A
+// time from before the branch was made is never the answer: a pull request
+// from before can't let the offer skip the grace period.
 func (s *branchStatus) doneAt() time.Time {
-	if !s.prDoneAt.IsZero() && (s.doneSeen.IsZero() || s.prDoneAt.Before(s.doneSeen)) {
+	if !s.prDoneAt.IsZero() && s.prDoneAt.After(s.created) && (s.doneSeen.IsZero() || s.prDoneAt.Before(s.doneSeen)) {
 		return s.prDoneAt
 	}
 	return s.doneSeen
+}
+
+// offered: Remove Worktree is offered for the branch's worktree.
+func (s *branchStatus) offered(now time.Time) bool {
+	return s.done() && !s.doneAt().IsZero() && now.Sub(s.doneAt()) >= worktreeGrace
 }
 
 type repoFacts struct {
@@ -187,15 +203,50 @@ func (w *branchWatch) poke() {
 	}
 }
 
+// refreshTabGitSoon has the tabs' checkouts looked at again, off d.mu (git's
+// files are read from disk, which could hang on a network folder): one pass
+// at a time, so a hung one stops only this. Callers may hold d.mu.
+func (d *Daemon) refreshTabGitSoon() {
+	if !d.branches.refreshing.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer d.branches.refreshing.Store(false)
+		d.refreshTabGit()
+	}()
+}
+
 // refreshTabGit sets each tab's Git from its panes' folders (the focused
 // terminal's first, then the others') and what's known of the branch.
-// Callers hold d.mu.
+// Takes d.mu itself, never while reading the disk.
 func (d *Daemon) refreshTabGit() {
+	type tabDirs struct {
+		id   string
+		dirs []string
+	}
+	d.mu.Lock()
+	if d.stopped {
+		d.mu.Unlock()
+		return
+	}
+	var tabs []tabDirs
+	for _, t := range d.tabs {
+		tabs = append(tabs, tabDirs{t.Id, d.tabFolders(t)})
+	}
+	d.mu.Unlock()
+
 	seen := map[string]*checkout{}
 	now := time.Now()
-	for _, t := range d.tabs {
-		g := d.tabGit(t, seen, now)
-		if proto.Equal(g, t.Git) {
+	gits := map[string]*pb.TabGit{}
+	for _, t := range tabs {
+		gits[t.id] = d.tabGit(t.dirs, seen, now)
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for id, g := range gits {
+		t := d.tabs[id]
+		if t == nil || proto.Equal(g, t.Git) {
 			continue
 		}
 		if g.GetBranch() != t.Git.GetBranch() || g.GetRepo() != t.Git.GetRepo() {
@@ -206,22 +257,72 @@ func (d *Daemon) refreshTabGit() {
 	}
 }
 
-// tabGit is t's checkout, or nil. seen caches checkouts by folder for one
-// pass. Callers hold d.mu.
-func (d *Daemon) tabGit(t *pb.Tab, seen map[string]*checkout, now time.Time) *pb.TabGit {
+// tabFolders are the folders t's terminals work in, the focused one's
+// first: an agent that made its own worktree as it started (Claude Code's
+// --worktree), that worktree, before its pane's folder. Callers hold d.mu.
+func (d *Daemon) tabFolders(t *pb.Tab) []string {
 	ids := tabPanes(t)
 	if i := slices.Index(ids, t.FocusedPaneId); i > 0 {
 		ids = append([]string{t.FocusedPaneId}, slices.Delete(slices.Clone(ids), i, i+1)...)
 	}
-	var co *checkout
+	var dirs []string
 	for _, id := range ids {
 		p := d.panes[id]
 		if p == nil || !p.isTerminal() {
 			continue
 		}
-		dir := p.cwd()
-		if dir == "" {
+		p.mu.Lock()
+		cwd, cmd := p.info.Cwd, p.info.Command
+		p.mu.Unlock()
+		if cwd == "" {
 			continue
+		}
+		if name := agentWorktreeName(cmd); name != "" {
+			dirs = append(dirs, "\x00"+cwd+"\x00"+name) // (resolved off the lock: agentWorktreeDir)
+		}
+		dirs = append(dirs, cwd)
+	}
+	return dirs
+}
+
+// agentWorktreeOption is how Hammock starts an agent with its own worktree
+// option (startAgent: withAgentOption), found in the pane's command line:
+// "claude --worktree 'fix-login' …" (the program's path may be quoted).
+var agentWorktreeOption = regexp.MustCompile(`(?:^|[ /])claude'? --worktree '([A-Za-z0-9][A-Za-z0-9._/-]*)'`)
+
+// agentWorktreeName is the worktree an agent's command line asked it to
+// make, "" when none.
+func agentWorktreeName(cmd []string) string {
+	if len(cmd) == 0 {
+		return ""
+	}
+	if m := agentWorktreeOption.FindStringSubmatch(cmd[len(cmd)-1]); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// claudeWorktreeDir is where Claude Code makes its worktree called name, in
+// the repository dir is in ("" outside one).
+func claudeWorktreeDir(dir, name string) string {
+	co, ok := gitCheckoutOf(dir)
+	if !ok {
+		return ""
+	}
+	return filepath.Join(co.repo, ".claude", "worktrees", name)
+}
+
+// tabGit is the checkout of the first of a tab's folders in one, or nil.
+// seen caches checkouts by folder for one pass. Reads the disk: not under d.mu.
+func (d *Daemon) tabGit(dirs []string, seen map[string]*checkout, now time.Time) *pb.TabGit {
+	var co *checkout
+	for _, dir := range dirs {
+		if rest, ok := strings.CutPrefix(dir, "\x00"); ok {
+			// An agent's own worktree: there once it's made it.
+			cwd, name, _ := strings.Cut(rest, "\x00")
+			if dir = claudeWorktreeDir(cwd, name); dir == "" {
+				continue
+			}
 		}
 		c, ok := seen[dir]
 		if !ok {
@@ -250,8 +351,8 @@ func (d *Daemon) tabGit(t *pb.Tab, seen map[string]*checkout, now time.Time) *pb
 	if s := d.branches.status[branchKey(co.repo, co.branch)]; s != nil {
 		g.Pr = s.pr
 		g.Done = s.done()
-		if g.Done && co.linked && now.Sub(s.doneAt()) >= worktreeGrace {
-			g.Removable, g.Dirty = true, s.dirty
+		if co.linked && s.offered(now) && s.offerChecked {
+			g.Removable, g.Dirty, g.RemoveWith, g.NeedsClean = true, s.dirty, s.removeWith, s.needsClean
 		}
 	}
 	return g
@@ -305,12 +406,7 @@ func (d *Daemon) checkBranches() {
 		}
 	}
 	d.branches.mu.Unlock()
-
-	d.mu.Lock()
-	if !d.stopped {
-		d.refreshTabGit()
-	}
-	d.mu.Unlock()
+	d.refreshTabGit()
 }
 
 // checkBranch updates one branch's status.
@@ -331,39 +427,44 @@ func (d *Daemon) checkBranch(key, repo, branch, worktree string, now time.Time) 
 	askPR := facts.github && now.Sub(s.prAsked) >= prDue(s.pr)
 	d.branches.mu.Unlock()
 
-	merged := gitMerged(repo, branch, facts.defaultRef)
+	h := branchHistoryOf(repo, branch)
+	merged := h.ownCommit && gitInDefault(repo, branch, facts.defaultRef)
 	var pr *pb.PullRequest
 	var prDone time.Time
 	prOK := false
 	if askPR {
-		pr, prDone, prOK = askBranchPR(repo, branch)
+		var prs []ghPR
+		if prs, prOK = askBranchPRs(repo, branch); prOK {
+			pr, prDone = pickPR(prs, h.tips)
+		}
 	}
 
 	d.branches.mu.Lock()
-	s.merged = merged
+	s.merged, s.created = merged, h.created
 	if askPR {
 		s.prAsked = now
 		if prOK {
 			s.pr, s.prDoneAt = pr, prDone
 		}
 	}
-	done := s.done()
 	switch {
-	case !done:
-		s.doneSeen = time.Time{}
+	case !s.done():
+		s.doneSeen, s.offerChecked = time.Time{}, false
 	case s.doneSeen.IsZero():
 		s.doneSeen = now
 	}
-	check := done && worktree != ""
+	check := worktree != "" && s.offered(now) && !s.offerChecked
 	d.branches.mu.Unlock()
 
-	dirty := false
 	if check {
-		dirty = gitDirty(worktree)
+		// As the offer appears (not every minute): what removing it would
+		// run, and whether it has changes that would stop it.
+		dirty := gitDirty(worktree)
+		with, own := removeCommand(repo, worktree, branch, false)
+		d.branches.mu.Lock()
+		s.offerChecked, s.dirty, s.removeWith, s.needsClean = true, dirty, with, dirty && own
+		d.branches.mu.Unlock()
 	}
-	d.branches.mu.Lock()
-	s.dirty = dirty
-	d.branches.mu.Unlock()
 }
 
 // prDue is how long a branch's pull request is left before gh is asked
@@ -421,7 +522,11 @@ func (d *Daemon) repoFactsOf(repo string, now time.Time) repoFacts {
 
 // gitOut runs git in dir, without taking optional locks, for its output.
 func gitOut(dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	return gitOutFor(20*time.Second, dir, args...)
+}
+
+func gitOutFor(timeout time.Duration, dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "-C", dir}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
@@ -429,14 +534,48 @@ func gitOut(dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// gitMerged reports whether branch has been worked on (it moved since it
-// was made: a new branch, still where it began, isn't "merged") and is in
-// the default branch, here or on origin.
-func gitMerged(repo, branch, def string) bool {
-	log, err := gitOut(repo, "reflog", "show", "--format=%H", "refs/heads/"+branch, "--")
-	if err != nil || strings.Count(strings.TrimSpace(log), "\n") < 1 {
-		return false
+// branchHistory is what a branch's reflog says of it.
+type branchHistory struct {
+	tips      map[string]bool // every commit it has pointed at
+	created   time.Time       // its first entry
+	ownCommit bool            // a commit made on it (not only brought up to date with another branch)
+}
+
+// branchHistoryOf reads a branch's reflog.
+func branchHistoryOf(repo, branch string) branchHistory {
+	h := branchHistory{tips: map[string]bool{}}
+	if tip, err := gitOut(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+		h.tips[strings.TrimSpace(tip)] = true
 	}
+	out, err := gitOut(repo, "reflog", "show", "--format=%H%x09%ct%x09%gs", "refs/heads/"+branch, "--")
+	if err != nil {
+		return h
+	}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.SplitN(line, "\t", 3)
+		if len(f) < 3 {
+			continue
+		}
+		h.tips[f[0]] = true
+		if sec, err := strconv.ParseInt(f[1], 10, 64); err == nil {
+			h.created = time.Unix(sec, 0) // (newest first: the last is the first)
+		}
+		h.ownCommit = h.ownCommit || ownCommitEntry(f[2])
+	}
+	return h
+}
+
+// ownCommitEntry: a reflog entry for a commit made on the branch: "commit:
+// …", "commit (amend): …", a cherry-pick; not a merge, pull, rebase or reset
+// that only brought it up to date.
+func ownCommitEntry(subject string) bool {
+	return strings.HasPrefix(subject, "commit:") || strings.HasPrefix(subject, "commit (amend):") ||
+		strings.HasPrefix(subject, "commit (initial):") || strings.HasPrefix(subject, "cherry-pick:")
+}
+
+// gitInDefault reports whether branch's tip is in the default branch, here
+// or on origin.
+func gitInDefault(repo, branch, def string) bool {
 	for _, into := range []string{"refs/heads/" + def, "refs/remotes/origin/" + def} {
 		if _, err := gitOut(repo, "merge-base", "--is-ancestor", "refs/heads/"+branch, into); err == nil {
 			return true
@@ -446,10 +585,10 @@ func gitMerged(repo, branch, def string) bool {
 }
 
 // gitDirty reports whether a checkout has uncommitted changes, untracked
-// files included (git worktree remove refuses those too).
+// files included (git worktree remove refuses those too). Can't tell: dirty.
 func gitDirty(dir string) bool {
 	out, err := gitOut(dir, "status", "--porcelain", "--untracked-files=normal")
-	return err == nil && strings.TrimSpace(out) != ""
+	return err != nil || strings.TrimSpace(out) != ""
 }
 
 // ghPath is gh, on the PATH or where it's usually installed; "" without it.
@@ -465,53 +604,64 @@ func ghPath() string {
 	return ""
 }
 
-// ghBranchPR asks gh for branch's pull request in repo (the open one, else
-// the latest): nil, ok with none; not ok when gh can't say (not installed,
-// not signed in, not a GitHub repository).
-func ghBranchPR(repo, branch string) (*pb.PullRequest, time.Time, bool) {
+// ghBranchPRs asks gh for the pull requests from a branch of this name in
+// repo (newest first); not ok when gh can't say (not installed, not signed
+// in, not a GitHub repository).
+func ghBranchPRs(repo, branch string) ([]ghPR, bool) {
 	gh := ghPath()
 	if gh == "" {
-		return nil, time.Time{}, false
+		return nil, false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, gh, "pr", "list", "--head", branch, "--state", "all", "--limit", "5",
-		"--json", "number,state,url,title,isDraft,mergedAt,closedAt")
+	cmd := exec.CommandContext(ctx, gh, "pr", "list", "--head", branch, "--state", "all", "--limit", "10",
+		"--json", "number,state,url,title,isDraft,mergedAt,closedAt,headRefOid,isCrossRepository")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1")
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, time.Time{}, false
+		return nil, false
 	}
-	return parsePRList(out)
+	var prs []ghPR
+	if json.Unmarshal(out, &prs) != nil {
+		return nil, false
+	}
+	return prs, true
 }
 
 // ghPR is one of gh pr list's pull requests.
 type ghPR struct {
-	Number   int32     `json:"number"`
-	State    string    `json:"state"`
-	URL      string    `json:"url"`
-	Title    string    `json:"title"`
-	IsDraft  bool      `json:"isDraft"`
-	MergedAt time.Time `json:"mergedAt"`
-	ClosedAt time.Time `json:"closedAt"`
+	Number            int32     `json:"number"`
+	State             string    `json:"state"`
+	URL               string    `json:"url"`
+	Title             string    `json:"title"`
+	IsDraft           bool      `json:"isDraft"`
+	MergedAt          time.Time `json:"mergedAt"`
+	ClosedAt          time.Time `json:"closedAt"`
+	HeadRefOid        string    `json:"headRefOid"`
+	IsCrossRepository bool      `json:"isCrossRepository"`
 }
 
-// parsePRList reads gh pr list's JSON: the open pull request, else the first
-// (gh lists the newest first), with when it was merged or closed.
-func parsePRList(out []byte) (*pb.PullRequest, time.Time, bool) {
-	var prs []ghPR
-	if json.Unmarshal(out, &prs) != nil {
-		return nil, time.Time{}, false
+// pickPR is the branch's own pull request among those gh found by its name
+// (the open one, else the newest), with when it was merged or closed: from
+// this repository, not a fork's branch of the same name, and whose head is
+// a commit this branch has pointed at (tips), not an older branch's of the
+// same name (fix-login, patch-1). Nil: none of them.
+func pickPR(prs []ghPR, tips map[string]bool) (*pb.PullRequest, time.Time) {
+	var mine []ghPR
+	for _, p := range prs {
+		if !p.IsCrossRepository && p.HeadRefOid != "" && tips[p.HeadRefOid] {
+			mine = append(mine, p)
+		}
 	}
-	if len(prs) == 0 {
-		return nil, time.Time{}, true
+	if len(mine) == 0 {
+		return nil, time.Time{}
 	}
-	i := slices.IndexFunc(prs, func(p ghPR) bool { return p.State == "OPEN" })
+	i := slices.IndexFunc(mine, func(p ghPR) bool { return p.State == "OPEN" })
 	if i < 0 {
 		i = 0
 	}
-	p := prs[i]
+	p := mine[i]
 	pr := &pb.PullRequest{Number: p.Number, State: strings.ToLower(p.State), Url: p.URL, Title: p.Title}
 	if pr.State == "open" && p.IsDraft {
 		pr.State = "draft"
@@ -520,7 +670,7 @@ func parsePRList(out []byte) (*pb.PullRequest, time.Time, bool) {
 	if !p.MergedAt.IsZero() {
 		at = p.MergedAt
 	}
-	return pr, at, true
+	return pr, at
 }
 
 // ── Making and removing them ────────────────────────────────────────────
@@ -630,9 +780,10 @@ func findRecipe(repo string, names []string) (recipe, bool) {
 	}
 	if scripts := packageScripts(repo); scripts != nil {
 		pm := "npm"
-		for lock, m := range map[string]string{"pnpm-lock.yaml": "pnpm", "yarn.lock": "yarn", "bun.lockb": "bun", "bun.lock": "bun"} {
-			if _, err := os.Stat(filepath.Join(repo, lock)); err == nil {
-				pm = m
+		for _, l := range [][2]string{{"pnpm-lock.yaml", "pnpm"}, {"yarn.lock", "yarn"}, {"bun.lock", "bun"}, {"bun.lockb", "bun"}} {
+			if _, err := os.Stat(filepath.Join(repo, l[0])); err == nil {
+				pm = l[1]
+				break
 			}
 		}
 		for _, n := range names {
@@ -714,30 +865,57 @@ func packageScripts(repo string) map[string]bool {
 	return out
 }
 
-// worktreeHow is how a new worktree would be made in repo, for people:
-// ".hammock/config", "just worktree", …, or "git" (git worktree add, or an
-// agent's own option).
-func worktreeHow(repo string) string {
-	if readRepoConfig(repo).create != "" {
-		return ".hammock/config"
+// createCommand is the command that makes a worktree called name in repo
+// for agent ag, as it's shown and run: the first way that applies (the
+// file's comment). path is where it's expected; agentOwn: the agent's own
+// option makes it as the agent starts ("" run, then: it's the agent's
+// command line). gitAdd: git worktree add, which Hammock runs itself.
+func createCommand(repo, name string, ag *agents.Agent) (run, path string, agentOwn, gitAdd bool) {
+	cfg := readRepoConfig(repo)
+	path = filepath.Join(cfg.worktreeDir(repo), strings.ReplaceAll(name, "/", "-"))
+	if cfg.create != "" {
+		return strings.NewReplacer("{name}", shellQuote(name), "{path}", shellQuote(path)).Replace(cfg.create), path, false, false
 	}
 	if r, ok := findRecipe(repo, createRecipes); ok {
-		return r.label
+		return r.command(name), path, false, false
 	}
-	return "git"
+	if ag != nil && ag.Worktree != "" && cfg.dir == "" {
+		return ag.Command + " " + ag.Worktree + " " + shellQuote(name), filepath.Join(repo, ".claude", "worktrees", name), true, false
+	}
+	rel := path
+	if r, err := filepath.Rel(repo, path); err == nil && !strings.HasPrefix(r, "..") {
+		rel = r
+	}
+	return "git worktree add -b " + shellQuote(name) + " " + rel, path, false, true // (shown: git is run by Hammock)
+}
+
+// worktreeCommand is the command that would make a worktree from dir for
+// agent harness, with {name} where its name goes, for showing before it
+// runs; "" when dir isn't in a git repository.
+func worktreeCommand(dir, harness string) string {
+	co, ok := gitCheckoutOf(dir)
+	if !ok {
+		return ""
+	}
+	const mark = "hmkworktreename"
+	run, _, _, _ := createCommand(co.repo, mark, agents.Get(harness))
+	return strings.ReplaceAll(strings.ReplaceAll(run, shellQuote(mark), "{name}"), mark, "{name}")
 }
 
 // madeWorktree is a new worktree: its folder, or (made by the agent as it
-// starts) the agent's option to add to its command and the folder to start
-// it in.
+// starts) the agent's option to add to its command, the folder to start it
+// in, and the folder it'll make (path).
 type madeWorktree struct {
 	path      string
 	agentFlag string // "--worktree 'name'"
 	startIn   string // with agentFlag: the repository
+	reused    bool   // it was there already (a start that failed before, say)
 }
 
 // makeWorktree makes a worktree called name from the repository dir is in,
 // the first way that applies (the file's comment), and says where it is.
+// One there already by that name (its branch, or its folder) is reused, so
+// a start that failed after making it can be tried again.
 func makeWorktree(dir, name string, ag *agents.Agent) (madeWorktree, error) {
 	if err := checkWorktreeName(name); err != nil {
 		return madeWorktree{}, err
@@ -747,36 +925,38 @@ func makeWorktree(dir, name string, ag *agents.Agent) (madeWorktree, error) {
 		return madeWorktree{}, fmt.Errorf("%s isn't in a git repository", dir)
 	}
 	repo := co.repo
-	cfg := readRepoConfig(repo)
-	path := filepath.Join(cfg.worktreeDir(repo), strings.ReplaceAll(name, "/", "-"))
-	var run string
-	if cfg.create != "" {
-		run = strings.NewReplacer("{name}", shellQuote(name), "{path}", shellQuote(path)).Replace(cfg.create)
-	} else if r, ok := findRecipe(repo, createRecipes); ok {
-		run = r.command(name)
-	}
-	if run != "" {
-		before, _ := worktreeList(repo)
-		if _, err := runInRepo(repo, run); err != nil {
-			return madeWorktree{}, err
-		}
-		after, err := worktreeList(repo)
-		if err != nil {
-			return madeWorktree{}, err
-		}
-		if p := newWorktree(before, after, name, path); p != "" {
-			return madeWorktree{path: p}, nil
-		}
-		return madeWorktree{}, fmt.Errorf("ran %s, but no new worktree appeared", run)
-	}
-	if ag != nil && ag.Worktree != "" && cfg.dir == "" {
-		return madeWorktree{agentFlag: ag.Worktree + " " + shellQuote(name), startIn: repo}, nil
-	}
-	if err := gitAddWorktree(co, path, name); err != nil {
+	run, path, agentOwn, gitAdd := createCommand(repo, name, ag)
+	before, err := worktreeList(repo)
+	if err != nil {
 		return madeWorktree{}, err
 	}
-	copyWorktreeIncludes(repo, path)
-	return madeWorktree{path: path}, nil
+	for _, w := range before {
+		if w.path != evalPath(repo) && w.path != repo && (w.branch == name || evalPath(w.path) == evalPath(path) ||
+			agentOwn && w.branch == "worktree-"+name) {
+			return madeWorktree{path: w.path, reused: true}, nil
+		}
+	}
+	switch {
+	case agentOwn:
+		return madeWorktree{agentFlag: ag.Worktree + " " + shellQuote(name), startIn: repo, path: path}, nil
+	case gitAdd:
+		if err := gitAddWorktree(co, path, name); err != nil {
+			return madeWorktree{}, err
+		}
+		copyWorktreeIncludes(repo, path)
+		return madeWorktree{path: path}, nil
+	}
+	if _, err := runInRepo(repo, run); err != nil {
+		return madeWorktree{}, err
+	}
+	after, err := worktreeList(repo)
+	if err != nil {
+		return madeWorktree{}, err
+	}
+	if p := newWorktree(before, after, name, path); p != "" {
+		return madeWorktree{path: p}, nil
+	}
+	return madeWorktree{}, fmt.Errorf("ran %s, but no new worktree appeared", run)
 }
 
 // worktreeEntry is one of git worktree list's.
@@ -848,11 +1028,7 @@ func gitAddWorktree(co checkout, path, name string) error {
 	if _, err := gitOut(co.repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+name); err != nil {
 		args = []string{"worktree", "add", "-b", name, path}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), worktreeTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", co.top}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := gitCombined(co.top, args...); err != nil {
 		return fmt.Errorf("git %s failed: %s", strings.Join(args, " "), tailLines(out, 8))
 	}
 	excludeWorktrees(co.repo, path)
@@ -991,10 +1167,37 @@ func tailLines(out []byte, n int) string {
 // errWorktreeDirty: refused, the worktree has uncommitted changes.
 var errWorktreeDirty = errors.New("it has uncommitted changes")
 
+// removeCommand is the command that removes the worktree at path (on
+// branch), as it's shown and run, and whether it's the repository's own
+// (.hammock/config's worktree-remove, or a recipe: given the name it was
+// made by, its folder within the worktrees' folder, else its branch), which
+// can't be told to drop uncommitted changes; else git worktree remove.
+func removeCommand(repo, path, branch string, force bool) (run string, own bool) {
+	cfg := readRepoConfig(repo)
+	name := branch
+	if rel, err := filepath.Rel(cfg.worktreeDir(repo), path); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		name = filepath.ToSlash(rel)
+	}
+	if name == "" {
+		name = filepath.Base(path)
+	}
+	if cfg.remove != "" {
+		return strings.NewReplacer("{name}", shellQuote(name), "{path}", shellQuote(path), "{branch}", shellQuote(branch)).Replace(cfg.remove), true
+	}
+	if r, ok := findRecipe(repo, removeRecipes); ok {
+		return r.command(name), true
+	}
+	run = "git worktree remove "
+	if force {
+		run += "--force "
+	}
+	return run + shellQuote(path), false
+}
+
 // removeWorktree answers RemoveWorktree: the worktree (the tab's, or at
-// path) removed the repository's own way, then the tabs in it closed. Runs
-// off d.mu.
-func (d *Daemon) removeWorktree(m *pb.RemoveWorktree) error {
+// path) removed the repository's own way, then the tabs in it closed (kept
+// to reopen when remember: as closing them yourself would). Runs off d.mu.
+func (d *Daemon) removeWorktree(m *pb.RemoveWorktree, remember bool) error {
 	path := m.Path
 	if m.TabId != "" {
 		d.mu.Lock()
@@ -1020,20 +1223,17 @@ func (d *Daemon) removeWorktree(m *pb.RemoveWorktree) error {
 	if !co.linked {
 		return fmt.Errorf("%s is the repository's main folder, not a worktree of it", co.top)
 	}
-	path = co.top
-	if !m.Force && gitDirty(path) {
-		return fmt.Errorf("%s: %w", path, errWorktreeDirty)
+	path, repo := co.top, co.repo
+	run, own := removeCommand(repo, path, co.branch, m.Force)
+	if gitDirty(path) {
+		switch {
+		case own:
+			return fmt.Errorf("%s: %w: commit or discard them first (%s won't drop them)", path, errWorktreeDirty, run)
+		case !m.Force:
+			return fmt.Errorf("%s: %w", path, errWorktreeDirty)
+		}
 	}
-	repo := co.repo
-	cfg := readRepoConfig(repo)
-	name := filepath.Base(path)
-	var run string
-	if cfg.remove != "" {
-		run = strings.NewReplacer("{name}", shellQuote(name), "{path}", shellQuote(path), "{branch}", shellQuote(co.branch)).Replace(cfg.remove)
-	} else if r, ok := findRecipe(repo, removeRecipes); ok {
-		run = r.command(name)
-	}
-	if run != "" {
+	if own {
 		if _, err := runInRepo(repo, run); err != nil {
 			return err
 		}
@@ -1042,7 +1242,7 @@ func (d *Daemon) removeWorktree(m *pb.RemoveWorktree) error {
 		if m.Force {
 			args = []string{"worktree", "remove", "--force", path}
 		}
-		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+		if out, err := gitCombined(repo, args...); err != nil {
 			return fmt.Errorf("git %s failed: %s", strings.Join(args, " "), tailLines(out, 8))
 		}
 		if co.branch != "" {
@@ -1050,23 +1250,41 @@ func (d *Daemon) removeWorktree(m *pb.RemoveWorktree) error {
 		}
 	}
 	if list, err := worktreeList(repo); err == nil && slices.ContainsFunc(list, func(w worktreeEntry) bool { return evalPath(w.path) == evalPath(path) }) {
-		return fmt.Errorf("ran %s, but the worktree is still there", cmpOr(run, "git worktree remove"))
+		return fmt.Errorf("ran %s, but the worktree is still there", run)
 	}
 
 	// The tabs in it close: there's nothing for them to do there now.
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var close []string
-	for id, t := range d.tabs {
-		if w := t.Git.GetWorktree(); w != "" && evalPath(w) == evalPath(path) || d.tabOnlyIn(t, path) {
-			close = append(close, id)
+	for _, id := range d.tabsInWorktree(path) {
+		if remember {
+			d.rememberTab(id, "")
 		}
-	}
-	for _, id := range close {
 		_ = d.closeTab(id)
 	}
 	d.branches.poke()
 	return nil
+}
+
+// gitCombined runs git in dir (for as long as a worktree's command may
+// take, never asking for a password) for its output and errors.
+func gitCombined(dir string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), worktreeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	return cmd.CombinedOutput()
+}
+
+// tabsInWorktree are the tabs working in the worktree at path. Callers hold d.mu.
+func (d *Daemon) tabsInWorktree(path string) []string {
+	var ids []string
+	for id, t := range d.tabs {
+		if w := t.Git.GetWorktree(); w != "" && evalPath(w) == evalPath(path) || d.tabOnlyIn(t, path) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // tabOnlyIn reports whether every terminal of t's with a folder was in dir

@@ -30,7 +30,11 @@ class WorktreesTest {
         assertTrue(g.shown)
         assertEquals("pricing", g.worktreeName)
         assertEquals("Worktree on pricing · Pull request #42, merged", g.summary)
-        assertEquals("Remove the worktree “pricing”?" to "Its branch is merged. The tabs in it close.", removeWorktreeQuestion(g))
+        val q = removeWorktreeQuestion(g.toBuilder().setRemoveWith("git worktree remove x").build())
+        assertEquals("Remove the worktree “pricing”?", q.title)
+        assertEquals("Its branch is merged. The tabs in it close.\n\nRuns: git worktree remove x", q.message)
+        assertTrue(q.canRemove)
+        assertFalse("its own command won't drop changes", removeWorktreeQuestion(g.toBuilder().setDirty(true).setNeedsClean(true).build()).canRemove)
         assertFalse(TabGit.newBuilder().setBranch("main").build().shown)
     }
 }

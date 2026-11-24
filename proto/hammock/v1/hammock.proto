@@ -2200,9 +2200,10 @@ message StartAgent {
   Split.Direction direction = 8;
   bool before = 9;
   bool floating = 10;
-  // A new git worktree to start it in, by this name (its branch): made from
-  // cwd's repository by the repository's own way (worktrees.go: .hammock/config,
-  // a worktree recipe, the agent's own option, else git worktree add).
+  // A new git worktree to start it in, by this name: made from cwd's
+  // repository the repository's own way (worktrees.go: .hammock/config, a
+  // worktree recipe, the agent's own option, else git worktree add on a
+  // branch of this name). One already there by that name is reused.
   string worktree = 20;
 }
 
@@ -2211,7 +2212,12 @@ message StartAgent {
 // Replies FolderList. group_id: the Group it's for (a shared Group's host
 // answers for its own Mac).
 // computer_id: with no group_id, a linked computer's folders.
-message ListFolders { string path = 1; string group_id = 2; string computer_id = 3; }
+message ListFolders {
+  string path = 1;
+  string group_id = 2;
+  string computer_id = 3;
+  string harness = 20;  // the agent it's for: FolderList.worktree_command may be its own option
+}
 
 message FolderList {
   string path = 1;                      // the folder listed (cleaned), if one was asked for
@@ -2221,9 +2227,10 @@ message FolderList {
   string home = 5;
   repeated string agents = 6;           // the agents installed: "claude", "codex"
   string error = 7;                     // e.g. the folder doesn't exist
-  // With path: how a new worktree would be made from it ("just worktree"),
-  // "" when it isn't in a git repository (StartAgent.worktree).
-  string worktree_how = 20;
+  // With path: the command that would make a new worktree from it
+  // (StartAgent.worktree), {name} where its name goes ("just worktree {name}",
+  // "claude --worktree {name}"); "" when it isn't in a git repository.
+  string worktree_command = 20;
 }
 
 message FolderSuggestion {
@@ -3129,6 +3136,12 @@ message TabGit {
   // after (an agent that cleans up after itself gets there first).
   bool removable = 6;
   bool dirty = 7;       // with removable: it has uncommitted changes
+  // With removable: the command that removes it ("git worktree remove …",
+  // or the repository's own), shown before it runs.
+  string remove_with = 8;
+  // With dirty: the repository's own command removes it, which can't be
+  // told to drop uncommitted changes: commit or discard them first.
+  bool needs_clean = 9;
 }
 
 message PullRequest {
@@ -3139,7 +3152,8 @@ message PullRequest {
 }
 
 // Removes a linked worktree: the tab's (tab_id), else the one at path.
-// Refused while it has uncommitted changes, unless force.
+// Refused while it has uncommitted changes, unless force (and then still,
+// when the repository's own command removes it: TabGit.needs_clean).
 message RemoveWorktree {
   string tab_id = 1;
   string path = 2;

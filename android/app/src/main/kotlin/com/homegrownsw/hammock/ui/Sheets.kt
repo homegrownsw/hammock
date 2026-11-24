@@ -83,18 +83,18 @@ fun StartAgentSheet(model: AppModel, groupID: String?, nav: Nav, onDone: () -> U
     var prompt by remember { mutableStateOf("") }
     var inWorktree by remember { mutableStateOf(false) }
     var worktree by remember { mutableStateOf("") }
-    // How a new worktree would be made from the folder ("just worktree", "git"); "" outside a git repository.
-    var worktreeHow by remember { mutableStateOf("") }
+    // The command that would make a worktree from the folder ({name} for its name); "" outside a git repository.
+    var worktreeCommand by remember { mutableStateOf("") }
     var folders by remember { mutableStateOf<Hammock.FolderList?>(null) }
     var browsing by remember { mutableStateOf<String?>(null) }
     var starting by remember { mutableStateOf(false) }
     LaunchedEffect(group) { folders = model.listFolders("", group) }
     LaunchedEffect(browsing) { browsing?.let { folders = model.listFolders(it, group) } }
-    LaunchedEffect(cwd, group) {
+    LaunchedEffect(cwd, group, harness) {
         delay(300)
-        worktreeHow = if (cwd.isBlank()) "" else model.listFolders(cwd.trim(), group)?.worktreeHow.orEmpty()
+        worktreeCommand = if (cwd.isBlank()) "" else model.listFolders(cwd.trim(), group, harness = harness)?.worktreeCommand.orEmpty()
     }
-    val usesWorktree = inWorktree && worktreeHow.isNotEmpty()
+    val usesWorktree = inWorktree && worktreeCommand.isNotEmpty()
     val installed = folders?.agentsList?.takeIf { it.isNotEmpty() }
     val kinds = w.kinds.filter { it.id in AgentCatalog.builtIn || it.id == harness || (installed?.contains(it.id) ?: it.installed) }
     val hostName = w.hostName.removeSuffix(".local").ifEmpty { "your computer" }
@@ -211,7 +211,7 @@ fun StartAgentSheet(model: AppModel, groupID: String?, nav: Nav, onDone: () -> U
                 }
                 folders?.error?.takeIf { it.isNotEmpty() }?.let { Footer(it) }
             }
-            if (worktreeHow.isNotEmpty()) item {
+            if (worktreeCommand.isNotEmpty()) item {
                 Spacer(Modifier.size(20.dp))
                 GroupedCard {
                     SwitchRow("In a New Worktree", inWorktree) { inWorktree = it }
@@ -230,11 +230,8 @@ fun StartAgentSheet(model: AppModel, groupID: String?, nav: Nav, onDone: () -> U
                         )
                     }
                 }
-                if (inWorktree) Footer(when (worktreeHow) {
-                    "git" -> "A new branch, in its own worktree in .claude/worktrees."
-                    ".hammock/config" -> "Made the way the repository's .hammock/config says."
-                    else -> "Made with $worktreeHow ${worktree.trim().ifEmpty { "NAME" }}."
-                })
+                // What runs (in the repository, as you): shown before it does.
+                if (inWorktree) Footer("Runs: " + worktreeCommand.replace("{name}", worktree.trim().ifEmpty { "NAME" }))
             }
             item {
                 Spacer(Modifier.size(20.dp))

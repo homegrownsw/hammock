@@ -26,9 +26,16 @@ val TabGit.summary: String get() = listOfNotNull(
     if (hasPr() && pr.number > 0) "Pull request #${pr.number}, ${pr.state}" + (if (pr.title.isEmpty()) "" else ": ${pr.title}") else null,
 ).joinToString(" · ")
 
-/** What Remove Worktree's confirmation says: its title and message. */
-fun removeWorktreeQuestion(git: TabGit): Pair<String, String> {
-    var message = (if (git.pr.state == "closed") "Its pull request was closed." else "Its branch is merged.") + " The tabs in it close."
-    if (git.dirty) message += " It has uncommitted changes, which are lost."
-    return "Remove the worktree “${git.worktreeName}”?" to message
+/** What Remove Worktree's confirmation says. [canRemove] false: uncommitted changes the repository's own command won't drop, so nothing to confirm. */
+data class WorktreeQuestion(val title: String, val message: String, val canRemove: Boolean)
+
+/** Remove Worktree's confirmation: the command that runs, what closes, what's lost ([busy]: what closing its tabs stops). */
+fun removeWorktreeQuestion(git: TabGit, busy: String? = null): WorktreeQuestion {
+    if (git.needsClean) return WorktreeQuestion("“${git.worktreeName}” has uncommitted changes",
+        "Commit or discard them first: ${git.removeWith} won't remove it with them.", false)
+    val lines = mutableListOf((if (git.pr.state == "closed") "Its pull request was closed." else "Its branch is merged.") + " The tabs in it close.")
+    if (git.dirty) lines += "It has uncommitted changes, which are lost."
+    if (busy != null) lines += busy
+    lines += "Runs: ${git.removeWith}"
+    return WorktreeQuestion("Remove the worktree “${git.worktreeName}”?", lines.joinToString("\n\n"), true)
 }

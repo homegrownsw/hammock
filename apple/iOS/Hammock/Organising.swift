@@ -116,9 +116,13 @@ extension View {
         confirmationDialog(tab.wrappedValue.map { model.removeWorktreeQuestion($0).title } ?? "",
                            isPresented: Binding(get: { tab.wrappedValue != nil }, set: { if !$0 { tab.wrappedValue = nil } }),
                            titleVisibility: .visible, presenting: tab.wrappedValue) { t in
-            Button("Remove Worktree", role: .destructive) { Task { await model.removeWorktree(t.id, force: t.git.dirty) } }
+            if model.removeWorktreeQuestion(t).canRemove {
+                Button("Remove Worktree", role: .destructive) { Task { await model.removeWorktree(t.id, force: t.git.dirty) } }
+            } else {
+                Button("OK", role: .cancel) {}
+            }
         } message: { t in
-            Text(model.removeWorktreeQuestion(t).message)
+            Text(model.removeWorktreeQuestion(t, warnBusy: UserDefaults.standard.object(forKey: "warnCloseBusyAgent") as? Bool ?? true).message)
         }
     }
 

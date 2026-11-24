@@ -1450,7 +1450,7 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		id := msg.Id
 		go func() {
 			r := &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}
-			if err := d.removeWorktree(msg.GetRemoveWorktree()); err != nil {
+			if err := d.removeWorktree(msg.GetRemoveWorktree(), c.reopenable()); err != nil {
 				r = &pb.ServerMessage{Msg: &pb.ServerMessage_Error{Error: &pb.Error{Message: err.Error()}}}
 			}
 			if id != 0 {
@@ -1764,6 +1764,7 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 	case *pb.ClientMessage_Input, *pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab,
 		*pb.ClientMessage_ClosePane, *pb.ClientMessage_CloseTab, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_BrowserNavigate, *pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_UploadFile, *pb.ClientMessage_ClearLog, *pb.ClientMessage_StartAgent, *pb.ClientMessage_SetGroupIconImage, *pb.ClientMessage_SetGroupFolder,
+		*pb.ClientMessage_RemoveWorktree,
 		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReviewCommand:
 		return true
 	case *pb.ClientMessage_FilesCommand:
@@ -1833,6 +1834,8 @@ func auditAction(msg *pb.ClientMessage) string {
 		return "close-pane"
 	case *pb.ClientMessage_CloseTab:
 		return "close-tab"
+	case *pb.ClientMessage_RemoveWorktree:
+		return "remove-worktree"
 	case *pb.ClientMessage_SignalPane:
 		return "signal"
 	case *pb.ClientMessage_BrowserNavigate:
@@ -1890,7 +1893,12 @@ func auditTarget(msg *pb.ClientMessage) string {
 	case *pb.ClientMessage_SetGroupFolder:
 		return m.SetGroupFolder.GroupId + " → " + m.SetGroupFolder.Folder
 	case *pb.ClientMessage_StartAgent:
+		if w := m.StartAgent.Worktree; w != "" {
+			return m.StartAgent.Harness + " in a new worktree " + w + " of " + m.StartAgent.Cwd
+		}
 		return m.StartAgent.Harness + " in " + m.StartAgent.Cwd
+	case *pb.ClientMessage_RemoveWorktree:
+		return cmpOr(m.RemoveWorktree.Path, m.RemoveWorktree.TabId)
 	case *pb.ClientMessage_EditorPush:
 		return m.EditorPush.PaneId
 	case *pb.ClientMessage_DiffCommand:

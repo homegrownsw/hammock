@@ -474,7 +474,7 @@ fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> U
         else if (agent.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, onClick = { close(); model.sleepPane(agent.id) })
     }
     HorizontalDivider()
-    if (canRemoveWorktree(tab, g)) DropdownMenuItem(text = { Text("Remove Worktree…", color = ErrorColor) }, onClick = { close(); closer.removeWorktree(model, tab) })
+    if (canRemoveWorktree(tab, g)) DropdownMenuItem(text = { Text("Remove Worktree…", color = ErrorColor) }, onClick = { close(); closer.removeWorktree(model, w, tab) })
     DropdownMenuItem(text = { Text("Close Tab", color = ErrorColor) }, enabled = drive, onClick = { close(); closer.closeTab(model, w, tab) })
 }
 

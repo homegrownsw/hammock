@@ -53,14 +53,16 @@ Switch a pane between the two with Pane ▸ Toggle Agent View (⇧⌘A). Setting
 
 ### In a new worktree
 
-When the folder is in a git repository, turn on **In a New Worktree** in New Agent Tab… and name its branch, or run `hmk agent --worktree fix-login`. The agent starts in a new worktree of the repository, in the repository's Group. Hammock makes it the first of these ways the repository has:
+When the folder is in a git repository, turn on **In a New Worktree** in New Agent Tab… and name it, or run `hmk agent --worktree fix-login`. The agent starts in a new worktree of the repository, in the repository's Group; the sheet shows the command that will run first. Hammock makes it the first of these ways the repository has:
 
-1. A `.hammock/config` file in the repository, with `worktree-create` (a command; `{name}` is the branch and `{path}` where it goes, each quoted for the shell) and `worktree-dir` (the folder new worktrees go in).
+1. A `.hammock/config` file in the repository, with `worktree-create` (a command; `{name}` is the name and `{path}` where it goes, each quoted for the shell) and `worktree-dir` (the folder new worktrees go in).
 2. A recipe it already has: a `just` recipe, Makefile target (given `NAME=…`) or package.json script called `worktree`, `worktree-add` or `worktree-new`.
-3. The agent's own option: Claude Code's `--worktree`.
-4. `git worktree add`, on a new branch (or the branch, if it exists), in `.claude/worktrees/`, with the git-ignored files a `.worktreeinclude` lists copied in.
+3. The agent's own option: Claude Code's `--worktree`, which makes it in `.claude/worktrees/` and names its branch itself.
+4. `git worktree add`, on a branch of that name (a new one, or the branch if it exists), in `.claude/worktrees/`, with the git-ignored files a `.worktreeinclude` lists copied in.
 
-A tab shows its branch's pull request (open, merged or closed, when [`gh`](https://cli.github.com) can see it) or, in a worktree, a branch. A while after the branch is merged or its pull request closed, a worktree's tab offers **Remove Worktree…**: in its row, its right-click menu, File, the command palette, or `hmk worktree remove`. It removes the worktree with the repository's `worktree-remove` command or recipe (`worktree-rm` too), else `git worktree remove`, and closes the tabs in it. Hammock never removes one by itself, and asks first when it has uncommitted changes.
+A worktree of that name that's there already is used again. Recipes and commands run in your login shell in the repository, outside any agent's sandbox.
+
+A tab shows its branch's pull request (open, merged or closed, when [`gh`](https://cli.github.com) can see it) or, in a worktree, a branch. A minute after the branch is merged or its pull request closed, a worktree's tab offers **Remove Worktree…**: in its row, its right-click menu, File, the command palette, or `hmk worktree remove`. It always asks first, showing the command that will run: the repository's `worktree-remove` command or recipe (`worktree-rm` too, given the worktree's name), else `git worktree remove`, which also deletes the branch if it's merged. Then the tabs in it close. Hammock never removes one by itself. With uncommitted changes, `git worktree remove` can drop them once you confirm; a repository's own command can't, so commit or discard them first.
 
 ```ini
 # .hammock/config

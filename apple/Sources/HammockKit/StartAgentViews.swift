@@ -27,9 +27,9 @@ public struct StartAgentView: View {
     @State private var browsing = false
     @State private var inWorktree = false
     @State private var worktreeName = ""
-    /// How a new worktree would be made from the folder ("just worktree",
-    /// "git"): "" when it isn't in a git repository (or its computer can't say).
-    @State private var worktreeHow = ""
+    /// The command that would make a worktree from the folder, {name} for
+    /// its name: "" when it isn't in a git repository (or its computer can't say).
+    @State private var worktreeCommand = ""
 
     /// harness nil: the default agent of the computer it starts on, else Claude Code.
     public init(model: AppModel, groupID: String?, computerID: String? = nil, harness: String? = nil, split: AgentSplit? = nil, chooseLocal: (() -> String?)? = nil, onDone: @escaping (String?) -> Void, onStarted: ((String) -> Void)? = nil) {
@@ -171,7 +171,7 @@ public struct StartAgentView: View {
                     Text("Folder on \(hostName)")
                 }
 
-                if split == nil, !worktreeHow.isEmpty {
+                if split == nil, !worktreeCommand.isEmpty {
                     Section {
                         Toggle("In a New Worktree", isOn: $inWorktree)
                         if inWorktree {
@@ -227,27 +227,23 @@ public struct StartAgentView: View {
             }
             if !l.agents.isEmpty, !l.agents.contains(harness), let other = l.agents.first { harness = other }
         }
-        .task(id: "\(groupID)|\(computerID)|\(cwd)") {
+        .task(id: "\(groupID)|\(computerID)|\(cwd)|\(harness)") {
             // Whether the folder's in a git repository, and how a worktree's made there.
             guard split == nil else { return }
             try? await Task.sleep(for: .milliseconds(300))
             let dir = cwd.trimmingCharacters(in: .whitespaces)
             guard !Task.isCancelled, !dir.isEmpty else { return }
-            worktreeHow = await model.listFolders(dir, groupID: groupID, computerID: computerID)?.worktreeHow ?? ""
+            worktreeCommand = await model.listFolders(dir, groupID: groupID, computerID: computerID, harness: harness)?.worktreeCommand ?? ""
         }
     }
 
-    private var usesWorktree: Bool { inWorktree && !worktreeHow.isEmpty && split == nil }
+    private var usesWorktree: Bool { inWorktree && !worktreeCommand.isEmpty && split == nil }
     private var worktreeBranch: String { worktreeName.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// How the worktree's made, in a line.
+    /// The command that makes the worktree, as it'll run (in the repository,
+    /// outside any sandbox): shown before it does.
     private var worktreeFooter: String {
-        let name = worktreeBranch.isEmpty ? "NAME" : worktreeBranch
-        switch worktreeHow {
-        case "git": return "A new branch, in its own worktree in .claude/worktrees."
-        case ".hammock/config": return "Made the way the repository's .hammock/config says."
-        default: return "Made with \(worktreeHow) \(name)."
-        }
+        "Runs: " + worktreeCommand.replacingOccurrences(of: "{name}", with: worktreeBranch.isEmpty ? "NAME" : worktreeBranch)
     }
 
     /// Whose Mac the folders are on.

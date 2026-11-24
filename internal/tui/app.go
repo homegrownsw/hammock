@@ -1299,19 +1299,32 @@ func (a *App) openStartAgent(group string) {
 	if p := a.panes[a.focus]; p != nil {
 		dir = tildeHome(p.Cwd)
 	}
-	a.openDialog(&dialog{title: "Start an Agent", okLabel: "Start",
-		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: cmp.Or(a.defaultAgentIn(group), "claude")}, {label: "Folder", value: dir}, {label: "First message (optional)"},
-			{label: "In a new worktree (optional: its branch)"}},
+	harness := cmp.Or(a.defaultAgentIn(group), "claude")
+	d := &dialog{title: "Start an Agent", okLabel: "Start",
+		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: harness}, {label: "Folder", value: dir}, {label: "First message (optional)"}},
 		submit: func(v []string) {
+			worktree := ""
+			if len(v) > 3 {
+				worktree = strings.TrimSpace(v[3])
+			}
 			m := &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
-				Harness: parseHarness(v[0]), Cwd: strings.TrimSpace(v[1]), GroupId: group, Prompt: strings.TrimSpace(v[2]), Worktree: strings.TrimSpace(v[3]),
+				Harness: parseHarness(v[0]), Cwd: strings.TrimSpace(v[1]), GroupId: group, Prompt: strings.TrimSpace(v[2]), Worktree: worktree,
 			}}}
-			if strings.TrimSpace(v[3]) != "" {
+			if worktree != "" {
 				a.startInWorktree(m)
 				return
 			}
 			a.call(m, func(r *pb.ServerMessage) { a.selectTab(client.CreatedID(r)) })
-		}})
+		}}
+	a.openDialog(d)
+	// In a git repository, a worktree can be made: offered, with how.
+	a.worktreeCommandFor(group, dir, harness, func(how string) {
+		if how == "" || a.overlay != d || len(d.fields) > 3 {
+			return
+		}
+		d.fields = append(d.fields, &field{label: "In a new worktree (optional: its name)"})
+		d.lines = []string{"A new worktree is made with: " + how}
+	})
 }
 
 // openStartAgentOn starts an agent on linked computer (in a folder there:
