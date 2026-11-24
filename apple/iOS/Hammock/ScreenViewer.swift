@@ -148,8 +148,14 @@ struct PhoneScreenViewer: View {
         .onChange(of: state, initial: true) { _, st in share.live = st == .playing }
         // Minimised: the keyboard goes (nothing's typed to the Mac then).
         .onChange(of: minimised) { _, on in if on { keyboard = false } }
+        // Ended while the app was away or just back (iOS can take the
+        // video's link from an app that leaves, however briefly): it
+        // connects again by itself, the last picture held meanwhile, rather
+        // than saying it stopped.
         .onChange(of: state) { _, st in
-            if case .failed = st, phase != .active || Date.now.timeIntervalSince(returnedAt) < 15 { resume = true }
+            guard case .failed = st, phase != .active || Date.now.timeIntervalSince(returnedAt) < 15 else { return }
+            resume = true
+            state = .connecting
         }
         // Once the Mac's connection is back (it dropped too, if the app was
         // suspended): a new stream, not "The screen stopped".
@@ -536,6 +542,9 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
         }
         s.onSize = { [weak self] px in self?.detailPixels = px }
         s.onState = { [weak self] st in self?.onState?(st) }
+        // The base ending ends the screen too (it's shown again whole),
+        // rather than leaving the detail alone over nothing.
+        base.onState = { [weak self] st in if case .failed = st { self?.onState?(st) } }
         if minimised {
             // Opened again while minimised (unlocked, or back from away).
             s.setMaxFPS(ScreenShareState.detailFPS(minimised: true))
@@ -548,6 +557,7 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
     func stop() {
         stopMomentum()
         stream?.onState = nil
+        baseStream?.onState = nil
         baseStream?.onSize = nil
         stream?.onSize = nil
         stream?.onPicture = nil

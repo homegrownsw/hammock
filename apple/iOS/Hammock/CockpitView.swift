@@ -17,10 +17,12 @@ struct CockpitView: View {
         TabView(selection: $tab) {
             Tab("Sessions", systemImage: "bubble.left.and.text.bubble.right", value: "sessions") {
                 SessionsView(model: model, session: session)
+                    .environment(\.cockpitTab, "sessions")
             }
             .badge(model.badgeCount)
             Tab("Groups", systemImage: "square.stack.3d.up", value: "groups") {
                 GroupsView(model: model, session: session)
+                    .environment(\.cockpitTab, "groups")
             }
             Tab("Devices", systemImage: "desktopcomputer", value: "devices") {
                 DevicesView(session: session)
@@ -54,7 +56,10 @@ struct CockpitView: View {
         // Above the tab bar.
         .overlay(alignment: .bottom) { ToastOverlay(model: model).padding(.bottom, 64) }
         // A notification opened: its session.
-        .onChange(of: tab, initial: true) { AgentStarter.shared.shownTab = tab }
+        .onChange(of: tab, initial: true) {
+            AgentStarter.shared.shownTab = tab
+            ScreenShare.shared.shownTab = tab
+        }
         // The Home Screen icon's count, as this Mac's pushes set it.
         .onChange(of: model.connected && !session.isDemo ? model.badgeCount : nil, initial: true) { _, n in
             if let n { Push.setBadge(n) }

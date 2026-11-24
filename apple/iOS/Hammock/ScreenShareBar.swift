@@ -29,11 +29,21 @@ final class ScreenShare {
     private(set) var sample: UIImage?
 
     var isMinimised: Bool { state.isMinimised }
-    /// Screens up now that hide the tab bar (a pane, on an iPhone): the bar
-    /// goes at their top, and not above the tab bar (whose accessory iOS
-    /// would show on its own there).
-    var tabBarHidders = 0
-    var inAccessory: Bool { isMinimised && tabBarHidders == 0 }
+    /// Screens that hide the tab bar (a pane, on an iPhone), by the tab
+    /// they're in: on the tab shown, the bar goes at their top, and not
+    /// above the tab bar (whose accessory iOS would show on its own there).
+    /// Counted for as long as each screen exists, not while it appears: a
+    /// screen covered for a moment (Exposé) and shown again didn't always
+    /// say it had appeared again, which left both bars up.
+    private(set) var tabBarHiders: [String: Int] = [:]
+    /// The tab the app's showing (CockpitView).
+    var shownTab = ""
+    var inAccessory: Bool { isMinimised && tabBarHiders[shownTab, default: 0] == 0 }
+
+    func hidesTabBar(in tab: String, _ on: Bool) {
+        tabBarHiders[tab, default: 0] += on ? 1 : -1
+        if tabBarHiders[tab, default: 0] <= 0 { tabBarHiders[tab] = nil }
+    }
 
     func open(_ request: ScreenRequest, model: AppModel) {
         if self.model !== model { state.end() }

@@ -73,23 +73,41 @@ private struct TabBarHider: ViewModifier {
     }
 }
 
-/// Counts the screens up that hide the tab bar (ScreenShare.tabBarHidders),
-/// while they do.
+extension EnvironmentValues {
+    /// The app's tab a screen is in (CockpitView): a screen hiding the tab
+    /// bar counts only while its tab is the one shown.
+    @Entry var cockpitTab = ""
+}
+
+/// Counts the screens that hide the tab bar (ScreenShare.tabBarHiders),
+/// while they do, from when the screen's made to when it's gone (its
+/// state's lifetime), not from onAppear to onDisappear: those don't always
+/// pair up (a screen covered and shown again), and a count left short put
+/// the bar above the hidden tab bar as well as at the screen's top.
 private struct CountsAsTabBarHidden: ViewModifier {
     let on: Bool
-    @State private var counted = false
+    @Environment(\.cockpitTab) private var tab
+    @State private var count = HiderCount()
 
     func body(content: Content) -> some View {
-        content
-            .onAppear { count(on) }
-            .onDisappear { count(false) }
-            .onChange(of: on) { _, now in count(now) }
+        content.onChange(of: on ? tab : nil, initial: true) { _, now in count.set(now) }
     }
 
-    private func count(_ now: Bool) {
-        guard now != counted else { return }
-        counted = now
-        ScreenShare.shared.tabBarHidders += now ? 1 : -1
+    @MainActor
+    final class HiderCount {
+        private var tab: String?
+
+        func set(_ new: String?) {
+            guard new != tab else { return }
+            if let tab { ScreenShare.shared.hidesTabBar(in: tab, false) }
+            if let new { ScreenShare.shared.hidesTabBar(in: new, true) }
+            tab = new
+        }
+
+        deinit {
+            guard let tab else { return }
+            Task { @MainActor in ScreenShare.shared.hidesTabBar(in: tab, false) }
+        }
     }
 }
 
