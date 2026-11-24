@@ -49,7 +49,7 @@ class DemoDaemonTest {
         val panes = s.panesList.map { it.id }.toSet()
         for (t in s.tabsList) assertTrue(t.id, t.focusedPaneId in panes)
         assertEquals(AgentState.AGENT_STATE_NEEDS_INPUT, s.panesList.first { it.id == "p_triage" }.agent.state)
-        assertEquals(5, s.schedulesCount)
+        assertEquals(6, s.schedulesCount)
         assertEquals(listOf("a_triage"), s.attentionList.map { it.id })
     }
 

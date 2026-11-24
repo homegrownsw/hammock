@@ -116,6 +116,7 @@ type logPane struct {
 	fmu      sync.Mutex // the feeder (fed from the pane's reader, flushed by the ticker)
 	feed     *logview.Feeder
 	lastFeed time.Time
+	since    time.Time // its command started (or this daemon did): lines before logGrace are the past (schedtriggers.go)
 
 	mu       sync.Mutex
 	watchers map[*conn]*logWatcher
@@ -140,7 +141,7 @@ func (d *Daemon) logPath(id string) string {
 // newLogPane starts keeping a log pane's entries (loading those kept).
 func (d *Daemon) newLogPane(id string) *logPane {
 	_ = os.MkdirAll(filepath.Join(d.cfg.Dir, "panelogs"), 0o700)
-	lp := &logPane{d: d, id: id, store: logview.NewStore(d.logPath(id)), watchers: map[*conn]*logWatcher{}, stop: make(chan struct{})}
+	lp := &logPane{d: d, id: id, store: logview.NewStore(d.logPath(id)), watchers: map[*conn]*logWatcher{}, stop: make(chan struct{}), since: time.Now()}
 	lp.feed = &logview.Feeder{Store: lp.store, OnEntry: lp.added}
 	go lp.run()
 	return lp
@@ -158,10 +159,14 @@ func (lp *logPane) write(p []byte, off uint64) {
 func (lp *logPane) restarted() {
 	lp.fmu.Lock()
 	lp.feed.Restarted()
+	lp.since = time.Now()
 	lp.fmu.Unlock()
 }
 
 func (lp *logPane) added(e *pb.LogEntry) {
+	if time.Since(lp.since) > logGrace {
+		lp.d.schedLogEntry(lp.id, e) // scheduled tasks' log triggers
+	}
 	lp.mu.Lock()
 	lp.changed = true
 	if len(lp.watchers) > 0 {

@@ -112,6 +112,16 @@ struct ScheduleEditor: View {
                 }
 
                 Section("When") {
+                    Picker("Runs", selection: $draft.timing) {
+                        Text("On a schedule").tag(Schedule.Timing.repeat)
+                        Text("Once").tag(Schedule.Timing.once)
+                        Text("Only on triggers").tag(Schedule.Timing.events)
+                    }
+                    .pickerStyle(.segmented)
+                    if draft.timing == .once {
+                        DatePicker("At", selection: onceBinding, displayedComponents: [.date, .hourAndMinute])
+                    }
+                    if draft.timing == .repeat {
                     HStack(spacing: 6) {
                         chip("Every day", .everyDay)
                         chip("Weekdays", .weekdays)
@@ -135,7 +145,11 @@ struct ScheduleEditor: View {
                     } else {
                         DatePicker("Time", selection: timeBinding, displayedComponents: .hourAndMinute)
                     }
+                    }
                 }
+
+                ScheduleTriggersSection(model: model, scheduleID: original.id, events: $draft.events, cooldown: $draft.cooldownSeconds,
+                                        computerID: computer?.userID ?? "")
 
                 Section {
                     Picker("If still running", selection: $draft.overlap) {
@@ -279,6 +293,14 @@ struct ScheduleEditor: View {
         })
     }
 
+    /// A one-off's date and time (the next hour, to start with).
+    private var onceBinding: Binding<Date> {
+        Binding(get: {
+            draft.onceUnixMs > 0 ? Date(timeIntervalSince1970: Double(draft.onceUnixMs) / 1000)
+                : Calendar.current.nextDate(after: Date(), matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? Date()
+        }, set: { d in draft.onceUnixMs = Int64(d.timeIntervalSince1970 * 1000) })
+    }
+
     private var giveUpChoices: [Int] {
         let base = [60, 120, 240, 480, 1440]
         return base.contains(draft.givesUpAfter) ? base : (base + [draft.givesUpAfter]).sorted()
@@ -323,12 +345,21 @@ struct ScheduleEditor: View {
     private var canSave: Bool {
         !draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !draft.cwd.trimmingCharacters(in: .whitespaces).isEmpty
-            && (when != .cron || !draft.cron.trimmingCharacters(in: .whitespaces).isEmpty)
+            && (draft.timing != .repeat || when != .cron || !draft.cron.trimmingCharacters(in: .whitespaces).isEmpty)
+            && (draft.timing != .events || !draft.events.isEmpty)
+            && draft.events.allSatisfy { $0.missing.isEmpty }
     }
 
     /// "Next run: Tomorrow at 09:00", as the daemon will have it.
     private var nextRunText: String {
         if draft.paused { return "Paused" }
+        switch draft.timing {
+        case .events:
+            return draft.events.isEmpty ? "Add a trigger" : "Runs when triggered"
+        case .once:
+            return "Runs " + Schedule.dateText(Int64(onceBinding.wrappedValue.timeIntervalSince1970 * 1000))
+        default: break
+        }
         if when == .cron {
             if draft.cron.trimmingCharacters(in: .whitespaces) == original.cron, original.nextRunUnixMs > 0 {
                 return "Next run: " + Schedule.dateText(original.nextRunUnixMs)
@@ -341,6 +372,8 @@ struct ScheduleEditor: View {
 
     private func save(thenRun: Bool) {
         var s = draft
+        if s.timing == .once, s.onceUnixMs == 0 { s.onceUnixMs = Int64(onceBinding.wrappedValue.timeIntervalSince1970 * 1000) }
+        for i in s.events.indices { s.events[i].error = "" }
         s.weekdays = when == .cron ? [] : weekdays
         if when != .cron { s.cron = "" }
         s.cron = s.cron.trimmingCharacters(in: .whitespaces)
@@ -369,6 +402,9 @@ struct ScheduleEditor: View {
                     return
                 }
                 ScheduleUI.shared.selected = saved.id
+                if saved.events.contains(where: { if case .calendar = $0.kind { true } else { false } }) {
+                    CalendarFeed.shared.refresh(force: true)
+                }
                 dismiss()
             } catch {
                 self.error = error.localizedDescription
@@ -384,6 +420,7 @@ struct ScheduleEditor: View {
         s.runs = []
         s.nextRunUnixMs = 0
         s.error = ""
+        for i in s.events.indices { s.events[i].error = "" }
         return s
     }
 }

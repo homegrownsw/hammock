@@ -74,8 +74,13 @@ type Daemon struct {
 	// proofs: the Mac app's proofs that a connection is its own (appproof.go;
 	// its own lock).
 	proofs appProofs
-	ln     net.Listener
-	srv    *http.Server
+	// trigIdx: the log patterns scheduled tasks' triggers watch for, read
+	// by log panes' feeds without d.mu (schedtriggers.go).
+	trigIdx atomic.Pointer[trigIndex]
+	// hookRate limits calls to webhooks (schedwebhook.go; its own lock).
+	hookRate hookLimiter
+	ln       net.Listener
+	srv      *http.Server
 
 	mu        sync.Mutex          // guards everything below; never acquired while holding a pane's mu
 	phoneAt   time.Time           // you last did something in Hammock on a paired phone (push.go)
@@ -299,6 +304,7 @@ func (d *Daemon) restore() error {
 	// finished while we were down) needs its run, or would close as a
 	// plain clean exit.
 	d.loadSchedules()
+	d.loadTriggers()
 	snap, err := d.store.Load()
 	if err != nil {
 		return err
@@ -579,6 +585,8 @@ func (d *Daemon) Serve() error {
 	go d.watchAgentKinds()
 	go d.watchDefaultAgent()
 	go d.runSchedules()
+	go d.watchGitHub()
+	go d.watchFiles()
 	d.log.Info("listening", "socket", sock)
 	err = srv.Serve(httpLn)
 	if errors.Is(err, http.ErrServerClosed) {

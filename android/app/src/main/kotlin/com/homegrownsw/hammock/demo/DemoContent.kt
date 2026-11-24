@@ -9,7 +9,9 @@ import hammock.v1.Hammock.Computer
 import hammock.v1.Hammock.Computers
 import hammock.v1.Hammock.DiffInfo
 import hammock.v1.Hammock.EditorInfo
+import hammock.v1.Hammock.EventTrigger
 import hammock.v1.Hammock.FloatingPane
+import hammock.v1.Hammock.GitHubTrigger
 import hammock.v1.Hammock.Group
 import hammock.v1.Hammock.HammockKeyApprover
 import hammock.v1.Hammock.HammockKeyRequest
@@ -168,6 +170,13 @@ internal object DemoContent {
             .setNextRunUnixMs(at(2, 16, 0)).setComputerId(STUDIO)
             .addRuns(run("r_notes_today", ScheduleRun.Status.STATUS_READY, ago(58.0), 7.0, note = "Release notes for 1.8: 12 fixes, 3 features.",
                 tab = "t_notes", pane = "p_notes", output = "https://github.com/homegrownsw/app/releases/new", manual = true)))
+        u.addSchedules(Schedule.newBuilder().setId("s_ci").setName("Fix failing CI").setGroupId("g_hammock").setGroupName("Hammock").setGroupIcon("🌴")
+            .setKind("claude").setCwd("/Users/me/Developer/app").setTiming(Schedule.Timing.TIMING_EVENTS)
+            .addEvents(EventTrigger.newBuilder().setId("tr_ci").setGithub(GitHubTrigger.newBuilder()
+                .setEvent(GitHubTrigger.Event.EVENT_CI_FAILED).setRepo("acme/widgets")))
+            .setPrompt("Find out why CI failed and push a fix.").setComputerId(ME)
+            .addRuns(run("r_ci", ScheduleRun.Status.STATUS_READY, ago(42.0), 6.0, note = "Fixed a flaky test; pushed.",
+                tab = "t_ci", closed = true).toBuilder().setDueUnixMs(0).setTrigger("CI failed on #42").build()))
         u.addSchedules(Schedule.newBuilder().setId("s_caches").setName("Clear build caches").setGroupId("g_hammock").setGroupName("Hammock").setGroupIcon("🌴")
             .setKind("command").setCwd("/Users/me/Developer/hammock").addWeekdays(0).setMinuteOfDay(3 * 60)
             .setPrompt("just clean").setPaused(true).setComputerId(ME)

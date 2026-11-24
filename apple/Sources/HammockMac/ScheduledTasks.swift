@@ -264,7 +264,7 @@ enum ScheduleText {
     static func next(_ s: Schedule) -> String {
         if !s.error.isEmpty { return s.error }
         if s.paused { return "Paused" }
-        guard s.nextRunUnixMs > 0 else { return "Not due again" }
+        guard s.nextRunUnixMs > 0 else { return s.events.isEmpty ? "Not due again" : "When triggered" }
         if s.skipUntilUnixMs > s.nextRunUnixMs {
             return "Skipping " + Schedule.dateText(s.nextRunUnixMs)
         }
@@ -300,9 +300,17 @@ struct ScheduleMenuItems: View {
         }
         Button(schedule.paused ? "Resume" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
         Button("Edit…") { ScheduleUI.shared.edit(schedule) }
+        if schedule.hasWebhook {
+            Button("Copy Webhook URL") { ScheduleActions.copyWebhook(model, schedule) }
+        }
         Divider()
         Button("Delete…", role: .destructive) { ScheduleActions.confirmDelete(model, schedule) }
     }
+}
+
+extension Schedule {
+    /// It has a webhook trigger (its URL: Copy Webhook URL).
+    var hasWebhook: Bool { events.contains { if case .webhook = $0.kind { true } else { false } } }
 }
 
 /// What the list's buttons, menus and the palette do, with errors said in a toast.
@@ -338,6 +346,24 @@ enum ScheduleActions {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         Task {
             do { try await model.deleteSchedule(s.id) } catch { model.showToast("Couldn’t delete it: \(error.localizedDescription)") }
+        }
+    }
+
+    /// Its webhook's URL, on the clipboard.
+    static func copyWebhook(_ model: AppModel, _ s: Schedule) {
+        Task {
+            do {
+                let r = try await model.scheduleWebhook(s.id)
+                guard let u = r.urls.first else {
+                    model.showToast(r.problem.isEmpty ? "The webhook can’t be reached now" : r.problem)
+                    return
+                }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(u, forType: .string)
+                model.showToast(r.problem.isEmpty ? "Copied the webhook’s URL" : "Copied the webhook’s URL. \(r.problem)")
+            } catch {
+                model.showToast("Couldn’t get its URL: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -392,6 +418,9 @@ struct ScheduleDetail: View {
             Button(schedule.paused ? "Resume" : "Pause") { ScheduleActions.setPaused(model, schedule, !schedule.paused) }
             Button("Edit…") { ScheduleUI.shared.edit(schedule) }
             runButton
+            if schedule.hasWebhook {
+                Button("Copy Webhook URL") { ScheduleActions.copyWebhook(model, schedule) }
+            }
             if !schedule.paused, schedule.nextRunUnixMs > 0 {
                 Button(schedule.skipping ? "Don’t Skip" : "Skip Next Run") { ScheduleActions.skip(model, schedule, !schedule.skipping) }
             }
@@ -428,6 +457,26 @@ struct ScheduleDetail: View {
     private var details: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 7) {
             row("Next run", ScheduleText.next(schedule).replacingOccurrences(of: "Next: ", with: ""))
+            if !schedule.events.isEmpty {
+                GridRow {
+                    Text("Triggers")
+                        .foregroundStyle(.secondary)
+                        .gridColumnAlignment(.trailing)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(schedule.events, id: \.id) { t in
+                            Label(t.text(names: model.triggerName), systemImage: t.symbol)
+                            if !t.error.isEmpty {
+                                Text(t.error).font(.caption).foregroundStyle(.orange)
+                            }
+                        }
+                        Text("At most one run every \(ScheduleTriggersSection.cooldownText(schedule.cooldown))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
             row(schedule.kind == "command" ? "Command" : "Prompt", schedule.prompt, mono: schedule.kind == "command", lines: 3)
             row("Folder", GroupFolder.tilde(schedule.cwd), mono: true)
             row("If still running", ScheduleText.overlap(schedule.overlap))

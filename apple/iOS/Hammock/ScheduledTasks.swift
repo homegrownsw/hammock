@@ -42,7 +42,7 @@ enum ScheduleWords {
     static func next(_ s: Schedule, now: Date = Date()) -> String {
         if !s.error.isEmpty { return s.error }
         if s.paused { return "Paused" }
-        guard s.nextRunUnixMs > 0 else { return "Not due again" }
+        guard s.nextRunUnixMs > 0 else { return s.events.isEmpty ? "Not due again" : "When triggered" }
         if s.skipping { return "Skipping " + Schedule.dateText(s.nextRunUnixMs, now: now) }
         return "Next: " + Schedule.dateText(s.nextRunUnixMs, now: now)
     }
@@ -558,6 +558,26 @@ struct ScheduleDetailScreen: View {
                 }
                 let made = s.createdUnixMs > 0 ? " · " + Schedule.dateText(s.createdUnixMs, now: now) : ""
                 LabeledContent("Made By", value: (s.createdBy.isEmpty ? "You" : s.createdBy) + made)
+            }
+            if !s.events.isEmpty {
+                Section {
+                    ForEach(s.events, id: \.id) { t in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(t.text(names: model.triggerName), systemImage: t.symbol)
+                            if !t.error.isEmpty {
+                                Text(t.error)
+                                    .font(.footnote)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    LabeledContent("Cooldown", value: s.cooldown == 60 ? "1 minute" : s.cooldown % 60 == 0 ? "\(s.cooldown / 60) minutes" : "\(s.cooldown) seconds")
+                } header: {
+                    Text("Triggers")
+                } footer: {
+                    Text("Each run gets what happened. Change triggers on the Mac.")
+                }
             }
             Section {
                 if s.runs.isEmpty {

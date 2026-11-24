@@ -519,6 +519,7 @@ func (d *Daemon) listenOn(addr, iface, bound string) bool {
 	tcfg := &tls.Config{Certificates: []tls.Certificate{d.remote.cert}, MinVersion: tls.VersionTLS13}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1", d.handleRemoteWS)
+	mux.HandleFunc("/hook/", d.handleHook) // scheduled tasks' webhooks (schedwebhook.go)
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second, TLSConfig: tcfg}
 	d.remote.servers = append(d.remote.servers, srv)
 	d.remote.addrs = append(d.remote.addrs, ln.Addr().String())

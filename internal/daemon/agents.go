@@ -805,6 +805,7 @@ func (d *Daemon) raiseAttentionAs(p *pane, state pb.AgentState, summary string, 
 	d.persist(d.store.PutRecord(attentionRecord, item.Id, item)) // still there after a restart
 	u.Attention = append(u.Attention, proto.CloneOf(item))
 	d.pushAttention(item)
+	d.schedAgentEvent(p, item) // a scheduled task's agent trigger
 	if item.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT && item.PromptId == "" {
 		go d.awaitPrompt(p, item)
 	}

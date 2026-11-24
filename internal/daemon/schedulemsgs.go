@@ -70,12 +70,23 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		var do func(s *pb.Schedule) (*pb.ServerMessage, error)
 		switch m := msg.Msg.(type) {
 		case *pb.ClientMessage_RunSchedule:
-			early := m.RunSchedule.Early
+			early, trigger, data := m.RunSchedule.Early, m.RunSchedule.Trigger, m.RunSchedule.Data
 			id, verb = m.RunSchedule.ScheduleId, "run the scheduled task %s now"
-			if early {
+			switch {
+			case trigger && data != "":
+				verb = "trigger the scheduled task %s with: " + shownText(oneLine(data, 300))
+			case trigger:
+				verb = "trigger the scheduled task %s"
+			case early:
 				verb = "run the scheduled task %s now, instead of at its next time"
 			}
+			if len(data) > maxHookBody {
+				return nil, fmt.Errorf("the data is over %d KB", maxHookBody>>10)
+			}
 			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
+				if trigger {
+					return d.triggerRun(s, data)
+				}
 				if early {
 					return d.runEarly(s)
 				}
@@ -125,7 +136,7 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 			if sandboxRun {
 				who += sandboxedWho
 			}
-			headline := who + " wants to " + fmt.Sprintf(verb, scheduleSummary(s))
+			headline := who + " wants to " + fmt.Sprintf(verb, d.scheduleSummary(s))
 			return nil, d.askScheduleGrant(c, msg.Id, headline, "", func() (*pb.ServerMessage, error) {
 				s, err := find(id)
 				if err != nil {
@@ -169,7 +180,7 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 	var headline string
 	switch {
 	case del:
-		headline = who + " wants to delete the scheduled task " + scheduleSummary(in)
+		headline = who + " wants to delete the scheduled task " + d.scheduleSummary(in)
 	default:
 		s, err := d.cleanSchedule(in) // a mistake is said now, not after you've allowed it
 		if err != nil {
@@ -189,7 +200,7 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 		if c.caller.sandboxed {
 			who += sandboxedWho
 		}
-		headline = who + " wants to " + verb + " " + scheduleSummary(s)
+		headline = who + " wants to " + verb + " " + d.scheduleSummary(s)
 
 	}
 	in = proto.CloneOf(in)

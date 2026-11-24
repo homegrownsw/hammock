@@ -52,3 +52,34 @@ func TestScheduleCommandWords(t *testing.T) {
 		}
 	}
 }
+
+// Triggers alone make a task that runs only on them; with a time, both.
+func TestScheduleTriggers(t *testing.T) {
+	s := &pb.Schedule{}
+	if err := scheduleFlags(&world{}, s, []string{"--trigger", "github:ci-failed", "--trigger", "webhook", "--cooldown", "120", "--", "fix it"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if s.Timing != pb.Schedule_TIMING_EVENTS || len(s.Events) != 2 || s.CooldownSeconds != 120 {
+		t.Fatalf("events only: %v", s)
+	}
+	s = &pb.Schedule{}
+	if err := scheduleFlags(&world{}, s, []string{"--at", "08:30", "--trigger", "github:merged", "--", "x"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if s.Timing != pb.Schedule_TIMING_REPEAT || len(s.Events) != 1 {
+		t.Fatalf("both: %v", s)
+	}
+	s = &pb.Schedule{}
+	if err := scheduleFlags(&world{}, s, []string{"--once", "2026-12-23 17:00", "--", "x"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if s.Timing != pb.Schedule_TIMING_ONCE || s.OnceUnixMs == 0 {
+		t.Fatalf("once: %v", s)
+	}
+	if err := scheduleFlags(&world{}, &pb.Schedule{}, []string{"--trigger", "log:x", "--", "x"}, true); err == nil {
+		t.Fatal("a log trigger with no pane")
+	}
+	if err := scheduleFlags(&world{}, &pb.Schedule{}, []string{"--once", "tomorrow", "--", "x"}, true); err == nil {
+		t.Fatal("--once tomorrow")
+	}
+}

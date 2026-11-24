@@ -120,6 +120,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
        needs the audio-input entitlement (scripts/entitlements/app.plist). -->
   <key>NSMicrophoneUsageDescription</key><string>Dictate messages to your agents when you click the microphone.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Turn what you say into text, on this Mac, when you dictate a message.</string>
+  <!-- Scheduled tasks' calendar triggers: the events coming up, read on this Mac. -->
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Start scheduled tasks before calendar events you choose.</string>
   <!-- hammock:// links (invites: hammock://join/…) open the app. -->
 $url_types
   <!-- Folders dropped on the Dock icon, or opened with the app, become Groups. Rank None:

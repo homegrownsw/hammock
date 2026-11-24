@@ -191,8 +191,16 @@ Usage:
              [--claude|--codex|--AGENT|--command] [--dir DIR] [--group G] [OPTIONS] -- PROMPT|COMMAND
                                             add one (an agent's add or edit asks you first; hmk
                                             schedule help lists the options)
+  hmk schedule add … --trigger T [--events-only] [--cooldown S] -- PROMPT|COMMAND
+                                            run it when something happens: a GitHub event, an agent
+                                            finishing, a command failing, a log line, files changing, a
+                                            calendar event, its webhook (hmk schedule help lists them)
   hmk schedule edit|show|run|pause|resume|skip|rm SCHEDULE
                                             change, see (its runs), run now, pause, skip the next run, delete
+  hmk schedule webhook SCHEDULE [--new]    print its webhook's URL (--new: a new secret)
+  hmk trigger SCHEDULE [--data TEXT|-|@FILE]
+                                            run it now as an event, data (- for stdin) what happened:
+                                            its cooldown applies, and the run is given the data
   hmk show FILE|URL [--pane PANE | --split PANE]
                                             open a file (HTML, Markdown, an image, a PDF) or a page in a
                                             browser pane beside this one; again from this pane, it reloads
@@ -274,6 +282,8 @@ func main() {
 		err = runWorktree(args[1:])
 	case "schedule", "schedules":
 		err = runSchedule(args[1:])
+	case "trigger":
+		err = runTrigger(args[1:])
 	case "show":
 		err = runShow(args[1:])
 	case "theme":

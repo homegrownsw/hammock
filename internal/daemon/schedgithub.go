@@ -1,0 +1,664 @@
+package daemon
+
+// GitHub triggers (schedtriggers.go): the repository of a task's folder is
+// asked about with gh (GraphQL, as you're signed in to it) every couple of
+// minutes while any task has one, one question per repository for every
+// task watching it. Each trigger keeps what was so at its last look (its
+// trigState, kept across restarts): what's new since fires, and its first
+// look only notes what's there, so a backlog never does.
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"os/exec"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/homegrownsw/hammock/internal/gitcmd"
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+)
+
+// ghPoll is how often GitHub is asked; ghMinGap the least time between
+// two looks however often triggers change.
+var (
+	ghPoll   = 90 * time.Second
+	ghMinGap = 10 * time.Second
+)
+
+// ghRun runs gh with args, returning what it printed (tests replace it).
+// Its error says why, in gh's words, when it ran.
+var ghRun = func(ctx context.Context, args ...string) ([]byte, error) {
+	gh := ghPath()
+	if gh == "" {
+		return nil, errNoGH
+	}
+	cmd := exec.CommandContext(ctx, gh, args...)
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1", "GH_NO_UPDATE_NOTIFIER=1")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		switch {
+		case strings.Contains(msg, "gh auth login"):
+			return nil, errGHAuth
+		case msg != "":
+			return nil, errors.New("gh: " + firstLine(msg))
+		}
+		return nil, fmt.Errorf("gh: %w", err)
+	}
+	return out, nil
+}
+
+var (
+	errNoGH   = errors.New("GitHub triggers need the GitHub CLI: install gh, then run gh auth login")
+	errGHAuth = errors.New("gh isn't signed in to GitHub: run gh auth login")
+)
+
+
+// gitRun runs git in dir (tests replace it).
+var gitRun = func(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return gitcmd.Output(ctx, dir, args...)
+}
+
+// githubRepoOf is the GitHub repository ("owner/name") of the folder dir:
+// its origin remote's, else its first GitHub remote's.
+func githubRepoOf(dir string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := gitRun(ctx, dir, "remote", "-v")
+	if err != nil {
+		return "", fmt.Errorf("%s isn't a git repository", dir)
+	}
+	var first string
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		repo := githubRepoFromURL(f[1])
+		if repo == "" {
+			continue
+		}
+		if f[0] == "origin" {
+			return repo, nil
+		}
+		if first == "" {
+			first = repo
+		}
+	}
+	if first == "" {
+		return "", fmt.Errorf("%s has no GitHub remote", dir)
+	}
+	return first, nil
+}
+
+// githubRepoFromURL is "owner/name" from a github.com remote's URL (https,
+// ssh or scp-like), else "".
+func githubRepoFromURL(u string) string {
+	var path string
+	switch {
+	case strings.HasPrefix(u, "git@github.com:"):
+		path = strings.TrimPrefix(u, "git@github.com:")
+	default:
+		pu, err := url.Parse(u)
+		if err != nil || !strings.EqualFold(pu.Hostname(), "github.com") {
+			return ""
+		}
+		path = strings.TrimPrefix(pu.Path, "/")
+	}
+	path = strings.TrimSuffix(strings.TrimSuffix(path, "/"), ".git")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return ""
+	}
+	return parts[0] + "/" + parts[1]
+}
+
+// gitBranchOf is the branch dir has checked out ("" when detached).
+func gitBranchOf(dir string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := gitRun(ctx, dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// watchGitHub asks GitHub about the repositories GitHub triggers watch,
+// until the daemon stops.
+func (d *Daemon) watchGitHub() {
+	wake := make(chan struct{}, 1)
+	d.mu.Lock()
+	d.sched.ghWake = wake
+	d.mu.Unlock()
+	every, gap := ghPoll, ghMinGap // (as they are now: tests change them)
+	t := time.NewTimer(10 * time.Second)
+	defer t.Stop()
+	var last time.Time
+	for {
+		select {
+		case <-d.done:
+			return
+		case <-t.C:
+		case <-wake:
+			if !t.Stop() {
+				select {
+				case <-t.C:
+				default:
+				}
+			}
+			if wait := gap - time.Since(last); wait > 0 {
+				t.Reset(wait)
+				continue
+			}
+		}
+		last = time.Now()
+		d.pollGitHub()
+		t.Reset(every)
+	}
+}
+
+// ghJob is one task folder's GitHub triggers, for a look.
+type ghJob struct {
+	schedule string
+	dir      string
+	triggers []*pb.EventTrigger // copies
+	repo     string
+	branch   string
+}
+
+// pollGitHub has one look at GitHub for every GitHub trigger.
+func (d *Daemon) pollGitHub() {
+	d.mu.Lock()
+	var jobs []*ghJob
+	for _, s := range d.sched.list {
+		var ts []*pb.EventTrigger
+		for _, t := range d.eventsOf(s) {
+			if t.GetGithub() != nil {
+				ts = append(ts, cloneTrigger(t))
+			}
+		}
+		if len(ts) > 0 {
+			jobs = append(jobs, &ghJob{schedule: s.Id, dir: s.Cwd, triggers: ts})
+		}
+	}
+	d.mu.Unlock()
+	if len(jobs) == 0 {
+		return
+	}
+	fail := func(js []*ghJob, err error) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		for _, j := range js {
+			d.ghTriggerErrors(j, err.Error())
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	login, err := ghLogin(ctx)
+	if err != nil {
+		fail(jobs, err)
+		return
+	}
+	byRepo := map[string][]*ghJob{}
+	for _, j := range jobs {
+		repo, err := githubRepoOf(j.dir)
+		if err != nil {
+			fail([]*ghJob{j}, err)
+			continue
+		}
+		j.repo, j.branch = repo, gitBranchOf(j.dir)
+		byRepo[repo] = append(byRepo[repo], j)
+	}
+	for repo, js := range byRepo {
+		res, err := ghAsk(ctx, repo, login, js)
+		if err != nil {
+			fail(js, err)
+			continue
+		}
+		d.mu.Lock()
+		for _, j := range js {
+			d.ghTriggerErrors(j, "")
+			d.ghFire(j, res)
+		}
+		d.mu.Unlock()
+	}
+}
+
+func cloneTrigger(t *pb.EventTrigger) *pb.EventTrigger {
+	return &pb.EventTrigger{Id: t.Id, Kind: &pb.EventTrigger_Github{Github: &pb.GitHubTrigger{Event: t.GetGithub().GetEvent(), Label: t.GetGithub().GetLabel()}}}
+}
+
+// ghTriggerErrors notes (or clears) why j's triggers can't fire, and the
+// repository they watch. Callers hold d.mu.
+func (d *Daemon) ghTriggerErrors(j *ghJob, msg string) {
+	s := d.sched.list[j.schedule]
+	if s == nil {
+		return
+	}
+	changed := false
+	for _, t := range s.Events {
+		g := t.GetGithub()
+		if g == nil {
+			continue
+		}
+		if t.Error != msg {
+			t.Error, changed = msg, true
+		}
+		if j.repo != "" && g.Repo != j.repo {
+			g.Repo, changed = j.repo, true
+		}
+	}
+	if changed {
+		d.saveSchedule(s)
+	}
+}
+
+var ghLoginCache struct {
+	sync.Mutex
+	login string
+	at    time.Time
+}
+
+// ghLogin is who gh is signed in as (asked again every hour).
+func ghLogin(ctx context.Context) (string, error) {
+	ghLoginCache.Lock()
+	defer ghLoginCache.Unlock()
+	if ghLoginCache.login != "" && time.Since(ghLoginCache.at) < time.Hour {
+		return ghLoginCache.login, nil
+	}
+	out, err := ghRun(ctx, "api", "user", "--jq", ".login")
+	if err != nil {
+		return "", err
+	}
+	login := strings.TrimSpace(string(out))
+	if login == "" {
+		return "", errGHAuth
+	}
+	ghLoginCache.login, ghLoginCache.at = login, time.Now()
+	return login, nil
+}
+
+// ---------- the question ----------
+
+type ghItem struct {
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	HeadRefName string `json:"headRefName"`
+	Typename    string `json:"__typename"`
+	Author      struct {
+		Login string `json:"login"`
+	} `json:"author"`
+	Commits struct {
+		Nodes []struct {
+			Commit ghCommit `json:"commit"`
+		} `json:"nodes"`
+	} `json:"commits"`
+	Reviews  ghNotes `json:"reviews"`
+	Comments ghNotes `json:"comments"`
+}
+
+type ghCommit struct {
+	Oid    string `json:"oid"`
+	Rollup *struct {
+		State    string `json:"state"`
+		Contexts struct {
+			Nodes []struct {
+				Name       string `json:"name"`
+				Conclusion string `json:"conclusion"`
+				Context    string `json:"context"`
+				State      string `json:"state"`
+			} `json:"nodes"`
+		} `json:"contexts"`
+	} `json:"statusCheckRollup"`
+}
+
+type ghNotes struct {
+	Nodes []struct {
+		ID     string `json:"id"`
+		State  string `json:"state"`
+		Body   string `json:"body"`
+		URL    string `json:"url"`
+		Author struct {
+			Login string `json:"login"`
+		} `json:"author"`
+	} `json:"nodes"`
+}
+
+// ghResult is what one look found in a repository.
+type ghResult struct {
+	repo, login   string
+	defaultBranch string
+	mine          []ghItem              // your open pull requests
+	branches      map[string]ghCommit // a task folder's branch → its head
+	reviewReq     []ghItem
+	assigned      []ghItem
+	labeled       map[string][]ghItem // label →
+	merged        []ghItem
+	asked         map[string]bool // which of these were asked for
+}
+
+const ghRollup = `statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { name conclusion } ... on StatusContext { context state } } } }`
+
+// ghAsk asks GitHub what's so in repo for js's triggers, in one GraphQL query.
+func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	need := map[pb.GitHubTrigger_Event]bool{}
+	labels := map[string]bool{}
+	branches := map[string]bool{}
+	for _, j := range js {
+		for _, t := range j.triggers {
+			g := t.GetGithub()
+			need[g.Event] = true
+			if g.Event == pb.GitHubTrigger_EVENT_LABELED {
+				labels[g.Label] = true
+			}
+			if g.Event == pb.GitHubTrigger_EVENT_CI_FAILED && j.branch != "" {
+				branches[j.branch] = true
+			}
+		}
+	}
+	var vars []string
+	var parts []string
+	args := []string{"api", "graphql"}
+	addVar := func(name, val string) {
+		vars = append(vars, "$"+name+": String!")
+		args = append(args, "-f", name+"="+val)
+	}
+	search := func(alias, q string, first int, fields string) {
+		addVar(alias+"Q", q)
+		parts = append(parts, fmt.Sprintf("%s: search(query: $%sQ, type: ISSUE, first: %d) { nodes { __typename ... on PullRequest { %s } ... on Issue { number title url author { login } } } }", alias, alias, first, fields))
+	}
+	r := &ghResult{repo: repo, login: login, labeled: map[string][]ghItem{}, branches: map[string]ghCommit{}, asked: map[string]bool{}}
+	base := "repo:" + repo + " "
+	if need[pb.GitHubTrigger_EVENT_CI_FAILED] || need[pb.GitHubTrigger_EVENT_REVIEWED] {
+		r.asked["mine"] = true
+		search("mine", base+"is:pr is:open author:"+login, 30,
+			"number title url headRefName author { login } commits(last: 1) { nodes { commit { oid "+ghRollup+" } } } reviews(last: 10) { nodes { id state body url author { login } } } comments(last: 10) { nodes { id body url author { login } } }")
+	}
+	if need[pb.GitHubTrigger_EVENT_REVIEW_REQUESTED] {
+		r.asked["reviewReq"] = true
+		search("reviewReq", base+"is:pr is:open review-requested:"+login, 30, "number title url author { login }")
+	}
+	if need[pb.GitHubTrigger_EVENT_ASSIGNED] {
+		r.asked["assigned"] = true
+		search("assigned", base+"is:open assignee:"+login, 30, "number title url author { login }")
+	}
+	if need[pb.GitHubTrigger_EVENT_MERGED] {
+		r.asked["merged"] = true
+		search("merged", base+"is:pr is:merged author:"+login+" sort:updated-desc", 15, "number title url headRefName author { login }")
+	}
+	labelAlias := map[string]string{}
+	for i, l := range sortedKeys(labels) {
+		a := fmt.Sprintf("label%d", i)
+		labelAlias[a] = l
+		search(a, base+"is:open label:"+strconvQuote(l), 30, "number title url author { login }")
+	}
+	branchAlias := map[string]string{}
+	if len(branches) > 0 {
+		addVar("owner", owner)
+		addVar("name", name)
+		var refs []string
+		for i, b := range sortedKeys(branches) {
+			a := fmt.Sprintf("branch%d", i)
+			branchAlias[a] = b
+			addVar(a+"R", "refs/heads/"+b)
+			refs = append(refs, fmt.Sprintf("%s: ref(qualifiedName: $%sR) { target { ... on Commit { oid %s } } }", a, a, ghRollup))
+		}
+		parts = append(parts, "repo: repository(owner: $owner, name: $name) { defaultBranchRef { name } "+strings.Join(refs, " ")+" }")
+	}
+	query := "query(" + strings.Join(vars, ", ") + ") { " + strings.Join(parts, " ") + " }"
+	args = append(args, "-f", "query="+query)
+	out, err := ghRun(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Data   map[string]json.RawMessage `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("GitHub's answer didn't make sense: %v", err)
+	}
+	if len(resp.Errors) > 0 && resp.Data == nil {
+		return nil, errors.New("GitHub: " + firstLine(resp.Errors[0].Message))
+	}
+	nodes := func(alias string) []ghItem {
+		var v struct {
+			Nodes []ghItem `json:"nodes"`
+		}
+		_ = json.Unmarshal(resp.Data[alias], &v)
+		var out []ghItem
+		for _, n := range v.Nodes {
+			if n.Number > 0 {
+				out = append(out, n)
+			}
+		}
+		return out
+	}
+	r.mine, r.reviewReq, r.assigned, r.merged = nodes("mine"), nodes("reviewReq"), nodes("assigned"), nodes("merged")
+	for a, l := range labelAlias {
+		r.labeled[l] = nodes(a)
+		r.asked["label:"+l] = resp.Data[a] != nil
+	}
+	if raw := resp.Data["repo"]; raw != nil {
+		var repoData map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &repoData)
+		var def struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(repoData["defaultBranchRef"], &def)
+		r.defaultBranch = def.Name
+		for a, b := range branchAlias {
+			var ref struct {
+				Target ghCommit `json:"target"`
+			}
+			if json.Unmarshal(repoData[a], &ref) == nil && ref.Target.Oid != "" {
+				r.branches[b] = ref.Target
+			}
+		}
+	}
+	return r, nil
+}
+
+func sortedKeys(m map[string]bool) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// strconvQuote quotes a label for a search ("needs triage").
+func strconvQuote(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+}
+
+// ---------- what's new ----------
+
+// ghFact is one thing that's so, which fires when it's new.
+type ghFact struct {
+	key string
+	ev  *schedEvent
+}
+
+// failedChecks names a commit's failing checks ("" when it hasn't failed).
+func failedChecks(c ghCommit) (failed bool, names []string) {
+	if c.Rollup == nil {
+		return false, nil
+	}
+	if c.Rollup.State != "FAILURE" && c.Rollup.State != "ERROR" {
+		return false, nil
+	}
+	for _, n := range c.Rollup.Contexts.Nodes {
+		switch {
+		case n.Name != "" && slices.Contains([]string{"FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED", "CANCELLED"}, n.Conclusion):
+			names = append(names, n.Name)
+		case n.Context != "" && (n.State == "FAILURE" || n.State == "ERROR"):
+			names = append(names, n.Context)
+		}
+	}
+	return true, names
+}
+
+// ghFacts is what's so in r for trigger g (in a folder on branch), and
+// whether r says (it was asked).
+func ghFacts(r *ghResult, g *pb.GitHubTrigger, branch string) ([]ghFact, bool) {
+	ev := func(summary string, pr ghItem, extra ...[2]string) *schedEvent {
+		f := [][2]string{{"repo", r.repo}, {"number", fmt.Sprint(pr.Number)}, {"title", pr.Title}, {"url", pr.URL}}
+		if pr.Author.Login != "" {
+			f = append(f, [2]string{"author", pr.Author.Login})
+		}
+		if pr.HeadRefName != "" {
+			f = append(f, [2]string{"branch", pr.HeadRefName})
+		}
+		return &schedEvent{Kind: "github", Summary: summary, Source: "GitHub", Fields: append(f, extra...)}
+	}
+	var out []ghFact
+	switch g.Event {
+	case pb.GitHubTrigger_EVENT_CI_FAILED:
+		if !r.asked["mine"] {
+			return nil, false
+		}
+		prBranches := map[string]bool{}
+		for _, pr := range r.mine {
+			prBranches[pr.HeadRefName] = true
+			if len(pr.Commits.Nodes) == 0 {
+				continue
+			}
+			c := pr.Commits.Nodes[0].Commit
+			if failed, names := failedChecks(c); failed {
+				e := ev(fmt.Sprintf("CI failed on #%d", pr.Number), pr, [2]string{"commit", c.Oid}, [2]string{"failed_checks", strings.Join(names, ", ")})
+				out = append(out, ghFact{fmt.Sprintf("ci:%d:%s", pr.Number, c.Oid), e})
+			}
+		}
+		if c, ok := r.branches[branch]; ok && branch != r.defaultBranch && !prBranches[branch] {
+			if failed, names := failedChecks(c); failed {
+				e := &schedEvent{Kind: "github", Summary: "CI failed on " + branch, Source: "GitHub",
+					Fields: [][2]string{{"repo", r.repo}, {"branch", branch}, {"commit", c.Oid}, {"failed_checks", strings.Join(names, ", ")}}}
+				out = append(out, ghFact{"ci:b:" + branch + ":" + c.Oid, e})
+			}
+		}
+	case pb.GitHubTrigger_EVENT_REVIEWED:
+		if !r.asked["mine"] {
+			return nil, false
+		}
+		for _, pr := range r.mine {
+			for _, n := range pr.Reviews.Nodes {
+				if n.Author.Login == r.login || n.State == "PENDING" {
+					continue
+				}
+				what := "A review"
+				switch n.State {
+				case "APPROVED":
+					what = "An approval"
+				case "CHANGES_REQUESTED":
+					what = "Changes requested"
+				}
+				e := ev(fmt.Sprintf("%s on #%d", what, pr.Number), pr, [2]string{"reviewer", n.Author.Login}, [2]string{"review_state", n.State}, [2]string{"review_url", n.URL})
+				e.Body = n.Body
+				out = append(out, ghFact{"rv:" + n.ID, e})
+			}
+			for _, n := range pr.Comments.Nodes {
+				if n.Author.Login == r.login {
+					continue
+				}
+				e := ev(fmt.Sprintf("A comment on #%d", pr.Number), pr, [2]string{"commenter", n.Author.Login}, [2]string{"comment_url", n.URL})
+				e.Body = n.Body
+				out = append(out, ghFact{"cm:" + n.ID, e})
+			}
+		}
+	case pb.GitHubTrigger_EVENT_REVIEW_REQUESTED:
+		if !r.asked["reviewReq"] {
+			return nil, false
+		}
+		for _, pr := range r.reviewReq {
+			out = append(out, ghFact{fmt.Sprintf("rr:%d", pr.Number), ev(fmt.Sprintf("Your review was requested on #%d", pr.Number), pr)})
+		}
+	case pb.GitHubTrigger_EVENT_ASSIGNED:
+		if !r.asked["assigned"] {
+			return nil, false
+		}
+		for _, pr := range r.assigned {
+			out = append(out, ghFact{fmt.Sprintf("as:%d", pr.Number), ev(fmt.Sprintf("#%d was assigned to you", pr.Number), pr)})
+		}
+	case pb.GitHubTrigger_EVENT_LABELED:
+		if !r.asked["label:"+g.Label] {
+			return nil, false
+		}
+		for _, pr := range r.labeled[g.Label] {
+			out = append(out, ghFact{fmt.Sprintf("lb:%d", pr.Number), ev(fmt.Sprintf("#%d was labelled", pr.Number), pr, [2]string{"label", g.Label})})
+		}
+	case pb.GitHubTrigger_EVENT_MERGED:
+		if !r.asked["merged"] {
+			return nil, false
+		}
+		for _, pr := range r.merged {
+			out = append(out, ghFact{fmt.Sprintf("mg:%d", pr.Number), ev(fmt.Sprintf("#%d was merged", pr.Number), pr)})
+		}
+	default:
+		return nil, false
+	}
+	return out, true
+}
+
+// maxSeen caps what a trigger remembers.
+const maxSeen = 500
+
+// ghFire fires j's triggers for what's new in r since each last looked.
+// Callers hold d.mu.
+func (d *Daemon) ghFire(j *ghJob, r *ghResult) {
+	s := d.sched.list[j.schedule]
+	if s == nil {
+		return
+	}
+	for _, t := range d.eventsOf(s) {
+		g := t.GetGithub()
+		if g == nil {
+			continue
+		}
+		facts, ok := ghFacts(r, g, j.branch)
+		if !ok {
+			continue
+		}
+		st := d.trigStateFor(t.Id, r.repo+" "+GitHubKey(g)+" "+j.branch)
+		seen := map[string]bool{}
+		for _, k := range st.Seen {
+			seen[k] = true
+		}
+		var now []string
+		for _, f := range facts {
+			now = append(now, f.key)
+			if st.Primed && !seen[f.key] {
+				f.ev.Trigger = t.Id
+				_, _, _ = d.fireEvent(s, f.ev)
+			}
+		}
+		if len(now) > maxSeen {
+			now = now[:maxSeen]
+		}
+		if !st.Primed || !slices.Equal(now, st.Seen) {
+			st.Primed, st.Seen = true, now
+			d.saveTrigState()
+		}
+	}
+}
+
+// GitHubKey is what a GitHub trigger watches, for its trigState's key.
+func GitHubKey(g *pb.GitHubTrigger) string {
+	return fmt.Sprintf("%d:%s", g.Event, g.Label)
+}

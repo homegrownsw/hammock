@@ -270,6 +270,11 @@ struct CommandPalette: View {
             action("schedule-pause:" + sc.id, sc.paused ? "Resume “\(sc.name)”" : "Pause “\(sc.name)”", sc.paused ? "play" : "pause", .indigo, "scheduled task") {
                 ScheduleActions.setPaused(model, sc, !sc.paused)
             }
+            if sc.hasWebhook {
+                action("schedule-webhook:" + sc.id, "Copy “\(sc.name)” Webhook URL", "link", .indigo, "scheduled task trigger hook url") {
+                    ScheduleActions.copyWebhook(model, sc)
+                }
+            }
             action("schedule-edit:" + sc.id, "Edit “\(sc.name)”…", "pencil", .indigo, "scheduled task change") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.edit(sc) }
             }

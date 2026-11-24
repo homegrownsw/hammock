@@ -25,6 +25,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/holder"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/schedtrig"
 )
 
 const (
@@ -75,6 +76,14 @@ type schedState struct {
 	// zone is the time zone next runs were worked out in (followZone).
 	// Kept in the "schedule_zone" setting, for a change while it was off.
 	zone *time.Location
+	// Event triggers (schedtriggers.go):
+	trig      map[string]*trigState  // trigger id → what it's seen
+	hooks     map[string]string      // webhook trigger id → its secret
+	lastEvent map[string]time.Time   // schedule id → when an event last started a run
+	pending   map[string]*schedEvent // schedule id → an event waiting for its cooldown
+	cal       calState               // the Mac app's calendars (schedcalendar.go)
+	ghWake    chan struct{}          // look at GitHub now (schedgithub.go)
+	filesWake chan struct{}          // look at files now (schedfiles.go)
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent
@@ -153,6 +162,10 @@ func (d *Daemon) checkSchedules(now time.Time) {
 	// In a dark wake what's due waits for the computer to wake properly
 	// (it catches up then, as after any sleep).
 	awake := schedAwake()
+	if awake {
+		d.firePending(now)
+		d.checkCalendar(now)
+	}
 	for _, s := range d.sched.list {
 		changed := d.followRuns(s, now)
 		if d.refreshScheduleGroup(s) {
@@ -178,7 +191,31 @@ func (d *Daemon) checkSchedules(now time.Time) {
 
 // ---------- when ----------
 
-func scheduleSpec(s *pb.Schedule) (*cronSpec, error) {
+// whenSpec says when a schedule is next due after a time (zero: never).
+type whenSpec interface{ next(time.Time) time.Time }
+
+// onceSpec is a one-off run's time.
+type onceSpec time.Time
+
+func (o onceSpec) next(t time.Time) time.Time {
+	if at := time.Time(o); at.After(t) {
+		return at.In(t.Location())
+	}
+	return time.Time{}
+}
+
+// neverSpec: a schedule that runs only on its events.
+type neverSpec struct{}
+
+func (neverSpec) next(time.Time) time.Time { return time.Time{} }
+
+func scheduleSpec(s *pb.Schedule) (whenSpec, error) {
+	switch s.Timing {
+	case pb.Schedule_TIMING_ONCE:
+		return onceSpec(time.UnixMilli(s.OnceUnixMs)), nil
+	case pb.Schedule_TIMING_EVENTS:
+		return neverSpec{}, nil
+	}
 	if strings.TrimSpace(s.Cron) != "" {
 		return parseCron(s.Cron)
 	}
@@ -228,8 +265,8 @@ func (d *Daemon) followZone(now time.Time) {
 	for _, s := range d.sched.list {
 		// A run already due is left to dueSchedule, which works out the
 		// rest in the new zone.
-		if s.Paused || s.NextRunUnixMs == 0 || s.NextRunUnixMs <= now.UnixMilli() {
-			continue
+		if s.Paused || s.NextRunUnixMs == 0 || s.NextRunUnixMs <= now.UnixMilli() || s.Timing != pb.Schedule_TIMING_REPEAT {
+			continue // (a one-off's time is a moment, wherever you are)
 		}
 		spec, err := scheduleSpec(s)
 		if err != nil {
@@ -375,8 +412,18 @@ func (d *Daemon) noteRun(s *pb.Schedule, r *pb.ScheduleRun) {
 // startRun opens a run of s in a new tab of its Group (made again if it's
 // been closed). due is when it was due (zero: Run Now). Callers hold d.mu.
 func (d *Daemon) startRun(s *pb.Schedule, due time.Time, manual bool) (*pb.ScheduleRun, error) {
+	return d.startRunFor(s, due, manual, nil)
+}
+
+// startRunFor is startRun, for an event (ev; nil for none): it goes into
+// the run's prompt or environment, and the run says what started it.
+// Callers hold d.mu.
+func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, ev *schedEvent) (*pb.ScheduleRun, error) {
 	now := schedTime()
 	r := &pb.ScheduleRun{Id: newID("sr"), StartedUnixMs: now.UnixMilli(), Manual: manual, Kind: s.Kind}
+	if ev != nil {
+		r.Trigger = eventSummary(ev)
+	}
 	if !due.IsZero() {
 		r.DueUnixMs = due.UnixMilli()
 		r.CatchUp = now.Sub(due) > lateAfter
@@ -426,8 +473,16 @@ func (d *Daemon) startRun(s *pb.Schedule, due time.Time, manual bool) (*pb.Sched
 	var typed, later string // later: a first message typed once it's at its prompt
 	if s.Kind == "command" {
 		spec.Command = []string{loginShell(), "-l", "-c", s.Prompt}
+		if ev != nil {
+			spec.Env = eventEnv(ev)
+		}
 	} else if a := agents.Get(s.Kind); a != nil && a.Schedulable {
-		typed, later = startCommand(a, s.Prompt, s)
+		run := s
+		if ev != nil {
+			run = proto.CloneOf(s)
+			run.Prompt = eventPrompt(s.Prompt, ev)
+		}
+		typed, later = startCommand(a, run.Prompt, run)
 	} else {
 		return fail(fmt.Errorf("unknown kind %q", s.Kind))
 	}
@@ -873,6 +928,9 @@ func (d *Daemon) cleanSchedule(in *pb.Schedule) (*pb.Schedule, error) {
 		}
 	}
 	s.AllowedTools = tools
+	if err := d.cleanEvents(s, d.sched.list[s.Id]); err != nil {
+		return nil, err
+	}
 	// The Group: the one named, else the one working in that folder, else
 	// a new one for it (named after the folder).
 	if s.GroupId != "" && d.groups[s.GroupId] == nil {
@@ -916,12 +974,13 @@ func (d *Daemon) putSchedule(in *pb.Schedule, who string) (*pb.Schedule, error) 
 	s.ComputerId, s.Error = d.id.me.UserId, ""
 	d.scheduleNext(s, schedTime())
 	d.sched.list[s.Id] = s
+	d.triggersChanged()
 	d.saveSchedule(s)
 	action := "schedule-create"
 	if old != nil {
 		action = "schedule-edit"
 	}
-	d.audit("schedule:"+s.Id, action, s.Id, scheduleSummary(s))
+	d.audit("schedule:"+s.Id, action, s.Id, d.scheduleSummary(s))
 	return s, nil
 }
 
@@ -938,7 +997,7 @@ func schedulableKinds() []string {
 
 // scheduleSummary describes a schedule in words, for grants and the audit
 // log: "Morning briefing: Claude Code, weekdays at 08:30, in ~/Notes: /morning-briefing".
-func scheduleSummary(s *pb.Schedule) string {
+func (d *Daemon) scheduleSummary(s *pb.Schedule) string {
 	what := "the command"
 	if a := agents.Get(s.Kind); a != nil {
 		what = a.Name
@@ -949,7 +1008,7 @@ func scheduleSummary(s *pb.Schedule) string {
 		dir = "~" + strings.TrimPrefix(dir, home)
 	}
 	// What it may do first (a card shows a few lines), then the prompt.
-	out := fmt.Sprintf("“%s”: %s, %s, in %s", s.Name, what, scheduleWhen(s), dir)
+	out := fmt.Sprintf("“%s”: %s, %s, in %s", s.Name, what, scheduleWhen(s, d.trigName), dir)
 	if s.Kind == "codex" {
 		out += fmt.Sprintf(" (sandbox: %s, approval: %s)", cmpOr(s.CodexSandbox, "your Codex setting"), cmpOr(s.CodexApproval, "your Codex setting"))
 	}
@@ -961,7 +1020,26 @@ func scheduleSummary(s *pb.Schedule) string {
 }
 
 // scheduleWhen says when a schedule runs, in words.
-func scheduleWhen(s *pb.Schedule) string {
+func scheduleWhen(s *pb.Schedule, names schedtrig.Names) string {
+	when := scheduleTimes(s)
+	if len(s.Events) > 0 {
+		on := "when: " + eventsWords(s, names)
+		if when == "" {
+			return on
+		}
+		return when + ", and " + on
+	}
+	return cmpOr(when, "never")
+}
+
+// scheduleTimes says when a schedule runs by the clock ("" for never).
+func scheduleTimes(s *pb.Schedule) string {
+	switch s.Timing {
+	case pb.Schedule_TIMING_ONCE:
+		return "once, at " + time.UnixMilli(s.OnceUnixMs).In(schedZone()).Format("Mon 2 Jan 2006 15:04")
+	case pb.Schedule_TIMING_EVENTS:
+		return ""
+	}
 	if s.Cron != "" {
 		return "cron “" + s.Cron + "”"
 	}
@@ -993,8 +1071,11 @@ func (d *Daemon) deleteSchedule(id string) error {
 		d.saveScheduleMakers()
 	}
 	d.persist(d.store.DeleteRecord("schedule", id))
+	delete(d.sched.pending, id)
+	delete(d.sched.lastEvent, id)
+	d.triggersChanged()
 	d.publish(&pb.StateUpdate{DeletedScheduleIds: []string{id}})
-	d.audit("schedule:"+id, "schedule-delete", id, scheduleSummary(s))
+	d.audit("schedule:"+id, "schedule-delete", id, d.scheduleSummary(s))
 	return nil
 }
 

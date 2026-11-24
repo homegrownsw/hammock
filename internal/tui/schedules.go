@@ -16,6 +16,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/agents"
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/schedtrig"
 )
 
 // ---------- scheduled tasks ----------
@@ -84,13 +85,98 @@ func canSchedule(g *pb.Group) bool { return g != nil && g.HostUserId == "" && !t
 
 var dayNames = []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
 
-// scheduleWhen says when a schedule runs: "weekdays at 08:30", "cron 0 * * * *".
+// scheduleWhen says when a schedule runs: "weekdays at 08:30", "cron 0 *
+// * * *", "once, 23 Dec 2026 17:00", and what else starts it ("on
+// github:ci-failed", "weekdays at 08:30, +2 triggers"), as hmk says it.
 func scheduleWhen(s *pb.Schedule) string {
+	when := scheduleTimes(s)
+	switch {
+	case len(s.Events) == 1 && when == "":
+		return "on " + schedtrig.Spec(s.Events[0])
+	case len(s.Events) > 0 && when == "":
+		return fmt.Sprintf("on %d triggers", len(s.Events))
+	case len(s.Events) > 0:
+		return fmt.Sprintf("%s, +%s", when, plural(len(s.Events), "trigger"))
+	}
+	return cmp.Or(when, "never")
+}
+
+// scheduleTimes says when a schedule runs by the clock ("" for never).
+func scheduleTimes(s *pb.Schedule) string {
+	switch s.Timing {
+	case pb.Schedule_TIMING_ONCE:
+		return "once, " + time.UnixMilli(s.OnceUnixMs).Format("2 Jan 2006 15:04")
+	case pb.Schedule_TIMING_EVENTS:
+		return ""
+	}
 	if s.Cron != "" {
 		return "cron " + s.Cron
 	}
 	at := fmt.Sprintf("%02d:%02d", s.MinuteOfDay/60, s.MinuteOfDay%60)
 	return dayWords(s.Weekdays) + " at " + at
+}
+
+// triggerName names a pane (by its tab) or Group, for words about triggers.
+func (a *App) triggerName(id string) string {
+	if g := a.group(id); g != nil {
+		return a.groupTitle(g)
+	}
+	if p := a.panes[id]; p != nil {
+		if t := a.tabs[p.TabId]; t != nil {
+			return a.tabTitle(t)
+		}
+		return p.Id
+	}
+	return ""
+}
+
+// triggersText says what starts s besides its times, and its cooldown:
+// "on: CI fails on my pull request; Its webhook is called (cooldown 60s)".
+func (a *App) triggersText(s *pb.Schedule) string {
+	if len(s.Events) == 0 {
+		return ""
+	}
+	var w []string
+	for _, t := range s.Events {
+		w = append(w, schedtrig.Describe(t, a.triggerName))
+	}
+	cool := s.CooldownSeconds
+	if cool <= 0 {
+		cool = 60
+	}
+	return fmt.Sprintf("on: %s (cooldown %ds)", strings.Join(w, "; "), cool)
+}
+
+// triggerError is the first of s's triggers' problems, in words ("" for none).
+func (a *App) triggerError(s *pb.Schedule) string {
+	for _, t := range s.Events {
+		if t.Error != "" {
+			return schedtrig.Describe(t, a.triggerName) + ": " + t.Error
+		}
+	}
+	return ""
+}
+
+// hasWebhook: s has a webhook trigger.
+func hasWebhook(s *pb.Schedule) bool {
+	for _, t := range s.Events {
+		if t.GetWebhook() != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// copyWebhook puts s's webhook's URL on the clipboard.
+func (a *App) copyWebhook(s *pb.Schedule) {
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_ScheduleWebhook{ScheduleWebhook: &pb.ScheduleWebhook{ScheduleId: s.Id}}}, func(r *pb.ServerMessage) {
+		h := r.GetScheduleWebhookReply()
+		if len(h.GetUrls()) == 0 {
+			a.flash("⚠ " + cmp.Or(h.GetProblem(), "nothing can reach the webhook now"))
+			return
+		}
+		a.copyText(h.Urls[0])
+	})
 }
 
 func dayWords(days []int32) string {
@@ -113,6 +199,12 @@ func dayWords(days []int32) string {
 
 // whenField is what the dialog's When field shows for s, as parseWhen reads it.
 func whenField(s *pb.Schedule) string {
+	switch s.Timing {
+	case pb.Schedule_TIMING_ONCE:
+		return "once " + time.UnixMilli(s.OnceUnixMs).Format("2006-01-02 15:04")
+	case pb.Schedule_TIMING_EVENTS:
+		return "triggers"
+	}
 	if s.Cron != "" {
 		return "cron " + s.Cron
 	}
@@ -626,7 +718,8 @@ func (a *App) openScheduleDialog(base *pb.Schedule, vals []string, errText strin
 		lines: []string{
 			where,
 			"Kind: claude, codex or command (the prompt is then its command line).",
-			"When: every day / weekdays / weekends / mon,wed HH:MM, or cron M H D M W.",
+			"When: every day / weekdays / weekends / mon,wed HH:MM, cron M H D M W,",
+			"once YYYY-MM-DD HH:MM, or triggers (only on its triggers: hmk schedule edit --trigger).",
 			"Notify: ready, problems or never (blank: ready for agents, problems for commands).",
 			"More options in the Mac app or `hmk schedule`.",
 			"",
@@ -682,10 +775,24 @@ func scheduleFromFields(base *pb.Schedule, v []string) (*pb.Schedule, error) {
 	if err != nil {
 		return nil, err
 	}
-	days, minute, cron, err := parseWhen(v[4])
+	timing, once, err := parseTiming(v[4])
 	if err != nil {
 		return nil, err
 	}
+	var days []int32
+	var minute int32
+	var cron string
+	if timing == pb.Schedule_TIMING_REPEAT {
+		if days, minute, cron, err = parseWhen(v[4]); err != nil {
+			return nil, err
+		}
+	} else {
+		days, minute, cron = s.Weekdays, s.MinuteOfDay, ""
+	}
+	if timing == pb.Schedule_TIMING_EVENTS && len(s.Events) == 0 {
+		return nil, errors.New("it has no triggers: add them with hmk schedule edit --trigger, or give a time")
+	}
+	s.Timing, s.OnceUnixMs = timing, once
 	notify, err := parseNotify(v[5])
 	if err != nil {
 		return nil, err
@@ -899,9 +1006,12 @@ func (v *scheduleView) draw(a *App) {
 		if n := len(sc.AllowedTools); n > 0 {
 			more = append(more, plural(n, "tool")+" allowed")
 		}
+		if t := a.triggersText(sc); t != "" {
+			more = append([]string{t}, more...)
+		}
 		line, c := strings.Join(more, " · "), dimC
-		if sc.Error != "" {
-			line, c = "⚠ "+sc.Error, Cell{FG: a.th.red, HasFG: true, BG: bg, HasBG: true}
+		if e := cmp.Or(sc.Error, a.triggerError(sc)); e != "" {
+			line, c = "⚠ "+e, Cell{FG: a.th.red, HasFG: true, BG: bg, HasBG: true}
 		}
 		s.Text(in.x+1, l.detailY+dy+1, in.w-2, truncate(line, in.w-2), c)
 
@@ -949,7 +1059,11 @@ func (v *scheduleView) draw(a *App) {
 				s.TextRight(in.x+1, y, in.w-2, open, oc)
 			}
 			room := in.w - 42 - textWidth(open) - 2
-			s.Text(in.x+41, y, room, truncate(oneLine(run.Note), room), dc)
+			note := oneLine(run.Note)
+			if run.Trigger != "" { // what started it
+				note = strings.TrimSuffix(run.Trigger+" · "+note, " · ")
+			}
+			s.Text(in.x+41, y, room, truncate(note, room), dc)
 		}
 	}
 	rule(l.hintY + dy - 1)
@@ -1137,6 +1251,7 @@ func (a *App) scheduleMenu(sc *pb.Schedule, x, y int) {
 		{label: pause, hint: "p", run: func() { a.setSchedulePaused(sc, !sc.Paused); back() }},
 		{label: skip, hint: "s", disabled: sc.NextRunUnixMs == 0, run: func() { a.toggleSkip(sc); back() }},
 		{label: "Edit…", hint: "e", run: func() { a.openScheduleDialog(sc, nil, "", back) }},
+		{label: "Copy Webhook URL", disabled: !hasWebhook(sc), run: func() { a.copyWebhook(sc) }},
 		{sep: true},
 		{label: "Delete…", hint: "⌫", danger: true, run: func() { a.confirmDeleteSchedule(sc) }},
 	})
@@ -1171,4 +1286,23 @@ func wrapWords(s string, width, max int) []string {
 		lines = append(lines[:max-1], truncate(lines[max-1]+" …", width))
 	}
 	return lines
+}
+
+// parseTiming reads the When field's "once YYYY-MM-DD HH:MM" and
+// "triggers" (only on its triggers); anything else is a time (parseWhen).
+func parseTiming(v string) (pb.Schedule_Timing, int64, error) {
+	low := strings.ToLower(strings.TrimSpace(v))
+	switch {
+	case low == "triggers" || low == "on triggers" || low == "events":
+		return pb.Schedule_TIMING_EVENTS, 0, nil
+	case strings.HasPrefix(low, "once"):
+		at := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(v)[4:], ","))
+		for _, f := range []string{"2006-01-02 15:04", "2006-01-02T15:04"} {
+			if t, err := time.ParseInLocation(f, at, time.Local); err == nil {
+				return pb.Schedule_TIMING_ONCE, t.UnixMilli(), nil
+			}
+		}
+		return 0, 0, errors.New("once when? e.g. “once 2026-12-23 17:00”")
+	}
+	return pb.Schedule_TIMING_REPEAT, 0, nil
 }

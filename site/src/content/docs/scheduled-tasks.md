@@ -1,9 +1,9 @@
 ---
 title: Scheduled tasks
-description: Run an agent's prompt or a command on a schedule, each run a new tab in its Group, from the app, hmk or an agent.
+description: Run an agent's prompt or a command on a schedule, once, or when something happens, each run a new tab in its Group, from the app, hmk or an agent.
 ---
 
-A scheduled task runs an agent with a prompt, or a command, at set times: every weekday morning, every night, every two hours. Each run opens a new tab in the task's Group, so the results are waiting for you, and you can carry on an agent's conversation where the run left off.
+A scheduled task runs an agent with a prompt, or a command, at set times: every weekday morning, every night, every two hours, or once at a date and time. It can also run when something happens: CI failing on your pull request, an agent finishing, a calendar event coming up (see [Triggers](#triggers)). Each run opens a new tab in the task's Group, so the results are waiting for you, and you can carry on an agent's conversation where the run left off.
 
 Runs happen whether or not the app is open. A run missed while the computer was asleep or off is caught up once when it wakes.
 
@@ -16,6 +16,7 @@ Claude Code by default, or any agent with a tick in the Schedules column of [Sup
 Choose File ▸ New Scheduled Task… (⌥⇧⌘N), or right-click a tab in the sidebar and choose **Schedule This…** to start from what it's doing. Besides the prompt or command and when to run it, the sheet sets:
 
 - **Folder**, where it runs, and **Group**, where its tabs open.
+- **Runs** on a schedule, once (at a date and time), or only on its triggers, and its **Triggers**.
 - **If still running:** skip the new run (the default), stop the last one, or run both.
 - **Give up after** (agents): stop a run that's waited on you this long.
 - **Keep the last** few runs' tabs; older ones close, unless you've typed in them.
@@ -37,6 +38,10 @@ It runs in the current folder and Group unless you give `--dir` or `--group`. Qu
 | `--at HH:MM` | The time of day. |
 | `--days D` | With `--at`: `daily` (the default), `weekdays`, `weekends`, or days such as `mon,wed,fri`. |
 | `--cron EXPR` | A five-field cron expression instead of `--at`. |
+| `--once 'YYYY-MM-DD HH:MM'` | Run once, then, instead of on a schedule. |
+| `--trigger T` | Run when something happens ([Triggers](#triggers)). Repeat it for more. Without `--at`, `--cron` or `--once`, it runs only on its triggers. |
+| `--events-only`, `--no-triggers` | Run only on its triggers; drop its triggers. |
+| `--cooldown SECONDS` | The least time between runs its triggers start (60 by default). |
 | `--claude`, `--codex`, `--AGENT` | Which agent runs it (Claude Code by default). `AGENT` is the agent's id, such as `--gemini` or `--cursor`. |
 | `--command` | Run a command instead of an agent. |
 | `--dir DIR`, `--group GROUP`, `--name NAME` | Where it runs, and where its tabs open. |
@@ -71,6 +76,76 @@ A Codex check every two hours in working hours on weekdays:
 ```sh
 hmk schedule add "Triage" --codex --cron '0 9-17/2 * * 1-5' --sandbox read-only \
   -- "Look at new issues in this repository and suggest labels."
+```
+
+## Triggers
+
+A trigger starts a run when something happens, as well as at the task's times, or instead of them (**Only on triggers**). In the app, add them under **Triggers** in the task's sheet. With `hmk` or an agent, write each one as below.
+
+| Trigger | `--trigger` | Runs when |
+|---|---|---|
+| GitHub | `github:ci-failed` | Checks fail on your open pull request, or on the folder's branch. |
+| | `github:review-requested` | Your review is requested. |
+| | `github:reviewed` | Someone reviews or comments on your pull request. |
+| | `github:label=NAME` | An open issue or pull request has the label. |
+| | `github:assigned` | An issue or pull request is assigned to you. |
+| | `github:merged` | Your pull request is merged. |
+| Agent | `agent:finished`, `agent:needs-you`, `agent:finished,needs-you` | An agent finishes, or needs you. Add `@GROUP` or `@PANE` for one Group or pane. |
+| Command | `exit`, `exit@GROUP`, `exit@PANE` | A pane's command exits with an error. |
+| Log | `log:REGEX@PANE` | A line in a [log pane](/hammock/docs/panes/) matches. It ignores case unless the pattern has a capital. |
+| Files | `files`, `files:GLOB`, `files:GLOB@DIR` | Files change in the task's folder (or `DIR`), once they've settled. `*.go` matches names anywhere; `src/**/*.ts` matches paths. `.git` and `node_modules` aren't watched. |
+| Calendar | `calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]` | Minutes before an event whose title contains the text, in that calendar, with other people. Mac only. |
+| Webhook | `webhook` | Its [webhook](#webhooks) is called. |
+
+GitHub triggers watch the task folder's GitHub repository with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Nothing that's already so when you add a trigger starts a run, and the task's own runs never trigger it.
+
+**What the run gets.** An agent's prompt is followed by what happened: the pull request, the failing checks, the log line, the files, the event, the webhook's body. Put `{{event}}` in the prompt to place it there instead. A command gets it in environment variables: `HMK_EVENT` (the kind), `HMK_EVENT_SUMMARY`, `HMK_EVENT_BODY`, and `HMK_EVENT_<DETAIL>` for each detail, such as `HMK_EVENT_NUMBER` or `HMK_EVENT_URL`. The run's record in the list says what started it, such as **CI failed on #42**.
+
+:::caution
+What a trigger passes on is written by other people: a pull request's title, a comment, a log line, a webhook's body. Hammock gives it to the agent marked as data, not instructions, but write the prompt so the task does nothing harmful whatever that text says, and keep the tools it may use to what it needs.
+:::
+
+**Bursts.** Runs started by triggers are at least a minute apart, or the task's **At most every**. Events in between wait, and the latest starts one run when the time's up. If the last run is still going, the task's **If still running** applies.
+
+### Webhooks
+
+A webhook trigger gives the task a secret URL on [remote access](/hammock/docs/remote/)'s listener, so only the networks you chose in Settings ▸ Devices reach it. Choose **Copy Webhook URL** on the task (or `hmk schedule webhook NAME`), and `POST` to it. The body, up to 64 KB, is what happened:
+
+```sh
+curl -k -X POST --data @payload.json https://100.64.0.2:7433/hook/SECRET
+```
+
+`-k` is needed because the certificate is Hammock's own. **New URL…** in the task's sheet (or `hmk schedule webhook NAME --new`) makes a new secret, and the old URL stops working.
+
+To call it from the internet, such as from a GitHub repository's webhooks, put [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) in front of it with your Mac's Tailscale address. The URL is then `https://` your Mac's Tailscale name, then `/hook/SECRET`:
+
+```sh
+tailscale funnel --bg --set-path /hook https+insecure://100.64.0.2:7433/hook
+```
+
+### From a script
+
+`hmk trigger` runs a task as if a trigger had fired, with what happened as its data: text, `-` for standard input, or `@FILE`.
+
+```sh
+hmk trigger "Deploy check" --data "$(git log -1 --format=%s)"
+make test 2>&1 | tail -50 | hmk trigger "Fix the tests" --data -
+```
+
+## Examples of triggers
+
+Fix CI when it fails on your pull request:
+
+```sh
+hmk schedule add "Fix CI" --trigger github:ci-failed --dir ~/Developer/app \
+  -- "CI failed on a pull request of mine. Find out why from the failing checks, fix it on that branch and push."
+```
+
+Prepare for one-to-ones ten minutes before they start:
+
+```sh
+hmk schedule add "1:1 prep" --trigger 'calendar:10,title=1:1,attendees' --dir ~/Notes \
+  -- "Write prep notes for this meeting: {{event}}"
 ```
 
 ## Managing them

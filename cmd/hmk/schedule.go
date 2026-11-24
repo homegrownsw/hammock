@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,16 +23,18 @@ import (
 	"github.com/homegrownsw/hammock/internal/agents"
 	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/schedtrig"
 )
 
 // grantWait is how long a save or delete may wait for your yes (an agent's
 // ask you; the daemon gives up on a grant after two minutes).
 const grantWait = 3 * time.Minute
 
-const scheduleUsage = `usage:
+var scheduleUsage = `usage:
   hmk schedule                             list scheduled tasks
-  hmk schedule add [NAME] (--at HH:MM [--days D] | --cron EXPR) [OPTIONS] -- PROMPT|COMMAND
+  hmk schedule add [NAME] (--at HH:MM [--days D] | --cron EXPR | --once WHEN | --trigger T…) [OPTIONS] -- PROMPT|COMMAND
   hmk schedule edit SCHEDULE [OPTIONS] [-- PROMPT|COMMAND]
+  hmk schedule webhook SCHEDULE [--new]    its webhook's URL (--new: a new secret; the old URL stops)
   hmk schedule show SCHEDULE [--json]      its settings and runs
   hmk schedule run SCHEDULE [--early]      run it now (in a new tab); --early: instead of
                                            at its next time, which moves on to the one after
@@ -50,6 +53,15 @@ options:
   --allow RULE (repeatable)  --no-allow     Claude: tools allowed in every run (--allowedTools rules)
   --sandbox MODE  --approval POLICY         Codex: --sandbox and --ask-for-approval
   --on COMPUTER                             add it on a linked computer
+  --once 'YYYY-MM-DD HH:MM'                 run once then, not on a schedule
+  --trigger T (repeatable)                  run when something happens, as well as at its times
+                                            (only then, without --at, --cron or --once), T one of:
+` + indent(schedtrig.Usage, "                                              ") + `
+  --events-only                             run only on its triggers (and Run Now)
+  --no-triggers                             drop its triggers
+  --cooldown SECONDS                        runs its triggers start are this far apart (default 60)
+an agent's prompt gets what happened, fenced as data (or where it says {{event}});
+a command gets it in HMK_EVENT, HMK_EVENT_SUMMARY, HMK_EVENT_<DETAIL> and HMK_EVENT_BODY
 a COMMAND is run by your login shell: one word is the line as written
 (-- 'make && make test'); several are arguments (-- sh -c 'echo a; date')`
 
@@ -159,6 +171,24 @@ func runSchedule(args []string) error {
 		}
 		_, err = call(&pb.ClientMessage{Msg: &pb.ClientMessage_SkipScheduleRun{SkipScheduleRun: &pb.SkipScheduleRun{ScheduleId: s.Id, Skip: !slices.Contains(args, "--undo")}}}, 10*time.Second)
 		return err
+	case "webhook":
+		s, err := needOne()
+		if err != nil {
+			return err
+		}
+		r, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_ScheduleWebhook{ScheduleWebhook: &pb.ScheduleWebhook{ScheduleId: s.Id, Regenerate: slices.Contains(args, "--new")}}}, grantWait)
+		if err != nil {
+			return err
+		}
+		h := r.GetScheduleWebhookReply()
+		for _, u := range h.Urls {
+			fmt.Println(u)
+		}
+		if h.Problem != "" {
+			fmt.Fprintln(os.Stderr, h.Problem)
+		}
+		fmt.Fprintf(os.Stderr, "POST to it (its certificate is Hammock's own: curl -k). Behind a proxy such as Tailscale Funnel, the path is %s\n", h.Path)
+		return nil
 	case "rm", "delete":
 		s, err := needOne()
 		if err != nil {
@@ -178,6 +208,7 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 	// --days picks days for --at's time; on its own it isn't a time (it
 	// would run at midnight), nor on a schedule that ran by cron.
 	when, at, days, hadCron := false, false, false, s.Cron != ""
+	timed := false // given a time (--at, --cron, --once)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		val := func() (string, error) {
@@ -207,7 +238,8 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 			if v, err = val(); err == nil {
 				var m int32
 				if m, err = parseHHMM(v); err == nil {
-					s.MinuteOfDay, s.Cron, when, at = m, "", true, true
+					s.MinuteOfDay, s.Cron, when, at, timed = m, "", true, true, true
+					s.Timing = pb.Schedule_TIMING_REPEAT
 				}
 			}
 		case "--days":
@@ -217,7 +249,37 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 			}
 		case "--cron":
 			if v, err = val(); err == nil {
-				s.Cron, when = v, true
+				s.Cron, when, timed = v, true, true
+				s.Timing = pb.Schedule_TIMING_REPEAT
+			}
+		case "--once":
+			if v, err = val(); err == nil {
+				var t time.Time
+				if t, err = parseWhen(v); err == nil {
+					s.Timing, s.OnceUnixMs, when, timed = pb.Schedule_TIMING_ONCE, t.UnixMilli(), true, true
+				}
+			}
+		case "--trigger":
+			if v, err = val(); err == nil {
+				var t *pb.EventTrigger
+				if t, err = schedtrig.Parse(v, w.triggerResolver()); err == nil {
+					s.Events, when = append(s.Events, t), true
+				}
+			}
+		case "--no-triggers":
+			s.Events = nil
+			if s.Timing == pb.Schedule_TIMING_EVENTS {
+				s.Timing = pb.Schedule_TIMING_REPEAT
+			}
+		case "--events-only":
+			s.Timing, s.OnceUnixMs, s.Cron = pb.Schedule_TIMING_EVENTS, 0, ""
+		case "--cooldown":
+			if v, err = val(); err == nil {
+				var n int
+				if n, err = strconv.Atoi(strings.TrimSuffix(v, "s")); err == nil && n < 0 {
+					err = errors.New("--cooldown can't be negative")
+				}
+				s.CooldownSeconds = int32(n)
 			}
 		case "--dir":
 			if v, err = val(); err == nil {
@@ -290,7 +352,10 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 		return errors.New("--days needs a time: --at HH:MM --days …")
 	}
 	if adding && !when {
-		return errors.New("say when: --at HH:MM [--days …] or --cron EXPR")
+		return errors.New("say when: --at HH:MM [--days …], --cron EXPR, --once WHEN or --trigger T")
+	}
+	if adding && !timed && len(s.Events) > 0 && s.Timing == pb.Schedule_TIMING_REPEAT {
+		s.Timing = pb.Schedule_TIMING_EVENTS // only on its triggers
 	}
 	if adding && strings.TrimSpace(s.Prompt) == "" {
 		return errors.New("give the prompt (or command) after --")
@@ -393,8 +458,29 @@ func (w *world) scheduleComputer(id string) string {
 	return ""
 }
 
-// scheduleWhen says when a schedule runs, in words.
+// scheduleWhen says when a schedule runs, in words: its times, and what
+// else starts it.
 func scheduleWhen(s *pb.Schedule) string {
+	when := scheduleTimes(s)
+	switch {
+	case len(s.Events) == 1 && when == "":
+		return "on " + schedtrig.Spec(s.Events[0])
+	case len(s.Events) > 0 && when == "":
+		return fmt.Sprintf("on %d triggers", len(s.Events))
+	case len(s.Events) > 0:
+		return fmt.Sprintf("%s, +%d trigger%s", when, len(s.Events), map[bool]string{true: "s"}[len(s.Events) > 1])
+	}
+	return cmpOr(when, "never")
+}
+
+// scheduleTimes says when a schedule runs by the clock ("" for never).
+func scheduleTimes(s *pb.Schedule) string {
+	switch s.Timing {
+	case pb.Schedule_TIMING_ONCE:
+		return "once, " + time.UnixMilli(s.OnceUnixMs).Format("2 Jan 2006 15:04")
+	case pb.Schedule_TIMING_EVENTS:
+		return ""
+	}
 	if s.Cron != "" {
 		return "cron " + s.Cron
 	}
@@ -486,6 +572,15 @@ func printSchedule(w *world, s *pb.Schedule) {
 	printfSafe("%s  %s\n", s.Id, s.Name)
 	printfSafe("  runs     %s in %s: %s\n", s.Kind, s.Cwd, s.Prompt)
 	printfSafe("  when     %s; next %s\n", scheduleWhen(s), nextRunWords(s))
+	for _, t := range s.Events {
+		printfSafe("  trigger  %s  (%s)\n", schedtrig.Describe(t, w.triggerName), schedtrig.Spec(t))
+		if t.Error != "" {
+			printfSafe("           ! %s\n", t.Error)
+		}
+	}
+	if len(s.Events) > 0 {
+		printfSafe("  cooldown %ds\n", cmpOrInt(s.CooldownSeconds, 60))
+	}
 	printfSafe("  group    %s\n", cmpOr(s.GroupName, s.GroupId))
 	if c := w.scheduleComputer(s.ComputerId); c != "" {
 		printfSafe("  computer %s\n", c)
@@ -512,6 +607,9 @@ func printSchedule(w *world, s *pb.Schedule) {
 			extra = append(extra, "run early, for "+when(time.UnixMilli(r.DueUnixMs)))
 		case r.Manual:
 			extra = append(extra, "run now")
+		}
+		if r.Trigger != "" {
+			extra = append(extra, r.Trigger)
 		}
 		if r.CatchUp {
 			extra = append(extra, "caught up")
@@ -610,3 +708,144 @@ func runShow(args []string) error {
 	fmt.Println(client.CreatedID(r))
 	return nil
 }
+
+// parseWhen reads a date and time for --once: "2026-12-23 17:00" (or with
+// a T), in local time, or RFC 3339.
+func parseWhen(v string) (time.Time, error) {
+	v = strings.TrimSpace(v)
+	for _, f := range []string{"2006-01-02 15:04", "2006-01-02T15:04", "2006-01-02 15:04:05", "2006-01-02T15:04:05"} {
+		if t, err := time.ParseInLocation(f, v, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("%q: a date and time like 2026-12-23 17:00", v)
+}
+
+// triggerResolver finds a trigger's pane (a pane, or a tab's pane) or
+// Group.
+func (w *world) triggerResolver() schedtrig.Resolver {
+	return func(ref string, groups bool) (string, string, error) {
+		if id, err := w.resolve(ref, "pane"); err == nil {
+			return id, "", nil
+		}
+		if id, err := w.resolve(ref, "tab"); err == nil {
+			for _, t := range w.tabs {
+				if t.Id == id && t.FocusedPaneId != "" {
+					return t.FocusedPaneId, "", nil
+				}
+			}
+		}
+		if groups {
+			if id, err := w.resolve(ref, "group"); err == nil {
+				return "", id, nil
+			}
+			return "", "", fmt.Errorf("no pane, tab or Group %q", ref)
+		}
+		return "", "", fmt.Errorf("no pane or tab %q", ref)
+	}
+}
+
+// triggerName names a pane (by its tab) or Group, for words about triggers.
+func (w *world) triggerName(id string) string {
+	for _, g := range w.groups {
+		if g.Id == id {
+			return client.GroupTitle(g, w.groups, w.panes)
+		}
+	}
+	for _, p := range w.panes {
+		if p.Id == id {
+			for _, t := range w.tabs {
+				if t.Id == p.TabId {
+					return client.TabTitle(t, w.group(t.GroupId))
+				}
+			}
+			return p.Id
+		}
+	}
+	return ""
+}
+
+func cmpOrInt(v, def int32) int32 {
+	if v > 0 {
+		return v
+	}
+	return def
+}
+
+// indent puts prefix before each line of s.
+func indent(s, prefix string) string {
+	return prefix + strings.ReplaceAll(s, "\n", "\n"+prefix)
+}
+
+// runTrigger is hmk trigger: a scheduled task's run as an event, from a
+// script, with data (text, - for stdin, @FILE) as what happened.
+func runTrigger(args []string) error {
+	const usage = "usage: hmk trigger SCHEDULE [--data TEXT|-|@FILE]"
+	ref, data := "", ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--data" && i+1 < len(args):
+			i++
+			v := args[i]
+			switch {
+			case v == "-":
+				b, err := io.ReadAll(io.LimitReader(os.Stdin, maxTriggerData+1))
+				if err != nil {
+					return err
+				}
+				v = string(b)
+			case strings.HasPrefix(v, "@"):
+				b, err := os.ReadFile(expandTilde(v[1:]))
+				if err != nil {
+					return err
+				}
+				v = string(b)
+			}
+			if len(v) > maxTriggerData {
+				return fmt.Errorf("the data is over %d KB", maxTriggerData>>10)
+			}
+			data = v
+		case strings.HasPrefix(a, "-"):
+			return fmt.Errorf("unknown option %s\n%s", a, usage)
+		case ref != "":
+			return errors.New(usage)
+		default:
+			ref = a
+		}
+	}
+	if ref == "" {
+		return errors.New(usage)
+	}
+	ctx := context.Background()
+	c, err := connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	w, err := fetchWorld(ctx, c)
+	if err != nil {
+		return err
+	}
+	s, err := w.schedule(ref)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, grantWait)
+	defer cancel()
+	r, err := c.Call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: s.Id, Trigger: true, Data: data}}})
+	if err != nil {
+		return err
+	}
+	if id := client.CreatedID(r); id != "" {
+		fmt.Println(id)
+		return nil
+	}
+	printfSafe("Queued: %s's last event run was under %ds ago; this one starts when its cooldown is up\n", s.Name, cmpOrInt(s.CooldownSeconds, 60))
+	return nil
+}
+
+// maxTriggerData is the most hmk trigger sends (the daemon's webhook cap).
+const maxTriggerData = 64 << 10

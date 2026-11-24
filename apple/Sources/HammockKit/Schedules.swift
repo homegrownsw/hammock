@@ -5,6 +5,8 @@ import SwiftUI
 /// a Group on a schedule. Each run is a tab there. Shared by the Mac and iOS.
 public typealias Schedule = Hammock_V1_Schedule
 public typealias ScheduleRun = Hammock_V1_ScheduleRun
+/// What happening starts a run (the daemon's schedtriggers.go).
+public typealias EventTrigger = Hammock_V1_EventTrigger
 
 // MARK: State
 
@@ -114,6 +116,19 @@ extension AppModel {
 
     public func setSchedulePaused(_ id: String, _ paused: Bool) async throws {
         _ = try await scheduleCall { $0.setSchedulePaused = .with { $0.scheduleID = id; $0.paused = paused } }
+    }
+
+    /// A webhook trigger's URLs (and why nothing can reach them, if so);
+    /// regenerate makes a new secret, so the old URL stops working.
+    public func scheduleWebhook(_ id: String, trigger: String = "", regenerate: Bool = false) async throws -> Hammock_V1_ScheduleWebhookReply {
+        try await scheduleCall {
+            $0.scheduleWebhook = .with { $0.scheduleID = id; $0.triggerID = trigger; $0.regenerate = regenerate }
+        }.scheduleWebhookReply
+    }
+
+    /// The Mac's calendars, for calendar triggers (CalendarFeed).
+    public func sendCalendarEvents(_ events: Hammock_V1_CalendarEvents) async throws {
+        _ = try await scheduleCall { $0.calendarEvents = events }
     }
 
     /// Skips its next run (skip false: runs it after all).
@@ -261,11 +276,32 @@ extension Schedule {
     }
 
     /// When it runs: "Weekdays at 08:30", "Every day at 18:00", "Mon, Thu at
-    /// 09:15", or its cron line.
+    /// 09:15", its cron line, "Once, Thu 23 Dec at 17:00", "When CI fails on
+    /// my pull request", or the time and "+ 2 triggers".
     public var whenText: String {
-        if !cron.isEmpty { return "Cron \(cron)" }
-        return Self.daysText(weekdays) + " at " + Self.timeText(Int(minuteOfDay))
+        let times = timesText
+        switch (times, events.count) {
+        case (nil, 0): return "Never"
+        case (nil, 1): return "When " + events[0].text(names: nil).lowercasedFirst
+        case (nil, let n): return "On \(n) triggers"
+        case (let t?, 0): return t
+        case (let t?, let n): return "\(t) + \(n) trigger\(n == 1 ? "" : "s")"
+        }
     }
+
+    /// When it runs by the clock (nil: only on its triggers).
+    public var timesText: String? {
+        switch timing {
+        case .once: return "Once, " + Self.dateText(onceUnixMs)
+        case .events: return nil
+        default:
+            if !cron.isEmpty { return "Cron \(cron)" }
+            return Self.daysText(weekdays) + " at " + Self.timeText(Int(minuteOfDay))
+        }
+    }
+
+    /// Seconds between its triggered runs (the daemon's default for 0).
+    public var cooldown: Int { cooldownSeconds > 0 ? Int(cooldownSeconds) : 60 }
 
     /// Short weekday names (Sun first), in the user's language.
     public static var weekdaySymbols: [String] { Calendar.current.shortWeekdaySymbols }
@@ -338,9 +374,10 @@ extension ScheduleRun {
         return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m"
     }
 
-    /// What a list of runs marks it with: "Instead of 09:00" (Run Early),
-    /// "Run Now", or nothing.
+    /// What a list of runs marks it with: what started it ("CI failed on
+    /// #42"), "Instead of 09:00" (Run Early), "Run Now", or nothing.
     public func marker(now: Date = Date()) -> String? {
+        if !trigger.isEmpty { return trigger }
         if early {
             let when = Schedule.dateText(dueUnixMs, now: now)
             return "Instead of " + (when.hasPrefix("Today at ") ? String(when.dropFirst("Today at ".count)) : when)
@@ -353,4 +390,86 @@ extension ScheduleRun {
 
     /// The tab it ran in is still open.
     @MainActor public func hasTab(in model: AppModel) -> Bool { !tabClosed && !tabID.isEmpty && model.tabs[tabID] != nil }
+}
+
+extension EventTrigger {
+    /// What fires it, in words, as the daemon and hmk say it: "CI fails on
+    /// my pull request or branch", "An agent finishes in Assistant". names
+    /// names a pane or Group by id (nil: by id).
+    public func text(names: ((String) -> String?)?) -> String {
+        func place(_ pane: String, _ group: String) -> String {
+            let id = pane.isEmpty ? group : pane
+            if id.isEmpty { return "" }
+            guard let names else { return " in \(id)" }
+            if let n = names(id), !n.isEmpty { return " in \(n)" }
+            return pane.isEmpty ? " in a Group that’s closed" : " in a pane that’s closed"
+        }
+        switch kind {
+        case .github(let g):
+            let repo = g.repo.isEmpty ? "" : " (\(g.repo))"
+            switch g.event {
+            case .ciFailed: return "CI fails on my pull request or branch" + repo
+            case .reviewRequested: return "My review is requested" + repo
+            case .reviewed: return "My pull request gets a review or comment" + repo
+            case .labeled: return "An issue or pull request is labelled “\(g.label)”" + repo
+            case .assigned: return "An issue or pull request is assigned to me" + repo
+            case .merged: return "My pull request is merged" + repo
+            default: return "GitHub" + repo
+            }
+        case .agent(let a):
+            let what = a.finished && a.needsYou ? "finishes or needs me" : a.needsYou ? "needs me" : "finishes"
+            return "An agent \(what)" + place(a.paneID, a.groupID)
+        case .exit(let x):
+            return "A command fails" + place(x.paneID, x.groupID)
+        case .log(let l):
+            return "A log line matches /\(l.pattern)/" + place(l.paneID, "")
+        case .files(let f):
+            var s = f.glob.isEmpty ? "Files change" : "\(f.glob) changes"
+            if !f.folder.isEmpty { s += " in " + (f.folder as NSString).abbreviatingWithTildeInPath }
+            return s
+        case .calendar(let c):
+            var s = c.minutesBefore == 0 ? "At the start of events"
+                : c.minutesBefore == 1 ? "1 minute before events" : "\(c.minutesBefore) minutes before events"
+            if !c.title.isEmpty { s += " titled “\(c.title)”" }
+            if !c.calendar.isEmpty { s += " in \(c.calendar)" }
+            if c.withAttendees { s += " with other people" }
+            return s
+        case .webhook:
+            return "Its webhook is called"
+        case nil:
+            return "An unknown event"
+        }
+    }
+
+    /// An SF Symbol for its kind.
+    public var symbol: String {
+        switch kind {
+        case .github: "arrow.triangle.pull"
+        case .agent: "sparkles"
+        case .exit: "xmark.octagon"
+        case .log: "text.magnifyingglass"
+        case .files: "doc.badge.ellipsis"
+        case .calendar: "calendar"
+        case .webhook: "link"
+        case nil: "bolt"
+        }
+    }
+}
+
+private extension String {
+    /// The string with its first letter in lower case ("CI …" kept: two capitals).
+    var lowercasedFirst: String {
+        guard let f = first, f.isUppercase else { return self }
+        if count > 1, self[index(after: startIndex)].isUppercase { return self }
+        return f.lowercased() + dropFirst()
+    }
+}
+
+extension AppModel {
+    /// Names a pane (by its tab) or Group, for words about triggers.
+    public func triggerName(_ id: String) -> String? {
+        if let g = groups.first(where: { $0.id == id }) { return title(of: g) }
+        if let p = panes[id], let t = tabs[p.tabID] { return title(of: t) }
+        return nil
+    }
 }

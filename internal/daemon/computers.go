@@ -1687,7 +1687,8 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 			return false, here(&s.ComputerId)
 		}
 		return false, nil
-	case *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_RunSchedule, *pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun:
+	case *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_RunSchedule, *pb.ClientMessage_SetSchedulePaused, *pb.ClientMessage_SkipScheduleRun,
+		*pb.ClientMessage_ScheduleWebhook:
 		return false, nil // one here (checked above)
 	case *pb.ClientMessage_RespondGrant:
 		// You, answering an agent here from another of your computers

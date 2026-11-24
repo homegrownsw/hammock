@@ -37,6 +37,12 @@ macOS treats everything in a pane as part of Hammock. When a program in a pane w
 
 **Granting or revoking it.** System Settings ▸ Privacy & Security ▸ Microphone.
 
+## Calendars
+
+**What it's for.** [Calendar triggers](/hammock/docs/scheduled-tasks/#triggers) for scheduled tasks: starting a run before events you choose. macOS asks when you first add one. Hammock reads the next week's events, on your Mac: they don't leave it.
+
+**Granting or revoking it.** System Settings ▸ Privacy & Security ▸ Calendars.
+
 ## Local Network
 
 **What it's for.** [Remote access](/hammock/docs/remote/) on a local network you've chosen, and finding Hammock on your other computers there. macOS asks the first time Hammock uses your local network.

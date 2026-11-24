@@ -1047,6 +1047,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.SetSchedulePaused.ScheduleId
 	case *pb.ClientMessage_SkipScheduleRun:
 		return m.SkipScheduleRun.ScheduleId
+	case *pb.ClientMessage_ScheduleWebhook:
+		return m.ScheduleWebhook.ScheduleId
 	case *pb.ClientMessage_ShowOutput:
 		return cmpOr(m.ShowOutput.IntoPaneId, m.ShowOutput.PaneId)
 	case *pb.ClientMessage_StartAgent:

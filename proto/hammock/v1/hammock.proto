@@ -567,6 +567,11 @@ message ClientMessage {
     RunSchedule run_schedule = 110;
     SetSchedulePaused set_schedule_paused = 111;
     SkipScheduleRun skip_schedule_run = 112;
+    // A webhook trigger's URL (this computer's own clients and your other
+    // computers; replies ScheduleWebhookReply), and the Mac app's upcoming
+    // calendar events for calendar triggers (the Mac app only; no reply).
+    ScheduleWebhook schedule_webhook = 150;
+    CalendarEvents calendar_events = 151;
     // Opens a file or URL in a browser pane beside the calling pane (hammock
     // show, MCP show_output), reusing the one it showed in last, or one in
     // its tab already on that page; or in a browser pane it names. Replies
@@ -947,6 +952,7 @@ message ServerMessage {
     DirListing dir_listing = 73;                    // reply to ListDir
     FilesChanged files_changed = 74;                // to a files pane's attached clients: folders whose entries changed
     EditorLinks editor_links = 75;                  // reply to ResolveEditorLinks
+    ScheduleWebhookReply schedule_webhook_reply = 85; // reply to ScheduleWebhook
   }
 }
 
@@ -2699,6 +2705,18 @@ message Schedule {
   string created_by = 25;         // who made it, in words ("You", "Claude in Assistant ▸ Notes")
   int64 created_unix_ms = 26;
   string error = 27;              // why it can't run (e.g. its folder is gone), shown with it
+  // Event triggers (schedtriggers.go): what besides its times starts a run.
+  enum Timing {
+    TIMING_REPEAT = 0;            // on weekdays/minute_of_day or cron (above)
+    TIMING_ONCE = 1;              // once, at once_unix_ms
+    TIMING_EVENTS = 2;            // only on its events (and Run Now)
+  }
+  Timing timing = 28;
+  int64 once_unix_ms = 29;
+  repeated EventTrigger events = 30;
+  // Runs its events start are at least this far apart: events in between
+  // wait, and the latest starts one run when it's up (0: 60).
+  int32 cooldown_seconds = 31;
 }
 
 message ScheduleRun {
@@ -2731,6 +2749,122 @@ message ScheduleRun {
   int64 waiting_since_unix_ms = 16;
   string kind = 17;               // what it ran: the schedule's kind then ("claude", "codex", "command")
   bool early = 18;                // Run Early: started before due_unix_ms, in its place
+  // What started it, in words ("CI failed on #42", "Webhook"): an event
+  // (EventTrigger), or hmk trigger. Empty: its time, or Run Now.
+  string trigger = 19;
+}
+
+// Something that happening starts a run of a schedule (schedtriggers.go).
+// What happened goes into the run: an agent's prompt gets its details
+// (fenced as data, from outside), a command's environment HMK_EVENT_*.
+message EventTrigger {
+  string id = 1;                  // the daemon's: kept across edits (what it has seen is kept by it)
+  oneof kind {
+    GitHubTrigger github = 2;
+    AgentTrigger agent = 3;
+    ExitTrigger exit = 4;
+    LogTrigger log = 5;
+    FilesTrigger files = 6;
+    CalendarTrigger calendar = 7;
+    WebhookTrigger webhook = 8;
+  }
+  string error = 9;               // read only: why it can't fire now (gh isn't signed in…)
+}
+
+// The GitHub repository of the schedule's folder (its remote), asked with
+// gh every couple of minutes. What's already so when it's made doesn't fire.
+message GitHubTrigger {
+  enum Event {
+    EVENT_UNSPECIFIED = 0;
+    EVENT_CI_FAILED = 1;          // checks failed on your open pull request, or the folder's branch
+    EVENT_REVIEW_REQUESTED = 2;   // your review was asked for
+    EVENT_REVIEWED = 3;           // a review or comment on your pull request
+    EVENT_LABELED = 4;            // an open issue or pull request has label
+    EVENT_ASSIGNED = 5;           // an issue or pull request was assigned to you
+    EVENT_MERGED = 6;             // your pull request was merged
+  }
+  Event event = 1;
+  string label = 2;               // EVENT_LABELED
+  string repo = 3;                // read only: "owner/name", from the folder
+}
+
+// An agent finishing or needing you, in a Group or pane (neither: any).
+// The schedule's own runs don't count.
+message AgentTrigger {
+  bool finished = 1;
+  bool needs_you = 2;
+  string group_id = 3;
+  string pane_id = 4;
+}
+
+// A pane's command exiting with a status other than 0, in a Group or pane
+// (neither: any). The schedule's own runs don't count.
+message ExitTrigger {
+  string group_id = 1;
+  string pane_id = 2;
+}
+
+// A line in a log pane matching pattern (a regular expression; case-
+// insensitive unless it has capitals).
+message LogTrigger {
+  string pane_id = 1;
+  string pattern = 2;
+}
+
+// Files matching glob (relative to folder: "*.go", "src/**/*.ts"; a glob
+// without a / matches names anywhere) changing, once they've settled.
+// .git and node_modules aren't looked in, and changes while one of the
+// schedule's runs is going don't count.
+message FilesTrigger {
+  string folder = 1;              // absolute ("": the schedule's)
+  string glob = 2;                // "": any file
+}
+
+// A calendar event starting soon (the Mac app reads your calendars and
+// tells the daemon what's coming: CalendarEvents). Only on a Mac.
+message CalendarTrigger {
+  int32 minutes_before = 1;
+  string title = 2;               // in its title (any case; "": any)
+  string calendar = 3;            // its calendar's name ("": any)
+  bool with_attendees = 4;        // only events with other people
+}
+
+// A POST to the schedule's secret URL on the remote access listener
+// (/hook/SECRET; ScheduleWebhook gives it). Its body is the event.
+message WebhookTrigger {}
+
+// A webhook trigger's URL: from the person's own clients only (never an
+// agent, a guest or a phone), as it's a key to run the task. regenerate
+// makes a new secret (the old URL stops working). Replies ScheduleWebhookReply.
+message ScheduleWebhook {
+  string schedule_id = 1;
+  string trigger_id = 2;
+  bool regenerate = 3;
+}
+message ScheduleWebhookReply {
+  repeated string urls = 1;       // one for each address remote access listens on
+  string path = 2;                // /hook/SECRET, for a proxy (Tailscale Funnel) in front
+  string problem = 3;             // why nothing can reach it now (remote access is off…)
+}
+
+// The Mac app's calendars: events coming up (the next few days), for
+// calendar triggers. Sent while this Mac has any, as they change. From the
+// Mac app only; no reply.
+message CalendarEvents {
+  repeated CalendarEvent events = 1;
+  bool denied = 2;                // the app may not read calendars (Privacy & Security)
+  int64 through_unix_ms = 3;      // events up to this are all here
+}
+message CalendarEvent {
+  string id = 1;                  // stays the same for an occurrence
+  string title = 2;
+  string calendar = 3;
+  int64 start_unix_ms = 4;
+  int64 end_unix_ms = 5;
+  int32 attendees = 6;            // besides you
+  string location = 7;
+  string url = 8;
+  string notes = 9;               // the start of them
 }
 
 // description: an agent's reason, shown (as its words) with the request.
@@ -2738,7 +2872,9 @@ message SaveSchedule { Schedule schedule = 1; string description = 2; }
 message DeleteSchedule { string schedule_id = 1; string description = 2; }
 // early: Run Early, now in place of its next run (which moves on to the
 // one after), rather than as well as it.
-message RunSchedule { string schedule_id = 1; bool early = 2; }
+// trigger: as an event (hmk trigger), with data its details: its cooldown
+// applies, and the run is marked as triggered.
+message RunSchedule { string schedule_id = 1; bool early = 2; bool trigger = 3; string data = 4; }
 message SetSchedulePaused { string schedule_id = 1; bool paused = 2; }
 // Skips the next run (skip = false: undoes that).
 message SkipScheduleRun { string schedule_id = 1; bool skip = 2; }

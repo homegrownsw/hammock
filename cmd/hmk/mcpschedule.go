@@ -9,12 +9,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/schedtrig"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,6 +37,10 @@ type scheduleSaveArgs struct {
 	CodexSandbox  string   `json:"codex_sandbox,omitempty" jsonschema:"codex: read-only, workspace-write or danger-full-access"`
 	CodexApproval string   `json:"codex_approval,omitempty" jsonschema:"codex: untrusted, on-failure, on-request or never"`
 	CloseOnOK     bool     `json:"close_on_success,omitempty" jsonschema:"command: close its tab after a clean exit"`
+	Once          string   `json:"once,omitempty" jsonschema:"instead of at/cron: run once, at this local date and time ('2026-12-23 17:00')"`
+	Triggers      []string `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers; [] drops them). Each one of: github:ci-failed, github:review-requested, github:reviewed, github:label=NAME, github:assigned, github:merged (the folder's GitHub repository); agent:finished or agent:needs-you, optionally @GROUP or @PANE; exit[@GROUP|@PANE] (a pane's command fails); log:REGEX@PANE (a log pane); files[:GLOB][@DIR]; calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees] (before matching events); webhook. The run's prompt gets what happened, fenced as untrusted data, or where it says {{event}}"`
+	EventsOnly    bool     `json:"events_only,omitempty" jsonschema:"run only on its triggers (and when run by hand), not at times (the default when creating one with triggers and no at, cron or once)"`
+	Cooldown      int      `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60): events in between wait, and the latest starts one run"`
 	Description   string   `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
 }
 
@@ -43,8 +49,10 @@ type scheduleIDArgs struct {
 }
 
 type scheduleRunArgs struct {
-	ID    string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
-	Early bool   `json:"early,omitempty" jsonschema:"run it instead of at its next time, not as well"`
+	ID      string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
+	Early   bool   `json:"early,omitempty" jsonschema:"run it instead of at its next time, not as well"`
+	Trigger bool   `json:"trigger,omitempty" jsonschema:"run it as an event (as hmk trigger does): its cooldown applies, and data goes into the run"`
+	Data    string `json:"data,omitempty" jsonschema:"with trigger: what happened, given to the run (up to 64 KB)"`
 }
 
 type scheduleDeleteArgs struct {
@@ -73,19 +81,27 @@ type scheduleView struct {
 	Group     string         `json:"group"`
 	Computer  string         `json:"computer,omitempty"`
 	Allowed   []string       `json:"allowed_tools,omitempty"`
+	Triggers  []triggerView  `json:"triggers,omitempty"`
 	Error     string         `json:"error,omitempty"`
 	LastRuns  []runView      `json:"recent_runs,omitempty"`
 	CreatedBy string         `json:"created_by,omitempty"`
 	Extra     map[string]any `json:"settings,omitempty"`
 }
 
+type triggerView struct {
+	Spec  string `json:"spec"`
+	Words string `json:"description"`
+	Error string `json:"error,omitempty"`
+}
+
 type runView struct {
-	When   string `json:"when"`
-	Status string `json:"status"`
-	Note   string `json:"note,omitempty"`
-	Tab    string `json:"tab_id,omitempty"`
-	Pane   string `json:"pane_id,omitempty"`
-	Output string `json:"output,omitempty"`
+	When    string `json:"when"`
+	Trigger string `json:"triggered_by,omitempty"`
+	Status  string `json:"status"`
+	Note    string `json:"note,omitempty"`
+	Tab     string `json:"tab_id,omitempty"`
+	Pane    string `json:"pane_id,omitempty"`
+	Output  string `json:"output,omitempty"`
 }
 
 func viewSchedule(w *world, s *pb.Schedule) scheduleView {
@@ -96,11 +112,17 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 	if s.NextRunUnixMs > 0 {
 		v.NextRun = time.UnixMilli(s.NextRunUnixMs).Format(time.RFC3339)
 	}
+	for _, t := range s.Events {
+		v.Triggers = append(v.Triggers, triggerView{Spec: schedtrig.Spec(t), Words: schedtrig.Describe(t, w.triggerName), Error: t.Error})
+	}
+	if len(s.Events) > 0 {
+		v.Extra["cooldown_seconds"] = cmpOrInt(s.CooldownSeconds, 60)
+	}
 	for i, r := range s.Runs {
 		if i == 5 {
 			break
 		}
-		rv := runView{When: runAt(r).Format(time.RFC3339), Status: runStatusWords[r.Status], Note: r.Note, Output: r.Output}
+		rv := runView{When: runAt(r).Format(time.RFC3339), Status: runStatusWords[r.Status], Note: r.Note, Output: r.Output, Trigger: r.Trigger}
 		if !r.TabClosed {
 			rv.Tab, rv.Pane = r.TabId, r.PaneId
 		}
@@ -153,8 +175,8 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 				sc.Cwd = me.Cwd
 				sc.GroupId = w.groupOfPane(s.self)
 			}
-			if a.At == "" && a.Cron == "" {
-				return nil, nil, errors.New("say when: at (HH:MM, with days) or cron")
+			if a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) == 0 {
+				return nil, nil, errors.New("say when: at (HH:MM, with days), cron, once, or triggers")
 			}
 		}
 		if a.Name != "" {
@@ -193,6 +215,27 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 			sc.Cron = a.Cron
 		}
 		args := []string{}
+		if a.Once != "" {
+			args = append(args, "--once", a.Once)
+		}
+		if a.Triggers != nil {
+			args = append(args, "--no-triggers")
+			for _, t := range a.Triggers {
+				args = append(args, "--trigger", t)
+			}
+		}
+		if a.EventsOnly {
+			args = append(args, "--events-only")
+		}
+		if a.Cooldown > 0 {
+			args = append(args, "--cooldown", strconv.Itoa(a.Cooldown))
+		}
+		if a.At != "" || a.Cron != "" {
+			sc.Timing = pb.Schedule_TIMING_REPEAT
+		}
+		if a.ID == "" && a.At == "" && a.Cron == "" && a.Once == "" && len(a.Triggers) > 0 {
+			args = append(args, "--events-only")
+		}
 		if a.Notify != "" {
 			args = append(args, "--notify", a.Notify)
 		}
@@ -231,13 +274,20 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 
 	addTool(s, server, &mcp.Tool{
 		Name:        "schedule_run",
-		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. One you didn't save yourself asks the user first (waits for their answer).",
+		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. With trigger, it runs as an event, given data (its cooldown applies: it may be queued). One you didn't save yourself asks the user first (waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleRunArgs) (*mcp.CallToolResult, any, error) {
-		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID, Early: a.Early}}})
+		if a.Data != "" && !a.Trigger {
+			return nil, nil, errors.New("data goes with trigger")
+		}
+		r, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{ScheduleId: a.ID, Early: a.Early, Trigger: a.Trigger, Data: a.Data}}})
 		if err != nil {
 			return nil, nil, err
 		}
-		return textResult(map[string]string{"tab_id": client.CreatedID(r)}), nil, nil
+		id := client.CreatedID(r)
+		if a.Trigger && id == "" {
+			return textResult(map[string]bool{"queued": true}), nil, nil
+		}
+		return textResult(map[string]string{"tab_id": id}), nil, nil
 	})
 
 	addTool(s, server, &mcp.Tool{

@@ -677,6 +677,7 @@ func (p *pane) read(hc *holder.Client, gen int) {
 				p.d.mu.Lock()
 				if p.d.panes[p.id] == p {
 					keep := p.d.scheduleCommandExited(p, ev.ExitStatus) // a scheduled command's run may stay to be read
+					p.d.schedExitEvent(p, ev.ExitStatus)                // a scheduled task's exit trigger
 					if ev.ExitStatus == 0 && p.log == nil && !keep {
 						// Clean exit: close the pane, as terminals do. Failures
 						// stay visible so the output can be read, and so do

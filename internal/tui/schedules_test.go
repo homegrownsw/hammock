@@ -356,3 +356,37 @@ func TestLongGrantMenuScrolls(t *testing.T) {
 	}
 	m.draw(a) // draws scrolled, without panicking
 }
+
+func TestScheduleTriggersWords(t *testing.T) {
+	ci := &pb.EventTrigger{Kind: &pb.EventTrigger_Github{Github: &pb.GitHubTrigger{Event: pb.GitHubTrigger_EVENT_CI_FAILED}}}
+	hook := &pb.EventTrigger{Kind: &pb.EventTrigger_Webhook{Webhook: &pb.WebhookTrigger{}}}
+	for _, c := range []struct {
+		s    *pb.Schedule
+		want string
+	}{
+		{&pb.Schedule{Timing: pb.Schedule_TIMING_EVENTS, Events: []*pb.EventTrigger{ci}}, "on github:ci-failed"},
+		{&pb.Schedule{Timing: pb.Schedule_TIMING_EVENTS, Events: []*pb.EventTrigger{ci, hook}}, "on 2 triggers"},
+		{&pb.Schedule{Weekdays: []int32{1, 2, 3, 4, 5}, MinuteOfDay: 8*60 + 30, Events: []*pb.EventTrigger{hook}}, "weekdays at 08:30, +1 trigger"},
+		{&pb.Schedule{Timing: pb.Schedule_TIMING_EVENTS}, "never"},
+	} {
+		if got := scheduleWhen(c.s); got != c.want {
+			t.Errorf("%v: %q, want %q", c.s, got, c.want)
+		}
+	}
+	// The When field round-trips once and triggers.
+	once := &pb.Schedule{Timing: pb.Schedule_TIMING_ONCE, OnceUnixMs: time.Date(2026, 12, 23, 17, 0, 0, 0, time.Local).UnixMilli(), Prompt: "x", Cwd: "/tmp"}
+	got, err := scheduleFromFields(once, []string{"", "claude", "x", "/tmp", whenField(once), ""})
+	if err != nil || got.Timing != pb.Schedule_TIMING_ONCE || got.OnceUnixMs != once.OnceUnixMs {
+		t.Fatalf("once: %v %v", got, err)
+	}
+	ev := &pb.Schedule{Timing: pb.Schedule_TIMING_EVENTS, Events: []*pb.EventTrigger{ci}, Prompt: "x", Cwd: "/tmp"}
+	if got, err := scheduleFromFields(ev, []string{"", "claude", "x", "/tmp", whenField(ev), ""}); err != nil || got.Timing != pb.Schedule_TIMING_EVENTS || len(got.Events) != 1 {
+		t.Fatalf("triggers: %v %v", got, err)
+	}
+	if got, err := scheduleFromFields(ev, []string{"", "claude", "x", "/tmp", "weekdays 09:00", ""}); err != nil || got.Timing != pb.Schedule_TIMING_REPEAT || len(got.Events) != 1 {
+		t.Fatalf("a time as well: %v %v", got, err)
+	}
+	if _, err := scheduleFromFields(&pb.Schedule{}, []string{"", "claude", "x", "/tmp", "triggers", ""}); err == nil {
+		t.Fatal("triggers with none")
+	}
+}

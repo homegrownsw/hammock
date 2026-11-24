@@ -114,15 +114,15 @@ func (d *Daemon) personAsk(c *conn, msg *pb.ClientMessage) (string, error) {
 			return "", fmt.Errorf("the prompt is %d characters (at most %d): put the work in a script or skill and schedule that", n, maxAskedPrompt)
 		}
 		if s.Id != "" {
-			return "change the scheduled task to " + scheduleSummary(s), nil
+			return "change the scheduled task to " + d.scheduleSummary(s), nil
 		}
-		return "schedule " + scheduleSummary(s), nil
+		return "schedule " + d.scheduleSummary(s), nil
 	case *pb.ClientMessage_DeleteSchedule:
 		s := d.sched.list[m.DeleteSchedule.ScheduleId]
 		if s == nil {
 			return "", fmt.Errorf("no such schedule %q", m.DeleteSchedule.ScheduleId)
 		}
-		return "delete the scheduled task " + scheduleSummary(s), nil
+		return "delete the scheduled task " + d.scheduleSummary(s), nil
 	case *pb.ClientMessage_CreatePairing:
 		return "get a pairing code: anyone who has it can pair a device with " + d.macName(), nil
 	case *pb.ClientMessage_ShowPairing:

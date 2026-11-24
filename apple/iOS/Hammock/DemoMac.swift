@@ -677,13 +677,14 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
         ]
 
         func run(_ id: String, _ status: ScheduleRun.Status, started: Int64, minutes: Double, note: String = "", tab: String = "", pane: String = "",
-                 output: String = "", closed: Bool = false, session: String = "", manual: Bool = false) -> ScheduleRun {
+                 output: String = "", closed: Bool = false, session: String = "", manual: Bool = false, trigger: String = "") -> ScheduleRun {
             .with {
                 $0.id = id; $0.status = status; $0.dueUnixMs = manual ? 0 : started; $0.startedUnixMs = started
                 if status != .running, status != .waiting, status != .missed { $0.endedUnixMs = started + Int64(minutes * 60_000) }
                 if status == .missed { $0.startedUnixMs = 0 }
                 $0.note = note; $0.tabID = tab; $0.paneID = pane; $0.output = output; $0.tabClosed = closed
-                $0.sessionID = session; $0.manual = manual
+                $0.sessionID = session; $0.manual = manual; $0.trigger = trigger
+                if !trigger.isEmpty { $0.dueUnixMs = 0 }
             }
         }
         u.schedules = [
@@ -706,7 +707,10 @@ final class DemoMac: DaemonStandIn, @unchecked Sendable {
                 $0.kind = "claude"; $0.cwd = "/Users/me/Developer/hammock"; $0.minuteOfDay = 10 * 60
                 $0.prompt = "Label and prioritise new GitHub issues."
                 $0.nextRunUnixMs = at(1, 10, 0); $0.computerID = me
-                $0.runs = [run("r_triage_now", .waiting, started: ago(6), minutes: 0, note: "Asking to run gh", tab: "t_triage", pane: "p_triage")]
+                $0.events = [.with { $0.id = "tr_ci"; $0.github = .with { $0.event = .ciFailed; $0.repo = "acme/widgets" } }]
+                $0.runs = [run("r_triage_now", .waiting, started: ago(6), minutes: 0, note: "Asking to run gh", tab: "t_triage", pane: "p_triage"),
+                           run("r_triage_ci", .ready, started: ago(190), minutes: 9, note: "Fixed the flaky login test and pushed to the branch.",
+                               tab: "t_old3", closed: true, session: "sess2", trigger: "CI failed on #42")]
             },
             .with {
                 $0.id = "s_backup"; $0.name = "Back up dotfiles"; $0.groupID = "g_hammock"; $0.groupName = "Hammock"; $0.groupIcon = "🌴"

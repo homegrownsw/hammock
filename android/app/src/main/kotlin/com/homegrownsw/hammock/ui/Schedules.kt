@@ -74,6 +74,8 @@ import com.homegrownsw.hammock.client.AgentCatalog
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Workspace
 import hammock.v1.Hammock
+import hammock.v1.Hammock.EventTrigger
+import hammock.v1.Hammock.GitHubTrigger
 import hammock.v1.Hammock.Schedule
 import hammock.v1.Hammock.ScheduleRun
 import hammock.v1.Hammock.ScheduleRun.Status
@@ -144,10 +146,107 @@ object ScheduleWords {
         return listOf(1, 2, 3, 4, 5, 6, 0).filter { it in set }.joinToString(", ") { names[it + 1] }
     }
 
-    fun whenText(s: Schedule, ctx: android.content.Context): String {
-        if (s.cron.isNotEmpty()) return "Cron ${s.cron}"
-        val cal = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, s.minuteOfDay / 60); set(Calendar.MINUTE, s.minuteOfDay % 60) }
-        return days(s.weekdaysList) + " at " + time(cal.timeInMillis, ctx)
+    /**
+     * When it runs: its times, "Once, …", "When CI fails on my pull request" (only on a trigger), or
+     * its time and "+ 2 triggers", as the Mac and iPhone say it (HammockKit's Schedule.whenText).
+     */
+    fun whenText(s: Schedule, ctx: android.content.Context, w: Workspace? = null): String {
+        val times = timesText(s, ctx)
+        val n = s.eventsCount
+        return when {
+            times == null && n == 0 -> "Never"
+            times == null && n == 1 -> "When " + lowercasedFirst(trigger(s.getEvents(0), w))
+            times == null -> "On $n triggers"
+            n == 0 -> times
+            else -> "$times + $n trigger" + if (n == 1) "" else "s"
+        }
+    }
+
+    /** When it runs by the clock (null: only on its triggers). */
+    fun timesText(s: Schedule, ctx: android.content.Context): String? = when (s.timing) {
+        Schedule.Timing.TIMING_ONCE -> "Once, " + date(s.onceUnixMs, System.currentTimeMillis(), ctx)
+        Schedule.Timing.TIMING_EVENTS -> null
+        else -> if (s.cron.isNotEmpty()) "Cron ${s.cron}" else {
+            val cal = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, s.minuteOfDay / 60); set(Calendar.MINUTE, s.minuteOfDay % 60) }
+            days(s.weekdaysList) + " at " + time(cal.timeInMillis, ctx)
+        }
+    }
+
+    /** "CI …" stays as it is (two capitals); "An agent …" becomes "an agent …". */
+    private fun lowercasedFirst(t: String): String {
+        if (t.isEmpty() || !t[0].isUpperCase()) return t
+        if (t.length > 1 && t[1].isUpperCase()) return t
+        return t[0].lowercaseChar() + t.substring(1)
+    }
+
+    /** A pane's (by its tab) or Group's name, for words about triggers. */
+    private fun placeName(w: Workspace?, id: String): String? {
+        if (w == null) return null
+        w.groups.firstOrNull { it.id == id }?.let { return w.title(it) }
+        val p = w.panes[id] ?: return null
+        val t = w.tabs[p.tabId] ?: return null
+        return t.name.ifEmpty { t.autoName }
+    }
+
+    /** What fires a trigger, in words (HammockKit's EventTrigger.text). */
+    fun trigger(t: EventTrigger, w: Workspace?): String {
+        fun place(pane: String, group: String): String {
+            val id = pane.ifEmpty { group }
+            if (id.isEmpty()) return ""
+            if (w == null) return " in $id"
+            placeName(w, id)?.takeIf { it.isNotEmpty() }?.let { return " in $it" }
+            return if (pane.isEmpty()) " in a Group that’s closed" else " in a pane that’s closed"
+        }
+        return when (t.kindCase) {
+            EventTrigger.KindCase.GITHUB -> {
+                val g = t.github
+                val repo = if (g.repo.isEmpty()) "" else " (${g.repo})"
+                when (g.event) {
+                    GitHubTrigger.Event.EVENT_CI_FAILED -> "CI fails on my pull request or branch"
+                    GitHubTrigger.Event.EVENT_REVIEW_REQUESTED -> "My review is requested"
+                    GitHubTrigger.Event.EVENT_REVIEWED -> "My pull request gets a review or comment"
+                    GitHubTrigger.Event.EVENT_LABELED -> "An issue or pull request is labelled “${g.label}”"
+                    GitHubTrigger.Event.EVENT_ASSIGNED -> "An issue or pull request is assigned to me"
+                    GitHubTrigger.Event.EVENT_MERGED -> "My pull request is merged"
+                    else -> "GitHub"
+                } + repo
+            }
+            EventTrigger.KindCase.AGENT -> {
+                val a = t.agent
+                val what = if (a.finished && a.needsYou) "finishes or needs me" else if (a.needsYou) "needs me" else "finishes"
+                "An agent $what" + place(a.paneId, a.groupId)
+            }
+            EventTrigger.KindCase.EXIT -> "A command fails" + place(t.exit.paneId, t.exit.groupId)
+            EventTrigger.KindCase.LOG -> "A log line matches /${t.log.pattern}/" + place(t.log.paneId, "")
+            EventTrigger.KindCase.FILES -> {
+                val f = t.files
+                var out = if (f.glob.isEmpty()) "Files change" else "${f.glob} changes"
+                if (f.folder.isNotEmpty()) out += " in " + f.folder.replace(Regex("^/(Users|home)/[^/]+"), "~")
+                out
+            }
+            EventTrigger.KindCase.CALENDAR -> {
+                val c = t.calendar
+                var out = when (c.minutesBefore) {
+                    0 -> "At the start of events"
+                    1 -> "1 minute before events"
+                    else -> "${c.minutesBefore} minutes before events"
+                }
+                if (c.title.isNotEmpty()) out += " titled “${c.title}”"
+                if (c.calendar.isNotEmpty()) out += " in ${c.calendar}"
+                if (c.withAttendees) out += " with other people"
+                out
+            }
+            EventTrigger.KindCase.WEBHOOK -> "Its webhook is called"
+            else -> "An unknown event"
+        }
+    }
+
+    /** What a list of runs marks it with: what started it ("CI failed on #42"), Run Early's time, "Run Now". */
+    fun marker(r: ScheduleRun, now: Long, ctx: android.content.Context): String? = when {
+        r.trigger.isNotEmpty() -> r.trigger
+        r.early -> "Instead of " + date(r.dueUnixMs, now, ctx).removePrefix("Today at ")
+        r.manual -> "Run Now"
+        else -> null
     }
 
     fun group(w: Workspace, s: Schedule): String {
@@ -156,11 +255,12 @@ object ScheduleWords {
     }
 
     fun where(w: Workspace, s: Schedule, ctx: android.content.Context) =
-        listOf(group(w, s), kindName(s.kind, w.kinds), whenText(s, ctx)).filter { it.isNotEmpty() }.joinToString(" · ")
+        listOf(group(w, s), kindName(s.kind, w.kinds), whenText(s, ctx, w)).filter { it.isNotEmpty() }.joinToString(" · ")
 
     fun next(s: Schedule, now: Long, ctx: android.content.Context): String = when {
         s.error.isNotEmpty() -> s.error
         s.paused -> "Paused"
+        s.nextRunUnixMs <= 0 && s.eventsCount > 0 -> "When triggered"
         s.nextRunUnixMs <= 0 -> "Not due again"
         s.skipping -> "Skipping " + date(s.nextRunUnixMs, now, ctx)
         else -> "Next: " + date(s.nextRunUnixMs, now, ctx)
@@ -522,7 +622,7 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                 SectionHeader("Details")
                 GroupedCard {
                     val rows = buildList {
-                        add(Triple("When", ScheduleWords.whenText(s, ctx), false))
+                        add(Triple("When", ScheduleWords.timesText(s, ctx) ?: "Only when triggered", false))
                         add(Triple("Next Run", ScheduleWords.next(s, now, ctx).removePrefix("Next: "), false))
                         add(Triple("Runs", ScheduleWords.kindName(s.kind, w.kinds), false))
                         add(Triple(if (s.kind == "command") "Command" else "Prompt", s.prompt.ifEmpty { "None" }, s.kind == "command"))
@@ -534,6 +634,24 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                     rows.forEachIndexed { i, (label, value, mono) ->
                         if (i > 0) CardDivider()
                         Detail(label, value, mono)
+                    }
+                }
+                if (s.eventsCount > 0) {
+                    SectionHeader("Triggers")
+                    GroupedCard {
+                        s.eventsList.forEachIndexed { i, t ->
+                            if (i > 0) CardDivider()
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(ScheduleWords.trigger(t, w), style = MaterialTheme.typography.bodyLarge)
+                                if (t.error.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(Icons.Default.Warning, null, tint = NeedsYouColor, modifier = Modifier.size(16.dp))
+                                    Text(t.error, style = MaterialTheme.typography.bodySmall, color = NeedsYouColor)
+                                }
+                            }
+                        }
+                        CardDivider()
+                        val cd = if (s.cooldownSeconds > 0) s.cooldownSeconds else 60
+                        Detail("Cooldown", if (cd % 60 == 0) "${cd / 60} min" else "$cd s")
                     }
                 }
                 SectionHeader("Runs")
@@ -553,6 +671,9 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                             val whenMs = if (r.startedUnixMs > 0) r.startedUnixMs else if (r.dueUnixMs > 0) r.dueUnixMs else r.endedUnixMs
                             Text(if (whenMs > 0) ScheduleWords.date(whenMs, now, ctx) else r.status.label, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                             ScheduleWords.duration(r, now)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                        ScheduleWords.marker(r, now, ctx)?.let {
+                            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                         }
                         Text(ScheduleWords.note(r, s), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                         ScheduleWords.output(r)?.let {

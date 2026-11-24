@@ -45,6 +45,7 @@ struct HammockApp: App {
             Notifier.shared.reconcile(m)
             // Windows of their own open when Hammock last quit, now their tabs are here.
             DetachedWindows.shared.restoreOnce(m)
+            CalendarFeed.shared.attach(m) // calendar triggers' events, while any task has one
         }
         DetachedWindows.shared.attach(m)
         // Run from outside Applications, the app first asks to move there

@@ -973,6 +973,21 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		defer d.mu.Unlock()
 		return d.handleSchedule(c, msg)
 
+	case *pb.ClientMessage_ScheduleWebhook:
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.scheduleWebhook(c, m.ScheduleWebhook)
+
+	case *pb.ClientMessage_CalendarEvents:
+		// The Mac app's calendars (person-only, strictly: person.go).
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if c.remote || c.peer != "" {
+			return nil, errors.New("only available on this Mac")
+		}
+		d.calendarEvents(m.CalendarEvents)
+		return nil, nil
+
 	case *pb.ClientMessage_ReadAgentFile:
 		return d.readAgentFile(c, m.ReadAgentFile)
 
@@ -1998,7 +2013,7 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 		*pb.ClientMessage_ShutdownDaemon, *pb.ClientMessage_ListAudit, *pb.ClientMessage_BrowserCall, *pb.ClientMessage_BrowserLogs,
 		*pb.ClientMessage_ServerStatus, *pb.ClientMessage_EndScreenSession,
 		*pb.ClientMessage_HammockKeyCommand, *pb.ClientMessage_SshSetup, *pb.ClientMessage_ConfigWritten, *pb.ClientMessage_HoldPane,
-		*pb.ClientMessage_OpenWindow:
+		*pb.ClientMessage_OpenWindow, *pb.ClientMessage_CalendarEvents:
 		return nil, errors.New("only available on this Mac"), true
 	case *pb.ClientMessage_CreateInvite, *pb.ClientMessage_RevokeInvite, *pb.ClientMessage_StopSharing,
 		*pb.ClientMessage_SetProfile, *pb.ClientMessage_JoinShared, *pb.ClientMessage_LeaveShared:
@@ -2023,9 +2038,10 @@ func (c *conn) handleRemoteAuth(msg *pb.ClientMessage) (*pb.ServerMessage, error
 		return nil, errors.New("only available on this Mac"), true
 	}
 	switch msg.Msg.(type) {
-	case *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule:
-		// Making and changing schedules: on a computer (here, or another
-		// of yours), not a phone; a phone runs, pauses and skips them.
+	case *pb.ClientMessage_SaveSchedule, *pb.ClientMessage_DeleteSchedule, *pb.ClientMessage_ScheduleWebhook:
+		// Making and changing schedules (and their webhooks' secrets): on
+		// a computer (here, or another of yours), not a phone; a phone
+		// runs, pauses and skips them.
 		d.mu.Lock()
 		linked := d.isLinked(peer)
 		d.mu.Unlock()
