@@ -125,6 +125,26 @@ func TestSpinnerStatus(t *testing.T) {
 	}
 }
 
+// /compact fires no hook: only the screen says it's working, with its
+// spinner and "esc to interrupt" in the footer under the input box.
+func TestCompactingIsWorking(t *testing.T) {
+	bar := strings.Repeat("─", 40)
+	screen := "❯ /compact\n\n✶ Compacting conversation… (0s)\n  ⎿  Tip: Send a message mid-task to steer Claude\n\n" + bar + "\n❯ \n" + bar +
+		"\n   ~/Developer/app\n  ◆ Haiku 5.5 medium  ·  $0.01\n  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt\n"
+	if sc := ReadScreen(screen); !sc.Working || sc.Status != "Compacting conversation…" {
+		t.Errorf("compacting: working %v, status %q", sc.Working, sc.Status)
+	}
+	// Done: the footer no longer offers to interrupt.
+	done := "❯ /compact\n  ⎿  Compacted (ctrl+o to see full summary)\n\n" + bar + "\n❯ \n" + bar + "\n  ⏵⏵ auto mode on (shift+tab to cycle)\n"
+	if ReadScreen(done).Working {
+		t.Error("compacted read as working")
+	}
+	// The footer alone, with no spinner over it, isn't read as working.
+	if ReadScreen("⏺ Done.\n" + bar + "\n❯ \n" + bar + "\n  ⏵⏵ auto mode on · esc to interrupt\n").Working {
+		t.Error("footer without a spinner read as working")
+	}
+}
+
 func TestAnswerSteps(t *testing.T) {
 	b, _ := os.ReadFile("testdata/questions.txt")
 	sc := ReadScreen(string(b))

@@ -38,6 +38,9 @@ var (
 	// with no ellipsis, so that isn't read as working.
 	spinnerLine   = regexp.MustCompile(`^\s*[✻✳✶✢✽·*+]\s+(\p{Lu}[^…()]{0,60}?…)\s*(\(.*\))?\s*$`)
 	interruptLine = regexp.MustCompile(`^\s*[✻✳✶✢✽·*+•●]\s+\p{Lu}.*\(.*esc to (interrupt|stop).*\)\s*$`)
+	// The footer under the input box while it works: "⏵⏵ auto mode on
+	// (shift+tab to cycle) · esc to interrupt".
+	footerInterrupt = regexp.MustCompile(`(^|·)\s*esc to interrupt\s*$`)
 )
 
 // Screen is what the prompt reader found on a pane's screen.
@@ -182,9 +185,17 @@ func ReadScreen(text string) Screen {
 	// ("✽ Percolating… (23s · ↓ 1.9k tokens)"): that word is the status. The
 	// last such line, as the spinner is under the conversation; none, and
 	// the app says "Working…".
+	// It's working when the footer under it offers to interrupt (newer
+	// Claude Code puts "esc to interrupt" there): no hook fires for /compact,
+	// so that's all that says "Compacting conversation…" is working.
 	for i := len(lines) - 1; i >= 0; i-- {
 		if m := spinnerLine.FindStringSubmatch(lines[i]); m != nil {
 			sc.Status = m[1]
+			for _, l := range lines[i+1:] {
+				if footerInterrupt.MatchString(l) {
+					sc.Working = true
+				}
+			}
 			break
 		}
 	}
