@@ -77,13 +77,14 @@ type schedState struct {
 	// Kept in the "schedule_zone" setting, for a change while it was off.
 	zone *time.Location
 	// Event triggers (schedtriggers.go):
-	trig      map[string]*trigState  // trigger id → what it's seen
-	hooks     map[string]string      // webhook trigger id → its secret
-	lastEvent map[string]time.Time   // schedule id → when an event last started a run
-	pending   map[string]*schedEvent // schedule id → an event waiting for its cooldown
-	cal       calState               // the Mac app's calendars (schedcalendar.go)
-	ghWake    chan struct{}          // look at GitHub now (schedgithub.go)
-	filesWake chan struct{}          // look at files now (schedfiles.go)
+	trig      map[string]*trigState    // trigger id → what it's seen
+	hooks     map[string]string        // webhook trigger id → its secret
+	lastEvent map[string]time.Time     // schedule id → when an event last started a run
+	pending   map[string][]*schedEvent // schedule id → events waiting for its next run (kept: "schedule_pending")
+	cal       calState                 // the Mac app's calendars (schedcalendar.go)
+	ready     bool                     // the daemon's state is all in: events may start runs
+	ghWake    chan struct{}            // look at GitHub now (schedgithub.go)
+	filesWake chan struct{}            // look at files now (schedfiles.go)
 }
 
 // schedMaker is the agent that made a schedule: its pane, and which agent
@@ -141,6 +142,7 @@ func (d *Daemon) runSchedules() {
 		on := toolOn("schedules") // the config file: read outside d.mu
 		d.mu.Lock()
 		d.sched.off = !on
+		d.sched.ready = true // (restored by now)
 		d.checkSchedules(schedTime())
 		d.mu.Unlock()
 		select {
@@ -415,14 +417,14 @@ func (d *Daemon) startRun(s *pb.Schedule, due time.Time, manual bool) (*pb.Sched
 	return d.startRunFor(s, due, manual, nil)
 }
 
-// startRunFor is startRun, for an event (ev; nil for none): it goes into
-// the run's prompt or environment, and the run says what started it.
-// Callers hold d.mu.
-func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, ev *schedEvent) (*pb.ScheduleRun, error) {
+// startRunFor is startRun, for events (none: its time, or Run Now): they
+// go into the run's prompt or environment, and the run says what started
+// it. Callers hold d.mu.
+func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*schedEvent) (*pb.ScheduleRun, error) {
 	now := schedTime()
 	r := &pb.ScheduleRun{Id: newID("sr"), StartedUnixMs: now.UnixMilli(), Manual: manual, Kind: s.Kind}
-	if ev != nil {
-		r.Trigger = eventSummary(ev)
+	if len(evs) > 0 {
+		r.Trigger = eventsSummary(evs)
 	}
 	if !due.IsZero() {
 		r.DueUnixMs = due.UnixMilli()
@@ -473,14 +475,14 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, ev *sch
 	var typed, later string // later: a first message typed once it's at its prompt
 	if s.Kind == "command" {
 		spec.Command = []string{loginShell(), "-l", "-c", s.Prompt}
-		if ev != nil {
-			spec.Env = eventEnv(ev)
+		if len(evs) > 0 {
+			spec.Env = eventEnv(evs)
 		}
 	} else if a := agents.Get(s.Kind); a != nil && a.Schedulable {
 		run := s
-		if ev != nil {
+		if len(evs) > 0 {
 			run = proto.CloneOf(s)
-			run.Prompt = eventPrompt(s.Prompt, ev)
+			run.Prompt = eventPrompt(s.Prompt, evs)
 		}
 		typed, later = startCommand(a, run.Prompt, run)
 	} else {

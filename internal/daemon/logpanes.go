@@ -113,10 +113,11 @@ type logPane struct {
 	id    string
 	store *logview.Store
 
-	fmu      sync.Mutex // the feeder (fed from the pane's reader, flushed by the ticker)
-	feed     *logview.Feeder
-	lastFeed time.Time
-	since    time.Time // its command started (or this daemon did): lines before logGrace are the past (schedtriggers.go)
+	fmu        sync.Mutex // the feeder (fed from the pane's reader, flushed by the ticker)
+	feed       *logview.Feeder
+	lastFeed   time.Time
+	replayTill time.Time // its command was run again: what it prints till then may be its past
+	since      time.Time // its command started (or this daemon did): lines timed before it are the past (schedtriggers.go)
 
 	mu       sync.Mutex
 	watchers map[*conn]*logWatcher
@@ -160,12 +161,19 @@ func (lp *logPane) restarted() {
 	lp.fmu.Lock()
 	lp.feed.Restarted()
 	lp.since = time.Now()
+	lp.replayTill = lp.since.Add(2 * time.Second)
 	lp.fmu.Unlock()
 }
 
 func (lp *logPane) added(e *pb.LogEntry) {
-	if time.Since(lp.since) > logGrace {
-		lp.d.schedLogEntry(lp.id, e) // scheduled tasks' log triggers
+	// Scheduled tasks' log triggers. A daemon restart doesn't feed lines
+	// again (the store's offset), but a command run again prints its past
+	// again (tail -n 5000): lines with times from before it are left out,
+	// and while it's printing them (replayTill) those with none are too.
+	if time.Now().After(lp.replayTill) {
+		lp.d.schedLogEntry(lp.id, e, lp.since)
+	} else if e.TimeUnixMs != 0 && e.TimeUnixMs > lp.since.UnixMilli()+1000 {
+		lp.d.schedLogEntry(lp.id, e, lp.since)
 	}
 	lp.mu.Lock()
 	lp.changed = true

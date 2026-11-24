@@ -650,8 +650,8 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                             }
                         }
                         CardDivider()
-                        val cd = if (s.cooldownSeconds > 0) s.cooldownSeconds else 60
-                        Detail("Cooldown", if (cd % 60 == 0) "${cd / 60} min" else "$cd s")
+                        val cd = if (s.hasCooldownSeconds()) maxOf(s.cooldownSeconds, 0) else 60
+                        Detail("Cooldown", if (cd == 0) "None" else if (cd % 60 == 0) "${cd / 60} min" else "$cd s")
                     }
                 }
                 SectionHeader("Runs")

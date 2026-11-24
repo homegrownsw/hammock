@@ -123,6 +123,16 @@ func (d *Daemon) personAsk(c *conn, msg *pb.ClientMessage) (string, error) {
 			return "", fmt.Errorf("no such schedule %q", m.DeleteSchedule.ScheduleId)
 		}
 		return "delete the scheduled task " + d.scheduleSummary(s), nil
+	case *pb.ClientMessage_ScheduleWebhook:
+		s := d.sched.list[m.ScheduleWebhook.ScheduleId]
+		if s == nil {
+			return "", fmt.Errorf("no such schedule %q", m.ScheduleWebhook.ScheduleId)
+		}
+		name := "“" + oneLine(shownText(s.Name), 60) + "”"
+		if m.ScheduleWebhook.Regenerate {
+			return "make a new webhook URL for the automation " + name + " (the old one stops working) and see it: anyone who has it can run that automation", nil
+		}
+		return "see the webhook URL of the automation " + name + ": anyone who has it can run that automation", nil
 	case *pb.ClientMessage_CreatePairing:
 		return "get a pairing code: anyone who has it can pair a device with " + d.macName(), nil
 	case *pb.ClientMessage_ShowPairing:

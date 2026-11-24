@@ -572,7 +572,7 @@ struct ScheduleDetailScreen: View {
                         }
                         .padding(.vertical, 2)
                     }
-                    LabeledContent("Cooldown", value: s.cooldown == 60 ? "1 minute" : s.cooldown % 60 == 0 ? "\(s.cooldown / 60) minutes" : "\(s.cooldown) seconds")
+                    LabeledContent("Cooldown", value: Schedule.cooldownWords(s.cooldown))
                 } header: {
                     Text("Triggers")
                 } footer: {

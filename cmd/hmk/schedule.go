@@ -279,7 +279,7 @@ func scheduleFlags(w *world, s *pb.Schedule, args []string, adding bool) error {
 				if n, err = strconv.Atoi(strings.TrimSuffix(v, "s")); err == nil && n < 0 {
 					err = errors.New("--cooldown can't be negative")
 				}
-				s.CooldownSeconds = int32(n)
+				s.CooldownSeconds = proto.Int32(int32(n))
 			}
 		case "--dir":
 			if v, err = val(); err == nil {
@@ -579,7 +579,7 @@ func printSchedule(w *world, s *pb.Schedule) {
 		}
 	}
 	if len(s.Events) > 0 {
-		printfSafe("  cooldown %ds\n", cmpOrInt(s.CooldownSeconds, 60))
+		printfSafe("  cooldown %s\n", schedtrig.CooldownWords(schedtrig.Cooldown(s)))
 	}
 	printfSafe("  group    %s\n", cmpOr(s.GroupName, s.GroupId))
 	if c := w.scheduleComputer(s.ComputerId); c != "" {
@@ -843,7 +843,7 @@ func runTrigger(args []string) error {
 		fmt.Println(id)
 		return nil
 	}
-	printfSafe("Queued: %s's last event run was under %ds ago; this one starts when its cooldown is up\n", s.Name, cmpOrInt(s.CooldownSeconds, 60))
+	printfSafe("Queued: %s runs when its cooldown is up, or its last run ends\n", s.Name)
 	return nil
 }
 

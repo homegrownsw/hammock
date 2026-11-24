@@ -435,3 +435,33 @@ func homeDir() string {
 	h, _ := os.UserHomeDir()
 	return h
 }
+
+// Cooldown is the least time between runs s's triggers start, in seconds
+// (unset: 60; 0: none).
+func Cooldown(s *pb.Schedule) int {
+	if s.CooldownSeconds == nil {
+		return 60
+	}
+	return int(max(s.GetCooldownSeconds(), 0))
+}
+
+// CooldownWords says a cooldown in words: "at most one run a minute",
+// "no cooldown".
+func CooldownWords(secs int) string {
+	switch {
+	case secs <= 0:
+		return "no cooldown"
+	case secs%3600 == 0:
+		return plural(secs/3600, "hour") + " cooldown"
+	case secs%60 == 0:
+		return plural(secs/60, "minute") + " cooldown"
+	}
+	return plural(secs, "second") + " cooldown"
+}
+
+func plural(n int, unit string) string {
+	if n == 1 {
+		return "1 " + unit
+	}
+	return strconv.Itoa(n) + " " + unit + "s"
+}

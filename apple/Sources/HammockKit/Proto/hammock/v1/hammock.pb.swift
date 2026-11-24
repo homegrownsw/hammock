@@ -9813,11 +9813,15 @@ public nonisolated struct Hammock_V1_Schedule: @unchecked Sendable {
   }
 
   /// Runs its events start are at least this far apart: events in between
-  /// wait, and the latest starts one run when it's up (0: 60).
+  /// wait, and start one run together when it's up (unset: 60; 0: none).
   public var cooldownSeconds: Int32 {
-    get {_storage._cooldownSeconds}
+    get {_storage._cooldownSeconds ?? 0}
     set {_uniqueStorage()._cooldownSeconds = newValue}
   }
+  /// Returns true if `cooldownSeconds` has been explicitly set.
+  public var hasCooldownSeconds: Bool {_storage._cooldownSeconds != nil}
+  /// Clears the value of `cooldownSeconds`. Subsequent reads from it will return its default value.
+  public mutating func clearCooldownSeconds() {_uniqueStorage()._cooldownSeconds = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -28182,7 +28186,7 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
     var _timing: Hammock_V1_Schedule.Timing = .repeat
     var _onceUnixMs: Int64 = 0
     var _events: [Hammock_V1_EventTrigger] = []
-    var _cooldownSeconds: Int32 = 0
+    var _cooldownSeconds: Int32? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -28281,6 +28285,10 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
       if !_storage._id.isEmpty {
         try visitor.visitSingularStringField(value: _storage._id, fieldNumber: 1)
       }
@@ -28371,9 +28379,9 @@ nonisolated extension Hammock_V1_Schedule: SwiftProtobuf.Message, SwiftProtobuf.
       if !_storage._events.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._events, fieldNumber: 30)
       }
-      if _storage._cooldownSeconds != 0 {
-        try visitor.visitSingularInt32Field(value: _storage._cooldownSeconds, fieldNumber: 31)
-      }
+      try { if let v = _storage._cooldownSeconds {
+        try visitor.visitSingularInt32Field(value: v, fieldNumber: 31)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }

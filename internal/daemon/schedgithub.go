@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/homegrownsw/hammock/internal/gitcmd"
@@ -58,6 +59,23 @@ var ghRun = func(ctx context.Context, args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// ghBackoff is when GitHub may next be asked, after it said to slow down
+// (a rate limit); ghBackoffFor how long that is; ghSpread the gap between
+// repositories in one look.
+var (
+	ghBackoff    atomic.Value // time.Time
+	ghBackoffFor = 10 * time.Minute
+	ghSpread     = 2 * time.Second
+)
+
+func init() { ghBackoff.Store(time.Time{}) }
+
+// ghRateLimited: gh's error is GitHub saying to slow down.
+func ghRateLimited(err error) bool {
+	m := strings.ToLower(err.Error())
+	return strings.Contains(m, "rate limit") || strings.Contains(m, "retry-after") || strings.Contains(m, "abuse")
+}
+
 var (
 	errNoGH   = errors.New("GitHub triggers need the GitHub CLI: install gh, then run gh auth login")
 	errGHAuth = errors.New("gh isn't signed in to GitHub: run gh auth login")
@@ -69,15 +87,41 @@ var gitRun = func(ctx context.Context, dir string, args ...string) ([]byte, erro
 	return gitcmd.Output(ctx, dir, args...)
 }
 
-// githubRepoOf is the GitHub repository ("owner/name") of the folder dir:
-// its origin remote's, else its first GitHub remote's.
+// ghDefaultRepo is the repository gh uses in dir (gh repo set-default),
+// "" for none (tests replace it).
+var ghDefaultRepo = func(dir string) string {
+	gh := ghPath()
+	if gh == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, gh, "repo", "set-default", "--view")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "NO_COLOR=1", "GH_NO_UPDATE_NOTIFIER=1")
+	out, err := cmd.Output()
+	v := strings.TrimSpace(string(out))
+	if err != nil || strings.Count(v, "/") != 1 || strings.ContainsAny(v, " \t\n") {
+		return ""
+	}
+	return v
+}
+
+// githubRepoOf is the GitHub repository ("owner/name") of the folder dir,
+// as gh would take it: gh's default for it (set-default), else its
+// upstream remote's (a fork's original), else origin's, else its first
+// GitHub remote's.
 func githubRepoOf(dir string) (string, error) {
+	if repo := ghDefaultRepo(dir); repo != "" {
+		return repo, nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	out, err := gitRun(ctx, dir, "remote", "-v")
 	if err != nil {
 		return "", fmt.Errorf("%s isn't a git repository", dir)
 	}
+	byName := map[string]string{}
 	var first string
 	for _, line := range strings.Split(string(out), "\n") {
 		f := strings.Fields(line)
@@ -88,17 +132,17 @@ func githubRepoOf(dir string) (string, error) {
 		if repo == "" {
 			continue
 		}
-		if f[0] == "origin" {
-			return repo, nil
+		if byName[f[0]] == "" {
+			byName[f[0]] = repo
 		}
 		if first == "" {
 			first = repo
 		}
 	}
-	if first == "" {
-		return "", fmt.Errorf("%s has no GitHub remote", dir)
+	if repo := cmpOr(byName["upstream"], byName["origin"], first); repo != "" {
+		return repo, nil
 	}
-	return first, nil
+	return "", fmt.Errorf("%s has no GitHub remote", dir)
 }
 
 // githubRepoFromURL is "owner/name" from a github.com remote's URL (https,
@@ -203,9 +247,13 @@ func (d *Daemon) pollGitHub() {
 			d.ghTriggerErrors(j, err.Error())
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	if wait := time.Until(ghBackoff.Load().(time.Time)); wait > 0 {
+		fail(jobs, fmt.Errorf("GitHub asked Hammock to slow down: it looks again at %s", time.Now().Add(wait).Format("15:04")))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	login, err := ghLogin(ctx)
+	cancel()
 	if err != nil {
 		fail(jobs, err)
 		return
@@ -220,9 +268,18 @@ func (d *Daemon) pollGitHub() {
 		j.repo, j.branch = repo, gitBranchOf(j.dir)
 		byRepo[repo] = append(byRepo[repo], j)
 	}
+	n := 0
 	for repo, js := range byRepo {
+		if n++; n > 1 {
+			time.Sleep(ghSpread) // (not all at once)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		res, err := ghAsk(ctx, repo, login, js)
+		cancel()
 		if err != nil {
+			if ghRateLimited(err) {
+				ghBackoff.Store(time.Now().Add(ghBackoffFor))
+			}
 			fail(js, err)
 			continue
 		}
@@ -548,7 +605,7 @@ func ghFacts(r *ghResult, g *pb.GitHubTrigger, branch string) ([]ghFact, bool) {
 		}
 		if c, ok := r.branches[branch]; ok && branch != r.defaultBranch && !prBranches[branch] {
 			if failed, names := failedChecks(c); failed {
-				e := &schedEvent{Kind: "github", Summary: "CI failed on " + branch, Source: "GitHub",
+				e := &schedEvent{Kind: "github", Summary: "CI failed on the folder's branch", Source: "GitHub",
 					Fields: [][2]string{{"repo", r.repo}, {"branch", branch}, {"commit", c.Oid}, {"failed_checks", strings.Join(names, ", ")}}}
 				out = append(out, ghFact{"ci:b:" + branch + ":" + c.Oid, e})
 			}
@@ -616,8 +673,13 @@ func ghFacts(r *ghResult, g *pb.GitHubTrigger, branch string) ([]ghFact, bool) {
 	return out, true
 }
 
-// maxSeen caps what a trigger remembers.
-const maxSeen = 500
+// maxSeen caps what a trigger remembers, and seenFor how long: what it's
+// seen, it remembers after it's gone from GitHub's answer (which shows only
+// the latest few), so an item coming back into it doesn't fire again.
+const (
+	maxSeen = 1000
+	seenFor = 30 * 24 * time.Hour
+)
 
 // ghFire fires j's triggers for what's new in r since each last looked.
 // Callers hold d.mu.
@@ -626,6 +688,7 @@ func (d *Daemon) ghFire(j *ghJob, r *ghResult) {
 	if s == nil {
 		return
 	}
+	now := schedNow()
 	for _, t := range d.eventsOf(s) {
 		g := t.GetGithub()
 		if g == nil {
@@ -635,27 +698,55 @@ func (d *Daemon) ghFire(j *ghJob, r *ghResult) {
 		if !ok {
 			continue
 		}
-		st := d.trigStateFor(t.Id, r.repo+" "+GitHubKey(g)+" "+j.branch)
-		seen := map[string]bool{}
-		for _, k := range st.Seen {
-			seen[k] = true
+		st := d.trigStateFor(t.Id, r.repo+" "+GitHubKey(g))
+		if st.SeenAt == nil {
+			st.SeenAt = map[string]int64{}
 		}
-		var now []string
+		// The folder now on another branch: what's so on it isn't news.
+		newBranch := st.Branch != j.branch
+		changed := !st.Primed || newBranch
 		for _, f := range facts {
-			now = append(now, f.key)
-			if st.Primed && !seen[f.key] {
+			if _, ok := st.SeenAt[f.key]; ok {
+				continue
+			}
+			st.SeenAt[f.key], changed = now.UnixMilli(), true
+			if st.Primed && !(newBranch && strings.HasPrefix(f.key, "ci:b:")) {
 				f.ev.Trigger = t.Id
 				_, _, _ = d.fireEvent(s, f.ev)
 			}
 		}
-		if len(now) > maxSeen {
-			now = now[:maxSeen]
+		st.Primed, st.Branch = true, j.branch
+		if pruneSeen(st.SeenAt, now) {
+			changed = true
 		}
-		if !st.Primed || !slices.Equal(now, st.Seen) {
-			st.Primed, st.Seen = true, now
+		if changed {
 			d.saveTrigState()
 		}
 	}
+}
+
+// pruneSeen forgets what was seen over seenFor ago, and the oldest past
+// maxSeen, reporting whether it forgot any.
+func pruneSeen(seen map[string]int64, now time.Time) bool {
+	cut := now.Add(-seenFor).UnixMilli()
+	gone := false
+	for k, at := range seen {
+		if at < cut {
+			delete(seen, k)
+			gone = true
+		}
+	}
+	for len(seen) > maxSeen {
+		oldest, at := "", int64(1<<62)
+		for k, a := range seen {
+			if a < at {
+				oldest, at = k, a
+			}
+		}
+		delete(seen, oldest)
+		gone = true
+	}
+	return gone
 }
 
 // GitHubKey is what a GitHub trigger watches, for its trigState's key.

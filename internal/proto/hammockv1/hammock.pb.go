@@ -23512,8 +23512,8 @@ type Schedule struct {
 	OnceUnixMs      int64           `protobuf:"varint,29,opt,name=once_unix_ms,json=onceUnixMs,proto3" json:"once_unix_ms,omitempty"`
 	Events          []*EventTrigger `protobuf:"bytes,30,rep,name=events,proto3" json:"events,omitempty"`
 	// Runs its events start are at least this far apart: events in between
-	// wait, and the latest starts one run when it's up (0: 60).
-	CooldownSeconds int32 `protobuf:"varint,31,opt,name=cooldown_seconds,json=cooldownSeconds,proto3" json:"cooldown_seconds,omitempty"`
+	// wait, and start one run together when it's up (unset: 60; 0: none).
+	CooldownSeconds *int32 `protobuf:"varint,31,opt,name=cooldown_seconds,json=cooldownSeconds,proto3,oneof" json:"cooldown_seconds,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -23759,8 +23759,8 @@ func (x *Schedule) GetEvents() []*EventTrigger {
 }
 
 func (x *Schedule) GetCooldownSeconds() int32 {
-	if x != nil {
-		return x.CooldownSeconds
+	if x != nil && x.CooldownSeconds != nil {
+		return *x.CooldownSeconds
 	}
 	return 0
 }
@@ -30103,7 +30103,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0ejj_config_path\x18\f \x01(\tR\fjjConfigPath\x12\x1b\n" +
 	"\tjj_change\x18\r \x01(\tR\bjjChange\x12\x1d\n" +
 	"\n" +
-	"jj_problem\x18\x0e \x01(\tR\tjjProblem\"\x99\n" +
+	"jj_problem\x18\x0e \x01(\tR\tjjProblem\"\xb3\n" +
 	"\n" +
 	"\bSchedule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -30141,8 +30141,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06timing\x18\x1c \x01(\x0e2\x1b.hammock.v1.Schedule.TimingR\x06timing\x12 \n" +
 	"\fonce_unix_ms\x18\x1d \x01(\x03R\n" +
 	"onceUnixMs\x120\n" +
-	"\x06events\x18\x1e \x03(\v2\x18.hammock.v1.EventTriggerR\x06events\x12)\n" +
-	"\x10cooldown_seconds\x18\x1f \x01(\x05R\x0fcooldownSeconds\"L\n" +
+	"\x06events\x18\x1e \x03(\v2\x18.hammock.v1.EventTriggerR\x06events\x12.\n" +
+	"\x10cooldown_seconds\x18\x1f \x01(\x05H\x00R\x0fcooldownSeconds\x88\x01\x01\"L\n" +
 	"\aOverlap\x12\x10\n" +
 	"\fOVERLAP_SKIP\x10\x00\x12\x19\n" +
 	"\x15OVERLAP_STOP_PREVIOUS\x10\x01\x12\x14\n" +
@@ -30155,7 +30155,8 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x06Timing\x12\x11\n" +
 	"\rTIMING_REPEAT\x10\x00\x12\x0f\n" +
 	"\vTIMING_ONCE\x10\x01\x12\x11\n" +
-	"\rTIMING_EVENTS\x10\x02\"\xf5\x05\n" +
+	"\rTIMING_EVENTS\x10\x02B\x13\n" +
+	"\x11_cooldown_seconds\"\xf5\x05\n" +
 	"\vScheduleRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1e\n" +
 	"\vdue_unix_ms\x18\x02 \x01(\x03R\tdueUnixMs\x12&\n" +
@@ -31605,6 +31606,7 @@ func file_hammock_v1_hammock_proto_init() {
 	}
 	file_hammock_v1_hammock_proto_msgTypes[122].OneofWrappers = []any{}
 	file_hammock_v1_hammock_proto_msgTypes[218].OneofWrappers = []any{}
+	file_hammock_v1_hammock_proto_msgTypes[242].OneofWrappers = []any{}
 	file_hammock_v1_hammock_proto_msgTypes[244].OneofWrappers = []any{
 		(*EventTrigger_Github)(nil),
 		(*EventTrigger_Agent)(nil),

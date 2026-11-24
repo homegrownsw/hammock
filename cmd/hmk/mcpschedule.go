@@ -40,7 +40,7 @@ type scheduleSaveArgs struct {
 	Once          string   `json:"once,omitempty" jsonschema:"instead of at/cron: run once, at this local date and time ('2026-12-23 17:00')"`
 	Triggers      []string `json:"triggers,omitempty" jsonschema:"run when something happens (replaces its triggers; [] drops them). Each one of: github:ci-failed, github:review-requested, github:reviewed, github:label=NAME, github:assigned, github:merged (the folder's GitHub repository); agent:finished or agent:needs-you, optionally @GROUP or @PANE; exit[@GROUP|@PANE] (a pane's command fails); log:REGEX@PANE (a log pane); files[:GLOB][@DIR]; calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees] (before matching events); webhook. The run's prompt gets what happened, fenced as untrusted data, or where it says {{event}}"`
 	EventsOnly    bool     `json:"events_only,omitempty" jsonschema:"run only on its triggers (and when run by hand), not at times (the default when creating one with triggers and no at, cron or once)"`
-	Cooldown      int      `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60): events in between wait, and the latest starts one run"`
+	Cooldown      *int     `json:"cooldown_seconds,omitempty" jsonschema:"runs its triggers start are at least this far apart (default 60; 0: none): events in between wait, and start one run together"`
 	Description   string   `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
 }
 
@@ -116,7 +116,7 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 		v.Triggers = append(v.Triggers, triggerView{Spec: schedtrig.Spec(t), Words: schedtrig.Describe(t, w.triggerName), Error: t.Error})
 	}
 	if len(s.Events) > 0 {
-		v.Extra["cooldown_seconds"] = cmpOrInt(s.CooldownSeconds, 60)
+		v.Extra["cooldown_seconds"] = schedtrig.Cooldown(s)
 	}
 	for i, r := range s.Runs {
 		if i == 5 {
@@ -227,8 +227,8 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		if a.EventsOnly {
 			args = append(args, "--events-only")
 		}
-		if a.Cooldown > 0 {
-			args = append(args, "--cooldown", strconv.Itoa(a.Cooldown))
+		if a.Cooldown != nil {
+			args = append(args, "--cooldown", strconv.Itoa(*a.Cooldown))
 		}
 		if a.At != "" || a.Cron != "" {
 			sc.Timing = pb.Schedule_TIMING_REPEAT

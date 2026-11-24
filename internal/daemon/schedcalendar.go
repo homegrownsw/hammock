@@ -53,18 +53,24 @@ func (d *Daemon) calendarEvents(m *pb.CalendarEvents) {
 	}
 	for _, e := range m.Events {
 		e.Notes = oneLineKeep(e.Notes, 2000)
+		e.Title, e.Calendar, e.Location, e.Url = oneLineKeep(e.Title, 500), oneLineKeep(e.Calendar, 200), oneLineKeep(e.Location, 500), oneLineKeep(e.Url, 2000)
 	}
 	d.sched.cal = calState{events: m.Events, through: m.ThroughUnixMs, denied: m.Denied, heard: true}
 	d.persist(d.store.PutRecord(calendarRecord, "events", m))
 	d.checkCalendar(schedTime())
 }
 
-// oneLineKeep is s cut to n bytes (its lines kept).
+// oneLineKeep is s cut to at most n bytes, on a character's boundary
+// (its lines kept).
 func oneLineKeep(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n]
+	cut := s[:n]
+	for len(cut) > 0 && !validUTF8End(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return strings.ToValidUTF8(cut, "")
 }
 
 // calMatches: e is an event t starts a run before.
@@ -84,27 +90,15 @@ func calMatches(t *pb.CalendarTrigger, e *pb.CalendarEvent) bool {
 // checkCalendar starts runs for events coming up, and says why calendar
 // triggers can't fire when they can't. Callers hold d.mu.
 func (d *Daemon) checkCalendar(now time.Time) {
+	d.calendarErrors(now)
 	cal := d.sched.cal
-	problem := ""
-	switch {
-	case !cal.heard:
-		problem = "Open Hammock on this Mac to let it read your calendars"
-	case cal.denied:
-		problem = "Hammock can't read your calendars: allow it in System Settings ▸ Privacy & Security ▸ Calendars"
-	case cal.through > 0 && cal.through < now.UnixMilli():
-		problem = "Open Hammock on this Mac: it hasn't read your calendars since " + time.UnixMilli(cal.through).In(now.Location()).Format("Mon 2 Jan")
-	}
 	for _, s := range d.sched.list {
 		for _, t := range s.Events {
 			c := t.GetCalendar()
-			if c == nil {
+			if c == nil || s.Paused || d.sched.off || cal.denied {
 				continue
 			}
-			d.setTriggerError(s, t, problem)
-			if s.Paused || d.sched.off || cal.denied {
-				continue
-			}
-			st := d.trigStateFor(t.Id, fmt.Sprintf("%d|%s|%s|%v", c.MinutesBefore, c.Title, c.Calendar, c.WithAttendees))
+			st := d.trigStateFor(t.Id, calKey(c))
 			for _, e := range cal.events {
 				if !calMatches(c, e) {
 					continue
@@ -123,6 +117,37 @@ func (d *Daemon) checkCalendar(now time.Time) {
 				d.saveTrigState()
 				_, _, _ = d.fireEvent(s, calendarEvent(t.Id, c, e, now))
 			}
+		}
+	}
+}
+
+// calKey is what a calendar trigger watches, for its trigState.
+func calKey(c *pb.CalendarTrigger) string {
+	return fmt.Sprintf("%d|%s|%s|%v", c.MinutesBefore, c.Title, c.Calendar, c.WithAttendees)
+}
+
+// calendarErrors says why calendar triggers can't fire when they can't,
+// and arms new ones (nothing before now fires). Starts nothing. Callers
+// hold d.mu.
+func (d *Daemon) calendarErrors(now time.Time) {
+	cal := d.sched.cal
+	problem := ""
+	switch {
+	case !cal.heard:
+		problem = "Open Hammock on this Mac to let it read your calendars"
+	case cal.denied:
+		problem = "Hammock can't read your calendars: allow it in System Settings ▸ Privacy & Security ▸ Calendars"
+	case cal.through > 0 && cal.through < now.UnixMilli():
+		problem = "Open Hammock on this Mac: it hasn't read your calendars since " + time.UnixMilli(cal.through).In(now.Location()).Format("Mon 2 Jan")
+	}
+	for _, s := range d.sched.list {
+		for _, t := range s.Events {
+			c := t.GetCalendar()
+			if c == nil {
+				continue
+			}
+			d.setTriggerError(s, t, problem)
+			d.trigStateFor(t.Id, calKey(c))
 		}
 	}
 }

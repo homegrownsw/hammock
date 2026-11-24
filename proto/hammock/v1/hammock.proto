@@ -2715,8 +2715,8 @@ message Schedule {
   int64 once_unix_ms = 29;
   repeated EventTrigger events = 30;
   // Runs its events start are at least this far apart: events in between
-  // wait, and the latest starts one run when it's up (0: 60).
-  int32 cooldown_seconds = 31;
+  // wait, and start one run together when it's up (unset: 60; 0: none).
+  optional int32 cooldown_seconds = 31;
 }
 
 message ScheduleRun {

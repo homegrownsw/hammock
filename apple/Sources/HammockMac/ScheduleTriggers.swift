@@ -9,7 +9,8 @@ struct ScheduleTriggersSection: View {
     /// The schedule as saved (its id, for a webhook's URL; none while new).
     let scheduleID: String
     @Binding var events: [EventTrigger]
-    @Binding var cooldown: Int32
+    /// Seconds between runs its triggers start (the daemon's default shown while unset).
+    @Binding var cooldown: Int
     /// On another computer of yours: its panes and Groups (and no calendar).
     let computerID: String
 
@@ -43,7 +44,7 @@ struct ScheduleTriggersSection: View {
                 Spacer()
                 if !events.isEmpty {
                     Picker("At most every", selection: $cooldown) {
-                        ForEach(cooldownChoices, id: \.self) { s in Text(Self.cooldownText(Int(s))).tag(s) }
+                        ForEach(cooldownChoices, id: \.self) { s in Text(s == 0 ? "No limit" : Schedule.cooldownWords(s)).tag(s) }
                     }
                     .fixedSize()
                 }
@@ -65,18 +66,9 @@ struct ScheduleTriggersSection: View {
         (.assigned, "Something Is Assigned to Me"), (.merged, "My Pull Request Is Merged"),
     ]
 
-    private var cooldownChoices: [Int32] {
-        let base: [Int32] = [0, 300, 900, 1800, 3600]
+    private var cooldownChoices: [Int] {
+        let base = [0, 60, 300, 900, 1800, 3600]
         return base.contains(cooldown) ? base : (base + [cooldown]).sorted()
-    }
-
-    static func cooldownText(_ s: Int) -> String {
-        switch s {
-        case 0, 60: "1 minute"
-        case let s where s % 3600 == 0: s == 3600 ? "1 hour" : "\(s / 3600) hours"
-        case let s where s % 60 == 0: "\(s / 60) minutes"
-        default: "\(s) seconds"
-        }
     }
 
     private var logPanes: [Pane] { TriggerEditorRow.logPanes(model, computerID) }

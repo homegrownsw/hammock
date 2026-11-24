@@ -307,7 +307,17 @@ extension Schedule {
     }
 
     /// Seconds between its triggered runs (the daemon's default for 0).
-    public var cooldown: Int { cooldownSeconds > 0 ? Int(cooldownSeconds) : 60 }
+    public var cooldown: Int { hasCooldownSeconds ? max(Int(cooldownSeconds), 0) : 60 }
+
+    /// A cooldown in words: "1 minute", "5 minutes", "1 hour", "None".
+    public static func cooldownWords(_ s: Int) -> String {
+        switch s {
+        case ...0: "None"
+        case let s where s % 3600 == 0: s == 3600 ? "1 hour" : "\(s / 3600) hours"
+        case let s where s % 60 == 0: s == 60 ? "1 minute" : "\(s / 60) minutes"
+        default: "\(s) seconds"
+        }
+    }
 
     /// Short weekday names (Sun first), in the user's language.
     public static var weekdaySymbols: [String] { Calendar.current.shortWeekdaySymbols }

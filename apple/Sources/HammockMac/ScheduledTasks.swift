@@ -470,7 +470,7 @@ struct ScheduleDetail: View {
                                 Text(t.error).font(.caption).foregroundStyle(.orange)
                             }
                         }
-                        Text("At most one run every \(ScheduleTriggersSection.cooldownText(schedule.cooldown))")
+                        Text(schedule.cooldown == 0 ? "No cooldown" : "At most one run every \(Schedule.cooldownWords(schedule.cooldown).replacing(/^1 /, with: ""))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

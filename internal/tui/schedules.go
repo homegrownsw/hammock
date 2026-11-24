@@ -140,11 +140,7 @@ func (a *App) triggersText(s *pb.Schedule) string {
 	for _, t := range s.Events {
 		w = append(w, schedtrig.Describe(t, a.triggerName))
 	}
-	cool := s.CooldownSeconds
-	if cool <= 0 {
-		cool = 60
-	}
-	return fmt.Sprintf("on: %s (cooldown %ds)", strings.Join(w, "; "), cool)
+	return fmt.Sprintf("on: %s (%s)", strings.Join(w, "; "), schedtrig.CooldownWords(schedtrig.Cooldown(s)))
 }
 
 // triggerError is the first of s's triggers' problems, in words ("" for none).

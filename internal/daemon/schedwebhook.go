@@ -6,7 +6,9 @@ package daemon
 // maxHookBody) the event's details. Secrets are the daemon's own, never in
 // the state clients are sent: ScheduleWebhook gives one, to you. A wrong
 // secret gets the same 404 as any unknown path; the secrets are compared in
-// constant time; calls are limited per address and in all.
+// constant time. Wrong secrets are limited per address and in all; each
+// right one has its own allowance, so junk from the same address (behind
+// Tailscale Funnel every call comes from one) can't crowd out real calls.
 
 import (
 	"crypto/sha256"
@@ -25,32 +27,54 @@ import (
 )
 
 const (
-	maxHookBody   = 64 << 10
-	hookPerIP     = 30  // calls a minute from one address
-	hookPerMinute = 120 // and from all
+	maxHookBody = 64 << 10
+	hookFailIP  = 30  // wrong secrets a minute from one address
+	hookFailAll = 120 // and from all
+	hookPerHook = 120 // calls a minute to one webhook (a burst of GitHub check runs fits)
 )
 
-// hookLimiter counts webhook calls in the current minute.
+// hookLimiter counts webhook calls in the current minute: wrong secrets by
+// address and in all, right ones by webhook.
 type hookLimiter struct {
-	mu     sync.Mutex
-	window time.Time
-	total  int
-	perIP  map[string]int
+	mu      sync.Mutex
+	window  time.Time
+	failed  int
+	failIP  map[string]int
+	perHook map[string]int
 }
 
-// allow takes one call from ip, if there's room this minute.
-func (l *hookLimiter) allow(ip string, now time.Time) bool {
+func (l *hookLimiter) roll(now time.Time) {
+	if now.Sub(l.window) >= time.Minute {
+		l.window, l.failed, l.failIP, l.perHook = now, 0, map[string]int{}, map[string]int{}
+	}
+}
+
+// mayTry: ip hasn't had too many wrong secrets this minute (nor has everyone).
+func (l *hookLimiter) mayTry(ip string, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if now.Sub(l.window) >= time.Minute {
-		l.window, l.total, l.perIP = now, 0, map[string]int{}
-	}
-	src := failSource(ip)
-	if l.total >= hookPerMinute || l.perIP[src] >= hookPerIP {
+	l.roll(now)
+	return l.failed < hookFailAll && l.failIP[failSource(ip)] < hookFailIP
+}
+
+// fail counts a wrong secret from ip.
+func (l *hookLimiter) fail(ip string, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.roll(now)
+	l.failed++
+	l.failIP[failSource(ip)]++
+}
+
+// allowHook takes one call to webhook id, if it has room this minute.
+func (l *hookLimiter) allowHook(id string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.roll(now)
+	if l.perHook[id] >= hookPerHook {
 		return false
 	}
-	l.total++
-	l.perIP[src]++
+	l.perHook[id]++
 	return true
 }
 
@@ -67,17 +91,25 @@ func (d *Daemon) handleHook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if !d.hookRate.allow(ip, time.Now()) {
+	tooMany := func() {
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "too many requests", http.StatusTooManyRequests)
-		return
 	}
 	secret := strings.TrimPrefix(r.URL.Path, "/hook/")
 	d.mu.Lock()
 	s, t := d.hookFor(secret)
 	d.mu.Unlock()
 	if s == nil {
+		if !d.hookRate.mayTry(ip, time.Now()) {
+			tooMany()
+			return
+		}
+		d.hookRate.fail(ip, time.Now())
 		http.NotFound(w, r)
+		return
+	}
+	if !d.hookRate.allowHook(t, time.Now()) {
+		tooMany()
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -103,9 +135,6 @@ func (d *Daemon) handleHook(w http.ResponseWriter, r *http.Request) {
 	for _, h := range []string{"X-GitHub-Event", "X-Gitlab-Event", "X-Event-Key"} {
 		if v := r.Header.Get(h); v != "" {
 			ev.Fields = append(ev.Fields, [2]string{strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(h, "X-"), "-", "_")), oneLine(v, 80)})
-			if h == "X-GitHub-Event" {
-				ev.Summary = "Webhook: GitHub " + oneLine(v, 40)
-			}
 		}
 	}
 	d.mu.Lock()
@@ -123,15 +152,16 @@ func (d *Daemon) handleHook(w http.ResponseWriter, r *http.Request) {
 	case err != nil && cur == nil:
 		http.NotFound(w, r)
 	case err != nil:
-		http.Error(w, "the task can't run now: "+err.Error(), http.StatusConflict)
+		// (Why is the task's own business: its error and the audit log.)
+		http.Error(w, "the task can't run now", http.StatusConflict)
 	case queued:
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = io.WriteString(w, "queued: it runs when its cooldown is up\n")
+		_, _ = io.WriteString(w, "queued\n")
 	default:
 		w.WriteHeader(http.StatusAccepted)
 		status := "started"
-		if run != nil && run.Status == pb.ScheduleRun_STATUS_SKIPPED {
-			status = "skipped: its last run is still going"
+		if run != nil && run.Status == pb.ScheduleRun_STATUS_FAILED {
+			status = "accepted" // (it didn't start: said with the task, not here)
 		}
 		_, _ = io.WriteString(w, status+"\n")
 	}

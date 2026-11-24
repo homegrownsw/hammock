@@ -59,7 +59,7 @@ func TestScheduleTriggers(t *testing.T) {
 	if err := scheduleFlags(&world{}, s, []string{"--trigger", "github:ci-failed", "--trigger", "webhook", "--cooldown", "120", "--", "fix it"}, true); err != nil {
 		t.Fatal(err)
 	}
-	if s.Timing != pb.Schedule_TIMING_EVENTS || len(s.Events) != 2 || s.CooldownSeconds != 120 {
+	if s.Timing != pb.Schedule_TIMING_EVENTS || len(s.Events) != 2 || s.GetCooldownSeconds() != 120 {
 		t.Fatalf("events only: %v", s)
 	}
 	s = &pb.Schedule{}
