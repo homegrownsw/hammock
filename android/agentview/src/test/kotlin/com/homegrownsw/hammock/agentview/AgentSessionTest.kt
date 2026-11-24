@@ -186,6 +186,25 @@ class AgentSessionTest {
     }
 
     @Test
+    fun theSharedDraftComesWithReplacesAndChanges() {
+        val s = session()
+        s.apply(view { replace = true; composerDraft = "fix the"; composerRev = 3; composerWriter = "mac" })
+        assertEquals(SharedDraft("fix the", 3, "mac"), s.state.value.sharedDraft)
+        // An update about something else: unchanged.
+        s.apply(view { working = true })
+        assertEquals(3L, s.state.value.sharedDraft.rev)
+        s.apply(view { composerDraft = "fix the test"; composerRev = 4; composerWriter = "phone" })
+        assertEquals(SharedDraft("fix the test", 4, "phone"), s.state.value.sharedDraft)
+        // The daemon restarted: it has none.
+        s.apply(view { replace = true })
+        assertEquals(SharedDraft(), s.state.value.sharedDraft)
+        // A subagent's view has none.
+        val sub = session(subagent = "s1")
+        sub.apply(view { replace = true; subagentId = "s1"; composerDraft = "hi"; composerRev = 1 })
+        assertEquals(SharedDraft(), sub.state.value.sharedDraft)
+    }
+
+    @Test
     fun aShellsOutputIsAppendedAndRedrawnLinesKeepTheirLast() {
         val s = session(shell = "sh1")
         s.apply(view { replace = true; shellOutput = "one\n" })

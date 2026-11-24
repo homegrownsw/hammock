@@ -28,7 +28,7 @@ You see them on each tab's icon in the sidebar, in the sidebar's **Needs You** a
 
 ## The agent view
 
-For most agents Hammock can show the conversation as a native, readable view instead of the terminal: your messages, the agent's replies and its tool calls. You can send messages from it, attach pictures and dictate. As in a shell, ↑ in an empty message box brings back what you sent before, and ↓ returns to what you were typing.
+For most agents Hammock can show the conversation as a native, readable view instead of the terminal: your messages, the agent's replies and its tool calls. You can send messages from it, attach pictures and dictate. What you type in the message box shows on your other devices too, so you can start a message on the Mac and finish it on your phone (attachments stay on the device you added them on). As in a shell, ↑ in an empty message box brings back what you sent before, and ↓ returns to what you were typing.
 
 Type `/` for the agent's commands, matched by any part of their name, or `@` (in Claude Code and Codex) for a file in the Group's folder. Tab takes the highlighted one; ↑ and ↓ move the highlight, after which Return takes it too. Esc puts the list away.
 

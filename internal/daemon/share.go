@@ -987,6 +987,8 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(pane(m.AgentAnswer.PaneId))
 	case *pb.ClientMessage_AgentSend:
 		return drive(pane(m.AgentSend.PaneId))
+	case *pb.ClientMessage_SetComposerDraft:
+		return true, nil // the box is each person's own: a guest's stays on their devices (composer.go)
 	case *pb.ClientMessage_BrowserNavigate:
 		return drive(pane(m.BrowserNavigate.PaneId))
 	case *pb.ClientMessage_UploadFile:

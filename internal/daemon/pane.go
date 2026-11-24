@@ -54,6 +54,7 @@ type pane struct {
 	closed    bool
 	hookAt    time.Time      // last hook event; heuristics stand down while fresh
 	asking    *pb.AgentBlock // a question from a PreToolUse hook, until answered (often not yet in the transcript)
+	composer  composerDraft  // the agent view's message box, as your devices last had it (composer.go)
 	// The agent's state before it last asked for you (agents.go): what a
 	// subagent's tool going ahead returns it to.
 	beforeAsk struct {

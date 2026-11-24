@@ -2593,6 +2593,18 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .restartRemoteAccess(newValue)}
   }
 
+  /// What you've typed in a pane's agent view message box, not yet sent,
+  /// so your other devices show it too. Your own devices only (not guests
+  /// or agents); watchers of the pane's agent view get it in AgentView.
+  /// No reply.
+  public var setComposerDraft: Hammock_V1_SetComposerDraft {
+    get {
+      if case .setComposerDraft(let v)? = msg {return v}
+      return Hammock_V1_SetComposerDraft()
+    }
+    set {msg = .setComposerDraft(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2822,6 +2834,11 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// it's on: what turning it off and on again would do, without turning
     /// it off (refused while a computer is linked). Local clients only.
     case restartRemoteAccess(Hammock_V1_RestartRemoteAccess)
+    /// What you've typed in a pane's agent view message box, not yet sent,
+    /// so your other devices show it too. Your own devices only (not guests
+    /// or agents); watchers of the pane's agent view get it in AgentView.
+    /// No reply.
+    case setComposerDraft(Hammock_V1_SetComposerDraft)
 
   }
 
@@ -5687,6 +5704,25 @@ public nonisolated struct Hammock_V1_AgentView: @unchecked Sendable {
     set {_uniqueStorage()._effort = newValue}
   }
 
+  /// What's typed in the agent view's message box on your devices
+  /// (SetComposerDraft): composer_rev counts its changes, from 1, the first
+  /// time one's set; 0 in an update, it's unchanged. composer_writer is the
+  /// box it was typed in (SetComposerDraft.writer). Not sent to guests.
+  public var composerDraft: String {
+    get {_storage._composerDraft}
+    set {_uniqueStorage()._composerDraft = newValue}
+  }
+
+  public var composerRev: Int64 {
+    get {_storage._composerRev}
+    set {_uniqueStorage()._composerRev = newValue}
+  }
+
+  public var composerWriter: String {
+    get {_storage._composerWriter}
+    set {_uniqueStorage()._composerWriter = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6048,6 +6084,26 @@ public nonisolated struct Hammock_V1_AgentAttachment: Sendable {
   public var data: Data = Data()
 
   public var path: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// The agent view's message box, as typed on one of your devices (its
+/// attachments aren't shared; their places in text are left out). writer:
+/// a random id for the box it's typed in, sent back in AgentView so that
+/// box knows it for its own.
+public nonisolated struct Hammock_V1_SetComposerDraft: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  public var text: String = String()
+
+  public var writer: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -13340,7 +13396,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -15052,6 +15108,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .restartRemoteAccess(v)
         }
       }()
+      case 143: try {
+        var v: Hammock_V1_SetComposerDraft?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .setComposerDraft(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .setComposerDraft(v)
+        }
+      }()
       default: break
       }
     }
@@ -15589,6 +15658,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .restartRemoteAccess?: try {
       guard case .restartRemoteAccess(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 142)
+    }()
+    case .setComposerDraft?: try {
+      guard case .setComposerDraft(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 143)
     }()
     case nil: break
     }
@@ -20291,7 +20364,7 @@ nonisolated extension Hammock_V1_AgentPrompt.Kind: SwiftProtobuf._ProtoNameProvi
 
 nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentView"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}replace\0\u{1}blocks\0\u{1}older\0\u{3}has_more\0\u{1}prompt\0\u{1}working\0\u{1}status\0\u{1}commands\0\u{3}session_id\0\u{1}error\0\u{1}subagents\0\u{3}subagent_id\0\u{1}model\0\u{3}context_tokens\0\u{3}context_window\0\u{1}draft\0\u{1}shells\0\u{3}shell_id\0\u{3}shell_output\0\u{1}tasks\0\u{1}links\0\u{3}start_commands\0\u{1}effort\0\u{3}bang_output\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}replace\0\u{1}blocks\0\u{1}older\0\u{3}has_more\0\u{1}prompt\0\u{1}working\0\u{1}status\0\u{1}commands\0\u{3}session_id\0\u{1}error\0\u{1}subagents\0\u{3}subagent_id\0\u{1}model\0\u{3}context_tokens\0\u{3}context_window\0\u{1}draft\0\u{1}shells\0\u{3}shell_id\0\u{3}shell_output\0\u{1}tasks\0\u{1}links\0\u{3}start_commands\0\u{1}effort\0\u{3}bang_output\0\u{3}composer_draft\0\u{3}composer_rev\0\u{3}composer_writer\0")
 
   fileprivate class _StorageClass {
     var _paneID: String = String()
@@ -20319,6 +20392,9 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
     var _links: Hammock_V1_AgentLinks? = nil
     var _startCommands: [String] = []
     var _effort: String = String()
+    var _composerDraft: String = String()
+    var _composerRev: Int64 = 0
+    var _composerWriter: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -20354,6 +20430,9 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
       _links = source._links
       _startCommands = source._startCommands
       _effort = source._effort
+      _composerDraft = source._composerDraft
+      _composerRev = source._composerRev
+      _composerWriter = source._composerWriter
     }
   }
 
@@ -20397,6 +20476,9 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
         case 23: try { try decoder.decodeRepeatedStringField(value: &_storage._startCommands) }()
         case 24: try { try decoder.decodeSingularStringField(value: &_storage._effort) }()
         case 25: try { try decoder.decodeSingularStringField(value: &_storage._bangOutput) }()
+        case 26: try { try decoder.decodeSingularStringField(value: &_storage._composerDraft) }()
+        case 27: try { try decoder.decodeSingularInt64Field(value: &_storage._composerRev) }()
+        case 28: try { try decoder.decodeSingularStringField(value: &_storage._composerWriter) }()
         default: break
         }
       }
@@ -20484,6 +20566,15 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
       if !_storage._bangOutput.isEmpty {
         try visitor.visitSingularStringField(value: _storage._bangOutput, fieldNumber: 25)
       }
+      if !_storage._composerDraft.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._composerDraft, fieldNumber: 26)
+      }
+      if _storage._composerRev != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._composerRev, fieldNumber: 27)
+      }
+      if !_storage._composerWriter.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._composerWriter, fieldNumber: 28)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -20518,6 +20609,9 @@ nonisolated extension Hammock_V1_AgentView: SwiftProtobuf.Message, SwiftProtobuf
         if _storage._links != rhs_storage._links {return false}
         if _storage._startCommands != rhs_storage._startCommands {return false}
         if _storage._effort != rhs_storage._effort {return false}
+        if _storage._composerDraft != rhs_storage._composerDraft {return false}
+        if _storage._composerRev != rhs_storage._composerRev {return false}
+        if _storage._composerWriter != rhs_storage._composerWriter {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -21019,6 +21113,46 @@ nonisolated extension Hammock_V1_AgentAttachment: SwiftProtobuf.Message, SwiftPr
     if lhs.name != rhs.name {return false}
     if lhs.data != rhs.data {return false}
     if lhs.path != rhs.path {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_SetComposerDraft: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetComposerDraft"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0\u{1}text\0\u{1}writer\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.text) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.writer) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    if !self.text.isEmpty {
+      try visitor.visitSingularStringField(value: self.text, fieldNumber: 2)
+    }
+    if !self.writer.isEmpty {
+      try visitor.visitSingularStringField(value: self.writer, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_SetComposerDraft, rhs: Hammock_V1_SetComposerDraft) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
+    if lhs.text != rhs.text {return false}
+    if lhs.writer != rhs.writer {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

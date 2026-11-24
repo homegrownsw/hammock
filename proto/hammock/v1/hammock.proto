@@ -643,6 +643,11 @@ message ClientMessage {
     // it's on: what turning it off and on again would do, without turning
     // it off (refused while a computer is linked). Local clients only.
     RestartRemoteAccess restart_remote_access = 142;
+    // What you've typed in a pane's agent view message box, not yet sent,
+    // so your other devices show it too. Your own devices only (not guests
+    // or agents); watchers of the pane's agent view get it in AgentView.
+    // No reply.
+    SetComposerDraft set_composer_draft = 143;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -1340,6 +1345,13 @@ message AgentView {
   AgentLinks links = 22;             // its pull requests and artifacts (sent when they change)
   repeated string start_commands = 23; // those of commands that only run at the start of a message (built-ins): not offered later in one
   string effort = 24;                // the effort level of the latest reply (Claude Code: low, medium, high, xhigh, max); "" unknown
+  // What's typed in the agent view's message box on your devices
+  // (SetComposerDraft): composer_rev counts its changes, from 1, the first
+  // time one's set; 0 in an update, it's unchanged. composer_writer is the
+  // box it was typed in (SetComposerDraft.writer). Not sent to guests.
+  string composer_draft = 26;
+  int64 composer_rev = 27;
+  string composer_writer = 28;
 }
 
 // An agent's task list: Claude Code's (TodoWrite, or TaskCreate and
@@ -1436,6 +1448,12 @@ message AgentSend { string pane_id = 1; string text = 2; repeated AgentAttachmen
 // the attachments folder (a video to an agent on this Mac goes as it is,
 // whatever its size). Only from the Hammock app on that computer.
 message AgentAttachment { string name = 1; bytes data = 2; string path = 3; }
+
+// The agent view's message box, as typed on one of your devices (its
+// attachments aren't shared; their places in text are left out). writer:
+// a random id for the box it's typed in, sent back in AgentView so that
+// box knows it for its own.
+message SetComposerDraft { string pane_id = 1; string text = 2; string writer = 3; }
 
 // Fetches an image or a file the session referenced.
 message ReadAgentFile { string pane_id = 1; string ref = 2; }

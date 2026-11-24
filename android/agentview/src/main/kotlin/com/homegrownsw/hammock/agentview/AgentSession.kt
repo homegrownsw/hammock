@@ -27,6 +27,10 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
+/** A pane's message box as the daemon has it from your devices: [rev] counts its changes (0: it has none), [writer] is the box it was typed in. */
+@Immutable
+data class SharedDraft(val text: String = "", val rev: Long = 0, val writer: String = "")
+
 /** Everything the agent view shows of a session, as one immutable snapshot. */
 @Immutable
 data class AgentViewState(
@@ -43,6 +47,8 @@ data class AgentViewState(
     val status: String = "",
     /** What's typed in the agent's input box in the terminal. */
     val draft: String = "",
+    /** The message box as your devices share it, through the daemon (the pane's own view only). */
+    val sharedDraft: SharedDraft = SharedDraft(),
     /** A "!" command's output so far, while it runs (from the screen: the transcript has it once it's done). */
     val bangOutput: String = "",
     val commands: List<String> = emptyList(),
@@ -258,6 +264,10 @@ class AgentSession(
                 // What's typed in its input box in the terminal (the composer
                 // offers it; sending replaces it).
                 draft = if (subagentID.isEmpty()) v.draft else n.draft,
+                // What's in the message box on your other devices: with each
+                // replace (rev 0 there: the daemon has none), else when it changed.
+                sharedDraft = if (subagentID.isEmpty() && shellID.isEmpty() && (v.replace || v.composerRev > 0))
+                    SharedDraft(v.composerDraft, v.composerRev, v.composerWriter) else n.sharedDraft,
                 // A new prompt (or none): the last one's answer error isn't its.
                 answerError = if (v.prompt.promptId != s.prompt.promptId) null else n.answerError,
             )
@@ -326,6 +336,18 @@ class AgentSession(
             delay(10_000)
             _state.update { if (it.loadingOlder && it.blocks.firstOrNull()?.id == first) it.copy(loadingOlder = false) else it }
         }
+    }
+
+    /**
+     * Tells your other devices what's in this pane's message box ([writer]:
+     * the box, so it knows its own when it comes back). False: it didn't go
+     * (not connected).
+     */
+    fun shareDraft(text: String, writer: String): Boolean {
+        if (subagentID.isNotEmpty() || shellID.isNotEmpty()) return false
+        if (model.connection == null || model.link.value != com.homegrownsw.hammock.client.Link.Connected) return false
+        model.send { setSetComposerDraft(Hammock.SetComposerDraft.newBuilder().setPaneId(paneID).setText(text).setWriter(writer).build()) }
+        return true
     }
 
     /**

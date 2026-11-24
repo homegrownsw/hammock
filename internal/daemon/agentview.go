@@ -128,7 +128,6 @@ func (d *Daemon) watchAgent(c *conn, m *pb.WatchAgent) error {
 		d.agentWatches[key] = w
 	}
 	d.mu.Unlock()
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if fresh {
@@ -140,7 +139,7 @@ func (d *Daemon) watchAgent(c *conn, m *pb.WatchAgent) error {
 		return nil
 	}
 	w.conns[c] = true
-	c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_AgentView{AgentView: w.snapshot()}})
+	c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_AgentView{AgentView: w.withComposer(c, w.snapshot())}})
 	return nil
 }
 
@@ -200,7 +199,7 @@ func (w *agentWatch) loop() {
 			w.mu.Lock()
 			if u := w.refresh(); u != nil {
 				for c := range w.conns {
-					c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_AgentView{AgentView: u}})
+					c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_AgentView{AgentView: w.withComposer(c, u)}})
 				}
 			}
 			w.mu.Unlock()

@@ -40,6 +40,9 @@ public final class AgentSession {
     public private(set) var status = ""
     /// What's typed in the agent's input box in the terminal.
     public private(set) var draft = ""
+    /// The message box as your devices share it, through the daemon (the
+    /// pane's own view only).
+    public private(set) var sharedDraft = SharedDraft()
     /// A "!" command's output so far, while it runs (from the screen: the
     /// transcript has it once it's done).
     public private(set) var bangOutput = ""
@@ -231,6 +234,11 @@ public final class AgentSession {
             // What's typed in its input box in the terminal (the message box
             // offers it; sending replaces it).
             if subagentID.isEmpty, pastSession == nil { set(\.draft, v.draft) }
+            // What's in the message box on your other devices: with each
+            // replace (rev 0 there: the daemon has none), else when it changed.
+            if subagentID.isEmpty, shellID.isEmpty, pastSession == nil, v.replace || v.composerRev > 0 {
+                set(\.sharedDraft, SharedDraft(text: v.composerDraft, rev: v.composerRev, writer: v.composerWriter))
+            }
             set(\.error, v.error)
         }
         // A sent message shows as pending until a new message of yours
@@ -439,6 +447,16 @@ public final class AgentSession {
         return subagentID.isEmpty && pastSession == nil && (h.isEmpty || h == "claude")
     }
 
+    /// Tells your other devices what's in this pane's message box (writer:
+    /// the box, so it knows its own when it comes back). False: it didn't
+    /// go (not connected).
+    @discardableResult
+    func shareDraft(_ text: String, writer: String) -> Bool {
+        guard subagentID.isEmpty, shellID.isEmpty, pastSession == nil, let conn = model?.connection, model?.connected == true else { return false }
+        conn.send { $0.setComposerDraft = .with { $0.paneID = self.paneID; $0.text = text; $0.writer = writer } }
+        return true
+    }
+
     /// Sends the messages Claude Code is holding now, not when its turn ends
     /// (Ctrl+Enter in its terminal).
     public func sendNow() {
@@ -588,4 +606,12 @@ public final class AgentLease {
         let (model, paneID, subagent, shell) = (model, paneID, subagent, shell)
         Task { @MainActor in model.releaseAgent(paneID, subagent: subagent, shell: shell) }
     }
+}
+
+/// A pane's message box as the daemon has it from your devices: rev counts
+/// its changes (0: it has none), writer is the box it was typed in.
+public struct SharedDraft: Equatable, Sendable {
+    public var text = ""
+    public var rev: Int64 = 0
+    public var writer = ""
 }

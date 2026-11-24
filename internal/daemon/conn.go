@@ -955,6 +955,9 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		d.mu.Unlock()
 		return nil, d.sendAgent(c, msg.Id, m.AgentSend)
 
+	case *pb.ClientMessage_SetComposerDraft:
+		return nil, d.setComposerDraft(m.SetComposerDraft)
+
 	case *pb.ClientMessage_ShowOutput:
 		return d.showOutputMsg(c, m.ShowOutput)
 

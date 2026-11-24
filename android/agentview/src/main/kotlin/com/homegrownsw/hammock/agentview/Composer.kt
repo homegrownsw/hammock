@@ -188,6 +188,10 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     // unedited), and whether a send is waiting for that box to empty.
     var tookDraft by remember(session.paneID) { mutableStateOf("") }
     var awaitingClear by remember(session.paneID) { mutableStateOf(false) }
+    // This box, to your other devices (SetComposerDraft's writer), and what it
+    // last had in step with them: sent, or taken from them (null: not yet).
+    val boxID = remember { java.util.UUID.randomUUID().toString() }
+    var synced by remember(session.paneID) { mutableStateOf<String?>(null) }
     // What was just sent, and until when anything of it coming back (the
     // terminal briefly holding it as it's typed there) is a ghost.
     var justSent by remember { mutableStateOf<Pair<String, Long>?>(null) }
@@ -254,6 +258,39 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
     // shell's history, keeping what you were typing to come back to. What's
     // been sent from here is read once, off the main thread.
     val history = remember(session.paneID) { ComposerHistory<String>() }
+
+    // Your other devices: what this box shares with them is its text (its
+    // attachments stay here); stepping through what was sent, what you were
+    // typing. Told once it's changed since they were last in step, and not
+    // before the daemon's said what it has.
+    fun shareDraft() {
+        val t = history.savedDraft ?: value.text
+        if (!state.heard || t == synced) return
+        if (session.shareDraft(t, boxID)) synced = t
+    }
+    // What's typed in this pane's box on another of your devices comes into
+    // this one while it has nothing unsent of its own (as it was when last in
+    // step, or just opened); else what this one has goes to them. Not into a
+    // message with attachments, being dictated, or while stepping through
+    // what was sent.
+    fun takeShared() {
+        val s = state.sharedDraft
+        if (!state.heard) return
+        val t = history.savedDraft ?: value.text
+        // The daemon has none (it restarted, or nothing's been typed), or it's
+        // this box's own: what this box has, it's told (if anything).
+        if (s.rev == 0L || s.writer == boxID) {
+            if (s.rev == 0L && t.isEmpty()) synced = t else shareDraft()
+            return
+        }
+        if (t == s.text) { synced = t; return }
+        if ((synced != null && t != synced) || attachments.isNotEmpty() || dictation.active || history.savedDraft != null) {
+            shareDraft()
+            return
+        }
+        setText(s.text)
+        synced = s.text
+    }
     // A cache of what's kept on disk (History does the read-modify-write), with
     // what's been sent since it was read laid on top: a load finishing after a
     // send doesn't drop it.
@@ -370,6 +407,7 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
         attachments.clear()
         setText("")
         Drafts.save(context, session.paneID, "")
+        shareDraft() // emptied on your other devices too
         // The terminal's box is emptied as this goes: don't take its old text back meanwhile.
         if (state.draft.isNotEmpty()) awaitingClear = true
         tookDraft = ""
@@ -404,13 +442,20 @@ internal fun Composer(session: AgentSession, state: AgentViewState, imageSize: A
 
     // Saved once typing pauses, and on leaving. While stepping through what
     // was sent, what you were typing is the draft, not the message shown.
-    LaunchedEffect(text) { delay(400); Drafts.save(context, session.paneID, history.savedDraft ?: text) }
+    LaunchedEffect(text) {
+        delay(400)
+        Drafts.save(context, session.paneID, history.savedDraft ?: text)
+        shareDraft()
+    }
     DisposableEffect(session.paneID) {
         onDispose {
             dictation.cancel()
             Drafts.save(context, session.paneID, history.savedDraft ?: value.text)
+            shareDraft()
         }
     }
+    // What's typed in this pane's box on your other devices.
+    LaunchedEffect(session.paneID, state.sharedDraft, state.heard) { takeShared() }
     // Back as a prompt that had the keyboard ends, in the pane on screen with a
     // hardware keyboard: the keyboard's the box's again (as on the iPhone).
     val hardKeyboard = androidx.compose.ui.platform.LocalConfiguration.current.hardKeyboardHidden == android.content.res.Configuration.HARDKEYBOARDHIDDEN_NO

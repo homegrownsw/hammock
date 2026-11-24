@@ -1639,6 +1639,19 @@ struct MentionFiles: Equatable {
     }
 }
 
+/// Calls take when what your other devices have in the session's box
+/// changes, or the daemon first says (a modifier of its own: the
+/// composer's body is long enough for the type checker as it is).
+private struct OnSharedDraft: ViewModifier {
+    let session: AgentSession
+    let take: () -> Void
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: session.sharedDraft) { take() }
+            .onChange(of: session.heard) { take() }
+    }
+}
+
 struct Composer: View {
     @Environment(\.agentBubble) private var bubble
     @Environment(\.agentAccent) private var accent
@@ -1672,6 +1685,11 @@ struct Composer: View {
     /// terminal's box to empty.
     @State private var tookDraft = ""
     @State private var awaitingClear = false
+    /// This box, to your other devices (SetComposerDraft's writer), and
+    /// what it last had in step with them: sent, or taken from them (nil:
+    /// not yet, for this pane).
+    @State private var boxID = UUID().uuidString
+    @State private var synced: String?
     /// What was just sent, and until when anything of it coming back (the
     /// keyboard committing an autocorrection, the terminal briefly holding
     /// the message as it's typed there) is a ghost, not something you typed.
@@ -2132,6 +2150,8 @@ struct Composer: View {
                 tookDraft = d
             }
         }
+        // What's typed in this pane's box on your other devices.
+        .modifier(OnSharedDraft(session: session, take: takeShared))
         .animation(.snappy(duration: 0.25), value: attachments.map(\.id))
         #if DEBUG
         // Dev aid: the iPhone demo's takes (DemoDirector: compose, submit) type and send here, keyboard and all.
@@ -2192,6 +2212,7 @@ struct Composer: View {
             if text.isEmpty && attachments.isEmpty {
                 if let initialText { sample(initialText) } else { loadDraft() }
             }
+            if initialText == nil { takeShared() }
             ComposerDrafts.pruneStale(livePanes: nil)
             DictationRequests.shared.set(session.paneID, composer: true)
             // Dictate from the terminal: it switched here to listen.
@@ -2225,7 +2246,9 @@ struct Composer: View {
             attachments = []
             thumbs = [:]
             history.reset()
+            synced = nil
             loadDraft()
+            takeShared()
         }
         .onChange(of: text) { old, t in
             // The keyboard putting (part of) the sent message back in one go;
@@ -2241,7 +2264,10 @@ struct Composer: View {
         // view redrew for each), and the keyboard lagged.
         .task(id: draftSignature) {
             try? await Task.sleep(for: .milliseconds(400))
-            if !Task.isCancelled { saveDraft(key: draftKey, pane: session.paneID) }
+            if !Task.isCancelled {
+                saveDraft(key: draftKey, pane: session.paneID)
+                shareDraft()
+            }
         }
         .onDisappear {
             if session.composer === controller { session.composer = nil }
@@ -2249,6 +2275,7 @@ struct Composer: View {
             DictationRequests.shared.set(session.paneID, listening: false)
             DictationRequests.shared.set(session.paneID, composer: false)
             saveDraft(key: draftKey, pane: session.paneID)
+            shareDraft()
         }
         .onChange(of: scenePhase) { _, phase in
             // Before the app can be killed in the background.
@@ -2533,6 +2560,50 @@ struct Composer: View {
         }
     }
 
+    // MARK: Your other devices
+
+    /// What this box shares with your other devices: its text, less its
+    /// attachments (which stay on this one); stepping through what was
+    /// sent, what you were typing.
+    private var shareText: String {
+        String((history.savedDraft ?? doc).text.filter { $0 != attachMark })
+    }
+
+    /// Tells your other devices what's in the box, if it's changed since
+    /// they were last in step. Not before the daemon's said what it has.
+    private func shareDraft() {
+        let t = shareText
+        guard initialText == nil, session.heard, t != synced else { return }
+        if session.shareDraft(t, writer: boxID) { synced = t }
+    }
+
+    /// What's typed in this pane's box on another of your devices comes
+    /// into this one while it has nothing unsent of its own (as it was
+    /// when last in step, or just opened); else what this one has goes to
+    /// them. Not into a message with attachments in it, being dictated, or
+    /// while stepping through what was sent.
+    private func takeShared() {
+        let s = session.sharedDraft
+        guard initialText == nil, session.heard else { return }
+        let t = shareText
+        // The daemon has none (it restarted, or nothing's been typed), or
+        // it's this box's own: what this box has, it's told (if anything).
+        if s.rev == 0 || s.writer == boxID {
+            if s.rev == 0, t.isEmpty { synced = t } else { shareDraft() }
+            return
+        }
+        if t == s.text {
+            synced = t
+            return
+        }
+        guard synced == nil || t == synced, doc.chips.isEmpty, !dictation.active, history.savedDraft == nil else {
+            shareDraft()
+            return
+        }
+        replaceText(s.text)
+        synced = s.text
+    }
+
     /// Text that's only (part of) the message just sent, while that's recent.
     /// Spacing doesn't count: the terminal wraps a long message over lines
     /// (the draft has line breaks where it had spaces), and shows a long
@@ -2595,6 +2666,7 @@ struct Composer: View {
         setDoc(ComposerDoc())
         UserDefaults.standard.removeObject(forKey: draftKey)
         if renumbered.isEmpty { ComposerDrafts.remove(session.paneID) }
+        shareDraft() // emptied on your other devices too
         // The terminal's box is emptied as this goes: don't take its old text
         // back meanwhile.
         if !session.draft.isEmpty { awaitingClear = true }

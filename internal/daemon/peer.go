@@ -1121,6 +1121,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.AgentAnswer.PaneId
 	case *pb.ClientMessage_AgentSend:
 		return m.AgentSend.PaneId
+	case *pb.ClientMessage_SetComposerDraft:
+		return m.SetComposerDraft.PaneId
 	case *pb.ClientMessage_ReadAgentFile:
 		return m.ReadAgentFile.PaneId
 	case *pb.ClientMessage_WatchLog:

@@ -55,7 +55,7 @@ var gateExempt = map[string][]string{
 		"RespondHammockKey", "RespondJoin", "RespondLink", "RestartRemoteAccess", "ResumeSession", "RevokeDevice", "RevokeInvite",
 		"ScreenInput", "ScreenSnapshot", "SetApprovalKey", "SetComputerTint", "SetMediaView", "SetMember",
 		"SetProfile", "SetRemoteAccess", "SetRemoteNetworks", "ShowPairing", "SshAgentCall", "SshSetup",
-		"StopSharing", "UnlinkComputer", "UnlinkRequest", "UploadFile",
+		"SetComposerDraft", "StopSharing", "UnlinkComputer", "UnlinkRequest", "UploadFile",
 	},
 	// computers.go: what your other computers may ask of this one. Not named: refused to them.
 	"ownerCheck": {
