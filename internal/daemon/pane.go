@@ -778,6 +778,10 @@ func endedFromOutside(sig int32) bool {
 	return false
 }
 
+// holderRedialed, when set (tests), runs as holderLost has reached the
+// holder again, before it decides what to do with it.
+var holderRedialed func(*pane)
+
 // holderLost handles the holder connection dropping unexpectedly.
 func (p *pane) holderLost(gen int) {
 	p.mu.Lock()
@@ -791,12 +795,20 @@ func (p *pane) holderLost(gen int) {
 	for i := 0; i < 20; i++ {
 		hc, err := p.dialHolder(socket, from, token)
 		if err == nil {
+			if holderRedialed != nil {
+				holderRedialed(p)
+			}
 			p.mu.Lock()
 			if p.closed || p.gen != gen {
 				// Closed (or relinked) while we were reconnecting: make sure
-				// the holder doesn't outlive the pane.
+				// the holder doesn't outlive the pane, unless it's being left
+				// running for the next daemon (detachHolder: this one is
+				// shutting down, as a holder that's just handed over to an
+				// update, dropping the connection, is dialled again). Ended,
+				// its program went with it.
+				handover := p.handover
 				p.mu.Unlock()
-				if p.closed {
+				if p.closed && !handover {
 					_ = hc.CloseHolder()
 				}
 				hc.Close()
