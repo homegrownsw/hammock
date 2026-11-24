@@ -119,29 +119,32 @@ struct PinOverlay: View {
             .position(x: a.midX, y: a.midY)
     }
 
-    /// The element under the pointer, outlined, with what it is.
+    /// The element under the pointer, outlined, with what it is above it
+    /// (below it at the top of the page), from its left edge.
     private func highlight(_ r: CGRect, _ what: String, in a: CGRect) -> some View {
         let box = CGRect(x: a.minX + r.minX * a.width, y: a.minY + r.minY * a.height, width: r.width * a.width, height: r.height * a.height)
-        return ZStack(alignment: .topLeading) {
-            Rectangle()
-                .fill(.tint.opacity(0.12))
-                .strokeBorder(.tint, lineWidth: 1)
-                .frame(width: box.width, height: box.height)
-                .position(x: box.midX, y: box.midY)
-            if !what.isEmpty {
-                Text(what)
-                    .font(.caption.monospaced())
-                    .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .foregroundStyle(.white)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(.tint))
-                    .fixedSize()
-                    .position(x: min(max(box.minX + 60, a.minX + 60), a.maxX - 60),
-                              y: box.minY > a.minY + 22 ? box.minY - 11 : min(box.maxY + 11, a.maxY - 11))
+        let above = box.minY > a.minY + 22
+        return Rectangle()
+            .fill(.tint.opacity(0.12))
+            .strokeBorder(.tint, lineWidth: 1)
+            .frame(width: box.width, height: box.height)
+            .overlay(alignment: above ? .topLeading : .bottomLeading) {
+                if !what.isEmpty {
+                    Text(what)
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .foregroundStyle(.white)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(.tint))
+                        .fixedSize()
+                        .frame(maxWidth: max(a.maxX - max(box.minX, a.minX) - 8, 40), alignment: .leading)
+                        .offset(x: max(a.minX - box.minX, 0) + 4, y: above ? -20 : 20)
+                }
             }
-        }
-        .allowsHitTesting(false)
+            .position(x: box.midX, y: box.midY)
+            .allowsHitTesting(false)
     }
 
     /// Esc leaves pin mode while it's on in the focused pane (and no note is
