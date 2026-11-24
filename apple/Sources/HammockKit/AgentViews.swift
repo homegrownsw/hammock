@@ -1993,7 +1993,9 @@ struct Composer: View {
             }
     }
 
-    var body: some View {
+    /// The box and what's around it, with what follows its draft. (body adds the rest:
+    /// one modifier chain this long is more than the type checker will take.)
+    private var composerStack: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !suggestions.isEmpty {
                 suggestionList
@@ -2152,6 +2154,10 @@ struct Composer: View {
         }
         // What's typed in this pane's box on your other devices.
         .modifier(OnSharedDraft(session: session, take: takeShared))
+    }
+
+    var body: some View {
+        composerStack
         .animation(.snappy(duration: 0.25), value: attachments.map(\.id))
         #if DEBUG
         // Dev aid: the iPhone demo's takes (DemoDirector: compose, submit) type and send here, keyboard and all.
