@@ -1801,7 +1801,6 @@ const (
 	PinCommand_ACTION_SEND        PinCommand_Action = 5 // every pin to the board's agent, as one message (held while it's waiting on you)
 	PinCommand_ACTION_SET_TARGET  PinCommand_Action = 6 // target_pane_id: the agent they go to ("": Hammock's choice)
 	PinCommand_ACTION_INSPECT     PinCommand_Action = 7 // x, y: what's there (PinReply.what, rect), for pointing; changes nothing
-	PinCommand_ACTION_MOVE        PinCommand_Action = 8 // pin_id, x, y: looked up and screenshotted again there
 )
 
 // Enum value maps for PinCommand_Action.
@@ -1815,7 +1814,6 @@ var (
 		5: "ACTION_SEND",
 		6: "ACTION_SET_TARGET",
 		7: "ACTION_INSPECT",
-		8: "ACTION_MOVE",
 	}
 	PinCommand_Action_value = map[string]int32{
 		"ACTION_UNSPECIFIED": 0,
@@ -1826,7 +1824,6 @@ var (
 		"ACTION_SEND":        5,
 		"ACTION_SET_TARGET":  6,
 		"ACTION_INSPECT":     7,
-		"ACTION_MOVE":        8,
 	}
 )
 
@@ -28318,7 +28315,8 @@ type PinBoard struct {
 	// none to send to.
 	TargetPaneId string `protobuf:"bytes,2,opt,name=target_pane_id,json=targetPaneId,proto3" json:"target_pane_id,omitempty"`
 	TargetChosen bool   `protobuf:"varint,3,opt,name=target_chosen,json=targetChosen,proto3" json:"target_chosen,omitempty"`
-	// Sent, and held until the agent can take it (it's waiting on you).
+	// Sent, and held until the agent can take it (it's waiting on you): the
+	// pins as they were then go, not ones added or changed since.
 	Queued        bool `protobuf:"varint,4,opt,name=queued,proto3" json:"queued,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -28396,6 +28394,9 @@ type Pin struct {
 	// The element under it, in the same fractions (unset: none found).
 	Rect          *PinRect `protobuf:"bytes,7,opt,name=rect,proto3" json:"rect,omitempty"`
 	CreatedUnixMs int64    `protobuf:"varint,8,opt,name=created_unix_ms,json=createdUnixMs,proto3" json:"created_unix_ms,omitempty"`
+	// Who dropped it: "" you (the host); a guest's name. Sent to the agent
+	// as theirs, not yours.
+	Author        string `protobuf:"bytes,9,opt,name=author,proto3" json:"author,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -28484,6 +28485,13 @@ func (x *Pin) GetCreatedUnixMs() int64 {
 		return x.CreatedUnixMs
 	}
 	return 0
+}
+
+func (x *Pin) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
 }
 
 type PinRect struct {
@@ -31139,7 +31147,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x04pins\x18\x01 \x03(\v2\x0f.hammock.v1.PinR\x04pins\x12$\n" +
 	"\x0etarget_pane_id\x18\x02 \x01(\tR\ftargetPaneId\x12#\n" +
 	"\rtarget_chosen\x18\x03 \x01(\bR\ftargetChosen\x12\x16\n" +
-	"\x06queued\x18\x04 \x01(\bR\x06queued\"\xc2\x01\n" +
+	"\x06queued\x18\x04 \x01(\bR\x06queued\"\xda\x01\n" +
 	"\x03Pin\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\rR\x06number\x12\f\n" +
@@ -31148,12 +31156,13 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x04note\x18\x05 \x01(\tR\x04note\x12\x12\n" +
 	"\x04what\x18\x06 \x01(\tR\x04what\x12'\n" +
 	"\x04rect\x18\a \x01(\v2\x13.hammock.v1.PinRectR\x04rect\x12&\n" +
-	"\x0fcreated_unix_ms\x18\b \x01(\x03R\rcreatedUnixMs\"A\n" +
+	"\x0fcreated_unix_ms\x18\b \x01(\x03R\rcreatedUnixMs\x12\x16\n" +
+	"\x06author\x18\t \x01(\tR\x06author\"A\n" +
 	"\aPinRect\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x01R\x01y\x12\f\n" +
 	"\x01w\x18\x03 \x01(\x01R\x01w\x12\f\n" +
-	"\x01h\x18\x04 \x01(\x01R\x01h\"\xff\x02\n" +
+	"\x01h\x18\x04 \x01(\x01R\x01h\"\xf4\x02\n" +
 	"\n" +
 	"PinCommand\x12\x17\n" +
 	"\apane_id\x18\x01 \x01(\tR\x06paneId\x125\n" +
@@ -31162,7 +31171,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x01x\x18\x04 \x01(\x01R\x01x\x12\f\n" +
 	"\x01y\x18\x05 \x01(\x01R\x01y\x12\x12\n" +
 	"\x04note\x18\x06 \x01(\tR\x04note\x12$\n" +
-	"\x0etarget_pane_id\x18\a \x01(\tR\ftargetPaneId\"\xb3\x01\n" +
+	"\x0etarget_pane_id\x18\a \x01(\tR\ftargetPaneId\"\xa8\x01\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -31172,8 +31181,7 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\fACTION_CLEAR\x10\x04\x12\x0f\n" +
 	"\vACTION_SEND\x10\x05\x12\x15\n" +
 	"\x11ACTION_SET_TARGET\x10\x06\x12\x12\n" +
-	"\x0eACTION_INSPECT\x10\a\x12\x0f\n" +
-	"\vACTION_MOVE\x10\b\"v\n" +
+	"\x0eACTION_INSPECT\x10\a\"\x04\b\b\x10\b\"v\n" +
 	"\bPinReply\x12\x15\n" +
 	"\x06pin_id\x18\x01 \x01(\tR\x05pinId\x12\x12\n" +
 	"\x04what\x18\x02 \x01(\tR\x04what\x12'\n" +

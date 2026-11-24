@@ -12352,7 +12352,8 @@ public nonisolated struct Hammock_V1_PinBoard: Sendable {
 
   public var targetChosen: Bool = false
 
-  /// Sent, and held until the agent can take it (it's waiting on you).
+  /// Sent, and held until the agent can take it (it's waiting on you): the
+  /// pins as they were then go, not ones added or changed since.
   public var queued: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -12392,6 +12393,10 @@ public nonisolated struct Hammock_V1_Pin: Sendable {
   public mutating func clearRect() {self._rect = nil}
 
   public var createdUnixMs: Int64 = 0
+
+  /// Who dropped it: "" you (the host); a guest's name. Sent to the agent
+  /// as theirs, not yours.
+  public var author: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -12463,9 +12468,6 @@ public nonisolated struct Hammock_V1_PinCommand: Sendable {
 
     /// x, y: what's there (PinReply.what, rect), for pointing; changes nothing
     case inspect // = 7
-
-    /// pin_id, x, y: looked up and screenshotted again there
-    case move // = 8
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -12482,7 +12484,6 @@ public nonisolated struct Hammock_V1_PinCommand: Sendable {
       case 5: self = .send
       case 6: self = .setTarget
       case 7: self = .inspect
-      case 8: self = .move
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -12497,7 +12498,6 @@ public nonisolated struct Hammock_V1_PinCommand: Sendable {
       case .send: return 5
       case .setTarget: return 6
       case .inspect: return 7
-      case .move: return 8
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -12512,7 +12512,6 @@ public nonisolated struct Hammock_V1_PinCommand: Sendable {
       .send,
       .setTarget,
       .inspect,
-      .move,
     ]
 
   }
@@ -32017,7 +32016,7 @@ nonisolated extension Hammock_V1_PinBoard: SwiftProtobuf.Message, SwiftProtobuf.
 
 nonisolated extension Hammock_V1_Pin: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Pin"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}number\0\u{1}x\0\u{1}y\0\u{1}note\0\u{1}what\0\u{1}rect\0\u{3}created_unix_ms\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{1}number\0\u{1}x\0\u{1}y\0\u{1}note\0\u{1}what\0\u{1}rect\0\u{3}created_unix_ms\0\u{1}author\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -32033,6 +32032,7 @@ nonisolated extension Hammock_V1_Pin: SwiftProtobuf.Message, SwiftProtobuf._Mess
       case 6: try { try decoder.decodeSingularStringField(value: &self.what) }()
       case 7: try { try decoder.decodeSingularMessageField(value: &self._rect) }()
       case 8: try { try decoder.decodeSingularInt64Field(value: &self.createdUnixMs) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.author) }()
       default: break
       }
     }
@@ -32067,6 +32067,9 @@ nonisolated extension Hammock_V1_Pin: SwiftProtobuf.Message, SwiftProtobuf._Mess
     if self.createdUnixMs != 0 {
       try visitor.visitSingularInt64Field(value: self.createdUnixMs, fieldNumber: 8)
     }
+    if !self.author.isEmpty {
+      try visitor.visitSingularStringField(value: self.author, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -32079,6 +32082,7 @@ nonisolated extension Hammock_V1_Pin: SwiftProtobuf.Message, SwiftProtobuf._Mess
     if lhs.what != rhs.what {return false}
     if lhs._rect != rhs._rect {return false}
     if lhs.createdUnixMs != rhs.createdUnixMs {return false}
+    if lhs.author != rhs.author {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -32190,7 +32194,7 @@ nonisolated extension Hammock_V1_PinCommand: SwiftProtobuf.Message, SwiftProtobu
 }
 
 nonisolated extension Hammock_V1_PinCommand.Action: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_ADD\0\u{1}ACTION_NOTE\0\u{1}ACTION_DELETE\0\u{1}ACTION_CLEAR\0\u{1}ACTION_SEND\0\u{1}ACTION_SET_TARGET\0\u{1}ACTION_INSPECT\0\u{1}ACTION_MOVE\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_ADD\0\u{1}ACTION_NOTE\0\u{1}ACTION_DELETE\0\u{1}ACTION_CLEAR\0\u{1}ACTION_SEND\0\u{1}ACTION_SET_TARGET\0\u{1}ACTION_INSPECT\0")
 }
 
 nonisolated extension Hammock_V1_PinReply: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

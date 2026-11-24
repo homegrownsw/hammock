@@ -3340,7 +3340,8 @@ message PinBoard {
   // none to send to.
   string target_pane_id = 2;
   bool target_chosen = 3;
-  // Sent, and held until the agent can take it (it's waiting on you).
+  // Sent, and held until the agent can take it (it's waiting on you): the
+  // pins as they were then go, not ones added or changed since.
   bool queued = 4;
 }
 
@@ -3357,6 +3358,9 @@ message Pin {
   // The element under it, in the same fractions (unset: none found).
   PinRect rect = 7;
   int64 created_unix_ms = 8;
+  // Who dropped it: "" you (the host); a guest's name. Sent to the agent
+  // as theirs, not yours.
+  string author = 9;
 }
 
 message PinRect {
@@ -3376,7 +3380,7 @@ message PinCommand {
     ACTION_SEND = 5;        // every pin to the board's agent, as one message (held while it's waiting on you)
     ACTION_SET_TARGET = 6;  // target_pane_id: the agent they go to ("": Hammock's choice)
     ACTION_INSPECT = 7;     // x, y: what's there (PinReply.what, rect), for pointing; changes nothing
-    ACTION_MOVE = 8;        // pin_id, x, y: looked up and screenshotted again there
+    reserved 8;             // was MOVE, which no app used
   }
   string pane_id = 1;
   Action action = 2;

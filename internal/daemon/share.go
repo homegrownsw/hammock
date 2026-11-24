@@ -727,7 +727,12 @@ func (d *Daemon) filterFor(c *conn, u *pb.StateUpdate) *pb.StateUpdate {
 		}
 	}
 	for _, p := range u.Panes {
-		if _, in := sc[d.groupOfTab(p.TabId)]; show(p.Id, in) {
+		if r, in := sc[d.groupOfTab(p.TabId)]; show(p.Id, in) {
+			if p.Pins != nil && r != pb.Role_ROLE_DRIVER && r != pb.Role_ROLE_OWNER {
+				// Design notes are for those who can pin and send them.
+				p = proto.CloneOf(p)
+				p.Pins = nil
+			}
 			out.Panes = append(out.Panes, p)
 		} else {
 			gone(p.Id, &out.DeletedPaneIds)

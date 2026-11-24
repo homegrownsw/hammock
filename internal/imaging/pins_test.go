@@ -4,7 +4,9 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"math"
 	"testing"
+	"time"
 )
 
 func plain(w, h int, c color.NRGBA) *image.NRGBA {
@@ -71,5 +73,19 @@ func TestSame(t *testing.T) {
 	}
 	if Same(a, plain(301, 600, color.NRGBA{240, 240, 240, 255})) {
 		t.Error("pictures of different sizes are the same")
+	}
+}
+
+// A page can say its element is any size: drawing it costs only the picture.
+func TestAnnotateHugeRect(t *testing.T) {
+	src := plain(300, 200, color.NRGBA{255, 255, 255, 255})
+	start := time.Now()
+	out := Annotate(src, []Pin{{Number: 1, X: 0.5, Y: 0.5, Rect: &Rect{X: -1e9, Y: -1e9, W: 2e9, H: 2e9}},
+		{Number: 2, X: math.NaN(), Y: 0.5, Rect: &Rect{X: math.Inf(1), Y: 0, W: 1, H: 1}}})
+	if time.Since(start) > time.Second {
+		t.Fatalf("took %v", time.Since(start))
+	}
+	if out.Bounds() != src.Bounds() {
+		t.Fatalf("size %v", out.Bounds())
 	}
 }

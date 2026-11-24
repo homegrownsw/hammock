@@ -334,6 +334,11 @@ func (d *Daemon) restore() error {
 	}
 	var editorSaved map[string][]byte
 	for _, info := range snap.Panes {
+		if info.Pins != nil {
+			// Design notes held for an agent went with the last daemon: yours
+			// to send again (pins.go).
+			info.Pins.Queued = false
+		}
 		p := newPane(d, info)
 		d.panes[info.Id] = p
 		if info.Kind == pb.PaneKind_PANE_KIND_EDITOR {

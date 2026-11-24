@@ -123,8 +123,12 @@ func blend(dst *image.NRGBA, x, y int, c color.NRGBA, cover float64) {
 
 // fillCircle fills a circle, its edge antialiased.
 func fillCircle(dst *image.NRGBA, cx, cy, r float64, c color.NRGBA) {
-	for y := int(math.Floor(cy - r - 1)); y <= int(math.Ceil(cy+r+1)); y++ {
-		for x := int(math.Floor(cx - r - 1)); x <= int(math.Ceil(cx+r+1)); x++ {
+	b := dst.Rect
+	if math.IsNaN(cx+cy+r) || math.IsInf(cx+cy+r, 0) {
+		return
+	}
+	for y := max(int(math.Floor(cy-r-1)), b.Min.Y); y <= min(int(math.Ceil(cy+r+1)), b.Max.Y-1); y++ {
+		for x := max(int(math.Floor(cx-r-1)), b.Min.X); x <= min(int(math.Ceil(cx+r+1)), b.Max.X-1); x++ {
 			// Distance from the pixel's centre to the edge, as coverage.
 			d := math.Hypot(float64(x)+0.5-cx, float64(y)+0.5-cy)
 			blend(dst, x, y, c, r-d+0.5)
@@ -133,8 +137,15 @@ func fillCircle(dst *image.NRGBA, cx, cy, r float64, c color.NRGBA) {
 }
 
 func fillRect(dst *image.NRGBA, x0, y0, x1, y1 float64, c color.NRGBA) {
-	for y := int(math.Round(y0)); y < int(math.Round(y1)); y++ {
-		for x := int(math.Round(x0)); x < int(math.Round(x1)); x++ {
+	// Only what's in the picture: a rectangle can be any size.
+	b := dst.Rect
+	if math.IsNaN(x0 + y0 + x1 + y1) {
+		return
+	}
+	ix0, iy0 := max(int(math.Round(max(x0, -1))), b.Min.X), max(int(math.Round(max(y0, -1))), b.Min.Y)
+	ix1, iy1 := min(int(math.Round(min(x1, float64(b.Max.X)+1))), b.Max.X), min(int(math.Round(min(y1, float64(b.Max.Y)+1))), b.Max.Y)
+	for y := iy0; y < iy1; y++ {
+		for x := ix0; x < ix1; x++ {
 			blend(dst, x, y, c, 1)
 		}
 	}

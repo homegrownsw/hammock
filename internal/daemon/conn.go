@@ -922,14 +922,24 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_ReviewReply{ReviewReply: r}}, nil
 
 	case *pb.ClientMessage_PinCommand:
+		// Off the read loop: sending waits for pins still being looked up,
+		// and a hover asks the page.
+		who := pinWho{}
 		d.mu.Lock()
-		guest := c.peer != "" && !d.isLinked(c.peer)
-		d.mu.Unlock()
-		r, err := d.pins.command(m.PinCommand, guest)
-		if err != nil {
-			return nil, err
+		if c.peer != "" && !d.isLinked(c.peer) {
+			who = pinWho{guest: true, name: cmp.Or(c.name, "Guest")}
 		}
-		return &pb.ServerMessage{Msg: &pb.ServerMessage_PinReply{PinReply: r}}, nil
+		d.mu.Unlock()
+		id, pc := msg.Id, m.PinCommand
+		go func() {
+			r, err := d.pins.command(pc, who)
+			if err != nil {
+				c.replyErr(id, err)
+				return
+			}
+			c.send(&pb.ServerMessage{ReplyTo: id, Msg: &pb.ServerMessage_PinReply{PinReply: r}})
+		}()
+		return nil, errDeferred
 
 	case *pb.ClientMessage_ListFiles:
 		d.mu.Lock()

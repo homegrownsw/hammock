@@ -10,7 +10,11 @@ import "fmt"
 //	 x, y (the point, CSS px), el?: {tag, what, selector, text, html, role,
 //	 label, rect: {x, y, w, h} (CSS px, in the viewport), styles: {name: value}}}
 //
-// It looks inside open shadow roots and same-origin frames.
+// It looks inside open shadow roots and same-origin frames. It never reads
+// what's typed in a form field (only whether it's filled), nor anything of
+// a password field's but its name. Its caps are a courtesy: it runs in an
+// isolated world (pins.go), but the page's DOM is the page's, so the daemon
+// caps everything again.
 func ElementAt(x, y float64) string {
 	return fmt.Sprintf("(%s)(%g,%g)", elementAtJS, x, y)
 }
@@ -50,17 +54,18 @@ const elementAtJS = `(fx, fy) => {
   const madeUp = (c) => /^(css|sc|jsx|emotion|svelte)-|[_-][a-zA-Z0-9]{5,}$|\d{3,}|^_/.test(c) && !/^[a-z]+(-[a-z]+)*$/.test(c);
   const root = el.getRootNode ? el.getRootNode() : doc;
   const unique = (sel) => { try { return root.querySelectorAll(sel).length === 1; } catch (e) { return false; } };
-  const testAttr = (n) => { for (const a of ['data-testid', 'data-test-id', 'data-test', 'data-cy', 'data-qa']) { const v = n.getAttribute && n.getAttribute(a); if (v) return '[' + a + '="' + v.replace(/"/g, '\\"') + '"]'; } return ''; };
+  const short = (v) => typeof v === 'string' && v.length > 0 && v.length <= 80;
+  const testAttr = (n) => { for (const a of ['data-testid', 'data-test-id', 'data-test', 'data-cy', 'data-qa']) { const v = n.getAttribute && n.getAttribute(a); if (short(v)) return '[' + a + '="' + v.replace(/"/g, '\\"') + '"]'; } return ''; };
   const step = (n) => {
     const tag = n.tagName.toLowerCase();
     const t = testAttr(n);
     if (t) return {s: tag + t, anchor: true};
-    if (n.id && !/\d{4,}|^[:_]|[:]/.test(n.id)) return {s: '#' + esc(n.id), anchor: true};
+    if (short(n.id) && !/\d{4,}|^[:_]|[:]/.test(n.id)) return {s: '#' + esc(n.id), anchor: true};
     let s = tag;
     const cls = [...(n.classList || [])].filter((c) => !madeUp(c)).slice(0, 2);
     if (cls.length) s += cls.map((c) => '.' + esc(c)).join('');
     const name = n.getAttribute && n.getAttribute('name');
-    if (name && /^(input|select|textarea|button|form)$/.test(tag)) s += '[name="' + name.replace(/"/g, '\\"') + '"]';
+    if (short(name) && /^(input|select|textarea|button|form)$/.test(tag)) s += '[name="' + name.replace(/"/g, '\\"') + '"]';
     const p = n.parentElement;
     if (p) {
       const same = [...p.children].filter((c) => c.tagName === n.tagName);
@@ -77,21 +82,29 @@ const elementAtJS = `(fx, fy) => {
   }
   const tag = el.tagName.toLowerCase();
   const r = el.getBoundingClientRect();
-  const text = clip(el.innerText || el.textContent || el.value || el.getAttribute('alt') || '', 160);
-  const label = clip(el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || el.getAttribute('alt') || '', 80);
+  // A form field's value is the person's (a password, an address): only
+  // whether it's filled. A password field gives nothing but its name.
+  const field = /^(input|textarea|select)$/.test(tag) || el.isContentEditable;
+  const secret = tag === 'input' && String(el.type).toLowerCase() === 'password';
+  let filled = false;
+  try { filled = el.isContentEditable ? (el.textContent || '').length > 0 : String(el.value || '').length > 0; } catch (e) {}
+  const text = field ? (filled ? '(filled)' : '(empty)') : clip(el.innerText || el.textContent || el.getAttribute('alt') || '', 160);
+  const label = secret ? '' : clip(el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || el.getAttribute('alt') || '', 80);
   const role = el.getAttribute('role') || '';
   let what = tag;
   if (el.id) what += '#' + el.id;
   else if (el.classList && el.classList.length) what += '.' + [...el.classList].filter((c) => !madeUp(c)).slice(0, 2).join('.');
   what = what.replace(/\.$/, '');
-  const shown = label || clip(text, 40);
+  const shown = label || (field ? '' : clip(text, 40));
   if (shown) what += ' “' + clip(shown, 40) + '”';
   // Its HTML: all of it when short, else its opening tag (each attribute
   // clipped) and how much is inside.
-  let html = el.outerHTML || '';
-  if (html.length > 600) {
-    const attrs = [...el.attributes].map((a) => ' ' + a.name + (a.value === '' ? '' : '="' + clip(a.value, 120) + '"')).join('');
-    html = '<' + tag + attrs + '>…' + (el.children.length ? ' (' + el.children.length + ' child elements)' : '') + '…</' + tag + '>';
+  // A field's (its value attribute left out, and what's in a textarea).
+  const attrList = () => [...el.attributes].filter((a) => !(field && a.name === 'value')).slice(0, 20)
+    .map((a) => ' ' + clip(a.name, 40) + (a.value === '' ? '' : '="' + clip(a.value, 120) + '"')).join('');
+  let html = field ? '' : (el.outerHTML || '');
+  if (field || html.length > 600) {
+    html = '<' + tag + attrList() + '>' + (field ? '' : '…' + (el.children.length ? ' (' + el.children.length + ' child elements)' : '') + '…') + '</' + tag + '>';
   }
   const cs = getComputedStyle(el);
   const keys = ['display', 'position', 'width', 'height', 'margin', 'padding', 'color', 'background-color', 'background-image',

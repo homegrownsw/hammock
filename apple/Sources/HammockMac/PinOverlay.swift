@@ -44,6 +44,16 @@ struct PinOverlay: View {
                         highlight(r, h.what, in: a)
                     }
                 }
+                if let p = PinPointer.shared.at[paneID] {
+                    // The director's pointer (a recording has no cursor).
+                    Image(systemName: "cursorarrow")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.black)
+                        .shadow(color: .white, radius: 0.5)
+                        .position(x: a.minX + p.x * a.width + 6, y: a.minY + p.y * a.height + 9)
+                        .allowsHitTesting(false)
+                        .zIndex(10)
+                }
                 if !pins.isEmpty {
                     PinMarks(pins: pins, area: a, editing: editing?.id) { pin in
                         model.viewFocused(paneID)
@@ -71,6 +81,7 @@ struct PinOverlay: View {
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
         }
+        .clipped() // outlines and the hover's label stay in the pane
         .tint(Color.themeAccent)
         .animation(.snappy(duration: 0.18), value: on)
         .animation(.snappy(duration: 0.18), value: pins.count)
@@ -79,6 +90,9 @@ struct PinOverlay: View {
             watchEscape(on)
         }
         .onDisappear { watchEscape(false) }
+        .onChange(of: PinPointer.shared.at[paneID]) { _, p in
+            if let p, on, inspects { hover.point(p, model: model, paneID: paneID) } else if p == nil { hover.found = nil }
+        }
     }
 
     /// Takes the clicks (and, on a page, the hovering) in pin mode.
@@ -185,4 +199,14 @@ final class PinHover {
             if next != nil { ask(model: model, paneID: paneID) }
         }
     }
+}
+
+/// The debug director's pointer over a pane (DebugDirector's pins point):
+/// where it hovers, in fractions of the page, for recordings.
+@MainActor
+@Observable
+final class PinPointer {
+    static let shared = PinPointer()
+    var at: [String: CGPoint] = [:]
+    func set(_ pane: String, _ p: CGPoint?) { at[pane] = p }
 }

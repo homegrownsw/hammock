@@ -43,6 +43,18 @@ public final class PinMode {
     }
 
     public func toggle(_ paneID: String) { set(paneID, !isOn(paneID)) }
+
+    /// Notes being typed, not yet saved (by pin: its pane and text): Send
+    /// saves them first.
+    @ObservationIgnored private var drafts: [String: (pane: String, text: String)] = [:]
+
+    func draft(_ pinID: String, pane: String, text: String?) { drafts[pinID] = text.map { (pane, $0) } }
+
+    func takeDrafts(_ paneID: String) -> [(String, String)] {
+        let mine = drafts.filter { $0.value.pane == paneID }
+        for id in mine.keys { drafts[id] = nil }
+        return mine.map { ($0.key, $0.value.text) }
+    }
 }
 
 extension AppModel {
@@ -129,10 +141,6 @@ extension AppModel {
         Task { await pinCommand(paneID) { $0.action = .note; $0.pinID = pinID; $0.note = note } }
     }
 
-    public func movePin(_ paneID: String, _ pinID: String, to p: CGPoint) {
-        Task { await pinCommand(paneID) { $0.action = .move; $0.pinID = pinID; $0.x = Double(p.x); $0.y = Double(p.y) } }
-    }
-
     public func deletePin(_ paneID: String, _ pinID: String) {
         if PinMode.shared.editing == pinID { PinMode.shared.editing = nil }
         Task { await pinCommand(paneID) { $0.action = .delete; $0.pinID = pinID } }
@@ -151,7 +159,12 @@ extension AppModel {
     public func sendPins(_ paneID: String) {
         PinMode.shared.editing = nil
         let name = pinAgents(for: paneID).target?.name ?? "the agent"
+        // Notes still being typed go first, so what's sent has them.
+        let drafts = PinMode.shared.takeDrafts(paneID)
         Task {
+            for (pinID, text) in drafts {
+                await pinCommand(paneID) { $0.action = .note; $0.pinID = pinID; $0.note = text }
+            }
             guard let r = await pinCommand(paneID, { $0.action = .send }) else { return }
             if r.queued {
                 showToast("Held until \(name) has your answer: it’s waiting on you")
@@ -268,6 +281,7 @@ public struct PinNoteEditor: View {
     let pin: Pin
     var onClose: () -> Void
     @State private var text = ""
+    @State private var saved = "" // what the daemon has
     @FocusState private var focused: Bool
 
     public init(model: AppModel, paneID: String, pin: Pin, onClose: @escaping () -> Void) {
@@ -281,7 +295,7 @@ public struct PinNoteEditor: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 PinBadge(number: Int(pin.number))
-                Text(pin.what.isEmpty ? "Looking…" : pin.what)
+                Text((pin.author.isEmpty ? "" : "\(pin.author) · ") + (pin.what.isEmpty ? "Looking…" : pin.what))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -316,13 +330,24 @@ public struct PinNoteEditor: View {
         #endif
         .onAppear {
             text = pin.note
+            saved = pin.note
             focused = true
+        }
+        // Saved as it's typed (a moment after each change), so every device
+        // sees it and Send has it.
+        .task(id: text) {
+            guard text != saved else { return }
+            PinMode.shared.draft(pin.id, pane: paneID, text: text)
+            try? await Task.sleep(for: .milliseconds(600))
+            if !Task.isCancelled { commit() }
         }
         .onDisappear { commit() }
     }
 
     private func commit() {
-        if text != pin.note, model.pins(paneID).contains(where: { $0.id == pin.id }) {
+        PinMode.shared.draft(pin.id, pane: paneID, text: nil)
+        if text != saved, model.pins(paneID).contains(where: { $0.id == pin.id }) {
+            saved = text
             model.notePin(paneID, pin.id, text)
         }
     }
