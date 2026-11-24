@@ -81,7 +81,6 @@ var (
 	errGHAuth = errors.New("gh isn't signed in to GitHub: run gh auth login")
 )
 
-
 // gitRun runs git in dir (tests replace it).
 var gitRun = func(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return gitcmd.Output(ctx, dir, args...)
@@ -397,7 +396,7 @@ type ghNotes struct {
 type ghResult struct {
 	repo, login   string
 	defaultBranch string
-	mine          []ghItem              // your open pull requests
+	mine          []ghItem            // your open pull requests
 	branches      map[string]ghCommit // a task folder's branch → its head
 	reviewReq     []ghItem
 	assigned      []ghItem

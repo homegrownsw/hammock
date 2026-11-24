@@ -29,8 +29,8 @@ func TestToolOffRefusedToAgents(t *testing.T) {
 		m    *pb.ClientMessage
 		name string
 	}{
-		{&pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{}}}, "Scheduled Tasks"},
-		{&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{}}}, "Scheduled Tasks"},
+		{&pb.ClientMessage{Msg: &pb.ClientMessage_SaveSchedule{SaveSchedule: &pb.SaveSchedule{}}}, "Automations"},
+		{&pb.ClientMessage{Msg: &pb.ClientMessage_RunSchedule{RunSchedule: &pb.RunSchedule{}}}, "Automations"},
 		{&pb.ClientMessage{Msg: &pb.ClientMessage_SessionExcerpts{SessionExcerpts: &pb.SessionExcerpts{}}}, "Session Search"},
 		{&pb.ClientMessage{Msg: &pb.ClientMessage_ListSessions{ListSessions: &pb.ListSessions{}}}, "Session Search"},
 	} {
