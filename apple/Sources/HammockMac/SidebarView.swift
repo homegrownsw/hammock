@@ -1017,6 +1017,7 @@ struct TabRow: View {
                 closeButton
             } else {
                 AvatarStack(model.presence(in: tab), size: compact ? 15 : 16)
+                gitMark
                 // A scheduled task's run: at the trailing edge, before the time
                 // if there is one (so it sits where the time would).
                 if let s = model.schedule(of: tab) {
@@ -1055,6 +1056,27 @@ struct TabRow: View {
 
     private var browserPane: Pane? {
         model.panes[tab.focusedPaneID].flatMap { $0.kind == .browser ? $0 : nil }
+    }
+
+    /// The branch's pull request, or a branch for a worktree; once its
+    /// branch is merged (a while ago), Remove Worktree in its place.
+    @ViewBuilder
+    private var gitMark: some View {
+        if model.canRemoveWorktree(tab) {
+            Button { WorktreeUI.remove(model, tab) } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: compact ? 10 : 10.5, weight: .medium))
+                    .frame(width: compact ? 15 : 16, height: compact ? 15 : 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .tooltip("Remove Worktree: \(tab.git.summary)", label: "Remove Worktree")
+            .accessibilityLabel("Remove Worktree")
+        } else if tab.hasGit, tab.git.shown {
+            GitMark(tab.git, size: compact ? 10 : 10.5)
+                .help(tab.git.summary)
+        }
     }
 
     /// The harness of an agent running in the focused pane.

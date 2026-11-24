@@ -25,6 +25,11 @@ public struct StartAgentView: View {
     @State private var list: Hammock_V1_FolderList?
     @State private var starting = false
     @State private var browsing = false
+    @State private var inWorktree = false
+    @State private var worktreeName = ""
+    /// How a new worktree would be made from the folder ("just worktree",
+    /// "git"): "" when it isn't in a git repository (or its computer can't say).
+    @State private var worktreeHow = ""
 
     /// harness nil: the default agent of the computer it starts on, else Claude Code.
     public init(model: AppModel, groupID: String?, computerID: String? = nil, harness: String? = nil, split: AgentSplit? = nil, chooseLocal: (() -> String?)? = nil, onDone: @escaping (String?) -> Void, onStarted: ((String) -> Void)? = nil) {
@@ -166,6 +171,22 @@ public struct StartAgentView: View {
                     Text("Folder on \(hostName)")
                 }
 
+                if split == nil, !worktreeHow.isEmpty {
+                    Section {
+                        Toggle("In a New Worktree", isOn: $inWorktree)
+                        if inWorktree {
+                            TextField("Branch", text: $worktreeName, prompt: Text("fix-login"))
+                                .font(.system(.body, design: .monospaced))
+                                #if os(iOS)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                #endif
+                        }
+                    } footer: {
+                        if inWorktree { Text(worktreeFooter) }
+                    }
+                }
+
                 Section {
                     TextField("First message", text: $prompt, prompt: Text("Optional: what to work on"), axis: .vertical)
                         .lineLimit(3...8)
@@ -185,7 +206,7 @@ public struct StartAgentView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Start") { start() }
-                        .disabled(starting || cwd.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(starting || cwd.trimmingCharacters(in: .whitespaces).isEmpty || usesWorktree && worktreeBranch.isEmpty)
                 }
             }
             .navigationDestination(isPresented: $browsing) {
@@ -205,6 +226,27 @@ public struct StartAgentView: View {
                 cwd = l.suggestions.first(where: { $0.why == "This Group" }).map { tilde($0.path) } ?? "~"
             }
             if !l.agents.isEmpty, !l.agents.contains(harness), let other = l.agents.first { harness = other }
+        }
+        .task(id: "\(groupID)|\(computerID)|\(cwd)") {
+            // Whether the folder's in a git repository, and how a worktree's made there.
+            guard split == nil else { return }
+            try? await Task.sleep(for: .milliseconds(300))
+            let dir = cwd.trimmingCharacters(in: .whitespaces)
+            guard !Task.isCancelled, !dir.isEmpty else { return }
+            worktreeHow = await model.listFolders(dir, groupID: groupID, computerID: computerID)?.worktreeHow ?? ""
+        }
+    }
+
+    private var usesWorktree: Bool { inWorktree && !worktreeHow.isEmpty && split == nil }
+    private var worktreeBranch: String { worktreeName.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// How the worktree's made, in a line.
+    private var worktreeFooter: String {
+        let name = worktreeBranch.isEmpty ? "NAME" : worktreeBranch
+        switch worktreeHow {
+        case "git": return "A new branch, in its own worktree in .claude/worktrees."
+        case ".hammock/config": return "Made the way the repository's .hammock/config says."
+        default: return "Made with \(worktreeHow) \(name)."
         }
     }
 
@@ -247,6 +289,7 @@ public struct StartAgentView: View {
     private func start() {
         starting = true
         let (h, dir, gid, text, cid) = (harness, expand(cwd), groupID, prompt.trimmingCharacters(in: .whitespacesAndNewlines), computerID)
+        let worktree = usesWorktree ? worktreeBranch : ""
         // The tab shows at once; this closes as it does.
         onDone(nil)
         Task {
@@ -254,7 +297,7 @@ public struct StartAgentView: View {
                 if let id = await model.startAgent(h, beside: split, cwd: dir, prompt: text) { onStarted?(id) }
                 return
             }
-            if let id = await model.startAgent(h, cwd: dir, groupID: gid, prompt: text, computerID: cid) { onStarted?(id) }
+            if let id = await model.startAgent(h, cwd: dir, groupID: gid, prompt: text, computerID: cid, worktree: worktree) { onStarted?(id) }
         }
     }
 }

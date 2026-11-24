@@ -334,6 +334,14 @@ func elapsed(ms int64) string {
 // at it (nothing while idle), or the pane count.
 func (a *App) tabDetail(t *pb.Tab) string {
 	d := a.tabDetailOnly(t)
+	if pr := prMark(t); pr != "" {
+		// Its branch's pull request, before the rest.
+		if d == "" {
+			d = pr
+		} else {
+			d = pr + " " + d
+		}
+	}
 	if a.isRunTab(t) {
 		// A scheduled task's run: a clock after the rest.
 		if d == "" {

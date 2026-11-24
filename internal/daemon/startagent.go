@@ -53,6 +53,13 @@ func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage
 			m.Cwd = "~"
 		}
 	}
+	if err == nil && strings.TrimSpace(m.Worktree) != "" {
+		if m.SplitPaneId != "" {
+			err = errors.New("an agent in a new worktree starts in a new tab, not beside a pane")
+		} else {
+			err = d.checkTabID(m.TabId) // before the worktree's made for it
+		}
+	}
 	d.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -68,8 +75,28 @@ func (d *Daemon) startAgent(m *pb.StartAgent, creator string) (*pb.ServerMessage
 	if st, err := os.Stat(cwd); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("there's no folder %s", cwd)
 	}
+	var wt madeWorktree
+	if name := strings.TrimSpace(m.Worktree); name != "" {
+		// Made first (the repository's own way, worktrees.go), in the Group
+		// the folder it was made from is in, unless one was picked.
+		if wt, err = makeWorktree(cwd, name, ag); err != nil {
+			return nil, err
+		}
+		if m.GroupId == "" {
+			d.mu.Lock()
+			m.GroupId = d.groupUsingDir(cwd)
+			if co, ok := gitCheckoutOf(cwd); ok && m.GroupId == "" {
+				m.GroupId = d.groupUsingDir(co.repo)
+			}
+			d.mu.Unlock()
+		}
+		cwd = cmpOr(wt.path, wt.startIn)
+	}
 	// Asks the login shell, at most every few minutes: before d.mu.
 	cmd, later := startCommand(ag, m.Prompt, nil)
+	if wt.agentFlag != "" {
+		cmd = withAgentOption(ag, cmd, wt.agentFlag) // the agent makes it
+	}
 	cmd = agentCommand(ag, cmd)
 	d.mu.Lock()
 	if m.SplitPaneId != "" {
@@ -229,6 +256,9 @@ func (d *Daemon) listFolders(m *pb.ListFolders) *pb.FolderList {
 		if err != nil {
 			out.Error = fmt.Sprintf("can't read %s", dir)
 			return out
+		}
+		if co, ok := gitCheckoutOf(dir); ok {
+			out.WorktreeHow = worktreeHow(co.repo)
 		}
 		for _, e := range ents {
 			name := e.Name()

@@ -46,7 +46,7 @@ Drag a tab to reorder it or move it to another Group, or use File ▸ **Move Tab
 
 ## The sidebar
 
-The sidebar (⌃⌘S) lists your Groups with their tabs, vertically, compactly, or with the tabs along the top (Settings ▸ Appearance ▸ Layout). A tab running an agent shows its state in its icon: [Agents](/hammock/docs/agents/overview/) explains each one.
+The sidebar (⌃⌘S) lists your Groups with their tabs, vertically, compactly, or with the tabs along the top (Settings ▸ Appearance ▸ Layout). A tab running an agent shows its state in its icon: [Agents](/hammock/docs/agents/overview/) explains each one. A tab in a git worktree, or on a branch with a pull request, shows that too: see [Agents in a new worktree](/hammock/docs/agents/overview/#in-a-new-worktree).
 
 Rest the pointer on a tab to preview it: its panes, live, with its full title, its agent's state, who's in it and when it last printed anything. Click a pane in the preview to go straight to it. Turn this off with Settings ▸ Appearance ▸ Preview on hover.
 

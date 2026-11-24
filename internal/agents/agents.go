@@ -78,6 +78,12 @@ type Agent struct {
 	Schedule    func(s *pb.Schedule) string
 	Schedulable bool
 
+	// Worktree is its option that starts it in a new git worktree it makes
+	// itself, given the worktree's name (Claude Code's --worktree), for
+	// starting an agent in a new worktree (the daemon's worktrees.go). "": it
+	// has none.
+	Worktree string
+
 	// Screen is what its terminal shows when it's working, waiting or
 	// interrupted, for when its hooks don't say. Zero: the generic patterns.
 	Screen Screen

@@ -398,44 +398,76 @@ public nonisolated struct Hammock_V1_JoinRequest: Sendable {
   public init() {}
 }
 
-public nonisolated struct Hammock_V1_Tab: Sendable {
+public nonisolated struct Hammock_V1_Tab: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var id: String = String()
+  public var id: String {
+    get {_storage._id}
+    set {_uniqueStorage()._id = newValue}
+  }
 
-  public var groupID: String = String()
+  public var groupID: String {
+    get {_storage._groupID}
+    set {_uniqueStorage()._groupID = newValue}
+  }
 
   /// set by you (or an agent); wins over auto_name
-  public var name: String = String()
+  public var name: String {
+    get {_storage._name}
+    set {_uniqueStorage()._name = newValue}
+  }
 
   public var layout: Hammock_V1_Layout {
-    get {_layout ?? Hammock_V1_Layout()}
-    set {_layout = newValue}
+    get {_storage._layout ?? Hammock_V1_Layout()}
+    set {_uniqueStorage()._layout = newValue}
   }
   /// Returns true if `layout` has been explicitly set.
-  public var hasLayout: Bool {self._layout != nil}
+  public var hasLayout: Bool {_storage._layout != nil}
   /// Clears the value of `layout`. Subsequent reads from it will return its default value.
-  public mutating func clearLayout() {self._layout = nil}
+  public mutating func clearLayout() {_uniqueStorage()._layout = nil}
 
-  public var focusedPaneID: String = String()
+  public var focusedPaneID: String {
+    get {_storage._focusedPaneID}
+    set {_uniqueStorage()._focusedPaneID = newValue}
+  }
 
   /// what the tab's work looks like, for unnamed tabs (see daemon/tabnames.go)
-  public var autoName: String = String()
+  public var autoName: String {
+    get {_storage._autoName}
+    set {_uniqueStorage()._autoName = newValue}
+  }
 
   /// what auto_name came from (session or branch); a new one renames
-  public var autoKey: String = String()
+  public var autoKey: String {
+    get {_storage._autoKey}
+    set {_uniqueStorage()._autoKey = newValue}
+  }
 
   /// Panes floating over the layout, back to front (the last is in front).
   /// A tab always has a layout: floats are never its only panes.
-  public var floating: [Hammock_V1_FloatingPane] = []
+  public var floating: [Hammock_V1_FloatingPane] {
+    get {_storage._floating}
+    set {_uniqueStorage()._floating = newValue}
+  }
+
+  /// The git checkout its work is in (worktrees.go): its branch, the pull
+  /// request for it, and whether to offer Remove Worktree. Unset outside a repository.
+  public var git: Hammock_V1_TabGit {
+    get {_storage._git ?? Hammock_V1_TabGit()}
+    set {_uniqueStorage()._git = newValue}
+  }
+  /// Returns true if `git` has been explicitly set.
+  public var hasGit: Bool {_storage._git != nil}
+  /// Clears the value of `git`. Subsequent reads from it will return its default value.
+  public mutating func clearGit() {_uniqueStorage()._git = nil}
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _layout: Hammock_V1_Layout? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 /// A pane floating over its tab's layout instead of being in it.
@@ -2605,6 +2637,16 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .setComposerDraft(newValue)}
   }
 
+  /// Removes a linked git worktree (a tab's, or by path) the repository's own
+  /// way, then closes the tabs in it (worktrees.go). Replies Ok.
+  public var removeWorktree: Hammock_V1_RemoveWorktree {
+    get {
+      if case .removeWorktree(let v)? = msg {return v}
+      return Hammock_V1_RemoveWorktree()
+    }
+    set {msg = .removeWorktree(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2839,6 +2881,9 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// or agents); watchers of the pane's agent view get it in AgentView.
     /// No reply.
     case setComposerDraft(Hammock_V1_SetComposerDraft)
+    /// Removes a linked git worktree (a tab's, or by path) the repository's own
+    /// way, then closes the tabs in it (worktrees.go). Replies Ok.
+    case removeWorktree(Hammock_V1_RemoveWorktree)
 
   }
 
@@ -8168,6 +8213,11 @@ public nonisolated struct Hammock_V1_StartAgent: Sendable {
 
   public var floating: Bool = false
 
+  /// A new git worktree to start it in, by this name (its branch): made from
+  /// cwd's repository by the repository's own way (worktrees.go: .hammock/config,
+  /// a worktree recipe, the agent's own option, else git worktree add).
+  public var worktree: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -8217,6 +8267,10 @@ public nonisolated struct Hammock_V1_FolderList: Sendable {
 
   /// e.g. the folder doesn't exist
   public var error: String = String()
+
+  /// With path: how a new worktree would be made from it ("just worktree"),
+  /// "" when it isn't in a git repository (StartAgent.worktree).
+  public var worktreeHow: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -11602,6 +11656,86 @@ public nonisolated struct Hammock_V1_FilesCommand: Sendable {
   public init() {}
 }
 
+/// Worktrees (worktrees.go): what Hammock knows of a tab's git checkout.
+public nonisolated struct Hammock_V1_TabGit: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// the repository's main folder
+  public var repo: String = String()
+
+  /// "" when detached
+  public var branch: String = String()
+
+  /// a linked worktree's folder; "" in the repository's main one
+  public var worktree: String = String()
+
+  /// the branch's pull request, when gh finds one
+  public var pr: Hammock_V1_PullRequest {
+    get {_pr ?? Hammock_V1_PullRequest()}
+    set {_pr = newValue}
+  }
+  /// Returns true if `pr` has been explicitly set.
+  public var hasPr: Bool {self._pr != nil}
+  /// Clears the value of `pr`. Subsequent reads from it will return its default value.
+  public mutating func clearPr() {self._pr = nil}
+
+  /// The branch is merged into the default branch (locally, or its pull
+  /// request), or its pull request was closed.
+  public var done: Bool = false
+
+  /// Offer Remove Worktree: a linked worktree whose branch is done, a while
+  /// after (an agent that cleans up after itself gets there first).
+  public var removable: Bool = false
+
+  /// with removable: it has uncommitted changes
+  public var dirty: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _pr: Hammock_V1_PullRequest? = nil
+}
+
+public nonisolated struct Hammock_V1_PullRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var number: Int32 = 0
+
+  /// "open", "draft", "merged" or "closed"
+  public var state: String = String()
+
+  public var url: String = String()
+
+  public var title: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// Removes a linked worktree: the tab's (tab_id), else the one at path.
+/// Refused while it has uncommitted changes, unless force.
+public nonisolated struct Hammock_V1_RemoveWorktree: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var tabID: String = String()
+
+  public var path: String = String()
+
+  public var force: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hammock.v1"
@@ -11884,68 +12018,125 @@ nonisolated extension Hammock_V1_JoinRequest: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_Tab: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Tab"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}group_id\0\u{1}name\0\u{1}layout\0\u{3}focused_pane_id\0\u{3}auto_name\0\u{3}auto_key\0\u{1}floating\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}group_id\0\u{1}name\0\u{1}layout\0\u{3}focused_pane_id\0\u{3}auto_name\0\u{3}auto_key\0\u{1}floating\0\u{2}\u{c}git\0")
+
+  fileprivate class _StorageClass {
+    var _id: String = String()
+    var _groupID: String = String()
+    var _name: String = String()
+    var _layout: Hammock_V1_Layout? = nil
+    var _focusedPaneID: String = String()
+    var _autoName: String = String()
+    var _autoKey: String = String()
+    var _floating: [Hammock_V1_FloatingPane] = []
+    var _git: Hammock_V1_TabGit? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _id = source._id
+      _groupID = source._groupID
+      _name = source._name
+      _layout = source._layout
+      _focusedPaneID = source._focusedPaneID
+      _autoName = source._autoName
+      _autoKey = source._autoKey
+      _floating = source._floating
+      _git = source._git
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.id) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.groupID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.name) }()
-      case 4: try { try decoder.decodeSingularMessageField(value: &self._layout) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.focusedPaneID) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.autoName) }()
-      case 7: try { try decoder.decodeSingularStringField(value: &self.autoKey) }()
-      case 8: try { try decoder.decodeRepeatedMessageField(value: &self.floating) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._id) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._groupID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._name) }()
+        case 4: try { try decoder.decodeSingularMessageField(value: &_storage._layout) }()
+        case 5: try { try decoder.decodeSingularStringField(value: &_storage._focusedPaneID) }()
+        case 6: try { try decoder.decodeSingularStringField(value: &_storage._autoName) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._autoKey) }()
+        case 8: try { try decoder.decodeRepeatedMessageField(value: &_storage._floating) }()
+        case 20: try { try decoder.decodeSingularMessageField(value: &_storage._git) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.id.isEmpty {
-      try visitor.visitSingularStringField(value: self.id, fieldNumber: 1)
-    }
-    if !self.groupID.isEmpty {
-      try visitor.visitSingularStringField(value: self.groupID, fieldNumber: 2)
-    }
-    if !self.name.isEmpty {
-      try visitor.visitSingularStringField(value: self.name, fieldNumber: 3)
-    }
-    try { if let v = self._layout {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
-    } }()
-    if !self.focusedPaneID.isEmpty {
-      try visitor.visitSingularStringField(value: self.focusedPaneID, fieldNumber: 5)
-    }
-    if !self.autoName.isEmpty {
-      try visitor.visitSingularStringField(value: self.autoName, fieldNumber: 6)
-    }
-    if !self.autoKey.isEmpty {
-      try visitor.visitSingularStringField(value: self.autoKey, fieldNumber: 7)
-    }
-    if !self.floating.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.floating, fieldNumber: 8)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._id.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._id, fieldNumber: 1)
+      }
+      if !_storage._groupID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._groupID, fieldNumber: 2)
+      }
+      if !_storage._name.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._name, fieldNumber: 3)
+      }
+      try { if let v = _storage._layout {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+      } }()
+      if !_storage._focusedPaneID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._focusedPaneID, fieldNumber: 5)
+      }
+      if !_storage._autoName.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._autoName, fieldNumber: 6)
+      }
+      if !_storage._autoKey.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._autoKey, fieldNumber: 7)
+      }
+      if !_storage._floating.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._floating, fieldNumber: 8)
+      }
+      try { if let v = _storage._git {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 20)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hammock_V1_Tab, rhs: Hammock_V1_Tab) -> Bool {
-    if lhs.id != rhs.id {return false}
-    if lhs.groupID != rhs.groupID {return false}
-    if lhs.name != rhs.name {return false}
-    if lhs._layout != rhs._layout {return false}
-    if lhs.focusedPaneID != rhs.focusedPaneID {return false}
-    if lhs.autoName != rhs.autoName {return false}
-    if lhs.autoKey != rhs.autoKey {return false}
-    if lhs.floating != rhs.floating {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._id != rhs_storage._id {return false}
+        if _storage._groupID != rhs_storage._groupID {return false}
+        if _storage._name != rhs_storage._name {return false}
+        if _storage._layout != rhs_storage._layout {return false}
+        if _storage._focusedPaneID != rhs_storage._focusedPaneID {return false}
+        if _storage._autoName != rhs_storage._autoName {return false}
+        if _storage._autoKey != rhs_storage._autoKey {return false}
+        if _storage._floating != rhs_storage._floating {return false}
+        if _storage._git != rhs_storage._git {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -13396,7 +13587,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{4}\u{1b}remove_worktree\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -15121,6 +15312,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .setComposerDraft(v)
         }
       }()
+      case 170: try {
+        var v: Hammock_V1_RemoveWorktree?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .removeWorktree(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .removeWorktree(v)
+        }
+      }()
       default: break
       }
     }
@@ -15662,6 +15866,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .setComposerDraft?: try {
       guard case .setComposerDraft(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 143)
+    }()
+    case .removeWorktree?: try {
+      guard case .removeWorktree(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 170)
     }()
     case nil: break
     }
@@ -24835,7 +25043,7 @@ nonisolated extension Hammock_V1_LogView: SwiftProtobuf.Message, SwiftProtobuf._
 
 nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".StartAgent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{1}cwd\0\u{3}group_id\0\u{1}prompt\0\u{3}tab_id\0\u{3}computer_id\0\u{3}split_pane_id\0\u{1}direction\0\u{1}before\0\u{1}floating\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{1}cwd\0\u{3}group_id\0\u{1}prompt\0\u{3}tab_id\0\u{3}computer_id\0\u{3}split_pane_id\0\u{1}direction\0\u{1}before\0\u{1}floating\0\u{2}\u{a}worktree\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -24853,6 +25061,7 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
       case 8: try { try decoder.decodeSingularEnumField(value: &self.direction) }()
       case 9: try { try decoder.decodeSingularBoolField(value: &self.before) }()
       case 10: try { try decoder.decodeSingularBoolField(value: &self.floating) }()
+      case 20: try { try decoder.decodeSingularStringField(value: &self.worktree) }()
       default: break
       }
     }
@@ -24889,6 +25098,9 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
     if self.floating != false {
       try visitor.visitSingularBoolField(value: self.floating, fieldNumber: 10)
     }
+    if !self.worktree.isEmpty {
+      try visitor.visitSingularStringField(value: self.worktree, fieldNumber: 20)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -24903,6 +25115,7 @@ nonisolated extension Hammock_V1_StartAgent: SwiftProtobuf.Message, SwiftProtobu
     if lhs.direction != rhs.direction {return false}
     if lhs.before != rhs.before {return false}
     if lhs.floating != rhs.floating {return false}
+    if lhs.worktree != rhs.worktree {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -24950,7 +25163,7 @@ nonisolated extension Hammock_V1_ListFolders: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".FolderList"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}parent\0\u{1}folders\0\u{1}suggestions\0\u{1}home\0\u{1}agents\0\u{1}error\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}parent\0\u{1}folders\0\u{1}suggestions\0\u{1}home\0\u{1}agents\0\u{1}error\0\u{4}\u{d}worktree_how\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -24965,6 +25178,7 @@ nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobu
       case 5: try { try decoder.decodeSingularStringField(value: &self.home) }()
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.agents) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.error) }()
+      case 20: try { try decoder.decodeSingularStringField(value: &self.worktreeHow) }()
       default: break
       }
     }
@@ -24992,6 +25206,9 @@ nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobu
     if !self.error.isEmpty {
       try visitor.visitSingularStringField(value: self.error, fieldNumber: 7)
     }
+    if !self.worktreeHow.isEmpty {
+      try visitor.visitSingularStringField(value: self.worktreeHow, fieldNumber: 20)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -25003,6 +25220,7 @@ nonisolated extension Hammock_V1_FolderList: SwiftProtobuf.Message, SwiftProtobu
     if lhs.home != rhs.home {return false}
     if lhs.agents != rhs.agents {return false}
     if lhs.error != rhs.error {return false}
+    if lhs.worktreeHow != rhs.worktreeHow {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -29917,4 +30135,153 @@ nonisolated extension Hammock_V1_FilesCommand: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_FilesCommand.Action: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0ACTION_UNSPECIFIED\0\u{1}ACTION_SET_ROOT\0\u{1}ACTION_EXPAND\0\u{1}ACTION_COLLAPSE\0\u{1}ACTION_SELECT\0\u{1}ACTION_SHOW_HIDDEN\0\u{1}ACTION_REVEAL\0\u{1}ACTION_RENAME\0\u{1}ACTION_CREATE_FILE\0\u{1}ACTION_CREATE_FOLDER\0\u{1}ACTION_TRASH\0\u{1}ACTION_MOVE\0\u{1}ACTION_COPY\0\u{1}ACTION_UNDO\0")
+}
+
+nonisolated extension Hammock_V1_TabGit: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TabGit"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}repo\0\u{1}branch\0\u{1}worktree\0\u{1}pr\0\u{1}done\0\u{1}removable\0\u{1}dirty\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.repo) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.branch) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.worktree) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._pr) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.done) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.removable) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.dirty) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.repo.isEmpty {
+      try visitor.visitSingularStringField(value: self.repo, fieldNumber: 1)
+    }
+    if !self.branch.isEmpty {
+      try visitor.visitSingularStringField(value: self.branch, fieldNumber: 2)
+    }
+    if !self.worktree.isEmpty {
+      try visitor.visitSingularStringField(value: self.worktree, fieldNumber: 3)
+    }
+    try { if let v = self._pr {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    if self.done != false {
+      try visitor.visitSingularBoolField(value: self.done, fieldNumber: 5)
+    }
+    if self.removable != false {
+      try visitor.visitSingularBoolField(value: self.removable, fieldNumber: 6)
+    }
+    if self.dirty != false {
+      try visitor.visitSingularBoolField(value: self.dirty, fieldNumber: 7)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_TabGit, rhs: Hammock_V1_TabGit) -> Bool {
+    if lhs.repo != rhs.repo {return false}
+    if lhs.branch != rhs.branch {return false}
+    if lhs.worktree != rhs.worktree {return false}
+    if lhs._pr != rhs._pr {return false}
+    if lhs.done != rhs.done {return false}
+    if lhs.removable != rhs.removable {return false}
+    if lhs.dirty != rhs.dirty {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_PullRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PullRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}number\0\u{1}state\0\u{1}url\0\u{1}title\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt32Field(value: &self.number) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.url) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.title) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.number != 0 {
+      try visitor.visitSingularInt32Field(value: self.number, fieldNumber: 1)
+    }
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 2)
+    }
+    if !self.url.isEmpty {
+      try visitor.visitSingularStringField(value: self.url, fieldNumber: 3)
+    }
+    if !self.title.isEmpty {
+      try visitor.visitSingularStringField(value: self.title, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_PullRequest, rhs: Hammock_V1_PullRequest) -> Bool {
+    if lhs.number != rhs.number {return false}
+    if lhs.state != rhs.state {return false}
+    if lhs.url != rhs.url {return false}
+    if lhs.title != rhs.title {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_RemoveWorktree: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RemoveWorktree"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}tab_id\0\u{1}path\0\u{1}force\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.tabID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.force) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.tabID.isEmpty {
+      try visitor.visitSingularStringField(value: self.tabID, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    if self.force != false {
+      try visitor.visitSingularBoolField(value: self.force, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_RemoveWorktree, rhs: Hammock_V1_RemoveWorktree) -> Bool {
+    if lhs.tabID != rhs.tabID {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.force != rhs.force {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
 }

@@ -697,6 +697,11 @@ struct CommandPalette: View {
                 }
             }
             action("close-tab", "Close Tab", "xmark.rectangle", .red, "close", keys: closeKey == "tab" ? Keys.close : nil) { CloseGuard.confirm(model, tab: tab) { Task { await model.closeTab(tab.id) } } }
+            if model.canRemoveWorktree(tab) {
+                action("remove-worktree", "Remove Worktree…", "trash", .red, "git worktree branch merged pull request delete clean up", keys: Keys.removeWorktree) {
+                    WorktreeUI.remove(model, tab)
+                }
+            }
         }
         action("light", "Appearance: Light", "sun.max", .orange, "theme mode") { AppConfig.shared.setAppearance(.light) }
         action("dark", "Appearance: Dark", "moon.stars", .indigo, "theme mode") { AppConfig.shared.setAppearance(.dark) }

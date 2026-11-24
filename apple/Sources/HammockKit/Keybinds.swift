@@ -260,6 +260,7 @@ public enum Keybinds {
             // No defaults: no Mac convention for these, and the arrows' are taken.
             .init("move_tab_up", "Move Tab Up", "File", nil, "reorder order earlier left before sidebar tab bar"),
             .init("move_tab_down", "Move Tab Down", "File", nil, "reorder order later right after sidebar tab bar"),
+            .init("remove_worktree", "Remove Worktree…", "File", nil, "git worktree branch merged pull request delete clean up"),
             .init("configure_group", "Configure Group…", "File", c("g", co), "rename name icon emoji picture edit settings"),
             .init("change_group_folder", "Change Group Folder…", "File", nil, "directory cwd path"),
             .init("reveal_group_in_finder", "Reveal Group in Finder", "File", nil, "show folder directory open finder"),

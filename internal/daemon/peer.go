@@ -1075,6 +1075,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.RenameTab.TabId
 	case *pb.ClientMessage_CloseTab:
 		return m.CloseTab.TabId
+	case *pb.ClientMessage_RemoveWorktree:
+		return m.RemoveWorktree.TabId // (refused to guests: peerCheck)
 	case *pb.ClientMessage_SetLayout:
 		return m.SetLayout.TabId
 	case *pb.ClientMessage_FloatPane:

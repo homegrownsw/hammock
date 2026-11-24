@@ -1300,11 +1300,17 @@ func (a *App) openStartAgent(group string) {
 		dir = tildeHome(p.Cwd)
 	}
 	a.openDialog(&dialog{title: "Start an Agent", okLabel: "Start",
-		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: cmp.Or(a.defaultAgentIn(group), "claude")}, {label: "Folder", value: dir}, {label: "First message (optional)"}},
+		fields: []*field{{label: "Agent (" + strings.Join(agents.IDs(), ", ") + ")", value: cmp.Or(a.defaultAgentIn(group), "claude")}, {label: "Folder", value: dir}, {label: "First message (optional)"},
+			{label: "In a new worktree (optional: its branch)"}},
 		submit: func(v []string) {
-			a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
-				Harness: parseHarness(v[0]), Cwd: strings.TrimSpace(v[1]), GroupId: group, Prompt: strings.TrimSpace(v[2]),
-			}}}, func(r *pb.ServerMessage) { a.selectTab(client.CreatedID(r)) })
+			m := &pb.ClientMessage{Msg: &pb.ClientMessage_StartAgent{StartAgent: &pb.StartAgent{
+				Harness: parseHarness(v[0]), Cwd: strings.TrimSpace(v[1]), GroupId: group, Prompt: strings.TrimSpace(v[2]), Worktree: strings.TrimSpace(v[3]),
+			}}}
+			if strings.TrimSpace(v[3]) != "" {
+				a.startInWorktree(m)
+				return
+			}
+			a.call(m, func(r *pb.ServerMessage) { a.selectTab(client.CreatedID(r)) })
 		}})
 }
 

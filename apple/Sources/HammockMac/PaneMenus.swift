@@ -425,6 +425,9 @@ struct TabMenuItems: View {
         .disabled((group?.tabIds.count ?? 0) < 2 && otherGroups.isEmpty)
         OpenInNewWindowButton(model: model, subject: .tab(tab.id))
         Divider()
+        if model.canRemoveWorktree(tab) {
+            Button("Remove Worktree…", role: .destructive) { WorktreeUI.remove(model, tab) }
+        }
         Button("Close Tab", role: .destructive) { CloseGuard.confirm(model, tab: tab) { Task { await model.closeTab(tab.id) } } }
     }
 

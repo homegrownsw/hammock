@@ -30,7 +30,7 @@ func runAgent(args []string) error {
 		return runStartAgent("", args) // none named: the computer's default agent
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [PROMPT]   (AGENT: %s; none: the default-agent)\n       hmk agent watch|answer|pick|send|send-now PANE …", agentIDs())
+		return fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [--worktree NAME] [PROMPT]   (AGENT: %s; none: the default-agent)\n       hmk agent watch|answer|pick|send|send-now PANE …", agentIDs())
 	}
 	ctx := context.Background()
 	c, err := connect(ctx)
@@ -163,22 +163,25 @@ func printView(v *pb.AgentView) {
 }
 
 // runStartAgent: hmk agent claude|codex [--dir DIR] [--group GROUP] [--on
-// COMPUTER] [PROMPT…] starts the agent in a new tab (in DIR, by default
-// here; on a linked computer, its home folder), in GROUP or else the
-// folder's Group, or a new one.
+// COMPUTER] [--worktree NAME] [PROMPT…] starts the agent in a new tab (in
+// DIR, by default here; on a linked computer, its home folder), in GROUP or
+// else the folder's Group, or a new one; with --worktree, in a new git
+// worktree of DIR's repository.
 func runStartAgent(harness string, args []string) error {
-	usage := fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]   (AGENT: %s; none: the computer's default-agent)\n(on another computer, DIR is absolute or ~/…, its home)", agentIDs())
+	usage := fmt.Errorf("usage: hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [--worktree NAME] [PROMPT]   (AGENT: %s; none: the computer's default-agent)\n(on another computer, DIR is absolute or ~/…, its home)", agentIDs())
 	req := &pb.StartAgent{Harness: harness}
 	var words []string
 	groupRef, on := "", ""
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
-		case (a == "--dir" || a == "--group" || a == "--on") && i+1 < len(args):
+		case (a == "--dir" || a == "--group" || a == "--on" || a == "--worktree" || a == "-w") && i+1 < len(args):
 			switch a {
 			case "--dir":
 				req.Cwd = args[i+1]
 			case "--group":
 				groupRef = args[i+1]
+			case "--worktree", "-w":
+				req.Worktree = args[i+1]
 			default:
 				on = args[i+1]
 			}
@@ -190,7 +193,11 @@ func runStartAgent(harness string, args []string) error {
 		}
 	}
 	req.Prompt = strings.Join(words, " ")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	wait := 30 * time.Second
+	if req.Worktree != "" {
+		wait = 11 * time.Minute // the repository's own recipe makes it first
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	c, err := connect(ctx)
 	if err != nil {

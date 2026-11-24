@@ -20,6 +20,7 @@ import (
 var Claude = &Agent{
 	ID: "claude", Order: 0, Name: "Claude Code", Short: "Claude", Command: "claude",
 	ShellMode:   true,
+	Worktree:    "--worktree",
 	Install:     "curl -fsSL https://claude.ai/install.sh | bash",
 	Hooks:       true,
 	ParseHook:   claudeHook,

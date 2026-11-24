@@ -85,6 +85,8 @@ import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.client.Workspace
 import com.homegrownsw.hammock.client.agentProgress
 import com.homegrownsw.hammock.client.canAddTabs
+import com.homegrownsw.hammock.client.canRemoveWorktree
+import com.homegrownsw.hammock.client.shown
 import com.homegrownsw.hammock.client.canDrive
 import com.homegrownsw.hammock.client.canSleep
 import com.homegrownsw.hammock.client.isOnLinkedComputer
@@ -398,6 +400,7 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(w.title(tab), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false))
+                    if (tab.hasGit() && tab.git.shown) GitMark(tab.git, quiet)
                     if (schedule != null) Icon(Icons.Default.Schedule, "Scheduled run of ${schedule.name}", Modifier.size(14.dp),
                         tint = quiet.copy(alpha = 0.6f))
                 }
@@ -471,6 +474,7 @@ fun TabActions(model: AppModel, w: Workspace, g: Group, tab: Tab, close: () -> U
         else if (agent.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, onClick = { close(); model.sleepPane(agent.id) })
     }
     HorizontalDivider()
+    if (canRemoveWorktree(tab, g)) DropdownMenuItem(text = { Text("Remove Worktree…", color = ErrorColor) }, onClick = { close(); closer.removeWorktree(model, tab) })
     DropdownMenuItem(text = { Text("Close Tab", color = ErrorColor) }, enabled = drive, onClick = { close(); closer.closeTab(model, w, tab) })
 }
 

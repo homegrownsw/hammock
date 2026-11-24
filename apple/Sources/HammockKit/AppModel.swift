@@ -1202,19 +1202,23 @@ public final class AppModel {
     }
 
     /// Starts an agent (claude or codex) in a new tab in folder cwd, shown
-    /// at once as a new tab is.
+    /// at once as a new tab is. worktree: in a new git worktree of cwd's
+    /// repository, on that branch (made first, the repository's own way).
     @discardableResult
-    public func startAgent(_ harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = "") async -> String? {
+    public func startAgent(_ harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = "", worktree: String = "") async -> String? {
         if groupID.isEmpty {
             // No Group chosen: the computer's own (by folder), or a new one there.
-            return await run {
+            let id = await run {
                 $0.startAgent = .with {
                     $0.harness = harness
                     $0.cwd = cwd
                     $0.prompt = prompt
+                    $0.worktree = worktree
                     if computerID != self.myUserID { $0.computerID = computerID }
                 }
             }?.created.id
+            if id == nil, !worktree.isEmpty { showToast("Couldn't start the agent: \(lastError ?? "unknown error")") }
+            return id
         }
         return await openTab(in: groupID, name: "") { id in
             await self.run {
@@ -1223,6 +1227,7 @@ public final class AppModel {
                     $0.cwd = cwd
                     $0.groupID = groupID
                     $0.prompt = prompt
+                    $0.worktree = worktree
                     $0.tabID = id
                 }
             }?.created.id

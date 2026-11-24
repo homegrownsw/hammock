@@ -1445,6 +1445,21 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}()
 		return nil, errDeferred
 
+	case *pb.ClientMessage_RemoveWorktree:
+		// Runs the repository's own commands (worktrees.go): reply when done.
+		id := msg.Id
+		go func() {
+			r := &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}
+			if err := d.removeWorktree(msg.GetRemoveWorktree()); err != nil {
+				r = &pb.ServerMessage{Msg: &pb.ServerMessage_Error{Error: &pb.Error{Message: err.Error()}}}
+			}
+			if id != 0 {
+				r.ReplyTo = id
+				c.send(r)
+			}
+		}()
+		return nil, errDeferred
+
 	case *pb.ClientMessage_ResumeSession:
 		// Converting a session can take a moment: reply when done.
 		id, rs := msg.Id, m.ResumeSession

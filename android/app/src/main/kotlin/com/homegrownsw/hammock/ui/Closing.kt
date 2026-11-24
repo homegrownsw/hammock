@@ -13,6 +13,7 @@ import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Workspace
 import com.homegrownsw.hammock.client.allPaneIDs
 import com.homegrownsw.hammock.client.closeWarning
+import com.homegrownsw.hammock.client.removeWorktreeQuestion
 import hammock.v1.Hammock.Pane
 import hammock.v1.Hammock.Tab
 
@@ -37,6 +38,12 @@ class Closer {
     fun close(panes: List<Pane>, title: String, button: String, go: () -> Unit) {
         val why = warning(panes)
         if (why == null) go() else asking = Ask(title, why, button, go)
+    }
+
+    /** Remove Worktree: always asks (its tabs close, and it's gone from disk). */
+    fun removeWorktree(model: AppModel, tab: Tab) {
+        val (title, message) = removeWorktreeQuestion(tab.git)
+        asking = Ask(title, message, "Remove Worktree") { model.removeWorktree(tab.id, tab.git.dirty) }
     }
 
     fun closeTab(model: AppModel, w: Workspace, tab: Tab) =

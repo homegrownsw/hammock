@@ -347,7 +347,11 @@ func (a *App) tabMenu(id string, x, y int) {
 		items = append(items, menuItem{sep: true})
 		items = append(items, merges...)
 	}
-	items = append(items, menuItem{sep: true}, menuItem{label: "Close Tab", danger: true, run: func() { a.closeTab(t.Id) }})
+	items = append(items, menuItem{sep: true})
+	if a.canRemoveWorktree(t) {
+		items = append(items, menuItem{label: "Remove Worktree…", danger: true, run: func() { a.removeWorktree(t) }})
+	}
+	items = append(items, menuItem{label: "Close Tab", danger: true, run: func() { a.closeTab(t.Id) }})
 	a.openMenu(x, y, items)
 }
 
@@ -729,6 +733,9 @@ func (a *App) paletteItems() []paletteItem {
 			a.openPrompt("Rename Tab", "Name", t.Name, func(v string) { a.renameTab(t.Id, v) })
 		})
 		act("close-tab", "Close Tab", "", "", func() { a.closeTab(t.Id) })
+		if a.canRemoveWorktree(t) {
+			act("remove-worktree", "Remove Worktree…", "", "git worktree branch merged delete clean up", func() { a.removeWorktree(t) })
+		}
 		if canSchedule(a.group(t.GroupId)) {
 			act("schedule-tab", "Schedule This Tab…", "", "scheduled task cron routine recurring every day weekdays", func() { a.scheduleThis(t) })
 		}

@@ -391,6 +391,7 @@ struct GroupsView: View {
     @State private var path: [String] = []
     @State private var renaming: WorkspaceTab?
     @State private var closingTab: WorkspaceTab?
+    @State private var removingWorktree: WorkspaceTab?
     @State private var editing: WorkspaceGroup?
     @State private var creatingGroup = false
     @State private var deleting: WorkspaceGroup?
@@ -446,7 +447,7 @@ struct GroupsView: View {
                             .modifier(HoldMenu(model: model, paneID: previewPane(of: tab), open: { path = [tab.id] }) {
                                 TabActions.entries(model: model, tab: tab, rename: { renaming = tab }, newTab: group.canAddTabs ? { newTab(in: group) } : nil,
                                                    newFilesTab: group.canAddTabs ? { newTab(in: group, files: true) } : nil,
-                                                   askClose: { closingTab = $0 })
+                                                   askRemove: { removingWorktree = $0 }, askClose: { closingTab = $0 })
                             })
                         }
                         .onMove { from, to in
@@ -474,6 +475,7 @@ struct GroupsView: View {
             }
             .renameTabAlert(model: model, tab: $renaming)
             .closeTabConfirmation(model: model, tab: $closingTab)
+            .removeWorktreeConfirmation(model: model, tab: $removingWorktree)
             .sheet(item: $editing) { GroupEditor(model: model, group: $0) }
             .sheet(isPresented: $creatingGroup) {
                 GroupEditor(model: model, group: nil) { tabID in path = [tabID] }
@@ -663,6 +665,10 @@ struct TabRowIOS: View {
             VStack(alignment: .leading) {
                 HStack(spacing: 5) {
                     Text(model.title(of: tab))
+                    // Its branch's pull request, or a worktree's branch.
+                    if tab.hasGit, tab.git.shown {
+                        GitMark(tab.git, size: 11)
+                    }
                     // A scheduled task's run.
                     if let s = model.schedule(of: tab) {
                         Image(systemName: "clock")
@@ -1148,6 +1154,7 @@ struct PaneScreen: View {
     @State private var preview: FilePreview?
     @State private var renaming: WorkspaceTab?
     @State private var closingTab: WorkspaceTab?
+    @State private var removingWorktree: WorkspaceTab?
     @State private var shown = false
     @Environment(\.dismiss) private var dismiss
     /// A log pane showing its terminal instead of the log.
@@ -1229,6 +1236,7 @@ struct PaneScreen: View {
         .environment(\.paneTabMenu, tabMenu)
         .renameTabAlert(model: model, tab: $renaming)
         .closeTabConfirmation(model: model, tab: $closingTab)
+        .removeWorktreeConfirmation(model: model, tab: $removingWorktree)
         .sheet(item: $preview) { FilePreviewSheet(model: model, preview: $0) }
         // Only the pane on screen titles the bar: not a neighbour a swipe
         // is bringing in (from a view of its own, so that changing doesn't
@@ -1291,7 +1299,7 @@ struct PaneScreen: View {
                    newFilesTab: model.group(of: tab)?.canAddTabs == false ? nil : {
                        newTab(in: tab.groupID, model: model, path: $path, replacing: asTab ?? paneID, files: true)
                    },
-                   closing: $closingTab)
+                   closing: $closingTab, removing: $removingWorktree)
     }
 
     /// With the strip: which view an agent's (or a log's) pane shows, as a

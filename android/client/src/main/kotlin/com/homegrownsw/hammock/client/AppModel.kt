@@ -807,9 +807,10 @@ class AppModel private constructor(
         return created
     }
 
-    suspend fun startAgent(harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = ""): String? {
+    /** [worktree]: in a new git worktree of [cwd]'s repository, on that branch (made first, the repository's own way). */
+    suspend fun startAgent(harness: String, cwd: String, groupID: String, prompt: String = "", computerID: String = "", worktree: String = ""): String? {
         val created = request {
-            setStartAgent(Hammock.StartAgent.newBuilder().setHarness(harness).setCwd(cwd).setPrompt(prompt).apply {
+            setStartAgent(Hammock.StartAgent.newBuilder().setHarness(harness).setCwd(cwd).setPrompt(prompt).setWorktree(worktree).apply {
                 if (groupID.isNotEmpty()) { setGroupId(groupID); setTabId(newTabID()) }
                 else if (computerID.isNotEmpty() && computerID != _workspace.value.myUserID) setComputerId(computerID)
             }.build())
@@ -841,6 +842,13 @@ class AppModel private constructor(
     }
 
     fun closePane(id: String) = scope.launch { request { setClosePane(Hammock.ClosePane.newBuilder().setPaneId(id).build()) } }
+
+    /** Removes a tab's worktree the repository's own way; the tabs in it close. [force]: even with uncommitted changes (asked first). */
+    fun removeWorktree(tabID: String, force: Boolean) = scope.launch {
+        if (request { setRemoveWorktree(Hammock.RemoveWorktree.newBuilder().setTabId(tabID).setForce(force).build()) } == null) {
+            showToast("Couldn't remove the worktree: ${lastError ?: "unknown error"}")
+        }
+    }
     fun closeGroup(id: String) = scope.launch {
         if (request { setCloseGroup(Hammock.CloseGroup.newBuilder().setGroupId(id).build()) } == null) showToast("Couldn't close the Group: ${lastError ?: "unknown error"}")
     }

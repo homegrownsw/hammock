@@ -93,6 +93,9 @@ message Tab {
   // Panes floating over the layout, back to front (the last is in front).
   // A tab always has a layout: floats are never its only panes.
   repeated FloatingPane floating = 8;
+  // The git checkout its work is in (worktrees.go): its branch, the pull
+  // request for it, and whether to offer Remove Worktree. Unset outside a repository.
+  TabGit git = 20;
 }
 
 // A pane floating over its tab's layout instead of being in it.
@@ -648,6 +651,9 @@ message ClientMessage {
     // or agents); watchers of the pane's agent view get it in AgentView.
     // No reply.
     SetComposerDraft set_composer_draft = 143;
+    // Removes a linked git worktree (a tab's, or by path) the repository's own
+    // way, then closes the tabs in it (worktrees.go). Replies Ok.
+    RemoveWorktree remove_worktree = 170;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -2194,6 +2200,10 @@ message StartAgent {
   Split.Direction direction = 8;
   bool before = 9;
   bool floating = 10;
+  // A new git worktree to start it in, by this name (its branch): made from
+  // cwd's repository by the repository's own way (worktrees.go: .hammock/config,
+  // a worktree recipe, the agent's own option, else git worktree add).
+  string worktree = 20;
 }
 
 // The folders an agent could start in: suggestions (the Group's own folder,
@@ -2211,6 +2221,9 @@ message FolderList {
   string home = 5;
   repeated string agents = 6;           // the agents installed: "claude", "codex"
   string error = 7;                     // e.g. the folder doesn't exist
+  // With path: how a new worktree would be made from it ("just worktree"),
+  // "" when it isn't in a git repository (StartAgent.worktree).
+  string worktree_how = 20;
 }
 
 message FolderSuggestion {
@@ -3101,4 +3114,34 @@ message FilesCommand {
   repeated string paths = 4;
   bool on = 5;
   string name = 6;
+}
+
+// Worktrees (worktrees.go): what Hammock knows of a tab's git checkout.
+message TabGit {
+  string repo = 1;      // the repository's main folder
+  string branch = 2;    // "" when detached
+  string worktree = 3;  // a linked worktree's folder; "" in the repository's main one
+  PullRequest pr = 4;   // the branch's pull request, when gh finds one
+  // The branch is merged into the default branch (locally, or its pull
+  // request), or its pull request was closed.
+  bool done = 5;
+  // Offer Remove Worktree: a linked worktree whose branch is done, a while
+  // after (an agent that cleans up after itself gets there first).
+  bool removable = 6;
+  bool dirty = 7;       // with removable: it has uncommitted changes
+}
+
+message PullRequest {
+  int32 number = 1;
+  string state = 2;  // "open", "draft", "merged" or "closed"
+  string url = 3;
+  string title = 4;
+}
+
+// Removes a linked worktree: the tab's (tab_id), else the one at path.
+// Refused while it has uncommitted changes, unless force.
+message RemoveWorktree {
+  string tab_id = 1;
+  string path = 2;
+  bool force = 3;
 }

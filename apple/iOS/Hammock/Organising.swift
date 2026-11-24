@@ -50,16 +50,20 @@ struct TabActions: View {
     var newFilesTab: (() -> Void)?
     /// Set to the tab when closing it needs a yes (closeTabConfirmation).
     @Binding var closing: WorkspaceTab?
+    /// Set to the tab to ask about removing its worktree (removeWorktreeConfirmation).
+    @Binding var removing: WorkspaceTab?
 
     var body: some View {
-        let closing = $closing
-        MenuEntries(entries: Self.entries(model: model, tab: tab, rename: rename, newTab: newTab, newFilesTab: newFilesTab) { closing.wrappedValue = $0 })
+        let (closing, removing) = ($closing, $removing)
+        MenuEntries(entries: Self.entries(model: model, tab: tab, rename: rename, newTab: newTab, newFilesTab: newFilesTab,
+                                          askRemove: { removing.wrappedValue = $0 }) { closing.wrappedValue = $0 })
     }
 
     /// Its items, for SwiftUI's menus (body) and UIKit's (a row's HoldMenu).
-    /// `askClose`: closing it needs a yes (closeTabConfirmation).
+    /// `askClose`: closing it needs a yes (closeTabConfirmation); `askRemove`:
+    /// Remove Worktree… asks first (removeWorktreeConfirmation).
     static func entries(model: AppModel, tab: WorkspaceTab, rename: @escaping () -> Void, newTab: (() -> Void)?, newFilesTab: (() -> Void)? = nil,
-                        askClose: @escaping (WorkspaceTab) -> Void) -> [MenuEntry] {
+                        askRemove: @escaping (WorkspaceTab) -> Void, askClose: @escaping (WorkspaceTab) -> Void) -> [MenuEntry] {
         var out: [MenuEntry] = [.button("Rename…", systemImage: "pencil", rename)]
         if let newTab {
             out.append(.button("New Tab in Group", systemImage: "plus", newTab))
@@ -90,6 +94,9 @@ struct TabActions: View {
             }
         }
         out.append(.divider)
+        if model.canRemoveWorktree(tab) {
+            out.append(.button("Remove Worktree…", systemImage: "trash", destructive: true) { askRemove(tab) })
+        }
         out.append(.button("Close Tab", systemImage: "xmark", destructive: true) { requestCloseTab(model, tab, ask: askClose) })
         return out
     }
@@ -103,6 +110,18 @@ func requestCloseTab(_ model: AppModel, _ tab: WorkspaceTab, ask: (WorkspaceTab)
 }
 
 extension View {
+    /// Asks whether to remove a tab's worktree while one is set (Remove
+    /// Worktree…), then does, closing the tabs in it.
+    func removeWorktreeConfirmation(model: AppModel, tab: Binding<WorkspaceTab?>) -> some View {
+        confirmationDialog(tab.wrappedValue.map { model.removeWorktreeQuestion($0).title } ?? "",
+                           isPresented: Binding(get: { tab.wrappedValue != nil }, set: { if !$0 { tab.wrappedValue = nil } }),
+                           titleVisibility: .visible, presenting: tab.wrappedValue) { t in
+            Button("Remove Worktree", role: .destructive) { Task { await model.removeWorktree(t.id, force: t.git.dirty) } }
+        } message: { t in
+            Text(model.removeWorktreeQuestion(t).message)
+        }
+    }
+
     /// Asks whether to close the tab while one is set (requestCloseTab),
     /// saying what it stops, as closing a pane does.
     func closeTabConfirmation(model: AppModel, tab: Binding<WorkspaceTab?>) -> some View {

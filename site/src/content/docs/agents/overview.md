@@ -51,6 +51,23 @@ Switch a pane between the two with Pane ▸ Toggle Agent View (⇧⌘A). Setting
 
   `--group` picks a Group, and `--on` a [linked computer](/hammock/docs/remote/). With no agent named (`hmk agent --dir ~/Developer/app`), it starts that computer's default agent.
 
+### In a new worktree
+
+When the folder is in a git repository, turn on **In a New Worktree** in New Agent Tab… and name its branch, or run `hmk agent --worktree fix-login`. The agent starts in a new worktree of the repository, in the repository's Group. Hammock makes it the first of these ways the repository has:
+
+1. A `.hammock/config` file in the repository, with `worktree-create` (a command; `{name}` is the branch and `{path}` where it goes, each quoted for the shell) and `worktree-dir` (the folder new worktrees go in).
+2. A recipe it already has: a `just` recipe, Makefile target (given `NAME=…`) or package.json script called `worktree`, `worktree-add` or `worktree-new`.
+3. The agent's own option: Claude Code's `--worktree`.
+4. `git worktree add`, on a new branch (or the branch, if it exists), in `.claude/worktrees/`, with the git-ignored files a `.worktreeinclude` lists copied in.
+
+A tab shows its branch's pull request (open, merged or closed, when [`gh`](https://cli.github.com) can see it) or, in a worktree, a branch. A while after the branch is merged or its pull request closed, a worktree's tab offers **Remove Worktree…**: in its row, its right-click menu, File, the command palette, or `hmk worktree remove`. It removes the worktree with the repository's `worktree-remove` command or recipe (`worktree-rm` too), else `git worktree remove`, and closes the tabs in it. Hammock never removes one by itself, and asks first when it has uncommitted changes.
+
+```ini
+# .hammock/config
+worktree-create = scripts/new-worktree {name}
+worktree-remove = scripts/remove-worktree {path}
+```
+
 ## Resuming sessions
 
 Agents keep running when you quit Hammock, update it or it crashes. After your Mac restarts, Hammock resumes each agent's session, if hooks told it which session it was.

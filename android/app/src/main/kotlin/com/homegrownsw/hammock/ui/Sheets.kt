@@ -81,11 +81,20 @@ fun StartAgentSheet(model: AppModel, groupID: String?, nav: Nav, onDone: () -> U
     var harness by remember { mutableStateOf("claude") }
     var cwd by remember { mutableStateOf(groupID?.let { id -> w.groups.firstOrNull { it.id == id }?.let { g -> g.folder.ifEmpty { w.panes[g.lastFocusedPaneId]?.cwd ?: "" } } } ?: "") }
     var prompt by remember { mutableStateOf("") }
+    var inWorktree by remember { mutableStateOf(false) }
+    var worktree by remember { mutableStateOf("") }
+    // How a new worktree would be made from the folder ("just worktree", "git"); "" outside a git repository.
+    var worktreeHow by remember { mutableStateOf("") }
     var folders by remember { mutableStateOf<Hammock.FolderList?>(null) }
     var browsing by remember { mutableStateOf<String?>(null) }
     var starting by remember { mutableStateOf(false) }
     LaunchedEffect(group) { folders = model.listFolders("", group) }
     LaunchedEffect(browsing) { browsing?.let { folders = model.listFolders(it, group) } }
+    LaunchedEffect(cwd, group) {
+        delay(300)
+        worktreeHow = if (cwd.isBlank()) "" else model.listFolders(cwd.trim(), group)?.worktreeHow.orEmpty()
+    }
+    val usesWorktree = inWorktree && worktreeHow.isNotEmpty()
     val installed = folders?.agentsList?.takeIf { it.isNotEmpty() }
     val kinds = w.kinds.filter { it.id in AgentCatalog.builtIn || it.id == harness || (installed?.contains(it.id) ?: it.installed) }
     val hostName = w.hostName.removeSuffix(".local").ifEmpty { "your computer" }
@@ -97,10 +106,10 @@ fun StartAgentSheet(model: AppModel, groupID: String?, nav: Nav, onDone: () -> U
                     TextButton(onClick = onDone) { Text("Cancel") }
                     Text("Start an Agent", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                    Button(enabled = cwd.isNotBlank() && !starting, onClick = {
+                    Button(enabled = cwd.isNotBlank() && !starting && !(usesWorktree && worktree.isBlank()), onClick = {
                         starting = true
                         scope.launch {
-                            val id = model.startAgent(harness, cwd.trim(), group, prompt.trim())
+                            val id = model.startAgent(harness, cwd.trim(), group, prompt.trim(), worktree = if (usesWorktree) worktree.trim() else "")
                             starting = false
                             if (id != null) {
                                 // The new tab (or, with no Group chosen, its Group's) arrives in the next update.
@@ -201,6 +210,31 @@ fun StartAgentSheet(model: AppModel, groupID: String?, nav: Nav, onDone: () -> U
                     }
                 }
                 folders?.error?.takeIf { it.isNotEmpty() }?.let { Footer(it) }
+            }
+            if (worktreeHow.isNotEmpty()) item {
+                Spacer(Modifier.size(20.dp))
+                GroupedCard {
+                    SwitchRow("In a New Worktree", inWorktree) { inWorktree = it }
+                    if (inWorktree) {
+                        CardDivider()
+                        BasicTextField(
+                            worktree, { worktree = it }, singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            decorationBox = { inner ->
+                                if (worktree.isEmpty()) Text("Branch: fix-login", style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                                inner()
+                            },
+                        )
+                    }
+                }
+                if (inWorktree) Footer(when (worktreeHow) {
+                    "git" -> "A new branch, in its own worktree in .claude/worktrees."
+                    ".hammock/config" -> "Made the way the repository's .hammock/config says."
+                    else -> "Made with $worktreeHow ${worktree.trim().ifEmpty { "NAME" }}."
+                })
             }
             item {
                 Spacer(Modifier.size(20.dp))

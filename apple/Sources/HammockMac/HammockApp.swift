@@ -218,6 +218,9 @@ struct HammockApp: App {
                 Button("Move Tab Down") { if let tab = shownTab { model.moveTab(tab.id, by: 1) } }
                     .keyboardShortcut(Keys.moveTabDown)
                     .disabled(shownTab.flatMap { model.tabMoveIndex($0.id, by: 1) } == nil)
+                Button("Remove Worktree…") { if let tab = shownTab { WorktreeUI.remove(model, tab) } }
+                    .keyboardShortcut(Keys.removeWorktree)
+                    .disabled(!(shownTab.map(model.canRemoveWorktree) ?? false))
                 Button("Configure Group…") { if let g = currentGroup { TabSheets.shared.configuring = g } }
                     .keyboardShortcut(Keys.configureGroup)
                     .disabled(!(currentGroup.map(TabSheets.canConfigure) ?? false))

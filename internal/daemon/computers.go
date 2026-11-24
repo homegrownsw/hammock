@@ -1678,7 +1678,7 @@ func (d *Daemon) ownerCheck(c *conn, msg *pb.ClientMessage) (ignore bool, err er
 		*pb.ClientMessage_ReadPane, *pb.ClientMessage_Resize, *pb.ClientMessage_Focus, *pb.ClientMessage_Input, *pb.ClientMessage_SignalPane,
 		*pb.ClientMessage_AgentAnswer, *pb.ClientMessage_AgentSend, *pb.ClientMessage_SetComposerDraft, *pb.ClientMessage_UploadFile, *pb.ClientMessage_SwitchAgent, *pb.ClientMessage_SleepPane, *pb.ClientMessage_RestartPane,
 		*pb.ClientMessage_ClosePane, *pb.ClientMessage_CreatePane, *pb.ClientMessage_CreateTab, *pb.ClientMessage_CloseTab, *pb.ClientMessage_RenameTab,
-		*pb.ClientMessage_SetLayout, *pb.ClientMessage_BreakOutPane, *pb.ClientMessage_ReplacePane, *pb.ClientMessage_ClearAttention:
+		*pb.ClientMessage_RemoveWorktree, *pb.ClientMessage_SetLayout, *pb.ClientMessage_BreakOutPane, *pb.ClientMessage_ReplacePane, *pb.ClientMessage_ClearAttention:
 		return false, nil
 	case *pb.ClientMessage_SaveSchedule:
 		// You, from another of your computers: a schedule here.

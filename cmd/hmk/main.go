@@ -163,11 +163,15 @@ Usage:
   hmk reopen                               reopen the last tab or pane you closed (agents resume their sessions)
   hmk rerun PANE                           run an ended pane's program again, in the same pane: an
                                             agent resumes its session
-  hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [PROMPT]
+  hmk agent [AGENT] [--dir DIR] [--group GROUP] [--on COMPUTER] [--worktree NAME] [PROMPT]
                                             start an agent in a new tab (in DIR, by default here), in GROUP
                                             or the folder's Group (or a new one); --on a linked computer
                                             (there, DIR is absolute or ~/…, its home; by default ~); no AGENT:
-                                            the computer's default-agent
+                                            the computer's default-agent; --worktree: in a new git worktree
+                                            of DIR's repository, on branch NAME, made the repository's own way
+                                            (.hammock/config, a worktree recipe, the agent's --worktree, git)
+  hmk worktree remove [DIR] [--force]      remove a git worktree (by default this folder's) the repository's
+                                            own way, and close the tabs in it (--force: with uncommitted changes)
   hmk switch PANE AGENT                    continue a pane's agent session in another agent
   hmk sleep [PANE]                         put a pane's idle agent to sleep, by default this pane's:
                                             its process ends, freeing its memory, until it's woken (the
@@ -261,6 +265,8 @@ func main() {
 		err = runSSH(args[1:])
 	case "agent":
 		err = runAgent(args[1:])
+	case "worktree", "worktrees":
+		err = runWorktree(args[1:])
 	case "schedule", "schedules":
 		err = runSchedule(args[1:])
 	case "show":

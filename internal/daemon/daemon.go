@@ -113,6 +113,7 @@ type Daemon struct {
 	files        *filesHub
 	screens      *screenHub
 	presence     agentPresence // agents acting on browser and simulator panes, as the apps show it (agentpresence.go)
+	branches     branchWatch   // tabs' branches: merged, their pull requests (worktrees.go; its own lock)
 	started      time.Time     // when this daemon started (the menu bar's uptime)
 	media        *mediaHub
 	sessions     *sessionFinder
@@ -569,6 +570,7 @@ func (d *Daemon) Serve() error {
 		d.mu.Unlock()
 	}
 	go d.pollCwds()
+	go d.watchBranches()
 	go d.watchGroupIcons()
 	go d.watchUsage()
 	go d.watchTheme()
@@ -1260,6 +1262,7 @@ func (d *Daemon) pollCwds() {
 		d.detectAgents()
 		d.keepAwake()
 		d.refreshTabNames()
+		d.refreshTabGit()
 		if ticks%sleepEvery == 0 {
 			d.sleepIdleAgents()
 		}
