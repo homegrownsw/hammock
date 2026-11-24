@@ -217,6 +217,8 @@ strong, b, .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { letter-spacing: var(
 
 /* Small rows. */
 .note > .head { justify-content: center; font-size: var(--caption); line-height: var(--lh-caption, normal); height: var(--lh-caption, auto); color: var(--fg2); gap: 4px; }
+/* One line, as tall as the row: a background command's note names the whole command. */
+.note > .head > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .note > .body { padding-left: 0; color: var(--fg2); font-size: calc(var(--size) * 0.9); }
 .thought > .head { font-size: calc(var(--size) * 0.9); line-height: var(--lh-b90, normal); color: var(--fg2); gap: 6px; }
 /* A button with nothing to open is disabled, and dimmed as SwiftUI dims it. */

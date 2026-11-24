@@ -401,6 +401,13 @@ func TestClaudeTaskNotificationIsANote(t *testing.T) {
 	}
 }
 
+func TestClaudeTaskNotificationSummaryIsUnescaped(t *testing.T) {
+	n, ok := ReadTaskNotice("<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command \"just deps &gt; deps.log 2&gt;&amp;1\" completed (exit code 0)</summary>\n</task-notification>")
+	if !ok || n.Summary != `Background command "just deps > deps.log 2>&1" completed (exit code 0)` {
+		t.Fatalf("got %+v", n)
+	}
+}
+
 func TestClaudeCompactionSummaryIsTuckedUnderTheNote(t *testing.T) {
 	c := NewClaude("/tmp")
 	c.Feed([]byte(`{"type":"system","subtype":"compact_boundary","uuid":"b1","content":"Conversation compacted","timestamp":"2026-10-30T01:00:00Z"}`))

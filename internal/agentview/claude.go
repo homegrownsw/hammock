@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"mime"
 	"path/filepath"
 	"regexp"
@@ -614,7 +615,8 @@ func ReadTaskNotice(t string) (n TaskNotice, ok bool) {
 		}
 		return ""
 	}
-	return TaskNotice{ID: field(taskID), Summary: field(taskSummary), Status: field(taskStatus), Result: field(taskResult)}, true
+	// Claude Code escapes the summary (a command's "2>&1" arrives as "2&gt;&amp;1").
+	return TaskNotice{ID: field(taskID), Summary: html.UnescapeString(field(taskSummary)), Status: field(taskStatus), Result: field(taskResult)}, true
 }
 
 func (c *Claude) assistant(l ccLine, ms int64) []*pb.AgentBlock {
