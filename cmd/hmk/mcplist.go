@@ -62,6 +62,9 @@ func mcpListTools() error {
 			if err != nil {
 				return err
 			}
+			if oldToolName(t.Name) {
+				continue // (still answered to, not advertised)
+			}
 			out.Tools = append(out.Tools, listedTool{Group: g.name, Name: t.Name, Title: t.Title, Description: t.Description, InputSchema: t.InputSchema})
 		}
 		cs.Close()

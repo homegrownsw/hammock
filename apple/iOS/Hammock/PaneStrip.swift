@@ -427,7 +427,7 @@ func sessionHoldMenu(model: AppModel, paneID: String, linkDown: Bool, confirmClo
         let answers: [MenuEntry] = prompt.answers.map { a in
             switch a {
             case .allow: .button("Allow", systemImage: "checkmark") { answer(a) }
-            case .allowForSchedule: .button("Always Allow for This Schedule", systemImage: "clock.badge.checkmark") { answer(a) }
+            case .allowForSchedule: .button("Always Allow for This Automation", systemImage: "clock.badge.checkmark") { answer(a) }
             case .deny: .button("Deny", systemImage: "hand.raised") { answer(a) }
             }
         }

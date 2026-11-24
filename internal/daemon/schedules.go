@@ -525,7 +525,7 @@ func (d *Daemon) startRunFor(s *pb.Schedule, due time.Time, manual bool, evs []*
 
 // runTabName names a run's tab: the schedule and when it started.
 func runTabName(s *pb.Schedule, t time.Time) string {
-	name := cmpOr(s.Name, "Scheduled task")
+	name := cmpOr(s.Name, "Automation")
 	return name + " · " + t.Format("Mon 15:04")
 }
 
@@ -814,7 +814,7 @@ func (d *Daemon) notifyRun(s *pb.Schedule, r *pb.ScheduleRun) {
 	if problem {
 		event = "errored"
 	}
-	d.push(event, r.Id, pushNote{Title: cmpOr(s.Name, "Scheduled task"), Subtitle: sub, Body: body, Pane: r.PaneId}, nil)
+	d.push(event, r.Id, pushNote{Title: cmpOr(s.Name, "Automation"), Subtitle: sub, Body: body, Pane: r.PaneId}, nil)
 }
 
 // scheduleNotifies: s wants a notification for a run that's ready (or,

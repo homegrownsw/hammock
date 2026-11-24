@@ -538,7 +538,7 @@ func (a *App) answerAgent(at *pb.AttentionItem, d pb.AgentAnswer_Decision) {
 	m := &pb.AgentAnswer{PaneId: at.PaneId, Decision: d, PromptId: at.PromptId, Bound: true}
 	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_AgentAnswer{AgentAnswer: m}}, func(*pb.ServerMessage) {
 		if d == pb.AgentAnswer_DECISION_ALLOW_SCHEDULE {
-			a.flash("Allowed, and for this schedule's later runs")
+			a.flash("Allowed, and for this automation's later runs")
 		}
 	})
 }
@@ -579,7 +579,7 @@ func (a *App) needsMenu(id string, x, y int) {
 		if complete {
 			items = append(items, menuItem{label: "Allow", run: func() { a.answerAgent(at, pb.AgentAnswer_DECISION_ALLOW) }})
 			if s := a.runSchedule(a.panes[pane]); s != nil && s.Kind == "claude" {
-				items = append(items, menuItem{label: "Always Allow for This Schedule", run: func() { a.answerAgent(at, pb.AgentAnswer_DECISION_ALLOW_SCHEDULE) }})
+				items = append(items, menuItem{label: "Always Allow for This Automation", run: func() { a.answerAgent(at, pb.AgentAnswer_DECISION_ALLOW_SCHEDULE) }})
 			}
 		} else {
 			items = append(items, menuItem{label: "Review the Whole Request", run: func() { a.reveal(pane) }})
@@ -690,7 +690,7 @@ func (a *App) openScheduleDialog(base *pb.Schedule, vals []string, errText strin
 	if vals == nil {
 		vals = []string{base.Name, cmp.Or(base.Kind, "claude"), base.Prompt, shortPath(base.Cwd), whenField(base), notifyWords[base.Notify]}
 	}
-	title, ok := "New Scheduled Task", "Schedule"
+	title, ok := "New Automation", "Save"
 	if base.Id != "" {
 		title, ok = "Edit “"+truncate(base.Name, 36)+"”", "Save"
 	}
@@ -715,9 +715,9 @@ func (a *App) openScheduleDialog(base *pb.Schedule, vals []string, errText strin
 			where,
 			"Kind: claude, codex or command (the prompt is then its command line).",
 			"When: every day / weekdays / weekends / mon,wed HH:MM, cron M H D M W,",
-			"once YYYY-MM-DD HH:MM, or triggers (only on its triggers: hmk schedule edit --trigger).",
+			"once YYYY-MM-DD HH:MM, or triggers (only on its triggers: hmk automation edit --trigger).",
 			"Notify: ready, problems or never (blank: ready for agents, problems for commands).",
-			"More options in the Mac app or `hmk schedule`.",
+			"More options in the Mac app or `hmk automation`.",
 			"",
 		},
 		submit: func(v []string) {
@@ -786,7 +786,7 @@ func scheduleFromFields(base *pb.Schedule, v []string) (*pb.Schedule, error) {
 		days, minute, cron = s.Weekdays, s.MinuteOfDay, ""
 	}
 	if timing == pb.Schedule_TIMING_EVENTS && len(s.Events) == 0 {
-		return nil, errors.New("it has no triggers: add them with hmk schedule edit --trigger, or give a time")
+		return nil, errors.New("it has no triggers: add them with hmk automation edit --trigger, or give a time")
 	}
 	s.Timing, s.OnceUnixMs = timing, once
 	notify, err := parseNotify(v[5])
@@ -820,7 +820,7 @@ type scheduleView struct {
 	open   *spring
 }
 
-// openSchedules shows the Scheduled Tasks list, with id selected ("": the first).
+// openSchedules shows the Automations list, with id selected ("": the first).
 func (a *App) openSchedules(id string) {
 	v := &scheduleView{selID: id, runSel: -1, open: newSpring(gentle)}
 	v.open.from(0)
@@ -925,15 +925,15 @@ func (v *scheduleView) draw(a *App) {
 	}
 	title := plain
 	title.Bold = true
-	s.Text(in.x+1, in.y, in.w-2, "Scheduled Tasks", title)
-	s.TextRight(in.x+1, in.y, in.w-2, plural(len(list), "task"), dimC)
+	s.Text(in.x+1, in.y, in.w-2, "Automations", title)
+	s.TextRight(in.x+1, in.y, in.w-2, plural(len(list), "automation"), dimC)
 	rule(in.y + 1)
 	now := time.Now()
 
 	// The schedules.
 	top := max(0, sel-l.listRows+1)
 	if len(list) == 0 {
-		s.Text(in.x+3, l.listY+dy, in.w-4, "No scheduled tasks yet: n makes one", dimC)
+		s.Text(in.x+3, l.listY+dy, in.w-4, "No automations yet: n makes one", dimC)
 	}
 	for i := 0; i < l.listRows && top+i < len(list); i++ {
 		sc := list[top+i]
@@ -1076,7 +1076,7 @@ func (v *scheduleView) draw(a *App) {
 		}
 		hints = "↵/→ Runs   r Run Now   R Run Early   " + pause + "   " + skip + "   e Edit   n New   ⌫ Delete   esc Close"
 		if v.runSel >= 0 {
-			hints = "↵ Go to Tab   ← Tasks   r Run Now   R Run Early   esc Close"
+			hints = "↵ Go to Tab   ← Automations   r Run Now   R Run Early   esc Close"
 		}
 	}
 	s.Text(in.x+1, l.hintY+dy, in.w-2, truncate(hints, in.w-2), Cell{FG: a.th.faint, HasFG: true, BG: bg, HasBG: true})

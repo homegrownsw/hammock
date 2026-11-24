@@ -119,4 +119,4 @@ To turn it off: Settings ▸ Agents ▸ **Continue agents when their usage limit
 - [Setting up agents](/hammock/docs/agents/setup/): hooks, the MCP server and agent settings.
 - [Controlling Hammock from agents](/hammock/docs/agents/mcp/): what agents can do with your workspace.
 - [Examples of controlling Hammock from agents](/hammock/docs/agents/examples/): things to ask your agent.
-- [Scheduled tasks](/hammock/docs/scheduled-tasks/): agents that run on a schedule.
+- [Automations](/hammock/docs/automations/): agents that run on a schedule, or when something happens.

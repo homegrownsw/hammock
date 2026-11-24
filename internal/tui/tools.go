@@ -26,7 +26,7 @@ func menuTool(label string) string {
 		return "editor"
 	case strings.HasPrefix(label, "Review "):
 		return "diff"
-	case label == "Schedule This…", label == "New Scheduled Task…":
+	case label == "Automate This…", label == "New Automation…":
 		return "schedules"
 	}
 	return ""

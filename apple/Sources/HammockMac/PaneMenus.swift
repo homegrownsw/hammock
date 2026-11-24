@@ -425,7 +425,7 @@ struct TabMenuItems: View {
             }
         }
         if ScheduleUI.canSchedule(model, tab) {
-            Button("Schedule This…") { ScheduleUI.shared.scheduleThis(model, tab) }
+            Button("Automate This…") { ScheduleUI.shared.scheduleThis(model, tab) }
         }
         if let p = linkedPane {
             Button("Copy Session Link") { SessionLink.copy(model, p) }

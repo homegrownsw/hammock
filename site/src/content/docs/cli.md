@@ -71,7 +71,7 @@ hmk resume ID --in codex           # resume one, here in another agent
 
 `hmk sleep PANE` ends an idle agent's process to free its memory, and `hmk wake PANE` (or typing in its pane) starts it again; `agent-sleep` in the [config reference](/hammock/docs/reference/config/) does it automatically. `hmk grant` answers a permission request, once you allow it in the Mac app or on your phone.
 
-Hooks, scheduled tasks and MCP have their own pages: [Agent setup](/hammock/docs/agents/setup/), [Scheduled tasks](/hammock/docs/scheduled-tasks/) and [MCP](/hammock/docs/agents/mcp/).
+Hooks, automations and MCP have their own pages: [Agent setup](/hammock/docs/agents/setup/), [Automations](/hammock/docs/automations/) and [MCP](/hammock/docs/agents/mcp/).
 
 ## Browser, simulator, log, editor and diff panes
 

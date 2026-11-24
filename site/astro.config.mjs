@@ -8,6 +8,8 @@ export default defineConfig({
 	site: 'https://homegrownsw.com',
 	base: '/hammock/docs',
 	trailingSlash: 'always',
+	// Pages that moved: their old addresses go to the new.
+	redirects: { '/scheduled-tasks/': '/hammock/docs/automations/' },
 	integrations: [
 		// Review comments, in `just docs-dev` only (dev/comments.mjs).
 		docsComments(),
@@ -55,7 +57,7 @@ export default defineConfig({
 						'workspace',
 						'panes',
 						'tui',
-						'scheduled-tasks',
+						'automations',
 						'remote',
 						'screen-sharing',
 						'iphone',

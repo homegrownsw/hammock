@@ -63,7 +63,7 @@ struct ScheduleEditor: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text(isNew ? "New Scheduled Task" : "Edit Scheduled Task")
+            Text(isNew ? "New Automation" : "Edit Automation")
                 .font(.headline)
                 .padding(.top, 14)
             Form {
@@ -188,7 +188,7 @@ struct ScheduleEditor: View {
                 if draft.kind == "claude" {
                     Section {
                         if draft.allowedTools.isEmpty {
-                            Text("None yet. When a run asks, “Always Allow for This Schedule” in Needs You adds the tool here.")
+                            Text("None yet. When a run asks, “Always Allow for This Automation” in Needs You adds the tool here.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                         }
@@ -253,7 +253,7 @@ struct ScheduleEditor: View {
                     .help(isNew ? "Save it and run it now" : "Save any changes and run it now")
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(isNew ? "Schedule" : "Save") { save(thenRun: false) }
+                Button(isNew ? "Create" : "Save") { save(thenRun: false) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(saving || !canSave)
             }

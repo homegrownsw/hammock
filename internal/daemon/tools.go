@@ -80,7 +80,7 @@ var toolOn = func(tool string) bool {
 
 // toolName is what Settings ▸ Tools calls each kind.
 var toolName = map[string]string{"browser": "browser", "simulator": "simulator", "editor": "editor", "diff": "diff viewer", "files": "file browser", "log": "log viewer",
-	"schedules": "Scheduled Tasks", "sessions": "Session Search"}
+	"schedules": "Automations", "sessions": "Session Search"}
 
 // toolCheck refuses an agent msg if it's for a tool turned off.
 func toolCheck(msg *pb.ClientMessage) error {

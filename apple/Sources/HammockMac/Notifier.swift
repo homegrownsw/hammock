@@ -164,7 +164,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let tab = pane.flatMap { model.tab(of: $0) }
         content.title = tab.map { model.title(of: $0) } ?? (item.paneID.isEmpty ? "Hammock" : "Agent") // (none: Hammock's own)
         if let s = pane.flatMap({ model.schedule(for: $0) }) {
-            content.subtitle = "Scheduled · \(s.name)"
+            content.subtitle = "Automation · \(s.name)"
         } else if let group = tab.flatMap({ model.group(of: $0) }) {
             content.subtitle = (group.icon.isEmpty ? "" : group.icon + " ") + model.title(of: group)
         }

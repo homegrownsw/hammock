@@ -982,7 +982,7 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(pane(m.SignalPane.PaneId))
 	case *pb.ClientMessage_AgentAnswer:
 		if m.AgentAnswer.Decision == pb.AgentAnswer_DECISION_ALLOW_SCHEDULE {
-			return false, errors.New("only the host can change a scheduled task")
+			return false, errors.New("only the host can change an automation")
 		}
 		return drive(pane(m.AgentAnswer.PaneId))
 	case *pb.ClientMessage_AgentSend:

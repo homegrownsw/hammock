@@ -1,6 +1,6 @@
 package main
 
-// hmk schedule: scheduled tasks (an agent with a prompt, or a command, run
+// hmk automation: scheduled tasks (an agent with a prompt, or a command, run
 // by the daemon on a schedule, each run a tab in its Group), and hmk show
 // (a file or URL in a browser pane beside this one).
 
@@ -31,16 +31,16 @@ import (
 const grantWait = 3 * time.Minute
 
 var scheduleUsage = `usage:
-  hmk schedule                             list scheduled tasks
-  hmk schedule add [NAME] (--at HH:MM [--days D] | --cron EXPR | --once WHEN | --trigger T…) [OPTIONS] -- PROMPT|COMMAND
-  hmk schedule edit SCHEDULE [OPTIONS] [-- PROMPT|COMMAND]
-  hmk schedule webhook SCHEDULE [--new]    its webhook's URL (--new: a new secret; the old URL stops)
-  hmk schedule show SCHEDULE [--json]      its settings and runs
-  hmk schedule run SCHEDULE [--early]      run it now (in a new tab); --early: instead of
+  hmk automation                           list automations
+  hmk automation add [NAME] (--at HH:MM [--days D] | --cron EXPR | --once WHEN | --trigger T…) [OPTIONS] -- PROMPT|COMMAND
+  hmk automation edit NAME [OPTIONS] [-- PROMPT|COMMAND]
+  hmk automation webhook NAME [--new]      its webhook's URL (--new: a new secret; the old URL stops)
+  hmk automation show NAME [--json]        its settings and runs
+  hmk automation run NAME [--early]        run it now (in a new tab); --early: instead of
                                            at its next time, which moves on to the one after
-  hmk schedule pause|resume SCHEDULE
-  hmk schedule skip SCHEDULE [--undo]      skip its next run
-  hmk schedule rm SCHEDULE
+  hmk automation pause|resume NAME
+  hmk automation skip NAME [--undo]        skip its next run
+  hmk automation rm NAME
 options:
   --claude | --codex | --AGENT | --command  what it runs (default: claude)
   --days daily|weekdays|weekends|mon,tue,…  which days (with --at; default daily)
@@ -438,11 +438,11 @@ func (w *world) schedule(ref string) (*pb.Schedule, error) {
 	}
 	switch len(found) {
 	case 0:
-		return nil, fmt.Errorf("no schedule %q (hmk schedule lists them)", ref)
+		return nil, fmt.Errorf("no automation %q (hmk automation lists them)", ref)
 	case 1:
 		return found[0], nil
 	}
-	return nil, fmt.Errorf("%q matches %d schedules: use its id", ref, len(found))
+	return nil, fmt.Errorf("%q matches %d automations: use its id", ref, len(found))
 }
 
 // scheduleComputer names the computer a schedule runs on ("" for this one).
@@ -538,7 +538,7 @@ var runStatusWords = map[pb.ScheduleRun_Status]string{
 
 func printSchedules(w *world) {
 	if len(w.schedules) == 0 {
-		fmt.Println("No scheduled tasks. Add one: hmk schedule add NAME --at 08:30 --days weekdays -- PROMPT")
+		fmt.Println("No automations. Add one: hmk automation add NAME --at 08:30 --days weekdays -- PROMPT")
 		return
 	}
 	list := slices.Clone(w.schedules)
@@ -783,7 +783,7 @@ func indent(s, prefix string) string {
 // runTrigger is hmk trigger: a scheduled task's run as an event, from a
 // script, with data (text, - for stdin, @FILE) as what happened.
 func runTrigger(args []string) error {
-	const usage = "usage: hmk trigger SCHEDULE [--data TEXT|-|@FILE]"
+	const usage = "usage: hmk trigger NAME [--data TEXT|-|@FILE]"
 	ref, data := "", ""
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {

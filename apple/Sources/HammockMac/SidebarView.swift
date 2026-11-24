@@ -358,7 +358,7 @@ struct SidebarView: View {
                         Button("New Log Tab…") { LogUI.shared.request = LogRequest(groupID: group.id) }
                     }
                     if HammockTool.schedules.on {
-                        Button("New Scheduled Task…") { ScheduleUI.shared.new(model, groupID: group.id) }
+                        Button("New Automation…") { ScheduleUI.shared.new(model, groupID: group.id) }
                     }
                     Button("Resume a Session…") { PaletteState.shared.open(.sessions, group: group.id, inGroup: true) }
                     moveButtons(group)
@@ -1025,7 +1025,7 @@ struct TabRow: View {
                         .font(.system(size: compact ? 10 : 10.5, weight: .medium))
                         .foregroundStyle(.tertiary)
                         .help("A run of “\(s.name)”")
-                        .accessibilityLabel("Scheduled run")
+                        .accessibilityLabel("Automation run")
                 }
                 detail
                     .font(compact ? .system(size: 11.5) : .callout)

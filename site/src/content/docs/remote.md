@@ -140,7 +140,7 @@ See [Permissions](/hammock/docs/permissions/#touch-id-and-the-hammock-key) for T
 
 - **Pinned keys.** Every device and computer signs in with the key recorded when it was paired or linked, over TLS pinned to this Mac's certificate.
 - **You, not your agents.** Pairing, linking, sharing, turning on remote access and answering permission requests happen directly only in the Hammock app. Asked from anywhere else, such as `hmk`, they wait for you to allow them on your Mac or phone. Agents are refused them outright.
-- **Webhooks.** A [scheduled task's webhook](/hammock/docs/scheduled-tasks/#webhooks) is the only thing on the listener that answers without signing in: only to a `POST` with its secret, and only to start that task.
+- **Webhooks.** An [automation's webhook](/hammock/docs/automations/#webhooks) is the only thing on the listener that answers without signing in: only to a `POST` with its secret, and only to start that automation.
 - **The audit log.** What paired devices, linked computers and agents do is logged: `hmk audit`.
 
 Agents, and anything else running as you, could in the end do what you can. For a real boundary around an agent, use its own sandbox.

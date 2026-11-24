@@ -196,10 +196,10 @@ struct HammockApp: App {
                 }
                 Divider()
                 if HammockTool.schedules.on {
-                    Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
+                    Button("New Automation…") { ScheduleUI.shared.new(model) }.keyboardShortcut(Keys.newScheduledTask)
                     // The one selected in the Scheduled Tasks list, while it shows.
                     if ScheduleUI.shared.showingList {
-                        Button("Run Scheduled Task Now") { ScheduleUI.shared.runSelected(model) }
+                        Button("Run Automation Now") { ScheduleUI.shared.runSelected(model) }
                             .keyboardShortcut(Keys.runScheduledTask)
                             .disabled(ScheduleUI.shared.selectedSchedule(model) == nil)
                     }
@@ -348,7 +348,7 @@ struct HammockApp: App {
                     }
                 }
                 if HammockTool.schedules.on {
-                    Button("Scheduled Tasks") { ScheduleUI.shared.showList() }.keyboardShortcut(Keys.scheduledTasks)
+                    Button("Automations") { ScheduleUI.shared.showList() }.keyboardShortcut(Keys.scheduledTasks)
                 }
                 if HammockTool.diff.on {
                     Button("Review Changes") { DiffUI.review(model) }.keyboardShortcut(Keys.reviewChanges)

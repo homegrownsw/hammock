@@ -23,7 +23,7 @@ func TestWhyNotRerun(t *testing.T) {
 		"browser":        {&pb.Pane{Kind: pb.PaneKind_PANE_KIND_BROWSER, Exited: true}, "only a terminal"},
 		"editor":         {&pb.Pane{Kind: pb.PaneKind_PANE_KIND_EDITOR}, "only a terminal"},
 		"asleep":         {&pb.Pane{Kind: pb.PaneKind_PANE_KIND_TERMINAL, Exited: true, Asleep: true}, "asleep"},
-		"scheduled run":  {&pb.Pane{Kind: pb.PaneKind_PANE_KIND_TERMINAL, Exited: true, ScheduleRunId: "r"}, "schedule_run"},
+		"scheduled run":  {&pb.Pane{Kind: pb.PaneKind_PANE_KIND_TERMINAL, Exited: true, ScheduleRunId: "r"}, "automation_run"},
 	} {
 		got := whyNotRerun(c.p)
 		if c.want == "" && got != "" || c.want != "" && !strings.Contains(got, c.want) {
@@ -73,4 +73,35 @@ func toStrings(v any) []string {
 		}
 	}
 	return out
+}
+
+// Renamed tools still answer to their old names, unadvertised in the docs.
+func TestAutomationToolsKeepOldNames(t *testing.T) {
+	ctx := t.Context()
+	s := &mcpServer{kindTools: map[string][]string{}}
+	server := mcp.NewServer(&mcp.Implementation{Name: "hammock"}, nil)
+	s.registerKind(server, "schedules")
+	st, ct := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ss.Close()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+	names := map[string]bool{}
+	for tool, err := range cs.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		names[tool.Name] = true
+	}
+	for n, old := range toolOldNames {
+		if !names[n] || !names[old] || !oldToolName(old) {
+			t.Errorf("%s / %s: %v", n, old, names)
+		}
+	}
 }

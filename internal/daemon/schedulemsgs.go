@@ -71,14 +71,14 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 		switch m := msg.Msg.(type) {
 		case *pb.ClientMessage_RunSchedule:
 			early, trigger, data := m.RunSchedule.Early, m.RunSchedule.Trigger, m.RunSchedule.Data
-			id, verb = m.RunSchedule.ScheduleId, "run the scheduled task %s now"
+			id, verb = m.RunSchedule.ScheduleId, "run the automation %s now"
 			switch {
 			case trigger && data != "":
-				verb = "trigger the scheduled task %s with: " + shownText(oneLine(data, 300))
+				verb = "trigger the automation %s with: " + shownText(oneLine(data, 300))
 			case trigger:
-				verb = "trigger the scheduled task %s"
+				verb = "trigger the automation %s"
 			case early:
-				verb = "run the scheduled task %s now, instead of at its next time"
+				verb = "run the automation %s now, instead of at its next time"
 			}
 			if len(data) > maxHookBody {
 				return nil, fmt.Errorf("the data is over %d KB", maxHookBody>>10)
@@ -99,7 +99,7 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 			}
 		case *pb.ClientMessage_SetSchedulePaused:
 			paused := m.SetSchedulePaused.Paused
-			id, verb = m.SetSchedulePaused.ScheduleId, map[bool]string{true: "pause", false: "resume"}[paused]+" the scheduled task %s"
+			id, verb = m.SetSchedulePaused.ScheduleId, map[bool]string{true: "pause", false: "resume"}[paused]+" the automation %s"
 			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
 				s.Paused = paused
 				d.scheduleNext(s, schedTime())
@@ -109,7 +109,7 @@ func (d *Daemon) handleSchedule(c *conn, msg *pb.ClientMessage) (*pb.ServerMessa
 			}
 		case *pb.ClientMessage_SkipScheduleRun:
 			skip := m.SkipScheduleRun.Skip
-			id, verb = m.SkipScheduleRun.ScheduleId, map[bool]string{true: "skip the next run of", false: "stop skipping the next run of"}[skip]+" the scheduled task %s"
+			id, verb = m.SkipScheduleRun.ScheduleId, map[bool]string{true: "skip the next run of", false: "stop skipping the next run of"}[skip]+" the automation %s"
 			do = func(s *pb.Schedule) (*pb.ServerMessage, error) {
 				if skip {
 					if s.NextRunUnixMs == 0 {
@@ -180,7 +180,7 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 	var headline string
 	switch {
 	case del:
-		headline = who + " wants to delete the scheduled task " + d.scheduleSummary(in)
+		headline = who + " wants to delete the automation " + d.scheduleSummary(in)
 	default:
 		s, err := d.cleanSchedule(in) // a mistake is said now, not after you've allowed it
 		if err != nil {
@@ -193,9 +193,9 @@ func (d *Daemon) askSchedule(c *conn, replyTo uint64, in *pb.Schedule, del bool,
 		if s.Id != "" && d.sched.list[s.Id] == nil {
 			return fmt.Errorf("no such schedule %q", s.Id)
 		}
-		verb := "schedule"
+		verb := "add the automation"
 		if s.Id != "" {
-			verb = "change the scheduled task to"
+			verb = "change the automation to"
 		}
 		if c.caller.sandboxed {
 			who += sandboxedWho

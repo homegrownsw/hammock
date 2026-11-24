@@ -130,8 +130,8 @@ func keepAwakeSetting() setting {
 // shared with the Mac's Settings ▸ Tools).
 func toolSettings() []setting {
 	names := map[string]string{"browser": "Browser", "simulator": "Simulator", "editor": "Editor", "diff": "Diff viewer", "log": "Log viewer",
-		"schedules": "Scheduled tasks", "sessions": "Session search"}
-	help := map[string]string{"schedules": "Off: not offered in Hammock's menus, agents don't get its tools, and schedules don't run.",
+		"schedules": "Automations", "sessions": "Session search"}
+	help := map[string]string{"schedules": "Off: not offered in Hammock's menus, agents don't get its tools, and automations don't run.",
 		"sessions": "Off: agents can't search or read past sessions. You still can."}
 	var out []setting
 	for _, k := range hammockconfig.Tools {

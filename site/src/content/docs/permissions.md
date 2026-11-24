@@ -39,7 +39,7 @@ macOS treats everything in a pane as part of Hammock. When a program in a pane w
 
 ## Calendars
 
-**What it's for.** [Calendar triggers](/hammock/docs/scheduled-tasks/#triggers) for scheduled tasks: starting a run before events you choose. macOS asks when you first add one. Hammock reads the next week's events, on your Mac: they don't leave it.
+**What it's for.** [Calendar triggers](/hammock/docs/automations/#triggers) for automations: starting a run before events you choose. macOS asks when you first add one. Hammock reads the next week's events, on your Mac: they don't leave it.
 
 **Granting or revoking it.** System Settings ▸ Privacy & Security ▸ Calendars.
 

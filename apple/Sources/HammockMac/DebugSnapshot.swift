@@ -185,7 +185,8 @@ enum DebugSnapshot {
                     ScheduleEditor.debugHeight = tall
                     render(ScheduleEditor(model: model, original: s), size: NSSize(width: 580, height: tall), to: "\(prefix)-schedules")
                 } else {
-                    let tall = Double(env["HMK_DEBUG_SCHEDULES_HEIGHT"] ?? "") ?? 600
+                    let tall = Double(env["HMK_DEBUG_SCHEDULES_HEIGHT"] ?? "") ?? 680
+                    ScheduledTasksSheet.debugHeight = env["HMK_DEBUG_SCHEDULES_HEIGHT"].flatMap(Double.init).map { CGFloat($0) }
                     render(ScheduledTasksSheet(model: model), size: NSSize(width: 900, height: tall), to: "\(prefix)-schedules")
                 }
             }

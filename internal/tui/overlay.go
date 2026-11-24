@@ -322,7 +322,7 @@ func (a *App) tabMenu(id string, x, y int) {
 		{label: "Quick Open…", hint: "⌃B e", run: a.openQuickOpen},
 	}
 	if canSchedule(a.group(t.GroupId)) {
-		items = append(items, menuItem{label: "Schedule This…", run: func() { a.scheduleThis(t) }})
+		items = append(items, menuItem{label: "Automate This…", run: func() { a.scheduleThis(t) }})
 	}
 	var moves []menuItem
 	for _, sp := range a.groups {
@@ -380,7 +380,7 @@ func (a *App) groupMenu(id string, x, y int) {
 		{label: "New Agent Tab…", run: func() { a.openStartAgent(id) }},
 	}
 	if canSchedule(sp) {
-		items = append(items, menuItem{label: "New Scheduled Task…", run: func() { a.openNewSchedule(id, "", "claude") }})
+		items = append(items, menuItem{label: "New Automation…", run: func() { a.openNewSchedule(id, "", "claude") }})
 	}
 	if a.canReveal(sp) {
 		items = append(items, menuItem{label: "Reveal in Finder", run: func() { a.revealInFinder(a.groupFolder(sp)) }})
@@ -642,8 +642,8 @@ func (a *App) paletteItems() []paletteItem {
 		act("previous-needs-you", "Previous Agent That Needs You", "⌃B A", "needs you waiting attention question permission jump go back agent queue", func() { a.revealNeedingYou(-1) })
 	}
 	act("find-session", "Find Session…", "⌃B O", "resume claude codex agent conversation history search", func() { a.openSessionFinder("") })
-	act("schedules", "Scheduled Tasks", "⌃B @", "schedule cron routine recurring timer automation runs", func() { a.openSchedules("") })
-	act("new-schedule", "New Scheduled Task…", "", "schedule cron routine recurring timer automation claude codex command every day weekdays", func() {
+	act("schedules", "Automations", "⌃B @", "schedule scheduled tasks cron routine recurring timer automation triggers runs", func() { a.openSchedules("") })
+	act("new-schedule", "New Automation…", "", "schedule scheduled task cron routine recurring timer automation trigger claude codex command every day weekdays", func() {
 		a.openNewSchedule(a.currentGroup(), "", "claude")
 	})
 	// Only the sessions in the folders open in the Group you're in (yours,
@@ -743,7 +743,7 @@ func (a *App) paletteItems() []paletteItem {
 			act("remove-worktree", "Remove Worktree…", "", "git worktree branch merged delete clean up", func() { a.removeWorktree(t) })
 		}
 		if canSchedule(a.group(t.GroupId)) {
-			act("schedule-tab", "Schedule This Tab…", "", "scheduled task cron routine recurring every day weekdays", func() { a.scheduleThis(t) })
+			act("schedule-tab", "Automate This Tab…", "", "schedule scheduled task automation cron routine recurring every day weekdays", func() { a.scheduleThis(t) })
 		}
 		if sp := a.group(t.GroupId); sp != nil {
 			for _, oid := range sp.TabIds {
@@ -1181,7 +1181,7 @@ func (a *App) openHelp() {
 		"⌃B s   Settings (layout, …)       ⌃B O   Find a session",
 		"⌃B ,   Rename tab                 ⌃B x   Close pane",
 		"⌃B T   Reopen closed tab or pane  ⌃B M   Next computer (linked)",
-		"⌃B @   Scheduled tasks",
+		"⌃B @   Automations",
 		"⌃B a/A Next / previous agent that needs you",
 		"⌃B e  Quick Open (a file)        ⌃B E   New editor tab",
 		"⌃B %   Split right                ⌃B \"   Split down",

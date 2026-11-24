@@ -334,7 +334,7 @@ private fun SessionLink(
 /** An answer to an agent's permission prompt, from a session's touch-and-hold menu. */
 enum class PromptAnswer(val label: String, val decision: Hammock.AgentAnswer.Decision) {
     ALLOW("Allow", Hammock.AgentAnswer.Decision.DECISION_ALLOW),
-    ALLOW_SCHEDULE("Always Allow for This Schedule", Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE),
+    ALLOW_SCHEDULE("Always Allow for This Automation", Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE),
     DENY("Deny", Hammock.AgentAnswer.Decision.DECISION_DENY),
 }
 
@@ -459,7 +459,7 @@ fun AttentionCard(model: AppModel, w: Workspace, item: Hammock.AttentionItem, na
                         if (schedule != null) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Icon(Icons.Default.Schedule, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Scheduled · ${schedule.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Automation · ${schedule.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Text(plainInline(item.summary.ifEmpty { item.state.label }), style = MaterialTheme.typography.bodyMedium,
@@ -512,7 +512,7 @@ private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
         }
         DropdownMenu(open, { open = false }) {
             DropdownMenuItem(text = { Text("Allow Once") }, onClick = { open = false; view.hapticConfirm(); model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW) })
-            DropdownMenuItem(text = { Text("Always Allow for This Schedule") },
+            DropdownMenuItem(text = { Text("Always Allow for This Automation") },
                 onClick = { open = false; view.hapticConfirm(); model.decide(item, Hammock.AgentAnswer.Decision.DECISION_ALLOW_SCHEDULE) })
         }
     }

@@ -9,7 +9,7 @@ Your agents can work in Hammock as you do: run a dev server in a pane of its own
 
 ## What `hmk mcp` gives an agent
 
-The [MCP reference](/hammock/docs/reference/mcp/) lists every tool and its parameters, in these groups: [panes](/hammock/docs/reference/mcp/#panes), [browser panes](/hammock/docs/reference/mcp/#browser-panes), [simulator panes](/hammock/docs/reference/mcp/#simulator-panes), [log panes](/hammock/docs/reference/mcp/#log-panes), [editor panes](/hammock/docs/reference/mcp/#editor-panes), [diff panes and reviews](/hammock/docs/reference/mcp/#diff-panes-and-reviews), [agent sessions](/hammock/docs/reference/mcp/#agent-sessions) and [scheduled tasks](/hammock/docs/reference/mcp/#scheduled-tasks). [Examples of controlling Hammock from agents](/hammock/docs/agents/examples/) shows them at work.
+The [MCP reference](/hammock/docs/reference/mcp/) lists every tool and its parameters, in these groups: [panes](/hammock/docs/reference/mcp/#panes), [browser panes](/hammock/docs/reference/mcp/#browser-panes), [simulator panes](/hammock/docs/reference/mcp/#simulator-panes), [log panes](/hammock/docs/reference/mcp/#log-panes), [editor panes](/hammock/docs/reference/mcp/#editor-panes), [diff panes and reviews](/hammock/docs/reference/mcp/#diff-panes-and-reviews), [agent sessions](/hammock/docs/reference/mcp/#agent-sessions) and [automations](/hammock/docs/reference/mcp/#automations). [Examples of controlling Hammock from agents](/hammock/docs/agents/examples/) shows them at work.
 
 ## What agents may do
 
@@ -18,7 +18,7 @@ Hammock decides what an agent may do from the pane it runs in, whether it uses M
 - **Read your Groups.** An agent can read every pane in your own Groups and on your [linked computers](/hammock/docs/remote/), but not Groups shared with you, unless you allow it.
 - **Fully control the panes it opens**, and panes those started, without asking.
 - **Ask before touching your other panes:** typing into, interrupting or closing them, driving their browsers or simulators, or acting on a linked computer's pane.
-- **Ask before saving or deleting a scheduled task.** Running or pausing one asks unless the agent saved it.
+- **Ask before saving or deleting an automation.** Running or pausing one asks unless the agent saved it.
 - **Edit files, not your editor.** It points at lines in an editor pane, but changes files on disk, and the pane reloads them.
 - **Mark review threads addressed, not resolved.** Resolving them is yours.
 - **Leave the rest to you.** Pairing, sharing, linking computers and remote access aren't available to agents, and an agent can't answer a permission request.
@@ -52,7 +52,7 @@ See the [CLI reference](/hammock/docs/reference/cli/).
 
 ## Turning tools off
 
-Turn off any kind of pane you don't want in **Settings ▸ Tools** (`browser-enabled = false` and so on, in the [config file](/hammock/docs/configuration/)). Its tools then disappear from the MCP server too. The same pane turns off [scheduled tasks](/hammock/docs/scheduled-tasks/#turning-them-off) (`schedules-enabled = false`), and agents' searching of past sessions (`sessions-enabled = false`), if you handle those your own way.
+Turn off any kind of pane you don't want in **Settings ▸ Tools** (`browser-enabled = false` and so on, in the [config file](/hammock/docs/configuration/)). Its tools then disappear from the MCP server too. The same pane turns off [automations](/hammock/docs/automations/#turning-them-off) (`schedules-enabled = false`), and agents' searching of past sessions (`sessions-enabled = false`), if you handle those your own way.
 
 ## Untrusted content
 

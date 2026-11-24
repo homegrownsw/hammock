@@ -61,7 +61,7 @@ Once Hammock's [MCP server is registered](/hammock/docs/agents/setup/#registerin
 
 > Every weekday at 8:30, review yesterday's open pull requests and give me a summary.
 
-**What happens:** the agent saves a [scheduled task](/hammock/docs/scheduled-tasks/) with `schedule_save`, and Hammock asks you to allow it first. Each run starts in a new tab in the Group.
+**What happens:** the agent saves an [automation](/hammock/docs/automations/) with `automation_save`, and Hammock asks you to allow it first. Each run starts in a new tab in the Group.
 
 ## Find something from a past session
 

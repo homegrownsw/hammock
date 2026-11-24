@@ -161,7 +161,7 @@ struct AttentionCard: View {
                         }
                     }
                     if let s = schedule {
-                        Label("Scheduled · \(s.name)", systemImage: "clock")
+                        Label("Automation · \(s.name)", systemImage: "clock")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -216,7 +216,7 @@ struct AttentionCard: View {
                         // A scheduled Claude run: allow it in every run from now on.
                         Menu("Allow") {
                             Button("Allow Once") { respond(allow: true) }
-                            Button("Always Allow for This Schedule") { respond(.allowSchedule) }
+                            Button("Always Allow for This Automation") { respond(.allowSchedule) }
                         } primaryAction: {
                             respond(allow: true)
                         }
@@ -253,7 +253,7 @@ struct AttentionCard: View {
         // VoiceOver: one button that opens the pane, its own buttons (Allow,
         // Deny, Answer…) still inside it, and Dismiss for a finished one.
         .accessibilityElement(children: .contain)
-        .accessibilityLabel([tabName, schedule.map { "Scheduled, \($0.name)" }, subtitle].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityLabel([tabName, schedule.map { "Automation, \($0.name)" }, subtitle].compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { open() }
         .accessibilityActions {

@@ -1,21 +1,21 @@
 # Scheduled tasks
 
-A person schedules an agent's prompt or a shell command to run at a time (`--at 08:30 --days weekdays`) or on a cron expression. Each run opens a new tab in the schedule's Group, and `hmk schedule show` lists past runs. Adding or editing a schedule from an agent asks the person first.
+A person schedules an agent's prompt or a shell command to run at a time (`--at 08:30 --days weekdays`) or on a cron expression. Each run opens a new tab in the schedule's Group, and `hmk automation show` lists past runs. Adding or editing a schedule from an agent asks the person first.
 
 ## Sub-features
 
 - `schedule-add`: add a command or agent schedule.
-- `schedule-list-show`: `hmk schedule` lists it, and `show --json` gives its settings and runs.
-- `schedule-run-now`: `hmk schedule run` opens a run tab in its Group straight away.
+- `schedule-list-show`: `hmk automation` lists it, and `show --json` gives its settings and runs.
+- `schedule-run-now`: `hmk automation run` opens a run tab in its Group straight away.
 - `schedule-pause-skip`: pause, resume, skip the next run.
 - `schedule-rm`: delete it.
 
 ## How to get to it (user POV)
 
-- CLI: `hmk schedule add|edit|show|run|pause|resume|skip|rm` (`hmk schedule help`).
+- CLI: `hmk automation add|edit|show|run|pause|resume|skip|rm` (`hmk automation help`).
 - Mac: the Scheduled Tasks sheet (command palette: "Scheduled Tasks"); `HMK_DEBUG_SCHEDULES=list|edit` renders it.
 - iPhone: Sessions ▸ Coming Up.
-- MCP: `schedule_save`, `schedule_run`, `schedule_list`, `schedule_pause`, `schedule_delete`.
+- MCP: `automation_save`, `automation_run`, `automation_list`, `automation_pause`, `automation_delete` (the old `schedule_*` names still work).
 
 ## Driving it with verify-hammock
 

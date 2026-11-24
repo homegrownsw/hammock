@@ -21,7 +21,7 @@ import (
 )
 
 type scheduleSaveArgs struct {
-	ID            string   `json:"id,omitempty" jsonschema:"to change an existing schedule (from schedule_list); empty creates one"`
+	ID            string   `json:"id,omitempty" jsonschema:"to change an existing schedule (from automation_list); empty creates one"`
 	Name          string   `json:"name,omitempty" jsonschema:"a short name, e.g. 'Morning briefing' (default: from the prompt)"`
 	Kind          string   `json:"kind,omitempty" jsonschema:"an agent ('claude', the default, 'codex', or another agent Hammock knows) or 'command'"`
 	Prompt        string   `json:"prompt,omitempty" jsonschema:"the agent's first message (e.g. '/morning-briefing'), or for a command the shell command line. Required when creating"`
@@ -45,18 +45,18 @@ type scheduleSaveArgs struct {
 }
 
 type scheduleIDArgs struct {
-	ID string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
+	ID string `json:"id" jsonschema:"the schedule's id, from automation_list"`
 }
 
 type scheduleRunArgs struct {
-	ID      string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
+	ID      string `json:"id" jsonschema:"the schedule's id, from automation_list"`
 	Early   bool   `json:"early,omitempty" jsonschema:"run it instead of at its next time, not as well"`
 	Trigger bool   `json:"trigger,omitempty" jsonschema:"run it as an event (as hmk trigger does): its cooldown applies, and data goes into the run"`
 	Data    string `json:"data,omitempty" jsonschema:"with trigger: what happened, given to the run (up to 64 KB)"`
 }
 
 type scheduleDeleteArgs struct {
-	ID          string `json:"id" jsonschema:"the schedule's id, from schedule_list"`
+	ID          string `json:"id" jsonschema:"the schedule's id, from automation_list"`
 	Description string `json:"description,omitempty" jsonschema:"why, in a sentence, shown to the user with the request"`
 }
 
@@ -133,8 +133,8 @@ func viewSchedule(w *world, s *pb.Schedule) scheduleView {
 
 func (s *mcpServer) registerSchedules(server *mcp.Server) {
 	addTool(s, server, &mcp.Tool{
-		Name: "schedule_list",
-		Description: "List the user's scheduled tasks in Hammock (agents or commands Hammock runs on a schedule, each run a new tab), " +
+		Name: "automation_list",
+		Description: "List the user's automations in Hammock (agents or commands Hammock runs on a schedule or when something happens, each run a new tab), " +
 			"with when they run next and how recent runs went.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ listArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
@@ -148,14 +148,14 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 		return textResult(out), nil, nil
 	})
 
-	saveDesc := "Create (no id) or change a scheduled task: the Hammock Server then starts the agent (Claude Code by default, or Codex or another Hammock knows) with the prompt (or runs the command) " +
-		"at that time, each run a new tab in the Group, the user told when it's ready. Use this instead of launchd or cron for agent tasks. " +
+	saveDesc := "Create (no id) or change an automation: the Hammock Server then starts the agent (Claude Code by default, or Codex or another Hammock knows) with the prompt (or runs the command) " +
+		"at that time (or when its triggers fire), each run a new tab in the Group, the user told when it's ready. Use this instead of launchd or cron for agent tasks. " +
 		"The user is asked to allow it first (this waits for their answer)."
 	if hammockconfig.ToolOn(hammockconfig.Values(), "browser") { // hmk show opens a browser pane
 		saveDesc += " To show a page from a run, have the prompt end with running `hmk show FILE`."
 	}
 	addTool(s, server, &mcp.Tool{
-		Name:        "schedule_save",
+		Name:        "automation_save",
 		Description: saveDesc,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleSaveArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
@@ -273,8 +273,8 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 	})
 
 	addTool(s, server, &mcp.Tool{
-		Name:        "schedule_run",
-		Description: "Run a scheduled task now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. With trigger, it runs as an event, given data (its cooldown applies: it may be queued). One you didn't save yourself asks the user first (waits for their answer).",
+		Name:        "automation_run",
+		Description: "Run an automation now, in a new tab of its Group. Returns the tab id. With early, it runs instead of at its next time (which moves on to the one after), rather than as well. With trigger, it runs as an event, given data (its cooldown applies: it may be queued). One you didn't save yourself asks the user first (waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleRunArgs) (*mcp.CallToolResult, any, error) {
 		if a.Data != "" && !a.Trigger {
 			return nil, nil, errors.New("data goes with trigger")
@@ -291,8 +291,8 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 	})
 
 	addTool(s, server, &mcp.Tool{
-		Name:        "schedule_pause",
-		Description: "Pause (paused=true) or resume a scheduled task. One you didn't save yourself asks the user first (waits for their answer).",
+		Name:        "automation_pause",
+		Description: "Pause (paused=true) or resume an automation. One you didn't save yourself asks the user first (waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a schedulePauseArgs) (*mcp.CallToolResult, any, error) {
 		if _, err := s.call(ctx, &pb.ClientMessage{Msg: &pb.ClientMessage_SetSchedulePaused{SetSchedulePaused: &pb.SetSchedulePaused{ScheduleId: a.ID, Paused: a.Paused}}}); err != nil {
 			return nil, nil, err
@@ -301,8 +301,8 @@ func (s *mcpServer) registerSchedules(server *mcp.Server) {
 	})
 
 	addTool(s, server, &mcp.Tool{
-		Name:        "schedule_delete",
-		Description: "Delete a scheduled task (asks the user first; waits for their answer).",
+		Name:        "automation_delete",
+		Description: "Delete an automation (asks the user first; waits for their answer).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a scheduleDeleteArgs) (*mcp.CallToolResult, any, error) {
 		ctx, cancel := context.WithTimeout(ctx, grantWait)
 		defer cancel()

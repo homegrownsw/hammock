@@ -185,22 +185,22 @@ Usage:
                                             default this pane's
   hmk session-link [PANE]                  print the web link to a pane's agent session (Claude Code's
                                             Remote Control), by default this pane's
-  hmk schedule [ls]                        list scheduled tasks: an agent's prompt, or a command, run
-                                            on a schedule, each run a new tab in its Group
-  hmk schedule add [NAME] (--at HH:MM [--days weekdays|weekends|mon,tue…] | --cron EXPR)
+  hmk automation [ls]                      list automations: an agent's prompt, or a command, run on
+                                            a schedule or when something happens, each run a new tab in
+                                            its Group
+  hmk automation add [NAME] (--at HH:MM [--days weekdays|weekends|mon,tue…] | --cron EXPR | --once WHEN)
              [--claude|--codex|--AGENT|--command] [--dir DIR] [--group G] [OPTIONS] -- PROMPT|COMMAND
                                             add one (an agent's add or edit asks you first; hmk
-                                            schedule help lists the options)
-  hmk schedule add … --trigger T [--events-only] [--cooldown S] -- PROMPT|COMMAND
+                                            automation help lists the options)
+  hmk automation add … --trigger T [--events-only] [--cooldown S] -- PROMPT|COMMAND
                                             run it when something happens: a GitHub event, an agent
                                             finishing, a command failing, a log line, files changing, a
-                                            calendar event, its webhook (hmk schedule help lists them)
-  hmk schedule edit|show|run|pause|resume|skip|rm SCHEDULE
+                                            calendar event, its webhook (hmk automation help lists them)
+  hmk automation edit|show|run|pause|resume|skip|rm NAME
                                             change, see (its runs), run now, pause, skip the next run, delete
-  hmk schedule webhook SCHEDULE [--new]    print its webhook's URL (--new: a new secret)
-  hmk trigger SCHEDULE [--data TEXT|-|@FILE]
-                                            run it now as an event, data (- for stdin) what happened:
-                                            its cooldown applies, and the run is given the data
+  hmk automation webhook NAME [--new]      print its webhook's URL (--new: a new secret)
+  hmk trigger NAME [--data TEXT|-|@FILE]   run an automation now as an event, data (- for stdin)
+                                            what happened: its cooldown applies, and the run gets the data
   hmk show FILE|URL [--pane PANE | --split PANE]
                                             open a file (HTML, Markdown, an image, a PDF) or a page in a
                                             browser pane beside this one; again from this pane, it reloads
@@ -280,7 +280,7 @@ func main() {
 		err = runAgent(args[1:])
 	case "worktree", "worktrees":
 		err = runWorktree(args[1:])
-	case "schedule", "schedules":
+	case "automation", "automations", "schedule", "schedules": // (schedule: its old name, kept)
 		err = runSchedule(args[1:])
 	case "trigger":
 		err = runTrigger(args[1:])

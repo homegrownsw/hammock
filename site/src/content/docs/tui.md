@@ -40,7 +40,7 @@ Press ⌃B, let go, then the key. ⌃B ? shows this list in the TUI.
 | ⌃B , | Rename tab |
 | ⌃B s | Settings |
 | ⌃B O | Find a session |
-| ⌃B @ | Scheduled tasks |
+| ⌃B @ | Automations |
 | ⌃B e | Quick Open (a file) |
 | ⌃B E | New editor tab |
 | ⌃B % or ⌃B \| | Split right |

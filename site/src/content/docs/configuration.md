@@ -69,7 +69,7 @@ keys of its own: see [The TUI](/hammock/docs/tui/#keys).
 
 Turn off browser, simulator, editor, diff or log panes you don't use in Settings ▸ Tools: see
 [Turning a kind of pane off](/hammock/docs/panes/#turning-a-kind-of-pane-off). It also turns off
-[scheduled tasks](/hammock/docs/scheduled-tasks/#turning-them-off) and agents' session search: see
+[automations](/hammock/docs/automations/#turning-them-off) and agents' session search: see
 [Turning tools off](/hammock/docs/agents/mcp/#turning-tools-off).
 
 ## The Settings window

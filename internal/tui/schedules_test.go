@@ -171,7 +171,7 @@ func TestScheduleListDraws(t *testing.T) {
 	a.overlay.draw(a)
 	out := screenText(a.scr)
 	t.Log("\n" + out)
-	for _, want := range []string{"Scheduled Tasks", "2 tasks", "Hourly tests", "Morning briefing", "CI", "Work",
+	for _, want := range []string{"Automations", "2 automations", "Hourly tests", "Morning briefing", "CI", "Work",
 		"cron 0 * * * *", "weekdays at 08:30", "paused", "failed (2)", "✓ ready",
 		"Command in /tmp: make test", "r Run Now", "p Resume"} {
 		if !strings.Contains(out, want) {
@@ -232,7 +232,7 @@ func TestScheduleDialogShowsMistakes(t *testing.T) {
 	d2.draw(a)
 	out := screenText(a.scr)
 	t.Log("\n" + out)
-	for _, want := range []string{"New Scheduled Task", "Runs as a new tab in Work.", "⚠ can't read", "More options in the Mac app"} {
+	for _, want := range []string{"New Automation", "Runs as a new tab in Work.", "⚠ can't read", "More options in the Mac app"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -250,13 +250,13 @@ func TestNeedsMenuOffersTheSchedule(t *testing.T) {
 		return out
 	}
 	a.needsMenu("at", 1, 1)
-	if l := labels(); !slices.Contains(l, "Always Allow for This Schedule") || !slices.Contains(l, "Allow") || !slices.Contains(l, "Deny") {
+	if l := labels(); !slices.Contains(l, "Always Allow for This Automation") || !slices.Contains(l, "Allow") || !slices.Contains(l, "Deny") {
 		t.Errorf("%v", l)
 	}
 	// A command's run, a pane that isn't a run, or a question: no remembering.
 	a.schedules["sc1"].Kind = "command"
 	a.needsMenu("at", 1, 1)
-	if l := labels(); slices.Contains(l, "Always Allow for This Schedule") {
+	if l := labels(); slices.Contains(l, "Always Allow for This Automation") {
 		t.Errorf("%v", l)
 	}
 	a.attention[0].Question = true

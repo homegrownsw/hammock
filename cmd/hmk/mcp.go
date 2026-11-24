@@ -112,6 +112,30 @@ func mcpInstructions(values map[string]string) string {
 func addTool[In, Out any](s *mcpServer, server *mcp.Server, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
 	s.kindTools[s.registering] = append(s.kindTools[s.registering], t.Name)
 	mcp.AddTool(server, t, h)
+	if old := toolOldNames[t.Name]; old != "" {
+		// Its old name works as ever (agents' skills call it), unadvertised.
+		o := *t
+		o.Name, o.Description = old, "The old name of "+t.Name+": use that. "+t.Description
+		s.kindTools[s.registering] = append(s.kindTools[s.registering], old)
+		mcp.AddTool(server, &o, h)
+	}
+}
+
+// toolOldNames are tools' names before they were renamed, still answered
+// to but left out of the docs (mcpListTools).
+var toolOldNames = map[string]string{
+	"automation_list": "schedule_list", "automation_save": "schedule_save", "automation_run": "schedule_run",
+	"automation_pause": "schedule_pause", "automation_delete": "schedule_delete",
+}
+
+// oldToolName: name is one of toolOldNames' old names.
+func oldToolName(name string) bool {
+	for _, o := range toolOldNames {
+		if o == name {
+			return true
+		}
+	}
+	return false
 }
 
 // registerKind adds the MCP tools for one of Hammock's tools that can be
@@ -770,7 +794,7 @@ func (s *mcpServer) register(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "rerun_pane",
-		Description: "Run a pane's command again in the same pane, after it ended: a dev server or test watcher you started that crashed or failed. Its last screen stays above the new run's, and an agent's pane resumes the agent's session. Only for a terminal pane whose program has exited: a create_pane pane without close_on_exit keeps a shell running after its command, so type the command there again with send_to_pane instead. Not for a pane that's asleep, or a scheduled run (schedule_run runs its task again). Running a pane you didn't create asks the user.",
+		Description: "Run a pane's command again in the same pane, after it ended: a dev server or test watcher you started that crashed or failed. Its last screen stays above the new run's, and an agent's pane resumes the agent's session. Only for a terminal pane whose program has exited: a create_pane pane without close_on_exit keeps a shell running after its command, so type the command there again with send_to_pane instead. Not for a pane that's asleep, or a scheduled run (automation_run runs its automation again). Running a pane you didn't create asks the user.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, a rerunArgs) (*mcp.CallToolResult, any, error) {
 		w, err := s.world(ctx)
 		if err != nil {
@@ -805,7 +829,7 @@ func whyNotRerun(p *pb.Pane) string {
 	case !p.Exited:
 		return "it's still running"
 	case p.ScheduleRunId != "":
-		return "it's a scheduled run: run its task again with schedule_run"
+		return "it's an automation's run: run the automation again with automation_run"
 	}
 	return ""
 }

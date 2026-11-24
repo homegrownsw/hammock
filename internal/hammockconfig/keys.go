@@ -259,7 +259,7 @@ var Keys = []Key{
 	{Name: "log-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: Hammock doesn't offer log panes, in its menus or to agents"},
 	{Name: "schedules-enabled", Group: "Tools", Value: "true", Default: "true",
-		Doc: "false: Hammock doesn't offer scheduled tasks, in its menus or to agents, and doesn't run them"},
+		Doc: "false: Hammock doesn't offer automations (scheduled and triggered tasks), in its menus or to agents, and doesn't run them"},
 	{Name: "sessions-enabled", Group: "Tools", Value: "true", Default: "true",
 		Doc: "false: agents can't search or read past agents' sessions"},
 

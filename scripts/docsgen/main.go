@@ -237,7 +237,7 @@ var cliSections = []struct {
 }{
 	{"Workspace", "Groups, tabs and panes, and what's in them.", []string{"ls", "focus", "group", "tab", "split", "rotate", "float", "dock", "minimise", "floats", "close", "reopen", "rerun", "attach", "send", "read", "theme"}},
 	{"Browser, simulator, log, editor and diff panes", "Panes that aren't terminals.", []string{"browser", "nav", "devtools", "show", "sim", "log", "edit", "diff", "review"}},
-	{"Agents", "Starting, finding and resuming agents, and what they may do.", []string{"agent", "switch", "sleep", "wake", "session-link", "sessions", "resume", "grant", "audit", "schedule", "hook", "hooks", "mcp"}},
+	{"Agents", "Starting, finding and resuming agents, and what they may do.", []string{"agent", "switch", "sleep", "wake", "session-link", "sessions", "resume", "grant", "audit", "automation", "trigger", "hook", "hooks", "mcp"}},
 	{"Devices, linked computers and sharing", "Your phone, your other computers, and other people.", []string{"remote", "pair", "devices", "link", "computers", "share", "approve", "unshare", "join", "leave"}},
 	{"Keys and SSH", "The Hammock Key, and SSH in Hammock's panes.", []string{"key", "ssh"}},
 	{"The Hammock Server, the TUI and more", "Running Hammock itself.", []string{"tui", "stop", "status", "service", "docs", "acknowledgements"}},
@@ -369,7 +369,7 @@ var mcpGroups = []struct{ id, title, blurb string }{
 	{"editor", "Editor panes", "Point you at code, and read what you have open and selected."},
 	{"diff", "Diff panes and reviews", "Open a diff for you to review, and answer your comments on it."},
 	{"sessions", "Agent sessions", "Search and read agents' past sessions on this Mac."},
-	{"schedules", "Scheduled tasks", "Agent prompts and commands that run on a schedule."},
+	{"schedules", "Automations", "Agent prompts and commands that run on a schedule, or when something happens."},
 }
 
 func typeName(t any, items *struct {

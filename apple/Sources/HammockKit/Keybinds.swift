@@ -246,10 +246,10 @@ public enum Keybinds {
             .init("new_files_tab", "New Files Tab", "File", nil, "create file browser explorer tree folder finder"),
             .init("quick_open", "Quick Open…", "File", c("p"), "find file fuzzy go to open editor"),
             .init("open_file", "Open File…", "File", c("o"), "editor text code browse finder"),
-            .init("new_scheduled_task", "New Scheduled Task…", "File", c("n", cos), "create schedule cron timer recurring automation"),
+            .init("new_scheduled_task", "New Automation…", "File", c("n", cos), "create automation schedule scheduled task cron timer recurring trigger"),
             // Only while the Scheduled Tasks list shows (a browser's ⌘R reloads it otherwise).
             // (Keybinds.sheetScoped: it shares ⌘R with a browser's Reload.)
-            .init("run_scheduled_task", "Run Scheduled Task Now", "File", c("r"), "schedule cron run start now selected list"),
+            .init("run_scheduled_task", "Run Automation Now", "File", c("r"), "automation schedule scheduled task cron run start now selected list"),
             .init("new_group", "New Group", "File", c("n"), "create workspace project"),
             .init("new_group_in_directory", "New Group in Directory…", "File", c("n", cs), "create folder project open path cwd workspace"),
             .init("new_group_on_computer", "New Group on Computer 1…9", "File", c(KeyChord.digits, cco), "create linked computer mac remote"),
@@ -280,7 +280,7 @@ public enum Keybinds {
             .init("show_all_computers", "Show All Computers", "View", c("0", cc), "filter sidebar every linked"),
             .init("show_computer", "Show Computer 1…9", "View", c(KeyChord.digits, cc), "filter sidebar only linked"),
             // Not ⌥⌘S: AppKit's own (hidden) Toggle Sidebar has it, and took it.
-            .init("scheduled_tasks", "Scheduled Tasks", "View", c("s", cs), "schedule cron timer recurring runs automation"),
+            .init("scheduled_tasks", "Automations", "View", c("s", cs), "automations schedule scheduled tasks cron timer recurring runs triggers"),
             // ⌥⌘R: free in macOS and here.
             .init("review_changes", "Review Changes", "View", c("r", co), "diff git review changes pull request branch commit uncommitted"),
             // ⌥⌘Z: free in macOS; a setting, so it works with any pane focused.

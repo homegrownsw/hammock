@@ -79,9 +79,9 @@
 	<string>Dictate messages to your agents when you click the microphone.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Turn what you say into text, on this Mac, when you dictate a message.</string>
-	<!-- Scheduled tasks' calendar triggers (CalendarFeed.swift): the events coming up, read on this Mac. -->
+	<!-- Automations' calendar triggers (CalendarFeed.swift): the events coming up, read on this Mac. -->
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>Start scheduled tasks before calendar events you choose.</string>
+	<string>Start automations before calendar events you choose.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

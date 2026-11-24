@@ -249,33 +249,33 @@ struct CommandPalette: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { GroupFolder.newGroup(model) }
         }
         // Scheduled tasks: the list, a new one, and each one's run, pause and edit.
-        action("scheduled-tasks", "Scheduled Tasks", "clock", .indigo, "schedule cron timer recurring runs automation", keys: Keys.scheduledTasks) {
+        action("scheduled-tasks", "Automations", "clock", .indigo, "automations schedule scheduled tasks cron timer recurring runs triggers", keys: Keys.scheduledTasks) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.showList() }
         }
-        action("new-scheduled-task", "New Scheduled Task…", "clock.badge.plus", .indigo, "create schedule cron timer recurring automation", keys: Keys.newScheduledTask) {
+        action("new-scheduled-task", "New Automation…", "clock.badge.plus", .indigo, "create automation schedule scheduled task cron timer recurring trigger", keys: Keys.newScheduledTask) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.new(model) }
         }
         if let tab = model.selectedTab, ScheduleUI.canSchedule(model, tab) {
-            action("schedule-this", "Schedule This Tab…", "clock.arrow.circlepath", .indigo, "schedule cron timer recurring automation") {
+            action("schedule-this", "Automate This Tab…", "clock.arrow.circlepath", .indigo, "automate automation schedule this scheduled task cron timer recurring") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.scheduleThis(model, tab) }
             }
         }
         for sc in model.sortedSchedules {
-            action("schedule-run:" + sc.id, "Run “\(sc.name)” Now", "play.circle", .indigo, "scheduled task start") { ScheduleActions.runNow(model, sc) }
+            action("schedule-run:" + sc.id, "Run “\(sc.name)” Now", "play.circle", .indigo, "automation scheduled task start") { ScheduleActions.runNow(model, sc) }
             if sc.canRunEarly {
-                action("schedule-run-early:" + sc.id, "Run “\(sc.name)” Now Instead of \(sc.nextRunShort())", "play.circle", .indigo, "scheduled task start early bring forward skip next") {
+                action("schedule-run-early:" + sc.id, "Run “\(sc.name)” Now Instead of \(sc.nextRunShort())", "play.circle", .indigo, "automation scheduled task start early bring forward skip next") {
                     ScheduleActions.runNow(model, sc, early: true)
                 }
             }
-            action("schedule-pause:" + sc.id, sc.paused ? "Resume “\(sc.name)”" : "Pause “\(sc.name)”", sc.paused ? "play" : "pause", .indigo, "scheduled task") {
+            action("schedule-pause:" + sc.id, sc.paused ? "Resume “\(sc.name)”" : "Pause “\(sc.name)”", sc.paused ? "play" : "pause", .indigo, "automation scheduled task") {
                 ScheduleActions.setPaused(model, sc, !sc.paused)
             }
             if sc.hasWebhook {
-                action("schedule-webhook:" + sc.id, "Copy “\(sc.name)” Webhook URL", "link", .indigo, "scheduled task trigger hook url") {
+                action("schedule-webhook:" + sc.id, "Copy “\(sc.name)” Webhook URL", "link", .indigo, "automation scheduled task trigger hook url") {
                     ScheduleActions.copyWebhook(model, sc)
                 }
             }
-            action("schedule-edit:" + sc.id, "Edit “\(sc.name)”…", "pencil", .indigo, "scheduled task change") {
+            action("schedule-edit:" + sc.id, "Edit “\(sc.name)”…", "pencil", .indigo, "automation scheduled task change") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScheduleUI.shared.edit(sc) }
             }
         }

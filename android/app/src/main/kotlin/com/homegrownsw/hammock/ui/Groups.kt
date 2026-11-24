@@ -402,7 +402,7 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
                     Text(w.title(tab), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false))
                     if (tab.hasGit() && tab.git.shown) GitMark(tab.git, quiet)
-                    if (schedule != null) Icon(Icons.Default.Schedule, "Scheduled run of ${schedule.name}", Modifier.size(14.dp),
+                    if (schedule != null) Icon(Icons.Default.Schedule, "A run of the automation ${schedule.name}", Modifier.size(14.dp),
                         tint = quiet.copy(alpha = 0.6f))
                 }
                 val summary = w.panes(tab).firstOrNull { it.hasAgent() }?.agent?.summary.orEmpty()

@@ -159,7 +159,7 @@ struct TriggerEditorRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 TextField("Files", text: files(\.glob), prompt: Text("Any file, or *.swift, src/**/*.ts"))
                     .font(.system(.body, design: .monospaced))
-                TextField("In", text: files(\.folder), prompt: Text("The task’s folder"))
+                TextField("In", text: files(\.folder), prompt: Text("The automation’s folder"))
                     .font(.system(.body, design: .monospaced))
             }
         case .calendar:
@@ -173,18 +173,18 @@ struct TriggerEditorRow: View {
             }
         case .webhook:
             VStack(alignment: .leading, spacing: 4) {
-                Text("Its webhook is called (POST, the body is the event)")
+                Text("Webhook")
                 if scheduleID.isEmpty || trigger.id.isEmpty {
                     Text("Its URL is made when you save.").font(.caption).foregroundStyle(.secondary)
                 } else {
+                    if let u = webhook?.urls.first {
+                        Text(u).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    }
                     HStack {
                         Button("Copy URL") { Task { await copyWebhook(regenerate: false) } }
                         Button("New URL…") { confirmNewURL() }
                     }
                     .controlSize(.small)
-                    if let u = webhook?.urls.first {
-                        Text(u).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
-                    }
                     if let p = webhook?.problem, !p.isEmpty {
                         Text(p).font(.caption).foregroundStyle(.orange)
                     }
@@ -358,11 +358,12 @@ enum ScheduleSamples {
                 .with { $0.id = "tr_s1"; $0.kind = .github(.with { $0.event = .ciFailed; $0.repo = "acme/widgets" }) },
                 .with { $0.id = "tr_s2"; $0.kind = .github(.with { $0.event = .labeled; $0.label = "needs fix"; $0.repo = "acme/widgets" }) },
                 .with { $0.id = "tr_s3"; $0.kind = .webhook(.init()) },
+                .with { $0.id = "tr_s6"; $0.kind = .calendar(.with { $0.minutesBefore = 15; $0.title = "Release" }) },
             ]
             $0.runs = [
                 .with { $0.id = "sr_s1"; $0.status = .running; $0.trigger = "CI failed on #42"; $0.kind = "claude"; $0.startedUnixMs = ms(120) },
-                .with { $0.id = "sr_s2"; $0.status = .ready; $0.trigger = "Webhook: GitHub check_run"; $0.kind = "claude"; $0.startedUnixMs = ms(3 * 3600); $0.endedUnixMs = ms(3 * 3600 - 540); $0.note = "Fixed the flaky login test and pushed it to fix-login." },
-                .with { $0.id = "sr_s3"; $0.status = .skipped; $0.trigger = "CI failed on #40 (and 2 more)"; $0.kind = "claude"; $0.dueUnixMs = ms(26 * 3600); $0.note = "The last run was still going" },
+                .with { $0.id = "sr_s2"; $0.status = .ready; $0.trigger = "Webhook"; $0.kind = "claude"; $0.startedUnixMs = ms(3 * 3600); $0.endedUnixMs = ms(3 * 3600 - 540); $0.note = "Fixed the flaky login test and pushed it to fix-login." },
+                .with { $0.id = "sr_s3"; $0.status = .ready; $0.trigger = "CI failed on #40 (and 2 more)"; $0.kind = "claude"; $0.startedUnixMs = ms(26 * 3600); $0.endedUnixMs = ms(26 * 3600 - 700); $0.note = "Fixed the three failing checks on #40." },
                 .with { $0.id = "sr_s4"; $0.status = .ready; $0.manual = true; $0.kind = "claude"; $0.startedUnixMs = ms(50 * 3600); $0.endedUnixMs = ms(50 * 3600 - 300); $0.note = "Nothing failing right now." },
             ]
         }

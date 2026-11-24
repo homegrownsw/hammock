@@ -123,6 +123,8 @@ final class ScheduleUI {
 /// when, next run, last run), the selected one's settings and runs on the right.
 struct ScheduledTasksSheet: View {
     let model: AppModel
+    /// Taller, to render all of it (HMK_DEBUG_SCHEDULES_HEIGHT).
+    nonisolated(unsafe) static var debugHeight: CGFloat?
     @Bindable private var ui = ScheduleUI.shared
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
@@ -140,21 +142,21 @@ struct ScheduledTasksSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Scheduled Tasks").font(.title3.weight(.semibold))
+                Text("Automations").font(.title3.weight(.semibold))
                 Spacer()
-                Button { ScheduleUI.shared.new(model) } label: { Label("New Scheduled Task…", systemImage: "plus") }
-                    .help(Keys.hint("New Scheduled Task", "new_scheduled_task"))
+                Button { ScheduleUI.shared.new(model) } label: { Label("New Automation…", systemImage: "plus") }
+                    .help(Keys.hint("New Automation", "new_scheduled_task"))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             Divider()
             if all.isEmpty {
                 ContentUnavailableView {
-                    Label("No Scheduled Tasks", systemImage: "clock")
+                    Label("No Automations", systemImage: "clock")
                 } description: {
-                    Text("Run Claude Code, Codex or a command at set times. Each run opens a tab in its Group, so you can pick up where it left off.")
+                    Text("Run Claude Code, Codex or a command at set times, or when something happens. Each run opens a tab in its Group, so you can pick up where it left off.")
                 } actions: {
-                    Button("New Scheduled Task…") { ScheduleUI.shared.new(model) }
+                    Button("New Automation…") { ScheduleUI.shared.new(model) }
                         .buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -165,7 +167,7 @@ struct ScheduledTasksSheet: View {
                             .textFieldStyle(.roundedBorder)
                             .padding(8)
                         if list.isEmpty {
-                            Text("No scheduled tasks match “\(search)”.")
+                            Text("No automations match “\(search)”.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -191,7 +193,7 @@ struct ScheduledTasksSheet: View {
                         ScheduleDetail(model: model, schedule: s)
                             .id(s.id)
                     } else {
-                        ContentUnavailableView("Select a Scheduled Task", systemImage: "clock")
+                        ContentUnavailableView("Select an Automation", systemImage: "clock")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
@@ -205,7 +207,9 @@ struct ScheduledTasksSheet: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .frame(width: 900, height: 600)
+        // Resizable, taller to see more runs; the detail scrolls.
+        .frame(minWidth: 820, idealWidth: 900, maxWidth: 1400, minHeight: 520,
+               idealHeight: Self.debugHeight ?? 680, maxHeight: Self.debugHeight ?? .infinity)
         .onAppear(perform: keepSelection)
         .onChange(of: list.map(\.id)) { keepSelection() }
     }
@@ -470,7 +474,7 @@ struct ScheduleDetail: View {
                                 Text(t.error).font(.caption).foregroundStyle(.orange)
                             }
                         }
-                        Text(schedule.cooldown == 0 ? "No cooldown" : "At most one run every \(Schedule.cooldownWords(schedule.cooldown).replacing(/^1 /, with: ""))")
+                        Text(schedule.cooldown == 0 ? "No cooldown" : "At most one run every \(Schedule.cooldownWords(schedule.cooldown).replacing(#/^1 /#, with: ""))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -641,11 +645,11 @@ struct ScheduleFooter: View {
         .padding(.top, 8)
         .contentShape(Rectangle())
         .onTapGesture { ScheduleUI.shared.showList(select: model.nextSchedule?.id) }
-        .help(Keys.hint("Scheduled Tasks", "scheduled_tasks"))
+        .help(Keys.hint("Automations", "scheduled_tasks"))
     }
 
     private func text(now: Date) -> String {
-        guard let s = model.nextSchedule else { return "No scheduled runs coming up" }
+        guard let s = model.nextSchedule else { return "No automations coming up" }
         let when = Schedule.dateText(s.nextRunUnixMs, now: now)
         // "Today at 08:30" reads as "Next: Morning briefing at 08:30".
         if when.hasPrefix("Today ") { return "Next: \(s.name) \(when.dropFirst("Today ".count))" }

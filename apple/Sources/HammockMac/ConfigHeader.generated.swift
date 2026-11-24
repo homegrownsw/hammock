@@ -126,7 +126,7 @@ extension AppConfig {
         #   diff-enabled = true                    (false: Hammock doesn't offer diff panes, in its menus or to agents)
         #   files-enabled = true                   (false: Hammock doesn't offer files panes, in its menus or to agents)
         #   log-enabled = true                     (false: Hammock doesn't offer log panes, in its menus or to agents)
-        #   schedules-enabled = true               (false: Hammock doesn't offer scheduled tasks, in its menus or to agents, and doesn't run them)
+        #   schedules-enabled = true               (false: Hammock doesn't offer automations (scheduled and triggered tasks), in its menus or to agents, and doesn't run them)
         #   sessions-enabled = true                (false: agents can't search or read past agents' sessions)
         #
         # Remote access and linked computers

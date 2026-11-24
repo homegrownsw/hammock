@@ -382,7 +382,7 @@ fun LazyListScope.comingUp(model: AppModel, w: Workspace, nav: Nav, now: Long) {
         item(key = "nothing") {
             val paused = w.schedules.values.count { it.paused }
             CardRow(0, 1) {
-                Text(if (paused > 0) "Nothing coming up: ${if (paused == 1) "1 task is" else "$paused tasks are"} paused." else "Nothing coming up.",
+                Text(if (paused > 0) "Nothing coming up: ${if (paused == 1) "1 automation is" else "$paused automations are"} paused." else "Nothing coming up.",
                     Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -501,9 +501,9 @@ fun SchedulesScreen(model: AppModel, nav: Nav, showBack: Boolean) {
     val ctx = LocalContext.current
     val now = rememberNow(60_000)
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant
-    DetailTop("Scheduled Tasks", nav, showBack) { padding ->
+    DetailTop("Automations", nav, showBack) { padding ->
         if (w.schedules.isEmpty()) {
-            EmptyState("No Scheduled Tasks", "Run Claude Code, Codex or a command at set times: each run opens a tab in its Group. Create scheduled tasks on your computer (or with hmk schedule).", Modifier.padding(padding))
+            EmptyState("No Automations", "Run Claude Code, Codex or a command at set times, or when something happens: each run opens a tab in its Group. Create automations on your computer (or with hmk automation).", Modifier.padding(padding))
             return@DetailTop
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp)) {
@@ -556,7 +556,7 @@ private fun ScheduleListRow(model: AppModel, w: Workspace, s: Schedule, now: Lon
 
 @Composable
 private fun MacOnlyFooter() = Text(
-    "Create and edit scheduled tasks on your computer (or with hmk schedule).",
+    "Create and edit automations on your computer (or with hmk automation).",
     Modifier.padding(horizontal = CardInset + 16.dp, vertical = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
 )
 
@@ -579,9 +579,9 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
     val now = rememberNow(60_000)
     val scope = rememberCoroutineScope()
     val s = w.schedules[id]
-    DetailTop(s?.name ?: "Scheduled Task", nav, showBack) { padding ->
+    DetailTop(s?.name ?: "Automation", nav, showBack) { padding ->
         if (s == null) {
-            EmptyState("Scheduled Task Deleted", "It was deleted on your computer.", Modifier.padding(padding))
+            EmptyState("Automation Deleted", "It was deleted on your computer.", Modifier.padding(padding))
             return@DetailTop
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding() + 12.dp, bottom = 24.dp)) {

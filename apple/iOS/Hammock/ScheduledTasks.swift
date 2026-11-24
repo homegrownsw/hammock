@@ -225,7 +225,7 @@ struct ComingUpSection: View {
             let next = self.next
             if next.isEmpty {
                 let paused = model.schedules.values.filter(\.paused).count
-                Text(paused > 0 ? "Nothing coming up: \(paused == 1 ? "1 task is" : "\(paused) tasks are") paused." : "Nothing coming up.")
+                Text(paused > 0 ? "Nothing coming up: \(paused == 1 ? "1 automation is" : "\(paused) automations are") paused." : "Nothing coming up.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -393,15 +393,15 @@ struct ScheduledTasksScreen: View {
             .overlay {
                 if model.schedules.isEmpty {
                     ContentUnavailableView {
-                        Label("No Scheduled Tasks", systemImage: "clock")
+                        Label("No Automations", systemImage: "clock")
                     } description: {
-                        Text("Run Claude Code, Codex or a command at set times: each run opens a tab in its Group.\nCreate scheduled tasks on your Mac (or with `hmk schedule`).")
+                        Text("Run Claude Code, Codex or a command at set times, or when something happens: each run opens a tab in its Group.\nCreate automations on your Mac (or with `hmk automation`).")
                     }
                 }
             }
         }
         .themedScreenBackground()
-        .navigationTitle("Scheduled Tasks")
+        .navigationTitle("Automations")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -409,7 +409,7 @@ struct ScheduledTasksScreen: View {
 /// Where scheduled tasks are made.
 struct MacOnlyFooter: View {
     var body: some View {
-        Text("Create and edit scheduled tasks on your Mac (or with `hmk schedule`).")
+        Text("Create and edit automations on your Mac (or with `hmk automation`).")
     }
 }
 
@@ -463,7 +463,7 @@ struct ScheduleDetailScreen: View {
                 .themedScreenBackground()
                 .navigationTitle(s.name)
             } else {
-                ContentUnavailableView("Scheduled Task Deleted", systemImage: "clock.badge.xmark",
+                ContentUnavailableView("Automation Deleted", systemImage: "clock.badge.xmark",
                                        description: Text("It was deleted on your Mac."))
             }
         }

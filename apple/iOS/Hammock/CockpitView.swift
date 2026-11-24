@@ -684,7 +684,7 @@ struct TabRowIOS: View {
                         Image(systemName: "clock")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.tertiary)
-                            .accessibilityLabel("Scheduled run of \(s.name)")
+                            .accessibilityLabel("Automation run of \(s.name)")
                     }
                 }
                 if let p = model.panes(in: tab).first(where: { $0.hasAgent }), !p.agent.summary.isEmpty {
@@ -714,7 +714,7 @@ struct AttentionRow: View {
                     if let s = schedule {
                         HStack(spacing: 4) {
                             Image(systemName: "clock")
-                            Text("Scheduled · \(s.name)")
+                            Text("Automation · \(s.name)")
                         }
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -747,7 +747,7 @@ struct AttentionRow: View {
                         // A scheduled Claude run: allow it in every run from now on.
                         Menu {
                             Button("Allow Once", systemImage: "checkmark") { answer(true) }
-                            Button("Always Allow for This Schedule", systemImage: "clock.badge.checkmark") {
+                            Button("Always Allow for This Automation", systemImage: "clock.badge.checkmark") {
                                 Haptics.success()
                                 withAnimation { model.decide(item, .allowSchedule) }
                             }
@@ -760,7 +760,7 @@ struct AttentionRow: View {
                             answer(true)
                         }
                         .prominentButton()
-                        .accessibilityHint("Hold for Always Allow for This Schedule")
+                        .accessibilityHint("Hold for Always Allow for This Automation")
                         .disabled(linkDown)
                     } else {
                         Button("Allow") { answer(true) }.prominentButton().disabled(linkDown)

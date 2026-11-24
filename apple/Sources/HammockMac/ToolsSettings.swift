@@ -31,7 +31,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .diff: "Diff Viewer"
         case .files: "Files"
         case .log: "Log Viewer"
-        case .schedules: "Scheduled Tasks"
+        case .schedules: "Automations"
         case .sessions: "Session Search"
         }
     }
@@ -71,7 +71,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .diff: "Review changes like a pull request's Files Changed, and comment on them. Agents can open one to show you their work, and answer your comments."
         case .files: "A folder's files as a tree, like an editor's file explorer, to open in other panes. Agents can open one and point you at files in it."
         case .log: "Logs from a file, the Mac, a simulator or a command, as entries you can filter. Agents can open and read them."
-        case .schedules: "Agents or commands run on a schedule, each run a new tab. Agents can create and run them, with your say-so. Off, none run."
+        case .schedules: "Agents or commands run on a schedule or when something happens, each run a new tab. Agents can create and run them, with your say-so. Off, none run."
         case .sessions: "Agents can search and read past Claude Code and Codex sessions on this Mac, to pick up earlier decisions. You can still find and resume them."
         }
     }
@@ -85,7 +85,7 @@ enum HammockTool: String, CaseIterable, Identifiable {
         case .diff: "git review changes pull request diff_open comments mcp turn off disable"
         case .files: "file browser explorer tree folder finder files_open mcp turn off disable"
         case .log: "logs console logcat log_open mcp turn off disable"
-        case .schedules: "scheduled tasks cron launchd recurring automation schedule_save mcp turn off disable"
+        case .schedules: "automations scheduled tasks schedule triggers cron launchd recurring automation_save schedule_save mcp turn off disable"
         case .sessions: "past sessions history transcripts memory session_search mcp turn off disable"
         }
     }
