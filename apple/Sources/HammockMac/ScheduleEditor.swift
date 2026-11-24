@@ -152,7 +152,7 @@ struct ScheduleEditor: View {
                 }
 
                 ScheduleTriggersSection(model: model, scheduleID: original.id, events: $draft.events, cooldown: Binding(get: { draft.cooldown }, set: { draft.cooldownSeconds = Int32($0) }),
-                                        computerID: computer?.userID ?? "")
+                                        computerID: computer?.userID ?? "", isCommand: draft.kind == "command")
 
                 Section {
                     Picker("If still running", selection: $draft.overlap) {

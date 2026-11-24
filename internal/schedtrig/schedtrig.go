@@ -258,7 +258,7 @@ func Describe(t *pb.EventTrigger, names Names) string {
 		}
 		return out
 	case *pb.EventTrigger_Webhook:
-		return "Its webhook is called"
+		return "Something calls its webhook URL"
 	}
 	return "An unknown event"
 }

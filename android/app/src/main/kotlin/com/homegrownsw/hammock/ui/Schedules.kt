@@ -236,7 +236,7 @@ object ScheduleWords {
                 if (c.withAttendees) out += " with other people"
                 out
             }
-            EventTrigger.KindCase.WEBHOOK -> "Its webhook is called"
+            EventTrigger.KindCase.WEBHOOK -> "Something calls its webhook URL"
             else -> "An unknown event"
         }
     }

@@ -451,7 +451,7 @@ extension EventTrigger {
             if c.withAttendees { s += " with other people" }
             return s
         case .webhook:
-            return "Its webhook is called"
+            return "Something calls its webhook URL"
         case nil:
             return "An unknown event"
         }

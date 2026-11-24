@@ -13,6 +13,8 @@ struct ScheduleTriggersSection: View {
     @Binding var cooldown: Int
     /// On another computer of yours: its panes and Groups (and no calendar).
     let computerID: String
+    /// It runs a command, which gets what happened in variables, not in its prompt.
+    var isCommand = false
 
     var body: some View {
         Section {
@@ -53,7 +55,9 @@ struct ScheduleTriggersSection: View {
             Text("Triggers")
         } footer: {
             if !events.isEmpty {
-                Text("A run gets what happened. An agent’s prompt can say where with {{event}}; a command gets HMK_EVENT_* variables.")
+                Text(isCommand
+                     ? "The command gets the details of what happened in variables, such as $HMK_EVENT_URL and $HMK_EVENT_TITLE for a pull request."
+                     : "The details of what happened, such as a pull request’s link, number and title, are added after your prompt. To put them somewhere else, write {{event}} there.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

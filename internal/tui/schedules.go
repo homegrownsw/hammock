@@ -131,7 +131,7 @@ func (a *App) triggerName(id string) string {
 }
 
 // triggersText says what starts s besides its times, and its cooldown:
-// "on: CI fails on my pull request; Its webhook is called (cooldown 60s)".
+// "on: CI fails on my pull request; Something calls its webhook URL (cooldown 60s)".
 func (a *App) triggersText(s *pb.Schedule) string {
 	if len(s.Events) == 0 {
 		return ""
