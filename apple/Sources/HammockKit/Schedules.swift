@@ -54,6 +54,12 @@ extension AppModel {
         schedules.values.filter { $0.nextRunUnixMs > 0 && !$0.paused }.min { $0.nextRunUnixMs < $1.nextRunUnixMs }
     }
 
+    /// Made-up schedules shown as if the daemon had sent them: for debug
+    /// hooks only (HMK_DEBUG_SCHEDULES_SAMPLE), never sent anywhere.
+    public func showSampleSchedules(_ list: [Schedule]) {
+        for s in list { schedules[s.id] = s }
+    }
+
     /// The schedule a pane is a run of.
     public func schedule(for pane: Pane) -> Schedule? {
         pane.scheduleID.isEmpty ? nil : schedules[pane.scheduleID]

@@ -98,8 +98,10 @@ struct TriggerEditorRow: View {
     @Binding var trigger: EventTrigger
     let remove: () -> Void
 
-    @State private var webhook: Hammock_V1_ScheduleWebhookReply?
+    @State private var webhook: Hammock_V1_ScheduleWebhookReply? = TriggerEditorRow.debugWebhook
     @State private var webhookError: String?
+    /// A made-up URL shown at once (HMK_DEBUG_SCHEDULES_SAMPLE).
+    nonisolated(unsafe) static var debugWebhook: Hammock_V1_ScheduleWebhookReply?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -337,5 +339,63 @@ extension EventTrigger {
         case .log(let l): l.paneID.isEmpty ? "Which log pane?" : l.pattern.trimmingCharacters(in: .whitespaces).isEmpty ? "What should the log line match?" : ""
         default: ""
         }
+    }
+}
+
+/// Made-up scheduled tasks with triggers, for HMK_DEBUG_SCHEDULES_SAMPLE:
+/// test data only.
+enum ScheduleSamples {
+    static let webhook: Hammock_V1_ScheduleWebhookReply = .with {
+        $0.urls = ["https://100.64.0.2:7433/hook/sample-secret-not-real"]
+        $0.path = "/hook/sample-secret-not-real"
+    }
+
+    static func all(now: Date = Date()) -> [Schedule] {
+        let ms = { (ago: TimeInterval) in Int64((now.timeIntervalSince1970 - ago) * 1000) }
+        let ci = Schedule.with {
+            $0.id = "sc_sample_ci"
+            $0.name = "Fix failing CI"
+            $0.kind = "claude"
+            $0.prompt = "CI failed on a pull request of mine. Find out why from the failing checks, fix it on that branch and push."
+            $0.cwd = "/Users/me/Developer/app"
+            $0.groupName = "app"
+            $0.timing = .events
+            $0.cooldownSeconds = 300
+            $0.createdBy = "You"
+            $0.events = [
+                .with { $0.id = "tr_s1"; $0.kind = .github(.with { $0.event = .ciFailed; $0.repo = "acme/widgets" }) },
+                .with { $0.id = "tr_s2"; $0.kind = .github(.with { $0.event = .labeled; $0.label = "needs fix"; $0.repo = "acme/widgets" }) },
+                .with { $0.id = "tr_s3"; $0.kind = .webhook(.init()) },
+            ]
+            $0.runs = [
+                .with { $0.id = "sr_s1"; $0.status = .running; $0.trigger = "CI failed on #42"; $0.kind = "claude"; $0.startedUnixMs = ms(120) },
+                .with { $0.id = "sr_s2"; $0.status = .ready; $0.trigger = "Webhook: GitHub check_run"; $0.kind = "claude"; $0.startedUnixMs = ms(3 * 3600); $0.endedUnixMs = ms(3 * 3600 - 540); $0.note = "Fixed the flaky login test and pushed it to fix-login." },
+                .with { $0.id = "sr_s3"; $0.status = .skipped; $0.trigger = "CI failed on #40 (and 2 more)"; $0.kind = "claude"; $0.dueUnixMs = ms(26 * 3600); $0.note = "The last run was still going" },
+                .with { $0.id = "sr_s4"; $0.status = .ready; $0.manual = true; $0.kind = "claude"; $0.startedUnixMs = ms(50 * 3600); $0.endedUnixMs = ms(50 * 3600 - 300); $0.note = "Nothing failing right now." },
+            ]
+        }
+        let prep = Schedule.with {
+            $0.id = "sc_sample_prep"
+            $0.name = "1:1 prep"
+            $0.kind = "claude"
+            $0.prompt = "Write prep notes for this meeting: {{event}}"
+            $0.cwd = "/Users/me/Notes"
+            $0.groupName = "Notes"
+            $0.timing = .events
+            $0.events = [.with { $0.id = "tr_s4"; $0.kind = .calendar(.with { $0.minutesBefore = 10; $0.title = "1:1"; $0.withAttendees = true }) }]
+            $0.runs = [.with { $0.id = "sr_s5"; $0.status = .ready; $0.trigger = "An event in 10 minutes"; $0.kind = "claude"; $0.startedUnixMs = ms(5 * 3600); $0.endedUnixMs = ms(5 * 3600 - 200); $0.note = "Notes are in 1-1 Sam.md." }]
+        }
+        let tests = Schedule.with {
+            $0.id = "sc_sample_tests"
+            $0.name = "Nightly tests"
+            $0.kind = "command"
+            $0.prompt = "make test"
+            $0.cwd = "/Users/me/Developer/app"
+            $0.groupName = "app"
+            $0.minuteOfDay = 60
+            $0.nextRunUnixMs = ms(-8 * 3600)
+            $0.events = [.with { $0.id = "tr_s5"; $0.kind = .files(.with { $0.glob = "src/**/*.go" }) }]
+        }
+        return [ci, prep, tests]
     }
 }

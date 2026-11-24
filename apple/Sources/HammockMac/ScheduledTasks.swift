@@ -94,7 +94,8 @@ final class ScheduleUI {
     /// schedules have arrived.
     func openDebugEditor(_ model: AppModel) {
         guard Self.debug == "edit" else { return }
-        if let s = model.sortedSchedules.first { edit(s) } else { new(model) }
+        let first = selected.flatMap { model.schedules[$0] } ?? model.sortedSchedules.first
+        if let s = first { edit(s) } else { new(model) }
     }
 
     /// Hosts the sheets on the window: the list, and the editor (over the

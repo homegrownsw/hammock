@@ -43,6 +43,9 @@ struct ScheduleEditor: View {
             : set == [0, 6] ? .weekends : .custom)
     }
 
+    /// Taller, to render all of it (HMK_DEBUG_SCHEDULES_HEIGHT).
+    nonisolated(unsafe) static var debugHeight: CGFloat?
+
     /// The schedule's own Group, closed since (kept: runs bring it back).
     private var closedGroupID: String?
 
@@ -257,7 +260,7 @@ struct ScheduleEditor: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
         }
-        .frame(width: 580, height: 720)
+        .frame(width: 580, height: Self.debugHeight ?? 720)
         .onChange(of: ScheduleUI.shared.prefill, initial: true) { _, p in
             guard let p, p.request == request else { return }
             ScheduleUI.shared.prefill = nil

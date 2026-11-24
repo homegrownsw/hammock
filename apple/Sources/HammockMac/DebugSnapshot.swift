@@ -171,13 +171,22 @@ enum DebugSnapshot {
                     if AppModelRegistry.shared?.schedules.isEmpty == false { break }
                 }
                 guard let model = AppModelRegistry.shared else { return }
+                if env["HMK_DEBUG_SCHEDULES_SAMPLE"] != nil {
+                    let samples = ScheduleSamples.all()
+                    model.showSampleSchedules(samples)
+                    ScheduleUI.shared.selected = samples[0].id
+                    TriggerEditorRow.debugWebhook = ScheduleSamples.webhook
+                }
                 if which == "edit" { ScheduleUI.shared.openDebugEditor(model) }
                 guard let prefix = env["HMK_DEBUG_SNAPSHOT"] else { return }
                 if which == "edit" {
                     let s = ScheduleUI.shared.editing?.schedule ?? Schedule()
-                    render(ScheduleEditor(model: model, original: s), size: NSSize(width: 580, height: 720), to: "\(prefix)-schedules")
+                    let tall = Double(env["HMK_DEBUG_SCHEDULES_HEIGHT"] ?? "") ?? 720
+                    ScheduleEditor.debugHeight = tall
+                    render(ScheduleEditor(model: model, original: s), size: NSSize(width: 580, height: tall), to: "\(prefix)-schedules")
                 } else {
-                    render(ScheduledTasksSheet(model: model), size: NSSize(width: 900, height: 600), to: "\(prefix)-schedules")
+                    let tall = Double(env["HMK_DEBUG_SCHEDULES_HEIGHT"] ?? "") ?? 600
+                    render(ScheduledTasksSheet(model: model), size: NSSize(width: 900, height: tall), to: "\(prefix)-schedules")
                 }
             }
         }
