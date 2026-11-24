@@ -145,7 +145,8 @@ type mediaHub struct {
 	screenSource func() frameSource
 	trs          []*quic.Transport
 	port         int
-	gate         authGate // connections not yet given their ticket
+	gate         authGate             // connections not yet given their ticket
+	warm         map[string]mediaWarm // where viewers' screens got to lately (mediawarm.go), under mu
 }
 
 func newMediaHub(d *Daemon) *mediaHub {
@@ -226,6 +227,8 @@ type mediaSession struct {
 	background bool
 	// The viewer takes frames as datagrams (datagram.go), over QUIC.
 	datagrams bool
+	// Who's watching what, for a quick start next time (mediawarm.go).
+	warmKey   string
 	sizeStep  int
 	sizeWant  int
 	sizeSince time.Time
@@ -673,6 +676,7 @@ func (h *mediaHub) open(c *conn, m *pb.OpenMedia) (*pb.ServerMessage, error) {
 		s.viewer, s.viewerName, s.viewerKind = m.ViewerId, m.ViewerName, m.ViewerKind
 	}
 	s.datagrams = m.Datagrams
+	s.warmUp(c)
 	t := &pb.MediaTicket{SessionId: id}
 	h.mu.Lock()
 	h.byID[id] = s
@@ -874,9 +878,10 @@ func (s *mediaSession) begin() {
 	}
 	s.began = time.Now()
 	s.needSince = s.began
+	rate := int(s.rate) // mediaStartRate, or where this viewer's last one got to (warmUp)
 	s.mu.Unlock()
-	s.hub.d.log.Info("video started", "session", s.id, "pane", s.paneID, "viewer", viewer, "via", via)
-	s.startEncode(mediaStartRate)
+	s.hub.d.log.Info("video started", "session", s.id, "pane", s.paneID, "viewer", viewer, "via", via, "rate_kbps", rate/1000)
+	s.startEncode(rate)
 	go s.pace()
 }
 
@@ -891,7 +896,11 @@ func (s *mediaSession) end(reason string) {
 	close(s.stop)
 	frames, gaveUp, rate, secs := s.seq, s.gaveUp, s.rate, time.Since(s.began).Seconds()
 	began := !s.began.IsZero()
+	linkBW, hevc := s.linkBW, s.hevc
 	s.mu.Unlock()
+	if began {
+		s.keepWarm(rate, linkBW, hevc, secs)
+	}
 	if began {
 		s.hub.d.log.Info("video ended", "session", s.id, "frames", frames, "gave_up", gaveUp,
 			"secs", int(secs), "last_rate_kbps", int(rate/1000), "reason", reason)
