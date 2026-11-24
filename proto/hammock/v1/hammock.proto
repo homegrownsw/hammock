@@ -285,6 +285,11 @@ message Agent {
   // Everything it reported (the state above is the one that most needs
   // you), root ("") first.
   repeated ProgramStatus records = 17;
+  // Its turn ended at its usage limit (state ERRORED), and Hammock will
+  // send it "continue" once the limit resets (agent-resume-after-limit,
+  // limitresume.go). Unset when it won't: the setting's off, it was
+  // cancelled (CancelLimitResume, or typing in the pane), or it moved on.
+  LimitResume limit_resume = 18;
 }
 
 // One program status record (OSC 7501): the last report for its id.
@@ -654,6 +659,9 @@ message ClientMessage {
     // Removes a linked git worktree (a tab's, or by path) the repository's own
     // way, then closes the tabs in it (worktrees.go). Replies Ok.
     RemoveWorktree remove_worktree = 170;
+    // Don't send a pane's agent "continue" when its usage limit resets
+    // (Agent.limit_resume; limitresume.go). Replies Ok.
+    CancelLimitResume cancel_limit_resume = 144;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -3159,3 +3167,18 @@ message RemoveWorktree {
   string path = 2;
   bool force = 3;
 }
+// ---------- Resuming after a usage limit (limitresume.go) ----------
+
+// An agent waiting out its usage limit, to be sent "continue" (Agent.limit_resume).
+message LimitResume {
+  int64 at_unix_ms = 1;    // when it's sent "continue": a moment after the limit resets
+  // The agent (or its usage) said when the limit resets. False: it
+  // didn't, and at_unix_ms is when Hammock tries again.
+  bool reset_known = 2;
+  int64 hit_unix_ms = 3;   // when its turn ended at the limit
+  // The agent waits and continues by itself (Claude Code's own "continue
+  // automatically"): Hammock types nothing, and at_unix_ms is the agent's.
+  bool agent_continues = 4;
+}
+
+message CancelLimitResume { string pane_id = 1; }

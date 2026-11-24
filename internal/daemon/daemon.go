@@ -1153,6 +1153,11 @@ func (d *Daemon) focusPane(id string) {
 		a.Seen = true
 	}
 	p.mu.Unlock()
+	// So does looking at one stopped at its usage limit: it's waiting
+	// calmly now, out of Needs You (limitresume.go).
+	if d.seeLimitWait(p, u) {
+		ack = true
+	}
 	if ack {
 		info := p.snapshotInfo()
 		d.persist(d.store.PutPane(info))
@@ -1260,6 +1265,7 @@ func (d *Daemon) pollCwds() {
 			d.refreshPrompt(p)
 		}
 		d.detectAgents()
+		d.resumeLimitedAgents()
 		d.keepAwake()
 		d.refreshTabNames()
 		d.refreshTabGitSoon() // (off the lock: it reads git's files)

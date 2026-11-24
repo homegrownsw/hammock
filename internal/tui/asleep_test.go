@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
 // A sleeping agent's pane: dimmed, an accent Wake button in its middle
@@ -40,4 +42,22 @@ func TestDrawAsleep(t *testing.T) {
 		t.Error("the pane isn't dimmed")
 	}
 	t.Logf("\n%s", screen)
+}
+
+// An agent waiting out its usage limit, once seen: a clock, calm, not an
+// error; unseen, still the error.
+func TestWaitingOnLimitGlyph(t *testing.T) {
+	a := &App{anim: newSprings()}
+	a.th = newTheme(RGB{0, 0, 0}, RGB{255, 255, 255})
+	p := &pb.Pane{Agent: &pb.Agent{State: pb.AgentState_AGENT_STATE_ERRORED, LimitResume: &pb.LimitResume{AtUnixMs: 1}}}
+	if g, _ := a.agentGlyph(p); g.ch != "✗" {
+		t.Errorf("unseen: %q, want the error", g.ch)
+	}
+	p.Agent.Seen = true
+	if g, ok := a.agentGlyph(p); !ok || g.ch != "◷" || g.col == a.th.red {
+		t.Errorf("seen: %q, want a calm clock", g.ch)
+	}
+	if shownState(p.Agent) != pb.AgentState_AGENT_STATE_IDLE {
+		t.Error("seen: ranked as an error")
+	}
 }

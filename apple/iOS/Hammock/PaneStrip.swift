@@ -302,7 +302,9 @@ struct PanePill: View {
     @ViewBuilder private func status(_ p: Pane?) -> some View {
         if let p, p.hasAgent, !p.exited {
             let s = p.agent.shownState
-            if [.working, .needsInput, .starting, .errored].contains(s) {
+            if p.agent.waitingOnLimit {
+                StatusIcon(state: nil, size: 12, waiting: true)
+            } else if [.working, .needsInput, .starting, .errored].contains(s) {
                 StatusIcon(state: s, size: 12, asleep: p.asleep)
             } else if s == .idle, !p.agent.seen {
                 Circle().fill(theme.accent).frame(width: 7, height: 7)
@@ -373,6 +375,9 @@ struct PaneMenu: View {
                     agent.append(.button("Continue in \(AgentCatalog.shortName(of: k.id))", systemImage: "arrow.triangle.swap") { model.switchAgent(paneID, to: k.id) }
                         .disabled(pane.agent.harness == k.id))
                 }
+            }
+            if pane.limitResumeLabel() != nil {
+                agent.append(.button("Don't Continue When Limit Resets", systemImage: "clock") { model.cancelLimitResume(paneID) })
             }
             if pane.asleep {
                 agent.append(.button("Wake Agent", systemImage: "sun.max") { model.sleepPane(paneID, wake: true) })
@@ -592,7 +597,7 @@ struct LiveTile: View {
                 if minimised {
                     Text("Minimised").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                 } else if let p, p.hasAgent, !p.exited, p.agent.shownState != .unspecified {
-                    StatusIcon(state: p.agent.shownState, size: 12, quietAtRest: true, asleep: p.asleep)
+                    StatusIcon(state: p.agent.shownState, size: 12, quietAtRest: true, asleep: p.asleep, waiting: p.agent.waitingOnLimit)
                 }
             }
             content(p)

@@ -100,6 +100,7 @@ enum Keys {
     static var dictate: KeyboardShortcut? { shortcut("dictate") }
     static var sleepAgent: KeyboardShortcut? { shortcut("sleep_agent") }
     static var runAgain: KeyboardShortcut? { shortcut("run_again") }
+    static var cancelLimitResume: KeyboardShortcut? { shortcut("cancel_limit_resume") }
     static var splitBrowserRight: KeyboardShortcut? { shortcut("split_browser_right") }
     static var splitBrowserDown: KeyboardShortcut? { shortcut("split_browser_down") }
     static var devTools: KeyboardShortcut? { shortcut("dev_tools") }

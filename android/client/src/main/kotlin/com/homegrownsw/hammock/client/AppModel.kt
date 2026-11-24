@@ -879,6 +879,13 @@ class AppModel private constructor(
         }
     }
 
+    /** Its agent, stopped at its usage limit, isn't sent "continue" when the limit resets (CancelLimitResume). */
+    fun cancelLimitResume(paneID: String) = scope.launch {
+        if (request { setCancelLimitResume(Hammock.CancelLimitResume.newBuilder().setPaneId(paneID).build()) } == null) {
+            showToast("Couldn't cancel: ${lastError ?: "unknown error"}")
+        }
+    }
+
     /** Starts an ended pane's program again, in the same pane: its agent's session resumed, else its own command (RestartPane). */
     fun restartPane(paneID: String) = scope.launch {
         if (request { setRestartPane(Hammock.RestartPane.newBuilder().setPaneId(paneID).build()) } == null) {

@@ -20,6 +20,7 @@ DerivedData/
 /apple/iOS/HammockIOS.xcodeproj/project.xcworkspace/xcuserdata/
 /.signing-identity
 /hammock
+/hmk
 /.claude/worktrees/
 /scripts/program-icons/node_modules/
 /apple/Editor/node_modules/

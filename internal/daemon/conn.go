@@ -836,6 +836,12 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}()
 		return nil, errDeferred
 
+	case *pb.ClientMessage_CancelLimitResume:
+		if err := d.cancelLimitResume(c, m.CancelLimitResume.PaneId); err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_Ok{Ok: &pb.Ok{}}}, nil
+
 	case *pb.ClientMessage_RestartPane:
 		if err := d.restartPane(c, m.RestartPane); err != nil {
 			return nil, err

@@ -154,6 +154,18 @@ type Agent struct {
 	// wait is how long a throttled answer asked to wait. Nil: it has none
 	// Hammock can ask.
 	LiveUsage func(ctx context.Context) (u *pb.AgentUsage, wait time.Duration, err error)
+	// UsageLimit reads whether a StopFailure ended its turn at its usage
+	// limit, and when that resets (limits.go). Nil: the words agents use
+	// (genericLimit).
+	UsageLimit func(h Hook, now time.Time) (Limit, bool)
+	// TurnFailed follows its session file (path) for how its turns end,
+	// for an agent that runs no hook when an error ends one (Codex). Nil:
+	// its hooks say.
+	TurnFailed func(path string) TurnTail
+	// LimitWait reads its screen for its own wait for its usage limit to
+	// reset (Claude Code's "continue automatically", limits.go): offered,
+	// armed or cancelled. Nil: it has none, and Hammock types "continue".
+	LimitWait func(screen string, now time.Time) AgentWait
 }
 
 // Screen holds the patterns the heuristics read an agent's screen with.

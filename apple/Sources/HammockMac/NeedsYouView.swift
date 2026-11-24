@@ -275,7 +275,10 @@ struct AttentionCard: View {
         case .needsInput where item.question: return "\(who) asks: " + item.summary
         case .needsInput: return item.summary.isEmpty ? "\(who) is waiting for you" : item.summary
         case .idle: return "\(who) finished" + (item.summary.isEmpty ? "" : " · \(item.summary)")
-        case .errored: return "\(who) \(item.summary.isEmpty ? "errored" : item.summary)"
+        case .errored:
+            let error = "\(who) \(item.summary.isEmpty ? "errored" : item.summary)"
+            // Stopped at its usage limit: when it carries on by itself.
+            return pane?.limitResumeLabel().map { "\(error) · \($0)" } ?? error
         default: return item.summary
         }
     }

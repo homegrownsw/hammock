@@ -528,6 +528,13 @@ struct PaneView: View {
                                 }
                         }
                     }
+                    // Its agent stopped at its usage limit: when it
+                    // continues, with Cancel.
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if let pane, pane.limitResumeLabel() != nil {
+                            LimitResumeBar(model: model, pane: pane, canCancel: model.group(ofPane: paneID)?.canDrive != false)
+                        }
+                    }
                     // Its agent asleep: faded, with a button to wake it
                     // (focusing it doesn't). Under the header, which still
                     // drags, zooms and has its menus.
@@ -624,8 +631,18 @@ struct PaneView: View {
                 .foregroundStyle(.secondary)
         } else if let pane, pane.asleep {
             SleepBadge(model: model, paneID: paneID)
+        } else if let pane, pane.hasAgent, pane.agent.waitingOnLimit {
+            // Its usage limit, seen: a calm wait (LimitResumeBar says when).
+            HStack(spacing: 5) {
+                StatusIcon(state: nil, size: 12, waiting: true)
+                if !compact { Text("Waiting for limit") }
+            }
+            .foregroundStyle(.secondary)
+            .tooltip(compact ? "Waiting for limit" : "")
         } else if let pane, pane.hasAgent, pane.agent.state != .unspecified, !(pane.agent.shownState == .idle && pane.agent.seen) {
-            let label = pane.agent.runningCommand ? "Running a command" : pane.agent.state.label + (pane.agentProgress.map { " \($0)%" } ?? "")
+            let label = pane.agent.runningCommand ? "Running a command"
+                : pane.limitResumeLabel() != nil ? "Usage limit"
+                : pane.agent.state.label + (pane.agentProgress.map { " \($0)%" } ?? "")
             HStack(spacing: 5) {
                 StatusIcon(state: pane.agent.shownState, size: 12, progress: pane.agentProgress)
                 if !compact { Text(label) }

@@ -1168,6 +1168,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.SwitchAgent.PaneId
 	case *pb.ClientMessage_SleepPane:
 		return m.SleepPane.PaneId
+	case *pb.ClientMessage_CancelLimitResume:
+		return m.CancelLimitResume.PaneId
 	case *pb.ClientMessage_RestartPane:
 		return m.RestartPane.PaneId
 	case *pb.ClientMessage_UploadFile:

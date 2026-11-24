@@ -80,6 +80,7 @@ import com.homegrownsw.hammock.client.agentProgress
 import com.homegrownsw.hammock.client.allowsFromCard
 import com.homegrownsw.hammock.client.promptPreview
 import com.homegrownsw.hammock.client.agentStatusLabel
+import com.homegrownsw.hammock.client.limitResumeLabel
 import com.homegrownsw.hammock.client.agentNote
 import com.homegrownsw.hammock.client.canAllowAlways
 import com.homegrownsw.hammock.client.canAddTabs
@@ -90,6 +91,7 @@ import com.homegrownsw.hammock.client.headlineText
 import com.homegrownsw.hammock.client.label
 import com.homegrownsw.hammock.client.originText
 import com.homegrownsw.hammock.client.shownState
+import com.homegrownsw.hammock.client.waitingOnLimit
 import hammock.v1.Hammock
 import hammock.v1.Hammock.AgentState
 import hammock.v1.Hammock.Pane
@@ -384,7 +386,7 @@ private fun SessionHoldMenu(model: AppModel, w: Workspace, paneID: String, nav: 
 @OptIn(ExperimentalFoundationApi::class)
 fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val a = r.pane.agent
-    val idleSeen = a.state == AgentState.AGENT_STATE_IDLE && a.seen
+    val idleSeen = a.shownState == AgentState.AGENT_STATE_IDLE && a.seen
     Row(
         Modifier.fillMaxWidth()
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
@@ -395,7 +397,7 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
     ) {
         StatusIcon(if (idleSeen) null else a.shownState, resting = idleSeen, shells = idleSeen && a.restingWithWork,
             subagents = idleSeen && a.restingWithSubagents, asleep = r.pane.asleep, progress = r.pane.agentProgress,
-            size = 22.dp, modifier = Modifier.align(Alignment.Top).padding(top = 1.dp).staleWhenLinkDown())
+            size = 22.dp, modifier = Modifier.align(Alignment.Top).padding(top = 1.dp).staleWhenLinkDown(), waiting = a.waitingOnLimit)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(w.title(r.tab), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -408,6 +410,10 @@ fun SessionRowView(w: Workspace, r: SessionRow, now: Long, selected: Boolean = f
                 plainInline(a.summary.ifEmpty { r.pane.agentStatusLabel }), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
+            // Stopped at its usage limit: when it carries on by itself.
+            r.pane.limitResumeLabel()?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
             w.groupOf(r.tab)?.let { g ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     GroupIcon(g, 14)

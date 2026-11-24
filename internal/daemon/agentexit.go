@@ -131,6 +131,7 @@ func (d *Daemon) endHookedAgent(p *pane) {
 		a.Summary = "" // what it asked: nobody's asking now
 	}
 	a.State, a.StateSinceUnixMs, a.Seen = pb.AgentState_AGENT_STATE_EXITED, time.Now().UnixMilli(), false
+	a.LimitResume = nil // nothing to carry on
 	p.asking, p.pendingTool, p.askedFor, p.askedRule, p.progressTurn = nil, "", "", "", false
 	p.agentProc, p.agentProcStart, p.agentGone = 0, time.Time{}, 0
 	p.mu.Unlock()

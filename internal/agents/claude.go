@@ -83,6 +83,8 @@ var Claude = &Agent{
 	SessionURL:    claudeSessionURL,
 	Usage:         claudeUsage,
 	LiveUsage:     claudeLiveUsage,
+	UsageLimit:    claudeLimit,
+	LimitWait:     claudeWait,
 }
 
 // claudeHook reads a hook event of Claude Code's as ParseHook does, and

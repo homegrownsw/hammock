@@ -435,6 +435,9 @@ func (a *App) paneMenu(id string, x, y int) {
 		if u := p.Agent.SessionUrl; u != "" {
 			items = append(items, menuItem{label: "Copy Session Link", run: func() { a.copyText(u) }})
 		}
+		if p.Agent.LimitResume != nil {
+			items = append(items, menuItem{label: "Don't Continue When Limit Resets", run: func() { a.cancelLimitResume(id) }})
+		}
 		if p.Asleep {
 			items = append(items, menuItem{label: "Wake Agent", run: func() { a.sleepPane(id, true) }})
 		} else if canSleep(p) {
@@ -687,6 +690,9 @@ func (a *App) paletteItems() []paletteItem {
 				label = "Resume Agent"
 			}
 			act("run-again", label, "", "restart rerun resume exited ended failed command program agent", func() { a.restartPane(f) })
+		}
+		if a.panes[f].GetAgent().GetLimitResume() != nil {
+			act("cancel-limit-resume", "Don't Continue When Limit Resets", "", "usage limit reset rate continue resume cancel stop agent claude codex", func() { a.cancelLimitResume(f) })
 		}
 		if p := a.panes[f]; p.GetAsleep() {
 			act("wake-agent", "Wake Agent", "", "sleep sleeping asleep resume agent claude", func() { a.sleepPane(f, true) })

@@ -1036,6 +1036,19 @@ public nonisolated struct Hammock_V1_Agent: @unchecked Sendable {
     set {_uniqueStorage()._records = newValue}
   }
 
+  /// Its turn ended at its usage limit (state ERRORED), and Hammock will
+  /// send it "continue" once the limit resets (agent-resume-after-limit,
+  /// limitresume.go). Unset when it won't: the setting's off, it was
+  /// cancelled (CancelLimitResume, or typing in the pane), or it moved on.
+  public var limitResume: Hammock_V1_LimitResume {
+    get {_storage._limitResume ?? Hammock_V1_LimitResume()}
+    set {_uniqueStorage()._limitResume = newValue}
+  }
+  /// Returns true if `limitResume` has been explicitly set.
+  public var hasLimitResume: Bool {_storage._limitResume != nil}
+  /// Clears the value of `limitResume`. Subsequent reads from it will return its default value.
+  public mutating func clearLimitResume() {_uniqueStorage()._limitResume = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2647,6 +2660,16 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     set {msg = .removeWorktree(newValue)}
   }
 
+  /// Don't send a pane's agent "continue" when its usage limit resets
+  /// (Agent.limit_resume; limitresume.go). Replies Ok.
+  public var cancelLimitResume: Hammock_V1_CancelLimitResume {
+    get {
+      if case .cancelLimitResume(let v)? = msg {return v}
+      return Hammock_V1_CancelLimitResume()
+    }
+    set {msg = .cancelLimitResume(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Msg: Equatable, Sendable {
@@ -2884,6 +2907,9 @@ public nonisolated struct Hammock_V1_ClientMessage: Sendable {
     /// Removes a linked git worktree (a tab's, or by path) the repository's own
     /// way, then closes the tabs in it (worktrees.go). Replies Ok.
     case removeWorktree(Hammock_V1_RemoveWorktree)
+    /// Don't send a pane's agent "continue" when its usage limit resets
+    /// (Agent.limit_resume; limitresume.go). Replies Ok.
+    case cancelLimitResume(Hammock_V1_CancelLimitResume)
 
   }
 
@@ -11750,6 +11776,43 @@ public nonisolated struct Hammock_V1_RemoveWorktree: Sendable {
   public init() {}
 }
 
+/// An agent waiting out its usage limit, to be sent "continue" (Agent.limit_resume).
+public nonisolated struct Hammock_V1_LimitResume: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// when it's sent "continue": a moment after the limit resets
+  public var atUnixMs: Int64 = 0
+
+  /// The agent (or its usage) said when the limit resets. False: it
+  /// didn't, and at_unix_ms is when Hammock tries again.
+  public var resetKnown: Bool = false
+
+  /// when its turn ended at the limit
+  public var hitUnixMs: Int64 = 0
+
+  /// The agent waits and continues by itself (Claude Code's own "continue
+  /// automatically"): Hammock types nothing, and at_unix_ms is the agent's.
+  public var agentContinues: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hammock_V1_CancelLimitResume: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var paneID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hammock.v1"
@@ -12728,7 +12791,7 @@ nonisolated extension Hammock_V1_Pane: SwiftProtobuf.Message, SwiftProtobuf._Mes
 
 nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Agent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{3}session_id\0\u{1}state\0\u{3}state_since_unix_ms\0\u{1}summary\0\u{1}heuristic\0\u{3}transcript_path\0\u{1}seen\0\u{1}shells\0\u{3}running_command\0\u{1}subagents\0\u{3}session_url\0\u{1}reported\0\u{1}app\0\u{1}title\0\u{1}progress\0\u{1}records\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}harness\0\u{3}session_id\0\u{1}state\0\u{3}state_since_unix_ms\0\u{1}summary\0\u{1}heuristic\0\u{3}transcript_path\0\u{1}seen\0\u{1}shells\0\u{3}running_command\0\u{1}subagents\0\u{3}session_url\0\u{1}reported\0\u{1}app\0\u{1}title\0\u{1}progress\0\u{1}records\0\u{3}limit_resume\0")
 
   fileprivate class _StorageClass {
     var _harness: String = String()
@@ -12748,6 +12811,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
     var _title: String = String()
     var _progress: Int32? = nil
     var _records: [Hammock_V1_ProgramStatus] = []
+    var _limitResume: Hammock_V1_LimitResume? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -12775,6 +12839,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
       _title = source._title
       _progress = source._progress
       _records = source._records
+      _limitResume = source._limitResume
     }
   }
 
@@ -12810,6 +12875,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
         case 15: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
         case 16: try { try decoder.decodeSingularInt32Field(value: &_storage._progress) }()
         case 17: try { try decoder.decodeRepeatedMessageField(value: &_storage._records) }()
+        case 18: try { try decoder.decodeSingularMessageField(value: &_storage._limitResume) }()
         default: break
         }
       }
@@ -12873,6 +12939,9 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
       if !_storage._records.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._records, fieldNumber: 17)
       }
+      try { if let v = _storage._limitResume {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -12899,6 +12968,7 @@ nonisolated extension Hammock_V1_Agent: SwiftProtobuf.Message, SwiftProtobuf._Me
         if _storage._title != rhs_storage._title {return false}
         if _storage._progress != rhs_storage._progress {return false}
         if _storage._records != rhs_storage._records {return false}
+        if _storage._limitResume != rhs_storage._limitResume {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -13601,7 +13671,7 @@ nonisolated extension Hammock_V1_UsageWindow: SwiftProtobuf.Message, SwiftProtob
 
 nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ClientMessage"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{4}\u{1b}remove_worktree\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{2}\u{9}hello\0\u{1}subscribe\0\u{3}create_group\0\u{3}rename_group\0\u{3}close_group\0\u{3}create_tab\0\u{3}rename_tab\0\u{3}close_tab\0\u{3}create_pane\0\u{3}close_pane\0\u{3}attach_pane\0\u{3}detach_pane\0\u{1}input\0\u{1}resize\0\u{1}focus\0\u{3}read_pane\0\u{3}signal_pane\0\u{1}presence\0\u{3}clear_attention\0\u{3}set_layout\0\u{3}request_grant\0\u{3}respond_grant\0\u{3}move_tab\0\u{3}create_pairing\0\u{3}list_devices\0\u{3}revoke_device\0\u{1}pair\0\u{1}authenticate\0\u{3}set_remote_access\0\u{3}switch_agent\0\u{3}set_colors\0\u{3}set_group_icon\0\u{3}shutdown_daemon\0\u{3}list_audit\0\u{3}browser_navigate\0\u{3}watch_agent\0\u{3}agent_answer\0\u{3}agent_send\0\u{3}read_agent_file\0\u{3}create_invite\0\u{3}revoke_invite\0\u{3}respond_join\0\u{3}set_member\0\u{3}stop_sharing\0\u{4}\u{2}set_profile\0\u{3}join_shared\0\u{3}leave_shared\0\u{3}peer_hello\0\u{3}peer_join\0\u{3}upload_file\0\u{3}move_group\0\u{3}register_push\0\u{3}browser_call\0\u{3}browser_logs\0\u{3}simulator_call\0\u{3}merge_tab\0\u{3}break_out_pane\0\u{3}replace_pane\0\u{3}show_pairing\0\u{3}open_media\0\u{3}close_media\0\u{3}media_ack\0\u{3}browser_input\0\u{3}browser_menu_choice\0\u{3}list_sessions\0\u{3}resume_session\0\u{3}watch_log\0\u{3}read_log\0\u{3}clear_log\0\u{3}start_agent\0\u{3}list_folders\0\u{3}read_session\0\u{3}read_group_icon\0\u{3}set_group_icon_image\0\u{3}session_excerpts\0\u{3}reopen_closed\0\u{3}discover_computers\0\u{3}link_computer\0\u{3}respond_link\0\u{3}unlink_computer\0\u{3}set_computer_tint\0\u{3}create_link_invite\0\u{3}peer_link_hello\0\u{3}peer_link_reveal\0\u{3}peer_link_confirm\0\u{4}\u{2}introduce_computers\0\u{3}peer_intro_link\0\u{3}unlink_request\0\u{3}ssh_agent_call\0\u{3}set_group_folder\0\u{3}list_displays\0\u{3}screen_input\0\u{3}set_media_view\0\u{3}server_status\0\u{3}end_screen_session\0\u{3}screen_snapshot\0\u{3}save_schedule\0\u{3}delete_schedule\0\u{3}run_schedule\0\u{3}set_schedule_paused\0\u{3}skip_schedule_run\0\u{3}show_output\0\u{3}float_pane\0\u{3}hammock_key_command\0\u{3}respond_hammock_key\0\u{3}set_approval_key\0\u{3}ssh_setup\0\u{3}set_remote_networks\0\u{3}editor_push\0\u{3}editor_select\0\u{3}editor_command\0\u{3}read_editor\0\u{3}list_files\0\u{3}config_written\0\u{3}prove_app\0\u{3}read_diff\0\u{3}read_diff_file\0\u{3}diff_command\0\u{3}read_review\0\u{3}list_reviews\0\u{3}review_command\0\u{3}read_repo\0\u{3}hold_pane\0\u{3}sleep_pane\0\u{3}open_window\0\u{3}read_editor_image\0\u{3}restart_pane\0\u{3}list_dir\0\u{3}files_command\0\u{3}resolve_editor_links\0\u{3}restart_remote_access\0\u{3}set_composer_draft\0\u{3}cancel_limit_resume\0\u{4}\u{1a}remove_worktree\0\u{b}set_group_agents\0\u{c}6\u{1}\u{c}`\u{1}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -15326,6 +15396,19 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
           self.msg = .setComposerDraft(v)
         }
       }()
+      case 144: try {
+        var v: Hammock_V1_CancelLimitResume?
+        var hadOneofValue = false
+        if let current = self.msg {
+          hadOneofValue = true
+          if case .cancelLimitResume(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.msg = .cancelLimitResume(v)
+        }
+      }()
       case 170: try {
         var v: Hammock_V1_RemoveWorktree?
         var hadOneofValue = false
@@ -15880,6 +15963,10 @@ nonisolated extension Hammock_V1_ClientMessage: SwiftProtobuf.Message, SwiftProt
     case .setComposerDraft?: try {
       guard case .setComposerDraft(let v)? = self.msg else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 143)
+    }()
+    case .cancelLimitResume?: try {
+      guard case .cancelLimitResume(let v)? = self.msg else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 144)
     }()
     case .removeWorktree?: try {
       guard case .removeWorktree(let v)? = self.msg else { preconditionFailure() }
@@ -30310,6 +30397,81 @@ nonisolated extension Hammock_V1_RemoveWorktree: SwiftProtobuf.Message, SwiftPro
     if lhs.tabID != rhs.tabID {return false}
     if lhs.path != rhs.path {return false}
     if lhs.force != rhs.force {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_LimitResume: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LimitResume"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}at_unix_ms\0\u{3}reset_known\0\u{3}hit_unix_ms\0\u{3}agent_continues\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.atUnixMs) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.resetKnown) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.hitUnixMs) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.agentContinues) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.atUnixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.atUnixMs, fieldNumber: 1)
+    }
+    if self.resetKnown != false {
+      try visitor.visitSingularBoolField(value: self.resetKnown, fieldNumber: 2)
+    }
+    if self.hitUnixMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.hitUnixMs, fieldNumber: 3)
+    }
+    if self.agentContinues != false {
+      try visitor.visitSingularBoolField(value: self.agentContinues, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_LimitResume, rhs: Hammock_V1_LimitResume) -> Bool {
+    if lhs.atUnixMs != rhs.atUnixMs {return false}
+    if lhs.resetKnown != rhs.resetKnown {return false}
+    if lhs.hitUnixMs != rhs.hitUnixMs {return false}
+    if lhs.agentContinues != rhs.agentContinues {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hammock_V1_CancelLimitResume: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CancelLimitResume"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}pane_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.paneID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.paneID.isEmpty {
+      try visitor.visitSingularStringField(value: self.paneID, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hammock_V1_CancelLimitResume, rhs: Hammock_V1_CancelLimitResume) -> Bool {
+    if lhs.paneID != rhs.paneID {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -791,6 +791,8 @@ func (c *conn) agentCheck(msg *pb.ClientMessage) (err error) {
 		return control(m.SwitchAgent.PaneId, "send")
 	case *pb.ClientMessage_SleepPane:
 		return control(m.SleepPane.PaneId, "send")
+	case *pb.ClientMessage_CancelLimitResume:
+		return control(m.CancelLimitResume.PaneId, "send")
 	case *pb.ClientMessage_RestartPane:
 		return control(m.RestartPane.PaneId, "send")
 	case *pb.ClientMessage_BreakOutPane:

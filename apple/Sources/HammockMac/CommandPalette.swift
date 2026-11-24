@@ -510,6 +510,12 @@ struct CommandPalette: View {
                     model.restartPane(focused)
                 }
             }
+            if let p = model.panes[focused], p.limitResumeLabel() != nil {
+                action("cancel-limit-resume", "Don't Continue When Limit Resets", "clock", .orange,
+                       "usage limit reset rate continue resume cancel claude codex agent", keys: Keys.cancelLimitResume) {
+                    model.cancelLimitResume(focused)
+                }
+            }
             if let p = model.panes[focused], p.asleep || p.canSleep {
                 action("sleep-agent", p.asleep ? "Wake Agent" : "Put Agent to Sleep", p.asleep ? "sun.max" : "moon.zzz", .indigo,
                        "sleep wake resume suspend idle memory ram free claude codex agent", keys: Keys.sleepAgent) {

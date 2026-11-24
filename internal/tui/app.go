@@ -801,6 +801,14 @@ func (a *App) sleepPane(pane string, wake bool) {
 	})
 }
 
+// cancelLimitResume: the pane's agent isn't sent "continue" when its
+// usage limit resets (the daemon's limitresume.go).
+func (a *App) cancelLimitResume(pane string) {
+	a.call(&pb.ClientMessage{Msg: &pb.ClientMessage_CancelLimitResume{CancelLimitResume: &pb.CancelLimitResume{PaneId: pane}}}, func(*pb.ServerMessage) {
+		a.flash("It won't continue by itself: type in it when you're ready")
+	})
+}
+
 // canSleep: the pane's agent is at rest, so it may be put to sleep (the
 // daemon says if it can't, and why).
 func canSleep(p *pb.Pane) bool {

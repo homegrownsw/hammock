@@ -22,6 +22,9 @@ type Hook struct {
 	LastMessage      string // its reply, on Stop
 	Error            string // StopFailure's kind: rate_limit, server_error…
 	ErrorDetails     string
+	// ResetsUnix: when the usage limit it stopped at resets, when the agent
+	// said so in a form of its own (Codex's session file), not in words.
+	ResetsUnix int64
 	// AgentID: a subagent's hook, not the agent's own (Claude Code's
 	// agent_id, set only when the hook fires inside one; Kimi's means
 	// something else, so it's read for Claude Code alone).

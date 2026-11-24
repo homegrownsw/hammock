@@ -114,6 +114,9 @@ type pane struct {
 	typedBy     paneInput // who typed into it lately (inputsource.go)
 	lastIn      time.Time // when someone last typed in it
 
+	// Resuming after a usage limit (limitresume.go).
+	limit limitState
+
 	// A sleeping agent (sleep.go): the command that wakes it; sleepBusy
 	// while it's being put to sleep; waking from when it's woken until it's
 	// at its prompt, with what's typed meanwhile (wakeQueue) and awake,

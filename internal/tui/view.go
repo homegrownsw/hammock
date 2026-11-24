@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/homegrownsw/hammock/internal/client"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -184,6 +185,9 @@ func (a *App) agentGlyph(p *pb.Pane) (glyph, bool) {
 		// Its process ended to free memory: looking at it wakes it.
 		return glyph{"☾", a.th.dim, false}, true
 	}
+	if p != nil && waitingOnLimit(p.Agent) {
+		return glyph{"◷", a.th.dim, false}, true
+	}
 	if p == nil || p.Agent == nil || (shownState(p.Agent) == pb.AgentState_AGENT_STATE_IDLE && p.Agent.Seen) {
 		return glyph{}, false
 	}
@@ -216,12 +220,23 @@ func progressGlyph(pct int32) string {
 }
 
 // shownState is the state to show: a command you ran with ! (after the
-// agent went idle) shows as work.
+// agent went idle) shows as work; an agent waiting out its usage limit,
+// once you've seen it stop, as one at rest (waitingOnLimit).
 func shownState(ag *pb.Agent) pb.AgentState {
-	if ag.RunningCommand && ag.State == pb.AgentState_AGENT_STATE_IDLE {
+	switch {
+	case waitingOnLimit(ag):
+		return pb.AgentState_AGENT_STATE_IDLE
+	case ag.RunningCommand && ag.State == pb.AgentState_AGENT_STATE_IDLE:
 		return pb.AgentState_AGENT_STATE_WORKING
 	}
 	return ag.State
+}
+
+// waitingOnLimit: the agent stopped at its usage limit, you've seen that,
+// and it carries on when the limit resets: a calm wait, not an error (a
+// clock, "Continues at 18:37"), as the apps show it.
+func waitingOnLimit(ag *pb.Agent) bool {
+	return ag != nil && ag.State == pb.AgentState_AGENT_STATE_ERRORED && ag.LimitResume != nil && ag.Seen
 }
 
 var stateRank = map[pb.AgentState]int{
@@ -1077,6 +1092,9 @@ func (a *App) drawPaneHeader(id string, p *pb.Pane, r rect, focused bool) {
 		status, scol = g.ch+" "+labels[p.Agent.State], g.col
 		if pr := p.Agent.Progress; pr != nil && p.Agent.State != pb.AgentState_AGENT_STATE_IDLE {
 			status += fmt.Sprintf(" %d%%", *pr)
+		}
+		if lr := p.Agent.LimitResume; lr != nil && p.Agent.State == pb.AgentState_AGENT_STATE_ERRORED {
+			status = g.ch + " " + client.LimitResumeWords(lr, time.Now())
 		}
 		if p.Asleep {
 			status = g.ch + " Asleep"

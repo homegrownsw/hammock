@@ -305,6 +305,9 @@ type paneView struct {
 	State      string `json:"agent_state,omitempty"`
 	Summary    string `json:"agent_summary,omitempty"`
 	SessionURL string `json:"agent_session_url,omitempty"` // its session on the web (Claude Code's Remote Control)
+	// Stopped at its usage limit: when Hammock sends it "continue"
+	// (agent-resume-after-limit), Unix milliseconds.
+	ContinuesAt int64 `json:"agent_continues_at_unix_ms,omitempty"`
 	// What the program in it reports of itself (the Program Status
 	// Protocol, OSC 7501), when it does: agent_state is then its most
 	// pressing record's.
@@ -364,6 +367,7 @@ func (s *mcpServer) view(w *world, p *pb.Pane) paneView {
 	if a := p.Agent; a != nil {
 		v.Agent, v.State, v.Summary, v.SessionURL = a.Harness, strings.ToLower(stateNames[a.State]), a.Summary, a.SessionUrl
 		v.Reported = reportedOf(a)
+		v.ContinuesAt = a.GetLimitResume().GetAtUnixMs()
 	}
 	return v
 }

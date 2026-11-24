@@ -1005,6 +1005,11 @@ public final class AppModel {
         shownAgentPane(of: tab)?.agent.harness
     }
 
+    /// A tab whose agent waits out its usage limit, calmly (Agent.waitingOnLimit): a clock.
+    public func hasAgentWaitingOnLimit(_ tab: WorkspaceTab) -> Bool {
+        panes(in: tab).contains { $0.hasAgent && !$0.exited && $0.agent.waitingOnLimit }
+    }
+
     /// A tab whose agent is at rest: there, finished, and looked at (a grey
     /// ring, where a plain terminal shows its prompt glyph).
     public func hasRestingAgent(_ tab: WorkspaceTab) -> Bool {
@@ -2374,6 +2379,17 @@ extension AppModel {
             guard await run({ $0.sleepPane = .with { $0.paneID = paneID; $0.wake = wake } }) != nil else {
                 let why = lastError ?? "unknown error"
                 showToast(wake ? "Couldn't wake the agent: \(why)" : why.prefix(1).uppercased() + why.dropFirst())
+                return
+            }
+        }
+    }
+
+    /// Its agent, stopped at its usage limit, isn't sent "continue" when the
+    /// limit resets (CancelLimitResume): the person carries on themselves.
+    public func cancelLimitResume(_ paneID: String) {
+        Task {
+            guard await run({ $0.cancelLimitResume = .with { $0.paneID = paneID } }) != nil else {
+                showToast("Couldn't cancel: \(lastError ?? "unknown error")")
                 return
             }
         }

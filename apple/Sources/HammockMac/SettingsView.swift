@@ -800,6 +800,10 @@ private struct AgentSettings: View {
                 Toggle("Keep this Mac awake while agents work", isOn: Prefs.shared.boolBinding(.agentKeepAwake))
                     .settingAnchor("agents.keepawake")
             }
+            Section("Usage Limits") {
+                Toggle("Continue agents when their usage limit resets", isOn: Prefs.shared.boolBinding(.agentResumeAfterLimit))
+                    .settingAnchor("agents.limitresume")
+            }
             Section("Idle Agents") {
                 Picker("Put idle agents to sleep", selection: agentSleep) {
                     Text("Off").tag("off")

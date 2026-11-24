@@ -87,6 +87,13 @@ extension Hammock_V1_Pane {
     /// The button that starts it again: Resume for an agent's session.
     @MainActor public var runAgainTitle: String { resumesWhenRunAgain ? "Resume" : "Run Again" }
 
+    /// Its agent stopped at its usage limit and is sent "continue" when the
+    /// limit resets (Agent.limitResume): when, in words. Nil when it isn't.
+    public func limitResumeLabel(now: Date = Date(), calendar: Calendar = .current) -> String? {
+        guard hasAgent, agent.hasLimitResume, agent.state == .errored else { return nil }
+        return agent.limitResume.label(now: now, calendar: calendar)
+    }
+
     /// Its agent's state in words: "Asleep" for one put to sleep.
     public var agentStatusLabel: String {
         asleep ? "Asleep" : agent.state.label
@@ -153,6 +160,25 @@ extension Hammock_V1_JoinRequest {
     }
 }
 
+extension Hammock_V1_LimitResume {
+    /// When the agent is sent "continue", in this device's time: "Continues
+    /// at 15:01", "Continues tomorrow at 09:00", "Continues Thursday at
+    /// 10:00", "Continues 3 Dec at 10:00"; "Tries again at …" when the
+    /// limit's reset isn't known.
+    public func label(now: Date = Date(), calendar: Calendar = .current) -> String {
+        let at = Date(timeIntervalSince1970: Double(atUnixMs) / 1000)
+        let verb = resetKnown ? "Continues" : "Tries again"
+        let time = at.formatted(date: .omitted, time: .shortened)
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: at)).day ?? 0
+        switch days {
+        case ...0: return "\(verb) at \(time)"
+        case 1: return "\(verb) tomorrow at \(time)"
+        case 2...6: return "\(verb) \(at.formatted(.dateTime.weekday(.wide))) at \(time)"
+        default: return "\(verb) \(at.formatted(.dateTime.day().month(.abbreviated))) at \(time)"
+        }
+    }
+}
+
 extension Hammock_V1_AgentState {
     public var label: String {
         switch self {
@@ -189,8 +215,17 @@ extension Hammock_V1_Layout {
 
 extension Hammock_V1_Agent {
     /// The state to show: a command you ran with ! (after the agent went
-    /// idle) shows as work, as it is.
-    public var shownState: AgentState { runningCommand && state == .idle ? .working : state }
+    /// idle) shows as work, as it is; one waiting out its usage limit, once
+    /// you've seen it stop, as at rest (waitingOnLimit).
+    public var shownState: AgentState {
+        if waitingOnLimit { return .idle }
+        return runningCommand && state == .idle ? .working : state
+    }
+
+    /// It stopped at its usage limit, you've seen that, and it carries on
+    /// when the limit resets: a calm wait (a clock, "Continues at 18:37"),
+    /// not an error, out of Needs You. Unseen, it's still the error.
+    public var waitingOnLimit: Bool { state == .errored && hasLimitResume && seen }
 
     /// At rest with work still going on (shells: background tasks, a
     /// server; subagents that run on after its turn): shown a little

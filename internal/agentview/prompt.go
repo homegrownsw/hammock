@@ -594,6 +594,12 @@ func ClearInput(n int) []byte {
 // InputDraft is what's typed in the agent's input box, from the screen with
 // faint text (the box's placeholder) left out: its lines after the ❯ or ›,
 // continuation lines' indent dropped.
+// HasInput reports whether an agent's message box (its ❯ or › prompt) is on
+// screen.
+func HasInput(text string) bool {
+	return inputStart(strings.Split(strings.TrimRight(text, "\n "), "\n"), "❯", "›") >= 0
+}
+
 func InputDraft(text string) string {
 	lines := strings.Split(strings.TrimRight(text, "\n "), "\n")
 	start := inputStart(lines, "❯", "›")

@@ -33,6 +33,10 @@ extension Pref {
     /// it from the file itself and holds the power assertion.
     static let agentKeepAwake = Pref("agent-keep-awake", defaults: "agentKeepAwake", false)
 
+    /// An agent stopped at its usage limit is sent "continue" when the
+    /// limit resets. hmkd reads it from the file itself.
+    static let agentResumeAfterLimit = Pref("agent-resume-after-limit", defaults: "agentResumeAfterLimit", true)
+
     /// The agent New Agent Tab starts on this Mac without asking (New Claude
     /// Code Tab, ⌥⌘N): an agent's id, or "" (none: the sheet asks). hmkd
     /// reads it, and tells the apps, while that agent is installed.

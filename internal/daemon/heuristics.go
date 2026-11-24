@@ -159,6 +159,7 @@ func (d *Daemon) detectAgents() {
 			d.endHookedAgent(p) // crashed or killed: no SessionEnd to say so
 			continue
 		}
+		d.checkTurnFailed(p) // (Codex's errors run no hook)
 		if time.Since(hookAt) < hookFreshness {
 			d.screenAsks(p, screen)
 			continue

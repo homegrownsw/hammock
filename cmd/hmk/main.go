@@ -179,6 +179,10 @@ Usage:
                                             apps' Wake button, typing in it, or hmk wake); agent-sleep in
                                             the config file does it by itself
   hmk wake [PANE]                          wake a sleeping agent now
+  hmk limits                               agents that stopped at their usage limit, and when each carries
+                                            on (agent-resume-after-limit in the config file)
+  hmk limits cancel [PANE]                 don't have a pane's agent carry on when its limit resets, by
+                                            default this pane's
   hmk session-link [PANE]                  print the web link to a pane's agent session (Claude Code's
                                             Remote Control), by default this pane's
   hmk schedule [ls]                        list scheduled tasks: an agent's prompt, or a command, run
@@ -906,6 +910,9 @@ func runCommand(args []string) error {
 		_, err := call(&pb.ClientMessage{Msg: &pb.ClientMessage_SleepPane{SleepPane: &pb.SleepPane{PaneId: pid, Wake: args[0] == "wake"}}})
 		return err
 
+	case "limits":
+		return runLimits(w, call, args[1:])
+
 	case "rerun":
 		if len(args) != 2 {
 			return errors.New("usage: hmk rerun PANE")
@@ -1334,6 +1341,9 @@ func printWorld(w *world) {
 					if a.Summary != "" {
 						status += " " + a.Summary
 					}
+					if lr := a.LimitResume; lr != nil {
+						status += " (" + limitResumeWords(lr, time.Now()) + ")"
+					}
 				}
 				if p.Exited {
 					status += fmt.Sprintf("  (exited %d)", p.ExitStatus)
@@ -1527,6 +1537,8 @@ func grantFor(m *pb.ClientMessage) (action, target string) {
 		return "send", x.SwitchAgent.PaneId
 	case *pb.ClientMessage_SleepPane:
 		return "send", x.SleepPane.PaneId
+	case *pb.ClientMessage_CancelLimitResume:
+		return "send", x.CancelLimitResume.PaneId
 	case *pb.ClientMessage_RestartPane:
 		return "send", x.RestartPane.PaneId
 	case *pb.ClientMessage_AgentSend:

@@ -309,6 +309,7 @@ public enum Keybinds {
             .init("dictate", "Dictate", "Pane", c("m", cs), "dictation voice speech microphone mic talk speak transcribe agent view"),
             .init("sleep_agent", "Sleep or Wake Agent", "Pane", nil, "wake resume suspend idle memory ram free claude codex agent"),
             .init("run_again", "Run Again", "Pane", nil, "restart rerun resume exited ended failed command program agent"),
+            .init("cancel_limit_resume", "Don't Continue When Limit Resets", "Pane", nil, "usage limit reset rate continue resume cancel claude codex agent"),
             .init("split_browser_right", "Split Right with Browser", "Pane", c("b", co), "web divide"),
             .init("split_browser_down", "Split Down with Browser", "Pane", c("b", cos), "web divide"),
             .init("dev_tools", "Show DevTools", "Pane", c("i", co), "inspector developer browser console"),

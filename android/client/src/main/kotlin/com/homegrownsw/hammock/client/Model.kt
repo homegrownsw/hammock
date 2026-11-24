@@ -6,16 +6,36 @@ import hammock.v1.Hammock.AgentState
 import hammock.v1.Hammock.GrantRequest
 import hammock.v1.Hammock.Group
 import hammock.v1.Hammock.Layout
+import hammock.v1.Hammock.LimitResume
 import hammock.v1.Hammock.Pane
 import hammock.v1.Hammock.PaneKind
 import hammock.v1.Hammock.Role
 import hammock.v1.Hammock.Tab
+import java.time.Instant
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 // Helpers on the protocol's messages, as the iPhone's Model+UI.swift,
 // Sharing.swift and AgentCatalog.swift have them.
 
-/** The state to show: a command run with ! after the agent went idle shows as work. */
-val Agent.shownState: AgentState get() = if (runningCommand && state == AgentState.AGENT_STATE_IDLE) AgentState.AGENT_STATE_WORKING else state
+/**
+ * The state to show: a command run with ! after the agent went idle shows as work; one waiting out its usage
+ * limit, once you've seen it stop, as at rest ([waitingOnLimit]).
+ */
+val Agent.shownState: AgentState get() = when {
+    waitingOnLimit -> AgentState.AGENT_STATE_IDLE
+    runningCommand && state == AgentState.AGENT_STATE_IDLE -> AgentState.AGENT_STATE_WORKING
+    else -> state
+}
+
+/**
+ * It stopped at its usage limit, you've seen that, and it carries on when the limit resets: a calm wait (a
+ * clock, "Continues at 18:37"), not an error, out of Needs You. Unseen, it's still the error.
+ */
+val Agent.waitingOnLimit: Boolean get() = state == AgentState.AGENT_STATE_ERRORED && hasLimitResume() && seen
 
 /** At rest with work still going on (background shells, subagents). */
 val Agent.restingWithWork: Boolean get() = state == AgentState.AGENT_STATE_IDLE && !runningCommand && (shells > 0 || subagents > 0)
@@ -74,6 +94,31 @@ val Pane.exitedStatusLabel: String get() = if (startError.isEmpty()) "Exited $ex
 fun Pane.runAgainTitle(kinds: List<AgentKind>): String = if (resumesWhenRunAgain(kinds)) "Resume" else "Run Again"
 
 val Pane.agentStatusLabel: String get() = if (asleep) "Asleep" else agent.state.label
+
+/**
+ * Its agent stopped at its usage limit and is sent "continue" when the limit resets (Agent.limit_resume):
+ * when, in words (LimitResume.label). Null when it isn't.
+ */
+fun Pane.limitResumeLabel(now: ZonedDateTime = ZonedDateTime.now(), locale: Locale = Locale.getDefault()): String? =
+    if (hasAgent() && agent.hasLimitResume() && agent.state == AgentState.AGENT_STATE_ERRORED) agent.limitResume.label(now, locale) else null
+
+/**
+ * When the agent is sent "continue", in this phone's time: "Continues at 15:01", "Continues tomorrow at
+ * 09:00", "Continues Thursday at 10:00", "Continues 3 Dec at 10:00"; "Tries again at …" when the limit's
+ * reset isn't known. As the iPhone says it.
+ */
+fun LimitResume.label(now: ZonedDateTime = ZonedDateTime.now(), locale: Locale = Locale.getDefault()): String {
+    val at = Instant.ofEpochMilli(atUnixMs).atZone(now.zone)
+    val verb = if (resetKnown) "Continues" else "Tries again"
+    val time = at.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale))
+    val days = ChronoUnit.DAYS.between(now.toLocalDate(), at.toLocalDate())
+    return when {
+        days <= 0 -> "$verb at $time"
+        days == 1L -> "$verb tomorrow at $time"
+        days <= 6 -> "$verb ${at.format(DateTimeFormatter.ofPattern("EEEE", locale))} at $time"
+        else -> "$verb ${at.format(DateTimeFormatter.ofPattern("d MMM", locale))} at $time"
+    }
+}
 
 /** Its agent is at work (working, starting, waiting for you, or with subagents still running): closing the pane stops it. */
 val Pane.agentAtWork: Boolean get() = hasAgent() && !exited && (agent.subagents > 0 || agent.shownState in setOf(

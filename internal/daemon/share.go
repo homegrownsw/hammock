@@ -997,6 +997,8 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(pane(m.SwitchAgent.PaneId))
 	case *pb.ClientMessage_SleepPane:
 		return drive(pane(m.SleepPane.PaneId))
+	case *pb.ClientMessage_CancelLimitResume:
+		return drive(pane(m.CancelLimitResume.PaneId))
 	case *pb.ClientMessage_RestartPane:
 		return drive(pane(m.RestartPane.PaneId))
 	case *pb.ClientMessage_ClosePane:

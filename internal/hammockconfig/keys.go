@@ -132,6 +132,8 @@ var Keys = []Key{
 		Doc: "the agent a new agent tab starts on this computer without asking (New Claude Code Tab, ⌥⌘N, and `hmk agent` with none named), if it's installed here; unset: New Agent Tab… asks"},
 	{Name: "agent-sleep", Group: "Agents", Value: "off | 3h | 6h | 12h | 24h | 48h", Default: "off",
 		Doc: "agents idle that long with nothing running have their process ended to free memory, until you wake them; any duration of a minute or more works, like 90m"},
+	{Name: "agent-resume-after-limit", Group: "Agents", Value: "true", Default: "true",
+		Doc: "an agent whose turn ended at its usage limit carries on when the limit resets: Claude Code's own wait where it offers one, else Hammock sends it \"continue\""},
 	{Name: "agent-keep-awake", Group: "Agents", Value: "false", Default: "false",
 		Doc: "true: the Mac doesn't sleep while an agent is working (the display still can, and closing the lid still sleeps it)", Only: "Mac"},
 	{Name: "agent-presence", Group: "Tools", Value: "true", Default: "true",

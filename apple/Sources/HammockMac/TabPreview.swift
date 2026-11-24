@@ -487,9 +487,11 @@ private struct TabPreviewDetails: View {
         let since = p.agent.stateSinceUnixMs > 0 ? Self.ago(p.agent.stateSinceUnixMs, now: now) : nil
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                StatusIcon(state: state, size: 12, asleep: p.asleep, progress: p.agentProgress)
+                StatusIcon(state: state, size: 12, asleep: p.asleep, progress: p.agentProgress, waiting: p.agent.waitingOnLimit)
                 Text(Self.saying(state, name: name, asleep: p.asleep))
-                if let progress = p.agentProgress {
+                if let resume = p.limitResumeLabel(now: now) {
+                    Text("· \(resume)").foregroundStyle(.secondary)
+                } else if let progress = p.agentProgress {
                     Text("· \(progress)%").foregroundStyle(.secondary)
                 } else if let since, since != "just now" {
                     Text("· \(since)").foregroundStyle(.secondary)

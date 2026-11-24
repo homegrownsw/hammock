@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -73,6 +74,7 @@ import com.homegrownsw.hammock.client.displayName
 import com.homegrownsw.hammock.client.isDiff
 import com.homegrownsw.hammock.client.isLog
 import com.homegrownsw.hammock.client.isTerminal
+import com.homegrownsw.hammock.client.limitResumeLabel
 import com.homegrownsw.hammock.client.sessionURL
 import com.homegrownsw.hammock.panes.LocalShowPane
 import com.homegrownsw.hammock.terminal.TerminalSession
@@ -206,6 +208,8 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, act
         // Clear of the gesture bar (the tab strip does that when it's there) and the keyboard.
         val bottom = if (tabStrip == null) Modifier.navigationBarsPadding() else Modifier
         Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).then(bottom).imePadding()) {
+            // Its agent stopped at its usage limit: when it continues, with Cancel.
+            if (pane.limitResumeLabel() != null) LimitResumeBar(model, pane, drive)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (pane.asleep && pane.hasAgent()) {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -297,6 +301,8 @@ fun PaneMenuItems(
             DropdownMenuItem(text = { Text("Continue in ${AgentCatalog.shortName(other, w.kinds)}") }, leadingIcon = { Icon(Icons.Default.SwapHoriz, null) },
                 onClick = { close(); model.switchAgent(pane.id, other) })
         }
+        if (pane.limitResumeLabel() != null) DropdownMenuItem(text = { Text("Don't Continue When Limit Resets") }, leadingIcon = { Icon(Icons.Outlined.Schedule, null) },
+            onClick = { close(); model.cancelLimitResume(pane.id) })
         if (pane.asleep) DropdownMenuItem(text = { Text("Wake Agent") }, leadingIcon = { Icon(Icons.Outlined.LightMode, null) },
             onClick = { close(); model.sleepPane(pane.id, wake = true) })
         else if (pane.canSleep) DropdownMenuItem(text = { Text("Put Agent to Sleep") }, leadingIcon = { Icon(Icons.Outlined.Bedtime, null) },

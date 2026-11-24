@@ -1005,7 +1005,7 @@ struct TabRow: View {
                 StatusIcon(state: nil, size: compact ? 16 : 17, program: model.focusedProgram(of: tab))
             } else {
                 StatusIcon(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab), size: compact ? 16 : 17,
-                           program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
+                           program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab), waiting: model.hasAgentWaitingOnLimit(tab))
             }
             Text(model.title(of: tab))
                 .font(.system(size: compact ? 13.5 : 14)) // 1pt under the large sidebar row size; compact, a little smaller
@@ -1092,7 +1092,7 @@ struct TabRow: View {
     private var trailingStatus: some View {
         if model.shownAgentPane(of: tab) != nil {
             StatusIcon(state: model.agentState(of: tab), resting: true, shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab),
-                       size: compact ? 13 : 14, quietAtRest: true, asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
+                       size: compact ? 13 : 14, quietAtRest: true, asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab), waiting: model.hasAgentWaitingOnLimit(tab))
         }
     }
 

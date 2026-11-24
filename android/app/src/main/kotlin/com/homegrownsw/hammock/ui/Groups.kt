@@ -92,6 +92,7 @@ import com.homegrownsw.hammock.client.canSleep
 import com.homegrownsw.hammock.client.isOnLinkedComputer
 import com.homegrownsw.hammock.client.isRemote
 import com.homegrownsw.hammock.client.shownState
+import com.homegrownsw.hammock.client.waitingOnLimit
 import hammock.v1.Hammock
 import hammock.v1.Hammock.AgentState
 import hammock.v1.Hammock.Group
@@ -389,7 +390,7 @@ private fun TabRow(model: AppModel, w: Workspace, g: Group, tab: Tab, selected: 
                 if (state != null || resting || agent?.asleep == true) {
                     StatusIcon(state, resting = resting, shells = agent?.agent?.restingWithWork == true,
                         subagents = agent?.agent?.restingWithSubagents == true, asleep = agent?.asleep == true, progress = agent?.agentProgress, size = 22.dp,
-                        modifier = Modifier.staleWhenLinkDown())
+                        modifier = Modifier.staleWhenLinkDown(), waiting = w.panes(tab).any { it.hasAgent() && !it.exited && it.agent.waitingOnLimit })
                 } else {
                     CompositionLocalProvider(LocalContentColor provides quiet) {
                         PaneIcon(w.panes[tab.focusedPaneId] ?: w.panes(tab).firstOrNull(), 20.dp)

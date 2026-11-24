@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,14 +68,20 @@ fun StatusIcon(
     progress: Int? = null,
     size: Dp = 18.dp,
     modifier: Modifier = Modifier,
+    /** Waiting out its usage limit (Agent.waitingOnLimit): a grey clock where it would rest. */
+    waiting: Boolean = false,
 ) {
     val quiet = MaterialTheme.colorScheme.onSurfaceVariant
     val sleeping = asleep && state !in listOf(
         AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_STARTING, AgentState.AGENT_STATE_ERRORED,
     )
+    val clock = waiting && state !in listOf(
+        AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_STARTING, AgentState.AGENT_STATE_ERRORED,
+    )
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         when {
             sleeping -> Icon(Icons.Default.Bedtime, "Asleep", Modifier.size(size * 0.78f), tint = quiet)
+            clock -> Icon(Icons.Outlined.Schedule, "Waiting for its usage limit", Modifier.size(size * 0.86f), tint = StatusPalette.grey())
             state == AgentState.AGENT_STATE_NEEDS_INPUT -> Badge(StatusPalette.amber(), Glyph.Bang, size, "Needs input")
             state == AgentState.AGENT_STATE_ERRORED -> Badge(StatusPalette.red(), Glyph.Cross, size, "Errored")
             state == AgentState.AGENT_STATE_WORKING -> Working(StatusPalette.indigo(), size, progress, starting = false)

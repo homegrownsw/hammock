@@ -31,6 +31,9 @@ type HookEvent struct {
 	Payload json.RawMessage `json:"payload"`
 
 	from []int // the sender and its ancestors, nearest first (agentexit.go)
+	// parsed: the event as read already (a StopFailure read from Codex's
+	// session file, limitresume.go), in place of Payload.
+	parsed *agents.Hook
 }
 
 // agentHub tracks agent state from hook events and maintains the attention queue.
@@ -280,11 +283,25 @@ func (h *agentHub) handle(ev HookEvent) {
 		harness = p.snapshotInfo().Agent.GetHarness()
 	}
 	payload := agents.Get(harness).ReadHook(ev.Event, ev.Payload)
+	if ev.parsed != nil {
+		payload = *ev.parsed
+	}
 	event := payload.Event
 	state, summary, ok := classify(payload)
 	if !ok {
 		return
 	}
+	// An agent waiting out its usage limit stays waiting through Claude's
+	// "waiting for your input" and its session starting again
+	// (limitresume.go), though its hook still counts as it saying
+	// something.
+	p.mu.Lock()
+	if p.keepWaitingLocked(event, state, payload.SessionID) {
+		p.hookAt = time.Now()
+		p.mu.Unlock()
+		return
+	}
+	p.mu.Unlock()
 	// A subagent's hook: its work goes on beside the agent's turn, and after
 	// it in the background, so it doesn't make the agent working (nor is a
 	// message sent to it, in the terminal, the agent's turn). It can still
@@ -294,6 +311,11 @@ func (h *agentHub) handle(ev HookEvent) {
 		return
 	}
 	sid := payload.SessionID
+	// Its usage limit: "continue" once it resets (limitresume.go).
+	var limit *pb.LimitResume
+	if event == "StopFailure" {
+		limit = h.d.limitResumeFor(p, harness, payload, time.Now())
+	}
 	// Its web link (Remote Control), looked for as a turn starts and ends:
 	// it comes and goes with Remote Control, which isn't a hook event.
 	var link string
@@ -407,6 +429,24 @@ func (h *agentHub) handle(ev HookEvent) {
 		// Only finishing work needs acknowledging; a fresh session at its prompt doesn't.
 		a.Seen = state == pb.AgentState_AGENT_STATE_IDLE && (prev != pb.AgentState_AGENT_STATE_WORKING || h.d.watched(p.id) || quiet && !waiting)
 	}
+	// Its usage limit (limitresume.go): seen as it stops (on screen in
+	// front), it's a calm wait at once, not in Needs You.
+	limitSeen := false
+	switch {
+	case event == "StopFailure":
+		a.LimitResume = limit
+		if limit != nil {
+			p.limitHitLocked(a.StateSinceUnixMs)
+			if h.d.watched(p.id) {
+				a.Seen, limitSeen = true, true
+			}
+		}
+	case a.State != pb.AgentState_AGENT_STATE_ERRORED:
+		a.LimitResume = nil
+	}
+	if event == "Stop" || event == "agent-turn-complete" {
+		p.limit.tries = 0 // it got through
+	}
 	seen := a.Seen
 	if summary != "" || answered {
 		a.Summary = summary
@@ -415,6 +455,8 @@ func (h *agentHub) handle(ev HookEvent) {
 
 	u := &pb.StateUpdate{}
 	switch {
+	case limitSeen:
+		h.d.clearAttentionForPane(p.id, u)
 	case state == pb.AgentState_AGENT_STATE_NEEDS_INPUT, state == pb.AgentState_AGENT_STATE_ERRORED,
 		state == pb.AgentState_AGENT_STATE_IDLE && prev == pb.AgentState_AGENT_STATE_WORKING && !seen && !quiet:
 		h.d.raiseAttention(p, state, summary, u)
@@ -521,6 +563,9 @@ func pointerOnly(b []byte) bool {
 // on screen means it's still asking, and the agent stays waiting, in Needs
 // You. Callers hold d.mu.
 func (h *agentHub) userInput(p *pane) {
+	// Typing in it takes over from waiting out its usage limit, even as
+	// "continue" is being sent.
+	h.d.dropLimitResume(p, limitTyped)
 	p.mu.Lock()
 	if a := p.info.Agent; a != nil && a.State == pb.AgentState_AGENT_STATE_NEEDS_INPUT {
 		since := a.StateSinceUnixMs

@@ -336,8 +336,8 @@ struct SessionRowView: View {
     var body: some View {
         let a = row.pane.agent
         HStack(alignment: .sessionTitle, spacing: 12) {
-            StateGlyph(state: a.state == .idle && a.seen ? nil : a.state, resting: a.state == .idle && a.seen, asleep: row.pane.asleep,
-                       progress: row.pane.agentProgress)
+            StateGlyph(state: a.shownState == .idle && a.seen ? nil : a.shownState, resting: a.shownState == .idle && a.seen, asleep: row.pane.asleep,
+                       progress: row.pane.agentProgress, waiting: a.waitingOnLimit)
                 .symbolRenderingMode(.palette)
                 .staleWhenLinkDown()
                 .alignmentGuide(.sessionTitle) { $0[VerticalAlignment.center] }
@@ -356,6 +356,13 @@ struct SessionRowView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                // Stopped at its usage limit: when it carries on by itself.
+                if let resume = row.pane.limitResumeLabel() {
+                    Label(resume, systemImage: "hourglass")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 if let g = model.group(of: row.tab) {
                     HStack(spacing: 5) {
                         // Its picture or emoji, else a Group's symbol, so every footer lines up.
@@ -649,8 +656,10 @@ struct StateGlyph: View {
     var asleep = false
     /// Working, how far along (OSC 7501): a ring filling.
     var progress: Int?
+    /// Waiting out its usage limit: a clock.
+    var waiting = false
     var body: some View {
-        StatusIcon(state: state, resting: resting, shells: shells, subagents: subagents, size: 17, program: program, asleep: asleep, progress: progress)
+        StatusIcon(state: state, resting: resting, shells: shells, subagents: subagents, size: 17, program: program, asleep: asleep, progress: progress, waiting: waiting)
     }
 }
 
@@ -660,7 +669,8 @@ struct TabRowIOS: View {
     var body: some View {
         HStack {
             StateGlyph(state: model.agentState(of: tab), resting: model.hasRestingAgent(tab), shells: model.hasRestingAgentWithWork(tab), subagents: model.hasRestingAgentWithSubagents(tab),
-                       program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab))
+                       program: model.focusedProgram(of: tab), asleep: model.hasSleepingAgent(tab), progress: model.agentProgress(of: tab),
+                       waiting: model.hasAgentWaitingOnLimit(tab))
                 .staleWhenLinkDown()
             VStack(alignment: .leading) {
                 HStack(spacing: 5) {
@@ -1198,6 +1208,13 @@ struct PaneScreen: View {
                             shownAgent: $shownAgent, shownTerminal: $shownTerminal,
                             showTerminal: { setMode(false) }, openFile: { preview = FilePreview(paneID: pane.id, path: $0) })
                     .equatable()
+            }
+        }
+        // Its agent stopped at its usage limit: when it continues, with Cancel.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let pane, pane.limitResumeLabel() != nil {
+                LimitResumeBar(model: model, pane: pane, canCancel: canDrive(pane))
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         // Its agent asleep: faded, with a button to wake it (opening it

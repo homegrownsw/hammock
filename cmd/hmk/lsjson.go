@@ -64,6 +64,8 @@ type lsAgent struct {
 	SessionID      string `json:"session_id,omitempty"`
 	Subagents      int32  `json:"subagents,omitempty"`
 	RunningCommand bool   `json:"running_command,omitempty"`
+	// Stopped at its usage limit: when it's sent "continue", Unix ms.
+	ContinuesAtMs int64 `json:"continues_at_unix_ms,omitempty"`
 	// What the program reports of itself (OSC 7501), when it does: then
 	// harness is empty for one that isn't an agent.
 	Reported *reportedView `json:"reported,omitempty"`
@@ -138,6 +140,7 @@ func printWorldJSON(w *world) error {
 						Harness: a.Harness, State: stateJSON(a.State), StateSinceMs: a.StateSinceUnixMs,
 						Summary: a.Summary, Seen: a.Seen, SessionID: a.SessionId,
 						Subagents: a.Subagents, RunningCommand: a.RunningCommand, Reported: reportedOf(a),
+						ContinuesAtMs: a.GetLimitResume().GetAtUnixMs(),
 					}
 				}
 				tab.Panes = append(tab.Panes, lp)

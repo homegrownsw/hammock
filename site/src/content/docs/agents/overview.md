@@ -102,6 +102,18 @@ Turn on Settings ▸ Agents ▸ **Keep this Mac awake while agents work** (`agen
 
 Hammock can show your agents' usage limits (Claude Code's five-hour and weekly ones, for example) in the sidebar: turn them on in Settings ▸ Agents ▸ Usage Limits in the Sidebar. With **Ask each agent's service for its usage** (`usage-live`), Hammock asks the agent's service directly, using the sign-in its CLI keeps on your Mac. The sign-in is sent only to that service, and never kept or changed.
 
+### Continue when a limit resets
+
+When an agent stops because it hit its usage limit, Hammock has it carry on once the limit resets. It shows as an error until you've looked at it; then it's a calm wait, out of Needs You: a clock, and "Continues at 15:01" with **Cancel** over the pane. Pane ▸ **Don't Continue When Limit Resets**, or `hmk limits cancel [PANE]`, cancels it too, and the error is back in Needs You. `hmk limits` lists the agents waiting.
+
+- **Claude Code** waits by itself when it offers to: Hammock picks **Wait here, then continue automatically** in its limit menu for you, shows the time Claude gives, and leaves the rest to Claude. Cancel cancels Claude's wait too.
+- **Codex, and Claude Code without that option,** are sent "continue" a minute or two after the reset the agent gives, else the one its usage limits show. When neither says, Hammock tries again in an hour, then less often.
+- **Not sent** if you've typed in the pane since (even as it's being sent), something is typed in the agent's message box, or the agent has moved on. A sleeping agent is woken first; one just restarted gets to its prompt first.
+- **Which agents:** Claude Code, Codex, and agents whose error says they're out of usage. A passing rate limit or an overloaded service isn't waited out: agents retry those themselves.
+- A [scheduled task](/hammock/docs/scheduled-tasks/)'s run that's waiting on a limit carries on rather than failing.
+
+To turn it off: Settings ▸ Agents ▸ **Continue agents when their usage limit resets** (`agent-resume-after-limit`).
+
 ## Related
 
 - [Setting up agents](/hammock/docs/agents/setup/): hooks, the MCP server and agent settings.

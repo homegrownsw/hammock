@@ -580,6 +580,9 @@ func (d *Daemon) followRun(s *pb.Schedule, r *pb.ScheduleRun, now time.Time) boo
 		}
 		return d.endRun(s, r, pb.ScheduleRun_STATUS_READY, a.Summary)
 	case pb.AgentState_AGENT_STATE_ERRORED:
+		if p.waitingOnLimit() {
+			return false // it carries on once its usage limit resets (limitresume.go)
+		}
 		return d.endRun(s, r, pb.ScheduleRun_STATUS_FAILED, cmpOr(a.Summary, "The agent hit an error"))
 	case pb.AgentState_AGENT_STATE_EXITED:
 		if d.sched.sawWork[r.Id] {

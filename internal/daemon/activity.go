@@ -106,6 +106,10 @@ func (d *Daemon) describeAudit(actor, action, target, detail string) (who, summa
 		summary = "switched the agent in " + pane() + " (" + detail + ")"
 	case "restart":
 		summary = "ran " + pane() + " again"
+	case "limit-continue":
+		summary = "sent \"continue\" to " + pane() + " as its usage limit reset"
+	case "limit-cancel":
+		summary = "stopped " + pane() + " continuing when its usage limit resets"
 	case "ssh-sign":
 		// Here: a program in a pane signed with a key on the computer you were at.
 		summary = "used your SSH key " + detail + " in " + pane()

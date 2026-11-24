@@ -33,10 +33,13 @@ public struct StatusIcon: View {
     var asleep: Bool
     /// Working, how far along (0–100), when it says (OSC 7501): a ring filling.
     var progress: Int?
+    /// Waiting out its usage limit (Agent.waitingOnLimit): a grey clock
+    /// where it would rest.
+    var waiting: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(state: AgentState?, resting: Bool = false, shells: Bool = false, subagents: Bool = false, size: CGFloat = 15, quietAtRest: Bool = false,
-                program: [String] = [], asleep: Bool = false, progress: Int? = nil) {
+                program: [String] = [], asleep: Bool = false, progress: Int? = nil, waiting: Bool = false) {
         self.state = state
         self.resting = resting
         self.shells = shells || subagents
@@ -46,6 +49,12 @@ public struct StatusIcon: View {
         self.program = program
         self.asleep = asleep
         self.progress = progress
+        self.waiting = waiting
+    }
+
+    /// Waiting out its usage limit, and nothing more pressing to show.
+    private var clock: Bool {
+        waiting && !(state.map { [AgentState.needsInput, .working, .starting, .errored].contains($0) } ?? false)
     }
 
     /// Asleep, and nothing more pressing to show (an error stays).
@@ -54,7 +63,7 @@ public struct StatusIcon: View {
     }
 
     private var blank: Bool {
-        !sleeping && quietAtRest && !shells && !(state.map { [AgentState.needsInput, .working, .starting, .idle, .errored].contains($0) } ?? false)
+        !sleeping && !clock && quietAtRest && !shells && !(state.map { [AgentState.needsInput, .working, .starting, .idle, .errored].contains($0) } ?? false)
     }
 
     public var body: some View {
@@ -81,6 +90,15 @@ public struct StatusIcon: View {
     private var icon: some View {
         if sleeping {
             SleepMark(size: size)
+        } else if clock {
+            Image(systemName: "clock")
+                .resizable()
+                .scaledToFit()
+                .fontWeight(.medium)
+                .foregroundStyle(StatusPalette.grey)
+                .padding(size * 0.08)
+                .frame(width: size, height: size)
+                .accessibilityLabel("Waiting for its usage limit")
         } else {
             stateIcon
         }

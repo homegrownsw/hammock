@@ -333,6 +333,9 @@ struct PaneMenuItems: View {
                 Button("Take Over from Agents") { model.holdPane(paneID, true) }
             }
         }
+        if let p = model.panes[paneID], p.limitResumeLabel() != nil {
+            CancelLimitResumeButton(model: model, pane: p)
+        }
         if let p = model.panes[paneID], p.asleep || p.canSleep {
             SleepAgentButton(model: model, pane: p)
         }
@@ -352,6 +355,20 @@ struct SleepAgentButton: View {
     var body: some View {
         Button(pane.asleep ? "Wake Agent" : "Put Agent to Sleep") { model.sleepPane(pane.id, wake: pane.asleep) }
             .keyboardShortcut(Keys.sleepAgent)
+    }
+}
+
+/// Don't Continue When Limit Resets: an agent stopped at its usage limit
+/// isn't sent "continue" when it resets (LimitResumeBar's Cancel), in the
+/// Pane menu and a pane's menu.
+struct CancelLimitResumeButton: View {
+    let model: AppModel
+    let pane: Pane?
+
+    var body: some View {
+        Button("Don't Continue When Limit Resets") { if let pane { model.cancelLimitResume(pane.id) } }
+            .keyboardShortcut(Keys.cancelLimitResume)
+            .disabled(pane?.limitResumeLabel() == nil)
     }
 }
 
@@ -842,7 +859,7 @@ private struct FoldedPane: View {
         case .files: Image(systemName: "folder")
         default:
             if let p = pane, p.hasAgent, p.agent.state != .unspecified {
-                StatusIcon(state: p.agent.shownState, size: 13, asleep: p.asleep, progress: p.agentProgress)
+                StatusIcon(state: p.agent.shownState, size: 13, asleep: p.asleep, progress: p.agentProgress, waiting: p.agent.waitingOnLimit)
             } else {
                 ProgramIcon(program: pane?.exited == false ? pane?.program ?? [] : [], size: 13)
             }

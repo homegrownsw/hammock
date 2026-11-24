@@ -85,6 +85,7 @@ import com.homegrownsw.hammock.client.canDrive
 import com.homegrownsw.hammock.client.isLog
 import com.homegrownsw.hammock.client.paneIDs
 import com.homegrownsw.hammock.client.shownState
+import com.homegrownsw.hammock.client.waitingOnLimit
 import com.homegrownsw.hammock.terminal.TerminalPane
 import com.homegrownsw.hammock.terminal.TerminalSession
 import hammock.v1.Hammock
@@ -186,7 +187,9 @@ fun PanePill(p: Pane?, w: Workspace, current: Boolean, floating: Boolean, minimi
                 modifier = Modifier.widthIn(max = 140.dp))
             if (p != null && p.hasAgent() && !p.exited) {
                 val s = p.agent.shownState
-                if (s in setOf(AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_STARTING, AgentState.AGENT_STATE_ERRORED)) {
+                if (p.agent.waitingOnLimit) {
+                    StatusIcon(null, size = 14.dp, waiting = true)
+                } else if (s in setOf(AgentState.AGENT_STATE_WORKING, AgentState.AGENT_STATE_NEEDS_INPUT, AgentState.AGENT_STATE_STARTING, AgentState.AGENT_STATE_ERRORED)) {
                     StatusIcon(s, asleep = p.asleep, size = 14.dp)
                 } else if (s == AgentState.AGENT_STATE_IDLE && !p.agent.seen) {
                     Box(Modifier.size(7.dp).clip(CircleShape).background(accent).semantics { contentDescription = "Finished" })
@@ -338,7 +341,7 @@ private fun LiveTile(model: AppModel, w: Workspace, id: String, current: Boolean
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (minimised) Text("Minimised", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else if (p != null && p.hasAgent() && !p.exited && p.agent.shownState != AgentState.AGENT_STATE_UNSPECIFIED) {
-                StatusIcon(p.agent.shownState, asleep = p.asleep, size = 14.dp)
+                StatusIcon(p.agent.shownState, asleep = p.asleep, size = 14.dp, waiting = p.agent.waitingOnLimit)
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(8.dp))) {
