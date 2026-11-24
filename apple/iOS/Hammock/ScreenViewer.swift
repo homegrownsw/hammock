@@ -26,7 +26,9 @@ struct PhoneScreenViewer: View {
     @State private var trackpad = true
     @State private var state: MediaStream.State = .connecting
     @State private var unavailable: String?
-    @State private var session = 0
+    /// Bumped to open new streams in the same viewer (after the link
+    /// broke): its zoom, place and last picture kept meanwhile.
+    @State private var reconnects = 0
     @State private var keyboard = false
     @State private var hint = true
     @State private var locked = false
@@ -55,15 +57,15 @@ struct PhoneScreenViewer: View {
                 ScreenTouch(model: model, computerID: request.computerID, display: display, trackpad: trackpad,
                             macWidth: CGFloat((displays.first { display == 0 ? $0.main : $0.id == display } ?? displays.first)?.width ?? 0),
                             minimised: minimised,
-                            keyboard: $keyboard, state: $state, locked: $locked, onEnd: { share.end() })
-                    .id("\(display)-\(session)")
+                            reconnects: reconnects, keyboard: $keyboard, state: $state, locked: $locked, onEnd: { share.end() })
+                    .id(display)
                     .ignoresSafeArea()
             }
             if case .failed(let why) = state, unavailable == nil {
                 VStack(spacing: 10) {
                     Text("The screen stopped").font(.headline)
                     Text(why).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button("Try Again") { state = .connecting; session += 1 }
+                    Button("Try Again") { state = .connecting; reconnects += 1 }
                         .prominentButton()
                 }
                 .padding(20)
@@ -163,7 +165,7 @@ struct PhoneScreenViewer: View {
             guard resume, phase == .active, model.connected else { return }
             resume = false
             state = .connecting
-            session += 1
+            reconnects += 1
         }
         .onChange(of: appLock.shut) { _, shut in
             if shut {
@@ -295,6 +297,7 @@ struct ScreenTouch: UIViewRepresentable {
     /// Minimised to the bar: few frames, the whole display (the bar's
     /// thumbnail), and no input.
     let minimised: Bool
+    let reconnects: Int
     @Binding var keyboard: Bool
     @Binding var state: MediaStream.State
     @Binding var locked: Bool
@@ -319,15 +322,24 @@ struct ScreenTouch: UIViewRepresentable {
         // frames, quick to encode and send while things move. Base: the
         // whole display, small and cheap, always live underneath, so a pan
         // shows what's there at once while the detail catches up.
-        if let detail = model.screenStream(computerID: computerID, display: display, maxPixels: 3072 * 1728),
-           // Background only: 15 frames a second leaves the encoder to the detail.
-           let base = model.screenStream(computerID: computerID, display: display, maxPixels: 1280 * 720, maxFPS: 15, background: true) {
-            v.start(detail, base: base)
-        }
+        v.reconnects = reconnects
+        if let (detail, base) = streams() { v.start(detail, base: base) }
         return v
     }
 
+    private func streams() -> (MediaStream, MediaStream)? {
+        guard let detail = model.screenStream(computerID: computerID, display: display, maxPixels: 3072 * 1728),
+              // Background only: 15 frames a second leaves the encoder to the detail.
+              let base = model.screenStream(computerID: computerID, display: display, maxPixels: 1280 * 720, maxFPS: 15, background: true)
+        else { return nil }
+        return (detail, base)
+    }
+
     func updateUIView(_ v: ScreenTouchView, context: Context) {
+        if v.reconnects != reconnects {
+            v.reconnects = reconnects
+            if let (detail, base) = streams() { v.reconnect(detail, base: base) }
+        }
         v.minimised = minimised
         v.trackpad = trackpad
         v.barInset = ScreenTouch.barHeight
@@ -554,7 +566,28 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
         s.start()
     }
 
+    /// The streams the view's been given new ones by (ScreenTouch's).
+    var reconnects = 0
+
+    /// New streams in place of the ones up (their link broke): the zoom,
+    /// the place and the picture stay until the new pictures come.
+    func reconnect(_ s: MediaStream, base: MediaStream) {
+        stopStreams()
+        start(s, base: base)
+        if !minimised {
+            sentView = .null
+            viewChanged()
+        }
+    }
+
     func stop() {
+        stopStreams()
+        video.layer.contents = nil
+        shown.removeAll()
+        baseVideo.hosted = nil
+    }
+
+    private func stopStreams() {
         stopMomentum()
         stream?.onState = nil
         baseStream?.onState = nil
@@ -564,11 +597,8 @@ final class ScreenTouchView: UIView, UIGestureRecognizerDelegate, UITextInput {
         stream?.onCursor = nil
         stream?.onLocked = nil
         stream?.stop()
-        video.layer.contents = nil
-        shown.removeAll()
         stream = nil
         baseStream?.stop()
-        baseVideo.hosted = nil
         baseStream = nil
     }
 
