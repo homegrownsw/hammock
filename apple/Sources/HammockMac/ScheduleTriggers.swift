@@ -163,8 +163,20 @@ struct TriggerEditorRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 TextField("Files", text: files(\.glob), prompt: Text("Any file, or *.swift, src/**/*.ts"))
                     .font(.system(.body, design: .monospaced))
-                TextField("In", text: files(\.folder), prompt: Text("The automation’s folder"))
-                    .font(.system(.body, design: .monospaced))
+                HStack {
+                    TextField("In", text: files(\.folder), prompt: Text("The automation’s folder"))
+                        .font(.system(.body, design: .monospaced))
+                    // Only this Mac's folders can be browsed; another computer's are typed.
+                    if computerID.isEmpty || computerID == model.myUserID {
+                        Button("Choose…") {
+                            let start = files(\.folder).wrappedValue
+                            if let f = GroupFolder.pick(startingAt: ((start.isEmpty ? "~" : start) as NSString).expandingTildeInPath,
+                                                        message: "Choose the folder whose files this trigger watches") {
+                                files(\.folder).wrappedValue = GroupFolder.tilde(f)
+                            }
+                        }
+                    }
+                }
             }
         case .calendar:
             VStack(alignment: .leading, spacing: 4) {
