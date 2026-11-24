@@ -1,4 +1,7 @@
-package main
+// Package imaging holds the little image work Hammock does itself: shrinking
+// screenshots (browser_screenshot's, design notes') and drawing design notes'
+// pins on them.
+package imaging
 
 import (
 	"bytes"
@@ -7,20 +10,30 @@ import (
 	"math"
 )
 
-// downscalePNG shrinks a PNG by factor (> 1), averaging each output pixel
+// DownscalePNG shrinks a PNG by factor (> 1), averaging each output pixel
 // over the source pixels it covers: browser screenshots go from device
 // pixels to CSS pixels without the shimmer of nearest-neighbour sampling.
-func downscalePNG(data []byte, factor float64) ([]byte, error) {
+func DownscalePNG(data []byte, factor float64) ([]byte, error) {
 	src, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
+	dst := Downscale(src, factor)
+	if dst == nil {
+		return data, nil
+	}
+	return EncodePNG(dst)
+}
+
+// Downscale is src shrunk by factor, as DownscalePNG; nil when factor
+// wouldn't shrink it.
+func Downscale(src image.Image, factor float64) *image.NRGBA {
 	sb := src.Bounds()
 	sw, sh := sb.Dx(), sb.Dy()
 	dw := max(1, int(math.Round(float64(sw)/factor)))
 	dh := max(1, int(math.Round(float64(sh)/factor)))
 	if dw >= sw && dh >= sh {
-		return data, nil
+		return nil
 	}
 	fx, fy := float64(sw)/float64(dw), float64(sh)/float64(dh)
 	dst := image.NewNRGBA(image.Rect(0, 0, dw, dh))
@@ -47,8 +60,13 @@ func downscalePNG(data []byte, factor float64) ([]byte, error) {
 			dst.Pix[i+3] = uint8(a / n >> 8)
 		}
 	}
+	return dst
+}
+
+// EncodePNG encodes img quickly (screenshots are sent, not kept).
+func EncodePNG(img image.Image) ([]byte, error) {
 	var out bytes.Buffer
-	if err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&out, dst); err != nil {
+	if err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&out, img); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil

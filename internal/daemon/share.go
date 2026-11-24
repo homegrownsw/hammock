@@ -936,6 +936,10 @@ func (c *conn) peerCheck(msg *pb.ClientMessage) (ignore bool, err error) {
 		return drive(pane(m.FilesCommand.PaneId))
 	case *pb.ClientMessage_ReadReview:
 		return view(pane(m.ReadReview.PaneId))
+	case *pb.ClientMessage_PinCommand:
+		// Pinning and noting: Drive members. Sending to an agent and
+		// choosing it: the host's (refused by the pins themselves).
+		return drive(pane(m.PinCommand.PaneId))
 	case *pb.ClientMessage_ReviewCommand:
 		// Commenting, replying, resolving: Drive members. Sending to an
 		// agent and choosing it: the owner's (refused by the review itself).

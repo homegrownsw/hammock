@@ -15,4 +15,9 @@ enum Haptics {
     static func refuse() {
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
     }
+
+    /// A design note's pin dropped.
+    static func pin() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
 }

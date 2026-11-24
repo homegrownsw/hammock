@@ -322,6 +322,9 @@ public enum Keybinds {
             .init("split_editor_right", "Split Right with Editor…", "Pane", c("e", cc), "pane text file code untitled empty choose"),
             .init("split_editor_down", "Split Down with Editor…", "Pane", c("e", [.command, .control, .shift]), "pane text file code untitled empty choose"),
             .init("show_simulator_log", "Show Simulator Log", "Pane", nil, "logs console ios iphone"),
+            // ⇧⌘P, P for pin: free in macOS and here (⌘P is Quick Open). A
+            // browser's or simulator's: drop numbered notes for an agent.
+            .init("pin_notes", "Pin Notes", "Pane", c("p", cs), "design notes annotate comment feedback mark point element screenshot agent browser simulator page screen"),
             .init("zoom_pane", "Zoom Pane", "Pane", c("return", cs), "maximise maximize fullscreen focus unzoom"),
             // ⌥⇧⌘D: beside the splits' ⌘D and ⇧⌘D, and free in macOS (⌥⌘D is the Dock's).
             .init("rotate_split", "Rotate Split", "Pane", c("d", cos), "turn flip orientation direction horizontal vertical side by side stacked layout"),

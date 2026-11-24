@@ -393,6 +393,11 @@ struct PaneMenu: View {
         if model.hasScreen(paneID) {
             out.append(.button("Copy Screen", systemImage: "doc.on.doc") { if let text = model.screenText(paneID) { UIPasteboard.general.string = text } })
         }
+        // Design notes: a browser's page or a simulator's screen.
+        if model.canPin(paneID) {
+            let on = PinMode.shared.isOn(paneID)
+            out.append(.button(on ? "Stop Pinning Notes" : "Pin Notes", systemImage: "mappin.and.ellipse") { PinMode.shared.toggle(paneID) })
+        }
         var place: [MenuEntry] = []
         if let f = floating {
             if f.minimised {

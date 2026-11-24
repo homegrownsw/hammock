@@ -256,7 +256,9 @@ fun rememberPaneTheme(model: AppModel): PaneTheme {
 }
 
 @Composable
-fun BrowserContent(model: AppModel, pane: Pane, drive: Boolean) = BrowserPane(model, pane, drive)
+fun BrowserContent(model: AppModel, pane: Pane, drive: Boolean, pinMode: Boolean, onPinMode: (Boolean) -> Unit) =
+    BrowserPane(model, pane, drive, pinMode = pinMode, onPinMode = onPinMode)
 
 @Composable
-fun SimulatorContent(model: AppModel, pane: Pane, drive: Boolean) = SimulatorPane(model, pane, drive)
+fun SimulatorContent(model: AppModel, pane: Pane, drive: Boolean, pinMode: Boolean, onPinMode: (Boolean) -> Unit) =
+    SimulatorPane(model, pane, drive, pinMode = pinMode, onPinMode = onPinMode)

@@ -840,18 +840,7 @@ func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, 
 		h.mu.Unlock()
 	}()
 
-	d := h.d
-	d.mu.Lock()
-	p := d.panes[target]
-	var state pb.AgentState
-	if p != nil {
-		p.mu.Lock()
-		if a := p.info.Agent; a != nil {
-			state = a.State
-		}
-		p.mu.Unlock()
-	}
-	d.mu.Unlock()
+	p, wait, err := h.d.agentDelivery(target, "comments")
 	// A finish not yet sent goes with them.
 	finishing := pendingFinish(snap)
 	mark := func(to pb.ReviewComment_Delivery) {
@@ -871,14 +860,10 @@ func (h *diffHub) send(rvID, target string, ids []string) (sent, queued uint32, 
 			h.saveReviewLocked(rv)
 		}
 	}
-	switch state {
-	case pb.AgentState_AGENT_STATE_UNSPECIFIED, pb.AgentState_AGENT_STATE_EXITED:
-		if p == nil {
-			return 0, 0, errors.New("the agent comments go to has closed: choose another")
-		}
-		return 0, 0, errors.New("there's no agent running in the pane comments go to")
-	case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
-		// Typing now would answer what it's asking you.
+	if err != nil {
+		return 0, 0, err
+	}
+	if wait {
 		mark(pb.ReviewComment_DELIVERY_QUEUED)
 		return 0, uint32(len(ids)), nil
 	}
@@ -1015,20 +1000,11 @@ func (h *diffHub) flushQueued() {
 	}
 	h.mu.Unlock()
 	for _, x := range list {
-		h.d.mu.Lock()
-		var state pb.AgentState
-		if p := h.d.panes[x.target]; p != nil {
-			p.mu.Lock()
-			if a := p.info.Agent; a != nil {
-				state = a.State
-			}
-			p.mu.Unlock()
-		}
-		h.d.mu.Unlock()
-		switch state {
-		case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
+		_, wait, err := h.d.agentDelivery(x.target, "comments")
+		if wait {
 			continue // still waiting on you
-		case pb.AgentState_AGENT_STATE_UNSPECIFIED, pb.AgentState_AGENT_STATE_EXITED:
+		}
+		if err != nil {
 			// Its agent has gone (or its pane): they're yours to send
 			// again, to another, rather than held for nothing.
 			h.unqueue(x.rvID, x.ids)

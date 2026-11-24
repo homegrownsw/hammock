@@ -503,6 +503,11 @@ struct HammockApp: App {
                         .emptyEditorAlternate("Split Down with Empty Editor", Keys.splitEditorDown, icon: false) { if let id = focused { EditorUI.shared.split(model, id, .vertical) } }
                         .disabled(focused == nil)
                 }
+                // Design notes: click a page or screen to pin a note for an agent.
+                Toggle("Pin Notes", isOn: Binding(get: { focused.map { PinMode.shared.isOn($0) } ?? false },
+                                                  set: { on in if let id = focused { PinMode.shared.set(id, on) } }))
+                    .keyboardShortcut(Keys.pinNotes)
+                    .disabled(!(focused.map { model.canPin($0) } ?? false))
                 if HammockTool.log.on {
                     Button("Show Simulator Log") { if let id = focused { LogUI.shared.showSimulatorLog(model, id) } }
                         .keyboardShortcut(Keys.showSimulatorLog)

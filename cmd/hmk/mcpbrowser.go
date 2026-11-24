@@ -15,6 +15,7 @@ import (
 	"github.com/homegrownsw/hammock/internal/client"
 	"github.com/homegrownsw/hammock/internal/daemon"
 	"github.com/homegrownsw/hammock/internal/hammockconfig"
+	"github.com/homegrownsw/hammock/internal/imaging"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
 )
 
@@ -600,7 +601,7 @@ func (s *mcpServer) registerBrowser(server *mcp.Server) {
 			return nil, nil, err
 		}
 		if !a.FullPage && dpr > 1 {
-			if small, err := downscalePNG(png, dpr); err == nil {
+			if small, err := imaging.DownscalePNG(png, dpr); err == nil {
 				png = small
 			}
 		}

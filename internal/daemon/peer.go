@@ -1161,6 +1161,8 @@ func msgTarget(msg *pb.ClientMessage) string {
 		return m.ReadReview.PaneId
 	case *pb.ClientMessage_ReviewCommand:
 		return m.ReviewCommand.PaneId
+	case *pb.ClientMessage_PinCommand:
+		return m.PinCommand.PaneId
 	case *pb.ClientMessage_ListFiles:
 		if m.ListFiles.GroupId != "" {
 			return m.ListFiles.GroupId

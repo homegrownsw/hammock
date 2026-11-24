@@ -147,6 +147,11 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
     let paneID: String
     var onFocus: (() -> Void)?
     var onCommand: ((BrowserCommand) -> Void)?
+    /// Where the page is in the pane (top-down; nil: all of it), as it
+    /// changes: design notes' pins sit on it (PinOverlay).
+    var onPage: ((CGRect?) -> Void)?
+    /// The page's right-click Add Note Here: a pin at this point (fractions of the page).
+    var onAddNote: ((CGPoint) -> Void)?
     /// Find in page's results: how many matches, and which is selected (1-based).
     var onFound: ((Int, Int) -> Void)?
     var isFocusTarget = false {
@@ -384,6 +389,7 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
         let by = (m["by"] as? String) ?? ""
         let d = { (k: String) in (m[k] as? Double) ?? 0 }
         page = by.isEmpty ? nil : NSRect(x: d("x"), y: d("y"), width: d("w"), height: d("h"))
+        onPage?(page)
         fitContainer()
         if by.isEmpty {
             sizedCover?.removeFromSuperview()
@@ -650,9 +656,23 @@ final class BrowserPaneNSView: NSView, NSTextInputClient {
             }
             menu.addItem(item)
         }
-        let p = NSPoint(x: (m["x"] as? Double) ?? 0, y: bounds.height - ((m["y"] as? Double) ?? 0))
+        // Design notes: a pin here, for an agent (PinOverlay).
+        let x = (m["x"] as? Double) ?? 0, y = (m["y"] as? Double) ?? 0
+        if onAddNote != nil {
+            if menu.items.last.map({ !$0.isSeparatorItem }) ?? false { menu.addItem(.separator()) }
+            let item = NSMenuItem(title: "Add Note Here", action: #selector(MenuPick.pick(_:)), keyEquivalent: "")
+            item.target = picker
+            item.tag = MenuPick.addNote
+            menu.addItem(item)
+        }
+        let p = NSPoint(x: x, y: bounds.height - y)
         menu.popUp(positioning: nil, at: p, in: self) // tracks until dismissed
-        host.send(["t": "contextResult", "seq": m["seq"] ?? 0, "cmd": picker.chosen])
+        let addNote = picker.chosen == MenuPick.addNote
+        host.send(["t": "contextResult", "seq": m["seq"] ?? 0, "cmd": addNote ? -1 : picker.chosen])
+        if addNote {
+            let r = page ?? bounds // both top-down from the view's top left
+            onAddNote?(CGPoint(x: min(max((x - r.minX) / max(r.width, 1), 0), 1), y: min(max((y - r.minY) / max(r.height, 1), 0), 1)))
+        }
     }
 
     /// alert(), confirm() and prompt(), as a sheet over the window.
@@ -840,6 +860,8 @@ extension BrowserPaneNSView: NSDraggingSource {
 
 /// Records which item of a menu shown for the page was chosen (-1: none).
 private final class MenuPick: NSObject {
+    /// Add Note Here's tag: none of Chromium's commands.
+    static let addNote = -100
     var chosen = -1
     @objc func pick(_ item: NSMenuItem) { chosen = item.tag }
 }
@@ -948,12 +970,15 @@ struct BrowserView: NSViewRepresentable {
     var isFocused: Bool
     var onCommand: (BrowserCommand) -> Void
     var onFound: (Int, Int) -> Void = { _, _ in }
+    var onPage: (CGRect?) -> Void = { _ in }
 
     func makeNSView(context: Context) -> BrowserPaneNSView {
         let v = BrowserPaneNSView(paneID: paneID)
         v.onFocus = { [paneID, model] in model.viewFocused(paneID) }
         v.onCommand = onCommand
         v.onFound = onFound
+        v.onPage = onPage
+        v.onAddNote = { [paneID, model] p in model.addPin(paneID, at: p) }
         v.isFocusTarget = isFocused
         return v
     }
@@ -961,6 +986,7 @@ struct BrowserView: NSViewRepresentable {
     func updateNSView(_ v: BrowserPaneNSView, context: Context) {
         v.onCommand = onCommand
         v.onFound = onFound
+        v.onPage = onPage
         v.isFocusTarget = isFocused
     }
 }
@@ -980,6 +1006,8 @@ struct BrowserPaneView: View {
     @State private var activeMatch = 0
     @FocusState private var findFocused: Bool
     @Environment(\.windowScope) private var windowScope
+    /// Where the page is while another device sizes it (nil: the whole view).
+    @State private var pageRect: CGRect?
 
     private var pane: Pane? { model.panes[paneID] }
     private var pageURL: String { pane.map { $0.url == "about:blank" ? "" : $0.url } ?? "" }
@@ -1001,8 +1029,9 @@ struct BrowserPaneView: View {
                 RemoteBrowserPane(model: model, group: remote, pane: pane, paneID: paneID)
             } else {
                 BrowserView(paneID: paneID, model: model, isFocused: isFocused && !addressFocused && !findFocused,
-                            onCommand: { run($0) }, onFound: { matches = $0; activeMatch = $1 })
+                            onCommand: { run($0) }, onFound: { matches = $0; activeMatch = $1 }, onPage: { pageRect = $0 })
                     .overlay { AgentPresenceOverlay(model: model, paneID: paneID, isSimulator: false) }
+                    .overlay { PinOverlay(model: model, paneID: paneID, area: pageRect, inspects: true) }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: BrowserCommand.notification)) { n in
@@ -1056,6 +1085,7 @@ struct BrowserPaneView: View {
                     return .handled
                 }
                 .padding(.leading, 4)
+            pinButton
             FloatButtons(model: model, paneID: paneID)
             PaneCloseButton(model: model, paneID: paneID)
         }
@@ -1063,6 +1093,20 @@ struct BrowserPaneView: View {
         .padding(.trailing, 6)
         .frame(height: 28)
         .background(isFocused ? Color.themeAccent.opacity(0.06) : Color.clear)
+    }
+
+    /// Pin Notes, lit while it's on.
+    private var pinButton: some View {
+        let on = PinMode.shared.isOn(paneID)
+        return Button { PinMode.shared.toggle(paneID) } label: {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(on ? Color.themeAccent : Color.primary)
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .tooltip(Keys.hint(on ? "Stop Pinning Notes" : "Pin Notes", "pin_notes"), label: "Pin Notes")
     }
 
     private func button(_ symbol: String, _ help: String, label: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {

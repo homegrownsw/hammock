@@ -921,6 +921,16 @@ func (c *conn) dispatch(msg *pb.ClientMessage) (*pb.ServerMessage, error) {
 		}
 		return &pb.ServerMessage{Msg: &pb.ServerMessage_ReviewReply{ReviewReply: r}}, nil
 
+	case *pb.ClientMessage_PinCommand:
+		d.mu.Lock()
+		guest := c.peer != "" && !d.isLinked(c.peer)
+		d.mu.Unlock()
+		r, err := d.pins.command(m.PinCommand, guest)
+		if err != nil {
+			return nil, err
+		}
+		return &pb.ServerMessage{Msg: &pb.ServerMessage_PinReply{PinReply: r}}, nil
+
 	case *pb.ClientMessage_ListFiles:
 		d.mu.Lock()
 		g := m.ListFiles.GroupId
@@ -1788,6 +1798,8 @@ func (c *conn) audited(msg *pb.ClientMessage) bool {
 		*pb.ClientMessage_RemoveWorktree,
 		*pb.ClientMessage_EditorPush, *pb.ClientMessage_DiffCommand, *pb.ClientMessage_ReviewCommand:
 		return true
+	case *pb.ClientMessage_PinCommand:
+		return m.PinCommand.Action == pb.PinCommand_ACTION_SEND // typing to an agent; not pinning
 	case *pb.ClientMessage_FilesCommand:
 		return isFileOp(m.FilesCommand.Action) // renaming, moving, trashing; not what it shows
 	case *pb.ClientMessage_EditorCommand:
@@ -1879,6 +1891,8 @@ func auditAction(msg *pb.ClientMessage) string {
 		return "group-folder"
 	case *pb.ClientMessage_EditorPush:
 		return "edit"
+	case *pb.ClientMessage_PinCommand:
+		return "design-notes-send"
 	case *pb.ClientMessage_ReviewCommand:
 		return "review-" + strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(msg.GetReviewCommand().Action.String(), "ACTION_"), "_", "-"))
 	case *pb.ClientMessage_DiffCommand:
@@ -1932,6 +1946,8 @@ func auditTarget(msg *pb.ClientMessage) string {
 		return fc.PaneId
 	case *pb.ClientMessage_ReviewCommand:
 		return cmpOr(m.ReviewCommand.PaneId, m.ReviewCommand.ReviewId)
+	case *pb.ClientMessage_PinCommand:
+		return m.PinCommand.PaneId
 	case *pb.ClientMessage_EditorCommand:
 		if m.EditorCommand.Path != "" {
 			return m.EditorCommand.PaneId + " → " + m.EditorCommand.Path

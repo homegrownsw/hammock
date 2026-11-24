@@ -461,6 +461,16 @@ struct CommandPalette: View {
                 }
             }
         }
+        if let f = focused, model.canPin(f) {
+            let on = PinMode.shared.isOn(f)
+            action("pin-notes", on ? "Stop Pinning Notes" : "Pin Notes", "mappin.and.ellipse", .pink,
+                   "design notes annotate comment feedback mark point element screenshot agent browser simulator page screen", keys: Keys.pinNotes) {
+                PinMode.shared.set(f, !on)
+            }
+            if !model.pins(f).isEmpty {
+                action("send-notes", "Send Notes", "paperplane", .pink, "design notes pins agent message screenshot") { model.sendPins(f) }
+            }
+        }
         if BrowserPage.url(model, focused) != nil {
             action("open-in-default-browser", "Open in Default Browser", "safari", .blue, "web page external safari chrome firefox system browser url link", keys: Keys.openInDefaultBrowser) {
                 BrowserPage.openInDefaultBrowser(model, focused)

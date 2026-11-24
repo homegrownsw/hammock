@@ -244,6 +244,9 @@ message Pane {
   int64 last_output_unix_ms = 40;
   // Files panes: the folder it shows and what's open in it.
   FilesInfo files = 41;
+  // Browser and simulator panes: the design notes pinned on it, not yet
+  // sent (pins.go). Unset: none.
+  PinBoard pins = 60;
 }
 
 enum AgentState {
@@ -667,6 +670,9 @@ message ClientMessage {
     // Don't send a pane's agent "continue" when its usage limit resets
     // (Agent.limit_resume; limitresume.go). Replies Ok.
     CancelLimitResume cancel_limit_resume = 144;
+    // Design notes on a browser or simulator pane (pins.go): drop a pin,
+    // note it, send them all to an agent. Replies PinReply.
+    PinCommand pin_command = 175;
   }
   reserved 96;  // ShareMembership (an earlier design)
 }
@@ -953,6 +959,7 @@ message ServerMessage {
     FilesChanged files_changed = 74;                // to a files pane's attached clients: folders whose entries changed
     EditorLinks editor_links = 75;                  // reply to ResolveEditorLinks
     ScheduleWebhookReply schedule_webhook_reply = 85; // reply to ScheduleWebhook
+    PinReply pin_reply = 90;                        // reply to PinCommand
   }
 }
 
@@ -3318,3 +3325,71 @@ message LimitResume {
 }
 
 message CancelLimitResume { string pane_id = 1; }
+// Design notes (pins.go): numbered pins dropped on a browser pane's page or
+// a simulator pane's screen, each with a note, sent to an agent as one
+// message: a screenshot with the pins drawn on it, and each pin's note with
+// what's under it (a page's element: its selector, HTML and styles; an
+// app's: its accessibility type, label and frame). The board is the
+// pane's (Pane.pins), the same on every device showing it; it empties as
+// it's sent. The screenshots taken as pins are dropped stay in the daemon.
+
+message PinBoard {
+  repeated Pin pins = 1;
+  // The agent they go to: the one chosen (target_chosen), else the agent
+  // that opened the pane, else the Group's most recently active one. ""
+  // none to send to.
+  string target_pane_id = 2;
+  bool target_chosen = 3;
+  // Sent, and held until the agent can take it (it's waiting on you).
+  bool queued = 4;
+}
+
+message Pin {
+  string id = 1;
+  uint32 number = 2;  // as drawn: 1, 2, 3… in the order they were dropped
+  // Where it is, in fractions (0...1) of the page's viewport (a browser)
+  // or the screen as it shows (a simulator).
+  double x = 3;
+  double y = 4;
+  string note = 5;
+  // What's under it, in a few words ("button “Save”"), once looked up.
+  string what = 6;
+  // The element under it, in the same fractions (unset: none found).
+  PinRect rect = 7;
+  int64 created_unix_ms = 8;
+}
+
+message PinRect {
+  double x = 1;
+  double y = 2;
+  double w = 3;
+  double h = 4;
+}
+
+message PinCommand {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    ACTION_ADD = 1;         // x, y, note: a pin there (PinReply.pin_id), looked up and screenshotted as it is now
+    ACTION_NOTE = 2;        // pin_id, note
+    ACTION_DELETE = 3;      // pin_id: the pins after it are numbered down
+    ACTION_CLEAR = 4;       // every pin
+    ACTION_SEND = 5;        // every pin to the board's agent, as one message (held while it's waiting on you)
+    ACTION_SET_TARGET = 6;  // target_pane_id: the agent they go to ("": Hammock's choice)
+    ACTION_INSPECT = 7;     // x, y: what's there (PinReply.what, rect), for pointing; changes nothing
+    ACTION_MOVE = 8;        // pin_id, x, y: looked up and screenshotted again there
+  }
+  string pane_id = 1;
+  Action action = 2;
+  string pin_id = 3;
+  double x = 4;
+  double y = 5;
+  string note = 6;
+  string target_pane_id = 7;
+}
+
+message PinReply {
+  string pin_id = 1;  // ADD: the pin made
+  string what = 2;    // INSPECT: what's there ("" nothing)
+  PinRect rect = 3;   // INSPECT
+  bool queued = 4;    // SEND: held until the agent can take it
+}

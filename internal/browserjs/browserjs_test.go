@@ -2,6 +2,7 @@ package browserjs
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -61,5 +62,16 @@ func TestReadOnlyParamsDuplicateKeys(t *testing.T) {
 	var got map[string]any
 	if err := json.Unmarshal([]byte(out), &got); err != nil || got["expression"] != Snapshot || got["returnByValue"] != true || len(got) != 4 {
 		t.Fatalf("sent as %.80s (%v)", out, err)
+	}
+}
+
+func TestElementAt(t *testing.T) {
+	js := ElementAt(0.25, 0.5)
+	if !strings.HasPrefix(js, "((fx, fy) =>") || !strings.HasSuffix(js, ")(0.25,0.5)") {
+		t.Errorf("ElementAt = %.40s…%s", js, js[len(js)-20:])
+	}
+	// It reads the page; agents' read-only scripts are a separate list.
+	if ReadOnly(params(js, nil)) {
+		t.Error("ElementAt counts as an agent's read-only script")
 	}
 }

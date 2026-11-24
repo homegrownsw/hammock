@@ -11,6 +11,9 @@ struct RemotePageView: UIViewRepresentable {
     let stream: MediaStream
     /// The page's size in pixels (its aspect is what matters).
     let pageSize: CGSize
+    /// Where the page is drawn, in this view's coordinates, as it's fitted,
+    /// zoomed and panned (design notes' pins go over it).
+    var onPageFrame: ((CGRect) -> Void)?
     /// op, args: as AppModel.browserInput.
     let input: (String, [String: Any]) -> Void
 
@@ -18,6 +21,7 @@ struct RemotePageView: UIViewRepresentable {
         let v = PageScrollView()
         v.page.hosted = stream.layer
         v.input = input
+        v.onPageFrame = onPageFrame
         v.pageSize = pageSize
         return v
     }
@@ -25,12 +29,15 @@ struct RemotePageView: UIViewRepresentable {
     func updateUIView(_ v: PageScrollView, context: Context) {
         v.page.hosted = stream.layer
         v.input = input
+        v.onPageFrame = onPageFrame
         v.pageSize = pageSize
     }
 
     final class PageScrollView: UIScrollView, UIScrollViewDelegate, UIGestureRecognizerDelegate {
         let page = MediaView.LayerView()
         var input: ((String, [String: Any]) -> Void)?
+        var onPageFrame: ((CGRect) -> Void)?
+        private var reportedFrame: CGRect?
         private let scroller = UIPanGestureRecognizer()
         private var momentum: CADisplayLink?
         private var velocity = CGPoint.zero
@@ -76,7 +83,19 @@ struct RemotePageView: UIViewRepresentable {
                 scrollViewDidZoom(self)
             }
             center()
+            // After this layout pass, not in the middle of a SwiftUI update.
+            DispatchQueue.main.async { [weak self] in self?.reportPageFrame() }
         }
+
+        /// Tells onPageFrame where the page is now, if it's moved.
+        private func reportPageFrame() {
+            let f = page.frame.offsetBy(dx: -contentOffset.x, dy: -contentOffset.y)
+            guard f != reportedFrame else { return }
+            reportedFrame = f
+            onPageFrame?(f)
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) { reportPageFrame() }
 
         /// The page's size fitted inside the view.
         private func fitted() -> CGSize {
@@ -100,6 +119,7 @@ struct RemotePageView: UIViewRepresentable {
             // Zoomed in, one finger pans the view; fitted, it scrolls the page.
             isScrollEnabled = zoomScale > 1.01
             scroller.isEnabled = !isScrollEnabled
+            reportPageFrame()
         }
 
         /// A point in the page view as fractions of the page.

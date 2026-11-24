@@ -56,6 +56,12 @@ An **Android emulator** opens the same way: your Android Virtual Devices are lis
 
 **Agents** open one with [`sim_open`](/hammock/docs/reference/mcp/#sim_open), then look, tap, type, and install, launch and debug apps, and drive an Apple TV or Android TV with [`sim_remote`](/hammock/docs/reference/mcp/#sim_remote).
 
+## Design notes
+
+To show an agent what you mean on a page or a simulator's screen, pin notes on it. Pane ▸ **Pin Notes** (⇧⌘P), or the pin button in a browser's address bar or a simulator's header, turns pinning on: click to drop a numbered pin and write what should change there. On a page, the element under the pointer is outlined as you move. Click a pin to change its note or delete it, and right-click a page for **Add Note Here**. Esc stops pinning; the pins stay until you send or clear them.
+
+**Send to** in the bar along the bottom sends every pin to one agent as a single message: a screenshot with the pins drawn on it, and each note with what's under its pin (a page's element, with its selector, HTML and styles, or an app's accessibility element). If the screen changed between pins, the agent gets a screenshot of each. The notes go to the agent that opened the pane, else the Group's most recently active one; pick another from the button's menu. While the agent is waiting on you, they're held until it isn't.
+
 ## Log
 
 A log pane follows a file, this Mac's unified log, a simulator's log, an Android device's logcat or a command's output, and splits it into entries you can filter by text, `/regex/`, level, process or tag. Open one with File ▸ New Log Tab… (⌥⌘L), or Pane ▸ Show Simulator Log beside a simulator (an emulator's is its logcat). Pane ▸ Toggle Log View (⇧⌘A) shows the raw output.

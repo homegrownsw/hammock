@@ -115,6 +115,7 @@ type Daemon struct {
 	emulators    *emuHub // Android Emulators in simulator panes (emulator.go)
 	editors      *editorHub
 	diffs        *diffHub
+	pins         *pinHub // design notes on browser and simulator panes (pins.go)
 	files        *filesHub
 	screens      *screenHub
 	presence     agentPresence // agents acting on browser and simulator panes, as the apps show it (agentpresence.go)
@@ -279,6 +280,7 @@ func New(cfg Config) (*Daemon, error) {
 	d.emulators = newEmuHub(d)
 	d.editors = newEditorHub(d)
 	d.diffs = newDiffHub(d)
+	d.pins = newPinHub(d)
 	d.files = newFilesHub(d)
 	d.screens = newScreenHub(d)
 	d.media = newMediaHub(d)

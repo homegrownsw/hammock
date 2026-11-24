@@ -1000,6 +1000,11 @@ struct SimulatorPaneView: View {
                 }
             }
             .overlay {
+                if let p = placement, !p.screen.isEmpty {
+                    PinOverlay(model: model, paneID: paneID, area: p.screen)
+                }
+            }
+            .overlay {
                 if let start = model.emulatorStartLabel(paneID) {
                     // It runs in Android Studio, where Hammock can't drive it, or it
                     // stopped: offer to start it here.
@@ -1091,6 +1096,8 @@ struct SimulatorPaneView: View {
             let open = (pane?.deviceHinge ?? 0) > 120
             a.append(action(open ? "book.closed" : "book", open ? "Close Phone" : "Open Phone", "sim_fold") { model.toggleFold(paneID) })
         }
+        let pinning = PinMode.shared.isOn(paneID)
+        a.append(action("mappin.and.ellipse", pinning ? "Stop Pinning Notes" : "Pin Notes", "pin_notes") { PinMode.shared.toggle(paneID) })
         a.append(action("camera", "Screenshot to File", "sim_screenshot_file") { SimulatorShot.saveToFile(model, paneID) })
         a.append(action("doc.on.clipboard", "Screenshot to Clipboard", "sim_screenshot_copy") { SimulatorShot.copyToClipboard(model, paneID) })
         if model.simulatorHasClipboard(paneID) {

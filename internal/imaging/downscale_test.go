@@ -1,4 +1,4 @@
-package main
+package imaging
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ func TestDownscalePNG(t *testing.T) {
 	if err := png.Encode(&in, src); err != nil {
 		t.Fatal(err)
 	}
-	out, err := downscalePNG(in.Bytes(), 2)
+	out, err := DownscalePNG(in.Bytes(), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestDownscalePNG(t *testing.T) {
 	}
 
 	// Factor 1 (or less) leaves it alone.
-	if same, _ := downscalePNG(in.Bytes(), 1); !bytes.Equal(same, in.Bytes()) {
+	if same, _ := DownscalePNG(in.Bytes(), 1); !bytes.Equal(same, in.Bytes()) {
 		t.Error("factor 1 changed the image")
 	}
 }

@@ -20,6 +20,7 @@ struct BrowserScreen: View {
     @State private var pixels = CGSize(width: 1600, height: 1000) // the video's size
     @State private var viewSize = CGSize.zero // where the page goes, in points
     @State private var typing = false
+    @State private var pageFrame = CGRect.zero // where the page is drawn, for design notes
     /// Changes as iPhone Duo folds and unfolds (its displays differ), when
     /// the video's restarted for the display it's on.
     @Environment(\.horizontalSizeClass) private var hSize
@@ -50,8 +51,12 @@ struct BrowserScreen: View {
                 ZStack {
                     if let stream, playing {
                         // All the space, so a pinch can zoom into it; the page sits fitted in the middle.
-                        RemotePageView(stream: stream, pageSize: pixels) { op, args in if canDrive { model.browserInput(paneID, op, args) } }
-                            .takesOwnDrags()
+                        RemotePageView(stream: stream, pageSize: pixels, onPageFrame: { pageFrame = $0 }) { op, args in
+                            if canDrive { model.browserInput(paneID, op, args) }
+                        }
+                        .takesOwnDrags()
+                        // Design notes' pins, on the page as it's drawn.
+                        .overlay { PinLayer(model: model, paneID: paneID, area: pageFrame) }
                     } else if failed {
                         ContentUnavailableView("Can't See This Page", systemImage: "globe",
                                                description: Text("Its Mac isn't answering."))
@@ -68,6 +73,9 @@ struct BrowserScreen: View {
                     if canDrive { stream?.setPageSize(size) }
                 }
             }
+            // Over the page, not under it: the bar coming and going
+            // mustn't resize the page.
+            .pinNotes(model: model, paneID: paneID)
         }
         .padding(.horizontal)
         .preference(key: PaneLoading.self, value: !playing && !failed)
@@ -82,6 +90,11 @@ struct BrowserScreen: View {
         .toolbar {
             if !inStrip {
                 ToolbarItemGroup(placement: .bottomBar) { pageButtons }
+            }
+        }
+        .toolbar {
+            if chrome, model.canPin(paneID) {
+                ToolbarItem(placement: .topBarTrailing) { PinNotesButton(paneID: paneID) }
             }
         }
         .background { if chrome { Color.clear.navigationTitle(pane.map { $0.title.isEmpty ? "Browser" : $0.title } ?? "Browser") } }

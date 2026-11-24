@@ -84,6 +84,7 @@ type simMsg struct {
 	Platform string            `json:"platform"`
 	Scale    float64           `json:"scale"`
 	Text     string            `json:"text"`
+	Element  json.RawMessage   `json:"element"` // runnerResult of describe: what the runner found (pins.go)
 }
 
 func newSimHub(d *Daemon) *simHub {

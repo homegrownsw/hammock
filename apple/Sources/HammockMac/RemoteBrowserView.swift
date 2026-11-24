@@ -21,6 +21,10 @@ struct RemoteBrowserPane: View {
                               menu: model.browserMenus[paneID]) { playing = $0 }
                 .opacity(playing ? 1 : 0)
                 .allowsHitTesting(playing) // until then, the card's buttons take clicks
+            // Design notes on the host's page (it's sized to this view while you use it).
+            if playing, group.canDrive, !group.offline {
+                PinOverlay(model: model, paneID: paneID, inspects: true)
+            }
         }
     }
 }

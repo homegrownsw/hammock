@@ -1022,11 +1022,13 @@ func (p *pane) kill() {
 	if p.info.Kind == pb.PaneKind_PANE_KIND_BROWSER {
 		p.d.browsers.close(p.id)
 		go p.d.media.paneClosed(p.id)
+		go p.d.pins.paneClosed(p.id)
 		return
 	}
 	if p.info.Kind == pb.PaneKind_PANE_KIND_SIMULATOR {
 		p.d.simulators.close(p.id, p.info.DeviceUdid)
 		go p.d.media.paneClosed(p.id)
+		go p.d.pins.paneClosed(p.id)
 		return
 	}
 	if p.info.Kind == pb.PaneKind_PANE_KIND_EDITOR {

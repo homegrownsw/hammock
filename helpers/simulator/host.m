@@ -27,6 +27,9 @@
 //                   rotate {id, value, seq}, gesture {id, paths, seq} (through the
 //                   device's XCTest runner; a foldable rotates through its guest
 //                   helper), hinge {id, angle, ms, seq} (a foldable's fold),
+//                   describe {id, x, y (0..1 of the screen as it shows), seq}
+//                   (the accessibility element there, through the runner:
+//                   runnerResult has element, or null),
 //                   text {id, text}, key {id, usage, shift, cmd},
 //                   paste {id, text} (through the device's pasteboard),
 //                   copy {id, seq} (⌘C, then the device's pasteboard),
@@ -986,6 +989,9 @@ static BOOL usageFor(unichar c, uint32_t *usage, BOOL *shift) {
 
 // The runner's xctestrun, ready to run: made once per process by prepareRunner.
 static NSString *gRunnerXCTestRun;
+// The runner's answer being handled, while its RunnerDone runs: for the
+// commands that answer more than ok or an error (describe's element).
+static NSDictionary *gRunnerReply;
 
 // Output of a command (xcode-select -p), trimmed; nil if it fails.
 static NSString *commandOutput(NSString *path, NSArray<NSString *> *args) {
@@ -1187,7 +1193,9 @@ static NSString *prepareRunner(NSString **error) {
   if (r.waiting.count == 0) return;
   RunnerDone done = r.waiting.firstObject;
   [r.waiting removeObjectAtIndex:0];
+  gRunnerReply = m;
   done([m[@"ok"] boolValue] ? nil : (m[@"error"] ?: @"the runner failed"));
+  gRunnerReply = nil;
 }
 
 // Ends the runner: closing its socket ends its test, and xcodebuild with it.
@@ -1539,6 +1547,25 @@ static NSString *prepareRunner(NSString **error) {
   if ([t isEqualToString:@"copy"]) {
     if (p) [self copy:p seq:m[@"seq"] ?: @0 to:c];
     else [self send:@{@"t" : @"copyResult", @"seq" : m[@"seq"] ?: @0, @"text" : @""} to:c];
+    return;
+  }
+  if ([t isEqualToString:@"describe"]) {
+    // What's at a point, for a design note's pin (pins.go): the frontmost
+    // app's accessibility element there, from the runner. x and y are of the
+    // screen as it shows, which is how the app's frame is turned too.
+    id seq = m[@"seq"] ?: @0;
+    __weak Conn *wc = c;
+    RunnerDone reply = ^(NSString *error) {
+      Conn *c = wc;
+      if (!c) return;
+      NSMutableDictionary *r = [@{@"t" : @"runnerResult", @"seq" : seq} mutableCopy];
+      if (error) r[@"error"] = error;
+      else r[@"element"] = gRunnerReply[@"element"] ?: NSNull.null;
+      [gHost send:r to:c];
+    };
+    if (!p) reply(@"no such simulator pane");
+    else if (p.device && isTV(p.device)) reply(@"an Apple TV's screen can't be looked into");
+    else [self runner:p.udid command:@{@"cmd" : @"describe", @"x" : m[@"x"] ?: @0, @"y" : m[@"y"] ?: @0} done:reply];
     return;
   }
   if ([t isEqualToString:@"rotate"] || [t isEqualToString:@"gesture"] || [t isEqualToString:@"hinge"]) {

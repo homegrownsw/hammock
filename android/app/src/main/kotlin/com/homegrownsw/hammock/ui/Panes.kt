@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.LightMode
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.StopCircle
 import androidx.compose.runtime.saveable.rememberSaveable
 import hammock.v1.Hammock.AgentState
@@ -165,6 +166,9 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, act
     var showLog by remember(paneID) { mutableStateOf(true) }
     // The terminal on screen, for Copy Screen.
     var terminal by remember(paneID) { mutableStateOf<TerminalSession?>(null) }
+    // Design notes: whether touches on a page or a device's screen pin notes. This screen's own: leaving it ends it.
+    var pinMode by remember(paneID) { mutableStateOf(false) }
+    val pinnable = pane.kind == PaneKind.PANE_KIND_BROWSER || pane.kind == PaneKind.PANE_KIND_SIMULATOR
 
     LaunchedEffect(paneID) { model.focus(paneID) }
     // The computer knows which pane the phone shows: it doesn't notify about it then.
@@ -192,6 +196,14 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, act
                     val on = if (logMode) showLog else showAgent
                     ViewChoice(if (logMode) "Log" else "Conversation", on) { close(); if (logMode) showLog = true else { showAgent = true; PaneModes.set(ctx, paneID, true) } }
                     ViewChoice("Terminal", !on) { close(); if (logMode) showLog = false else { showAgent = false; PaneModes.set(ctx, paneID, false) } }
+                    HorizontalDivider()
+                }
+                if (pinnable && drive) {
+                    DropdownMenuItem(
+                        text = { Text("Pin Notes") }, leadingIcon = { Icon(Icons.Outlined.PushPin, null) },
+                        trailingIcon = { if (pinMode) Icon(Icons.Default.Check, "On") },
+                        onClick = { close(); pinMode = !pinMode },
+                    )
                     HorizontalDivider()
                 }
                 terminal?.let { t ->
@@ -224,8 +236,8 @@ fun PaneScreen(model: AppModel, paneID: String, nav: Nav, showBack: Boolean, act
                     pane.kind == PaneKind.PANE_KIND_EDITOR -> EditorContent(model, pane, drive) { close -> PaneMenuItems(model, w, pane, drive, nav, close) }
                     pane.kind == PaneKind.PANE_KIND_DIFF -> DiffContent(model, pane, drive)
                     pane.kind == PaneKind.PANE_KIND_FILES -> FilesContent(model, pane, drive)
-                    pane.kind == PaneKind.PANE_KIND_BROWSER -> BrowserContent(model, pane, drive)
-                    pane.kind == PaneKind.PANE_KIND_SIMULATOR -> SimulatorContent(model, pane, drive)
+                    pane.kind == PaneKind.PANE_KIND_BROWSER -> BrowserContent(model, pane, drive, pinMode) { pinMode = it }
+                    pane.kind == PaneKind.PANE_KIND_SIMULATOR -> SimulatorContent(model, pane, drive, pinMode) { pinMode = it }
                     else -> TerminalContent(model, pane, drive) { terminal = it }
                 }
             }

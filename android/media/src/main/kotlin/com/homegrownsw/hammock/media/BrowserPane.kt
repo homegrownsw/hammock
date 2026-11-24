@@ -55,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -77,10 +78,18 @@ import kotlinx.coroutines.Job
  * momentum), and a pinch zooms in here, 1–4x (one finger then pans the zoomed
  * view). Type opens the keyboard into the page. The page takes this view's
  * size while it's driven from here, as a terminal takes its driver's.
- * Read-only when you can't drive it.
+ * Read-only when you can't drive it. In [pinMode], a touch and hold pins a
+ * design note instead (Pins.kt), and the page gets no touches.
  */
 @Composable
-fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier: Modifier = Modifier) {
+fun BrowserPane(
+    model: AppModel,
+    pane: Hammock.Pane,
+    canDrive: Boolean,
+    modifier: Modifier = Modifier,
+    pinMode: Boolean = false,
+    onPinMode: (Boolean) -> Unit = {},
+) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val paneID = pane.id
@@ -96,6 +105,7 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
     var pan by remember { mutableStateOf(Offset.Zero) }
     var typing by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf<Hammock.BrowserMenu?>(null) }
+    var editingPin by remember(paneID) { mutableStateOf<String?>(null) }
     val fitted = fit(pixels, box)
     val geometry by rememberUpdatedState(Triple(box, fitted, canDrive))
 
@@ -162,14 +172,16 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
                 .fillMaxWidth()
                 .clipToBounds()
                 .onSizeChanged { box = Size(it.width.toFloat(), it.height.toFloat()) }
-                .pointerInput(canDrive) {
+                .pointerInput(canDrive, pinMode) {
+                    if (pinMode) return@pointerInput // pins take the touches
                     detectTapGestures(
                         onPress = { glide?.cancel() }, // a touch stops a glide, as in any scroll view
                         onTap = { click(it, "left") },
                         onLongPress = { click(it, "right") },
                     )
                 }
-                .pointerInput(canDrive) {
+                .pointerInput(canDrive, pinMode) {
+                    if (pinMode) return@pointerInput
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         glide?.cancel()
@@ -246,8 +258,16 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
                 if (live.failure != null) Unavailable("Can't See This Page", "Its computer isn't answering.")
                 else CircularProgressIndicator()
             }
+            if (stream != null && live.playing) {
+                val page = PinLayout.pageRect(box, fitted, zoom, pan)
+                PinOverlay(
+                    model, pane, pinMode && canDrive, page, page.intersect(Rect(Offset.Zero, box)), scope,
+                    onEdit = { editingPin = it }, modifier = Modifier.matchParentSize(),
+                )
+            }
             KeyCatcher(typing && canDrive, onTyped = ::typed, onDismissed = { typing = false }, modifier = Modifier.size(1.dp))
         }
+        PinBar(model, pane, pinMode, canDrive, scope, onPinMode)
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             IconButton(onClick = { model.navigate(paneID, "back") }, enabled = canDrive && pane.canGoBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -273,6 +293,7 @@ fun BrowserPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier
     // (A window of its own, over the app's lock: not while it covers the app.)
     val locked by AppCover.locked.collectAsState()
     menu?.let { m -> if (!locked) PageMenuSheet(m) { i -> menu = null; model.answerBrowserMenu(m, i) } }
+    editingPin?.let { id -> PinNoteSheet(model, pane, id, canDrive, scope) { editingPin = null } }
 }
 
 /** A menu the page opened (a <select>'s options or a right-click), as a list to pick from; dismissed is -1. */

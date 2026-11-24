@@ -46,7 +46,9 @@ on a prompt, press an option's number to answer, ← and → to move between que
 Files panes show the folder's tree: tap a file to open it beside the tree, and touch and hold to rename, move or
 trash files. **New Files Tab** is in a tab's ⋮ menu.
 
-Browser and simulator panes show live, and you can tap, scroll and type in them. A Mac with screen sharing on appears
+Browser and simulator panes show live, and you can tap, scroll and type in them. To show an agent what you mean on one,
+choose **Pin Notes** from the pane's ⋮ menu, touch and hold where something should change, and write a note; **Send to**
+sends every pin to an agent with a screenshot (see [Design notes](/hammock/docs/panes/#design-notes)). A Mac with screen sharing on appears
 in **Devices** under **Show Screen**: see [Screen sharing](/hammock/docs/screen-sharing/).
 
 ## Notifications and the Hammock Key

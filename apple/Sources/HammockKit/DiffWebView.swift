@@ -122,18 +122,7 @@ extension AppModel {
     /// Group (the pane's target first, even if it's elsewhere).
     public func diffAgents(for paneID: String) -> (target: DiffAgent?, agents: [DiffAgent]) {
         guard let pane = panes[paneID], pane.isDiff else { return (nil, []) }
-        let group = self.group(ofPane: paneID)?.id
-        func agent(_ p: Pane) -> DiffAgent {
-            let tab = self.tab(of: p).map { title(of: $0) } ?? ""
-            return DiffAgent(id: p.id, name: AgentCatalog.shortName(of: p.agent.harness), detail: tab)
-        }
-        var list: [DiffAgent] = []
-        for p in panes.values where p.hasAgent && p.agent.state != .exited && p.id != paneID && self.group(ofPane: p.id)?.id == group {
-            list.append(agent(p))
-        }
-        list.sort { ($0.detail, $0.id) < ($1.detail, $1.id) }
-        let target = panes[pane.diff.targetPaneID].map(agent)
-        return (target, list)
+        return (panes[pane.diff.targetPaneID].map(groupAgent), groupAgents(of: paneID))
     }
 }
 

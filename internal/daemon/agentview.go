@@ -995,6 +995,35 @@ func typeToAgent(p *pane, c *conn, text string, paths []string) error {
 	return typeParts(p, c, sendParts(text, paths, false))
 }
 
+// agentDelivery is how a message Hammock types on your behalf (review
+// comments, design notes) can reach the agent in pane target: now (p), once
+// it stops waiting on you (wait: typing now would answer what it's asking
+// you), or not at all (err, saying why, of what: "comments", "notes"). Not
+// under d.mu.
+func (d *Daemon) agentDelivery(target, what string) (p *pane, wait bool, err error) {
+	d.mu.Lock()
+	p = d.panes[target]
+	var state pb.AgentState
+	if p != nil {
+		p.mu.Lock()
+		if a := p.info.Agent; a != nil {
+			state = a.State
+		}
+		p.mu.Unlock()
+	}
+	d.mu.Unlock()
+	switch state {
+	case pb.AgentState_AGENT_STATE_UNSPECIFIED, pb.AgentState_AGENT_STATE_EXITED:
+		if p == nil {
+			return nil, false, fmt.Errorf("the agent %s go to has closed: choose another", what)
+		}
+		return nil, false, fmt.Errorf("there's no agent running in the pane %s go to", what)
+	case pb.AgentState_AGENT_STATE_NEEDS_INPUT:
+		return p, true, nil
+	}
+	return p, false, nil
+}
+
 // typeParts pastes each part in turn into an agent's input, and presses
 // Enter.
 func typeParts(p *pane, c *conn, parts []sendPart) error {

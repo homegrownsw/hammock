@@ -113,6 +113,7 @@ enum Keys {
     static var splitEditorRight: KeyboardShortcut? { shortcut("split_editor_right") }
     static var splitEditorDown: KeyboardShortcut? { shortcut("split_editor_down") }
     static var showSimulatorLog: KeyboardShortcut? { shortcut("show_simulator_log") }
+    static var pinNotes: KeyboardShortcut? { shortcut("pin_notes") }
     static var zoomPane: KeyboardShortcut? { shortcut("zoom_pane") }
     static var rotateSplit: KeyboardShortcut? { shortcut("rotate_split") }
     static var movePaneToNewTab: KeyboardShortcut? { shortcut("move_pane_to_new_tab") }

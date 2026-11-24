@@ -325,6 +325,14 @@ struct PaneMenuItems: View {
         if let p = model.panes[paneID], p.kind == .browser, !p.url.hasPrefix("hmk-devtools:"), model.group(ofPane: paneID)?.isRemote != true {
             Button("Show DevTools") { Task { await model.showDevTools(paneID) } }
         }
+        if model.canPin(paneID) {
+            Toggle("Pin Notes", isOn: Binding(get: { PinMode.shared.isOn(paneID) }, set: { PinMode.shared.set(paneID, $0) }))
+                .keyboardShortcut(Keys.pinNotes)
+            if !model.pins(paneID).isEmpty {
+                Button("Send Notes") { model.sendPins(paneID) }
+                Button("Clear Notes") { model.clearPins(paneID) }
+            }
+        }
         // Agents acting here (AgentPresenceOverlay's badge has the same).
         if let p = model.panes[paneID], p.kind == .browser || p.kind == .simulator, model.group(ofPane: paneID)?.isRemote != true {
             if p.agentHeld {

@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -65,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -104,10 +106,18 @@ private val lastShots = HashMap<String, Pair<ImageBitmap, Size>>()
  * down). A short touch taps, a longer one swipes at the speed you moved, two
  * fingers pinch; a TV's picture is its remote's touch surface instead. Its
  * buttons are in the bar under it, with full screen and a screenshot to share.
- * Read-only when you can't drive it.
+ * Read-only when you can't drive it. In [pinMode], a touch and hold pins a
+ * design note instead (Pins.kt), and the device gets no touches.
  */
 @Composable
-fun SimulatorPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifier: Modifier = Modifier) {
+fun SimulatorPane(
+    model: AppModel,
+    pane: Hammock.Pane,
+    canDrive: Boolean,
+    modifier: Modifier = Modifier,
+    pinMode: Boolean = false,
+    onPinMode: (Boolean) -> Unit = {},
+) {
     val paneID = pane.id
     val live = rememberLiveVideo(model, paneID) { conn -> VideoStream.pane(ConnectionLink(conn), paneID) }
     val stream = live.stream
@@ -117,6 +127,8 @@ fun SimulatorPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifi
     var videoPixels by remember(paneID) { mutableStateOf<VideoStream.Size?>(null) }
     var failed by remember(paneID) { mutableStateOf(false) }
     var fullScreen by remember { mutableStateOf(false) }
+    var editingPin by remember(paneID) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     var typing by remember { mutableStateOf(false) }
     LaunchedEffect(stream) { stream?.size?.collect { if (it != null) videoPixels = it } }
 
@@ -153,13 +165,20 @@ fun SimulatorPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifi
         }
     }
 
-    val surface: @Composable (Modifier, () -> Unit) -> Unit = { m, onThreeFingers ->
-        DeviceSurface(model, pane, canDrive, live, image, failed, points, m, onThreeFingers)
+    // Full screen shows the pins but doesn't drop them: the bar's not there.
+    val surface: @Composable (Modifier, Boolean, () -> Unit) -> Unit = { m, pinning, onThreeFingers ->
+        DeviceSurface(model, pane, canDrive, live, image, failed, points, m, onThreeFingers) { fitted ->
+            PinOverlay(
+                model, pane, pinning && canDrive, Rect(Offset.Zero, fitted), Rect(Offset.Zero, fitted), scope,
+                onEdit = { editingPin = it }, modifier = Modifier.matchParentSize(),
+            )
+        }
     }
 
     Column(modifier.fillMaxSize()) {
         // Left empty while full screen has the video: a stream shows in one view at a time.
-        if (fullScreen) Spacer(Modifier.weight(1f)) else surface(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {}
+        if (fullScreen) Spacer(Modifier.weight(1f)) else surface(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp), pinMode) {}
+        PinBar(model, pane, pinMode, canDrive, scope, onPinMode)
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             DeviceButtons(model, pane, canDrive) { typing = true }
             IconButton(onClick = { fullScreen = true }) { Icon(Icons.Filled.Fullscreen, "Full Screen") }
@@ -171,6 +190,7 @@ fun SimulatorPane(model: AppModel, pane: Hammock.Pane, canDrive: Boolean, modifi
     val locked by AppCover.locked.collectAsState()
     if (fullScreen && !locked) FullScreen(model, pane, canDrive, onExit = { fullScreen = false }, onType = { typing = true }, surface = surface)
     if (typing && !locked) TypeDialog(model, pane, canDrive) { typing = false }
+    editingPin?.let { id -> PinNoteSheet(model, pane, id, canDrive, scope) { editingPin = null } }
 }
 
 /** The device: its video, else its screenshots, fitted, taking touches. */
@@ -185,6 +205,7 @@ private fun DeviceSurface(
     points: Size,
     modifier: Modifier,
     onThreeFingers: () -> Unit,
+    overlay: @Composable BoxScope.(fitted: Size) -> Unit = {},
 ) {
     val density = LocalDensity.current
     var box by remember { mutableStateOf(Size.Zero) }
@@ -284,6 +305,8 @@ private fun DeviceSurface(
                 }
             }
         }
+        // The pins, over the screen (in pin mode, taking its touches).
+        if ((stream != null && live.playing) || image != null) Box(size) { overlay(fitted) }
     }
 }
 
@@ -451,7 +474,7 @@ private fun FullScreen(
     canDrive: Boolean,
     onExit: () -> Unit,
     onType: () -> Unit,
-    surface: @Composable (Modifier, () -> Unit) -> Unit,
+    surface: @Composable (Modifier, Boolean, () -> Unit) -> Unit,
 ) {
     var controls by remember { mutableStateOf(true) }
     var hint by remember { mutableStateOf(true) }
@@ -473,7 +496,7 @@ private fun FullScreen(
             }
         }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            surface(Modifier.fillMaxSize()) {
+            surface(Modifier.fillMaxSize(), false) {
                 controls = !controls
                 hint = false
                 used++

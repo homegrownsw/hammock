@@ -62,7 +62,7 @@ struct SimulatorScreen: View {
         VStack(spacing: 12) {
             // Left empty while full screen has the video: the stream's
             // layer can be in only one view, and comes back to a new one.
-            if fullScreen { Color.clear } else { surface }
+            if fullScreen { Color.clear } else { surface.pinNotes(model: model, paneID: paneID) }
             // With the pane strip: the buttons above it, not in the
             // system's bar under it.
             if inStrip {
@@ -85,6 +85,7 @@ struct SimulatorScreen: View {
             if chrome {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Full Screen", systemImage: "arrow.up.left.and.arrow.down.right") { enterFullScreen() }
+                    PinNotesButton(paneID: paneID)
                     screenshotButton
                     // The tab's … menu, after these (PaneScreen leaves it to us).
                     if let tabMenu {
@@ -158,6 +159,12 @@ struct SimulatorScreen: View {
                                            description: Text("Its Mac isn't answering, or it's still booting."))
                 } else {
                     ProgressView()
+                }
+                // Design notes' pins, on the screen as it's drawn.
+                if stream != nil || image != nil {
+                    PinLayer(model: model, paneID: paneID,
+                             area: CGRect(x: (geo.size.width - fit.width) / 2, y: (geo.size.height - fit.height) / 2,
+                                          width: fit.width, height: fit.height))
                 }
                 // An emulator that isn't showing (starting, stopped, or in Android
                 // Studio on the Mac): its old picture, dimmed, under why.
@@ -351,6 +358,8 @@ struct SimulatorScreen: View {
     }
 
     private func enterFullScreen() {
+        // Full screen draws pins but doesn't take them (no Send bar there).
+        PinMode.shared.set(paneID, false)
         fullScreen = true
         controls = true
         hint = true
