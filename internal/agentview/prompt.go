@@ -354,7 +354,8 @@ func ReadScreen(text string) Screen {
 //
 //	Ready to submit your answers?
 //
-// and what it says besides them (that line, a warning), or its heading when
+// (A question that wraps has a │ down its left; an answer wraps under its
+// arrow.) It returns them, and what it says besides them (that line, a warning), or its heading when
 // nothing: the card's title.
 func readReview(lines []string, start int) ([]*pb.AgentReviewItem, string) {
 	head := -1
@@ -370,22 +371,26 @@ func readReview(lines []string, start int) ([]*pb.AgentReviewItem, string) {
 	var items []*pb.AgentReviewItem
 	var rest []string
 	var field *string // what a wrapped line continues
-	bullet := 0       // the ● line's indent: a wrapped line is further in
+	mark := 0         // the column of its ● or →: a wrapped line is as far in
 	for _, l := range lines[head+1 : start] {
-		l = strings.TrimRight(strings.Trim(l, "│┃"), " ")
+		// The gutter beside a wrapped question, a space as wide.
+		if t := strings.TrimLeft(l, " "); strings.HasPrefix(t, "│") || strings.HasPrefix(t, "┃") {
+			l = l[:len(l)-len(t)] + " " + t[len("│"):]
+		}
+		l = strings.TrimRight(l, " │┃")
 		t := strings.TrimSpace(l)
 		in := len(l) - len(strings.TrimLeft(l, " "))
 		switch {
 		case strings.HasPrefix(t, "●"):
 			items = append(items, &pb.AgentReviewItem{Question: strings.TrimSpace(strings.TrimPrefix(t, "●"))})
-			field, bullet = &items[len(items)-1].Question, in
+			field, mark = &items[len(items)-1].Question, in
 		case strings.HasPrefix(t, "→") && len(items) > 0:
 			a := &items[len(items)-1].Answer
 			*a = strings.TrimSpace(strings.TrimPrefix(t, "→"))
-			field = a
+			field, mark = a, in
 		case t == "":
 			field = nil
-		case field != nil && in > bullet:
+		case field != nil && in >= mark && in > 0:
 			*field += " " + t
 		default:
 			field = nil

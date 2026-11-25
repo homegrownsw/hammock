@@ -778,10 +778,11 @@ func TestReadReview(t *testing.T) {
 		want  [][2]string
 	}{
 		{"submit.txt", "Ready to submit your answers?", [][2]string{{"Pick a number.", "2"}, {"Pick seasons.", "Spring, Autumn"}}},
-		{"submit-wrapped.txt", "⚠ You have not answered all questions", [][2]string{
-			{"How should the app handle tablets? Material 3's adaptive scaffolds can switch between a bottom bar and a rail.", "Adaptive scaffold, list-detail on Games (Recommended)"},
-			{"What should the test bar be?", "Port the unit tests and add screenshot tests, run locally (Recommended)"},
-			{"Which colour?", ""},
+		{"submit-wrapped.txt", "⚠ Some questions are unanswered", [][2]string{
+			{"Test 1 (short): Which colour should the review card's tick be?", "Green"},
+			{"Test 2 (long, to check wrapping): When an agent asks several questions in a row and you're on the phone with the keyboard down and the pane scrolled halfway up the conversation, should the card jump back to the bottom of the conversation so you can see the agent's last message above the questions, or leave the scroll position where you put it?",
+				"Leave the scroll alone, and add a small 'Jump to latest' button above the card that appears only when you're scrolled up (Recommended)"},
+			{"Test 3 (multi-select): Which apps should get the review card?", "Mac, Android"},
 		}},
 	} {
 		b, err := os.ReadFile("testdata/" + tc.file)
