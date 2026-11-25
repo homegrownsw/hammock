@@ -1208,7 +1208,7 @@ struct PaneScreen: View {
     var body: some View {
         Group {
             if let pane {
-                PaneContent(model: model, pane: pane, active: scenePhase == .active, canDrive: canDrive(pane), logRaw: logRaw,
+                PaneContent(model: model, pane: pane, active: VideoGrace.shared.live, canDrive: canDrive(pane), logRaw: logRaw,
                             agentMode: agentMode, agentView: model.supportsAgentView(pane),
                             shownAgent: $shownAgent, shownTerminal: $shownTerminal,
                             showTerminal: { setMode(false) }, openFile: { preview = FilePreview(paneID: pane.id, path: $0) })

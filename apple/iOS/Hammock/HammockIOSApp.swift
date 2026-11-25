@@ -504,6 +504,8 @@ struct RootView: View {
                 // Suspended a while, or moved networks meanwhile: the link
                 // may look up but be dead. Checked, and redialled if so.
                 .onChange(of: scenePhase) { _, phase in if phase == .active { model.checkConnection() } }
+                // Panes' video goes on a while with the app away.
+                .onChange(of: scenePhase, initial: true) { _, phase in VideoGrace.shared.phase(phase) }
                 // Each Mac learns where to push when it's shown, and this
                 // phone's approval key for its Hammock Key.
                 // Live Activities (with Hammock open: the Mac starts them by

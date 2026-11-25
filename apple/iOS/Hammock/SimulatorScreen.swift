@@ -124,8 +124,7 @@ struct SimulatorScreen: View {
         .modifier(Prompts(screen: self, inCover: false))
         .onChange(of: isTV) { sizeFromVideo() }
         .onChange(of: pane?.deviceScale) { sizeFromVideo() }
-        .task(id: active) {
-            guard active else { return }
+        .whileShown(active) {
             await withTaskGroup(of: Void.self) { g in
                 g.addTask { await watchVideo() }
                 g.addTask { await watch() }

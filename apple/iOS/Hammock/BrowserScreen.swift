@@ -98,10 +98,7 @@ struct BrowserScreen: View {
             }
         }
         .background { if chrome { Color.clear.navigationTitle(pane.map { $0.title.isEmpty ? "Browser" : $0.title } ?? "Browser") } }
-        .task(id: "\(active) \(String(describing: hSize))") {
-            guard active else { return }
-            await watchVideo()
-        }
+        .whileShown(active, id: hSize) { await watchVideo() }
         .sheet(isPresented: Binding(get: { model.browserMenus[paneID] != nil }, set: { shown in
             if !shown, let m = model.browserMenus[paneID] { model.answerBrowserMenu(m, index: -1) }
         })) {
