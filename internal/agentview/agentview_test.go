@@ -768,3 +768,36 @@ func TestClaudeTurnDurationEndsTheTurn(t *testing.T) {
 		t.Fatalf("got %v", d)
 	}
 }
+
+// The question tool's Submit step: its questions and answers, read apart
+// (each wraps under itself), and what it asks besides as the title.
+func TestReadReview(t *testing.T) {
+	for _, tc := range []struct {
+		file  string
+		title string
+		want  [][2]string
+	}{
+		{"submit.txt", "Ready to submit your answers?", [][2]string{{"Pick a number.", "2"}, {"Pick seasons.", "Spring, Autumn"}}},
+		{"submit-wrapped.txt", "⚠ You have not answered all questions", [][2]string{
+			{"How should the app handle tablets? Material 3's adaptive scaffolds can switch between a bottom bar and a rail.", "Adaptive scaffold, list-detail on Games (Recommended)"},
+			{"What should the test bar be?", "Port the unit tests and add screenshot tests, run locally (Recommended)"},
+			{"Which colour?", ""},
+		}},
+	} {
+		b, err := os.ReadFile("testdata/" + tc.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc := ReadScreen(string(b))
+		var got [][2]string
+		for _, r := range sc.Review {
+			got = append(got, [2]string{r.Question, r.Answer})
+		}
+		if sc.Title != tc.title || !slices.Equal(got, tc.want) {
+			t.Errorf("%s: title %q, review %q", tc.file, sc.Title, got)
+		}
+	}
+	if sc := ReadScreen("Review your answers\n\n● Q?\n  → A\n\nSubmit?\n\n❯ 1. Submit answers\n  2. Cancel\n"); sc.Title != "Submit?" || len(sc.Review) != 1 {
+		t.Errorf("unindented: %+v", sc)
+	}
+}

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.Close
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -86,6 +88,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import hammock.v1.Hammock.AgentPrompt
+import hammock.v1.Hammock.AgentReviewItem
 import kotlinx.coroutines.launch
 
 /**
@@ -262,14 +265,15 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
                 Text(heading, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = c.secondary, modifier = Modifier.weight(1f, fill = false))
-                if (position != null) Text("· ${position.first} of ${position.second}", style = MaterialTheme.typography.labelMedium, color = c.tertiary)
+                if (position != null && p.reviewList.isEmpty()) Text("· ${position.first} of ${position.second}", style = MaterialTheme.typography.labelMedium, color = c.tertiary)
                 Spacer(Modifier.weight(1f))
                 if (position != null) {
                     // Through the questions, as ← and → do in Claude's form.
                     IconButton(onClick = { session.keys("\u001b[D") }, enabled = position.first > 1, modifier = Modifier.size(32.dp).focusProperties { canFocus = !hardKeyboard }) {
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, "Previous question")
                     }
-                    IconButton(onClick = { session.keys("\u001b[C") }, modifier = Modifier.size(32.dp).focusProperties { canFocus = !hardKeyboard }) {
+                    // The Submit step is the last.
+                    IconButton(onClick = { session.keys("\u001b[C") }, enabled = p.reviewList.isEmpty(), modifier = Modifier.size(32.dp).focusProperties { canFocus = !hardKeyboard }) {
                         Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Next question")
                     }
                 }
@@ -290,6 +294,7 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
                 }
             }
             if (p.title.isNotEmpty()) Text(p.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            if (p.reviewList.isNotEmpty()) ReviewList(p.reviewList)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 p.optionsList.forEachIndexed { i, label ->
                     val n = i + 1
@@ -368,6 +373,42 @@ internal fun PromptCard(session: AgentSession, state: AgentViewState, maxHeight:
 }
 
 @Composable
+private fun RecommendedBadge() {
+    val c = LocalAgentColors.current
+    Text(
+        "Recommended", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = c.accent,
+        modifier = Modifier.clip(CircleShape).background(c.accent.copy(alpha = 0.15f)).padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+/** The question tool's Submit step: each question, with the answer it was given under it, apart from the next. */
+@Composable
+private fun ReviewList(items: List<AgentReviewItem>) {
+    val c = LocalAgentColors.current
+    androidx.compose.foundation.text.selection.SelectionContainer {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.fill.copy(alpha = c.fill.alpha * 0.6f))) {
+            items.forEachIndexed { i, item ->
+                if (i > 0) HorizontalDivider(Modifier.padding(start = 12.dp), color = c.fill)
+                val (answer, recommended) = CardText.recommended(item.answer)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item.question, style = MaterialTheme.typography.bodyMedium, color = c.secondary)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (answer.isEmpty()) {
+                            Icon(Icons.Outlined.Warning, null, tint = c.warning, modifier = Modifier.size(16.dp))
+                            Text("Not answered", style = MaterialTheme.typography.bodyLarge, color = c.warning)
+                        } else {
+                            Icon(Icons.Outlined.Check, null, tint = c.accent, modifier = Modifier.size(16.dp))
+                            Text(answer, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f, fill = false))
+                            if (recommended) RecommendedBadge()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun OptionRow(
     n: Int, label: String, desc: String, isOther: Boolean, multi: Boolean, ticked: Boolean, picked: Boolean,
     spinning: Boolean, enabled: Boolean, keyFocus: Boolean = true, onClick: () -> Unit,
@@ -396,12 +437,7 @@ private fun OptionRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
-                if (recommended) {
-                    Text(
-                        "Recommended", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = c.accent,
-                        modifier = Modifier.clip(CircleShape).background(c.accent.copy(alpha = 0.15f)).padding(horizontal = 6.dp, vertical = 1.dp),
-                    )
-                }
+                if (recommended) RecommendedBadge()
             }
             if (desc.isNotEmpty() && desc != label) Text(desc, style = MaterialTheme.typography.labelMedium, color = c.secondary)
         }

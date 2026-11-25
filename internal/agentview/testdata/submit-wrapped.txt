@@ -1,0 +1,17 @@
+────────────────────────────────────────────────────────────
+←  ☒ Layout  ☒ Tests  ✔ Submit  →
+
+Review your answers
+
+ ● How should the app handle tablets? Material 3's adaptive
+   scaffolds can switch between a bottom bar and a rail.
+   → Adaptive scaffold, list-detail on Games (Recommended)
+ ● What should the test bar be?
+   → Port the unit tests and add screenshot tests, run
+     locally (Recommended)
+ ● Which colour?
+
+ ⚠ You have not answered all questions
+
+❯ 1. Submit answers
+  2. Cancel

@@ -1010,7 +1010,7 @@ struct PromptCard: View {
             HStack(spacing: 6) {
                 Image(systemName: icon).foregroundStyle(tint)
                 Text(heading).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                if let (i, n) = questionPosition { Text("· \(i) of \(n)").font(.caption).foregroundStyle(.tertiary) }
+                if let (i, n) = questionPosition, p.review.isEmpty { Text("· \(i) of \(n)").font(.caption).foregroundStyle(.tertiary) }
                 Spacer()
                 if let (i, _) = questionPosition {
                     // Through the questions, as ← and → do in Claude's form
@@ -1021,6 +1021,7 @@ struct PromptCard: View {
                             .help("Previous question (←)")
                             .accessibilityLabel("Previous question")
                         Button(action: nextQuestion) { Image(systemName: "chevron.right").frame(width: 28, height: 24) }
+                            .disabled(!p.review.isEmpty) // the Submit step is the last
                             .help("Next question (→)")
                             .accessibilityLabel("Next question")
                     }
@@ -1044,6 +1045,7 @@ struct PromptCard: View {
             if !p.title.isEmpty {
                 Text(p.title).font(fonts.body(weight: .semibold)).fixedSize(horizontal: false, vertical: true)
             }
+            if !p.review.isEmpty { reviewList }
             VStack(spacing: 6) {
                 ForEach(Array(p.options.enumerated()), id: \.offset) { i, label in
                     if i + 1 == Int(p.other), typing {
@@ -1138,11 +1140,7 @@ struct PromptCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(text).font(fonts.body()).multilineTextAlignment(.leading)
-                        if isRecommended {
-                            Text("Recommended").font(.caption2.weight(.semibold)).foregroundStyle(accent)
-                                .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(Capsule().fill(accent.opacity(0.15)))
-                        }
+                        if isRecommended { recommendedBadge }
                     }
                     if !desc.isEmpty, desc != label {
                         Text(desc).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
@@ -1176,6 +1174,46 @@ struct PromptCard: View {
             tapped = n
             Task { await session.answer(option: n) }
         }
+    }
+
+    private var recommendedBadge: some View {
+        Text("Recommended").font(.caption2.weight(.semibold)).foregroundStyle(accent)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(Capsule().fill(accent.opacity(0.15)))
+    }
+
+    /// The question tool's Submit step: each question, with the answer it
+    /// was given under it, apart from the next.
+    private var reviewList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(p.review.enumerated()), id: \.offset) { i, item in
+                if i > 0 { Divider().padding(.leading, 12) }
+                reviewRow(item)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary.opacity(0.35)))
+    }
+
+    private func reviewRow(_ item: Hammock_V1_AgentReviewItem) -> some View {
+        let (answer, isRecommended) = Self.recommended(item.answer)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(item.question).font(fonts.body(0.86)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if answer.isEmpty {
+                    Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+                    Text("Not answered").font(fonts.body()).foregroundStyle(.orange)
+                } else {
+                    Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(accent)
+                    Text(answer).font(fonts.body(weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                    if isRecommended { recommendedBadge }
+                }
+            }
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     private func numberBadge(_ n: Int, filled: Bool) -> some View {
@@ -1442,9 +1480,10 @@ private struct PromptKeys: ViewModifier {
 }
 
 /// Debug: the prompt card with a made-up question and no daemon
-/// (HMK_DEBUG_PROMPT=plain|other|preview|tasks, DebugSnapshot): plain, one
-/// with its "Type something" option being typed, one with previews, or the
-/// plain one under a task list and a session's links.
+/// (HMK_DEBUG_PROMPT=plain|other|preview|tasks|review, DebugSnapshot): plain,
+/// one with its "Type something" option being typed, one with previews, the
+/// plain one under a task list and a session's links, or the Submit step's
+/// review of the answers.
 public struct PromptCardSample: View {
     let session: AgentSession
     let typing: String?
@@ -1459,7 +1498,17 @@ public struct PromptCardSample: View {
         v.prompt = .with {
             $0.kind = .question
             $0.tabs = "←  ☐ Shortcuts  ☐ Vim  ✔ Submit  →"
-            if kind == "preview" {
+            if kind == "review" {
+                $0.title = "Review your answers"
+                $0.options = ["Submit answers", "Cancel"]
+                $0.descriptions = ["", ""]
+                $0.selected = 1
+                $0.review = [
+                    .with { $0.question = "Should the old session API keep working?"; $0.answer = "Remove it now (Recommended)" },
+                    .with { $0.question = "How should tablets lay out the Groups tab? Material 3's adaptive scaffolds can switch between a bottom bar and a rail, and list and detail, by window size."; $0.answer = "Adaptive scaffold, with list and detail side by side" },
+                    .with { $0.question = "Which tests should run in CI?" },
+                ]
+            } else if kind == "preview" {
                 $0.title = "Shortcuts for editor panes (each can be changed in Settings ▸ Keyboard). Which set?"
                 $0.options = ["⌘P quick-open, ⌘O open panel (Recommended)", "⌘O quick-open, ⇧⌘O panel"]
                 $0.descriptions = ["", ""]

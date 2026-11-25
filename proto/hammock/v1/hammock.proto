@@ -1344,6 +1344,14 @@ message AgentPrompt {
   // prompt's tool and command, and what it warns), for when the transcript
   // doesn't have its call yet to show instead.
   string body = 15;
+  // The question tool's Submit step: each question and the answer given,
+  // as its review lists them (title is then the line asking to submit).
+  repeated AgentReviewItem review = 16;
+}
+
+message AgentReviewItem {
+  string question = 1;
+  string answer = 2; // "" when it wasn't answered
 }
 
 message AgentView {

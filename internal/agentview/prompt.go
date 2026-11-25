@@ -67,6 +67,8 @@ type Screen struct {
 	// wraps it. Empty with no menu.
 	Body string
 	Key  string
+	// The question tool's Submit step: what it lists as answered.
+	Review []*pb.AgentReviewItem
 }
 
 // promptBody is the text of the dialog above a menu whose first option is
@@ -332,9 +334,68 @@ func ReadScreen(text string) Screen {
 			}
 		}
 		sc.Body = promptBody(lines, start)
+		if r, ask := readReview(lines, start); len(r) > 0 {
+			sc.Review, sc.Title = r, ask
+		}
 	}
 	sc.Key = promptKey(sc.Body, sc.Options)
 	return sc
+}
+
+// readReview reads the question tool's Submit step, the questions and their
+// answers between its heading and the menu (each wraps under itself):
+//
+//	Review your answers
+//
+//	 ● Pick a number.
+//	   → 2
+//	 ● Pick seasons.
+//	   → Spring, Autumn
+//
+//	Ready to submit your answers?
+//
+// and what it says besides them (that line, a warning), or its heading when
+// nothing: the card's title.
+func readReview(lines []string, start int) ([]*pb.AgentReviewItem, string) {
+	head := -1
+	for i := start - 1; i >= 0 && i >= start-80; i-- {
+		if strings.TrimSpace(strings.Trim(strings.TrimSpace(lines[i]), "│┃|")) == "Review your answers" {
+			head = i
+			break
+		}
+	}
+	if head < 0 {
+		return nil, ""
+	}
+	var items []*pb.AgentReviewItem
+	var rest []string
+	var field *string // what a wrapped line continues
+	bullet := 0       // the ● line's indent: a wrapped line is further in
+	for _, l := range lines[head+1 : start] {
+		l = strings.TrimRight(strings.Trim(l, "│┃"), " ")
+		t := strings.TrimSpace(l)
+		in := len(l) - len(strings.TrimLeft(l, " "))
+		switch {
+		case strings.HasPrefix(t, "●"):
+			items = append(items, &pb.AgentReviewItem{Question: strings.TrimSpace(strings.TrimPrefix(t, "●"))})
+			field, bullet = &items[len(items)-1].Question, in
+		case strings.HasPrefix(t, "→") && len(items) > 0:
+			a := &items[len(items)-1].Answer
+			*a = strings.TrimSpace(strings.TrimPrefix(t, "→"))
+			field = a
+		case t == "":
+			field = nil
+		case field != nil && in > bullet:
+			*field += " " + t
+		default:
+			field = nil
+			rest = append(rest, t)
+		}
+	}
+	if len(rest) == 0 {
+		return items, "Review your answers"
+	}
+	return items, strings.Join(rest, " ")
 }
 
 // markedLine is a menu's selected option without a number: "❯ No, exit".
@@ -444,7 +505,7 @@ func Prompt(sc Screen, pending *pb.AgentBlock) *pb.AgentPrompt {
 	}
 	p := &pb.AgentPrompt{Kind: pb.AgentPrompt_KIND_QUESTION, Title: sc.Title, Options: sc.Options, Selected: int32(sc.Selected),
 		Descriptions: sc.Descriptions, MultiSelect: sc.Multi, Tabs: sc.Tabs, Other: int32(otherOption(sc.Options)), Notes: sc.Previews,
-		PromptId: sc.Key, Body: sc.Body}
+		PromptId: sc.Key, Body: sc.Body, Review: sc.Review}
 	if sc.Multi {
 		p.Checked, p.Checkboxes = sc.Checked, int32(sc.Checkboxes)
 	}
