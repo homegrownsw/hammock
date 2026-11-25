@@ -3,6 +3,8 @@
 - `index.html`: the website, https://homegrownsw.com/hammock/. One static page, no build step; the window and
   iPhone in it are drawn in HTML and CSS, so nothing personal ever ends up in a screenshot.
 - `banner.html` → `banner.png`: the banner at the top of the repo's README (also the site's link preview).
+- `note-image.html`: a release note's framed screenshot, rendered by `scripts/note-image` (`just note --frame`;
+  release-notes/README.md).
 - `demo.gif`: the Mac app in use, under the README's introduction, recorded by `just readme-demo`
   (`scripts/readme-demo`) from β on a scratch daemon. Everything in it is made up, in `demo/`: the agents' sessions
   (`sessions/`, made into transcripts by `sessions.jq`), the shop page (`site/`), the shells' `zshrc` and the dev

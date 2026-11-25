@@ -48,7 +48,11 @@ image: open-in-new-window.gif A Group dragged out into a window of its own
 Open a tab, Group or pane in a window of its own.
 ```
 
-`just note … --image <file> --alt "…"` copies it in and writes the line. Sparkle and the GitHub Release load it
+`just note … --image <file> --alt "…"` copies it in and writes the line. A screenshot (not a GIF) is best framed:
+with `--frame "Automations" --frame-text "Run an agent or a command on a schedule, or when something happens."`,
+it goes in as a 16:10 picture of the screenshot on the site's green, under the feature's name and that line
+(`marketing/note-image.html`, rendered by headless Chrome). `just note-image shot.png --title … --text …` makes
+one on its own, to look at first or to redo a note's picture. Sparkle and the GitHub Release load it
 from the release's tag on GitHub (raw.githubusercontent.com), so it's in the repo for good: keep it small, and
 show test data, never someone's real Groups or panes. A version's summary shows it as Markdown under its note,
 and `just docs-gen` copies it into the site (`site/public/whats-new/`, git-ignored).

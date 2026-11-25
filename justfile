@@ -243,6 +243,12 @@ dmg app=(justfile_directory() / "dist/share/Hammock.app"):
 note *args:
     scripts/note "$@"
 
+# Frame a screenshot for a release note, under a title and a line about it, to look at or redo one:
+# `just note-image shot.png --title "Automations" --text "…" [-o out.png]` (`just note --frame` does it as it adds one).
+[positional-arguments]
+note-image *args:
+    scripts/note-image "$@"
+
 # Check that a change to app code adds a release note for each app it reaches.
 [positional-arguments]
 note-check *args:

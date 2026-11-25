@@ -37,6 +37,8 @@ usage: scripts/note <mac|ios|android|both|phones|all> <tag> [issue] <text…>
   --image FILE  a screenshot or short GIF (.png, .jpg or .gif, up to 5 MB) shown under a NEW or FIXED note
                 in Sparkle's window, the GitHub Release and the docs' What's new. Only for a big, visual
                 feature. Needs --alt TEXT, what it shows.
+  --frame TITLE        a screenshot (.png or .jpg) framed on the site's green, under TITLE, the feature's
+  --frame-text TEXT    name, and TEXT, a line about it (scripts/note-image). The usual way to show one.
 
 With no tag or text it prompts with gum.
 EOF2
@@ -48,16 +50,30 @@ EOF2
 args=()
 image=""
 alt=""
+frame=""
+frame_text=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --image) [ "$#" -ge 2 ] || usage; image="$2"; shift 2 ;;
     --image=*) image="${1#--image=}"; shift ;;
     --alt) [ "$#" -ge 2 ] || usage; alt="$2"; shift 2 ;;
     --alt=*) alt="${1#--alt=}"; shift ;;
+    --frame) [ "$#" -ge 2 ] || usage; frame="$2"; shift 2 ;;
+    --frame=*) frame="${1#--frame=}"; shift ;;
+    --frame-text) [ "$#" -ge 2 ] || usage; frame_text="$2"; shift 2 ;;
+    --frame-text=*) frame_text="${1#--frame-text=}"; shift ;;
     *) if [ -n "$1" ]; then args+=("$1"); fi; shift ;;
   esac
 done
 ext=""
+if [ -n "$frame$frame_text" ]; then
+  [ -n "$image" ] || { echo "--frame goes with --image, the screenshot to frame." >&2; exit 2; }
+  [ -n "$frame" ] || { echo "--frame-text needs --frame TITLE too." >&2; exit 2; }
+  framed="$(mktemp -d)/framed.png"
+  trap 'rm -rf "$(dirname "$framed")"' EXIT
+  "$ROOT/scripts/note-image" "$image" --title "$frame" --text "$frame_text" -o "$framed" >/dev/null
+  image="$framed"
+fi
 if [ -n "$image" ]; then
   [ -f "$image" ] || { echo "No image at $image." >&2; exit 2; }
   ext=$(printf '%s' "${image##*.}" | tr '[:upper:]' '[:lower:]')

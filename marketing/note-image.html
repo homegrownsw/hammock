@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- A release note's picture, framed: a screenshot on the site's green with a title and a line about it.
+     scripts/note-image renders it to a PNG (release-notes/README.md); open it with ?img=…&title=…&text=… to
+     look at it in a browser. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hammock note image</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: #06140e; }
+  /* 16:10, so it sits the same in Sparkle's window, the GitHub Release and the docs. */
+  .frame {
+    position: relative; overflow: hidden; box-sizing: border-box;
+    width: 1600px; height: 1000px; padding: 64px 100px 0;
+    display: flex; flex-direction: column; align-items: center;
+    background:
+      radial-gradient(900px 560px at 50% -120px, rgba(46, 138, 98, 0.6), transparent 70%),
+      radial-gradient(700px 500px at 100% 100%, rgba(10, 132, 255, 0.10), transparent 70%),
+      radial-gradient(700px 500px at 0% 90%, rgba(191, 90, 242, 0.08), transparent 70%),
+      #06140e;
+    font-family: Inter, system-ui, sans-serif; color: #eaf6ef; text-align: center;
+  }
+  .frame::after { content: ""; position: absolute; inset: auto 0 0 0; height: 6px;
+    background: linear-gradient(90deg, #61d836, #ffd60a, #ff9f0a, #ff453a, #bf5af2, #0a84ff); }
+  .kicker { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; font: 600 22px Inter, sans-serif;
+    letter-spacing: .14em; text-transform: uppercase; color: #3dffa2; }
+  .kicker img { width: 36px; height: 36px; }
+  h1 { margin: 0; font: 700 76px/1.05 "Space Grotesk", sans-serif; letter-spacing: -0.04em; text-wrap: balance; }
+  p { margin: 18px 0 0; max-width: 1100px; font-size: 29px; line-height: 1.4; color: #b6d3c4; text-wrap: balance; }
+  /* The screenshot takes what's left, whole, its own shape (a window's rounded corners stay rounded). */
+  .shot { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; padding: 40px 0 56px; box-sizing: border-box; }
+  .shot img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 14px;
+    filter: drop-shadow(0 30px 60px rgba(0,0,0,.55)) drop-shadow(0 0 1px rgba(255,255,255,.25)); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="kicker"><img src="../apple/Resources/AppIcon-1024.png" alt="">New in Hammock</div>
+  <h1 id="title">Automations</h1>
+  <p id="text">Run an agent or a command at set times, or when something happens.</p>
+  <div class="shot"><img id="img" alt=""></div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  for (const k of ['title', 'text']) if (q.has(k)) document.getElementById(k).textContent = q.get(k);
+  if (!q.get('text')) document.getElementById('text').remove();
+  if (q.has('kicker')) document.querySelector('.kicker').lastChild.textContent = q.get('kicker');
+  if (q.has('img')) document.getElementById('img').src = q.get('img');
+</script>
+</body>
+</html>
