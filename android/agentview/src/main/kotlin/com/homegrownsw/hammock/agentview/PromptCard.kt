@@ -409,9 +409,11 @@ private fun ReviewList(items: List<AgentReviewItem>) {
 }
 
 @Composable
-private fun OptionRow(
+internal fun OptionRow(
     n: Int, label: String, desc: String, isOther: Boolean, multi: Boolean, ticked: Boolean, picked: Boolean,
-    spinning: Boolean, enabled: Boolean, keyFocus: Boolean = true, onClick: () -> Unit,
+    spinning: Boolean, enabled: Boolean, keyFocus: Boolean = true,
+    /** In place of the number (GrantPromptCard's answers). */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null, onClick: () -> Unit,
 ) {
     val c = LocalAgentColors.current
     val (text, recommended) = CardText.recommended(label)
@@ -427,8 +429,8 @@ private fun OptionRow(
     ) {
         when {
             multi && !isOther -> Icon(if (ticked) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, null, tint = c.accent, modifier = Modifier.size(20.dp))
-            isOther -> Box(Modifier.size(22.dp).clip(CircleShape).background(c.fill), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(13.dp))
+            isOther || icon != null -> Box(Modifier.size(22.dp).clip(CircleShape).background(c.fill), contentAlignment = Alignment.Center) {
+                Icon(icon ?: Icons.Outlined.Edit, null, modifier = Modifier.size(13.dp))
             }
             else -> Box(Modifier.size(22.dp).clip(CircleShape).background(if (picked) c.accent else c.fill), contentAlignment = Alignment.Center) {
                 Text("$n", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = if (picked) c.onAccent else MaterialTheme.colorScheme.onSurface)

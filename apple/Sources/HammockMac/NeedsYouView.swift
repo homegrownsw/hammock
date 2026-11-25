@@ -298,6 +298,10 @@ struct GrantCard: View {
     let model: AppModel
     let grant: GrantRequest
     @State private var exit = CardExit.fade
+    @State private var hovered = false
+
+    /// The pane that asked (an agent's, or the shell hmk ran in), if it's here.
+    private var pane: Pane? { model.panes[grant.requesterPaneID] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -338,8 +342,29 @@ struct GrantCard: View {
         }
         .padding(10)
         .background(.background, in: RoundedRectangle(cornerRadius: 11))
-        .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
+        // From a pane: a shade darker under the pointer, as a button would be.
+        .overlay {
+            RoundedRectangle(cornerRadius: 11)
+                .fill(Color.primary.opacity(hovered ? 0.05 : 0))
+                .allowsHitTesting(false)
+        }
+        .shadow(color: .black.opacity(hovered ? 0.1 : 0.06), radius: hovered ? 2.5 : 1.5, y: 1)
+        .contentShape(Rectangle())
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovered = h && pane != nil } }
+        .onTapGesture { open() }
+        .contextMenu {
+            if pane != nil { Button("Show") { open() } }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAction { open() }
         .cardMotion(exit, cornerRadius: 11)
+    }
+
+    /// The pane that asked, which shows the whole request: in place of the
+    /// agent view's message box, or over the bottom of its terminal.
+    private func open() {
+        guard let pane else { return }
+        model.reveal(paneID: pane.id)
     }
 }
 

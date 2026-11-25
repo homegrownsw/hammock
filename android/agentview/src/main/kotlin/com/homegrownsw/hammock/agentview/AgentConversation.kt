@@ -67,6 +67,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.homegrownsw.hammock.client.AppCover
+import com.homegrownsw.hammock.client.Link
 import hammock.v1.Hammock.AgentBlock
 import hammock.v1.Hammock.AgentPrompt
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -130,6 +131,10 @@ private fun Conversation(
         onDispose { session.stop() }
     }
     val state by session.state.collectAsStateWithLifecycle()
+    // Hammock asking you on the agent's behalf (it waits on the answer): in place of the message box.
+    val workspace by session.model.workspace.collectAsStateWithLifecycle()
+    val grants = workspace.grants.filter { it.requesterPaneId == session.paneID }
+    val link by session.model.link.collectAsStateWithLifecycle()
 
     // A subagent or background shell being looked at instead (read only).
     var viewing by remember(session) { mutableStateOf<SideView?>(null) }
@@ -215,6 +220,10 @@ private fun Conversation(
                                     Icon(Icons.Outlined.Visibility, null, tint = colors.secondary, modifier = Modifier.size(16.dp))
                                     Text("View only: its host can let you drive", style = MaterialTheme.typography.labelLarge, color = colors.secondary)
                                 }
+                            }
+                            grants.isNotEmpty() -> key(grants.last().id) {
+                                // The oldest (new ones are added at the front).
+                                GrantPromptCard(session.model, grants.last(), queued = grants.size - 1, enabled = link == Link.Connected, maxHeight = maxOf(300.dp, height * 0.7f))
                             }
                             state.prompt.kind != AgentPrompt.Kind.KIND_NONE && state.prompt.kind != AgentPrompt.Kind.UNRECOGNIZED ->
                                 PromptCard(session, state, maxHeight = maxOf(300.dp, height * 0.7f), onOpenTerminal = onOpenTerminal, active = active)

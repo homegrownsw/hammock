@@ -36,6 +36,7 @@ A command run in a pane runs outside that sandbox, so on macOS a sandboxed comma
 Answer wherever is handiest; the agent waits until you do.
 
 - **In the Mac app**, in the sidebar's **Needs You** list: **Allow Once**, **Always in Group** (where offered), or **Deny**.
+- **In the agent's pane:** all of the request shows as a card, in place of the [agent view](/hammock/docs/agents/overview/#the-agent-view)'s message box or over the bottom of the terminal. Click (or tap) the request in Needs You to go there.
 - **On your phone**, in the app or from the notification.
 - **From a terminal:** `hmk ls` lists pending requests, and `hmk grant allow|always|deny ID` answers one.
 

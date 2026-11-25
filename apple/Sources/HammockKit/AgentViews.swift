@@ -307,6 +307,11 @@ public struct AgentConversationView: View {
                         .padding(.vertical, 10)
                         .agentGlass(in: Capsule())
                         .frame(maxWidth: .infinity)
+                } else if let grant = model.grants.last(where: { $0.requesterPaneID == paneID }) {
+                    // Hammock asking you on the agent’s behalf (it waits on the answer): the oldest (newest are first).
+                    GrantPromptCard(model: model, grant: grant, maxHeight: max(300, height * 0.7))
+                        .id(grant.id)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else if s.prompt.kind != .none {
                     PromptCard(session: s, onShowTerminal: onShowTerminal, maxHeight: max(300, height * 0.7))
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -322,6 +327,7 @@ public struct AgentConversationView: View {
         .frame(maxWidth: 884)
         .frame(maxWidth: .infinity)
         .animation(.snappy(duration: 0.25), value: s.prompt.kind)
+        .animation(.snappy(duration: 0.25), value: model.grants.last { $0.requesterPaneID == paneID }?.id)
         .animation(.snappy(duration: 0.25), value: s.tasks.isEmpty)
     }
 
@@ -1488,9 +1494,19 @@ public struct PromptCardSample: View {
     let session: AgentSession
     let typing: String?
     let extras: Bool
+    /// "grant": Hammock asking on the agent's behalf (GrantPromptCard) instead.
+    let grant: GrantRequest?
+    let model: AppModel
 
     public init(model: AppModel, kind: String) {
+        self.model = model
         session = AgentSession(paneID: "pn_debug", model: model)
+        grant = kind != "grant" ? nil : .with {
+            $0.id = "gr_debug"; $0.requesterPaneID = "pn_debug"; $0.action = "schedule"
+            $0.headline = "Claude in Web ▸ api wants to add the automation “Nightly dependency check”: every day at 02:00, run Claude in ~/Developer/app with “Check for outdated dependencies, open a PR updating any with security fixes, and summarise the rest.”"
+            $0.description_p = "So the dependency updates happen without you having to ask each morning."
+            $0.createdUnixMs = Int64(Date().timeIntervalSince1970 * 1000) - 40_000
+        }
         extras = kind == "tasks"
         typing = kind == "other" ? "Keep the old API working for a release, behind a flag, and say so in the release notes" : nil
         var v = Hammock_V1_AgentView()
@@ -1546,7 +1562,11 @@ public struct PromptCardSample: View {
     public var body: some View {
         VStack(spacing: 10) {
             if extras { SessionExtras(session: session, initiallyExpanded: true) }
-            PromptCard(session: session, onShowTerminal: {}, initialOther: typing)
+            if let grant {
+                GrantPromptCard(model: model, grant: grant)
+            } else {
+                PromptCard(session: session, onShowTerminal: {}, initialOther: typing)
+            }
         }
         .padding(16)
     }

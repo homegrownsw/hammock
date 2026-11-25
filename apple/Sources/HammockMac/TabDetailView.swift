@@ -526,6 +526,8 @@ struct PaneView: View {
                                         ExitedPaneBar(model: model, pane: pane)
                                     }
                                 }
+                                // Hammock asking you on its agent's behalf: the whole request.
+                                .overlay { GrantPromptOverlay(model: model, paneID: paneID) }
                         }
                     }
                     // Its agent stopped at its usage limit: when it

@@ -36,6 +36,8 @@ The gauge beside the model shows how full the agent's context is. Click it to se
 
 When the agent asks for permission or asks a question, its options appear as a card: click one, or press its number (1–9). ← and → move between questions, and Esc switches to the terminal.
 
+When Hammock asks you to allow something for the agent (an [MCP request](/hammock/docs/agents/mcp/#answering-an-agents-request), like adding an automation or searching past sessions), all of it shows as a card there too.
+
 Switch a pane between the two with Pane ▸ Toggle Agent View (⇧⌘A). Settings ▸ Agent View ▸ Agent panes open in (`agent-default-view`) picks which one agent panes start in.
 
 ## Starting an agent

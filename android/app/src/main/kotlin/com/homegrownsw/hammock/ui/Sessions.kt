@@ -4,6 +4,7 @@ import com.homegrownsw.hammock.LocalAppLocked
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -195,7 +196,12 @@ fun SessionsScreen(session: Session, model: AppModel, nav: Nav) {
                 section("Needs You")
                 // Each its own card, as the iPhone's: their buttons need the room.
                 items(w.joinRequests, key = { "join:" + it.id }) { Box(Modifier.animateItem()) { JoinCard(model, w, it) } }
-                items(w.grants, key = { "grant:" + it.id }) { Box(Modifier.animateItem()) { GrantCard(model, it) } }
+                items(w.grants, key = { "grant:" + it.id }) { g ->
+                    Box(Modifier.animateItem()) {
+                        // The pane shows the whole request, in either view.
+                        GrantCard(model, g, open = w.panes[g.requesterPaneId]?.let { p -> { nav.open("pane:" + p.id) } })
+                    }
+                }
                 items(waiting, key = { "att:" + it.id }) { item ->
                     val p = w.panes[item.paneId]
                     Card(padded = false, modifier = Modifier.animateItem()) {
@@ -518,23 +524,25 @@ private fun AllowMenu(model: AppModel, item: Hammock.AttentionItem) {
     }
 }
 
-/** An agent asking for permission to do something beyond its Group. */
+/** An agent asking for permission to do something beyond its Group; tapped, [open] shows the pane that asked. */
 @Composable
-fun GrantCard(model: AppModel, grant: Hammock.GrantRequest) {
+fun GrantCard(model: AppModel, grant: Hammock.GrantRequest, open: (() -> Unit)? = null) {
     val view = LocalView.current
-    Card {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatusIcon(AgentState.AGENT_STATE_NEEDS_INPUT, size = 22.dp)
-                Text(grant.headlineText, style = MaterialTheme.typography.titleMedium, maxLines = if (grant.person || grant.action == "schedule") 20 else 4)
-            }
-            grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
-            grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticReject(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
-                Spacer(Modifier.weight(1f))
-                if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
-                Button(enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
+    Card(padded = false) {
+        Box(Modifier.then(if (open != null) Modifier.clickable(onClick = open) else Modifier).padding(16.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatusIcon(AgentState.AGENT_STATE_NEEDS_INPUT, size = 22.dp)
+                    Text(grant.headlineText, style = MaterialTheme.typography.titleMedium, maxLines = if (grant.person || grant.action == "schedule") 20 else 4)
+                }
+                grant.originText?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
+                grant.agentNote?.let { Text("The agent says: “$it”", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticReject(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_DENY) }) { Text("Deny") }
+                    Spacer(Modifier.weight(1f))
+                    if (grant.canAllowAlways) FilledTonalButton(colors = tintedButtonColors(), enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_GROUP) }) { Text("Always") }
+                    Button(enabled = !linkDown(), onClick = { view.hapticConfirm(); model.respond(grant, Hammock.RespondGrant.Decision.DECISION_ALLOW_ONCE) }) { Text("Allow") }
+                }
             }
         }
     }

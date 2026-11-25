@@ -225,8 +225,8 @@ enum DebugSnapshot {
                 render(OpenDiffSheet(model: model, request: request), size: NSSize(width: 520, height: 560), to: "\(prefix)-open-diff")
             }
         }
-        // HMK_DEBUG_PROMPT=plain|other|preview|tasks|review: the agent view's question
-        // card with a made-up question (PromptCardSample), rendered to
+        // HMK_DEBUG_PROMPT=plain|other|preview|tasks|review|grant: the agent view's question
+        // card with a made-up question (PromptCardSample; grant: Hammock's permission card), rendered to
         // <prefix>-prompt-<light|dark>.png.
         if let kind = env["HMK_DEBUG_PROMPT"], let prefix = env["HMK_DEBUG_SNAPSHOT"] {
             Task { @MainActor in

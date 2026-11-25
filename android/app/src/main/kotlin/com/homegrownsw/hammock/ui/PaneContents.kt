@@ -6,8 +6,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -55,6 +57,7 @@ import com.homegrownsw.hammock.agentview.AgentConversation
 import com.homegrownsw.hammock.agentview.AgentFonts
 import com.homegrownsw.hammock.agentview.AgentSession
 import com.homegrownsw.hammock.agentview.AttachmentSize
+import com.homegrownsw.hammock.agentview.GrantPromptOverlay
 import com.homegrownsw.hammock.client.AppModel
 import com.homegrownsw.hammock.client.Link
 import com.homegrownsw.hammock.rememberPref
@@ -153,22 +156,26 @@ fun TerminalContent(model: AppModel, pane: Pane, drive: Boolean, onSession: (Ter
     // Its program ended: the bar saying so takes the key bar's place (no keyboard: nothing to type to).
     val ended = drive && pane.canRunAgain
     Column {
-        TerminalPane(
-            session,
-            modifier = Modifier.weight(1f),
-            onInput = { model.input(pane.id, it) },
-            onResize = { cols, rows, w, h -> if (drive) model.resize(pane.id, cols, rows, w, h) },
-            readOnly = !drive || ended,
-            theme = theme,
-            fontSize = font.size.sp,
-            fontFamily = font.family,
-            lineSpacing = font.lineSpacing,
-            onFocus = { model.focus(pane.id) },
-            linkUp = link == Link.Connected,
-            offline = linkDown(),
-            onReconnect = { model.reconnectNow() },
-            onFontSize = { fontSize = it.toInt().toString() },
-        )
+        Box(Modifier.weight(1f)) {
+            TerminalPane(
+                session,
+                modifier = Modifier.fillMaxSize(),
+                onInput = { model.input(pane.id, it) },
+                onResize = { cols, rows, w, h -> if (drive) model.resize(pane.id, cols, rows, w, h) },
+                readOnly = !drive || ended,
+                theme = theme,
+                fontSize = font.size.sp,
+                fontFamily = font.family,
+                lineSpacing = font.lineSpacing,
+                onFocus = { model.focus(pane.id) },
+                linkUp = link == Link.Connected,
+                offline = linkDown(),
+                onReconnect = { model.reconnectNow() },
+                onFontSize = { fontSize = it.toInt().toString() },
+            )
+            // Hammock asking you on its agent's behalf (or for hmk in its shell): the whole request.
+            GrantPromptOverlay(model, pane.id, drive, MaterialTheme.colorScheme.primary, Modifier.fillMaxSize())
+        }
         AnimatedVisibility(ended, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
             ExitedPaneBar(model, w, pane, connected = link == Link.Connected)
         }

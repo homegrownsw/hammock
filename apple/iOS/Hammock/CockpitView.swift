@@ -103,7 +103,10 @@ struct SessionsView: View {
                     if !model.grants.isEmpty || !waiting.isEmpty || !others.isEmpty || !model.joinRequests.isEmpty {
                         Section("Needs You") {
                             ForEach(model.joinRequests, id: \.id) { r in JoinRow(model: model, request: r) }
-                            ForEach(model.grants) { g in GrantRow(model: model, grant: g) }
+                            ForEach(model.grants) { g in
+                                // The pane shows the whole request, in either view.
+                                GrantRow(model: model, grant: g) { path = [$0] }
+                            }
                             // With Allow/Deny right here, for a permission prompt.
                             ForEach(waiting) { item in
                                 AttentionRow(model: model, item: item) { paneID in path = [paneID] }
@@ -828,6 +831,8 @@ struct JoinRow: View {
 struct GrantRow: View {
     let model: AppModel
     let grant: GrantRequest
+    /// Opens the pane that asked (tapping the row).
+    var open: ((String) -> Void)?
     @Environment(\.linkDown) private var linkDown
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -860,6 +865,10 @@ struct GrantRow: View {
                 Button("Allow") { Haptics.success(); withAnimation { model.respond(to: grant, .allowOnce) } }.prominentButton()
             }
             .disabled(linkDown)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let open, model.panes[grant.requesterPaneID] != nil { open(grant.requesterPaneID) }
         }
         .padding(.vertical, 4)
     }
@@ -1413,6 +1422,8 @@ private struct PaneContent: View, Equatable {
                 }
                 if shownTerminal || !agentMode {
                     TerminalScreen(model: model, paneID: pane.id, active: !agentMode)
+                        // Hammock asking you on its agent's behalf: the whole request.
+                        .overlay { GrantPromptOverlay(model: model, paneID: pane.id) }
                         .opacity(agentMode ? 0 : 1)
                         .allowsHitTesting(!agentMode)
                         .accessibilityHidden(agentMode)
@@ -1421,6 +1432,8 @@ private struct PaneContent: View, Equatable {
             }
         } else {
             TerminalScreen(model: model, paneID: pane.id, active: true)
+                // hmk run in its shell, asking you.
+                .overlay { GrantPromptOverlay(model: model, paneID: pane.id) }
         }
     }
 }
