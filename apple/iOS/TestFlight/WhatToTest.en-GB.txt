@@ -1,40 +1,21 @@
 This build
 
 New
-• Agent view: a run of tool calls says what it did, such as “Read 4 files · ran 2 commands”, and how many failed.
-• Agent view: an edit's diff names its file, numbers its lines, and has a button to copy it.
-• Agent view: commands complete from any part of their name, and typing @ offers files from your project.
-• Agent view: Latest says how many new messages came while you were reading further up, with a dot when the agent finishes or asks you something.
-• Agent View: rebuilt to be much faster, so even long conversations open quickly and scroll smoothly.
-• Agent view: tap the context gauge to see how many tokens are left, or to compact or clear the conversation.
-• Agent view: with a hardware keyboard, press ↑ in an empty message box to bring back what you sent before.
-• Agent view: with a hardware keyboard, press 1–9 to pick an answer to a prompt, ← and → to move between questions, and Esc to switch to the terminal.
-• Connection status: every screen now says when Hammock is connecting to your computer or can't reach it, with Try Again, and you can pull down on Sessions or Groups to refresh.
-• Copy from the terminal: touch and hold to select text, drag the handles to select more, then tap Copy.
-• Files: a tab of your Mac's files as a tree; tap a file to open it beside the tree, or touch and hold to rename or move it.
-• Haptics: feel a tap when you allow or deny a request, let someone join, approve a Hammock Key request or scan a pairing code.
-• iPad: diff panes can show the old and new side by side when there's room.
-• Key bar: a sticky ⌥ key, with symbols, Home and End a swipe away; ⌥ and a letter on a hardware keyboard send Esc and the letter.
-• Live Activities: turn them on in Settings to follow your agents while you're away from your Mac, and Allow or Deny a permission without opening Hammock.
-• Needs You widget: see what's waiting on you on your Home Screen or Lock Screen, and tap one to open it.
-• Allow or Deny an agent's permission request right from its notification.
-• Notifications name the agent, as on the Mac ("Claude finished"), and Hammock's icon counts what's waiting on you.
-• Obsidian notes: the editor's Markdown preview now shows [[links]], embedded images and notes, callouts, highlights and tags as Obsidian does.
-• Pinch a terminal to change the font size of every terminal.
-• Run Again: when a terminal's program fails, a bar along its bottom starts it again in the same pane, and an agent's pane resumes its session.
-• Screen sharing: minimize a Mac's screen to a bar that stays connected while you use the rest of Hammock, and tap it to have the screen back.
-• Touch and hold a session or tab to see its screen, live, with Allow and Deny there for an agent asking permission.
+• Continue after a usage limit: an agent that stops at its usage limit is sent "continue" once the limit resets.
+• Design Notes: touch and hold on a browser page or simulator screen to pin numbered notes, then send them to an agent with an annotated screenshot.
+• Scheduled Tasks are now Automations: they show their triggers, and each run shows what started it.
+• Shared Drafts: what you type in an agent's message box shows on your Mac too, so you can start a message on your phone and finish it at your desk.
+• Worktrees: start an agent in a new git worktree, see each tab's pull request in the Groups tab, and touch and hold a tab to remove its worktree once its branch is merged.
 
 Fixed
-• A message sent while a ! command runs no longer disappears from the agent view, taking the command with it.
-• A message with pictures, sent while the agent works, now shows in the conversation as soon as the agent takes it, instead of waiting there until it finishes.
-• A permission prompt shows what it's asking about, such as the command, even when the conversation hasn't caught up with it yet.
-• Agent conversations scroll under the glass at the top of the screen, instead of stopping at a hard edge.
-• Agent view: a group of tool calls keeps the last one's description beside it, not just while it runs.
-• Agent view: a message that can't be sent now says so by the message box, with Retry.
-• Agent view: Codex's and other agents' tool calls are summed up and read aloud by what they did, not as other tools.
-• Agent view: new rows glide into view instead of jumping, and a long reply no longer blanks the conversation for a moment as it arrives.
-• Agent view: VoiceOver reads each tool call as one, with what it ran, how it went and whether it's open.
-• Attachments put into a message get a space either side, so they don't run into the words around them.
-• Closing a tab or pane, from a swipe or any menu, now asks first wh
-…
+• Agent view: compacting a Claude Code conversation shows "Compacting conversation…" while it runs.
+• Agent view: the scroll bar stays above the message box in the first conversation you open after launching Hammock.
+• Claude's question review: before you submit, each question is listed with its answer under it, not run together in one block of text.
+• Codex: a turn that ends on an error, such as its usage limit, shows as errored instead of still working.
+• Groups: an empty Group's buttons for a terminal or an agent fit on one line again, as tidy tiles.
+• Live Activities show in the Dynamic Island again: they were invisible there on iOS 27.2.
+• Screen sharing: leaving the app for a moment no longer stops the Mac's screen, and a minimised screen no longer shows two bars.
+• Selecting text in a conversation no longer vanishes as you drag, and you can select again straight away.
+• Terminals: images, resizing and scrollback behave more reliably, and busy output draws faster, with the latest Ghostty.
+• The agent view no longer draws a finished background command's note over the rows around it.
+• When the iPhone can't reach a computer from its network, it says so, instead of saying the iPhone isn't on a network.
