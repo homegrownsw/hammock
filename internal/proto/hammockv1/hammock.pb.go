@@ -1222,6 +1222,8 @@ const (
 	GitHubTrigger_EVENT_LABELED          GitHubTrigger_Event = 4 // an open issue or pull request has label
 	GitHubTrigger_EVENT_ASSIGNED         GitHubTrigger_Event = 5 // an issue or pull request was assigned to you
 	GitHubTrigger_EVENT_MERGED           GitHubTrigger_Event = 6 // your pull request was merged
+	GitHubTrigger_EVENT_COMMIT           GitHubTrigger_Event = 7 // a new commit on branch (blank: the default branch)
+	GitHubTrigger_EVENT_RELEASE          GitHubTrigger_Event = 8 // a new release, or tag, matching tags
 )
 
 // Enum value maps for GitHubTrigger_Event.
@@ -1234,6 +1236,8 @@ var (
 		4: "EVENT_LABELED",
 		5: "EVENT_ASSIGNED",
 		6: "EVENT_MERGED",
+		7: "EVENT_COMMIT",
+		8: "EVENT_RELEASE",
 	}
 	GitHubTrigger_Event_value = map[string]int32{
 		"EVENT_UNSPECIFIED":      0,
@@ -1243,6 +1247,8 @@ var (
 		"EVENT_LABELED":          4,
 		"EVENT_ASSIGNED":         5,
 		"EVENT_MERGED":           6,
+		"EVENT_COMMIT":           7,
+		"EVENT_RELEASE":          8,
 	}
 )
 
@@ -24306,13 +24312,17 @@ func (*EventTrigger_Calendar) isEventTrigger_Kind() {}
 
 func (*EventTrigger_Webhook) isEventTrigger_Kind() {}
 
-// The GitHub repository of the schedule's folder (its remote), asked with
-// gh every couple of minutes. What's already so when it's made doesn't fire.
+// The GitHub repository of the schedule's folder (its remote), or the one
+// it names (watch), asked with gh every couple of minutes. What's already
+// so when it's made doesn't fire.
 type GitHubTrigger struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Event         GitHubTrigger_Event    `protobuf:"varint,1,opt,name=event,proto3,enum=hammock.v1.GitHubTrigger_Event" json:"event,omitempty"`
-	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"` // EVENT_LABELED
-	Repo          string                 `protobuf:"bytes,3,opt,name=repo,proto3" json:"repo,omitempty"`   // read only: "owner/name", from the folder
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`   // EVENT_LABELED
+	Repo          string                 `protobuf:"bytes,3,opt,name=repo,proto3" json:"repo,omitempty"`     // read only: "owner/name", watch or from the folder
+	Watch         string                 `protobuf:"bytes,4,opt,name=watch,proto3" json:"watch,omitempty"`   // "owner/name" to watch instead of the folder's repository
+	Branch        string                 `protobuf:"bytes,5,opt,name=branch,proto3" json:"branch,omitempty"` // EVENT_COMMIT
+	Tags          string                 `protobuf:"bytes,6,opt,name=tags,proto3" json:"tags,omitempty"`     // EVENT_RELEASE: a glob the tag matches (blank: any)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -24364,6 +24374,27 @@ func (x *GitHubTrigger) GetLabel() string {
 func (x *GitHubTrigger) GetRepo() string {
 	if x != nil {
 		return x.Repo
+	}
+	return ""
+}
+
+func (x *GitHubTrigger) GetWatch() string {
+	if x != nil {
+		return x.Watch
+	}
+	return ""
+}
+
+func (x *GitHubTrigger) GetBranch() string {
+	if x != nil {
+		return x.Branch
+	}
+	return ""
+}
+
+func (x *GitHubTrigger) GetTags() string {
+	if x != nil {
+		return x.Tags
 	}
 	return ""
 }
@@ -30792,11 +30823,14 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\bcalendar\x18\a \x01(\v2\x1b.hammock.v1.CalendarTriggerH\x00R\bcalendar\x126\n" +
 	"\awebhook\x18\b \x01(\v2\x1a.hammock.v1.WebhookTriggerH\x00R\awebhook\x12\x14\n" +
 	"\x05error\x18\t \x01(\tR\x05errorB\x06\n" +
-	"\x04kind\"\x8f\x02\n" +
+	"\x04kind\"\xf6\x02\n" +
 	"\rGitHubTrigger\x125\n" +
 	"\x05event\x18\x01 \x01(\x0e2\x1f.hammock.v1.GitHubTrigger.EventR\x05event\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x12\n" +
-	"\x04repo\x18\x03 \x01(\tR\x04repo\"\x9c\x01\n" +
+	"\x04repo\x18\x03 \x01(\tR\x04repo\x12\x14\n" +
+	"\x05watch\x18\x04 \x01(\tR\x05watch\x12\x16\n" +
+	"\x06branch\x18\x05 \x01(\tR\x06branch\x12\x12\n" +
+	"\x04tags\x18\x06 \x01(\tR\x04tags\"\xc1\x01\n" +
 	"\x05Event\x12\x15\n" +
 	"\x11EVENT_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fEVENT_CI_FAILED\x10\x01\x12\x1a\n" +
@@ -30804,7 +30838,9 @@ const file_hammock_v1_hammock_proto_rawDesc = "" +
 	"\x0eEVENT_REVIEWED\x10\x03\x12\x11\n" +
 	"\rEVENT_LABELED\x10\x04\x12\x12\n" +
 	"\x0eEVENT_ASSIGNED\x10\x05\x12\x10\n" +
-	"\fEVENT_MERGED\x10\x06\"{\n" +
+	"\fEVENT_MERGED\x10\x06\x12\x10\n" +
+	"\fEVENT_COMMIT\x10\a\x12\x11\n" +
+	"\rEVENT_RELEASE\x10\b\"{\n" +
 	"\fAgentTrigger\x12\x1a\n" +
 	"\bfinished\x18\x01 \x01(\bR\bfinished\x12\x1b\n" +
 	"\tneeds_you\x18\x02 \x01(\bR\bneedsYou\x12\x19\n" +

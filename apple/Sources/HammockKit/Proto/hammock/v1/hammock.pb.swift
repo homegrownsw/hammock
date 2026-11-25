@@ -10298,8 +10298,9 @@ public nonisolated struct Hammock_V1_EventTrigger: Sendable {
   public init() {}
 }
 
-/// The GitHub repository of the schedule's folder (its remote), asked with
-/// gh every couple of minutes. What's already so when it's made doesn't fire.
+/// The GitHub repository of the schedule's folder (its remote), or the one
+/// it names (watch), asked with gh every couple of minutes. What's already
+/// so when it's made doesn't fire.
 public nonisolated struct Hammock_V1_GitHubTrigger: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -10310,8 +10311,17 @@ public nonisolated struct Hammock_V1_GitHubTrigger: Sendable {
   /// EVENT_LABELED
   public var label: String = String()
 
-  /// read only: "owner/name", from the folder
+  /// read only: "owner/name", watch or from the folder
   public var repo: String = String()
+
+  /// "owner/name" to watch instead of the folder's repository
+  public var watch: String = String()
+
+  /// EVENT_COMMIT
+  public var branch: String = String()
+
+  /// EVENT_RELEASE: a glob the tag matches (blank: any)
+  public var tags: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -10336,6 +10346,12 @@ public nonisolated struct Hammock_V1_GitHubTrigger: Sendable {
 
     /// your pull request was merged
     case merged // = 6
+
+    /// a new commit on branch (blank: the default branch)
+    case commit // = 7
+
+    /// a new release, or tag, matching tags
+    case release // = 8
     case UNRECOGNIZED(Int)
 
     public init() {
@@ -10351,6 +10367,8 @@ public nonisolated struct Hammock_V1_GitHubTrigger: Sendable {
       case 4: self = .labeled
       case 5: self = .assigned
       case 6: self = .merged
+      case 7: self = .commit
+      case 8: self = .release
       default: self = .UNRECOGNIZED(rawValue)
       }
     }
@@ -10364,6 +10382,8 @@ public nonisolated struct Hammock_V1_GitHubTrigger: Sendable {
       case .labeled: return 4
       case .assigned: return 5
       case .merged: return 6
+      case .commit: return 7
+      case .release: return 8
       case .UNRECOGNIZED(let i): return i
       }
     }
@@ -10377,6 +10397,8 @@ public nonisolated struct Hammock_V1_GitHubTrigger: Sendable {
       .labeled,
       .assigned,
       .merged,
+      .commit,
+      .release,
     ]
 
   }
@@ -29150,7 +29172,7 @@ nonisolated extension Hammock_V1_EventTrigger: SwiftProtobuf.Message, SwiftProto
 
 nonisolated extension Hammock_V1_GitHubTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GitHubTrigger"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}event\0\u{1}label\0\u{1}repo\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}event\0\u{1}label\0\u{1}repo\0\u{1}watch\0\u{1}branch\0\u{1}tags\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -29161,6 +29183,9 @@ nonisolated extension Hammock_V1_GitHubTrigger: SwiftProtobuf.Message, SwiftProt
       case 1: try { try decoder.decodeSingularEnumField(value: &self.event) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.label) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.repo) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.watch) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.branch) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.tags) }()
       default: break
       }
     }
@@ -29176,6 +29201,15 @@ nonisolated extension Hammock_V1_GitHubTrigger: SwiftProtobuf.Message, SwiftProt
     if !self.repo.isEmpty {
       try visitor.visitSingularStringField(value: self.repo, fieldNumber: 3)
     }
+    if !self.watch.isEmpty {
+      try visitor.visitSingularStringField(value: self.watch, fieldNumber: 4)
+    }
+    if !self.branch.isEmpty {
+      try visitor.visitSingularStringField(value: self.branch, fieldNumber: 5)
+    }
+    if !self.tags.isEmpty {
+      try visitor.visitSingularStringField(value: self.tags, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -29183,13 +29217,16 @@ nonisolated extension Hammock_V1_GitHubTrigger: SwiftProtobuf.Message, SwiftProt
     if lhs.event != rhs.event {return false}
     if lhs.label != rhs.label {return false}
     if lhs.repo != rhs.repo {return false}
+    if lhs.watch != rhs.watch {return false}
+    if lhs.branch != rhs.branch {return false}
+    if lhs.tags != rhs.tags {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 nonisolated extension Hammock_V1_GitHubTrigger.Event: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_UNSPECIFIED\0\u{1}EVENT_CI_FAILED\0\u{1}EVENT_REVIEW_REQUESTED\0\u{1}EVENT_REVIEWED\0\u{1}EVENT_LABELED\0\u{1}EVENT_ASSIGNED\0\u{1}EVENT_MERGED\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0EVENT_UNSPECIFIED\0\u{1}EVENT_CI_FAILED\0\u{1}EVENT_REVIEW_REQUESTED\0\u{1}EVENT_REVIEWED\0\u{1}EVENT_LABELED\0\u{1}EVENT_ASSIGNED\0\u{1}EVENT_MERGED\0\u{1}EVENT_COMMIT\0\u{1}EVENT_RELEASE\0")
 }
 
 nonisolated extension Hammock_V1_AgentTrigger: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {

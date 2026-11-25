@@ -2786,8 +2786,9 @@ message EventTrigger {
   string error = 9;               // read only: why it can't fire now (gh isn't signed in…)
 }
 
-// The GitHub repository of the schedule's folder (its remote), asked with
-// gh every couple of minutes. What's already so when it's made doesn't fire.
+// The GitHub repository of the schedule's folder (its remote), or the one
+// it names (watch), asked with gh every couple of minutes. What's already
+// so when it's made doesn't fire.
 message GitHubTrigger {
   enum Event {
     EVENT_UNSPECIFIED = 0;
@@ -2797,10 +2798,15 @@ message GitHubTrigger {
     EVENT_LABELED = 4;            // an open issue or pull request has label
     EVENT_ASSIGNED = 5;           // an issue or pull request was assigned to you
     EVENT_MERGED = 6;             // your pull request was merged
+    EVENT_COMMIT = 7;             // a new commit on branch (blank: the default branch)
+    EVENT_RELEASE = 8;            // a new release, or tag, matching tags
   }
   Event event = 1;
   string label = 2;               // EVENT_LABELED
-  string repo = 3;                // read only: "owner/name", from the folder
+  string repo = 3;                // read only: "owner/name", watch or from the folder
+  string watch = 4;               // "owner/name" to watch instead of the folder's repository
+  string branch = 5;              // EVENT_COMMIT
+  string tags = 6;                // EVENT_RELEASE: a glob the tag matches (blank: any)
 }
 
 // An agent finishing or needing you, in a Group or pane (neither: any).

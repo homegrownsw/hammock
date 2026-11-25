@@ -37,7 +37,7 @@ import (
 
 const (
 	defaultCooldown = 60 * time.Second
-	maxCooldown     = 24 * 60 * 60 // seconds
+	maxCooldown     = 30 * 24 * 60 * 60 // seconds: a month
 	// maxEventBody and maxEventField cap what of an event goes into a run
 	// (its prompt is the agent's command line).
 	maxEventBody  = 16 << 10
@@ -350,7 +350,7 @@ func (d *Daemon) cleanEvents(s, old *pb.Schedule) error {
 		return fmt.Errorf("unknown timing %d", s.Timing)
 	}
 	if c := s.GetCooldownSeconds(); c < 0 || c > maxCooldown {
-		return errors.New("the cooldown is between 0 and 24 hours")
+		return errors.New("the cooldown is between 0 and 30 days")
 	}
 	if len(s.Events) > maxTriggers {
 		return fmt.Errorf("at most %d triggers", maxTriggers)
@@ -404,6 +404,9 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 	switch k := t.Kind.(type) {
 	case *pb.EventTrigger_Github:
 		clean("label", &k.Github.Label, 100)
+		clean("repository", &k.Github.Watch, 200)
+		clean("branch", &k.Github.Branch, 250)
+		clean("tags", &k.Github.Tags, 100)
 		k.Github.Repo = oneLine(shownText(k.Github.Repo), 200)
 	case *pb.EventTrigger_Log:
 		clean("pattern", &k.Log.Pattern, 300)
@@ -428,10 +431,34 @@ func (d *Daemon) cleanTrigger(s *pb.Schedule, t *pb.EventTrigger) error {
 			if g.Label == "" {
 				return errors.New("which label?")
 			}
+		case pb.GitHubTrigger_EVENT_COMMIT, pb.GitHubTrigger_EVENT_RELEASE:
 		default:
+			if _, ok := pb.GitHubTrigger_Event_name[int32(g.Event)]; !ok {
+				return errors.New("an unknown GitHub event (from a newer Hammock?)")
+			}
+		}
+		if g.Event != pb.GitHubTrigger_EVENT_LABELED {
 			g.Label = ""
 		}
-		// (Repo is the watcher's to fill in, from the folder: schedgithub.go.)
+		if g.Event != pb.GitHubTrigger_EVENT_COMMIT {
+			g.Branch = ""
+		} else if strings.ContainsAny(g.Branch, " ~^:?*[\\") || strings.Contains(g.Branch, "..") || strings.HasPrefix(g.Branch, "-") {
+			return fmt.Errorf("%q isn't a branch name", g.Branch)
+		}
+		if g.Event != pb.GitHubTrigger_EVENT_RELEASE {
+			g.Tags = ""
+		} else if err := schedtrig.CheckTags(g.Tags); err != nil {
+			return err
+		}
+		if g.Watch != "" {
+			r := schedtrig.GitHubRepo(g.Watch)
+			if r == "" {
+				return fmt.Errorf("%q isn't a GitHub repository: give it as owner/name", g.Watch)
+			}
+			g.Watch, g.Repo = r, r
+		}
+		// (Repo, unless it watches another, is the watcher's to fill in, from
+		// the folder: schedgithub.go.)
 	case *pb.EventTrigger_Agent:
 		a := k.Agent
 		if !a.Finished && !a.NeedsYou {

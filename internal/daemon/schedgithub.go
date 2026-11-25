@@ -25,6 +25,7 @@ import (
 
 	"github.com/homegrownsw/hammock/internal/gitcmd"
 	pb "github.com/homegrownsw/hammock/internal/proto/hammockv1"
+	"github.com/homegrownsw/hammock/internal/schedtrig"
 )
 
 // ghPoll is how often GitHub is asked; ghMinGap the least time between
@@ -225,14 +226,28 @@ func (d *Daemon) pollGitHub() {
 	d.mu.Lock()
 	var jobs []*ghJob
 	for _, s := range d.sched.list {
-		var ts []*pb.EventTrigger
+		// The folder's repository's triggers, and a job for each repository
+		// the others name.
+		var own []*pb.EventTrigger
+		watched := map[string]*ghJob{}
 		for _, t := range d.eventsOf(s) {
-			if t.GetGithub() != nil {
-				ts = append(ts, cloneTrigger(t))
+			g := t.GetGithub()
+			switch {
+			case g == nil:
+			case g.Watch == "":
+				own = append(own, cloneTrigger(t))
+			default:
+				j := watched[g.Watch]
+				if j == nil {
+					j = &ghJob{schedule: s.Id, repo: g.Watch}
+					watched[g.Watch] = j
+					jobs = append(jobs, j)
+				}
+				j.triggers = append(j.triggers, cloneTrigger(t))
 			}
 		}
-		if len(ts) > 0 {
-			jobs = append(jobs, &ghJob{schedule: s.Id, dir: s.Cwd, triggers: ts})
+		if len(own) > 0 {
+			jobs = append(jobs, &ghJob{schedule: s.Id, dir: s.Cwd, triggers: own})
 		}
 	}
 	d.mu.Unlock()
@@ -243,7 +258,7 @@ func (d *Daemon) pollGitHub() {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		for _, j := range js {
-			d.ghTriggerErrors(j, err.Error())
+			d.ghTriggerErrors(j, err.Error(), nil)
 		}
 	}
 	if wait := time.Until(ghBackoff.Load().(time.Time)); wait > 0 {
@@ -259,13 +274,15 @@ func (d *Daemon) pollGitHub() {
 	}
 	byRepo := map[string][]*ghJob{}
 	for _, j := range jobs {
-		repo, err := githubRepoOf(j.dir)
-		if err != nil {
-			fail([]*ghJob{j}, err)
-			continue
+		if j.repo == "" {
+			repo, err := githubRepoOf(j.dir)
+			if err != nil {
+				fail([]*ghJob{j}, err)
+				continue
+			}
+			j.repo, j.branch = repo, gitBranchOf(j.dir)
 		}
-		j.repo, j.branch = repo, gitBranchOf(j.dir)
-		byRepo[repo] = append(byRepo[repo], j)
+		byRepo[j.repo] = append(byRepo[j.repo], j)
 	}
 	n := 0
 	for repo, js := range byRepo {
@@ -284,7 +301,7 @@ func (d *Daemon) pollGitHub() {
 		}
 		d.mu.Lock()
 		for _, j := range js {
-			d.ghTriggerErrors(j, "")
+			d.ghTriggerErrors(j, "", res)
 			d.ghFire(j, res)
 		}
 		d.mu.Unlock()
@@ -292,24 +309,35 @@ func (d *Daemon) pollGitHub() {
 }
 
 func cloneTrigger(t *pb.EventTrigger) *pb.EventTrigger {
-	return &pb.EventTrigger{Id: t.Id, Kind: &pb.EventTrigger_Github{Github: &pb.GitHubTrigger{Event: t.GetGithub().GetEvent(), Label: t.GetGithub().GetLabel()}}}
+	g := t.GetGithub()
+	return &pb.EventTrigger{Id: t.Id, Kind: &pb.EventTrigger_Github{Github: &pb.GitHubTrigger{
+		Event: g.GetEvent(), Label: g.GetLabel(), Watch: g.GetWatch(), Branch: g.GetBranch(), Tags: g.GetTags()}}}
 }
 
 // ghTriggerErrors notes (or clears) why j's triggers can't fire, and the
-// repository they watch. Callers hold d.mu.
-func (d *Daemon) ghTriggerErrors(j *ghJob, msg string) {
+// repository they watch: msg for all of them, else what r says of each (a
+// branch it hasn't got). Callers hold d.mu.
+func (d *Daemon) ghTriggerErrors(j *ghJob, msg string, r *ghResult) {
 	s := d.sched.list[j.schedule]
 	if s == nil {
 		return
 	}
+	mine := map[string]bool{}
+	for _, t := range j.triggers {
+		mine[t.Id] = true
+	}
 	changed := false
 	for _, t := range s.Events {
 		g := t.GetGithub()
-		if g == nil {
+		if g == nil || !mine[t.Id] {
 			continue
 		}
-		if t.Error != msg {
-			t.Error, changed = msg, true
+		m := msg
+		if m == "" && r != nil {
+			m = ghMissing(r, g)
+		}
+		if t.Error != m {
+			t.Error, changed = m, true
 		}
 		if j.repo != "" && g.Repo != j.repo {
 			g.Repo, changed = j.repo, true
@@ -392,12 +420,37 @@ type ghNotes struct {
 	} `json:"nodes"`
 }
 
+// ghHead is a branch's newest commit, for commit triggers.
+type ghHead struct {
+	Oid             string `json:"oid"`
+	MessageHeadline string `json:"messageHeadline"`
+	URL             string `json:"url"`
+	Author          struct {
+		Name string `json:"name"`
+		User *struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	} `json:"author"`
+}
+
+type ghRelease struct {
+	TagName      string `json:"tagName"`
+	Name         string `json:"name"`
+	URL          string `json:"url"`
+	IsPrerelease bool   `json:"isPrerelease"`
+	IsDraft      bool   `json:"isDraft"`
+	Description  string `json:"description"`
+}
+
 // ghResult is what one look found in a repository.
 type ghResult struct {
 	repo, login   string
 	defaultBranch string
 	mine          []ghItem            // your open pull requests
 	branches      map[string]ghCommit // a task folder's branch → its head
+	heads         map[string]ghHead   // a commit trigger's branch ("": the default) → its head
+	releases      []ghRelease         // the newest
+	tags          []string            // the newest
 	reviewReq     []ghItem
 	assigned      []ghItem
 	labeled       map[string][]ghItem // label →
@@ -405,7 +458,10 @@ type ghResult struct {
 	asked         map[string]bool // which of these were asked for
 }
 
-const ghRollup = `statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { name conclusion } ... on StatusContext { context state } } } }`
+const (
+	ghRollup = `statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { name conclusion } ... on StatusContext { context state } } } }`
+	ghHeadOf = `target { ... on Commit { oid messageHeadline url author { name user { login } } } }`
+)
 
 // ghAsk asks GitHub what's so in repo for js's triggers, in one GraphQL query.
 func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, error) {
@@ -413,15 +469,20 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 	need := map[pb.GitHubTrigger_Event]bool{}
 	labels := map[string]bool{}
 	branches := map[string]bool{}
+	heads := map[string]bool{} // "": the default branch
 	for _, j := range js {
 		for _, t := range j.triggers {
 			g := t.GetGithub()
 			need[g.Event] = true
-			if g.Event == pb.GitHubTrigger_EVENT_LABELED {
+			switch g.Event {
+			case pb.GitHubTrigger_EVENT_LABELED:
 				labels[g.Label] = true
-			}
-			if g.Event == pb.GitHubTrigger_EVENT_CI_FAILED && j.branch != "" {
-				branches[j.branch] = true
+			case pb.GitHubTrigger_EVENT_CI_FAILED:
+				if j.branch != "" {
+					branches[j.branch] = true
+				}
+			case pb.GitHubTrigger_EVENT_COMMIT:
+				heads[g.Branch] = true
 			}
 		}
 	}
@@ -436,7 +497,7 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 		addVar(alias+"Q", q)
 		parts = append(parts, fmt.Sprintf("%s: search(query: $%sQ, type: ISSUE, first: %d) { nodes { __typename ... on PullRequest { %s } ... on Issue { number title url author { login } } } }", alias, alias, first, fields))
 	}
-	r := &ghResult{repo: repo, login: login, labeled: map[string][]ghItem{}, branches: map[string]ghCommit{}, asked: map[string]bool{}}
+	r := &ghResult{repo: repo, login: login, labeled: map[string][]ghItem{}, branches: map[string]ghCommit{}, heads: map[string]ghHead{}, asked: map[string]bool{}}
 	base := "repo:" + repo + " "
 	if need[pb.GitHubTrigger_EVENT_CI_FAILED] || need[pb.GitHubTrigger_EVENT_REVIEWED] {
 		r.asked["mine"] = true
@@ -462,7 +523,10 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 		search(a, base+"is:open label:"+strconvQuote(l), 30, "number title url author { login }")
 	}
 	branchAlias := map[string]string{}
-	if len(branches) > 0 {
+	headAlias := map[string]string{}
+	releases := need[pb.GitHubTrigger_EVENT_RELEASE]
+	if len(branches) > 0 || len(heads) > 0 || releases {
+		r.asked["repo"] = true
 		addVar("owner", owner)
 		addVar("name", name)
 		var refs []string
@@ -472,7 +536,22 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 			addVar(a+"R", "refs/heads/"+b)
 			refs = append(refs, fmt.Sprintf("%s: ref(qualifiedName: $%sR) { target { ... on Commit { oid %s } } }", a, a, ghRollup))
 		}
-		parts = append(parts, "repo: repository(owner: $owner, name: $name) { defaultBranchRef { name } "+strings.Join(refs, " ")+" }")
+		def := "defaultBranchRef { name }"
+		for i, b := range sortedKeys(heads) {
+			if b == "" {
+				def = "defaultBranchRef { name " + ghHeadOf + " }"
+				continue
+			}
+			a := fmt.Sprintf("head%d", i)
+			headAlias[a] = b
+			addVar(a+"R", "refs/heads/"+b)
+			refs = append(refs, fmt.Sprintf("%s: ref(qualifiedName: $%sR) { %s }", a, a, ghHeadOf))
+		}
+		if releases {
+			refs = append(refs, "releases(first: 10, orderBy: {field: CREATED_AT, direction: DESC}) { nodes { tagName name url isPrerelease isDraft description } }",
+				`tags: refs(refPrefix: "refs/tags/", first: 30, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) { nodes { name } }`)
+		}
+		parts = append(parts, "repo: repository(owner: $owner, name: $name) { "+def+" "+strings.Join(refs, " ")+" }")
 	}
 	query := "query(" + strings.Join(vars, ", ") + ") { " + strings.Join(parts, " ") + " }"
 	args = append(args, "-f", "query="+query)
@@ -489,7 +568,9 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 	if err := json.Unmarshal(out, &resp); err != nil {
 		return nil, fmt.Errorf("GitHub's answer didn't make sense: %v", err)
 	}
-	if len(resp.Errors) > 0 && resp.Data == nil {
+	if len(resp.Errors) > 0 && (resp.Data == nil || r.asked["repo"] && ghNull(resp.Data["repo"])) {
+		// (No such repository, or not one you can see: the searches in it
+		// find nothing, so say so.)
 		return nil, errors.New("GitHub: " + firstLine(resp.Errors[0].Message))
 	}
 	nodes := func(alias string) []ghItem {
@@ -514,10 +595,14 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 		var repoData map[string]json.RawMessage
 		_ = json.Unmarshal(raw, &repoData)
 		var def struct {
-			Name string `json:"name"`
+			Name   string `json:"name"`
+			Target ghHead `json:"target"`
 		}
 		_ = json.Unmarshal(repoData["defaultBranchRef"], &def)
 		r.defaultBranch = def.Name
+		if def.Target.Oid != "" {
+			r.heads[""] = def.Target
+		}
 		for a, b := range branchAlias {
 			var ref struct {
 				Target ghCommit `json:"target"`
@@ -526,8 +611,50 @@ func ghAsk(ctx context.Context, repo, login string, js []*ghJob) (*ghResult, err
 				r.branches[b] = ref.Target
 			}
 		}
+		for a, b := range headAlias {
+			var ref struct {
+				Target ghHead `json:"target"`
+			}
+			if json.Unmarshal(repoData[a], &ref) == nil && ref.Target.Oid != "" {
+				r.heads[b] = ref.Target
+			}
+		}
+		var rel struct {
+			Nodes []ghRelease `json:"nodes"`
+		}
+		_ = json.Unmarshal(repoData["releases"], &rel)
+		r.releases = rel.Nodes
+		var tags struct {
+			Nodes []struct {
+				Name string `json:"name"`
+			} `json:"nodes"`
+		}
+		_ = json.Unmarshal(repoData["tags"], &tags)
+		for _, t := range tags.Nodes {
+			r.tags = append(r.tags, t.Name)
+		}
 	}
 	return r, nil
+}
+
+// ghNull: a GraphQL field that's missing or null.
+func ghNull(raw json.RawMessage) bool {
+	return len(raw) == 0 || string(raw) == "null"
+}
+
+// ghMissing says why r has nothing for g when that's a mistake in g (a
+// branch the repository hasn't got), else "".
+func ghMissing(r *ghResult, g *pb.GitHubTrigger) string {
+	if g.Event != pb.GitHubTrigger_EVENT_COMMIT || !r.asked["repo"] {
+		return ""
+	}
+	if _, ok := r.heads[g.Branch]; ok {
+		return ""
+	}
+	if g.Branch == "" {
+		return r.repo + " has no commits yet"
+	}
+	return r.repo + " has no branch “" + g.Branch + "”"
 }
 
 func sortedKeys(m map[string]bool) []string {
@@ -666,6 +793,49 @@ func ghFacts(r *ghResult, g *pb.GitHubTrigger, branch string) ([]ghFact, bool) {
 		for _, pr := range r.merged {
 			out = append(out, ghFact{fmt.Sprintf("mg:%d", pr.Number), ev(fmt.Sprintf("#%d was merged", pr.Number), pr)})
 		}
+	case pb.GitHubTrigger_EVENT_COMMIT:
+		if !r.asked["repo"] {
+			return nil, false
+		}
+		h, ok := r.heads[g.Branch]
+		if !ok {
+			return nil, true
+		}
+		on := cmpOr(g.Branch, r.defaultBranch)
+		f := [][2]string{{"repo", r.repo}, {"branch", on}, {"commit", h.Oid}, {"title", h.MessageHeadline}, {"url", h.URL}}
+		if h.Author.User != nil && h.Author.User.Login != "" {
+			f = append(f, [2]string{"author", h.Author.User.Login})
+		} else if h.Author.Name != "" {
+			f = append(f, [2]string{"author", h.Author.Name})
+		}
+		e := &schedEvent{Kind: "github", Summary: "A new commit on " + on + " in " + r.repo, Source: "GitHub", Fields: f}
+		out = append(out, ghFact{"co:" + on + ":" + h.Oid, e})
+	case pb.GitHubTrigger_EVENT_RELEASE:
+		if !r.asked["repo"] {
+			return nil, false
+		}
+		// A release and its tag are one fact: whichever is seen first fires.
+		released := map[string]bool{}
+		for _, rl := range r.releases {
+			if rl.IsDraft || !schedtrig.TagMatches(g.Tags, rl.TagName) {
+				continue
+			}
+			released[rl.TagName] = true
+			f := [][2]string{{"repo", r.repo}, {"tag", rl.TagName}, {"title", cmpOr(rl.Name, rl.TagName)}, {"url", rl.URL}}
+			if rl.IsPrerelease {
+				f = append(f, [2]string{"prerelease", "true"})
+			}
+			e := &schedEvent{Kind: "github", Summary: "A new release of " + r.repo + ": " + rl.TagName, Source: "GitHub", Fields: f, Body: rl.Description}
+			out = append(out, ghFact{"tag:" + rl.TagName, e})
+		}
+		for _, tag := range r.tags {
+			if released[tag] || !schedtrig.TagMatches(g.Tags, tag) {
+				continue
+			}
+			f := [][2]string{{"repo", r.repo}, {"tag", tag}, {"title", tag},
+				{"url", "https://github.com/" + r.repo + "/releases/tag/" + url.PathEscape(tag)}}
+			out = append(out, ghFact{"tag:" + tag, &schedEvent{Kind: "github", Summary: "A new tag in " + r.repo + ": " + tag, Source: "GitHub", Fields: f}})
+		}
 	default:
 		return nil, false
 	}
@@ -676,8 +846,9 @@ func ghFacts(r *ghResult, g *pb.GitHubTrigger, branch string) ([]ghFact, bool) {
 // seen, it remembers after it's gone from GitHub's answer (which shows only
 // the latest few), so an item coming back into it doesn't fire again.
 const (
-	maxSeen = 1000
-	seenFor = 30 * 24 * time.Hour
+	maxSeen     = 1000
+	seenFor     = 30 * 24 * time.Hour
+	seenRefresh = 24 * time.Hour
 )
 
 // ghFire fires j's triggers for what's new in r since each last looked.
@@ -705,7 +876,13 @@ func (d *Daemon) ghFire(j *ghJob, r *ghResult) {
 		newBranch := st.Branch != j.branch
 		changed := !st.Primed || newBranch
 		for _, f := range facts {
-			if _, ok := st.SeenAt[f.key]; ok {
+			if at, ok := st.SeenAt[f.key]; ok {
+				// Still so: remembered for seenFor after it's last seen, not
+				// first (else a tag, or a label left on, fires again after
+				// it). Noted once a day, not saved at every look.
+				if now.UnixMilli()-at > seenRefresh.Milliseconds() {
+					st.SeenAt[f.key], changed = now.UnixMilli(), true
+				}
 				continue
 			}
 			st.SeenAt[f.key], changed = now.UnixMilli(), true
@@ -748,7 +925,12 @@ func pruneSeen(seen map[string]int64, now time.Time) bool {
 	return gone
 }
 
-// GitHubKey is what a GitHub trigger watches, for its trigState's key.
+// GitHubKey is what a GitHub trigger watches, for its trigState's key (the
+// repository is added to it): changing what it watches starts it afresh.
 func GitHubKey(g *pb.GitHubTrigger) string {
-	return fmt.Sprintf("%d:%s", g.Event, g.Label)
+	k := fmt.Sprintf("%d:%s", g.Event, g.Label)
+	if g.Branch != "" || g.Tags != "" {
+		k += ":" + g.Branch + ":" + g.Tags
+	}
+	return k
 }

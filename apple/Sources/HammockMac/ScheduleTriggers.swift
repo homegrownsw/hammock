@@ -68,10 +68,11 @@ struct ScheduleTriggersSection: View {
         (.ciFailed, "CI Fails on My Pull Request"), (.reviewRequested, "My Review Is Requested"),
         (.reviewed, "My Pull Request Gets a Review or Comment"), (.labeled, "An Issue or Pull Request Is Labelled…"),
         (.assigned, "Something Is Assigned to Me"), (.merged, "My Pull Request Is Merged"),
+        (.commit, "A New Commit Is Pushed"), (.release, "A New Release or Tag"),
     ]
 
     private var cooldownChoices: [Int] {
-        let base = [0, 60, 300, 900, 1800, 3600]
+        let base = [0, 60, 300, 900, 1800, 3600, 86_400, 604_800, 2_592_000]
         return base.contains(cooldown) ? base : (base + [cooldown]).sorted()
     }
 
@@ -126,10 +127,14 @@ struct TriggerEditorRow: View {
                 Picker("GitHub", selection: github(\.event)) {
                     ForEach(ScheduleTriggersSection.githubEvents, id: \.0) { e, title in Text(title.replacingOccurrences(of: "…", with: "")).tag(e) }
                 }
-                if github(\.event).wrappedValue == .labeled {
-                    TextField("Label", text: github(\.label), prompt: Text("needs triage"))
+                switch github(\.event).wrappedValue {
+                case .labeled: TextField("Label", text: github(\.label), prompt: Text("needs triage"))
+                case .commit: TextField("Branch", text: github(\.branch), prompt: Text("The default branch"))
+                case .release: TextField("Tags", text: github(\.tags), prompt: Text("Any, or a pattern like v*"))
+                default: EmptyView()
                 }
-                Text(githubRepo.isEmpty ? "The folder’s GitHub repository, checked every couple of minutes with gh." : "In \(githubRepo), checked every couple of minutes with gh.")
+                TextField("Repository", text: github(\.watch), prompt: Text(githubFolderRepo.isEmpty ? "The folder’s, or owner/name" : githubFolderRepo))
+                Text("Checked every couple of minutes with gh.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -218,8 +223,10 @@ struct TriggerEditorRow: View {
         return base.contains(cur) ? base : (base + [cur]).sorted()
     }
 
-    private var githubRepo: String {
-        if case .github(let g) = trigger.kind { return g.repo }
+    /// The folder's repository, as the daemon last found it (while it
+    /// watches its own).
+    private var githubFolderRepo: String {
+        if case .github(let g) = trigger.kind, g.watch.isEmpty { return g.repo }
         return ""
     }
 
@@ -373,6 +380,8 @@ enum ScheduleSamples {
             $0.events = [
                 .with { $0.id = "tr_s1"; $0.kind = .github(.with { $0.event = .ciFailed; $0.repo = "acme/widgets" }) },
                 .with { $0.id = "tr_s2"; $0.kind = .github(.with { $0.event = .labeled; $0.label = "needs fix"; $0.repo = "acme/widgets" }) },
+                .with { $0.id = "tr_s7"; $0.kind = .github(.with { $0.event = .commit; $0.watch = "acme/gizmo"; $0.repo = "acme/gizmo" }) },
+                .with { $0.id = "tr_s8"; $0.kind = .github(.with { $0.event = .release; $0.tags = "v*"; $0.watch = "acme/gizmo"; $0.repo = "acme/gizmo" }) },
                 .with { $0.id = "tr_s3"; $0.kind = .webhook(.init()) },
                 .with { $0.id = "tr_s6"; $0.kind = .calendar(.with { $0.minutesBefore = 15; $0.title = "Release" }) },
             ]

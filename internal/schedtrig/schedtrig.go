@@ -5,7 +5,8 @@
 // A trigger written out (hmk schedule --trigger, MCP schedule_save):
 //
 //	github:ci-failed | github:review-requested | github:reviewed |
-//	github:label=NAME | github:assigned | github:merged
+//	github:label=NAME | github:assigned | github:merged |
+//	github:commit[=BRANCH] | github:release[=TAGS]  [@OWNER/NAME: another repository]
 //	agent:finished | agent:needs-you | agent:finished,needs-you  [@GROUP|PANE]
 //	exit  [@GROUP|PANE]                 a pane's command exits non-zero
 //	log:REGEX@PANE                      a log pane's line matches
@@ -18,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -27,7 +29,7 @@ import (
 )
 
 // Usage lists the forms Parse reads, for usage texts.
-const Usage = `github:ci-failed|review-requested|reviewed|label=NAME|assigned|merged
+const Usage = `github:ci-failed|review-requested|reviewed|label=NAME|assigned|merged|commit[=BRANCH]|release[=TAGS][@OWNER/NAME]
 agent:finished|needs-you[,…][@GROUP|PANE]   exit[@GROUP|PANE]   log:REGEX@PANE
 files[:GLOB][@DIR]   calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]   webhook`
 
@@ -39,6 +41,43 @@ var githubEvents = map[string]pb.GitHubTrigger_Event{
 	"ci-failed": pb.GitHubTrigger_EVENT_CI_FAILED, "review-requested": pb.GitHubTrigger_EVENT_REVIEW_REQUESTED,
 	"reviewed": pb.GitHubTrigger_EVENT_REVIEWED, "label": pb.GitHubTrigger_EVENT_LABELED,
 	"assigned": pb.GitHubTrigger_EVENT_ASSIGNED, "merged": pb.GitHubTrigger_EVENT_MERGED,
+	"commit": pb.GitHubTrigger_EVENT_COMMIT, "release": pb.GitHubTrigger_EVENT_RELEASE,
+}
+
+var githubRepoRE = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$`)
+
+// GitHubRepo is "owner/name" from s, written that way or as a github.com
+// link (https, ssh or scp-like, .git or not), else "".
+func GitHubRepo(s string) string {
+	s = strings.TrimSpace(s)
+	for _, p := range []string{"https://", "http://", "ssh://git@", "git@"} {
+		s = strings.TrimPrefix(s, p)
+	}
+	s = strings.TrimPrefix(strings.TrimPrefix(s, "www."), "github.com")
+	s = strings.TrimPrefix(strings.TrimPrefix(s, ":"), "/")
+	s = strings.TrimSuffix(strings.TrimSuffix(s, "/"), ".git")
+	if !githubRepoRE.MatchString(s) || strings.HasSuffix(s, "/.") || strings.HasSuffix(s, "/..") {
+		return ""
+	}
+	return s
+}
+
+// CheckTags checks a release trigger's tags: a glob (path.Match's, as
+// vt-*) or "".
+func CheckTags(glob string) error {
+	if _, err := path.Match(glob, ""); err != nil {
+		return fmt.Errorf("the tags %q aren't a pattern like v* or vt-1.*", glob)
+	}
+	return nil
+}
+
+// TagMatches: tag matches glob, a release trigger's tags ("" matches any).
+func TagMatches(glob, tag string) bool {
+	if glob == "" {
+		return true
+	}
+	ok, _ := path.Match(glob, tag)
+	return ok
 }
 
 // GitHubEventName is the word Parse reads for e ("ci-failed").
@@ -80,15 +119,35 @@ func Parse(spec string, resolve Resolver) (*pb.EventTrigger, error) {
 	}
 	switch strings.ToLower(kind) {
 	case "github", "gh":
-		ev, label, _ := strings.Cut(strings.TrimSpace(rest), "=")
+		// A repository to watch instead of the folder's: @OWNER/NAME.
+		watch := ""
+		if i := strings.LastIndex(rest, "@"); i >= 0 {
+			if r := GitHubRepo(rest[i+1:]); r != "" {
+				rest, watch = rest[:i], r
+			}
+		}
+		ev, val, _ := strings.Cut(strings.TrimSpace(rest), "=")
+		val = strings.TrimSpace(val)
 		e, ok := githubEvents[strings.ToLower(ev)]
 		if !ok {
-			return nil, fmt.Errorf("%q: github:ci-failed, review-requested, reviewed, label=NAME, assigned or merged", spec)
+			return nil, fmt.Errorf("%q: github:ci-failed, review-requested, reviewed, label=NAME, assigned, merged, commit[=BRANCH] or release[=TAGS], then @OWNER/NAME for another repository", spec)
 		}
-		if e == pb.GitHubTrigger_EVENT_LABELED && strings.TrimSpace(label) == "" {
-			return nil, errors.New("github:label=NAME: which label?")
+		g := &pb.GitHubTrigger{Event: e, Watch: watch}
+		switch e {
+		case pb.GitHubTrigger_EVENT_LABELED:
+			if val == "" {
+				return nil, errors.New("github:label=NAME: which label?")
+			}
+			g.Label = val
+		case pb.GitHubTrigger_EVENT_COMMIT:
+			g.Branch = val
+		case pb.GitHubTrigger_EVENT_RELEASE:
+			if err := CheckTags(val); err != nil {
+				return nil, err
+			}
+			g.Tags = val
 		}
-		return &pb.EventTrigger{Kind: &pb.EventTrigger_Github{Github: &pb.GitHubTrigger{Event: e, Label: strings.TrimSpace(label)}}}, nil
+		return &pb.EventTrigger{Kind: &pb.EventTrigger_Github{Github: g}}, nil
 	case "agent":
 		at()
 		a := &pb.AgentTrigger{}
@@ -196,8 +255,8 @@ func Describe(t *pb.EventTrigger, names Names) string {
 	case *pb.EventTrigger_Github:
 		g := k.Github
 		in := ""
-		if g.Repo != "" {
-			in = " (" + g.Repo + ")"
+		if r := cmpOr(g.Repo, g.Watch); r != "" {
+			in = " (" + r + ")"
 		}
 		switch g.Event {
 		case pb.GitHubTrigger_EVENT_CI_FAILED:
@@ -212,6 +271,16 @@ func Describe(t *pb.EventTrigger, names Names) string {
 			return "An issue or pull request is assigned to me" + in
 		case pb.GitHubTrigger_EVENT_MERGED:
 			return "My pull request is merged" + in
+		case pb.GitHubTrigger_EVENT_COMMIT:
+			if g.Branch != "" {
+				return "A new commit on " + g.Branch + in
+			}
+			return "A new commit on the default branch" + in
+		case pb.GitHubTrigger_EVENT_RELEASE:
+			if g.Tags != "" {
+				return "A new release or tag matching " + g.Tags + in
+			}
+			return "A new release or tag" + in
 		}
 		return "GitHub" + in
 	case *pb.EventTrigger_Agent:
@@ -273,9 +342,18 @@ func Spec(t *pb.EventTrigger) string {
 	}
 	switch k := t.GetKind().(type) {
 	case *pb.EventTrigger_Github:
-		s := "github:" + GitHubEventName(k.Github.Event)
-		if k.Github.Event == pb.GitHubTrigger_EVENT_LABELED {
-			s += "=" + k.Github.Label
+		g := k.Github
+		s := "github:" + GitHubEventName(g.Event)
+		switch {
+		case g.Event == pb.GitHubTrigger_EVENT_LABELED:
+			s += "=" + g.Label
+		case g.Event == pb.GitHubTrigger_EVENT_COMMIT && g.Branch != "":
+			s += "=" + g.Branch
+		case g.Event == pb.GitHubTrigger_EVENT_RELEASE && g.Tags != "":
+			s += "=" + g.Tags
+		}
+		if g.Watch != "" {
+			s += "@" + g.Watch
 		}
 		return s
 	case *pb.EventTrigger_Agent:
@@ -451,6 +529,12 @@ func CooldownWords(secs int) string {
 	switch {
 	case secs <= 0:
 		return "no cooldown"
+	case secs%(30*86400) == 0:
+		return plural(secs/(30*86400), "month") + " cooldown"
+	case secs%(7*86400) == 0:
+		return plural(secs/(7*86400), "week") + " cooldown"
+	case secs%86400 == 0:
+		return plural(secs/86400, "day") + " cooldown"
 	case secs%3600 == 0:
 		return plural(secs/3600, "hour") + " cooldown"
 	case secs%60 == 0:

@@ -59,7 +59,7 @@ options:
 ` + indent(schedtrig.Usage, "                                              ") + `
   --events-only                             run only on its triggers (and Run Now)
   --no-triggers                             drop its triggers
-  --cooldown SECONDS                        runs its triggers start are this far apart (default 60)
+  --cooldown SECONDS                        runs its triggers start are this far apart (default 60, at most 30 days)
 an agent's prompt gets what happened, fenced as data (or where it says {{event}});
 a command gets it in HMK_EVENT, HMK_EVENT_SUMMARY, HMK_EVENT_<DETAIL> and HMK_EVENT_BODY
 a COMMAND is run by your login shell: one word is the line as written

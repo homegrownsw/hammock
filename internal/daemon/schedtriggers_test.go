@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -362,6 +364,108 @@ func TestGitHubTrigger(t *testing.T) {
 	d.pollGitHub()
 	if e := schedOf(d, id).Events[0].Error; e != errGHAuth.Error() {
 		t.Fatalf("error: %q", e)
+	}
+}
+
+// GitHub commits and releases in a repository the trigger names (the
+// folder isn't a git repository at all): a new head fires once, a new
+// release or tag matching the pattern fires once (a tag that gets a release
+// later doesn't again), and a branch that isn't there says so.
+func TestGitHubCommitAndReleaseTriggers(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("ENV", "")
+	work := t.TempDir()
+	clock := useSchedClock(t, time.Now())
+	oldPoll, oldGH, oldGit, oldDef := ghPoll, ghRun, gitRun, ghDefaultRepo
+	ghPoll = time.Hour
+	ghDefaultRepo = func(string) string { return "" }
+	t.Cleanup(func() { ghPoll, ghRun, gitRun, ghDefaultRepo = oldPoll, oldGH, oldGit, oldDef })
+	gitRun = func(context.Context, string, ...string) ([]byte, error) {
+		return nil, errors.New("not a git repository")
+	}
+	var mu sync.Mutex
+	head, releases, tags, queries := "aaa", ``, `{"name":"vt-1.0.0"},{"name":"other-1"}`, []string{}
+	ghRun = func(_ context.Context, args ...string) ([]byte, error) {
+		if args[0] == "api" && args[1] == "user" {
+			return []byte("octocat\n"), nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		for _, a := range args {
+			if strings.HasPrefix(a, "query=") {
+				queries = append(queries, a)
+			}
+		}
+		return []byte(`{"data":{"repo":{"defaultBranchRef":{"name":"main","target":{"oid":"` + head + `","messageHeadline":"Bump ` + head + `","url":"https://github.com/mitchellh/go-libghostty/commit/` + head + `","author":{"name":"M","user":{"login":"mitchellh"}}}},` +
+			`"head1":null,"releases":{"nodes":[` + releases + `]},"tags":{"nodes":[` + tags + `]}}}}`), nil
+	}
+	ghLoginCache.Lock()
+	ghLoginCache.login = ""
+	ghLoginCache.Unlock()
+	dir := shortDir(t)
+	d := startDaemon(t, dir)
+	defer d.Shutdown()
+	c := dial(t, dir)
+	call(t, c, &pb.ClientMessage{Msg: &pb.ClientMessage_Subscribe{Subscribe: &pb.Subscribe{}}})
+	gh := func(g *pb.GitHubTrigger) *pb.EventTrigger {
+		return &pb.EventTrigger{Kind: &pb.EventTrigger_Github{Github: g}}
+	}
+	commits := eventSchedule(t, c, work, gh(&pb.GitHubTrigger{Event: pb.GitHubTrigger_EVENT_COMMIT, Watch: "https://github.com/mitchellh/go-libghostty.git"}),
+		gh(&pb.GitHubTrigger{Event: pb.GitHubTrigger_EVENT_COMMIT, Branch: "gone", Watch: "mitchellh/go-libghostty"}))
+	rels := eventSchedule(t, c, work, gh(&pb.GitHubTrigger{Event: pb.GitHubTrigger_EVENT_RELEASE, Tags: "vt-*", Watch: "mitchellh/go-libghostty"}))
+	if g := schedOf(d, commits).Events[0].GetGithub(); g.Watch != "mitchellh/go-libghostty" || g.Repo != g.Watch {
+		t.Fatalf("watch not cleaned: %v", g)
+	}
+	reset := func() {
+		d.mu.Lock()
+		d.sched.lastEvent = map[string]time.Time{}
+		d.mu.Unlock()
+	}
+	d.pollGitHub() // the first look: notes what's there
+	s := schedOf(d, commits)
+	if len(s.Runs) != 0 || len(schedOf(d, rels).Runs) != 0 {
+		t.Fatalf("first look fired: %v %v", s.Runs, schedOf(d, rels).Runs)
+	}
+	if s.Events[0].Error != "" || s.Events[1].Error != "mitchellh/go-libghostty has no branch “gone”" {
+		t.Fatalf("errors: %q %q", s.Events[0].Error, s.Events[1].Error)
+	}
+	mu.Lock()
+	// (Saving them also wakes the watcher: the last question is the look above.)
+	if q := queries[len(queries)-1]; strings.Count(q, "repository(") != 1 || !strings.Contains(q, "releases(") || !strings.Contains(q, "head1: ref(") {
+		t.Fatalf("one question for both schedules: %q", queries)
+	}
+	head, tags = "bbb", `{"name":"vt-1.0.1"},{"name":"other-2"},{"name":"vt-1.0.0"}`
+	mu.Unlock()
+	reset()
+	d.pollGitHub()
+	d.pollGitHub()
+	if r := schedOf(d, commits).Runs; len(r) != 1 || r[0].Trigger != "A new commit on main in mitchellh/go-libghostty" {
+		t.Fatalf("commit runs: %v", r)
+	}
+	if r := schedOf(d, rels).Runs; len(r) != 1 || r[0].Trigger != "A new tag in mitchellh/go-libghostty: vt-1.0.1" {
+		t.Fatalf("release runs: %v", r)
+	}
+	// vt-1.0.1 gets a release: not news again.
+	mu.Lock()
+	releases = `{"tagName":"vt-1.0.1","name":"1.0.1","url":"https://github.com/mitchellh/go-libghostty/releases/tag/vt-1.0.1","isPrerelease":false,"isDraft":false,"description":"notes"}`
+	mu.Unlock()
+	reset()
+	d.pollGitHub()
+	if n := len(schedOf(d, rels).Runs); n != 1 {
+		t.Fatalf("%d release runs after the tag's release", n)
+	}
+	// Still there over a month on (seenFor), looked at every couple of days:
+	// remembered while it's so, so not news.
+	for i := range 20 {
+		clock.set(time.Now().Add(time.Duration(i+1) * 48 * time.Hour))
+		reset()
+		d.pollGitHub()
+	}
+	d.mu.Lock()
+	waiting := len(d.sched.pending[rels])
+	d.mu.Unlock()
+	if n := len(schedOf(d, rels).Runs); n != 1 || waiting != 0 {
+		t.Fatalf("%d release runs a month on, %d waiting", n, waiting)
 	}
 }
 

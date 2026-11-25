@@ -41,7 +41,7 @@ It runs in the current folder and Group unless you give `--dir` or `--group`. Qu
 | `--once 'YYYY-MM-DD HH:MM'` | Run once, then, instead of on a schedule. |
 | `--trigger T` | Run when something happens ([Triggers](#triggers)). Repeat it for more. Without `--at`, `--cron` or `--once`, it runs only on its triggers. |
 | `--events-only`, `--no-triggers` | Run only on its triggers; drop its triggers. |
-| `--cooldown SECONDS` | The least time between runs its triggers start (60 by default; 0 for none). |
+| `--cooldown SECONDS` | The least time between runs its triggers start (60 by default; 0 for none; at most 30 days). |
 | `--claude`, `--codex`, `--AGENT` | Which agent runs it (Claude Code by default). `AGENT` is the agent's id, such as `--gemini` or `--cursor`. |
 | `--command` | Run a command instead of an agent. |
 | `--dir DIR`, `--group GROUP`, `--name NAME` | Where it runs, and where its tabs open. |
@@ -90,6 +90,8 @@ A trigger starts a run when something happens, as well as at the automation's ti
 | | `github:label=NAME` | An open issue or pull request has the label. |
 | | `github:assigned` | An issue or pull request is assigned to you. |
 | | `github:merged` | Your pull request is merged. |
+| | `github:commit`, `github:commit=BRANCH` | A new commit lands on the default branch, or on `BRANCH`. |
+| | `github:release`, `github:release=TAGS` | A new release or tag is published, or one whose tag matches `TAGS`, a pattern such as `v*`. |
 | Agent | `agent:finished`, `agent:needs-you`, `agent:finished,needs-you` | An agent finishes, or needs you. Add `@GROUP` or `@PANE` for one Group or pane. |
 | Command | `exit`, `exit@GROUP`, `exit@PANE` | A pane's command exits with an error. |
 | Log | `log:REGEX@PANE` | A line in a [log pane](/hammock/docs/panes/) matches. It ignores case unless the pattern has a capital. |
@@ -97,7 +99,7 @@ A trigger starts a run when something happens, as well as at the automation's ti
 | Calendar | `calendar:MINUTES[,title=TEXT][,calendar=NAME][,attendees]` | Minutes before an event whose title contains the text, in that calendar, with other people. Mac only. |
 | Webhook | `webhook` | Its [webhook](#webhooks) is called. |
 
-GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s) with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Nothing that's already so when you add a trigger starts a run. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
+GitHub triggers watch the folder's GitHub repository (`gh repo set-default`'s, else the `upstream` remote's, else `origin`'s), or another one named after `@` (`github:release=v*@acme/widgets`, or **Repository** in the app), with the [GitHub CLI](https://cli.github.com), every couple of minutes, so install `gh` and run `gh auth login` first. Calendar triggers read your calendars in the Hammock app, which asks for access the first time; runs still start while the app is closed, for events it has already read. Nothing that's already so when you add a trigger starts a run. What happens in an automation's run, or in panes a run opened, never triggers an automation, so automations can't set each other off in a loop.
 
 ### What the run gets
 
@@ -134,7 +136,7 @@ What a trigger passes on is written by other people: a pull request's title, a c
 
 ### Bursts
 
-Runs started by triggers are at least a minute apart, or the automation's **At most every** (which can be no limit). Events in between wait, and start one run together, which gets all of them. When the automation skips runs while one is going, they wait for it to end instead.
+Runs started by triggers are at least a minute apart, or the automation's **At most every**: up to a month, or no limit. Events in between wait, and start one run together, which gets all of them. When the automation skips runs while one is going, they wait for it to end instead.
 
 ### Webhooks
 

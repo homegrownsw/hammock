@@ -200,7 +200,8 @@ object ScheduleWords {
         return when (t.kindCase) {
             EventTrigger.KindCase.GITHUB -> {
                 val g = t.github
-                val repo = if (g.repo.isEmpty()) "" else " (${g.repo})"
+                val name = g.repo.ifEmpty { g.watch }
+                val repo = if (name.isEmpty()) "" else " ($name)"
                 when (g.event) {
                     GitHubTrigger.Event.EVENT_CI_FAILED -> "CI fails on my pull request or branch"
                     GitHubTrigger.Event.EVENT_REVIEW_REQUESTED -> "My review is requested"
@@ -208,6 +209,8 @@ object ScheduleWords {
                     GitHubTrigger.Event.EVENT_LABELED -> "An issue or pull request is labelled “${g.label}”"
                     GitHubTrigger.Event.EVENT_ASSIGNED -> "An issue or pull request is assigned to me"
                     GitHubTrigger.Event.EVENT_MERGED -> "My pull request is merged"
+                    GitHubTrigger.Event.EVENT_COMMIT -> "A new commit on " + g.branch.ifEmpty { "the default branch" }
+                    GitHubTrigger.Event.EVENT_RELEASE -> if (g.tags.isEmpty()) "A new release or tag" else "A new release or tag matching ${g.tags}"
                     else -> "GitHub"
                 } + repo
             }
@@ -651,7 +654,7 @@ fun ScheduleScreen(model: AppModel, id: String, nav: Nav, showBack: Boolean) {
                         }
                         CardDivider()
                         val cd = if (s.hasCooldownSeconds()) maxOf(s.cooldownSeconds, 0) else 60
-                        Detail("Cooldown", if (cd == 0) "None" else if (cd % 60 == 0) "${cd / 60} min" else "$cd s")
+                        Detail("Cooldown", cooldownText(cd))
                     }
                 }
                 SectionHeader("Runs")
@@ -706,5 +709,19 @@ private fun Detail(label: String, value: String, mono: Boolean = false) {
             Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/** A cooldown in words: "None", "30 s", "5 min", "1 hour", "1 day", "1 week", "1 month". */
+internal fun cooldownText(cd: Int): String {
+    fun n(v: Int, unit: String) = if (v == 1) "1 $unit" else "$v ${unit}s"
+    return when {
+        cd <= 0 -> "None"
+        cd % 2_592_000 == 0 -> n(cd / 2_592_000, "month")
+        cd % 604_800 == 0 -> n(cd / 604_800, "week")
+        cd % 86_400 == 0 -> n(cd / 86_400, "day")
+        cd % 3600 == 0 -> n(cd / 3600, "hour")
+        cd % 60 == 0 -> "${cd / 60} min"
+        else -> "$cd s"
     }
 }

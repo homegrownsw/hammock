@@ -309,10 +309,13 @@ extension Schedule {
     /// Seconds between its triggered runs (the daemon's default for 0).
     public var cooldown: Int { hasCooldownSeconds ? max(Int(cooldownSeconds), 0) : 60 }
 
-    /// A cooldown in words: "1 minute", "5 minutes", "1 hour", "None".
+    /// A cooldown in words: "1 minute", "5 minutes", "1 hour", "1 week", "None".
     public static func cooldownWords(_ s: Int) -> String {
         switch s {
         case ...0: "None"
+        case let s where s % 2_592_000 == 0: s == 2_592_000 ? "1 month" : "\(s / 2_592_000) months"
+        case let s where s % 604_800 == 0: s == 604_800 ? "1 week" : "\(s / 604_800) weeks"
+        case let s where s % 86_400 == 0: s == 86_400 ? "1 day" : "\(s / 86_400) days"
         case let s where s % 3600 == 0: s == 3600 ? "1 hour" : "\(s / 3600) hours"
         case let s where s % 60 == 0: s == 60 ? "1 minute" : "\(s / 60) minutes"
         default: "\(s) seconds"
@@ -422,7 +425,8 @@ extension EventTrigger {
         }
         switch kind {
         case .github(let g):
-            let repo = g.repo.isEmpty ? "" : " (\(g.repo))"
+            let name = g.repo.isEmpty ? g.watch : g.repo
+            let repo = name.isEmpty ? "" : " (\(name))"
             switch g.event {
             case .ciFailed: return "CI fails on my pull request or branch" + repo
             case .reviewRequested: return "My review is requested" + repo
@@ -430,6 +434,8 @@ extension EventTrigger {
             case .labeled: return "An issue or pull request is labelled “\(g.label)”" + repo
             case .assigned: return "An issue or pull request is assigned to me" + repo
             case .merged: return "My pull request is merged" + repo
+            case .commit: return "A new commit on " + (g.branch.isEmpty ? "the default branch" : g.branch) + repo
+            case .release: return (g.tags.isEmpty ? "A new release or tag" : "A new release or tag matching \(g.tags)") + repo
             default: return "GitHub" + repo
             }
         case .agent(let a):
