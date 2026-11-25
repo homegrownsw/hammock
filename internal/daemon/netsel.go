@@ -445,7 +445,7 @@ func (d *Daemon) syncListeners(want []string) {
 	// in on a network no longer chosen goes now too.
 	for c := range d.conns {
 		if c.remote && c.localAt != "" && slices.Contains(gone, c.localAt) {
-			c.cancel()
+			c.drop("the network it came in on is no longer listened on (" + c.localAt + ")")
 		}
 	}
 	var added []string

@@ -44,8 +44,7 @@ func currentLinkTimings() linkTimings {
 // silent.
 func (c *conn) keepAlive(ws *websocket.Conn) {
 	if c.live.Run(c.ctx, c.d.linkT.every, c.d.linkT.within, ws.Ping) != nil {
-		c.d.log.Info("remote client stopped answering: dropped", "kind", c.kindName(), "from", c.srcIP)
-		c.cancel()
+		c.drop("it stopped answering pings")
 	}
 }
 

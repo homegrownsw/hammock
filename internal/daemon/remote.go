@@ -599,7 +599,7 @@ func (d *Daemon) stopRemote() {
 	go d.media.stopListening()
 	for c := range d.conns {
 		if c.remote {
-			c.cancel()
+			c.drop("remote access was turned off")
 		}
 	}
 }
@@ -664,7 +664,7 @@ func (d *Daemon) handleRemoteWS(w http.ResponseWriter, r *http.Request) {
 			authed := c.authed
 			d.mu.Unlock()
 			if !authed {
-				c.cancel()
+				c.drop("it didn't sign in in time")
 			}
 		})
 		c.send(&pb.ServerMessage{Msg: &pb.ServerMessage_AuthChallenge{AuthChallenge: &pb.AuthChallenge{Nonce: nonce}}})
@@ -865,7 +865,7 @@ func (d *Daemon) revokeDevice(id string) error {
 	d.publishComputers() // (its phones: Computer.push_phones)
 	for c := range d.conns {
 		if c.deviceID == id {
-			c.cancel()
+			c.drop("its device was forgotten")
 		}
 	}
 	d.audit("user", "device-revoked", id, name)
@@ -894,7 +894,7 @@ func (d *Daemon) restartRemote(actor string) error {
 	d.media.stopAddrs(old)
 	for c := range d.conns {
 		if c.remote {
-			c.cancel()
+			c.drop("remote access restarted")
 		}
 	}
 	var want []string

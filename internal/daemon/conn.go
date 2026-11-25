@@ -115,8 +115,10 @@ type conn struct {
 	// written (taken).
 	queuedBytes atomic.Int64
 
-	once   sync.Once
-	hangUp atomic.Bool // close once the message being handled is answered
+	once sync.Once
+	// Why it was dropped (drop), for the log when a remote client goes.
+	dropped atomic.Pointer[string]
+	hangUp  atomic.Bool // close once the message being handled is answered
 
 	// A remote client's liveness (liveness.go): when it was last heard
 	// from; set before it's served. busy: the read loop is handling a
@@ -187,8 +189,14 @@ func (c *conn) enqueue(msg *pb.ServerMessage) {
 	select {
 	case c.out <- msg:
 	default:
-		c.cancel()
+		c.drop("fell behind: its send queue is full")
 	}
+}
+
+// drop ends c, saying why (the first reason given is kept).
+func (c *conn) drop(why string) {
+	c.dropped.CompareAndSwap(nil, &why)
+	c.cancel()
 }
 
 // queuedOutput is a pane's output message waiting in a conn's queue.
@@ -316,7 +324,7 @@ func (c *conn) writeLoop() {
 			}
 			cancel()
 			if err != nil {
-				c.cancel()
+				c.drop("couldn't write to it: " + err.Error())
 				return
 			}
 			if c.hasLag.Load() && len(c.out) <= lagLow && c.queuedBytes.Load() <= lagBytes/8 {
@@ -331,6 +339,9 @@ func (c *conn) readLoop() {
 		c.busy.Store(false)
 		b, err := c.t.Read(c.ctx)
 		if err != nil {
+			if c.ctx.Err() == nil {
+				c.drop("its connection ended: " + err.Error())
+			}
 			return
 		}
 		c.busy.Store(true)
@@ -407,6 +418,13 @@ func (c *conn) replyErr(id uint64, err error) {
 func (c *conn) close() {
 	c.once.Do(func() {
 		c.cancel()
+		if c.remote {
+			why := "dropped"
+			if w := c.dropped.Load(); w != nil {
+				why = *w
+			}
+			c.d.log.Info("remote client gone", "kind", c.kind, "name", c.name, "why", why)
+		}
 		for _, p := range c.attached {
 			p.detach(c)
 		}
