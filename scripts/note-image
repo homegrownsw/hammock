@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Frames a screenshot for a release note (release-notes/README.md): the screenshot on the site's green, under a
+# Frames a screenshot for a release note (release-notes/README.md): the screenshot on the site's green, beside (or under) a
 # title and a line about it (marketing/note-image.html), rendered by headless Chrome to a PNG.
 #
-#   scripts/note-image SHOT --title "Automations" [--text "What it does, in a line."] [--kicker "New in Hammock"] [-o OUT]
+#   scripts/note-image SHOT --title "Automations" [--text "What it does, in a line."] [--layout side|stacked] [-o OUT]
 #
-# OUT defaults to SHOT's name with -framed.png. `just note … --image SHOT --title …` runs it for you. A GIF
+# OUT defaults to SHOT's name with -framed.png. `just note … --image SHOT --frame TITLE` runs it for you. A GIF
 # can't be framed (it would lose its frames): give a GIF to `just note` as it is.
 set -euo pipefail
 
@@ -12,22 +12,23 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 
 usage() {
-  echo 'usage: scripts/note-image SHOT --title TITLE [--text TEXT] [--kicker KICKER] [-o OUT]' >&2
+  echo 'usage: scripts/note-image SHOT --title TITLE [--text TEXT] [--layout side|stacked] [-o OUT]' >&2
   exit 2
 }
 
-shot="" title="" text="" kicker="" out=""
+shot="" title="" text="" layout="" out=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --title) [ "$#" -ge 2 ] || usage; title="$2"; shift 2 ;;
     --text) [ "$#" -ge 2 ] || usage; text="$2"; shift 2 ;;
-    --kicker) [ "$#" -ge 2 ] || usage; kicker="$2"; shift 2 ;;
+    --layout) [ "$#" -ge 2 ] || usage; layout="$2"; shift 2 ;;
     -o | --out) [ "$#" -ge 2 ] || usage; out="$2"; shift 2 ;;
     -*) usage ;;
     *) [ -z "$shot" ] || usage; shot="$1"; shift ;;
   esac
 done
 [ -n "$shot" ] && [ -n "$title" ] || usage
+case "$layout" in "" | side | stacked) ;; *) echo "--layout is side or stacked (left out, it's chosen by the screenshot's shape)." >&2; exit 2 ;; esac
 [ -f "$shot" ] || { echo "No screenshot at $shot." >&2; exit 2; }
 case "$(printf '%s' "${shot##*.}" | tr '[:upper:]' '[:lower:]')" in
   png | jpg | jpeg) ;;
@@ -40,8 +41,8 @@ shot="$(cd "$(dirname "$shot")" && pwd)/$(basename "$shot")"
 [ -n "$out" ] || out="${shot%.*}-framed.png"
 case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
 
-query=$(jq -rn --arg img "file://$shot" --arg title "$title" --arg text "$text" --arg kicker "$kicker" \
-  '[{img:$img, title:$title, text:$text, kicker:$kicker} | to_entries[] | select(.value != "") | "\(.key)=\(.value|@uri)"] | join("&")')
+query=$(jq -rn --arg img "file://$shot" --arg title "$title" --arg text "$text" --arg layout "$layout" \
+  '[{img:$img, title:$title, text:$text, layout:$layout} | to_entries[] | select(.value != "") | "\(.key)=\(.value|@uri)"] | join("&")')
 
 # 1.5× keeps a Retina screenshot about as sharp as it was; 1× if that's over the notes' 5 MB.
 for scale in 1.5 1; do

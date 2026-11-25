@@ -50,7 +50,7 @@ Open a tab, Group or pane in a window of its own.
 
 `just note … --image <file> --alt "…"` copies it in and writes the line. A screenshot (not a GIF) is best framed:
 with `--frame "Automations" --frame-text "Run an agent or a command on a schedule, or when something happens."`,
-it goes in as a 16:10 picture of the screenshot on the site's green, under the feature's name and that line
+it goes in as a 16:10 picture: the feature's name and that line beside the screenshot (above it, for one more than twice as wide as it's tall), on the site's green
 (`marketing/note-image.html`, rendered by headless Chrome). `just note-image shot.png --title … --text …` makes
 one on its own, to look at first or to redo a note's picture. Sparkle and the GitHub Release load it
 from the release's tag on GitHub (raw.githubusercontent.com), so it's in the repo for good: keep it small, and

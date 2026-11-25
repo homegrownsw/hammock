@@ -37,7 +37,7 @@ usage: scripts/note <mac|ios|android|both|phones|all> <tag> [issue] <text…>
   --image FILE  a screenshot or short GIF (.png, .jpg or .gif, up to 5 MB) shown under a NEW or FIXED note
                 in Sparkle's window, the GitHub Release and the docs' What's new. Only for a big, visual
                 feature. Needs --alt TEXT, what it shows.
-  --frame TITLE        a screenshot (.png or .jpg) framed on the site's green, under TITLE, the feature's
+  --frame TITLE        a screenshot (.png or .jpg) framed on the site's green, beside TITLE, the feature's
   --frame-text TEXT    name, and TEXT, a line about it (scripts/note-image). The usual way to show one.
 
 With no tag or text it prompts with gum.
