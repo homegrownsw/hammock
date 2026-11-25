@@ -277,6 +277,7 @@ public final class MediaStream: @unchecked Sendable {
     public func stop() {
         queue.async {
             guard !self.stopped else { return }
+            Self.log.notice("\(self.paneID, privacy: .public) \(self.sessionID, privacy: .public): stopped")
             self.stopped = true
             self.watchdog?.cancel()
             self.watchdog = nil

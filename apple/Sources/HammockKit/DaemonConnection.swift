@@ -688,6 +688,13 @@ extension DaemonConnection {
             if let error { return self.receiveFailed(error) }
             self.lastHeard = Date()
             let meta = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
+            // A ping or pong is complete with no data: heard from, not
+            // closed. (Taken for a close, the pong answering checkAlive,
+            // asked as the app came back to the front, dropped the link,
+            // and with it every screen and page being watched.)
+            if meta?.opcode == .ping || meta?.opcode == .pong {
+                return self.receiveWS()
+            }
             if meta?.opcode == .close || (isComplete && data == nil) {
                 return self.receiveFailed(DaemonError.closed)
             }
