@@ -64,6 +64,7 @@ struct LinkStatusTests {
         #expect(LinkStatus.reason(for: NWError.posix(.ETIMEDOUT)) == "It didn't answer.")
         #expect(LinkStatus.reason(for: NWError.posix(.ECONNREFUSED)) == "Hammock isn't running there, or remote access is off.")
         #expect(LinkStatus.reason(for: NWError.posix(.EHOSTUNREACH)) == nil)
+        #expect(LinkStatus.reason(for: NWError.posix(.ENETDOWN)) == "It isn't reachable from this network.")
         #expect(LinkStatus.reason(for: DaemonError.server("No address for this Mac can be reached from this network."))
                 == "No address for this Mac can be reached from this network.")
         #expect(LinkStatus.reason(for: DaemonError.server("Bad challenge")) == "Bad challenge.")

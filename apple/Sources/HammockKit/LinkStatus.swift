@@ -76,7 +76,7 @@ public enum LinkStatus: Equatable, Sendable {
                 switch code {
                 case .ETIMEDOUT: return "It didn't answer."
                 case .ECONNREFUSED: return "Hammock isn't running there, or remote access is off."
-                case .ENETDOWN: return "This iPhone isn't on a network."
+                case .ENETDOWN: return "It isn't reachable from this network."
                 case .EHOSTUNREACH, .ENETUNREACH, .EHOSTDOWN, .ECONNRESET, .ECONNABORTED, .ENOTCONN, .EPIPE: return nil
                 default: return nil
                 }
