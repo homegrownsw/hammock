@@ -414,9 +414,11 @@ docs-dev: docs-gen
 docs-comments:
     @[ -s site/.comments.jsonl ] && jq -r 'select(.status == "open") | "[\(.id)] \(.source) \(.context)\n  page:    \(.page)\n  passage: \(.quote | gsub("\n"; " ") | .[0:300])\n  comment: \(.comment)\n"' site/.comments.jsonl || echo "No comments."
 
-# The release scripts' tests: notes, the check, and cutting releases against a throwaway repo.
+# The release scripts' tests: notes, the check, and cutting releases against a throwaway repo; then the
+# GitHub Release uploads against a stand-in gh that fails like GitHub does.
 test-release:
     scripts/tests/release
+    scripts/tests/gh-release
 
 # Dev build "Hammock β" with its own daemon and state, for working on
 # Hammock without touching the prod app you use day to day. In a worktree it's

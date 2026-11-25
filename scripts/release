@@ -631,6 +631,8 @@ else
   rm -f "$RELEASE_LOCK"
 
   # Pushed, so from here nothing fails the release: an upload that doesn't go through says how to retry.
+  # The Mac's and Android's retries are safe to run as often as it takes: they send only the files their
+  # GitHub Release doesn't have whole yet (scripts/lib/gh-release.sh).
   if has mac; then
     if "$MAC_UPDATE" upload "$N"; then
       UPLOAD_RESULT="uploaded; installed copies will be offered it"

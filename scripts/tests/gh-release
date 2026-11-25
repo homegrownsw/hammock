@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# Tests for scripts/lib/gh-release.sh, the GitHub Release calls scripts/mac-update and scripts/android-apk
+# make: `just test-release` runs them after scripts/tests/release.
+#
+# A stand-in gh on PATH keeps each release as a JSON file and fails the calls it's told to, the ways GitHub
+# does: a 5xx before anything happened, a 5xx after the file landed, an asset left half made, or a copy that
+# isn't the file. The uploads must end with every file up whole, without sending one that already is, and
+# give up cleanly when GitHub never comes back. Then scripts/android-apk and scripts/mac-update upload run
+# against it, from a throwaway repo, twice.
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+REPO="$PWD"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+# The stand-in. State in $GH_STATE: releases/<tag>.json ({tagName, isDraft, isLatest, body, assets: [{name,
+# state, digest, size}]}), every call in calls ("<sub> <tag> [<asset>]"), and faults: lines of
+# "<call> <fault> [keep]", where <call> is view, create, edit, delete-asset or upload:<name>. A call takes
+# the first line for it (and removes it, unless keep). Faults:
+#   fail500   HTTP 500, and nothing done        fail422   HTTP 422 (not one to retry), nothing done
+#   land502   done, then HTTP 502                stuck     upload left in state "starter", then HTTP 502
+#   corrupt   uploaded, but with another digest  nodigest  uploaded with no digest (an old asset)
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+S="$GH_STATE"
+[ "$1" = release ] || { echo "fake gh: only release, not $*" >&2; exit 2; }
+sub="$2" tag="$3"
+shift 3
+q="" notes="" draft="" latest="" pos=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo|--json|--title|--pattern|--dir|--limit) shift 2 ;;
+    -q) q="$2"; shift 2 ;;
+    --notes-file) notes="$2"; shift 2 ;;
+    --draft) draft=true; shift ;;
+    --draft=*) draft="${1#--draft=}"; shift ;;
+    --latest) latest=true; shift ;;
+    --latest=*) latest="${1#--latest=}"; shift ;;
+    -*) shift ;;
+    *) pos+=("$1"); shift ;;
+  esac
+done
+key="$sub"
+[ "$sub" != upload ] || key="upload:$(basename "${pos[0]}")"
+echo "$sub $tag ${pos[0]:-}" | sed 's/ $//' >>"$S/calls"
+fault=""
+if [ -f "$S/faults" ]; then
+  line="$(awk -v k="$key" '$1 == k { print NR " " $2 " " ($3 == "" ? "-" : $3); exit }' "$S/faults")"
+  if [ -n "$line" ]; then
+    read -r nr fault keep <<<"$line"
+    [ "$keep" = keep ] || { awk -v n="$nr" 'NR != n' "$S/faults" >"$S/faults.new"; mv "$S/faults.new" "$S/faults"; }
+  fi
+fi
+case "$fault" in
+  fail500) echo "HTTP 500: 500 Internal Server Error (https://api.github.com/repos/acme/widgets/releases)" >&2; exit 1 ;;
+  fail422) echo "HTTP 422: Validation Failed (https://api.github.com/repos/acme/widgets/releases)" >&2; exit 1 ;;
+esac
+r="$S/releases/$tag.json"
+save() { jq "$@" "$r" >"$r.new" && mv "$r.new" "$r"; }
+case "$sub" in
+  view)
+    [ -f "$r" ] || { echo "release not found" >&2; exit 1; }
+    if [ -n "$q" ]; then jq -r "$q" "$r"; else jq -c . "$r"; fi ;;
+  create)
+    body=""; [ -z "$notes" ] || body="$(cat "$notes")"
+    mkdir -p "$S/releases"
+    jq -n --arg t "$tag" --arg b "$body" --argjson d "${draft:-false}" \
+      '{tagName: $t, isDraft: $d, isLatest: false, body: $b, assets: []}' >"$r" ;;
+  edit)
+    [ -f "$r" ] || { echo "release not found" >&2; exit 1; }
+    [ -z "$draft" ] || save --argjson d "$draft" '.isDraft = $d'
+    [ -z "$latest" ] || save --argjson l "$latest" '.isLatest = $l'
+    [ -z "$notes" ] || save --arg b "$(cat "$notes")" '.body = $b' ;;
+  delete-asset)
+    save --arg n "${pos[0]}" '.assets |= map(select(.name != $n))' ;;
+  upload)
+    f="${pos[0]}" name="$(basename "${pos[0]}")"
+    if jq -e --arg n "$name" '.assets | any(.name == $n)' "$r" >/dev/null; then
+      echo "asset under the same name already exists: [$name]" >&2; exit 1
+    fi
+    state=uploaded digest="sha256:$(shasum -a 256 "$f" | cut -d' ' -f1)"
+    case "$fault" in stuck) state=starter ;; corrupt) digest="sha256:0000" ;; nodigest) digest="" ;; esac
+    save --arg n "$name" --arg s "$state" --arg d "$digest" --argjson z "$(wc -c <"$f" | tr -d ' ')" \
+      '.assets += [{name: $n, state: $s, digest: (if $d == "" then null else $d end), size: $z}]' ;;
+  *) echo "fake gh: no $sub" >&2; exit 2 ;;
+esac
+case "$fault" in
+  land502|stuck) echo "HTTP 502: Error creating policy (https://uploads.github.com/repos/acme/widgets/releases/1/assets)" >&2; exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$tmp/bin/gh"
+export PATH="$tmp/bin:$PATH"
+export HMK_GH_RETRY_DELAY=0 HMK_GH_ATTEMPTS=4
+
+pass=0
+fail=0
+check() { # check <label> <expected> <actual>
+  if [ "$2" = "$3" ]; then
+    echo "  ok   $1"
+    pass=$((pass + 1))
+  else
+    echo "  FAIL $1: expected '$2', got '$3'"
+    fail=$((fail + 1))
+  fi
+}
+
+# A fresh GitHub: no releases, no calls, no faults.
+fresh() { export GH_STATE="$tmp/gh-$RANDOM$RANDOM"; mkdir -p "$GH_STATE/releases"; }
+faults() { printf '%s\n' "$@" >>"$GH_STATE/faults"; }
+calls() { cat "$GH_STATE/calls" 2>/dev/null || true; rm -f "$GH_STATE/calls"; }
+uploads() { calls | { grep -c '^upload ' || true; }; }
+# Every asset of a release that's whole: uploaded, with the local file's digest (or its size, with none).
+whole() { # whole <tag> <file…>
+  local t="$1" f ok=yes
+  shift
+  for f in "$@"; do
+    jq -e --arg n "$(basename "$f")" --arg d "sha256:$(shasum -a 256 "$f" | cut -d' ' -f1)" --argjson z "$(wc -c <"$f" | tr -d ' ')" \
+      '[.assets[] | select(.name == $n and .state == "uploaded" and (.digest == $d or (.digest == null and .size == $z)))] | length == 1' \
+      "$GH_STATE/releases/$t.json" >/dev/null || ok=no
+  done
+  echo "$ok"
+}
+# The helpers, in a subshell as the scripts use them (set -e), printing ok or failed and leaving stderr in
+# $tmp/err.
+run() { if (set -euo pipefail; . "$REPO/scripts/lib/gh-release.sh"; "$@") >/dev/null 2>"$tmp/err"; then echo ok; else echo failed; fi; }
+
+mkdir -p "$tmp/files"
+for f in a.zip b.dmg c.xml; do head -c 2000 /dev/urandom >"$tmp/files/$f"; done
+files=("$tmp/files/a.zip" "$tmp/files/b.dmg" "$tmp/files/c.xml")
+T=Mac-v1.0.0-r5
+
+echo "uploads:"
+fresh
+check "a new draft, then each file" ok "$(run gh_release_ensure acme/widgets $T --draft --title x)"
+check "…a draft" true "$(jq .isDraft "$GH_STATE/releases/$T.json")"
+calls >/dev/null
+check "every file goes up" ok "$(run gh_release_upload acme/widgets $T "${files[@]}")"
+check "…whole" yes "$(whole $T "${files[@]}")"
+check "…once each" 3 "$(uploads)"
+check "again, nothing's sent" "ok 0" "$(run gh_release_upload acme/widgets $T "${files[@]}") $(uploads)"
+check "the release is there" ok "$(run gh_release_ensure acme/widgets $T --draft)"
+check "…so it isn't made again" "view $T" "$(calls)"
+
+fresh
+run gh_release_ensure acme/widgets $T --draft >/dev/null
+faults "upload:b.dmg land502"
+calls >/dev/null
+check "a 502 after the file landed" ok "$(run gh_release_upload acme/widgets $T "${files[@]}")"
+check "…counts it as up, not sent again" "3 yes" "$(uploads) $(whole $T "${files[@]}")"
+
+fresh
+run gh_release_ensure acme/widgets $T --draft >/dev/null
+faults "upload:a.zip fail500" "upload:a.zip fail500" "view fail500"
+calls >/dev/null
+check "500s before the file landed, and on reading the release" ok "$(run gh_release_upload acme/widgets $T "${files[@]}")"
+check "…sends it again until it's up" "5 yes" "$(uploads) $(whole $T "${files[@]}")"
+
+fresh
+run gh_release_ensure acme/widgets $T --draft >/dev/null
+faults "upload:c.xml stuck" "upload:b.dmg corrupt"
+calls >/dev/null
+check "a half-made asset, and one that isn't the file" ok "$(run gh_release_upload acme/widgets $T "${files[@]}")"
+check "…each deleted and sent again" "2 yes" "$(calls | grep -c '^delete-asset ') $(whole $T "${files[@]}")"
+
+fresh
+run gh_release_ensure acme/widgets $T --draft >/dev/null
+faults "upload:a.zip nodigest"
+run gh_release_upload acme/widgets $T "${files[@]}" >/dev/null
+calls >/dev/null
+check "an asset with no digest, of the file's size, is up" "ok 0" "$(run gh_release_upload acme/widgets $T "${files[@]}") $(uploads)"
+head -c 10 /dev/urandom >>"$tmp/files/a.zip"
+check "…one of another size is replaced" ok "$(run gh_release_upload acme/widgets $T "${files[@]}")"
+check "…by the file" "1 yes" "$(uploads) $(whole $T "${files[@]}")"
+head -c 10 /dev/urandom >>"$tmp/files/c.xml"
+check "a file that changed since is replaced (its digest)" "ok yes" "$(run gh_release_upload acme/widgets $T "${files[@]}") $(whole $T "${files[@]}")"
+calls >/dev/null
+
+fresh
+run gh_release_ensure acme/widgets $T --draft >/dev/null
+faults "upload:b.dmg fail500 keep"
+calls >/dev/null
+check "GitHub never comes back: it gives up" failed "$(run gh_release_upload acme/widgets $T "${files[@]}")"
+check "…after HMK_GH_ATTEMPTS tries" 4 "$(calls | grep -c '^upload .*b.dmg')"
+check "…naming what's missing" "yes no" \
+  "$(grep -qx '  b.dmg' "$tmp/err" && echo yes || echo no) $(grep -qx '  a.zip' "$tmp/err" && echo yes || echo no)"
+check "…with the rest up" yes "$(whole $T "$tmp/files/a.zip" "$tmp/files/c.xml")"
+rm "$GH_STATE/faults"
+check "run again, it sends only what's missing" "ok 1" "$(run gh_release_upload acme/widgets $T "${files[@]}") $(uploads)"
+
+echo "the other calls:"
+fresh
+exists() { (. scripts/lib/gh-release.sh; rc=0; gh_release_exists acme/widgets "$1" 2>"$tmp/err" || rc=$?; echo $rc); }
+check "no release" 1 "$(exists $T)"
+run gh_release_ensure acme/widgets $T --draft >/dev/null
+faults "view fail500" "view fail500"
+calls >/dev/null
+check "a release behind two 500s is there" 0 "$(exists $T)"
+check "…asked three times" 3 "$(calls | grep -c '^view ')"
+faults "view fail500 keep"
+check "GitHub never says: neither there nor not" 2 "$(exists $T)"
+check "…after HMK_GH_ATTEMPTS tries" 4 "$(calls | grep -c '^view ')"
+rm "$GH_STATE/faults"
+faults "view fail422"
+check "a 4xx isn't tried again" "2 1" "$(exists $T) $(calls | grep -c '^view ')"
+
+fresh
+faults "create land502"
+check "a create that fails after it made the release" ok "$(run gh_release_ensure acme/widgets $T --draft)"
+check "…isn't made twice" 1 "$(calls | grep -c '^create ')"
+fresh
+faults "create fail500"
+check "a create that failed is tried again" "ok 2" "$(run gh_release_ensure acme/widgets $T --draft) $(calls | grep -c '^create ')"
+
+faults "edit fail500" "edit land502"
+check "an edit behind 5xx goes through" "ok false" "$(run gh_retry release edit $T --repo acme/widgets --draft=false) $(jq .isDraft "$GH_STATE/releases/$T.json")"
+faults "edit fail422"
+calls >/dev/null
+check "…one refused (422) isn't tried again" "failed 1" "$(run gh_retry release edit $T --repo acme/widgets --draft=false) $(calls | grep -c '^edit ')"
+
+echo "scripts/android-apk and scripts/mac-update upload:"
+d="$tmp/repo"
+mkdir -p "$d/scripts/lib" "$d/dist/android" "$d/dist/releases" "$d/dist/release-dmgs"
+cp "$REPO"/scripts/{android-apk,mac-update} "$d/scripts/"
+cp "$REPO/scripts/lib/gh-release.sh" "$d/scripts/lib/"
+git -C "$d" init -q -b main
+git -C "$d" -c user.email=t@example.com -c user.name=Test commit -q --allow-empty -m initial
+git -C "$d" tag Mac-v1.0.0-r5
+git -C "$d" tag Android-v1.0.0-r5
+head -c 3000 /dev/urandom >"$d/dist/android/Hammock-1.0.0.apk"
+echo '<p>Android things.</p>' >"$d/dist/android/Hammock-5.html"
+head -c 3000 /dev/urandom >"$d/dist/releases/Hammock-5.zip"
+head -c 3000 /dev/urandom >"$d/dist/releases/Hammock5-4.delta"
+echo '<rss/>' >"$d/dist/releases/appcast.xml"
+echo '<p>Mac things.</p>' >"$d/dist/releases/Hammock-5.html"
+head -c 3000 /dev/urandom >"$d/dist/release-dmgs/Hammock-5.dmg"
+fresh
+# The Mac's own repo setting, and no dSYM backup.
+export HMK_RELEASE_REPO=acme/widgets
+unset HMK_DSYM_REMOTE
+mac() { if "$d/scripts/mac-update" upload 5 >/dev/null 2>"$tmp/err"; then echo ok; else echo failed; fi; }
+android() { if "$d/scripts/android-apk" upload 5 >/dev/null 2>"$tmp/err"; then echo ok; else echo failed; fi; }
+faults "upload:Hammock.dmg fail500 keep" "upload:Hammock-5.zip land502"
+check "the Mac's upload fails while GitHub does" failed "$(mac)"
+check "…and the release stays a draft" true "$(jq .isDraft "$GH_STATE/releases/Mac-v1.0.0-r5.json")"
+check "…the file that landed isn't sent again" 1 "$(calls | grep -c '^upload .*Hammock-5.zip')"
+rm "$GH_STATE/faults"
+check "its retry publishes it" ok "$(mac)"
+check "…sending only what was missing" "upload Mac-v1.0.0-r5 Hammock.dmg" "$(calls | grep '^upload ' | sed 's|/.*/||')"
+check "…as Latest" "false true" "$(jq -r '"\(.isDraft) \(.isLatest)"' "$GH_STATE/releases/Mac-v1.0.0-r5.json")"
+check "…every file there" "Hammock-5.zip Hammock.dmg Hammock.zip Hammock5-4.delta appcast.xml" \
+  "$(jq -r '[.assets[].name] | sort | join(" ")' "$GH_STATE/releases/Mac-v1.0.0-r5.json")"
+faults "edit fail500" "view fail500"
+check "the APK goes on the Mac's release, through 500s" ok "$(android)"
+check "…with an Android section in its notes" 1 "$(jq -r .body "$GH_STATE/releases/Mac-v1.0.0-r5.json" | grep -c '<!-- android -->')"
+check "…and no release of its own" no "$([ -e "$GH_STATE/releases/Android-v1.0.0-r5.json" ] && echo yes || echo no)"
+calls >/dev/null
+check "again: nothing sent, the notes not added twice" "ok 0 1" \
+  "$(android) $(uploads) $(jq -r .body "$GH_STATE/releases/Mac-v1.0.0-r5.json" | grep -c '<!-- android -->')"
+rm "$GH_STATE/releases/Mac-v1.0.0-r5.json"
+faults "upload:Hammock-1.0.0.apk land502"
+check "without the Mac's, a release of its own" ok "$(android)"
+check "…published, not Latest, with the APK once" "false false 1" \
+  "$(jq -r '"\(.isDraft) \(.isLatest) \(.assets | length)"' "$GH_STATE/releases/Android-v1.0.0-r5.json")"
+faults "view fail500 keep"
+check "when GitHub can't say whether the Mac's is there, it stops" failed "$(android)"
+rm "$GH_STATE/faults"
+
+echo
+echo "$pass passed, $fail failed"
+[ "$fail" -eq 0 ]

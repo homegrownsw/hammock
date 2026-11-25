@@ -173,8 +173,10 @@ Before 2026.1.0 the version was `0.x.y`, one for both apps, and a version had se
    and nothing is published.
 7. **Pushes** `main` and the tags in one atomic push. If it's rejected, everything is taken back as in 6.
 8. **Uploads the Mac update** (`scripts/mac-update upload <n>`): the zip and deltas, then the appcast, to
-   the update server. Installed copies are offered it at their next daily check. A failed upload doesn't
-   undo the release; it says how to retry.
+   the update server. Installed copies are offered it at their next daily check. GitHub's 5xx are retried,
+   and a file counts as up once the release lists it whole (its SHA-256), not by the upload's answer
+   (`scripts/lib/gh-release.sh`). A failed upload doesn't undo the release; it says how to retry, and the
+   retry sends only what's missing (the Android upload likewise).
 9. **Uploads the iPhone's build to TestFlight** (`scripts/ios-testflight upload <n>`), with What to Test from
    the tag, and waits for App Store Connect to process it. A failed upload doesn't undo the release either.
 
@@ -240,4 +242,7 @@ archiving the Mac app in Xcode; releases are built with `just share`.
 remote (they commit, tag and push for real), with stand-ins for `scripts/mac-update` and
 `scripts/ios-testflight` so nothing is built or uploaded. It covers `just note` and `note-check`, the dry run,
 editing the notes, choosing versions, iOS, Mac and joint cuts, a failed build and a failed upload of each app,
-a rejected push, the preflight, and that every committed note is well formed.
+a rejected push, the preflight, and that every committed note is well formed. Then `scripts/tests/gh-release`
+runs the GitHub Release uploads (`scripts/lib/gh-release.sh`, and `scripts/mac-update` and
+`scripts/android-apk upload`) against a stand-in `gh` that fails as GitHub does: 5xx before and after a file
+lands, half-made assets, and never coming back.

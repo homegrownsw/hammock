@@ -4,7 +4,8 @@
 #   scripts/android-apk build <n> <notes.html>   build the Android app at HEAD (build number n, which must be
 #                                                HEAD's number on main, tagged Android-v<x.y.z>-r<n>), signed
 #                                                for release, to dist/android/Hammock-<x.y.z>.apk
-#   scripts/android-apk upload <n>               publish it as the tag's GitHub Release, with the notes
+#   scripts/android-apk upload <n>               publish it as the tag's GitHub Release, with the notes; again
+#                                                after a failure, it sends only what isn't up yet
 #   scripts/android-apk discard <n>              forget a build n that was made but never published
 #
 # The build number is the release's r<n>, main's commit count, as for the Apple apps: Android only installs
@@ -22,6 +23,8 @@ set -euo pipefail
 shopt -s nullglob
 root="$(cd "$(dirname "$0")/.." && pwd)"
 [ ! -f "$root/.release.env" ] || { set -a; . "$root/.release.env"; set +a; }
+# shellcheck source=lib/gh-release.sh
+. "$root/scripts/lib/gh-release.sh"
 repo="${HMK_RELEASE_REPO:-homegrownsw/hammock}"
 out="$root/dist/android"
 # The SHA-256 of the certificate that signs every release (the key HMK_ANDROID_KEY_ITEM names). Android
@@ -54,7 +57,8 @@ case "$cmd" in
     for v in HMK_ANDROID_KEYSTORE HMK_ANDROID_KEYSTORE_PASSWORD HMK_ANDROID_FIREBASE_JSON; do
       [ -n "${!v:-}" ] || { echo "$v isn't set (scripts/release reads it from 1Password)." >&2; exit 1; }
     done
-    ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1 || { echo "$tag is already released." >&2; exit 1; }
+    if gh_release_exists "$repo" "$tag"; then echo "$tag is already released." >&2; exit 1
+    elif [ $? -ne 1 ]; then exit 1; fi
 
     (cd "$root" && ./scripts/android-vt.sh)
     # shellcheck source=/dev/null
@@ -88,26 +92,30 @@ case "$cmd" in
     [ -f "$apk" ] && [ -f "$out/Hammock-$n.html" ] || { echo "Build $n isn't in $out: build it first." >&2; exit 1; }
     # The Mac's release of the same version, if there is one, is this one's too: the APK goes on it, and its
     # notes gain an Android section (once), its title and Latest left as they are.
+    # GitHub's 5xx are retried, and the APK counts once the release lists it whole (scripts/lib/gh-release.sh),
+    # so run again after a failure it sends only what's missing.
     home="$(git -C "$root" tag --list "Mac-v${version}-r*" | tail -1)"
-    if [ -n "$home" ] && gh release view "$home" --repo "$repo" >/dev/null 2>&1; then
-      gh release upload "$home" --repo "$repo" --clobber "$apk"
-      body="$(gh release view "$home" --repo "$repo" --json body -q .body)"
+    home_found=1
+    if [ -n "$home" ]; then
+      home_found=0
+      gh_release_exists "$repo" "$home" || home_found=$?
+      [ "$home_found" -ne 2 ] || exit 1
+    fi
+    if [ "$home_found" -eq 0 ]; then
+      gh_release_upload "$repo" "$home" "$apk"
+      body="$(gh_retry release view "$home" --repo "$repo" --json body -q .body)"
       if ! grep -qF '<!-- android -->' <<<"$body"; then
         { printf '%s\n\n<!-- android -->\n<h2>Android</h2>\n' "$body"; cat "$out/Hammock-$n.html"; } >"$out/Hammock-$n.release.html"
-        gh release edit "$home" --repo "$repo" --notes-file "$out/Hammock-$n.release.html"
+        gh_retry release edit "$home" --repo "$repo" --notes-file "$out/Hammock-$n.release.html" >/dev/null
       fi
       echo "Hammock for Android build $n: on https://github.com/$repo/releases/tag/$home"
       exit 0
     fi
     # Otherwise a release of its own: a draft until the APK is up, then published, never as Latest (above).
-    # Again after a failed upload: the draft is still there, and its file is replaced.
-    if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-      gh release upload "$tag" --repo "$repo" --clobber "$apk"
-    else
-      gh release create "$tag" --repo "$repo" --verify-tag --draft --latest=false \
-        --title "Hammock for Android $version (build $n)" --notes-file "$out/Hammock-$n.html" "$apk"
-    fi
-    gh release edit "$tag" --repo "$repo" --draft=false --latest=false
+    gh_release_ensure "$repo" "$tag" --verify-tag --draft --latest=false \
+      --title "Hammock for Android $version (build $n)" --notes-file "$out/Hammock-$n.html"
+    gh_release_upload "$repo" "$tag" "$apk"
+    gh_retry release edit "$tag" --repo "$repo" --draft=false --latest=false >/dev/null
     echo "Hammock for Android build $n: https://github.com/$repo/releases/tag/$tag"
     ;;
   discard)
