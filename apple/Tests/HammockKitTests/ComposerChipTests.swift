@@ -49,6 +49,25 @@ final class ComposerChipTests: XCTestCase {
         XCTAssertEqual(v.string, "One\n\(chip) Two")
     }
 
+    func testPastedTextKeepsNoLookOfItsOwn() {
+        let (c, v) = controller("Hi ")
+        c.insertChip(UUID())
+        let pasted = NSAttributedString(string: "failed", attributes: [
+            .backgroundColor: NSColor.red, .link: URL(string: "https://example.com")!,
+            .underlineStyle: NSUnderlineStyle.single.rawValue, .font: NSFont.boldSystemFont(ofSize: 30),
+        ])
+        v.insertText(pasted, replacementRange: v.selectedRange())
+        let st = v.textStorage!
+        XCTAssertEqual(st.string, "Hi \(chip) failed")
+        let r = (st.string as NSString).range(of: "failed")
+        let attrs = st.attributes(at: r.location, effectiveRange: nil)
+        XCTAssertNil(attrs[.backgroundColor])
+        XCTAssertNil(attrs[.link])
+        XCTAssertNil(attrs[.underlineStyle])
+        XCTAssertEqual(attrs[.font] as? NSFont, c.font)
+        XCTAssertEqual(c.doc.chips.count, 1, "the chip survives")
+    }
+
     func testMoveToEndPutsTheChipLast() {
         let (c, v) = controller("Look at this.", cursor: 0)
         c.moveToEnd()

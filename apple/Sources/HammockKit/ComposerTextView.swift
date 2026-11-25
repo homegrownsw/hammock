@@ -476,7 +476,14 @@ final class ComposerTextController: NSObject {
         let st = storage(v)
         let all = NSRange(location: 0, length: st.length)
         st.beginEditing()
-        for (k, val) in typing() { st.addAttribute(k, value: val, range: all) }
+        // Only its own look: pasted text's backgrounds, links and underlines
+        // go. It's rich text only to hold the chips.
+        let plain = typing()
+        st.enumerateAttribute(.attachment, in: all) { val, r, _ in
+            var a = plain
+            if let val { a[.attachment] = val }
+            st.setAttributes(a, range: r)
+        }
         for r in highlighted(st.string) where NSMaxRange(r) <= st.length {
             st.addAttribute(.foregroundColor, value: highlight, range: r)
         }
