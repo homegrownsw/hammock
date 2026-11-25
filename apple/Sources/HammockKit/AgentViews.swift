@@ -2291,6 +2291,14 @@ struct Composer: View {
             #endif
             if !Task.isCancelled, session.blocks.isEmpty { controller.focus() }
         }
+        #if os(macOS)
+        // The pane you're in (a tab just selected, a split clicked, the agent
+        // view switched to): its box has the keyboard, as a terminal would.
+        .task(id: session.model?.focusedPaneID == session.paneID) {
+            guard session.model?.focusedPaneID == session.paneID else { return }
+            await controller.focusWhenShown()
+        }
+        #endif
         .onChange(of: session.paneID) { old, _ in
             // What was being said stays in the pane it was said in.
             dictation.stopNow()

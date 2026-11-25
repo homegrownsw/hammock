@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
 import Quartz
+import WebKit
 typealias PlatformFont = NSFont
 typealias PlatformColor = NSColor
 #else
@@ -210,6 +211,39 @@ final class ComposerTextController: NSObject {
         if !v.isFirstResponder { v.becomeFirstResponder() }
         #endif
     }
+
+    #if os(macOS)
+    /// Takes the keyboard once the text view is in a window (a tab just
+    /// selected, the agent view just switched to), unless another text field
+    /// has it: the sidebar's search, a rename, the palette. Taken again if
+    /// the switch's settling drops it (to the window itself).
+    func focusWhenShown() async {
+        for _ in 0..<40 {
+            if Task.isCancelled { return }
+            if let v = view, let w = v.window {
+                if w.firstResponder !== v {
+                    if let t = w.firstResponder as? NSText, !(t is ComposerNSTextView) { return }
+                    if ownConversationFocused(v, in: w) { return }
+                    w.makeFirstResponder(v)
+                }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled, v.window === w else { return }
+                if w.firstResponder === w || w.firstResponder == nil { w.makeFirstResponder(v) }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+    }
+
+    /// This pane's conversation has the keyboard: it was clicked (to select
+    /// text, say), so ⌘C is its. The web view the box floats over.
+    private func ownConversationFocused(_ v: NSView, in w: NSWindow) -> Bool {
+        guard let r = w.firstResponder as? NSView,
+              let web = sequence(first: r, next: \.superview).first(where: { $0 is WKWebView }) else { return false }
+        let box = v.convert(v.bounds, to: nil)
+        return web.convert(web.bounds, to: nil).contains(NSPoint(x: box.midX, y: box.midY))
+    }
+    #endif
 
     // MARK: Dictation
 
