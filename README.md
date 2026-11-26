@@ -32,10 +32,9 @@ window: a terminal multiplexer, like tmux or Zellij, as a native app. The Mac an
 
 ## Project status
 
-Hammock is in rapid development and should be treated as **beta software**. New versions come out often, and
-features, settings and `hmk` commands can change between them. Panes live in their own processes, so a crash or
-an update doesn't end your shells and agents, but don't let Hammock be the only place something important lives.
-Bug reports are welcome (below).
+Hammock is in rapid development. New versions come out often, and features, settings and `hmk` commands can change
+between them. Panes live in their own processes, so a crash or an update doesn't end your shells and agents. Bug
+reports are welcome (below).
 
 ## Install
 
