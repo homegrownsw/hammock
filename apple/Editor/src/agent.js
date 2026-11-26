@@ -119,7 +119,7 @@ function createMd() {
   // A path in code can break after a "/", as the native text's does.
   md.renderer.rules.code_inline = (toks, i) => `<code>${esc(toks[i].content).replace(/\//g, "/<wbr>")}</code>`
   md.renderer.rules.text = (toks, i) => esc(toks[i].content).replace(/\//g, "/<wbr>")
-  md.renderer.rules.table_open = () => `<div class="tbl"><table>`
+  md.renderer.rules.table_open = () => `<div class="tbl sel"><table>`
   md.renderer.rules.table_close = () => `</table></div>`
   md.renderer.rules.ordered_list_open = (toks, i) => {
     const start = toks[i].attrGet("start")
