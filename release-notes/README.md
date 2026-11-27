@@ -36,7 +36,7 @@ Pane headers no longer flicker while you type.
 
 ### With a picture
 
-A NEW or FIXED note for a big, visual feature can carry one screenshot or short GIF (.png, .jpg or .gif, up to
+A NEW note for a big feature carries one screenshot or short GIF (.png, .jpg or .gif, up to
 5 MB), shown under it in Sparkle's update window, the GitHub Release and the docs' What's new (TestFlight's
 text leaves it out). Most notes shouldn't have one: see AGENTS.md. It sits beside the note, under the note's
 name, and the note names it after its date, with alt text saying what it shows:
